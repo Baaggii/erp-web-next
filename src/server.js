@@ -25,8 +25,11 @@ process.on('unhandledRejection', e => console.error('❌ Unhandled Rejection:', 
 
 /* ---------- CORS ---------- */
 require('dotenv').config();           // файлын хавтаснаас .env автоматаар уншина
-const PORT = process.env.PORT //|| 3000 /* localhost develop */ ;
-app.listen(PORT, () => console.log('✅ API ready on', PORT));
+/* ---------- PORT ---------- */
+// ❶  production ( Passenger ) → process.env.PORT
+// ❷  локал develop          → .env-ийн API_PORT  эсвэл 3001
+const PORT = process.env.PORT || process.env.API_PORT || 3001;
+
 const allowed = ['https://modmarket.mn', `http://localhost:${PORT}`];
 
 app.use(cors({
@@ -114,10 +117,10 @@ app.post('/api/create-admin', (req, res) => {
 app.get(['/health', '/api/health'], (_req, res) => res.send('OK'));
 
 /* ---------- START ---------- */
-//const server = app.listen(PORT, '0.0.0.0', () =>
 const server = app.listen(PORT, () =>
   console.log(`✅ API ready on port ${PORT}`)
 );
+
 
 server.on('error', e => console.error('❌ Server error:', e));
 process.on('SIGTERM', () => {
