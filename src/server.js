@@ -115,13 +115,10 @@ app.post('/api/create-admin', (req, res) => {
   res.json({ message: '⚠️ DB тохиргоо дуусаагүй – stub OK' });
 });
 
-app.get(['/health', '/api/health'], (_req, res) => res.send('OK'));
+app.get('/health', (_req, res) => res.send('OK'));
 
 /* ---------- START ---------- */
-const server = app.listen(PORT, () =>
-  console.log(`✅ API ready on port ${PORT}`)
-);
-
+app.listen(PORT, () => console.log(`✅ API ready on port ${PORT}`));
 
 server.on('error', e => console.error('❌ Server error:', e));
 process.on('SIGTERM', () => {
