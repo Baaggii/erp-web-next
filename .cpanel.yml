@@ -1,5 +1,7 @@
-version: 1
+# .cpanel.yml
 deployment:
   tasks:
-    - /usr/bin/npm ci --omit=dev
-    - /bin/touch tmp/restart.txt
+    # 1. прод package-уудыг суулгах
+    - /usr/bin/npm ci  --omit=dev
+    # 2. Node Selector-ын app-аа restart хийх
+    - /opt/cloudlinux/selectorctl  --interpreter=node  --user=$CPANEL::USER  restart $DEPLOYMENT_DIR
