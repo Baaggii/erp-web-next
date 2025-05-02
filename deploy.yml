@@ -1,0 +1,23 @@
+name: Deploy ERP to VPS
+on:
+  push:
+    branches: [ master ]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: appleboy/ssh-action@v1
+        with:
+          host:       ${{ secrets.SSH_HOST }}
+          port:       ${{ secrets.SSH_PORT }}
+          username:   ${{ secrets.SSH_USER }}
+          key:        ${{ secrets.SSH_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}   # omit if key has no passphrase
+          script: |
+            export NODE_OPTIONS=--openssl-legacy-provider
+            cd ~/apps/erp-web
+            git pull --rebase origin master
+            npm install --omit=dev         # or `npm ci` if lock‑file in sync
+            npm run build
+            pm2 reload erp-web || pm2 serve build 3000 -f --spa --name erp-web

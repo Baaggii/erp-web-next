@@ -2,4 +2,7 @@ node_modules/
 logs/
 tmp/
 *.zip
-
+# dotenv files
+.env
+.env.*-en# local secretsn.env*
+process.env
