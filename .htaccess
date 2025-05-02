@@ -12,8 +12,8 @@ RewriteRule ^erp/?$ /erp/index.html [L]
 </FilesMatch>
 
 # API-гийн бүх хүсэлтийг Node руу дамжуулна
-ProxyPass        /api  http://127.0.0.1:$PORT
-ProxyPassReverse /api  http://127.0.0.1:$PORT
+#ProxyPass        /api  http://127.0.0.1:$PORT
+#ProxyPassReverse /api  http://127.0.0.1:$PORT
 
 # php -- BEGIN cPanel-generated handler, do not edit
 # Set the “ea-php81” package as the default “PHP” programming language.
