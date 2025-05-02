@@ -25,7 +25,7 @@ process.on('unhandledRejection', e => console.error('❌ Unhandled Rejection:', 
 
 /* ---------- CORS ---------- */
 require('dotenv').config();           // файлын хавтаснаас .env автоматаар уншина
-const PORT = process.env.PORT || 3000 /* localhost develop */ ;
+const PORT = process.env.PORT //|| 3000 /* localhost develop */ ;
 app.listen(PORT, () => console.log('✅ API ready on', PORT));
 const allowed = ['https://modmarket.mn', `http://localhost:${PORT}`];
 
