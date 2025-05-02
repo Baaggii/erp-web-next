@@ -118,7 +118,9 @@ app.post('/api/create-admin', (req, res) => {
 app.get('/health', (_req, res) => res.send('OK'));
 
 /* ---------- START ---------- */
-app.listen(PORT, () => console.log(`✅ API ready on port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () =>
+  console.log(`✅ API ready on port ${PORT}`)
+);
 
 server.on('error', e => console.error('❌ Server error:', e));
 process.on('SIGTERM', () => {
