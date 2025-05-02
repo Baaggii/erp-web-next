@@ -6,3 +6,6 @@ tmp/
 .env
 .env.*-en# local secretsn.env*
 process.env
+buid/
+Passengerfile.json
+public/

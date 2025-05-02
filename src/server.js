@@ -68,7 +68,7 @@ const erpPool = mysql.createPool({                   // ERP DB
 });
 
 /* ---------- ROUTES ---------- */
-app.use('/api', (req, _res, next) => next());
+app.use('/api', (req, res, next) => next());
 
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
