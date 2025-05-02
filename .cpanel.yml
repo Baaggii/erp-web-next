@@ -5,6 +5,5 @@ deployment:
     # 1) production package install
     - /usr/bin/npm install --omit=dev
 
-    # 2) Passenger (Application Manager) хэрэглэж буй тул
-    #    restart-хийн тулд tmp/restart.txt дээр touch хийдэг
-    - /usr/bin/touch tmp/restart.txt
+    # 2) restart flag — Passenger ‘reload’ хийлгэнэ
+    - /bin/touch tmp/restart.txt
