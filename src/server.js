@@ -28,7 +28,8 @@ require('dotenv').config();           // файлын хавтаснаас .env 
 /* ---------- PORT ---------- */
 // ❶  production ( Passenger ) → process.env.PORT
 // ❷  локал develop          → .env-ийн API_PORT  эсвэл 3001
-const PORT = process.env.PORT || process.env.API_PORT || 3001;
+
+const PORT = process.env.PORT 
 
 const allowed = ['https://modmarket.mn', `http://localhost:${PORT}`];
 
