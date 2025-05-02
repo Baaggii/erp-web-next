@@ -27,7 +27,7 @@ process.on('unhandledRejection', e => console.error('❌ Unhandled Rejection:', 
 require('dotenv').config();           // файлын хавтаснаас .env автоматаар уншина
 /* ---------- PORT ---------- */
 // ❶  production ( Passenger ) → process.env.PORT
-// ❷  локал develop          → .env-ийн API_PORT  эсвэл 3001
+// ❷  локал develop          → .env-ийн PORT  эсвэл 3001
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
@@ -50,10 +50,10 @@ app.use(express.json());
 
 /* ---------- DATABASE POOLS ---------- */
 const pool = mysql.createPool({                      // webshop DB
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
+  host: process.env.ERP_DB_HOST,
+  user: process.env.ERP_DB_USER,
+  password: process.env.ERP_DB_PASSWORD,
+  database: process.env.ERP_DB_NAME,
   waitForConnections: true,
   connectionLimit: 10,
 });
