@@ -111,7 +111,7 @@ app.post('/api/create-admin', (req, res) => {
   res.json({ message: '⚠️ DB тохиргоо дуусаагүй – stub OK' });
 });
 
-app.get('/health', (_req, res) => res.send('OK'));
+app.get('/api/health', (_req,res)=>res.send('OK'));
 
 /* ---------- START ---------- */
 const server = app.listen(PORT, '0.0.0.0', () =>
