@@ -50,10 +50,10 @@ app.use(express.json());
 
 /* ---------- DATABASE POOLS ---------- */
 const pool = mysql.createPool({                      // webshop DB
-  host: process.env.ERP_DB_HOST,
-  user: process.env.ERP_DB_USER,
-  password: process.env.ERP_DB_PASSWORD,
-  database: process.env.ERP_DB_NAME,
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
   waitForConnections: true,
   connectionLimit: 10,
 });
