@@ -24,7 +24,7 @@ process.on('uncaughtException',  e => console.error('❌ Uncaught Exception:',  
 process.on('unhandledRejection', e => console.error('❌ Unhandled Rejection:', e));
 
 /* ---------- CORS ---------- */
-const PORT = process.env.PORT  //|| 3001;   өмнө нь 3001 хатуу байсан
+const PORT = process.env.PORT  || 3001;  // өмнө нь 3001 хатуу байсан
 const allowed = ['https://modmarket.mn', `http://localhost:${PORT}`];
 
 app.use(cors({
@@ -109,7 +109,7 @@ app.post('/api/create-admin', (req, res) => {
   res.json({ message: '⚠️ DB тохиргоо дуусаагүй – stub OK' });
 });
 
-app.get('/api/health', (_req,res)=>res.send('OK'));
+app.get(['/health', '/api/health'], (_req, res) => res.send('OK'));
 
 /* ---------- START ---------- */
 const server = app.listen(PORT, '0.0.0.0', () =>
