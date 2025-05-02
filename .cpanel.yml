@@ -1,9 +1,8 @@
 version: 1
-
 deployment:
   tasks:
-    # 1) production package install
-    - /usr/bin/npm install --omit=dev
+    # 1) prod-хоор npm install
+    - /usr/bin/npm ci --omit=dev
 
-    # 2) restart flag — Passenger ‘reload’ хийлгэнэ
-    - /bin/touch tmp/restart.txt
+    # 2) deploy бүрт Passenger-ийг рестартлана
+    - /usr/bin/touch tmp/restart.txt
