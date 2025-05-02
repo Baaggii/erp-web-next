@@ -6,4 +6,3 @@ tmp/
 .env
 .env.*-en# local secretsn.env*
 process.env
-node_modules/
