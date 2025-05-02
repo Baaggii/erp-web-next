@@ -30,9 +30,9 @@ require('dotenv').config();           // файлын хавтаснаас .env 
 // ❷  локал develop          → .env-ийн PORT  эсвэл 3001
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(`API ready on port ${PORT}`);   // <-- Passenger лог энэ мөрийг хайж байна
-});
+const server = app.listen(PORT, '0.0.0.0', () =>
+console.log(`✅ API ready on port ${PORT}`)
+);
 
 const allowed = ['https://modmarket.mn', `http://localhost:${PORT}`];
 
@@ -121,8 +121,7 @@ app.post('/api/create-admin', (req, res) => {
 app.get('/health', (_req, res) => res.send('OK'));
 
 server.on('error', e => console.error('❌ Server error:', e));
-process.on('SIGTERM', () => {
-  console.log('🔌 SIGTERM signal received. Closing server.');
-  server.close(() => process.exit(0));
-});
-
+ process.on('SIGTERM', () => {
+   console.log('🔌 SIGTERM signal received. Closing server.');
+   server.close(() => process.exit(0));
+ });
