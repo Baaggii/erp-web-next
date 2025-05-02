@@ -1,0 +1,7 @@
+# .cpanel.yml  (аль алинд нь төстэй)
+deployment:
+  tasks:
+    - /bin/echo "📦  npm install --omit=dev"
+    - /usr/bin/npm install --omit=dev
+    - /bin/echo "🔄  Restart with pm2"
+    - /usr/bin/pm2 reload erp-web-next || pm2 start src/server.js --name erp-web-next
