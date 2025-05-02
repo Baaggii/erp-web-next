@@ -1,6 +1,3 @@
-# .cpanel.yml  (repo-ийн root дээр)
 deployment:
   tasks:
     - /opt/cpanel/ea-nodejs20/bin/npm ci --omit=dev
-    #  хэрэгтэй бол build:
-    # - /opt/cpanel/ea-nodejs20/bin/npm run build
