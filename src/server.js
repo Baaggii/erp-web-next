@@ -2,12 +2,10 @@
 const express = require('express');
 const app     = express();
 const path    = require('path');
-const dotenv  = require('dotenv');
 const cors    = require('cors');
 const bcrypt  = require('bcrypt');
 const mysql   = require('mysql2/promise');
 
-dotenv.config();
 
 /* ---------- OPTIONAL route logger ---------- */
 if (!express.__routePatched) {                        // nodemon сэргээхэд давхардахгүй
@@ -24,7 +22,6 @@ process.on('uncaughtException',  e => console.error('❌ Uncaught Exception:',  
 process.on('unhandledRejection', e => console.error('❌ Unhandled Rejection:', e));
 
 /* ---------- CORS ---------- */
-require('dotenv').config();           // файлын хавтаснаас .env автоматаар уншина
 /* ---------- PORT ---------- */
 // ❶  production ( Passenger ) → process.env.PORT
 // ❷  локал develop          → .env-ийн PORT  эсвэл 3001
@@ -118,7 +115,7 @@ app.post('/api/create-admin', (req, res) => {
   res.json({ message: '⚠️ DB тохиргоо дуусаагүй – stub OK' });
 });
 
-app.get('/health', …);
+app.get("/api/health", (_req,res)=>res.send("OK"))
 
 server.on('error', e => console.error('❌ Server error:', e));
  process.on('SIGTERM', () => {
