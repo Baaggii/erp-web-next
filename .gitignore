@@ -3,7 +3,7 @@ logs/
 tmp/
 *.zip
 # dotenv files
-.env
+.env*
 .env.*-en# local secretsn.env*
 process.env
 buid/

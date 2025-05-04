@@ -65,7 +65,7 @@ const erpPool = mysql.createPool({                   // ERP DB
 });
 
 /* ---------- ROUTES ---------- */
-app.use('/api', router);
+//app.use('/api', router);
 
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
@@ -115,7 +115,7 @@ app.post('/api/create-admin', (req, res) => {
   res.json({ message: '⚠️ DB тохиргоо дуусаагүй – stub OK' });
 });
 
-app.get("/api/health", (_req,res)=>res.send("OK"))
+app.get("/api/health", (_req,res)=>res.send("OK"));
 
 server.on('error', e => console.error('❌ Server error:', e));
  process.on('SIGTERM', () => {
