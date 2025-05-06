@@ -1,11 +1,6 @@
+# .cpanel.yml  – minimal, “fire-and-forget”
 ---
 deployment:
   tasks:
-    # (-l) login shell → ~/.bashrc уншина, тэгэхээр npm-ийн venv зам PATH-д орно
-    - /bin/bash -lc 'npm ci --omit=dev'
-
-    # хэрэгцээтэй бол build:
-    # - /bin/bash -lc 'npm run build'
-
-    # Passenger дахин ачаалгах
-    - /bin/bash -lc 'mkdir -p tmp && touch tmp/restart.txt'
+    - /bin/bash -lc 'npm ci --omit=dev --no-progress'
+    - /bin/bash -lc 'mkdir -p tmp && touch tmp/restart.txt >/dev/null 2>&1 &'
