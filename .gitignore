@@ -2,9 +2,7 @@ node_modules/
 logs/
 tmp/
 *.zip
-# dotenv files
 .env*
-.env.*-en# local secretsn.env*
 process.env
-buid/
+build/               # ← production build-аа git-д хийхгүй
 Passengerfile.json
