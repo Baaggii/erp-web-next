@@ -1,6 +1,6 @@
-# .cpanel.yml  – minimal, “fire-and-forget”
----
+---                # top of file unchanged
 deployment:
   tasks:
     - /bin/bash -lc 'npm ci --omit=dev --no-progress'
-    - /bin/bash -lc 'mkdir -p tmp && touch tmp/restart.txt >/dev/null 2>&1 &'
+    - /bin/bash -lc 'mkdir -p tmp && touch tmp/restart.txt'
+      #                                ▲  remove the ampersand
