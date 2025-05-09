@@ -8,12 +8,11 @@ export default defineConfig({
 build: {
   outDir: '../../../../public_html/erp',
   emptyOutDir: true
-}
-,
+},
     target: 'esnext',
     manifest: true,
     minify: false,
     sourcemap: false,
     brotliSize: false
   }
-})
+)
