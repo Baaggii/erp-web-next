@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react()],
   root: 'src/client',
   build: {
-    outDir: '../../../../public_html/erp',
+    outDir: '../../../public_html',
     emptyOutDir: true,
     target: 'esnext',
     manifest: true,
