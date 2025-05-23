@@ -5,7 +5,9 @@ const path    = require('path');
 const cors    = require('cors');
 const bcrypt  = require('bcrypt');
 const mysql   = require('mysql2/promise');
+const authRouter = require('./routes/auth');
 
+app.use('/auth', authRouter);
 
 /* ---------- OPTIONAL route logger ---------- */
 if (!express.__routePatched) {                        // nodemon сэргээхэд давхардахгүй
