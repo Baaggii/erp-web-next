@@ -1,20 +1,17 @@
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import { BrowserRouter } from 'react-router-dom'
-import App from './pages/App'
-import Login from './pages/Login'
-import './index.css'
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import './index.css';
 
-console.log("Login loaded")
+function Home() {
+  return <h1>ERP Web Next – Home</h1>;
+}
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <BrowserRouter>
+const root = createRoot(document.getElementById('root'));
+root.render(
+  <BrowserRouter basename="/erp">
     <Routes>
-      <Route path="/" element={<App />} />
-      <Route path="/login" element={<Login />} />
+      <Route path="/" element={<Home />} />
     </Routes>
   </BrowserRouter>
-
-  </React.StrictMode>
-)
+);
