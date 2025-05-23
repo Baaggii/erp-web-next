@@ -1,2 +1,8 @@
 node_modules/
-.env
+logs/
+tmp/
+*.zip
+.env*
+process.env
+build/               # ← production build-аа git-д хийхгүй
+Passengerfile.json
