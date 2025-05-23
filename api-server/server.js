@@ -11,12 +11,18 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Sample health check
-app.get('/api/health', (req, res) =>
-  res.json({ status: 'ok' })            // Content-Type: application/json
-);
-app.get('/health', (req, res) =>
-  res.type('text/html').send('OK');     // Content-Type: text/html
-);
+// JSON health (for cPanel’s application/json check)
+app.get(['/api/health', '/erp/api/health'], (req, res) => {
+  return res.status(200).json({ status: 'ok' });
+});
+
+// HTML health (for cPanel’s text/html check)
+app.get(['/health', '/erp/health'], (req, res) => {
+  return res
+    .status(200)
+    .type('text/html')
+    .send('OK');
+});
 
 // Serve SPA
 app.use('/erp', express.static(path.join(__dirname, '..', 'dist')));
