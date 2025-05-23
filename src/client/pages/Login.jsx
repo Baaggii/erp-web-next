@@ -1,23 +1,30 @@
-import { useState } from 'react'
-import axios from 'axios'
 import React, { useState } from 'react';
-import useAuth from '../hooks/useAuth';
-
+import { useNavigate } from 'react-router-dom';
 
 export default function Login() {
-  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  
-  const handleSubmit = e => {
+  const navigate = useNavigate();
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    login({ email, password });
+    const res = await fetch('/erp/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    if (res.ok) {
+      navigate('/');
+    } else {
+      alert('Login failed');
+    }
   };
-  
+
   return (
     <form onSubmit={handleSubmit}>
-      <input type="text" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email or ID" />
-      <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" />
+      <h2>Login</h2>
+      <div><input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" /></div>
+      <div><input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" /></div>
       <button type="submit">Login</button>
     </form>
   );

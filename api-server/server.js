@@ -57,7 +57,10 @@ const pool = mysql.createPool({                      // webshop DB
   connectionLimit: 10,
 });
 
-const erpPool = mysql.createPool({                   // ERP DB
+const erpPool = mysql.createPool
+import authRouter from './routes/auth.js';
+app.use('/erp/api', authRouter);
+({                   // ERP DB
   host: process.env.ERP_DB_HOST,
   user: process.env.ERP_DB_USER,
   password: process.env.ERP_DB_PASSWORD,
