@@ -12,7 +12,9 @@ const PORT = process.env.PORT || 3000;
 
 // Sample health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
+app.get('/health', (req, res) =>
+  res.type('text/html').send('OK')
+);
 
 // Serve SPA
 app.use('/erp', express.static(path.join(__dirname, '..', 'dist')));
