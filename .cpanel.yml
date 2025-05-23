@@ -1,6 +1,6 @@
----
+---                # top of file unchanged
 deployment:
   tasks:
     - /bin/bash -lc 'npm ci --omit=dev --no-progress'
-    - /bin/bash -lc 'npm run build -- --base=/erp/'
     - /bin/bash -lc 'mkdir -p tmp && touch tmp/restart.txt'
+      #                                ▲  remove the ampersand
