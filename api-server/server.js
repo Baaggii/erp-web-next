@@ -1,7 +1,7 @@
 // File: api-server/server.js
-
 import express from 'express';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
 import mysql from 'mysql2/promise';
@@ -13,30 +13,36 @@ import { requireAuth } from './middlewares/auth.js';
 
 dotenv.config();
 
+// Emulate __dirname in ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = path.dirname(__filename);
+
 const app = express();
 const PORT = process.env.API_PORT || 3001;
 
-// Middlewares
+// Middleware
 app.use(cookieParser());
 app.use(express.json());
 
-// Create & expose the DB pool
+// Database pool
 const erpPool = mysql.createPool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
+  host:     process.env.DB_HOST,
+  user:     process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   waitForConnections: true,
   connectionLimit: 10,
 });
-console.log('🗄️  Connected to DB:', process.env.DB_NAME, '@', process.env.DB_HOST);
+console.log('🗄️  Connected to DB:', `${process.env.DB_USER}@${process.env.DB_HOST}/${process.env.DB_NAME}`);
 app.set('erpPool', erpPool);
 
-// Mount the test route *before* your SPA fallback
+// Mount routes for direct API testing
 app.use('/api', dbtestRouter);
-app.use('/erp/api', dbtestRouter);
+app.use('/api', authRouter);
+app.use('/api', requireAuth, formsRouter);
 
-// Mount auth & forms under the same paths
+// Mount routes under /erp/api for the SPA
+app.use('/erp/api', dbtestRouter);
 app.use('/erp/api', authRouter);
 app.use('/erp/api', requireAuth, formsRouter);
 
@@ -49,17 +55,26 @@ app.get('/erp/api/health', (_req, res) =>
 );
 
 // Serve your built SPA
-app.use('/erp', express.static(path.join(__dirname, '..', 'dist')));
+// If you build into a `dist/` folder, leave this as-is.
+// If you build directly into public_html/erp, point here instead.
+const spaDir = path.join(__dirname, '..', '../public_html/erp');
+app.use('/erp', express.static(spaDir));
 app.get('/erp/*', (_req, res) =>
-  res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'))
+  res.sendFile(path.join(spaDir, 'index.html'))
 );
 
-// Catch-all for anything else
-app.use((_req, res) => {
-  res.status(404).json({ error: 'Not found' });
-});
+// Catch-all 404 for anything else
+app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
 
-// Start
+// Start the server
 app.listen(PORT, '0.0.0.0', () =>
-  console.log(`✅ ERP API & SPA listening on http://localhost:${PORT}/erp`)
+  console.log(`✅ ERP listening on http://localhost:${PORT}/erp`)
 );
+
+// Handle process events
+process.on('uncaughtException',  e => console.error('❌ Uncaught Exception:', e));
+process.on('unhandledRejection', e => console.error('❌ Unhandled Rejection:', e));
+process.on('SIGTERM', () => {
+  console.log('🔌 SIGTERM received. Shutting down.');
+  process.exit(0);
+});
