@@ -21,6 +21,15 @@ export default function App() {
       </nav>
 
       <Routes>
+{/* …other routes… */}
+  <Route
+    path="/users"
+    element={
+      <RequireAuth>
++       <Users />
+      </RequireAuth>
+    }
+  />
         {/* Public route */}
         <Route path="/login" element={<Login />} />
 
