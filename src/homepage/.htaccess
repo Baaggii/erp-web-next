@@ -1,0 +1,5 @@
+RewriteEngine On
+# Serve corporate site normally
+RewriteRule ^$ /index.html [L]
+# Proxy /erp/* to ERP SPA
+RewriteRule ^erp(/.*)?$ /erp/index.html [L]

@@ -1,0 +1,9 @@
+* { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:system-ui,sans-serif; background:#fff; color:#333; }
+header { background:#f8f9fa; padding:1rem; border-bottom:1px solid #ddd; }
+nav { max-width:960px; margin:0 auto; display:flex; justify-content:space-between; }
+.logo { font-size:1.5rem; text-decoration:none; color:#222; }
+.button { background:#007bff; color:#fff; padding:0.5em 1em; border-radius:4px; text-decoration:none; }
+.button:hover { background:#0056b3; }
+main { max-width:960px; margin:2rem auto; padding:0 1rem; }
+footer { text-align:center; padding:1rem; background:#f1f1f1; font-size:0.9rem; }
