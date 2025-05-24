@@ -10,5 +10,9 @@ RewriteRule ^erp(/.*)?$ http://127.0.0.1:3002$1 [P,L]
 # Proxy /api/* → backend
 RewriteRule ^api(/.*)?$ http://127.0.0.1:3002/api$1 [P,L]
 
-# Fallback for SPA routes if needed
-# RewriteRule ^erp/(.*)$ /erp/index.html [L]
+# Fallback for SPA routes
+Options -MultiViews
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+RewriteRule . /erp/index.html [L]

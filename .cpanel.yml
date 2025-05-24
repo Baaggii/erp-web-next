@@ -1,8 +1,7 @@
 ---
 deployment:
   tasks:
-    - /bin/bash -lc 'npm ci --no-progress'
-    - /bin/bash -lc 'npm run build -- --base=/erp/'
-    - /bin/bash -lc 'npm prune --omit=dev'
-    - /bin/bash -lc 'rm -rf ~/public_html/erp/*'
-    - /bin/bash -lc 'cp -r dist/* ~/public_html/erp/'
+    - npm install --no-progress
+    - npm run build:homepage
+    - npm run build:erp
+    - npm prune --omit=dev
