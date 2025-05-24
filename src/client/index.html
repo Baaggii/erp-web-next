@@ -1,16 +1,15 @@
-<!-- File: src/client/index.html -->
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <title>ERP Web Next</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Link to your CSS (served under /erp) -->
+    <!-- Ensure the path matches your Vite base: "/erp/" -->
     <link rel="stylesheet" href="/erp/index.css" />
   </head>
   <body>
     <div id="root"></div>
-    <!-- Your main entrypoint, also under /erp -->
-    <script type="module" src="/main.jsx"></script>
+    <!-- Your SPA entrypoint; Vite dev server serves this in dev mode -->
+    <script type="module" src="/erp/main.jsx"></script>
   </body>
 </html>
