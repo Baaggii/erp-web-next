@@ -1,30 +1,35 @@
-// src/client/App.jsx
+// File: src/client/App.jsx
+
 import React from 'react';
 import { Routes, Route, Link } from 'react-router-dom';
 import RequireAuth from './components/RequireAuth';
 
-import Login from './pages/Login.jsx';
+import Login     from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
-import Forms from './pages/Forms.jsx';
-import Reports from './pages/Reports.jsx';
-import Users from './pages/Users.jsx';
+import Forms     from './pages/Forms.jsx';
+import Reports   from './pages/Reports.jsx';
+import Users     from './pages/Users.jsx';
 
 export default function App() {
   return (
-    <nav>
-      <ul>
-        <li><Link to="/dashboard">Dashboard</Link></li>
-        <li><Link to="/forms">Forms</Link></li>
-        <li><Link to="/reports">Reports</Link></li>
-        <li><Link to="/users">Users</Link></li>
-      </ul>
+    <>
+      <nav>
+        <Link to="/dashboard">Dashboard</Link> |{' '}
+        <Link to="/forms">Forms</Link> |{' '}
+        <Link to="/reports">Reports</Link> |{' '}
+        <Link to="/users">Users</Link>
+      </nav>
+
       <Routes>
+        {/* Public route */}
         <Route path="/login" element={<Login />} />
+
+        {/* Protected routes */}
         <Route
           path="/dashboard"
           element={
             <RequireAuth>
-              <Dashboard/>
+              <Dashboard />
             </RequireAuth>
           }
         />
@@ -32,7 +37,7 @@ export default function App() {
           path="/forms"
           element={
             <RequireAuth>
-              <Forms/>
+              <Forms />
             </RequireAuth>
           }
         />
@@ -40,7 +45,7 @@ export default function App() {
           path="/reports"
           element={
             <RequireAuth>
-              <Reports/>
+              <Reports />
             </RequireAuth>
           }
         />
@@ -48,12 +53,14 @@ export default function App() {
           path="/users"
           element={
             <RequireAuth>
-              <Users/>
+              <Users />
             </RequireAuth>
           }
         />
+
+        {/* Fallback: redirect unknown paths to login or dashboard */}
         <Route path="*" element={<Login />} />
       </Routes>
-    </nav>
+    </>
   );
 }
