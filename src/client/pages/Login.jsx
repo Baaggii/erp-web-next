@@ -20,6 +20,23 @@ export default function Login() {
     }
   };
 
+fetch('/erp/api/login', {
+  method: 'POST',
+  credentials: 'include',           // ← important
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email, password })
+})
+.then(res => {
+  if (!res.ok) throw new Error('Login failed');
+  return res.json();
+})
+.then(({ user }) => {
+  // Save user in context / state, then redirect:
+  navigate('/erp/dashboard');
+})
+.catch(err => setError(err.message));
+
+
   return (
     <form onSubmit={handleSubmit}>
       <h2>Login</h2>
