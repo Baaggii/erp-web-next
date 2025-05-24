@@ -1,6 +1,8 @@
 ---
 deployment:
   tasks:
+    - mkdir -p ~/public_html
+    - mkdir -p ~/public_html/erp
     - npm install --no-progress
     - npm run build:homepage
     - npm run build:erp
