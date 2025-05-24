@@ -25,13 +25,16 @@ app.set('erpPool', erpPool);
 
 // Routes
 import authRouter from './routes/auth.js';
+import dbtestRouter from './routes/dbtest.js';
 import formsRouter from './routes/forms.js';
 import dbtestRouter from './routes/dbtest.js';
 
 // Mount your routers under /erp/api
 app.use('/erp/api', authRouter);
+app.use('/erp/api', dbtestRouter);
 app.use('/erp/api', requireAuth, formsRouter);
 app.use('/erp/api', dbtestRouter);    // DB connection test
+app.use('/api', dbtestRouter);
 
 // Serve the SPA (fallback)
 app.use('/erp', express.static(path.resolve(__dirname, '../public_html/erp')));
