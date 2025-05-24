@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import './index.css';
 import Login
-import FormRenderer from './pages/Login';
+import FormRenderer from './pages/FormRenderer';
 
 function Home() {
   return <h1>ERP Web Next – Home</h1>;
