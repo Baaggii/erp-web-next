@@ -1,25 +1,37 @@
-// src/client/pages/Users.jsx
+// File: src/client/pages/Users.jsx
 import React, { useEffect, useState } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext.jsx';
 
 export default function Users() {
   const { user } = useAuth();
-  const isAdmin = user.role === 'admin';
+  const isAdmin = user?.role === 'admin';     // ← guard user
+
+  // single state for the full user list
   const [users, setUsers] = useState([]);
 
-  const [allUsers, setAllUsers]     = useState([]);
-  const [newUser, setNewUser]       = useState({ email: '', password: '', name: '', company: '', role: 'user' });
-  const [myProfile, setMyProfile]   = useState({ name: '', company: '', password: '' });
-  const [message, setMessage]       = useState('');
+  // new-user form & my-profile form states
+  const [newUser, setNewUser] = useState({
+    email: '', password: '', name: '', company: '', role: 'user'
+  });
+  const [myProfile, setMyProfile] = useState({
+    name: '', company: '', password: ''
+  });
 
-  // Fetch data on mount
+  const [message, setMessage] = useState('');
+
   useEffect(() => {
-    // Load my profile
+    // load profile
     fetch('/erp/api/users/me', { credentials: 'include' })
       .then(r => r.json())
-      .then(data => setMyProfile({ name: data.name, company: data.company, password: '' }));
+      .then(data => {
+        setMyProfile({
+          name: data.name,
+          company: data.company,
+          password: ''
+        });
+      });
 
-    // If admin, load all users
+    // if admin, load all users
     if (isAdmin) {
       fetch('/erp/api/users', { credentials: 'include' })
         .then(r => r.json())
@@ -38,9 +50,9 @@ export default function Users() {
       body: JSON.stringify(newUser)
     });
     const json = await res.json();
-    setMessage(json.message || 'User created');
+    setMessage(json.message || (res.ok ? 'User created' : 'Failed'));
     if (res.ok) {
-      setAllUsers(u => [...u, { ...newUser, id: Date.now() }]);
+      setUsers(u => [...u, json.user]);   // use returned user (with real id)
       setNewUser({ email:'', password:'', name:'', company:'', role:'user' });
     }
   };
@@ -55,24 +67,27 @@ export default function Users() {
       body: JSON.stringify(changes)
     });
     const json = await res.json();
-    setMessage(json.message || 'Updated');
-    if (isAdmin) {
-      setAllUsers(u => u.map(x => x.id === id ? { ...x, ...changes } : x));
-    } else if (id === user.id) {
-      // update own profile
-      setMyProfile(p => ({ ...p, ...changes }));
+    setMessage(json.message || (res.ok ? 'Updated' : 'Failed'));
+    if (res.ok) {
+      if (isAdmin) {
+        setUsers(u => u.map(x => x.id === id ? { ...x, ...changes } : x));
+      } else if (id === user.id) {
+        setMyProfile(p => ({ ...p, ...changes }));
+      }
     }
   };
 
   // Admin deletes a user
   const handleDelete = async id => {
     if (!window.confirm('Delete this user?')) return;
-    await fetch(`/erp/api/users/${id}`, {
+    const res = await fetch(`/erp/api/users/${id}`, {
       method: 'DELETE',
       credentials: 'include'
     });
-    setAllUsers(u => u.filter(x => x.id !== id));
-    setMessage('Deleted');
+    if (res.ok) {
+      setUsers(u => u.filter(x => x.id !== id));
+      setMessage('Deleted');
+    }
   };
 
   return (
@@ -89,29 +104,29 @@ export default function Users() {
                 type="email" required placeholder="Email"
                 value={newUser.email}
                 onChange={e => setNewUser({ ...newUser, email: e.target.value })}
-              />
+              /><br/>
               <input
                 type="password" required placeholder="Password"
                 value={newUser.password}
                 onChange={e => setNewUser({ ...newUser, password: e.target.value })}
-              />
+              /><br/>
               <input
                 placeholder="Name"
                 value={newUser.name}
                 onChange={e => setNewUser({ ...newUser, name: e.target.value })}
-              />
+              /><br/>
               <input
                 placeholder="Company"
                 value={newUser.company}
                 onChange={e => setNewUser({ ...newUser, company: e.target.value })}
-              />
+              /><br/>
               <select
                 value={newUser.role}
                 onChange={e => setNewUser({ ...newUser, role: e.target.value })}
               >
                 <option value="user">User</option>
                 <option value="admin">Admin</option>
-              </select>
+              </select><br/>
               <button type="submit">Create</button>
             </form>
           </section>
@@ -121,16 +136,12 @@ export default function Users() {
             <table border={1} cellPadding={5} cellSpacing={0}>
               <thead>
                 <tr>
-                  <th>ID</th>
-                  <th>Email</th>
-                  <th>Name</th>
-                  <th>Company</th>
-                  <th>Role</th>
-                  <th>Actions</th>
+                  <th>ID</th><th>Email</th><th>Name</th>
+                  <th>Company</th><th>Role</th><th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {allUsers.map(u => (
+                {users.map(u => (
                   <tr key={u.id}>
                     <td>{u.id}</td>
                     <td>{u.email}</td>
@@ -168,7 +179,10 @@ export default function Users() {
 
       <section>
         <h2>Your Profile</h2>
-        <form onSubmit={e => { e.preventDefault(); handleUpdate(user.id, myProfile); }}>
+        <form onSubmit={e => {
+          e.preventDefault();
+          handleUpdate(user.id, myProfile);
+        }}>
           <label>
             Name:<br/>
             <input
