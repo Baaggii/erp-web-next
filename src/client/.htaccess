@@ -6,7 +6,7 @@
   RewriteBase /erp/
 
   # 1) Proxy API calls
-  RewriteRule ^api/(.*)$ http://127.0.0.1:3002/api/$1 [P,L]
+  RewriteRule ^api/(.*)$ http://127.0.0.1:3001/api/$1 [P,L]
 
   # 2) If request maps to an actual file or directory, serve it directly
   RewriteCond %{REQUEST_FILENAME} -f [OR]
