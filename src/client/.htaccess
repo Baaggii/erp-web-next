@@ -3,9 +3,19 @@
   RewriteEngine On
   RewriteBase /erp/
 
+# Proxy /erp/* → backend on port 3002, dropping the /erp prefix
+RewriteRule ^erp(/.*)?$ http://127.0.0.1:3002$1 [P,L]
+
   # 1) Proxy all API calls to your Node backend on port 3002
   RewriteRule ^api/(.*)$ http://127.0.0.1:3002/api/$1 [P,L]
 
   # 2) Serve the SPA for everything else under /erp/
   RewriteRule ^(?!api/).* /erp/index.html [L]
+
+# Fallback for SPA routes
+Options -MultiViews
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+RewriteRule . /erp/index.html [L]
 </IfModule>
