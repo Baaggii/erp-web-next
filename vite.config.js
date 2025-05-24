@@ -1,16 +1,11 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { viteStaticCopy } from 'vite-plugin-static-copy';
+
 export default defineConfig({
-  root: 'src/client',
-  base: '/erp/',
-  publicDir: '.',
-  plugins: [
-    react(),
-    viteStaticCopy({
-      targets: [ { src: '../.htaccess', dest: '' } ]
-    })
-  ],
+  root: 'src/client',        // ERP SPA source
+  base: '/erp/',             // Asset base path
+  publicDir: 'src/client',   // Copy all files here (e.g. .htaccess)
+  plugins: [react()],
   build: {
     outDir: '../../../../public_html/erp',
     emptyOutDir: true
