@@ -2,8 +2,8 @@
 
 import React from 'react';
 import { Routes, Route, Link } from 'react-router-dom';
-import { useAuth } from './context/AuthContext';
-import RequireAuth from './components/RequireAuth';
+import { useAuth } from './context/AuthContext.jsx';
+import RequireAuth from './components/RequireAuth.jsx';
 
 import Login     from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -12,6 +12,8 @@ import Reports   from './pages/Reports.jsx';
 import Users     from './pages/Users.jsx';
 
 export default function App() {
+  const { user, logout } = useAuth();
+
   return (
     <>
       <nav>
@@ -19,23 +21,12 @@ export default function App() {
         <Link to="/forms">Forms</Link> |{' '}
         <Link to="/reports">Reports</Link> |{' '}
         <Link to="/users">Users</Link>
-       {user && (
-         <>
-           {' '}| <button onClick={logout}>Logout</button>
-         </>
-       )}
+        {user && (
+          <> | <button onClick={logout}>Logout</button></>
+        )}
       </nav>
 
       <Routes>
-{/* …other routes… */}
-  <Route
-    path="/users"
-    element={
-      <RequireAuth>
-+       <Users />
-      </RequireAuth>
-    }
-  />
         {/* Public route */}
         <Route path="/login" element={<Login />} />
 
@@ -48,6 +39,7 @@ export default function App() {
             </RequireAuth>
           }
         />
+
         <Route
           path="/forms"
           element={
@@ -56,6 +48,7 @@ export default function App() {
             </RequireAuth>
           }
         />
+
         <Route
           path="/reports"
           element={
@@ -64,16 +57,17 @@ export default function App() {
             </RequireAuth>
           }
         />
-        <Route
-  path="/users"
-  element={
-    <RequireAuth>
-      <Users />
-    </RequireAuth>
-  }
-/>
 
-        {/* Fallback: redirect unknown paths to login or dashboard */}
+        <Route
+          path="/users"
+          element={
+            <RequireAuth>
+              <Users />
+            </RequireAuth>
+          }
+        />
+
+        {/* Fallback */}
         <Route path="*" element={<Login />} />
       </Routes>
     </>
