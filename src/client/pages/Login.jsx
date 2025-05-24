@@ -1,48 +1,56 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 export default function Login() {
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState('admin@modmarket.mn');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const { setUser } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = location.state?.from?.pathname || '/dashboard';
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async e => {
     e.preventDefault();
-    const res = await fetch('/erp/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    });
-    if (res.ok) {
-      navigate('/');
-    } else {
-      alert('Login failed');
+    setError('');
+    try {
+      const res = await fetch('/erp/api/login', {
+        method: 'POST',
+        credentials: 'include',          // ← important
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      if (!res.ok) throw new Error('Login failed');
+      const { user } = await res.json();
+      setUser(user);
+      navigate(from, { replace: true });
+    } catch (err) {
+      setError(err.message);
     }
   };
 
-fetch('/erp/api/login', {
-  method: 'POST',
-  credentials: 'include',           // ← important
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ email, password })
-})
-.then(res => {
-  if (!res.ok) throw new Error('Login failed');
-  return res.json();
-})
-.then(({ user }) => {
-  // Save user in context / state, then redirect:
-  navigate('/erp/dashboard');
-})
-.catch(err => setError(err.message));
-
-
   return (
-    <form onSubmit={handleSubmit}>
-      <h2>Login</h2>
-      <div><input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" /></div>
-      <div><input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" /></div>
-      <button type="submit">Login</button>
-    </form>
+    <div style={{ maxWidth: 320, margin: 'auto' }}>
+      <h1>Login</h1>
+      {error && <p style={{ color: 'red' }}>{error}</p>}
+      <form onSubmit={handleSubmit}>
+        <input
+          type="email"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          placeholder="Email" required
+        />
+        <br/>
+        <input
+          type="password"
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          placeholder="Password" required
+        />
+        <br/>
+        <button type="submit">Login</button>
+      </form>
+    </div>
   );
 }
