@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Routes, Route, Link } from 'react-router-dom';
+import { useAuth } from './context/AuthContext';
 import RequireAuth from './components/RequireAuth';
 
 import Login     from './pages/Login.jsx';
@@ -18,6 +19,11 @@ export default function App() {
         <Link to="/forms">Forms</Link> |{' '}
         <Link to="/reports">Reports</Link> |{' '}
         <Link to="/users">Users</Link>
+       {user && (
+         <>
+           {' '}| <button onClick={logout}>Logout</button>
+         </>
+       )}
       </nav>
 
       <Routes>
