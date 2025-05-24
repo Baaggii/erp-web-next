@@ -7,6 +7,6 @@ export default defineConfig({
   plugins: [react()],
   build: {
     outDir: '../../../../public_html/erp',
-    emptyOutDir: true    
+    emptyOutDir: false    
   }
 });

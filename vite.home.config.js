@@ -8,6 +8,6 @@ module.exports = defineConfig({
   plugins: [react()],
   build: {
     outDir: '../../../../public_html', // publish to public_html/
-    emptyOutDir: true
+    emptyOutDir: false
   }
 })
