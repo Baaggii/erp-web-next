@@ -1,5 +1,7 @@
+// api-server/routes/dbtest.js
 import express from 'express';
 const router = express.Router();
+
 router.get('/dbtest', async (req, res) => {
   try {
     const pool = req.app.get('erpPool');
@@ -10,4 +12,5 @@ router.get('/dbtest', async (req, res) => {
     return res.status(500).json({ ok: false, error: err.message });
   }
 });
+
 export default router;
