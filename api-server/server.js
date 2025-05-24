@@ -7,6 +7,10 @@ const bcrypt  = require('bcrypt');
 const mysql   = require('mysql2/promise');
 const authRouter = require('./routes/auth');
 
+import dbtestRouter from './routes/dbtest.js';
+
+app.use('/erp/api', dbtestRouter);
+
 app.use('/auth', authRouter);
 
 /* ---------- OPTIONAL route logger ---------- */
