@@ -5,10 +5,10 @@ RewriteEngine On
 # RewriteRule ^$ /index.html [L]
 
 # Proxy /erp/* → backend on port 3002, dropping the /erp prefix
-RewriteRule ^erp(/.*)?$ http://127.0.0.1:3002$1 [P,L]
+RewriteRule ^erp(/.*)?$ http://127.0.0.1:3001$1 [P,L]
 
 # Proxy /api/* → backend
-RewriteRule ^api(/.*)?$ http://127.0.0.1:3002/api$1 [P,L]
+RewriteRule ^api(/.*)?$ http://127.0.0.1:3001/api$1 [P,L]
 
 # Fallback for SPA routes
 Options -MultiViews
