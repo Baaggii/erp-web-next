@@ -1,5 +1,7 @@
 # File: public_html/erp/.htaccess
+
 <IfModule mod_rewrite.c>
+
   RewriteEngine On
   RewriteBase /erp/
 
