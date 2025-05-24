@@ -1,0 +1,16 @@
+{
+  "forms": [
+    {
+      "id": "example",
+      "label": "Example Form",
+      "fields": [
+        {
+          "name": "firstName",
+          "label": "First Name",
+          "type": "text",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

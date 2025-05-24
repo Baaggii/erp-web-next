@@ -40,6 +40,7 @@ app.use(cors({
                                                : cb(new Error('CORS blocked')))
 }));
 
+app.use(cookieParser());
 app.use(express.json());
 
 /* ---------- (optional) serve React build ---------- */
@@ -59,7 +60,10 @@ const pool = mysql.createPool({                      // webshop DB
 
 const erpPool = mysql.createPool
 import authRouter from './routes/auth.js';
+import formsRouter from './routes/forms.js';
+import { requireAuth } from './middlewares/auth.js';
 app.use('/erp/api', authRouter);
+app.use('/erp/api', requireAuth, formsRouter);
 ({                   // ERP DB
   host: process.env.ERP_DB_HOST,
   user: process.env.ERP_DB_USER,
