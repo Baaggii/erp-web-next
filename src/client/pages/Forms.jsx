@@ -1,5 +1,5 @@
 import React,{useEffect,useState} from 'react';
-export default function FormRenderer(){
+export default function Forms(){
   const [cfg,setCfg]=useState(null);
   const [v,setV]=useState({});
   useEffect(()=>{fetch('/erp/api/forms',{credentials:'include'}).then(r=>r.json()).then(d=>setCfg(d.forms[0]));},[]);
