@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 export default function Users() {
   const { user } = useAuth();
   const isAdmin = user.role === 'admin';
+  const [users, setUsers] = useState([]);
 
   const [allUsers, setAllUsers]     = useState([]);
   const [newUser, setNewUser]       = useState({ email: '', password: '', name: '', company: '', role: 'user' });
@@ -22,7 +23,7 @@ export default function Users() {
     if (isAdmin) {
       fetch('/erp/api/users', { credentials: 'include' })
         .then(r => r.json())
-        .then(setAllUsers);
+        .then(setUsers);
     }
   }, [isAdmin]);
 

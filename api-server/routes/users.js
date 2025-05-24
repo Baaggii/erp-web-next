@@ -1,5 +1,6 @@
 // File: api-server/routes/users.js
 import express from 'express';
+import { requireAuth, requireAdmin } from '../middlewares/auth.js';
 import bcrypt from 'bcrypt';
 
 const router = express.Router();
@@ -85,6 +86,12 @@ router.delete('/:id', async (req, res) => {
   }
   await pool(req).execute(`DELETE FROM users WHERE id = ?`, [targetId]);
   res.json({ message: 'Deleted' });
+});
+
+// **Public**: get the logged-in user’s profile
+router.get('/me', requireAuth, async (req, res) => {
+  // req.user was set by requireAuth
+  res.json(req.user);
 });
 
 export default router;
