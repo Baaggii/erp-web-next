@@ -3,11 +3,11 @@ import React from 'react';
 import { Routes, Route, Link } from 'react-router-dom';
 import RequireAuth from './components/RequireAuth';
 
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import Forms from './pages/Forms';
-import Reports from './pages/Reports';
-import Users from './pages/Users';
+import Login from './pages/Login.jsx';
+import Dashboard from './pages/Dashboard.jsx';
+import Forms from './pages/Forms.jsx';
+import Reports from './pages/Reports.jsx';
+import Users from './pages/Users.jsx';
 
 export default function App() {
   return (
