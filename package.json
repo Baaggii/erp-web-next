@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "vite",
+    "type": "module",
     "build:homepage": "vite build --config vite.home.config.js",
     "build:erp": "vite build --config vite.config.js --base=/erp/",
     "serve": "node api-server/server.js"
