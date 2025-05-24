@@ -59,13 +59,13 @@ export default function App() {
           }
         />
         <Route
-          path="/users"
-          element={
-            <RequireAuth>
-              <Users />
-            </RequireAuth>
-          }
-        />
+  path="/users"
+  element={
+    <RequireAuth>
+      <Users />
+    </RequireAuth>
+  }
+/>
 
         {/* Fallback: redirect unknown paths to login or dashboard */}
         <Route path="*" element={<Login />} />

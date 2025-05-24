@@ -1,4 +1,4 @@
-// File: src/client/pages/Users.jsx
+// src/client/pages/Users.jsx
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
@@ -6,179 +6,194 @@ export default function Users() {
   const { user } = useAuth();
   const isAdmin = user.role === 'admin';
 
-  const [list, setList] = useState([]);
-  const [form, setForm] = useState({ email: '', password: '', name: '', company: '', role: 'user' });
-  const [profile, setProfile] = useState({ name: '', company: '', password: '' });
-  const [msg, setMsg] = useState('');
+  const [allUsers, setAllUsers]     = useState([]);
+  const [newUser, setNewUser]       = useState({ email: '', password: '', name: '', company: '', role: 'user' });
+  const [myProfile, setMyProfile]   = useState({ name: '', company: '', password: '' });
+  const [message, setMessage]       = useState('');
 
-  // Load users if admin
+  // Fetch data on mount
   useEffect(() => {
+    // Load my profile
+    fetch('/erp/api/users/me', { credentials: 'include' })
+      .then(r => r.json())
+      .then(data => setMyProfile({ name: data.name, company: data.company, password: '' }));
+
+    // If admin, load all users
     if (isAdmin) {
       fetch('/erp/api/users', { credentials: 'include' })
         .then(r => r.json())
-        .then(setList);
+        .then(setAllUsers);
     }
-    // load current profile
-    fetch('/erp/api/users/me', { credentials: 'include' })
-      .then(r => r.json())
-      .then(u => setProfile({ name: u.name, company: u.company, password: '' }));
   }, [isAdmin]);
 
-  // Admin: create new user
-  const createUser = async e => {
+  // Admin creates a new user
+  const handleCreate = async e => {
     e.preventDefault();
-    setMsg('');
+    setMessage('');
     const res = await fetch('/erp/api/users', {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form)
+      body: JSON.stringify(newUser)
     });
     const json = await res.json();
-    setMsg(json.message || 'Done');
-    setList(prev => [...prev, { ...form, id: Date.now() }]);
+    setMessage(json.message || 'User created');
+    if (res.ok) {
+      setAllUsers(u => [...u, { ...newUser, id: Date.now() }]);
+      setNewUser({ email:'', password:'', name:'', company:'', role:'user' });
+    }
   };
 
-  // PUT handler (shared)
-  const updateUser = async (id, data) => {
+  // Update any user (admin) or self
+  const handleUpdate = async (id, changes) => {
+    setMessage('');
     const res = await fetch(`/erp/api/users/${id}`, {
       method: 'PUT',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
+      body: JSON.stringify(changes)
     });
     const json = await res.json();
-    setMsg(json.message || 'Updated');
+    setMessage(json.message || 'Updated');
     if (isAdmin) {
-      setList(prev =>
-        prev.map(u => (u.id === id ? { ...u, ...data } : u))
-      );
+      setAllUsers(u => u.map(x => x.id === id ? { ...x, ...changes } : x));
+    } else if (id === user.id) {
+      // update own profile
+      setMyProfile(p => ({ ...p, ...changes }));
     }
   };
 
-  // Admin: delete a user
-  const deleteUser = async id => {
+  // Admin deletes a user
+  const handleDelete = async id => {
     if (!window.confirm('Delete this user?')) return;
     await fetch(`/erp/api/users/${id}`, {
       method: 'DELETE',
       credentials: 'include'
     });
-    setList(prev => prev.filter(u => u.id !== id));
+    setAllUsers(u => u.filter(x => x.id !== id));
+    setMessage('Deleted');
   };
 
   return (
-    <div style={{ padding: 20 }}>
+    <div style={{ padding: 20, maxWidth: 800, margin: 'auto' }}>
       <h1>User Management</h1>
-      {msg && <p style={{ color: 'green' }}>{msg}</p>}
+      {message && <p style={{ color: 'green' }}>{message}</p>}
 
       {isAdmin && (
         <>
-          <h2>Create New User</h2>
-          <form onSubmit={createUser}>
-            <input
-              type="email"
-              required
-              placeholder="Email"
-              value={form.email}
-              onChange={e => setForm({ ...form, email: e.target.value })}
-            />
-            <input
-              type="password"
-              required
-              placeholder="Password"
-              value={form.password}
-              onChange={e => setForm({ ...form, password: e.target.value })}
-            />
-            <input
-              placeholder="Name"
-              value={form.name}
-              onChange={e => setForm({ ...form, name: e.target.value })}
-            />
-            <input
-              placeholder="Company"
-              value={form.company}
-              onChange={e => setForm({ ...form, company: e.target.value })}
-            />
-            <select
-              value={form.role}
-              onChange={e => setForm({ ...form, role: e.target.value })}
-            >
-              <option value="user">User</option>
-              <option value="admin">Admin</option>
-            </select>
-            <button type="submit">Create</button>
-          </form>
+          <section>
+            <h2>Create New User</h2>
+            <form onSubmit={handleCreate}>
+              <input
+                type="email" required placeholder="Email"
+                value={newUser.email}
+                onChange={e => setNewUser({ ...newUser, email: e.target.value })}
+              />
+              <input
+                type="password" required placeholder="Password"
+                value={newUser.password}
+                onChange={e => setNewUser({ ...newUser, password: e.target.value })}
+              />
+              <input
+                placeholder="Name"
+                value={newUser.name}
+                onChange={e => setNewUser({ ...newUser, name: e.target.value })}
+              />
+              <input
+                placeholder="Company"
+                value={newUser.company}
+                onChange={e => setNewUser({ ...newUser, company: e.target.value })}
+              />
+              <select
+                value={newUser.role}
+                onChange={e => setNewUser({ ...newUser, role: e.target.value })}
+              >
+                <option value="user">User</option>
+                <option value="admin">Admin</option>
+              </select>
+              <button type="submit">Create</button>
+            </form>
+          </section>
 
-          <h2>All Users</h2>
-          <table border={1} cellPadding={5}>
-            <thead>
-              <tr>
-                <th>ID</th><th>Email</th><th>Name</th><th>Company</th><th>Role</th><th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.map(u => (
-                <tr key={u.id}>
-                  <td>{u.id}</td>
-                  <td>{u.email}</td>
-                  <td>
-                    <input
-                      value={u.name}
-                      onChange={e => updateUser(u.id, { name: e.target.value })}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      value={u.company}
-                      onChange={e => updateUser(u.id, { company: e.target.value })}
-                    />
-                  </td>
-                  <td>
-                    <select
-                      value={u.role}
-                      onChange={e => updateUser(u.id, { role: e.target.value })}
-                    >
-                      <option value="user">User</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                  </td>
-                  <td>
-                    <button onClick={() => deleteUser(u.id)}>Delete</button>
-                  </td>
+          <section>
+            <h2>All Users</h2>
+            <table border={1} cellPadding={5} cellSpacing={0}>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Email</th>
+                  <th>Name</th>
+                  <th>Company</th>
+                  <th>Role</th>
+                  <th>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {allUsers.map(u => (
+                  <tr key={u.id}>
+                    <td>{u.id}</td>
+                    <td>{u.email}</td>
+                    <td>
+                      <input
+                        value={u.name}
+                        onChange={e => handleUpdate(u.id, { name: e.target.value })}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        value={u.company}
+                        onChange={e => handleUpdate(u.id, { company: e.target.value })}
+                      />
+                    </td>
+                    <td>
+                      <select
+                        value={u.role}
+                        onChange={e => handleUpdate(u.id, { role: e.target.value })}
+                      >
+                        <option value="user">user</option>
+                        <option value="admin">admin</option>
+                      </select>
+                    </td>
+                    <td>
+                      <button onClick={() => handleDelete(u.id)}>Delete</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
         </>
       )}
 
-      <h2>Your Profile</h2>
-      <form onSubmit={e => { e.preventDefault(); updateUser(user.id, profile); }}>
-        <label>
-          Name:<br/>
-          <input
-            value={profile.name}
-            onChange={e => setProfile({ ...profile, name: e.target.value })}
-          />
-        </label><br/>
-        <label>
-          Company:<br/>
-          <input
-            value={profile.company}
-            onChange={e => setProfile({ ...profile, company: e.target.value })}
-          />
-        </label><br/>
-        <label>
-          New Password:<br/>
-          <input
-            type="password"
-            placeholder="Leave blank to keep"
-            value={profile.password}
-            onChange={e => setProfile({ ...profile, password: e.target.value })}
-          />
-        </label><br/>
-        <button type="submit">Update Profile</button>
-      </form>
+      <section>
+        <h2>Your Profile</h2>
+        <form onSubmit={e => { e.preventDefault(); handleUpdate(user.id, myProfile); }}>
+          <label>
+            Name:<br/>
+            <input
+              value={myProfile.name}
+              onChange={e => setMyProfile({ ...myProfile, name: e.target.value })}
+            />
+          </label><br/>
+          <label>
+            Company:<br/>
+            <input
+              value={myProfile.company}
+              onChange={e => setMyProfile({ ...myProfile, company: e.target.value })}
+            />
+          </label><br/>
+          <label>
+            New Password:<br/>
+            <input
+              type="password"
+              placeholder="(leave blank to keep current)"
+              value={myProfile.password}
+              onChange={e => setMyProfile({ ...myProfile, password: e.target.value })}
+            />
+          </label><br/>
+          <button type="submit">Update Profile</button>
+        </form>
+      </section>
     </div>
   );
 }
