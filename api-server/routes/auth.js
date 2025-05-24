@@ -4,8 +4,10 @@ import jwt from 'jsonwebtoken';
 const router = express.Router();
 
 router.post('/login', async (req, res) => {
+  console.log('↪︎ Login attempt:', req.body);
   const { email, password } = req.body;
   const [[user]] = await req.app.get('erpPool').query('SELECT * FROM users WHERE email=?',[email]);
+  console.log('↪︎ User record from DB:', user);
   if(!user || !(await bcrypt.compare(password, user.password))) return res.status(401).json({ message: 'Auth failed' });
   const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn:'2h' });
   res.cookie('token', token, { httpOnly:true });
