@@ -1,13 +1,14 @@
+
+> **Note:** Place your `.htaccess` file inside `src/client` so Vite’s `publicDir` setting copies it to `public_html/erp` during the build.  
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
-  root: 'src/client',          // Source folder for ERP SPA
-  base: '/erp/',               // Base path for asset resolution
-  publicDir: '.',              // Copy all files in src/client (e.g. .htaccess)
+  root: 'src/client',
+  base: '/erp/',
   plugins: [react()],
   build: {
-    outDir: '../../../../public_html/erp',  // Output directory
-    emptyOutDir: true                       // Clear old files
+    outDir: '../../../../public_html/erp',
+    emptyOutDir: true    
   }
 });
