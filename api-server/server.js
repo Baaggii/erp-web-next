@@ -7,22 +7,20 @@ import cookieParser from 'cookie-parser';
 import mysql from 'mysql2/promise';
 
 import authRouter from './routes/auth.js';
-import formsRouter from './routes/forms.js';
 import dbtestRouter from './routes/dbtest.js';
+import formsRouter from './routes/forms.js';
 import { requireAuth } from './middlewares/auth.js';
 
 dotenv.config();
 
 const app = express();
-
-// Single PORT definition
 const PORT = process.env.API_PORT || 3001;
 
-// Middleware
+// Middlewares
 app.use(cookieParser());
 app.use(express.json());
 
-// Database pool
+// Create & expose the DB pool
 const erpPool = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
@@ -31,23 +29,18 @@ const erpPool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
 });
-console.log('🗄️  ERP DB Pool:', {
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  database: process.env.DB_NAME,
-});
+console.log('🗄️  Connected to DB:', process.env.DB_NAME, '@', process.env.DB_HOST);
 app.set('erpPool', erpPool);
 
-// Mount API routes:
-//  - /api for direct server tests
-//  - /erp/api for your SPA under the /erp base path
+// Mount the test route *before* your SPA fallback
 app.use('/api', dbtestRouter);
 app.use('/erp/api', dbtestRouter);
 
+// Mount auth & forms under the same paths
 app.use('/erp/api', authRouter);
 app.use('/erp/api', requireAuth, formsRouter);
 
-// Health‐check
+// Health checks
 app.get('/api/health', (_req, res) =>
   res.json({ status: 'ok', time: new Date().toISOString() })
 );
@@ -55,23 +48,18 @@ app.get('/erp/api/health', (_req, res) =>
   res.json({ status: 'ok', time: new Date().toISOString() })
 );
 
-// Serve the SPA
+// Serve your built SPA
 app.use('/erp', express.static(path.join(__dirname, '..', 'dist')));
 app.get('/erp/*', (_req, res) =>
   res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'))
 );
 
-// Global error handlers
-process.on('uncaughtException',  e => console.error('❌ Uncaught Exception:', e));
-process.on('unhandledRejection', e => console.error('❌ Unhandled Rejection:', e));
+// Catch-all for anything else
+app.use((_req, res) => {
+  res.status(404).json({ error: 'Not found' });
+});
 
-// Start listening
-const server = app.listen(PORT, '0.0.0.0', () =>
+// Start
+app.listen(PORT, '0.0.0.0', () =>
   console.log(`✅ ERP API & SPA listening on http://localhost:${PORT}/erp`)
 );
-
-server.on('error', e => console.error('❌ Server error:', e));
-process.on('SIGTERM', () => {
-  console.log('🔌 SIGTERM received. Shutting down.');
-  server.close(() => process.exit(0));
-});
