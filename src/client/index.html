@@ -1,19 +1,16 @@
+<!-- File: src/client/index.html -->
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <title>ERP Web Next</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
- <header>
-    <nav>
-      <!-- Existing links… -->
-      <a href="/erp/login" class="erp-login-button">Login to ERP</a>
-    </nav>
-  </header>
+    <!-- Link to your CSS (served under /erp) -->
+    <link rel="stylesheet" href="/erp/index.css" />
   </head>
   <body>
     <div id="root"></div>
-    <!-- Ensure this matches vite.config.js base path -->
+    <!-- Your main entrypoint, also under /erp -->
     <script type="module" src="/main.jsx"></script>
   </body>
 </html>
