@@ -58,24 +58,30 @@ export default function Users() {
   };
 
   // Update any user (admin) or self
-  const handleUpdate = async (id, changes) => {
-    setMessage('');
+ // inside Users.jsx
+const handleUpdate = async (id, changes) => {
+  setMessage('');
+  try {
     const res = await fetch(`/erp/api/users/${id}`, {
       method: 'PUT',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(changes)
+      body: JSON.stringify(changes),
     });
     const json = await res.json();
-    setMessage(json.message || (res.ok ? 'Updated' : 'Failed'));
-    if (res.ok) {
-      if (isAdmin) {
-        setUsers(u => u.map(x => x.id === id ? { ...x, ...changes } : x));
-      } else if (id === user.id) {
-        setMyProfile(p => ({ ...p, ...changes }));
-      }
+    if (!res.ok) {
+      console.error('Update failed:', res.status, json);
+      setMessage(`Error ${res.status}: ${json.message||json.error}`);
+      return;
     }
-  };
+    setMessage(json.message || 'Updated');
+    // …apply changes to state…
+  } catch (err) {
+    console.error('Network error:', err);
+    setMessage('Network error');
+  }
+};
+
 
   // Admin deletes a user
   const handleDelete = async id => {
