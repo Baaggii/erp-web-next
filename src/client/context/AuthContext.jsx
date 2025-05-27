@@ -1,55 +1,51 @@
 // File: src/client/context/AuthContext.jsx
-import React, { createContext, useState, useEffect, useContext } from 'react';
-import { useNavigate }                        from 'react-router-dom';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-const AuthContext = createContext({
-  user:   null,
-  login:  async () => {},
-  logout: async () => {}
-});
+const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const navigate        = useNavigate();
+  const nav = useNavigate();
 
-  // On mount: validate session & pull full profile
+  // On mount, validate cookie + fetch /me
   useEffect(() => {
-    (async () => {
-      try {
-        const h = await fetch('/erp/api/health', { credentials:'include' });
-        if (!h.ok) return;
-        const meRes = await fetch('/erp/api/users/me', { credentials:'include' });
-        if (meRes.ok) {
-          setUser(await meRes.json());
-        }
-      } catch(err) {
-        console.error('Auth init failed', err);
-      }
-    })();
+    fetch('/erp/api/health', { credentials:'include' })
+      .then(r => {
+        if (!r.ok) throw new Error();
+        return fetch('/erp/api/users/me', { credentials:'include' });
+      })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(setUser)
+      .catch(() => setUser(null));
   }, []);
 
-  // identifier can be empid or email
-  async function login(identifier, password) {
+  // login(empid,password)
+  const login = async (empid, password) => {
     const res = await fetch('/erp/api/login', {
-      method:      'POST',
-      credentials: 'include',
-      headers:     { 'Content-Type':'application/json' },
-      body:        JSON.stringify({ identifier, password })
+      method: 'POST',
+      credentials:'include',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ empid, password })
     });
     if (!res.ok) {
-      const { message, error } = await res.json().catch(()=>({}));
-      throw new Error(message||error||'Login failed');
+      const err = await res.json().catch(() => ({message:'Login failed'}));
+      throw new Error(err.message||'Login failed');
     }
-    const { user: u } = await res.json();
-    setUser(u);
-    navigate('/dashboard', { replace:true });
-  }
+    const { user } = await res.json();
+    setUser(user);
+    nav('/dashboard', { replace:true });
+  };
 
-  async function logout() {
-    await fetch('/erp/api/logout', { method:'POST', credentials:'include' });
+  // logout
+  const logout = async () => {
+    await fetch('/erp/api/logout', {
+      method:'POST',
+      credentials:'include'
+    });
     setUser(null);
-    navigate('/login', { replace:true });
-  }
+    nav('/login', { replace:true });
+  };
 
   return (
     <AuthContext.Provider value={{ user, login, logout }}>
