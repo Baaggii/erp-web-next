@@ -11,7 +11,6 @@ import authRouter from './routes/auth.js';
 import dbtestRouter from './routes/dbtest.js';
 import formsRouter from './routes/forms.js';
 import usersRouter from './routes/users.js';
-import assignmentsRouter   from './routes/user_companies.js';
 import { requireAuth, requireAdmin } from './middlewares/auth.js';
 
 // Emulate __dirname in ESM
@@ -48,13 +47,6 @@ app.use('/erp/api', authRouter);
 app.use('/erp/api', requireAuth, formsRouter);
 app.use('/erp/api/users', requireAuth, usersRouter);
 app.use('/erp/api/users', usersRouter);
-
-// All /erp/api/user_companies/* routes
-app.use(
-  '/erp/api/user_companies',
-  requireAuth,
-  assignmentsRouter
-);
 
 // Health checks
 app.get('/api/health', (_req, res) =>
