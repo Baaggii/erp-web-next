@@ -16,11 +16,15 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     (async () => {
       try {
+        // Check that our JWT cookie is valid
         const h = await fetch('/erp/api/health', { credentials:'include' });
         if (!h.ok) return;
+
+        // Fetch full user object (id, name, empid, companies, role, …)
         const meRes = await fetch('/erp/api/users/me', { credentials:'include' });
         if (meRes.ok) {
-          setUser(await meRes.json());
+          const me = await meRes.json();
+          setUser(me);
         }
       } catch(err) {
         console.error('Auth init failed', err);
@@ -37,9 +41,11 @@ export function AuthProvider({ children }) {
       body:        JSON.stringify({ identifier, password })
     });
     if (!res.ok) {
+      // Grab any error message returned by the server
       const { message, error } = await res.json().catch(()=>({}));
       throw new Error(message||error||'Login failed');
     }
+    // On success, server returns { user: { … } }
     const { user: u } = await res.json();
     setUser(u);
     navigate('/dashboard', { replace:true });
