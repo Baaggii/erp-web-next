@@ -1,18 +1,23 @@
-# File: public_html/erp/.htaccess
+<IfModule mod_proxy.c>
+  ProxyPreserveHost On
+  <IfModule mod_proxy_http.c>
+    # ─ Proxy all /erp/api/* traffic to your Express server on port 3002 ─
+    ProxyPass        /erp/api/ http://127.0.0.1:3002/erp/api/ retry=0
+    ProxyPassReverse /erp/api/ http://127.0.0.1:3002/erp/api/
+  </IfModule>
+</IfModule>
 
 <IfModule mod_rewrite.c>
-
   RewriteEngine On
-  RewriteBase /erp/
 
-  # 1) Proxy API calls
-  RewriteRule ^api/(.*)$ http://127.0.0.1:3002/api/$1 [P,L]
+  # If the request is literally “erp/api/...”, stop rewriting (let proxy pass it).
+  RewriteRule ^api/ - [L]
 
-  # 2) If request maps to an actual file or directory, serve it directly
+  # If the file or folder exists, serve it directly
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]
 
-  # 3) Otherwise, serve our SPA shell
-  RewriteRule . /erp/index.html [L]
+  # Otherwise everything else under /erp/* falls back to your React index.html
+  RewriteRule ^ /erp/index.html [L]
 </IfModule>
