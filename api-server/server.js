@@ -1,17 +1,17 @@
 // File: api-server/server.js
-import dotenv from 'dotenv';
-dotenv.config();
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
 import mysql from 'mysql2/promise';
 
 import authRouter from './routes/auth.js';
 import dbtestRouter from './routes/dbtest.js';
 import formsRouter from './routes/forms.js';
-import usersRouter from './routes/users.js';
-import { requireAuth, requireAdmin } from './middlewares/auth.js';
+import { requireAuth } from './middlewares/auth.js';
+
+dotenv.config();
 
 // Emulate __dirname in ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -45,8 +45,6 @@ app.use('/api', requireAuth, formsRouter);
 app.use('/erp/api', dbtestRouter);
 app.use('/erp/api', authRouter);
 app.use('/erp/api', requireAuth, formsRouter);
-app.use('/erp/api/users', requireAuth, usersRouter);
-app.use('/erp/api/users', usersRouter);
 
 // Health checks
 app.get('/api/health', (_req, res) =>

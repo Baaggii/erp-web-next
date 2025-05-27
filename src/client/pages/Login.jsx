@@ -1,59 +1,48 @@
-// File: src/client/pages/Login.jsx
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext.jsx';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 export default function Login() {
-  const { user, login } = useAuth();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const navigate = useNavigate();
 
-  const [email, setEmail]       = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError]       = useState('');
-
-  // If already logged in, send to dashboard
-  useEffect(() => {
-    if (user) navigate('/dashboard');
-  }, [user, navigate]);
-
-  const handleSubmit = async e => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
-    try {
-      await login(email, password);
-      // on success, login() will navigate
-    } catch (err) {
-      setError(err.message);
+    const res = await fetch('/erp/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    if (res.ok) {
+      navigate('/');
+    } else {
+      alert('Login failed');
     }
   };
 
+fetch('/erp/api/login', {
+  method: 'POST',
+  credentials: 'include',           // ← important
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email, password })
+})
+.then(res => {
+  if (!res.ok) throw new Error('Login failed');
+  return res.json();
+})
+.then(({ user }) => {
+  // Save user in context / state, then redirect:
+  navigate('/erp/dashboard');
+})
+.catch(err => setError(err.message));
+
+
   return (
-    <div style={{ padding: 20, maxWidth: 400, margin: 'auto' }}>
-      <h1>Login</h1>
-      {error && <p style={{ color: 'red' }}>{error}</p>}
-      <form onSubmit={handleSubmit}>
-        <div>
-          <label>Email</label><br/>
-          <input
-            type="email"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            required
-          />
-        </div>
-        <div style={{ marginTop: 10 }}>
-          <label>Password</label><br/>
-          <input
-            type="password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            required
-          />
-        </div>
-        <button style={{ marginTop: 15 }} type="submit">
-          Login
-        </button>
-      </form>
-    </div>
+    <form onSubmit={handleSubmit}>
+      <h2>Login</h2>
+      <div><input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" /></div>
+      <div><input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" /></div>
+      <button type="submit">Login</button>
+    </form>
   );
 }
