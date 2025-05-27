@@ -7,11 +7,12 @@ export default function Login() {
   const { user, login } = useAuth();
   const navigate = useNavigate();
 
-  const [identifier, setIdentifier] = useState('');  // employee ID
-  const [password, setPassword]       = useState('');
-  const [error, setError]             = useState('');
+  // store the entered ID as a string
+  const [identifier, setIdentifier] = useState('');
+  const [password,   setPassword]   = useState('');
+  const [error,      setError]      = useState('');
 
-  // If already logged in, redirect to dashboard
+  // If already logged in, go to dashboard
   useEffect(() => {
     if (user) {
       navigate('/dashboard');
@@ -22,9 +23,9 @@ export default function Login() {
     e.preventDefault();
     setError('');
     try {
-      // login() now expects ID + password
+      // this will POST { email: identifier, password } under the hood
       await login(identifier, password);
-      // on success, login() will navigate you
+      // on success the context’s login() will redirect you
     } catch (err) {
       setError(err.message);
     }
@@ -38,11 +39,12 @@ export default function Login() {
         <div>
           <label>Employee ID</label><br/>
           <input
-            type="number"
+            type="text"
             placeholder="Enter your employee ID"
             value={identifier}
             onChange={e => setIdentifier(e.target.value)}
             required
+            autoComplete="username"
           />
         </div>
         <div style={{ marginTop: 10 }}>
@@ -53,6 +55,7 @@ export default function Login() {
             value={password}
             onChange={e => setPassword(e.target.value)}
             required
+            autoComplete="current-password"
           />
         </div>
         <button style={{ marginTop: 15 }} type="submit">
