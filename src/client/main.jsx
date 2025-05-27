@@ -1,15 +1,21 @@
-// src/client/main.jsx
 import React from 'react';
-import ReactDOM from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
-import { AuthProvider }   from './context/AuthContext.jsx';
-import App                from './App.jsx';
+import { createRoot } from 'react-dom/client';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import './index.css';
+import Login from './pages/Login';
+import FormRenderer from './pages/FormRenderer';
 
-ReactDOM.createRoot(document.getElementById('root')).render(
+function Home() {
+  return <h1>ERP Web Next – Home</h1>;
+}
+
+const root = createRoot(document.getElementById('root'));
+root.render(
   <BrowserRouter basename="/erp">
-    <AuthProvider>
-      <App />
-    </AuthProvider>
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/" element={<Home />} />
+          <Route path="/form" element={<FormRenderer/>}/>
+    </Routes>
   </BrowserRouter>
 );
