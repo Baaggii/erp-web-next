@@ -1,263 +1,101 @@
-// src/client/pages/Users.jsx
-import React, { useEffect, useState } from 'react';
-import { useAuth } from '../context/AuthContext.jsx';
+import express from 'express';
+import bcrypt  from 'bcrypt';
+import { requireAuth, requireAdmin } from '../middlewares/auth.js';
 
-export default function Users() {
-  const { user } = useAuth();
-  const isAdmin  = user?.role === 'admin';
+const router = express.Router();
 
-  const [users, setUsers]         = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [message, setMessage]     = useState('');
+// ▶ List all users (ADMIN only)
+router.get('/', requireAuth, requireAdmin, async (req, res) => {
+  const [all] = await req.app.get('erpPool')
+    .query(`SELECT u.empid, u.name, u.email, u.created_by, 
+                   uc.company_id, uc.role
+            FROM users u
+            JOIN user_companies uc ON uc.empid = u.empid`);
+  res.json(all);
+});
 
-  // Form state for creating a new user (admin only)
-  const [newUser, setNewUser] = useState({
-    empid: '', email: '', name: '', company: '', role: 'user', password: ''
-  });
+// ▶ Create new user (ADMIN only)
+router.post('/', requireAuth, requireAdmin, async (req, res) => {
+  const { empid, email, password, name, created_by } = req.body;
+  const hash = await bcrypt.hash(password, 10);
+  const conn = req.app.get('erpPool');
 
-  // Form state for changing own password (everyone)
-  const [pwdForm, setPwdForm] = useState({
-    oldPassword: '', newPassword: '', confirmPassword: ''
-  });
+  // 1) insert into users
+  await conn.execute(
+    `INSERT INTO users (empid, email, password, name, created_by)
+     VALUES (?, ?, ?, ?, ?)`,
+    [empid, email, hash, name, req.auth.uid]
+  );
 
-  // Load all users if admin
-  useEffect(() => {
-    if (!isAdmin) {
-      setLoading(false);
-      return;
-    }
-    fetch('/erp/api/users', { credentials: 'include' })
-      .then(res => {
-        if (!res.ok) throw new Error(`Status ${res.status}`);
-        return res.json();
-      })
-      .then(list => setUsers(list))
-      .catch(err => setMessage(err.message))
-      .finally(() => setLoading(false));
-  }, [isAdmin]);
-
-  // CREATE
-  const handleCreate = async e => {
-    e.preventDefault();
-    setMessage('');
-    try {
-      const res = await fetch('/erp/api/users', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newUser),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.message || `Error ${res.status}`);
-      // server should return { user: { id, empid, email, name, company, role } }
-      setUsers(prev => [...prev, json.user]);
-      setNewUser({ empid:'', email:'', name:'', company:'', role:'user', password:'' });
-      setMessage('User created');
-    } catch (err) {
-      setMessage(err.message);
-    }
-  };
-
-  // ADMIN UPDATE
-  const handleAdminUpdate = async (id, changes) => {
-    setMessage('');
-    try {
-      const res = await fetch(`/erp/api/users/${id}`, {
-        method: 'PUT',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(changes),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.message || `Error ${res.status}`);
-      setUsers(prev =>
-        prev.map(u => (u.id === id ? { ...u, ...changes } : u))
-      );
-      setMessage(json.message || 'Updated');
-    } catch (err) {
-      setMessage(err.message);
-    }
-  };
-
-  // DELETE
-  const handleDelete = async id => {
-    if (!window.confirm('Delete this user?')) return;
-    try {
-      const res = await fetch(`/erp/api/users/${id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error(`Error ${res.status}`);
-      setUsers(prev => prev.filter(u => u.id !== id));
-      setMessage('Deleted');
-    } catch (err) {
-      setMessage(err.message);
-    }
-  };
-
-  // CHANGE OWN PASSWORD
-  const handleChangePwd = async e => {
-    e.preventDefault();
-    setMessage('');
-    const { oldPassword, newPassword, confirmPassword } = pwdForm;
-    if (newPassword !== confirmPassword) {
-      setMessage('New passwords do not match');
-      return;
-    }
-    // at least 8 chars, upper, lower, digit, special
-    const pwOK = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*\W).{8,}$/.test(newPassword);
-    if (!pwOK) {
-      setMessage('Password must be 8+ chars with upper, lower, number & symbol');
-      return;
-    }
-    try {
-      const res = await fetch(`/erp/api/users/${user.id}/password`, {
-        method: 'PUT',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ oldPassword, newPassword }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.message || `Error ${res.status}`);
-      setPwdForm({ oldPassword: '', newPassword: '', confirmPassword: '' });
-      setMessage('Password updated');
-    } catch (err) {
-      setMessage(err.message);
-    }
-  };
-
-  if (loading) {
-    return <div style={{ padding: 20 }}>Loading users…</div>;
+  // 2) optionally assign them to a company + role
+  if (req.body.company_id) {
+    await conn.execute(
+      `INSERT INTO user_companies (empid, company_id, role)
+       VALUES (?, ?, ?)`,
+      [empid, req.body.company_id, req.body.role || 'user']
+    );
   }
 
-  return (
-    <div style={{ padding: 20, maxWidth: 900, margin: 'auto' }}>
-      <h1>User Management</h1>
-      {message && <p style={{ color: message.match(/error/i) ? 'red' : 'green' }}>{message}</p>}
+  res.json({ message: 'User created', user:{ empid, email, name } });
+});
 
-      {isAdmin && (
-        <>
-          <section style={{ marginBottom: 40 }}>
-            <h2>Create New User</h2>
-            <form onSubmit={handleCreate} style={{ display: 'grid', gap: '8px', maxWidth: 400 }}>
-              <input
-                placeholder="EmpID"
-                value={newUser.empid}
-                onChange={e => setNewUser({ ...newUser, empid: e.target.value })}
-                required
-              />
-              <input
-                type="email"
-                placeholder="Email"
-                value={newUser.email}
-                onChange={e => setNewUser({ ...newUser, email: e.target.value })}
-                required
-              />
-              <input
-                type="password"
-                placeholder="Password"
-                value={newUser.password}
-                onChange={e => setNewUser({ ...newUser, password: e.target.value })}
-                required
-              />
-              <input
-                placeholder="Name"
-                value={newUser.name}
-                onChange={e => setNewUser({ ...newUser, name: e.target.value })}
-              />
-              <input
-                placeholder="Company"
-                value={newUser.company}
-                onChange={e => setNewUser({ ...newUser, company: e.target.value })}
-              />
-              <select
-                value={newUser.role}
-                onChange={e => setNewUser({ ...newUser, role: e.target.value })}
-              >
-                <option value="user">User</option>
-                <option value="admin">Admin</option>
-              </select>
-              <button type="submit">Create</button>
-            </form>
-          </section>
+// ▶ Update user’s own profile or ADMIN editing
+router.put('/:empid', requireAuth, async (req, res) => {
+  const isSelf  = req.params.empid === req.auth.empid;
+  const isAdmin = req.auth.role === 'admin';
+  if (!isSelf && !isAdmin) {
+    return res.status(403).json({ message: 'Forbidden' });
+  }
 
-          <section style={{ marginBottom: 40 }}>
-            <h2>All Users</h2>
-            <table border={1} cellPadding={5} cellSpacing={0} style={{ width: '100%', textAlign: 'left' }}>
-              <thead>
-                <tr>
-                  <th>ID</th><th>EmpID</th><th>Email</th><th>Name</th>
-                  <th>Company</th><th>Role</th><th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map(u => (
-                  <tr key={u.id}>
-                    <td>{u.id}</td>
-                    <td>{u.empid}</td>
-                    <td>{u.email}</td>
-                    <td>
-                      <input
-                        value={u.name}
-                        onChange={e => handleAdminUpdate(u.id, { name: e.target.value })}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        value={u.company}
-                        onChange={e => handleAdminUpdate(u.id, { company: e.target.value })}
-                      />
-                    </td>
-                    <td>
-                      <select
-                        value={u.role}
-                        onChange={e => handleAdminUpdate(u.id, { role: e.target.value })}
-                      >
-                        <option value="user">user</option>
-                        <option value="admin">admin</option>
-                      </select>
-                    </td>
-                    <td>
-                      <button onClick={() => handleDelete(u.id)}>Delete</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-        </>
-      )}
+  const fields = [];
+  const vals   = [];
+  if (req.body.name) {
+    fields.push('name = ?');
+    vals.push(req.body.name);
+  }
+  if (req.body.email && isAdmin) {
+    fields.push('email = ?');
+    vals.push(req.body.email);
+  }
+  if (req.body.password) {
+    // require password change via old/new verification...
+    const [[urow]] = await req.app.get('erpPool')
+      .query('SELECT password FROM users WHERE empid = ?', [req.params.empid]);
+    // validate old password
+    if (!(await bcrypt.compare(req.body.oldPassword, urow.password))) {
+      return res.status(400).json({ message: 'Bad current password' });
+    }
+    if (req.body.newPassword !== req.body.confirmPassword) {
+      return res.status(400).json({ message: 'Password mismatch' });
+    }
+    fields.push('password = ?');
+    vals.push( await bcrypt.hash(req.body.newPassword, 10) );
+  }
 
-      <section>
-        <h2>Change Your Password</h2>
-        <form
-          onSubmit={handleChangePwd}
-          style={{ display: 'grid', gap: '8px', maxWidth: 400 }}
-        >
-          <input
-            type="password"
-            placeholder="Old Password"
-            value={pwdForm.oldPassword}
-            onChange={e => setPwdForm({ ...pwdForm, oldPassword: e.target.value })}
-            required
-          />
-          <input
-            type="password"
-            placeholder="New Password"
-            value={pwdForm.newPassword}
-            onChange={e => setPwdForm({ ...pwdForm, newPassword: e.target.value })}
-            required
-          />
-          <input
-            type="password"
-            placeholder="Confirm New Password"
-            value={pwdForm.confirmPassword}
-            onChange={e => setPwdForm({ ...pwdForm, confirmPassword: e.target.value })}
-            required
-          />
-          <button type="submit">Update Password</button>
-        </form>
-      </section>
-    </div>
-  );
-}
+  if (fields.length === 0) {
+    return res.status(400).json({ message: 'Nothing to update' });
+  }
+
+  vals.push(req.params.empid);
+  await req.app.get('erpPool')
+    .query(
+      `UPDATE users SET ${fields.join(', ')} WHERE empid = ?`,
+      vals
+    );
+
+  res.json({ message: 'Updated' });
+});
+
+// ▶ Delete user (ADMIN only)
+router.delete('/:empid', requireAuth, requireAdmin, async (req, res) => {
+  const emp = req.params.empid;
+  // cascade delete user_companies first
+  await req.app.get('erpPool')
+    .execute('DELETE FROM user_companies WHERE empid = ?', [emp]);
+  // then users
+  await req.app.get('erpPool')
+    .execute('DELETE FROM users WHERE empid = ?', [emp]);
+  res.json({ message: 'Deleted' });
+});
+
+export default router;
