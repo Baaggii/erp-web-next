@@ -1,13 +1,14 @@
-import React from 'react';
+// src/client/components/RequireAuth.jsx
+import React        from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth }  from '../context/AuthContext.jsx';
 
 export default function RequireAuth({ children }) {
-  const { user } = useAuth();
-  const location = useLocation();
+  const { user }   = useAuth();
+  const location   = useLocation();
 
   if (!user) {
-    // Redirect to login, preserving where they were going
+    // Redirect to /erp/login under our basename
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
