@@ -1,18 +1,21 @@
+// File: api-server/middlewares/auth.js
 import jwt from 'jsonwebtoken';
-export function requireAuth(req, res, next) {
-  const token = req.cookies?.token;
+
+export async function requireAuth(req, res, next) {
+  const token = req.cookies.token;
   if (!token) return res.status(401).json({ message: 'No token' });
   try {
-    req.user = jwt.verify(token, process.env.JWT_SECRET);
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = payload;  // { id: … }
     next();
   } catch {
     return res.status(401).json({ message: 'Invalid token' });
   }
 }
 
-export function requireAdmin(req, res, next) {
-  if (req.user?.role !== 'admin') {
-    return res.status(403).json({ message: 'Admin only' });
-  }
-  next();
+export async function requireAdmin(req, res, next) {
+  const pool = req.app.get('erpPool');
+  const [rows] = await pool.query('SELECT role FROM users WHERE id = ?', [req.user.id]);
+  if (rows[0]?.role === 'admin') return next();
+  return res.status(403).json({ message: 'Forbidden' });
 }
