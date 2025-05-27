@@ -7,25 +7,21 @@ export default function Login() {
   const { user, login } = useAuth();
   const navigate = useNavigate();
 
-  // store the entered ID as a string
-  const [identifier, setIdentifier] = useState('');
-  const [password,   setPassword]   = useState('');
-  const [error,      setError]      = useState('');
+  const [email, setEmail]       = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError]       = useState('');
 
-  // If already logged in, go to dashboard
+  // If already logged in, send to dashboard
   useEffect(() => {
-    if (user) {
-      navigate('/dashboard');
-    }
+    if (user) navigate('/dashboard');
   }, [user, navigate]);
 
   const handleSubmit = async e => {
     e.preventDefault();
     setError('');
     try {
-      // this will POST { email: identifier, password } under the hood
-      await login(identifier, password);
-      // on success the context’s login() will redirect you
+      await login(email, password);
+      // on success, login() will navigate
     } catch (err) {
       setError(err.message);
     }
@@ -37,25 +33,21 @@ export default function Login() {
       {error && <p style={{ color: 'red' }}>{error}</p>}
       <form onSubmit={handleSubmit}>
         <div>
-          <label>Employee ID</label><br/>
+          <label>Email</label><br/>
           <input
-            type="text"
-            placeholder="Enter your employee ID"
-            value={identifier}
-            onChange={e => setIdentifier(e.target.value)}
+            type="email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
             required
-            autoComplete="username"
           />
         </div>
         <div style={{ marginTop: 10 }}>
           <label>Password</label><br/>
           <input
             type="password"
-            placeholder="Enter your password"
             value={password}
             onChange={e => setPassword(e.target.value)}
             required
-            autoComplete="current-password"
           />
         </div>
         <button style={{ marginTop: 15 }} type="submit">
