@@ -6,7 +6,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import cookieParser from 'cookie-parser';
 import mysql from 'mysql2/promise';
-
 import authRouter from './routes/auth.js';
 import dbtestRouter from './routes/dbtest.js';
 import formsRouter from './routes/forms.js';

@@ -26,24 +26,19 @@ export default function Users() {
     oldPassword: '', newPassword: '', confirmPassword: ''
   });
 
-  // Load both tables
-  useEffect(() => {
-    Promise.all([
-      fetch('/erp/api/users',         { credentials: 'include' }),
-      fetch('/erp/api/user_companies',{ credentials: 'include' })
-    ])
-    .then(async ([uRes, aRes]) => {
-      if (!uRes.ok) throw new Error(`Users fetch ${uRes.status}`);
-      if (!aRes.ok) throw new Error(`Assignments fetch ${aRes.status}`);
-      return [await uRes.json(), await aRes.json()];
-    })
-    .then(([uData, aData]) => {
-      setUsers(uData);
-      setAssignments(aData);
-    })
-    .catch(err => setMessage(err.message))
-    .finally(() => setLoading(false));
-  }, []);
+  // on mount, load “me” and (if admin) load all users
+useEffect(() => {
+  fetch('/erp/api/users/me', { credentials: 'include' })
+    .then(r => r.json())
+    .then(me => setMyProfile(/* … */));
+
+  if (isAdmin) {
+    fetch('/erp/api/users', { credentials: 'include' })
+      .then(r => r.json())
+      .then(setUsers)
+      .catch(e => setMessage(`Users fetch ${e.status||''}`));
+  }
+}, [isAdmin]);
 
   // ADMIN CRUD for users
   const createUser = async e => {
