@@ -1,56 +1,51 @@
 // File: api-server/routes/auth.js
-import express from 'express';
-import bcrypt  from 'bcrypt';
-import jwt     from 'jsonwebtoken';
-
-const router = express.Router();
+import express  from 'express';
+import bcrypt   from 'bcrypt';
+import jwt      from 'jsonwebtoken';
+const router   = express.Router();
 
 // POST /erp/api/login
 router.post('/login', async (req, res) => {
-  const { empid, password } = req.body;
-  if (!empid || !password) {
-    return res.status(400).json({ message: 'Employee ID and password required' });
+  const { identifier, password } = req.body;
+  const isNum = /^\d+$/.test(identifier);
+  const sql   = isNum
+    ? 'SELECT * FROM users WHERE empid = ?'
+    : 'SELECT * FROM users WHERE email = ?';
+
+  const [[user]] = await req.app.get('erpPool').query(sql, [identifier]);
+  if (!user || !(await bcrypt.compare(password, user.password))) {
+    return res.status(401).json({ message:'Auth failed' });
   }
 
-  const pool = req.app.get('erpPool');
-  const [[user]] = await pool.query(
-    `SELECT id, empid, name, company, role, password
-       FROM users
-      WHERE empid = ?`,
-    [empid]
-  );
-
-  if (!user) {
-    return res.status(401).json({ message: 'Auth failed' });
-  }
-
-  const match = await bcrypt.compare(password, user.password);
-  if (!match) {
-    return res.status(401).json({ message: 'Auth failed' });
-  }
-
-  const token = jwt.sign(
-    { id: user.id, empid: user.empid },
-    process.env.JWT_SECRET,
-    { expiresIn: '2h' }
-  );
-
-  // cookie only for /erp routes
-  res.cookie('token', token, {
-    httpOnly: true,
-    path: '/erp',
-    maxAge: 2 * 60 * 60 * 1000, // 2h
+  const token = jwt.sign({ id:user.id }, process.env.JWT_SECRET, { expiresIn:'2h' });
+  res.cookie('token', token, { httpOnly:true });
+  // return empid as well so client can display it
+  res.json({
+    user: {
+      id:    user.id,
+      empid: user.empid,
+      email: user.email,
+      name:  user.name,
+      role:  user.role
+    }
   });
+});
 
-  // don’t send password
-  delete user.password;
-  res.json({ user });
+// GET /erp/api/dbtest
+router.get('/dbtest', async (req, res) => {
+  try {
+    const [rows] = await req.app.get('erpPool').query('SELECT NOW() AS now');
+    res.json({ ok:true, time:rows[0].now });
+  } catch (err) {
+    console.error('DB test failed', err);
+    res.status(500).json({ ok:false, error:err.message });
+  }
 });
 
 // POST /erp/api/logout
 router.post('/logout', (_req, res) => {
-  res.clearCookie('token', { path: '/erp' });
-  res.json({ message: 'Logged out' });
+  res.clearCookie('token');
+  res.json({ message:'Logged out' });
 });
 
 export default router;
