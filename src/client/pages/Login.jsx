@@ -6,7 +6,7 @@ import { useNavigate }                from 'react-router-dom';
 export default function Login() {
   const { user, login } = useAuth();
   const nav             = useNavigate();
-
+  const [empid, setEmpid]       = useState('');
   const [identifier, setIdentifier] = useState('');
   const [password,   setPassword]   = useState('');
   const [error,      setError]      = useState('');
@@ -19,7 +19,7 @@ export default function Login() {
     e.preventDefault();
     setError('');
     try {
-      await login(identifier, password);
+      await login(empid, password); 
     } catch (err) {
       setError(err.message);
     }
@@ -30,12 +30,12 @@ export default function Login() {
       <h1>Login</h1>
       {error && <p style={{ color:'red' }}>{error}</p>}
       <form onSubmit={handleSubmit}>
-        <label>Employee ID or Email</label><br/>
-        <input
-          type="text"
-          value={identifier}
-          onChange={e=>setIdentifier(e.target.value)}
-          required
+        <label>Employee ID</label><br/>
+<input
+  type="text"
+  value={empid}
+  onChange={e => setEmpid(e.target.value)}
+  required
           autoComplete="username"
         /><br/><br/>
         <label>Password</label><br/>

@@ -34,7 +34,7 @@ export function AuthProvider({ children }) {
       method:      'POST',
       credentials: 'include',
       headers:     { 'Content-Type':'application/json' },
-      body:        JSON.stringify({ identifier, password })
+      body:        JSON.stringify({ empid, password })
     });
     if (!res.ok) {
       const { message, error } = await res.json().catch(()=>({}));
