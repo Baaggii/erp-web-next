@@ -1,218 +1,251 @@
 // File: src/client/pages/Users.jsx
 import React, { useEffect, useState } from 'react';
-import { useAuth }            from '../context/AuthContext.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
 
 export default function Users() {
   const { user } = useAuth();
   const isAdmin  = user?.role === 'admin';
 
-  const [users, setUsers]                   = useState([]);
-  const [assignments, setAssignments]      = useState([]);
-  const [loading, setLoading]               = useState(true);
-  const [message, setMessage]               = useState('');
+  const [users, setUsers]             = useState([]);
+  const [assigns, setAssigns]         = useState([]);
+  const [newUser, setNewUser]         = useState({ empid:'', name:'', password:'', role:'user' });
+  const [newAssign, setNewAssign]     = useState({ empid:'', company:'', role:'user' });
+  const [pwdForm, setPwdForm]         = useState({ oldPassword:'', newPassword:'', confirmPassword:'' });
+  const [message, setMessage]         = useState('');
 
-  // New-user form
-  const [newUser, setNewUser] = useState({
-    empid: '', name: '', password: '', created_by: user?.empid
-  });
-
-  // New-assignment form
-  const [newAssign, setNewAssign] = useState({
-    empid: '', company_id: '', role: 'user', created_by: user?.empid
-  });
-
-  // Password-change form (for self)
-  const [pwdForm, setPwdForm] = useState({
-    oldPassword: '', newPassword: '', confirmPassword: ''
-  });
-
-  // Load both tables
+  // Load lists
   useEffect(() => {
-    Promise.all([
-      fetch('/erp/api/users',         { credentials: 'include' }),
-      fetch('/erp/api/user_companies',{ credentials: 'include' })
-    ])
-    .then(async ([uRes, aRes]) => {
-      if (!uRes.ok) throw new Error(`Users fetch ${uRes.status}`);
-      if (!aRes.ok) throw new Error(`Assignments fetch ${aRes.status}`);
-      return [await uRes.json(), await aRes.json()];
-    })
-    .then(([uData, aData]) => {
-      setUsers(uData);
-      setAssignments(aData);
-    })
-    .catch(err => setMessage(err.message))
-    .finally(() => setLoading(false));
-  }, []);
+    if (!isAdmin) return;
+    fetch('/erp/api/users', { credentials:'include' })
+      .then(r => r.json()).then(setUsers).catch(e=>setMessage(e.message));
+    fetch('/erp/api/user_companies', { credentials:'include' })
+      .then(r => r.json()).then(setAssigns).catch(e=>setMessage(e.message));
+  }, [isAdmin]);
 
-  // ADMIN CRUD for users
-  const createUser = async e => {
+  // === Admin: create user ===
+  const handleCreate = async e => {
     e.preventDefault(); setMessage('');
     try {
-      const res  = await fetch('/erp/api/users', {
-        method: 'POST',
-        credentials: 'include',
-        headers: {'Content-Type':'application/json'},
+      const res = await fetch('/erp/api/users', {
+        method:'POST', credentials:'include',
+        headers:{ 'Content-Type':'application/json' },
         body: JSON.stringify(newUser)
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.message||`Error ${res.status}`);
-      setUsers(us => [...us, json.user]);
-      setNewUser({ empid:'', name:'', password:'', created_by:user.empid });
+      if (!res.ok) throw new Error(json.message);
+      setUsers(u=>[...u,json.user]);
+      setNewUser({ empid:'',name:'',password:'',role:'user' });
       setMessage('User created');
-    } catch (err) { setMessage(err.message) }
+    } catch (err) {
+      setMessage(err.message);
+    }
   };
 
-  const updateUser = async (empid, changes) => {
-    setMessage('');
-    try {
-      const res = await fetch(`/erp/api/users/${empid}`, {
-        method: 'PUT',
-        credentials: 'include',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify(changes)
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.message||`Error ${res.status}`);
-      setUsers(us => us.map(u => u.empid===empid ? {...u,...changes} : u));
-      setMessage(json.message||'Updated');
-    } catch (err) { setMessage(err.message) }
-  };
-
-  const deleteUser = async empid => {
-    if (!window.confirm('Delete user?')) return;
-    setMessage('');
-    try {
-      const res = await fetch(`/erp/api/users/${empid}`, {
-        method: 'DELETE', credentials: 'include'
-      });
-      if (!res.ok) throw new Error(`Error ${res.status}`);
-      setUsers(us => us.filter(u => u.empid!==empid));
-      setMessage('Deleted');
-    } catch (err) { setMessage(err.message) }
-  };
-
-  // ADMIN CRUD for assignments
-  const createAssign = async e => {
+  // === Admin: assign company ===
+  const handleAssign = async e => {
     e.preventDefault(); setMessage('');
     try {
       const res = await fetch('/erp/api/user_companies', {
-        method: 'POST',
-        credentials:'include',
-        headers:{'Content-Type':'application/json'},
+        method:'POST', credentials:'include',
+        headers:{ 'Content-Type':'application/json' },
         body: JSON.stringify(newAssign)
       });
-      if (!res.ok) throw new Error(`Error ${res.status}`);
-      setAssignments(a => [...a, newAssign]);
-      setNewAssign({ empid:'', company_id:'', role:'user', created_by:user.empid });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message);
+      setAssigns(a=>[...a,json.assignment]);
+      setNewAssign({ empid:'',company:'',role:'user' });
       setMessage('Assigned');
-    } catch (err) { setMessage(err.message) }
+    } catch (err) {
+      setMessage(err.message);
+    }
   };
 
-  const deleteAssign = async (empid, company_id) => {
-    if (!window.confirm('Unassign user?')) return;
+  // === Admin: update user (name/role) ===
+  const handleUserUpdate = async (id, changes) => {
     setMessage('');
     try {
-      const res = await fetch(
-        `/erp/api/user_companies/${empid}/${company_id}`,
-        { method:'DELETE', credentials:'include' }
-      );
-      if (!res.ok) throw new Error(`Error ${res.status}`);
-      setAssignments(a => a.filter(x => !(x.empid===empid && x.company_id===company_id)));
-      setMessage('Unassigned');
-    } catch (err) { setMessage(err.message) }
+      const res = await fetch(`/erp/api/users/${id}`, {
+        method:'PUT', credentials:'include',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify(changes)
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message);
+      setUsers(u=>u.map(x=>x.id===id?{...x,...changes}:x));
+      setMessage('Updated');
+    } catch (err) {
+      setMessage(err.message);
+    }
   };
 
-  // SELF password change
-  const changePwd = async e => {
+  // === Admin: delete user ===
+  const handleUserDelete = async id => {
+    if (!window.confirm('Delete this user?')) return;
+    setMessage('');
+    try {
+      const res = await fetch(`/erp/api/users/${id}`, {
+        method:'DELETE', credentials:'include'
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message);
+      setUsers(u=>u.filter(x=>x.id!==id));
+      setMessage('Deleted');
+    } catch (err) {
+      setMessage(err.message);
+    }
+  };
+
+  // === Admin: update assignment role ===
+  const handleAssignUpdate = async (id, role) => {
+    setMessage('');
+    try {
+      const res = await fetch(`/erp/api/user_companies/${id}`, {
+        method:'PUT', credentials:'include',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ role })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message);
+      setAssigns(a=>a.map(x=>x.id===id?{...x,role}:x));
+      setMessage('Assignment updated');
+    } catch (err) {
+      setMessage(err.message);
+    }
+  };
+
+  // === Admin: delete assignment ===
+  const handleAssignDelete = async id => {
+    if (!window.confirm('Remove this assignment?')) return;
+    setMessage('');
+    try {
+      const res = await fetch(`/erp/api/user_companies/${id}`, {
+        method:'DELETE', credentials:'include'
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message);
+      setAssigns(a=>a.filter(x=>x.id!==id));
+      setMessage('Removed');
+    } catch (err) {
+      setMessage(err.message);
+    }
+  };
+
+  // === Self: change password ===
+  const handleChangePwd = async e => {
     e.preventDefault(); setMessage('');
     const { oldPassword, newPassword, confirmPassword } = pwdForm;
-    if (newPassword!==confirmPassword) {
-      setMessage('Passwords do not match'); return;
+    if (newPassword !== confirmPassword) {
+      setMessage("New passwords don't match");
+      return;
     }
-    const pwOK = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*\W).{8,}$/.test(newPassword);
-    if (!pwOK) {
-      setMessage('Password needs 8+ chars, upper/lower, digit & symbol');
+    const strong = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*\W).{8,}$/.test(newPassword);
+    if (!strong) {
+      setMessage('Password must be 8+ chars with upper, lower, digit & symbol');
       return;
     }
     try {
-      const res = await fetch(`/erp/api/users/${user.empid}/password`, {
+      const res = await fetch(`/erp/api/users/${user.id}`, {
         method:'PUT', credentials:'include',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ oldPassword, newPassword })
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ oldPassword, password:newPassword })
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.message||`Error ${res.status}`);
+      if (!res.ok) throw new Error(json.message);
       setPwdForm({ oldPassword:'', newPassword:'', confirmPassword:'' });
       setMessage('Password updated');
-    } catch (err) { setMessage(err.message) }
+    } catch (err) {
+      setMessage(err.message);
+    }
   };
 
-  if (loading) return <div>Loading…</div>;
-
   return (
-    <div style={{padding:20}}>
+    <div style={{ padding:20, maxWidth:900, margin:'auto' }}>
       <h1>User Management</h1>
-      {message && <div style={{color:'crimson'}}>{message}</div>}
+      {message && <p style={{ color: /error/i.test(message)?'red':'green' }}>{message}</p>}
 
       {isAdmin && (
-        <>
+      <>
+        <section>
           <h2>Create User</h2>
-          <form onSubmit={createUser} style={{display:'grid',gap:8,maxWidth:400}}>
+          <form onSubmit={handleCreate} style={{ display:'grid', gap:8, maxWidth:400 }}>
             <input
-              required placeholder="EmpID"
+              placeholder="EmpID"
               value={newUser.empid}
               onChange={e=>setNewUser({...newUser,empid:e.target.value})}
+              required
             />
             <input
-              required placeholder="Name"
+              placeholder="Name"
               value={newUser.name}
               onChange={e=>setNewUser({...newUser,name:e.target.value})}
             />
             <input
-              required type="password" placeholder="Password"
+              type="password"
+              placeholder="Password"
               value={newUser.password}
               onChange={e=>setNewUser({...newUser,password:e.target.value})}
+              required
             />
-            <button type="submit">Create</button>
+            <select
+              value={newUser.role}
+              onChange={e=>setNewUser({...newUser,role:e.target.value})}
+            >
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+            <button>Create</button>
           </form>
+        </section>
 
+        <section>
           <h2>All Users</h2>
-          <table border={1} cellPadding={5}>
+          <table border={1} cellPadding={5} cellSpacing={0} style={{ width:'100%', marginTop:10 }}>
             <thead>
-              <tr>
-                <th>EmpID</th><th>Name</th><th>Actions</th>
-              </tr>
+              <tr><th>ID</th><th>EmpID</th><th>Name</th><th>Role</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {users.map(u=>(
-                <tr key={u.empid}>
+                <tr key={u.id}>
+                  <td>{u.id}</td>
                   <td>{u.empid}</td>
                   <td>
                     <input
                       value={u.name}
-                      onChange={e=>updateUser(u.empid,{name:e.target.value})}
+                      onChange={e=>handleUserUpdate(u.id,{ name:e.target.value })}
                     />
                   </td>
                   <td>
-                    <button onClick={()=>deleteUser(u.empid)}>Delete</button>
+                    <select
+                      value={u.role}
+                      onChange={e=>handleUserUpdate(u.id,{ role:e.target.value })}
+                    >
+                      <option value="user">user</option>
+                      <option value="admin">admin</option>
+                    </select>
+                  </td>
+                  <td>
+                    <button onClick={()=>handleUserDelete(u.id)}>Delete</button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </section>
 
+        <section>
           <h2>Company Assignments</h2>
-          <form onSubmit={createAssign} style={{display:'grid',gap:8,maxWidth:400}}>
+          <form onSubmit={handleAssign} style={{ display:'grid', gap:8, maxWidth:400 }}>
             <input
-              required placeholder="EmpID"
+              placeholder="EmpID"
               value={newAssign.empid}
               onChange={e=>setNewAssign({...newAssign,empid:e.target.value})}
+              required
             />
             <input
-              required placeholder="Company ID"
-              value={newAssign.company_id}
-              onChange={e=>setNewAssign({...newAssign,company_id:e.target.value})}
+              placeholder="Company ID"
+              value={newAssign.company}
+              onChange={e=>setNewAssign({...newAssign,company:e.target.value})}
+              required
             />
             <select
               value={newAssign.role}
@@ -221,52 +254,65 @@ export default function Users() {
               <option value="user">user</option>
               <option value="admin">admin</option>
             </select>
-            <button type="submit">Assign</button>
+            <button>Assign</button>
           </form>
-
-          <table border={1} cellPadding={5}>
+          <table border={1} cellPadding={5} cellSpacing={0} style={{ width:'100%', marginTop:10 }}>
             <thead>
-              <tr>
-                <th>EmpID</th><th>Company</th><th>Role</th><th>Actions</th>
-              </tr>
+              <tr><th>ID</th><th>EmpID</th><th>Company</th><th>Role</th><th>Actions</th></tr>
             </thead>
             <tbody>
-              {assignments.map(a=>(
-                <tr key={`${a.empid}-${a.company_id}`}>
+              {assigns.map(a=>(
+                <tr key={a.id}>
+                  <td>{a.id}</td>
                   <td>{a.empid}</td>
-                  <td>{a.company_id}</td>
-                  <td>{a.role}</td>
+                  <td>{a.company}</td>
                   <td>
-                    <button
-                      onClick={()=>deleteAssign(a.empid,a.company_id)}
-                    >Unassign</button>
+                    <select
+                      value={a.role}
+                      onChange={e=>handleAssignUpdate(a.id, e.target.value)}
+                    >
+                      <option value="user">user</option>
+                      <option value="admin">admin</option>
+                    </select>
+                  </td>
+                  <td>
+                    <button onClick={()=>handleAssignDelete(a.id)}>Remove</button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </>
+        </section>
+      </>
       )}
 
-      <h2>Change Your Password</h2>
-      <form onSubmit={changePwd} style={{display:'grid',gap:8,maxWidth:400}}>
-        <input
-          type="password" required placeholder="Old Password"
-          value={pwdForm.oldPassword}
-          onChange={e=>setPwdForm({...pwdForm,oldPassword:e.target.value})}
-        />
-        <input
-          type="password" required placeholder="New Password"
-          value={pwdForm.newPassword}
-          onChange={e=>setPwdForm({...pwdForm,newPassword:e.target.value})}
-        />
-        <input
-          type="password" required placeholder="Confirm Password"
-          value={pwdForm.confirmPassword}
-          onChange={e=>setPwdForm({...pwdForm,confirmPassword:e.target.value})}
-        />
-        <button type="submit">Update Password</button>
-      </form>
+      <section style={{ marginTop:40 }}>
+        <h2>Change Your Password</h2>
+        <form onSubmit={handleChangePwd} style={{ display:'grid', gap:8, maxWidth:400 }}>
+          <input
+            type="password"
+            placeholder="Old Password"
+            value={pwdForm.oldPassword}
+            onChange={e=>setPwdForm({...pwdForm,oldPassword:e.target.value})}
+            required
+          />
+          <input
+            type="password"
+            placeholder="New Password"
+            value={pwdForm.newPassword}
+            onChange={e=>setPwdForm({...pwdForm,newPassword:e.target.value})}
+            required
+          />
+          <input
+            type="password"
+            placeholder="Confirm Password"
+            value={pwdForm.confirmPassword}
+            onChange={e=>setPwdForm({...pwdForm,confirmPassword:e.target.value})}
+            required
+          />
+          <button>Update Password</button>
+        </form>
+      </section>
     </div>
   );
 }
