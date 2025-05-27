@@ -47,6 +47,7 @@ app.use('/erp/api', authRouter);
 app.use('/erp/api', requireAuth, formsRouter);
 app.use('/erp/api/users', requireAuth, usersRouter);
 app.use('/erp/api/users', usersRouter);
+app.use('/erp/api/forms', requireAuth, formsRouter);
 
 // Health checks
 app.get('/api/health', (_req, res) =>
