@@ -16,11 +16,15 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     (async () => {
       try {
+        // Check that our JWT cookie is valid
         const h = await fetch('/erp/api/health', { credentials:'include' });
         if (!h.ok) return;
+
+        // Fetch full user object (id, name, empid, companies, role, …)
         const meRes = await fetch('/erp/api/users/me', { credentials:'include' });
         if (meRes.ok) {
-          setUser(await meRes.json());
+          const me = await meRes.json();
+          setUser(me);
         }
       } catch(err) {
         console.error('Auth init failed', err);
@@ -29,20 +33,18 @@ export function AuthProvider({ children }) {
   }, []);
 
   // identifier can be empid or email
-  async function login(identifier, password) {
-    const res = await fetch('/erp/api/login', {
-      method:      'POST',
-      credentials: 'include',
-      headers:     { 'Content-Type':'application/json' },
-      body:        JSON.stringify({ identifier, password })
-    });
-    if (!res.ok) {
-      const { message, error } = await res.json().catch(()=>({}));
-      throw new Error(message||error||'Login failed');
-    }
-    const { user: u } = await res.json();
-    setUser(u);
-    navigate('/dashboard', { replace:true });
+  const login = async (identifier, password) => {
+  const res = await fetch('/erp/api/login', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ identifier, password }),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.message || 'Auth failed');
+  setUser(json.user);
+  // redirect to dashboard
+  navigate('/dashboard');
   }
 
   async function logout() {

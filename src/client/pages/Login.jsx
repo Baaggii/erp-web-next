@@ -5,7 +5,7 @@ import { useNavigate }                from 'react-router-dom';
 
 export default function Login() {
   const { user, login } = useAuth();
-  const nav             = useNavigate();
+  const navigate  = useNavigate();
 
   const [identifier, setIdentifier] = useState('');
   const [password,   setPassword]   = useState('');
@@ -13,13 +13,13 @@ export default function Login() {
 
   useEffect(() => {
     if (user) nav('/dashboard');
-  }, [user, nav]);
+  }, [user, navigate]);
 
   const handleSubmit = async e => {
     e.preventDefault();
     setError('');
     try {
-      await login(identifier, password);
+      await login(identifier.trim(), password);
     } catch (err) {
       setError(err.message);
     }
