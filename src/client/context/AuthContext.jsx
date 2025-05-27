@@ -1,56 +1,66 @@
 // File: src/client/context/AuthContext.jsx
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import { useNavigate }                        from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 const AuthContext = createContext({
-  user:   null,
-  login:  async () => {},
+  user: null,
+  login: async () => {},
   logout: async () => {}
 });
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const navigate        = useNavigate();
+  const navigate = useNavigate();
 
-  // On mount: validate session & pull full profile
+  // On mount: check session & fetch full user profile if logged in
   useEffect(() => {
-    (async () => {
+    async function initAuth() {
       try {
-        // Check that our JWT cookie is valid
-        const h = await fetch('/erp/api/health', { credentials:'include' });
-        if (!h.ok) return;
-
-        // Fetch full user object (id, name, empid, companies, role, …)
-        const meRes = await fetch('/erp/api/users/me', { credentials:'include' });
-        if (meRes.ok) {
-          const me = await meRes.json();
-          setUser(me);
+        const health = await fetch('/erp/api/health', {
+          credentials: 'include'
+        });
+        if (health.ok) {
+          // session valid → fetch profile
+          const meRes = await fetch('/erp/api/users/me', {
+            credentials: 'include'
+          });
+          if (meRes.ok) {
+            const profile = await meRes.json();
+            setUser(profile);
+          }
         }
-      } catch(err) {
+      } catch (err) {
         console.error('Auth init failed', err);
       }
-    })();
+    }
+    initAuth();
   }, []);
 
-  // identifier can be empid or email
-  const login = async (identifier, password) => {
-  const res = await fetch('/erp/api/login', {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ identifier, password }),
-  });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.message || 'Auth failed');
-  setUser(json.user);
-  // redirect to dashboard
-  navigate('/dashboard');
+  // Call this from your Login form
+  async function login(email, password) {
+    const res = await fetch('/erp/api/login', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    if (!res.ok) {
+      const { message, error } = await res.json().catch(() => ({}));
+      throw new Error(message || error || 'Login failed');
+    }
+    const { user: u } = await res.json();
+    setUser(u);
+    navigate('/dashboard');
   }
 
+  // Call this to log out
   async function logout() {
-    await fetch('/erp/api/logout', { method:'POST', credentials:'include' });
+    await fetch('/erp/api/logout', {
+      method: 'POST',
+      credentials: 'include'
+    });
     setUser(null);
-    navigate('/login', { replace:true });
+    navigate('/login');
   }
 
   return (
@@ -60,6 +70,7 @@ export function AuthProvider({ children }) {
   );
 }
 
+// Custom hook to access auth context
 export function useAuth() {
   return useContext(AuthContext);
 }

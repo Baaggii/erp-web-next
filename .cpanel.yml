@@ -1,7 +1,10 @@
 ---
 deployment:
   tasks:
+    - mkdir -p ~/public_html ~/public_html/erp
+    - rm -rf node_modules
     - npm install --no-progress
     - npm run build:homepage
     - npm run build:erp
+    - cp src/client/.htaccess ~/public_html/erp/.htaccess
     - npm prune --omit=dev

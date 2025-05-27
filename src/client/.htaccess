@@ -1,18 +1,18 @@
-# Enable rewrite engine
-RewriteEngine On
+# File: public_html/erp/.htaccess
 
-# Redirect root to corporate landing if needed
-# RewriteRule ^$ /index.html [L]
+<IfModule mod_rewrite.c>
 
-# Proxy /erp/* → backend on port 3002, dropping the /erp prefix
-RewriteRule ^erp(/.*)?$ http://127.0.0.1:3002$1 [P,L]
+  RewriteEngine On
+  RewriteBase /erp/
 
-# Proxy /api/* → backend
-RewriteRule ^api(/.*)?$ http://127.0.0.1:3002/api$1 [P,L]
+  # 1) Proxy API calls
+  RewriteRule ^api/(.*)$ http://127.0.0.1:3002/api/$1 [P,L]
 
-# Fallback for SPA routes
-Options -MultiViews
-RewriteCond %{REQUEST_FILENAME} -f [OR]
-RewriteCond %{REQUEST_FILENAME} -d
-RewriteRule ^ - [L]
-RewriteRule . /erp/index.html [L]
+  # 2) If request maps to an actual file or directory, serve it directly
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # 3) Otherwise, serve our SPA shell
+  RewriteRule . /erp/index.html [L]
+</IfModule>

@@ -2,7 +2,8 @@
   "name": "erp-web-next",
   "version": "0.1.0",
   "private": true,
-  "scripts": {
+  "type": "module",
+    "scripts": {
     "dev": "vite",
     "build:homepage": "vite build --config vite.home.config.js",
     "build:erp": "vite build --config vite.config.js --base=/erp/",
