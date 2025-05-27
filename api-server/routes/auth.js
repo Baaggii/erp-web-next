@@ -6,43 +6,29 @@ const router   = express.Router();
 
 // POST /erp/api/login
 router.post('/login', async (req, res) => {
-  console.log('↪︎ Login attempt:', req.body);
   const { identifier, password } = req.body;
-  if (!identifier || !password) {
-    return res.status(400).json({ message: 'ID/email and password required' });
+  const isNum = /^\d+$/.test(identifier);
+  const sql   = isNum
+    ? 'SELECT * FROM users WHERE empid = ?'
+    : 'SELECT * FROM users WHERE email = ?';
+
+  const [[user]] = await req.app.get('erpPool').query(sql, [identifier]);
+  if (!user || !(await bcrypt.compare(password, user.password))) {
+    return res.status(401).json({ message:'Auth failed' });
   }
 
-  const pool = req.app.get('erpPool');
-  const [[user]] = await pool.query(
-    `SELECT id, empid, email, name, password, role
-       FROM users
-      WHERE empid = ? OR email = ?`,
-    [identifier, identifier]
-  );
-  console.log('↪︎ User record from DB:', user);
-
-  if (!user) {
-    return res.status(401).json({ message: 'Auth failed' });
-  }
-  const match = await bcrypt.compare(password, user.password);
-  if (!match) {
-    return res.status(401).json({ message: 'Auth failed' });
-  }
-
-  // sign JWT
-  const token = jwt.sign({ id: user.id, empid: user.empid }, process.env.JWT_SECRET, {
-    expiresIn: '2h'
+  const token = jwt.sign({ id:user.id }, process.env.JWT_SECRET, { expiresIn:'2h' });
+  res.cookie('token', token, { httpOnly:true });
+  // return empid as well so client can display it
+  res.json({
+    user: {
+      id:    user.id,
+      empid: user.empid,
+      email: user.email,
+      name:  user.name,
+      role:  user.role
+    }
   });
-
-  // set cookie scoped to /erp
-  res.cookie('token', token, {
-    httpOnly: true,
-    path: '/erp',
-    maxAge: 2 * 60 * 60 * 1000,
-  });
-
-  delete user.password;
-  res.json({ user });
 });
 
 // GET /erp/api/dbtest
