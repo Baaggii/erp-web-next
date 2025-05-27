@@ -1,13 +1,15 @@
+// File: src/client/App.jsx
+
 import React from 'react';
 import { Routes, Route, Link } from 'react-router-dom';
 import { useAuth } from './context/AuthContext.jsx';
 import RequireAuth from './components/RequireAuth.jsx';
 
 import Login     from './pages/Login.jsx';
+import Dashboard from './pages/Dashboard.jsx';
 import Forms     from './pages/Forms.jsx';
 import Reports   from './pages/Reports.jsx';
 import Users     from './pages/Users.jsx';
-import MosaicLayout from './components/MosaicLayout.jsx';  // ← NEW
 
 export default function App() {
   const { user, logout } = useAuth();
@@ -25,18 +27,19 @@ export default function App() {
       </nav>
 
       <Routes>
-        {/* Public */}
+        {/* Public route */}
         <Route path="/login" element={<Login />} />
 
-        {/* Protected */}
+        {/* Protected routes */}
         <Route
           path="/dashboard"
           element={
             <RequireAuth>
-              <MosaicLayout />      {/* ← NEW */}
+              <Dashboard />
             </RequireAuth>
           }
         />
+
         <Route
           path="/forms"
           element={
@@ -45,6 +48,7 @@ export default function App() {
             </RequireAuth>
           }
         />
+
         <Route
           path="/reports"
           element={
@@ -53,6 +57,7 @@ export default function App() {
             </RequireAuth>
           }
         />
+
         <Route
           path="/users"
           element={
