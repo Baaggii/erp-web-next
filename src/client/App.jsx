@@ -7,7 +7,7 @@ import RequireAuth from './components/RequireAuth.jsx';
 import Layout from './components/Layout.jsx'
 
 import Login     from './pages/Login.jsx';
-import Layout from './components/Layout.jsx'
+import Dashboard from './pages/Dashboard.jsx';
 import Forms     from './pages/Forms.jsx';
 import Reports   from './pages/Reports.jsx';
 import Users     from './pages/Users.jsx';
