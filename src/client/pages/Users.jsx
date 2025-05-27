@@ -5,7 +5,7 @@ import { useAuth }            from '../context/AuthContext.jsx';
 export default function Users() {
   const { user } = useAuth();
   const isAdmin  = user?.role === 'admin';
-
+  const [myProfile, setMyProfile]   = useState({ name:'', company:'', password:'' });
   const [users, setUsers]                   = useState([]);
   const [assignments, setAssignments]      = useState([]);
   const [loading, setLoading]               = useState(true);

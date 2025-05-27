@@ -41,8 +41,8 @@ app.use('/api', authRouter);
 app.use('/api', requireAuth, formsRouter);
 
 // Mount routes under /erp/api for the SPA
-app.use('/erp/api', dbtestRouter);
 app.use('/erp/api', authRouter);
+app.use('/erp/api', dbtestRouter);
 app.use('/erp/api', requireAuth, formsRouter);
 app.use('/erp/api/users', requireAuth, usersRouter);
 app.use('/erp/api/users', usersRouter);
