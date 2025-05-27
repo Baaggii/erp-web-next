@@ -7,28 +7,43 @@ const router   = express.Router();
 // POST /erp/api/login
 router.post('/login', async (req, res) => {
   const { identifier, password } = req.body;
-  const isNum = /^\d+$/.test(identifier);
-  const sql   = isNum
-    ? 'SELECT * FROM users WHERE empid = ?'
-    : 'SELECT * FROM users WHERE email = ?';
-
-  const [[user]] = await req.app.get('erpPool').query(sql, [identifier]);
-  if (!user || !(await bcrypt.compare(password, user.password))) {
-    return res.status(401).json({ message:'Auth failed' });
+  if (!identifier || !password) {
+    return res.status(400).json({ message: 'ID or email, and password are required' });
   }
 
-  const token = jwt.sign({ id:user.id }, process.env.JWT_SECRET, { expiresIn:'2h' });
-  res.cookie('token', token, { httpOnly:true });
-  // return empid as well so client can display it
-  res.json({
-    user: {
-      id:    user.id,
-      empid: user.empid,
-      email: user.email,
-      name:  user.name,
-      role:  user.role
-    }
+  const pool = req.app.get('erpPool');
+  // look up by empid OR by email
+  const [[user]] = await pool.query(
+    `SELECT id, empid, email, name, company, role, password
+       FROM users
+      WHERE empid = ? OR email = ?`,
+    [identifier, identifier]
+  );
+
+  if (!user) {
+    return res.status(401).json({ message: 'Auth failed' });
+  }
+
+  const ok = await bcrypt.compare(password, user.password);
+  if (!ok) {
+    return res.status(401).json({ message: 'Auth failed' });
+  }
+
+  // generate token
+  const token = jwt.sign(
+    { id: user.id, empid: user.empid },
+    process.env.JWT_SECRET,
+    { expiresIn: '2h' }
+  );
+
+  res.cookie('token', token, {
+    httpOnly: true,
+    path: '/erp',
+    maxAge: 2 * 60 * 60 * 1000,
   });
+
+  delete user.password;
+  res.json({ user });
 });
 
 // GET /erp/api/dbtest
