@@ -10,8 +10,7 @@ import mysql from 'mysql2/promise';
 import authRouter from './routes/auth.js';
 import dbtestRouter from './routes/dbtest.js';
 import formsRouter from './routes/forms.js';
-import usersRouter         from './routes/users.js';
-import userCompaniesRouter from './routes/user_companies.js';
+import usersRouter from './routes/users.js';
 import { requireAuth, requireAdmin } from './middlewares/auth.js';
 
 // Emulate __dirname in ESM
@@ -47,8 +46,7 @@ app.use('/erp/api', dbtestRouter);
 app.use('/erp/api', authRouter);
 app.use('/erp/api', requireAuth, formsRouter);
 app.use('/erp/api/users', requireAuth, usersRouter);
-app.use('/erp/api/users',         usersRouter);
-app.use('/erp/api/user_companies',userCompaniesRouter);
+app.use('/erp/api/users', usersRouter);
 
 // Health checks
 app.get('/api/health', (_req, res) =>
