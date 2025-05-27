@@ -29,8 +29,8 @@ export default function Users() {
   // Load both tables
   useEffect(() => {
     Promise.all([
-      fetch('/erp/api/users',         { credentials: 'include' }),
-      fetch('/erp/api/user_companies',{ credentials: 'include' })
+      fetch('/api/users',         { credentials: 'include' }),
+      fetch('/api/user_companies',{ credentials: 'include' })
     ])
     .then(async ([uRes, aRes]) => {
       if (!uRes.ok) throw new Error(`Users fetch ${uRes.status}`);
@@ -49,7 +49,7 @@ export default function Users() {
   const createUser = async e => {
     e.preventDefault(); setMessage('');
     try {
-      const res  = await fetch('/erp/api/users', {
+      const res  = await fetch('/api/users', {
         method: 'POST',
         credentials: 'include',
         headers: {'Content-Type':'application/json'},
@@ -66,7 +66,7 @@ export default function Users() {
   const updateUser = async (empid, changes) => {
     setMessage('');
     try {
-      const res = await fetch(`/erp/api/users/${empid}`, {
+      const res = await fetch(`/api/users/${empid}`, {
         method: 'PUT',
         credentials: 'include',
         headers: {'Content-Type':'application/json'},
@@ -83,7 +83,7 @@ export default function Users() {
     if (!window.confirm('Delete user?')) return;
     setMessage('');
     try {
-      const res = await fetch(`/erp/api/users/${empid}`, {
+      const res = await fetch(`/api/users/${empid}`, {
         method: 'DELETE', credentials: 'include'
       });
       if (!res.ok) throw new Error(`Error ${res.status}`);
@@ -96,7 +96,7 @@ export default function Users() {
   const createAssign = async e => {
     e.preventDefault(); setMessage('');
     try {
-      const res = await fetch('/erp/api/user_companies', {
+      const res = await fetch('/api/user_companies', {
         method: 'POST',
         credentials:'include',
         headers:{'Content-Type':'application/json'},
@@ -114,7 +114,7 @@ export default function Users() {
     setMessage('');
     try {
       const res = await fetch(
-        `/erp/api/user_companies/${empid}/${company_id}`,
+        `/api/user_companies/${empid}/${company_id}`,
         { method:'DELETE', credentials:'include' }
       );
       if (!res.ok) throw new Error(`Error ${res.status}`);
@@ -136,7 +136,7 @@ export default function Users() {
       return;
     }
     try {
-      const res = await fetch(`/erp/api/users/${user.empid}/password`, {
+      const res = await fetch(`/api/users/${user.empid}/password`, {
         method:'PUT', credentials:'include',
         headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ oldPassword, newPassword })
