@@ -5,14 +5,15 @@ import jwt      from 'jsonwebtoken';
 const router   = express.Router();
 
 // POST /erp/api/login
-router.post('/login', async (req, res) => {
-  const { identifier, password } = req.body;
-  const isNum = /^\d+$/.test(identifier);
-  const sql   = isNum
-    ? 'SELECT * FROM users WHERE empid = ?'
-    : 'SELECT * FROM users WHERE email = ?';
-
-  const [[user]] = await req.app.get('erpPool').query(sql, [identifier]);
+ router.post('/login', async (req, res) => {
+   // allow login by empid or email
+   const { identifier, password } = req.body;
+   console.log('↪︎ Login attempt:', identifier);
+   const [[user]] = await req.app.get('erpPool')
+     .query(
+       'SELECT * FROM users WHERE email = ? OR empid = ?',
+       [identifier, identifier]
+     );
   if (!user || !(await bcrypt.compare(password, user.password))) {
     return res.status(401).json({ message:'Auth failed' });
   }
