@@ -1,26 +1,53 @@
+// File: api-server/routes/user_companies.js
 import express from 'express';
-import { requireAuth, requireAdmin } from '../middlewares/auth.js';
+import { requireAdmin } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-// ▶ Assign or re-assign a user to a company (ADMIN only)
-router.post('/', requireAuth, requireAdmin, async (req, res) => {
-  const { empid, company_id, role } = req.body;
-  await req.app.get('erpPool').execute(`
-    REPLACE INTO user_companies (empid, company_id, role)
-    VALUES (?, ?, ?)`,
-    [empid, company_id, role]
+// GET /erp/api/user_companies
+// ──── List all assignments (admin only)
+router.get('/', requireAdmin, async (req, res) => {
+  const pool = req.app.get('erpPool');
+  const [rows] = await pool.query(
+    'SELECT empid, company_id, role, created_by, created_at FROM user_companies'
   );
-  res.json({ message: 'Assigned' });
+  res.json(rows);
 });
 
-// ▶ Remove a user from a company (ADMIN only)
-router.delete('/:empid/:company_id', requireAuth, requireAdmin, async (req, res) => {
-  await req.app.get('erpPool').execute(
-    `DELETE FROM user_companies WHERE empid=? AND company_id=?`,
-    [req.params.empid, req.params.company_id]
-  );
-  res.json({ message: 'Unassigned' });
+// POST /erp/api/user_companies
+// ──── Assign a user to a company (admin)
+router.post('/', requireAdmin, async (req, res) => {
+  try {
+    const { empid, company_id, role, created_by } = req.body;
+    const pool = req.app.get('erpPool');
+    await pool.execute(
+      `INSERT INTO user_companies
+         (empid, company_id, role, created_by, created_at)
+       VALUES (?,?,?,?,NOW())`,
+      [empid, company_id, role, created_by]
+    );
+    res.json({ message: 'Assigned' });
+  } catch (err) {
+    console.error('Assign error:', err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// DELETE /erp/api/user_companies/:empid/:company_id
+// ──── Unassign (admin only)
+router.delete('/:empid/:company_id', requireAdmin, async (req, res) => {
+  try {
+    const { empid, company_id } = req.params;
+    const pool = req.app.get('erpPool');
+    await pool.execute(
+      'DELETE FROM user_companies WHERE empid=? AND company_id=?',
+      [empid, company_id]
+    );
+    res.json({ message: 'Unassigned' });
+  } catch (err) {
+    console.error('Unassign error:', err);
+    res.status(500).json({ message: err.message });
+  }
 });
 
 export default router;
