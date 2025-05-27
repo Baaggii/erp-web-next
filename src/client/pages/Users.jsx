@@ -4,30 +4,38 @@ import { useAuth } from '../context/AuthContext.jsx';
 
 export default function Users() {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';     // ← guard user
+  const isAdmin = user?.role === 'admin';
 
-  // single state for the full user list
+  // full list of users (for admin)
   const [users, setUsers] = useState([]);
 
-  // new-user form & my-profile form states
+  // form state for creating a new user (admin)
   const [newUser, setNewUser] = useState({
-    email: '', password: '', name: '', company: '', role: 'user'
+    email: '',
+    password: '',
+    name: '',
+    company: '',
+    role: 'user',
   });
+
+  // form state for updating your own profile
   const [myProfile, setMyProfile] = useState({
-    name: '', company: '', password: ''
+    name: '',
+    company: '',
+    password: '',
   });
 
   const [message, setMessage] = useState('');
 
   useEffect(() => {
-    // load profile
+    // load my profile
     fetch('/erp/api/users/me', { credentials: 'include' })
       .then(r => r.json())
       .then(data => {
         setMyProfile({
           name: data.name,
           company: data.company,
-          password: ''
+          password: '',
         });
       });
 
@@ -39,7 +47,7 @@ export default function Users() {
     }
   }, [isAdmin]);
 
-  // Admin creates a new user
+  // Admin: create a new user
   const handleCreate = async e => {
     e.preventDefault();
     setMessage('');
@@ -47,53 +55,68 @@ export default function Users() {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newUser)
-    });
-    const json = await res.json();
-    setMessage(json.message || (res.ok ? 'User created' : 'Failed'));
-    if (res.ok) {
-      setUsers(u => [...u, json.user]);   // use returned user (with real id)
-      setNewUser({ email:'', password:'', name:'', company:'', role:'user' });
-    }
-  };
-
-  // Update any user (admin) or self
- // inside Users.jsx
-const handleUpdate = async (id, changes) => {
-  setMessage('');
-  try {
-    const res = await fetch(`/erp/api/users/${id}`, {
-      method: 'PUT',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(changes),
+      body: JSON.stringify(newUser),
     });
     const json = await res.json();
     if (!res.ok) {
-      console.error('Update failed:', res.status, json);
-      setMessage(`Error ${res.status}: ${json.message||json.error}`);
+      setMessage(json.error || json.message || 'Failed to create');
       return;
     }
-    setMessage(json.message || 'Updated');
-    // …apply changes to state…
-  } catch (err) {
-    console.error('Network error:', err);
-    setMessage('Network error');
-  }
-};
+    setMessage(json.message || 'User created');
+    // backend should return the new user record under json.user
+    setUsers(u => [...u, json.user]);
+    setNewUser({ email: '', password: '', name: '', company: '', role: 'user' });
+  };
 
+  // Admin or self: update a user record
+  const handleUpdate = async (id, changes) => {
+    setMessage('');
+    try {
+      const res = await fetch(`/erp/api/users/${id}`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(changes),
+      });
+      const json = await res.json();
 
-  // Admin deletes a user
+      if (!res.ok) {
+        console.error('Update failed:', res.status, json);
+        setMessage(`Error ${res.status}: ${json.error || json.message}`);
+        return;
+      }
+
+      setMessage(json.message || 'Updated');
+
+      // apply to state
+      setUsers(prev =>
+        prev.map(u => (u.id === id ? { ...u, ...changes } : u))
+      );
+
+      // if the user updated their own profile, sync that state too
+      if (id === user.id) {
+        setMyProfile(p => ({ ...p, ...changes }));
+      }
+    } catch (err) {
+      console.error('Network error:', err);
+      setMessage('Network error');
+    }
+  };
+
+  // Admin: delete a user
   const handleDelete = async id => {
     if (!window.confirm('Delete this user?')) return;
     const res = await fetch(`/erp/api/users/${id}`, {
       method: 'DELETE',
-      credentials: 'include'
+      credentials: 'include',
     });
-    if (res.ok) {
-      setUsers(u => u.filter(x => x.id !== id));
-      setMessage('Deleted');
+    if (!res.ok) {
+      const json = await res.json();
+      setMessage(json.error || 'Delete failed');
+      return;
     }
+    setMessage('Deleted');
+    setUsers(prev => prev.filter(u => u.id !== id));
   };
 
   return (
@@ -107,12 +130,16 @@ const handleUpdate = async (id, changes) => {
             <h2>Create New User</h2>
             <form onSubmit={handleCreate}>
               <input
-                type="email" required placeholder="Email"
+                type="email"
+                required
+                placeholder="Email"
                 value={newUser.email}
                 onChange={e => setNewUser({ ...newUser, email: e.target.value })}
               /><br/>
               <input
-                type="password" required placeholder="Password"
+                type="password"
+                required
+                placeholder="Password"
                 value={newUser.password}
                 onChange={e => setNewUser({ ...newUser, password: e.target.value })}
               /><br/>
@@ -185,22 +212,28 @@ const handleUpdate = async (id, changes) => {
 
       <section>
         <h2>Your Profile</h2>
-        <form onSubmit={e => {
-          e.preventDefault();
-          handleUpdate(user.id, myProfile);
-        }}>
+        <form
+          onSubmit={e => {
+            e.preventDefault();
+            handleUpdate(user.id, myProfile);
+          }}
+        >
           <label>
             Name:<br/>
             <input
               value={myProfile.name}
-              onChange={e => setMyProfile({ ...myProfile, name: e.target.value })}
+              onChange={e =>
+                setMyProfile({ ...myProfile, name: e.target.value })
+              }
             />
           </label><br/>
           <label>
             Company:<br/>
             <input
               value={myProfile.company}
-              onChange={e => setMyProfile({ ...myProfile, company: e.target.value })}
+              onChange={e =>
+                setMyProfile({ ...myProfile, company: e.target.value })
+              }
             />
           </label><br/>
           <label>
@@ -209,7 +242,9 @@ const handleUpdate = async (id, changes) => {
               type="password"
               placeholder="(leave blank to keep current)"
               value={myProfile.password}
-              onChange={e => setMyProfile({ ...myProfile, password: e.target.value })}
+              onChange={e =>
+                setMyProfile({ ...myProfile, password: e.target.value })
+              }
             />
           </label><br/>
           <button type="submit">Update Profile</button>

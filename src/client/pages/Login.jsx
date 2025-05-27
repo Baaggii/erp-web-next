@@ -7,21 +7,24 @@ export default function Login() {
   const { user, login } = useAuth();
   const navigate = useNavigate();
 
-  const [email, setEmail]       = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError]       = useState('');
+  const [identifier, setIdentifier] = useState('');  // employee ID
+  const [password, setPassword]       = useState('');
+  const [error, setError]             = useState('');
 
-  // If already logged in, send to dashboard
+  // If already logged in, redirect to dashboard
   useEffect(() => {
-    if (user) navigate('/dashboard');
+    if (user) {
+      navigate('/dashboard');
+    }
   }, [user, navigate]);
 
   const handleSubmit = async e => {
     e.preventDefault();
     setError('');
     try {
-      await login(email, password);
-      // on success, login() will navigate
+      // login() now expects ID + password
+      await login(identifier, password);
+      // on success, login() will navigate you
     } catch (err) {
       setError(err.message);
     }
@@ -33,11 +36,12 @@ export default function Login() {
       {error && <p style={{ color: 'red' }}>{error}</p>}
       <form onSubmit={handleSubmit}>
         <div>
-          <label>Email</label><br/>
+          <label>Employee ID</label><br/>
           <input
-            type="email"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
+            type="number"
+            placeholder="Enter your employee ID"
+            value={identifier}
+            onChange={e => setIdentifier(e.target.value)}
             required
           />
         </div>
@@ -45,6 +49,7 @@ export default function Login() {
           <label>Password</label><br/>
           <input
             type="password"
+            placeholder="Enter your password"
             value={password}
             onChange={e => setPassword(e.target.value)}
             required
