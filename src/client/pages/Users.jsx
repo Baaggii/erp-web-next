@@ -1,272 +1,163 @@
 // File: src/client/pages/Users.jsx
-import React, { useEffect, useState } from 'react';
-import { useAuth }            from '../context/AuthContext.jsx';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext.jsx';
 
-export default function Users() {
-  const { user } = useAuth();
-  const isAdmin  = user?.role === 'admin';
-
-  const [users, setUsers]                   = useState([]);
-  const [assignments, setAssignments]      = useState([]);
-  const [loading, setLoading]               = useState(true);
-  const [message, setMessage]               = useState('');
-
-  // New-user form
-  const [newUser, setNewUser] = useState({
-    empid: '', name: '', password: '', created_by: user?.empid
+export default function UsersPage() {
+  const { user }   = useAuth();
+  const isAdmin    = user?.role === 'admin';
+  const [allUsers, setAllUsers] = useState([]);
+  const [me, setMe]             = useState({});
+  const [newUser, setNewUser]   = useState({
+    empid:'', name:'', company:'', role:'user', password:''
   });
+  const [msg, setMsg] = useState('');
 
-  // New-assignment form
-  const [newAssign, setNewAssign] = useState({
-    empid: '', company_id: '', role: 'user', created_by: user?.empid
-  });
-
-  // Password-change form (for self)
-  const [pwdForm, setPwdForm] = useState({
-    oldPassword: '', newPassword: '', confirmPassword: ''
-  });
-
-  // Load both tables
+  // load user + allUsers
   useEffect(() => {
-    Promise.all([
-      fetch('/erp/api/users',         { credentials: 'include' }),
-      fetch('/erp/api/user_companies',{ credentials: 'include' })
-    ])
-    .then(async ([uRes, aRes]) => {
-      if (!uRes.ok) throw new Error(`Users fetch ${uRes.status}`);
-      if (!aRes.ok) throw new Error(`Assignments fetch ${aRes.status}`);
-      return [await uRes.json(), await aRes.json()];
-    })
-    .then(([uData, aData]) => {
-      setUsers(uData);
-      setAssignments(aData);
-    })
-    .catch(err => setMessage(err.message))
-    .finally(() => setLoading(false));
-  }, []);
+    fetch('/erp/api/users/me', { credentials:'include' })
+      .then(r => r.json())
+      .then(setMe);
 
-  // ADMIN CRUD for users
-  const createUser = async e => {
-    e.preventDefault(); setMessage('');
-    try {
-      const res  = await fetch('/erp/api/users', {
-        method: 'POST',
-        credentials: 'include',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify(newUser)
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.message||`Error ${res.status}`);
-      setUsers(us => [...us, json.user]);
-      setNewUser({ empid:'', name:'', password:'', created_by:user.empid });
-      setMessage('User created');
-    } catch (err) { setMessage(err.message) }
-  };
-
-  const updateUser = async (empid, changes) => {
-    setMessage('');
-    try {
-      const res = await fetch(`/erp/api/users/${empid}`, {
-        method: 'PUT',
-        credentials: 'include',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify(changes)
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.message||`Error ${res.status}`);
-      setUsers(us => us.map(u => u.empid===empid ? {...u,...changes} : u));
-      setMessage(json.message||'Updated');
-    } catch (err) { setMessage(err.message) }
-  };
-
-  const deleteUser = async empid => {
-    if (!window.confirm('Delete user?')) return;
-    setMessage('');
-    try {
-      const res = await fetch(`/erp/api/users/${empid}`, {
-        method: 'DELETE', credentials: 'include'
-      });
-      if (!res.ok) throw new Error(`Error ${res.status}`);
-      setUsers(us => us.filter(u => u.empid!==empid));
-      setMessage('Deleted');
-    } catch (err) { setMessage(err.message) }
-  };
-
-  // ADMIN CRUD for assignments
-  const createAssign = async e => {
-    e.preventDefault(); setMessage('');
-    try {
-      const res = await fetch('/erp/api/user_companies', {
-        method: 'POST',
-        credentials:'include',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify(newAssign)
-      });
-      if (!res.ok) throw new Error(`Error ${res.status}`);
-      setAssignments(a => [...a, newAssign]);
-      setNewAssign({ empid:'', company_id:'', role:'user', created_by:user.empid });
-      setMessage('Assigned');
-    } catch (err) { setMessage(err.message) }
-  };
-
-  const deleteAssign = async (empid, company_id) => {
-    if (!window.confirm('Unassign user?')) return;
-    setMessage('');
-    try {
-      const res = await fetch(
-        `/erp/api/user_companies/${empid}/${company_id}`,
-        { method:'DELETE', credentials:'include' }
-      );
-      if (!res.ok) throw new Error(`Error ${res.status}`);
-      setAssignments(a => a.filter(x => !(x.empid===empid && x.company_id===company_id)));
-      setMessage('Unassigned');
-    } catch (err) { setMessage(err.message) }
-  };
-
-  // SELF password change
-  const changePwd = async e => {
-    e.preventDefault(); setMessage('');
-    const { oldPassword, newPassword, confirmPassword } = pwdForm;
-    if (newPassword!==confirmPassword) {
-      setMessage('Passwords do not match'); return;
+    if (isAdmin) {
+      fetch('/erp/api/users', { credentials:'include' })
+        .then(r => r.json())
+        .then(setAllUsers);
     }
-    const pwOK = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*\W).{8,}$/.test(newPassword);
-    if (!pwOK) {
-      setMessage('Password needs 8+ chars, upper/lower, digit & symbol');
-      return;
-    }
-    try {
-      const res = await fetch(`/erp/api/users/${user.empid}/password`, {
-        method:'PUT', credentials:'include',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ oldPassword, newPassword })
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.message||`Error ${res.status}`);
-      setPwdForm({ oldPassword:'', newPassword:'', confirmPassword:'' });
-      setMessage('Password updated');
-    } catch (err) { setMessage(err.message) }
+  }, [isAdmin]);
+
+  const api = (url, opts) => fetch(url, {
+    credentials:'include', headers:{'Content-Type':'application/json'}, ...opts
+  }).then(async r => {
+    const j = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(j.message||j.error||r.statusText);
+    return j;
+  });
+
+  // 1) Create
+  const handleCreate = e => {
+    e.preventDefault();
+    setMsg('');
+    api('/erp/api/users', {
+      method:'POST',
+      body: JSON.stringify(newUser)
+    })
+    .then(({user:u, message}) => {
+      setAllUsers(a => [...a, u]);
+      setMsg(message);
+    }).catch(e => setMsg(e.message));
   };
 
-  if (loading) return <div>Loading…</div>;
+  // 2) Update (name/company/role or password)
+  const handleUpdate = (empid, changes) => {
+    setMsg('');
+    api(`/erp/api/users/${empid}`, {
+      method:'PUT', body: JSON.stringify(changes)
+    })
+    .then(j => setMsg(j.message))
+    .catch(e => setMsg(e.message));
+  };
+
+  // 3) Delete
+  const handleDelete = empid => {
+    if (!window.confirm('Delete?')) return;
+    setMsg('');
+    api(`/erp/api/users/${empid}`, { method:'DELETE' })
+      .then(j => {
+        setAllUsers(a => a.filter(u => u.empid !== empid));
+        setMsg(j.message);
+      }).catch(e => setMsg(e.message));
+  };
 
   return (
-    <div style={{padding:20}}>
+    <div style={{ padding:20, maxWidth:800, margin:'auto' }}>
       <h1>User Management</h1>
-      {message && <div style={{color:'crimson'}}>{message}</div>}
+      {msg && <p style={{ color:'green' }}>{msg}</p>}
 
       {isAdmin && (
         <>
-          <h2>Create User</h2>
-          <form onSubmit={createUser} style={{display:'grid',gap:8,maxWidth:400}}>
-            <input
-              required placeholder="EmpID"
-              value={newUser.empid}
-              onChange={e=>setNewUser({...newUser,empid:e.target.value})}
-            />
-            <input
-              required placeholder="Name"
-              value={newUser.name}
-              onChange={e=>setNewUser({...newUser,name:e.target.value})}
-            />
-            <input
-              required type="password" placeholder="Password"
-              value={newUser.password}
-              onChange={e=>setNewUser({...newUser,password:e.target.value})}
-            />
-            <button type="submit">Create</button>
-          </form>
+          <section>
+            <h2>Create User</h2>
+            <form onSubmit={handleCreate}>
+              <input placeholder="EmpID"    value={newUser.empid}
+                     onChange={e=>setNewUser({...newUser,empid:e.target.value})} required /><br/>
+              <input placeholder="Name"     value={newUser.name}
+                     onChange={e=>setNewUser({...newUser,name:e.target.value})} required /><br/>
+              <input placeholder="Company"  value={newUser.company}
+                     onChange={e=>setNewUser({...newUser,company:e.target.value})} /><br/>
+              <select  value={newUser.role}
+                       onChange={e=>setNewUser({...newUser,role:e.target.value})} >
+                <option value="user">User</option>
+                <option value="admin">Admin</option>
+              </select><br/>
+              <input  type="password" placeholder="Password"
+                      value={newUser.password}
+                      onChange={e=>setNewUser({...newUser,password:e.target.value})}
+                      required /><br/>
+              <button type="submit">Create</button>
+            </form>
+          </section>
 
-          <h2>All Users</h2>
-          <table border={1} cellPadding={5}>
-            <thead>
-              <tr>
-                <th>EmpID</th><th>Name</th><th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map(u=>(
-                <tr key={u.empid}>
-                  <td>{u.empid}</td>
-                  <td>
-                    <input
-                      value={u.name}
-                      onChange={e=>updateUser(u.empid,{name:e.target.value})}
-                    />
-                  </td>
-                  <td>
-                    <button onClick={()=>deleteUser(u.empid)}>Delete</button>
-                  </td>
+          <section>
+            <h2>All Users</h2>
+            <table border={1} cellPadding={5}>
+              <thead>
+                <tr>
+                  <th>EmpID</th><th>Name</th><th>Company</th><th>Role</th><th>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <h2>Company Assignments</h2>
-          <form onSubmit={createAssign} style={{display:'grid',gap:8,maxWidth:400}}>
-            <input
-              required placeholder="EmpID"
-              value={newAssign.empid}
-              onChange={e=>setNewAssign({...newAssign,empid:e.target.value})}
-            />
-            <input
-              required placeholder="Company ID"
-              value={newAssign.company_id}
-              onChange={e=>setNewAssign({...newAssign,company_id:e.target.value})}
-            />
-            <select
-              value={newAssign.role}
-              onChange={e=>setNewAssign({...newAssign,role:e.target.value})}
-            >
-              <option value="user">user</option>
-              <option value="admin">admin</option>
-            </select>
-            <button type="submit">Assign</button>
-          </form>
-
-          <table border={1} cellPadding={5}>
-            <thead>
-              <tr>
-                <th>EmpID</th><th>Company</th><th>Role</th><th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {assignments.map(a=>(
-                <tr key={`${a.empid}-${a.company_id}`}>
-                  <td>{a.empid}</td>
-                  <td>{a.company_id}</td>
-                  <td>{a.role}</td>
-                  <td>
-                    <button
-                      onClick={()=>deleteAssign(a.empid,a.company_id)}
-                    >Unassign</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {allUsers.map(u=>(
+                  <tr key={u.empid}>
+                    <td>{u.empid}</td>
+                    <td>
+                      <input
+                        defaultValue={u.name}
+                        onBlur={e=>handleUpdate(u.empid,{name:e.target.value})}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        defaultValue={u.company}
+                        onBlur={e=>handleUpdate(u.empid,{company:e.target.value})}
+                      />
+                    </td>
+                    <td>
+                      <select
+                        defaultValue={u.role}
+                        onChange={e=>handleUpdate(u.empid,{role:e.target.value})}
+                      >
+                        <option value="user">user</option>
+                        <option value="admin">admin</option>
+                      </select>
+                    </td>
+                    <td>
+                      <button onClick={()=>handleDelete(u.empid)}>
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
         </>
       )}
 
-      <h2>Change Your Password</h2>
-      <form onSubmit={changePwd} style={{display:'grid',gap:8,maxWidth:400}}>
-        <input
-          type="password" required placeholder="Old Password"
-          value={pwdForm.oldPassword}
-          onChange={e=>setPwdForm({...pwdForm,oldPassword:e.target.value})}
-        />
-        <input
-          type="password" required placeholder="New Password"
-          value={pwdForm.newPassword}
-          onChange={e=>setPwdForm({...pwdForm,newPassword:e.target.value})}
-        />
-        <input
-          type="password" required placeholder="Confirm Password"
-          value={pwdForm.confirmPassword}
-          onChange={e=>setPwdForm({...pwdForm,confirmPassword:e.target.value})}
-        />
-        <button type="submit">Update Password</button>
-      </form>
+      <section>
+        <h2>Change Your Password</h2>
+        <form onSubmit={e => {
+          e.preventDefault();
+          const oldPassword    = e.target.old.value;
+          const newPassword    = e.target.new1.value;
+          const confirmPassword= e.target.new2.value;
+          handleUpdate(me.empid, { oldPassword, newPassword, confirmPassword });
+        }}>
+          <input name="old"  type="password" placeholder="Old Password" required /><br/>
+          <input name="new1" type="password" placeholder="New Password" required /><br/>
+          <input name="new2" type="password" placeholder="Confirm New" required /><br/>
+          <button type="submit">Update Password</button>
+        </form>
+      </section>
     </div>
   );
 }
