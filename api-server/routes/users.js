@@ -13,7 +13,7 @@ function pool(req) {
 //  GET /api/users        ← list all users (admin only)
 router.get('/', async (req, res) => {
   const [rows] = await pool(req).query(
-    'SELECT id, email, name, company, role, created_at FROM users'
+    'SELECT id, email, name, role, created_at FROM users'
   );
   res.json(rows);
 });
@@ -22,7 +22,7 @@ router.get('/', async (req, res) => {
 router.get('/me', async (req, res) => {
   const userId = req.user.id;
   const [[user]] = await pool(req).query(
-    'SELECT id, email, name, company, role, created_at FROM users WHERE id = ?',
+    'SELECT id, email, name, role, created_at FROM users WHERE id = ?',
     [userId]
   );
   res.json(user);
@@ -30,12 +30,12 @@ router.get('/me', async (req, res) => {
 
 //  POST /api/users       ← create new user (admin only)
 router.post('/', async (req, res) => {
-  const { email, password, name, company, role = 'user' } = req.body;
+  const { email, password, name, role = 'user' } = req.body;
   const hashed = await bcrypt.hash(password, 10);
   await pool(req).execute(
-    `INSERT INTO users (email, password, name, company, role)
+    `INSERT INTO users (email, password, name, role)
      VALUES (?, ?, ?, ?, ?)`,
-    [email, hashed, name, company, role]
+    [email, hashed, name, role]
   );
   res.status(201).json({ message: 'User created' });
 });
@@ -55,10 +55,6 @@ router.put('/:id', async (req, res) => {
   if (req.body.name) {
     fields.push('name = ?');
     values.push(req.body.name);
-  }
-  if (req.body.company) {
-    fields.push('company = ?');
-    values.push(req.body.company);
   }
   if (req.body.password) {
     const hash = await bcrypt.hash(req.body.password, 10);
