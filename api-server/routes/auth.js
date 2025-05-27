@@ -6,36 +6,35 @@ const router   = express.Router();
 
 // POST /erp/api/login
 router.post('/login', async (req, res) => {
+  console.log('↪︎ Login attempt:', req.body);
   const { identifier, password } = req.body;
   if (!identifier || !password) {
-    return res.status(400).json({ message: 'ID or email, and password are required' });
+    return res.status(400).json({ message: 'ID/email and password required' });
   }
 
   const pool = req.app.get('erpPool');
-  // look up by empid OR by email
   const [[user]] = await pool.query(
-    `SELECT id, empid, email, name, company, role, password
+    `SELECT id, empid, email, name, password, role
        FROM users
       WHERE empid = ? OR email = ?`,
     [identifier, identifier]
   );
+  console.log('↪︎ User record from DB:', user);
 
   if (!user) {
     return res.status(401).json({ message: 'Auth failed' });
   }
-
-  const ok = await bcrypt.compare(password, user.password);
-  if (!ok) {
+  const match = await bcrypt.compare(password, user.password);
+  if (!match) {
     return res.status(401).json({ message: 'Auth failed' });
   }
 
-  // generate token
-  const token = jwt.sign(
-    { id: user.id, empid: user.empid },
-    process.env.JWT_SECRET,
-    { expiresIn: '2h' }
-  );
+  // sign JWT
+  const token = jwt.sign({ id: user.id, empid: user.empid }, process.env.JWT_SECRET, {
+    expiresIn: '2h'
+  });
 
+  // set cookie scoped to /erp
   res.cookie('token', token, {
     httpOnly: true,
     path: '/erp',

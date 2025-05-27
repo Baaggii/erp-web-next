@@ -33,22 +33,18 @@ export function AuthProvider({ children }) {
   }, []);
 
   // identifier can be empid or email
-  async function login(identifier, password) {
-    const res = await fetch('/erp/api/login', {
-      method:      'POST',
-      credentials: 'include',
-      headers:     { 'Content-Type':'application/json' },
-      body:        JSON.stringify({ identifier, password })
-    });
-    if (!res.ok) {
-      // Grab any error message returned by the server
-      const { message, error } = await res.json().catch(()=>({}));
-      throw new Error(message||error||'Login failed');
-    }
-    // On success, server returns { user: { … } }
-    const { user: u } = await res.json();
-    setUser(u);
-    navigate('/dashboard', { replace:true });
+  const login = async (identifier, password) => {
+  const res = await fetch('/erp/api/login', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ identifier, password }),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.message || 'Auth failed');
+  setUser(json.user);
+  // redirect to dashboard
+  navigate('/dashboard');
   }
 
   async function logout() {
