@@ -4,18 +4,17 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build:erp": "vite build --config vite.config.js --base=/erp/",
-    "build:homepage": "vite build --config vite.home.config.js"
+    "build:homepage": "vite build --config vite.home.config.js",
+    "build:erp": "vite build --config vite.config.js --base=/erp/"
   },
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.30.1",
-    "react-mosaic-component": "^7.1.0",    // ← NEW
-    /* …other deps… */
+    "react-mosaic-component": "^7.1.0"
   },
   "devDependencies": {
-    "vite": "^6.3.5",
-    "@vitejs/plugin-react": "^4.5.0"
+    "@vitejs/plugin-react": "^4.5.0",
+    "vite": "^6.3.5"
   }
 }
