@@ -1,38 +1,51 @@
 // File: api-server/routes/auth.js
-import express from 'express';
-import bcrypt  from 'bcrypt';
-import jwt     from 'jsonwebtoken';
+import express  from 'express';
+import bcrypt   from 'bcrypt';
+import jwt      from 'jsonwebtoken';
+const router   = express.Router();
 
-const router = express.Router();
-
+// POST /erp/api/login
 router.post('/login', async (req, res) => {
-  console.log('↪︎ Login attempt:', req.body);
-  const { email, password } = req.body;
-  const [[user]] = await req.app
-    .get('erpPool')
-    .query('SELECT * FROM users WHERE email = ?', [email]);
-  console.log('↪︎ User record from DB:', user);
+  const { identifier, password } = req.body;
+  const isNum = /^\d+$/.test(identifier);
+  const sql   = isNum
+    ? 'SELECT * FROM users WHERE empid = ?'
+    : 'SELECT * FROM users WHERE email = ?';
+
+  const [[user]] = await req.app.get('erpPool').query(sql, [identifier]);
   if (!user || !(await bcrypt.compare(password, user.password))) {
-    return res.status(401).json({ message: 'Auth failed' });
+    return res.status(401).json({ message:'Auth failed' });
   }
-  const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: '2h' });
-  res.cookie('token', token, { httpOnly: true, sameSite: 'lax' });
-  res.json({ user: { id: user.id, email: user.email, name: user.name, role: user.role } });
+
+  const token = jwt.sign({ id:user.id }, process.env.JWT_SECRET, { expiresIn:'2h' });
+  res.cookie('token', token, { httpOnly:true });
+  // return empid as well so client can display it
+  res.json({
+    user: {
+      id:    user.id,
+      empid: user.empid,
+      email: user.email,
+      name:  user.name,
+      role:  user.role
+    }
+  });
 });
 
-router.post('/logout', (_req, res) => {
-  res.clearCookie('token');
-  res.json({ message: 'Logged out' });
-});
-
-router.get('/dbtest', async (_req, res) => {
+// GET /erp/api/dbtest
+router.get('/dbtest', async (req, res) => {
   try {
     const [rows] = await req.app.get('erpPool').query('SELECT NOW() AS now');
-    res.json({ ok: true, time: rows[0].now });
+    res.json({ ok:true, time:rows[0].now });
   } catch (err) {
-    console.error('DB test error:', err);
-    res.status(500).json({ ok: false, error: err.message });
+    console.error('DB test failed', err);
+    res.status(500).json({ ok:false, error:err.message });
   }
+});
+
+// POST /erp/api/logout
+router.post('/logout', (_req, res) => {
+  res.clearCookie('token');
+  res.json({ message:'Logged out' });
 });
 
 export default router;
