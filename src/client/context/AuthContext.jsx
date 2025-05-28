@@ -16,7 +16,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     (async () => {
       try {
-        const h = await fetch('/erp/api/health', { credentials:'include' });
+        const h = await fetch('/erp/api/auth/health', { credentials:'include' });
         if (!h.ok) return;
         const meRes = await fetch('/erp/api/users/me', { credentials:'include' });
         if (meRes.ok) {

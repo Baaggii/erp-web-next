@@ -1,55 +1,42 @@
 // File: api-server/routes/user_companies.js
-import express from 'express';
+import { Router } from 'express';
 import { requireAuth, requireAdmin } from '../middlewares/auth.js';
 
-const router = express.Router();
+const router = Router();
 
-// GET /erp/api/user_companies — list all assignments (admin only)
-router.get('/', requireAuth, requireAdmin, async (req, res) => {
-  const pool = req.app.get('erpPool');
-  const [rows] = await pool.query(`
-    SELECT empid, company_id AS company, role, created_at
-      FROM user_companies
-  `);
+// list assignments
+router.get('/', requireAuth, requireAdmin, async (_req, res) => {
+  const [rows] = await _req.app.get('erpPool')
+    .query('SELECT empid, company_id AS companyId, role FROM user_companies');
   res.json(rows);
 });
 
-// POST /erp/api/user_companies — assign a user to a company (admin only)
+// assign user⇒company
 router.post('/', requireAuth, requireAdmin, async (req, res) => {
-  const { empid, company, role } = req.body;
-  const pool = req.app.get('erpPool');
-  await pool.execute(
-    `INSERT INTO user_companies (empid, company_id, role, created_at)
-     VALUES (?, ?, ?, NOW())`,
-    [empid, company, role]
-  );
-  res.status(201).json({ message: 'Assigned' });
+  const { empid, companyId, role } = req.body;
+  await req.app.get('erpPool')
+    .query('INSERT INTO user_companies (empid,company_id,role,created_at) VALUES (?,?,?,NOW())',
+           [empid, companyId, role]);
+  res.json({ message: 'Assigned' });
 });
 
-// PUT /erp/api/user_companies/:empid/:company — change role (admin only)
-router.put('/:empid/:company', requireAuth, requireAdmin, async (req, res) => {
-  const { empid, company } = req.params;
-  const { role }           = req.body;
-  const pool = req.app.get('erpPool');
-  await pool.execute(
-    `UPDATE user_companies
-        SET role = ?
-      WHERE empid = ? AND company_id = ?`,
-    [role, empid, company]
-  );
+// update assignment
+router.put('/:empid/:companyId', requireAuth, requireAdmin, async (req, res) => {
+  const { empid, companyId } = req.params;
+  const { role } = req.body;
+  await req.app.get('erpPool')
+    .query('UPDATE user_companies SET role=? WHERE empid=? AND company_id=?',
+           [role, empid, companyId]);
   res.json({ message: 'Updated' });
 });
 
-// DELETE /erp/api/user_companies/:empid/:company — unassign (admin only)
-router.delete('/:empid/:company', requireAuth, requireAdmin, async (req, res) => {
-  const { empid, company } = req.params;
-  const pool = req.app.get('erpPool');
-  await pool.execute(
-    `DELETE FROM user_companies
-      WHERE empid = ? AND company_id = ?`,
-    [empid, company]
-  );
-  res.json({ message: 'Deleted' });
+// remove assignment
+router.delete('/:empid/:companyId', requireAuth, requireAdmin, async (req, res) => {
+  const { empid, companyId } = req.params;
+  await req.app.get('erpPool')
+    .query('DELETE FROM user_companies WHERE empid=? AND company_id=?',
+           [empid, companyId]);
+  res.json({ message: 'Removed' });
 });
 
 export default router;

@@ -1,93 +1,69 @@
 // File: api-server/routes/users.js
-import express from 'express';
-import { requireAuth, requireAdmin } from '../middlewares/auth.js';
+import { Router } from 'express';
 import bcrypt from 'bcryptjs';
+import { requireAuth, requireAdmin } from '../middlewares/auth.js';
 
-const router = express.Router();
+const router = Router();
 
-// Helper to get the DB pool
-function pool(req) {
-  return req.app.get('erpPool');
-}
+// get current user
+router.get('/me', requireAuth, async (req, res) => {
+  const pool = req.app.get('erpPool');
+  const [[u]] = await pool.query('SELECT id, empid, email, name, role FROM users WHERE id=?', [req.userId]);
+  res.json(u);
+});
 
-//  GET /api/users        ← list all users (admin only)
-router.get('/erp/api/users', async (req, res) => {
-  const [rows] = await pool(req).query(
-    'SELECT id, email, name, role, created_at FROM users'
-  );
+// list all users (admin only)
+router.get('/', requireAuth, requireAdmin, async (_req, res) => {
+  const pool = _req.app.get('erpPool');
+  const [rows] = await pool.query('SELECT id, empid, email, name, role FROM users');
   res.json(rows);
 });
 
-//  GET /api/users/me     ← current user's own profile
-router.get('/erp/api/users/me', async (req, res) => {
-  const userId = req.user.id;
-  const [[user]] = await pool(req).query(
-    'SELECT id, email, name, role, created_at FROM users WHERE id = ?',
-    [userId]
-  );
-  res.json(user);
-});
-
-//  POST /api/users       ← create new user (admin only)
-router.post('/erp/api/users', async (req, res) => {
-  const { email, password, name, role = 'user' } = req.body;
+// create user (admin only)
+router.post('/', requireAuth, requireAdmin, async (req, res) => {
+  const { empid, email, name, password, role } = req.body;
   const hashed = await bcrypt.hash(password, 10);
-  await pool(req).execute(
-    `INSERT INTO users (email, password, name, role)
-     VALUES (?, ?, ?, ?, ?)`,
-    [email, hashed, name, role]
+  const pool = req.app.get('erpPool');
+  const [result] = await pool.query(
+    'INSERT INTO users (empid,email,name,password,role) VALUES (?,?,?,?,?)',
+    [ empid, email||null, name, hashed, role ]
   );
-  res.status(201).json({ message: 'User created' });
+  res.json({ user: { id: result.insertId, empid, email, name, role }, message: 'User created' });
 });
 
-//  PUT /api/users/:id    ← update any user (admin) or self
-router.put('/erp/api/users/:id', async (req, res) => {
-  const targetId = Number(req.params.id);
-  const me = req.user;
-  // only admin or self
-  if (me.role !== 'admin' && me.id !== targetId) {
+// update user (admin only)
+router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { empid, email, name, role } = req.body;
+  const pool = req.app.get('erpPool');
+  await pool.query(
+    'UPDATE users SET empid=?, email=?, name=?, role=? WHERE id=?',
+    [ empid, email||null, name, role, id ]
+  );
+  res.json({ message: 'User updated' });
+});
+
+// change password (self or admin)
+router.put('/:id/password', requireAuth, async (req, res) => {
+  const { id } = req.params;
+  if (req.userId !== +id && !req.userRole === 'admin') {
     return res.status(403).json({ message: 'Forbidden' });
   }
-
-  const fields = [];
-  const values = [];
-
-  if (req.body.name) {
-    fields.push('name = ?');
-    values.push(req.body.name);
+  const { oldPassword, newPassword } = req.body;
+  const pool = req.app.get('erpPool');
+  const [[u]] = await pool.query('SELECT password FROM users WHERE id=?', [id]);
+  if (req.userId === +id && !await bcrypt.compare(oldPassword, u.password)) {
+    return res.status(400).json({ message: 'Old password incorrect' });
   }
-  if (req.body.password) {
-    const hash = await bcrypt.hash(req.body.password, 10);
-    fields.push('password = ?');
-    values.push(hash);
-  }
-
-  if (fields.length === 0) {
-    return res.status(400).json({ message: 'Nothing to update' });
-  }
-
-  values.push(targetId);
-  await pool(req).execute(
-    `UPDATE users SET ${fields.join(', ')} WHERE id = ?`,
-    values
-  );
-  res.json({ message: 'Updated' });
+  const hash = await bcrypt.hash(newPassword, 10);
+  await pool.query('UPDATE users SET password=? WHERE id=?', [hash, id]);
+  res.json({ message: 'Password updated' });
 });
 
-//  DELETE /api/users/:id ← remove a user (admin only)
-router.delete('/erp/api/users/:id', async (req, res) => {
-  const targetId = Number(req.params.id);
-  if (targetId === req.user.id) {
-    return res.status(400).json({ message: 'Cannot delete self' });
-  }
-  await pool(req).execute(`DELETE FROM users WHERE id = ?`, [targetId]);
+// delete user (admin only)
+router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
+  await req.app.get('erpPool').query('DELETE FROM users WHERE id=?', [req.params.id]);
   res.json({ message: 'Deleted' });
-});
-
-// **Public**: get the logged-in user’s profile
-router.get('/erp/api/users/me', requireAuth, async (req, res) => {
-  // req.user was set by requireAuth
-  res.json(req.user);
 });
 
 export default router;

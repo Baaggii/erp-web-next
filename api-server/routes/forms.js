@@ -1,10 +1,15 @@
-import express from 'express';
+// File: api-server/routes/forms.js
+import { Router } from 'express';
 import path from 'path';
-import fs from 'fs';
-const router = express.Router();
-router.get('/forms', (req, res) => {
-  const config = JSON.parse(fs.readFileSync(path.join(__dirname,'..','..','config','forms.json'),'utf8'));
-  res.json(config);
+import { fileURLToPath } from 'url';
+
+const router = Router();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = path.dirname(__filename);
+
+// if you’re just testing static HTML forms, e.g. public/forms.html
+router.get('/', (_req, res) => {
+  res.sendFile(path.join(__dirname, '../../public/forms.html'));
 });
-router.post('/data', (req, res) => { console.log(req.body); res.json({ ok:true }); });
+
 export default router;

@@ -1,9 +1,8 @@
 // File: api-server/server.js
-import dotenv from 'dotenv';
-dotenv.config();
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
 import mysql from 'mysql2/promise';
 
@@ -11,7 +10,10 @@ import authRouter from './routes/auth.js';
 import dbtestRouter from './routes/dbtest.js';
 import formsRouter from './routes/forms.js';
 import usersRouter from './routes/users.js';
+import userCompaniesRouter from './routes/user_companies.js';
 import { requireAuth, requireAdmin } from './middlewares/auth.js';
+
+dotenv.config();
 
 // Emulate __dirname in ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -43,10 +45,9 @@ app.use('/api', requireAuth, formsRouter);
 
 // Mount routes under /erp/api for the SPA
 app.use('/erp/api', dbtestRouter);
-app.use('/erp/api', authRouter);
-app.use('/erp/api', requireAuth, formsRouter);
+app.use('/erp/api/auth', authRouter);
+app.use('/erp/api/forms', requireAuth, formsRouter);
 app.use('/erp/api/users', requireAuth, usersRouter);
-app.use('/erp/api/users', usersRouter);
 
 // Health checks
 app.get('/api/health', (_req, res) =>
@@ -57,7 +58,6 @@ app.get('/erp/api/health', (_req, res) =>
 );
 
 // Serve your built SPA
-// If you build into a `dist/` folder, leave this as-is.
 // If you build directly into public_html/erp, point here instead.
 const spaDir = path.join(__dirname, '..', '../public_html/erp');
 app.use('/erp', express.static(spaDir));
