@@ -17,10 +17,9 @@ dotenv.config();
 
 // Emulate __dirname in ESM
 const __filename = fileURLToPath(import.meta.url);
-const __dirname  = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.API_PORT || 3001;
+const PORT = process.env.API_PORT || 3002;
 
 // Middleware
 app.use(cookieParser());
@@ -38,16 +37,12 @@ const erpPool = mysql.createPool({
 console.log('🗄️  Connected to DB:', `${process.env.DB_USER}@${process.env.DB_HOST}/${process.env.DB_NAME}`);
 app.set('erpPool', erpPool);
 
-// Mount routes for direct API testing
-app.use('/api', dbtestRouter);
-app.use('/api', authRouter);
-app.use('/api', requireAuth, formsRouter);
-
-// Mount routes under /erp/api for the SPA
-app.use('/erp/api', dbtestRouter);
-app.use('/erp/api/auth', authRouter);
-app.use('/erp/api/forms', requireAuth, formsRouter);
+// mount your API under /erp/api
+app.use('/erp/api', authRouter);            // POST /login, POST /logout, GET /health
+app.use('/erp/api/dbtest', dbtestRouter);   // GET /dbtest
 app.use('/erp/api/users', requireAuth, usersRouter);
+app.use('/erp/api/user_companies', requireAuth, userCompaniesRouter);
+app.use('/erp/api/forms', requireAuth, formsRouter);
 
 // Health checks
 app.get('/api/health', (_req, res) =>
@@ -57,21 +52,18 @@ app.get('/erp/api/health', (_req, res) =>
   res.json({ status: 'ok', time: new Date().toISOString() })
 );
 
-// Serve your built SPA
-// If you build directly into public_html/erp, point here instead.
-const spaDir = path.join(__dirname, '..', '../public_html/erp');
-app.use('/erp', express.static(spaDir));
-app.get('/erp/*', (_req, res) =>
-  res.sendFile(path.join(spaDir, 'index.html'))
-);
+// serve your React app’s build
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+app.use('/erp', express.static(path.resolve(__dirname, '../public_html/erp')));
+app.get('/erp/*', (req, res) => {
+  res.sendFile(path.resolve(__dirname, '../public_html/erp/index.html'));
+});
 
 // Catch-all 404 for anything else
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
 
 // Start the server
-app.listen(PORT, '0.0.0.0', () =>
-  console.log(`✅ ERP listening on http://localhost:${PORT}/erp`)
-);
+app.listen(port, () => console.log(`✅ ERP listening on http://localhost:${port}/erp`));
 
 // Handle process events
 process.on('uncaughtException',  e => console.error('❌ Uncaught Exception:', e));

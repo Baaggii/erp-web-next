@@ -12,43 +12,37 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const navigate        = useNavigate();
 
-  // On mount: validate session & pull full profile
+  // 1) on mount, validate cookie
   useEffect(() => {
     (async () => {
-      try {
-        const h = await fetch('/erp/api/auth/health', { credentials:'include' });
-        if (!h.ok) return;
-        const meRes = await fetch('/erp/api/users/me', { credentials:'include' });
-        if (meRes.ok) {
-          setUser(await meRes.json());
-        }
-      } catch(err) {
-        console.error('Auth init failed', err);
+      const res = await fetch('/erp/api/auth/health', { credentials:'include' });
+      if (res.ok) {
+        // get full user object
+        const me = await fetch('/erp/api/auth/me', { credentials:'include' }).then(r => r.json());
+        setUser(me.user);
       }
     })();
   }, []);
 
-  // identifier can be empid or email
+  // 2) login fn used by Login.jsx
   async function login(identifier, password) {
-    const res = await fetch('/erp/api/login', {
-      method:      'POST',
-      credentials: 'include',
-      headers:     { 'Content-Type':'application/json' },
-      body:        JSON.stringify({ identifier, password })
+    const res = await fetch('/erp/api/auth/login', {
+      method: 'POST',
+      credentials:'include',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ identifier, password })
     });
-    if (!res.ok) {
-      const { message, error } = await res.json().catch(()=>({}));
-      throw new Error(message||error||'Login failed');
-    }
-    const { user: u } = await res.json();
-    setUser(u);
-    navigate('/dashboard', { replace:true });
+    if (!res.ok) throw new Error((await res.json()).message);
+    const { user } = await res.json();
+    setUser(user);
+    nav('/dashboard');
   }
 
+   // 3) logout
   async function logout() {
-    await fetch('/erp/api/logout', { method:'POST', credentials:'include' });
+    await fetch('/erp/api/auth/logout', { method:'POST', credentials:'include' });
     setUser(null);
-    navigate('/login', { replace:true });
+    nav('/login');
   }
 
   return (
