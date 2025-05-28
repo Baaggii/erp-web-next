@@ -2,14 +2,15 @@
   RewriteEngine On
   RewriteBase /erp/
 
-  # Proxy only the API (requires mod_proxy & mod_proxy_http)
+  # 1) Everything under /erp/api/ gets reverse-proxied to your Node server on localhost:3002
+  #    We strip the /erp prefix and forward /api/... to http://127.0.0.1:3002/api/...
   RewriteCond %{REQUEST_URI} ^/erp/api/
-  RewriteRule ^api/(.*)$ http://127.0.0.1:3002/erp/api/$1 [P,L]
+  RewriteRule ^api/(.*)$ http://127.0.0.1:3002/api/$1 [P,L]
 
-  # If the file exists (JS/CSS/assets), serve it
+  # 2) If the request matches a real file (css/js/images), serve it directly
   RewriteCond %{REQUEST_FILENAME} -f
   RewriteRule ^ - [L]
 
-  # Otherwise, serve index.html (SPA)
+  # 3) Otherwise fall back to index.html for your SPA routing
   RewriteRule . index.html [L]
 </IfModule>
