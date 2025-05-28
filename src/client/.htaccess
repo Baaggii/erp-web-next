@@ -1,11 +1,9 @@
-# File: public_html/erp/.htaccess
-Options -MultiViews
 RewriteEngine On
 
-# 1) If the request is for a real file or directory, serve it:
-RewriteCond %{REQUEST_FILENAME} -f [OR]
-RewriteCond %{REQUEST_FILENAME} -d
-RewriteRule ^ - [L]
+# Bypass the SPA for API calls
+RewriteRule ^erp/api/(.*)$ http://127.0.0.1:3002/erp/api/$1 [P,L]
 
-# 2) Otherwise, fall back to index.html (SPA)
-RewriteRule .* /erp/index.html [L]
+# Otherwise serve SPA
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^erp/ /erp/index.html [L]
