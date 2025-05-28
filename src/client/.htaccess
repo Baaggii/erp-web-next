@@ -4,6 +4,9 @@
   # Proxy API calls to Node:
   RewriteRule ^api/(.*)$ http://127.0.0.1:3002/erp/api/$1 [P,L]
 
+  ProxyPass        /erp/api/ http://127.0.0.1:3002/erp/api/
+  ProxyPassReverse /erp/api/ http://127.0.0.1:3002/erp/api/
+
   # Serve real files
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
@@ -11,9 +14,4 @@
 
   # SPA fallback
   RewriteRule . index.html [L]
-</IfModule>
-
-<IfModule mod_proxy.c>
-  ProxyPass        /erp/api/ http://127.0.0.1:3002/erp/api/
-  ProxyPassReverse /erp/api/ http://127.0.0.1:3002/erp/api/
 </IfModule>
