@@ -1,14 +1,14 @@
 <IfModule mod_rewrite.c>
   RewriteEngine On
 
-  # 1) Don’t rewrite any /erp/api/* requests
-  RewriteRule ^api/ - [L]
+  # Proxy API calls to Node:
+  RewriteRule ^api/(.*)$ http://127.0.0.1:3002/erp/api/$1 [P,L]
 
-  # 2) If the file or folder actually exists, serve it
+  # Serve real files
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]
 
-  # 3) Everything else in /erp goes to index.html
+  # SPA fallback
   RewriteRule . index.html [L]
 </IfModule>
