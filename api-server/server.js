@@ -36,11 +36,6 @@ const erpPool = mysql.createPool({
 console.log('🗄️  Connected to DB:', `${process.env.DB_USER}@${process.env.DB_HOST}/${process.env.DB_NAME}`);
 app.set('erpPool', erpPool);
 
-// Mount routes for direct API testing
-app.use('/api', dbtestRouter);
-app.use('/api', authRouter);
-app.use('/api', requireAuth, formsRouter);
-
 // Mount routes under /erp/api for the SPA
 app.use('/erp/api', dbtestRouter);
 app.use('/erp/api', authRouter);
@@ -49,9 +44,6 @@ app.use('/erp/api/users', requireAuth, usersRouter);
 app.use('/erp/api/users', usersRouter);
 
 // Health checks
-app.get('/api/health', (_req, res) =>
-  res.json({ status: 'ok', time: new Date().toISOString() })
-);
 app.get('/erp/api/health', (_req, res) =>
   res.json({ status: 'ok', time: new Date().toISOString() })
 );
