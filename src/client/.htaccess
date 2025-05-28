@@ -1,15 +1,14 @@
-# ──────────────────────────────────────────────────────────────────────────────
-# 2) Let Apache serve actual files first (favicon, assets, etc.)
-# ──────────────────────────────────────────────────────────────────────────────
-RewriteEngine On
-RewriteBase /erp/
+<IfModule mod_rewrite.c>
+  RewriteEngine On
 
-# if the request maps to an existing file or directory, serve it
-RewriteCond %{REQUEST_FILENAME} -f [OR]
-RewriteCond %{REQUEST_FILENAME} -d
-RewriteRule ^ - [L]
+  # Proxy API calls to Node:
+  RewriteRule ^api/(.*)$ http://127.0.0.1:3002/erp/api/$1 [P,L]
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 3) Everything else under /erp/ → index.html so React Router can handle it
-# ──────────────────────────────────────────────────────────────────────────────
-RewriteRule . /erp/index.html [L]
+  # Serve real files
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # SPA fallback
+  RewriteRule . index.html [L]
+</IfModule>
