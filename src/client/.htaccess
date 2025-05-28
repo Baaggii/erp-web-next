@@ -12,3 +12,8 @@
   # SPA fallback
   RewriteRule . index.html [L]
 </IfModule>
+
+<IfModule mod_proxy.c>
+  ProxyPass        /erp/api/ http://127.0.0.1:3002/erp/api/
+  ProxyPassReverse /erp/api/ http://127.0.0.1:3002/erp/api/
+</IfModule>
