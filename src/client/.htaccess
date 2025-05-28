@@ -1,9 +1,15 @@
-RewriteEngine On
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /erp/
 
-# Bypass the SPA for API calls
-RewriteRule ^erp/api/(.*)$ http://127.0.0.1:3002/erp/api/$1 [P,L]
+  # Proxy only the API (requires mod_proxy & mod_proxy_http)
+  RewriteCond %{REQUEST_URI} ^/erp/api/
+  RewriteRule ^api/(.*)$ http://127.0.0.1:3002/erp/api/$1 [P,L]
 
-# Otherwise serve SPA
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^erp/ /erp/index.html [L]
+  # If the file exists (JS/CSS/assets), serve it
+  RewriteCond %{REQUEST_FILENAME} -f
+  RewriteRule ^ - [L]
+
+  # Otherwise, serve index.html (SPA)
+  RewriteRule . index.html [L]
+</IfModule>
