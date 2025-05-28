@@ -1,11 +1,15 @@
-# File: public_html/erp/.htaccess
-Options -MultiViews
-RewriteEngine On
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /erp/
 
-# 1) If the request is for a real file or directory, serve it:
-RewriteCond %{REQUEST_FILENAME} -f [OR]
-RewriteCond %{REQUEST_FILENAME} -d
-RewriteRule ^ - [L]
+  # Proxy only the API (requires mod_proxy & mod_proxy_http)
+  RewriteCond %{REQUEST_URI} ^/erp/api/
+  RewriteRule ^api/(.*)$ http://127.0.0.1:3002/erp/api/$1 [P,L]
 
-# 2) Otherwise, fall back to index.html (SPA)
-RewriteRule .* /erp/index.html [L]
+  # If the file exists (JS/CSS/assets), serve it
+  RewriteCond %{REQUEST_FILENAME} -f
+  RewriteRule ^ - [L]
+
+  # Otherwise, serve index.html (SPA)
+  RewriteRule . index.html [L]
+</IfModule>
