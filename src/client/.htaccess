@@ -1,10 +1,12 @@
-# File: public_html/erp/.htaccess
+# Turn off PHP/Static fallback – everything goes to our Node app
 RewriteEngine On
+RewriteBase /erp/
 
-# If request starts with /erp/api, forward to Node (Passenger/mod_passenger):
-# (Or remove entirely if your host auto-passes Node apps)
-# PassengerEnabled on
+# If the file or directory exists on disk, serve it
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
 
-# Otherwise serve static files and fall back to index.html
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteRule ^ /erp/index.html [L]
+# Otherwise proxy everything to port 3002
+# (Assumes mod_proxy_http is already enabled by the host)
+RewriteRule ^(.*)$ http://127.0.0.1:3002/erp/$1 [P,L]
