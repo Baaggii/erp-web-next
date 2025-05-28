@@ -29,7 +29,7 @@ export default function Users() {
   // Load both tables
   useEffect(() => {
     Promise.all([
-      fetch('/erp/api/users/me', { credentials:'include' })
+      fetch('/erp/api/users/me', { credentials:'include' }),
       fetch('/erp/api/users',         { credentials: 'include' }),
       fetch('/erp/api/user_companies',{ credentials: 'include' })
     ])
