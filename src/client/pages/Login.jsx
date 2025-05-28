@@ -1,53 +1,49 @@
 // File: src/client/pages/Login.jsx
 import React, { useState, useEffect } from 'react';
-import { useAuth }                    from '../context/AuthContext.jsx';
-import { useNavigate }                from 'react-router-dom';
+import { useAuth } from '../context/AuthContext.jsx';
+import { useNavigate } from 'react-router-dom';
 
 export default function Login() {
   const { user, login } = useAuth();
-  const nav             = useNavigate();
-
-  const [identifier, setIdentifier] = useState('');
-  const [password,   setPassword]   = useState('');
-  const [error,      setError]      = useState('');
+  const nav = useNavigate();
+  const [idOrEmail, setIdOrEmail] = useState('');
+  const [pw, setPw] = useState('');
+  const [err, setErr] = useState('');
 
   useEffect(() => {
     if (user) nav('/dashboard');
   }, [user, nav]);
 
-  const handleSubmit = async e => {
+  const submit = async e => {
     e.preventDefault();
-    setError('');
+    setErr('');
     try {
-      await login(identifier, password);
-    } catch (err) {
-      setError(err.message);
+      await login(idOrEmail, pw);
+    } catch (e) {
+      setErr(e.message);
     }
   };
 
   return (
-    <div style={{ padding:20, maxWidth:400, margin:'auto' }}>
+    <form onSubmit={submit} style={{ maxWidth:400, margin:'auto', padding:20 }}>
       <h1>Login</h1>
-      {error && <p style={{ color:'red' }}>{error}</p>}
-      <form onSubmit={handleSubmit}>
-        <label>Employee ID or Email</label><br/>
+      {err && <p style={{ color:'red' }}>{err}</p>}
+      <label>Employee ID or Email<br/>
         <input
-          type="text"
-          value={identifier}
-          onChange={e=>setIdentifier(e.target.value)}
-          required
-          autoComplete="username"
-        /><br/><br/>
-        <label>Password</label><br/>
+          value={idOrEmail}
+          onChange={e => setIdOrEmail(e.target.value)}
+          required />
+      </label>
+      <br/><br/>
+      <label>Password<br/>
         <input
           type="password"
-          value={password}
-          onChange={e=>setPassword(e.target.value)}
-          required
-          autoComplete="current-password"
-        /><br/><br/>
-        <button type="submit">Login</button>
-      </form>
-    </div>
+          value={pw}
+          onChange={e => setPw(e.target.value)}
+          required />
+      </label>
+      <br/><br/>
+      <button type="submit">Login</button>
+    </form>
   );
 }

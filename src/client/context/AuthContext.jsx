@@ -1,49 +1,50 @@
 // File: src/client/context/AuthContext.jsx
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import { useNavigate }                        from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
-const AuthContext = createContext({
-  user:   null,
-  login:  async () => {},
-  logout: async () => {}
-});
+const AuthContext = createContext({ user: null, login: async ()=>{}, logout: ()=>{} });
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const navigate        = useNavigate();
+  const nav = useNavigate();
 
-  // 1) on mount, validate cookie
+  // On mount, check for existing cookie / valid session
   useEffect(() => {
-    (async () => {
-      const res = await fetch('/erp/api/auth/health', { credentials:'include' });
-      if (res.ok) {
-        // get full user object
-        const me = await fetch('/erp/api/auth/me', { credentials:'include' }).then(r => r.json());
-        setUser(me.user);
-      }
-    })();
+    fetch('/erp/api/auth/health', { credentials: 'include' })
+      .then(r => r.json())
+      .then(j => {
+        if (j.status === 'ok') {
+          // we know the session exists, now fetch full user
+          return fetch('/erp/api/auth/me', { credentials: 'include' });
+        }
+        throw new Error('Not authenticated');
+      })
+      .then(r => r.json())
+      .then(j => setUser(j.user))
+      .catch(() => setUser(null));
   }, []);
 
-  // 2) login fn used by Login.jsx
-  async function login(identifier, password) {
+  // login() calls the API, sets cookie, sets user, navigates
+  const login = async (identifier, password) => {
     const res = await fetch('/erp/api/auth/login', {
       method: 'POST',
-      credentials:'include',
-      headers: { 'Content-Type':'application/json' },
+      credentials: 'include',
+      headers:{ 'Content-Type':'application/json' },
       body: JSON.stringify({ identifier, password })
     });
     if (!res.ok) throw new Error((await res.json()).message);
-    const { user } = await res.json();
-    setUser(user);
+    const { user: u } = await res.json();
+    setUser(u);
     nav('/dashboard');
-  }
+  };
 
-   // 3) logout
-  async function logout() {
-    await fetch('/erp/api/auth/logout', { method:'POST', credentials:'include' });
+  const logout = async () => {
+    await fetch('/erp/api/auth/logout', {
+      method:'POST', credentials:'include'
+    });
     setUser(null);
     nav('/login');
-  }
+  };
 
   return (
     <AuthContext.Provider value={{ user, login, logout }}>

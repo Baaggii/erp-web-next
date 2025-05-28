@@ -1,18 +1,10 @@
 # File: public_html/erp/.htaccess
+RewriteEngine On
 
-<IfModule mod_rewrite.c>
+# If request starts with /erp/api, forward to Node (Passenger/mod_passenger):
+# (Or remove entirely if your host auto-passes Node apps)
+# PassengerEnabled on
 
-  RewriteEngine On
-  RewriteBase /erp/
-
-  # 1) Proxy API calls
-  #RewriteRule ^api/(.*)$ http://127.0.0.1:3002/api/$1 [P,L]
-
-  # 2) If request maps to an actual file or directory, serve it directly
-  RewriteCond %{REQUEST_FILENAME} -f [OR]
-  RewriteCond %{REQUEST_FILENAME} -d
-  RewriteRule ^ - [L]
-
-  # 3) Otherwise, serve our SPA shell
-  RewriteRule . /erp/index.html [L]
-</IfModule>
+# Otherwise serve static files and fall back to index.html
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^ /erp/index.html [L]
