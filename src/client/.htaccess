@@ -1,18 +1,14 @@
-# File: public_html/erp/.htaccess
-
 <IfModule mod_rewrite.c>
-
   RewriteEngine On
-  RewriteBase /erp/
 
-  # 1) Proxy API calls
-  RewriteRule ^api/(.*)$ http://127.0.0.1:3002/api/$1 [P,L]
+  # 1) Don’t rewrite any /erp/api/* requests
+  RewriteRule ^api/ - [L]
 
-  # 2) If request maps to an actual file or directory, serve it directly
+  # 2) If the file or folder actually exists, serve it
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]
 
-  # 3) Otherwise, serve our SPA shell
-  RewriteRule . /erp/index.html [L]
+  # 3) Everything else in /erp goes to index.html
+  RewriteRule . index.html [L]
 </IfModule>
