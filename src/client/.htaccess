@@ -1,13 +1,4 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# 1) Proxy ONLY /erp/api/* → Node on 127.0.0.1:3002
-# ──────────────────────────────────────────────────────────────────────────────
-<IfModule mod_proxy.c>
-  ProxyPreserveHost On
-  ProxyPass        /erp/api/  http://127.0.0.1:3002/erp/api/  retry=0
-  ProxyPassReverse /erp/api/  http://127.0.0.1:3002/erp/api/
-</IfModule>
-
-# ──────────────────────────────────────────────────────────────────────────────
 # 2) Let Apache serve actual files first (favicon, assets, etc.)
 # ──────────────────────────────────────────────────────────────────────────────
 RewriteEngine On

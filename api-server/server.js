@@ -1,46 +1,58 @@
-// File: api-server/server.js
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import cookieParser from 'cookie-parser';
 import mysql from 'mysql2/promise';
 
-import authRouter           from './routes/auth.js';
-import dbtestRouter         from './routes/dbtest.js';
-import formsRouter          from './routes/forms.js';
-import usersRouter          from './routes/users.js';
-import userCompaniesRouter  from './routes/user_companies.js';
-import { requireAuth }      from './middlewares/auth.js';
+import authRouter   from './routes/auth.js';
+import dbtestRouter from './routes/dbtest.js';
+import formsRouter  from './routes/forms.js';
+import usersRouter  from './routes/users.js';
+import companiesRouter from './routes/user_companies.js';
+import { requireAuth } from './middlewares/auth.js';
+
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.API_PORT || 3002;
-
-app.use(cookieParser());
 app.use(express.json());
+app.use(cookieParser());
 
-// MySQL pool
-const erpPool = mysql.createPool({ /* … your env vars … */ });
-app.set('erpPool', erpPool);
+// attach your DB pool
+const pool = await mysql.createPool({
+  host:     process.env.DB_HOST,
+  user:     process.env.ERP_DB_USER,
+  password: process.env.ERP_DB_PASSWORD,
+  database: process.env.ERP_DB_NAME,
+});
+app.set('erpPool', pool);
 
-// **API**  
-app.use('/erp/api/dbtest',        dbtestRouter);
-app.use('/erp/api/auth',          authRouter);
-app.use('/erp/api/forms',         requireAuth, formsRouter);
-app.use('/erp/api/users',         requireAuth, usersRouter);
-app.use('/erp/api/user_companies',requireAuth, userCompaniesRouter);
+// 1️⃣ Serve the React app build under /erp
+app.use(
+  '/erp',
+  express.static(path.join(__dirname, '../public_html/erp'))
+);
 
-// Health check  
-app.get('/erp/api/health', (_r, r) => r.json({ status:'ok', time: new Date() }));
+// 2️⃣ API under /erp/api
+app.use('/erp/api/dbtest',   dbtestRouter);
+app.use('/erp/api/auth',     authRouter);
+app.use('/erp/api/forms',    requireAuth, formsRouter);
+app.use('/erp/api/users',    requireAuth, usersRouter);
+app.use('/erp/api/user_companies', requireAuth, companiesRouter);
 
-// **SPA**  
-const spaDir = path.join(__dirname, '../public_html/erp');
-app.use('/erp', express.static(spaDir));
-app.get('/erp/*', (_r, r) => r.sendFile(path.join(spaDir, 'index.html')));
+// 3️⃣ Health-check
+app.get('/erp/api/health', (_req, res) => {
+  res.json({ status: 'ok', time: new Date() });
+});
 
-// Catch-all 404  
-app.use((_r, r) => r.status(404).json({ error:'Not found' }));
+// 4️⃣ Fall back to index.html for any other /erp/* so React Router works
+app.get('/erp/*', (_req, res) => {
+  res.sendFile(path.join(__dirname, '../public_html/erp/index.html'));
+});
 
-app.listen(PORT, '0.0.0.0', () => console.log(`✅ ERP listening on http://localhost:${PORT}/erp`));
+const PORT = process.env.PORT || 3002;
+app.listen(PORT, () => {
+  console.log(`✅ ERP listening on http://localhost:${PORT}/erp`);
+});
