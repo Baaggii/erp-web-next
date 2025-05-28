@@ -11,7 +11,7 @@ function pool(req) {
 }
 
 //  GET /api/users        ← list all users (admin only)
-router.get('/', async (req, res) => {
+router.get('/erp/api/users', async (req, res) => {
   const [rows] = await pool(req).query(
     'SELECT id, email, name, role, created_at FROM users'
   );
@@ -19,7 +19,7 @@ router.get('/', async (req, res) => {
 });
 
 //  GET /api/users/me     ← current user's own profile
-router.get('/me', async (req, res) => {
+router.get('/erp/api/users/me', async (req, res) => {
   const userId = req.user.id;
   const [[user]] = await pool(req).query(
     'SELECT id, email, name, role, created_at FROM users WHERE id = ?',
@@ -29,7 +29,7 @@ router.get('/me', async (req, res) => {
 });
 
 //  POST /api/users       ← create new user (admin only)
-router.post('/', async (req, res) => {
+router.post('/erp/api/users', async (req, res) => {
   const { email, password, name, role = 'user' } = req.body;
   const hashed = await bcrypt.hash(password, 10);
   await pool(req).execute(
@@ -41,7 +41,7 @@ router.post('/', async (req, res) => {
 });
 
 //  PUT /api/users/:id    ← update any user (admin) or self
-router.put('/:id', async (req, res) => {
+router.put('/erp/api/users/:id', async (req, res) => {
   const targetId = Number(req.params.id);
   const me = req.user;
   // only admin or self
@@ -75,7 +75,7 @@ router.put('/:id', async (req, res) => {
 });
 
 //  DELETE /api/users/:id ← remove a user (admin only)
-router.delete('/:id', async (req, res) => {
+router.delete('/erp/api/users/:id', async (req, res) => {
   const targetId = Number(req.params.id);
   if (targetId === req.user.id) {
     return res.status(400).json({ message: 'Cannot delete self' });
@@ -85,7 +85,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 // **Public**: get the logged-in user’s profile
-router.get('/me', requireAuth, async (req, res) => {
+router.get('/erp/api/users/me', requireAuth, async (req, res) => {
   // req.user was set by requireAuth
   res.json(req.user);
 });
