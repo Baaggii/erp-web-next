@@ -29,11 +29,15 @@ const pool = await mysql.createPool({
 });
 app.set('erpPool', pool);
 
+app.use('/api/auth',     authRouter);
+app.use('/api/users',    requireAuth, usersRouter);
+
 // 1️⃣ Serve the React app build under /erp
 app.use(
   '/erp',
   express.static(path.join(__dirname, '../public_html/erp'))
 );
+
 
 // 2️⃣ API under /erp/api
 app.use('/erp/api/dbtest',   dbtestRouter);
