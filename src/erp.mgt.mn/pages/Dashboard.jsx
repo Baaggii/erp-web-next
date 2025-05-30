@@ -1,6 +1,8 @@
-// src/client/pages/Dashboard.jsx
-import React from 'react';
-
 export default function Dashboard() {
-  return <h2>Welcome to your Dashboard</h2>;
+  return (
+    <div>
+      <h1>Dashboard</h1>
+      <p>Welcome to the ERP dashboard.</p>
+    </div>
+  );
 }

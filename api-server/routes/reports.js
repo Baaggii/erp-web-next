@@ -1,6 +1,6 @@
 import express from 'express';
-import { getFormSchemas } from '../controllers/formController.js';
+import { getReportData } from '../controllers/reportController.js';
 import { requireAuth } from '../middlewares/auth.js';
 const router = express.Router();
-router.get('/', requireAuth, getFormSchemas);
+router.get('/:reportId', requireAuth, getReportData);
 export default router;
