@@ -3,7 +3,8 @@
 <IfModule mod_rewrite.c>
 
   RewriteEngine On
-  
+  RewriteBase /erp/
+
   # 1) Proxy API calls
   RewriteRule ^api/(.*)$ http://127.0.0.1:3002/api/$1 [P,L]
 
