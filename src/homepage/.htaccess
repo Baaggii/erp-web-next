@@ -1,7 +1,9 @@
+# public_html/.htaccess
 RewriteEngine On
 
-# Proxy /api/* to Express backend
-ProxyPass "/api/" "http://127.0.0.1:3002/api/"
-ProxyPassReverse "/api/" "http://127.0.0.1:3002/api/"
+# Serve homepage
+DirectoryIndex index.html
 
-# Serve assets from /assets
+# Fallback to index.html for any non-file request
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^ index.html [L]
