@@ -3,7 +3,7 @@ import {
   insertUser,
   modifyUser,
   deleteUserById
-} from '../db/index.js';
+} from '../../db/index.js';
 
 export async function listUsers(req, res, next) {
   try {

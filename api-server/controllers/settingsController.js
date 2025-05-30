@@ -1,4 +1,4 @@
-import { getTenantFlags, setTenantFlags } from '../db/index.js';
+import { getTenantFlags, setTenantFlags } from '../../db/index.js';
 export async function getSettings(req, res, next) {
   try {
     const flags = await getTenantFlags(req.user.companies[0]);

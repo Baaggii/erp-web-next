@@ -1,4 +1,4 @@
-import { findAllCompanies } from '../db/index.js';
+import { findAllCompanies } from '../../db/index.js';
 export async function listCompanies(req, res, next) {
   try {
     const companies = await findAllCompanies();

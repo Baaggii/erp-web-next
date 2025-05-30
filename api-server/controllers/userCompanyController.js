@@ -2,7 +2,7 @@ import {
   fetchAssignments,
   addAssignment,
   removeAssignmentById
-} from '../db/index.js';
+} from '../../db/index.js';
 
 export async function listAssignments(req, res, next) {
   try {
