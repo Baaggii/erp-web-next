@@ -1,6 +1,11 @@
 import path from 'path';
+import { fileURLToPath } from 'url';
 import express from 'express';
 import cookieParser from 'cookie-parser';
+
+// Polyfill for __dirname in ES module scope
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
 import userCompRoutes from './routes/user_companies.js';
