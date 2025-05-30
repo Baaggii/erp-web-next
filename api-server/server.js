@@ -29,11 +29,10 @@ app.use('/api/reports', reportsRoutes);
 app.use('/api/dbtest', dbTestRoutes);
 app.use('/api/settings', settingsRoutes);
 
-// 3️⃣ Serve static SPA assets (no /erp prefix)
+// 3️⃣ Serve static SPA assets from build folder
 const buildDir = path.resolve(__dirname, '../erp.mgt.mn');
-app.use(express.static(buildDir, { index: 'index.html' }));
-// 4️⃣ Fallback to index.html for client-side routing
-app.get('*', (req, res) => res.sendFile(path.join(buildDir, 'index.html')));
+app.use(express.static(buildDir));
+// 4️⃣ Fallback to index.html for client-side routing\ napp.get('*', (req, res) => res.sendFile(path.join(buildDir, 'index.html')));
 
 // 5️⃣ Error handling
 app.use(errorHandler);
