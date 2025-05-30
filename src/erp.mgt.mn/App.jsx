@@ -1,13 +1,14 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+[⚠️ Suspicious Content] import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import AuthContextProvider from './context/AuthContext.jsx';
 import Layout from './components/Layout.jsx';
-import RequireAuth from './components/RequireAuth.jsx';
+import MainUser from './pages/MainUser.jsx';
+import MainUserSettings from './pages/MainUserSettings.jsx';
+import LicenseConfig from './pages/LicenseConfig.jsx';
 import Dashboard from './pages/Dashboard.jsx';
-import LoginPage from './pages/Login.jsx';
-import FormsPage from './pages/Forms.jsx';
-import ReportsPage from './pages/Reports.jsx';
-import UsersPage from './pages/Users.jsx';
-import SettingsPage from './pages/Settings.jsx';
+import Forms from './pages/Forms.jsx';
+import Reports from './pages/Reports.jsx';
+import Users from './pages/Users.jsx';
+import Settings from './pages/Settings.jsx';
 
 export default function App() {
   return (
@@ -15,14 +16,14 @@ export default function App() {
       <BrowserRouter>
         <Layout>
           <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route element={<RequireAuth />}>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/forms" element={<FormsPage />} />
-              <Route path="/reports" element={<ReportsPage />} />
-              <Route path="/users" element={<UsersPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-            </Route>
+            <Route path="/main-user" element={<MainUser />} />
+            <Route path="/main-user/settings" element={<MainUserSettings />} />
+            <Route path="/main-user/licenses" element={<LicenseConfig />} />
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/forms" element={<Forms />} />
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/users" element={<Users />} />
+            <Route path="/settings" element={<Settings />} />
           </Routes>
         </Layout>
       </BrowserRouter>
