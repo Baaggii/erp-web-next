@@ -120,3 +120,15 @@ export async function listCompanies() {
   );
   return rows;
 }
+
+/**
+ * Fetch report data by report ID
+ */
+export async function fetchReportData(reportId, params = {}) {
+  // Placeholder implementation: customize per report schema
+  const [rows] = await pool.query(
+    'SELECT * FROM report_data WHERE report_id = ?',
+    [reportId]
+  );
+  return rows;
+}
