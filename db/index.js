@@ -110,3 +110,13 @@ export async function removeCompanyAssignment(userId, companyId) {
   );
   return result;
 }
+
+/**
+ * List all companies
+ */
+export async function listCompanies() {
+  const [rows] = await pool.query(
+    'SELECT id, name, created_at FROM companies'
+  );
+  return rows;
+}
