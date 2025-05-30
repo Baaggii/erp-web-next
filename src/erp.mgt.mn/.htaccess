@@ -1,17 +1,12 @@
-# File: public_html/erp/.htaccess
+RewriteEngine On
 
-<IfModule mod_rewrite.c>
+# Proxy API calls to Express (running on localhost:3002)
+ProxyPass "/api/" "http://127.0.0.1:3002/api/"
+ProxyPassReverse "/api/" "http://127.0.0.1:3002/api/"
 
-  RewriteEngine On
-  
-  # 1) Proxy API calls
-  RewriteRule ^api/(.*)$ http://127.0.0.1:3002/api/$1 [P,L]
+# Serve static assets from /assets/
+RewriteRule ^assets/(.*)$ assets/$1 [L]
 
-  # 2) If request maps to an actual file or directory, serve it directly
-  RewriteCond %{REQUEST_FILENAME} -f [OR]
-  RewriteCond %{REQUEST_FILENAME} -d
-  RewriteRule ^ - [L]
-
-  # 3) Otherwise, serve our SPA shell
-  RewriteRule . /index.html [L]
-</IfModule>
+# Fallback all other URLs to index.html
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^.*$ index.html [L,QSA]

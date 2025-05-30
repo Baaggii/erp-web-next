@@ -1,0 +1,7 @@
+RewriteEngine On
+
+# Proxy /api/* to Express backend
+ProxyPass "/api/" "http://127.0.0.1:3002/api/"
+ProxyPassReverse "/api/" "http://127.0.0.1:3002/api/"
+
+# Serve assets from /assets
