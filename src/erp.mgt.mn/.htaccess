@@ -1,12 +1,13 @@
+# /home/mgtmn/erp.mgt.mn/.htaccess
 RewriteEngine On
 
-# Proxy API calls to Express (running on localhost:3002)
+# Proxy API calls to Express backend
 ProxyPass "/api/" "http://127.0.0.1:3002/api/"
 ProxyPassReverse "/api/" "http://127.0.0.1:3002/api/"
 
-# Serve static assets from /assets/
+# Serve static assets
 RewriteRule ^assets/(.*)$ assets/$1 [L]
 
-# Fallback all other URLs to index.html
+# Fallback all other routes to index.html
 RewriteCond %{REQUEST_FILENAME} !-f
-RewriteRule ^.*$ index.html [L,QSA]
+RewriteRule ^.*$ index.html [L,
