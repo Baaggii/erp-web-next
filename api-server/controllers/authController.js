@@ -31,4 +31,3 @@ export async function logout(req, res) {
 export async function getProfile(req, res) {
   res.json({ id: req.user.id, email: req.user.email });
 }
-```js
