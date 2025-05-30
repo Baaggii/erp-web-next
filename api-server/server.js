@@ -43,7 +43,7 @@ app.use('/api/settings', settingsRoutes);
 // Serve static React build and fallback to index.html
 // NOTE: adjust this path to where your SPA build actually lives.
 // If your build outputs to /home/mgtmn/erp.mgt.mn, update to:
-const buildDir = path.resolve(__dirname, '../../erp.mgt.mn');
+const buildDir = path.resolve(__dirname, '../../../erp.mgt.mn');
 app.use(express.static(buildDir));
 app.get('*', (req, res) => res.sendFile(path.join(buildDir, 'index.html')));
 
