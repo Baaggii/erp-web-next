@@ -1,34 +1,34 @@
-import jwtService from '../services/jwtService.js';
-import { findUserByEmail, findUserById } from '../db/index.js';
-import bcrypt from 'bcryptjs';
+import { getUserByEmail } from '../../db/index.js'; // adjust path to your db folder
+import jwt from 'jsonwebtoken';
 
 export async function login(req, res, next) {
   try {
     const { email, password } = req.body;
-    const user = await findUserByEmail(email);
-    if (!user) return res.status(401).json({ message: 'Unknown user' });
-    const match = await bcrypt.compare(password, user.password);
-    if (!match) return res.status(401).json({ message: 'Invalid password' });
-    const payload = { id: user.id, companies: user.companies };
-    const token = jwtService.sign(payload);
+    const user = await getUserByEmail(email);
+    if (!user || !(await user.verifyPassword(password))) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+    const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, {
+      expiresIn: '2h'
+    });
+
     res.cookie(process.env.COOKIE_NAME, token, {
       httpOnly: true,
-      maxAge: jwtService.getExpiryMillis()
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax'
     });
-    res.json({ message: 'Login successful', user: { id: user.id, email: user.email } });
+    res.json({ id: user.id, email: user.email });
   } catch (err) {
     next(err);
   }
 }
 
-export function logout(req, res) {
+export async function logout(req, res) {
   res.clearCookie(process.env.COOKIE_NAME);
-  res.json({ message: 'Logged out' });
+  res.sendStatus(204);
 }
 
 export async function getProfile(req, res) {
   res.json({ id: req.user.id, email: req.user.email });
-} catch (err) {
-    next(err);
-  }
 }
+```js
