@@ -13,5 +13,5 @@
   RewriteRule ^ - [L]
 
   # 3) Otherwise, serve our SPA shell
-  RewriteRule . /erp/index.html [L]
+  RewriteRule . /index.html [L]
 </IfModule>
