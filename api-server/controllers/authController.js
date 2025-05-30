@@ -26,11 +26,9 @@ export function logout(req, res) {
   res.json({ message: 'Logged out' });
 }
 
-export async function getProfile(req, res, next) {
-  try {
-    const user = await findUserById(req.user.id);
-    res.json({ id: user.id, email: user.email, roles: user.roles });
-  } catch (err) {
+export async function getProfile(req, res) {
+  res.json({ id: req.user.id, email: req.user.email });
+} catch (err) {
     next(err);
   }
 }

@@ -16,14 +16,6 @@ const app = express();
 // 1. Serve API under /api
 app.use('/api', apiRouter);   // mount your existing routes under /api
 
-// 2. Serve built ERP front-end
-const staticPath = path.resolve(__dirname, '../erp.mgt.mn');
-app.use(express.static(staticPath, { index: 'index.html' }));
-// Fallback for SPA routes
-app.get('*', (req, res) => {
-  res.sendFile(path.join(staticPath, 'index.html'));
-});
-
 app.use(logger);
 app.use(express.json());
 app.use(cookieParser());
@@ -36,6 +28,14 @@ app.use('/api/forms', formsRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/dbtest', dbTestRoutes);
 app.use('/api/settings', settingsRoutes);
+
+// 2. Serve built ERP front-end
+const staticPath = path.resolve(__dirname, '../erp.mgt.mn');
+app.use(express.static(staticPath, { index: 'index.html' }));
+// Fallback for SPA routes
+app.get('*', (req, res) => {
+  res.sendFile(path.join(staticPath, 'index.html'));
+});
 
 app.use(errorHandler);
 

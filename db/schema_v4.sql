@@ -275,3 +275,51 @@ ALTER TABLE user_companies
     DEFAULT CURRENT_TIMESTAMP
     ON UPDATE CURRENT_TIMESTAMP
     AFTER created_at;
+
+### 3. Recommended Architecture & Configuration Enhancements
+To support a **main user** who:
+1. **Creates Companies**
+2. **Manages Licenses** (enable/disable modules per company after payment)
+3. **Assigns & Manages Company Users**
+
+Consider the following structure and patterns:
+
+#### 3.1 Database Schema Extensions
+```sql
+-- Companies table holds tenant records
+CREATE TABLE companies (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  owner_user_id INT NOT NULL,         -- main user relationship
+  created_at DATETIME DEFAULT NOW()
+);
+
+-- License plans definitions
+CREATE TABLE license_plans (
+  id INT PRIMARY KEY,
+  name VARCHAR(50),                   -- Basic, Intermediate, Advanced
+  modules JSON,                       -- ["finance","reports",…]
+  price DECIMAL(10,2)
+);
+
+-- Company licenses after purchase
+CREATE TABLE company_licenses (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  company_id INT REFERENCES companies(id),
+  plan_id INT REFERENCES license_plans(id),
+  start_date DATETIME,
+  end_date DATETIME,
+  status ENUM('active','expired','cancelled')
+);
+
+-- Payments record for audit & webhook tracking
+CREATE TABLE payments (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  company_license_id INT REFERENCES company_licenses(id),
+  provider VARCHAR(50),               -- e.g. 'stripe'
+  provider_payment_id VARCHAR(255),
+  amount DECIMAL(10,2),
+  currency VARCHAR(10),
+  status VARCHAR(30),                 -- 'succeeded','pending','failed'
+  created_at DATETIME DEFAULT NOW()
+);
