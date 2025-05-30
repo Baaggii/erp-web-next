@@ -6,7 +6,7 @@
     "scripts": {
     "dev": "vite",
     "build:homepage": "vite build --config vite.home.config.js",
-    "build:erp": "vite build --config vite.config.js --base=/erp/",
+    "build:erp": "vite build --config vite.config.js",
     "serve": "node api-server/server.js"
   },
   "dependencies": {
