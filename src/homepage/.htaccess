@@ -1,5 +1,7 @@
 RewriteEngine On
-# Serve corporate site normally
-RewriteRule ^$ /index.html [L]
-# Proxy /erp/* to ERP SPA
-RewriteRule ^erp(/.*)?$ /erp/index.html [L]
+
+# Proxy /api/* to Express backend
+ProxyPass "/api/" "http://127.0.0.1:3002/api/"
+ProxyPassReverse "/api/" "http://127.0.0.1:3002/api/"
+
+# Serve assets from /assets
