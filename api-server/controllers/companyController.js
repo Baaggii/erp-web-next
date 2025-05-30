@@ -1,7 +1,9 @@
-import { findAllCompanies } from '../../db/index.js';
-export async function listCompanies(req, res, next) {
+import { listCompanies } from '../../db/index.js';
+import { requireAuth } from '../middlewares/auth.js';
+
+export async function listCompaniesHandler(req, res, next) {
   try {
-    const companies = await findAllCompanies();
+    const companies = await listCompanies();
     res.json(companies);
   } catch (err) {
     next(err);
