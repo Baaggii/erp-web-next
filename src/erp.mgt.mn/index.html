@@ -1,15 +1,44 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>ERP Web Next</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Ensure the path matches your Vite base: "/erp/" -->
-    <link rel="stylesheet" href="/index.css" />
-  </head>
-  <body>
-    <div id="root"></div>
-    <!-- Your SPA entrypoint; Vite dev server serves this in dev mode -->
-    <script type="module" src="/main.jsx"></script>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <title>ERP Home</title>
+</head>
+<body>
+  <h1>Welcome to Our Service</h1>
+  <form id="portalForm">
+    <label for="portalSelect">Choose Portal:</label>
+    <select id="portalSelect">
+      <option value="https://erp.mgt.mn/">ERP Portal</option>
+      <option value="https://customer.mgt.mn/">Customer Portal</option>
+    </select>
+    <button type="submit">Go</button>
+  </form>
+  <ul>
+    <li><a href="https://erp.mgt.mn/">ERP Portal</a></li>
+    <li><a href="https://customer.mgt.mn/">Customer Portal</a></li>
+  </ul>
+  <script>
+    document.getElementById('portalForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      var url = document.getElementById('portalSelect').value;
+      window.location.href = url;
+    });
+  </script>
+</body>
+</html>
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>ERP Home</title>
+</head>
+<body>
+  <h1>Welcome to Our Service</h1>
+  <ul>
+    <li><a href="https://erp.mgt.mn/">ERP Portal</a></li>
+    <li><a href="https://customer.mgt.mn/">Customer Portal</a></li>
+  </ul>
+</body>
 </html>
