@@ -16,6 +16,18 @@ export const pool = mysql.createPool({
 });
 
 /**
+ * Test database connection
+ */
+export async function testConnection() {
+  try {
+    await pool.query('SELECT 1');
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
+/**
  * Fetch a user by email (or employee ID)
  */
 export async function getUserByEmail(emailOrEmpId) {
@@ -125,10 +137,33 @@ export async function listCompanies() {
  * Fetch report data by report ID
  */
 export async function fetchReportData(reportId, params = {}) {
-  // Placeholder implementation: customize per report schema
   const [rows] = await pool.query(
     'SELECT * FROM report_data WHERE report_id = ?',
     [reportId]
   );
   return rows;
+}
+
+/**
+ * Get application settings
+ */
+export async function getSettings() {
+  const [rows] = await pool.query('SELECT * FROM settings LIMIT 1');
+  return rows[0] || {};
+}
+
+/**
+ * Update application settings
+ */
+export async function updateSettings(updates) {
+  const keys = Object.keys(updates);
+  const values = Object.values(updates);
+  const setClause = keys.map(k => `
+    \`${k}\` = ?
+  `).join(', ');
+  await pool.query(
+    `UPDATE settings SET ${setClause}`,
+    values
+  );
+  return getSettings();
 }
