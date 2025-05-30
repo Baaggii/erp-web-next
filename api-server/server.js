@@ -9,7 +9,7 @@ import formsRoutes from './routes/forms.js';
 import reportsRoutes from './routes/reports.js';
 import dbTestRoutes from './routes/dbtest.js';
 import settingsRoutes from './routes/settings.js';
-import errorHandler from './middlewares/errorHandler.js';
+import { errorHandler } from './middlewares/errorHandler.js';
 import logger from './middlewares/logging.js';
 
 const app = express();
