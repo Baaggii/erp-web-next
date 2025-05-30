@@ -2,45 +2,50 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import express from 'express';
 import cookieParser from 'cookie-parser';
-
-// Polyfill for __dirname in ES module scope
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-import authRoutes from './routes/auth.js';
-import userRoutes from './routes/users.js';
-import userCompRoutes from './routes/user_companies.js';
-import companyRoutes from './routes/companies.js';
-import formsRoutes from './routes/forms.js';
-import reportsRoutes from './routes/reports.js';
-import dbTestRoutes from './routes/dbtest.js';
-import settingsRoutes from './routes/settings.js';
+import dotenv from 'dotenv';
+import { testConnection } from '../db/index.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 import { logger } from './middlewares/logging.js';
+import authRoutes from './routes/auth.js';
+import userRoutes from './routes/users.js';
+import companyRoutes from './routes/companies.js';
+import settingsRoutes from './routes/settings.js';
+
+dotenv.config();
+
+// Polyfill for __dirname in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
-
-// 1️⃣ Logging & JSON parsing
-app.use(logger);
 app.use(express.json());
-app.use(cookieParser());
+app.use(cookieParser(process.env.JWT_SECRET));
+app.use(logger);
 
-// 2️⃣ Mount API routes under /api
+// Health-check: also verify DB connection
+app.get('/api/auth/health', async (req, res, next) => {
+  try {
+    const dbResult = await testConnection();
+    if (!dbResult.ok) throw dbResult.error;
+    res.json({ status: 'ok' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/user_companies', userCompRoutes);
 app.use('/api/companies', companyRoutes);
-app.use('/api/forms', formsRoutes);
-app.use('/api/reports', reportsRoutes);
-app.use('/api/dbtest', dbTestRoutes);
 app.use('/api/settings', settingsRoutes);
 
-// 3️⃣ Serve static SPA assets from build folder
+// Serve static React build and fallback to index.html
 const buildDir = path.resolve(__dirname, '../erp.mgt.mn');
 app.use(express.static(buildDir));
-// 4️⃣ Fallback to index.html for client-side routing\ napp.get('*', (req, res) => res.sendFile(path.join(buildDir, 'index.html')));
+app.get('*', (req, res) => res.sendFile(path.join(buildDir, 'index.html')));
 
-// 5️⃣ Error handling
+// Error middleware (must be last)
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 3002;
-app.listen(PORT, () => console.log(`✅ ERP API & SPA listening on port ${PORT}`));
+const port = process.env.PORT || 3002;
+app.listen(port, () => console.log(`✅ ERP API & SPA listening on port ${port}`));
