@@ -1,7 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import LoginForm from './LoginForm.jsx';
 import LogoutButton from './LogoutButton.jsx';
-import MosaicLayout from './MosaicLayout.jsx';
 
 export default function Layout() {
   return (
