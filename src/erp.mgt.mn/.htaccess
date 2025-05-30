@@ -1,13 +1,18 @@
-# /home/mgtmn/erp.mgt.mn/.htaccess
-RewriteEngine On
+# File: public_html/erp/.htaccess
 
-# Proxy API calls to Express backend
-ProxyPass "/api/" "http://127.0.0.1:3002/api/"
-ProxyPassReverse "/api/" "http://127.0.0.1:3002/api/"
+<IfModule mod_rewrite.c>
 
-# Serve static assets
-RewriteRule ^assets/(.*)$ assets/$1 [L]
+  RewriteEngine On
+  RewriteBase /erp/
 
-# Fallback all other routes to index.html
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteRule ^.*$ index.html [L,
+  # 1) Proxy API calls
+  RewriteRule ^api/(.*)$ http://127.0.0.1:3002/api/$1 [P,L]
+
+  # 2) If request maps to an actual file or directory, serve it directly
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # 3) Otherwise, serve our SPA shell
+  RewriteRule . /erp/index.html [L]
+</IfModule>
