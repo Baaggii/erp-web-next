@@ -1,6 +1,7 @@
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
+
 dotenv.config();
 
 // Create a connection pool
@@ -74,5 +75,38 @@ export async function updateUser(id, { name, email, role }) {
  */
 export async function deleteUserById(id) {
   const [result] = await pool.query('DELETE FROM users WHERE id = ?', [id]);
+  return result;
+}
+
+/**
+ * Assign a user to a company with a specific role
+ */
+export async function assignCompanyToUser(userId, companyId, role, createdBy) {
+  const [result] = await pool.query(
+    'INSERT INTO user_companies (empid, company_id, role, created_by) VALUES (?, ?, ?, ?)',
+    [userId, companyId, role, createdBy]
+  );
+  return { id: result.insertId };
+}
+
+/**
+ * List company assignments for a given user
+ */
+export async function listUserCompanies(userId) {
+  const [rows] = await pool.query(
+    'SELECT uc.company_id, c.name, uc.role FROM user_companies uc JOIN companies c ON uc.company_id = c.id WHERE uc.empid = ?',
+    [userId]
+  );
+  return rows;
+}
+
+/**
+ * Remove a user-company assignment
+ */
+export async function removeCompanyAssignment(userId, companyId) {
+  const [result] = await pool.query(
+    'DELETE FROM user_companies WHERE empid = ? AND company_id = ?',
+    [userId, companyId]
+  );
   return result;
 }
