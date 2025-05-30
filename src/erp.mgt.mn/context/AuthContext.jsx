@@ -1,26 +1,31 @@
-import { createContext, useState, useEffect } from 'react';
+import { createContext, useState, useEffect, useContext } from 'react';
 import { fetchProfile } from '../hooks/useAuth.js';
 
-export const AuthContext = createContext();
+// Create authentication context
+export const AuthContext = createContext(null);
+
+// Provider component to wrap app
 export default function AuthContextProvider({ children }) {
   const [user, setUser] = useState(null);
+
   useEffect(() => {
-    fetchProfile().then(setUser).catch(() => setUser(null));
+    fetchProfile()
+      .then(setUser)
+      .catch(() => setUser(null));
   }, []);
-  return <AuthContext.Provider value={{ user, setUser }}>{children}</AuthContext.Provider>;
+
+  return (
+    <AuthContext.Provider value={{ user, setUser }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
-// Custom hook to access auth context
+// Custom hook for consuming auth context
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) {
+  if (context === undefined) {
     throw new Error('useAuth must be used within AuthContextProvider');
   }
   return context;
-}) {
-  const [user, setUser] = useState(null);
-  useEffect(() => {
-    fetchProfile().then(setUser).catch(() => setUser(null));
-  }, []);
-  return <AuthContext.Provider value={{ user, setUser }}>{children}</AuthContext.Provider>;
 }
