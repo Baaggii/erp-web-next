@@ -2,14 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>ERP Web Next</title>
+    <!-- Use Vite's plugin to inject assets -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Ensure the path matches your Vite base: "/" -->
-    <link rel="stylesheet" href="/index.css" />
+    <title>ERP Portal</title>
   </head>
   <body>
     <div id="root"></div>
-    <!-- Your SPA entrypoint; Vite dev server serves this in dev mode -->
-    <script type="module" src="/main.jsx"></script>
+    <!-- Entry point; Vite will transform this to hashed assets in build -->
+    <script type="module" src="./main.jsx"></script>
   </body>
 </html>
