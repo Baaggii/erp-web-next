@@ -158,12 +158,34 @@ export async function getSettings() {
 export async function updateSettings(updates) {
   const keys = Object.keys(updates);
   const values = Object.values(updates);
-  const setClause = keys.map(k => `
-    \`${k}\` = ?
-  `).join(', ');
-  await pool.query(
-    `UPDATE settings SET ${setClause}`,
-    values
-  );
+  const setClause = keys.map(k => `\`${k}\` = ?`).join(', ');
+  await pool.query(`UPDATE settings SET ${setClause}`, values);
   return getSettings();
+}
+
+/**
+ * Get tenant-specific feature flags
+ */
+export async function getTenantFlags(companyId) {
+  const [rows] = await pool.query(
+    'SELECT flag_key, flag_value FROM tenant_feature_flags WHERE company_id = ?',
+    [companyId]
+  );
+  return rows.reduce((acc, { flag_key, flag_value }) => {
+    acc[flag_key] = Boolean(flag_value);
+    return acc;
+  }, {});
+}
+
+/**
+ * Update tenant-specific feature flags
+ */
+export async function setTenantFlags(companyId, flags) {
+  for (const [key, value] of Object.entries(flags)) {
+    await pool.query(
+      'INSERT INTO tenant_feature_flags (company_id, flag_key, flag_value) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE flag_value = ?',
+      [companyId, key, value ? 1 : 0, value ? 1 : 0]
+    );
+  }
+  return getTenantFlags(companyId);
 }
