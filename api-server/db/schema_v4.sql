@@ -209,3 +209,69 @@ CREATE TABLE SGereeJ (
   `trtype` VARCHAR(120) NULL,
   `uitranstypename` VARCHAR(120) NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+-- Users table for authentication
+CREATE TABLE IF NOT EXISTS `users` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `email` VARCHAR(255) NOT NULL UNIQUE,
+  `password` VARCHAR(255) NOT NULL,
+  `name` VARCHAR(100) NOT NULL,
+  `company` VARCHAR(100) DEFAULT 'ModMarket ХХК',
+  `role` ENUM('admin','user') DEFAULT 'user',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+-- Dynamic form submissions storage
+CREATE TABLE IF NOT EXISTS `form_submissions` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `form_id` VARCHAR(100) NOT NULL,
+  `data` JSON NOT NULL,
+  `submitted_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+-- Seed initial admin user with known password 'Admin@123'
+-- Generate hash via Node: `require('bcrypt').hash('Admin@123', 10, console.log)`
+INSERT INTO `users` (`email`, `password`, `name`, `company`, `role`)
+VALUES (
+  'admin@modmarket.mn',
+  '$2b$10$Z9s94pu0QEKnn1J8/p36Xuw3ULxX5gE/UfjTXyW6uxS0921gys8wu',  -- hash for 'Admin@123'
+  'Administrator',
+  'ModMarket ХХК',
+  'admin'
+);
+
+CREATE TABLE companies (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  /* …any company-wide settings… */
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+CREATE TABLE user_companies (
+  user_id     INT                       NOT NULL,
+  company_id  INT                       NOT NULL,
+  empid       VARCHAR(50)               NOT NULL,
+  role        ENUM('user','admin')      NOT NULL DEFAULT 'user',
+  PRIMARY KEY (user_id, company_id),
+  UNIQUE KEY ux_company_empid (company_id, empid),
+  FOREIGN KEY (user_id)    REFERENCES users(id),
+  FOREIGN KEY (company_id) REFERENCES companies(id)
+) ENGINE=InnoDB;
+
+ALTER TABLE users
+  ADD COLUMN created_by VARCHAR(50) NOT NULL AFTER password,
+  ADD CONSTRAINT fk_users_created_by
+    FOREIGN KEY (created_by) REFERENCES users(empid);
+
+ALTER TABLE users
+  ADD COLUMN created_by INT    NOT NULL AFTER password,
+  ADD FOREIGN KEY (created_by) REFERENCES users(id);
+
+ALTER TABLE user_companies
+  ADD COLUMN updated_at DATETIME
+    NOT NULL
+    DEFAULT CURRENT_TIMESTAMP
+    ON UPDATE CURRENT_TIMESTAMP
+    AFTER created_at;
