@@ -12,9 +12,10 @@ export default function LoginForm() {
   async function handleSubmit(e) {
     e.preventDefault();
     await login({ email, password });
-    const profile = await fetch('/api/auth/me', {
-      credentials: 'include'
-    }).then(res => res.json());
+    const profile = await fetch('/api/auth/me', { credentials: 'include' }).then(res => {
+      if (!res.ok) throw new Error('Failed to load profile');
+      return res.json();
+    });
     setUser(profile);
     navigate('/');
   }

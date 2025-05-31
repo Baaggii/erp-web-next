@@ -1,4 +1,4 @@
-import { getUserByEmail } from '../../db/index.js'; // adjust path to your db folder
+import { getUserByEmail } from '../../../db/index.js'; // adjust path to your db folder
 import jwt from 'jsonwebtoken';
 
 export async function login(req, res, next) {
