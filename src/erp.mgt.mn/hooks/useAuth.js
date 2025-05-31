@@ -22,12 +22,6 @@ export async function logout() {
 
 
 export async function fetchProfile() {
-  const res = await fetch('/api/auth/me');
-  if (!res.ok) throw new Error('Not authenticated');
-  return res.json();
-}
-
-export async function fetchProfile() {
   const res = await fetch('/api/auth/me', {
     credentials: 'include'
   });
