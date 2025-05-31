@@ -1,36 +1,35 @@
-import { createContext, useState, useEffect, useContext } from 'react';
-import { fetchProfile } from '../hooks/useAuth.jsx';
+// src/erp.mgt.mn/context/AuthContext.jsx
+import React, { createContext, useState, useEffect } from 'react';
 
-// 1) Create the AuthContext
+// Create the AuthContext
 export const AuthContext = createContext({
   user: null,
   setUser: () => {},
 });
 
-// 2) Export a provider component that wraps the app
 export default function AuthContextProvider({ children }) {
   const [user, setUser] = useState(null);
 
+  // On mount, attempt to load the current profile (if a cookie is present)
   useEffect(() => {
-    // On initial load, see if the user is already logged in (cookie present).
-    // NOTE: we pass credentials: 'include' so the browser sends any erp_token cookie.
-    async function fetchProfile() {
+    async function loadProfile() {
       try {
-        const res = await fetch('/api/auth/me', { credentials: 'include' });
+        const res = await fetch('/api/auth/me', {
+          credentials: 'include',
+        });
+
         if (res.ok) {
           const data = await res.json();
-          setUser(data);      // { id, email }
+          setUser(data);
         } else {
-          // 401 or 403 means “not logged in” → just leave user as null
-          setUser(null);
+          // Not logged in or token expired → ignore
         }
       } catch (err) {
-        console.error('Unexpected error fetching profile:', err);
-        setUser(null);
+        console.error('Unable to fetch profile:', err);
       }
     }
 
-    fetchProfile();
+    loadProfile();
   }, []);
 
   return (
@@ -39,6 +38,7 @@ export default function AuthContextProvider({ children }) {
     </AuthContext.Provider>
   );
 }
+
 
 // Custom hook for consuming auth context
 export function useAuth() {
