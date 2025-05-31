@@ -1,22 +1,35 @@
 // src/erp.mgt.mn/context/AuthContext.jsx
-import { createContext, useState, useEffect } from 'react';
-import { fetchProfile } from '../hooks/useAuth.jsx';
+import React, { createContext, useState, useEffect } from 'react';
 
-export const AuthContext = createContext({ user: null, setUser: () => {} });
+// Create the AuthContext
+export const AuthContext = createContext({
+  user: null,
+  setUser: () => {},
+});
 
-export function AuthProvider({ children }) {
+export default function AuthContextProvider({ children }) {
   const [user, setUser] = useState(null);
 
-  // On mount, attempt to fetch the current user
+  // On mount, attempt to load the current profile (if a cookie is present)
   useEffect(() => {
-    (async () => {
+    async function loadProfile() {
       try {
-        const profile = await fetchProfile();
-        setUser(profile);
-      } catch {
-        setUser(null);
+        const res = await fetch('/api/auth/me', {
+          credentials: 'include',
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setUser(data);
+        } else {
+          // Not logged in or token expired → ignore
+        }
+      } catch (err) {
+        console.error('Unable to fetch profile:', err);
       }
-    })();
+    }
+
+    loadProfile();
   }, []);
 
   return (

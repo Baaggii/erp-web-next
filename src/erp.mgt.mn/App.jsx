@@ -13,17 +13,22 @@ import SettingsPage from './pages/Settings.jsx';
 
 export default function App() {
   return (
-    <AuthProvider>
+    <AuthContextProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={<LoginForm />} />
-          <Route element={<Layout />}>  {/* Protected routes under Layout */}
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/users" element={<UsersPage />} />
-            <Route path="/companies" element={<CompaniesPage />} />
+          {/* Public route for login without sidebar/layout */}
+          <Route path="/login" element={<LoginPage />} />
+
+          {/* Protected app routes */}
+          <Route path="/*" element={<RequireAuth><ERPLayout  /></RequireAuth>}>
+            <Route index element={<Dashboard />} />
+            <Route path="forms" element={<FormsPage />} />
+            <Route path="reports" element={<ReportsPage />} />
+            <Route path="users" element={<UsersPage />} />
+            <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Routes>
       </BrowserRouter>
-    </AuthProvider>
+    </AuthContextProvider>
   );
 }
