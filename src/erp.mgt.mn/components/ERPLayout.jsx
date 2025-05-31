@@ -1,16 +1,10 @@
-// src/erp.mgt.mn/components/ERPLayout.jsx
-import React, { useContext } from 'react';
+// src/erp.mgt.mn/components/Layout.jsx
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { logout } from '../hooks/useAuth.jsx';
 
-/**
- * A desktop‐style “ERPLayout” with:
- *  - Top header bar (logo, nav icons, user dropdown)
- *  - Left sidebar (menu groups + items)
- *  - Main content area (faux window container)
- */
-export default function ERPLayout() {
+export default function Layout() {
   const { user, setUser } = useContext(AuthContext);
   const navigate = useNavigate();
 
@@ -21,227 +15,36 @@ export default function ERPLayout() {
   }
 
   return (
-    <div style={styles.container}>
-      <Header user={user} onLogout={handleLogout} />
-      <div style={styles.body}>
-        <Sidebar />
-        <MainWindow>
-          <Outlet />
-        </MainWindow>
-      </div>
-    </div>
-  );
-}
-
-/** Top header bar **/
-function Header({ user, onLogout }) {
-  return (
-    <header style={styles.header}>
-      <div style={styles.logoSection}>
-        <img
-          src="/assets/logo‐small.png"
-          alt="ERP Logo"
-          style={styles.logoImage}
-        />
-        <span style={styles.logoText}>MyERP</span>
-      </div>
-      <nav style={styles.headerNav}>
-        <button style={styles.iconBtn}>🗔 Home</button>
-        <button style={styles.iconBtn}>🗗 Windows</button>
-        <button style={styles.iconBtn}>❔ Help</button>
-      </nav>
-      <div style={styles.userSection}>
-        <span style={{ marginRight: '0.5rem' }}>
-          {user ? `Welcome, ${user.email}` : ''}
-        </span>
-        {user && (
-          <button style={styles.logoutBtn} onClick={onLogout}>
-            Logout
-          </button>
-        )}
-      </div>
-    </header>
-  );
-}
-
-/** Left sidebar with “menu groups” and “pinned items” **/
-function Sidebar() {
-  // You can expand/collapse these groups if you like; this is a static example
-  return (
-    <aside style={styles.sidebar}>
-      <div style={styles.menuGroup}>
-        <div style={styles.groupTitle}>📌 Pinned</div>
-        <NavLink to="/" style={styles.menuItem}>
-          Dashboard
-        </NavLink>
-        <NavLink to="/forms" style={styles.menuItem}>
-          Forms
-        </NavLink>
-        <NavLink to="/reports" style={styles.menuItem}>
-          Reports
-        </NavLink>
-      </div>
-
-      <hr style={styles.divider} />
-
-      <div style={styles.menuGroup}>
-        <div style={styles.groupTitle}>📁 Modules</div>
-        <NavLink to="/users" style={styles.menuItem}>
-          Users
-        </NavLink>
-        <NavLink to="/settings" style={styles.menuItem}>
-          Settings
-        </NavLink>
-      </div>
-    </aside>
-  );
-}
-
-/** A faux “window” wrapper around the main content **/
-function MainWindow({ children }) {
-  return (
-    <div style={styles.windowContainer}>
-      <div style={styles.windowHeader}>
-        <span>Sales Dashboard</span>
-        <div>
-          <button style={styles.windowHeaderBtn}>–</button>
-          <button style={styles.windowHeaderBtn}>□</button>
-          <button style={styles.windowHeaderBtn}>×</button>
+    <div className="erp-layout">
+      {/* Top header */}
+      <header className="erp-header">
+        <h1>ERP</h1>
+        <div style={{ marginLeft: 'auto' }}>
+          {user ? (
+            <>
+              <span style={{ marginRight: '1rem' }}>{user.email}</span>
+              <button onClick={handleLogout}>Logout</button>
+            </>
+          ) : null}
         </div>
+      </header>
+
+      <div className="erp-body">
+        {/* Sidebar */}
+        <nav className="erp-sidebar">
+          <ul>
+            <li><NavLink to="/" end>Dashboard</NavLink></li>
+            <li><NavLink to="/users">Users</NavLink></li>
+            <li><NavLink to="/companies">Companies</NavLink></li>
+            {/* add more links */}
+          </ul>
+        </nav>
+
+        {/* Main content area */}
+        <main className="erp-main">
+          <Outlet />
+        </main>
       </div>
-      <div style={styles.windowContent}>{children}</div>
     </div>
   );
 }
-
-/** Inline styles (you can move these into a `.css` or Tailwind classes if you prefer) **/
-const styles = {
-  container: {
-    display: 'flex',
-    flexDirection: 'column',
-    height: '100vh',
-    fontFamily: 'Arial, sans-serif',
-  },
-  header: {
-    display: 'flex',
-    alignItems: 'center',
-    backgroundColor: '#1f2937',
-    color: '#fff',
-    padding: '0 1rem',
-    height: '48px',
-    flexShrink: 0,
-  },
-  logoSection: {
-    display: 'flex',
-    alignItems: 'center',
-    flex: '0 0 auto',
-  },
-  logoImage: {
-    width: '24px',
-    height: '24px',
-    marginRight: '0.5rem',
-  },
-  logoText: {
-    fontSize: '1.1rem',
-    fontWeight: 'bold',
-  },
-  headerNav: {
-    marginLeft: '2rem',
-    display: 'flex',
-    gap: '0.75rem',
-    flexGrow: 1,
-  },
-  iconBtn: {
-    background: 'transparent',
-    border: 'none',
-    color: '#fff',
-    cursor: 'pointer',
-    fontSize: '0.9rem',
-    padding: '0.25rem 0.5rem',
-  },
-  userSection: {
-    display: 'flex',
-    alignItems: 'center',
-    flex: '0 0 auto',
-  },
-  logoutBtn: {
-    backgroundColor: '#dc2626',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '3px',
-    padding: '0.25rem 0.75rem',
-    cursor: 'pointer',
-    fontSize: '0.9rem',
-  },
-  body: {
-    display: 'flex',
-    flexGrow: 1,
-    backgroundColor: '#f3f4f6',
-  },
-  sidebar: {
-    width: '220px',
-    backgroundColor: '#374151',
-    color: '#e5e7eb',
-    display: 'flex',
-    flexDirection: 'column',
-    padding: '1rem 0.5rem',
-    flexShrink: 0,
-  },
-  menuGroup: {
-    marginBottom: '1rem',
-  },
-  groupTitle: {
-    fontSize: '0.85rem',
-    fontWeight: 'bold',
-    margin: '0.5rem 0 0.25rem 0',
-  },
-  menuItem: ({ isActive }) => ({
-    display: 'block',
-    padding: '0.4rem 0.75rem',
-    color: isActive ? '#ffffff' : '#d1d5db',
-    backgroundColor: isActive ? '#4b5563' : 'transparent',
-    textDecoration: 'none',
-    borderRadius: '3px',
-    marginBottom: '0.25rem',
-    fontSize: '0.9rem',
-  }),
-  divider: {
-    border: 'none',
-    borderTop: '1px solid #4b5563',
-    margin: '0.5rem 0',
-  },
-  windowContainer: {
-    flexGrow: 1,
-    margin: '1rem',
-    border: '1px solid #9ca3af',
-    borderRadius: '4px',
-    display: 'flex',
-    flexDirection: 'column',
-    backgroundColor: '#ffffff',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-  },
-  windowHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#6b7280',
-    color: '#f9fafb',
-    padding: '0.5rem 1rem',
-    borderTopLeftRadius: '4px',
-    borderTopRightRadius: '4px',
-    fontSize: '0.95rem',
-  },
-  windowHeaderBtn: {
-    marginLeft: '0.5rem',
-    background: 'transparent',
-    border: 'none',
-    color: '#f9fafb',
-    cursor: 'pointer',
-    fontSize: '0.9rem',
-  },
-  windowContent: {
-    flexGrow: 1,
-    padding: '1rem',
-    overflow: 'auto',
-  },
-};
