@@ -9,16 +9,10 @@ export default function AuthContextProvider({ children }) {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const profile = await fetchProfile();
-        setUser(profile);
-      } catch (err) {
-        // If we get a 401, that simply means “not logged in yet.”
-        // Just swallow it; don’t spam the console on every page load.
-        // console.debug('AuthContext: no active session');
-      }
-    })();
+    fetchProfile()
+      .then(setUser)
+      .catch(() => setUser(null));
+  }, []);
 
   return (
     <AuthContext.Provider value={{ user, setUser }}>
