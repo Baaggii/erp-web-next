@@ -3,7 +3,7 @@ import { fileURLToPath } from 'url';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
-import { testConnection } from '../db/index.js';
+import { testConnection } from '../../../db/index.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 import { logger } from './middlewares/logging.js';
 import authRoutes from './routes/auth.js';
@@ -19,7 +19,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(express.json());
-app.use(cookieParser(process.env.JWT_SECRET));
+app.use(cookieParser());
 app.use(logger);
 
 // Health-check: also verify DB connection
@@ -28,8 +28,9 @@ app.get('/api/auth/health', async (req, res, next) => {
     const dbResult = await testConnection();
     if (!dbResult.ok) throw dbResult.error;
     res.json({ status: 'ok' });
+  return res.json({ status: 'ok' });
   } catch (err) {
-    next(err);
+    return next(err);
   }
 });
 

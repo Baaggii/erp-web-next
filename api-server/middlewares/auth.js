@@ -10,6 +10,8 @@ export function requireAuth(req, res, next) {
     req.user = payload;     // e.g. { id: 3, email: "admin@modmarket.mn", iat: ..., exp: ... }
     return next();
   } catch (err) {
-    return res.status(401).json({ message: 'Invalid token' });
+    console.error('JWT verification failed', err);
+    res.clearCookie(process.env.COOKIE_NAME);
+    return res.status(401).json({ message: 'Invalid or expired token' });
   }
 }
