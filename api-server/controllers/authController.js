@@ -1,4 +1,4 @@
-import { getUserByEmail } from '../../db/index.js'; // adjust path to your db folder
+import { getUserByEmail } from '../../../db/index.js'; // adjust path to your db folder
 import jwt from 'jsonwebtoken';
 
 export async function login(req, res, next) {
@@ -14,7 +14,7 @@ export async function login(req, res, next) {
 
     res.cookie(process.env.COOKIE_NAME, token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      //secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax'
     });
     res.json({ id: user.id, email: user.email });
