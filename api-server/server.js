@@ -10,6 +10,7 @@ import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
 import companyRoutes from './routes/companies.js';
 import settingsRoutes from './routes/settings.js';
+import { requireAuth } from './middlewares/auth.js';
 
 dotenv.config();
 
@@ -19,7 +20,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(express.json());
-app.use(cookieParser(process.env.JWT_SECRET));
+app.use(cookieParser());
 app.use(logger);
 
 // Health-check: also verify DB connection
@@ -35,9 +36,10 @@ app.get('/api/auth/health', async (req, res, next) => {
 
 // API routes
 app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/companies', companyRoutes);
-app.use('/api/settings', settingsRoutes);
+app.use('/api/users', requireAuth, userRoutes);
+app.use('/api/companies', requireAuth, companyRoutes);
+app.use('/api/settings', requireAuth, settingsRoutes);
+
 
 // Serve static React build and fallback to index.html
 // Serve static React build and fallback to index.html
