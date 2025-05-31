@@ -9,27 +9,34 @@ import { AuthContext } from '../context/AuthContext.jsx';
  * @param {{email: string, password: string}} credentials
  */
 export async function login({ email, password }) {
-  const res = await fetch('/api/auth/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include', // Ensures cookie is stored
-    body: JSON.stringify({ email, password }),
-  });
-  if (!res.ok) {
-    const errorBody = await res.json().catch(() => ({}));
-    throw new Error(errorBody.message || 'Login failed');
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include', // ← tell the browser to save the cookie
+      body: JSON.stringify({ email, password }),
+    });
+    return res.ok;
+  } catch (err) {
+    console.error('Login failed:', err);
+    return false;
   }
-  return res.json();
 }
 
 /**
  * Calls logout endpoint to clear the JWT cookie.
  */
 export async function logout() {
-  await fetch('/api/auth/logout', {
-    method: 'POST',
-    credentials: 'include',
-  });
+  try {
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+    });
+  } catch (err) {
+    console.error('Logout failed:', err);
+  }
 }
 
 /**
