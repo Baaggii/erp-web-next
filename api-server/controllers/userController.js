@@ -4,7 +4,7 @@ import {
   createUser as dbCreateUser,
   updateUser as dbUpdateUser,
   deleteUserById as dbDeleteUser
-} from '../../../../db/index.js';
+} from '../../db/index.js';
 import { requireAuth } from '../middlewares/auth.js';
 
 export async function listUsers(req, res, next) {

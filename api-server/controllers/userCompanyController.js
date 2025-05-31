@@ -2,7 +2,7 @@ import {
   listUserCompanies,
   assignCompanyToUser,
   removeCompanyAssignment
-} from '../../../../db/index.js';
+} from '../../db/index.js';
 import { requireAuth } from '../middlewares/auth.js';
 
 export async function listAssignments(req, res, next) {

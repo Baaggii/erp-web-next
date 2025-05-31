@@ -1,4 +1,4 @@
-import { fetchReportData } from '../../../../db/index.js';
+import { fetchReportData } from '../../db/index.js';
 import { requireAuth } from '../middlewares/auth.js';
 
 // Controller to handle fetching report data by ID

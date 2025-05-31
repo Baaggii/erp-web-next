@@ -3,7 +3,7 @@ import {
   updateSettings as dbUpdateSettings,
   getTenantFlags,
   setTenantFlags
-} from '../../../../db/index.js';
+} from '../../db/index.js';
 import { requireAuth } from '../middlewares/auth.js';
 
 // Global application settings
