@@ -1,5 +1,5 @@
 import { createContext, useState, useEffect, useContext } from 'react';
-import { fetchProfile } from '../hooks/useAuth.js';
+import { fetchProfile } from '../hooks/useAuth.jsx';
 
 // 1) Create the AuthContext
 export const AuthContext = createContext({
