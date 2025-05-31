@@ -1,5 +1,5 @@
 import { useContext } from 'react';
-import { logout } from '../hooks/useAuth.js';
+import { logout } from '../hooks/useAuth.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 
 export default function LogoutButton() {
