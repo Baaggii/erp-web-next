@@ -12,7 +12,9 @@ export default function LoginForm() {
   async function handleSubmit(e) {
     e.preventDefault();
     await login({ email, password });
-    const profile = await fetch('/api/auth/me').then(res => res.json());
+    const profile = await fetch('/api/auth/me', {
+      credentials: 'include'
+    }).then(res => res.json());
     setUser(profile);
     navigate('/');
   }

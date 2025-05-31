@@ -2,10 +2,12 @@ export async function login(credentials) {
   const res = await fetch('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',         
     body: JSON.stringify(credentials)
   });
   return res.json();
 }
+
 export async function logout() {
   await fetch('/api/auth/logout', { method: 'POST' });
 }
