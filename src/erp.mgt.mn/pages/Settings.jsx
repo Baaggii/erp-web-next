@@ -1,35 +1,27 @@
-import { useEffect, useState } from 'react';
+// src/erp.mgt.mn/pages/Settings.jsx
+import React, { useEffect, useState } from 'react';
 
-// Default export renamed to match import in App.jsx
-export default function SettingsPage() {
-  const [flags, setFlags] = useState({});
+export default function Settings() {
+  const [settings, setSettings] = useState(null);
 
   useEffect(() => {
-    fetch('/api/settings')
-      .then(r => r.json())
-      .then(setFlags);
+    fetch('/api/settings', { credentials: 'include' })
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to fetch settings');
+        return res.json();
+      })
+      .then((json) => setSettings(json))
+      .catch((err) => console.error('Error fetching settings:', err));
   }, []);
 
-  function toggleFlag(key) {
-    const updated = { ...flags, [key]: !flags[key] };
-    fetch('/api/settings', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updated)
-    })
-      .then(r => r.json())
-      .then(setFlags);
-  }
-
   return (
-    <ul>
-      {Object.entries(flags).map(([k, v]) => (
-        <li key={k}>
-          <label>
-            <input type="checkbox" checked={v} onChange={() => toggleFlag(k)} /> {k}
-          </label>
-        </li>
-      ))}
-    </ul>
+    <div>
+      <h2>Settings</h2>
+      {settings ? (
+        <pre>{JSON.stringify(settings, null, 2)}</pre>
+      ) : (
+        <p>Loading settings…</p>
+      )}
+    </div>
   );
 }

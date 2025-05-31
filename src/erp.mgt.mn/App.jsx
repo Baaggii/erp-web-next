@@ -19,7 +19,7 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
 
           {/* Protected app routes */}
-          <Route path="/*" element={<RequireAuth><Layout /></RequireAuth>}>
+          <Route path="/*" element={<RequireAuth><Layout  /></RequireAuth>}>
             <Route index element={<Dashboard />} />
             <Route path="forms" element={<FormsPage />} />
             <Route path="reports" element={<ReportsPage />} />

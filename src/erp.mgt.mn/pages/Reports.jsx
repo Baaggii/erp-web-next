@@ -1,6 +1,27 @@
-import { useEffect, useState } from 'react';
+// src/erp.mgt.mn/pages/Reports.jsx
+import React, { useEffect, useState } from 'react';
+
 export default function Reports() {
-  const [data, setData] = useState([]);
-  useEffect(() => { fetch('/api/reports/sales').then(r => r.json()).then(setData); }, []);
-  return <pre>{JSON.stringify(data, null, 2)}</pre>;
+  const [data, setData] = useState(null);
+
+  useEffect(() => {
+    fetch('/api/reports/sales', { credentials: 'include' })
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to fetch reports');
+        return res.json();
+      })
+      .then((json) => setData(json))
+      .catch((err) => console.error('Error fetching report:', err));
+  }, []);
+
+  return (
+    <div>
+      <h2>Reports</h2>
+      {data ? (
+        <pre>{JSON.stringify(data, null, 2)}</pre>
+      ) : (
+        <p>Loading report data…</p>
+      )}
+    </div>
+  );
 }
