@@ -1,14 +1,13 @@
-import { createContext, useState, useEffect, useContext } from 'react';
+// src/erp.mgt.mn/context/AuthContext.jsx
+import React, { createContext, useState, useEffect } from 'react';
 import { fetchProfile } from '../hooks/useAuth.js';
 
-// Create authentication context
-export const AuthContext = createContext(null);
+export const AuthContext = createContext({});
 
-// Provider component to wrap app
 export default function AuthContextProvider({ children }) {
   const [user, setUser] = useState(null);
 
-  useEffect(() => {
+  // On mount, try to load an existing session:
     (async () => {
       try {
         const profile = await fetchProfile();
@@ -19,6 +18,7 @@ export default function AuthContextProvider({ children }) {
         // console.debug('AuthContext: no active session');
       }
     })();
+  }, []);
 
   return (
     <AuthContext.Provider value={{ user, setUser }}>
@@ -26,6 +26,8 @@ export default function AuthContextProvider({ children }) {
     </AuthContext.Provider>
   );
 }
+
+
 
 // Custom hook for consuming auth context
 export function useAuth() {
