@@ -3,7 +3,7 @@ import { fileURLToPath } from 'url';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
-import { testConnection } from '../db/index.js';
+import { testConnection } from '../../../db/index.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 import { logger } from './middlewares/logging.js';
 import authRoutes from './routes/auth.js';
