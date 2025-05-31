@@ -13,22 +13,34 @@ import SettingsPage from './pages/Settings.jsx';
 
 export default function App() {
   return (
-    <AuthContextProvider>
+    // Wrap entire app in AuthProvider so that `useAuth`/AuthContext work
+    <AuthProvider>
       <BrowserRouter>
         <Routes>
-          {/* Public route for login without sidebar/layout */}
-          <Route path="/login" element={<LoginPage />} />
+          {/* 1. Public route: /login */}
+          <Route path="/login" element={<LoginForm />} />
 
-          {/* Protected app routes */}
-          <Route path="/*" element={<RequireAuth><ERPLayout  /></RequireAuth>}>
+          {/* 2. Any “/” routes (index, /users, /companies, /settings, etc.) must be nested under ERPLayout */}
+          <Route path="/" element={<ERPLayout />}>
+            {/* a) "/" (dashboard) */}
             <Route index element={<Dashboard />} />
-            <Route path="forms" element={<FormsPage />} />
-            <Route path="reports" element={<ReportsPage />} />
+
+            {/* b) "/users" */}
             <Route path="users" element={<UsersPage />} />
+
+            {/* c) "/companies" */}
+            <Route path="companies" element={<CompaniesPage />} />
+
+            {/* d) "/settings" */}
             <Route path="settings" element={<SettingsPage />} />
+
+            {/* …you can add more protected routes here… */}
           </Route>
+
+          {/* 3. Catch‐all: if no route matches, redirect to /login (or you could show a 404) */}
+          <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </BrowserRouter>
-    </AuthContextProvider>
+    </AuthProvider>
   );
 }
