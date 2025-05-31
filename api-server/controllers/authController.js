@@ -14,6 +14,7 @@ export async function login(req, res, next) {
 
     res.cookie(process.env.COOKIE_NAME, token, {
       httpOnly: true,
+      secure: true,
       //secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax'
     });
