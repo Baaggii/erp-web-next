@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import AuthContextProvider from './context/AuthContext.jsx';
 import RequireAuth from './components/RequireAuth.jsx';
 import ERPLayout from './components/ERPLayout.jsx';
@@ -16,27 +16,17 @@ export default function App() {
     <AuthContextProvider>
       <BrowserRouter>
         <Routes>
-          {/* 1) Login route (unprotected) */}
+          {/* Public route for login without sidebar/layout */}
           <Route path="/login" element={<LoginPage />} />
 
-          {/* 2) All “/” routes go through RequireAuth → ERPLayout */}
-          <Route
-            path="/"
-            element={
-              <RequireAuth>
-                <ERPLayout />
-              </RequireAuth>
-            }
-          >
-            {/* Nested routes under ERPLayout */}
-            <Route index element={<DashboardPage />} />
-            <Route path="users" element={<UsersPage />} />
+          {/* Protected app routes */}
+          <Route path="/*" element={<RequireAuth><ERPLayout  /></RequireAuth>}>
+            <Route index element={<Dashboard />} />
+            <Route path="forms" element={<FormsPage />} />
             <Route path="reports" element={<ReportsPage />} />
+            <Route path="users" element={<UsersPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
-
-          {/* 3) Catch‐all redirects to /login */}
-          <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthContextProvider>
