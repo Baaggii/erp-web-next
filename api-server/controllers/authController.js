@@ -13,6 +13,8 @@ export async function login(req, res, next) {
     });
 
     res.cookie(process.env.COOKIE_NAME, token, {
+      domain: 'erp.mgt.mn',   // force the cookie onto the correct host
+      path:   '/',            // all paths under the ERP domain
       httpOnly: true,
       secure: true,
       //secure: process.env.NODE_ENV === 'production',
