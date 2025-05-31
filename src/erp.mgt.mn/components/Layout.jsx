@@ -2,7 +2,7 @@
 import React, { useContext } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
-import { logout } from '../hooks/useAuth.js';
+import { logout } from '../hooks/useAuth.jsx';
 
 /**
  * A desktop‐style “ERPLayout” with:
