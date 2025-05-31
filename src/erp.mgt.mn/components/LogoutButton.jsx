@@ -1,11 +1,28 @@
+// src/erp.mgt.mn/components/LogoutButton.jsx
 import { useContext } from 'react';
-import { logout } from '../hooks/useAuth.jsx';
+import { useAuth } from '../hooks/useAuth.jsx';    // <-- import the hook, not `logout` directly
 import { AuthContext } from '../context/AuthContext.jsx';
 
 export default function LogoutButton() {
-  const { setUser } = useContext(AuthContext);
+  const { user, setUser } = useContext(AuthContext);
+
+  // Destructure `logout` from the hook:
+  const { logout } = useAuth();
+
   async function handleLogout() {
-    await logout(); setUser(null);
+    try {
+      await logout();
+      setUser(null);
+    } catch (err) {
+      console.error('Logout failed:', err);
+    }
   }
-  return <button onClick={handleLogout}>Log Out</button>;
+
+  if (!user) return null;
+
+  return (
+    <button onClick={handleLogout}>
+      Logout
+    </button>
+  );
 }
