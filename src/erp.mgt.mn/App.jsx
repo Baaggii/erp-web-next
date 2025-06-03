@@ -27,6 +27,8 @@ export default function App() {
             <Route path="users" element={<UsersPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
+	{/* 3) Catch‐all redirects to /login */}
+          <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthContextProvider>
