@@ -1,19 +1,8 @@
 import React from 'react';
 
 export default function HeaderMenu({ onOpen }) {
-  return (
-    <nav style={styles.menu}>
-      <button style={styles.btn} onClick={() => onOpen('gl')}>
-        General Ledger
-      </button>
-      <button style={styles.btn} onClick={() => onOpen('po')}>
-        Purchase Orders
-      </button>
-      <button style={styles.btn} onClick={() => onOpen('sales')}>
-        Sales Dashboard
-      </button>
-    </nav>
-  );
+  // All modules have been removed from the dashboard, so the menu is empty for now.
+  return <nav style={styles.menu}></nav>;
 }
 
 const styles = {
