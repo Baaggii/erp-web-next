@@ -5,6 +5,8 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import { useNavigate } from 'react-router-dom';
 
 export default function LoginForm() {
+  // login using a plain user ID
+  const [userId, setUserId] = useState('');
   // allow login with either employee ID or email
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -34,6 +36,14 @@ export default function LoginForm() {
   return (
     <form onSubmit={handleSubmit} style={{ maxWidth: '320px' }}>
       <div style={{ marginBottom: '0.75rem' }}>
+        <label htmlFor="userid" style={{ display: 'block', marginBottom: '0.25rem' }}>
+          User ID
+        </label>
+        <input
+          id="userid"
+          type="text"
+          value={userId}
+          onChange={(ev) => setUserId(ev.target.value)}
         <label htmlFor="identifier" style={{ display: 'block', marginBottom: '0.25rem' }}>
           Employee ID or Email
         </label>
