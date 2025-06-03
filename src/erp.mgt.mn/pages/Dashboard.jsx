@@ -1,6 +1,7 @@
 // src/erp.mgt.mn/pages/Dashboard.jsx
 import React, { useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
+import TabbedWindows from '../components/TabbedWindows.jsx';
 import MosaicLayout from '../components/MosaicLayout.jsx';
 
 export default function Dashboard() {
@@ -17,6 +18,7 @@ export default function Dashboard() {
         buttons to navigate.
       </p>
       <div style={{ marginTop: '1rem' }}>
+        <TabbedWindows />
         <MosaicLayout />
       </div>
     </div>
