@@ -13,6 +13,7 @@ import GLInquiry from '../windows/GLInquiry.jsx';
 import PurchaseOrders from '../windows/PurchaseOrders.jsx';
 import SalesDashboard from '../windows/SalesDashboard.jsx';
 import GeneralLedger from '../windows/GeneralLedger.jsx';
+import HeaderMenu from './HeaderMenu.jsx';
 
 /**
  * ERPLayout renders the header, sidebar and a Mosaic workspace where
@@ -90,20 +91,7 @@ function Header({ user, onLogout, onOpen }) {
         <img src="/assets/logo-small.png" alt="ERP Logo" style={styles.logoImage} />
         <span style={styles.logoText}>MyERP</span>
       </div>
-      <nav style={styles.headerNav}>
-        <button style={styles.navBtn} onClick={() => onOpen('gl')}>
-          General Ledger
-        </button>
-        <button style={styles.navBtn} onClick={() => onOpen('po')}>
-          Purchase Orders
-        </button>
-        <button style={styles.navBtn} onClick={() => onOpen('sales')}>
-          Sales Dashboard
-        </button>
-        <button style={styles.navBtn} onClick={() => onOpen('glInquiry')}>
-          General Ledger Inquiry Module
-        </button>
-      </nav>
+      <HeaderMenu onOpen={onOpen} />
       <div style={styles.userSection}>
         <span style={{ marginRight: '0.5rem' }}>{user ? `Welcome, ${user.email}` : ''}</span>
         {user && (
@@ -165,15 +153,6 @@ const styles = {
   logoSection: { display: 'flex', alignItems: 'center', flex: '0 0 auto' },
   logoImage: { width: '24px', height: '24px', marginRight: '0.5rem' },
   logoText: { fontSize: '1.1rem', fontWeight: 'bold' },
-  headerNav: { marginLeft: '2rem', flexGrow: 1 },
-  navBtn: {
-    background: 'transparent',
-    border: 'none',
-    color: '#fff',
-    cursor: 'pointer',
-    fontSize: '0.9rem',
-    marginRight: '0.75rem',
-  },
   userSection: { display: 'flex', alignItems: 'center', flex: '0 0 auto' },
   logoutBtn: {
     backgroundColor: '#dc2626',
