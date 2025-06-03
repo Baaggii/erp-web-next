@@ -45,8 +45,9 @@ export default function ERPLayout() {
 }
 
 /** Top header bar **/
-function Header({ user, onLogout }) {
-  // No modules to open at this time.
+  function handleOpen(id) {
+    console.log('open module', id);
+  }
 
   return (
     <header style={styles.header}>
@@ -59,6 +60,12 @@ function Header({ user, onLogout }) {
         <span style={styles.logoText}>MyERP</span>
       </div>
       <HeaderMenu />
+      <nav style={styles.headerNav}>
+        <button style={styles.iconBtn}>🗔 Home</button>
+        <button style={styles.iconBtn}>🗗 Windows</button>
+        <button style={styles.iconBtn}>❔ Help</button>
+      </nav>
+      <HeaderMenu onOpen={handleOpen} />
       <div style={styles.userSection}>
         <span style={{ marginRight: '0.5rem' }}>
           {user ? `Welcome, ${user.email}` : ''}
@@ -153,6 +160,19 @@ const styles = {
   logoText: {
     fontSize: '1.1rem',
     fontWeight: 'bold',
+  },
+  headerNav: {
+    marginLeft: '2rem',
+    display: 'flex',
+    gap: '0.75rem',
+  },
+  iconBtn: {
+    background: 'transparent',
+    border: 'none',
+    color: '#fff',
+    cursor: 'pointer',
+    fontSize: '0.9rem',
+    padding: '0.25rem 0.5rem',
   },
   userSection: {
     display: 'flex',
