@@ -1,8 +1,9 @@
 // src/erp.mgt.mn/pages/Dashboard.jsx
 import React, { useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
-import TabbedWindows from '../components/TabbedWindows.jsx';
-import MosaicLayout from '../components/MosaicLayout.jsx';
+// Previously the dashboard displayed several modules in tabs.
+// These modules have been removed, so the dashboard now just shows a welcome
+// message.
 
 export default function Dashboard() {
   const { user } = useContext(AuthContext);
@@ -17,9 +18,7 @@ export default function Dashboard() {
         Select a module from the sidebar on the left, or use the top header
         buttons to navigate.
       </p>
-      <div style={{ marginTop: '1rem' }}>
-        <TabbedWindows />
-      </div>
+      {/* Modules have been removed so there is no tabbed content to display. */}
     </div>
   );
 }
