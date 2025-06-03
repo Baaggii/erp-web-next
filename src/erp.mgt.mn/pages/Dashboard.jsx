@@ -2,6 +2,7 @@
 import React, { useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import TabbedWindows from '../components/TabbedWindows.jsx';
+import MosaicLayout from '../components/MosaicLayout.jsx';
 
 export default function Dashboard() {
   const { user } = useContext(AuthContext);
@@ -18,6 +19,7 @@ export default function Dashboard() {
       </p>
       <div style={{ marginTop: '1rem' }}>
         <TabbedWindows />
+        <MosaicLayout />
       </div>
     </div>
   );
