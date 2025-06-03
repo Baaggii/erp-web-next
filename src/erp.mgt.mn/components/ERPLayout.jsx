@@ -3,21 +3,12 @@ import React, { useContext } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { logout } from '../hooks/useAuth.jsx';
-import Dashboard from '../pages/Dashboard.jsx';
-import FormsPage from '../pages/Forms.jsx';
-import ReportsPage from '../pages/Reports.jsx';
-import UsersPage from '../pages/Users.jsx';
-import SettingsPage from '../pages/Settings.jsx';
-import GLInquiry from '../windows/GLInquiry.jsx';
-import PurchaseOrders from '../windows/PurchaseOrders.jsx';
-import SalesDashboard from '../windows/SalesDashboard.jsx';
-import GeneralLedger from '../windows/GeneralLedger.jsx';
 
 /**
- * ERPLayout renders the header, sidebar and a Mosaic workspace where
- * modules open as independent windows. Clicking sidebar items opens the
- * corresponding window in the workspace. When no windows are open, the
- * workspace shows a placeholder message.
+ * A desktop‐style “ERPLayout” with:
+ *  - Top header bar (logo, nav icons, user dropdown)
+ *  - Left sidebar (menu groups + items)
+ *  - Main content area (faux window container)
  */
 export default function ERPLayout() {
   const { user, setUser } = useContext(AuthContext);
@@ -36,11 +27,12 @@ export default function ERPLayout() {
   async function handleLogout() {
     await logout();
     setUser(null);
+    navigate('/login');
   }
 
   return (
     <div style={styles.container}>
-      <Header user={user} onLogout={handleLogout} onOpen={openWindow} />
+      <Header user={user} onLogout={handleLogout} />
       <div style={styles.body}>
         <Sidebar />
         <MainWindow title={windowTitle}>
@@ -51,30 +43,27 @@ export default function ERPLayout() {
   );
 }
 
-/** Header bar */
-function Header({ user, onLogout, onOpen }) {
+/** Top header bar **/
+function Header({ user, onLogout }) {
   return (
     <header style={styles.header}>
       <div style={styles.logoSection}>
-        <img src="/assets/logo-small.png" alt="ERP Logo" style={styles.logoImage} />
+        <img
+          src="/assets/logo‐small.png"
+          alt="ERP Logo"
+          style={styles.logoImage}
+        />
         <span style={styles.logoText}>MyERP</span>
       </div>
       <nav style={styles.headerNav}>
-        <button style={styles.navBtn} onClick={() => onOpen('gl')}>
-          General Ledger
-        </button>
-        <button style={styles.navBtn} onClick={() => onOpen('po')}>
-          Purchase Orders
-        </button>
-        <button style={styles.navBtn} onClick={() => onOpen('sales')}>
-          Sales Dashboard
-        </button>
-        <button style={styles.navBtn} onClick={() => onOpen('glInquiry')}>
-          General Ledger Inquiry Module
-        </button>
+        <button style={styles.iconBtn}>🗔 Home</button>
+        <button style={styles.iconBtn}>🗗 Windows</button>
+        <button style={styles.iconBtn}>❔ Help</button>
       </nav>
       <div style={styles.userSection}>
-        <span style={{ marginRight: '0.5rem' }}>{user ? `Welcome, ${user.email}` : ''}</span>
+        <span style={{ marginRight: '0.5rem' }}>
+          {user ? `Welcome, ${user.email}` : ''}
+        </span>
         {user && (
           <button style={styles.logoutBtn} onClick={onLogout}>
             Logout
@@ -85,31 +74,34 @@ function Header({ user, onLogout, onOpen }) {
   );
 }
 
-/** Sidebar menu */
-function Sidebar({ onOpen }) {
+/** Left sidebar with “menu groups” and “pinned items” **/
+function Sidebar() {
+  // You can expand/collapse these groups if you like; this is a static example
   return (
     <aside style={styles.sidebar}>
       <div style={styles.menuGroup}>
         <div style={styles.groupTitle}>📌 Pinned</div>
-        <button style={styles.menuItem} onClick={() => onOpen('dashboard')}>
+        <NavLink to="/" style={styles.menuItem}>
           Dashboard
-        </button>
-        <button style={styles.menuItem} onClick={() => onOpen('forms')}>
+        </NavLink>
+        <NavLink to="/forms" style={styles.menuItem}>
           Forms
-        </button>
-        <button style={styles.menuItem} onClick={() => onOpen('reports')}>
+        </NavLink>
+        <NavLink to="/reports" style={styles.menuItem}>
           Reports
-        </button>
+        </NavLink>
       </div>
+
       <hr style={styles.divider} />
+
       <div style={styles.menuGroup}>
         <div style={styles.groupTitle}>📁 Modules</div>
-        <button style={styles.menuItem} onClick={() => onOpen('users')}>
+        <NavLink to="/users" style={styles.menuItem}>
           Users
-        </button>
-        <button style={styles.menuItem} onClick={() => onOpen('settings')}>
+        </NavLink>
+        <NavLink to="/settings" style={styles.menuItem}>
           Settings
-        </button>
+        </NavLink>
       </div>
     </aside>
   );
@@ -149,19 +141,39 @@ const styles = {
     height: '48px',
     flexShrink: 0,
   },
-  logoSection: { display: 'flex', alignItems: 'center', flex: '0 0 auto' },
-  logoImage: { width: '24px', height: '24px', marginRight: '0.5rem' },
-  logoText: { fontSize: '1.1rem', fontWeight: 'bold' },
-  headerNav: { marginLeft: '2rem', flexGrow: 1 },
-  navBtn: {
+  logoSection: {
+    display: 'flex',
+    alignItems: 'center',
+    flex: '0 0 auto',
+  },
+  logoImage: {
+    width: '24px',
+    height: '24px',
+    marginRight: '0.5rem',
+  },
+  logoText: {
+    fontSize: '1.1rem',
+    fontWeight: 'bold',
+  },
+  headerNav: {
+    marginLeft: '2rem',
+    display: 'flex',
+    gap: '0.75rem',
+    flexGrow: 1,
+  },
+  iconBtn: {
     background: 'transparent',
     border: 'none',
     color: '#fff',
     cursor: 'pointer',
     fontSize: '0.9rem',
-    marginRight: '0.75rem',
+    padding: '0.25rem 0.5rem',
   },
-  userSection: { display: 'flex', alignItems: 'center', flex: '0 0 auto' },
+  userSection: {
+    display: 'flex',
+    alignItems: 'center',
+    flex: '0 0 auto',
+  },
   logoutBtn: {
     backgroundColor: '#dc2626',
     color: '#fff',
@@ -171,7 +183,11 @@ const styles = {
     cursor: 'pointer',
     fontSize: '0.9rem',
   },
-  body: { display: 'flex', flexGrow: 1, backgroundColor: '#f3f4f6' },
+  body: {
+    display: 'flex',
+    flexGrow: 1,
+    backgroundColor: '#f3f4f6',
+  },
   sidebar: {
     width: '220px',
     backgroundColor: '#374151',
@@ -181,30 +197,61 @@ const styles = {
     padding: '1rem 0.5rem',
     flexShrink: 0,
   },
-  menuGroup: { marginBottom: '1rem' },
-  groupTitle: { fontSize: '0.85rem', fontWeight: 'bold', margin: '0.5rem 0 0.25rem' },
-  menuItem: {
+  menuGroup: {
+    marginBottom: '1rem',
+  },
+  groupTitle: {
+    fontSize: '0.85rem',
+    fontWeight: 'bold',
+    margin: '0.5rem 0 0.25rem 0',
+  },
+  menuItem: ({ isActive }) => ({
     display: 'block',
     padding: '0.4rem 0.75rem',
-    color: '#d1d5db',
-    background: 'transparent',
+    color: isActive ? '#ffffff' : '#d1d5db',
+    backgroundColor: isActive ? '#4b5563' : 'transparent',
     textDecoration: 'none',
     borderRadius: '3px',
     marginBottom: '0.25rem',
     fontSize: '0.9rem',
+  }),
+  divider: {
     border: 'none',
-    textAlign: 'left',
-    cursor: 'pointer',
+    borderTop: '1px solid #4b5563',
+    margin: '0.5rem 0',
   },
-  divider: { border: 'none', borderTop: '1px solid #4b5563', margin: '0.5rem 0' },
-  workspace: { flexGrow: 1, margin: '1rem', overflow: 'hidden' },
-  empty: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: '100%',
-    border: '1px dashed #9ca3af',
+  windowContainer: {
+    flexGrow: 1,
+    margin: '1rem',
+    border: '1px solid #9ca3af',
     borderRadius: '4px',
-    color: '#6b7280',
+    display: 'flex',
+    flexDirection: 'column',
+    backgroundColor: '#ffffff',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+  },
+  windowHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#6b7280',
+    color: '#f9fafb',
+    padding: '0.5rem 1rem',
+    borderTopLeftRadius: '4px',
+    borderTopRightRadius: '4px',
+    fontSize: '0.95rem',
+  },
+  windowHeaderBtn: {
+    marginLeft: '0.5rem',
+    background: 'transparent',
+    border: 'none',
+    color: '#f9fafb',
+    cursor: 'pointer',
+    fontSize: '0.9rem',
+  },
+  windowContent: {
+    flexGrow: 1,
+    padding: '1rem',
+    overflow: 'auto',
   },
 };
