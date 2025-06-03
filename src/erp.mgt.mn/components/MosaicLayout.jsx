@@ -1,4 +1,5 @@
 import { Mosaic } from 'react-mosaic-component';
+import 'react-mosaic-component/react-mosaic-component.css';
 import GLInquiry from '../windows/GLInquiry.jsx';
 import PurchaseOrders from '../windows/PurchaseOrders.jsx';
 import SalesDashboard from '../windows/SalesDashboard.jsx';
