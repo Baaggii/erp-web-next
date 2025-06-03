@@ -41,3 +41,4 @@ export async function fetchProfile() {
   if (!res.ok) throw new Error('Not authenticated');
   return res.json();
 }
+
