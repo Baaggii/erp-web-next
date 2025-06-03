@@ -1,16 +1,8 @@
-// src/erp.mgt.mn/components/RequireAuth.jsx
-import React, { useContext } from 'react';
-import { Navigate } from 'react-router-dom';
+import { useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
+import { Navigate, Outlet } from 'react-router-dom';
 
-export default function RequireAuth({ children }) {
+export default function RequireAuth() {
   const { user } = useContext(AuthContext);
-
-  if (!user) {
-    // Not logged in → redirect to /login
-    return <Navigate to="/login" replace />;
-  }
-
-  // Logged in → render children (i.e. ERPLayout and nested pages)
-  return children;
+  return user ? <Outlet /> : <Navigate to="/login" replace />;
 }
