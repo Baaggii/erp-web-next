@@ -4,14 +4,19 @@ import 'react-mosaic-component/react-mosaic-component.css';
 import GLInquiry from '../windows/GLInquiry.jsx';
 import PurchaseOrders from '../windows/PurchaseOrders.jsx';
 import TabbedWindows from './TabbedWindows.jsx';
+import Inventory from '../windows/Inventory.jsx';
+import OrderEntry from '../windows/OrderEntry.jsx';
+import Accounting from '../windows/Accounting.jsx';
 
-export default function MosaicLayout() {
-  const [layout, setLayout] = useState({
-    direction: 'row',
-    first: 'gl',
-    second: 'po',
-    splitPercentage: 70,
-  });
+export default function MosaicLayout({ initialLayout }) {
+  const [layout, setLayout] = useState(
+    initialLayout || {
+      direction: 'row',
+      first: 'gl',
+      second: 'po',
+      splitPercentage: 70,
+    },
+  );
 
   return (
     <Mosaic
@@ -33,6 +38,18 @@ export default function MosaicLayout() {
           case 'sales':
             title = 'Sales Dashboard';
             Component = TabbedWindows;
+            break;
+          case 'inventory':
+            title = 'Inventory';
+            Component = Inventory;
+            break;
+          case 'orders':
+            title = 'Order Entry';
+            Component = OrderEntry;
+            break;
+          case 'acct':
+            title = 'Accounting';
+            Component = Accounting;
             break;
           default:
             return null;
