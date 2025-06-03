@@ -1,5 +1,5 @@
 import { Mosaic, MosaicWindow } from 'react-mosaic-component';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import 'react-mosaic-component/react-mosaic-component.css';
 import GLInquiry from '../windows/GLInquiry.jsx';
 import PurchaseOrders from '../windows/PurchaseOrders.jsx';
@@ -9,14 +9,19 @@ import OrderEntry from '../windows/OrderEntry.jsx';
 import Accounting from '../windows/Accounting.jsx';
 
 export default function MosaicLayout({ initialLayout }) {
-  const [layout, setLayout] = useState(
-    initialLayout || {
-      direction: 'row',
-      first: 'gl',
-      second: 'po',
-      splitPercentage: 70,
-    },
-  );
+  const defaultLayout = {
+    direction: 'row',
+    first: 'gl',
+    second: 'po',
+    splitPercentage: 70,
+  };
+  const [layout, setLayout] = useState(initialLayout || defaultLayout);
+
+  useEffect(() => {
+    if (initialLayout) {
+      setLayout(initialLayout);
+    }
+  }, [initialLayout]);
 
   return (
     <Mosaic
