@@ -28,9 +28,8 @@ app.get('/api/auth/health', async (req, res, next) => {
     const dbResult = await testConnection();
     if (!dbResult.ok) throw dbResult.error;
     res.json({ status: 'ok' });
-  return res.json({ status: 'ok' });
   } catch (err) {
-    return next(err);
+    next(err);
   }
 });
 
