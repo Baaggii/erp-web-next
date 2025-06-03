@@ -42,7 +42,6 @@ app.use('/api/settings', requireAuth, settingsRoutes);
 
 
 // Serve static React build and fallback to index.html
-// Serve static React build and fallback to index.html
 // NOTE: adjust this path to where your SPA build actually lives.
 // If your build outputs to /home/mgtmn/erp.mgt.mn, update to:
 const buildDir = path.resolve(__dirname, '../../../erp.mgt.mn');
