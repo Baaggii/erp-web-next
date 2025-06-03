@@ -8,14 +8,8 @@ export default function Dashboard() {
   return (
     <div>
       <h2>Dashboard</h2>
-      <p>
-        Welcome to the ERP dashboard{user ? `, ${user.email}` : ''}!
-      </p>
-      <p>
-        Select a module from the sidebar on the left, or use the top header
-        buttons to navigate.
-      </p>
-      {/* You can add charts, grids, etc. here */}
+      <p>Welcome to the ERP dashboard{user ? `, ${user.email}` : ''}!</p>
+      <p>Select a module from the sidebar on the left.</p>
     </div>
   );
 }
