@@ -42,6 +42,3 @@ export async function fetchProfile() {
   return res.json();
 }
 
-export function useAuth() {
-  return useContext(AuthContext);
-}
