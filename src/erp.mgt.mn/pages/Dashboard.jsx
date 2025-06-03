@@ -19,7 +19,6 @@ export default function Dashboard() {
       </p>
       <div style={{ marginTop: '1rem' }}>
         <TabbedWindows />
-        <MosaicLayout />
       </div>
     </div>
   );

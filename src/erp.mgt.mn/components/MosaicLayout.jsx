@@ -3,7 +3,7 @@ import { useState } from 'react';
 import 'react-mosaic-component/react-mosaic-component.css';
 import GLInquiry from '../windows/GLInquiry.jsx';
 import PurchaseOrders from '../windows/PurchaseOrders.jsx';
-import SalesDashboard from '../windows/SalesDashboard.jsx';
+import TabbedWindows from './TabbedWindows.jsx';
 
 export default function MosaicLayout() {
   const [layout, setLayout] = useState({
@@ -32,7 +32,7 @@ export default function MosaicLayout() {
             break;
           case 'sales':
             title = 'Sales Dashboard';
-            Component = SalesDashboard;
+            Component = TabbedWindows;
             break;
           default:
             return null;
