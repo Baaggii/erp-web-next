@@ -28,7 +28,7 @@ export default function MosaicLayout() {
             return null;
         }
         return (
-          <MosaicWindow title={title} path={path} toolbarControls={null}>
+          <MosaicWindow title={title} path={path}>
             <Component />
           </MosaicWindow>
         );
