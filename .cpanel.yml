@@ -6,5 +6,5 @@ deployment:
     - npm install --no-progress
     - npm run build:homepage
     - npm run build:erp
-    - cp src/client/.htaccess ~/public_html/erp/.htaccess
+    - cp src/erp.mgt.mn/.htaccess ~/public_html/erp/.htaccess
     - npm prune --omit=dev
