@@ -1,7 +1,6 @@
 // src/erp.mgt.mn/components/ERPLayout.jsx
-import React, { useContext, useState } from 'react';
-import { Mosaic, MosaicWindow } from 'react-mosaic-component';
-import 'react-mosaic-component/react-mosaic-component.css';
+import React, { useContext } from 'react';
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { logout } from '../hooks/useAuth.jsx';
 import Dashboard from '../pages/Dashboard.jsx';
@@ -22,29 +21,17 @@ import GeneralLedger from '../windows/GeneralLedger.jsx';
  */
 export default function ERPLayout() {
   const { user, setUser } = useContext(AuthContext);
-  const [layout, setLayout] = useState('dashboard');
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  const windowMap = {
-    dashboard: { title: 'Dashboard', Component: Dashboard },
-    forms: { title: 'Forms', Component: FormsPage },
-    reports: { title: 'Reports', Component: ReportsPage },
-    users: { title: 'Users', Component: UsersPage },
-    settings: { title: 'Settings', Component: SettingsPage },
-    gl: { title: 'General Ledger', Component: GeneralLedger },
-    po: { title: 'Purchase Orders', Component: PurchaseOrders },
-    sales: { title: 'Sales Dashboard', Component: SalesDashboard },
-    glInquiry: { title: 'General Ledger Inquiry', Component: GLInquiry },
+  const titleMap = {
+    '/': 'Dashboard',
+    '/forms': 'Forms',
+    '/reports': 'Reports',
+    '/users': 'Users',
+    '/settings': 'Settings',
   };
-
-  function openWindow(id) {
-    if (!layout) {
-      setLayout(id);
-    } else if (layout === id) {
-      // already open
-    } else {
-      setLayout({ direction: 'row', first: layout, second: id, splitPercentage: 70 });
-    }
-  }
+  const windowTitle = titleMap[location.pathname] || 'ERP';
 
   async function handleLogout() {
     await logout();
@@ -55,28 +42,10 @@ export default function ERPLayout() {
     <div style={styles.container}>
       <Header user={user} onLogout={handleLogout} onOpen={openWindow} />
       <div style={styles.body}>
-        <Sidebar onOpen={openWindow} />
-        <div style={styles.workspace}>
-          {layout ? (
-            <Mosaic
-              className="mosaic-blueprint-theme"
-              value={layout}
-              onChange={setLayout}
-              renderTile={(id, path) => {
-                const entry = windowMap[id];
-                if (!entry) return null;
-                const { title, Component } = entry;
-                return (
-                  <MosaicWindow title={title} path={path} toolbarControls={null}>
-                    <Component />
-                  </MosaicWindow>
-                );
-              }}
-            />
-          ) : (
-            <div style={styles.empty}>No windows open</div>
-          )}
-        </div>
+        <Sidebar />
+        <MainWindow title={windowTitle}>
+          <Outlet />
+        </MainWindow>
       </div>
     </div>
   );
@@ -146,6 +115,24 @@ function Sidebar({ onOpen }) {
   );
 }
 
+/** A faux “window” wrapper around the main content **/
+function MainWindow({ children, title }) {
+  return (
+    <div style={styles.windowContainer}>
+      <div style={styles.windowHeader}>
+        <span>{title}</span>
+        <div>
+          <button style={styles.windowHeaderBtn}>–</button>
+          <button style={styles.windowHeaderBtn}>□</button>
+          <button style={styles.windowHeaderBtn}>×</button>
+        </div>
+      </div>
+      <div style={styles.windowContent}>{children}</div>
+    </div>
+  );
+}
+
+/** Inline styles (you can move these into a `.css` or Tailwind classes if you prefer) **/
 const styles = {
   container: {
     display: 'flex',
