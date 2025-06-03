@@ -1,6 +1,6 @@
 // src/erp.mgt.mn/components/ERPLayout.jsx
 import React, { useContext } from 'react';
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { logout } from '../hooks/useAuth.jsx';
 
@@ -13,6 +13,16 @@ import { logout } from '../hooks/useAuth.jsx';
 export default function ERPLayout() {
   const { user, setUser } = useContext(AuthContext);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const titleMap = {
+    '/': 'Dashboard',
+    '/forms': 'Forms',
+    '/reports': 'Reports',
+    '/users': 'Users',
+    '/settings': 'Settings',
+  };
+  const windowTitle = titleMap[location.pathname] || 'ERP';
 
   async function handleLogout() {
     await logout();
@@ -25,7 +35,7 @@ export default function ERPLayout() {
       <Header user={user} onLogout={handleLogout} />
       <div style={styles.body}>
         <Sidebar />
-        <MainWindow>
+        <MainWindow title={windowTitle}>
           <Outlet />
         </MainWindow>
       </div>
@@ -98,11 +108,11 @@ function Sidebar() {
 }
 
 /** A faux “window” wrapper around the main content **/
-function MainWindow({ children }) {
+function MainWindow({ children, title }) {
   return (
     <div style={styles.windowContainer}>
       <div style={styles.windowHeader}>
-        <span>Sales Dashboard</span>
+        <span>{title}</span>
         <div>
           <button style={styles.windowHeaderBtn}>–</button>
           <button style={styles.windowHeaderBtn}>□</button>
