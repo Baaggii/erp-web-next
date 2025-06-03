@@ -5,7 +5,8 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import { useNavigate } from 'react-router-dom';
 
 export default function LoginForm() {
-  const [email, setEmail] = useState('');
+  // login using a plain user ID
+  const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const { setUser } = useContext(AuthContext);
@@ -17,7 +18,7 @@ export default function LoginForm() {
 
     try {
       // Send POST /api/auth/login with credentials: 'include'
-      const loggedIn = await login({ email, password });
+      const loggedIn = await login({ userId, password });
 
       // The login response already returns the user profile
       setUser(loggedIn);
@@ -33,14 +34,14 @@ export default function LoginForm() {
   return (
     <form onSubmit={handleSubmit} style={{ maxWidth: '320px' }}>
       <div style={{ marginBottom: '0.75rem' }}>
-        <label htmlFor="email" style={{ display: 'block', marginBottom: '0.25rem' }}>
-          Employee ID or Email
+        <label htmlFor="userid" style={{ display: 'block', marginBottom: '0.25rem' }}>
+          User ID
         </label>
         <input
-          id="email"
-          type="email"
-          value={email}
-          onChange={(ev) => setEmail(ev.target.value)}
+          id="userid"
+          type="text"
+          value={userId}
+          onChange={(ev) => setUserId(ev.target.value)}
           required
           style={{ width: '100%', padding: '0.5rem', borderRadius: '3px' }}
         />
