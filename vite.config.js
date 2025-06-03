@@ -5,7 +5,7 @@ import react from '@vitejs/plugin-react';
 
 // vite.config.js (relevant excerpt)
 export default {
-  root: './src/erp.mgt.mn',
+  root: 'src/erp.mgt.mn',
   build: {
     ooutDir: '../../../../erp.mgt.mn',
     emptyOutDir: true,
