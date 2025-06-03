@@ -7,6 +7,8 @@ import { useNavigate } from 'react-router-dom';
 export default function LoginForm() {
   // login using a plain user ID
   const [userId, setUserId] = useState('');
+  // allow login with either employee ID or email
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const { setUser } = useContext(AuthContext);
@@ -18,7 +20,7 @@ export default function LoginForm() {
 
     try {
       // Send POST /api/auth/login with credentials: 'include'
-      const loggedIn = await login({ userId, password });
+      const loggedIn = await login({ identifier, password });
 
       // The login response already returns the user profile
       setUser(loggedIn);
@@ -42,6 +44,14 @@ export default function LoginForm() {
           type="text"
           value={userId}
           onChange={(ev) => setUserId(ev.target.value)}
+        <label htmlFor="identifier" style={{ display: 'block', marginBottom: '0.25rem' }}>
+          Employee ID or Email
+        </label>
+        <input
+          id="identifier"
+          type="text"
+          value={identifier}
+          onChange={(ev) => setIdentifier(ev.target.value)}
           required
           style={{ width: '100%', padding: '0.5rem', borderRadius: '3px' }}
         />
