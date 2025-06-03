@@ -46,7 +46,9 @@ export default function ERPLayout() {
 
 /** Top header bar **/
 function Header({ user, onLogout }) {
-  // No modules to open at this time.
+  function handleOpen(id) {
+    console.log('open module', id);
+  }
 
   return (
     <header style={styles.header}>
@@ -63,7 +65,7 @@ function Header({ user, onLogout }) {
         <button style={styles.iconBtn}>🗗 Windows</button>
         <button style={styles.iconBtn}>❔ Help</button>
       </nav>
-      <HeaderMenu />
+      <HeaderMenu onOpen={handleOpen} />
       <div style={styles.userSection}>
         <span style={{ marginRight: '0.5rem' }}>
           {user ? `Welcome, ${user.email}` : ''}
