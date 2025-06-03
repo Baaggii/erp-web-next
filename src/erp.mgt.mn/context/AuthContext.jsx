@@ -1,5 +1,5 @@
 // src/erp.mgt.mn/context/AuthContext.jsx
-import React, { createContext, useState, useEffect } from 'react';
+import React, { createContext, useState, useEffect, useContext } from 'react';
 
 // Create the AuthContext
 export const AuthContext = createContext({
