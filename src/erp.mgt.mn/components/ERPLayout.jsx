@@ -2,6 +2,7 @@
 import React, { useContext, useState } from 'react';
 import { Mosaic, MosaicWindow } from 'react-mosaic-component';
 import 'react-mosaic-component/react-mosaic-component.css';
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { logout } from '../hooks/useAuth.jsx';
 import Dashboard from '../pages/Dashboard.jsx';
@@ -46,6 +47,17 @@ export default function ERPLayout() {
       setLayout({ direction: 'row', first: layout, second: id, splitPercentage: 70 });
     }
   }
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const titleMap = {
+    '/': 'Dashboard',
+    '/forms': 'Forms',
+    '/reports': 'Reports',
+    '/users': 'Users',
+    '/settings': 'Settings',
+  };
+  const windowTitle = titleMap[location.pathname] || 'ERP';
 
   async function handleLogout() {
     await logout();
@@ -78,6 +90,10 @@ export default function ERPLayout() {
             <div style={styles.empty}>No windows open</div>
           )}
         </div>
+        <Sidebar />
+        <MainWindow title={windowTitle}>
+          <Outlet />
+        </MainWindow>
       </div>
     </div>
   );
@@ -134,6 +150,24 @@ function Sidebar({ onOpen }) {
   );
 }
 
+/** A faux “window” wrapper around the main content **/
+function MainWindow({ children, title }) {
+  return (
+    <div style={styles.windowContainer}>
+      <div style={styles.windowHeader}>
+        <span>{title}</span>
+        <div>
+          <button style={styles.windowHeaderBtn}>–</button>
+          <button style={styles.windowHeaderBtn}>□</button>
+          <button style={styles.windowHeaderBtn}>×</button>
+        </div>
+      </div>
+      <div style={styles.windowContent}>{children}</div>
+    </div>
+  );
+}
+
+/** Inline styles (you can move these into a `.css` or Tailwind classes if you prefer) **/
 const styles = {
   container: {
     display: 'flex',
