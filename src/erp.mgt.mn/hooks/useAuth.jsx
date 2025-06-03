@@ -6,15 +6,15 @@ import { AuthContext } from '../context/AuthContext.jsx';
 
 /**
  * Performs a login request, sets HttpOnly cookie on success.
- * @param {{identifier: string, password: string}} credentials - identifier can be employee ID or email
+ * @param {{userId: string, password: string}} credentials - userId refers to the employee login ID
  */
-export async function login({ identifier, password }) {
+export async function login({ userId, password }) {
   const res = await fetch('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include', // Ensures cookie is stored
     // Backend accepts email field which can be either an email or empid
-    body: JSON.stringify({ email: identifier, password }),
+    body: JSON.stringify({ email: userId, password }),
   });
   if (!res.ok) {
     const errorBody = await res.json().catch(() => ({}));
