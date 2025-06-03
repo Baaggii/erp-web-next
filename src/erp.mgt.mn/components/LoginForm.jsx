@@ -17,17 +17,10 @@ export default function LoginForm() {
 
     try {
       // Send POST /api/auth/login with credentials: 'include'
-      await login({ email, password });
+      const loggedIn = await login({ email, password });
 
-      // Immediately fetch the profile so we know who logged in:
-      const profileRes = await fetch('/api/auth/me', {
-        credentials: 'include',
-      });
-      if (!profileRes.ok) {
-        throw new Error('Failed to fetch profile');
-      }
-      const profile = await profileRes.json();
-      setUser(profile);
+      // The login response already returns the user profile
+      setUser(loggedIn);
 
       // Redirect to the ERP root (Dashboard)
       navigate('/');
