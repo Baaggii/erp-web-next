@@ -1,13 +1,23 @@
 import { Mosaic, MosaicWindow } from 'react-mosaic-component';
+import { useState } from 'react';
 import 'react-mosaic-component/react-mosaic-component.css';
 import GLInquiry from '../windows/GLInquiry.jsx';
 import PurchaseOrders from '../windows/PurchaseOrders.jsx';
 import SalesDashboard from '../windows/SalesDashboard.jsx';
 
 export default function MosaicLayout() {
+  const [layout, setLayout] = useState({
+    direction: 'row',
+    first: 'gl',
+    second: 'po',
+    splitPercentage: 70,
+  });
+
   return (
     <Mosaic
       className="mosaic-blueprint-theme"
+      value={layout}
+      onChange={setLayout}
       renderTile={(id, path) => {
         let title;
         let Component;
@@ -33,7 +43,6 @@ export default function MosaicLayout() {
           </MosaicWindow>
         );
       }}
-      initialValue={{ direction: 'row', first: 'gl', second: 'po', splitPercentage: 70 }}
     />
   );
 }
