@@ -89,7 +89,7 @@ function Sidebar() {
       <div style={styles.menuGroup}>
         <div style={styles.groupTitle}>📌 Pinned</div>
         <NavLink to="/" style={styles.menuItem}>
-          Dashboard
+          Blue Link Demo
         </NavLink>
         <NavLink to="/forms" style={styles.menuItem}>
           Forms
