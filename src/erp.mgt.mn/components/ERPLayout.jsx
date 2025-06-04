@@ -17,7 +17,7 @@ export default function ERPLayout() {
   const location = useLocation();
 
   const titleMap = {
-    '/': 'Dashboard',
+    '/': 'Blue Link Demo',
     '/forms': 'Forms',
     '/reports': 'Reports',
     '/users': 'Users',
@@ -88,7 +88,7 @@ function Sidebar() {
       <div style={styles.menuGroup}>
         <div style={styles.groupTitle}>📌 Pinned</div>
         <NavLink to="/" style={styles.menuItem}>
-          Dashboard
+          Blue Link Demo
         </NavLink>
         <NavLink to="/forms" style={styles.menuItem}>
           Forms
