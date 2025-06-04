@@ -19,8 +19,6 @@ export default function UserCompanies() {
   }, []);
 
   async function handleAdd() {
-    const userId = prompt('User ID?');
-    if (!userId) return;
     const empid = prompt('EmpID?');
     if (!empid) return;
     const companyId = prompt('Company ID?');
@@ -46,7 +44,7 @@ export default function UserCompanies() {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ userId: a.empid, companyId: a.company_id, role })
+      body: JSON.stringify({ empId: a.empid, companyId: a.company_id, role })
     });
     if (!res.ok) {
       alert('Failed to update assignment');
@@ -61,7 +59,7 @@ export default function UserCompanies() {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ userId: a.empid, companyId: a.company_id })
+      body: JSON.stringify({ empId: a.empid, companyId: a.company_id })
     });
     if (!res.ok) {
       alert('Failed to delete assignment');

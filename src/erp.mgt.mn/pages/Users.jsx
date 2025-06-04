@@ -46,7 +46,7 @@ export default function Users() {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ email, name, role })
+      body: JSON.stringify({ name, role })
     });
     if (!res.ok) {
       alert('Failed to update user');
@@ -84,12 +84,8 @@ export default function Users() {
         >
           <thead>
             <tr style={{ backgroundColor: '#e5e7eb' }}>
-              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>ID</th>
               <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                 EmpID
-              </th>
-              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
-                Email
               </th>
               <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                 Name
@@ -105,12 +101,8 @@ export default function Users() {
           <tbody>
             {usersList.map((u) => (
               <tr key={u.id}>
-                <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>{u.id}</td>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                   {u.empid}
-                </td>
-                <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
-                  {u.email}
                 </td>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                   {u.name}
