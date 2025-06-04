@@ -25,12 +25,16 @@ export default function Users() {
     const name = prompt('Name?');
     const password = prompt('Password?');
     const role = prompt('Role (user|admin)?', 'user');
-    await fetch('/api/users', {
+    const res = await fetch('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({ empid, email, name, password, role })
     });
+    if (!res.ok) {
+      alert('Failed to add user');
+      return;
+    }
     loadUsers();
   }
 
@@ -38,21 +42,29 @@ export default function Users() {
     const email = prompt('Email?', u.email);
     const name = prompt('Name?', u.name);
     const role = prompt('Role?', u.role);
-    await fetch(`/api/users/${u.id}`, {
+    const res = await fetch(`/api/users/${u.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({ email, name, role })
     });
+    if (!res.ok) {
+      alert('Failed to update user');
+      return;
+    }
     loadUsers();
   }
 
   async function handleDelete(u) {
     if (!confirm('Delete user?')) return;
-    await fetch(`/api/users/${u.id}`, {
+    const res = await fetch(`/api/users/${u.id}`, {
       method: 'DELETE',
       credentials: 'include'
     });
+    if (!res.ok) {
+      alert('Failed to delete user');
+      return;
+    }
     loadUsers();
   }
 

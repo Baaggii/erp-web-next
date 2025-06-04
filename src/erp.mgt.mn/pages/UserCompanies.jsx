@@ -24,35 +24,47 @@ export default function UserCompanies() {
     const companyId = prompt('Company ID?');
     if (!companyId) return;
     const role = prompt('Role (user|admin)?', 'user');
-    await fetch('/api/user_companies', {
+    const res = await fetch('/api/user_companies', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({ userId, companyId, role })
     });
+    if (!res.ok) {
+      alert('Failed to add assignment');
+      return;
+    }
     loadAssignments();
   }
 
   async function handleEdit(a) {
     const role = prompt('Role', a.role);
     if (!role) return;
-    await fetch('/api/user_companies', {
+    const res = await fetch('/api/user_companies', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({ userId: a.empid, companyId: a.company_id, role })
     });
+    if (!res.ok) {
+      alert('Failed to update assignment');
+      return;
+    }
     loadAssignments();
   }
 
   async function handleDelete(a) {
     if (!confirm('Delete assignment?')) return;
-    await fetch('/api/user_companies', {
+    const res = await fetch('/api/user_companies', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({ userId: a.empid, companyId: a.company_id })
     });
+    if (!res.ok) {
+      alert('Failed to delete assignment');
+      return;
+    }
     loadAssignments();
   }
 
