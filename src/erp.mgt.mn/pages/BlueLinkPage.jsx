@@ -1,3 +1,4 @@
+import React from 'react';
 import MosaicLayout from '../components/MosaicLayout.jsx';
 
 const initialLayout = {
