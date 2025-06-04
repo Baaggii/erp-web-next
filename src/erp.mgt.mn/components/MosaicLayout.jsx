@@ -7,6 +7,7 @@ import TabbedWindows from './TabbedWindows.jsx';
 import Inventory from '../windows/Inventory.jsx';
 import OrderEntry from '../windows/OrderEntry.jsx';
 import Accounting from '../windows/Accounting.jsx';
+import SalesDashboard from '../windows/SalesDashboard.jsx';
 
 export default function MosaicLayout({ initialLayout }) {
   const defaultLayout = {
@@ -43,6 +44,10 @@ export default function MosaicLayout({ initialLayout }) {
           case 'sales':
             title = 'Sales Dashboard';
             Component = TabbedWindows;
+            break;
+          case 'dashboard':
+            title = 'Dashboard';
+            Component = SalesDashboard;
             break;
           case 'inventory':
             title = 'Inventory';
