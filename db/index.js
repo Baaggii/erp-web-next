@@ -128,7 +128,7 @@ export async function removeCompanyAssignment(userId, companyId) {
  */
 export async function updateCompanyAssignment(userId, companyId, role) {
   const [result] = await pool.query(
-    'UPDATE user_companies SET role = ? WHERE user_id = ? AND company_id = ?',
+    'UPDATE user_companies SET role = ? WHERE empid = ? AND company_id = ?',
     [role, userId, companyId]
   );
   return result;
@@ -139,7 +139,7 @@ export async function updateCompanyAssignment(userId, companyId, role) {
  */
 export async function listAllUserCompanies() {
   const [rows] = await pool.query(
-    'SELECT uc.user_id, uc.empid, uc.company_id, c.name AS company_name, uc.role FROM user_companies uc JOIN companies c ON uc.company_id = c.id'
+    'SELECT uc.empid, uc.company_id, c.name AS company_name, uc.role FROM user_companies uc JOIN companies c ON uc.company_id = c.id'
   );
   return rows;
 }

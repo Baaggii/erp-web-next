@@ -24,55 +24,47 @@ export default function Users() {
     const name = prompt('Name?');
     const password = prompt('Password?');
     const role = prompt('Role (user|admin)?', 'user');
-    try {
-      const res = await fetch('/api/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ empid, name, password, role })
-      });
-      if (!res.ok) throw new Error('Failed to add user');
-      alert('User added');
-      loadUsers();
-    } catch (err) {
-      console.error(err);
+    const res = await fetch('/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ empid, email, name, password, role })
+    });
+    if (!res.ok) {
       alert('Failed to add user');
+      return;
     }
+    loadUsers();
   }
 
   async function handleEdit(u) {
+    const email = prompt('Email?', u.email);
     const name = prompt('Name?', u.name);
     const role = prompt('Role?', u.role);
-    try {
-      const res = await fetch(`/api/users/${u.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ name, role })
-      });
-      if (!res.ok) throw new Error('Failed');
-      alert('User updated');
-      loadUsers();
-    } catch (err) {
-      console.error(err);
+    const res = await fetch(`/api/users/${u.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ name, role })
+    });
+    if (!res.ok) {
       alert('Failed to update user');
+      return;
     }
+    loadUsers();
   }
 
   async function handleDelete(u) {
     if (!confirm('Delete user?')) return;
-    try {
-      const res = await fetch(`/api/users/${u.id}`, {
-        method: 'DELETE',
-        credentials: 'include'
-      });
-      if (!res.ok) throw new Error('Failed');
-      alert('User deleted');
-      loadUsers();
-    } catch (err) {
-      console.error(err);
+    const res = await fetch(`/api/users/${u.id}`, {
+      method: 'DELETE',
+      credentials: 'include'
+    });
+    if (!res.ok) {
       alert('Failed to delete user');
+      return;
     }
+    loadUsers();
   }
 
   return (
