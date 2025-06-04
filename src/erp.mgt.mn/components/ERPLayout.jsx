@@ -22,6 +22,7 @@ export default function ERPLayout() {
     '/reports': 'Reports',
     '/users': 'Users',
     '/settings': 'Settings',
+    '/bluelink': 'Blue Link Demo',
   };
   const windowTitle = titleMap[location.pathname] || 'ERP';
 
@@ -95,6 +96,9 @@ function Sidebar() {
         </NavLink>
         <NavLink to="/reports" style={styles.menuItem}>
           Reports
+        </NavLink>
+        <NavLink to="/bluelink" style={styles.menuItem}>
+          Blue Link Demo
         </NavLink>
       </div>
 
