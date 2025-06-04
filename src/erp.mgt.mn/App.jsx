@@ -9,6 +9,7 @@ import FormsPage from './pages/Forms.jsx';
 import ReportsPage from './pages/Reports.jsx';
 import UsersPage from './pages/Users.jsx';
 import SettingsPage from './pages/Settings.jsx';
+import BlueLinkPage from './pages/BlueLinkPage.jsx';
 
 export default function App() {
   return (
@@ -26,6 +27,8 @@ export default function App() {
               <Route path="reports" element={<ReportsPage />} />
               <Route path="users" element={<UsersPage />} />
               <Route path="settings" element={<SettingsPage />} />
+              <Route path="bluelink" element={<BlueLinkPage />} />
+              <Route path="blue-link" element={<BlueLinkPage />} />
             </Route>
           </Route>
         </Routes>
