@@ -43,38 +43,32 @@ export default function UserCompanies() {
   async function handleEdit(a) {
     const role = prompt('Role', a.role);
     if (!role) return;
-    try {
-      const res = await fetch('/api/user_companies', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ empid: a.empid, companyId: a.company_id, role })
-      });
-      if (!res.ok) throw new Error('Failed');
-      alert('Assignment updated');
-      loadAssignments();
-    } catch (err) {
-      console.error(err);
+    const res = await fetch('/api/user_companies', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ empId: a.empid, companyId: a.company_id, role })
+    });
+    if (!res.ok) {
       alert('Failed to update assignment');
+      return;
     }
+    loadAssignments();
   }
 
   async function handleDelete(a) {
     if (!confirm('Delete assignment?')) return;
-    try {
-      const res = await fetch('/api/user_companies', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ empid: a.empid, companyId: a.company_id })
-      });
-      if (!res.ok) throw new Error('Failed');
-      alert('Assignment deleted');
-      loadAssignments();
-    } catch (err) {
-      console.error(err);
+    const res = await fetch('/api/user_companies', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ empId: a.empid, companyId: a.company_id })
+    });
+    if (!res.ok) {
       alert('Failed to delete assignment');
+      return;
     }
+    loadAssignments();
   }
 
   return (
