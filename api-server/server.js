@@ -10,6 +10,7 @@ import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
 import companyRoutes from './routes/companies.js';
 import settingsRoutes from './routes/settings.js';
+import userCompanyRoutes from './routes/user_companies.js';
 import { requireAuth } from './middlewares/auth.js';
 
 dotenv.config();
@@ -39,6 +40,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', requireAuth, userRoutes);
 app.use('/api/companies', requireAuth, companyRoutes);
 app.use('/api/settings', requireAuth, settingsRoutes);
+app.use('/api/user_companies', requireAuth, userCompanyRoutes);
 
 
 // Serve static React build and fallback to index.html
