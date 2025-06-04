@@ -8,16 +8,20 @@ export async function login(req, res, next) {
     if (!user || !(await user.verifyPassword(password))) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
-    const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, {
-      expiresIn: '2h'
-    });
+    const token = jwt.sign(
+      { id: user.id, email: user.email, empid: user.empid },
+      process.env.JWT_SECRET,
+      {
+        expiresIn: '2h'
+      }
+    );
 
     res.cookie(process.env.COOKIE_NAME, token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax'
     });
-    res.json({ id: user.id, email: user.email });
+    res.json({ id: user.id, email: user.email, empid: user.empid });
   } catch (err) {
     next(err);
   }
@@ -29,5 +33,5 @@ export async function logout(req, res) {
 }
 
 export async function getProfile(req, res) {
-  res.json({ id: req.user.id, email: req.user.email });
+  res.json({ id: req.user.id, email: req.user.email, empid: req.user.empid });
 }
