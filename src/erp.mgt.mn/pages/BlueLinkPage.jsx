@@ -1,7 +1,7 @@
 import React from 'react';
 import MosaicLayout from '../components/MosaicLayout.jsx';
 
-const initialLayout = {
+const blLayout = {
   direction: 'row',
   first: 'dashboard',
   second: {
@@ -18,11 +18,11 @@ const initialLayout = {
   splitPercentage: 25,
 };
 
-export default function Dashboard() {
+export default function BlueLinkPage() {
   return (
     <div>
-      <h2>Dashboard</h2>
-      <MosaicLayout initialLayout={initialLayout} />
+      <h2>Blue Link Demo</h2>
+      <MosaicLayout initialLayout={blLayout} />
     </div>
   );
 }
