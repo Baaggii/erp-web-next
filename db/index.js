@@ -124,6 +124,27 @@ export async function removeCompanyAssignment(userId, companyId) {
 }
 
 /**
+ * Update a user's company assignment role
+ */
+export async function updateCompanyAssignment(userId, companyId, role) {
+  const [result] = await pool.query(
+    'UPDATE user_companies SET role = ? WHERE empid = ? AND company_id = ?',
+    [role, userId, companyId]
+  );
+  return result;
+}
+
+/**
+ * List all user-company assignments
+ */
+export async function listAllUserCompanies() {
+  const [rows] = await pool.query(
+    'SELECT uc.empid, uc.company_id, c.name AS company_name, uc.role FROM user_companies uc JOIN companies c ON uc.company_id = c.id'
+  );
+  return rows;
+}
+
+/**
  * List all companies
  */
 export async function listCompanies() {
