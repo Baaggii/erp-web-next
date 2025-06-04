@@ -17,11 +17,12 @@ export default function ERPLayout() {
   const location = useLocation();
 
   const titleMap = {
-    '/': 'Dashboard',
+    '/': 'Blue Link Demo',
     '/forms': 'Forms',
     '/reports': 'Reports',
     '/users': 'Users',
     '/settings': 'Settings',
+    '/bluelink': 'Blue Link Demo',
   };
   const windowTitle = titleMap[location.pathname] || 'ERP';
 
@@ -88,13 +89,16 @@ function Sidebar() {
       <div style={styles.menuGroup}>
         <div style={styles.groupTitle}>📌 Pinned</div>
         <NavLink to="/" style={styles.menuItem}>
-          Dashboard
+          Blue Link Demo
         </NavLink>
         <NavLink to="/forms" style={styles.menuItem}>
           Forms
         </NavLink>
         <NavLink to="/reports" style={styles.menuItem}>
           Reports
+        </NavLink>
+        <NavLink to="/bluelink" style={styles.menuItem}>
+          Blue Link Demo
         </NavLink>
       </div>
 
