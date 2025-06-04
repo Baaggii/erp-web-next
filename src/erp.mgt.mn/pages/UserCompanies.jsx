@@ -24,20 +24,17 @@ export default function UserCompanies() {
     const companyId = prompt('Company ID?');
     if (!companyId) return;
     const role = prompt('Role (user|admin)?', 'user');
-    try {
-      const res = await fetch('/api/user_companies', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ empid, companyId, role })
-      });
-      if (!res.ok) throw new Error('Failed');
-      alert('Assignment added');
-      loadAssignments();
-    } catch (err) {
-      console.error(err);
+    const res = await fetch('/api/user_companies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ userId, empid, companyId, role })
+    });
+    if (!res.ok) {
       alert('Failed to add assignment');
+      return;
     }
+    loadAssignments();
   }
 
   async function handleEdit(a) {
