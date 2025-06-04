@@ -21,8 +21,8 @@ export async function listAssignments(req, res, next) {
 
 export async function assignCompany(req, res, next) {
   try {
-    const { userId, companyId, role } = req.body;
-    await assignCompanyToUser(userId, companyId, role, req.user.id);
+    const { userId, companyId, empid, role } = req.body;
+    await assignCompanyToUser(userId, companyId, empid, role);
     res.sendStatus(201);
   } catch (err) {
     next(err);

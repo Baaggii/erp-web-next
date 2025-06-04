@@ -21,6 +21,8 @@ export default function UserCompanies() {
   async function handleAdd() {
     const userId = prompt('User ID?');
     if (!userId) return;
+    const empid = prompt('EmpID?');
+    if (!empid) return;
     const companyId = prompt('Company ID?');
     if (!companyId) return;
     const role = prompt('Role (user|admin)?', 'user');
@@ -28,7 +30,7 @@ export default function UserCompanies() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ userId, companyId, role })
+      body: JSON.stringify({ userId, empid, companyId, role })
     });
     if (!res.ok) {
       alert('Failed to add assignment');
