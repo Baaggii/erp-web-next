@@ -21,6 +21,7 @@ export default function Users() {
   async function handleAdd() {
     const empid = prompt('EmpID?');
     if (!empid) return;
+    const email = prompt('Email?');
     const name = prompt('Name?');
     const password = prompt('Password?');
     const role = prompt('Role (user|admin)?', 'user');
@@ -28,7 +29,7 @@ export default function Users() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ empid, name, password, role })
+      body: JSON.stringify({ empid, email, name, password, role })
     });
     if (!res.ok) {
       alert('Failed to add user');
@@ -38,6 +39,7 @@ export default function Users() {
   }
 
   async function handleEdit(u) {
+    const email = prompt('Email?', u.email);
     const name = prompt('Name?', u.name);
     const role = prompt('Role?', u.role);
     const res = await fetch(`/api/users/${u.id}`, {
