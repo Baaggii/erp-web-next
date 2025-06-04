@@ -9,7 +9,6 @@ import ReportsPage from './pages/Reports.jsx';
 import UsersPage from './pages/Users.jsx';
 import SettingsPage from './pages/Settings.jsx';
 import Dashboard from './pages/Dashboard.jsx';
-import BlueLinkPage from './pages/BlueLinkPage.jsx';
 
 export default function App() {
   return (
