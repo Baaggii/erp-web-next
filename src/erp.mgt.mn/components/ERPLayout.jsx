@@ -17,7 +17,7 @@ export default function ERPLayout() {
   const location = useLocation();
 
   const titleMap = {
-    '/': 'Dashboard',
+    '/': 'Blue Link Demo',
     '/forms': 'Forms',
     '/reports': 'Reports',
     '/users': 'Users',
