@@ -250,11 +250,13 @@ CREATE TABLE companies (
 
 
 CREATE TABLE user_companies (
-  empid       VARCHAR(50)          NOT NULL,
-  company_id  INT                  NOT NULL,
-  role        ENUM('user','admin') NOT NULL DEFAULT 'user',
-  PRIMARY KEY (empid, company_id),
-  FOREIGN KEY (empid)      REFERENCES users(empid),
+  user_id     INT                       NOT NULL,
+  company_id  INT                       NOT NULL,
+  empid       VARCHAR(50)               NOT NULL,
+  role        ENUM('user','admin')      NOT NULL DEFAULT 'user',
+  PRIMARY KEY (user_id, company_id),
+  UNIQUE KEY ux_company_empid (company_id, empid),
+  FOREIGN KEY (user_id)    REFERENCES users(id),
   FOREIGN KEY (company_id) REFERENCES companies(id)
 ) ENGINE=InnoDB;
 
@@ -262,6 +264,10 @@ ALTER TABLE users
   ADD COLUMN created_by VARCHAR(50) NOT NULL AFTER password,
   ADD CONSTRAINT fk_users_created_by
     FOREIGN KEY (created_by) REFERENCES users(empid);
+
+ALTER TABLE users
+  ADD COLUMN created_by INT    NOT NULL AFTER password,
+  ADD FOREIGN KEY (created_by) REFERENCES users(id);
 
 ALTER TABLE user_companies
   ADD COLUMN updated_at DATETIME

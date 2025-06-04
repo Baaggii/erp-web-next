@@ -56,18 +56,15 @@ export default function Users() {
 
   async function handleDelete(u) {
     if (!confirm('Delete user?')) return;
-    try {
-      const res = await fetch(`/api/users/${u.id}`, {
-        method: 'DELETE',
-        credentials: 'include'
-      });
-      if (!res.ok) throw new Error('Failed');
-      alert('User deleted');
-      loadUsers();
-    } catch (err) {
-      console.error(err);
+    const res = await fetch(`/api/users/${u.id}`, {
+      method: 'DELETE',
+      credentials: 'include'
+    });
+    if (!res.ok) {
       alert('Failed to delete user');
+      return;
     }
+    loadUsers();
   }
 
   return (

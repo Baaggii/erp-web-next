@@ -13,7 +13,8 @@ export async function login({ empid, password }) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include', // Ensures cookie is stored
-    body: JSON.stringify({ empid, password }),
+    // Backend accepts email field which can be either an email or empid
+    body: JSON.stringify({ email: empid, password }),
   });
   if (!res.ok) {
     const errorBody = await res.json().catch(() => ({}));
