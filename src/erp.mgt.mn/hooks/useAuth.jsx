@@ -35,7 +35,7 @@ export async function logout() {
 
 /**
  * Fetches current user profile if authenticated.
- * @returns {Promise<{id: number, email: string}>}
+ * @returns {Promise<{id: number, email: string, empid: string}>}
  */
 export async function fetchProfile() {
   const res = await fetch('/api/auth/me', { credentials: 'include' });

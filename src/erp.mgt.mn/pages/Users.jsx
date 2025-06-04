@@ -21,7 +21,6 @@ export default function Users() {
   async function handleAdd() {
     const empid = prompt('EmpID?');
     if (!empid) return;
-    const email = prompt('Email?');
     const name = prompt('Name?');
     const password = prompt('Password?');
     const role = prompt('Role (user|admin)?', 'user');
