@@ -93,10 +93,10 @@ export async function deleteUserById(id) {
 /**
  * Assign a user to a company with a specific role
  */
-export async function assignCompanyToUser(userId, companyId, empid, role) {
+export async function assignCompanyToUser(userId, companyId, role, createdBy) {
   const [result] = await pool.query(
-    'INSERT INTO user_companies (user_id, company_id, empid, role) VALUES (?, ?, ?, ?)',
-    [userId, companyId, empid, role]
+    'INSERT INTO user_companies (empid, company_id, role, created_by) VALUES (?, ?, ?, ?)',
+    [userId, companyId, role, createdBy]
   );
   return { id: result.insertId };
 }
@@ -106,7 +106,7 @@ export async function assignCompanyToUser(userId, companyId, empid, role) {
  */
 export async function listUserCompanies(userId) {
   const [rows] = await pool.query(
-    'SELECT uc.company_id, c.name AS company_name, uc.role, uc.empid FROM user_companies uc JOIN companies c ON uc.company_id = c.id WHERE uc.user_id = ?',
+    'SELECT uc.company_id, c.name, uc.role FROM user_companies uc JOIN companies c ON uc.company_id = c.id WHERE uc.empid = ?',
     [userId]
   );
   return rows;
@@ -117,31 +117,10 @@ export async function listUserCompanies(userId) {
  */
 export async function removeCompanyAssignment(userId, companyId) {
   const [result] = await pool.query(
-    'DELETE FROM user_companies WHERE user_id = ? AND company_id = ?',
+    'DELETE FROM user_companies WHERE empid = ? AND company_id = ?',
     [userId, companyId]
   );
   return result;
-}
-
-/**
- * Update a user's company assignment role
- */
-export async function updateCompanyAssignment(userId, companyId, role) {
-  const [result] = await pool.query(
-    'UPDATE user_companies SET role = ? WHERE empid = ? AND company_id = ?',
-    [role, userId, companyId]
-  );
-  return result;
-}
-
-/**
- * List all user-company assignments
- */
-export async function listAllUserCompanies() {
-  const [rows] = await pool.query(
-    'SELECT uc.empid, uc.company_id, c.name AS company_name, uc.role FROM user_companies uc JOIN companies c ON uc.company_id = c.id'
-  );
-  return rows;
 }
 
 /**

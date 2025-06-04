@@ -62,7 +62,7 @@ function Header({ user, onLogout }) {
       </nav>
       <div style={styles.userSection}>
         <span style={{ marginRight: '0.5rem' }}>
-          {user ? `Welcome, ${user.email || user.empid}` : ''}
+          {user ? `Welcome, ${user.email}` : ''}
         </span>
         {user && (
           <button style={styles.logoutBtn} onClick={onLogout}>
