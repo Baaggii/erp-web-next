@@ -10,6 +10,7 @@ import UsersPage from './pages/Users.jsx';
 import UserCompaniesPage from './pages/UserCompanies.jsx';
 import SettingsPage from './pages/Settings.jsx';
 import Dashboard from './pages/Dashboard.jsx';
+import BlueLinkPage from './pages/BlueLinkPage.jsx';
 
 export default function App() {
   return (
@@ -22,7 +23,7 @@ export default function App() {
           {/* Protected app routes */}
           <Route element={<RequireAuth />}>
             <Route path="/" element={<ERPLayout />}>
-              <Route index element={<Dashboard />} />
+              <Route index element={<BlueLinkPage />} />
               <Route path="forms" element={<FormsPage />} />
               <Route path="reports" element={<ReportsPage />} />
               <Route path="users" element={<UsersPage />} />

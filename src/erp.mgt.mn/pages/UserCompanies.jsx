@@ -46,7 +46,7 @@ export default function UserCompanies() {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ userId: a.user_id, companyId: a.company_id, role })
+      body: JSON.stringify({ userId: a.empid, companyId: a.company_id, role })
     });
     if (!res.ok) {
       alert('Failed to update assignment');
@@ -61,7 +61,7 @@ export default function UserCompanies() {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ userId: a.user_id, companyId: a.company_id })
+      body: JSON.stringify({ userId: a.empid, companyId: a.company_id })
     });
     if (!res.ok) {
       alert('Failed to delete assignment');
@@ -90,7 +90,7 @@ export default function UserCompanies() {
           </thead>
           <tbody>
             {assignments.map(a => (
-              <tr key={a.user_id + '-' + a.company_id}>
+              <tr key={a.empid + '-' + a.company_id}>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>{a.empid}</td>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>{a.company_name}</td>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>{a.role}</td>
