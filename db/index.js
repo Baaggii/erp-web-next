@@ -46,7 +46,7 @@ export async function getUserByEmail(emailOrEmpId) {
  */
 export async function listUsers() {
   const [rows] = await pool.query(
-    'SELECT id, empid, email, name, role, created_at FROM users'
+    'SELECT id, empid, name, role, created_at FROM users'
   );
   return rows;
 }
@@ -62,11 +62,11 @@ export async function getUserById(id) {
 /**
  * Create a new user
  */
-export async function createUser({ empid, email, name, password, role, created_by }) {
+export async function createUser({ empid, name, password, role, created_by }) {
   const hashed = await bcrypt.hash(password, 10);
   const [result] = await pool.query(
-    'INSERT INTO users (empid, email, name, password, role, created_by) VALUES (?, ?, ?, ?, ?, ?)',
-    [empid, email, name, hashed, role, created_by]
+    'INSERT INTO users (empid, name, password, role, created_by) VALUES (?, ?, ?, ?, ?)',
+    [empid, name, hashed, role, created_by]
   );
   return { id: result.insertId };
 }
@@ -74,10 +74,10 @@ export async function createUser({ empid, email, name, password, role, created_b
 /**
  * Update an existing user
  */
-export async function updateUser(id, { name, email, role }) {
+export async function updateUser(id, { name, role }) {
   await pool.query(
-    'UPDATE users SET name = ?, email = ?, role = ? WHERE id = ?',
-    [name, email, role, id]
+    'UPDATE users SET name = ?, role = ? WHERE id = ?',
+    [name, role, id]
   );
   return { id };
 }
