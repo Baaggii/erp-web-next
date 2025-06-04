@@ -1,10 +1,10 @@
-import { getUserByEmail } from '../../db/index.js'; // adjust path to your db folder
+import { getUserByEmpId } from '../../db/index.js';
 import jwt from 'jsonwebtoken';
 
 export async function login(req, res, next) {
   try {
-    const { email, password } = req.body;
-    const user = await getUserByEmail(email);
+    const { empid, password } = req.body;
+    const user = await getUserByEmpId(empid);
     if (!user || !(await user.verifyPassword(password))) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
