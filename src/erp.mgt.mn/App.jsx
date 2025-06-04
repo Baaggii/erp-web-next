@@ -27,7 +27,6 @@ export default function App() {
               <Route path="users" element={<UsersPage />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="bluelink" element={<BlueLinkPage />} />
-              <Route path="blue-link" element={<BlueLinkPage />} />
             </Route>
           </Route>
         </Routes>
