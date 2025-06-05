@@ -30,10 +30,10 @@ export async function testConnection() {
 /**
  * Fetch a user by email (or employee ID)
  */
-export async function getUserByEmail(emailOrEmpId) {
+export async function getUserByEmpId(empid) {
   const [rows] = await pool.query(
-    'SELECT * FROM users WHERE email = ? OR empid = ? LIMIT 1',
-    [emailOrEmpId, emailOrEmpId]
+    'SELECT * FROM users WHERE empid = ? LIMIT 1',
+    [empid]
   );
   if (rows.length === 0) return null;
   const user = rows[0];
@@ -46,7 +46,7 @@ export async function getUserByEmail(emailOrEmpId) {
  */
 export async function listUsers() {
   const [rows] = await pool.query(
-    'SELECT id, empid, email, name, role, created_at FROM users'
+    'SELECT id, empid, name, role, created_at FROM users'
   );
   return rows;
 }
@@ -62,11 +62,11 @@ export async function getUserById(id) {
 /**
  * Create a new user
  */
-export async function createUser({ empid, email, name, password, role, created_by }) {
+export async function createUser({ empid, name, password, role, created_by }) {
   const hashed = await bcrypt.hash(password, 10);
   const [result] = await pool.query(
-    'INSERT INTO users (empid, email, name, password, role, created_by) VALUES (?, ?, ?, ?, ?, ?)',
-    [empid, email, name, hashed, role, created_by]
+    'INSERT INTO users (empid, name, password, role, created_by) VALUES (?, ?, ?, ?, ?)',
+    [empid, name, hashed, role, created_by]
   );
   return { id: result.insertId };
 }
@@ -74,10 +74,10 @@ export async function createUser({ empid, email, name, password, role, created_b
 /**
  * Update an existing user
  */
-export async function updateUser(id, { name, email, role }) {
+export async function updateUser(id, { name, role }) {
   await pool.query(
-    'UPDATE users SET name = ?, email = ?, role = ? WHERE id = ?',
-    [name, email, role, id]
+    'UPDATE users SET name = ?, role = ? WHERE id = ?',
+    [name, role, id]
   );
   return { id };
 }
@@ -93,10 +93,10 @@ export async function deleteUserById(id) {
 /**
  * Assign a user to a company with a specific role
  */
-export async function assignCompanyToUser(userId, companyId, role, createdBy) {
+export async function assignCompanyToUser(empid, companyId, role) {
   const [result] = await pool.query(
-    'INSERT INTO user_companies (empid, company_id, role, created_by) VALUES (?, ?, ?, ?)',
-    [userId, companyId, role, createdBy]
+    'INSERT INTO user_companies (empid, company_id, role) VALUES (?, ?, ?)',
+    [empid, companyId, role]
   );
   return { id: result.insertId };
 }
@@ -104,10 +104,10 @@ export async function assignCompanyToUser(userId, companyId, role, createdBy) {
 /**
  * List company assignments for a given user
  */
-export async function listUserCompanies(userId) {
+export async function listUserCompanies(empid) {
   const [rows] = await pool.query(
-    'SELECT uc.company_id, c.name, uc.role FROM user_companies uc JOIN companies c ON uc.company_id = c.id WHERE uc.empid = ?',
-    [userId]
+    'SELECT uc.company_id, c.name AS company_name, uc.role, uc.empid FROM user_companies uc JOIN companies c ON uc.company_id = c.id WHERE uc.empid = ?',
+    [empid]
   );
   return rows;
 }
@@ -115,12 +115,33 @@ export async function listUserCompanies(userId) {
 /**
  * Remove a user-company assignment
  */
-export async function removeCompanyAssignment(userId, companyId) {
+export async function removeCompanyAssignment(empid, companyId) {
   const [result] = await pool.query(
     'DELETE FROM user_companies WHERE empid = ? AND company_id = ?',
-    [userId, companyId]
+    [empid, companyId]
   );
   return result;
+}
+
+/**
+ * Update a user's company assignment role
+ */
+export async function updateCompanyAssignment(empid, companyId, role) {
+  const [result] = await pool.query(
+    'UPDATE user_companies SET role = ? WHERE empid = ? AND company_id = ?',
+    [role, empid, companyId]
+  );
+  return result;
+}
+
+/**
+ * List all user-company assignments
+ */
+export async function listAllUserCompanies() {
+  const [rows] = await pool.query(
+    'SELECT uc.empid, uc.company_id, c.name AS company_name, uc.role FROM user_companies uc JOIN companies c ON uc.company_id = c.id'
+  );
+  return rows;
 }
 
 /**
