@@ -24,7 +24,6 @@ export default function App() {
           <Route element={<RequireAuth />}>
             <Route path="/" element={<ERPLayout />}>
               <Route index element={<BlueLinkPage />} />
-              <Route path="dashboard" element={<Dashboard />} />
               <Route path="forms" element={<FormsPage />} />
               <Route path="reports" element={<ReportsPage />} />
               <Route path="users" element={<UsersPage />} />
