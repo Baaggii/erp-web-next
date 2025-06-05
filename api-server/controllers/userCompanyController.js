@@ -25,6 +25,9 @@ export async function assignCompany(req, res, next) {
     await assignCompanyToUser(empid, companyId, role);
     res.sendStatus(201);
   } catch (err) {
+    if (err.code === 'ER_NO_REFERENCED_ROW_2') {
+      return res.status(400).json({ message: 'Invalid empid or companyId' });
+    }
     next(err);
   }
 }
