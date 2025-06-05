@@ -1,6 +1,8 @@
 // api-server/middlewares/auth.js
 import jwt from 'jsonwebtoken';
 
+const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret';
+
 export function requireAuth(req, res, next) {
   // Read from req.cookies (not req.signedCookies) because we didn't sign it
   const token = req.cookies?.[process.env.COOKIE_NAME];
@@ -10,8 +12,8 @@ export function requireAuth(req, res, next) {
 
   try {
     // Verify the JWT
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = payload; // { id, email, iat, exp }
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.user = payload; // { id, empid, email, iat, exp }
     next();
   } catch (err) {
     console.error('JWT verification failed:', err);
