@@ -30,8 +30,7 @@ export async function createUser(req, res, next) {
   try {
     const newUser = await dbCreateUser({
       ...req.body,
-      // use employee ID for created_by to satisfy FK constraint
-      created_by: req.user.empid
+      created_by: req.user.id
     });
     res.status(201).json(newUser);
   } catch (err) {
