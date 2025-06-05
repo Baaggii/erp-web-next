@@ -16,10 +16,13 @@ export default function ERPLayout() {
   const location = useLocation();
 
   const titleMap = {
-    '/': 'Dashboard',
+    '/': 'Blue Link Demo',
+    '/bluelink': 'Blue Link Demo',
+    '/dashboard': 'Dashboard',
     '/forms': 'Forms',
     '/reports': 'Reports',
     '/users': 'Users',
+    '/user-companies': 'User Companies',
     '/settings': 'Settings',
   };
   const windowTitle = titleMap[location.pathname] || 'ERP';
@@ -62,7 +65,7 @@ function Header({ user, onLogout }) {
       </nav>
       <div style={styles.userSection}>
         <span style={{ marginRight: '0.5rem' }}>
-          {user ? `Welcome, ${user.email}` : ''}
+          {user ? `Welcome, ${user.email || user.empid}` : ''}
         </span>
         {user && (
           <button style={styles.logoutBtn} onClick={onLogout}>
@@ -82,7 +85,7 @@ function Sidebar() {
       <div style={styles.menuGroup}>
         <div style={styles.groupTitle}>📌 Pinned</div>
         <NavLink to="/" style={styles.menuItem}>
-          Dashboard
+          Blue Link Demo
         </NavLink>
         <NavLink to="/forms" style={styles.menuItem}>
           Forms
@@ -98,6 +101,9 @@ function Sidebar() {
         <div style={styles.groupTitle}>📁 Modules</div>
         <NavLink to="/users" style={styles.menuItem}>
           Users
+        </NavLink>
+        <NavLink to="/user-companies" style={styles.menuItem}>
+          User Companies
         </NavLink>
         <NavLink to="/settings" style={styles.menuItem}>
           Settings
