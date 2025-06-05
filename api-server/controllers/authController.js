@@ -1,4 +1,5 @@
-import { getUserByEmail } from '../../db/index.js'; // adjust path to your db folder
+import { getUserByEmail, updateUserPassword } from '../../db/index.js'; // adjust path to your db folder
+import { hash } from '../services/passwordService.js';
 import jwt from 'jsonwebtoken';
 
 export async function login(req, res, next) {
@@ -49,4 +50,18 @@ export async function getProfile(req, res) {
     empid: req.user.empid,
     role: req.user.role,
   });
+}
+
+export async function changePassword(req, res, next) {
+  try {
+    const { password } = req.body;
+    if (!password) {
+      return res.status(400).json({ message: 'Password required' });
+    }
+    const hashed = await hash(password);
+    await updateUserPassword(req.user.id, hashed);
+    res.sendStatus(204);
+  } catch (err) {
+    next(err);
+  }
 }

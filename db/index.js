@@ -94,6 +94,11 @@ export async function updateUser(id, { name, email, role_id }) {
   return { id };
 }
 
+export async function updateUserPassword(id, hashedPassword) {
+  await pool.query('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, id]);
+  return { id };
+}
+
 /**
  * Delete a user by ID
  */
