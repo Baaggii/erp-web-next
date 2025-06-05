@@ -106,7 +106,7 @@ export async function assignCompanyToUser(empid, companyId, role) {
  */
 export async function listUserCompanies(empid) {
   const [rows] = await pool.query(
-    'SELECT uc.company_id, c.name AS company_name, uc.role, uc.empid FROM user_companies uc JOIN companies c ON uc.company_id = c.id WHERE uc.empid = ?',
+    'SELECT uc.empid, uc.company_id, c.name AS company_name, uc.role FROM user_companies uc JOIN companies c ON uc.company_id = c.id WHERE uc.empid = ?',
     [empid]
   );
   return rows;

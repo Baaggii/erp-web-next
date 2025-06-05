@@ -250,13 +250,11 @@ CREATE TABLE companies (
 
 
 CREATE TABLE user_companies (
-  user_id     INT                       NOT NULL,
-  company_id  INT                       NOT NULL,
   empid       VARCHAR(50)               NOT NULL,
+  company_id  INT                       NOT NULL,
   role        ENUM('user','admin')      NOT NULL DEFAULT 'user',
-  PRIMARY KEY (user_id, company_id),
-  UNIQUE KEY ux_company_empid (company_id, empid),
-  FOREIGN KEY (user_id)    REFERENCES users(id),
+  PRIMARY KEY (empid, company_id),
+  FOREIGN KEY (empid)     REFERENCES users(empid),
   FOREIGN KEY (company_id) REFERENCES companies(id)
 ) ENGINE=InnoDB;
 
