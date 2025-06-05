@@ -9,7 +9,12 @@ export async function login(req, res, next) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
     const token = jwt.sign(
-      { id: user.id, email: user.email, empid: user.empid },
+      {
+        id: user.id,
+        email: user.email,
+        empid: user.empid,
+        role: user.role,
+      },
       process.env.JWT_SECRET,
       {
         expiresIn: '2h'
@@ -21,7 +26,12 @@ export async function login(req, res, next) {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax'
     });
-    res.json({ id: user.id, email: user.email, empid: user.empid });
+    res.json({
+      id: user.id,
+      email: user.email,
+      empid: user.empid,
+      role: user.role,
+    });
   } catch (err) {
     next(err);
   }
@@ -33,5 +43,10 @@ export async function logout(req, res) {
 }
 
 export async function getProfile(req, res) {
-  res.json({ id: req.user.id, email: req.user.email, empid: req.user.empid });
+  res.json({
+    id: req.user.id,
+    email: req.user.email,
+    empid: req.user.empid,
+    role: req.user.role,
+  });
 }

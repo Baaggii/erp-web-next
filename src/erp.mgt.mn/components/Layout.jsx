@@ -76,6 +76,8 @@ function Header({ user, onLogout }) {
 
 /** Left sidebar with “menu groups” and “pinned items” **/
 function Sidebar() {
+  const { user } = useContext(AuthContext);
+
   // You can expand/collapse these groups if you like; this is a static example
   return (
     <aside style={styles.sidebar}>
@@ -96,9 +98,11 @@ function Sidebar() {
 
       <div style={styles.menuGroup}>
         <div style={styles.groupTitle}>📁 Modules</div>
-        <NavLink to="/users" style={styles.menuItem}>
-          Users
-        </NavLink>
+        {user?.role === 'admin' && (
+          <NavLink to="/users" style={styles.menuItem}>
+            Users
+          </NavLink>
+        )}
         <NavLink to="/settings" style={styles.menuItem}>
           Settings
         </NavLink>
