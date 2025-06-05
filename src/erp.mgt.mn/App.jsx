@@ -9,6 +9,7 @@ import ReportsPage from './pages/Reports.jsx';
 import UsersPage from './pages/Users.jsx';
 import UserCompaniesPage from './pages/UserCompanies.jsx';
 import SettingsPage from './pages/Settings.jsx';
+import ChangePasswordPage from './pages/ChangePassword.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import BlueLinkPage from './pages/BlueLinkPage.jsx';
 
@@ -29,6 +30,7 @@ export default function App() {
               <Route path="users" element={<UsersPage />} />
               <Route path="user-companies" element={<UserCompaniesPage />} />
               <Route path="settings" element={<SettingsPage />} />
+              <Route path="change-password" element={<ChangePasswordPage />} />
             </Route>
           </Route>
         </Routes>
