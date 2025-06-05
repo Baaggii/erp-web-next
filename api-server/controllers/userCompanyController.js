@@ -11,7 +11,7 @@ export async function listAssignments(req, res, next) {
   try {
     const empid = req.query.empid;
     const assignments = empid
-      : await listAllUserCompanies();
+      ? await listUserCompanies(empid)
     res.json(assignments);
   } catch (err) {
     next(err);

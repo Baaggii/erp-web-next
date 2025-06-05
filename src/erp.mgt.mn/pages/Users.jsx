@@ -24,34 +24,39 @@ export default function Users() {
     const name = prompt('Name?');
     const password = prompt('Password?');
     const role = prompt('Role (user|admin)?', 'user');
-    const res = await fetch('/api/users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ empid, email, name, password, role })
-    });
-    if (!res.ok) {
+    try {
+      const res = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ empid, name, password, role })
+      });
+      if (!res.ok) throw new Error('Failed to add user');
+      alert('User added');
+      loadUsers();
+    } catch (err) {
+      console.error(err);
       alert('Failed to add user');
-      return;
     }
-    loadUsers();
   }
 
   async function handleEdit(u) {
-    const email = prompt('Email?', u.email);
     const name = prompt('Name?', u.name);
     const role = prompt('Role?', u.role);
-    const res = await fetch(`/api/users/${u.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ name, role })
-    });
-    if (!res.ok) {
+    try {
+      const res = await fetch(`/api/users/${u.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name, role })
+      });
+      if (!res.ok) throw new Error('Failed');
+      alert('User updated');
+      loadUsers();
+    } catch (err) {
+      console.error(err);
       alert('Failed to update user');
-      return;
     }
-    loadUsers();
   }
 
   async function handleDelete(u) {
