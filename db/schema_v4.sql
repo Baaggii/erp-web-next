@@ -214,7 +214,8 @@ CREATE TABLE SGereeJ (
 -- Users table for authentication
 CREATE TABLE IF NOT EXISTS `users` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
-  `email` VARCHAR(255) NOT NULL UNIQUE,
+  `empid` VARCHAR(50) NOT NULL UNIQUE,
+  `email` VARCHAR(255) DEFAULT NULL,
   `password` VARCHAR(255) NOT NULL,
   `name` VARCHAR(100) NOT NULL,
   `company` VARCHAR(100) DEFAULT 'ModMarket ХХК',
@@ -232,8 +233,9 @@ CREATE TABLE IF NOT EXISTS `form_submissions` (
 
 -- Seed initial admin user with known password 'Admin@123'
 -- Generate hash via Node: `require('bcrypt').hash('Admin@123', 10, console.log)`
-INSERT INTO `users` (`email`, `password`, `name`, `company`, `role`)
+INSERT INTO `users` (`empid`, `email`, `password`, `name`, `company`, `role`)
 VALUES (
+  'admin',
   'admin@modmarket.mn',
   '$2b$10$Z9s94pu0QEKnn1J8/p36Xuw3ULxX5gE/UfjTXyW6uxS0921gys8wu',  -- hash for 'Admin@123'
   'Administrator',
