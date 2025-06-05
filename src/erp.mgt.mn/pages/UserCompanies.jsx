@@ -3,9 +3,13 @@ import React, { useEffect, useState } from 'react';
 
 export default function UserCompanies() {
   const [assignments, setAssignments] = useState([]);
+  const [filterEmpId, setFilterEmpId] = useState('');
 
-  function loadAssignments() {
-    fetch('/api/user_companies', { credentials: 'include' })
+  function loadAssignments(empid) {
+    const url = empid
+      ? `/api/user_companies?empid=${encodeURIComponent(empid)}`
+      : '/api/user_companies';
+    fetch(url, { credentials: 'include' })
       .then(res => {
         if (!res.ok) throw new Error('Failed to fetch user_companies');
         return res.json();
@@ -17,6 +21,10 @@ export default function UserCompanies() {
   useEffect(() => {
     loadAssignments();
   }, []);
+
+  function handleFilter() {
+    loadAssignments(filterEmpId);
+  }
 
   async function handleAdd() {
     const empid = prompt('EmpID?');
@@ -74,6 +82,16 @@ export default function UserCompanies() {
   return (
     <div>
       <h2>User Companies</h2>
+      <input
+        type="text"
+        placeholder="Filter by EmpID"
+        value={filterEmpId}
+        onChange={(e) => setFilterEmpId(e.target.value)}
+        style={{ marginRight: '0.5rem' }}
+      />
+      <button onClick={handleFilter} style={{ marginRight: '0.5rem' }}>
+        Apply
+      </button>
       <button onClick={handleAdd}>Add Assignment</button>
       {assignments.length === 0 ? (
         <p>No assignments.</p>

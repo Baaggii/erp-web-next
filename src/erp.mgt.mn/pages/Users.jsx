@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 
 export default function Users() {
   const [usersList, setUsersList] = useState([]);
+  const [filter, setFilter] = useState('');
 
   function loadUsers() {
     fetch('/api/users', { credentials: 'include' })
@@ -72,6 +73,13 @@ export default function Users() {
   return (
     <div>
       <h2>Users</h2>
+      <input
+        type="text"
+        placeholder="Filter users"
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+        style={{ marginRight: '0.5rem' }}
+      />
       <button onClick={handleAdd}>Add User</button>
       {usersList.length === 0 ? (
         <p>No users returned.</p>
@@ -100,7 +108,14 @@ export default function Users() {
             </tr>
           </thead>
           <tbody>
-            {usersList.map((u) => (
+            {usersList
+              .filter(
+                (u) =>
+                  u.empid.toLowerCase().includes(filter.toLowerCase()) ||
+                  u.name.toLowerCase().includes(filter.toLowerCase()) ||
+                  (u.email || '').toLowerCase().includes(filter.toLowerCase())
+              )
+              .map((u) => (
               <tr key={u.id}>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                   {u.empid}
