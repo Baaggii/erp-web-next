@@ -9,9 +9,9 @@ import { requireAuth } from '../middlewares/auth.js';
 
 export async function listAssignments(req, res, next) {
   try {
-    const userId = req.query.userId;
-    const assignments = userId
-      ? await listUserCompanies(userId)
+    const empid = req.query.empid;
+    const assignments = empid
+      ? await listUserCompanies(empid)
       : await listAllUserCompanies();
     res.json(assignments);
   } catch (err) {
@@ -21,8 +21,8 @@ export async function listAssignments(req, res, next) {
 
 export async function assignCompany(req, res, next) {
   try {
-    const { userId, companyId, empid, role } = req.body;
-    await assignCompanyToUser(userId, companyId, empid, role);
+    const { empid, companyId, role } = req.body;
+    await assignCompanyToUser(empid, companyId, role);
     res.sendStatus(201);
   } catch (err) {
     next(err);
@@ -31,8 +31,8 @@ export async function assignCompany(req, res, next) {
 
 export async function updateAssignment(req, res, next) {
   try {
-    const { userId, companyId, role } = req.body;
-    await updateCompanyAssignment(userId, companyId, role);
+    const { empid, companyId, role } = req.body;
+    await updateCompanyAssignment(empid, companyId, role);
     res.sendStatus(200);
   } catch (err) {
     next(err);
@@ -41,8 +41,8 @@ export async function updateAssignment(req, res, next) {
 
 export async function removeAssignment(req, res, next) {
   try {
-    const { userId, companyId } = req.body;
-    await removeCompanyAssignment(userId, companyId);
+    const { empid, companyId } = req.body;
+    await removeCompanyAssignment(empid, companyId);
     res.sendStatus(204);
   } catch (err) {
     next(err);
