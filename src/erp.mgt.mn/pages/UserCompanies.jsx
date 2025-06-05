@@ -31,7 +31,8 @@ export default function UserCompanies() {
       body: JSON.stringify({ empid, companyId, role })
     });
     if (!res.ok) {
-      alert('Failed to add assignment');
+      const { message } = await res.json().catch(() => ({ message: 'Failed to add assignment' }));
+      alert(message || 'Failed to add assignment');
       return;
     }
     loadAssignments();
@@ -47,7 +48,8 @@ export default function UserCompanies() {
       body: JSON.stringify({ empid: a.empid, companyId: a.company_id, role })
     });
     if (!res.ok) {
-      alert('Failed to update assignment');
+      const { message } = await res.json().catch(() => ({ message: 'Failed to update assignment' }));
+      alert(message || 'Failed to update assignment');
       return;
     }
     loadAssignments();
@@ -62,7 +64,8 @@ export default function UserCompanies() {
       body: JSON.stringify({ empid: a.empid, companyId: a.company_id })
     });
     if (!res.ok) {
-      alert('Failed to delete assignment');
+      const { message } = await res.json().catch(() => ({ message: 'Failed to delete assignment' }));
+      alert(message || 'Failed to delete assignment');
       return;
     }
     loadAssignments();

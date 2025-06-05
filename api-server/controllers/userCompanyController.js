@@ -22,9 +22,12 @@ export async function listAssignments(req, res, next) {
 export async function assignCompany(req, res, next) {
   try {
     const { empid, companyId, role } = req.body;
-    await assignCompanyToUser(empid, companyId, role);
+    await assignCompanyToUser(empid, companyId, role, req.user.empid);
     res.sendStatus(201);
   } catch (err) {
+    if (err.code === 'ER_NO_REFERENCED_ROW_2') {
+      return res.status(400).json({ message: 'Invalid empid or companyId' });
+    }
     next(err);
   }
 }

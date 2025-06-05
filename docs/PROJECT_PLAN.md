@@ -48,7 +48,7 @@ This document outlines the roadmap, scope, architecture, milestones, and deliver
 - **DB Schema**  
   - `users(empid PK, email, name, password, role, created_by, created_at)`  
   - `companies(id PK, name, created_at)`  
-  - `user_companies(empid FK→users.empid, company_id FK→companies.id, role, created_at)`
+  - `user_companies(empid FK→users.empid, company_id FK→companies.id, role, created_by, created_at)`
   - Single-database multi-tenant (company_id discriminator)
 
 ## 5. Milestones & Timeline
