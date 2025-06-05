@@ -21,6 +21,8 @@ export default function Users() {
   async function handleAdd() {
     const empid = prompt('EmpID?');
     if (!empid) return;
+    const email = prompt('Email?');
+    if (!email) return;
     const name = prompt('Name?');
     const password = prompt('Password?');
     const role = prompt('Role (user|admin)?', 'user');
@@ -45,7 +47,7 @@ export default function Users() {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ name, role })
+      body: JSON.stringify({ email, name, role })
     });
     if (!res.ok) {
       alert('Failed to update user');
