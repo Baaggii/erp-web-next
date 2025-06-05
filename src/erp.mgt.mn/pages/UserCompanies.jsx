@@ -23,12 +23,12 @@ export default function UserCompanies() {
     if (!empid) return;
     const companyId = prompt('Company ID?');
     if (!companyId) return;
-    const role = prompt('Role (user|admin)?', 'user');
+    const roleId = prompt('Role ID (1=admin,2=user)?', '2');
     const res = await fetch('/api/user_companies', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ empid, companyId, role })
+      body: JSON.stringify({ empid, companyId, roleId })
     });
     if (!res.ok) {
       const { message } = await res.json().catch(() => ({ message: 'Failed to add assignment' }));
@@ -39,13 +39,13 @@ export default function UserCompanies() {
   }
 
   async function handleEdit(a) {
-    const role = prompt('Role', a.role);
-    if (!role) return;
+    const roleId = prompt('Role ID', a.role_id);
+    if (!roleId) return;
     const res = await fetch('/api/user_companies', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ empid: a.empid, companyId: a.company_id, role })
+      body: JSON.stringify({ empid: a.empid, companyId: a.company_id, roleId })
     });
     if (!res.ok) {
       const { message } = await res.json().catch(() => ({ message: 'Failed to update assignment' }));

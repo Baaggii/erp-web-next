@@ -25,12 +25,12 @@ export default function Users() {
     if (!email) return;
     const name = prompt('Name?');
     const password = prompt('Password?');
-    const role = prompt('Role (user|admin)?', 'user');
+    const roleId = prompt('Role ID (1=admin,2=user)?', '2');
     const res = await fetch('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ empid, email, name, password, role })
+      body: JSON.stringify({ empid, email, name, password, roleId })
     });
     if (!res.ok) {
       alert('Failed to add user');
@@ -42,12 +42,12 @@ export default function Users() {
   async function handleEdit(u) {
     const email = prompt('Email?', u.email);
     const name = prompt('Name?', u.name);
-    const role = prompt('Role?', u.role);
+    const roleId = prompt('Role ID?', u.role_id);
     const res = await fetch(`/api/users/${u.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ email, name, role })
+      body: JSON.stringify({ email, name, roleId })
     });
     if (!res.ok) {
       alert('Failed to update user');

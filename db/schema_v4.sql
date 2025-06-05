@@ -211,15 +211,26 @@ CREATE TABLE SGereeJ (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 
+-- Lookup table for roles
+CREATE TABLE IF NOT EXISTS user_roles (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(50) NOT NULL UNIQUE
+);
+
+INSERT INTO user_roles (name) VALUES ('admin'), ('user');
+
 -- Users table for authentication
 CREATE TABLE IF NOT EXISTS `users` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `empid` VARCHAR(50) NOT NULL UNIQUE,
   `email` VARCHAR(255) NOT NULL UNIQUE,
   `password` VARCHAR(255) NOT NULL,
   `name` VARCHAR(100) NOT NULL,
   `company` VARCHAR(100) DEFAULT 'ModMarket ХХК',
-  `role` ENUM('admin','user') DEFAULT 'user',
-  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  `role_id` INT NOT NULL DEFAULT 2,
+  `created_by` VARCHAR(50) NOT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (`role_id`) REFERENCES user_roles(id)
 ) ENGINE=InnoDB;
 
 -- Dynamic form submissions storage
@@ -232,12 +243,14 @@ CREATE TABLE IF NOT EXISTS `form_submissions` (
 
 -- Seed initial admin user with known password 'Admin@123'
 -- Generate hash via Node: `require('bcrypt').hash('Admin@123', 10, console.log)`
-INSERT INTO `users` (`email`, `password`, `name`, `company`, `role`)
+INSERT INTO `users` (`empid`, `email`, `password`, `name`, `company`, `role_id`, `created_by`)
 VALUES (
+  'admin',
   'admin@modmarket.mn',
   '$2b$10$Z9s94pu0QEKnn1J8/p36Xuw3ULxX5gE/UfjTXyW6uxS0921gys8wu',  -- hash for 'Admin@123'
   'Administrator',
   'ModMarket ХХК',
+  (SELECT id FROM user_roles WHERE name='admin'),
   'admin'
 );
 
@@ -252,23 +265,16 @@ CREATE TABLE companies (
 CREATE TABLE user_companies (
   empid       VARCHAR(50)               NOT NULL,
   company_id  INT                       NOT NULL,
-  role        ENUM('user','admin')      NOT NULL DEFAULT 'user',
+  role_id     INT                       NOT NULL DEFAULT 2,
   created_by  VARCHAR(50)               NOT NULL,
   created_at  TIMESTAMP                 DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (empid, company_id),
   FOREIGN KEY (empid)     REFERENCES users(empid),
   FOREIGN KEY (company_id) REFERENCES companies(id),
-  FOREIGN KEY (created_by) REFERENCES users(empid)
+  FOREIGN KEY (created_by) REFERENCES users(empid),
+  FOREIGN KEY (role_id)   REFERENCES user_roles(id)
 ) ENGINE=InnoDB;
 
-ALTER TABLE users
-  ADD COLUMN created_by VARCHAR(50) NOT NULL AFTER password,
-  ADD CONSTRAINT fk_users_created_by
-    FOREIGN KEY (created_by) REFERENCES users(empid);
-
-ALTER TABLE users
-  ADD COLUMN created_by INT    NOT NULL AFTER password,
-  ADD FOREIGN KEY (created_by) REFERENCES users(id);
 
 ALTER TABLE user_companies
   ADD COLUMN updated_at DATETIME
