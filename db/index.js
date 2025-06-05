@@ -93,12 +93,12 @@ export async function deleteUserById(id) {
 /**
  * Assign a user to a company with a specific role
  */
-export async function assignCompanyToUser(empid, companyId, role) {
+export async function assignCompanyToUser(empid, companyId, role, createdBy) {
   const [result] = await pool.query(
-    `INSERT INTO user_companies (empid, company_id, role)
-     VALUES (?, ?, ?)
+    `INSERT INTO user_companies (empid, company_id, role, created_by)
+     VALUES (?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE role = VALUES(role)`,
-    [empid, companyId, role]
+    [empid, companyId, role, createdBy]
   );
   return { affectedRows: result.affectedRows };
 }

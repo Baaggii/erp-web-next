@@ -10,8 +10,11 @@ CREATE TABLE IF NOT EXISTS user_companies (
   empid      VARCHAR(50) NOT NULL,
   company_id INT NOT NULL,
   role       ENUM('user','admin') NOT NULL DEFAULT 'user',
+  created_by VARCHAR(50) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (empid, company_id),
   FOREIGN KEY (empid)     REFERENCES users(empid),
-  FOREIGN KEY (company_id) REFERENCES companies(id)
+  FOREIGN KEY (company_id) REFERENCES companies(id),
+  FOREIGN KEY (created_by) REFERENCES users(empid)
 );
 
