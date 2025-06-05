@@ -5,11 +5,11 @@ import SalesDashboard from '../windows/SalesDashboard.jsx';
 
 export default function TabbedWindows() {
   const tabs = [
-    { id: 'dashboard', title: 'Dashboard', Component: SalesDashboard },
     { id: 'gl', title: 'General Ledger', Component: GLInquiry },
     { id: 'po', title: 'Purchase Orders', Component: PurchaseOrders },
+    { id: 'sales', title: 'Sales Dashboard', Component: SalesDashboard },
   ];
-  const [active, setActive] = useState('dashboard');
+  const [active, setActive] = useState('gl');
 
   const ActiveComponent = tabs.find(t => t.id === active)?.Component || null;
 

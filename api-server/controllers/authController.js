@@ -1,27 +1,23 @@
-import { getUserByEmpId } from '../../db/index.js';
+import { getUserByEmail } from '../../db/index.js'; // adjust path to your db folder
 import jwt from 'jsonwebtoken';
 
 export async function login(req, res, next) {
   try {
-    const { empid, password } = req.body;
-    const user = await getUserByEmpId(empid);
+    const { email, password } = req.body;
+    const user = await getUserByEmail(email);
     if (!user || !(await user.verifyPassword(password))) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
-    const token = jwt.sign(
-      { id: user.id, empid: user.empid, email: user.email },
-      process.env.JWT_SECRET,
-      {
-        expiresIn: '2h'
-      }
-    );
+    const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, {
+      expiresIn: '2h'
+    });
 
     res.cookie(process.env.COOKIE_NAME, token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax'
     });
-    res.json({ id: user.id, empid: user.empid, email: user.email });
+    res.json({ id: user.id, email: user.email });
   } catch (err) {
     next(err);
   }
@@ -33,5 +29,5 @@ export async function logout(req, res) {
 }
 
 export async function getProfile(req, res) {
-  res.json({ id: req.user.id, empid: req.user.empid, email: req.user.email });
+  res.json({ id: req.user.id, email: req.user.email });
 }
