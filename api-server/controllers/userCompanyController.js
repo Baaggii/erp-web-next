@@ -21,8 +21,8 @@ export async function listAssignments(req, res, next) {
 
 export async function assignCompany(req, res, next) {
   try {
-    const { empid, companyId, role } = req.body;
-    await assignCompanyToUser(empid, companyId, role, req.user.empid);
+    const { empid, companyId, roleId } = req.body;
+    await assignCompanyToUser(empid, companyId, roleId, req.user.empid);
     res.sendStatus(201);
   } catch (err) {
     if (err.code === 'ER_NO_REFERENCED_ROW_2') {
@@ -34,8 +34,8 @@ export async function assignCompany(req, res, next) {
 
 export async function updateAssignment(req, res, next) {
   try {
-    const { empid, companyId, role } = req.body;
-    await updateCompanyAssignment(empid, companyId, role);
+    const { empid, companyId, roleId } = req.body;
+    await updateCompanyAssignment(empid, companyId, roleId);
     res.sendStatus(200);
   } catch (err) {
     next(err);

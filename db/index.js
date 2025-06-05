@@ -32,7 +32,11 @@ export async function testConnection() {
  */
 export async function getUserByEmail(emailOrEmpId) {
   const [rows] = await pool.query(
-    'SELECT * FROM users WHERE email = ? OR empid = ? LIMIT 1',
+    `SELECT u.*, r.name AS role
+     FROM users u
+     JOIN user_roles r ON u.role_id = r.id
+     WHERE u.email = ? OR u.empid = ?
+     LIMIT 1`,
     [emailOrEmpId, emailOrEmpId]
   );
   if (rows.length === 0) return null;
@@ -46,7 +50,9 @@ export async function getUserByEmail(emailOrEmpId) {
  */
 export async function listUsers() {
   const [rows] = await pool.query(
-    'SELECT id, empid, email, name, role, created_at FROM users'
+    `SELECT u.id, u.empid, u.email, u.name, u.role_id, r.name AS role, u.created_at
+     FROM users u
+     JOIN user_roles r ON u.role_id = r.id`
   );
   return rows;
 }
@@ -55,18 +61,24 @@ export async function listUsers() {
  * Get a single user by ID
  */
 export async function getUserById(id) {
-  const [rows] = await pool.query('SELECT * FROM users WHERE id = ?', [id]);
+  const [rows] = await pool.query(
+    `SELECT u.*, r.name AS role
+     FROM users u
+     JOIN user_roles r ON u.role_id = r.id
+     WHERE u.id = ?`,
+    [id]
+  );
   return rows[0] || null;
 }
 
 /**
  * Create a new user
  */
-export async function createUser({ empid, email, name, password, role, created_by }) {
+export async function createUser({ empid, email, name, password, role_id, created_by }) {
   const hashed = await bcrypt.hash(password, 10);
   const [result] = await pool.query(
-    'INSERT INTO users (empid, email, name, password, role, created_by) VALUES (?, ?, ?, ?, ?, ?)',
-    [empid, email, name, hashed, role, created_by]
+    'INSERT INTO users (empid, email, name, password, role_id, created_by) VALUES (?, ?, ?, ?, ?, ?)',
+    [empid, email, name, hashed, role_id, created_by]
   );
   return { id: result.insertId };
 }
@@ -74,10 +86,10 @@ export async function createUser({ empid, email, name, password, role, created_b
 /**
  * Update an existing user
  */
-export async function updateUser(id, { name, email, role }) {
+export async function updateUser(id, { name, email, role_id }) {
   await pool.query(
-    'UPDATE users SET name = ?, email = ?, role = ? WHERE id = ?',
-    [name, email, role, id]
+    'UPDATE users SET name = ?, email = ?, role_id = ? WHERE id = ?',
+    [name, email, role_id, id]
   );
   return { id };
 }
@@ -93,12 +105,12 @@ export async function deleteUserById(id) {
 /**
  * Assign a user to a company with a specific role
  */
-export async function assignCompanyToUser(empid, companyId, role, createdBy) {
+export async function assignCompanyToUser(empid, companyId, role_id, createdBy) {
   const [result] = await pool.query(
-    `INSERT INTO user_companies (empid, company_id, role, created_by)
+    `INSERT INTO user_companies (empid, company_id, role_id, created_by)
      VALUES (?, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE role = VALUES(role)`,
-    [empid, companyId, role, createdBy]
+     ON DUPLICATE KEY UPDATE role_id = VALUES(role_id)`,
+    [empid, companyId, role_id, createdBy]
   );
   return { affectedRows: result.affectedRows };
 }
@@ -108,7 +120,11 @@ export async function assignCompanyToUser(empid, companyId, role, createdBy) {
  */
 export async function listUserCompanies(empid) {
   const [rows] = await pool.query(
-    'SELECT uc.empid, uc.company_id, c.name AS company_name, uc.role FROM user_companies uc JOIN companies c ON uc.company_id = c.id WHERE uc.empid = ?',
+    `SELECT uc.empid, uc.company_id, c.name AS company_name, uc.role_id, r.name AS role
+     FROM user_companies uc
+     JOIN companies c ON uc.company_id = c.id
+     JOIN user_roles r ON uc.role_id = r.id
+     WHERE uc.empid = ?`,
     [empid]
   );
   return rows;
@@ -128,10 +144,10 @@ export async function removeCompanyAssignment(empid, companyId) {
 /**
  * Update a user's company assignment role
  */
-export async function updateCompanyAssignment(empid, companyId, role) {
+export async function updateCompanyAssignment(empid, companyId, role_id) {
   const [result] = await pool.query(
-    'UPDATE user_companies SET role = ? WHERE empid = ? AND company_id = ?',
-    [role, empid, companyId]
+    'UPDATE user_companies SET role_id = ? WHERE empid = ? AND company_id = ?',
+    [role_id, empid, companyId]
   );
   return result;
 }
@@ -141,7 +157,10 @@ export async function updateCompanyAssignment(empid, companyId, role) {
  */
 export async function listAllUserCompanies() {
   const [rows] = await pool.query(
-    'SELECT uc.empid, uc.company_id, c.name AS company_name, uc.role FROM user_companies uc JOIN companies c ON uc.company_id = c.id'
+    `SELECT uc.empid, uc.company_id, c.name AS company_name, uc.role_id, r.name AS role
+     FROM user_companies uc
+     JOIN companies c ON uc.company_id = c.id
+     JOIN user_roles r ON uc.role_id = r.id`
   );
   return rows;
 }

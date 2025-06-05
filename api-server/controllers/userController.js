@@ -30,6 +30,7 @@ export async function createUser(req, res, next) {
   try {
     const newUser = await dbCreateUser({
       ...req.body,
+      role_id: req.body.roleId,
       created_by: req.user.empid
     });
     res.status(201).json(newUser);
@@ -40,7 +41,10 @@ export async function createUser(req, res, next) {
 
 export async function updateUser(req, res, next) {
   try {
-    const updated = await dbUpdateUser(req.params.id, req.body);
+    const updated = await dbUpdateUser(req.params.id, {
+      ...req.body,
+      role_id: req.body.roleId
+    });
     res.json(updated);
   } catch (err) {
     next(err);
