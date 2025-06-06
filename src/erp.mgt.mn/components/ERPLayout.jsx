@@ -25,6 +25,7 @@ export default function ERPLayout() {
     '/user-companies': 'User Companies',
     '/role-permissions': 'Role Permissions',
     '/settings': 'Settings',
+    '/settings/role-permissions': 'Role Permissions',
   };
   const windowTitle = titleMap[location.pathname] || 'ERP';
 
@@ -113,9 +114,18 @@ function Sidebar() {
             </NavLink>
           </>
         )}
+      </div>
+
+      <div style={styles.menuGroup}>
+        <div style={styles.groupTitle}>⚙ Settings</div>
         <NavLink to="/settings" style={styles.menuItem}>
-          Settings
+          General
         </NavLink>
+        {user?.role === 'admin' && (
+          <NavLink to="/settings/role-permissions" style={styles.menuItem}>
+            Role Permissions
+          </NavLink>
+        )}
       </div>
     </aside>
   );
