@@ -1,14 +1,17 @@
 // src/erp.mgt.mn/pages/UserCompanies.jsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useContext } from 'react';
+import { AuthContext } from '../context/AuthContext.jsx';
 
 export default function UserCompanies() {
   const [assignments, setAssignments] = useState([]);
   const [filterEmpId, setFilterEmpId] = useState('');
+  const { company } = useContext(AuthContext);
 
   function loadAssignments(empid) {
-    const url = empid
-      ? `/api/user_companies?empid=${encodeURIComponent(empid)}`
-      : '/api/user_companies';
+    const params = [];
+    if (empid) params.push(`empid=${encodeURIComponent(empid)}`);
+    if (company) params.push(`companyId=${encodeURIComponent(company.company_id)}`);
+    const url = params.length ? `/api/user_companies?${params.join('&')}` : '/api/user_companies';
     fetch(url, { credentials: 'include' })
       .then(res => {
         if (!res.ok) throw new Error('Failed to fetch user_companies');
@@ -20,7 +23,7 @@ export default function UserCompanies() {
 
   useEffect(() => {
     loadAssignments();
-  }, []);
+  }, [company]);
 
   function handleFilter() {
     loadAssignments(filterEmpId);

@@ -1,5 +1,6 @@
 import {
   listUsers as dbListUsers,
+  listUsersByCompany,
   getUserById,
   createUser as dbCreateUser,
   updateUser as dbUpdateUser,
@@ -9,7 +10,10 @@ import { requireAuth } from '../middlewares/auth.js';
 
 export async function listUsers(req, res, next) {
   try {
-    const users = await dbListUsers();
+    const companyId = req.query.companyId;
+    const users = companyId
+      ? await listUsersByCompany(companyId)
+      : await dbListUsers();
     res.json(users);
   } catch (err) {
     next(err);

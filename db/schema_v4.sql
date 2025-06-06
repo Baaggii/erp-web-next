@@ -1,5 +1,6 @@
 CREATE TABLE SOrlogo (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  company_id INT NOT NULL,
   `or_num` VARCHAR(120) NULL,
   `or_o_barimt` VARCHAR(120) NULL,
   `or_g_id` BIGINT NULL,
@@ -28,6 +29,7 @@ CREATE TABLE SOrlogo (
 
 CREATE TABLE SZardal (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  company_id INT NOT NULL,
   `z_num` VARCHAR(120) NULL,
   `z_barimt` VARCHAR(120) NULL,
   `z_tosov_code` VARCHAR(120) NULL,
@@ -63,6 +65,7 @@ CREATE TABLE SZardal (
 
 CREATE TABLE tusuv (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  company_id INT NOT NULL,
   `tus_num` VARCHAR(120) NULL,
   `tus_pid` VARCHAR(120) NULL,
   `tus_cid` VARCHAR(120) NULL,
@@ -97,6 +100,7 @@ CREATE TABLE tusuv (
 
 CREATE TABLE BMBurtgel (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  company_id INT NOT NULL,
   `bmtr_num` VARCHAR(120) NULL,
   `bmtr_pid` VARCHAR(120) NULL,
   `bmtr_cid` VARCHAR(120) NULL,
@@ -136,6 +140,7 @@ CREATE TABLE BMBurtgel (
 
 CREATE TABLE MMorder (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  company_id INT NOT NULL,
   `ordrid` VARCHAR(120) NULL,
   `ordrdid` VARCHAR(120) NULL,
   `ordrcustomerid` VARCHAR(120) NULL,
@@ -193,6 +198,7 @@ CREATE TABLE MMorder (
 
 CREATE TABLE SGereeJ (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  company_id INT NOT NULL,
   `g_id` BIGINT NULL,
   `g_burtgel_id` BIGINT NULL,
   `g_chig` VARCHAR(120) NULL,
@@ -236,6 +242,7 @@ CREATE TABLE IF NOT EXISTS `users` (
 -- Dynamic form submissions storage
 CREATE TABLE IF NOT EXISTS `form_submissions` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `company_id` INT NOT NULL,
   `form_id` VARCHAR(100) NOT NULL,
   `data` JSON NOT NULL,
   `submitted_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
