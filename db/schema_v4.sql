@@ -337,3 +337,14 @@ CREATE TABLE payments (
   status VARCHAR(30),                 -- 'succeeded','pending','failed'
   created_at DATETIME DEFAULT NOW()
 );
+
+CREATE TABLE role_module_permissions (
+  company_id INT NOT NULL,
+  role_id INT NOT NULL,
+  module_key VARCHAR(50) NOT NULL,
+  allowed TINYINT(1) DEFAULT 1,
+  PRIMARY KEY (company_id, role_id, module_key),
+  FOREIGN KEY (company_id) REFERENCES companies(id),
+  FOREIGN KEY (role_id)   REFERENCES user_roles(id),
+  FOREIGN KEY (module_key) REFERENCES modules(module_key)
+);
