@@ -12,7 +12,7 @@ export default function HeaderMenu({ onOpen }) {
     <nav style={styles.menu}>
       {items.map(
         (m) =>
-          perms[m.id] && (
+          perms[m.id] !== false && (
             <button key={m.id} style={styles.btn} onClick={() => onOpen(m.id)}>
               {m.label}
             </button>
