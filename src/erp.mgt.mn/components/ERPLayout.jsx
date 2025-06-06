@@ -1,6 +1,7 @@
 // src/erp.mgt.mn/components/ERPLayout.jsx
 import React, { useContext } from 'react';
 import HeaderMenu from './HeaderMenu.jsx';
+import UserMenu from './UserMenu.jsx';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { logout } from '../hooks/useAuth.jsx';
@@ -68,14 +69,7 @@ function Header({ user, onLogout }) {
       </nav>
       <HeaderMenu onOpen={handleOpen} />
       <div style={styles.userSection}>
-        <span style={{ marginRight: '0.5rem' }}>
-          {user ? `Welcome, ${user.email || user.empid}` : ''}
-        </span>
-        {user && (
-          <button style={styles.logoutBtn} onClick={onLogout}>
-            Logout
-          </button>
-        )}
+        <UserMenu user={user} onLogout={onLogout} />
       </div>
     </header>
   );
