@@ -283,25 +283,14 @@ export async function listModules() {
 /**
  * List module permissions for roles
  */
-export async function listRoleModulePermissions(roleId, companyId) {
-  const params = [];
-  let where = '';
-  if (companyId) {
-    where = 'WHERE rmp.company_id = ?';
-    params.push(companyId);
-  }
-  if (roleId) {
-    where += where ? ' AND rmp.role_id = ?' : 'WHERE rmp.role_id = ?';
-    params.push(roleId);
-  }
+export async function listRoleModulePermissions(roleId) {
   const [rows] = await pool.query(
-    `SELECT rmp.company_id, rmp.role_id, ur.name AS role, rmp.module_key, m.label, rmp.allowed
+    `SELECT rmp.role_id, ur.name AS role, rmp.module_key, m.label, rmp.allowed
      FROM role_module_permissions rmp
      JOIN user_roles ur ON rmp.role_id = ur.id
      JOIN modules m ON rmp.module_key = m.module_key
-     ${where}
-     ORDER BY rmp.role_id, rmp.module_key`,
-    params,
+     ${roleId ? "WHERE rmp.role_id = ?" : ""}`,
+    roleId ? [roleId] : [],
   );
   return rows;
 }
@@ -309,14 +298,14 @@ export async function listRoleModulePermissions(roleId, companyId) {
 /**
  * Set a role's module permission
  */
-export async function setRoleModulePermission(companyId, roleId, moduleKey, allowed) {
+export async function setRoleModulePermission(roleId, moduleKey, allowed) {
   await pool.query(
-    `INSERT INTO role_module_permissions (company_id, role_id, module_key, allowed)
-     VALUES (?, ?, ?, ?)
+    `INSERT INTO role_module_permissions (role_id, module_key, allowed)
+     VALUES (?, ?, ?)
      ON DUPLICATE KEY UPDATE allowed = VALUES(allowed)`,
-    [companyId, roleId, moduleKey, allowed],
+    [roleId, moduleKey, allowed],
   );
-  return { companyId, roleId, moduleKey, allowed };
+  return { roleId, moduleKey, allowed };
 }
 
 /**
