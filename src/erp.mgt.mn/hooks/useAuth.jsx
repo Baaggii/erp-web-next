@@ -7,7 +7,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 /**
  * Performs a login request and sets an HttpOnly cookie on success.
  * @param {{empid: string, password: string}} credentials - empid refers to the employee login ID
- * @returns {Promise<{id: number, name: string, email: string, empid: string, role: string}>}
+ * @returns {Promise<{id: number, email: string, empid: string, role: string}>}
  */
 export async function login({ empid, password }) {
   const res = await fetch('/api/auth/login', {
@@ -36,7 +36,7 @@ export async function logout() {
 
 /**
  * Fetches current user profile if authenticated.
- * @returns {Promise<{id: number, name: string, email: string, empid: string, role: string}>}
+ * @returns {Promise<{id: number, email: string, empid: string, role: string}>}
 */
 export async function fetchProfile() {
   const res = await fetch('/api/auth/me', { credentials: 'include' });

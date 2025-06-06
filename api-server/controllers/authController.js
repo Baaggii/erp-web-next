@@ -12,7 +12,6 @@ export async function login(req, res, next) {
     const token = jwt.sign(
       {
         id: user.id,
-        name: user.name,
         email: user.email,
         empid: user.empid,
         role: user.role,
@@ -30,7 +29,6 @@ export async function login(req, res, next) {
     });
     res.json({
       id: user.id,
-      name: user.name,
       email: user.email,
       empid: user.empid,
       role: user.role,
@@ -48,7 +46,6 @@ export async function logout(req, res) {
 export async function getProfile(req, res) {
   res.json({
     id: req.user.id,
-    name: req.user.name,
     email: req.user.email,
     empid: req.user.empid,
     role: req.user.role,
