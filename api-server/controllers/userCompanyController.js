@@ -21,6 +21,9 @@ export async function listAssignments(req, res, next) {
 
 export async function assignCompany(req, res, next) {
   try {
+    if (req.user.role !== 'admin') {
+      return res.sendStatus(403);
+    }
     const { empid, companyId, roleId } = req.body;
     await assignCompanyToUser(empid, companyId, roleId, req.user.empid);
     res.sendStatus(201);
@@ -34,6 +37,9 @@ export async function assignCompany(req, res, next) {
 
 export async function updateAssignment(req, res, next) {
   try {
+    if (req.user.role !== 'admin') {
+      return res.sendStatus(403);
+    }
     const { empid, companyId, roleId } = req.body;
     await updateCompanyAssignment(empid, companyId, roleId);
     res.sendStatus(200);
@@ -44,6 +50,9 @@ export async function updateAssignment(req, res, next) {
 
 export async function removeAssignment(req, res, next) {
   try {
+    if (req.user.role !== 'admin') {
+      return res.sendStatus(403);
+    }
     const { empid, companyId } = req.body;
     await removeCompanyAssignment(empid, companyId);
     res.sendStatus(204);
