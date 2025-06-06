@@ -15,6 +15,7 @@ export async function login(req, res, next) {
         email: user.email,
         empid: user.empid,
         role: user.role,
+        name: user.name,
       },
       process.env.JWT_SECRET,
       {
@@ -32,6 +33,7 @@ export async function login(req, res, next) {
       email: user.email,
       empid: user.empid,
       role: user.role,
+      name: user.name,
     });
   } catch (err) {
     next(err);
@@ -49,6 +51,7 @@ export async function getProfile(req, res) {
     email: req.user.email,
     empid: req.user.empid,
     role: req.user.role,
+    name: req.user.name,
   });
 }
 
