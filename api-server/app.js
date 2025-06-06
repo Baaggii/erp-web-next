@@ -11,6 +11,7 @@ import userRoutes from './routes/users.js';
 import companyRoutes from './routes/companies.js';
 import settingsRoutes from './routes/settings.js';
 import userCompanyRoutes from './routes/user_companies.js';
+import rolePermissionRoutes from './routes/role_permissions.js';
 
 dotenv.config();
 
@@ -40,6 +41,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/companies', companyRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/user_companies', userCompanyRoutes);
+app.use('/api/role_permissions', rolePermissionRoutes);
 
 // Serve static React build and fallback to index.html
 // NOTE: adjust this path to where your SPA build actually lives.
