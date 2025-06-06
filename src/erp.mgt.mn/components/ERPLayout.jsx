@@ -59,6 +59,7 @@ export default function ERPLayout() {
 
 /** Top header bar **/
 function Header({ user, onLogout, onHome }) {
+  const { company } = useContext(AuthContext);
   function handleOpen(id) {
     console.log("open module", id);
   }
@@ -80,6 +81,11 @@ function Header({ user, onLogout, onHome }) {
       </nav>
       <HeaderMenu onOpen={handleOpen} />
       <div style={styles.userSection}>
+        {company && (
+          <span style={{ marginRight: "0.5rem" }}>
+            {`Company: ${company.company_name}`}
+          </span>
+        )}
         <UserMenu user={user} onLogout={onLogout} />
       </div>
     </header>
