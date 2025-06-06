@@ -29,18 +29,15 @@ export default function App() {
               <Route index element={<BlueLinkPage />} />
               <Route path="forms" element={<FormsPage />} />
               <Route path="reports" element={<ReportsPage />} />
-              <Route element={<RequireAdmin />}>
-                <Route path="users" element={<UsersPage />} />
-                <Route path="user-companies" element={<UserCompaniesPage />} />
-                <Route path="role-permissions" element={<RolePermissionsPage />} />
-              </Route>
-              <Route path="settings" element={<SettingsPage />}> 
+              <Route path="settings" element={<SettingsPage />}>
                 <Route index element={<GeneralSettings />} />
-                <Route element={<RequireAdmin />}> 
+                <Route element={<RequireAdmin />}>
+                  <Route path="users" element={<UsersPage />} />
+                  <Route path="user-companies" element={<UserCompaniesPage />} />
                   <Route path="role-permissions" element={<RolePermissionsPage />} />
                 </Route>
+                <Route path="change-password" element={<ChangePasswordPage />} />
               </Route>
-              <Route path="change-password" element={<ChangePasswordPage />} />
             </Route>
           </Route>
         </Routes>

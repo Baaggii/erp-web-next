@@ -1,6 +1,6 @@
 // src/erp.mgt.mn/pages/Settings.jsx
 import React, { useEffect, useState } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, Link } from 'react-router-dom';
 
 export default function SettingsLayout() {
   return (
@@ -9,8 +9,17 @@ export default function SettingsLayout() {
         <NavLink end to="/settings" style={styles.menuItem}>
           General
         </NavLink>
+        <NavLink to="/settings/users" style={styles.menuItem}>
+          Users
+        </NavLink>
+        <NavLink to="/settings/user-companies" style={styles.menuItem}>
+          User Companies
+        </NavLink>
         <NavLink to="/settings/role-permissions" style={styles.menuItem}>
           Role Permissions
+        </NavLink>
+        <NavLink to="/settings/change-password" style={styles.menuItem}>
+          Change Password
         </NavLink>
       </aside>
       <div style={styles.content}>
@@ -42,7 +51,7 @@ export function GeneralSettings() {
         <p>Loading settings…</p>
       )}
       <p style={{ marginTop: '1rem' }}>
-        <Link to="/role-permissions">Edit Role Permissions</Link>
+        <Link to="/settings/role-permissions">Edit Role Permissions</Link>
       </p>
     </div>
   );

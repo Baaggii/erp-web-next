@@ -11,6 +11,7 @@ import userRoutes from './routes/users.js';
 import companyRoutes from './routes/companies.js';
 import settingsRoutes from './routes/settings.js';
 import userCompanyRoutes from './routes/user_companies.js';
+import rolePermissionRoutes from './routes/role_permissions.js';
 import { requireAuth } from './middlewares/auth.js';
 
 dotenv.config();
@@ -41,6 +42,7 @@ app.use('/api/users', requireAuth, userRoutes);
 app.use('/api/companies', requireAuth, companyRoutes);
 app.use('/api/settings', requireAuth, settingsRoutes);
 app.use('/api/user_companies', requireAuth, userCompanyRoutes);
+app.use('/api/role_permissions', requireAuth, rolePermissionRoutes);
 
 
 // Serve static React build and fallback to index.html
