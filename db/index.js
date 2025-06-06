@@ -287,6 +287,7 @@ export async function listRoleModulePermissions(roleId, companyId) {
   const params = [];
   let where = '';
 
+  // Company module licenses are filtered in higher-level queries, so no join here
   if (companyId) {
     where = 'WHERE rmp.company_id = ?';
     params.push(companyId);
