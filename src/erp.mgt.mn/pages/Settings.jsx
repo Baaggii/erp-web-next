@@ -1,12 +1,10 @@
 // src/erp.mgt.mn/pages/Settings.jsx
-import React, { useEffect, useState, useContext } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRolePermissions } from '../hooks/useRolePermissions.js';
-import { AuthContext } from '../context/AuthContext.jsx';
 import { NavLink, Outlet, Link } from 'react-router-dom';
 
 export default function SettingsLayout() {
   const perms = useRolePermissions();
-  const { user } = useContext(AuthContext);
   return (
     <div style={styles.container}>
       <aside style={styles.menu}>
@@ -15,26 +13,18 @@ export default function SettingsLayout() {
             General
           </NavLink>
         )}
-        {perms.users && user?.role === 'admin' && (
-          <NavLink to="/settings/users" style={styles.menuItem}>
-            Users
-          </NavLink>
-        )}
-        {perms.user_companies && user?.role === 'admin' && (
-          <NavLink to="/settings/user-companies" style={styles.menuItem}>
-            User Companies
-          </NavLink>
-        )}
-        {perms.role_permissions && user?.role === 'admin' && (
-          <NavLink to="/settings/role-permissions" style={styles.menuItem}>
-            Role Permissions
-          </NavLink>
-        )}
-        {perms.change_password && (
-          <NavLink to="/settings/change-password" style={styles.menuItem}>
-            Change Password
-          </NavLink>
-        )}
+        <NavLink to="/settings/users" style={styles.menuItem}>
+          Users
+        </NavLink>
+        <NavLink to="/settings/user-companies" style={styles.menuItem}>
+          User Companies
+        </NavLink>
+        <NavLink to="/settings/role-permissions" style={styles.menuItem}>
+          Role Permissions
+        </NavLink>
+        <NavLink to="/settings/change-password" style={styles.menuItem}>
+          Change Password
+        </NavLink>
       </aside>
       <div style={styles.content}>
         <Outlet />
@@ -68,11 +58,9 @@ export function GeneralSettings() {
       ) : (
         <p>Loading settings…</p>
       )}
-      {user?.role === 'admin' && perms.role_permissions && (
-        <p style={{ marginTop: '1rem' }}>
-          <Link to="/settings/role-permissions">Edit Role Permissions</Link>
-        </p>
-      )}
+      <p style={{ marginTop: '1rem' }}>
+        <Link to="/settings/role-permissions">Edit Role Permissions</Link>
+      </p>
     </div>
   );
 }
