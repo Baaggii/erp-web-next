@@ -9,6 +9,7 @@ import FormsPage from './pages/Forms.jsx';
 import ReportsPage from './pages/Reports.jsx';
 import UsersPage from './pages/Users.jsx';
 import UserCompaniesPage from './pages/UserCompanies.jsx';
+import RolePermissionsPage from './pages/RolePermissions.jsx';
 import SettingsPage from './pages/Settings.jsx';
 import ChangePasswordPage from './pages/ChangePassword.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -31,6 +32,7 @@ export default function App() {
               <Route element={<RequireAdmin />}>
                 <Route path="users" element={<UsersPage />} />
                 <Route path="user-companies" element={<UserCompaniesPage />} />
+                <Route path="role-permissions" element={<RolePermissionsPage />} />
               </Route>
               <Route path="settings" element={<SettingsPage />} />
               <Route path="change-password" element={<ChangePasswordPage />} />

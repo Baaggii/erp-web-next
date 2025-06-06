@@ -1,5 +1,6 @@
 // src/erp.mgt.mn/pages/Settings.jsx
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 export default function Settings() {
   const [settings, setSettings] = useState(null);
@@ -22,6 +23,9 @@ export default function Settings() {
       ) : (
         <p>Loading settings…</p>
       )}
+      <p style={{ marginTop: '1rem' }}>
+        <Link to="/role-permissions">Edit Role Permissions</Link>
+      </p>
     </div>
   );
 }
