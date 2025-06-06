@@ -1,5 +1,6 @@
 // src/erp.mgt.mn/pages/RolePermissions.jsx
 import React, { useEffect, useState } from "react";
+import { refreshRolePermissions } from "../hooks/useRolePermissions.js";
 
 export default function RolePermissions() {
   const [perms, setPerms] = useState([]);
@@ -42,6 +43,7 @@ export default function RolePermissions() {
       return;
     }
     loadPerms(filterRoleId);
+    refreshRolePermissions(p.role_id);
   }
 
   return (
