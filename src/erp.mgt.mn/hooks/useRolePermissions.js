@@ -1,25 +1,39 @@
 import { useContext, useEffect, useState } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 
-let cached = null;
+// Cache permissions by role so switching users does not refetch unnecessarily
+const cache = {};
 
 export function useRolePermissions() {
   const { user } = useContext(AuthContext);
-  const [perms, setPerms] = useState(cached || {});
+  const [perms, setPerms] = useState(null);
 
   useEffect(() => {
-    if (!user) return;
-    if (cached) return;
+    if (!user) {
+      setPerms(null);
+      return;
+    }
     const roleId = user.role_id || (user.role === 'admin' ? 1 : 2);
+
+    if (cache[roleId]) {
+      setPerms(cache[roleId]);
+      return;
+    }
+
     fetch(`/api/role_permissions?roleId=${roleId}`, { credentials: 'include' })
-      .then(res => (res.ok ? res.json() : []))
-      .then(rows => {
+      .then((res) => (res.ok ? res.json() : []))
+      .then((rows) => {
         const map = {};
-        rows.forEach(r => { map[r.module_key] = !!r.allowed; });
-        cached = map;
+        rows.forEach((r) => {
+          map[r.module_key] = !!r.allowed;
+        });
+        cache[roleId] = map;
         setPerms(map);
       })
-      .catch(err => console.error('Failed to load permissions', err));
+      .catch((err) => {
+        console.error('Failed to load permissions', err);
+        setPerms({});
+      });
   }, [user]);
 
   return perms;

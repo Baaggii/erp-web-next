@@ -84,12 +84,16 @@ function Sidebar() {
   const perms = useRolePermissions();
   const [openSettings, setOpenSettings] = useState(false);
 
+  if (!perms) {
+    return null;
+  }
+
   return (
     <aside style={styles.sidebar}>
       <nav>
         <div style={styles.menuGroup}>
           <div style={styles.groupTitle}>📌 Pinned</div>
-          {perms.dashboard !== false && (
+          {perms.dashboard && (
             <NavLink
               to="/"
               style={({ isActive }) => styles.menuItem({ isActive })}
@@ -97,7 +101,7 @@ function Sidebar() {
               Blue Link Demo
             </NavLink>
           )}
-          {perms.forms !== false && (
+          {perms.forms && (
             <NavLink
               to="/forms"
               style={({ isActive }) => styles.menuItem({ isActive })}
@@ -105,7 +109,7 @@ function Sidebar() {
               Forms
             </NavLink>
           )}
-          {perms.reports !== false && (
+          {perms.reports && (
             <NavLink
               to="/reports"
               style={({ isActive }) => styles.menuItem({ isActive })}

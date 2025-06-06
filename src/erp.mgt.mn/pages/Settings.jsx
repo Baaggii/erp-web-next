@@ -11,6 +11,9 @@ export default function SettingsPage() {
 
 export function GeneralSettings() {
   const perms = useRolePermissions();
+  if (!perms) {
+    return <p>Loading…</p>;
+  }
   if (!perms.settings) {
     return <p>Access denied.</p>;
   }
