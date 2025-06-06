@@ -285,22 +285,27 @@ export async function listModules() {
  */
 export async function listRoleModulePermissions(roleId, companyId) {
   const params = [];
-  let query = `SELECT rmp.role_id, ur.name AS role, rmp.module_key, m.label, rmp.allowed
-     FROM role_module_permissions rmp
-     JOIN user_roles ur ON rmp.role_id = ur.id
-     JOIN modules m ON rmp.module_key = m.module_key`;
+  let where = '';
 
   // Company module licenses are filtered in higher-level queries, so no join here
   if (companyId) {
-    params.push(companyId); // kept for backwards compatibility
+    where = 'WHERE rmp.company_id = ?';
+    params.push(companyId);
   }
 
   if (roleId) {
-    query += ' WHERE rmp.role_id = ?';
+    where += where ? ' AND rmp.role_id = ?' : 'WHERE rmp.role_id = ?';
     params.push(roleId);
   }
 
-  const [rows] = await pool.query(query, params);
+  const [rows] = await pool.query(
+    `SELECT rmp.role_id, ur.name AS role, rmp.module_key, m.label, rmp.allowed
+       FROM role_module_permissions rmp
+       JOIN user_roles ur ON rmp.role_id = ur.id
+       JOIN modules m ON rmp.module_key = m.module_key
+       ${where}`,
+    params,
+  );
   return rows;
 }
 
