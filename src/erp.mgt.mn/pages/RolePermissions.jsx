@@ -1,19 +1,21 @@
 // src/erp.mgt.mn/pages/RolePermissions.jsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from "react";
 
 export default function RolePermissions() {
   const [perms, setPerms] = useState([]);
-  const [filterRoleId, setFilterRoleId] = useState('');
+  const [filterRoleId, setFilterRoleId] = useState("");
 
   function loadPerms(roleId) {
-    const url = roleId ? `/api/role_permissions?roleId=${encodeURIComponent(roleId)}` : '/api/role_permissions';
-    fetch(url, { credentials: 'include' })
-      .then(res => {
-        if (!res.ok) throw new Error('Failed to fetch role permissions');
+    const url = roleId
+      ? `/api/role_permissions?roleId=${encodeURIComponent(roleId)}`
+      : "/api/role_permissions";
+    fetch(url, { credentials: "include" })
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch role permissions");
         return res.json();
       })
       .then(setPerms)
-      .catch(err => console.error('Error fetching role permissions:', err));
+      .catch((err) => console.error("Error fetching role permissions:", err));
   }
 
   useEffect(() => {
@@ -25,18 +27,18 @@ export default function RolePermissions() {
   }
 
   async function handleToggle(p) {
-    const res = await fetch('/api/role_permissions', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
+    const res = await fetch("/api/role_permissions", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({
         roleId: p.role_id,
         moduleKey: p.module_key,
-        allowed: p.allowed ? 0 : 1
-      })
+        allowed: p.allowed ? 0 : 1,
+      }),
     });
     if (!res.ok) {
-      alert('Failed to update permission');
+      alert("Failed to update permission");
       return;
     }
     loadPerms(filterRoleId);
@@ -50,30 +52,50 @@ export default function RolePermissions() {
         placeholder="Filter by Role ID"
         value={filterRoleId}
         onChange={(e) => setFilterRoleId(e.target.value)}
-        style={{ marginRight: '0.5rem' }}
+        style={{ marginRight: "0.5rem" }}
       />
       <button onClick={handleFilter}>Apply</button>
       {perms.length === 0 ? (
         <p>No permissions.</p>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.5rem' }}>
+        <table
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            marginTop: "0.5rem",
+          }}
+        >
           <thead>
-            <tr style={{ backgroundColor: '#e5e7eb' }}>
-              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Role</th>
-              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Module</th>
-              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Allowed</th>
-              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Actions</th>
+            <tr style={{ backgroundColor: "#e5e7eb" }}>
+              <th style={{ padding: "0.5rem", border: "1px solid #d1d5db" }}>
+                Role
+              </th>
+              <th style={{ padding: "0.5rem", border: "1px solid #d1d5db" }}>
+                Module
+              </th>
+              <th style={{ padding: "0.5rem", border: "1px solid #d1d5db" }}>
+                Allowed
+              </th>
+              <th style={{ padding: "0.5rem", border: "1px solid #d1d5db" }}>
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody>
-            {perms.map(p => (
-              <tr key={p.role_id + '-' + p.module_key}>
-                <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>{p.role}</td>
-                <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>{p.module_key}</td>
-                <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>{p.allowed ? 'Yes' : 'No'}</td>
-                <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+            {perms.map((p) => (
+              <tr key={p.role_id + "-" + p.module_key}>
+                <td style={{ padding: "0.5rem", border: "1px solid #d1d5db" }}>
+                  {p.role}
+                </td>
+                <td style={{ padding: "0.5rem", border: "1px solid #d1d5db" }}>
+                  {p.label}
+                </td>
+                <td style={{ padding: "0.5rem", border: "1px solid #d1d5db" }}>
+                  {p.allowed ? "Yes" : "No"}
+                </td>
+                <td style={{ padding: "0.5rem", border: "1px solid #d1d5db" }}>
                   <button onClick={() => handleToggle(p)}>
-                    {p.allowed ? 'Revoke' : 'Allow'}
+                    {p.allowed ? "Revoke" : "Allow"}
                   </button>
                 </td>
               </tr>
