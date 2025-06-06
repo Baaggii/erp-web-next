@@ -32,6 +32,7 @@ export default function App() {
               <Route element={<RequireAdmin />}>
                 <Route path="users" element={<UsersPage />} />
                 <Route path="user-companies" element={<UserCompaniesPage />} />
+                <Route path="role-permissions" element={<RolePermissionsPage />} />
               </Route>
               <Route path="settings" element={<SettingsPage />}> 
                 <Route index element={<GeneralSettings />} />

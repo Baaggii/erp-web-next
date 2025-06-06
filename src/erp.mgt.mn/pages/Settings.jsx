@@ -41,6 +41,9 @@ export function GeneralSettings() {
       ) : (
         <p>Loading settings…</p>
       )}
+      <p style={{ marginTop: '1rem' }}>
+        <Link to="/role-permissions">Edit Role Permissions</Link>
+      </p>
     </div>
   );
 }
