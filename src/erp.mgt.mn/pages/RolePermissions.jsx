@@ -1,15 +1,18 @@
 // src/erp.mgt.mn/pages/RolePermissions.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useContext } from "react";
 import { refreshRolePermissions } from "../hooks/useRolePermissions.js";
+import { AuthContext } from "../context/AuthContext.jsx";
 
 export default function RolePermissions() {
   const [perms, setPerms] = useState([]);
   const [filterRoleId, setFilterRoleId] = useState("");
+  const { company } = useContext(AuthContext);
 
   function loadPerms(roleId) {
-    const url = roleId
-      ? `/api/role_permissions?roleId=${encodeURIComponent(roleId)}`
-      : "/api/role_permissions";
+    const params = [];
+    if (roleId) params.push(`roleId=${encodeURIComponent(roleId)}`);
+    if (company) params.push(`companyId=${encodeURIComponent(company.company_id)}`);
+    const url = params.length ? `/api/role_permissions?${params.join("&")}` : "/api/role_permissions";
     fetch(url, { credentials: "include" })
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch role permissions");
@@ -21,7 +24,7 @@ export default function RolePermissions() {
 
   useEffect(() => {
     loadPerms();
-  }, []);
+  }, [company]);
 
   function handleFilter() {
     loadPerms(filterRoleId);

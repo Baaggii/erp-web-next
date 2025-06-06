@@ -6,7 +6,8 @@ import {
 export async function listPermissions(req, res, next) {
   try {
     const roleId = req.query.roleId;
-    const perms = await listRoleModulePermissions(roleId);
+    const companyId = req.query.companyId;
+    const perms = await listRoleModulePermissions(roleId, companyId);
     res.json(perms);
   } catch (err) {
     next(err);
