@@ -1,6 +1,6 @@
-import mysql from 'mysql2/promise';
-import dotenv from 'dotenv';
-import bcrypt from 'bcryptjs';
+import mysql from "mysql2/promise";
+import dotenv from "dotenv";
+import bcrypt from "bcryptjs";
 
 dotenv.config();
 
@@ -12,7 +12,7 @@ export const pool = mysql.createPool({
   database: process.env.DB_NAME,
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0
+  queueLimit: 0,
 });
 
 /**
@@ -20,7 +20,7 @@ export const pool = mysql.createPool({
  */
 export async function testConnection() {
   try {
-    await pool.query('SELECT 1');
+    await pool.query("SELECT 1");
     return { ok: true };
   } catch (error) {
     return { ok: false, error };
@@ -37,7 +37,7 @@ export async function getUserByEmail(emailOrEmpId) {
      JOIN user_roles r ON u.role_id = r.id
      WHERE u.email = ? OR u.empid = ?
      LIMIT 1`,
-    [emailOrEmpId, emailOrEmpId]
+    [emailOrEmpId, emailOrEmpId],
   );
   if (rows.length === 0) return null;
   const user = rows[0];
@@ -52,7 +52,7 @@ export async function listUsers() {
   const [rows] = await pool.query(
     `SELECT u.id, u.empid, u.email, u.name, u.role_id, r.name AS role, u.created_at
      FROM users u
-     JOIN user_roles r ON u.role_id = r.id`
+     JOIN user_roles r ON u.role_id = r.id`,
   );
   return rows;
 }
@@ -66,7 +66,7 @@ export async function getUserById(id) {
      FROM users u
      JOIN user_roles r ON u.role_id = r.id
      WHERE u.id = ?`,
-    [id]
+    [id],
   );
   return rows[0] || null;
 }
@@ -74,11 +74,18 @@ export async function getUserById(id) {
 /**
  * Create a new user
  */
-export async function createUser({ empid, email, name, password, role_id, created_by }) {
+export async function createUser({
+  empid,
+  email,
+  name,
+  password,
+  role_id,
+  created_by,
+}) {
   const hashed = await bcrypt.hash(password, 10);
   const [result] = await pool.query(
-    'INSERT INTO users (empid, email, name, password, role_id, created_by) VALUES (?, ?, ?, ?, ?, ?)',
-    [empid, email, name, hashed, role_id, created_by]
+    "INSERT INTO users (empid, email, name, password, role_id, created_by) VALUES (?, ?, ?, ?, ?, ?)",
+    [empid, email, name, hashed, role_id, created_by],
   );
   return { id: result.insertId };
 }
@@ -88,14 +95,17 @@ export async function createUser({ empid, email, name, password, role_id, create
  */
 export async function updateUser(id, { name, email, role_id }) {
   await pool.query(
-    'UPDATE users SET name = ?, email = ?, role_id = ? WHERE id = ?',
-    [name, email, role_id, id]
+    "UPDATE users SET name = ?, email = ?, role_id = ? WHERE id = ?",
+    [name, email, role_id, id],
   );
   return { id };
 }
 
 export async function updateUserPassword(id, hashedPassword) {
-  await pool.query('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, id]);
+  await pool.query("UPDATE users SET password = ? WHERE id = ?", [
+    hashedPassword,
+    id,
+  ]);
   return { id };
 }
 
@@ -103,19 +113,24 @@ export async function updateUserPassword(id, hashedPassword) {
  * Delete a user by ID
  */
 export async function deleteUserById(id) {
-  const [result] = await pool.query('DELETE FROM users WHERE id = ?', [id]);
+  const [result] = await pool.query("DELETE FROM users WHERE id = ?", [id]);
   return result;
 }
 
 /**
  * Assign a user to a company with a specific role
  */
-export async function assignCompanyToUser(empid, companyId, role_id, createdBy) {
+export async function assignCompanyToUser(
+  empid,
+  companyId,
+  role_id,
+  createdBy,
+) {
   const [result] = await pool.query(
     `INSERT INTO user_companies (empid, company_id, role_id, created_by)
      VALUES (?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE role_id = VALUES(role_id)`,
-    [empid, companyId, role_id, createdBy]
+    [empid, companyId, role_id, createdBy],
   );
   return { affectedRows: result.affectedRows };
 }
@@ -130,7 +145,7 @@ export async function listUserCompanies(empid) {
      JOIN companies c ON uc.company_id = c.id
      JOIN user_roles r ON uc.role_id = r.id
      WHERE uc.empid = ?`,
-    [empid]
+    [empid],
   );
   return rows;
 }
@@ -140,8 +155,8 @@ export async function listUserCompanies(empid) {
  */
 export async function removeCompanyAssignment(empid, companyId) {
   const [result] = await pool.query(
-    'DELETE FROM user_companies WHERE empid = ? AND company_id = ?',
-    [empid, companyId]
+    "DELETE FROM user_companies WHERE empid = ? AND company_id = ?",
+    [empid, companyId],
   );
   return result;
 }
@@ -151,8 +166,8 @@ export async function removeCompanyAssignment(empid, companyId) {
  */
 export async function updateCompanyAssignment(empid, companyId, role_id) {
   const [result] = await pool.query(
-    'UPDATE user_companies SET role_id = ? WHERE empid = ? AND company_id = ?',
-    [role_id, empid, companyId]
+    "UPDATE user_companies SET role_id = ? WHERE empid = ? AND company_id = ?",
+    [role_id, empid, companyId],
   );
   return result;
 }
@@ -165,7 +180,7 @@ export async function listAllUserCompanies() {
     `SELECT uc.empid, uc.company_id, c.name AS company_name, uc.role_id, r.name AS role
      FROM user_companies uc
      JOIN companies c ON uc.company_id = c.id
-     JOIN user_roles r ON uc.role_id = r.id`
+     JOIN user_roles r ON uc.role_id = r.id`,
   );
   return rows;
 }
@@ -174,9 +189,7 @@ export async function listAllUserCompanies() {
  * List all companies
  */
 export async function listCompanies() {
-  const [rows] = await pool.query(
-    'SELECT id, name, created_at FROM companies'
-  );
+  const [rows] = await pool.query("SELECT id, name, created_at FROM companies");
   return rows;
 }
 
@@ -185,8 +198,8 @@ export async function listCompanies() {
  */
 export async function fetchReportData(reportId, params = {}) {
   const [rows] = await pool.query(
-    'SELECT * FROM report_data WHERE report_id = ?',
-    [reportId]
+    "SELECT * FROM report_data WHERE report_id = ?",
+    [reportId],
   );
   return rows;
 }
@@ -195,7 +208,7 @@ export async function fetchReportData(reportId, params = {}) {
  * Get application settings
  */
 export async function getSettings() {
-  const [rows] = await pool.query('SELECT * FROM settings LIMIT 1');
+  const [rows] = await pool.query("SELECT * FROM settings LIMIT 1");
   return rows[0] || {};
 }
 
@@ -205,7 +218,7 @@ export async function getSettings() {
 export async function updateSettings(updates) {
   const keys = Object.keys(updates);
   const values = Object.values(updates);
-  const setClause = keys.map(k => `\`${k}\` = ?`).join(', ');
+  const setClause = keys.map((k) => `\`${k}\` = ?`).join(", ");
   await pool.query(`UPDATE settings SET ${setClause}`, values);
   return getSettings();
 }
@@ -215,8 +228,8 @@ export async function updateSettings(updates) {
  */
 export async function getTenantFlags(companyId) {
   const [rows] = await pool.query(
-    'SELECT flag_key, flag_value FROM tenant_feature_flags WHERE company_id = ?',
-    [companyId]
+    "SELECT flag_key, flag_value FROM tenant_feature_flags WHERE company_id = ?",
+    [companyId],
   );
   return rows.reduce((acc, { flag_key, flag_value }) => {
     acc[flag_key] = Boolean(flag_value);
@@ -230,11 +243,21 @@ export async function getTenantFlags(companyId) {
 export async function setTenantFlags(companyId, flags) {
   for (const [key, value] of Object.entries(flags)) {
     await pool.query(
-      'INSERT INTO tenant_feature_flags (company_id, flag_key, flag_value) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE flag_value = ?',
-      [companyId, key, value ? 1 : 0, value ? 1 : 0]
+      "INSERT INTO tenant_feature_flags (company_id, flag_key, flag_value) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE flag_value = ?",
+      [companyId, key, value ? 1 : 0, value ? 1 : 0],
     );
   }
   return getTenantFlags(companyId);
+}
+
+/**
+ * List available modules
+ */
+export async function listModules() {
+  const [rows] = await pool.query(
+    "SELECT module_key, label FROM modules ORDER BY module_key",
+  );
+  return rows;
 }
 
 /**
@@ -242,11 +265,12 @@ export async function setTenantFlags(companyId, flags) {
  */
 export async function listRoleModulePermissions(roleId) {
   const [rows] = await pool.query(
-    `SELECT rmp.role_id, ur.name AS role, rmp.module_key, rmp.allowed
+    `SELECT rmp.role_id, ur.name AS role, rmp.module_key, m.label, rmp.allowed
      FROM role_module_permissions rmp
      JOIN user_roles ur ON rmp.role_id = ur.id
-     ${roleId ? 'WHERE rmp.role_id = ?' : ''}`,
-    roleId ? [roleId] : []
+     JOIN modules m ON rmp.module_key = m.module_key
+     ${roleId ? "WHERE rmp.role_id = ?" : ""}`,
+    roleId ? [roleId] : [],
   );
   return rows;
 }
@@ -259,7 +283,7 @@ export async function setRoleModulePermission(roleId, moduleKey, allowed) {
     `INSERT INTO role_module_permissions (role_id, module_key, allowed)
      VALUES (?, ?, ?)
      ON DUPLICATE KEY UPDATE allowed = VALUES(allowed)`,
-    [roleId, moduleKey, allowed]
+    [roleId, moduleKey, allowed],
   );
   return { roleId, moduleKey, allowed };
 }
