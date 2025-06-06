@@ -1,14 +1,18 @@
 // src/erp.mgt.mn/pages/Settings.jsx
 import React, { useEffect, useState } from 'react';
+import { useRolePermissions } from '../hooks/useRolePermissions.js';
 import { NavLink, Outlet, Link } from 'react-router-dom';
 
 export default function SettingsLayout() {
+  const perms = useRolePermissions();
   return (
     <div style={styles.container}>
       <aside style={styles.menu}>
-        <NavLink end to="/settings" style={styles.menuItem}>
-          General
-        </NavLink>
+        {perms.settings && (
+          <NavLink end to="/settings" style={styles.menuItem}>
+            General
+          </NavLink>
+        )}
         <NavLink to="/settings/users" style={styles.menuItem}>
           Users
         </NavLink>
@@ -30,6 +34,10 @@ export default function SettingsLayout() {
 }
 
 export function GeneralSettings() {
+  const perms = useRolePermissions();
+  if (!perms.settings) {
+    return <p>Access denied.</p>;
+  }
   const [settings, setSettings] = useState(null);
 
   useEffect(() => {
