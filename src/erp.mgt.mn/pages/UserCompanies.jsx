@@ -6,6 +6,10 @@ export default function UserCompanies() {
   const [assignments, setAssignments] = useState([]);
   const [filterEmpId, setFilterEmpId] = useState('');
   const { company } = useContext(AuthContext);
+  const [usersList, setUsersList] = useState([]);
+  const [companiesList, setCompaniesList] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState(null);
 
   function loadAssignments(empid) {
     const params = [];
@@ -25,44 +29,55 @@ export default function UserCompanies() {
     loadAssignments();
   }, [company]);
 
+  useEffect(() => {
+    async function loadLists() {
+      try {
+        const [uRes, cRes] = await Promise.all([
+          fetch('/api/users', { credentials: 'include' }),
+          fetch('/api/companies', { credentials: 'include' })
+        ]);
+        const users = uRes.ok ? await uRes.json() : [];
+        const companies = cRes.ok ? await cRes.json() : [];
+        setUsersList(users);
+        setCompaniesList(companies);
+      } catch (err) {
+        console.error('Error loading lists:', err);
+      }
+    }
+    loadLists();
+  }, []);
+
   function handleFilter() {
     loadAssignments(filterEmpId);
   }
 
-  async function handleAdd() {
-    const empid = prompt('EmpID?');
-    if (!empid) return;
-    const companyId = prompt('Company ID?');
-    if (!companyId) return;
-    const roleId = prompt('Role ID (1=admin,2=user)?', '2');
+  function handleAdd() {
+    setEditing(null);
+    setShowForm(true);
+  }
+
+  function handleEdit(a) {
+    setEditing(a);
+    setShowForm(true);
+  }
+
+  async function handleFormSubmit({ empid, companyId, roleId }) {
+    const isEdit = Boolean(editing);
     const res = await fetch('/api/user_companies', {
-      method: 'POST',
+      method: isEdit ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({ empid, companyId, roleId })
     });
     if (!res.ok) {
-      const { message } = await res.json().catch(() => ({ message: 'Failed to add assignment' }));
-      alert(message || 'Failed to add assignment');
+      const { message } = await res
+        .json()
+        .catch(() => ({ message: isEdit ? 'Failed to update assignment' : 'Failed to add assignment' }));
+      alert(message || (isEdit ? 'Failed to update assignment' : 'Failed to add assignment'));
       return;
     }
-    loadAssignments();
-  }
-
-  async function handleEdit(a) {
-    const roleId = prompt('Role ID', a.role_id);
-    if (!roleId) return;
-    const res = await fetch('/api/user_companies', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ empid: a.empid, companyId: a.company_id, roleId })
-    });
-    if (!res.ok) {
-      const { message } = await res.json().catch(() => ({ message: 'Failed to update assignment' }));
-      alert(message || 'Failed to update assignment');
-      return;
-    }
+    setShowForm(false);
+    setEditing(null);
     loadAssignments();
   }
 
@@ -127,6 +142,126 @@ export default function UserCompanies() {
           </tbody>
         </table>
       )}
+      <AssignmentFormModal
+        visible={showForm}
+        onCancel={() => {
+          setShowForm(false);
+          setEditing(null);
+        }}
+        onSubmit={handleFormSubmit}
+        assignment={editing}
+        users={usersList}
+        companies={companiesList}
+      />
+    </div>
+  );
+}
+
+function AssignmentFormModal({ visible, onCancel, onSubmit, assignment, users, companies }) {
+  const [empid, setEmpid] = useState(assignment?.empid || '');
+  const [companyId, setCompanyId] = useState(assignment?.company_id || '');
+  const [roleId, setRoleId] = useState(String(assignment?.role_id || 2));
+
+  useEffect(() => {
+    setEmpid(assignment?.empid || '');
+    setCompanyId(assignment?.company_id || '');
+    setRoleId(String(assignment?.role_id || 2));
+  }, [assignment]);
+
+  if (!visible) return null;
+
+  const overlay = {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center'
+  };
+
+  const modal = {
+    backgroundColor: '#fff',
+    padding: '1rem',
+    borderRadius: '4px',
+    minWidth: '300px'
+  };
+
+  const isEdit = Boolean(assignment);
+
+  return (
+    <div style={overlay}>
+      <div style={modal}>
+        <h3 style={{ marginTop: 0 }}>{isEdit ? 'Edit Assignment' : 'Add Assignment'}</h3>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSubmit({ empid, companyId, roleId });
+          }}
+        >
+          <div style={{ marginBottom: '0.75rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.25rem' }}>EmpID</label>
+            <select
+              value={empid}
+              onChange={(e) => setEmpid(e.target.value)}
+              disabled={isEdit}
+              required
+              style={{ width: '100%', padding: '0.5rem' }}
+            >
+              <option value="" disabled>
+                Choose...
+              </option>
+              {users.map((u) => (
+                <option key={u.empid} value={u.empid}>
+                  {u.empid} - {u.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ marginBottom: '0.75rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.25rem' }}>Company</label>
+            <select
+              value={companyId}
+              onChange={(e) => setCompanyId(e.target.value)}
+              disabled={isEdit}
+              required
+              style={{ width: '100%', padding: '0.5rem' }}
+            >
+              <option value="" disabled>
+                Choose...
+              </option>
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ marginBottom: '0.75rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.25rem' }}>Role</label>
+            <select
+              value={roleId}
+              onChange={(e) => setRoleId(e.target.value)}
+              required
+              style={{ width: '100%', padding: '0.5rem' }}
+            >
+              <option value="1">admin</option>
+              <option value="2">user</option>
+            </select>
+          </div>
+
+          <div style={{ textAlign: 'right' }}>
+            <button type="button" onClick={onCancel} style={{ marginRight: '0.5rem' }}>
+              Cancel
+            </button>
+            <button type="submit">Save</button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
