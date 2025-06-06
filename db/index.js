@@ -1,6 +1,7 @@
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
+import { modules } from '../config/modules.js';
 
 dotenv.config();
 
@@ -248,7 +249,18 @@ export async function listRoleModulePermissions(roleId) {
      ${roleId ? 'WHERE rmp.role_id = ?' : ''}`,
     roleId ? [roleId] : []
   );
-  return rows;
+  if (!roleId) return rows;
+  const map = {};
+  rows.forEach(r => {
+    map[r.module_key] = r.allowed;
+  });
+  const roleName = rows[0] ? rows[0].role : '';
+  return modules.map(m => ({
+    role_id: roleId,
+    role: roleName,
+    module_key: m.key,
+    allowed: map[m.key] ?? 0,
+  }));
 }
 
 /**

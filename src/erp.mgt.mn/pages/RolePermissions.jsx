@@ -1,5 +1,6 @@
 // src/erp.mgt.mn/pages/RolePermissions.jsx
 import React, { useEffect, useState } from 'react';
+import { modules } from '../../config/modules.js';
 
 export default function RolePermissions() {
   const [perms, setPerms] = useState([]);
@@ -69,7 +70,9 @@ export default function RolePermissions() {
             {perms.map(p => (
               <tr key={p.role_id + '-' + p.module_key}>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>{p.role}</td>
-                <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>{p.module_key}</td>
+                <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                  {modules.find(m => m.key === p.module_key)?.name || p.module_key}
+                </td>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>{p.allowed ? 'Yes' : 'No'}</td>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                   <button onClick={() => handleToggle(p)}>

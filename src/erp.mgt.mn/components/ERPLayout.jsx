@@ -6,6 +6,7 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { logout } from '../hooks/useAuth.jsx';
 import { useRolePermissions } from '../hooks/useRolePermissions.js';
+import { modules } from '../../config/modules.js';
 
 /**
  * A desktop‐style “ERPLayout” with:
@@ -89,17 +90,17 @@ function Sidebar() {
       <nav>
         <div style={styles.menuGroup}>
           <div style={styles.groupTitle}>📌 Pinned</div>
-          {perms.dashboard !== false && (
+          {perms.dashboard && (
             <NavLink to="/" style={styles.menuItem}>
               Blue Link Demo
             </NavLink>
           )}
-          {perms.forms !== false && (
+          {perms.forms && (
             <NavLink to="/forms" style={styles.menuItem}>
               Forms
             </NavLink>
           )}
-          {perms.reports !== false && (
+          {perms.reports && (
             <NavLink to="/reports" style={styles.menuItem}>
               Reports
             </NavLink>
@@ -122,22 +123,26 @@ function Sidebar() {
                   General
                 </NavLink>
               )}
-              {user?.role === 'admin' && (
-                <>
-                  <NavLink to="/settings/users" style={styles.menuItem}>
-                    Users
-                  </NavLink>
-                  <NavLink to="/settings/user-companies" style={styles.menuItem}>
-                    User Companies
-                  </NavLink>
-                  <NavLink to="/settings/role-permissions" style={styles.menuItem}>
-                    Role Permissions
-                  </NavLink>
-                </>
+              {perms.users && (
+                <NavLink to="/settings/users" style={styles.menuItem}>
+                  Users
+                </NavLink>
               )}
-              <NavLink to="/settings/change-password" style={styles.menuItem}>
-                Change Password
-              </NavLink>
+              {perms.user_companies && (
+                <NavLink to="/settings/user-companies" style={styles.menuItem}>
+                  User Companies
+                </NavLink>
+              )}
+              {perms.role_permissions && (
+                <NavLink to="/settings/role-permissions" style={styles.menuItem}>
+                  Role Permissions
+                </NavLink>
+              )}
+              {perms.change_password && (
+                <NavLink to="/settings/change-password" style={styles.menuItem}>
+                  Change Password
+                </NavLink>
+              )}
             </>
           )}
         </div>
