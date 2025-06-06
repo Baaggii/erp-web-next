@@ -66,7 +66,12 @@ function Header({ user, onLogout }) {
         <span style={styles.logoText}>MyERP</span>
       </div>
       <nav style={styles.headerNav}>
-        <button style={styles.iconBtn}>🗔 Home</button>
+        <button
+          style={styles.iconBtn}
+          onClick={() => window.location.reload()}
+        >
+          🗔 Home
+        </button>
         <button style={styles.iconBtn}>🗗 Windows</button>
         <button style={styles.iconBtn}>❔ Help</button>
       </nav>
