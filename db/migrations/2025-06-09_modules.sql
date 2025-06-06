@@ -13,7 +13,10 @@ INSERT INTO modules (module_key, label) VALUES
   ('users', 'Users'),
   ('user_companies', 'User Companies'),
   ('role_permissions', 'Role Permissions'),
-  ('change_password', 'Change Password')
+  ('change_password', 'Change Password'),
+  ('gl', 'General Ledger'),
+  ('po', 'Purchase Orders'),
+  ('sales', 'Sales Dashboard')
 ON DUPLICATE KEY UPDATE label = VALUES(label);
 
 ALTER TABLE role_module_permissions
