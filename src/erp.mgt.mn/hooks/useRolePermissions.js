@@ -1,14 +1,14 @@
 import { useContext, useEffect, useState } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 
-// Cache permissions by role so switching users does not refetch unnecessarily
+// Cache permissions by role/company so switching users does not refetch unnecessarily
 const cache = {};
 
 // Simple event emitter for permission refresh events
 const emitter = new EventTarget();
 
-export function refreshRolePermissions(roleId) {
-  if (roleId) delete cache[roleId];
+export function refreshRolePermissions(roleId, companyId) {
+  if (roleId && companyId) delete cache[`${companyId}-${roleId}`];
   emitter.dispatchEvent(new Event('refresh'));
 }
 
@@ -16,9 +16,12 @@ export function useRolePermissions() {
   const { user, company } = useContext(AuthContext);
   const [perms, setPerms] = useState(null);
 
-  async function fetchPerms(roleId) {
+  async function fetchPerms(roleId, companyId) {
     try {
-      const res = await fetch(`/api/role_permissions?roleId=${roleId}`, {
+      const params = new URLSearchParams();
+      if (roleId) params.append('roleId', roleId);
+      if (companyId) params.append('companyId', companyId);
+      const res = await fetch(`/api/role_permissions?${params.toString()}`, {
         credentials: 'include',
       });
       const rows = res.ok ? await res.json() : [];
@@ -26,7 +29,7 @@ export function useRolePermissions() {
       rows.forEach((r) => {
         map[r.module_key] = !!r.allowed;
       });
-      cache[roleId] = map;
+      cache[`${companyId}-${roleId}`] = map;
       setPerms(map);
     } catch (err) {
       console.error('Failed to load permissions', err);
@@ -41,11 +44,13 @@ export function useRolePermissions() {
     }
     const roleId =
       company?.role_id || user.role_id || (user.role === 'admin' ? 1 : 2);
+    const companyId = company?.company_id;
 
-    if (cache[roleId]) {
-      setPerms(cache[roleId]);
+    const key = `${companyId}-${roleId}`;
+    if (cache[key]) {
+      setPerms(cache[key]);
     } else {
-      fetchPerms(roleId);
+      fetchPerms(roleId, companyId);
     }
   }, [user, company]);
 
@@ -54,7 +59,8 @@ export function useRolePermissions() {
     if (!user) return;
     const roleId =
       company?.role_id || user.role_id || (user.role === 'admin' ? 1 : 2);
-    const handler = () => fetchPerms(roleId);
+    const companyId = company?.company_id;
+    const handler = () => fetchPerms(roleId, companyId);
     emitter.addEventListener('refresh', handler);
     return () => emitter.removeEventListener('refresh', handler);
   }, [user, company]);
