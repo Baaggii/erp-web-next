@@ -236,3 +236,30 @@ export async function setTenantFlags(companyId, flags) {
   }
   return getTenantFlags(companyId);
 }
+
+/**
+ * List module permissions for roles
+ */
+export async function listRoleModulePermissions(roleId) {
+  const [rows] = await pool.query(
+    `SELECT rmp.role_id, ur.name AS role, rmp.module_key, rmp.allowed
+     FROM role_module_permissions rmp
+     JOIN user_roles ur ON rmp.role_id = ur.id
+     ${roleId ? 'WHERE rmp.role_id = ?' : ''}`,
+    roleId ? [roleId] : []
+  );
+  return rows;
+}
+
+/**
+ * Set a role's module permission
+ */
+export async function setRoleModulePermission(roleId, moduleKey, allowed) {
+  await pool.query(
+    `INSERT INTO role_module_permissions (role_id, module_key, allowed)
+     VALUES (?, ?, ?)
+     ON DUPLICATE KEY UPDATE allowed = VALUES(allowed)`,
+    [roleId, moduleKey, allowed]
+  );
+  return { roleId, moduleKey, allowed };
+}
