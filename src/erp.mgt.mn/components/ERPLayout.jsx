@@ -1,10 +1,11 @@
 // src/erp.mgt.mn/components/ERPLayout.jsx
-import React, { useContext } from 'react';
+import React, { useContext, useState } from 'react';
 import HeaderMenu from './HeaderMenu.jsx';
 import UserMenu from './UserMenu.jsx';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { logout } from '../hooks/useAuth.jsx';
+import { useRolePermissions } from '../hooks/useRolePermissions.js';
 
 /**
  * A desktop‐style “ERPLayout” with:
@@ -80,47 +81,65 @@ function Header({ user, onLogout }) {
 /** Left sidebar with “menu groups” and “pinned items” **/
 function Sidebar() {
   const { user } = useContext(AuthContext);
+  const perms = useRolePermissions();
+  const [openSettings, setOpenSettings] = useState(false);
 
-  // Simple static menu with groups
   return (
     <aside style={styles.sidebar}>
       <nav>
         <div style={styles.menuGroup}>
           <div style={styles.groupTitle}>📌 Pinned</div>
-          <NavLink to="/" style={styles.menuItem}>
-            Blue Link Demo
-          </NavLink>
-          <NavLink to="/forms" style={styles.menuItem}>
-            Forms
-          </NavLink>
-          <NavLink to="/reports" style={styles.menuItem}>
-            Reports
-          </NavLink>
+          {perms.dashboard !== false && (
+            <NavLink to="/" style={styles.menuItem}>
+              Blue Link Demo
+            </NavLink>
+          )}
+          {perms.forms !== false && (
+            <NavLink to="/forms" style={styles.menuItem}>
+              Forms
+            </NavLink>
+          )}
+          {perms.reports !== false && (
+            <NavLink to="/reports" style={styles.menuItem}>
+              Reports
+            </NavLink>
+          )}
         </div>
 
         <hr style={styles.divider} />
 
         <div style={styles.menuGroup}>
-          <div style={styles.groupTitle}>⚙ Settings</div>
-          <NavLink to="/settings" style={styles.menuItem} end>
-            General
-          </NavLink>
-          {user?.role === 'admin' && (
+          <button
+            style={styles.groupBtn}
+            onClick={() => setOpenSettings((o) => !o)}
+          >
+            ⚙ Settings {openSettings ? '▾' : '▸'}
+          </button>
+          {openSettings && (
             <>
-              <NavLink to="/settings/users" style={styles.menuItem}>
-                Users
-              </NavLink>
-              <NavLink to="/settings/user-companies" style={styles.menuItem}>
-                User Companies
-              </NavLink>
-              <NavLink to="/settings/role-permissions" style={styles.menuItem}>
-                Role Permissions
+              {perms.settings && (
+                <NavLink to="/settings" style={styles.menuItem} end>
+                  General
+                </NavLink>
+              )}
+              {user?.role === 'admin' && (
+                <>
+                  <NavLink to="/settings/users" style={styles.menuItem}>
+                    Users
+                  </NavLink>
+                  <NavLink to="/settings/user-companies" style={styles.menuItem}>
+                    User Companies
+                  </NavLink>
+                  <NavLink to="/settings/role-permissions" style={styles.menuItem}>
+                    Role Permissions
+                  </NavLink>
+                </>
+              )}
+              <NavLink to="/settings/change-password" style={styles.menuItem}>
+                Change Password
               </NavLink>
             </>
           )}
-          <NavLink to="/settings/change-password" style={styles.menuItem}>
-            Change Password
-          </NavLink>
         </div>
       </nav>
     </aside>
@@ -223,6 +242,17 @@ const styles = {
     fontSize: '0.85rem',
     fontWeight: 'bold',
     margin: '0.5rem 0 0.25rem 0',
+  },
+  groupBtn: {
+    display: 'block',
+    width: '100%',
+    background: 'transparent',
+    border: 'none',
+    color: '#e5e7eb',
+    textAlign: 'left',
+    padding: '0.4rem 0.75rem',
+    cursor: 'pointer',
+    fontSize: '0.9rem',
   },
   menuItem: ({ isActive }) => ({
     display: 'block',
