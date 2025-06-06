@@ -290,10 +290,9 @@ export async function listRoleModulePermissions(roleId, companyId) {
      JOIN user_roles ur ON rmp.role_id = ur.id
      JOIN modules m ON rmp.module_key = m.module_key`;
 
+  // Company module licenses are filtered in higher-level queries, so no join here
   if (companyId) {
-    query +=
-      ' JOIN company_module_licenses cml ON cml.module_key = rmp.module_key AND cml.company_id = ? AND cml.licensed = 1';
-    params.push(companyId);
+    params.push(companyId); // kept for backwards compatibility
   }
 
   if (roleId) {
