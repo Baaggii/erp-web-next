@@ -11,7 +11,7 @@ export function requireAuth(req, res, next) {
   try {
     // Verify the JWT
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = payload; // { id, name, email, empid, role, iat, exp }
+    req.user = payload; // { id, email, iat, exp }
     next();
   } catch (err) {
     console.error('JWT verification failed:', err);
