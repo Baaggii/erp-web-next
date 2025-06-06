@@ -89,33 +89,30 @@ function Sidebar() {
       <nav>
         <div style={styles.menuGroup}>
           <div style={styles.groupTitle}>📌 Pinned</div>
-          <NavLink
-            to="/"
-            onClick={(e) => perms.dashboard === false && e.preventDefault()}
-            style={({ isActive }) =>
-              styles.menuItem({ isActive, disabled: perms.dashboard === false })
-            }
-          >
-            Blue Link Demo
-          </NavLink>
-          <NavLink
-            to="/forms"
-            onClick={(e) => perms.forms === false && e.preventDefault()}
-            style={({ isActive }) =>
-              styles.menuItem({ isActive, disabled: perms.forms === false })
-            }
-          >
-            Forms
-          </NavLink>
-          <NavLink
-            to="/reports"
-            onClick={(e) => perms.reports === false && e.preventDefault()}
-            style={({ isActive }) =>
-              styles.menuItem({ isActive, disabled: perms.reports === false })
-            }
-          >
-            Reports
-          </NavLink>
+          {perms.dashboard !== false && (
+            <NavLink
+              to="/"
+              style={({ isActive }) => styles.menuItem({ isActive })}
+            >
+              Blue Link Demo
+            </NavLink>
+          )}
+          {perms.forms !== false && (
+            <NavLink
+              to="/forms"
+              style={({ isActive }) => styles.menuItem({ isActive })}
+            >
+              Forms
+            </NavLink>
+          )}
+          {perms.reports !== false && (
+            <NavLink
+              to="/reports"
+              style={({ isActive }) => styles.menuItem({ isActive })}
+            >
+              Reports
+            </NavLink>
+          )}
         </div>
 
         <hr style={styles.divider} />
