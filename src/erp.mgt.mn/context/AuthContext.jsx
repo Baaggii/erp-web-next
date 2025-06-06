@@ -5,12 +5,10 @@ import React, { createContext, useState, useEffect, useContext } from 'react';
 export const AuthContext = createContext({
   user: null,
   setUser: () => {},
-  loading: true,
 });
 
 export default function AuthContextProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
 
   // On mount, attempt to load the current profile (if a cookie is present)
   useEffect(() => {
@@ -28,8 +26,6 @@ export default function AuthContextProvider({ children }) {
         }
       } catch (err) {
         console.error('Unable to fetch profile:', err);
-      } finally {
-        setLoading(false);
       }
     }
 
@@ -37,7 +33,7 @@ export default function AuthContextProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, setUser, loading }}>
+    <AuthContext.Provider value={{ user, setUser }}>
       {children}
     </AuthContext.Provider>
   );
