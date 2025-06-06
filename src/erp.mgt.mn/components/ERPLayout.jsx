@@ -6,6 +6,7 @@ import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext.jsx";
 import { logout } from "../hooks/useAuth.jsx";
 import { useRolePermissions, refreshRolePermissions } from "../hooks/useRolePermissions.js";
+import { useCompanyModules } from "../hooks/useCompanyModules.js";
 
 /**
  * A desktop‐style “ERPLayout” with:
@@ -87,11 +88,12 @@ function Header({ user, onLogout, onHome }) {
 
 /** Left sidebar with “menu groups” and “pinned items” **/
 function Sidebar() {
-  const { user } = useContext(AuthContext);
+  const { user, company } = useContext(AuthContext);
   const perms = useRolePermissions();
+  const licensed = useCompanyModules(company?.company_id);
   const [openSettings, setOpenSettings] = useState(false);
 
-  if (!perms) {
+  if (!perms || !licensed) {
     return null;
   }
 
@@ -100,7 +102,7 @@ function Sidebar() {
       <nav>
         <div style={styles.menuGroup}>
           <div style={styles.groupTitle}>📌 Pinned</div>
-          {perms.dashboard && (
+          {perms.dashboard && licensed.dashboard && (
             <NavLink
               to="/"
               style={({ isActive }) => styles.menuItem({ isActive })}
@@ -108,7 +110,7 @@ function Sidebar() {
               Blue Link Demo
             </NavLink>
           )}
-          {perms.forms && (
+          {perms.forms && licensed.forms && (
             <NavLink
               to="/forms"
               style={({ isActive }) => styles.menuItem({ isActive })}
@@ -116,7 +118,7 @@ function Sidebar() {
               Forms
             </NavLink>
           )}
-          {perms.reports && (
+          {perms.reports && licensed.reports && (
             <NavLink
               to="/reports"
               style={({ isActive }) => styles.menuItem({ isActive })}
@@ -137,39 +139,49 @@ function Sidebar() {
           </button>
           {openSettings && (
             <>
-              {perms.settings && (
+              {perms.settings && licensed.settings && (
                 <NavLink to="/settings" style={styles.menuItem} end>
                   General
                 </NavLink>
               )}
               {user?.role === "admin" && (
                 <>
-                  <NavLink to="/settings/users" style={styles.menuItem}>
-                    Users
-                  </NavLink>
-                  <NavLink
-                    to="/settings/user-companies"
-                    style={styles.menuItem}
-                  >
-                    User Companies
-                  </NavLink>
-                  <NavLink
-                    to="/settings/role-permissions"
-                    style={styles.menuItem}
-                  >
-                    Role Permissions
-                  </NavLink>
-                  <NavLink
-                    to="/settings/company-licenses"
-                    style={styles.menuItem}
-                  >
-                    Company Licenses
-                  </NavLink>
+                  {licensed.users && (
+                    <NavLink to="/settings/users" style={styles.menuItem}>
+                      Users
+                    </NavLink>
+                  )}
+                  {licensed.user_companies && (
+                    <NavLink
+                      to="/settings/user-companies"
+                      style={styles.menuItem}
+                    >
+                      User Companies
+                    </NavLink>
+                  )}
+                  {licensed.role_permissions && (
+                    <NavLink
+                      to="/settings/role-permissions"
+                      style={styles.menuItem}
+                    >
+                      Role Permissions
+                    </NavLink>
+                  )}
+                  {licensed.company_licenses && (
+                    <NavLink
+                      to="/settings/company-licenses"
+                      style={styles.menuItem}
+                    >
+                      Company Licenses
+                    </NavLink>
+                  )}
                 </>
               )}
-              <NavLink to="/settings/change-password" style={styles.menuItem}>
-                Change Password
-              </NavLink>
+              {licensed.change_password && (
+                <NavLink to="/settings/change-password" style={styles.menuItem}>
+                  Change Password
+                </NavLink>
+              )}
             </>
           )}
         </div>

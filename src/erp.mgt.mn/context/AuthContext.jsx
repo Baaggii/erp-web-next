@@ -5,10 +5,33 @@ import React, { createContext, useState, useEffect, useContext } from 'react';
 export const AuthContext = createContext({
   user: null,
   setUser: () => {},
+  company: null,
+  setCompany: () => {},
 });
 
 export default function AuthContextProvider({ children }) {
   const [user, setUser] = useState(null);
+  const [company, setCompany] = useState(null);
+
+  // Persist selected company across reloads
+  useEffect(() => {
+    const stored = localStorage.getItem('erp_selected_company');
+    if (stored) {
+      try {
+        setCompany(JSON.parse(stored));
+      } catch {
+        // ignore parse errors
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (company) {
+      localStorage.setItem('erp_selected_company', JSON.stringify(company));
+    } else {
+      localStorage.removeItem('erp_selected_company');
+    }
+  }, [company]);
 
   // On mount, attempt to load the current profile (if a cookie is present)
   useEffect(() => {
@@ -33,7 +56,7 @@ export default function AuthContextProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, setUser }}>
+    <AuthContext.Provider value={{ user, setUser, company, setCompany }}>
       {children}
     </AuthContext.Provider>
   );

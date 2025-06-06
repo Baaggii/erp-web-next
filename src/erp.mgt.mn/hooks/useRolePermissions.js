@@ -13,7 +13,7 @@ export function refreshRolePermissions(roleId) {
 }
 
 export function useRolePermissions() {
-  const { user } = useContext(AuthContext);
+  const { user, company } = useContext(AuthContext);
   const [perms, setPerms] = useState(null);
 
   async function fetchPerms(roleId) {
@@ -39,23 +39,25 @@ export function useRolePermissions() {
       setPerms(null);
       return;
     }
-    const roleId = user.role_id || (user.role === 'admin' ? 1 : 2);
+    const roleId =
+      company?.role_id || user.role_id || (user.role === 'admin' ? 1 : 2);
 
     if (cache[roleId]) {
       setPerms(cache[roleId]);
     } else {
       fetchPerms(roleId);
     }
-  }, [user]);
+  }, [user, company]);
 
   // Listen for refresh events
   useEffect(() => {
     if (!user) return;
-    const roleId = user.role_id || (user.role === 'admin' ? 1 : 2);
+    const roleId =
+      company?.role_id || user.role_id || (user.role === 'admin' ? 1 : 2);
     const handler = () => fetchPerms(roleId);
     emitter.addEventListener('refresh', handler);
     return () => emitter.removeEventListener('refresh', handler);
-  }, [user]);
+  }, [user, company]);
 
   return perms;
 }

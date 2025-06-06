@@ -9,7 +9,9 @@ export default function LoginForm() {
   const [empid, setEmpid] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
-  const { setUser } = useContext(AuthContext);
+  const { setUser, setCompany } = useContext(AuthContext);
+  const [companyChoices, setCompanyChoices] = useState(null);
+  const [selectedCompany, setSelectedCompany] = useState('');
   const navigate = useNavigate();
 
   async function handleSubmit(e) {
@@ -23,12 +25,79 @@ export default function LoginForm() {
       // The login response already returns the user profile
       setUser(loggedIn);
 
-      // Redirect to the ERP root (Dashboard)
-      navigate('/');
+      // Fetch company assignments
+      const res = await fetch(
+        `/api/user_companies?empid=${encodeURIComponent(loggedIn.empid)}`,
+        { credentials: 'include' },
+      );
+      const assignments = res.ok ? await res.json() : [];
+
+      if (assignments.length === 1) {
+        setCompany(assignments[0]);
+        navigate('/');
+      } else if (assignments.length > 1) {
+        setCompany(null);
+        setCompanyChoices(assignments);
+      } else {
+        navigate('/');
+      }
     } catch (err) {
       console.error('Login failed:', err);
       setError(err.message || 'Login error');
     }
+  }
+
+  if (companyChoices) {
+    return (
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          const choice = companyChoices.find(
+            (c) => String(c.company_id) === selectedCompany,
+          );
+          if (choice) {
+            setCompany(choice);
+            navigate('/');
+          }
+        }}
+        style={{ maxWidth: '320px' }}
+      >
+        <div style={{ marginBottom: '0.75rem' }}>
+          <label htmlFor="company" style={{ display: 'block', marginBottom: '0.25rem' }}>
+            Select Company
+          </label>
+          <select
+            id="company"
+            value={selectedCompany}
+            onChange={(e) => setSelectedCompany(e.target.value)}
+            required
+            style={{ width: '100%', padding: '0.5rem', borderRadius: '3px' }}
+          >
+            <option value="" disabled>
+              Choose...
+            </option>
+            {companyChoices.map((c) => (
+              <option key={c.company_id} value={c.company_id}>
+                {c.company_name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button
+          type="submit"
+          style={{
+            backgroundColor: '#2563eb',
+            color: '#fff',
+            padding: '0.5rem 1rem',
+            border: 'none',
+            borderRadius: '3px',
+            cursor: 'pointer',
+          }}
+        >
+          Continue
+        </button>
+      </form>
+    );
   }
 
   return (
