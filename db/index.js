@@ -287,3 +287,40 @@ export async function setRoleModulePermission(roleId, moduleKey, allowed) {
   );
   return { roleId, moduleKey, allowed };
 }
+
+/**
+ * List module licenses for a company. If companyId is omitted, list for all companies.
+ */
+export async function listCompanyModuleLicenses(companyId) {
+  const params = [];
+  let where = '';
+  if (companyId) {
+    where = 'WHERE c.id = ?';
+    params.push(companyId);
+  }
+  const [rows] = await pool.query(
+    `SELECT c.id AS company_id, c.name AS company_name, m.module_key, m.label,
+            COALESCE(cml.licensed, 0) AS licensed
+       FROM companies c
+       CROSS JOIN modules m
+       LEFT JOIN company_module_licenses cml
+         ON cml.company_id = c.id AND cml.module_key = m.module_key
+       ${where}
+       ORDER BY c.id, m.module_key`,
+    params,
+  );
+  return rows;
+}
+
+/**
+ * Set a company's module license flag
+ */
+export async function setCompanyModuleLicense(companyId, moduleKey, licensed) {
+  await pool.query(
+    `INSERT INTO company_module_licenses (company_id, module_key, licensed)
+     VALUES (?, ?, ?)
+     ON DUPLICATE KEY UPDATE licensed = VALUES(licensed)`,
+    [companyId, moduleKey, licensed ? 1 : 0],
+  );
+  return { companyId, moduleKey, licensed: !!licensed };
+}
