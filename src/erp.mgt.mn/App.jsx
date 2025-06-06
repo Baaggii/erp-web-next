@@ -2,6 +2,7 @@ import React from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import AuthContextProvider from './context/AuthContext.jsx';
 import RequireAuth from './components/RequireAuth.jsx';
+import RequireAdmin from './components/RequireAdmin.jsx';
 import ERPLayout from './components/ERPLayout.jsx';
 import LoginPage from './pages/Login.jsx';
 import FormsPage from './pages/Forms.jsx';
@@ -27,8 +28,10 @@ export default function App() {
               <Route index element={<BlueLinkPage />} />
               <Route path="forms" element={<FormsPage />} />
               <Route path="reports" element={<ReportsPage />} />
-              <Route path="users" element={<UsersPage />} />
-              <Route path="user-companies" element={<UserCompaniesPage />} />
+              <Route element={<RequireAdmin />}>
+                <Route path="users" element={<UsersPage />} />
+                <Route path="user-companies" element={<UserCompaniesPage />} />
+              </Route>
               <Route path="settings" element={<SettingsPage />} />
               <Route path="change-password" element={<ChangePasswordPage />} />
             </Route>
