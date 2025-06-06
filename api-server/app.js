@@ -1,17 +1,18 @@
-import path from 'path';
-import { fileURLToPath } from 'url';
-import express from 'express';
-import cookieParser from 'cookie-parser';
-import dotenv from 'dotenv';
-import { testConnection } from '../db/index.js';
-import { errorHandler } from './middlewares/errorHandler.js';
-import { logger } from './middlewares/logging.js';
-import authRoutes from './routes/auth.js';
-import userRoutes from './routes/users.js';
-import companyRoutes from './routes/companies.js';
-import settingsRoutes from './routes/settings.js';
-import userCompanyRoutes from './routes/user_companies.js';
-import rolePermissionRoutes from './routes/role_permissions.js';
+import path from "path";
+import { fileURLToPath } from "url";
+import express from "express";
+import cookieParser from "cookie-parser";
+import dotenv from "dotenv";
+import { testConnection } from "../db/index.js";
+import { errorHandler } from "./middlewares/errorHandler.js";
+import { logger } from "./middlewares/logging.js";
+import authRoutes from "./routes/auth.js";
+import userRoutes from "./routes/users.js";
+import companyRoutes from "./routes/companies.js";
+import settingsRoutes from "./routes/settings.js";
+import userCompanyRoutes from "./routes/user_companies.js";
+import rolePermissionRoutes from "./routes/role_permissions.js";
+import moduleRoutes from "./routes/modules.js";
 
 dotenv.config();
 
@@ -25,32 +26,35 @@ app.use(cookieParser());
 app.use(logger);
 
 // Health-check: also verify DB connection
-app.get('/api/auth/health', async (req, res, next) => {
+app.get("/api/auth/health", async (req, res, next) => {
   try {
     const dbResult = await testConnection();
     if (!dbResult.ok) throw dbResult.error;
-    res.json({ status: 'ok' });
+    res.json({ status: "ok" });
   } catch (err) {
     next(err);
   }
 });
 
 // API routes
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/companies', companyRoutes);
-app.use('/api/settings', settingsRoutes);
-app.use('/api/user_companies', userCompanyRoutes);
-app.use('/api/role_permissions', rolePermissionRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/companies", companyRoutes);
+app.use("/api/settings", settingsRoutes);
+app.use("/api/user_companies", userCompanyRoutes);
+app.use("/api/role_permissions", rolePermissionRoutes);
+app.use("/api/modules", moduleRoutes);
 
 // Serve static React build and fallback to index.html
 // NOTE: adjust this path to where your SPA build actually lives.
-const buildDir = path.resolve(__dirname, '../../../erp.mgt.mn');
+const buildDir = path.resolve(__dirname, "../../../erp.mgt.mn");
 app.use(express.static(buildDir));
-app.get('*', (req, res) => res.sendFile(path.join(buildDir, 'index.html')));
+app.get("*", (req, res) => res.sendFile(path.join(buildDir, "index.html")));
 
 // Error middleware (must be last)
 app.use(errorHandler);
 
 const port = process.env.PORT || 3002;
-app.listen(port, () => console.log(`✅ ERP API & SPA listening on port ${port}`));
+app.listen(port, () =>
+  console.log(`✅ ERP API & SPA listening on port ${port}`),
+);
