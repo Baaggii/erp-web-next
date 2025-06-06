@@ -27,3 +27,12 @@ Apply as follows:
 node server.js
 # Open http://localhost:3000/erp
 ```
+
+### Database helpers
+
+Two SQL utilities assist with default module permissions:
+
+* `db/migrations/2025-06-12_role_default_modules.sql` – defines `role_default_modules` and seeds defaults.
+* `db/scripts/populate_role_module_permissions.sql` – copies those defaults into `role_module_permissions` for admin review.
+
+Run the script after applying the migration to initialize permissions for all roles.
