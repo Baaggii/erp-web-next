@@ -1,17 +1,23 @@
 import React from 'react';
+import { useRolePermissions } from '../hooks/useRolePermissions.js';
 
 export default function HeaderMenu({ onOpen }) {
+  const perms = useRolePermissions();
+  const items = [
+    { id: 'gl', label: 'General Ledger' },
+    { id: 'po', label: 'Purchase Orders' },
+    { id: 'sales', label: 'Sales Dashboard' },
+  ];
   return (
     <nav style={styles.menu}>
-      <button style={styles.btn} onClick={() => onOpen('gl')}>
-        General Ledger
-      </button>
-      <button style={styles.btn} onClick={() => onOpen('po')}>
-        Purchase Orders
-      </button>
-      <button style={styles.btn} onClick={() => onOpen('sales')}>
-        Sales Dashboard
-      </button>
+      {items.map(
+        (m) =>
+          perms[m.id] !== false && (
+            <button key={m.id} style={styles.btn} onClick={() => onOpen(m.id)}>
+              {m.label}
+            </button>
+          ),
+      )}
     </nav>
   );
 }

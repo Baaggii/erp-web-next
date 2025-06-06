@@ -8,6 +8,9 @@ INSERT INTO role_module_permissions (role_id, module_key, allowed) VALUES
   (1, 'user_companies', 1),
   (1, 'role_permissions', 1),
   (1, 'change_password', 1),
+  (1, 'gl', 1),
+  (1, 'po', 1),
+  (1, 'sales', 1),
   (2, 'dashboard', 1),
   (2, 'forms', 1),
   (2, 'reports', 1),
@@ -15,5 +18,8 @@ INSERT INTO role_module_permissions (role_id, module_key, allowed) VALUES
   (2, 'users', 0),
   (2, 'user_companies', 0),
   (2, 'role_permissions', 0),
-  (2, 'change_password', 1)
+  (2, 'change_password', 1),
+  (2, 'gl', 1),
+  (2, 'po', 1),
+  (2, 'sales', 1)
 ON DUPLICATE KEY UPDATE allowed = VALUES(allowed);
