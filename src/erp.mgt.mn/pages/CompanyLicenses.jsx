@@ -1,9 +1,13 @@
 // src/erp.mgt.mn/pages/CompanyLicenses.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 export default function CompanyLicenses() {
   const [licenses, setLicenses] = useState([]);
   const [filterCompanyId, setFilterCompanyId] = useState('');
+
+  useEffect(() => {
+    loadLicenses('');
+  }, []);
 
   function loadLicenses(companyId) {
     const url = companyId ? `/api/company_modules?companyId=${encodeURIComponent(companyId)}` : '/api/company_modules';
@@ -80,3 +84,4 @@ export default function CompanyLicenses() {
     </div>
   );
 }
+
