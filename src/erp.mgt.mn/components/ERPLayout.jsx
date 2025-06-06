@@ -59,6 +59,7 @@ export default function ERPLayout() {
 
 /** Top header bar **/
 function Header({ user, onLogout, onHome }) {
+  const { company } = useContext(AuthContext);
   function handleOpen(id) {
     console.log("open module", id);
   }
@@ -72,6 +73,9 @@ function Header({ user, onLogout, onHome }) {
           style={styles.logoImage}
         />
         <span style={styles.logoText}>MyERP</span>
+        {company && (
+          <span style={styles.companyText}> ({company.company_name})</span>
+        )}
       </div>
       <nav style={styles.headerNav}>
         <button style={styles.iconBtn} onClick={onHome}>🗔 Home</button>
@@ -237,6 +241,11 @@ const styles = {
   logoText: {
     fontSize: "1.1rem",
     fontWeight: "bold",
+  },
+  companyText: {
+    marginLeft: "0.5rem",
+    fontSize: "0.9rem",
+    opacity: 0.8,
   },
   headerNav: {
     marginLeft: "2rem",

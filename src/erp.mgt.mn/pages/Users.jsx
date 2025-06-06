@@ -1,12 +1,15 @@
 // src/erp.mgt.mn/pages/Users.jsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useContext } from 'react';
+import { AuthContext } from '../context/AuthContext.jsx';
 
 export default function Users() {
   const [usersList, setUsersList] = useState([]);
   const [filter, setFilter] = useState('');
+  const { company } = useContext(AuthContext);
 
   function loadUsers() {
-    fetch('/api/users', { credentials: 'include' })
+    const params = company ? `?companyId=${encodeURIComponent(company.company_id)}` : '';
+    fetch(`/api/users${params}`, { credentials: 'include' })
       .then((res) => {
         if (!res.ok) throw new Error('Failed to fetch users');
         return res.json();
@@ -17,7 +20,7 @@ export default function Users() {
 
   useEffect(() => {
     loadUsers();
-  }, []);
+  }, [company]);
 
   async function handleAdd() {
     const empid = prompt('EmpID?');

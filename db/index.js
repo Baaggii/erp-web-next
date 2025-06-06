@@ -57,6 +57,18 @@ export async function listUsers() {
   return rows;
 }
 
+export async function listUsersByCompany(companyId) {
+  const [rows] = await pool.query(
+    `SELECT u.id, u.empid, u.email, u.name, uc.role_id, r.name AS role, u.created_at
+       FROM users u
+       JOIN user_companies uc ON u.empid = uc.empid
+       JOIN user_roles r ON uc.role_id = r.id
+      WHERE uc.company_id = ?`,
+    [companyId],
+  );
+  return rows;
+}
+
 /**
  * Get a single user by ID
  */
@@ -175,12 +187,20 @@ export async function updateCompanyAssignment(empid, companyId, role_id) {
 /**
  * List all user-company assignments
  */
-export async function listAllUserCompanies() {
+export async function listAllUserCompanies(companyId) {
+  const params = [];
+  let where = '';
+  if (companyId) {
+    where = 'WHERE uc.company_id = ?';
+    params.push(companyId);
+  }
   const [rows] = await pool.query(
     `SELECT uc.empid, uc.company_id, c.name AS company_name, uc.role_id, r.name AS role
      FROM user_companies uc
      JOIN companies c ON uc.company_id = c.id
-     JOIN user_roles r ON uc.role_id = r.id`,
+     JOIN user_roles r ON uc.role_id = r.id
+     ${where}`,
+    params,
   );
   return rows;
 }
