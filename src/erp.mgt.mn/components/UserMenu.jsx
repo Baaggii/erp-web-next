@@ -13,7 +13,7 @@ export default function UserMenu({ user, onLogout }) {
 
   function handleChangePassword() {
     setOpen(false);
-    navigate('/change-password');
+    navigate('/settings/change-password');
   }
 
   function handleLogout() {

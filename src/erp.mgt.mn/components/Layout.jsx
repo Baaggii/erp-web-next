@@ -19,8 +19,11 @@ export default function ERPLayout() {
     '/': 'Dashboard',
     '/forms': 'Forms',
     '/reports': 'Reports',
-    '/users': 'Users',
     '/settings': 'Settings',
+    '/settings/users': 'Users',
+    '/settings/user-companies': 'User Companies',
+    '/settings/role-permissions': 'Role Permissions',
+    '/settings/change-password': 'Change Password',
   };
   const windowTitle = titleMap[location.pathname] || 'ERP';
 
@@ -97,14 +100,25 @@ function Sidebar() {
       <hr style={styles.divider} />
 
       <div style={styles.menuGroup}>
-        <div style={styles.groupTitle}>📁 Modules</div>
+        <div style={styles.groupTitle}>⚙ Settings</div>
+        <NavLink to="/settings" style={styles.menuItem} end>
+          General
+        </NavLink>
         {user?.role === 'admin' && (
-          <NavLink to="/users" style={styles.menuItem}>
-            Users
-          </NavLink>
+          <>
+            <NavLink to="/settings/users" style={styles.menuItem}>
+              Users
+            </NavLink>
+            <NavLink to="/settings/user-companies" style={styles.menuItem}>
+              User Companies
+            </NavLink>
+            <NavLink to="/settings/role-permissions" style={styles.menuItem}>
+              Role Permissions
+            </NavLink>
+          </>
         )}
-        <NavLink to="/settings" style={styles.menuItem}>
-          Settings
+        <NavLink to="/settings/change-password" style={styles.menuItem}>
+          Change Password
         </NavLink>
       </div>
     </aside>

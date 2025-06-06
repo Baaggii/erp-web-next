@@ -21,11 +21,11 @@ export default function ERPLayout() {
     '/': 'Blue Link Demo',
     '/forms': 'Forms',
     '/reports': 'Reports',
-    '/users': 'Users',
-    '/user-companies': 'User Companies',
-    '/role-permissions': 'Role Permissions',
     '/settings': 'Settings',
+    '/settings/users': 'Users',
+    '/settings/user-companies': 'User Companies',
     '/settings/role-permissions': 'Role Permissions',
+    '/settings/change-password': 'Change Password',
   };
   const windowTitle = titleMap[location.pathname] || 'ERP';
 
@@ -81,52 +81,48 @@ function Header({ user, onLogout }) {
 function Sidebar() {
   const { user } = useContext(AuthContext);
 
-  // You can expand/collapse these groups if you like; this is a static example
+  // Simple static menu with groups
   return (
     <aside style={styles.sidebar}>
-      <div style={styles.menuGroup}>
-        <div style={styles.groupTitle}>📌 Pinned</div>
-        <NavLink to="/" style={styles.menuItem}>
-          Blue Link Demo
-        </NavLink>
-        <NavLink to="/forms" style={styles.menuItem}>
-          Forms
-        </NavLink>
-        <NavLink to="/reports" style={styles.menuItem}>
-          Reports
-        </NavLink>
-      </div>
-
-      <hr style={styles.divider} />
-
-      <div style={styles.menuGroup}>
-        <div style={styles.groupTitle}>📁 Modules</div>
-        {user?.role === 'admin' && (
-          <>
-            <NavLink to="/users" style={styles.menuItem}>
-              Users
-            </NavLink>
-            <NavLink to="/user-companies" style={styles.menuItem}>
-              User Companies
-            </NavLink>
-            <NavLink to="/role-permissions" style={styles.menuItem}>
-              Role Permissions
-            </NavLink>
-          </>
-        )}
-      </div>
-
-      <div style={styles.menuGroup}>
-        <div style={styles.groupTitle}>⚙ Settings</div>
-        <NavLink to="/settings" style={styles.menuItem}>
-          General
-        </NavLink>
-        {user?.role === 'admin' && (
-          <NavLink to="/settings/role-permissions" style={styles.menuItem}>
-            Role Permissions
+      <nav>
+        <div style={styles.menuGroup}>
+          <div style={styles.groupTitle}>📌 Pinned</div>
+          <NavLink to="/" style={styles.menuItem}>
+            Blue Link Demo
           </NavLink>
-        )}
-      </div>
+          <NavLink to="/forms" style={styles.menuItem}>
+            Forms
+          </NavLink>
+          <NavLink to="/reports" style={styles.menuItem}>
+            Reports
+          </NavLink>
+        </div>
+
+        <hr style={styles.divider} />
+
+        <div style={styles.menuGroup}>
+          <div style={styles.groupTitle}>⚙ Settings</div>
+          <NavLink to="/settings" style={styles.menuItem} end>
+            General
+          </NavLink>
+          {user?.role === 'admin' && (
+            <>
+              <NavLink to="/settings/users" style={styles.menuItem}>
+                Users
+              </NavLink>
+              <NavLink to="/settings/user-companies" style={styles.menuItem}>
+                User Companies
+              </NavLink>
+              <NavLink to="/settings/role-permissions" style={styles.menuItem}>
+                Role Permissions
+              </NavLink>
+            </>
+          )}
+          <NavLink to="/settings/change-password" style={styles.menuItem}>
+            Change Password
+          </NavLink>
+        </div>
+      </nav>
     </aside>
   );
 }
