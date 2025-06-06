@@ -5,7 +5,7 @@ import UserMenu from "./UserMenu.jsx";
 import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext.jsx";
 import { logout } from "../hooks/useAuth.jsx";
-import { useRolePermissions } from "../hooks/useRolePermissions.js";
+import { useRolePermissions, refreshRolePermissions } from "../hooks/useRolePermissions.js";
 
 /**
  * A desktop‐style “ERPLayout” with:
@@ -36,9 +36,15 @@ export default function ERPLayout() {
     navigate("/login");
   }
 
+  function handleHome() {
+    const roleId = user?.role_id || (user?.role === 'admin' ? 1 : 2);
+    refreshRolePermissions(roleId);
+    navigate('/');
+  }
+
   return (
     <div style={styles.container}>
-      <Header user={user} onLogout={handleLogout} />
+      <Header user={user} onLogout={handleLogout} onHome={handleHome} />
       <div style={styles.body}>
         <Sidebar />
         <MainWindow title={windowTitle}>
@@ -50,7 +56,7 @@ export default function ERPLayout() {
 }
 
 /** Top header bar **/
-function Header({ user, onLogout }) {
+function Header({ user, onLogout, onHome }) {
   function handleOpen(id) {
     console.log("open module", id);
   }
@@ -66,7 +72,7 @@ function Header({ user, onLogout }) {
         <span style={styles.logoText}>MyERP</span>
       </div>
       <nav style={styles.headerNav}>
-        <button style={styles.iconBtn}>🗔 Home</button>
+        <button style={styles.iconBtn} onClick={onHome}>🗔 Home</button>
         <button style={styles.iconBtn}>🗗 Windows</button>
         <button style={styles.iconBtn}>❔ Help</button>
       </nav>
