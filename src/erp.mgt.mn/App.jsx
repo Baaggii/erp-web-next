@@ -10,6 +10,7 @@ import ReportsPage from './pages/Reports.jsx';
 import UsersPage from './pages/Users.jsx';
 import UserCompaniesPage from './pages/UserCompanies.jsx';
 import RolePermissionsPage from './pages/RolePermissions.jsx';
+import CompanyLicensesPage from './pages/CompanyLicenses.jsx';
 import SettingsPage, { GeneralSettings } from './pages/Settings.jsx';
 import ChangePasswordPage from './pages/ChangePassword.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -35,6 +36,7 @@ export default function App() {
                   <Route path="users" element={<UsersPage />} />
                   <Route path="user-companies" element={<UserCompaniesPage />} />
                   <Route path="role-permissions" element={<RolePermissionsPage />} />
+                  <Route path="company-licenses" element={<CompanyLicensesPage />} />
                 </Route>
                 <Route path="change-password" element={<ChangePasswordPage />} />
               </Route>

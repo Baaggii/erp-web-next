@@ -26,6 +26,7 @@ export default function ERPLayout() {
     "/settings/users": "Users",
     "/settings/user-companies": "User Companies",
     "/settings/role-permissions": "Role Permissions",
+    "/settings/company-licenses": "Company Licenses",
     "/settings/change-password": "Change Password",
   };
   const windowTitle = titleMap[location.pathname] || "ERP";
@@ -157,6 +158,12 @@ function Sidebar() {
                     style={styles.menuItem}
                   >
                     Role Permissions
+                  </NavLink>
+                  <NavLink
+                    to="/settings/company-licenses"
+                    style={styles.menuItem}
+                  >
+                    Company Licenses
                   </NavLink>
                 </>
               )}
