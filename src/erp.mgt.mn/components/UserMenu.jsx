@@ -24,7 +24,7 @@ export default function UserMenu({ user, onLogout }) {
   return (
     <div style={styles.wrapper}>
       <button style={styles.userBtn} onClick={toggle}>
-        {user.email || user.empid} ▾
+        {user.name || user.empid} ▾
       </button>
       {open && (
         <div style={styles.menu}>

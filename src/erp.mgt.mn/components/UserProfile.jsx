@@ -3,5 +3,5 @@ import { AuthContext } from '../context/AuthContext.jsx';
 
 export default function UserProfile() {
   const { user } = useContext(AuthContext);
-  return <div>Logged in as: {user.email || user.empid}</div>;
+  return <div>Logged in as: {user.name || user.empid}</div>;
 }
