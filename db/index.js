@@ -264,22 +264,13 @@ export async function listModules() {
  * List module permissions for roles
  */
 export async function listRoleModulePermissions(roleId) {
-  const params = [];
-  let where = "";
-  if (roleId) {
-    where = "WHERE ur.id = ?";
-    params.push(roleId);
-  }
   const [rows] = await pool.query(
-    `SELECT ur.id AS role_id, ur.name AS role, m.module_key, m.label,
-            COALESCE(rmp.allowed, 0) AS allowed
-       FROM user_roles ur
-       CROSS JOIN modules m
-       LEFT JOIN role_module_permissions rmp
-         ON rmp.role_id = ur.id AND rmp.module_key = m.module_key
-       ${where}
-       ORDER BY ur.id, m.module_key`,
-    params,
+    `SELECT rmp.role_id, ur.name AS role, rmp.module_key, m.label, rmp.allowed
+     FROM role_module_permissions rmp
+     JOIN user_roles ur ON rmp.role_id = ur.id
+     JOIN modules m ON rmp.module_key = m.module_key
+     ${roleId ? "WHERE rmp.role_id = ?" : ""}`,
+    roleId ? [roleId] : [],
   );
   return rows;
 }
