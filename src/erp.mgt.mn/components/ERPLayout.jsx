@@ -15,7 +15,7 @@ import { useCompanyModules } from "../hooks/useCompanyModules.js";
  *  - Main content area (faux window container)
  */
 export default function ERPLayout() {
-  const { user, setUser } = useContext(AuthContext);
+  const { user, setUser, company } = useContext(AuthContext);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -43,7 +43,8 @@ export default function ERPLayout() {
 
   function handleHome() {
     const roleId = user?.role_id || (user?.role === 'admin' ? 1 : 2);
-    refreshRolePermissions(roleId);
+    const companyId = user?.company_id || company?.company_id;
+    refreshRolePermissions(roleId, companyId);
     navigate('/');
   }
 

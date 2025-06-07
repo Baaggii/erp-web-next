@@ -7,8 +7,9 @@ const cache = {};
 // Simple event emitter for permission refresh events
 const emitter = new EventTarget();
 
-export function refreshRolePermissions(roleId) {
-  if (roleId) delete cache[roleId];
+export function refreshRolePermissions(roleId, companyId) {
+  const key = `${roleId}-${companyId || ''}`;
+  if (roleId) delete cache[key];
   emitter.dispatchEvent(new Event('refresh'));
 }
 
@@ -16,9 +17,11 @@ export function useRolePermissions() {
   const { user, company } = useContext(AuthContext);
   const [perms, setPerms] = useState(null);
 
-  async function fetchPerms(roleId) {
+  async function fetchPerms(roleId, companyId) {
     try {
-      const res = await fetch(`/api/role_permissions?roleId=${roleId}`, {
+      const params = [`roleId=${roleId}`];
+      if (companyId) params.push(`companyId=${companyId}`);
+      const res = await fetch(`/api/role_permissions?${params.join('&')}`, {
         credentials: 'include',
       });
       const rows = res.ok ? await res.json() : [];
@@ -26,7 +29,8 @@ export function useRolePermissions() {
       rows.forEach((r) => {
         map[r.module_key] = !!r.allowed;
       });
-      cache[roleId] = map;
+      const key = `${roleId}-${companyId || ''}`;
+      cache[key] = map;
       setPerms(map);
     } catch (err) {
       console.error('Failed to load permissions', err);
@@ -41,11 +45,14 @@ export function useRolePermissions() {
     }
     const roleId =
       company?.role_id || user.role_id || (user.role === 'admin' ? 1 : 2);
+    const companyId = company?.company_id;
 
-    if (cache[roleId]) {
-      setPerms(cache[roleId]);
+    const key = `${roleId}-${companyId || ''}`;
+
+    if (cache[key]) {
+      setPerms(cache[key]);
     } else {
-      fetchPerms(roleId);
+      fetchPerms(roleId, companyId);
     }
   }, [user, company]);
 
@@ -54,7 +61,8 @@ export function useRolePermissions() {
     if (!user) return;
     const roleId =
       company?.role_id || user.role_id || (user.role === 'admin' ? 1 : 2);
-    const handler = () => fetchPerms(roleId);
+    const companyId = company?.company_id;
+    const handler = () => fetchPerms(roleId, companyId);
     emitter.addEventListener('refresh', handler);
     return () => emitter.removeEventListener('refresh', handler);
   }, [user, company]);

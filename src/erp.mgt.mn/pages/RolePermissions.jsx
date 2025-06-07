@@ -47,7 +47,7 @@ export default function RolePermissions() {
       return;
     }
     loadPerms(filterRoleId);
-    refreshRolePermissions(p.role_id);
+    refreshRolePermissions(p.role_id, company?.company_id);
   }
 
   return (
