@@ -13,6 +13,7 @@ export default function CodingTablesPage() {
   const [nameColumn, setNameColumn] = useState('');
   const [otherColumns, setOtherColumns] = useState([]);
   const [sql, setSql] = useState('');
+  const [uploading, setUploading] = useState(false);
 
   function handleFile(e) {
     const file = e.target.files[0];
@@ -63,7 +64,8 @@ export default function CodingTablesPage() {
     const ids = hdrs.filter(
       (h) => typeof h === 'string' && h.toLowerCase().includes('id')
     );
-    setIdCandidates(ids);
+    const finalIds = ids.length > 0 ? ids : hdrs.filter((h) => typeof h === 'string');
+    setIdCandidates(finalIds);
   }
 
   function handleExtract() {
@@ -113,27 +115,35 @@ export default function CodingTablesPage() {
   async function handleUpload() {
     if (!workbook || !sheet || !tableName || !idColumn || !nameColumn) return;
     setSql('');
-    const formData = new FormData();
-    const blob = new Blob([XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })]);
-    formData.append('file', blob, 'upload.xlsx');
-    formData.append('sheet', sheet);
-    formData.append('headerRow', headerRow);
-    formData.append('tableName', tableName);
-    formData.append('idColumn', idColumn);
-    formData.append('nameColumn', nameColumn);
-    formData.append('otherColumns', JSON.stringify(otherColumns));
-    const res = await fetch('/api/coding_tables/upload', {
-      method: 'POST',
-      credentials: 'include',
-      body: formData,
-    });
-    if (!res.ok) {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      const blob = new Blob([XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })]);
+      formData.append('file', blob, 'upload.xlsx');
+      formData.append('sheet', sheet);
+      formData.append('headerRow', headerRow);
+      formData.append('tableName', tableName);
+      formData.append('idColumn', idColumn);
+      formData.append('nameColumn', nameColumn);
+      formData.append('otherColumns', JSON.stringify(otherColumns));
+      const res = await fetch('/api/coding_tables/upload', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      });
+      if (!res.ok) {
+        alert('Upload failed');
+        return;
+      }
+      const json = await res.json();
+      alert(`Inserted ${json.inserted} rows`);
+      setSql('');
+    } catch (err) {
+      console.error('Upload failed', err);
       alert('Upload failed');
-      return;
+    } finally {
+      setUploading(false);
     }
-    const json = await res.json();
-    alert(`Inserted ${json.inserted} rows`);
-    setSql('');
   }
 
   return (
@@ -212,6 +222,11 @@ export default function CodingTablesPage() {
               {sql && (
                 <div>
                   <textarea value={sql} readOnly rows={10} cols={80} />
+                </div>
+              )}
+              {uploading && (
+                <div style={{ marginTop: '1rem' }}>
+                  <progress /> Creating table...
                 </div>
               )}
             </>
