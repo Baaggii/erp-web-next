@@ -312,9 +312,12 @@ export async function populateRoleDefaultModules() {
 
   function rootKey(key) {
     let cur = map[key];
+    let last = cur;
     while (cur && cur.parent_key) {
+      last = cur;
       cur = map[cur.parent_key];
     }
+    if (!cur && last) return last.module_key;
     return cur ? cur.module_key : null;
   }
 
