@@ -13,6 +13,7 @@ export default function CodingTablesPage() {
   const [nameColumn, setNameColumn] = useState('');
   const [otherColumns, setOtherColumns] = useState([]);
   const [sql, setSql] = useState('');
+  const [uploading, setUploading] = useState(false);
 
   function handleFile(e) {
     const file = e.target.files[0];
@@ -63,7 +64,11 @@ export default function CodingTablesPage() {
     const ids = hdrs.filter(
       (h) => typeof h === 'string' && h.toLowerCase().includes('id')
     );
-    setIdCandidates(ids);
+    if (ids.length === 0) {
+      setIdCandidates(hdrs);
+    } else {
+      setIdCandidates(ids);
+    }
   }
 
   function handleExtract() {
@@ -122,18 +127,25 @@ export default function CodingTablesPage() {
     formData.append('idColumn', idColumn);
     formData.append('nameColumn', nameColumn);
     formData.append('otherColumns', JSON.stringify(otherColumns));
-    const res = await fetch('/api/coding_tables/upload', {
-      method: 'POST',
-      credentials: 'include',
-      body: formData,
-    });
-    if (!res.ok) {
+    try {
+      setUploading(true);
+      const res = await fetch('/api/coding_tables/upload', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      });
+      if (!res.ok) {
+        throw new Error('Upload failed');
+      }
+      const json = await res.json();
+      alert(`Inserted ${json.inserted} rows`);
+      setSql('');
+    } catch (err) {
+      console.error(err);
       alert('Upload failed');
-      return;
+    } finally {
+      setUploading(false);
     }
-    const json = await res.json();
-    alert(`Inserted ${json.inserted} rows`);
-    setSql('');
   }
 
   return (
@@ -208,6 +220,11 @@ export default function CodingTablesPage() {
               <div>
                 <button onClick={handleGenerateSql}>Populate SQL</button>
                 <button onClick={handleUpload}>Create Coding Table</button>
+                {uploading && (
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <progress style={{ width: '100%' }} />
+                  </div>
+                )}
               </div>
               {sql && (
                 <div>
