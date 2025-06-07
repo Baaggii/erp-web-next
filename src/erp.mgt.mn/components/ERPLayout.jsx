@@ -119,13 +119,24 @@ function Sidebar() {
   });
 
   const roots = [];
+  const orphans = [];
   Object.values(map).forEach((m) => {
     if (m.parent_key && map[m.parent_key]) {
       map[m.parent_key].children.push(m);
+    } else if (m.parent_key) {
+      orphans.push(m);
     } else {
       roots.push(m);
     }
   });
+
+  if (orphans.length > 0) {
+    roots.push({
+      module_key: '__orphan__',
+      label: 'Other',
+      children: orphans,
+    });
+  }
 
   return (
     <aside style={styles.sidebar}>

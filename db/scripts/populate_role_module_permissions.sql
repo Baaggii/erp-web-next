@@ -1,18 +1,31 @@
 -- Populate role_default_modules with any new modules
+-- Determine each module's root parent to decide default access
+WITH RECURSIVE rooted AS (
+  SELECT module_key, parent_key, module_key AS root
+    FROM modules
+   WHERE parent_key IS NULL
+  UNION ALL
+  SELECT m.module_key, m.parent_key, r.root
+    FROM modules m
+    JOIN rooted r ON m.parent_key = r.module_key
+),
+module_hierarchy AS (
+  SELECT m.module_key,
+         COALESCE(r.root, m.module_key) AS root
+    FROM modules m
+    LEFT JOIN rooted r ON m.module_key = r.module_key
+)
 INSERT INTO role_default_modules (role_id, module_key, allowed)
 SELECT * FROM (
-  SELECT ur.id AS role_id, m.module_key AS module_key,
+  SELECT ur.id AS role_id, h.module_key,
          CASE
            WHEN ur.name = 'admin' THEN 1
-           WHEN m.module_key IN (
-            'settings', 'users', 'user_companies', 'role_permissions',
-            'company_licenses', 'developer', 'modules',
-            'tables_management', 'forms_management', 'report_management'
-           ) THEN 0
+           WHEN h.root IN ('settings', 'developer')
+                AND h.module_key <> 'change_password' THEN 0
            ELSE 1
          END AS allowed
-  FROM user_roles ur
-  CROSS JOIN modules m
+    FROM user_roles ur
+    CROSS JOIN module_hierarchy h
 ) AS vals
 ON DUPLICATE KEY UPDATE allowed = vals.allowed;
 
