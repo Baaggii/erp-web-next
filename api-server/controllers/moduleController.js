@@ -2,6 +2,7 @@ import {
   listModules as dbListModules,
   upsertModule,
   populateRoleModulePermissions,
+  populateCompanyModuleLicenses,
 } from "../../db/index.js";
 
 export async function listModules(req, res, next) {
@@ -39,6 +40,7 @@ export async function saveModule(req, res, next) {
 export async function populatePermissions(req, res, next) {
   try {
     if (req.user.role !== 'admin') return res.sendStatus(403);
+    await populateCompanyModuleLicenses();
     await populateRoleModulePermissions();
     res.sendStatus(204);
   } catch (err) {
