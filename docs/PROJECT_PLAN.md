@@ -33,7 +33,10 @@ This document outlines the roadmap, scope, architecture, milestones, and deliver
 
 5. **Settings**  
    - Global & tenant-specific configs.  
-   - Feature toggles (e.g. enable/disable mosaic).
+ - Feature toggles (e.g. enable/disable mosaic).
+
+6. **Coding Tables Upload**
+   - Upload Excel sheets to create simple lookup tables.
 
 ## 4. Architecture & Tech Stack
 - **Front-end**  
