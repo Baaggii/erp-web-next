@@ -275,19 +275,31 @@ export async function setTenantFlags(companyId, flags) {
  */
 export async function listModules() {
   const [rows] = await pool.query(
-    "SELECT module_key, label FROM modules ORDER BY module_key",
+    `SELECT module_key, label, parent_key, show_in_sidebar, show_in_header
+       FROM modules
+      ORDER BY module_key`,
   );
   return rows;
 }
 
-export async function upsertModule(moduleKey, label) {
+export async function upsertModule(
+  moduleKey,
+  label,
+  parentKey = null,
+  showInSidebar = true,
+  showInHeader = false,
+) {
   await pool.query(
-    `INSERT INTO modules (module_key, label)
-     VALUES (?, ?)
-     ON DUPLICATE KEY UPDATE label = VALUES(label)`,
-    [moduleKey, label],
+    `INSERT INTO modules (module_key, label, parent_key, show_in_sidebar, show_in_header)
+     VALUES (?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       label = VALUES(label),
+       parent_key = VALUES(parent_key),
+       show_in_sidebar = VALUES(show_in_sidebar),
+       show_in_header = VALUES(show_in_header)`,
+    [moduleKey, label, parentKey, showInSidebar ? 1 : 0, showInHeader ? 1 : 0],
   );
-  return { moduleKey, label };
+  return { moduleKey, label, parentKey, showInSidebar, showInHeader };
 }
 
 export async function populateRoleDefaultModules() {
