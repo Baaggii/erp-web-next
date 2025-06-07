@@ -122,10 +122,9 @@ function Sidebar() {
   Object.values(map).forEach((m) => {
     if (m.parent_key && map[m.parent_key]) {
       map[m.parent_key].children.push(m);
-    } else if (!m.parent_key) {
+    } else {
       roots.push(m);
     }
-    // If the parent module isn't visible, the child is skipped
   });
 
   return (
