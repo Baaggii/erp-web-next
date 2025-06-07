@@ -1,5 +1,5 @@
 // src/erp.mgt.mn/components/ERPLayout.jsx
-import React, { useContext, useState } from "react";
+import React, { useContext, useState, useEffect } from "react";
 import HeaderMenu from "./HeaderMenu.jsx";
 import UserMenu from "./UserMenu.jsx";
 import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
@@ -97,154 +97,82 @@ function Header({ user, onLogout, onHome }) {
 
 /** Left sidebar with “menu groups” and “pinned items” **/
 function Sidebar() {
-  const { user, company } = useContext(AuthContext);
+  const { company } = useContext(AuthContext);
   const perms = useRolePermissions();
   const licensed = useCompanyModules(company?.company_id);
-  const [openSettings, setOpenSettings] = useState(false);
-  const [openUserSettings, setOpenUserSettings] = useState(false);
+  const [modules, setModules] = useState([]);
 
-  if (!perms || !licensed) {
-    return null;
-  }
+  useEffect(() => {
+    fetch('/api/modules', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : []))
+      .then(setModules)
+      .catch(() => setModules([]));
+  }, []);
+
+  if (!perms || !licensed) return null;
+
+  const map = {};
+  modules.forEach((m) => {
+    if (perms[m.module_key] && licensed[m.module_key] && m.show_in_sidebar) {
+      map[m.module_key] = { ...m, children: [] };
+    }
+  });
+
+  const roots = [];
+  Object.values(map).forEach((m) => {
+    if (m.parent_key && map[m.parent_key]) {
+      map[m.parent_key].children.push(m);
+    } else {
+      roots.push(m);
+    }
+  });
 
   return (
     <aside style={styles.sidebar}>
       <nav>
-        <div style={styles.menuGroup}>
-          <div style={styles.groupTitle}>📌 Түгээмэл</div>
-          {perms.dashboard && licensed.dashboard && (
+        {roots.map((m) =>
+          m.children.length > 0 ? (
+            <SidebarGroup key={m.module_key} mod={m} />
+          ) : (
             <NavLink
-              to="/"
+              key={m.module_key}
+              to={modulePath(m)}
               style={({ isActive }) => styles.menuItem({ isActive })}
             >
-              Blue Link демо
+              {m.label}
             </NavLink>
-          )}
-          {perms.forms && licensed.forms && (
-            <NavLink
-              to="/forms"
-              style={({ isActive }) => styles.menuItem({ isActive })}
-            >
-              Маягтууд
-            </NavLink>
-          )}
-          {perms.reports && licensed.reports && (
-            <NavLink
-              to="/reports"
-              style={({ isActive }) => styles.menuItem({ isActive })}
-            >
-              Тайлан
-            </NavLink>
-          )}
-        </div>
-
-        <hr style={styles.divider} />
-
-        <div style={styles.menuGroup}>
-          <button
-            style={styles.groupBtn}
-            onClick={() => setOpenSettings((o) => !o)}
-          >
-            ⚙ Тохиргоо {openSettings ? "▾" : "▸"}
-          </button>
-          {openSettings && (
-            <>
-              {perms.settings && licensed.settings && (
-                <NavLink to="/settings" style={styles.menuItem} end>
-                  Ерөнхий
-                </NavLink>
-              )}
-              {licensed.company_licenses && (
-                <NavLink
-                  to="/settings/company-licenses"
-                  style={styles.menuItem}
-                >
-                  Лиценз
-                </NavLink>
-              )}
-              <button
-                style={styles.groupBtn}
-                onClick={() => setOpenUserSettings((o) => !o)}
-              >
-                👤 Хэрэглэгчийн тохиргоо {openUserSettings ? "▾" : "▸"}
-              </button>
-              {openUserSettings && (
-                <>
-                  {user?.role === "admin" && (
-                    <>
-                      {licensed.users && (
-                        <NavLink to="/settings/users" style={styles.menuItem}>
-                          Хэрэглэгчид
-                        </NavLink>
-                      )}
-                      {licensed.user_companies && (
-                        <NavLink
-                          to="/settings/user-companies"
-                          style={styles.menuItem}
-                        >
-                          Хэрэглэгчийн компаниуд
-                        </NavLink>
-                      )}
-                      {licensed.role_permissions && (
-                        <NavLink
-                          to="/settings/role-permissions"
-                          style={styles.menuItem}
-                        >
-                          Эрхийн тохиргоо
-                        </NavLink>
-                      )}
-                    </>
-                  )}
-                  {licensed.change_password && (
-                    <NavLink
-                      to="/settings/change-password"
-                      style={styles.menuItem}
-                    >
-                      Нууц үг солих
-                    </NavLink>
-                  )}
-                </>
-              )}
-              {user?.role === "admin" && (
-                <>
-                  <NavLink
-                    to="/settings/modules"
-                    style={styles.menuItem}
-                  >
-                    Модуль
-                  </NavLink>
-                  {licensed.tables_management && (
-                    <NavLink
-                      to="/settings/tables-management"
-                      style={styles.menuItem}
-                    >
-                      Хүснэгтийн удирдлага
-                    </NavLink>
-                  )}
-                  {licensed.forms_management && (
-                    <NavLink
-                      to="/settings/forms-management"
-                      style={styles.menuItem}
-                    >
-                      Маягтын удирдлага
-                    </NavLink>
-                  )}
-                  {licensed.report_management && (
-                    <NavLink
-                      to="/settings/report-management"
-                      style={styles.menuItem}
-                    >
-                      Тайлангийн удирдлага
-                    </NavLink>
-                  )}
-                </>
-              )}
-            </>
-          )}
-        </div>
+          ),
+        )}
       </nav>
     </aside>
   );
+}
+
+function SidebarGroup({ mod }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={styles.menuGroup}>
+      <button style={styles.groupBtn} onClick={() => setOpen((o) => !o)}>
+        {mod.label} {open ? '▾' : '▸'}
+      </button>
+      {open &&
+        mod.children.map((c) => (
+          <NavLink key={c.module_key} to={modulePath(c)} style={styles.menuItem}>
+            {c.label}
+          </NavLink>
+        ))}
+    </div>
+  );
+}
+
+function modulePath(m) {
+  const seg = m.module_key.replace(/_/g, '-');
+  if (m.parent_key === 'settings') return `/settings/${seg}`;
+  if (!m.parent_key) {
+    if (m.module_key === 'dashboard') return '/';
+    return `/${seg}`;
+  }
+  return `/${seg}`;
 }
 
 /** A faux “window” wrapper around the main content **/

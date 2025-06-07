@@ -1,13 +1,18 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRolePermissions } from '../hooks/useRolePermissions.js';
 
 export default function HeaderMenu({ onOpen }) {
   const perms = useRolePermissions();
-  const items = [
-    { id: 'gl', label: 'Ерөнхий журнал' },
-    { id: 'po', label: 'Худалдан авалтын захиалга' },
-    { id: 'sales', label: 'Борлуулалтын самбар' },
-  ];
+  const [items, setItems] = useState([]);
+
+  useEffect(() => {
+    fetch('/api/modules', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((rows) => {
+        setItems(rows.filter((r) => r.show_in_header));
+      })
+      .catch(() => setItems([]));
+  }, []);
 
   if (!perms) return null;
 
@@ -15,8 +20,12 @@ export default function HeaderMenu({ onOpen }) {
     <nav style={styles.menu}>
       {items.map(
         (m) =>
-          perms[m.id] && (
-            <button key={m.id} style={styles.btn} onClick={() => onOpen(m.id)}>
+          perms[m.module_key] && (
+            <button
+              key={m.module_key}
+              style={styles.btn}
+              onClick={() => onOpen(m.module_key)}
+            >
               {m.label}
             </button>
           ),
