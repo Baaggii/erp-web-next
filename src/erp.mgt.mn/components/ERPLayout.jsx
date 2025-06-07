@@ -1,5 +1,5 @@
 // src/erp.mgt.mn/components/ERPLayout.jsx
-import React, { useContext, useState, useEffect } from "react";
+import React, { useContext, useState } from "react";
 import HeaderMenu from "./HeaderMenu.jsx";
 import UserMenu from "./UserMenu.jsx";
 import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
@@ -7,6 +7,7 @@ import { AuthContext } from "../context/AuthContext.jsx";
 import { logout } from "../hooks/useAuth.jsx";
 import { useRolePermissions, refreshRolePermissions } from "../hooks/useRolePermissions.js";
 import { useCompanyModules } from "../hooks/useCompanyModules.js";
+import { useModules } from "../hooks/useModules.js";
 
 /**
  * A desktop‐style “ERPLayout” with:
@@ -100,14 +101,7 @@ function Sidebar() {
   const { company } = useContext(AuthContext);
   const perms = useRolePermissions();
   const licensed = useCompanyModules(company?.company_id);
-  const [modules, setModules] = useState([]);
-
-  useEffect(() => {
-    fetch('/api/modules', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : []))
-      .then(setModules)
-      .catch(() => setModules([]));
-  }, []);
+  const modules = useModules();
 
   if (!perms || !licensed) return null;
 
