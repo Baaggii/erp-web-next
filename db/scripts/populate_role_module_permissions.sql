@@ -5,9 +5,9 @@ SELECT * FROM (
          CASE
            WHEN ur.name = 'admin' THEN 1
            WHEN m.module_key IN (
-             'settings', 'users', 'user_companies', 'role_permissions',
-             'company_licenses', 'tables_management', 'forms_management',
-             'report_management'
+            'settings', 'users', 'user_companies', 'role_permissions',
+            'company_licenses', 'developer', 'modules',
+            'tables_management', 'forms_management', 'report_management'
            ) THEN 0
            ELSE 1
          END AS allowed
