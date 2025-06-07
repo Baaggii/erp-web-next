@@ -36,6 +36,7 @@ export default function RolePermissions() {
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify({
+        companyId: company?.company_id,
         roleId: p.role_id,
         moduleKey: p.module_key,
         allowed: p.allowed ? 0 : 1,
@@ -46,7 +47,7 @@ export default function RolePermissions() {
       return;
     }
     loadPerms(filterRoleId);
-    refreshRolePermissions(p.role_id);
+    refreshRolePermissions(p.role_id, company?.company_id);
   }
 
   return (

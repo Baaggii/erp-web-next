@@ -312,14 +312,14 @@ export async function listRoleModulePermissions(roleId, companyId) {
 /**
  * Set a role's module permission
  */
-export async function setRoleModulePermission(roleId, moduleKey, allowed) {
+export async function setRoleModulePermission(companyId, roleId, moduleKey, allowed) {
   await pool.query(
-    `INSERT INTO role_module_permissions (role_id, module_key, allowed)
-     VALUES (?, ?, ?)
+    `INSERT INTO role_module_permissions (company_id, role_id, module_key, allowed)
+     VALUES (?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE allowed = VALUES(allowed)`,
-    [roleId, moduleKey, allowed],
+    [companyId, roleId, moduleKey, allowed],
   );
-  return { roleId, moduleKey, allowed };
+  return { companyId, roleId, moduleKey, allowed };
 }
 
 /**
