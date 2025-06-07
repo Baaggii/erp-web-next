@@ -14,6 +14,7 @@ import CompanyLicensesPage from './pages/CompanyLicenses.jsx';
 import TablesManagementPage from './pages/TablesManagement.jsx';
 import FormsManagementPage from './pages/FormsManagement.jsx';
 import ReportManagementPage from './pages/ReportManagement.jsx';
+import ModulesPage from './pages/Modules.jsx';
 import SettingsPage, { GeneralSettings } from './pages/Settings.jsx';
 import ChangePasswordPage from './pages/ChangePassword.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -39,6 +40,7 @@ export default function App() {
                   <Route path="users" element={<UsersPage />} />
                   <Route path="user-companies" element={<UserCompaniesPage />} />
                   <Route path="role-permissions" element={<RolePermissionsPage />} />
+                  <Route path="modules" element={<ModulesPage />} />
                   <Route path="company-licenses" element={<CompanyLicensesPage />} />
                   <Route path="tables-management" element={<TablesManagementPage />} />
                   <Route path="forms-management" element={<FormsManagementPage />} />

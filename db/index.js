@@ -280,6 +280,26 @@ export async function listModules() {
   return rows;
 }
 
+export async function upsertModule(moduleKey, label) {
+  await pool.query(
+    `INSERT INTO modules (module_key, label)
+     VALUES (?, ?)
+     ON DUPLICATE KEY UPDATE label = VALUES(label)`,
+    [moduleKey, label],
+  );
+  return { moduleKey, label };
+}
+
+export async function populateRoleModulePermissions() {
+  await pool.query(
+    `INSERT INTO role_module_permissions (company_id, role_id, module_key, allowed)
+     SELECT c.id, rdm.role_id, rdm.module_key, rdm.allowed
+       FROM companies c
+       CROSS JOIN role_default_modules rdm
+     ON DUPLICATE KEY UPDATE allowed = VALUES(allowed)`,
+  );
+}
+
 /**
  * List module permissions for roles
  */
