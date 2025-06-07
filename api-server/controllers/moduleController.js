@@ -1,6 +1,7 @@
 import {
   listModules as dbListModules,
   upsertModule,
+  populateDefaultModules,
   populateRoleModulePermissions,
   populateCompanyModuleLicenses,
 } from "../../db/index.js";
@@ -40,6 +41,7 @@ export async function saveModule(req, res, next) {
 export async function populatePermissions(req, res, next) {
   try {
     if (req.user.role !== 'admin') return res.sendStatus(403);
+    await populateDefaultModules();
     await populateCompanyModuleLicenses();
     await populateRoleModulePermissions();
     res.sendStatus(204);

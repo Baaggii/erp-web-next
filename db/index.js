@@ -1,6 +1,7 @@
 import mysql from "mysql2/promise";
 import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
+import defaultModules from "./defaultModules.js";
 
 dotenv.config();
 
@@ -300,6 +301,18 @@ export async function upsertModule(
     [moduleKey, label, parentKey, showInSidebar ? 1 : 0, showInHeader ? 1 : 0],
   );
   return { moduleKey, label, parentKey, showInSidebar, showInHeader };
+}
+
+export async function populateDefaultModules() {
+  for (const m of defaultModules) {
+    await upsertModule(
+      m.moduleKey,
+      m.label,
+      m.parentKey,
+      m.showInSidebar,
+      m.showInHeader,
+    );
+  }
 }
 
 export async function populateRoleDefaultModules() {
