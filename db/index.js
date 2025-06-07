@@ -290,18 +290,7 @@ export async function upsertModule(moduleKey, label) {
   return { moduleKey, label };
 }
 
-export async function populateRoleDefaultModules() {
-  await pool.query(
-    `INSERT INTO role_default_modules (role_id, module_key, allowed)
-     SELECT ur.id, m.module_key, 0
-       FROM user_roles ur
-       CROSS JOIN modules m
-     ON DUPLICATE KEY UPDATE role_id = role_id`,
-  );
-}
-
 export async function populateRoleModulePermissions() {
-  await populateRoleDefaultModules();
   await pool.query(
     `INSERT INTO role_module_permissions (company_id, role_id, module_key, allowed)
      SELECT c.id, rdm.role_id, rdm.module_key, rdm.allowed
