@@ -303,18 +303,39 @@ export async function upsertModule(
 }
 
 export async function populateRoleDefaultModules() {
+  const modules = await listModules();
+
+  const map = {};
+  modules.forEach((m) => {
+    map[m.module_key] = m;
+  });
+
+  function rootKey(key) {
+    let cur = map[key];
+    while (cur && cur.parent_key) {
+      cur = map[cur.parent_key];
+    }
+    return cur ? cur.module_key : null;
+  }
+
+  const adminOnly = modules
+    .filter((m) => {
+      const root = rootKey(m.module_key);
+      return (
+        ["settings", "developer"].includes(root) && m.module_key !== "change_password"
+      );
+    })
+    .map((m) => m.module_key);
+
+  const inList = adminOnly.map((k) => pool.escape(k)).join(", ");
+
   await pool.query(
     `INSERT INTO role_default_modules (role_id, module_key, allowed)
      SELECT * FROM (
        SELECT ur.id AS role_id, m.module_key AS module_key,
               CASE
                 WHEN ur.name = 'admin' THEN 1
-                WHEN m.module_key IN (
-                  'settings', 'users', 'user_companies', 'role_permissions',
-                  'company_licenses', 'developer', 'modules',
-                  'tables_management', 'forms_management',
-                  'report_management'
-                ) THEN 0
+                WHEN m.module_key IN (${inList}) THEN 0
                 ELSE 1
               END AS allowed
          FROM user_roles ur
