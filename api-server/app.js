@@ -2,6 +2,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import express from "express";
 import cookieParser from "cookie-parser";
+import csurf from "csurf";
 import dotenv from "dotenv";
 import { testConnection } from "../db/index.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
@@ -23,6 +24,11 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.use(express.json());
 app.use(cookieParser());
+
+// Setup CSRF protection using cookies
+const csrfProtection = csurf({ cookie: true });
+app.use(csrfProtection);
+
 app.use(logger);
 
 // Health-check: also verify DB connection
@@ -34,6 +40,11 @@ app.get("/api/auth/health", async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// Provide CSRF token for frontend
+app.get("/api/csrf-token", (req, res) => {
+  res.json({ csrfToken: req.csrfToken() });
 });
 
 // API routes
