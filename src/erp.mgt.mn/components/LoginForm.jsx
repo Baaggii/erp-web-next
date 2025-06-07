@@ -64,7 +64,7 @@ export default function LoginForm() {
       >
         <div style={{ marginBottom: '0.75rem' }}>
           <label htmlFor="company" style={{ display: 'block', marginBottom: '0.25rem' }}>
-            Select Company
+            Компани сонгох
           </label>
           <select
             id="company"
@@ -74,7 +74,7 @@ export default function LoginForm() {
             style={{ width: '100%', padding: '0.5rem', borderRadius: '3px' }}
           >
             <option value="" disabled>
-              Choose...
+              Сонгоно уу...
             </option>
             {companyChoices.map((c) => (
               <option key={c.company_id} value={c.company_id}>
@@ -94,7 +94,7 @@ export default function LoginForm() {
             cursor: 'pointer',
           }}
         >
-          Continue
+          Үргэлжлүүлэх
         </button>
       </form>
     );
@@ -104,7 +104,7 @@ export default function LoginForm() {
     <form onSubmit={handleSubmit} style={{ maxWidth: '320px' }}>
       <div style={{ marginBottom: '0.75rem' }}>
         <label htmlFor="empid" style={{ display: 'block', marginBottom: '0.25rem' }}>
-          EmpID
+          Ажилтны ID
         </label>
         <input
           id="empid"
@@ -121,7 +121,7 @@ export default function LoginForm() {
           htmlFor="password"
           style={{ display: 'block', marginBottom: '0.25rem' }}
         >
-          Password
+          Нууц үг
         </label>
         <input
           id="password"
@@ -148,7 +148,7 @@ export default function LoginForm() {
           cursor: 'pointer',
         }}
       >
-        Login
+        Нэвтрэх
       </button>
     </form>
   );

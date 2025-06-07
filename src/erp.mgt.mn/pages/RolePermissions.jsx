@@ -51,17 +51,17 @@ export default function RolePermissions() {
 
   return (
     <div>
-      <h2>Role Permissions</h2>
+      <h2>Эрхийн тохиргоо</h2>
       <input
         type="text"
-        placeholder="Filter by Role ID"
+        placeholder="Role ID-р шүүх"
         value={filterRoleId}
         onChange={(e) => setFilterRoleId(e.target.value)}
         style={{ marginRight: "0.5rem" }}
       />
-      <button onClick={handleFilter}>Apply</button>
+      <button onClick={handleFilter}>Шүүх</button>
       {perms.length === 0 ? (
-        <p>No permissions.</p>
+        <p>Эрх олдсонгүй.</p>
       ) : (
         <table
           style={{
@@ -73,16 +73,16 @@ export default function RolePermissions() {
           <thead>
             <tr style={{ backgroundColor: "#e5e7eb" }}>
               <th style={{ padding: "0.5rem", border: "1px solid #d1d5db" }}>
-                Role
+                Үүрэг
               </th>
               <th style={{ padding: "0.5rem", border: "1px solid #d1d5db" }}>
-                Module
+                Модуль
               </th>
               <th style={{ padding: "0.5rem", border: "1px solid #d1d5db" }}>
-                Allowed
+                Зөвшөөрсөн эсэх
               </th>
               <th style={{ padding: "0.5rem", border: "1px solid #d1d5db" }}>
-                Actions
+                Үйлдэл
               </th>
             </tr>
           </thead>
@@ -100,7 +100,7 @@ export default function RolePermissions() {
                 </td>
                 <td style={{ padding: "0.5rem", border: "1px solid #d1d5db" }}>
                   <button onClick={() => handleToggle(p)}>
-                    {p.allowed ? "Revoke" : "Allow"}
+                    {p.allowed ? "Цуцлах" : "Зөвшөөрөх"}
                   </button>
                 </td>
               </tr>

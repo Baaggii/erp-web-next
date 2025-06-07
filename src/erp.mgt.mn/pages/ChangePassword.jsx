@@ -34,13 +34,13 @@ export default function ChangePasswordPage() {
 
   return (
     <div style={{ padding: '1rem' }}>
-      <h2>Change Password</h2>
-      {success && <p style={{ color: 'green' }}>Password updated</p>}
+      <h2>Нууц үг солих</h2>
+      {success && <p style={{ color: 'green' }}>Нууц үг шинэчлэгдлээ</p>}
       {error && <p style={{ color: 'red' }}>{error}</p>}
       <form onSubmit={handleSubmit} style={{ maxWidth: '320px' }}>
         <div style={{ marginBottom: '0.75rem' }}>
           <label htmlFor="newpwd" style={{ display: 'block', marginBottom: '0.25rem' }}>
-            New Password
+            Шинэ нууц үг
           </label>
           <input
             id="newpwd"
@@ -53,7 +53,7 @@ export default function ChangePasswordPage() {
         </div>
         <div style={{ marginBottom: '0.75rem' }}>
           <label htmlFor="confirm" style={{ display: 'block', marginBottom: '0.25rem' }}>
-            Confirm Password
+            Нууц үг батлах
           </label>
           <input
             id="confirm"
@@ -75,7 +75,7 @@ export default function ChangePasswordPage() {
             cursor: 'pointer',
           }}
         >
-          Update Password
+          Шинэчлэх
         </button>
       </form>
     </div>

@@ -75,17 +75,17 @@ export default function Users() {
 
   return (
     <div>
-      <h2>Users</h2>
+      <h2>Хэрэглэгчид</h2>
       <input
         type="text"
-        placeholder="Filter users"
+        placeholder="Хэрэглэгч шүүх"
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
         style={{ marginRight: '0.5rem' }}
       />
-      <button onClick={handleAdd}>Add User</button>
+      <button onClick={handleAdd}>Хэрэглэгч нэмэх</button>
       {usersList.length === 0 ? (
-        <p>No users returned.</p>
+        <p>Хэрэглэгч олдсонгүй.</p>
       ) : (
         <table
           style={{
@@ -97,16 +97,16 @@ export default function Users() {
           <thead>
             <tr style={{ backgroundColor: '#e5e7eb' }}>
               <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
-                EmpID
+                ID
               </th>
               <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
-                Name
+                Нэр
               </th>
               <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
-                Role
+                Үүрэг
               </th>
               <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
-                Actions
+                Үйлдэл
               </th>
             </tr>
           </thead>
@@ -130,9 +130,9 @@ export default function Users() {
                   {u.role}
                 </td>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
-                  <button onClick={() => handleEdit(u)}>Edit</button>
+                  <button onClick={() => handleEdit(u)}>Засах</button>
                   <button onClick={() => handleDelete(u)} style={{ marginLeft: '0.5rem' }}>
-                    Delete
+                    Устгах
                   </button>
                 </td>
               </tr>

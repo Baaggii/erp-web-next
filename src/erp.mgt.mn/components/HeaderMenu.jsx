@@ -4,9 +4,9 @@ import { useRolePermissions } from '../hooks/useRolePermissions.js';
 export default function HeaderMenu({ onOpen }) {
   const perms = useRolePermissions();
   const items = [
-    { id: 'gl', label: 'General Ledger' },
-    { id: 'po', label: 'Purchase Orders' },
-    { id: 'sales', label: 'Sales Dashboard' },
+    { id: 'gl', label: 'Ерөнхий журнал' },
+    { id: 'po', label: 'Худалдан авалтын захиалга' },
+    { id: 'sales', label: 'Борлуулалтын самбар' },
   ];
 
   if (!perms) return null;

@@ -16,9 +16,9 @@ export default function Forms() {
 
   return (
     <div>
-      <h2>Forms</h2>
+      <h2>Маягтууд</h2>
       {formsList.length === 0 ? (
-        <p>No forms found.</p>
+        <p>Маягт олдсонгүй.</p>
       ) : (
         <ul>
           {formsList.map((f) => (
