@@ -1,5 +1,7 @@
 // src/erp.mgt.mn/context/AuthContext.jsx
 import React, { createContext, useState, useEffect, useContext } from 'react';
+import { refreshRolePermissions } from '../hooks/useRolePermissions.js';
+import { refreshCompanyModules } from '../hooks/useCompanyModules.js';
 
 // Create the AuthContext
 export const AuthContext = createContext({
@@ -54,6 +56,27 @@ export default function AuthContextProvider({ children }) {
 
     loadProfile();
   }, []);
+
+  // When an admin user logs in, ensure new modules are populated and caches refresh
+  useEffect(() => {
+    async function refreshModules() {
+      try {
+        await fetch('/api/modules/populate', {
+          method: 'POST',
+          credentials: 'include',
+        });
+        const roleId = user?.role_id || (user?.role === 'admin' ? 1 : 2);
+        refreshRolePermissions(roleId, company?.company_id);
+        refreshCompanyModules(company?.company_id);
+      } catch (err) {
+        console.error('Failed to refresh module permissions:', err);
+      }
+    }
+
+    if (user && user.role === 'admin') {
+      refreshModules();
+    }
+  }, [user, company]);
 
   return (
     <AuthContext.Provider value={{ user, setUser, company, setCompany }}>
