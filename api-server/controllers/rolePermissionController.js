@@ -19,8 +19,8 @@ export async function updatePermission(req, res, next) {
     if (req.user.role !== 'admin') {
       return res.sendStatus(403);
     }
-    const { roleId, moduleKey, allowed } = req.body;
-    await setRoleModulePermission(roleId, moduleKey, allowed);
+    const { companyId, roleId, moduleKey, allowed } = req.body;
+    await setRoleModulePermission(companyId, roleId, moduleKey, allowed);
     res.sendStatus(200);
   } catch (err) {
     next(err);
