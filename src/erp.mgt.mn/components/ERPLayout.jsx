@@ -166,12 +166,13 @@ function SidebarGroup({ mod }) {
 }
 
 function modulePath(m) {
-  if (m.parent_key === 'settings') return `/settings/${m.module_key}`;
+  const key = m.module_key.replace(/_/g, '-');
+  if (m.parent_key === 'settings') return `/settings/${key}`;
   if (!m.parent_key) {
     if (m.module_key === 'dashboard') return '/';
-    return `/${m.module_key}`;
+    return `/${key}`;
   }
-  return `/${m.module_key}`;
+  return `/${key}`;
 }
 
 /** A faux “window” wrapper around the main content **/
