@@ -6,6 +6,8 @@ export default function CodingTablesPage() {
   const [workbook, setWorkbook] = useState(null);
   const [sheet, setSheet] = useState('');
   const [headers, setHeaders] = useState([]);
+  const [idCandidates, setIdCandidates] = useState([]);
+  const [headerRow, setHeaderRow] = useState(1);
   const [tableName, setTableName] = useState('');
   const [idColumn, setIdColumn] = useState('');
   const [nameColumn, setNameColumn] = useState('');
@@ -17,11 +19,10 @@ export default function CodingTablesPage() {
       const wb = XLSX.read(ab);
       setWorkbook(wb);
       setSheets(wb.SheetNames);
-      setSheet(wb.SheetNames[0]);
-      const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {
-        header: 1,
-      });
-      setHeaders(data[0] || []);
+      const firstSheet = wb.SheetNames[0];
+      setSheet(firstSheet);
+      setHeaderRow(1);
+      extractHeaders(wb, firstSheet, 1);
     });
   }
 
@@ -29,9 +30,27 @@ export default function CodingTablesPage() {
     const s = e.target.value;
     setSheet(s);
     if (workbook) {
-      const data = XLSX.utils.sheet_to_json(workbook.Sheets[s], { header: 1 });
-      setHeaders(data[0] || []);
+      extractHeaders(workbook, s, headerRow);
     }
+  }
+
+  function handleHeaderRowChange(e) {
+    const r = Number(e.target.value) || 1;
+    setHeaderRow(r);
+    if (workbook) {
+      extractHeaders(workbook, sheet, r);
+    }
+  }
+
+  function extractHeaders(wb, s, row) {
+    const data = XLSX.utils.sheet_to_json(wb.Sheets[s], { header: 1 });
+    const idx = Number(row) - 1;
+    const hdrs = data[idx] || [];
+    setHeaders(hdrs);
+    const ids = hdrs.filter(
+      (h) => typeof h === 'string' && h.toLowerCase().includes('id')
+    );
+    setIdCandidates(ids);
   }
 
   async function handleUpload() {
@@ -42,6 +61,7 @@ export default function CodingTablesPage() {
     const blob = new Blob([XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })]);
     formData.append('file', blob, 'upload.xlsx');
     formData.append('sheet', sheet);
+    formData.append('headerRow', headerRow);
     formData.append('tableName', tableName);
     formData.append('idColumn', idColumn);
     formData.append('nameColumn', nameColumn);
@@ -75,6 +95,15 @@ export default function CodingTablesPage() {
             </select>
           </div>
           <div>
+            Field Name Row:
+            <input
+              type="number"
+              min="1"
+              value={headerRow}
+              onChange={handleHeaderRowChange}
+            />
+          </div>
+          <div>
             Table Name:
             <input value={tableName} onChange={(e) => setTableName(e.target.value)} />
           </div>
@@ -82,7 +111,7 @@ export default function CodingTablesPage() {
             ID Column:
             <select value={idColumn} onChange={(e) => setIdColumn(e.target.value)}>
               <option value="">--select--</option>
-              {headers.map((h) => (
+              {(idCandidates.length > 0 ? idCandidates : headers).map((h) => (
                 <option key={h} value={h}>
                   {h}
                 </option>
