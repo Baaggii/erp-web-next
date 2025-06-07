@@ -27,18 +27,21 @@ const settingsChildren = [
 ];
 
 function modulePath(key, parent) {
-  const k = key.replace(/_/g, '-');
-  if (parent === 'settings') return `/settings/${k}`;
-  if (!parent) {
-    if (key === 'dashboard') return '/';
-    return `/${k}`;
+  const segments = [];
+  let cur = { module_key: key, parent_key: parent };
+  while (cur) {
+    segments.unshift(cur.module_key.replace(/_/g, '-'));
+    cur = cur.parent_key ? { module_key: cur.parent_key, parent_key: null } : null;
   }
-  return `/${k}`;
+  let p = '/' + segments.join('/');
+  if (p === '/dashboard') p = '/';
+  return p;
 }
 
 function pathExists(p) {
   if (routePaths.has(p)) return true;
-  if (p.startsWith('/settings/') && routePaths.has(p.replace('/settings', ''))) return true;
+  const alt = p === '/' ? '/' : p.replace(/^\//, '');
+  if (routePaths.has('/' + alt)) return true;
   return false;
 }
 
