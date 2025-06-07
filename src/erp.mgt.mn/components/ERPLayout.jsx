@@ -111,16 +111,9 @@ function Sidebar() {
     allMap[m.module_key] = { ...m };
   });
 
-  function canShow(key) {
-    const mod = allMap[key];
-    if (!mod) return false;
-    if (!perms[key] || !licensed[key] || !mod.show_in_sidebar) return false;
-    return mod.parent_key ? canShow(mod.parent_key) : true;
-  }
-
   const map = {};
   modules.forEach((m) => {
-    if (canShow(m.module_key)) {
+    if (perms[m.module_key] && licensed[m.module_key] && m.show_in_sidebar) {
       map[m.module_key] = { ...m, children: [] };
     }
   });

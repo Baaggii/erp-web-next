@@ -303,42 +303,25 @@ export async function upsertModule(
 }
 
 export async function populateRoleDefaultModules() {
-  const [mods] = await pool.query(
-    'SELECT module_key, parent_key FROM modules',
+  await pool.query(
+    `INSERT INTO role_default_modules (role_id, module_key, allowed)
+     SELECT * FROM (
+       SELECT ur.id AS role_id, m.module_key AS module_key,
+              CASE
+                WHEN ur.name = 'admin' THEN 1
+                WHEN m.module_key IN (
+                  'settings', 'users', 'user_companies', 'role_permissions',
+                  'company_licenses', 'developer', 'modules',
+                  'tables_management', 'forms_management',
+                  'report_management'
+                ) THEN 0
+                ELSE 1
+              END AS allowed
+         FROM user_roles ur
+         CROSS JOIN modules m
+     ) AS vals
+     ON DUPLICATE KEY UPDATE allowed = vals.allowed`,
   );
-  const [roles] = await pool.query('SELECT id, name FROM user_roles');
-
-  const parent = {};
-  mods.forEach((m) => {
-    parent[m.module_key] = m.parent_key;
-  });
-
-  function isRestricted(key) {
-    let cur = key;
-    while (cur) {
-      if (cur === 'settings' || cur === 'developer') return true;
-      cur = parent[cur];
-    }
-    return false;
-  }
-
-  const values = [];
-  roles.forEach((r) => {
-    mods.forEach((m) => {
-      const allowed =
-        r.name === 'admin' ? 1 : isRestricted(m.module_key) ? 0 : 1;
-      values.push([r.id, m.module_key, allowed]);
-    });
-  });
-
-  if (values.length > 0) {
-    await pool.query(
-      `INSERT INTO role_default_modules (role_id, module_key, allowed)
-       VALUES ?
-       ON DUPLICATE KEY UPDATE allowed = VALUES(allowed)`,
-      [values],
-    );
-  }
 }
 
 export async function populateRoleModulePermissions() {
