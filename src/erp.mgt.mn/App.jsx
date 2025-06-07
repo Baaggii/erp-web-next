@@ -11,6 +11,7 @@ import UserCompaniesPage from './pages/UserCompanies.jsx';
 import RolePermissionsPage from './pages/RolePermissions.jsx';
 import CompanyLicensesPage from './pages/CompanyLicenses.jsx';
 import TablesManagementPage from './pages/TablesManagement.jsx';
+import CodingTablesPage from './pages/CodingTables.jsx';
 import FormsManagementPage from './pages/FormsManagement.jsx';
 import ReportManagementPage from './pages/ReportManagement.jsx';
 import ModulesPage from './pages/Modules.jsx';
@@ -43,6 +44,7 @@ export default function App() {
     modules: <ModulesPage />,
     company_licenses: <CompanyLicensesPage />,
     tables_management: <TablesManagementPage />,
+    coding_tables: <CodingTablesPage />,
     forms_management: <FormsManagementPage />,
     report_management: <ReportManagementPage />,
     change_password: <ChangePasswordPage />,
@@ -59,6 +61,7 @@ export default function App() {
     'modules',
     'company_licenses',
     'tables_management',
+    'coding_tables',
     'forms_management',
     'report_management',
   ]);
