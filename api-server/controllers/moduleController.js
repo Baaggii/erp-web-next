@@ -18,8 +18,18 @@ export async function saveModule(req, res, next) {
     if (req.user.role !== 'admin') return res.sendStatus(403);
     const moduleKey = req.params.moduleKey || req.body.moduleKey;
     const label = req.body.label;
-    if (!moduleKey || !label) return res.status(400).json({ message: 'Missing fields' });
-    const result = await upsertModule(moduleKey, label);
+    const parentKey = req.body.parentKey || null;
+    const showInSidebar = req.body.showInSidebar ?? true;
+    const showInHeader = req.body.showInHeader ?? false;
+    if (!moduleKey || !label)
+      return res.status(400).json({ message: 'Missing fields' });
+    const result = await upsertModule(
+      moduleKey,
+      label,
+      parentKey,
+      showInSidebar,
+      showInHeader,
+    );
     res.json(result);
   } catch (err) {
     next(err);
