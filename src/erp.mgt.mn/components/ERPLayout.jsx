@@ -126,11 +126,11 @@ function Sidebar() {
       <nav>
         {roots.map((m) =>
           m.children.length > 0 ? (
-            <SidebarGroup key={m.module_key} mod={m} />
+            <SidebarGroup key={m.module_key} mod={m} map={map} level={0} />
           ) : (
             <NavLink
               key={m.module_key}
-              to={modulePath(m)}
+              to={modulePath(m, map)}
               style={({ isActive }) => styles.menuItem({ isActive })}
             >
               {m.label}
@@ -142,26 +142,41 @@ function Sidebar() {
   );
 }
 
-function SidebarGroup({ mod }) {
+function SidebarGroup({ mod, map, level }) {
   const [open, setOpen] = useState(false);
   return (
-    <div style={styles.menuGroup}>
+    <div style={{ ...styles.menuGroup, paddingLeft: level ? '1rem' : 0 }}>
       <button style={styles.groupBtn} onClick={() => setOpen((o) => !o)}>
         {mod.label} {open ? '▾' : '▸'}
       </button>
       {open &&
-        mod.children.map((c) => (
-          <NavLink key={c.module_key} to={modulePath(c)} style={styles.menuItem}>
-            {c.label}
-          </NavLink>
-        ))}
+        mod.children.map((c) =>
+          c.children.length > 0 ? (
+            <SidebarGroup key={c.module_key} mod={c} map={map} level={level + 1} />
+          ) : (
+            <NavLink
+              key={c.module_key}
+              to={modulePath(c, map)}
+              style={({ isActive }) => ({
+                ...styles.menuItem({ isActive }),
+                paddingLeft: `${(level + 1) * 1}rem`,
+              })}
+            >
+              {c.label}
+            </NavLink>
+          ),
+        )}
     </div>
   );
 }
 
-function modulePath(m) {
+function modulePath(m, map) {
   const key = m.module_key.replace(/_/g, '-');
-  if (m.parent_key === 'settings') return `/settings/${key}`;
+  let parent = m.parent_key;
+  while (parent) {
+    if (parent === 'settings') return `/settings/${key}`;
+    parent = map[parent]?.parent_key;
+  }
   if (!m.parent_key) {
     if (m.module_key === 'dashboard') return '/';
     return `/${key}`;
