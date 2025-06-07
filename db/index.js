@@ -411,3 +411,31 @@ export async function setCompanyModuleLicense(companyId, moduleKey, licensed) {
   );
   return { companyId, moduleKey, licensed: !!licensed };
 }
+
+/**
+ * List all database tables (for dev tools)
+ */
+export async function listDatabaseTables() {
+  const [rows] = await pool.query('SHOW TABLES');
+  return rows.map((r) => Object.values(r)[0]);
+}
+
+/**
+ * Get up to 50 rows from a table
+ */
+export async function listTableRows(tableName) {
+  const [rows] = await pool.query('SELECT * FROM ?? LIMIT 50', [tableName]);
+  return rows;
+}
+
+/**
+ * Update a table row by id
+ */
+export async function updateTableRow(tableName, id, updates) {
+  const keys = Object.keys(updates);
+  if (keys.length === 0) return { id };
+  const values = Object.values(updates);
+  const setClause = keys.map((k) => `\`${k}\` = ?`).join(', ');
+  await pool.query(`UPDATE ?? SET ${setClause} WHERE id = ?`, [tableName, ...values, id]);
+  return { id };
+}
