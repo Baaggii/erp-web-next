@@ -1,18 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useRolePermissions } from '../hooks/useRolePermissions.js';
+import { useModules } from '../hooks/useModules.js';
 
 export default function HeaderMenu({ onOpen }) {
   const perms = useRolePermissions();
-  const [items, setItems] = useState([]);
-
-  useEffect(() => {
-    fetch('/api/modules', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : []))
-      .then((rows) => {
-        setItems(rows.filter((r) => r.show_in_header));
-      })
-      .catch(() => setItems([]));
-  }, []);
+  const modules = useModules();
+  const items = modules.filter((r) => r.show_in_header);
 
   if (!perms) return null;
 

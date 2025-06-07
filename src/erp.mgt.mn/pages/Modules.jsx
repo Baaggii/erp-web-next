@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { refreshModules } from '../hooks/useModules.js';
 
 export default function ModulesPage() {
   const [modules, setModules] = useState([]);
@@ -42,6 +43,7 @@ export default function ModulesPage() {
       return;
     }
     loadModules();
+    refreshModules();
   }
 
   async function handleEdit(m) {
@@ -66,6 +68,7 @@ export default function ModulesPage() {
       return;
     }
     loadModules();
+    refreshModules();
   }
 
   async function handlePopulate() {
@@ -86,6 +89,9 @@ export default function ModulesPage() {
       <button onClick={handleAdd}>Add Module</button>
       <button onClick={handlePopulate} style={{ marginLeft: '0.5rem' }}>
         Populate Permissions
+      </button>
+      <button onClick={refreshModules} style={{ marginLeft: '0.5rem' }}>
+        Refresh Menus
       </button>
       {modules.length === 0 ? (
         <p>No modules.</p>
