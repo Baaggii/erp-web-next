@@ -333,6 +333,15 @@ export async function populateRoleModulePermissions() {
   );
 }
 
+export async function populateCompanyModuleLicenses() {
+  await pool.query(
+    `INSERT IGNORE INTO company_module_licenses (company_id, module_key, licensed)
+     SELECT c.id AS company_id, m.module_key, 0
+       FROM companies c
+       CROSS JOIN modules m`,
+  );
+}
+
 /**
  * List module permissions for roles
  */
