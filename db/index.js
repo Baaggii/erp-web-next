@@ -327,7 +327,9 @@ export async function populateRoleDefaultModules() {
     })
     .map((m) => m.module_key);
 
-  const inList = adminOnly.map((k) => pool.escape(k)).join(", ");
+  const cond = adminOnly.length
+    ? `m.module_key IN (${adminOnly.map((k) => pool.escape(k)).join(", ")})`
+    : "FALSE";
 
   await pool.query(
     `INSERT INTO role_default_modules (role_id, module_key, allowed)
@@ -335,7 +337,7 @@ export async function populateRoleDefaultModules() {
        SELECT ur.id AS role_id, m.module_key AS module_key,
               CASE
                 WHEN ur.name = 'admin' THEN 1
-                WHEN m.module_key IN (${inList}) THEN 0
+                WHEN ${cond} THEN 0
                 ELSE 1
               END AS allowed
          FROM user_roles ur
