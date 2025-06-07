@@ -115,6 +115,9 @@ function Sidebar() {
             <NavLink to="/settings/role-permissions" style={styles.menuItem}>
               Role Permissions
             </NavLink>
+            <NavLink to="/settings/modules" style={styles.menuItem}>
+              Modules
+            </NavLink>
           </>
         )}
         <NavLink to="/settings/change-password" style={styles.menuItem}>
