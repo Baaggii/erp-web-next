@@ -1,3 +1,6 @@
+// Usage: `node scripts/check-module-routes.cjs`
+// Prints a warning if any sidebar module does not have a matching route
+
 const fs = require('fs');
 
 const appJsx = fs.readFileSync('src/erp.mgt.mn/App.jsx', 'utf8');
