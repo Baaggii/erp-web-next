@@ -118,6 +118,18 @@ function Sidebar() {
     }
   });
 
+  // Ensure parents exist for permitted modules so children don't become
+  // "orphans" when the parent itself is not accessible. This allows modules
+  // like the Developer group to appear if any child is shown.
+  Object.values(map).forEach((m) => {
+    let pKey = m.parent_key;
+    while (pKey && !map[pKey] && allMap[pKey]) {
+      const parent = allMap[pKey];
+      map[pKey] = { ...parent, children: [] };
+      pKey = parent.parent_key;
+    }
+  });
+
   const roots = [];
   const orphans = [];
   Object.values(map).forEach((m) => {
