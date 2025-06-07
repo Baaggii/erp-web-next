@@ -37,3 +37,13 @@ Two SQL utilities assist with default module permissions:
 * `db/migrations/2025-06-14_role_module_permissions_company_id.sql` – adds a `company_id` column so permissions are scoped per company.
 
 Run the script after applying the migration to initialize permissions for all roles.
+
+### Sidebar route check
+
+If the sidebar links do not match the available React routes, run:
+
+```bash
+node scripts/check-module-routes.cjs
+```
+
+It prints `All sidebar modules have matching routes.` when every module has a corresponding route, or lists the missing ones so you can correct them.
