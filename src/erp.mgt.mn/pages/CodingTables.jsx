@@ -11,6 +11,7 @@ export default function CodingTablesPage() {
   const [tableName, setTableName] = useState('');
   const [idColumn, setIdColumn] = useState('');
   const [nameColumn, setNameColumn] = useState('');
+  const [sql, setSql] = useState('');
 
   function handleFile(e) {
     const file = e.target.files[0];
@@ -22,24 +23,32 @@ export default function CodingTablesPage() {
       const firstSheet = wb.SheetNames[0];
       setSheet(firstSheet);
       setHeaderRow(1);
-      extractHeaders(wb, firstSheet, 1);
+      setHeaders([]);
+      setIdCandidates([]);
+      setIdColumn('');
+      setNameColumn('');
+      setSql('');
     });
   }
 
   function handleSheetChange(e) {
     const s = e.target.value;
     setSheet(s);
-    if (workbook) {
-      extractHeaders(workbook, s, headerRow);
-    }
+    setHeaders([]);
+    setIdCandidates([]);
+    setIdColumn('');
+    setNameColumn('');
+    setSql('');
   }
 
   function handleHeaderRowChange(e) {
     const r = Number(e.target.value) || 1;
     setHeaderRow(r);
-    if (workbook) {
-      extractHeaders(workbook, sheet, r);
-    }
+    setHeaders([]);
+    setIdCandidates([]);
+    setIdColumn('');
+    setNameColumn('');
+    setSql('');
   }
 
   function extractHeaders(wb, s, row) {
@@ -53,10 +62,42 @@ export default function CodingTablesPage() {
     setIdCandidates(ids);
   }
 
+  function handleExtract() {
+    if (!workbook) return;
+    extractHeaders(workbook, sheet, headerRow);
+  }
+
+  function escapeSqlValue(v) {
+    return `'${String(v).replace(/'/g, "''")}'`;
+  }
+
+  function handleGenerateSql() {
+    if (!workbook || !sheet || !tableName || !idColumn || !nameColumn) return;
+    const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheet], { header: 1 });
+    const idx = Number(headerRow) - 1;
+    const hdrs = data[idx] || [];
+    const rows = data.slice(idx + 1);
+    const idIdx = hdrs.indexOf(idColumn);
+    const nameIdx = hdrs.indexOf(nameColumn);
+    if (idIdx === -1 || nameIdx === -1) return;
+    let sqlStr = `CREATE TABLE IF NOT EXISTS \`${tableName}\` (\n`;
+    sqlStr += '  id VARCHAR(255) PRIMARY KEY,\n  name VARCHAR(255)\n);\n';
+    rows.forEach((r) => {
+      const id = r[idIdx];
+      const name = r[nameIdx];
+      if (id === undefined || name === undefined) return;
+      sqlStr +=
+        `INSERT INTO \`${tableName}\` (id, name) VALUES (${escapeSqlValue(
+          id
+        )}, ${escapeSqlValue(name)}) ON DUPLICATE KEY UPDATE name = VALUES(name);\n`;
+    });
+    setSql(sqlStr);
+  }
+
   async function handleUpload() {
     if (!workbook || !sheet || !tableName || !idColumn || !nameColumn) return;
+    setSql('');
     const ws = workbook.Sheets[sheet];
-    const rows = XLSX.utils.sheet_to_json(ws);
     const formData = new FormData();
     const blob = new Blob([XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })]);
     formData.append('file', blob, 'upload.xlsx');
@@ -76,6 +117,7 @@ export default function CodingTablesPage() {
     }
     const json = await res.json();
     alert(`Inserted ${json.inserted} rows`);
+    setSql('');
   }
 
   return (
@@ -102,34 +144,51 @@ export default function CodingTablesPage() {
               value={headerRow}
               onChange={handleHeaderRowChange}
             />
+            <button onClick={handleExtract}>Read Columns</button>
           </div>
-          <div>
-            Table Name:
-            <input value={tableName} onChange={(e) => setTableName(e.target.value)} />
-          </div>
-          <div>
-            ID Column:
-            <select value={idColumn} onChange={(e) => setIdColumn(e.target.value)}>
-              <option value="">--select--</option>
-              {(idCandidates.length > 0 ? idCandidates : headers).map((h) => (
-                <option key={h} value={h}>
-                  {h}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            Name Column:
-            <select value={nameColumn} onChange={(e) => setNameColumn(e.target.value)}>
-              <option value="">--select--</option>
-              {headers.map((h) => (
-                <option key={h} value={h}>
-                  {h}
-                </option>
-              ))}
-            </select>
-          </div>
-          <button onClick={handleUpload}>Upload</button>
+          {headers.length > 0 && (
+            <>
+              <div>
+                Table Name:
+                <input value={tableName} onChange={(e) => setTableName(e.target.value)} />
+              </div>
+              <div>
+                ID Column:
+                {idCandidates.map((h) => (
+                  <label key={h} style={{ marginRight: '1rem' }}>
+                    <input
+                      type="radio"
+                      name="idCol"
+                      value={h}
+                      checked={idColumn === h}
+                      onChange={(e) => setIdColumn(e.target.value)}
+                    />
+                    {h}
+                  </label>
+                ))}
+              </div>
+              <div>
+                Name Column:
+                <select value={nameColumn} onChange={(e) => setNameColumn(e.target.value)}>
+                  <option value="">--select--</option>
+                  {headers.map((h) => (
+                    <option key={h} value={h}>
+                      {h}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <button onClick={handleGenerateSql}>Populate SQL</button>
+                <button onClick={handleUpload}>Create Coding Table</button>
+              </div>
+              {sql && (
+                <div>
+                  <textarea value={sql} readOnly rows={10} cols={80} />
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>
