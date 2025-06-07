@@ -12,10 +12,10 @@ export default function SettingsPage() {
 export function GeneralSettings() {
   const perms = useRolePermissions();
   if (!perms) {
-    return <p>Loading…</p>;
+    return <p>Уншиж байна…</p>;
   }
   if (!perms.settings) {
-    return <p>Access denied.</p>;
+    return <p>Хандалт хориглолоо.</p>;
   }
   const [settings, setSettings] = useState(null);
 
@@ -31,14 +31,14 @@ export function GeneralSettings() {
 
   return (
     <div>
-      <h2>Settings</h2>
+      <h2>Тохиргоо</h2>
       {settings ? (
         <pre>{JSON.stringify(settings, null, 2)}</pre>
       ) : (
-        <p>Loading settings…</p>
+        <p>Тохиргоо ачааллаж байна…</p>
       )}
       <p style={{ marginTop: '1rem' }}>
-        <Link to="/settings/role-permissions">Edit Role Permissions</Link>
+        <Link to="/settings/role-permissions">Эрхийн тохиргоо засах</Link>
       </p>
     </div>
   );

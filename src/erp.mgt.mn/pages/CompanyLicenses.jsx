@@ -46,25 +46,25 @@ export default function CompanyLicenses() {
 
   return (
     <div>
-      <h2>Company Licenses</h2>
+      <h2>Лиценз</h2>
       <input
         type="text"
-        placeholder="Filter by Company ID"
+        placeholder="Компанийн ID-р шүүх"
         value={filterCompanyId}
         onChange={(e) => setFilterCompanyId(e.target.value)}
         style={{ marginRight: '0.5rem' }}
       />
-      <button onClick={handleFilter}>Apply</button>
+      <button onClick={handleFilter}>Шүүх</button>
       {licenses.length === 0 ? (
-        <p>No licenses.</p>
+        <p>Лиценз алга.</p>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.5rem' }}>
           <thead>
             <tr style={{ backgroundColor: '#e5e7eb' }}>
-              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Company</th>
-              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Module</th>
-              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Licensed</th>
-              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Actions</th>
+              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Компани</th>
+              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Модуль</th>
+              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Идэвхтэй эсэх</th>
+              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Үйлдэл</th>
             </tr>
           </thead>
           <tbody>
@@ -72,10 +72,10 @@ export default function CompanyLicenses() {
               <tr key={l.company_id + '-' + l.module_key}>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>{l.company_name}</td>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>{l.label}</td>
-                <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>{l.licensed ? 'Yes' : 'No'}</td>
+                <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>{l.licensed ? 'Тийм' : 'Үгүй'}</td>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                   <button onClick={() => handleToggle(l)}>
-                    {l.licensed ? 'Disable' : 'Enable'}
+                    {l.licensed ? 'Идэвхгүй болгох' : 'Идэвхжүүлэх'}
                   </button>
                 </td>
               </tr>

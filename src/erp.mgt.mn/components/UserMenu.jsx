@@ -29,9 +29,9 @@ export default function UserMenu({ user, onLogout }) {
       {open && (
         <div style={styles.menu}>
           <button style={styles.menuItem} onClick={handleChangePassword}>
-            Change Password
+            Нууц үг солих
           </button>
-          <button style={styles.menuItem} onClick={handleLogout}>Logout</button>
+          <button style={styles.menuItem} onClick={handleLogout}>Гарах</button>
         </div>
       )}
     </div>

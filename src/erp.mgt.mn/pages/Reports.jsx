@@ -16,11 +16,11 @@ export default function Reports() {
 
   return (
     <div>
-      <h2>Reports</h2>
+      <h2>Тайлан</h2>
       {data ? (
         <pre>{JSON.stringify(data, null, 2)}</pre>
       ) : (
-        <p>Loading report data…</p>
+        <p>Тайлангийн мэдээлэл ачааллаж байна…</p>
       )}
     </div>
   );

@@ -20,15 +20,18 @@ export default function ERPLayout() {
   const location = useLocation();
 
   const titleMap = {
-    "/": "Blue Link Demo",
-    "/forms": "Forms",
-    "/reports": "Reports",
-    "/settings": "Settings",
-    "/settings/users": "Users",
-    "/settings/user-companies": "User Companies",
-    "/settings/role-permissions": "Role Permissions",
-    "/settings/company-licenses": "Company Licenses",
-    "/settings/change-password": "Change Password",
+    "/": "Blue Link демо",
+    "/forms": "Маягтууд",
+    "/reports": "Тайлан",
+    "/settings": "Тохиргоо",
+    "/settings/users": "Хэрэглэгчид",
+    "/settings/user-companies": "Хэрэглэгчийн компаниуд",
+    "/settings/role-permissions": "Эрхийн тохиргоо",
+    "/settings/company-licenses": "Лиценз",
+    "/settings/tables-management": "Хүснэгтийн удирдлага",
+    "/settings/forms-management": "Маягтын удирдлага",
+    "/settings/report-management": "Тайлангийн удирдлага",
+    "/settings/change-password": "Нууц үг солих",
   };
   const windowTitle = titleMap[location.pathname] || "ERP";
 
@@ -78,9 +81,9 @@ function Header({ user, onLogout, onHome }) {
         )}
       </div>
       <nav style={styles.headerNav}>
-        <button style={styles.iconBtn} onClick={onHome}>🗔 Home</button>
-        <button style={styles.iconBtn}>🗗 Windows</button>
-        <button style={styles.iconBtn}>❔ Help</button>
+        <button style={styles.iconBtn} onClick={onHome}>🗔 Нүүр</button>
+        <button style={styles.iconBtn}>🗗 Цонхнууд</button>
+        <button style={styles.iconBtn}>❔ Тусламж</button>
       </nav>
       <HeaderMenu onOpen={handleOpen} />
       <div style={styles.userSection}>
@@ -96,6 +99,7 @@ function Sidebar() {
   const perms = useRolePermissions();
   const licensed = useCompanyModules(company?.company_id);
   const [openSettings, setOpenSettings] = useState(false);
+  const [openUserSettings, setOpenUserSettings] = useState(false);
 
   if (!perms || !licensed) {
     return null;
@@ -105,13 +109,13 @@ function Sidebar() {
     <aside style={styles.sidebar}>
       <nav>
         <div style={styles.menuGroup}>
-          <div style={styles.groupTitle}>📌 Pinned</div>
+          <div style={styles.groupTitle}>📌 Түгээмэл</div>
           {perms.dashboard && licensed.dashboard && (
             <NavLink
               to="/"
               style={({ isActive }) => styles.menuItem({ isActive })}
             >
-              Blue Link Demo
+              Blue Link демо
             </NavLink>
           )}
           {perms.forms && licensed.forms && (
@@ -119,7 +123,7 @@ function Sidebar() {
               to="/forms"
               style={({ isActive }) => styles.menuItem({ isActive })}
             >
-              Forms
+              Маягтууд
             </NavLink>
           )}
           {perms.reports && licensed.reports && (
@@ -127,7 +131,7 @@ function Sidebar() {
               to="/reports"
               style={({ isActive }) => styles.menuItem({ isActive })}
             >
-              Reports
+              Тайлан
             </NavLink>
           )}
         </div>
@@ -139,52 +143,93 @@ function Sidebar() {
             style={styles.groupBtn}
             onClick={() => setOpenSettings((o) => !o)}
           >
-            ⚙ Settings {openSettings ? "▾" : "▸"}
+            ⚙ Тохиргоо {openSettings ? "▾" : "▸"}
           </button>
           {openSettings && (
             <>
               {perms.settings && licensed.settings && (
                 <NavLink to="/settings" style={styles.menuItem} end>
-                  General
+                  Ерөнхий
                 </NavLink>
               )}
-              {user?.role === "admin" && (
+              {licensed.company_licenses && (
+                <NavLink
+                  to="/settings/company-licenses"
+                  style={styles.menuItem}
+                >
+                  Лиценз
+                </NavLink>
+              )}
+              <button
+                style={styles.groupBtn}
+                onClick={() => setOpenUserSettings((o) => !o)}
+              >
+                👤 Хэрэглэгчийн тохиргоо {openUserSettings ? "▾" : "▸"}
+              </button>
+              {openUserSettings && (
                 <>
-                  {licensed.users && (
-                    <NavLink to="/settings/users" style={styles.menuItem}>
-                      Users
-                    </NavLink>
+                  {user?.role === "admin" && (
+                    <>
+                      {licensed.users && (
+                        <NavLink to="/settings/users" style={styles.menuItem}>
+                          Хэрэглэгчид
+                        </NavLink>
+                      )}
+                      {licensed.user_companies && (
+                        <NavLink
+                          to="/settings/user-companies"
+                          style={styles.menuItem}
+                        >
+                          Хэрэглэгчийн компаниуд
+                        </NavLink>
+                      )}
+                      {licensed.role_permissions && (
+                        <NavLink
+                          to="/settings/role-permissions"
+                          style={styles.menuItem}
+                        >
+                          Эрхийн тохиргоо
+                        </NavLink>
+                      )}
+                    </>
                   )}
-                  {licensed.user_companies && (
+                  {licensed.change_password && (
                     <NavLink
-                      to="/settings/user-companies"
+                      to="/settings/change-password"
                       style={styles.menuItem}
                     >
-                      User Companies
-                    </NavLink>
-                  )}
-                  {licensed.role_permissions && (
-                    <NavLink
-                      to="/settings/role-permissions"
-                      style={styles.menuItem}
-                    >
-                      Role Permissions
-                    </NavLink>
-                  )}
-                  {licensed.company_licenses && (
-                    <NavLink
-                      to="/settings/company-licenses"
-                      style={styles.menuItem}
-                    >
-                      Company Licenses
+                      Нууц үг солих
                     </NavLink>
                   )}
                 </>
               )}
-              {licensed.change_password && (
-                <NavLink to="/settings/change-password" style={styles.menuItem}>
-                  Change Password
-                </NavLink>
+              {user?.role === "admin" && (
+                <>
+                  {licensed.tables_management && (
+                    <NavLink
+                      to="/settings/tables-management"
+                      style={styles.menuItem}
+                    >
+                      Хүснэгтийн удирдлага
+                    </NavLink>
+                  )}
+                  {licensed.forms_management && (
+                    <NavLink
+                      to="/settings/forms-management"
+                      style={styles.menuItem}
+                    >
+                      Маягтын удирдлага
+                    </NavLink>
+                  )}
+                  {licensed.report_management && (
+                    <NavLink
+                      to="/settings/report-management"
+                      style={styles.menuItem}
+                    >
+                      Тайлангийн удирдлага
+                    </NavLink>
+                  )}
+                </>
               )}
             </>
           )}

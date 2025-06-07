@@ -99,30 +99,30 @@ export default function UserCompanies() {
 
   return (
     <div>
-      <h2>User Companies</h2>
+      <h2>Хэрэглэгчийн компаниуд</h2>
       <input
         type="text"
-        placeholder="Filter by EmpID"
+        placeholder="EmpID-р шүүх"
         value={filterEmpId}
         onChange={(e) => setFilterEmpId(e.target.value)}
         style={{ marginRight: '0.5rem' }}
       />
       <button onClick={handleFilter} style={{ marginRight: '0.5rem' }}>
-        Apply
+        Шүүх
       </button>
-      <button onClick={handleAdd}>Add Assignment</button>
+      <button onClick={handleAdd}>Хуваарилалт нэмэх</button>
       {assignments.length === 0 ? (
-        <p>No assignments.</p>
+        <p>Хуваарилалт алга.</p>
       ) : (
         <table
           style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.5rem' }}
         >
           <thead>
             <tr style={{ backgroundColor: '#e5e7eb' }}>
-              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>User</th>
-              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Company</th>
-              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Role</th>
-              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Actions</th>
+              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Хэрэглэгч</th>
+              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Компани</th>
+              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Үүрэг</th>
+              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Үйлдэл</th>
             </tr>
           </thead>
           <tbody>
@@ -132,9 +132,9 @@ export default function UserCompanies() {
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>{a.company_name}</td>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>{a.role}</td>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
-                  <button onClick={() => handleEdit(a)}>Edit</button>
+                  <button onClick={() => handleEdit(a)}>Засах</button>
                   <button onClick={() => handleDelete(a)} style={{ marginLeft: '0.5rem' }}>
-                    Delete
+                    Устгах
                   </button>
                 </td>
               </tr>
@@ -194,7 +194,7 @@ function AssignmentFormModal({ visible, onCancel, onSubmit, assignment, users, c
   return (
     <div style={overlay}>
       <div style={modal}>
-        <h3 style={{ marginTop: 0 }}>{isEdit ? 'Edit Assignment' : 'Add Assignment'}</h3>
+        <h3 style={{ marginTop: 0 }}>{isEdit ? 'Хуваарилалт засах' : 'Хуваарилалт нэмэх'}</h3>
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -211,7 +211,7 @@ function AssignmentFormModal({ visible, onCancel, onSubmit, assignment, users, c
               style={{ width: '100%', padding: '0.5rem' }}
             >
               <option value="" disabled>
-                Choose...
+                Сонгоно уу...
               </option>
               {users.map((u) => (
                 <option key={u.empid} value={u.empid}>
@@ -222,7 +222,7 @@ function AssignmentFormModal({ visible, onCancel, onSubmit, assignment, users, c
           </div>
 
           <div style={{ marginBottom: '0.75rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.25rem' }}>Company</label>
+            <label style={{ display: 'block', marginBottom: '0.25rem' }}>Компани</label>
             <select
               value={companyId}
               onChange={(e) => setCompanyId(e.target.value)}
@@ -231,7 +231,7 @@ function AssignmentFormModal({ visible, onCancel, onSubmit, assignment, users, c
               style={{ width: '100%', padding: '0.5rem' }}
             >
               <option value="" disabled>
-                Choose...
+                Сонгоно уу...
               </option>
               {companies.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -242,7 +242,7 @@ function AssignmentFormModal({ visible, onCancel, onSubmit, assignment, users, c
           </div>
 
           <div style={{ marginBottom: '0.75rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.25rem' }}>Role</label>
+            <label style={{ display: 'block', marginBottom: '0.25rem' }}>Үүрэг</label>
             <select
               value={roleId}
               onChange={(e) => setRoleId(e.target.value)}
@@ -256,9 +256,9 @@ function AssignmentFormModal({ visible, onCancel, onSubmit, assignment, users, c
 
           <div style={{ textAlign: 'right' }}>
             <button type="button" onClick={onCancel} style={{ marginRight: '0.5rem' }}>
-              Cancel
+              Болих
             </button>
-            <button type="submit">Save</button>
+            <button type="submit">Хадгалах</button>
           </div>
         </form>
       </div>

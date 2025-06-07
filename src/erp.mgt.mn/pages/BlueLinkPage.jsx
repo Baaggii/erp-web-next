@@ -16,7 +16,7 @@ const initialLayout = {
 export default function BlueLinkPage() {
   return (
     <div>
-      <h2>Blue Link Demo</h2>
+      <h2>Blue Link демо</h2>
       <MosaicLayout initialLayout={initialLayout} />
     </div>
   );
