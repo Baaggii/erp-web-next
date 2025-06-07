@@ -27,6 +27,7 @@ export default function ERPLayout() {
     "/settings/users": "Хэрэглэгчид",
     "/settings/user-companies": "Хэрэглэгчийн компаниуд",
     "/settings/role-permissions": "Эрхийн тохиргоо",
+    "/settings/modules": "Модуль",
     "/settings/company-licenses": "Лиценз",
     "/settings/tables-management": "Хүснэгтийн удирдлага",
     "/settings/forms-management": "Маягтын удирдлага",
@@ -206,6 +207,12 @@ function Sidebar() {
               )}
               {user?.role === "admin" && (
                 <>
+                  <NavLink
+                    to="/settings/modules"
+                    style={styles.menuItem}
+                  >
+                    Модуль
+                  </NavLink>
                   {licensed.tables_management && (
                     <NavLink
                       to="/settings/tables-management"
