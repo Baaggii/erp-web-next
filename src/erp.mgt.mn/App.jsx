@@ -1,8 +1,7 @@
-import React from 'react';
-import { HashRouter, Routes, Route } from 'react-router-dom';
-import AuthContextProvider from './context/AuthContext.jsx';
+import React, { useContext } from 'react';
+import { HashRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import AuthContextProvider, { AuthContext } from './context/AuthContext.jsx';
 import RequireAuth from './components/RequireAuth.jsx';
-import RequireAdmin from './components/RequireAdmin.jsx';
 import ERPLayout from './components/ERPLayout.jsx';
 import LoginPage from './pages/Login.jsx';
 import FormsPage from './pages/Forms.jsx';
@@ -17,41 +16,101 @@ import ReportManagementPage from './pages/ReportManagement.jsx';
 import ModulesPage from './pages/Modules.jsx';
 import SettingsPage, { GeneralSettings } from './pages/Settings.jsx';
 import ChangePasswordPage from './pages/ChangePassword.jsx';
-import Dashboard from './pages/Dashboard.jsx';
 import BlueLinkPage from './pages/BlueLinkPage.jsx';
+import { useModules } from './hooks/useModules.js';
 
 export default function App() {
+  const modules = useModules();
+
+  const moduleMap = {};
+  modules.forEach((m) => {
+    moduleMap[m.module_key] = { ...m, children: [] };
+  });
+  modules.forEach((m) => {
+    if (m.parent_key && moduleMap[m.parent_key]) {
+      moduleMap[m.parent_key].children.push(moduleMap[m.module_key]);
+    }
+  });
+
+  const componentMap = {
+    dashboard: <BlueLinkPage />,
+    forms: <FormsPage />,
+    reports: <ReportsPage />,
+    settings: <SettingsPage />,
+    users: <UsersPage />,
+    user_companies: <UserCompaniesPage />,
+    role_permissions: <RolePermissionsPage />,
+    modules: <ModulesPage />,
+    company_licenses: <CompanyLicensesPage />,
+    tables_management: <TablesManagementPage />,
+    forms_management: <FormsManagementPage />,
+    report_management: <ReportManagementPage />,
+    change_password: <ChangePasswordPage />,
+  };
+
+  const indexComponents = {
+    settings: <GeneralSettings />,
+  };
+
+  const adminOnly = new Set([
+    'users',
+    'user_companies',
+    'role_permissions',
+    'modules',
+    'company_licenses',
+    'tables_management',
+    'forms_management',
+    'report_management',
+  ]);
+
+  function renderRoute(mod) {
+    const slug = mod.module_key.replace(/_/g, '-');
+    const children = mod.children.map(renderRoute);
+    let element = componentMap[mod.module_key];
+    if (!element) {
+      element = mod.children.length > 0 ? <Outlet /> : <div>{mod.label}</div>;
+    }
+
+    if (adminOnly.has(mod.module_key)) {
+      element = <RequireAdminPage>{element}</RequireAdminPage>;
+    }
+
+    if (!mod.parent_key && mod.module_key === 'dashboard') {
+      return <Route key={mod.module_key} index element={element} />;
+    }
+
+    return (
+      <Route key={mod.module_key} path={slug} element={element}>
+        {indexComponents[mod.module_key] && (
+          <Route index element={indexComponents[mod.module_key]} />
+        )}
+        {children}
+      </Route>
+    );
+  }
+
+  const roots = modules
+    .filter((m) => !m.parent_key)
+    .map((m) => moduleMap[m.module_key]);
+
   return (
     <AuthContextProvider>
       <HashRouter>
         <Routes>
-          {/* Public route for login without sidebar/layout */}
           <Route path="/login" element={<LoginPage />} />
-
-          {/* Protected app routes */}
           <Route element={<RequireAuth />}>
-            <Route path="/" element={<ERPLayout />}>
-              <Route index element={<BlueLinkPage />} />
-              <Route path="forms" element={<FormsPage />} />
-              <Route path="reports" element={<ReportsPage />} />
-              <Route path="settings" element={<SettingsPage />}>
-                <Route index element={<GeneralSettings />} />
-                <Route element={<RequireAdmin />}>
-                  <Route path="users" element={<UsersPage />} />
-                  <Route path="user-companies" element={<UserCompaniesPage />} />
-                  <Route path="role-permissions" element={<RolePermissionsPage />} />
-                  <Route path="modules" element={<ModulesPage />} />
-                  <Route path="company-licenses" element={<CompanyLicensesPage />} />
-                  <Route path="tables-management" element={<TablesManagementPage />} />
-                  <Route path="forms-management" element={<FormsManagementPage />} />
-                  <Route path="report-management" element={<ReportManagementPage />} />
-                </Route>
-                <Route path="change-password" element={<ChangePasswordPage />} />
-              </Route>
-            </Route>
+            <Route path="/" element={<ERPLayout />}>{roots.map(renderRoute)}</Route>
           </Route>
         </Routes>
       </HashRouter>
     </AuthContextProvider>
   );
+}
+
+function RequireAdminPage({ children }) {
+  const { user } = useContext(AuthContext);
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+  return user.role === 'admin' ? children : <Navigate to="/" replace />;
 }
