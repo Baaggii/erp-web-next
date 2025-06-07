@@ -11,6 +11,7 @@ export default function CodingTablesPage() {
   const [tableName, setTableName] = useState('');
   const [idColumn, setIdColumn] = useState('');
   const [nameColumn, setNameColumn] = useState('');
+  const [otherColumns, setOtherColumns] = useState([]);
   const [sql, setSql] = useState('');
 
   function handleFile(e) {
@@ -28,6 +29,7 @@ export default function CodingTablesPage() {
       setIdColumn('');
       setNameColumn('');
       setSql('');
+      setOtherColumns([]);
     });
   }
 
@@ -39,6 +41,7 @@ export default function CodingTablesPage() {
     setIdColumn('');
     setNameColumn('');
     setSql('');
+    setOtherColumns([]);
   }
 
   function handleHeaderRowChange(e) {
@@ -49,6 +52,7 @@ export default function CodingTablesPage() {
     setIdColumn('');
     setNameColumn('');
     setSql('');
+    setOtherColumns([]);
   }
 
   function extractHeaders(wb, s, row) {
@@ -80,16 +84,28 @@ export default function CodingTablesPage() {
     const idIdx = hdrs.indexOf(idColumn);
     const nameIdx = hdrs.indexOf(nameColumn);
     if (idIdx === -1 || nameIdx === -1) return;
-    let sqlStr = `CREATE TABLE IF NOT EXISTS \`${tableName}\` (\n`;
-    sqlStr += '  id VARCHAR(255) PRIMARY KEY,\n  name VARCHAR(255)\n);\n';
+    const otherIdx = otherColumns.map((c) => hdrs.indexOf(c));
+    if (otherIdx.some((i) => i === -1)) return;
+
+    let sqlStr = `CREATE TABLE IF NOT EXISTS \`${tableName}\` (\n  id VARCHAR(255) PRIMARY KEY,\n  name VARCHAR(255)`;
+    otherColumns.forEach((c) => {
+      sqlStr += `,\n  \`${c}\` VARCHAR(255)`;
+    });
+    sqlStr += '\n);\n';
+
     rows.forEach((r) => {
       const id = r[idIdx];
       const name = r[nameIdx];
       if (id === undefined || name === undefined) return;
-      sqlStr +=
-        `INSERT INTO \`${tableName}\` (id, name) VALUES (${escapeSqlValue(
-          id
-        )}, ${escapeSqlValue(name)}) ON DUPLICATE KEY UPDATE name = VALUES(name);\n`;
+      const values = [escapeSqlValue(id), escapeSqlValue(name)];
+      const cols = ['id', 'name'];
+      otherColumns.forEach((c, idx2) => {
+        values.push(escapeSqlValue(r[otherIdx[idx2]]));
+        cols.push(`\`${c}\``);
+      });
+      const updates = ['name = VALUES(name)'];
+      otherColumns.forEach((c) => updates.push(`\`${c}\` = VALUES(\`${c}\`)`));
+      sqlStr += `INSERT INTO \`${tableName}\` (${cols.join(", ")}) VALUES (${values.join(", ")}) ON DUPLICATE KEY UPDATE ${updates.join(", ")};\n`;
     });
     setSql(sqlStr);
   }
@@ -97,7 +113,6 @@ export default function CodingTablesPage() {
   async function handleUpload() {
     if (!workbook || !sheet || !tableName || !idColumn || !nameColumn) return;
     setSql('');
-    const ws = workbook.Sheets[sheet];
     const formData = new FormData();
     const blob = new Blob([XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })]);
     formData.append('file', blob, 'upload.xlsx');
@@ -106,6 +121,7 @@ export default function CodingTablesPage() {
     formData.append('tableName', tableName);
     formData.append('idColumn', idColumn);
     formData.append('nameColumn', nameColumn);
+    formData.append('otherColumns', JSON.stringify(otherColumns));
     const res = await fetch('/api/coding_tables/upload', {
       method: 'POST',
       credentials: 'include',
@@ -171,6 +187,17 @@ export default function CodingTablesPage() {
                 Name Column:
                 <select value={nameColumn} onChange={(e) => setNameColumn(e.target.value)}>
                   <option value="">--select--</option>
+                  {headers.map((h) => (
+                    <option key={h} value={h}>
+                      {h}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                Other Columns:
+                <select multiple value={otherColumns} onChange={(e) =>
+                    setOtherColumns(Array.from(e.target.selectedOptions, (o) => o.value))}>
                   {headers.map((h) => (
                     <option key={h} value={h}>
                       {h}

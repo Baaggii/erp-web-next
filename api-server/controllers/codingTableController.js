@@ -4,7 +4,8 @@ import { pool } from '../../db/index.js';
 
 export async function uploadCodingTable(req, res, next) {
   try {
-    const { sheet, tableName, idColumn, nameColumn, headerRow } = req.body;
+    const { sheet, tableName, idColumn, nameColumn, headerRow, otherColumns } = req.body;
+    const extraCols = otherColumns ? JSON.parse(otherColumns) : [];
     if (!req.file) {
       return res.status(400).json({ error: 'File required' });
     }
@@ -31,21 +32,34 @@ export async function uploadCodingTable(req, res, next) {
     if (!tableName || !idColumn || !nameColumn) {
       return res.status(400).json({ error: 'Missing params' });
     }
-    await pool.query(
-      `CREATE TABLE IF NOT EXISTS \`${tableName}\` (
+    let createSql = `CREATE TABLE IF NOT EXISTS \`${tableName}\` (
         id VARCHAR(255) PRIMARY KEY,
-        name VARCHAR(255)
-      )`
-    );
+        name VARCHAR(255)`;
+    extraCols.forEach((c) => {
+      createSql += `,
+        \`${c}\` VARCHAR(255)`;
+    });
+    createSql += `
+      )`;
+    await pool.query(createSql);
     let count = 0;
     for (const r of rows) {
       const id = r[idColumn];
       const name = r[nameColumn];
       if (id === undefined || name === undefined) continue;
+      const cols = ['id', 'name'];
+      const placeholders = ['?', '?'];
+      const values = [String(id), String(name)];
+      const updates = ['name = VALUES(name)'];
+      extraCols.forEach((c) => {
+        cols.push(`\`${c}\``);
+        placeholders.push('?');
+        values.push(r[c] === undefined ? '' : String(r[c]));
+        updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
+      });
       await pool.query(
-        `INSERT INTO \`${tableName}\` (id, name)
-         VALUES (?, ?) ON DUPLICATE KEY UPDATE name = VALUES(name)`,
-        [String(id), String(name)]
+        `INSERT INTO \`${tableName}\` (${cols.join(', ')}) VALUES (${placeholders.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')}`,
+        values
       );
       count++;
     }
