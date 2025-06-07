@@ -1,5 +1,5 @@
 import React, { useContext } from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import AuthContextProvider, { AuthContext } from './context/AuthContext.jsx';
 import RequireAuth from './components/RequireAuth.jsx';
 import ERPLayout from './components/ERPLayout.jsx';
@@ -66,7 +66,10 @@ export default function App() {
   function renderRoute(mod) {
     const slug = mod.module_key.replace(/_/g, '-');
     const children = mod.children.map(renderRoute);
-    let element = componentMap[mod.module_key] || <div>{mod.label}</div>;
+    let element = componentMap[mod.module_key];
+    if (!element) {
+      element = mod.children.length > 0 ? <Outlet /> : <div>{mod.label}</div>;
+    }
 
     if (adminOnly.has(mod.module_key)) {
       element = <RequireAdminPage>{element}</RequireAdminPage>;
