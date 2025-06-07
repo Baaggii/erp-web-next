@@ -29,22 +29,35 @@ export default function TablesManagement() {
     }
   }
 
-  async function handleEdit(row) {
-    const updates = {};
-    for (const key of Object.keys(row)) {
-      if (key === 'id') continue;
-      const val = prompt(`${key}?`, row[key]);
-      if (val !== null && val !== String(row[key])) {
-        updates[key] = val;
+    async function handleEdit(row) {
+      const updates = {};
+      for (const key of Object.keys(row)) {
+        if (key === 'id') continue;
+        const val = prompt(`${key}?`, row[key]);
+        if (val !== null && val !== String(row[key])) {
+          updates[key] = val;
+        }
       }
-    }
-    if (Object.keys(updates).length === 0) return;
-    const res = await fetch(`/api/tables/${selectedTable}/${row.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(updates),
-    });
+      if (Object.keys(updates).length === 0) return;
+
+      let rowId = row.id;
+      if (rowId === undefined) {
+        if (selectedTable === 'company_module_licenses') {
+          rowId = `${row.company_id}-${row.module_key}`;
+        } else {
+          alert('Cannot update row: no id column');
+          return;
+        }
+      }
+      const res = await fetch(
+        `/api/tables/${selectedTable}/${encodeURIComponent(rowId)}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(updates),
+        },
+      );
     if (!res.ok) {
       alert('Update failed');
       return;
@@ -78,8 +91,15 @@ export default function TablesManagement() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr key={r.id}>
+              {rows.map((r) => (
+                <tr
+                  key={
+                    r.id ??
+                    (selectedTable === 'company_module_licenses'
+                      ? `${r.company_id}-${r.module_key}`
+                      : JSON.stringify(r))
+                  }
+                >
                 {Object.keys(rows[0]).map((k) => (
                   <td key={k} style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                     {String(r[k])}

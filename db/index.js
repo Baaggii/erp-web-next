@@ -436,6 +436,16 @@ export async function updateTableRow(tableName, id, updates) {
   if (keys.length === 0) return { id };
   const values = Object.values(updates);
   const setClause = keys.map((k) => `\`${k}\` = ?`).join(', ');
+
+  if (tableName === 'company_module_licenses') {
+    const [companyId, moduleKey] = String(id).split('-');
+    await pool.query(
+      `UPDATE company_module_licenses SET ${setClause} WHERE company_id = ? AND module_key = ?`,
+      [...values, companyId, moduleKey],
+    );
+    return { company_id: companyId, module_key: moduleKey };
+  }
+
   await pool.query(`UPDATE ?? SET ${setClause} WHERE id = ?`, [tableName, ...values, id]);
   return { id };
 }
