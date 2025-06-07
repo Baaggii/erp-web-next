@@ -1,0 +1,20 @@
+export default [
+  { moduleKey: 'dashboard', label: 'Самбар', parentKey: null, showInSidebar: true, showInHeader: false },
+  { moduleKey: 'forms', label: 'Маягтууд', parentKey: null, showInSidebar: true, showInHeader: false },
+  { moduleKey: 'reports', label: 'Тайлан', parentKey: null, showInSidebar: true, showInHeader: false },
+  { moduleKey: 'settings', label: 'Тохиргоо', parentKey: null, showInSidebar: true, showInHeader: false },
+  { moduleKey: 'developer', label: 'Хөгжүүлэгч', parentKey: 'settings', showInSidebar: true, showInHeader: false },
+  { moduleKey: 'users', label: 'Хэрэглэгчид', parentKey: 'settings', showInSidebar: true, showInHeader: false },
+  { moduleKey: 'user_companies', label: 'Хэрэглэгчийн компаниуд', parentKey: 'settings', showInSidebar: true, showInHeader: false },
+  { moduleKey: 'role_permissions', label: 'Эрхийн тохиргоо', parentKey: 'settings', showInSidebar: true, showInHeader: false },
+  { moduleKey: 'modules', label: 'Модуль', parentKey: 'developer', showInSidebar: true, showInHeader: false },
+  { moduleKey: 'company_licenses', label: 'Лиценз', parentKey: 'settings', showInSidebar: true, showInHeader: false },
+  { moduleKey: 'tables_management', label: 'Хүснэгтийн удирдлага', parentKey: 'developer', showInSidebar: true, showInHeader: false },
+  { moduleKey: 'coding_tables', label: 'Кодын хүснэгтүүд', parentKey: 'developer', showInSidebar: true, showInHeader: false },
+  { moduleKey: 'forms_management', label: 'Маягтын удирдлага', parentKey: 'developer', showInSidebar: true, showInHeader: false },
+  { moduleKey: 'report_management', label: 'Тайлангийн удирдлага', parentKey: 'developer', showInSidebar: true, showInHeader: false },
+  { moduleKey: 'change_password', label: 'Нууц үг солих', parentKey: 'settings', showInSidebar: true, showInHeader: false },
+  { moduleKey: 'gl', label: 'Ерөнхий журнал', parentKey: null, showInSidebar: false, showInHeader: true },
+  { moduleKey: 'po', label: 'Худалдан авалтын захиалга', parentKey: null, showInSidebar: false, showInHeader: true },
+  { moduleKey: 'sales', label: 'Борлуулалтын самбар', parentKey: null, showInSidebar: false, showInHeader: true }
+];
