@@ -8,6 +8,7 @@ import { logout } from "../hooks/useAuth.jsx";
 import { useRolePermissions, refreshRolePermissions } from "../hooks/useRolePermissions.js";
 import { useCompanyModules } from "../hooks/useCompanyModules.js";
 import { useModules } from "../hooks/useModules.js";
+import modulePath from "../utils/modulePath.js";
 
 /**
  * A desktop‐style “ERPLayout” with:
@@ -105,6 +106,11 @@ function Sidebar() {
 
   if (!perms || !licensed) return null;
 
+  const allMap = {};
+  modules.forEach((m) => {
+    allMap[m.module_key] = { ...m };
+  });
+
   const map = {};
   modules.forEach((m) => {
     if (perms[m.module_key] && licensed[m.module_key] && m.show_in_sidebar) {
@@ -126,11 +132,11 @@ function Sidebar() {
       <nav>
         {roots.map((m) =>
           m.children.length > 0 ? (
-            <SidebarGroup key={m.module_key} mod={m} map={map} level={0} />
+            <SidebarGroup key={m.module_key} mod={m} map={map} allMap={allMap} level={0} />
           ) : (
             <NavLink
               key={m.module_key}
-              to={modulePath(m, map)}
+              to={modulePath(m, allMap)}
               style={({ isActive }) => styles.menuItem({ isActive })}
             >
               {m.label}
@@ -142,7 +148,7 @@ function Sidebar() {
   );
 }
 
-function SidebarGroup({ mod, map, level }) {
+function SidebarGroup({ mod, map, allMap, level }) {
   const [open, setOpen] = useState(false);
   return (
     <div style={{ ...styles.menuGroup, paddingLeft: level ? '1rem' : 0 }}>
@@ -152,11 +158,11 @@ function SidebarGroup({ mod, map, level }) {
       {open &&
         mod.children.map((c) =>
           c.children.length > 0 ? (
-            <SidebarGroup key={c.module_key} mod={c} map={map} level={level + 1} />
+            <SidebarGroup key={c.module_key} mod={c} map={map} allMap={allMap} level={level + 1} />
           ) : (
             <NavLink
               key={c.module_key}
-              to={modulePath(c, map)}
+              to={modulePath(c, allMap)}
               style={({ isActive }) => ({
                 ...styles.menuItem({ isActive }),
                 paddingLeft: `${(level + 1) * 1}rem`,
@@ -170,19 +176,7 @@ function SidebarGroup({ mod, map, level }) {
   );
 }
 
-function modulePath(m, map) {
-  const key = m.module_key.replace(/_/g, '-');
-  let parent = m.parent_key;
-  while (parent) {
-    if (parent === 'settings') return `/settings/${key}`;
-    parent = map[parent]?.parent_key;
-  }
-  if (!m.parent_key) {
-    if (m.module_key === 'dashboard') return '/';
-    return `/${key}`;
-  }
-  return `/${key}`;
-}
+
 
 /** A faux “window” wrapper around the main content **/
 function MainWindow({ children, title }) {
