@@ -12,14 +12,8 @@ export async function uploadCodingTable(req, res, next) {
       nameColumn,
       headerRow,
       otherColumns,
-      uniqueColumns,
-      dateColumns,
-      columnTypes,
     } = req.body;
     const extraCols = otherColumns ? JSON.parse(otherColumns) : [];
-    const uniqueCols = uniqueColumns ? JSON.parse(uniqueColumns) : [];
-    const dateCols = dateColumns ? JSON.parse(dateColumns) : [];
-    const colTypes = columnTypes ? JSON.parse(columnTypes) : {};
     const idCols = idColumns ? JSON.parse(idColumns) : idColumn ? [idColumn] : [];
     if (!req.file) {
       return res.status(400).json({ error: 'File required' });
@@ -31,7 +25,7 @@ export async function uploadCodingTable(req, res, next) {
       return res.status(400).json({ error: 'Sheet not found' });
     }
     const headerIndex = parseInt(headerRow || '1', 10);
-    const data = xlsx.utils.sheet_to_json(ws, { header: 1, blankrows: false, cellDates: true });
+    const data = xlsx.utils.sheet_to_json(ws, { header: 1, blankrows: false });
     const headers = data[headerIndex - 1];
     if (!headers) {
       fs.unlinkSync(req.file.path);
@@ -47,21 +41,13 @@ export async function uploadCodingTable(req, res, next) {
     if (!tableName || idCols.length === 0 || !nameColumn) {
       return res.status(400).json({ error: 'Missing params' });
     }
-    const allCols = Array.from(new Set([...idCols, nameColumn, ...extraCols]));
     let createSql = `CREATE TABLE IF NOT EXISTS \`${tableName}\` (
-        id VARCHAR(255) PRIMARY KEY`;
-    allCols.forEach((c) => {
-      let sqlType = 'VARCHAR(255)';
-      const t = colTypes[c];
-      if (t === 'number') sqlType = 'INT';
-      else if (t === 'date' || dateCols.includes(c)) sqlType = 'DATE';
+        id VARCHAR(255) PRIMARY KEY,
+        name VARCHAR(255)`;
+    extraCols.forEach((c) => {
       createSql += `,
-        \`${c}\` ${sqlType}`;
+        \`${c}\` VARCHAR(255)`;
     });
-    if (uniqueCols.length > 0) {
-      createSql += `,
-        UNIQUE KEY \`uk_${tableName}\` (${uniqueCols.map((c) => \`\`${c}\`\`).join(', ')})`;
-    }
     createSql += `
       )`;
     await pool.query(createSql);
@@ -69,21 +55,16 @@ export async function uploadCodingTable(req, res, next) {
     for (const r of rows) {
       const idVals = idCols.map((c) => r[c]);
       const id = idVals.join('-');
-      if (idVals.some((v) => v === undefined)) continue;
-      const cols = ['id'];
-      const placeholders = ['?'];
-      const values = [String(id)];
-      const updates = [];
-      allCols.forEach((c) => {
-        let v = r[c];
-        const t = colTypes[c];
-        if (t === 'date' || dateCols.includes(c)) {
-          const d = v instanceof Date ? v : v ? new Date(v) : null;
-          v = d && !Number.isNaN(d.getTime()) ? d.toISOString().slice(0, 10) : null;
-        }
+      const name = r[nameColumn];
+      if (idVals.some((v) => v === undefined) || name === undefined) continue;
+      const cols = ['id', 'name'];
+      const placeholders = ['?', '?'];
+      const values = [String(id), String(name)];
+      const updates = ['name = VALUES(name)'];
+      extraCols.forEach((c) => {
         cols.push(`\`${c}\``);
         placeholders.push('?');
-        values.push(v === undefined ? null : v);
+        values.push(r[c] === undefined ? '' : String(r[c]));
         updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
       });
       await pool.query(
