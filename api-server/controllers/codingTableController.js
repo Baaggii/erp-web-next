@@ -4,8 +4,17 @@ import { pool } from '../../db/index.js';
 
 export async function uploadCodingTable(req, res, next) {
   try {
-    const { sheet, tableName, idColumn, nameColumn, headerRow, otherColumns } = req.body;
+    const {
+      sheet,
+      tableName,
+      idColumn,
+      idColumns,
+      nameColumn,
+      headerRow,
+      otherColumns,
+    } = req.body;
     const extraCols = otherColumns ? JSON.parse(otherColumns) : [];
+    const idCols = idColumns ? JSON.parse(idColumns) : idColumn ? [idColumn] : [];
     if (!req.file) {
       return res.status(400).json({ error: 'File required' });
     }
@@ -29,7 +38,7 @@ export async function uploadCodingTable(req, res, next) {
       });
       return obj;
     });
-    if (!tableName || !idColumn || !nameColumn) {
+    if (!tableName || idCols.length === 0 || !nameColumn) {
       return res.status(400).json({ error: 'Missing params' });
     }
     let createSql = `CREATE TABLE IF NOT EXISTS \`${tableName}\` (
@@ -44,9 +53,10 @@ export async function uploadCodingTable(req, res, next) {
     await pool.query(createSql);
     let count = 0;
     for (const r of rows) {
-      const id = r[idColumn];
+      const idVals = idCols.map((c) => r[c]);
+      const id = idVals.join('-');
       const name = r[nameColumn];
-      if (id === undefined || name === undefined) continue;
+      if (idVals.some((v) => v === undefined) || name === undefined) continue;
       const cols = ['id', 'name'];
       const placeholders = ['?', '?'];
       const values = [String(id), String(name)];

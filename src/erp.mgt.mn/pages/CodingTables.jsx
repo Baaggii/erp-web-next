@@ -10,7 +10,7 @@ export default function CodingTablesPage() {
   const [idFilterMode, setIdFilterMode] = useState('contains');
   const [headerRow, setHeaderRow] = useState(1);
   const [tableName, setTableName] = useState('');
-  const [idColumn, setIdColumn] = useState('');
+  const [idColumns, setIdColumns] = useState([]);
   const [nameColumn, setNameColumn] = useState('');
   const [otherColumns, setOtherColumns] = useState([]);
   const [sql, setSql] = useState('');
@@ -37,7 +37,7 @@ export default function CodingTablesPage() {
       setHeaderRow(1);
       setHeaders([]);
       setIdCandidates([]);
-      setIdColumn('');
+      setIdColumns([]);
       setNameColumn('');
       setSql('');
       setOtherColumns([]);
@@ -49,7 +49,7 @@ export default function CodingTablesPage() {
     setSheet(s);
     setHeaders([]);
     setIdCandidates([]);
-    setIdColumn('');
+    setIdColumns([]);
     setNameColumn('');
     setSql('');
     setOtherColumns([]);
@@ -60,7 +60,7 @@ export default function CodingTablesPage() {
     setHeaderRow(r);
     setHeaders([]);
     setIdCandidates([]);
-    setIdColumn('');
+    setIdColumns([]);
     setNameColumn('');
     setSql('');
     setOtherColumns([]);
@@ -84,14 +84,14 @@ export default function CodingTablesPage() {
   }
 
   function handleGenerateSql() {
-    if (!workbook || !sheet || !tableName || !idColumn || !nameColumn) return;
+    if (!workbook || !sheet || !tableName || idColumns.length === 0 || !nameColumn) return;
     const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheet], { header: 1 });
     const idx = Number(headerRow) - 1;
     const hdrs = data[idx] || [];
     const rows = data.slice(idx + 1);
-    const idIdx = hdrs.indexOf(idColumn);
+    const idIdx = idColumns.map((c) => hdrs.indexOf(c));
     const nameIdx = hdrs.indexOf(nameColumn);
-    if (idIdx === -1 || nameIdx === -1) return;
+    if (idIdx.some((i) => i === -1) || nameIdx === -1) return;
     const otherIdx = otherColumns.map((c) => hdrs.indexOf(c));
     if (otherIdx.some((i) => i === -1)) return;
 
@@ -102,9 +102,10 @@ export default function CodingTablesPage() {
     sqlStr += '\n);\n';
 
     rows.forEach((r) => {
-      const id = r[idIdx];
+      const idVals = idIdx.map((i) => r[i]);
+      const id = idVals.join('-');
       const name = r[nameIdx];
-      if (id === undefined || name === undefined) return;
+      if (idVals.some((v) => v === undefined) || name === undefined) return;
       const values = [escapeSqlValue(id), escapeSqlValue(name)];
       const cols = ['id', 'name'];
       otherColumns.forEach((c, idx2) => {
@@ -119,7 +120,7 @@ export default function CodingTablesPage() {
   }
 
   async function handleUpload() {
-    if (!workbook || !sheet || !tableName || !idColumn || !nameColumn) return;
+    if (!workbook || !sheet || !tableName || idColumns.length === 0 || !nameColumn) return;
     setSql('');
     setUploading(true);
     try {
@@ -129,7 +130,7 @@ export default function CodingTablesPage() {
       formData.append('sheet', sheet);
       formData.append('headerRow', headerRow);
       formData.append('tableName', tableName);
-      formData.append('idColumn', idColumn);
+      formData.append('idColumns', JSON.stringify(idColumns));
       formData.append('nameColumn', nameColumn);
       formData.append('otherColumns', JSON.stringify(otherColumns));
       const res = await fetch('/api/coding_tables/upload', {
@@ -211,37 +212,19 @@ export default function CodingTablesPage() {
                 <input value={tableName} onChange={(e) => setTableName(e.target.value)} />
               </div>
               <div>
-                <label style={{ marginRight: '1rem' }}>
-                  <input
-                    type="radio"
-                    name="idFilterMode"
-                    value="contains"
-                    checked={idFilterMode === 'contains'}
-                    onChange={(e) => setIdFilterMode(e.target.value)}
-                  />
-                  id column should have "id" text
-                </label>
-                <label>
-                  <input
-                    type="radio"
-                    name="idFilterMode"
-                    value="all"
-                    checked={idFilterMode === 'all'}
-                    onChange={(e) => setIdFilterMode(e.target.value)}
-                  />
-                  pull all columns
-                </label>
-              </div>
-              <div>
-                ID Column:
                 {idCandidates.map((h) => (
                   <label key={h} style={{ marginRight: '1rem' }}>
                     <input
-                      type="radio"
-                      name="idCol"
+                      type="checkbox"
                       value={h}
-                      checked={idColumn === h}
-                      onChange={(e) => setIdColumn(e.target.value)}
+                      checked={idColumns.includes(h)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setIdColumns([...idColumns, h]);
+                        } else {
+                          setIdColumns(idColumns.filter((c) => c !== h));
+                        }
+                      }}
                     />
                     {h}
                   </label>
