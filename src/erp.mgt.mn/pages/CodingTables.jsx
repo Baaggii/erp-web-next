@@ -151,7 +151,7 @@ export default function CodingTablesPage() {
       sqlStr += `,\n  \`${c}\` ${sqlType}`;
     });
     if (uniqueColumns.length > 0) {
-      sqlStr += `,\n  UNIQUE KEY \`uk_${tableName}\` (${uniqueColumns.map((c) => \`\`${c}\`\`).join(', ')})`;
+      sqlStr += `,\n  UNIQUE KEY \`uk_${tableName}\` (${uniqueColumns.map((c) => \`${c}\`).join(', ')})`;
     }
     sqlStr += '\n);\n';
 
