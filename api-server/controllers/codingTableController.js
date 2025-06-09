@@ -12,13 +12,9 @@ export async function uploadCodingTable(req, res, next) {
       nameColumn,
       headerRow,
       otherColumns,
-      columnTypes,
-      uniqueSets,
     } = req.body;
     const extraCols = otherColumns ? JSON.parse(otherColumns) : [];
     const idCols = idColumns ? JSON.parse(idColumns) : idColumn ? [idColumn] : [];
-    const colTypes = columnTypes ? JSON.parse(columnTypes) : {};
-    const uniqSets = uniqueSets ? JSON.parse(uniqueSets) : [];
     if (!req.file) {
       return res.status(400).json({ error: 'File required' });
     }
@@ -45,31 +41,12 @@ export async function uploadCodingTable(req, res, next) {
     if (!tableName || idCols.length === 0 || !nameColumn) {
       return res.status(400).json({ error: 'Missing params' });
     }
-    function sqlType(t) {
-      switch (t) {
-        case 'number':
-          return 'INT';
-        case 'long':
-          return 'BIGINT';
-        case 'date':
-          return 'DATE';
-        default:
-          return 'VARCHAR(255)';
-      }
-    }
-
     let createSql = `CREATE TABLE IF NOT EXISTS \`${tableName}\` (
         id VARCHAR(255) PRIMARY KEY,
-        \`name\` ${sqlType(colTypes[nameColumn])}`;
+        name VARCHAR(255)`;
     extraCols.forEach((c) => {
       createSql += `,
-        \`${c}\` ${sqlType(colTypes[c])}`;
-    });
-    uniqSets.forEach((set, idx) => {
-      if (set.length > 0) {
-        createSql += `,
-        UNIQUE KEY \`uniq_${idx}\` (${set.map((s) => \`\`${s}\`\`).join(', ')})`;
-      }
+        \`${c}\` VARCHAR(255)`;
     });
     createSql += `
       )`;

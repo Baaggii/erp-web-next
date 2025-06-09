@@ -13,8 +13,6 @@ export default function CodingTablesPage() {
   const [idColumns, setIdColumns] = useState([]);
   const [nameColumn, setNameColumn] = useState('');
   const [otherColumns, setOtherColumns] = useState([]);
-  const [columnTypes, setColumnTypes] = useState({});
-  const [uniqueSets, setUniqueSets] = useState([]);
   const [sql, setSql] = useState('');
   const [uploading, setUploading] = useState(false);
 
@@ -43,8 +41,6 @@ export default function CodingTablesPage() {
       setNameColumn('');
       setSql('');
       setOtherColumns([]);
-      setColumnTypes({});
-      setUniqueSets([]);
     });
   }
 
@@ -57,8 +53,6 @@ export default function CodingTablesPage() {
     setNameColumn('');
     setSql('');
     setOtherColumns([]);
-    setColumnTypes({});
-    setUniqueSets([]);
   }
 
   function handleHeaderRowChange(e) {
@@ -70,8 +64,6 @@ export default function CodingTablesPage() {
     setNameColumn('');
     setSql('');
     setOtherColumns([]);
-    setColumnTypes({});
-    setUniqueSets([]);
   }
 
   function extractHeaders(wb, s, row) {
@@ -80,15 +72,6 @@ export default function CodingTablesPage() {
     const hdrs = data[idx] || [];
     setHeaders(hdrs);
     setIdCandidates(computeIdCandidates(hdrs, idFilterMode));
-    const types = {};
-    hdrs.forEach((h) => {
-      if (typeof h === 'string' && h.toLowerCase().includes('date')) {
-        types[h] = 'date';
-      } else {
-        types[h] = 'string';
-      }
-    });
-    setColumnTypes(types);
   }
 
   function handleExtract() {
@@ -98,32 +81,6 @@ export default function CodingTablesPage() {
 
   function escapeSqlValue(v) {
     return `'${String(v).replace(/'/g, "''")}'`;
-  }
-
-  function formatSqlValue(v, type) {
-    if (v === undefined || v === null) return 'NULL';
-    if (type === 'number' || type === 'long') {
-      return String(Number(v));
-    }
-    if (type === 'date') {
-      const d = new Date(v);
-      if (Number.isNaN(d.getTime())) return 'NULL';
-      return `'${d.toISOString().slice(0, 10)}'`;
-    }
-    return escapeSqlValue(v);
-  }
-
-  function sqlType(t) {
-    switch (t) {
-      case 'number':
-        return 'INT';
-      case 'long':
-        return 'BIGINT';
-      case 'date':
-        return 'DATE';
-      default:
-        return 'VARCHAR(255)';
-    }
   }
 
   function handleGenerateSql() {
@@ -138,14 +95,9 @@ export default function CodingTablesPage() {
     const otherIdx = otherColumns.map((c) => hdrs.indexOf(c));
     if (otherIdx.some((i) => i === -1)) return;
 
-    let sqlStr = `CREATE TABLE IF NOT EXISTS \`${tableName}\` (\n  id VARCHAR(255) PRIMARY KEY,\n  \`name\` ${sqlType(columnTypes[nameColumn])}`;
+    let sqlStr = `CREATE TABLE IF NOT EXISTS \`${tableName}\` (\n  id VARCHAR(255) PRIMARY KEY,\n  name VARCHAR(255)`;
     otherColumns.forEach((c) => {
-      sqlStr += `,\n  \`${c}\` ${sqlType(columnTypes[c])}`;
-    });
-    uniqueSets.forEach((set, idx2) => {
-      if (set.length > 0) {
-        sqlStr += `,\n  UNIQUE KEY \`uniq_${idx2}\` (${set.map((s) => \`\`${s}\`\`).join(', ')})`;
-      }
+      sqlStr += `,\n  \`${c}\` VARCHAR(255)`;
     });
     sqlStr += '\n);\n';
 
@@ -154,10 +106,10 @@ export default function CodingTablesPage() {
       const id = idVals.join('-');
       const name = r[nameIdx];
       if (idVals.some((v) => v === undefined) || name === undefined) return;
-      const values = [escapeSqlValue(id), formatSqlValue(name, columnTypes[nameColumn])];
+      const values = [escapeSqlValue(id), escapeSqlValue(name)];
       const cols = ['id', 'name'];
       otherColumns.forEach((c, idx2) => {
-        values.push(formatSqlValue(r[otherIdx[idx2]], columnTypes[c]));
+        values.push(escapeSqlValue(r[otherIdx[idx2]]));
         cols.push(`\`${c}\``);
       });
       const updates = ['name = VALUES(name)'];
@@ -181,8 +133,6 @@ export default function CodingTablesPage() {
       formData.append('idColumns', JSON.stringify(idColumns));
       formData.append('nameColumn', nameColumn);
       formData.append('otherColumns', JSON.stringify(otherColumns));
-      formData.append('columnTypes', JSON.stringify(columnTypes));
-      formData.append('uniqueSets', JSON.stringify(uniqueSets));
       const res = await fetch('/api/coding_tables/upload', {
         method: 'POST',
         credentials: 'include',
@@ -301,61 +251,6 @@ export default function CodingTablesPage() {
                     </option>
                   ))}
                 </select>
-              </div>
-              <div>
-                Column Types:
-                {headers.map((h) => (
-                  <div key={h} style={{ marginBottom: '0.5rem' }}>
-                    {h}:
-                    <select
-                      value={columnTypes[h] || 'string'}
-                      onChange={(e) =>
-                        setColumnTypes({ ...columnTypes, [h]: e.target.value })
-                      }
-                    >
-                      <option value="string">string</option>
-                      <option value="number">number</option>
-                      <option value="long">long</option>
-                      <option value="date">date</option>
-                    </select>
-                  </div>
-                ))}
-              </div>
-              <div>
-                Unique Keys:
-                {uniqueSets.map((set, idx) => (
-                  <div key={idx} style={{ marginBottom: '0.5rem' }}>
-                    <select
-                      multiple
-                      value={set}
-                      onChange={(e) =>
-                        setUniqueSets(
-                          uniqueSets.map((u, i) =>
-                            i === idx
-                              ? Array.from(e.target.selectedOptions, (o) => o.value)
-                              : u
-                          )
-                        )
-                      }
-                    >
-                      {headers.map((h) => (
-                        <option key={h} value={h}>
-                          {h}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={() =>
-                        setUniqueSets(uniqueSets.filter((_, i) => i !== idx))
-                      }
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
-                <button onClick={() => setUniqueSets([...uniqueSets, []])}>
-                  Add Unique Key
-                </button>
               </div>
               <div>
                 <button onClick={handleGenerateSql}>Populate SQL</button>
