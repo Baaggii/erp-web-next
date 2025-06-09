@@ -13,6 +13,9 @@ export default function CodingTablesPage() {
   const [idColumns, setIdColumns] = useState([]);
   const [nameColumn, setNameColumn] = useState('');
   const [otherColumns, setOtherColumns] = useState([]);
+  const [uniqueColumns, setUniqueColumns] = useState([]);
+  const [dateColumns, setDateColumns] = useState([]);
+  const [columnTypes, setColumnTypes] = useState({});
   const [sql, setSql] = useState('');
   const [uploading, setUploading] = useState(false);
 
@@ -41,6 +44,9 @@ export default function CodingTablesPage() {
       setNameColumn('');
       setSql('');
       setOtherColumns([]);
+      setUniqueColumns([]);
+      setDateColumns([]);
+      setColumnTypes({});
     });
   }
 
@@ -53,6 +59,9 @@ export default function CodingTablesPage() {
     setNameColumn('');
     setSql('');
     setOtherColumns([]);
+    setUniqueColumns([]);
+    setDateColumns([]);
+    setColumnTypes({});
   }
 
   function handleHeaderRowChange(e) {
@@ -64,14 +73,37 @@ export default function CodingTablesPage() {
     setNameColumn('');
     setSql('');
     setOtherColumns([]);
+    setUniqueColumns([]);
+    setDateColumns([]);
+    setColumnTypes({});
   }
 
   function extractHeaders(wb, s, row) {
-    const data = XLSX.utils.sheet_to_json(wb.Sheets[s], { header: 1 });
+    const data = XLSX.utils.sheet_to_json(wb.Sheets[s], {
+      header: 1,
+      cellDates: true,
+    });
     const idx = Number(row) - 1;
     const hdrs = data[idx] || [];
+    const rows = data.slice(idx + 1);
     setHeaders(hdrs);
     setIdCandidates(computeIdCandidates(hdrs, idFilterMode));
+    const autoDates = hdrs.filter((h) => typeof h === 'string' && h.toLowerCase().includes('date'));
+    setDateColumns(autoDates);
+    const types = {};
+    hdrs.forEach((h, colIdx) => {
+      const samples = rows.map((r) => r[colIdx]).filter((v) => v !== undefined && v !== null && v !== '');
+      if (samples.every((v) => typeof v === 'number')) {
+        types[h] = 'number';
+      } else if (
+        samples.every((v) => v instanceof Date || (typeof v === 'string' && !Number.isNaN(Date.parse(v))))
+      ) {
+        types[h] = 'date';
+      } else {
+        types[h] = 'string';
+      }
+    });
+    setColumnTypes(types);
   }
 
   function handleExtract() {
@@ -83,9 +115,23 @@ export default function CodingTablesPage() {
     return `'${String(v).replace(/'/g, "''")}'`;
   }
 
+  function formatSqlValue(v, t) {
+    if (v === undefined || v === null) return 'NULL';
+    if (t === 'number') return Number(v);
+    if (t === 'date') {
+      const d = v instanceof Date ? v : new Date(v);
+      if (Number.isNaN(d.getTime())) return 'NULL';
+      return `'${d.toISOString().slice(0, 10)}'`;
+    }
+    return escapeSqlValue(v);
+  }
+
   function handleGenerateSql() {
     if (!workbook || !sheet || !tableName || idColumns.length === 0 || !nameColumn) return;
-    const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheet], { header: 1 });
+    const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheet], {
+      header: 1,
+      cellDates: true,
+    });
     const idx = Number(headerRow) - 1;
     const hdrs = data[idx] || [];
     const rows = data.slice(idx + 1);
@@ -95,10 +141,18 @@ export default function CodingTablesPage() {
     const otherIdx = otherColumns.map((c) => hdrs.indexOf(c));
     if (otherIdx.some((i) => i === -1)) return;
 
-    let sqlStr = `CREATE TABLE IF NOT EXISTS \`${tableName}\` (\n  id VARCHAR(255) PRIMARY KEY,\n  name VARCHAR(255)`;
-    otherColumns.forEach((c) => {
-      sqlStr += `,\n  \`${c}\` VARCHAR(255)`;
+    const allCols = Array.from(new Set([...idColumns, nameColumn, ...otherColumns]));
+    let sqlStr = `CREATE TABLE IF NOT EXISTS \`${tableName}\` (\n  id VARCHAR(255) PRIMARY KEY`;
+    allCols.forEach((c) => {
+      let sqlType = 'VARCHAR(255)';
+      const t = columnTypes[c];
+      if (t === 'number') sqlType = 'INT';
+      else if (t === 'date') sqlType = 'DATE';
+      sqlStr += `,\n  \`${c}\` ${sqlType}`;
     });
+    if (uniqueColumns.length > 0) {
+      sqlStr += `,\n  UNIQUE KEY \`uk_${tableName}\` (${uniqueColumns.map((c) => \`\`${c}\`\`).join(', ')})`;
+    }
     sqlStr += '\n);\n';
 
     rows.forEach((r) => {
@@ -106,15 +160,16 @@ export default function CodingTablesPage() {
       const id = idVals.join('-');
       const name = r[nameIdx];
       if (idVals.some((v) => v === undefined) || name === undefined) return;
-      const values = [escapeSqlValue(id), escapeSqlValue(name)];
-      const cols = ['id', 'name'];
-      otherColumns.forEach((c, idx2) => {
-        values.push(escapeSqlValue(r[otherIdx[idx2]]));
+      const cols = ['id'];
+      const vals = [escapeSqlValue(id)];
+      const updates = [];
+      allCols.forEach((c, idx2) => {
+        const v = r[hdrs.indexOf(c)];
+        vals.push(formatSqlValue(v, columnTypes[c]));
         cols.push(`\`${c}\``);
+        updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
       });
-      const updates = ['name = VALUES(name)'];
-      otherColumns.forEach((c) => updates.push(`\`${c}\` = VALUES(\`${c}\`)`));
-      sqlStr += `INSERT INTO \`${tableName}\` (${cols.join(", ")}) VALUES (${values.join(", ")}) ON DUPLICATE KEY UPDATE ${updates.join(", ")};\n`;
+      sqlStr += `INSERT INTO \`${tableName}\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
     });
     setSql(sqlStr);
   }
@@ -133,6 +188,9 @@ export default function CodingTablesPage() {
       formData.append('idColumns', JSON.stringify(idColumns));
       formData.append('nameColumn', nameColumn);
       formData.append('otherColumns', JSON.stringify(otherColumns));
+      formData.append('uniqueColumns', JSON.stringify(uniqueColumns));
+      formData.append('dateColumns', JSON.stringify(dateColumns));
+      formData.append('columnTypes', JSON.stringify(columnTypes));
       const res = await fetch('/api/coding_tables/upload', {
         method: 'POST',
         credentials: 'include',
@@ -251,6 +309,44 @@ export default function CodingTablesPage() {
                     </option>
                   ))}
                 </select>
+              </div>
+              <div>
+                Unique Columns:
+                <select multiple value={uniqueColumns} onChange={(e) =>
+                    setUniqueColumns(Array.from(e.target.selectedOptions, (o) => o.value))}>
+                  {headers.map((h) => (
+                    <option key={h} value={h}>
+                      {h}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                Date Columns:
+                <select multiple value={dateColumns} onChange={(e) =>
+                    setDateColumns(Array.from(e.target.selectedOptions, (o) => o.value))}>
+                  {headers.map((h) => (
+                    <option key={h} value={h}>
+                      {h}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                Column Types:
+                {headers.map((h) => (
+                  <div key={h} style={{ marginBottom: '0.25rem' }}>
+                    {h}:
+                    <select
+                      value={columnTypes[h] || 'string'}
+                      onChange={(e) => setColumnTypes({ ...columnTypes, [h]: e.target.value })}
+                    >
+                      <option value="string">string</option>
+                      <option value="number">number</option>
+                      <option value="date">date</option>
+                    </select>
+                  </div>
+                ))}
               </div>
               <div>
                 <button onClick={handleGenerateSql}>Populate SQL</button>
