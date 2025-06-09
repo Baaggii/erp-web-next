@@ -182,6 +182,28 @@ export default function CodingTablesPage() {
             />
             <button onClick={handleExtract}>Read Columns</button>
           </div>
+          <div>
+            <label style={{ marginRight: '1rem' }}>
+              <input
+                type="radio"
+                name="idFilterMode"
+                value="contains"
+                checked={idFilterMode === 'contains'}
+                onChange={(e) => setIdFilterMode(e.target.value)}
+              />
+              id column should have "id" text
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="idFilterMode"
+                value="all"
+                checked={idFilterMode === 'all'}
+                onChange={(e) => setIdFilterMode(e.target.value)}
+              />
+              pull all columns
+            </label>
+          </div>
           {headers.length > 0 && (
             <>
               <div>
