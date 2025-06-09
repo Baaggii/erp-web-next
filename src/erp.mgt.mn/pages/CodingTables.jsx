@@ -212,7 +212,6 @@ export default function CodingTablesPage() {
                 <input value={tableName} onChange={(e) => setTableName(e.target.value)} />
               </div>
               <div>
-                ID Columns:
                 {idCandidates.map((h) => (
                   <label key={h} style={{ marginRight: '1rem' }}>
                     <input
