@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 
 export default function CodingTablesPage() {
@@ -7,6 +7,7 @@ export default function CodingTablesPage() {
   const [sheet, setSheet] = useState('');
   const [headers, setHeaders] = useState([]);
   const [idCandidates, setIdCandidates] = useState([]);
+  const [idFilterMode, setIdFilterMode] = useState('contains');
   const [headerRow, setHeaderRow] = useState(1);
   const [tableName, setTableName] = useState('');
   const [idColumn, setIdColumn] = useState('');
@@ -14,6 +15,15 @@ export default function CodingTablesPage() {
   const [otherColumns, setOtherColumns] = useState([]);
   const [sql, setSql] = useState('');
   const [uploading, setUploading] = useState(false);
+
+  function computeIdCandidates(hdrs, mode) {
+    const strs = hdrs.filter((h) => typeof h === 'string');
+    if (mode === 'contains') {
+      const ids = strs.filter((h) => h.toLowerCase().includes('id'));
+      return ids.length > 0 ? ids : strs;
+    }
+    return strs;
+  }
 
   function handleFile(e) {
     const file = e.target.files[0];
@@ -61,11 +71,7 @@ export default function CodingTablesPage() {
     const idx = Number(row) - 1;
     const hdrs = data[idx] || [];
     setHeaders(hdrs);
-    const ids = hdrs.filter(
-      (h) => typeof h === 'string' && h.toLowerCase().includes('id')
-    );
-    const finalIds = ids.length > 0 ? ids : hdrs.filter((h) => typeof h === 'string');
-    setIdCandidates(finalIds);
+    setIdCandidates(computeIdCandidates(hdrs, idFilterMode));
   }
 
   function handleExtract() {
@@ -146,6 +152,10 @@ export default function CodingTablesPage() {
     }
   }
 
+  useEffect(() => {
+    setIdCandidates(computeIdCandidates(headers, idFilterMode));
+  }, [headers, idFilterMode]);
+
   return (
     <div>
       <h2>Coding Table Upload</h2>
@@ -177,6 +187,28 @@ export default function CodingTablesPage() {
               <div>
                 Table Name:
                 <input value={tableName} onChange={(e) => setTableName(e.target.value)} />
+              </div>
+              <div>
+                <label style={{ marginRight: '1rem' }}>
+                  <input
+                    type="radio"
+                    name="idFilterMode"
+                    value="contains"
+                    checked={idFilterMode === 'contains'}
+                    onChange={(e) => setIdFilterMode(e.target.value)}
+                  />
+                  id column should have "id" text
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="idFilterMode"
+                    value="all"
+                    checked={idFilterMode === 'all'}
+                    onChange={(e) => setIdFilterMode(e.target.value)}
+                  />
+                  pull all columns
+                </label>
               </div>
               <div>
                 ID Column:
