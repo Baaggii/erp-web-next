@@ -59,9 +59,8 @@ export async function uploadCodingTable(req, res, next) {
         \`${c}\` ${sqlType}`;
     });
     if (uniqueCols.length > 0) {
-      const uniqueSql = uniqueCols.map((c) => `\`${c}\``).join(', ');
       createSql += `,
-        UNIQUE KEY \`uk_${tableName}\` (${uniqueSql})`;
+        UNIQUE KEY \`uk_${tableName}\` (${uniqueCols.map((c) => \`\`${c}\`\`).join(', ')})`;
     }
     createSql += `
       )`;
