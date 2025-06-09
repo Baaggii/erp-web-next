@@ -13,6 +13,8 @@ export default function CodingTablesPage() {
   const [idColumns, setIdColumns] = useState([]);
   const [nameColumn, setNameColumn] = useState('');
   const [otherColumns, setOtherColumns] = useState([]);
+  const [autoIncrementField, setAutoIncrementField] = useState('');
+  const [uniqueFields, setUniqueFields] = useState([]);
   const [sql, setSql] = useState('');
   const [uploading, setUploading] = useState(false);
 
@@ -41,6 +43,8 @@ export default function CodingTablesPage() {
       setNameColumn('');
       setSql('');
       setOtherColumns([]);
+      setAutoIncrementField('');
+      setUniqueFields([]);
     });
   }
 
@@ -53,6 +57,8 @@ export default function CodingTablesPage() {
     setNameColumn('');
     setSql('');
     setOtherColumns([]);
+    setAutoIncrementField('');
+    setUniqueFields([]);
   }
 
   function handleHeaderRowChange(e) {
@@ -64,6 +70,8 @@ export default function CodingTablesPage() {
     setNameColumn('');
     setSql('');
     setOtherColumns([]);
+    setAutoIncrementField('');
+    setUniqueFields([]);
   }
 
   function extractHeaders(wb, s, row) {
@@ -83,12 +91,49 @@ export default function CodingTablesPage() {
     return `'${String(v).replace(/'/g, "''")}'`;
   }
 
+  function detectType(name, vals) {
+    if (name.toLowerCase().includes('date')) return 'DATE';
+    for (const v of vals) {
+      if (v === undefined || v === '') continue;
+      if (!isNaN(Date.parse(v))) return 'DATE';
+      const n = Number(v);
+      if (!Number.isNaN(n)) {
+        if (String(v).includes('.')) return 'DECIMAL(10,2)';
+        return 'INT';
+      }
+      break;
+    }
+    return 'VARCHAR(255)';
+  }
+
+  function formatVal(val, type) {
+    if (val === undefined || val === null || val === '') return 'NULL';
+    if (type === 'DATE') {
+      const d = new Date(val);
+      if (Number.isNaN(d.getTime())) return 'NULL';
+      return `'${d.toISOString().slice(0, 10)}'`;
+    }
+    if (type === 'INT' || type.startsWith('DECIMAL')) return String(val);
+    return escapeSqlValue(val);
+  }
+
   function handleGenerateSql() {
-    if (!workbook || !sheet || !tableName || idColumns.length === 0 || !nameColumn) return;
+    if (!workbook || !sheet || !tableName || idColumns.length === 0 || !nameColumn)
+      return;
     const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheet], { header: 1 });
     const idx = Number(headerRow) - 1;
     const hdrs = data[idx] || [];
     const rows = data.slice(idx + 1);
+
+    const valuesByHeader = {};
+    hdrs.forEach((h, i) => {
+      valuesByHeader[h] = rows.map((r) => r[i]);
+    });
+    const colTypes = {};
+    hdrs.forEach((h) => {
+      colTypes[h] = detectType(h, valuesByHeader[h]);
+    });
+
     const idIdx = idColumns.map((c) => hdrs.indexOf(c));
     const nameIdx = hdrs.indexOf(nameColumn);
     if (idIdx.some((i) => i === -1) || nameIdx === -1) return;
@@ -97,8 +142,16 @@ export default function CodingTablesPage() {
 
     let sqlStr = `CREATE TABLE IF NOT EXISTS \`${tableName}\` (\n  id VARCHAR(255) PRIMARY KEY,\n  name VARCHAR(255)`;
     otherColumns.forEach((c) => {
-      sqlStr += `,\n  \`${c}\` VARCHAR(255)`;
+      sqlStr += `,\n  \`${c}\` ${colTypes[c]}`;
     });
+    if (autoIncrementField) {
+      sqlStr += `,\n  \`${autoIncrementField}\` INT AUTO_INCREMENT`;
+    }
+    if (uniqueFields.length > 0) {
+      sqlStr += `,\n  UNIQUE KEY uniq_${uniqueFields.join('_')} (${uniqueFields
+        .map((f) => `\`${f}\``)
+        .join(', ')})`;
+    }
     sqlStr += '\n);\n';
 
     rows.forEach((r) => {
@@ -106,15 +159,21 @@ export default function CodingTablesPage() {
       const id = idVals.join('-');
       const name = r[nameIdx];
       if (idVals.some((v) => v === undefined) || name === undefined) return;
-      const values = [escapeSqlValue(id), escapeSqlValue(name)];
       const cols = ['id', 'name'];
+      const vals = [escapeSqlValue(id), escapeSqlValue(name)];
       otherColumns.forEach((c, idx2) => {
-        values.push(escapeSqlValue(r[otherIdx[idx2]]));
         cols.push(`\`${c}\``);
+        vals.push(formatVal(r[otherIdx[idx2]], colTypes[c]));
       });
-      const updates = ['name = VALUES(name)'];
-      otherColumns.forEach((c) => updates.push(`\`${c}\` = VALUES(\`${c}\`)`));
-      sqlStr += `INSERT INTO \`${tableName}\` (${cols.join(", ")}) VALUES (${values.join(", ")}) ON DUPLICATE KEY UPDATE ${updates.join(", ")};\n`;
+      if (autoIncrementField) {
+        cols.push(`\`${autoIncrementField}\``);
+        vals.push('NULL');
+      }
+      const updates = cols
+        .filter((c) => c !== 'id' && c !== `\`${autoIncrementField}\``)
+        .map((c) => `${c} = VALUES(${c})`);
+      sqlStr +=
+        `INSERT INTO \`${tableName}\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
     });
     setSql(sqlStr);
   }
@@ -133,6 +192,8 @@ export default function CodingTablesPage() {
       formData.append('idColumns', JSON.stringify(idColumns));
       formData.append('nameColumn', nameColumn);
       formData.append('otherColumns', JSON.stringify(otherColumns));
+      formData.append('autoIncrementField', autoIncrementField);
+      formData.append('uniqueFields', JSON.stringify(uniqueFields));
       const res = await fetch('/api/coding_tables/upload', {
         method: 'POST',
         credentials: 'include',
@@ -250,12 +311,39 @@ export default function CodingTablesPage() {
                       {h}
                     </option>
                   ))}
-                </select>
-              </div>
-              <div>
-                <button onClick={handleGenerateSql}>Populate SQL</button>
-                <button onClick={handleUpload}>Create Coding Table</button>
-              </div>
+              </select>
+            </div>
+            <div>
+              Auto Increment Field:
+              <select value={autoIncrementField} onChange={(e) => setAutoIncrementField(e.target.value)}>
+                <option value="">--none--</option>
+                {headers.map((h) => (
+                  <option key={h} value={h}>
+                    {h}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              Unique Fields:
+              <select
+                multiple
+                value={uniqueFields}
+                onChange={(e) =>
+                  setUniqueFields(Array.from(e.target.selectedOptions, (o) => o.value))
+                }
+              >
+                {headers.map((h) => (
+                  <option key={h} value={h}>
+                    {h}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <button onClick={handleGenerateSql}>Populate SQL</button>
+              <button onClick={handleUpload}>Create Coding Table</button>
+            </div>
               {sql && (
                 <div>
                   <textarea value={sql} readOnly rows={10} cols={80} />
