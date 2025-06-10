@@ -14,6 +14,7 @@ export default function CodingTablesPage() {
   const [nameColumn, setNameColumn] = useState('');
   const [otherColumns, setOtherColumns] = useState([]);
   const [uniqueFields, setUniqueFields] = useState([]);
+  const [calcText, setCalcText] = useState('');
   const [sql, setSql] = useState('');
   const [uploading, setUploading] = useState(false);
 
@@ -124,6 +125,26 @@ export default function CodingTablesPage() {
     return d;
   }
 
+  function parseCalcField(line) {
+    const m = line.match(/^([A-Za-z0-9_]+)\s*:(.*)$/);
+    if (!m) return null;
+    const [, name, desc] = m;
+    const lower = desc.trim().toLowerCase();
+    if (lower.includes('age') && lower.includes('birth')) {
+      return { name, expression: 'TIMESTAMPDIFF(YEAR, birthdate, CURDATE())' };
+    }
+    return { name, expression: desc.trim() };
+  }
+
+  function parseCalcFields(text) {
+    return text
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l)
+      .map(parseCalcField)
+      .filter(Boolean);
+  }
+
   function formatVal(val, type) {
     if (val === undefined || val === null || val === '') return 'NULL';
     if (type === 'DATE') {
@@ -186,6 +207,10 @@ export default function CodingTablesPage() {
         if (notNullMap[c]) def += ' NOT NULL';
         defs.push(def);
       });
+    const calcFields = parseCalcFields(calcText);
+    calcFields.forEach((cf) => {
+      defs.push(`\`${cf.name}\` INT AS (${cf.expression}) STORED`);
+    });
     if (uniqueFields.length > 0) {
       defs.push(
         `UNIQUE KEY uniq_${uniqueFields.join('_')} (${uniqueFields
@@ -250,6 +275,7 @@ export default function CodingTablesPage() {
       formData.append('nameColumn', nameColumn);
       formData.append('otherColumns', JSON.stringify(otherColumns));
       formData.append('uniqueFields', JSON.stringify(uniqueFields));
+      formData.append('calcFields', JSON.stringify(parseCalcFields(calcText)));
       const res = await fetch('/api/coding_tables/upload', {
         method: 'POST',
         credentials: 'include',
@@ -352,30 +378,56 @@ export default function CodingTablesPage() {
               </div>
               <div>
                 Unique Fields:
-                <select
-                  multiple
-                  value={uniqueFields}
-                  onChange={(e) =>
-                    setUniqueFields(Array.from(e.target.selectedOptions, (o) => o.value))
-                  }
-                >
+                <div>
                   {headers.map((h) => (
-                    <option key={h} value={h}>
+                    <label key={h} style={{ marginRight: '0.5rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={uniqueFields.includes(h)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setUniqueFields([...uniqueFields, h]);
+                            setOtherColumns(otherColumns.filter((c) => c !== h));
+                          } else {
+                            setUniqueFields(uniqueFields.filter((c) => c !== h));
+                          }
+                        }}
+                      />
                       {h}
-                    </option>
+                    </label>
                   ))}
-                </select>
+                </div>
               </div>
               <div>
                 Other Columns:
-                <select multiple value={otherColumns} onChange={(e) =>
-                    setOtherColumns(Array.from(e.target.selectedOptions, (o) => o.value))}>
+                <div>
                   {headers.map((h) => (
-                    <option key={h} value={h}>
+                    <label key={h} style={{ marginRight: '0.5rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={otherColumns.includes(h)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setOtherColumns([...otherColumns, h]);
+                            setUniqueFields(uniqueFields.filter((c) => c !== h));
+                          } else {
+                            setOtherColumns(otherColumns.filter((c) => c !== h));
+                          }
+                        }}
+                      />
                       {h}
-                    </option>
+                    </label>
                   ))}
-                </select>
+                </div>
+              </div>
+              <div>
+                Calculated Fields (name: description):
+                <textarea
+                  rows={3}
+                  cols={40}
+                  value={calcText}
+                  onChange={(e) => setCalcText(e.target.value)}
+                />
               </div>
             <div>
               <button onClick={handleGenerateSql}>Populate SQL</button>

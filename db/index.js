@@ -520,6 +520,15 @@ export async function updateTableRow(tableName, id, updates) {
     return { company_id: companyId, module_key: moduleKey };
   }
 
+  if (tableName === 'role_module_permissions') {
+    const [companyId, roleId, moduleKey] = String(id).split('-');
+    await pool.query(
+      `UPDATE role_module_permissions SET ${setClause} WHERE company_id = ? AND role_id = ? AND module_key = ?`,
+      [...values, companyId, roleId, moduleKey],
+    );
+    return { company_id: companyId, role_id: roleId, module_key: moduleKey };
+  }
+
   await pool.query(`UPDATE ?? SET ${setClause} WHERE id = ?`, [tableName, ...values, id]);
   return { id };
 }
@@ -545,6 +554,15 @@ export async function deleteTableRow(tableName, id) {
       [companyId, moduleKey],
     );
     return { company_id: companyId, module_key: moduleKey };
+  }
+
+  if (tableName === 'role_module_permissions') {
+    const [companyId, roleId, moduleKey] = String(id).split('-');
+    await pool.query(
+      'DELETE FROM role_module_permissions WHERE company_id = ? AND role_id = ? AND module_key = ?',
+      [companyId, roleId, moduleKey],
+    );
+    return { company_id: companyId, role_id: roleId, module_key: moduleKey };
   }
 
   await pool.query('DELETE FROM ?? WHERE id = ?', [tableName, id]);
