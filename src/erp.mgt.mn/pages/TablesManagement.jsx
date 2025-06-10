@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import RowFormModal from '../components/RowFormModal.jsx';
 
 export default function TablesManagement() {
   const [tables, setTables] = useState([]);
@@ -10,6 +11,9 @@ export default function TablesManagement() {
   const [filters, setFilters] = useState({});
   const [sort, setSort] = useState({ column: '', dir: 'asc' });
   const [selectedRows, setSelectedRows] = useState([]);
+  const [columns, setColumns] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [editingRow, setEditingRow] = useState(null);
 
   useEffect(() => {
     fetch('/api/tables', { credentials: 'include' })
@@ -23,6 +27,17 @@ export default function TablesManagement() {
       loadRows(selectedTable);
     }
   }, [selectedTable, page, perPage, filters, sort]);
+
+  useEffect(() => {
+    if (!selectedTable) {
+      setColumns([]);
+      return;
+    }
+    fetch(`/api/tables/${selectedTable}/columns`, { credentials: 'include' })
+      .then((res) => res.json())
+      .then(setColumns)
+      .catch((err) => console.error('Failed to load columns', err));
+  }, [selectedTable]);
 
   function buildQuery() {
     const params = new URLSearchParams();
@@ -63,25 +78,27 @@ export default function TablesManagement() {
     }
   }
 
-  async function handleEdit(row) {
-      const updates = {};
-      for (const key of Object.keys(row)) {
-        if (key === 'id') continue;
-        const val = prompt(`${key}?`, row[key]);
-        if (val !== null && val !== String(row[key])) {
-          updates[key] = val;
-        }
-      }
-      if (Object.keys(updates).length === 0) return;
+  function handleEdit(row) {
+    setEditingRow(row);
+    setShowForm(true);
+  }
 
-      let rowId = row.id;
+  function handleAdd() {
+    setEditingRow(null);
+    setShowForm(true);
+  }
+
+  async function handleFormSubmit(values) {
+    if (!selectedTable) return;
+    if (editingRow) {
+      let rowId = editingRow.id;
       if (rowId === undefined) {
         if (selectedTable === 'company_module_licenses') {
-          rowId = `${row.company_id}-${row.module_key}`;
+          rowId = `${editingRow.company_id}-${editingRow.module_key}`;
         } else if (selectedTable === 'role_module_permissions') {
-          rowId = `${row.company_id}-${row.role_id}-${row.module_key}`;
+          rowId = `${editingRow.company_id}-${editingRow.role_id}-${editingRow.module_key}`;
         } else if (selectedTable === 'user_companies') {
-          rowId = `${row.empid}-${row.company_id}`;
+          rowId = `${editingRow.empid}-${editingRow.company_id}`;
         } else {
           alert('Cannot update row: no id column');
           return;
@@ -93,35 +110,27 @@ export default function TablesManagement() {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify(updates),
+          body: JSON.stringify(values),
         },
       );
-    if (!res.ok) {
-      alert('Update failed');
-      return;
+      if (!res.ok) {
+        alert('Update failed');
+        return;
+      }
+    } else {
+      const res = await fetch(`/api/tables/${selectedTable}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(values),
+      });
+      if (!res.ok) {
+        alert('Insert failed');
+        return;
+      }
     }
-    loadRows(selectedTable);
-  }
-
-  async function handleAdd() {
-    if (rows.length === 0) return;
-    const data = {};
-    for (const key of Object.keys(rows[0])) {
-      if (key === 'id') continue;
-      const val = prompt(`${key}?`);
-      if (val === null) return;
-      data[key] = val;
-    }
-    const res = await fetch(`/api/tables/${selectedTable}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) {
-      alert('Insert failed');
-      return;
-    }
+    setShowForm(false);
+    setEditingRow(null);
     loadRows(selectedTable);
   }
 
@@ -249,7 +258,7 @@ export default function TablesManagement() {
           </option>
         ))}
       </select>
-      {rows.length > 0 && (
+      {columns.length > 0 && (
         <>
           <button onClick={handleAdd} style={{ marginTop: '0.5rem' }}>
             Add Row
@@ -269,7 +278,7 @@ export default function TablesManagement() {
             <thead>
               <tr style={{ backgroundColor: '#e5e7eb' }}>
                 <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}></th>
-                {Object.keys(rows[0]).map((k) => (
+                {columns.map((k) => (
                   <th
                     key={k}
                     style={{ padding: '0.5rem', border: '1px solid #d1d5db', cursor: 'pointer' }}
@@ -283,7 +292,7 @@ export default function TablesManagement() {
               </tr>
               <tr>
                 <th style={{ padding: '0.25rem', border: '1px solid #d1d5db' }}></th>
-                {Object.keys(rows[0]).map((k) => (
+                {columns.map((k) => (
                   <th key={k} style={{ padding: '0.25rem', border: '1px solid #d1d5db' }}>
                     <input
                       value={filters[k] || ''}
@@ -316,7 +325,7 @@ export default function TablesManagement() {
                       onChange={() => toggleRow(r)}
                     />
                   </td>
-                  {Object.keys(rows[0]).map((k) => (
+                  {columns.map((k) => (
                     <td key={k} style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                       {String(r[k])}
                     </td>
@@ -365,6 +374,16 @@ export default function TablesManagement() {
         </div>
         </>
       )}
+      <RowFormModal
+        visible={showForm}
+        onCancel={() => {
+          setShowForm(false);
+          setEditingRow(null);
+        }}
+        onSubmit={handleFormSubmit}
+        columns={columns}
+        row={editingRow}
+      />
     </div>
   );
 }
