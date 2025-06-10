@@ -207,6 +207,9 @@ export default function TablesManagement() {
             </tbody>
           </table>
           <div style={{ marginTop: '0.5rem' }}>
+            <button disabled={page <= 1} onClick={() => handlePageChange(1)}>
+              « First
+            </button>
             <button disabled={page <= 1} onClick={() => handlePageChange(page - 1)}>
               Prev
             </button>
@@ -218,6 +221,12 @@ export default function TablesManagement() {
               onClick={() => handlePageChange(page + 1)}
             >
               Next
+            </button>
+            <button
+              disabled={page >= Math.ceil(total / perPage)}
+              onClick={() => handlePageChange(Math.ceil(total / perPage))}
+            >
+              Last »
             </button>
           </div>
         </>

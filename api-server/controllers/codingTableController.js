@@ -2,6 +2,24 @@ import fs from 'fs';
 import xlsx from 'xlsx';
 import { pool } from '../../db/index.js';
 
+function parseExcelDate(val) {
+  if (typeof val === 'number') {
+    const base = new Date(Date.UTC(1899, 11, 30));
+    base.setUTCDate(base.getUTCDate() + val);
+    return base;
+  }
+  if (typeof val === 'string') {
+    const m = val.match(/^(\d{4})[.-](\d{1,2})[.-](\d{1,2})$/);
+    if (m) {
+      const [, y, mo, d] = m;
+      return new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d)));
+    }
+  }
+  const d = new Date(val);
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+}
+
 export async function uploadCodingTable(req, res, next) {
   try {
     const {
@@ -102,8 +120,8 @@ export async function uploadCodingTable(req, res, next) {
         updates.push(`\`${nameColumn}\` = VALUES(\`${nameColumn}\`)`);
         let val = nameVal;
         if (columnTypes[nameColumn] === 'DATE') {
-          const d = new Date(val);
-          val = Number.isNaN(d.getTime()) ? null : d;
+          const d = parseExcelDate(val);
+          val = d || null;
         }
         values.push(val === undefined ? null : val);
       }
@@ -113,8 +131,8 @@ export async function uploadCodingTable(req, res, next) {
         placeholders.push('?');
         let val = r[c];
         if (columnTypes[c] === 'DATE') {
-          const d = new Date(val);
-          val = Number.isNaN(d.getTime()) ? null : d;
+          const d = parseExcelDate(val);
+          val = d || null;
         }
         values.push(val === undefined ? null : val);
         updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
@@ -125,8 +143,8 @@ export async function uploadCodingTable(req, res, next) {
         placeholders.push('?');
         let val = r[c];
         if (columnTypes[c] === 'DATE') {
-          const d = new Date(val);
-          val = Number.isNaN(d.getTime()) ? null : d;
+          const d = parseExcelDate(val);
+          val = d || null;
         }
         values.push(val === undefined ? null : val);
         updates.push(`\`${c}\` = VALUES(\`${c}\`)`);

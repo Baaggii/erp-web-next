@@ -106,11 +106,29 @@ export default function CodingTablesPage() {
     return 'VARCHAR(255)';
   }
 
+  function parseExcelDate(val) {
+    if (typeof val === 'number') {
+      const base = new Date(Date.UTC(1899, 11, 30));
+      base.setUTCDate(base.getUTCDate() + val);
+      return base;
+    }
+    if (typeof val === 'string') {
+      const m = val.match(/^(\d{4})[.-](\d{1,2})[.-](\d{1,2})$/);
+      if (m) {
+        const [, y, mo, d] = m;
+        return new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d)));
+      }
+    }
+    const d = new Date(val);
+    if (Number.isNaN(d.getTime())) return null;
+    return d;
+  }
+
   function formatVal(val, type) {
     if (val === undefined || val === null || val === '') return 'NULL';
     if (type === 'DATE') {
-      const d = new Date(val);
-      if (Number.isNaN(d.getTime())) return 'NULL';
+      const d = parseExcelDate(val);
+      if (!d) return 'NULL';
       return `'${d.toISOString().slice(0, 10)}'`;
     }
     if (type === 'INT' || type.startsWith('DECIMAL')) return String(val);
