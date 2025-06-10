@@ -38,6 +38,7 @@ This document outlines the roadmap, scope, architecture, milestones, and deliver
 6. **Coding Tables Upload**
    - Upload Excel sheets to create simple lookup tables.
    - Support user-friendly descriptions for calculated fields (e.g. `age - today - birthdate`).
+   - Fields using `CURDATE()` or `NOW()` are computed during import because MySQL generated columns must be deterministic.
 
 ## 4. Architecture & Tech Stack
 - **Front-end**  

@@ -125,9 +125,11 @@ export default function CodingTablesPage() {
     return d;
   }
 
-  // Convert a user-friendly description of a calculated field into a
-  // SQL expression. The input line may use ":" or "-" as the separator
-  // between the field name and its description.
+  // Convert a user-friendly description of a calculated field. The
+  // returned object contains either a SQL expression (for deterministic
+  // functions) or info about how to compute the value at import time.
+  // Lines may use ":" or "-" as the separator between the field name
+  // and the description.
   function parseCalcField(line) {
     const m = line.match(/^([A-Za-z0-9_]+)\s*[:\-]\s*(.+)$/);
     if (!m) return null;
@@ -150,17 +152,33 @@ export default function CodingTablesPage() {
     match = desc.match(/^current year\s*-\s*year\(([^)]+)\)$/i);
     if (match) {
       const col = match[1];
-      return { name, expression: `YEAR(CURDATE()) - YEAR(${col})` };
+      const evalFn = (val) => {
+        const d = parseExcelDate(val);
+        if (!d) return null;
+        return new Date().getUTCFullYear() - d.getUTCFullYear();
+      };
+      return { name, column: col, evalFn };
     }
 
     // Fallback heuristics for age calculations.
     if (lower.includes('age') && lower.includes('birth')) {
       const colMatch = desc.match(/\b([A-Za-z0-9_]*birth[A-Za-z0-9_]*)\b/i);
       const col = colMatch ? colMatch[1] : 'birthdate';
-      return { name, expression: `TIMESTAMPDIFF(YEAR, ${col}, CURDATE())` };
+      const evalFn = (val) => {
+        const d = parseExcelDate(val);
+        if (!d) return null;
+        let years = new Date().getUTCFullYear() - d.getUTCFullYear();
+        const mDiff = new Date().getUTCMonth() - d.getUTCMonth();
+        const dayDiff = new Date().getUTCDate() - d.getUTCDate();
+        if (mDiff < 0 || (mDiff === 0 && dayDiff < 0)) years--;
+        return years;
+      };
+      return { name, column: col, evalFn };
     }
 
-    // Default: treat the description as a raw SQL expression.
+    // Default: treat the description as a raw SQL expression. It will be used
+    // as a generated column if it does not reference nondeterministic
+    // functions like CURDATE.
     return { name, expression: desc };
   }
 
@@ -237,7 +255,11 @@ export default function CodingTablesPage() {
       });
     const calcFields = parseCalcFields(calcText);
     calcFields.forEach((cf) => {
-      defs.push(`\`${cf.name}\` INT AS (${cf.expression}) STORED`);
+      if (cf.expression) {
+        defs.push(`\`${cf.name}\` INT AS (${cf.expression}) STORED`);
+      } else {
+        defs.push(`\`${cf.name}\` INT`);
+      }
     });
     if (uniqueFields.length > 0) {
       defs.push(
@@ -281,6 +303,17 @@ export default function CodingTablesPage() {
           cols.push(`\`${c}\``);
           vals.push(formatVal(v, colTypes[c]));
         });
+
+      // Handle calculated fields that require evaluation at import time
+      calcFields.forEach((cf) => {
+        if (cf.expression) return; // generated column
+        const ci = hdrs.indexOf(cf.column);
+        const v = ci === -1 ? null : r[ci];
+        const computed = cf.evalFn ? cf.evalFn(v) : null;
+        cols.push(`\`${cf.name}\``);
+        vals.push(computed === null || computed === undefined ? 'NULL' : String(computed));
+        if (computed !== null && computed !== undefined) hasData = true;
+      });
       if (!hasData) continue;
       const updates = cols.map((c) => `${c} = VALUES(${c})`);
       sqlStr += `INSERT INTO \`${tableName}\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
