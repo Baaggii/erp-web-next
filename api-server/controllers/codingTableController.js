@@ -30,9 +30,11 @@ export async function uploadCodingTable(req, res, next) {
       headerRow,
       otherColumns,
       uniqueFields,
+      calcFields,
     } = req.body;
     const extraCols = otherColumns ? JSON.parse(otherColumns) : [];
     const uniqueCols = uniqueFields ? JSON.parse(uniqueFields) : [];
+    const calcDefs = calcFields ? JSON.parse(calcFields) : [];
     if (!req.file) {
       return res.status(400).json({ error: 'File required' });
     }
@@ -109,6 +111,9 @@ export async function uploadCodingTable(req, res, next) {
       let def = `\`${c}\` ${columnTypes[c] || 'VARCHAR(255)'}`;
       if (notNullMap[c]) def += ' NOT NULL';
       defs.push(def);
+    });
+    calcDefs.forEach((cf) => {
+      defs.push(`\`${cf.name}\` INT AS (${cf.expression}) STORED`);
     });
     if (uniqueCols.length > 0) {
       defs.push(`UNIQUE KEY uniq_${uniqueCols.join('_')} (${uniqueCols.map((c) => `\`${c}\``).join(', ')})`);

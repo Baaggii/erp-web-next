@@ -78,6 +78,8 @@ export default function TablesManagement() {
       if (rowId === undefined) {
         if (selectedTable === 'company_module_licenses') {
           rowId = `${row.company_id}-${row.module_key}`;
+        } else if (selectedTable === 'role_module_permissions') {
+          rowId = `${row.company_id}-${row.role_id}-${row.module_key}`;
         } else {
           alert('Cannot update row: no id column');
           return;
@@ -127,6 +129,8 @@ export default function TablesManagement() {
     if (rowId === undefined) {
       if (selectedTable === 'company_module_licenses') {
         rowId = `${row.company_id}-${row.module_key}`;
+      } else if (selectedTable === 'role_module_permissions') {
+        rowId = `${row.company_id}-${row.role_id}-${row.module_key}`;
       } else {
         alert('Cannot delete row: no id column');
         return;
@@ -175,6 +179,9 @@ export default function TablesManagement() {
     if (selectedTable === 'company_module_licenses') {
       return `${row.company_id}-${row.module_key}`;
     }
+    if (selectedTable === 'role_module_permissions') {
+      return `${row.company_id}-${row.role_id}-${row.module_key}`;
+    }
     return JSON.stringify(row);
   }
 
@@ -203,6 +210,8 @@ export default function TablesManagement() {
       if (rowId === undefined) {
         if (selectedTable === 'company_module_licenses') {
           rowId = `${r.company_id}-${r.module_key}`;
+        } else if (selectedTable === 'role_module_permissions') {
+          rowId = `${r.company_id}-${r.role_id}-${r.module_key}`;
         } else {
           alert('Cannot delete row: no id column');
           continue;
@@ -284,6 +293,8 @@ export default function TablesManagement() {
                     r.id ??
                       (selectedTable === 'company_module_licenses'
                         ? `${r.company_id}-${r.module_key}`
+                        : selectedTable === 'role_module_permissions'
+                        ? `${r.company_id}-${r.role_id}-${r.module_key}`
                         : JSON.stringify(r))
                   }
                 >
