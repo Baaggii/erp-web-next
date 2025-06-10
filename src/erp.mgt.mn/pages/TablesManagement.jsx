@@ -120,6 +120,28 @@ export default function TablesManagement() {
     loadRows(selectedTable);
   }
 
+  async function handleDelete(row) {
+    if (!confirm('Delete row?')) return;
+    let rowId = row.id;
+    if (rowId === undefined) {
+      if (selectedTable === 'company_module_licenses') {
+        rowId = `${row.company_id}-${row.module_key}`;
+      } else {
+        alert('Cannot delete row: no id column');
+        return;
+      }
+    }
+    const res = await fetch(
+      `/api/tables/${selectedTable}/${encodeURIComponent(rowId)}`,
+      { method: 'DELETE', credentials: 'include' },
+    );
+    if (!res.ok) {
+      alert('Delete failed');
+      return;
+    }
+    loadRows(selectedTable);
+  }
+
   function handleSort(col) {
     if (sort.column === col) {
       setSort({ column: col, dir: sort.dir === 'asc' ? 'desc' : 'asc' });
@@ -201,6 +223,7 @@ export default function TablesManagement() {
                   ))}
                   <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                     <button onClick={() => handleEdit(r)}>Edit</button>
+                    <button onClick={() => handleDelete(r)} style={{ marginLeft: '0.5rem' }}>Delete</button>
                   </td>
                 </tr>
               ))}

@@ -536,3 +536,17 @@ export async function insertTableRow(tableName, row) {
   );
   return { id: result.insertId };
 }
+
+export async function deleteTableRow(tableName, id) {
+  if (tableName === 'company_module_licenses') {
+    const [companyId, moduleKey] = String(id).split('-');
+    await pool.query(
+      'DELETE FROM company_module_licenses WHERE company_id = ? AND module_key = ?',
+      [companyId, moduleKey],
+    );
+    return { company_id: companyId, module_key: moduleKey };
+  }
+
+  await pool.query('DELETE FROM ?? WHERE id = ?', [tableName, id]);
+  return { id };
+}

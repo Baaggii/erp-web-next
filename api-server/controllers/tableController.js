@@ -3,6 +3,7 @@ import {
   listTableRows,
   updateTableRow,
   insertTableRow,
+  deleteTableRow,
 } from '../../db/index.js';
 
 export async function getTables(req, res, next) {
@@ -42,6 +43,15 @@ export async function addRow(req, res, next) {
   try {
     const result = await insertTableRow(req.params.table, req.body);
     res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function deleteRow(req, res, next) {
+  try {
+    await deleteTableRow(req.params.table, req.params.id);
+    res.sendStatus(204);
   } catch (err) {
     next(err);
   }
