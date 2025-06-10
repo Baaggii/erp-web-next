@@ -470,9 +470,36 @@ export async function listDatabaseTables() {
 /**
  * Get up to 50 rows from a table
  */
-export async function listTableRows(tableName) {
-  const [rows] = await pool.query('SELECT * FROM ?? LIMIT 50', [tableName]);
-  return rows;
+export async function listTableRows(
+  tableName,
+  { page = 1, perPage = 50, filters = {}, sort = {} } = {},
+) {
+  const offset = (Number(page) - 1) * Number(perPage);
+  const filterClauses = [];
+  const params = [tableName];
+  for (const [field, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== '') {
+      filterClauses.push(`\`${field}\` LIKE ?`);
+      params.push(`%${value}%`);
+    }
+  }
+  const where = filterClauses.length > 0 ? `WHERE ${filterClauses.join(' AND ')}` : '';
+  let order = '';
+  if (sort.column) {
+    const dir = sort.dir && String(sort.dir).toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+    order = `ORDER BY \`${sort.column}\` ${dir}`;
+  }
+  params.push(Number(perPage), offset);
+  const [rows] = await pool.query(
+    `SELECT * FROM ?? ${where} ${order} LIMIT ? OFFSET ?`,
+    params,
+  );
+  const countParams = [tableName, ...params.slice(1, params.length - 2)];
+  const [countRows] = await pool.query(
+    `SELECT COUNT(*) AS count FROM ?? ${where}`,
+    countParams,
+  );
+  return { rows, count: countRows[0].count };
 }
 
 /**
@@ -495,4 +522,17 @@ export async function updateTableRow(tableName, id, updates) {
 
   await pool.query(`UPDATE ?? SET ${setClause} WHERE id = ?`, [tableName, ...values, id]);
   return { id };
+}
+
+export async function insertTableRow(tableName, row) {
+  const keys = Object.keys(row);
+  if (keys.length === 0) return null;
+  const values = Object.values(row);
+  const cols = keys.map((k) => `\`${k}\``).join(', ');
+  const placeholders = keys.map(() => '?').join(', ');
+  const [result] = await pool.query(
+    `INSERT INTO ?? (${cols}) VALUES (${placeholders})`,
+    [tableName, ...values],
+  );
+  return { id: result.insertId };
 }
