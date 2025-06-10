@@ -467,11 +467,6 @@ export async function listDatabaseTables() {
   return rows.map((r) => Object.values(r)[0]);
 }
 
-export async function listTableColumns(tableName) {
-  const [rows] = await pool.query('SHOW COLUMNS FROM ??', [tableName]);
-  return rows.map((r) => r.Field);
-}
-
 /**
  * Get up to 50 rows from a table
  */
