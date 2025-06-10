@@ -91,7 +91,6 @@ export default function CodingTablesPage() {
     if (name.toLowerCase().includes('date')) return 'DATE';
     for (const v of vals) {
       if (v === undefined || v === '') continue;
-      if (!isNaN(Date.parse(v))) return 'DATE';
       const n = Number(v);
       if (!Number.isNaN(n)) {
         if (String(v).includes('.')) return 'DECIMAL(10,2)';
@@ -133,7 +132,14 @@ export default function CodingTablesPage() {
     const nameIdx = hdrs.indexOf(nameColumn);
     if (idColumn && idIdx === -1) return;
     if (nameColumn && nameIdx === -1) return;
-    const otherIdx = otherColumns.map((c) => hdrs.indexOf(c));
+    const uniqueOnly = uniqueFields.filter(
+      (c) => c !== idColumn && c !== nameColumn && !otherColumns.includes(c)
+    );
+    const uniqueIdx = uniqueOnly.map((c) => hdrs.indexOf(c));
+    if (uniqueIdx.some((i) => i === -1)) return;
+    const otherIdx = otherColumns
+      .filter((c) => c !== idColumn && c !== nameColumn && !uniqueOnly.includes(c))
+      .map((c) => hdrs.indexOf(c));
     if (otherIdx.some((i) => i === -1)) return;
 
     let defs = [];
@@ -143,9 +149,14 @@ export default function CodingTablesPage() {
     if (nameColumn) {
       defs.push(`\`${nameColumn}\` ${colTypes[nameColumn]}`);
     }
-    otherColumns.forEach((c) => {
+    uniqueOnly.forEach((c) => {
       defs.push(`\`${c}\` ${colTypes[c]}`);
     });
+    otherColumns
+      .filter((c) => c !== idColumn && c !== nameColumn && !uniqueOnly.includes(c))
+      .forEach((c) => {
+        defs.push(`\`${c}\` ${colTypes[c]}`);
+      });
     if (uniqueFields.length > 0) {
       defs.push(
         `UNIQUE KEY uniq_${uniqueFields.join('_')} (${uniqueFields
@@ -165,10 +176,17 @@ export default function CodingTablesPage() {
           vals.push(formatVal(nameVal, colTypes[nameColumn]));
         }
       }
-      otherColumns.forEach((c, idx2) => {
+      uniqueOnly.forEach((c, idx2) => {
         cols.push(`\`${c}\``);
-        vals.push(formatVal(r[otherIdx[idx2]], colTypes[c]));
+        vals.push(formatVal(r[uniqueIdx[idx2]], colTypes[c]));
       });
+      otherColumns
+        .filter((c) => c !== idColumn && c !== nameColumn && !uniqueOnly.includes(c))
+        .forEach((c, idx2) => {
+          const ci = hdrs.indexOf(c);
+          cols.push(`\`${c}\``);
+          vals.push(formatVal(r[ci], colTypes[c]));
+        });
       if (cols.length === 0) return;
       const updates = cols.map((c) => `${c} = VALUES(${c})`);
       sqlStr += `INSERT INTO \`${tableName}\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
@@ -292,6 +310,22 @@ export default function CodingTablesPage() {
                 </select>
               </div>
               <div>
+                Unique Fields:
+                <select
+                  multiple
+                  value={uniqueFields}
+                  onChange={(e) =>
+                    setUniqueFields(Array.from(e.target.selectedOptions, (o) => o.value))
+                  }
+                >
+                  {headers.map((h) => (
+                    <option key={h} value={h}>
+                      {h}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
                 Other Columns:
                 <select multiple value={otherColumns} onChange={(e) =>
                     setOtherColumns(Array.from(e.target.selectedOptions, (o) => o.value))}>
@@ -300,24 +334,8 @@ export default function CodingTablesPage() {
                       {h}
                     </option>
                   ))}
-              </select>
-            </div>
-            <div>
-              Unique Fields:
-              <select
-                multiple
-                value={uniqueFields}
-                onChange={(e) =>
-                  setUniqueFields(Array.from(e.target.selectedOptions, (o) => o.value))
-                }
-              >
-                {headers.map((h) => (
-                  <option key={h} value={h}>
-                    {h}
-                  </option>
-                ))}
-              </select>
-            </div>
+                </select>
+              </div>
             <div>
               <button onClick={handleGenerateSql}>Populate SQL</button>
               <button onClick={handleUpload}>Create Coding Table</button>
