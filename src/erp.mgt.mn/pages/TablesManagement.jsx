@@ -4,6 +4,7 @@ export default function TablesManagement() {
   const [tables, setTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState('');
   const [rows, setRows] = useState([]);
+  const [idColumn, setIdColumn] = useState('id');
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
   const [total, setTotal] = useState(0);
@@ -45,6 +46,7 @@ export default function TablesManagement() {
       .then((data) => {
         setRows(data.rows);
         setTotal(data.count);
+        if (data.idColumn) setIdColumn(data.idColumn);
       })
       .catch((err) => console.error('Failed to fetch rows', err));
   }
@@ -55,6 +57,7 @@ export default function TablesManagement() {
     setPage(1);
     setFilters({});
     setSort({ column: '', dir: 'asc' });
+    setIdColumn('id');
     if (t) {
       loadRows(t);
     } else {
@@ -66,7 +69,7 @@ export default function TablesManagement() {
   async function handleEdit(row) {
       const updates = {};
       for (const key of Object.keys(row)) {
-        if (key === 'id') continue;
+        if (key === idColumn) continue;
         const val = prompt(`${key}?`, row[key]);
         if (val !== null && val !== String(row[key])) {
           updates[key] = val;
@@ -74,7 +77,7 @@ export default function TablesManagement() {
       }
       if (Object.keys(updates).length === 0) return;
 
-      let rowId = row.id;
+      let rowId = row[idColumn];
       if (rowId === undefined) {
         if (selectedTable === 'company_module_licenses') {
           rowId = `${row.company_id}-${row.module_key}`;
@@ -105,7 +108,7 @@ export default function TablesManagement() {
     if (rows.length === 0) return;
     const data = {};
     for (const key of Object.keys(rows[0])) {
-      if (key === 'id') continue;
+      if (key === idColumn) continue;
       const val = prompt(`${key}?`);
       if (val === null) return;
       data[key] = val;
@@ -125,7 +128,7 @@ export default function TablesManagement() {
 
   async function handleDelete(row) {
     if (!confirm('Delete row?')) return;
-    let rowId = row.id;
+    let rowId = row[idColumn];
     if (rowId === undefined) {
       if (selectedTable === 'company_module_licenses') {
         rowId = `${row.company_id}-${row.module_key}`;
@@ -175,7 +178,7 @@ export default function TablesManagement() {
   }
 
   function getRowKey(row) {
-    if (row.id !== undefined) return String(row.id);
+    if (row[idColumn] !== undefined) return String(row[idColumn]);
     if (selectedTable === 'company_module_licenses') {
       return `${row.company_id}-${row.module_key}`;
     }
@@ -206,7 +209,7 @@ export default function TablesManagement() {
     for (const r of rows) {
       const key = getRowKey(r);
       if (!selectedRows.includes(key)) continue;
-      let rowId = r.id;
+      let rowId = r[idColumn];
       if (rowId === undefined) {
         if (selectedTable === 'company_module_licenses') {
           rowId = `${r.company_id}-${r.module_key}`;
@@ -290,7 +293,7 @@ export default function TablesManagement() {
               {rows.map((r) => (
                 <tr
                   key={
-                    r.id ??
+                    r[idColumn] ??
                       (selectedTable === 'company_module_licenses'
                         ? `${r.company_id}-${r.module_key}`
                         : selectedTable === 'role_module_permissions'
