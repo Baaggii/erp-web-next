@@ -1,6 +1,7 @@
 import {
   listDatabaseTables,
   listTableRows,
+  listTableColumns,
   updateTableRow,
   insertTableRow,
   deleteTableRow,
@@ -10,6 +11,15 @@ export async function getTables(req, res, next) {
   try {
     const tables = await listDatabaseTables();
     res.json(tables);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getTableColumns(req, res, next) {
+  try {
+    const cols = await listTableColumns(req.params.table);
+    res.json(cols);
   } catch (err) {
     next(err);
   }
