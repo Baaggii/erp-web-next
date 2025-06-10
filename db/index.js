@@ -529,6 +529,15 @@ export async function updateTableRow(tableName, id, updates) {
     return { company_id: companyId, role_id: roleId, module_key: moduleKey };
   }
 
+  if (tableName === 'user_companies') {
+    const [empId, companyId] = String(id).split('-');
+    await pool.query(
+      `UPDATE user_companies SET ${setClause} WHERE empid = ? AND company_id = ?`,
+      [...values, empId, companyId],
+    );
+    return { empid: empId, company_id: companyId };
+  }
+
   await pool.query(`UPDATE ?? SET ${setClause} WHERE id = ?`, [tableName, ...values, id]);
   return { id };
 }
@@ -563,6 +572,15 @@ export async function deleteTableRow(tableName, id) {
       [companyId, roleId, moduleKey],
     );
     return { company_id: companyId, role_id: roleId, module_key: moduleKey };
+  }
+
+  if (tableName === 'user_companies') {
+    const [empId, companyId] = String(id).split('-');
+    await pool.query(
+      'DELETE FROM user_companies WHERE empid = ? AND company_id = ?',
+      [empId, companyId],
+    );
+    return { empid: empId, company_id: companyId };
   }
 
   await pool.query('DELETE FROM ?? WHERE id = ?', [tableName, id]);
