@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import RowFormModal from '../components/RowFormModal.jsx';
 
 export default function TablesManagement() {
   const [tables, setTables] = useState([]);
