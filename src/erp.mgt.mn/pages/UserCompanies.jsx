@@ -8,7 +8,6 @@ export default function UserCompanies() {
   const { company } = useContext(AuthContext);
   const [usersList, setUsersList] = useState([]);
   const [companiesList, setCompaniesList] = useState([]);
-  const [rolesList, setRolesList] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
 
@@ -33,17 +32,14 @@ export default function UserCompanies() {
   useEffect(() => {
     async function loadLists() {
       try {
-        const [uRes, cRes, rRes] = await Promise.all([
+        const [uRes, cRes] = await Promise.all([
           fetch('/api/users', { credentials: 'include' }),
-          fetch('/api/companies', { credentials: 'include' }),
-          fetch('/api/user_roles', { credentials: 'include' })
+          fetch('/api/companies', { credentials: 'include' })
         ]);
         const users = uRes.ok ? await uRes.json() : [];
         const companies = cRes.ok ? await cRes.json() : [];
-        const roles = rRes.ok ? await rRes.json() : [];
         setUsersList(users);
         setCompaniesList(companies);
-        setRolesList(roles);
       } catch (err) {
         console.error('Error loading lists:', err);
       }
@@ -156,13 +152,12 @@ export default function UserCompanies() {
         assignment={editing}
         users={usersList}
         companies={companiesList}
-        roles={rolesList}
       />
     </div>
   );
 }
 
-function AssignmentFormModal({ visible, onCancel, onSubmit, assignment, users, companies, roles }) {
+function AssignmentFormModal({ visible, onCancel, onSubmit, assignment, users, companies }) {
   const [empid, setEmpid] = useState(assignment?.empid || '');
   const [companyId, setCompanyId] = useState(assignment?.company_id || '');
   const [roleId, setRoleId] = useState(String(assignment?.role_id || 2));
@@ -254,20 +249,8 @@ function AssignmentFormModal({ visible, onCancel, onSubmit, assignment, users, c
               required
               style={{ width: '100%', padding: '0.5rem' }}
             >
-              {roles.length > 0
-                ? roles.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name}
-                    </option>
-                  ))
-                : [
-                    <option key="1" value="1">
-                      admin
-                    </option>,
-                    <option key="2" value="2">
-                      user
-                    </option>,
-                  ]}
+              <option value="1">admin</option>
+              <option value="2">user</option>
             </select>
           </div>
 
