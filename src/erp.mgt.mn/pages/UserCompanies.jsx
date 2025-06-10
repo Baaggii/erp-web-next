@@ -163,10 +163,11 @@ function AssignmentFormModal({ visible, onCancel, onSubmit, assignment, users, c
   const [roleId, setRoleId] = useState(String(assignment?.role_id || 2));
 
   useEffect(() => {
+    if (!visible) return;
     setEmpid(assignment?.empid || '');
     setCompanyId(assignment?.company_id || '');
     setRoleId(String(assignment?.role_id || 2));
-  }, [assignment]);
+  }, [assignment, visible]);
 
   if (!visible) return null;
 

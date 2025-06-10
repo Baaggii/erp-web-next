@@ -10,12 +10,13 @@ export default function RowFormModal({ visible, onCancel, onSubmit, columns, row
   });
 
   useEffect(() => {
+    if (!visible) return;
     const vals = {};
     columns.forEach((c) => {
       vals[c] = row ? String(row[c] ?? '') : '';
     });
     setFormVals(vals);
-  }, [row, columns]);
+  }, [row, columns, visible]);
 
   if (!visible) return null;
 
