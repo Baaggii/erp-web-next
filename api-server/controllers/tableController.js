@@ -18,9 +18,10 @@ export async function getTables(req, res, next) {
 export async function getTableRows(req, res, next) {
   try {
     const { page, perPage, sort, dir, ...filters } = req.query;
+    const rowsPerPage = Math.min(Number(perPage) || 50, 500);
     const result = await listTableRows(req.params.table, {
       page: Number(page) || 1,
-      perPage: Number(perPage) || 50,
+      perPage: rowsPerPage,
       filters,
       sort: { column: sort, dir },
     });
