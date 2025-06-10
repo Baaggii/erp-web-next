@@ -9,6 +9,7 @@ export default function TablesManagement() {
   const [total, setTotal] = useState(0);
   const [filters, setFilters] = useState({});
   const [sort, setSort] = useState({ column: '', dir: 'asc' });
+  const [selectedRows, setSelectedRows] = useState([]);
 
   useEffect(() => {
     fetch('/api/tables', { credentials: 'include' })
@@ -139,6 +140,7 @@ export default function TablesManagement() {
       alert('Delete failed');
       return;
     }
+    setSelectedRows((prev) => prev.filter((k) => k !== getRowKey(row)));
     loadRows(selectedTable);
   }
 
@@ -160,6 +162,56 @@ export default function TablesManagement() {
     setPage(newPage);
   }
 
+  function getRowKey(row) {
+    if (row.id !== undefined) return String(row.id);
+    if (selectedTable === 'company_module_licenses') {
+      return `${row.company_id}-${row.module_key}`;
+    }
+    return JSON.stringify(row);
+  }
+
+  function toggleRow(row) {
+    const key = getRowKey(row);
+    setSelectedRows((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+    );
+  }
+
+  function selectAllRows() {
+    setSelectedRows(rows.map((r) => getRowKey(r)));
+  }
+
+  function deselectAllRows() {
+    setSelectedRows([]);
+  }
+
+  async function handleDeleteSelected() {
+    if (selectedRows.length === 0) return;
+    if (!confirm('Delete selected rows?')) return;
+    for (const r of rows) {
+      const key = getRowKey(r);
+      if (!selectedRows.includes(key)) continue;
+      let rowId = r.id;
+      if (rowId === undefined) {
+        if (selectedTable === 'company_module_licenses') {
+          rowId = `${r.company_id}-${r.module_key}`;
+        } else {
+          alert('Cannot delete row: no id column');
+          continue;
+        }
+      }
+      const res = await fetch(
+        `/api/tables/${selectedTable}/${encodeURIComponent(rowId)}`,
+        { method: 'DELETE', credentials: 'include' },
+      );
+      if (!res.ok) {
+        alert('Delete failed');
+      }
+    }
+    setSelectedRows([]);
+    loadRows(selectedTable);
+  }
+
   return (
     <div>
       <h2>Dynamic Tables</h2>
@@ -176,11 +228,21 @@ export default function TablesManagement() {
           <button onClick={handleAdd} style={{ marginTop: '0.5rem' }}>
             Add Row
           </button>
+          <button onClick={selectAllRows} style={{ marginLeft: '0.5rem', marginTop: '0.5rem' }}>
+            Select All
+          </button>
+          <button onClick={deselectAllRows} style={{ marginLeft: '0.5rem', marginTop: '0.5rem' }}>
+            Deselect All
+          </button>
+          <button onClick={handleDeleteSelected} style={{ marginLeft: '0.5rem', marginTop: '0.5rem' }}>
+            Delete Selected
+          </button>
           <table
             style={{ width: '100%', marginTop: '0.5rem', borderCollapse: 'collapse' }}
           >
             <thead>
               <tr style={{ backgroundColor: '#e5e7eb' }}>
+                <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}></th>
                 {Object.keys(rows[0]).map((k) => (
                   <th
                     key={k}
@@ -194,6 +256,7 @@ export default function TablesManagement() {
                 <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Action</th>
               </tr>
               <tr>
+                <th style={{ padding: '0.25rem', border: '1px solid #d1d5db' }}></th>
                 {Object.keys(rows[0]).map((k) => (
                   <th key={k} style={{ padding: '0.25rem', border: '1px solid #d1d5db' }}>
                     <input
@@ -211,11 +274,18 @@ export default function TablesManagement() {
                 <tr
                   key={
                     r.id ??
-                    (selectedTable === 'company_module_licenses'
-                      ? `${r.company_id}-${r.module_key}`
-                      : JSON.stringify(r))
+                      (selectedTable === 'company_module_licenses'
+                        ? `${r.company_id}-${r.module_key}`
+                        : JSON.stringify(r))
                   }
                 >
+                  <td style={{ padding: '0.5rem', border: '1px solid #d1d5db', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedRows.includes(getRowKey(r))}
+                      onChange={() => toggleRow(r)}
+                    />
+                  </td>
                   {Object.keys(rows[0]).map((k) => (
                     <td key={k} style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                       {String(r[k])}
