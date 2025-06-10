@@ -2,6 +2,7 @@ import express from 'express';
 import {
   getTables,
   getTableRows,
+  getTableRelations,
   updateRow,
   addRow,
   deleteRow,
@@ -11,6 +12,7 @@ import { requireAuth } from '../middlewares/auth.js';
 const router = express.Router();
 
 router.get('/', requireAuth, getTables);
+router.get('/:table/relations', requireAuth, getTableRelations);
 router.get('/:table', requireAuth, getTableRows);
 router.put('/:table/:id', requireAuth, updateRow);
 router.post('/:table', requireAuth, addRow);
