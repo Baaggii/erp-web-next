@@ -482,16 +482,27 @@ export async function listTableRelations(tableName) {
       [process.env.DB_NAME, r.REFERENCED_TABLE_NAME],
     );
     const names = cols.map((c) => c.COLUMN_NAME);
-    const display = names.includes('name')
-      ? 'name'
-      : names.includes('label')
-      ? 'label'
-      : r.REFERENCED_COLUMN_NAME;
+
+    let valueCol = r.REFERENCED_COLUMN_NAME;
+    let labelCol;
+
+    if (r.REFERENCED_TABLE_NAME === 'employee') {
+      // Employees are typically identified by emp_id and displayed using emp_fname
+      if (names.includes('emp_id')) valueCol = 'emp_id';
+      labelCol = names.includes('emp_fname') ? 'emp_fname' : valueCol;
+    } else {
+      labelCol = names.includes('name')
+        ? 'name'
+        : names.includes('label')
+        ? 'label'
+        : valueCol;
+    }
+
     result.push({
       column: r.COLUMN_NAME,
       table: r.REFERENCED_TABLE_NAME,
-      value: r.REFERENCED_COLUMN_NAME,
-      label: display,
+      value: valueCol,
+      label: labelCol,
     });
   }
   return result;
