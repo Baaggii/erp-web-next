@@ -139,10 +139,22 @@ export default function CodingTablesPage() {
     return d;
   }
 
+  function normalizeToken(t) {
+    if (t === 'today') return 'CURRENT_DATE';
+    if (t === 'this_year') return 'YEAR(CURRENT_DATE)';
+    return t;
+  }
+
   function buildCalcExpressions(defs) {
     return defs
       .filter((d) => d.name && d.col1 && d.op && d.col2)
-      .map((d) => ({ name: d.name, expression: `\`${d.col1}\` ${d.op} \`${d.col2}\`` }));
+      .map((d) => {
+        const c1Token = normalizeToken(d.col1);
+        const c2Token = normalizeToken(d.col2);
+        const col1 = headers.includes(d.col1) ? `\`${d.col1}\`` : c1Token;
+        const col2 = headers.includes(d.col2) ? `\`${d.col2}\`` : c2Token;
+        return { name: d.name, expression: `${col1} ${d.op} ${col2}` };
+      });
   }
 
   function formatVal(val, type) {
@@ -434,17 +446,12 @@ export default function CodingTablesPage() {
                       value={cf.name}
                       onChange={(e) => updateCalcDef(idx, 'name', e.target.value)}
                     />
-                    <select
+                    <input
+                      list="calc-options"
+                      placeholder="column or value"
                       value={cf.col1}
                       onChange={(e) => updateCalcDef(idx, 'col1', e.target.value)}
-                    >
-                      <option value="">--column--</option>
-                      {headers.map((h) => (
-                        <option key={h} value={h}>
-                          {h}
-                        </option>
-                      ))}
-                    </select>
+                    />
                     <select
                       value={cf.op}
                       onChange={(e) => updateCalcDef(idx, 'op', e.target.value)}
@@ -454,20 +461,22 @@ export default function CodingTablesPage() {
                       <option value="*">*</option>
                       <option value="/">/</option>
                     </select>
-                    <select
+                    <input
+                      list="calc-options"
+                      placeholder="column or value"
                       value={cf.col2}
                       onChange={(e) => updateCalcDef(idx, 'col2', e.target.value)}
-                    >
-                      <option value="">--column--</option>
-                      {headers.map((h) => (
-                        <option key={h} value={h}>
-                          {h}
-                        </option>
-                      ))}
-                    </select>
+                    />
                     <button onClick={() => removeCalcDef(idx)}>Remove</button>
                   </div>
                 ))}
+                <datalist id="calc-options">
+                  {headers.map((h) => (
+                    <option key={h} value={h} />
+                  ))}
+                  <option value="today" />
+                  <option value="this_year" />
+                </datalist>
                 <button onClick={addCalcDef} style={{ marginTop: '0.25rem' }}>
                   Add Calculated Field
                 </button>
