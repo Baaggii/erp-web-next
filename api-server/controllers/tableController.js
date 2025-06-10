@@ -4,6 +4,7 @@ import {
   updateTableRow,
   insertTableRow,
   deleteTableRow,
+  listTableRelations,
 } from '../../db/index.js';
 
 export async function getTables(req, res, next) {
@@ -53,6 +54,15 @@ export async function deleteRow(req, res, next) {
   try {
     await deleteTableRow(req.params.table, req.params.id);
     res.sendStatus(204);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getRelations(req, res, next) {
+  try {
+    const rels = await listTableRelations(req.params.table);
+    res.json(rels);
   } catch (err) {
     next(err);
   }

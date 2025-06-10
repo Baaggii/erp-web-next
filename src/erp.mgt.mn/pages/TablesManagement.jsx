@@ -1,12 +1,5 @@
 import React, { useEffect, useState } from 'react';
 
-const RELATION_LOOKUPS = {
-  role_id: { table: 'user_roles', value: 'id', label: 'name' },
-  empid: { table: 'employee', value: 'empid', label: 'name' },
-  company_id: { table: 'companies', value: 'id', label: 'name' },
-  module_key: { table: 'modules', value: 'module_key', label: 'label' },
-};
-
 export default function TablesManagement() {
   const [tables, setTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState('');
@@ -75,14 +68,24 @@ export default function TablesManagement() {
 
   async function fetchLookups(cols) {
     const obj = {};
+    const relRes = await fetch(`/api/tables/${selectedTable}/relations`, {
+      credentials: 'include',
+    });
+    const relations = await relRes.json().catch(() => []);
     await Promise.all(
       cols
-        .filter((c) => RELATION_LOOKUPS[c])
-        .map(async (c) => {
-          const info = RELATION_LOOKUPS[c];
-          const res = await fetch(`/api/tables/${info.table}?perPage=500`, { credentials: 'include' });
+        .map((c) => relations.find((r) => r.column === c))
+        .filter(Boolean)
+        .map(async (rel) => {
+          const res = await fetch(`/api/tables/${rel.table}?perPage=500`, {
+            credentials: 'include',
+          });
           const json = await res.json().catch(() => ({}));
-          obj[c] = json.rows || json;
+          obj[rel.column] = {
+            rows: json.rows || json,
+            value: rel.value,
+            label: rel.label,
+          };
         }),
     );
     setLookups(obj);
@@ -451,9 +454,9 @@ function RowFormModal({ visible, columns, row, lookups, onCancel, onSubmit }) {
                   style={{ width: '100%', padding: '0.5rem' }}
                 >
                   <option value="" />
-                  {lookups[col].map((r) => (
-                    <option key={r[RELATION_LOOKUPS[col].value]} value={r[RELATION_LOOKUPS[col].value]}>
-                      {r[RELATION_LOOKUPS[col].value]} - {r[RELATION_LOOKUPS[col].label]}
+                  {lookups[col].rows.map((r) => (
+                    <option key={r[lookups[col].value]} value={r[lookups[col].value]}>
+                      {r[lookups[col].value]} - {r[lookups[col].label]}
                     </option>
                   ))}
                 </select>

@@ -467,6 +467,36 @@ export async function listDatabaseTables() {
   return rows.map((r) => Object.values(r)[0]);
 }
 
+export async function listTableRelations(tableName) {
+  const [rows] = await pool.query(
+    `SELECT COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+       FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND REFERENCED_TABLE_NAME IS NOT NULL`,
+    [process.env.DB_NAME, tableName],
+  );
+  const result = [];
+  for (const r of rows) {
+    const [cols] = await pool.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?`,
+      [process.env.DB_NAME, r.REFERENCED_TABLE_NAME],
+    );
+    const names = cols.map((c) => c.COLUMN_NAME);
+    const display = names.includes('name')
+      ? 'name'
+      : names.includes('label')
+      ? 'label'
+      : r.REFERENCED_COLUMN_NAME;
+    result.push({
+      column: r.COLUMN_NAME,
+      table: r.REFERENCED_TABLE_NAME,
+      value: r.REFERENCED_COLUMN_NAME,
+      label: display,
+    });
+  }
+  return result;
+}
+
 /**
  * Get up to 50 rows from a table
  */
