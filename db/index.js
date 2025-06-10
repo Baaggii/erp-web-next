@@ -458,6 +458,34 @@ export async function setCompanyModuleLicense(companyId, moduleKey, licensed) {
   );
   return { companyId, moduleKey, licensed: !!licensed };
 }
+/**
+ * CRUD for dynamic forms
+ */
+export async function listForms() {
+  const [rows] = await pool.query("SELECT id, name, schema_json FROM forms");
+  return rows;
+}
+
+export async function getFormById(id) {
+  const [rows] = await pool.query("SELECT id, name, schema_json FROM forms WHERE id = ?", [id]);
+  return rows[0] || null;
+}
+
+export async function saveForm({ id, name, schema_json }) {
+  if (id) {
+    await pool.query("UPDATE forms SET name = ?, schema_json = ? WHERE id = ?", [name, JSON.stringify(schema_json), id]);
+    return { id };
+  } else {
+    const [result] = await pool.query("INSERT INTO forms (name, schema_json) VALUES (?, ?)", [name, JSON.stringify(schema_json)]);
+    return { id: result.insertId };
+  }
+}
+
+export async function deleteForm(id) {
+  await pool.query("DELETE FROM forms WHERE id = ?", [id]);
+  return { id };
+}
+
 
 /**
  * List all database tables (for dev tools)
@@ -466,6 +494,11 @@ export async function listDatabaseTables() {
   const [rows] = await pool.query('SHOW TABLES');
   return rows.map((r) => Object.values(r)[0]);
 }
+export async function listTableRelations(tableName) {
+  const [rows] = await pool.query(`SELECT column_name, referenced_table_name, referenced_column_name FROM information_schema.KEY_COLUMN_USAGE WHERE table_schema = DATABASE() AND table_name = ? AND referenced_table_name IS NOT NULL`, [tableName]);
+  return rows;
+}
+
 
 /**
  * Get up to 50 rows from a table
