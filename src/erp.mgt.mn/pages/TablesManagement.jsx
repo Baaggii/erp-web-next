@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import RowFormModal from '../components/RowFormModal.jsx';
 
 export default function TablesManagement() {
   const [tables, setTables] = useState([]);
@@ -10,6 +11,8 @@ export default function TablesManagement() {
   const [filters, setFilters] = useState({});
   const [sort, setSort] = useState({ column: '', dir: 'asc' });
   const [selectedRows, setSelectedRows] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [editingRow, setEditingRow] = useState(null);
 
   useEffect(() => {
     fetch('/api/tables', { credentials: 'include' })
@@ -63,25 +66,40 @@ export default function TablesManagement() {
     }
   }
 
-  async function handleEdit(row) {
-      const updates = {};
-      for (const key of Object.keys(row)) {
-        if (key === 'id') continue;
-        const val = prompt(`${key}?`, row[key]);
-        if (val !== null && val !== String(row[key])) {
-          updates[key] = val;
-        }
-      }
-      if (Object.keys(updates).length === 0) return;
+  function handleEdit(row) {
+    setEditingRow(row);
+    setShowForm(true);
+  }
 
-      let rowId = row.id;
+  async function handleAdd() {
+    if (rows.length === 0) return;
+    setEditingRow(null);
+    setShowForm(true);
+  }
+
+  async function handleFormSubmit(formData) {
+    if (!selectedTable) return;
+    if (editingRow) {
+      const updates = {};
+      Object.keys(formData).forEach((k) => {
+        if (k === 'id') return;
+        if (String(formData[k]) !== String(editingRow[k])) {
+          updates[k] = formData[k];
+        }
+      });
+      if (Object.keys(updates).length === 0) {
+        setShowForm(false);
+        setEditingRow(null);
+        return;
+      }
+      let rowId = editingRow.id;
       if (rowId === undefined) {
         if (selectedTable === 'company_module_licenses') {
-          rowId = `${row.company_id}-${row.module_key}`;
+          rowId = `${editingRow.company_id}-${editingRow.module_key}`;
         } else if (selectedTable === 'role_module_permissions') {
-          rowId = `${row.company_id}-${row.role_id}-${row.module_key}`;
+          rowId = `${editingRow.company_id}-${editingRow.role_id}-${editingRow.module_key}`;
         } else if (selectedTable === 'user_companies') {
-          rowId = `${row.empid}-${row.company_id}`;
+          rowId = `${editingRow.empid}-${editingRow.company_id}`;
         } else {
           alert('Cannot update row: no id column');
           return;
@@ -96,32 +114,31 @@ export default function TablesManagement() {
           body: JSON.stringify(updates),
         },
       );
-    if (!res.ok) {
-      alert('Update failed');
-      return;
+      if (!res.ok) {
+        alert('Update failed');
+        return;
+      }
+    } else {
+      const data = {};
+      Object.keys(formData).forEach((k) => {
+        if (k === 'id') return;
+        data[k] = formData[k];
+      });
+      const res = await fetch(`/api/tables/${selectedTable}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(data),
+        },
+      );
+      if (!res.ok) {
+        alert('Insert failed');
+        return;
+      }
     }
-    loadRows(selectedTable);
-  }
-
-  async function handleAdd() {
-    if (rows.length === 0) return;
-    const data = {};
-    for (const key of Object.keys(rows[0])) {
-      if (key === 'id') continue;
-      const val = prompt(`${key}?`);
-      if (val === null) return;
-      data[key] = val;
-    }
-    const res = await fetch(`/api/tables/${selectedTable}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) {
-      alert('Insert failed');
-      return;
-    }
+    setShowForm(false);
+    setEditingRow(null);
     loadRows(selectedTable);
   }
 
@@ -365,6 +382,16 @@ export default function TablesManagement() {
         </div>
         </>
       )}
+      <RowFormModal
+        visible={showForm}
+        onCancel={() => {
+          setShowForm(false);
+          setEditingRow(null);
+        }}
+        onSubmit={handleFormSubmit}
+        columns={rows.length > 0 ? Object.keys(rows[0]) : []}
+        row={editingRow}
+      />
     </div>
   );
 }
