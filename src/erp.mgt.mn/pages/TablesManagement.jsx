@@ -13,6 +13,7 @@ export default function TablesManagement() {
   const [selectedRows, setSelectedRows] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editingRow, setEditingRow] = useState(null);
+  const [tableColumns, setTableColumns] = useState([]);
 
   useEffect(() => {
     fetch('/api/tables', { credentials: 'include' })
@@ -48,6 +49,14 @@ export default function TablesManagement() {
       .then((data) => {
         setRows(data.rows);
         setTotal(data.count);
+        if (data.rows.length > 0) {
+          setTableColumns(Object.keys(data.rows[0]));
+        } else {
+          fetch(`/api/tables/${table}/columns`, { credentials: 'include' })
+            .then((r) => (r.ok ? r.json() : []))
+            .then(setTableColumns)
+            .catch(() => setTableColumns([]));
+        }
       })
       .catch((err) => console.error('Failed to fetch rows', err));
   }
@@ -58,6 +67,7 @@ export default function TablesManagement() {
     setPage(1);
     setFilters({});
     setSort({ column: '', dir: 'asc' });
+    setTableColumns([]);
     if (t) {
       loadRows(t);
     } else {
@@ -72,7 +82,10 @@ export default function TablesManagement() {
   }
 
   async function handleAdd() {
-    if (rows.length === 0) return;
+    if (tableColumns.length === 0) {
+      alert('Unable to determine table columns');
+      return;
+    }
     setEditingRow(null);
     setShowForm(true);
   }
@@ -389,7 +402,7 @@ export default function TablesManagement() {
           setEditingRow(null);
         }}
         onSubmit={handleFormSubmit}
-        columns={rows.length > 0 ? Object.keys(rows[0]) : []}
+        columns={tableColumns}
         row={editingRow}
       />
     </div>

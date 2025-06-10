@@ -619,3 +619,8 @@ export async function deleteTableRow(tableName, id) {
   await pool.query('DELETE FROM ?? WHERE id = ?', [tableName, id]);
   return { id };
 }
+
+export async function listTableColumns(tableName) {
+  const [rows] = await pool.query('SHOW COLUMNS FROM ??', [tableName]);
+  return rows.map((r) => r.Field);
+}
