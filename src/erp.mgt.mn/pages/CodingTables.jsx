@@ -125,15 +125,43 @@ export default function CodingTablesPage() {
     return d;
   }
 
+  // Convert a user-friendly description of a calculated field into a
+  // SQL expression. The input line may use ":" or "-" as the separator
+  // between the field name and its description.
   function parseCalcField(line) {
-    const m = line.match(/^([A-Za-z0-9_]+)\s*:(.*)$/);
+    const m = line.match(/^([A-Za-z0-9_]+)\s*[:\-]\s*(.+)$/);
     if (!m) return null;
-    const [, name, desc] = m;
-    const lower = desc.trim().toLowerCase();
-    if (lower.includes('age') && lower.includes('birth')) {
-      return { name, expression: 'TIMESTAMPDIFF(YEAR, birthdate, CURDATE())' };
+    const [, name, descRaw] = m;
+    const desc = descRaw.trim();
+    const lower = desc.toLowerCase();
+
+    // Pattern: "today - <column>" → difference between today and column.
+    let match = desc.match(/^today\s*-\s*([A-Za-z0-9_]+)$/i);
+    if (match) {
+      const col = match[1];
+      // If field name or description hints at age, compute in years.
+      if (name.toLowerCase().includes('age') || lower.includes('age')) {
+        return { name, expression: `TIMESTAMPDIFF(YEAR, ${col}, CURDATE())` };
+      }
+      return { name, expression: `DATEDIFF(CURDATE(), ${col})` };
     }
-    return { name, expression: desc.trim() };
+
+    // Pattern: "current year - year(column)"
+    match = desc.match(/^current year\s*-\s*year\(([^)]+)\)$/i);
+    if (match) {
+      const col = match[1];
+      return { name, expression: `YEAR(CURDATE()) - YEAR(${col})` };
+    }
+
+    // Fallback heuristics for age calculations.
+    if (lower.includes('age') && lower.includes('birth')) {
+      const colMatch = desc.match(/\b([A-Za-z0-9_]*birth[A-Za-z0-9_]*)\b/i);
+      const col = colMatch ? colMatch[1] : 'birthdate';
+      return { name, expression: `TIMESTAMPDIFF(YEAR, ${col}, CURDATE())` };
+    }
+
+    // Default: treat the description as a raw SQL expression.
+    return { name, expression: desc };
   }
 
   function parseCalcFields(text) {
@@ -421,7 +449,7 @@ export default function CodingTablesPage() {
                 </div>
               </div>
               <div>
-                Calculated Fields (name: description):
+                Calculated Fields (name: description or "name - today - column"):
                 <textarea
                   rows={3}
                   cols={40}
