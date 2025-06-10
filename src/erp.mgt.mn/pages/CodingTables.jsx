@@ -88,12 +88,17 @@ export default function CodingTablesPage() {
   }
 
   function detectType(name, vals) {
-    if (name.toLowerCase().includes('date')) return 'DATE';
+    const lower = String(name).toLowerCase();
+    if (lower.includes('per')) return 'DECIMAL(5,2)';
+    if (lower.includes('date')) return 'DATE';
     for (const v of vals) {
       if (v === undefined || v === '') continue;
       const n = Number(v);
       if (!Number.isNaN(n)) {
-        if (String(v).includes('.')) return 'DECIMAL(10,2)';
+        const str = String(v);
+        const digits = str.replace(/[-.]/g, '');
+        if (digits.length > 8) return 'VARCHAR(255)';
+        if (str.includes('.')) return 'DECIMAL(10,2)';
         return 'INT';
       }
       break;
