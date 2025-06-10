@@ -77,7 +77,13 @@ export default function TablesManagement() {
     const obj = {};
     await Promise.all(
       cols
-        .filter((c) => RELATION_LOOKUPS[c])
+        .filter((c) => {
+          if (!RELATION_LOOKUPS[c]) return false;
+          if (selectedTable === 'user_companies' && (c === 'empid' || c === 'role_id')) {
+            return false;
+          }
+          return true;
+        })
         .map(async (c) => {
           const info = RELATION_LOOKUPS[c];
           const res = await fetch(`/api/tables/${info.table}?perPage=500`, { credentials: 'include' });
