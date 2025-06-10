@@ -4,7 +4,6 @@ import {
   updateTableRow,
   insertTableRow,
   deleteTableRow,
-  deleteTableRowByFields,
 } from '../../db/index.js';
 
 export async function getTables(req, res, next) {
@@ -53,18 +52,6 @@ export async function addRow(req, res, next) {
 export async function deleteRow(req, res, next) {
   try {
     await deleteTableRow(req.params.table, req.params.id);
-    res.sendStatus(204);
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function deleteRowByFields(req, res, next) {
-  try {
-    const result = await deleteTableRowByFields(req.params.table, req.body || {});
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: 'Row not found' });
-    }
     res.sendStatus(204);
   } catch (err) {
     next(err);

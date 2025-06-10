@@ -467,29 +467,6 @@ export async function listDatabaseTables() {
   return rows.map((r) => Object.values(r)[0]);
 }
 
-export async function getPrimaryKeyColumn(tableName) {
-  const [rows] = await pool.query(
-    `SELECT COLUMN_NAME
-       FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
-      WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME = ?
-        AND CONSTRAINT_NAME = 'PRIMARY'
-      ORDER BY ORDINAL_POSITION
-      LIMIT 1`,
-    [tableName],
-  );
-  return rows[0] ? rows[0].COLUMN_NAME : null;
-}
-
-export async function deleteTableRowByFields(tableName, row) {
-  const keys = Object.keys(row);
-  if (keys.length === 0) return { affectedRows: 0 };
-  const where = keys.map((k) => `\`${k}\` = ?`).join(' AND ');
-  const params = [tableName, ...keys.map((k) => row[k])];
-  const [result] = await pool.query(`DELETE FROM ?? WHERE ${where} LIMIT 1`, params);
-  return { affectedRows: result.affectedRows };
-}
-
 /**
  * Get up to 50 rows from a table
  */
@@ -552,10 +529,8 @@ export async function updateTableRow(tableName, id, updates) {
     return { company_id: companyId, role_id: roleId, module_key: moduleKey };
   }
 
-  const pk = await getPrimaryKeyColumn(tableName);
-  const pkCol = pk || 'id';
-  await pool.query(`UPDATE ?? SET ${setClause} WHERE ?? = ?`, [tableName, ...values, pkCol, id]);
-  return { [pkCol]: id };
+  await pool.query(`UPDATE ?? SET ${setClause} WHERE id = ?`, [tableName, ...values, id]);
+  return { id };
 }
 
 export async function insertTableRow(tableName, row) {
@@ -590,8 +565,6 @@ export async function deleteTableRow(tableName, id) {
     return { company_id: companyId, role_id: roleId, module_key: moduleKey };
   }
 
-  const pk = await getPrimaryKeyColumn(tableName);
-  const pkCol = pk || 'id';
-  await pool.query('DELETE FROM ?? WHERE ?? = ?', [tableName, pkCol, id]);
-  return { [pkCol]: id };
+  await pool.query('DELETE FROM ?? WHERE id = ?', [tableName, id]);
+  return { id };
 }
