@@ -15,7 +15,6 @@ import rolePermissionRoutes from "./routes/role_permissions.js";
 import moduleRoutes from "./routes/modules.js";
 import companyModuleRoutes from "./routes/company_modules.js";
 import tableRoutes from "./routes/tables.js";
-import formRoutes from "./routes/forms.js";
 import codingTableRoutes from "./routes/coding_tables.js";
 import { requireAuth } from "./middlewares/auth.js";
 
@@ -52,7 +51,6 @@ app.use("/api/modules", requireAuth, moduleRoutes);
 app.use("/api/company_modules", requireAuth, companyModuleRoutes);
 app.use("/api/coding_tables", requireAuth, codingTableRoutes);
 app.use("/api/tables", requireAuth, tableRoutes);
-app.use("/api/forms", requireAuth, formRoutes);
 
 // Serve static React build and fallback to index.html
 // NOTE: adjust this path to where your SPA build actually lives.

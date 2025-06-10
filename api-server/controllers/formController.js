@@ -1,15 +1,8 @@
-import { listForms } from '../../db/index.js';
-
-export async function getFormSchemas(req, res, next) {
-  try {
-    const forms = await listForms();
-    const schemas = forms.map(f => ({
-      id: f.id,
-      name: f.name,
-      schema: typeof f.schema_json === 'string' ? JSON.parse(f.schema_json) : f.schema_json,
-    }));
-    res.json(schemas);
-  } catch (err) {
-    next(err);
-  }
+import fs from 'fs';
+import path from 'path';
+export function getFormSchemas(req, res) {
+  const schemasDir = path.resolve('config/formSchemas');
+  const files = fs.readdirSync(schemasDir);
+  const schemas = files.map(f => JSON.parse(fs.readFileSync(path.join(schemasDir, f))));
+  res.json(schemas);
 }

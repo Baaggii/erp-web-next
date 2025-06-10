@@ -247,14 +247,6 @@ CREATE TABLE IF NOT EXISTS `form_submissions` (
   `data` JSON NOT NULL,
   `submitted_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
--- Form definitions
-CREATE TABLE IF NOT EXISTS `forms` (
-  `id` INT AUTO_INCREMENT PRIMARY KEY,
-  `name` VARCHAR(100) NOT NULL,
-  `schema_json` JSON NOT NULL,
-  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB;
-
 
 -- Seed initial admin user with known password 'Admin@123'
 -- Generate hash via Node: `require('bcrypt').hash('Admin@123', 10, console.log)`
