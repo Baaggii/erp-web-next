@@ -4,6 +4,7 @@ import {
   getTableRows,
   updateRow,
   addRow,
+  deleteRow,
 } from '../controllers/tableController.js';
 import { requireAuth } from '../middlewares/auth.js';
 
@@ -13,5 +14,6 @@ router.get('/', requireAuth, getTables);
 router.get('/:table', requireAuth, getTableRows);
 router.put('/:table/:id', requireAuth, updateRow);
 router.post('/:table', requireAuth, addRow);
+router.delete('/:table/:id', requireAuth, deleteRow);
 
 export default router;
