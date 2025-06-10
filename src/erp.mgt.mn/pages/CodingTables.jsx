@@ -10,10 +10,9 @@ export default function CodingTablesPage() {
   const [idFilterMode, setIdFilterMode] = useState('contains');
   const [headerRow, setHeaderRow] = useState(1);
   const [tableName, setTableName] = useState('');
-  const [idColumns, setIdColumns] = useState([]);
+  const [idColumn, setIdColumn] = useState('');
   const [nameColumn, setNameColumn] = useState('');
   const [otherColumns, setOtherColumns] = useState([]);
-  const [autoIncrementField, setAutoIncrementField] = useState('');
   const [uniqueFields, setUniqueFields] = useState([]);
   const [sql, setSql] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -39,11 +38,10 @@ export default function CodingTablesPage() {
       setHeaderRow(1);
       setHeaders([]);
       setIdCandidates([]);
-      setIdColumns([]);
+      setIdColumn('');
       setNameColumn('');
       setSql('');
       setOtherColumns([]);
-      setAutoIncrementField('');
       setUniqueFields([]);
     });
   }
@@ -53,11 +51,10 @@ export default function CodingTablesPage() {
     setSheet(s);
     setHeaders([]);
     setIdCandidates([]);
-    setIdColumns([]);
+    setIdColumn('');
     setNameColumn('');
     setSql('');
     setOtherColumns([]);
-    setAutoIncrementField('');
     setUniqueFields([]);
   }
 
@@ -66,11 +63,10 @@ export default function CodingTablesPage() {
     setHeaderRow(r);
     setHeaders([]);
     setIdCandidates([]);
-    setIdColumns([]);
+    setIdColumn('');
     setNameColumn('');
     setSql('');
     setOtherColumns([]);
-    setAutoIncrementField('');
     setUniqueFields([]);
   }
 
@@ -118,8 +114,7 @@ export default function CodingTablesPage() {
   }
 
   function handleGenerateSql() {
-    if (!workbook || !sheet || !tableName || idColumns.length === 0 || !nameColumn)
-      return;
+    if (!workbook || !sheet || !tableName) return;
     const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheet], { header: 1 });
     const idx = Number(headerRow) - 1;
     const hdrs = data[idx] || [];
@@ -134,52 +129,55 @@ export default function CodingTablesPage() {
       colTypes[h] = detectType(h, valuesByHeader[h]);
     });
 
-    const idIdx = idColumns.map((c) => hdrs.indexOf(c));
+    const idIdx = hdrs.indexOf(idColumn);
     const nameIdx = hdrs.indexOf(nameColumn);
-    if (idIdx.some((i) => i === -1) || nameIdx === -1) return;
+    if (idColumn && idIdx === -1) return;
+    if (nameColumn && nameIdx === -1) return;
     const otherIdx = otherColumns.map((c) => hdrs.indexOf(c));
     if (otherIdx.some((i) => i === -1)) return;
 
-    let sqlStr = `CREATE TABLE IF NOT EXISTS \`${tableName}\` (\n  id VARCHAR(255) PRIMARY KEY,\n  name VARCHAR(255)`;
+    let defs = [];
+    if (idColumn) {
+      defs.push(`\`${idColumn}\` INT AUTO_INCREMENT PRIMARY KEY`);
+    }
+    if (nameColumn) {
+      defs.push(`\`${nameColumn}\` ${colTypes[nameColumn]}`);
+    }
     otherColumns.forEach((c) => {
-      sqlStr += `,\n  \`${c}\` ${colTypes[c]}`;
+      defs.push(`\`${c}\` ${colTypes[c]}`);
     });
-    if (autoIncrementField) {
-      sqlStr += `,\n  \`${autoIncrementField}\` INT AUTO_INCREMENT`;
-    }
     if (uniqueFields.length > 0) {
-      sqlStr += `,\n  UNIQUE KEY uniq_${uniqueFields.join('_')} (${uniqueFields
-        .map((f) => `\`${f}\``)
-        .join(', ')})`;
+      defs.push(
+        `UNIQUE KEY uniq_${uniqueFields.join('_')} (${uniqueFields
+          .map((f) => `\`${f}\``)
+          .join(', ')})`
+      );
     }
-    sqlStr += '\n);\n';
+    let sqlStr = `CREATE TABLE IF NOT EXISTS \`${tableName}\` (\n  ${defs.join(',\n  ')}\n);\n`;
 
     rows.forEach((r) => {
-      const idVals = idIdx.map((i) => r[i]);
-      const id = idVals.join('-');
-      const name = r[nameIdx];
-      if (idVals.some((v) => v === undefined) || name === undefined) return;
-      const cols = ['id', 'name'];
-      const vals = [escapeSqlValue(id), escapeSqlValue(name)];
+      const cols = [];
+      const vals = [];
+      if (nameColumn) {
+        const nameVal = r[nameIdx];
+        if (nameVal !== undefined) {
+          cols.push(`\`${nameColumn}\``);
+          vals.push(formatVal(nameVal, colTypes[nameColumn]));
+        }
+      }
       otherColumns.forEach((c, idx2) => {
         cols.push(`\`${c}\``);
         vals.push(formatVal(r[otherIdx[idx2]], colTypes[c]));
       });
-      if (autoIncrementField) {
-        cols.push(`\`${autoIncrementField}\``);
-        vals.push('NULL');
-      }
-      const updates = cols
-        .filter((c) => c !== 'id' && c !== `\`${autoIncrementField}\``)
-        .map((c) => `${c} = VALUES(${c})`);
-      sqlStr +=
-        `INSERT INTO \`${tableName}\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
+      if (cols.length === 0) return;
+      const updates = cols.map((c) => `${c} = VALUES(${c})`);
+      sqlStr += `INSERT INTO \`${tableName}\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
     });
     setSql(sqlStr);
   }
 
   async function handleUpload() {
-    if (!workbook || !sheet || !tableName || idColumns.length === 0 || !nameColumn) return;
+    if (!workbook || !sheet || !tableName) return;
     setSql('');
     setUploading(true);
     try {
@@ -189,10 +187,9 @@ export default function CodingTablesPage() {
       formData.append('sheet', sheet);
       formData.append('headerRow', headerRow);
       formData.append('tableName', tableName);
-      formData.append('idColumns', JSON.stringify(idColumns));
+      formData.append('idColumn', idColumn);
       formData.append('nameColumn', nameColumn);
       formData.append('otherColumns', JSON.stringify(otherColumns));
-      formData.append('autoIncrementField', autoIncrementField);
       formData.append('uniqueFields', JSON.stringify(uniqueFields));
       const res = await fetch('/api/coding_tables/upload', {
         method: 'POST',
@@ -273,23 +270,15 @@ export default function CodingTablesPage() {
                 <input value={tableName} onChange={(e) => setTableName(e.target.value)} />
               </div>
               <div>
-                {idCandidates.map((h) => (
-                  <label key={h} style={{ marginRight: '1rem' }}>
-                    <input
-                      type="checkbox"
-                      value={h}
-                      checked={idColumns.includes(h)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setIdColumns([...idColumns, h]);
-                        } else {
-                          setIdColumns(idColumns.filter((c) => c !== h));
-                        }
-                      }}
-                    />
-                    {h}
-                  </label>
-                ))}
+                ID Column:
+                <select value={idColumn} onChange={(e) => setIdColumn(e.target.value)}>
+                  <option value="">--none--</option>
+                  {idCandidates.map((h) => (
+                    <option key={h} value={h}>
+                      {h}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 Name Column:
@@ -311,17 +300,6 @@ export default function CodingTablesPage() {
                       {h}
                     </option>
                   ))}
-              </select>
-            </div>
-            <div>
-              Auto Increment Field:
-              <select value={autoIncrementField} onChange={(e) => setAutoIncrementField(e.target.value)}>
-                <option value="">--none--</option>
-                {headers.map((h) => (
-                  <option key={h} value={h}>
-                    {h}
-                  </option>
-                ))}
               </select>
             </div>
             <div>

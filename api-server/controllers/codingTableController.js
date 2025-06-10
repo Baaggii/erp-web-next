@@ -8,16 +8,13 @@ export async function uploadCodingTable(req, res, next) {
       sheet,
       tableName,
       idColumn,
-      idColumns,
       nameColumn,
       headerRow,
       otherColumns,
-      autoIncrementField,
       uniqueFields,
     } = req.body;
     const extraCols = otherColumns ? JSON.parse(otherColumns) : [];
     const uniqueCols = uniqueFields ? JSON.parse(uniqueFields) : [];
-    const idCols = idColumns ? JSON.parse(idColumns) : idColumn ? [idColumn] : [];
     if (!req.file) {
       return res.status(400).json({ error: 'File required' });
     }
@@ -63,41 +60,45 @@ export async function uploadCodingTable(req, res, next) {
     headers.forEach((h) => {
       columnTypes[h] = detectType(h, valuesByHeader[h]);
     });
-    if (!tableName || idCols.length === 0 || !nameColumn) {
+    if (!tableName) {
       return res.status(400).json({ error: 'Missing params' });
     }
-    let createSql = `CREATE TABLE IF NOT EXISTS \`${tableName}\` (
-        id VARCHAR(255) PRIMARY KEY,
-        name VARCHAR(255)`;
+    let defs = [];
+    if (idColumn) {
+      defs.push(`\`${idColumn}\` INT AUTO_INCREMENT PRIMARY KEY`);
+    }
+    if (nameColumn) {
+      defs.push(`\`${nameColumn}\` ${columnTypes[nameColumn] || 'VARCHAR(255)'}`);
+    }
     extraCols.forEach((c) => {
-      let def = `\`${c}\` ${columnTypes[c] || 'VARCHAR(255)'}`;
-      if (c === autoIncrementField) def += ' AUTO_INCREMENT';
-      createSql += `,
-        ${def}`;
+      defs.push(`\`${c}\` ${columnTypes[c] || 'VARCHAR(255)'}`);
     });
-    if (autoIncrementField && !extraCols.includes(autoIncrementField) && headers.includes(autoIncrementField)) {
-      createSql += `,
-        \`${autoIncrementField}\` INT AUTO_INCREMENT`;
-    }
     if (uniqueCols.length > 0) {
-      createSql += `,
-        UNIQUE KEY uniq_${uniqueCols.join('_')} (${uniqueCols.map((c) => `\`${c}\``).join(', ')})`;
+      defs.push(`UNIQUE KEY uniq_${uniqueCols.join('_')} (${uniqueCols.map((c) => `\`${c}\``).join(', ')})`);
     }
-    createSql += `
+    const createSql = `CREATE TABLE IF NOT EXISTS \`${tableName}\` (
+        ${defs.join(',\n        ')}
       )`;
     await pool.query(createSql);
     let count = 0;
     for (const r of rows) {
-      const idVals = idCols.map((c) => r[c]);
-      const id = idVals.join('-');
-      const name = r[nameColumn];
-      if (idVals.some((v) => v === undefined) || name === undefined) continue;
-      const cols = ['id', 'name'];
-      const placeholders = ['?', '?'];
-      const values = [String(id), String(name)];
-      const updates = ['name = VALUES(name)'];
+      const cols = [];
+      const placeholders = [];
+      const values = [];
+      const updates = [];
+      if (nameColumn) {
+        const nameVal = r[nameColumn];
+        cols.push(`\`${nameColumn}\``);
+        placeholders.push('?');
+        updates.push(`\`${nameColumn}\` = VALUES(\`${nameColumn}\`)`);
+        let val = nameVal;
+        if (columnTypes[nameColumn] === 'DATE') {
+          const d = new Date(val);
+          val = Number.isNaN(d.getTime()) ? null : d;
+        }
+        values.push(val === undefined ? null : val);
+      }
       extraCols.forEach((c) => {
-        if (c === autoIncrementField) return;
         cols.push(`\`${c}\``);
         placeholders.push('?');
         let val = r[c];
@@ -108,10 +109,7 @@ export async function uploadCodingTable(req, res, next) {
         values.push(val === undefined ? null : val);
         updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
       });
-      if (autoIncrementField) {
-        cols.push(`\`${autoIncrementField}\``);
-        placeholders.push('DEFAULT');
-      }
+      if (cols.length === 0) continue;
       await pool.query(
         `INSERT INTO \`${tableName}\` (${cols.join(', ')}) VALUES (${placeholders.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')}`,
         values
