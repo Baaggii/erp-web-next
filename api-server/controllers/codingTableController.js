@@ -46,7 +46,6 @@ export async function uploadCodingTable(req, res, next) {
       if (name.toLowerCase().includes('date')) return 'DATE';
       for (const v of vals) {
         if (v === undefined || v === '') continue;
-        if (!isNaN(Date.parse(v))) return 'DATE';
         const n = Number(v);
         if (!Number.isNaN(n)) {
           if (String(v).includes('.')) return 'DECIMAL(10,2)';
@@ -70,7 +69,12 @@ export async function uploadCodingTable(req, res, next) {
     if (nameColumn) {
       defs.push(`\`${nameColumn}\` ${columnTypes[nameColumn] || 'VARCHAR(255)'}`);
     }
+    uniqueCols.forEach((c) => {
+      if (c === idColumn || c === nameColumn) return;
+      defs.push(`\`${c}\` ${columnTypes[c] || 'VARCHAR(255)'}`);
+    });
     extraCols.forEach((c) => {
+      if (c === idColumn || c === nameColumn || uniqueCols.includes(c)) return;
       defs.push(`\`${c}\` ${columnTypes[c] || 'VARCHAR(255)'}`);
     });
     if (uniqueCols.length > 0) {
@@ -98,7 +102,20 @@ export async function uploadCodingTable(req, res, next) {
         }
         values.push(val === undefined ? null : val);
       }
+      uniqueCols.forEach((c) => {
+        if (c === idColumn || c === nameColumn || cols.includes(`\`${c}\``)) return;
+        cols.push(`\`${c}\``);
+        placeholders.push('?');
+        let val = r[c];
+        if (columnTypes[c] === 'DATE') {
+          const d = new Date(val);
+          val = Number.isNaN(d.getTime()) ? null : d;
+        }
+        values.push(val === undefined ? null : val);
+        updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
+      });
       extraCols.forEach((c) => {
+        if (c === idColumn || c === nameColumn || uniqueCols.includes(c)) return;
         cols.push(`\`${c}\``);
         placeholders.push('?');
         let val = r[c];
