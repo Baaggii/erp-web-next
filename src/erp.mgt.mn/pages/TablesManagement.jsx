@@ -1,5 +1,12 @@
 import React, { useEffect, useState } from 'react';
 
+const RELATION_LOOKUPS = {
+  role_id: { table: 'user_roles', value: 'id', label: 'name' },
+  empid: { table: 'users', value: 'empid', label: 'name' },
+  company_id: { table: 'companies', value: 'id', label: 'name' },
+  module_key: { table: 'modules', value: 'module_key', label: 'label' },
+};
+
 export default function TablesManagement() {
   const [tables, setTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState('');
@@ -10,6 +17,9 @@ export default function TablesManagement() {
   const [filters, setFilters] = useState({});
   const [sort, setSort] = useState({ column: '', dir: 'asc' });
   const [selectedRows, setSelectedRows] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [editingRow, setEditingRow] = useState(null);
+  const [lookups, setLookups] = useState({});
 
   useEffect(() => {
     fetch('/api/tables', { credentials: 'include' })
@@ -63,66 +73,36 @@ export default function TablesManagement() {
     }
   }
 
-  async function handleEdit(row) {
-      const updates = {};
-      for (const key of Object.keys(row)) {
-        if (key === 'id') continue;
-        const val = prompt(`${key}?`, row[key]);
-        if (val !== null && val !== String(row[key])) {
-          updates[key] = val;
-        }
-      }
-      if (Object.keys(updates).length === 0) return;
-
-      let rowId = row.id;
-      if (rowId === undefined) {
-        if (selectedTable === 'company_module_licenses') {
-          rowId = `${row.company_id}-${row.module_key}`;
-        } else if (selectedTable === 'role_module_permissions') {
-          rowId = `${row.company_id}-${row.role_id}-${row.module_key}`;
-        } else if (selectedTable === 'user_companies') {
-          rowId = `${row.empid}-${row.company_id}`;
-        } else {
-          alert('Cannot update row: no id column');
-          return;
-        }
-      }
-      const res = await fetch(
-        `/api/tables/${selectedTable}/${encodeURIComponent(rowId)}`,
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(updates),
-        },
-      );
-    if (!res.ok) {
-      alert('Update failed');
-      return;
-    }
-    loadRows(selectedTable);
+  async function fetchLookups(cols) {
+    const obj = {};
+    await Promise.all(
+      cols
+        .filter((c) => RELATION_LOOKUPS[c])
+        .map(async (c) => {
+          const info = RELATION_LOOKUPS[c];
+          const res = await fetch(`/api/tables/${info.table}?perPage=500`, { credentials: 'include' });
+          const json = await res.json().catch(() => ({}));
+          obj[c] = json.rows || json;
+        }),
+    );
+    setLookups(obj);
   }
 
-  async function handleAdd() {
+  function handleEdit(row) {
+    setEditingRow(row);
+    fetchLookups(Object.keys(row));
+    setShowForm(true);
+  }
+
+  function handleAdd() {
     if (rows.length === 0) return;
-    const data = {};
-    for (const key of Object.keys(rows[0])) {
-      if (key === 'id') continue;
-      const val = prompt(`${key}?`);
-      if (val === null) return;
-      data[key] = val;
-    }
-    const res = await fetch(`/api/tables/${selectedTable}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(data),
+    const empty = {};
+    Object.keys(rows[0]).forEach((k) => {
+      if (k !== 'id') empty[k] = '';
     });
-    if (!res.ok) {
-      alert('Insert failed');
-      return;
-    }
-    loadRows(selectedTable);
+    setEditingRow(empty);
+    fetchLookups(Object.keys(empty));
+    setShowForm(true);
   }
 
   async function handleDelete(row) {
@@ -235,6 +215,40 @@ export default function TablesManagement() {
       }
     }
     setSelectedRows([]);
+    loadRows(selectedTable);
+  }
+
+  async function handleFormSubmit(data) {
+    const isEdit = editingRow && Object.values(editingRow).some((v) => v !== '');
+    let rowId = editingRow?.id;
+    if (isEdit && rowId === undefined) {
+      if (selectedTable === 'company_module_licenses') {
+        rowId = `${editingRow.company_id}-${editingRow.module_key}`;
+      } else if (selectedTable === 'role_module_permissions') {
+        rowId = `${editingRow.company_id}-${editingRow.role_id}-${editingRow.module_key}`;
+      } else if (selectedTable === 'user_companies') {
+        rowId = `${editingRow.empid}-${editingRow.company_id}`;
+      } else {
+        alert('Cannot update row: no id column');
+        return;
+      }
+    }
+    const url = isEdit
+      ? `/api/tables/${selectedTable}/${encodeURIComponent(rowId)}`
+      : `/api/tables/${selectedTable}`;
+    const method = isEdit ? 'PUT' : 'POST';
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      alert(isEdit ? 'Update failed' : 'Insert failed');
+      return;
+    }
+    setShowForm(false);
+    setEditingRow(null);
     loadRows(selectedTable);
   }
 
@@ -365,6 +379,102 @@ export default function TablesManagement() {
         </div>
         </>
       )}
+      <RowFormModal
+        visible={showForm}
+        columns={editingRow ? Object.keys(editingRow) : []}
+        row={editingRow}
+        lookups={lookups}
+        onCancel={() => {
+          setShowForm(false);
+          setEditingRow(null);
+        }}
+        onSubmit={handleFormSubmit}
+      />
+    </div>
+  );
+}
+
+function RowFormModal({ visible, columns, row, lookups, onCancel, onSubmit }) {
+  const [form, setForm] = useState({});
+
+  useEffect(() => {
+    const init = {};
+    columns.forEach((c) => {
+      init[c] = row ? row[c] ?? '' : '';
+    });
+    setForm(init);
+  }, [row, columns]);
+
+  if (!visible) return null;
+
+  const overlay = {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  };
+  const modal = {
+    backgroundColor: '#fff',
+    padding: '1rem',
+    borderRadius: '4px',
+    minWidth: '300px',
+    maxHeight: '80vh',
+    overflowY: 'auto',
+  };
+
+  function updateField(col, val) {
+    setForm((f) => ({ ...f, [col]: val }));
+  }
+
+  return (
+    <div style={overlay}>
+      <div style={modal}>
+        <h3 style={{ marginTop: 0 }}>Edit Row</h3>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSubmit(form);
+          }}
+        >
+          {columns.map((col) => (
+            <div key={col} style={{ marginBottom: '0.75rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.25rem' }}>{col}</label>
+              {lookups[col] ? (
+                <select
+                  value={form[col]}
+                  onChange={(e) => updateField(col, e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem' }}
+                >
+                  <option value="" />
+                  {lookups[col].map((r) => (
+                    <option key={r[RELATION_LOOKUPS[col].value]} value={r[RELATION_LOOKUPS[col].value]}>
+                      {r[RELATION_LOOKUPS[col].value]} - {r[RELATION_LOOKUPS[col].label]}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={form[col] ?? ''}
+                  onChange={(e) => updateField(col, e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem' }}
+                />
+              )}
+            </div>
+          ))}
+          <div style={{ textAlign: 'right' }}>
+            <button type="button" onClick={onCancel} style={{ marginRight: '0.5rem' }}>
+              Cancel
+            </button>
+            <button type="submit">Save</button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

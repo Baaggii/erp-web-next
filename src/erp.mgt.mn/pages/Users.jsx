@@ -5,6 +5,9 @@ import { AuthContext } from '../context/AuthContext.jsx';
 export default function Users() {
   const [usersList, setUsersList] = useState([]);
   const [filter, setFilter] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [roles, setRoles] = useState([]);
   const { company } = useContext(AuthContext);
 
   function loadUsers() {
@@ -22,41 +25,42 @@ export default function Users() {
     loadUsers();
   }, [company]);
 
-  async function handleAdd() {
-    const empid = prompt('EmpID?');
-    if (!empid) return;
-    const email = prompt('Email?');
-    if (!email) return;
-    const name = prompt('Name?');
-    const password = prompt('Password?');
-    const roleId = prompt('Role ID (1=admin,2=user)?', '2');
-    const res = await fetch('/api/users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ empid, email, name, password, roleId })
-    });
-    if (!res.ok) {
-      alert('Failed to add user');
-      return;
-    }
-    loadUsers();
+  useEffect(() => {
+    fetch('/api/tables/user_roles?perPage=500', { credentials: 'include' })
+      .then((res) => res.json())
+      .then((json) => setRoles(json.rows || json))
+      .catch((err) => console.error('Failed to fetch roles', err));
+  }, []);
+
+  function handleAdd() {
+    setEditing(null);
+    setShowForm(true);
   }
 
-  async function handleEdit(u) {
-    const email = prompt('Email?', u.email);
-    const name = prompt('Name?', u.name);
-    const roleId = prompt('Role ID?', u.role_id);
-    const res = await fetch(`/api/users/${u.id}`, {
-      method: 'PUT',
+  function handleEdit(u) {
+    setEditing(u);
+    setShowForm(true);
+  }
+
+  async function handleFormSubmit({ empid, email, name, password, roleId }) {
+    const isEdit = Boolean(editing);
+    const url = isEdit ? `/api/users/${editing.id}` : '/api/users';
+    const method = isEdit ? 'PUT' : 'POST';
+    const body = isEdit
+      ? { email, name, roleId }
+      : { empid, email, name, password, roleId };
+    const res = await fetch(url, {
+      method,
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ email, name, roleId })
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
-      alert('Failed to update user');
+      alert(isEdit ? 'Failed to update user' : 'Failed to add user');
       return;
     }
+    setShowForm(false);
+    setEditing(null);
     loadUsers();
   }
 
@@ -140,6 +144,135 @@ export default function Users() {
           </tbody>
         </table>
       )}
+      <UserFormModal
+        visible={showForm}
+        onCancel={() => {
+          setShowForm(false);
+          setEditing(null);
+        }}
+        onSubmit={handleFormSubmit}
+        user={editing}
+        roles={roles}
+      />
+    </div>
+  );
+}
+
+function UserFormModal({ visible, onCancel, onSubmit, user, roles }) {
+  const [empid, setEmpid] = useState(user?.empid || '');
+  const [email, setEmail] = useState(user?.email || '');
+  const [name, setName] = useState(user?.name || '');
+  const [password, setPassword] = useState('');
+  const [roleId, setRoleId] = useState(String(user?.role_id || 2));
+
+  useEffect(() => {
+    setEmpid(user?.empid || '');
+    setEmail(user?.email || '');
+    setName(user?.name || '');
+    setPassword('');
+    setRoleId(String(user?.role_id || 2));
+  }, [user]);
+
+  if (!visible) return null;
+
+  const overlay = {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  };
+  const modal = {
+    backgroundColor: '#fff',
+    padding: '1rem',
+    borderRadius: '4px',
+    minWidth: '300px',
+  };
+  const isEdit = Boolean(user);
+
+  return (
+    <div style={overlay}>
+      <div style={modal}>
+        <h3 style={{ marginTop: 0 }}>{isEdit ? 'Хэрэглэгч засах' : 'Хэрэглэгч нэмэх'}</h3>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSubmit({ empid, email, name, password, roleId });
+          }}
+        >
+          <div style={{ marginBottom: '0.75rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.25rem' }}>EmpID</label>
+            <input
+              type="text"
+              value={empid}
+              onChange={(e) => setEmpid(e.target.value)}
+              disabled={isEdit}
+              required
+              style={{ width: '100%', padding: '0.5rem' }}
+            />
+          </div>
+          <div style={{ marginBottom: '0.75rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.25rem' }}>Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              style={{ width: '100%', padding: '0.5rem' }}
+            />
+          </div>
+          <div style={{ marginBottom: '0.75rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.25rem' }}>Нэр</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              style={{ width: '100%', padding: '0.5rem' }}
+            />
+          </div>
+          {!isEdit && (
+            <div style={{ marginBottom: '0.75rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.25rem' }}>Нууц үг</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                style={{ width: '100%', padding: '0.5rem' }}
+              />
+            </div>
+          )}
+          <div style={{ marginBottom: '0.75rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.25rem' }}>Үүрэг</label>
+            <select
+              value={roleId}
+              onChange={(e) => setRoleId(e.target.value)}
+              required
+              style={{ width: '100%', padding: '0.5rem' }}
+            >
+              <option value="" disabled>
+                Сонгоно уу...
+              </option>
+              {roles.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <button type="button" onClick={onCancel} style={{ marginRight: '0.5rem' }}>
+              Болих
+            </button>
+            <button type="submit">Хадгалах</button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
