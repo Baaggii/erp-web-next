@@ -215,16 +215,6 @@ export async function listCompanies() {
 }
 
 /**
- * List available user roles
- */
-export async function listUserRoles() {
-  const [rows] = await pool.query(
-    'SELECT id, name FROM user_roles ORDER BY id'
-  );
-  return rows;
-}
-
-/**
  * Fetch report data by report ID
  */
 export async function fetchReportData(reportId, params = {}) {
