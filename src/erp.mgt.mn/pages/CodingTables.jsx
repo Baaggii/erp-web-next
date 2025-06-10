@@ -14,9 +14,23 @@ export default function CodingTablesPage() {
   const [nameColumn, setNameColumn] = useState('');
   const [otherColumns, setOtherColumns] = useState([]);
   const [uniqueFields, setUniqueFields] = useState([]);
-  const [calcText, setCalcText] = useState('');
+  const [calcDefs, setCalcDefs] = useState([]);
   const [sql, setSql] = useState('');
   const [uploading, setUploading] = useState(false);
+
+  function addCalcDef() {
+    setCalcDefs((defs) => [...defs, { name: '', col1: '', op: '+', col2: '' }]);
+  }
+
+  function updateCalcDef(idx, key, value) {
+    setCalcDefs((defs) =>
+      defs.map((d, i) => (i === idx ? { ...d, [key]: value } : d)),
+    );
+  }
+
+  function removeCalcDef(idx) {
+    setCalcDefs((defs) => defs.filter((_, i) => i !== idx));
+  }
 
   function computeIdCandidates(hdrs, mode) {
     const strs = hdrs.filter((h) => typeof h === 'string');
@@ -125,70 +139,10 @@ export default function CodingTablesPage() {
     return d;
   }
 
-  // Convert a user-friendly description of a calculated field. The
-  // returned object contains either a SQL expression (for deterministic
-  // functions) or info about how to compute the value at import time.
-  // Lines may use ":" or "-" as the separator between the field name
-  // and the description.
-  function parseCalcField(line) {
-    const m = line.match(/^([A-Za-z0-9_]+)\s*[:\-]\s*(.+)$/);
-    if (!m) return null;
-    const [, name, descRaw] = m;
-    const desc = descRaw.trim();
-    const lower = desc.toLowerCase();
-
-    // Pattern: "today - <column>" → difference between today and column.
-    let match = desc.match(/^today\s*-\s*([A-Za-z0-9_]+)$/i);
-    if (match) {
-      const col = match[1];
-      // If field name or description hints at age, compute in years.
-      if (name.toLowerCase().includes('age') || lower.includes('age')) {
-        return { name, expression: `TIMESTAMPDIFF(YEAR, ${col}, CURDATE())` };
-      }
-      return { name, expression: `DATEDIFF(CURDATE(), ${col})` };
-    }
-
-    // Pattern: "current year - year(column)"
-    match = desc.match(/^current year\s*-\s*year\(([^)]+)\)$/i);
-    if (match) {
-      const col = match[1];
-      const evalFn = (val) => {
-        const d = parseExcelDate(val);
-        if (!d) return null;
-        return new Date().getUTCFullYear() - d.getUTCFullYear();
-      };
-      return { name, column: col, evalFn };
-    }
-
-    // Fallback heuristics for age calculations.
-    if (lower.includes('age') && lower.includes('birth')) {
-      const colMatch = desc.match(/\b([A-Za-z0-9_]*birth[A-Za-z0-9_]*)\b/i);
-      const col = colMatch ? colMatch[1] : 'birthdate';
-      const evalFn = (val) => {
-        const d = parseExcelDate(val);
-        if (!d) return null;
-        let years = new Date().getUTCFullYear() - d.getUTCFullYear();
-        const mDiff = new Date().getUTCMonth() - d.getUTCMonth();
-        const dayDiff = new Date().getUTCDate() - d.getUTCDate();
-        if (mDiff < 0 || (mDiff === 0 && dayDiff < 0)) years--;
-        return years;
-      };
-      return { name, column: col, evalFn };
-    }
-
-    // Default: treat the description as a raw SQL expression. It will be used
-    // as a generated column if it does not reference nondeterministic
-    // functions like CURDATE.
-    return { name, expression: desc };
-  }
-
-  function parseCalcFields(text) {
-    return text
-      .split('\n')
-      .map((l) => l.trim())
-      .filter((l) => l)
-      .map(parseCalcField)
-      .filter(Boolean);
+  function buildCalcExpressions(defs) {
+    return defs
+      .filter((d) => d.name && d.col1 && d.op && d.col2)
+      .map((d) => ({ name: d.name, expression: `\`${d.col1}\` ${d.op} \`${d.col2}\`` }));
   }
 
   function formatVal(val, type) {
@@ -253,7 +207,7 @@ export default function CodingTablesPage() {
         if (notNullMap[c]) def += ' NOT NULL';
         defs.push(def);
       });
-    const calcFields = parseCalcFields(calcText);
+    const calcFields = buildCalcExpressions(calcDefs);
     calcFields.forEach((cf) => {
       if (cf.expression) {
         defs.push(`\`${cf.name}\` INT AS (${cf.expression}) STORED`);
@@ -304,16 +258,6 @@ export default function CodingTablesPage() {
           vals.push(formatVal(v, colTypes[c]));
         });
 
-      // Handle calculated fields that require evaluation at import time
-      calcFields.forEach((cf) => {
-        if (cf.expression) return; // generated column
-        const ci = hdrs.indexOf(cf.column);
-        const v = ci === -1 ? null : r[ci];
-        const computed = cf.evalFn ? cf.evalFn(v) : null;
-        cols.push(`\`${cf.name}\``);
-        vals.push(computed === null || computed === undefined ? 'NULL' : String(computed));
-        if (computed !== null && computed !== undefined) hasData = true;
-      });
       if (!hasData) continue;
       const updates = cols.map((c) => `${c} = VALUES(${c})`);
       sqlStr += `INSERT INTO \`${tableName}\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
@@ -336,7 +280,7 @@ export default function CodingTablesPage() {
       formData.append('nameColumn', nameColumn);
       formData.append('otherColumns', JSON.stringify(otherColumns));
       formData.append('uniqueFields', JSON.stringify(uniqueFields));
-      formData.append('calcFields', JSON.stringify(parseCalcFields(calcText)));
+      formData.append('calcFields', JSON.stringify(buildCalcExpressions(calcDefs)));
       const res = await fetch('/api/coding_tables/upload', {
         method: 'POST',
         credentials: 'include',
@@ -482,13 +426,51 @@ export default function CodingTablesPage() {
                 </div>
               </div>
               <div>
-                Calculated Fields (name: description or "name - today - column"):
-                <textarea
-                  rows={3}
-                  cols={40}
-                  value={calcText}
-                  onChange={(e) => setCalcText(e.target.value)}
-                />
+                Calculated Fields:
+                {calcDefs.map((cf, idx) => (
+                  <div key={idx} style={{ marginTop: '0.25rem' }}>
+                    <input
+                      placeholder="name"
+                      value={cf.name}
+                      onChange={(e) => updateCalcDef(idx, 'name', e.target.value)}
+                    />
+                    <select
+                      value={cf.col1}
+                      onChange={(e) => updateCalcDef(idx, 'col1', e.target.value)}
+                    >
+                      <option value="">--column--</option>
+                      {headers.map((h) => (
+                        <option key={h} value={h}>
+                          {h}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={cf.op}
+                      onChange={(e) => updateCalcDef(idx, 'op', e.target.value)}
+                    >
+                      <option value="+">+</option>
+                      <option value="-">-</option>
+                      <option value="*">*</option>
+                      <option value="/">/</option>
+                    </select>
+                    <select
+                      value={cf.col2}
+                      onChange={(e) => updateCalcDef(idx, 'col2', e.target.value)}
+                    >
+                      <option value="">--column--</option>
+                      {headers.map((h) => (
+                        <option key={h} value={h}>
+                          {h}
+                        </option>
+                      ))}
+                    </select>
+                    <button onClick={() => removeCalcDef(idx)}>Remove</button>
+                  </div>
+                ))}
+                <button onClick={addCalcDef} style={{ marginTop: '0.25rem' }}>
+                  Add Calculated Field
+                </button>
               </div>
             <div>
               <button onClick={handleGenerateSql}>Populate SQL</button>
