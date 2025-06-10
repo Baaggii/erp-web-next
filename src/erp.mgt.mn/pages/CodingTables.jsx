@@ -147,8 +147,12 @@ export default function CodingTablesPage() {
       valuesByHeader[h] = rows.map((r) => r[i]);
     });
     const colTypes = {};
+    const notNullMap = {};
     hdrs.forEach((h) => {
       colTypes[h] = detectType(h, valuesByHeader[h]);
+      notNullMap[h] = valuesByHeader[h].every(
+        (v) => v !== undefined && v !== null && v !== ''
+      );
     });
 
     const idIdx = hdrs.indexOf(idColumn);
@@ -170,15 +174,17 @@ export default function CodingTablesPage() {
       defs.push(`\`${idColumn}\` INT AUTO_INCREMENT PRIMARY KEY`);
     }
     if (nameColumn) {
-      defs.push(`\`${nameColumn}\` ${colTypes[nameColumn]}`);
+      defs.push(`\`${nameColumn}\` ${colTypes[nameColumn]} NOT NULL`);
     }
     uniqueOnly.forEach((c) => {
-      defs.push(`\`${c}\` ${colTypes[c]}`);
+      defs.push(`\`${c}\` ${colTypes[c]} NOT NULL`);
     });
     otherColumns
       .filter((c) => c !== idColumn && c !== nameColumn && !uniqueOnly.includes(c))
       .forEach((c) => {
-        defs.push(`\`${c}\` ${colTypes[c]}`);
+        let def = `\`${c}\` ${colTypes[c]}`;
+        if (notNullMap[c]) def += ' NOT NULL';
+        defs.push(def);
       });
     if (uniqueFields.length > 0) {
       defs.push(
@@ -189,31 +195,43 @@ export default function CodingTablesPage() {
     }
     let sqlStr = `CREATE TABLE IF NOT EXISTS \`${tableName}\` (\n  ${defs.join(',\n  ')}\n);\n`;
 
-    rows.forEach((r) => {
+    for (const r of rows) {
       const cols = [];
       const vals = [];
+      let hasData = false;
       if (nameColumn) {
         const nameVal = r[nameIdx];
-        if (nameVal !== undefined) {
-          cols.push(`\`${nameColumn}\``);
-          vals.push(formatVal(nameVal, colTypes[nameColumn]));
-        }
+        if (nameVal === undefined || nameVal === null || nameVal === '') continue;
+        cols.push(`\`${nameColumn}\``);
+        vals.push(formatVal(nameVal, colTypes[nameColumn]));
+        hasData = true;
       }
+      let skip = false;
       uniqueOnly.forEach((c, idx2) => {
+        if (skip) return;
+        const v = r[uniqueIdx[idx2]];
+        if (v === undefined || v === null || v === '') {
+          skip = true;
+          return;
+        }
         cols.push(`\`${c}\``);
-        vals.push(formatVal(r[uniqueIdx[idx2]], colTypes[c]));
+        vals.push(formatVal(v, colTypes[c]));
+        hasData = true;
       });
+      if (skip) continue;
       otherColumns
         .filter((c) => c !== idColumn && c !== nameColumn && !uniqueOnly.includes(c))
-        .forEach((c, idx2) => {
+        .forEach((c) => {
           const ci = hdrs.indexOf(c);
+          const v = r[ci];
+          if (v !== undefined && v !== null && v !== '') hasData = true;
           cols.push(`\`${c}\``);
-          vals.push(formatVal(r[ci], colTypes[c]));
+          vals.push(formatVal(v, colTypes[c]));
         });
-      if (cols.length === 0) return;
+      if (!hasData) continue;
       const updates = cols.map((c) => `${c} = VALUES(${c})`);
       sqlStr += `INSERT INTO \`${tableName}\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
-    });
+    }
     setSql(sqlStr);
   }
 
@@ -365,7 +383,7 @@ export default function CodingTablesPage() {
             </div>
               {sql && (
                 <div>
-                  <textarea value={sql} readOnly rows={10} cols={80} />
+                  <textarea value={sql} onChange={(e) => setSql(e.target.value)} rows={10} cols={80} />
                 </div>
               )}
               {uploading && (

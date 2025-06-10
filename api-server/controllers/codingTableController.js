@@ -79,8 +79,12 @@ export async function uploadCodingTable(req, res, next) {
       return 'VARCHAR(255)';
     }
     const columnTypes = {};
+    const notNullMap = {};
     headers.forEach((h) => {
       columnTypes[h] = detectType(h, valuesByHeader[h]);
+      notNullMap[h] = valuesByHeader[h].every(
+        (v) => v !== undefined && v !== null && v !== ''
+      );
     });
     if (!tableName) {
       return res.status(400).json({ error: 'Missing params' });
@@ -90,15 +94,21 @@ export async function uploadCodingTable(req, res, next) {
       defs.push(`\`${idColumn}\` INT AUTO_INCREMENT PRIMARY KEY`);
     }
     if (nameColumn) {
-      defs.push(`\`${nameColumn}\` ${columnTypes[nameColumn] || 'VARCHAR(255)'}`);
+      defs.push(
+        `\`${nameColumn}\` ${
+          columnTypes[nameColumn] || 'VARCHAR(255)'
+        } NOT NULL`
+      );
     }
     uniqueCols.forEach((c) => {
       if (c === idColumn || c === nameColumn) return;
-      defs.push(`\`${c}\` ${columnTypes[c] || 'VARCHAR(255)'}`);
+      defs.push(`\`${c}\` ${columnTypes[c] || 'VARCHAR(255)'} NOT NULL`);
     });
     extraCols.forEach((c) => {
       if (c === idColumn || c === nameColumn || uniqueCols.includes(c)) return;
-      defs.push(`\`${c}\` ${columnTypes[c] || 'VARCHAR(255)'}`);
+      let def = `\`${c}\` ${columnTypes[c] || 'VARCHAR(255)'}`;
+      if (notNullMap[c]) def += ' NOT NULL';
+      defs.push(def);
     });
     if (uniqueCols.length > 0) {
       defs.push(`UNIQUE KEY uniq_${uniqueCols.join('_')} (${uniqueCols.map((c) => `\`${c}\``).join(', ')})`);
@@ -113,8 +123,10 @@ export async function uploadCodingTable(req, res, next) {
       const placeholders = [];
       const values = [];
       const updates = [];
+      let hasData = false;
       if (nameColumn) {
         const nameVal = r[nameColumn];
+        if (nameVal === undefined || nameVal === null || nameVal === '') continue;
         cols.push(`\`${nameColumn}\``);
         placeholders.push('?');
         updates.push(`\`${nameColumn}\` = VALUES(\`${nameColumn}\`)`);
@@ -123,10 +135,12 @@ export async function uploadCodingTable(req, res, next) {
           const d = parseExcelDate(val);
           val = d || null;
         }
-        values.push(val === undefined ? null : val);
+        values.push(val);
+        hasData = true;
       }
-      uniqueCols.forEach((c) => {
-        if (c === idColumn || c === nameColumn || cols.includes(`\`${c}\``)) return;
+      let skip = false;
+      for (const c of uniqueCols) {
+        if (c === idColumn || c === nameColumn) continue;
         cols.push(`\`${c}\``);
         placeholders.push('?');
         let val = r[c];
@@ -134,11 +148,17 @@ export async function uploadCodingTable(req, res, next) {
           const d = parseExcelDate(val);
           val = d || null;
         }
-        values.push(val === undefined ? null : val);
+        if (val === undefined || val === null || val === '') {
+          skip = true;
+          break;
+        }
+        values.push(val);
         updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
-      });
-      extraCols.forEach((c) => {
-        if (c === idColumn || c === nameColumn || uniqueCols.includes(c)) return;
+        hasData = true;
+      }
+      if (skip) continue;
+      for (const c of extraCols) {
+        if (c === idColumn || c === nameColumn || uniqueCols.includes(c)) continue;
         cols.push(`\`${c}\``);
         placeholders.push('?');
         let val = r[c];
@@ -146,10 +166,11 @@ export async function uploadCodingTable(req, res, next) {
           const d = parseExcelDate(val);
           val = d || null;
         }
-        values.push(val === undefined ? null : val);
+        if (val !== undefined && val !== null && val !== '') hasData = true;
+        values.push(val === undefined || val === '' ? null : val);
         updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
-      });
-      if (cols.length === 0) continue;
+      }
+      if (!hasData) continue;
       await pool.query(
         `INSERT INTO \`${tableName}\` (${cols.join(', ')}) VALUES (${placeholders.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')}`,
         values
