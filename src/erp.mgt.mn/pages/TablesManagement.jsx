@@ -131,15 +131,22 @@ export default function TablesManagement() {
         rowId = `${row.company_id}-${row.module_key}`;
       } else if (selectedTable === 'role_module_permissions') {
         rowId = `${row.company_id}-${row.role_id}-${row.module_key}`;
-      } else {
-        alert('Cannot delete row: no id column');
-        return;
       }
     }
-    const res = await fetch(
-      `/api/tables/${selectedTable}/${encodeURIComponent(rowId)}`,
-      { method: 'DELETE', credentials: 'include' },
-    );
+    let res;
+    if (rowId === undefined) {
+      res = await fetch(`/api/tables/${selectedTable}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(row),
+      });
+    } else {
+      res = await fetch(
+        `/api/tables/${selectedTable}/${encodeURIComponent(rowId)}`,
+        { method: 'DELETE', credentials: 'include' },
+      );
+    }
     if (!res.ok) {
       alert('Delete failed');
       return;
@@ -212,15 +219,22 @@ export default function TablesManagement() {
           rowId = `${r.company_id}-${r.module_key}`;
         } else if (selectedTable === 'role_module_permissions') {
           rowId = `${r.company_id}-${r.role_id}-${r.module_key}`;
-        } else {
-          alert('Cannot delete row: no id column');
-          continue;
         }
       }
-      const res = await fetch(
-        `/api/tables/${selectedTable}/${encodeURIComponent(rowId)}`,
-        { method: 'DELETE', credentials: 'include' },
-      );
+      let res;
+      if (rowId === undefined) {
+        res = await fetch(`/api/tables/${selectedTable}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(r),
+        });
+      } else {
+        res = await fetch(
+          `/api/tables/${selectedTable}/${encodeURIComponent(rowId)}`,
+          { method: 'DELETE', credentials: 'include' },
+        );
+      }
       if (!res.ok) {
         alert('Delete failed');
       }
