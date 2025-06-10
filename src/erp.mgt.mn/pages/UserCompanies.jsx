@@ -6,7 +6,8 @@ export default function UserCompanies() {
   const [assignments, setAssignments] = useState([]);
   const [filterEmpId, setFilterEmpId] = useState('');
   const { company } = useContext(AuthContext);
-  const [usersList, setUsersList] = useState([]);
+  const [employeesList, setEmployeesList] = useState([]);
+  const [rolesList, setRolesList] = useState([]);
   const [companiesList, setCompaniesList] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -32,13 +33,16 @@ export default function UserCompanies() {
   useEffect(() => {
     async function loadLists() {
       try {
-        const [uRes, cRes] = await Promise.all([
-          fetch('/api/users', { credentials: 'include' }),
+        const [eRes, rRes, cRes] = await Promise.all([
+          fetch('/api/tables/employee?perPage=500', { credentials: 'include' }),
+          fetch('/api/tables/user_roles?perPage=500', { credentials: 'include' }),
           fetch('/api/companies', { credentials: 'include' })
         ]);
-        const users = uRes.ok ? await uRes.json() : [];
+        const eJson = eRes.ok ? await eRes.json() : { rows: [] };
+        const rJson = rRes.ok ? await rRes.json() : { rows: [] };
         const companies = cRes.ok ? await cRes.json() : [];
-        setUsersList(users);
+        setEmployeesList(eJson.rows || eJson);
+        setRolesList(rJson.rows || rJson);
         setCompaniesList(companies);
       } catch (err) {
         console.error('Error loading lists:', err);
@@ -150,14 +154,23 @@ export default function UserCompanies() {
         }}
         onSubmit={handleFormSubmit}
         assignment={editing}
-        users={usersList}
+        users={employeesList}
+        roles={rolesList}
         companies={companiesList}
       />
     </div>
   );
 }
 
-function AssignmentFormModal({ visible, onCancel, onSubmit, assignment, users, companies }) {
+function AssignmentFormModal({
+  visible,
+  onCancel,
+  onSubmit,
+  assignment,
+  users,
+  companies,
+  roles,
+}) {
   const [empid, setEmpid] = useState(assignment?.empid || '');
   const [companyId, setCompanyId] = useState(assignment?.company_id || '');
   const [roleId, setRoleId] = useState(String(assignment?.role_id || 2));
@@ -249,8 +262,14 @@ function AssignmentFormModal({ visible, onCancel, onSubmit, assignment, users, c
               required
               style={{ width: '100%', padding: '0.5rem' }}
             >
-              <option value="1">admin</option>
-              <option value="2">user</option>
+              <option value="" disabled>
+                Сонгоно уу...
+              </option>
+              {roles.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
             </select>
           </div>
 

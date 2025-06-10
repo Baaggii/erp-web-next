@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 
 const RELATION_LOOKUPS = {
   role_id: { table: 'user_roles', value: 'id', label: 'name' },
-  empid: { table: 'users', value: 'empid', label: 'name' },
+  empid: { table: 'employee', value: 'empid', label: 'name' },
   company_id: { table: 'companies', value: 'id', label: 'name' },
   module_key: { table: 'modules', value: 'module_key', label: 'label' },
 };
@@ -77,13 +77,7 @@ export default function TablesManagement() {
     const obj = {};
     await Promise.all(
       cols
-        .filter((c) => {
-          if (!RELATION_LOOKUPS[c]) return false;
-          if (selectedTable === 'user_companies' && (c === 'empid' || c === 'role_id')) {
-            return false;
-          }
-          return true;
-        })
+        .filter((c) => RELATION_LOOKUPS[c])
         .map(async (c) => {
           const info = RELATION_LOOKUPS[c];
           const res = await fetch(`/api/tables/${info.table}?perPage=500`, { credentials: 'include' });
