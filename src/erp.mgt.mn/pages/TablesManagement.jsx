@@ -5,7 +5,7 @@ export default function TablesManagement() {
   const [selectedTable, setSelectedTable] = useState('');
   const [rows, setRows] = useState([]);
   const [page, setPage] = useState(1);
-  const [perPage] = useState(10);
+  const [perPage, setPerPage] = useState(10);
   const [total, setTotal] = useState(0);
   const [filters, setFilters] = useState({});
   const [sort, setSort] = useState({ column: '', dir: 'asc' });
@@ -162,6 +162,14 @@ export default function TablesManagement() {
     setPage(newPage);
   }
 
+  function handlePerPageChange(e) {
+    let value = Number(e.target.value);
+    if (!value || value <= 0) value = 1;
+    if (value > 500) value = 500;
+    setPerPage(value);
+    setPage(1);
+  }
+
   function getRowKey(row) {
     if (row.id !== undefined) return String(row.id);
     if (selectedTable === 'company_module_licenses') {
@@ -315,13 +323,24 @@ export default function TablesManagement() {
             >
               Next
             </button>
-            <button
-              disabled={page >= Math.ceil(total / perPage)}
-              onClick={() => handlePageChange(Math.ceil(total / perPage))}
-            >
-              Last »
-            </button>
-          </div>
+          <button
+            disabled={page >= Math.ceil(total / perPage)}
+            onClick={() => handlePageChange(Math.ceil(total / perPage))}
+          >
+            Last »
+          </button>
+          <label style={{ marginLeft: '1rem' }}>
+            Rows per page:
+            <input
+              type="number"
+              min="1"
+              max="500"
+              value={perPage}
+              onChange={handlePerPageChange}
+              style={{ width: '4rem', marginLeft: '0.25rem' }}
+            />
+          </label>
+        </div>
         </>
       )}
     </div>
