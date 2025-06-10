@@ -10,6 +10,8 @@ export default function TablesManagement() {
   const [filters, setFilters] = useState({});
   const [sort, setSort] = useState({ column: '', dir: 'asc' });
   const [selectedRows, setSelectedRows] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [editingRow, setEditingRow] = useState(null);
 
   useEffect(() => {
     fetch('/api/tables', { credentials: 'include' })
@@ -63,25 +65,40 @@ export default function TablesManagement() {
     }
   }
 
-  async function handleEdit(row) {
-      const updates = {};
-      for (const key of Object.keys(row)) {
-        if (key === 'id') continue;
-        const val = prompt(`${key}?`, row[key]);
-        if (val !== null && val !== String(row[key])) {
-          updates[key] = val;
-        }
-      }
-      if (Object.keys(updates).length === 0) return;
+  function handleEdit(row) {
+    setEditingRow(row);
+    setShowForm(true);
+  }
 
-      let rowId = row.id;
+  async function handleAdd() {
+    if (rows.length === 0) return;
+    setEditingRow(null);
+    setShowForm(true);
+  }
+
+  async function handleFormSubmit(formData) {
+    if (!selectedTable) return;
+    if (editingRow) {
+      const updates = {};
+      Object.keys(formData).forEach((k) => {
+        if (k === 'id') return;
+        if (String(formData[k]) !== String(editingRow[k])) {
+          updates[k] = formData[k];
+        }
+      });
+      if (Object.keys(updates).length === 0) {
+        setShowForm(false);
+        setEditingRow(null);
+        return;
+      }
+      let rowId = editingRow.id;
       if (rowId === undefined) {
         if (selectedTable === 'company_module_licenses') {
-          rowId = `${row.company_id}-${row.module_key}`;
+          rowId = `${editingRow.company_id}-${editingRow.module_key}`;
         } else if (selectedTable === 'role_module_permissions') {
-          rowId = `${row.company_id}-${row.role_id}-${row.module_key}`;
+          rowId = `${editingRow.company_id}-${editingRow.role_id}-${editingRow.module_key}`;
         } else if (selectedTable === 'user_companies') {
-          rowId = `${row.empid}-${row.company_id}`;
+          rowId = `${editingRow.empid}-${editingRow.company_id}`;
         } else {
           alert('Cannot update row: no id column');
           return;
@@ -96,32 +113,31 @@ export default function TablesManagement() {
           body: JSON.stringify(updates),
         },
       );
-    if (!res.ok) {
-      alert('Update failed');
-      return;
+      if (!res.ok) {
+        alert('Update failed');
+        return;
+      }
+    } else {
+      const data = {};
+      Object.keys(formData).forEach((k) => {
+        if (k === 'id') return;
+        data[k] = formData[k];
+      });
+      const res = await fetch(`/api/tables/${selectedTable}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(data),
+        },
+      );
+      if (!res.ok) {
+        alert('Insert failed');
+        return;
+      }
     }
-    loadRows(selectedTable);
-  }
-
-  async function handleAdd() {
-    if (rows.length === 0) return;
-    const data = {};
-    for (const key of Object.keys(rows[0])) {
-      if (key === 'id') continue;
-      const val = prompt(`${key}?`);
-      if (val === null) return;
-      data[key] = val;
-    }
-    const res = await fetch(`/api/tables/${selectedTable}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) {
-      alert('Insert failed');
-      return;
-    }
+    setShowForm(false);
+    setEditingRow(null);
     loadRows(selectedTable);
   }
 
@@ -365,6 +381,92 @@ export default function TablesManagement() {
         </div>
         </>
       )}
+      <RowFormModal
+        visible={showForm}
+        onCancel={() => {
+          setShowForm(false);
+          setEditingRow(null);
+        }}
+        onSubmit={handleFormSubmit}
+        columns={rows.length > 0 ? Object.keys(rows[0]) : []}
+        row={editingRow}
+      />
+    </div>
+  );
+}
+
+function RowFormModal({ visible, onCancel, onSubmit, columns, row }) {
+  const [formVals, setFormVals] = useState(() => {
+    const init = {};
+    columns.forEach((c) => {
+      init[c] = row ? String(row[c] ?? '') : '';
+    });
+    return init;
+  });
+
+  useEffect(() => {
+    const vals = {};
+    columns.forEach((c) => {
+      vals[c] = row ? String(row[c] ?? '') : '';
+    });
+    setFormVals(vals);
+  }, [row, columns]);
+
+  if (!visible) return null;
+
+  const overlay = {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  };
+
+  const modal = {
+    backgroundColor: '#fff',
+    padding: '1rem',
+    borderRadius: '4px',
+    maxHeight: '90vh',
+    overflowY: 'auto',
+    minWidth: '300px',
+  };
+
+  return (
+    <div style={overlay}>
+      <div style={modal}>
+        <h3 style={{ marginTop: 0 }}>{row ? 'Edit Row' : 'Add Row'}</h3>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSubmit(formVals);
+          }}
+        >
+          {columns.map((c) => (
+            <div key={c} style={{ marginBottom: '0.75rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.25rem' }}>{c}</label>
+              <input
+                type="text"
+                value={formVals[c]}
+                onChange={(e) =>
+                  setFormVals((v) => ({ ...v, [c]: e.target.value }))
+                }
+                disabled={row && c === 'id'}
+                style={{ width: '100%', padding: '0.5rem' }}
+              />
+            </div>
+          ))}
+          <div style={{ textAlign: 'right' }}>
+            <button type="button" onClick={onCancel} style={{ marginRight: '0.5rem' }}>
+              Cancel
+            </button>
+            <button type="submit">Save</button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
