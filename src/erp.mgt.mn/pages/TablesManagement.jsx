@@ -80,6 +80,8 @@ export default function TablesManagement() {
           rowId = `${row.company_id}-${row.module_key}`;
         } else if (selectedTable === 'role_module_permissions') {
           rowId = `${row.company_id}-${row.role_id}-${row.module_key}`;
+        } else if (selectedTable === 'user_companies') {
+          rowId = `${row.empid}-${row.company_id}`;
         } else {
           alert('Cannot update row: no id column');
           return;
@@ -131,6 +133,8 @@ export default function TablesManagement() {
         rowId = `${row.company_id}-${row.module_key}`;
       } else if (selectedTable === 'role_module_permissions') {
         rowId = `${row.company_id}-${row.role_id}-${row.module_key}`;
+      } else if (selectedTable === 'user_companies') {
+        rowId = `${row.empid}-${row.company_id}`;
       } else {
         alert('Cannot delete row: no id column');
         return;
@@ -182,6 +186,9 @@ export default function TablesManagement() {
     if (selectedTable === 'role_module_permissions') {
       return `${row.company_id}-${row.role_id}-${row.module_key}`;
     }
+    if (selectedTable === 'user_companies') {
+      return `${row.empid}-${row.company_id}`;
+    }
     return JSON.stringify(row);
   }
 
@@ -212,6 +219,8 @@ export default function TablesManagement() {
           rowId = `${r.company_id}-${r.module_key}`;
         } else if (selectedTable === 'role_module_permissions') {
           rowId = `${r.company_id}-${r.role_id}-${r.module_key}`;
+        } else if (selectedTable === 'user_companies') {
+          rowId = `${r.empid}-${r.company_id}`;
         } else {
           alert('Cannot delete row: no id column');
           continue;
@@ -295,6 +304,8 @@ export default function TablesManagement() {
                         ? `${r.company_id}-${r.module_key}`
                         : selectedTable === 'role_module_permissions'
                         ? `${r.company_id}-${r.role_id}-${r.module_key}`
+                        : selectedTable === 'user_companies'
+                        ? `${r.empid}-${r.company_id}`
                         : JSON.stringify(r))
                   }
                 >
