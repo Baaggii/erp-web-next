@@ -141,21 +141,11 @@ export default function CodingTablesPage() {
     let match = desc.match(/^today\s*-\s*([A-Za-z0-9_]+)$/i);
     if (match) {
       const col = match[1];
-      const asAge = name.toLowerCase().includes('age') || lower.includes('age');
-      const evalFn = (val) => {
-        const d = parseExcelDate(val);
-        if (!d) return null;
-        const now = new Date();
-        if (asAge) {
-          let years = now.getUTCFullYear() - d.getUTCFullYear();
-          const mDiff = now.getUTCMonth() - d.getUTCMonth();
-          const dayDiff = now.getUTCDate() - d.getUTCDate();
-          if (mDiff < 0 || (mDiff === 0 && dayDiff < 0)) years--;
-          return years;
-        }
-        return Math.floor((now.getTime() - d.getTime()) / 86400000);
-      };
-      return { name, column: col, evalFn };
+      // If field name or description hints at age, compute in years.
+      if (name.toLowerCase().includes('age') || lower.includes('age')) {
+        return { name, expression: `TIMESTAMPDIFF(YEAR, ${col}, CURDATE())` };
+      }
+      return { name, expression: `DATEDIFF(CURDATE(), ${col})` };
     }
 
     // Pattern: "current year - year(column)"

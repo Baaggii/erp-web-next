@@ -467,12 +467,6 @@ export async function listDatabaseTables() {
   return rows.map((r) => Object.values(r)[0]);
 }
 
-export async function getPrimaryKeyColumn(tableName) {
-  const [rows] = await pool.query('SHOW KEYS FROM ?? WHERE Key_name = "PRIMARY"', [tableName]);
-  if (rows.length === 0) return null;
-  return rows[0].Column_name;
-}
-
 /**
  * Get up to 50 rows from a table
  */
@@ -505,8 +499,7 @@ export async function listTableRows(
     `SELECT COUNT(*) AS count FROM ?? ${where}`,
     countParams,
   );
-  const idColumn = await getPrimaryKeyColumn(tableName);
-  return { rows, count: countRows[0].count, idColumn };
+  return { rows, count: countRows[0].count };
 }
 
 /**
@@ -536,9 +529,7 @@ export async function updateTableRow(tableName, id, updates) {
     return { company_id: companyId, role_id: roleId, module_key: moduleKey };
   }
 
-  const pk = await getPrimaryKeyColumn(tableName);
-  const idCol = pk || 'id';
-  await pool.query(`UPDATE ?? SET ${setClause} WHERE \`${idCol}\` = ?`, [tableName, ...values, id]);
+  await pool.query(`UPDATE ?? SET ${setClause} WHERE id = ?`, [tableName, ...values, id]);
   return { id };
 }
 
@@ -574,8 +565,6 @@ export async function deleteTableRow(tableName, id) {
     return { company_id: companyId, role_id: roleId, module_key: moduleKey };
   }
 
-  const pk = await getPrimaryKeyColumn(tableName);
-  const idCol = pk || 'id';
-  await pool.query('DELETE FROM ?? WHERE ?? = ?', [tableName, idCol, id]);
+  await pool.query('DELETE FROM ?? WHERE id = ?', [tableName, id]);
   return { id };
 }
