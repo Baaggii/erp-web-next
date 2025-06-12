@@ -263,9 +263,12 @@ export default function TableManager({ table }) {
   if (!table) return null;
   if (rows.length === 0) return <p>No data.</p>;
 
-  const columns = Object.keys(rows[0]);
+  const allColumns = Object.keys(rows[0]);
+  const hiddenColumns = ['password', 'created_by', 'created_at'];
+  const columns = allColumns.filter((c) => !hiddenColumns.includes(c));
+
   const relationOpts = {};
-  columns.forEach((c) => {
+  allColumns.forEach((c) => {
     if (relations[c] && refData[c]) {
       relationOpts[c] = refData[c];
     }
@@ -278,8 +281,9 @@ export default function TableManager({ table }) {
     });
   });
   const disabledFields = editing ? getKeyFields() : [];
-  const formColumns = columns
-    .filter((c) => c !== 'id' && c !== 'created_at' && c !== 'created_by');
+  const formColumns = allColumns.filter(
+    (c) => c !== 'id' && c !== 'created_at' && c !== 'created_by'
+  );
 
   return (
     <div>
