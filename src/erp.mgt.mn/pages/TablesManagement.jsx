@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import TableManager from '../components/TableManager.jsx';
+import ErrorMessage from '../components/ErrorMessage.jsx';
 
 export default function TablesManagement() {
   const [tables, setTables] = useState([]);
@@ -23,9 +24,7 @@ export default function TablesManagement() {
   return (
     <div>
       <h2>Dynamic Tables</h2>
-      {error && (
-        <div style={{ color: 'red', marginBottom: '0.5rem' }}>{error}</div>
-      )}
+      <ErrorMessage message={error} />
       <select value={selectedTable} onChange={(e) => setSelectedTable(e.target.value)}>
         <option value="">-- select table --</option>
         {tables.map((t) => (

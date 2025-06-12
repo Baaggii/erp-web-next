@@ -94,10 +94,14 @@ export default function RowFormModal({
             </div>
           ))}
           <div style={{ textAlign: 'right' }}>
-            <button type="button" onClick={onCancel} style={{ marginRight: '0.5rem' }}>
+            <button
+              type="button"
+              onClick={onCancel}
+              style={{ marginRight: '0.5rem', padding: '0.4rem 0.75rem' }}
+            >
               Cancel
             </button>
-            <button type="submit">Save</button>
+            <button type="submit" style={{ padding: '0.4rem 0.75rem' }}>Save</button>
           </div>
         </form>
       </div>
