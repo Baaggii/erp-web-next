@@ -35,18 +35,15 @@ export default function TableManager({ table }) {
   const { user } = useContext(AuthContext);
 
   function computeAutoInc(meta) {
-    const auto = meta
-      .filter(
-        (c) =>
-          typeof c.extra === 'string' &&
-          c.extra.toLowerCase().includes('auto_increment'),
-      )
-      .map((c) => c.name);
-    if (auto.length === 0) {
-      const pk = meta.filter((c) => c.key === 'PRI').map((c) => c.name);
-      if (pk.length === 1) return new Set(pk);
-    }
-    return new Set(auto);
+    return new Set(
+      meta
+        .filter(
+          (c) =>
+            typeof c.extra === 'string' &&
+            c.extra.toLowerCase().includes('auto_increment'),
+        )
+        .map((c) => c.name),
+    );
   }
 
   useEffect(() => {
@@ -392,10 +389,6 @@ export default function TableManager({ table }) {
     });
   });
   const autoCols = new Set(autoInc);
-  if (columnMeta.length > 0 && autoCols.size === 0) {
-    const pk = columnMeta.filter((c) => c.key === 'PRI').map((c) => c.name);
-    if (pk.length === 1) autoCols.add(pk[0]);
-  }
   if (columnMeta.length === 0 && autoCols.size === 0 && allColumns.includes('id')) {
     autoCols.add('id');
   }
