@@ -2,6 +2,7 @@ import express from 'express';
 import {
   getTables,
   getTableRows,
+  getTableRelations,
   updateRow,
   addRow,
   deleteRow,
@@ -12,6 +13,7 @@ const router = express.Router();
 
 router.get('/', requireAuth, getTables);
 router.get('/:table', requireAuth, getTableRows);
+router.get('/:table/relations', requireAuth, getTableRelations);
 router.put('/:table/:id', requireAuth, updateRow);
 router.post('/:table', requireAuth, addRow);
 router.delete('/:table/:id', requireAuth, deleteRow);

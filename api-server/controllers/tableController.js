@@ -4,6 +4,7 @@ import {
   updateTableRow,
   insertTableRow,
   deleteTableRow,
+  listTableRelationships,
 } from '../../db/index.js';
 
 export async function getTables(req, res, next) {
@@ -26,6 +27,15 @@ export async function getTableRows(req, res, next) {
       sort: { column: sort, dir },
     });
     res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getTableRelations(req, res, next) {
+  try {
+    const rels = await listTableRelationships(req.params.table);
+    res.json(rels);
   } catch (err) {
     next(err);
   }
