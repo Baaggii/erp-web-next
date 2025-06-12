@@ -7,6 +7,7 @@ export default function RowFormModal({
   columns,
   row,
   relations = {},
+  disabledFields = [],
 }) {
   const [formVals, setFormVals] = useState(() => {
     const init = {};
@@ -67,7 +68,7 @@ export default function RowFormModal({
                   onChange={(e) =>
                     setFormVals((v) => ({ ...v, [c]: e.target.value }))
                   }
-                  disabled={row && c === 'id'}
+                  disabled={row && (c === 'id' || disabledFields.includes(c))}
                   style={{ width: '100%', padding: '0.5rem' }}
                 >
                   <option value="">-- select --</option>
@@ -84,7 +85,7 @@ export default function RowFormModal({
                   onChange={(e) =>
                     setFormVals((v) => ({ ...v, [c]: e.target.value }))
                   }
-                  disabled={row && c === 'id'}
+                  disabled={row && (c === 'id' || disabledFields.includes(c))}
                   style={{ width: '100%', padding: '0.5rem' }}
                 />
               )}
