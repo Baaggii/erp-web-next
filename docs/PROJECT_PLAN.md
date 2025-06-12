@@ -4,7 +4,7 @@
 This document outlines the roadmap, scope, architecture, milestones, and deliverables for the ERP-Web-Next project—a multi-tenant, React + Express ERP web application with per-company user management, forms, reporting, and mosaic-style dashboard layouts.
 
 ## 2. Objectives
-- **Secure Authentication**: JWT cookie-based login by Employee ID.
+- **Secure Authentication**: JWT cookie-based login by Employee ID or Email.
 - **Multi-company Support**: Assign users to multiple companies with per-company roles.
 - **User Management**: Admin CRUD on users and company assignments; self-service password change.
 - **Forms & Reports**: Dynamic form renderer via JSON schema; embeddable chart/report components.
@@ -50,7 +50,7 @@ This document outlines the roadmap, scope, architecture, milestones, and deliver
   - `jsonwebtoken` for JWT  
 - **DB Schema**  
   - `user_roles(id PK, name)`
-  - `users(empid PK, name, password, role_id FK→user_roles.id, created_by, created_at)`
+  - `users(empid PK, email, name, password, role_id FK→user_roles.id, created_by, created_at)`
   - `companies(id PK, name, created_at)`  
   - `user_companies(empid FK→users.empid, company_id FK→companies.id, role_id FK→user_roles.id, created_by, created_at)`
   - Single-database multi-tenant (company_id discriminator)
@@ -60,7 +60,7 @@ This document outlines the roadmap, scope, architecture, milestones, and deliver
 | Phase                | Tasks                                                                                            | ETA   |
 |----------------------|--------------------------------------------------------------------------------------------------|-------|
 | **Phase 1**          | Setup repo, env, `.htaccess`, PM2, Docker dev                                                    | 1 day |
-| **Phase 2: Auth & User**       | Auth routes, login by ID, JWT cookie, `RequireAuth`, login form                     | 2 days|
+| **Phase 2: Auth & User**       | Auth routes, login by ID/email, JWT cookie, `RequireAuth`, login form                     | 2 days|
 | **Phase 3: User Mgmt** | Admin CRUD, self-password change, UI (`Users.jsx`), API integration, validation                  | 3 days|
 | **Phase 4: Forms & Reports**    | JSON form renderer, sample `/forms`, basic `/reports` component                            | 3 days|
 | **Phase 5: Mosaic Dashboard**   | Integrate React Mosaic, scaffold windows, layout save/load                                 | 4 days|
