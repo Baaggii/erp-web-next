@@ -6,12 +6,10 @@ import ErrorMessage from './ErrorMessage.jsx';
 
 async function parseJSON(res) {
   if (res.status === 204) return null;
-  const ct = res.headers.get('content-type') || '';
-  if (!ct.includes('application/json')) {
-    throw new Error('Invalid server response');
-  }
+  const text = await res.text();
+  if (!text) return null;
   try {
-    return await res.json();
+    return JSON.parse(text);
   } catch {
     throw new Error('Invalid server response');
   }
