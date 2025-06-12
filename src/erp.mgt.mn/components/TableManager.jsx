@@ -7,6 +7,8 @@ export default function TableManager({ table }) {
   const [count, setCount] = useState(0);
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(50);
+  const [filters, setFilters] = useState({});
+  const [sort, setSort] = useState({ column: '', dir: 'asc' });
   const [relations, setRelations] = useState({});
   const [refData, setRefData] = useState({});
   const [showForm, setShowForm] = useState(false);
@@ -20,6 +22,8 @@ export default function TableManager({ table }) {
     setRows([]);
     setCount(0);
     setPage(1);
+    setFilters({});
+    setSort({ column: '', dir: 'asc' });
     setRelations({});
     setRefData({});
     fetch(`/api/tables/${table}/relations`, { credentials: 'include' })
@@ -42,6 +46,13 @@ export default function TableManager({ table }) {
     if (!table) return;
     let canceled = false;
     const params = new URLSearchParams({ page, perPage });
+    if (sort.column) {
+      params.set('sort', sort.column);
+      params.set('dir', sort.dir);
+    }
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v) params.set(k, v);
+    });
     fetch(`/api/tables/${table}?${params.toString()}`, { credentials: 'include' })
       .then((res) => res.json())
       .then((data) => {
@@ -52,7 +63,7 @@ export default function TableManager({ table }) {
     return () => {
       canceled = true;
     };
-  }, [table, page, perPage]);
+  }, [table, page, perPage, filters, sort]);
 
   useEffect(() => {
     let canceled = false;
@@ -137,6 +148,20 @@ export default function TableManager({ table }) {
     setSelectedRows(new Set());
   }
 
+  function handleSort(col) {
+    if (sort.column === col) {
+      setSort({ column: col, dir: sort.dir === 'asc' ? 'desc' : 'asc' });
+    } else {
+      setSort({ column: col, dir: 'asc' });
+    }
+    setPage(1);
+  }
+
+  function handleFilterChange(col, val) {
+    setFilters((f) => ({ ...f, [col]: val }));
+    setPage(1);
+  }
+
   async function handleSubmit(values) {
     const method = editing ? 'PUT' : 'POST';
     const url = editing
@@ -158,6 +183,13 @@ export default function TableManager({ table }) {
     });
     if (res.ok) {
       const params = new URLSearchParams({ page, perPage });
+      if (sort.column) {
+        params.set('sort', sort.column);
+        params.set('dir', sort.dir);
+      }
+      Object.entries(filters).forEach(([k, v]) => {
+        if (v) params.set(k, v);
+      });
       const data = await fetch(`/api/tables/${table}?${params.toString()}`, {
         credentials: 'include',
       }).then((r) => r.json());
@@ -179,6 +211,13 @@ export default function TableManager({ table }) {
     );
     if (res.ok) {
       const params = new URLSearchParams({ page, perPage });
+      if (sort.column) {
+        params.set('sort', sort.column);
+        params.set('dir', sort.dir);
+      }
+      Object.entries(filters).forEach(([k, v]) => {
+        if (v) params.set(k, v);
+      });
       const data = await fetch(`/api/tables/${table}?${params.toString()}`, {
         credentials: 'include',
       }).then((r) => r.json());
@@ -206,6 +245,13 @@ export default function TableManager({ table }) {
       }
     }
     const params = new URLSearchParams({ page, perPage });
+    if (sort.column) {
+      params.set('sort', sort.column);
+      params.set('dir', sort.dir);
+    }
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v) params.set(k, v);
+    });
     const data = await fetch(`/api/tables/${table}?${params.toString()}`, {
       credentials: 'include',
     }).then((r) => r.json());
@@ -318,11 +364,44 @@ export default function TableManager({ table }) {
               />
             </th>
             {columns.map((c) => (
-              <th key={c} style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+              <th
+                key={c}
+                style={{ padding: '0.5rem', border: '1px solid #d1d5db', cursor: 'pointer' }}
+                onClick={() => handleSort(c)}
+              >
                 {c}
+                {sort.column === c ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}
               </th>
             ))}
             <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Action</th>
+          </tr>
+          <tr>
+            <th style={{ padding: '0.25rem', border: '1px solid #d1d5db' }}></th>
+            {columns.map((c) => (
+              <th key={c} style={{ padding: '0.25rem', border: '1px solid #d1d5db' }}>
+                {Array.isArray(relationOpts[c]) ? (
+                  <select
+                    value={filters[c] || ''}
+                    onChange={(e) => handleFilterChange(c, e.target.value)}
+                    style={{ width: '100%' }}
+                  >
+                    <option value=""></option>
+                    {relationOpts[c].map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    value={filters[c] || ''}
+                    onChange={(e) => handleFilterChange(c, e.target.value)}
+                    style={{ width: '100%' }}
+                  />
+                )}
+              </th>
+            ))}
+            <th></th>
           </tr>
         </thead>
         <tbody>
