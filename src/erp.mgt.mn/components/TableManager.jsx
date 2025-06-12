@@ -3,6 +3,18 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import RowFormModal from './RowFormModal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
+async function parseJSON(res) {
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) {
+    throw new Error('Invalid server response');
+  }
+  try {
+    return await res.json();
+  } catch {
+    throw new Error('Invalid server response');
+  }
+}
+
 export default function TableManager({ table }) {
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
@@ -50,7 +62,7 @@ export default function TableManager({ table }) {
     fetch(`/api/tables/${table}/relations`, { credentials: 'include' })
       .then((res) => {
         if (!res.ok) throw new Error('Failed to load table relations');
-        return res.json();
+        return parseJSON(res);
       })
       .then((rels) => {
         if (canceled) return;
@@ -71,7 +83,7 @@ export default function TableManager({ table }) {
     fetch(`/api/tables/${table}/columns`, { credentials: 'include' })
       .then((res) => {
         if (!res.ok) throw new Error('Failed to load column metadata');
-        return res.json();
+        return parseJSON(res);
       })
       .then((cols) => {
         if (canceled) return;
@@ -112,10 +124,11 @@ export default function TableManager({ table }) {
         const data = await res.json().catch(() => null);
         throw new Error(data?.message || 'Failed to load rows');
       }
-      const json = await res.json();
+      const json = await parseJSON(res);
       setError('');
       return json;
     } catch (err) {
+      console.error('Failed to load rows', err);
       setError(err.message);
       return { rows: [], count: 0 };
     }
@@ -144,7 +157,7 @@ export default function TableManager({ table }) {
       })
         .then((res) => {
           if (!res.ok) throw new Error('Failed to load reference data');
-          return res.json();
+          return parseJSON(res);
         })
         .then((data) => {
           if (canceled) return;
@@ -194,7 +207,7 @@ export default function TableManager({ table }) {
         const data = await res.json().catch(() => null);
         throw new Error(data?.message || 'Failed to fetch column metadata');
       }
-      const cols = await res.json();
+      const cols = await parseJSON(res);
       if (Array.isArray(cols)) {
         setColumnMeta(cols);
         setAutoInc(computeAutoInc(cols));
@@ -288,6 +301,7 @@ export default function TableManager({ table }) {
       setShowForm(false);
       setEditing(null);
     } catch (err) {
+      console.error('Failed to save row', err);
       setError(err.message);
     }
   }
@@ -309,6 +323,7 @@ export default function TableManager({ table }) {
       setSelectedRows(new Set());
       setError('');
     } catch (err) {
+      console.error('Failed to delete row', err);
       setError(err.message);
     }
   }
@@ -329,6 +344,7 @@ export default function TableManager({ table }) {
           throw new Error(data?.message || 'Delete failed');
         }
       } catch (err) {
+        console.error('Failed to delete row', err);
         setError(err.message);
         return;
       }
