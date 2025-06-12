@@ -1,7 +1,10 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-const logFile = path.resolve('api-server/logs/error.log');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const logFile = path.resolve(__dirname, '../logs/error.log');
 
 export async function listErrorLog(req, res, next) {
   try {
