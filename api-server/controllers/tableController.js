@@ -6,6 +6,7 @@ import {
   deleteTableRow,
   listTableRelationships,
   listTableColumns,
+  listTableColumnMeta,
 } from '../../db/index.js';
 import bcrypt from 'bcryptjs';
 import { formatDateForDb } from '../utils/formatDate.js';
@@ -39,6 +40,15 @@ export async function getTableRelations(req, res, next) {
   try {
     const rels = await listTableRelationships(req.params.table);
     res.json(rels);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getTableColumnsMeta(req, res, next) {
+  try {
+    const cols = await listTableColumnMeta(req.params.table);
+    res.json(cols);
   } catch (err) {
     next(err);
   }

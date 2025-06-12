@@ -12,6 +12,7 @@ export default function TableManager({ table }) {
   const [sort, setSort] = useState({ column: '', dir: 'asc' });
   const [relations, setRelations] = useState({});
   const [refData, setRefData] = useState({});
+  const [columnMeta, setColumnMeta] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [selectedRows, setSelectedRows] = useState(new Set());
@@ -27,6 +28,7 @@ export default function TableManager({ table }) {
     setSort({ column: '', dir: 'asc' });
     setRelations({});
     setRefData({});
+    setColumnMeta([]);
     fetch(`/api/tables/${table}/relations`, { credentials: 'include' })
       .then((res) => res.json())
       .then((rels) => {
@@ -37,6 +39,12 @@ export default function TableManager({ table }) {
             return acc;
           }, {})
         );
+      });
+    fetch(`/api/tables/${table}/columns`, { credentials: 'include' })
+      .then((res) => res.json())
+      .then((cols) => {
+        if (canceled) return;
+        setColumnMeta(cols);
       });
     return () => {
       canceled = true;
@@ -93,29 +101,17 @@ export default function TableManager({ table }) {
   }, [relations]);
 
   function getRowId(row) {
-    if (row.id !== undefined) return row.id;
-    if (table === 'company_module_licenses') {
-      return `${row.company_id}-${row.module_key}`;
-    }
-    if (table === 'role_module_permissions') {
-      return `${row.company_id}-${row.role_id}-${row.module_key}`;
-    }
-    if (table === 'user_companies') {
-      return `${row.empid}-${row.company_id}`;
-    }
-    return undefined;
+    const keys = getKeyFields();
+    if (keys.length === 0) return undefined;
+    if (keys.length === 1) return row[keys[0]];
+    return keys.map((k) => row[k]).join('-');
   }
 
   function getKeyFields() {
-    if (table === 'company_module_licenses') {
-      return ['company_id', 'module_key'];
-    }
-    if (table === 'role_module_permissions') {
-      return ['company_id', 'role_id', 'module_key'];
-    }
-    if (table === 'user_companies') {
-      return ['empid', 'company_id'];
-    }
+    const keys = columnMeta
+      .filter((c) => c.key === 'PRI')
+      .map((c) => c.name);
+    if (keys.length > 0) return keys;
     return ['id'];
   }
 
@@ -297,9 +293,15 @@ export default function TableManager({ table }) {
       labelMap[col][o.value] = o.label;
     });
   });
+  const autoCols = new Set(
+    columnMeta
+      .filter((c) => c.extra && c.extra.toLowerCase().includes('auto_increment'))
+      .map((c) => c.name)
+  );
   const disabledFields = editing ? getKeyFields() : [];
   const formColumns = allColumns.filter(
-    (c) => c !== 'id' && c !== 'created_at' && c !== 'created_by'
+    (c) =>
+      !autoCols.has(c) && c !== 'created_at' && c !== 'created_by'
   );
 
   return (
