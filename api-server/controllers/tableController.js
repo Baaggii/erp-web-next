@@ -59,7 +59,8 @@ export async function updateRow(req, res, next) {
     const updates = { ...req.body };
     delete updates.created_by;
     delete updates.created_at;
-    if (req.params.table === 'users' && updates.password) {
+    const columns = await listTableColumns(req.params.table);
+    if (columns.includes('password') && updates.password) {
       updates.password = await bcrypt.hash(updates.password, 10);
     }
     await updateTableRow(req.params.table, req.params.id, updates);
@@ -77,7 +78,7 @@ export async function addRow(req, res, next) {
     if (columns.includes('created_at')) {
       row.created_at = formatDateForDb(new Date());
     }
-    if (req.params.table === 'users' && row.password) {
+    if (columns.includes('password') && row.password) {
       row.password = await bcrypt.hash(row.password, 10);
     }
     const result = await insertTableRow(req.params.table, row);
