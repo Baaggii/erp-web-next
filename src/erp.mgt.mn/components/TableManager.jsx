@@ -177,18 +177,20 @@ export default function TableManager({ table }) {
       if (columns.has('created_by')) cleaned.created_by = user?.empid;
       if (columns.has('created_at')) cleaned.created_at = new Date().toISOString();
     }
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(cleaned),
-    });
-    if (res.ok) {
-      const params = new URLSearchParams({ page, perPage });
-      if (sort.column) {
-        params.set('sort', sort.column);
-        params.set('dir', sort.dir);
-      }
+
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(cleaned),
+      });
+      if (res.ok) {
+        const params = new URLSearchParams({ page, perPage });
+        if (sort.column) {
+          params.set('sort', sort.column);
+          params.set('dir', sort.dir);
+        }
       Object.entries(filters).forEach(([k, v]) => {
         if (v) params.set(k, v);
       });
@@ -197,11 +199,21 @@ export default function TableManager({ table }) {
       }).then((r) => r.json());
       setRows(data.rows || []);
       setCount(data.count || 0);
-      setSelectedRows(new Set());
-      setShowForm(false);
-      setEditing(null);
-    } else {
-      alert('Save failed');
+        setSelectedRows(new Set());
+        setShowForm(false);
+        setEditing(null);
+      } else {
+        let message = 'Save failed';
+        try {
+          const data = await res.json();
+          if (data && data.message) message += `: ${data.message}`;
+        } catch (e) {
+          // ignore json parse errors
+        }
+        alert(message);
+      }
+    } catch (err) {
+      alert(`Save failed: ${err.message}`);
     }
   }
 
