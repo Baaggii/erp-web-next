@@ -13,10 +13,26 @@ export default function TableManager({ table }) {
   const [relations, setRelations] = useState({});
   const [refData, setRefData] = useState({});
   const [columnMeta, setColumnMeta] = useState([]);
+  const [autoInc, setAutoInc] = useState(new Set());
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [selectedRows, setSelectedRows] = useState(new Set());
   const { user } = useContext(AuthContext);
+
+  function computeAutoInc(meta) {
+    const auto = new Set(
+      meta
+        .filter(
+          (c) => c.extra && c.extra.toLowerCase().includes('auto_increment'),
+        )
+        .map((c) => c.name),
+    );
+    if (auto.size === 0) {
+      const pri = meta.filter((c) => c.key === 'PRI');
+      if (pri.length === 1) auto.add(pri[0].name);
+    }
+    return auto;
+  }
 
   useEffect(() => {
     if (!table) return;
@@ -45,11 +61,16 @@ export default function TableManager({ table }) {
       .then((cols) => {
         if (canceled) return;
         setColumnMeta(cols);
+        setAutoInc(computeAutoInc(cols));
       });
     return () => {
       canceled = true;
     };
   }, [table]);
+
+  useEffect(() => {
+    setAutoInc(computeAutoInc(columnMeta));
+  }, [columnMeta]);
 
   useEffect(() => {
     if (!table) return;
@@ -115,12 +136,32 @@ export default function TableManager({ table }) {
     return ['id'];
   }
 
-  function openAdd() {
+  async function ensureColumnMeta() {
+    if (columnMeta.length > 0 || !table) return;
+    try {
+      const res = await fetch(`/api/tables/${table}/columns`, {
+        credentials: 'include',
+      });
+      if (res.ok) {
+        const cols = await res.json();
+        if (Array.isArray(cols)) {
+          setColumnMeta(cols);
+          setAutoInc(computeAutoInc(cols));
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch column metadata', err);
+    }
+  }
+
+  async function openAdd() {
+    await ensureColumnMeta();
     setEditing(null);
     setShowForm(true);
   }
 
-  function openEdit(row) {
+  async function openEdit(row) {
+    await ensureColumnMeta();
     setEditing(row);
     setShowForm(true);
   }
@@ -297,12 +338,8 @@ export default function TableManager({ table }) {
       labelMap[col][o.value] = o.label;
     });
   });
-  const autoCols = new Set(
-    columnMeta
-      .filter((c) => c.extra && c.extra.toLowerCase().includes('auto_increment'))
-      .map((c) => c.name)
-  );
-  if (columnMeta.length === 0 && allColumns.includes('id')) {
+  const autoCols = new Set(autoInc);
+  if (columnMeta.length === 0 && autoCols.size === 0 && allColumns.includes('id')) {
     autoCols.add('id');
   }
   const disabledFields = editing ? getKeyFields() : [];
