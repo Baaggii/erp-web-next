@@ -13,6 +13,7 @@ export default function TableManager({ table }) {
   const [relations, setRelations] = useState({});
   const [refData, setRefData] = useState({});
   const [columnMeta, setColumnMeta] = useState([]);
+  const [autoInc, setAutoInc] = useState(new Set());
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [selectedRows, setSelectedRows] = useState(new Set());
@@ -50,6 +51,21 @@ export default function TableManager({ table }) {
       canceled = true;
     };
   }, [table]);
+
+  useEffect(() => {
+    const auto = new Set(
+      columnMeta
+        .filter(
+          (c) => c.extra && c.extra.toLowerCase().includes('auto_increment'),
+        )
+        .map((c) => c.name),
+    );
+    if (auto.size === 0) {
+      const pri = columnMeta.filter((c) => c.key === 'PRI');
+      if (pri.length === 1) auto.add(pri[0].name);
+    }
+    setAutoInc(auto);
+  }, [columnMeta]);
 
   useEffect(() => {
     if (!table) return;
@@ -314,18 +330,8 @@ export default function TableManager({ table }) {
       labelMap[col][o.value] = o.label;
     });
   });
-  const autoCols = new Set(
-    columnMeta
-      .filter(
-        (c) => c.extra && c.extra.toLowerCase().includes('auto_increment')
-      )
-      .map((c) => c.name)
-  );
-  if (autoCols.size === 0) {
-    const priCols = columnMeta.filter((c) => c.key === 'PRI');
-    if (priCols.length === 1) autoCols.add(priCols[0].name);
-  }
-  if (columnMeta.length === 0 && allColumns.includes('id')) {
+  const autoCols = new Set(autoInc);
+  if (columnMeta.length === 0 && autoCols.size === 0 && allColumns.includes('id')) {
     autoCols.add('id');
   }
   const disabledFields = editing ? getKeyFields() : [];
