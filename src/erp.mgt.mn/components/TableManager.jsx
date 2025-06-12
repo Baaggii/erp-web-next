@@ -160,7 +160,7 @@ export default function TableManager({ table }) {
   }
 
   async function handleSubmit(values) {
-    const columns = new Set(rows[0] ? Object.keys(rows[0]) : []);
+    const columns = new Set(allColumns);
     const cleaned = {};
     Object.entries(values).forEach(([k, v]) => {
       if (v !== '') cleaned[k] = v;
@@ -274,9 +274,13 @@ export default function TableManager({ table }) {
   }
 
   if (!table) return null;
-  if (rows.length === 0) return <p>No data.</p>;
 
-  const allColumns = Object.keys(rows[0]);
+  const allColumns =
+    columnMeta.length > 0
+      ? columnMeta.map((c) => c.name)
+      : rows[0]
+      ? Object.keys(rows[0])
+      : [];
   const hiddenColumns = ['password', 'created_by', 'created_at'];
   const columns = allColumns.filter((c) => !hiddenColumns.includes(c));
 
@@ -298,6 +302,9 @@ export default function TableManager({ table }) {
       .filter((c) => c.extra && c.extra.toLowerCase().includes('auto_increment'))
       .map((c) => c.name)
   );
+  if (columnMeta.length === 0 && allColumns.includes('id')) {
+    autoCols.add('id');
+  }
   const disabledFields = editing ? getKeyFields() : [];
   const formColumns = allColumns.filter(
     (c) =>
@@ -428,6 +435,13 @@ export default function TableManager({ table }) {
           </tr>
         </thead>
         <tbody>
+          {rows.length === 0 && (
+            <tr>
+              <td colSpan={columns.length + 2} style={{ textAlign: 'center', padding: '0.5rem' }}>
+                No data.
+              </td>
+            </tr>
+          )}
           {rows.map((r) => (
             <tr key={r.id || JSON.stringify(r)}>
               <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
