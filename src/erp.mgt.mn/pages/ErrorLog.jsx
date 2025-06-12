@@ -10,9 +10,7 @@ export default function ErrorLogPage() {
         if (!res.ok) throw new Error('Failed to fetch error log');
         return res.text();
       })
-      .then((text) => {
-        setLogs(text);
-      })
+      .then(setLogs)
       .catch(err => {
         console.error('Error fetching error log:', err);
         setError(err.message);
@@ -26,7 +24,7 @@ export default function ErrorLogPage() {
         <div style={{ color: 'red', marginBottom: '0.5rem' }}>{error}</div>
       )}
       <pre style={{ background: '#f3f4f6', padding: '1rem', whiteSpace: 'pre-wrap' }}>
-        {logs || 'No logs yet'}
+        {logs}
       </pre>
     </div>
   );
