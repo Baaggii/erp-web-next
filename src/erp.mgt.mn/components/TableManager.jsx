@@ -5,6 +5,7 @@ import formatTimestamp from '../utils/formatTimestamp.js';
 import ErrorMessage from './ErrorMessage.jsx';
 
 async function parseJSON(res) {
+  if (res.status === 204) return null;
   const ct = res.headers.get('content-type') || '';
   if (!ct.includes('application/json')) {
     throw new Error('Invalid server response');
@@ -197,7 +198,7 @@ export default function TableManager({ table }) {
   }
 
   async function ensureColumnMeta() {
-    if (columnMeta.length > 0 || !table) return;
+    if (columnMeta.length > 0 || !table) return true;
     try {
       const res = await fetch(`/api/tables/${table}/columns`, {
         credentials: 'include',
@@ -207,14 +208,17 @@ export default function TableManager({ table }) {
         throw new Error(data?.message || 'Failed to fetch column metadata');
       }
       const cols = await parseJSON(res);
-      if (Array.isArray(cols)) {
+      if (Array.isArray(cols) && cols.length > 0) {
         setColumnMeta(cols);
         setAutoInc(computeAutoInc(cols));
         setError('');
+        return true;
       }
+      throw new Error('Invalid server response');
     } catch (err) {
       console.error('Failed to fetch column metadata', err);
       setError(err.message);
+      return false;
     }
   }
 
@@ -307,7 +311,7 @@ export default function TableManager({ table }) {
 
   async function handleDelete(row) {
     if (!window.confirm('Delete row?')) return;
-    await ensureColumnMeta();
+    if (!(await ensureColumnMeta())) return;
     try {
       const res = await fetch(
         `/api/tables/${table}/${encodeURIComponent(getRowId(row))}`,
@@ -333,7 +337,7 @@ export default function TableManager({ table }) {
   async function handleDeleteSelected() {
     if (selectedRows.size === 0) return;
     if (!window.confirm('Delete selected rows?')) return;
-    await ensureColumnMeta();
+    if (!(await ensureColumnMeta())) return;
     for (const row of rows) {
       const id = getRowId(row);
       if (!selectedRows.has(id)) continue;
