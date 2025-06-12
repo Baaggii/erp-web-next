@@ -116,6 +116,7 @@ export default function TableManager({ table }) {
       setError('');
       return json;
     } catch (err) {
+      console.error('Failed to load rows', err);
       setError(err.message);
       return { rows: [], count: 0 };
     }
@@ -288,6 +289,7 @@ export default function TableManager({ table }) {
       setShowForm(false);
       setEditing(null);
     } catch (err) {
+      console.error('Failed to save row', err);
       setError(err.message);
     }
   }
@@ -309,6 +311,7 @@ export default function TableManager({ table }) {
       setSelectedRows(new Set());
       setError('');
     } catch (err) {
+      console.error('Failed to delete row', err);
       setError(err.message);
     }
   }
@@ -329,6 +332,7 @@ export default function TableManager({ table }) {
           throw new Error(data?.message || 'Delete failed');
         }
       } catch (err) {
+        console.error('Failed to delete row', err);
         setError(err.message);
         return;
       }
