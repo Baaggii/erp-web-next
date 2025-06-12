@@ -17,6 +17,7 @@ export default function TableManager({ table }) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [selectedRows, setSelectedRows] = useState(new Set());
+  const [error, setError] = useState('');
   const { user } = useContext(AuthContext);
 
   function computeAutoInc(meta) {
@@ -37,6 +38,7 @@ export default function TableManager({ table }) {
   useEffect(() => {
     if (!table) return;
     let canceled = false;
+    setError('');
     setRows([]);
     setCount(0);
     setPage(1);
@@ -46,7 +48,10 @@ export default function TableManager({ table }) {
     setRefData({});
     setColumnMeta([]);
     fetch(`/api/tables/${table}/relations`, { credentials: 'include' })
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to load table relations');
+        return res.json();
+      })
       .then((rels) => {
         if (canceled) return;
         setRelations(
@@ -55,13 +60,30 @@ export default function TableManager({ table }) {
             return acc;
           }, {})
         );
+        setError('');
+      })
+      .catch((err) => {
+        if (!canceled) {
+          console.error('Failed to load table relations', err);
+          setError(err.message);
+        }
       });
     fetch(`/api/tables/${table}/columns`, { credentials: 'include' })
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to load column metadata');
+        return res.json();
+      })
       .then((cols) => {
         if (canceled) return;
         setColumnMeta(cols);
         setAutoInc(computeAutoInc(cols));
+        setError('');
+      })
+      .catch((err) => {
+        if (!canceled) {
+          console.error('Failed to load column metadata', err);
+          setError(err.message);
+        }
       });
     return () => {
       canceled = true;
@@ -82,9 +104,21 @@ export default function TableManager({ table }) {
     Object.entries(filters).forEach(([k, v]) => {
       if (v) params.set(k, v);
     });
-    return fetch(`/api/tables/${table}?${params.toString()}`, {
-      credentials: 'include',
-    }).then((res) => res.json());
+    try {
+      const res = await fetch(`/api/tables/${table}?${params.toString()}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.message || 'Failed to load rows');
+      }
+      const json = await res.json();
+      setError('');
+      return json;
+    } catch (err) {
+      setError(err.message);
+      return { rows: [], count: 0 };
+    }
   }
 
   useEffect(() => {
@@ -108,7 +142,10 @@ export default function TableManager({ table }) {
       fetch(`/api/tables/${rel.REFERENCED_TABLE_NAME}?perPage=100`, {
         credentials: 'include',
       })
-        .then((res) => res.json())
+        .then((res) => {
+          if (!res.ok) throw new Error('Failed to load reference data');
+          return res.json();
+        })
         .then((data) => {
           if (canceled) return;
           setRefData((d) => ({
@@ -119,6 +156,12 @@ export default function TableManager({ table }) {
                 r.name || r.label || r[rel.REFERENCED_COLUMN_NAME] || 'value',
             })),
           }));
+        })
+        .catch((err) => {
+          if (!canceled) {
+            console.error('Failed to load reference data', err);
+            setError(err.message);
+          }
         });
     });
     return () => {
@@ -147,15 +190,19 @@ export default function TableManager({ table }) {
       const res = await fetch(`/api/tables/${table}/columns`, {
         credentials: 'include',
       });
-      if (res.ok) {
-        const cols = await res.json();
-        if (Array.isArray(cols)) {
-          setColumnMeta(cols);
-          setAutoInc(computeAutoInc(cols));
-        }
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.message || 'Failed to fetch column metadata');
+      }
+      const cols = await res.json();
+      if (Array.isArray(cols)) {
+        setColumnMeta(cols);
+        setAutoInc(computeAutoInc(cols));
+        setError('');
       }
     } catch (err) {
       console.error('Failed to fetch column metadata', err);
+      setError(err.message);
     }
   }
 
@@ -230,41 +277,39 @@ export default function TableManager({ table }) {
         credentials: 'include',
         body: JSON.stringify(cleaned),
       });
-      if (res.ok) {
-        const data = await fetchRows();
-        setRows(data.rows || []);
-        setCount(data.count || 0);
-        setSelectedRows(new Set());
-        setShowForm(false);
-        setEditing(null);
-      } else {
-        let message = 'Save failed';
-        try {
-          const data = await res.json();
-          if (data && data.message) message += `: ${data.message}`;
-        } catch (e) {
-          // ignore json parse errors
-        }
-        alert(message);
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.message || 'Save failed');
       }
+      const data = await fetchRows();
+      setRows(data.rows || []);
+      setCount(data.count || 0);
+      setSelectedRows(new Set());
+      setShowForm(false);
+      setEditing(null);
     } catch (err) {
-      alert(`Save failed: ${err.message}`);
+      setError(err.message);
     }
   }
 
   async function handleDelete(row) {
     if (!window.confirm('Delete row?')) return;
-    const res = await fetch(
-      `/api/tables/${table}/${encodeURIComponent(getRowId(row))}`,
-      { method: 'DELETE', credentials: 'include' }
-    );
-    if (res.ok) {
+    try {
+      const res = await fetch(
+        `/api/tables/${table}/${encodeURIComponent(getRowId(row))}`,
+        { method: 'DELETE', credentials: 'include' }
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.message || 'Delete failed');
+      }
       const data = await fetchRows();
       const last = Math.max(1, Math.ceil((data.count || 0) / perPage));
       if (page > last) setPage(last);
       setSelectedRows(new Set());
-    } else {
-      alert('Delete failed');
+      setError('');
+    } catch (err) {
+      setError(err.message);
     }
   }
 
@@ -274,12 +319,17 @@ export default function TableManager({ table }) {
     for (const row of rows) {
       const id = getRowId(row);
       if (!selectedRows.has(id)) continue;
-      const res = await fetch(
-        `/api/tables/${table}/${encodeURIComponent(id)}`,
-        { method: 'DELETE', credentials: 'include' }
-      );
-      if (!res.ok) {
-        alert('Delete failed');
+      try {
+        const res = await fetch(
+          `/api/tables/${table}/${encodeURIComponent(id)}`,
+          { method: 'DELETE', credentials: 'include' }
+        );
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          throw new Error(data?.message || 'Delete failed');
+        }
+      } catch (err) {
+        setError(err.message);
         return;
       }
     }
@@ -287,6 +337,7 @@ export default function TableManager({ table }) {
     const last = Math.max(1, Math.ceil((data.count || 0) / perPage));
     if (page > last) setPage(last);
     setSelectedRows(new Set());
+    setError('');
   }
 
   if (!table) return null;
@@ -333,6 +384,9 @@ export default function TableManager({ table }) {
 
   return (
     <div>
+      {error && (
+        <div style={{ color: 'red', marginBottom: '0.5rem' }}>{error}</div>
+      )}
       <div style={{ marginBottom: '0.5rem' }}>
         <button onClick={openAdd} style={{ marginRight: '0.5rem' }}>
           Add Row
