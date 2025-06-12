@@ -4,6 +4,9 @@ import RowFormModal from './RowFormModal.jsx';
 
 export default function TableManager({ table }) {
   const [rows, setRows] = useState([]);
+  const [count, setCount] = useState(0);
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(50);
   const [relations, setRelations] = useState({});
   const [refData, setRefData] = useState({});
   const [showForm, setShowForm] = useState(false);
@@ -14,13 +17,10 @@ export default function TableManager({ table }) {
     if (!table) return;
     let canceled = false;
     setRows([]);
+    setCount(0);
+    setPage(1);
     setRelations({});
     setRefData({});
-    fetch(`/api/tables/${table}`, { credentials: 'include' })
-      .then((res) => res.json())
-      .then((data) => {
-        if (!canceled) setRows(data.rows || []);
-      });
     fetch(`/api/tables/${table}/relations`, { credentials: 'include' })
       .then((res) => res.json())
       .then((rels) => {
@@ -36,6 +36,22 @@ export default function TableManager({ table }) {
       canceled = true;
     };
   }, [table]);
+
+  useEffect(() => {
+    if (!table) return;
+    let canceled = false;
+    const params = new URLSearchParams({ page, perPage });
+    fetch(`/api/tables/${table}?${params.toString()}`, { credentials: 'include' })
+      .then((res) => res.json())
+      .then((data) => {
+        if (canceled) return;
+        setRows(data.rows || []);
+        setCount(data.count || 0);
+      });
+    return () => {
+      canceled = true;
+    };
+  }, [table, page, perPage]);
 
   useEffect(() => {
     let canceled = false;
@@ -120,10 +136,12 @@ export default function TableManager({ table }) {
       body: JSON.stringify(values),
     });
     if (res.ok) {
-      const data = await fetch(`/api/tables/${table}`, {
+      const params = new URLSearchParams({ page, perPage });
+      const data = await fetch(`/api/tables/${table}?${params.toString()}`, {
         credentials: 'include',
       }).then((r) => r.json());
       setRows(data.rows || []);
+      setCount(data.count || 0);
       setShowForm(false);
       setEditing(null);
     } else {
@@ -138,7 +156,12 @@ export default function TableManager({ table }) {
       { method: 'DELETE', credentials: 'include' }
     );
     if (res.ok) {
-      setRows((r) => r.filter((x) => getRowId(x) !== getRowId(row)));
+      const params = new URLSearchParams({ page, perPage });
+      const data = await fetch(`/api/tables/${table}?${params.toString()}`, {
+        credentials: 'include',
+      }).then((r) => r.json());
+      setRows(data.rows || []);
+      setCount(data.count || 0);
     } else {
       alert('Delete failed');
     }
@@ -196,9 +219,57 @@ export default function TableManager({ table }) {
                 </button>
               </td>
             </tr>
-          ))}
-        </tbody>
+      ))}
+      </tbody>
       </table>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
+        <div>
+          Rows per page:
+          <select
+            value={perPage}
+            onChange={(e) => {
+              setPage(1);
+              setPerPage(Number(e.target.value));
+            }}
+            style={{ marginLeft: '0.25rem' }}
+          >
+            {[10, 20, 50, 100].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <button onClick={() => setPage(1)} disabled={page === 1} style={{ marginRight: '0.25rem' }}>
+            {'<<'}
+          </button>
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+            style={{ marginRight: '0.25rem' }}
+          >
+            {'<'}
+          </button>
+          <span>
+            Page {page} of {Math.max(1, Math.ceil(count / perPage))}
+          </span>
+          <button
+            onClick={() => setPage((p) => Math.min(Math.ceil(count / perPage), p + 1))}
+            disabled={page >= Math.ceil(count / perPage)}
+            style={{ marginLeft: '0.25rem' }}
+          >
+            {'>'}
+          </button>
+          <button
+            onClick={() => setPage(Math.ceil(count / perPage))}
+            disabled={page >= Math.ceil(count / perPage)}
+            style={{ marginLeft: '0.25rem' }}
+          >
+            {'>>'}
+          </button>
+        </div>
+      </div>
       <RowFormModal
         visible={showForm}
         onCancel={() => setShowForm(false)}
