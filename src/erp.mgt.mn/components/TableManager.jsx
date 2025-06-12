@@ -19,6 +19,21 @@ export default function TableManager({ table }) {
   const [selectedRows, setSelectedRows] = useState(new Set());
   const { user } = useContext(AuthContext);
 
+  function computeAutoInc(meta) {
+    const auto = new Set(
+      meta
+        .filter(
+          (c) => c.extra && c.extra.toLowerCase().includes('auto_increment'),
+        )
+        .map((c) => c.name),
+    );
+    if (auto.size === 0) {
+      const pri = meta.filter((c) => c.key === 'PRI');
+      if (pri.length === 1) auto.add(pri[0].name);
+    }
+    return auto;
+  }
+
   useEffect(() => {
     if (!table) return;
     let canceled = false;
@@ -46,6 +61,7 @@ export default function TableManager({ table }) {
       .then((cols) => {
         if (canceled) return;
         setColumnMeta(cols);
+        setAutoInc(computeAutoInc(cols));
       });
     return () => {
       canceled = true;
@@ -53,18 +69,7 @@ export default function TableManager({ table }) {
   }, [table]);
 
   useEffect(() => {
-    const auto = new Set(
-      columnMeta
-        .filter(
-          (c) => c.extra && c.extra.toLowerCase().includes('auto_increment'),
-        )
-        .map((c) => c.name),
-    );
-    if (auto.size === 0) {
-      const pri = columnMeta.filter((c) => c.key === 'PRI');
-      if (pri.length === 1) auto.add(pri[0].name);
-    }
-    setAutoInc(auto);
+    setAutoInc(computeAutoInc(columnMeta));
   }, [columnMeta]);
 
   useEffect(() => {
@@ -139,7 +144,10 @@ export default function TableManager({ table }) {
       });
       if (res.ok) {
         const cols = await res.json();
-        if (Array.isArray(cols)) setColumnMeta(cols);
+        if (Array.isArray(cols)) {
+          setColumnMeta(cols);
+          setAutoInc(computeAutoInc(cols));
+        }
       }
     } catch (err) {
       console.error('Failed to fetch column metadata', err);
