@@ -115,12 +115,29 @@ export default function TableManager({ table }) {
     return ['id'];
   }
 
-  function openAdd() {
+  async function ensureColumnMeta() {
+    if (columnMeta.length > 0 || !table) return;
+    try {
+      const res = await fetch(`/api/tables/${table}/columns`, {
+        credentials: 'include',
+      });
+      if (res.ok) {
+        const cols = await res.json();
+        if (Array.isArray(cols)) setColumnMeta(cols);
+      }
+    } catch (err) {
+      console.error('Failed to fetch column metadata', err);
+    }
+  }
+
+  async function openAdd() {
+    await ensureColumnMeta();
     setEditing(null);
     setShowForm(true);
   }
 
-  function openEdit(row) {
+  async function openEdit(row) {
+    await ensureColumnMeta();
     setEditing(row);
     setShowForm(true);
   }
