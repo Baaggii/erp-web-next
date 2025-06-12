@@ -80,7 +80,7 @@ export default function RowFormModal({
                 </select>
               ) : (
                 <input
-                  type="text"
+                  type={c.toLowerCase() === 'password' ? 'password' : 'text'}
                   value={formVals[c]}
                   onChange={(e) =>
                     setFormVals((v) => ({ ...v, [c]: e.target.value }))
