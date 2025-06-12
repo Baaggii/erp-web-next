@@ -4,6 +4,7 @@ import RowFormModal from './RowFormModal.jsx';
 
 export default function TableManager({ table }) {
   const [rows, setRows] = useState([]);
+  const [columns, setColumns] = useState([]);
   const [relations, setRelations] = useState({});
   const [refData, setRefData] = useState({});
   const [showForm, setShowForm] = useState(false);
@@ -14,12 +15,18 @@ export default function TableManager({ table }) {
     if (!table) return;
     let canceled = false;
     setRows([]);
+    setColumns([]);
     setRelations({});
     setRefData({});
     fetch(`/api/tables/${table}`, { credentials: 'include' })
       .then((res) => res.json())
       .then((data) => {
-        if (!canceled) setRows(data.rows || []);
+        if (!canceled) {
+          setRows(data.rows || []);
+          if (data.rows && data.rows.length > 0) {
+            setColumns(Object.keys(data.rows[0]));
+          }
+        }
       });
     fetch(`/api/tables/${table}/relations`, { credentials: 'include' })
       .then((res) => res.json())
@@ -32,6 +39,12 @@ export default function TableManager({ table }) {
           }, {})
         );
       });
+    fetch(`/api/tables/${table}/columns`, { credentials: 'include' })
+      .then((res) => res.json())
+      .then((cols) => {
+        if (!canceled) setColumns((c) => (c.length ? c : cols));
+      })
+      .catch(() => {});
     return () => {
       canceled = true;
     };
@@ -107,10 +120,12 @@ export default function TableManager({ table }) {
       : `/api/tables/${table}`;
 
     if (!editing) {
+      const extras = {};
+      if (cols.includes('created_by')) extras.created_by = user?.empid;
+      if (cols.includes('created_at')) extras.created_at = new Date().toISOString();
       values = {
         ...values,
-        created_by: user?.empid,
-        created_at: new Date().toISOString(),
+        ...extras,
       };
     }
     const res = await fetch(url, {
@@ -145,11 +160,17 @@ export default function TableManager({ table }) {
   }
 
   if (!table) return null;
-  if (rows.length === 0) return <p>No data.</p>;
 
-  const columns = Object.keys(rows[0]);
+  const cols = columns.length
+    ? columns
+    : rows.length > 0
+    ? Object.keys(rows[0])
+    : [];
+
+  const noData = rows.length === 0;
+
   const relationOpts = {};
-  columns.forEach((c) => {
+  cols.forEach((c) => {
     if (relations[c] && refData[c]) {
       relationOpts[c] = refData[c];
     }
@@ -162,7 +183,7 @@ export default function TableManager({ table }) {
     });
   });
   const disabledFields = editing ? getKeyFields() : [];
-  const formColumns = columns
+  const formColumns = cols
     .filter((c) => c !== 'id' && c !== 'created_at' && c !== 'created_by');
 
   return (
@@ -173,18 +194,20 @@ export default function TableManager({ table }) {
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ backgroundColor: '#e5e7eb' }}>
-            {columns.map((c) => (
+            {cols.map((c) => (
               <th key={c} style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                 {c}
               </th>
             ))}
-            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Action</th>
+            {cols.length > 0 && (
+              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Action</th>
+            )}
           </tr>
         </thead>
         <tbody>
           {rows.map((r) => (
             <tr key={r.id || JSON.stringify(r)}>
-              {columns.map((c) => (
+              {cols.map((c) => (
                 <td key={c} style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                   {relationOpts[c] ? labelMap[c][r[c]] || String(r[c]) : String(r[c])}
                 </td>
@@ -197,6 +220,13 @@ export default function TableManager({ table }) {
               </td>
             </tr>
           ))}
+          {noData && cols.length > 0 && (
+            <tr>
+              <td colSpan={cols.length + 1} style={{ textAlign: 'center', padding: '0.5rem' }}>
+                No data.
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
       <RowFormModal

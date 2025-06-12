@@ -467,6 +467,17 @@ export async function listDatabaseTables() {
   return rows.map((r) => Object.values(r)[0]);
 }
 
+export async function listTableColumns(tableName) {
+  const [rows] = await pool.query(
+    `SELECT COLUMN_NAME
+       FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ?`,
+    [tableName],
+  );
+  return rows.map((r) => r.COLUMN_NAME);
+}
+
 export async function listTableRelationships(tableName) {
   const [rows] = await pool.query(
     `SELECT COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
