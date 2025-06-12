@@ -307,6 +307,7 @@ export default function TableManager({ table }) {
 
   async function handleDelete(row) {
     if (!window.confirm('Delete row?')) return;
+    await ensureColumnMeta();
     try {
       const res = await fetch(
         `/api/tables/${table}/${encodeURIComponent(getRowId(row))}`,
@@ -332,6 +333,7 @@ export default function TableManager({ table }) {
   async function handleDeleteSelected() {
     if (selectedRows.size === 0) return;
     if (!window.confirm('Delete selected rows?')) return;
+    await ensureColumnMeta();
     for (const row of rows) {
       const id = getRowId(row);
       if (!selectedRows.has(id)) continue;
