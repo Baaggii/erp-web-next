@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import RowFormModal from './RowFormModal.jsx';
+import formatTimestamp from '../utils/formatTimestamp.js';
 
 export default function TableManager({ table }) {
   const [rows, setRows] = useState([]);
@@ -175,7 +176,9 @@ export default function TableManager({ table }) {
 
     if (!editing) {
       if (columns.has('created_by')) cleaned.created_by = user?.empid;
-      if (columns.has('created_at')) cleaned.created_at = new Date().toISOString();
+      if (columns.has('created_at')) {
+        cleaned.created_at = formatTimestamp(new Date());
+      }
     }
 
     try {

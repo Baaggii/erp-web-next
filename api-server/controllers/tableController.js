@@ -8,6 +8,7 @@ import {
   listTableColumns,
 } from '../../db/index.js';
 import bcrypt from 'bcryptjs';
+import { formatDateForDb } from '../utils/formatDate.js';
 
 export async function getTables(req, res, next) {
   try {
@@ -63,7 +64,9 @@ export async function addRow(req, res, next) {
     const columns = await listTableColumns(req.params.table);
     const row = { ...req.body };
     if (columns.includes('created_by')) row.created_by = req.user?.empid;
-    if (columns.includes('created_at')) row.created_at = new Date();
+    if (columns.includes('created_at')) {
+      row.created_at = formatDateForDb(new Date());
+    }
     if (req.params.table === 'users' && row.password) {
       row.password = await bcrypt.hash(row.password, 10);
     }
