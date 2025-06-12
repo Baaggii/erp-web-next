@@ -163,23 +163,25 @@ export default function TableManager({ table }) {
   }
 
   async function handleSubmit(values) {
+    const columns = new Set(rows[0] ? Object.keys(rows[0]) : []);
+    const cleaned = {};
+    Object.entries(values).forEach(([k, v]) => {
+      if (v !== '') cleaned[k] = v;
+    });
     const method = editing ? 'PUT' : 'POST';
     const url = editing
       ? `/api/tables/${table}/${encodeURIComponent(getRowId(editing))}`
       : `/api/tables/${table}`;
 
     if (!editing) {
-      values = {
-        ...values,
-        created_by: user?.empid,
-        created_at: new Date().toISOString(),
-      };
+      if (columns.has('created_by')) cleaned.created_by = user?.empid;
+      if (columns.has('created_at')) cleaned.created_at = new Date().toISOString();
     }
     const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify(values),
+      body: JSON.stringify(cleaned),
     });
     if (res.ok) {
       const params = new URLSearchParams({ page, perPage });

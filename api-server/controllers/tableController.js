@@ -5,7 +5,9 @@ import {
   insertTableRow,
   deleteTableRow,
   listTableRelationships,
+  listTableColumns,
 } from '../../db/index.js';
+import bcrypt from 'bcryptjs';
 
 export async function getTables(req, res, next) {
   try {
@@ -46,6 +48,9 @@ export async function updateRow(req, res, next) {
     const updates = { ...req.body };
     delete updates.created_by;
     delete updates.created_at;
+    if (req.params.table === 'users' && updates.password) {
+      updates.password = await bcrypt.hash(updates.password, 10);
+    }
     await updateTableRow(req.params.table, req.params.id, updates);
     res.sendStatus(204);
   } catch (err) {
@@ -55,11 +60,13 @@ export async function updateRow(req, res, next) {
 
 export async function addRow(req, res, next) {
   try {
-    const row = {
-      ...req.body,
-      created_by: req.user?.empid,
-      created_at: new Date(),
-    };
+    const columns = await listTableColumns(req.params.table);
+    const row = { ...req.body };
+    if (columns.includes('created_by')) row.created_by = req.user?.empid;
+    if (columns.includes('created_at')) row.created_at = new Date();
+    if (req.params.table === 'users' && row.password) {
+      row.password = await bcrypt.hash(row.password, 10);
+    }
     const result = await insertTableRow(req.params.table, row);
     res.status(201).json(result);
   } catch (err) {
