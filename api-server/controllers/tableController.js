@@ -43,7 +43,10 @@ export async function getTableRelations(req, res, next) {
 
 export async function updateRow(req, res, next) {
   try {
-    await updateTableRow(req.params.table, req.params.id, req.body);
+    const updates = { ...req.body };
+    delete updates.created_by;
+    delete updates.created_at;
+    await updateTableRow(req.params.table, req.params.id, updates);
     res.sendStatus(204);
   } catch (err) {
     next(err);
@@ -52,7 +55,12 @@ export async function updateRow(req, res, next) {
 
 export async function addRow(req, res, next) {
   try {
-    const result = await insertTableRow(req.params.table, req.body);
+    const row = {
+      ...req.body,
+      created_by: req.user?.empid,
+      created_at: new Date(),
+    };
+    const result = await insertTableRow(req.params.table, row);
     res.status(201).json(result);
   } catch (err) {
     next(err);
