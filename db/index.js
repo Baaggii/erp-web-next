@@ -32,18 +32,36 @@ export async function testConnection() {
  * Fetch a user by employee ID
  */
 export async function getUserByEmpid(empid) {
-  const [rows] = await pool.query(
-    `SELECT u.*, r.name AS role
-     FROM users u
-     JOIN user_roles r ON u.role_id = r.id
-     WHERE u.empid = ?
-     LIMIT 1`,
-    [empid],
-  );
-  if (rows.length === 0) return null;
-  const user = rows[0];
-  user.verifyPassword = async (plain) => bcrypt.compare(plain, user.password);
-  return user;
+  try {
+    const [rows] = await pool.query(
+      `SELECT u.*, r.name AS role
+       FROM users u
+       JOIN user_roles r ON u.role_id = r.id
+       WHERE u.empid = ? OR u.email = ?
+       LIMIT 1`,
+      [empid, empid],
+    );
+    if (rows.length === 0) return null;
+    const user = rows[0];
+    user.verifyPassword = async (plain) => bcrypt.compare(plain, user.password);
+    return user;
+  } catch (err) {
+    if (err.code === 'ER_BAD_FIELD_ERROR' && /u\.email/.test(err.message)) {
+      const [rows] = await pool.query(
+        `SELECT u.*, r.name AS role
+         FROM users u
+         JOIN user_roles r ON u.role_id = r.id
+         WHERE u.empid = ?
+         LIMIT 1`,
+        [empid],
+      );
+      if (rows.length === 0) return null;
+      const user = rows[0];
+      user.verifyPassword = async (plain) => bcrypt.compare(plain, user.password);
+      return user;
+    }
+    throw err;
+  }
 }
 
 /**
