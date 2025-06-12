@@ -72,10 +72,9 @@ export default function TableManager({ table }) {
     setAutoInc(computeAutoInc(columnMeta));
   }, [columnMeta]);
 
-  useEffect(() => {
-    if (!table) return;
-    let canceled = false;
-    const params = new URLSearchParams({ page, perPage });
+  async function fetchRows(currentPage = page) {
+    if (!table) return { rows: [], count: 0 };
+    const params = new URLSearchParams({ page: currentPage, perPage });
     if (sort.column) {
       params.set('sort', sort.column);
       params.set('dir', sort.dir);
@@ -83,13 +82,19 @@ export default function TableManager({ table }) {
     Object.entries(filters).forEach(([k, v]) => {
       if (v) params.set(k, v);
     });
-    fetch(`/api/tables/${table}?${params.toString()}`, { credentials: 'include' })
-      .then((res) => res.json())
-      .then((data) => {
-        if (canceled) return;
-        setRows(data.rows || []);
-        setCount(data.count || 0);
-      });
+    return fetch(`/api/tables/${table}?${params.toString()}`, {
+      credentials: 'include',
+    }).then((res) => res.json());
+  }
+
+  useEffect(() => {
+    if (!table) return;
+    let canceled = false;
+    fetchRows().then((data) => {
+      if (canceled) return;
+      setRows(data.rows || []);
+      setCount(data.count || 0);
+    });
     return () => {
       canceled = true;
     };
@@ -226,19 +231,9 @@ export default function TableManager({ table }) {
         body: JSON.stringify(cleaned),
       });
       if (res.ok) {
-        const params = new URLSearchParams({ page, perPage });
-        if (sort.column) {
-          params.set('sort', sort.column);
-          params.set('dir', sort.dir);
-        }
-      Object.entries(filters).forEach(([k, v]) => {
-        if (v) params.set(k, v);
-      });
-      const data = await fetch(`/api/tables/${table}?${params.toString()}`, {
-        credentials: 'include',
-      }).then((r) => r.json());
-      setRows(data.rows || []);
-      setCount(data.count || 0);
+        const data = await fetchRows();
+        setRows(data.rows || []);
+        setCount(data.count || 0);
         setSelectedRows(new Set());
         setShowForm(false);
         setEditing(null);
@@ -264,19 +259,9 @@ export default function TableManager({ table }) {
       { method: 'DELETE', credentials: 'include' }
     );
     if (res.ok) {
-      const params = new URLSearchParams({ page, perPage });
-      if (sort.column) {
-        params.set('sort', sort.column);
-        params.set('dir', sort.dir);
-      }
-      Object.entries(filters).forEach(([k, v]) => {
-        if (v) params.set(k, v);
-      });
-      const data = await fetch(`/api/tables/${table}?${params.toString()}`, {
-        credentials: 'include',
-      }).then((r) => r.json());
-      setRows(data.rows || []);
-      setCount(data.count || 0);
+      const data = await fetchRows();
+      const last = Math.max(1, Math.ceil((data.count || 0) / perPage));
+      if (page > last) setPage(last);
       setSelectedRows(new Set());
     } else {
       alert('Delete failed');
@@ -298,19 +283,9 @@ export default function TableManager({ table }) {
         return;
       }
     }
-    const params = new URLSearchParams({ page, perPage });
-    if (sort.column) {
-      params.set('sort', sort.column);
-      params.set('dir', sort.dir);
-    }
-    Object.entries(filters).forEach(([k, v]) => {
-      if (v) params.set(k, v);
-    });
-    const data = await fetch(`/api/tables/${table}?${params.toString()}`, {
-      credentials: 'include',
-    }).then((r) => r.json());
-    setRows(data.rows || []);
-    setCount(data.count || 0);
+    const data = await fetchRows();
+    const last = Math.max(1, Math.ceil((data.count || 0) / perPage));
+    if (page > last) setPage(last);
     setSelectedRows(new Set());
   }
 
@@ -353,8 +328,7 @@ export default function TableManager({ table }) {
     (c) =>
       !autoCols.has(c) &&
       c !== 'created_at' &&
-      c !== 'created_by' &&
-      !c.toLowerCase().includes('password')
+      c !== 'created_by'
   );
 
   return (
