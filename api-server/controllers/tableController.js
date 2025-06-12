@@ -5,7 +5,6 @@ import {
   insertTableRow,
   deleteTableRow,
   listTableRelationships,
-  listTableColumns,
 } from '../../db/index.js';
 
 export async function getTables(req, res, next) {
@@ -42,15 +41,6 @@ export async function getTableRelations(req, res, next) {
   }
 }
 
-export async function getTableColumns(req, res, next) {
-  try {
-    const cols = await listTableColumns(req.params.table);
-    res.json(cols);
-  } catch (err) {
-    next(err);
-  }
-}
-
 export async function updateRow(req, res, next) {
   try {
     const updates = { ...req.body };
@@ -65,14 +55,11 @@ export async function updateRow(req, res, next) {
 
 export async function addRow(req, res, next) {
   try {
-    const cols = await listTableColumns(req.params.table);
-    const row = { ...req.body };
-    if (cols.includes('created_by')) {
-      row.created_by = req.user?.empid;
-    }
-    if (cols.includes('created_at')) {
-      row.created_at = new Date();
-    }
+    const row = {
+      ...req.body,
+      created_by: req.user?.empid,
+      created_at: new Date(),
+    };
     const result = await insertTableRow(req.params.table, row);
     res.status(201).json(result);
   } catch (err) {
