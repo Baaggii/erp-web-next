@@ -353,8 +353,7 @@ export default function TableManager({ table }) {
     (c) =>
       !autoCols.has(c) &&
       c !== 'created_at' &&
-      c !== 'created_by' &&
-      !c.toLowerCase().includes('password')
+      c !== 'created_by'
   );
 
   return (
