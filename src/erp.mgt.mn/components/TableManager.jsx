@@ -251,50 +251,15 @@ export default function TableManager({ table }) {
           <button onClick={handleDeleteSelected}>Delete Selected</button>
         )}
       </div>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr style={{ backgroundColor: '#e5e7eb' }}>
-            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
-              <input
-                type="checkbox"
-                checked={rows.length > 0 && selectedRows.size === rows.length}
-                onChange={(e) => (e.target.checked ? selectAll() : deselectAll())}
-              />
-            </th>
-            {columns.map((c) => (
-              <th key={c} style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
-                {c}
-              </th>
-            ))}
-            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.id || JSON.stringify(r)}>
-              <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
-                <input
-                  type="checkbox"
-                  checked={selectedRows.has(getRowId(r))}
-                  onChange={() => toggleRow(getRowId(r))}
-                />
-              </td>
-              {columns.map((c) => (
-                <td key={c} style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
-                  {relationOpts[c] ? labelMap[c][r[c]] || String(r[c]) : String(r[c])}
-                </td>
-              ))}
-              <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
-                <button onClick={() => openEdit(r)}>Edit</button>
-                <button onClick={() => handleDelete(r)} style={{ marginLeft: '0.5rem' }}>
-                  Delete
-                </button>
-              </td>
-            </tr>
-      ))}
-      </tbody>
-      </table>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'flex-start',
+          alignItems: 'center',
+          marginBottom: '0.5rem',
+          gap: '1rem',
+        }}
+      >
         <div>
           Rows per page:
           <select
@@ -342,6 +307,49 @@ export default function TableManager({ table }) {
           </button>
         </div>
       </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr style={{ backgroundColor: '#e5e7eb' }}>
+            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+              <input
+                type="checkbox"
+                checked={rows.length > 0 && selectedRows.size === rows.length}
+                onChange={(e) => (e.target.checked ? selectAll() : deselectAll())}
+              />
+            </th>
+            {columns.map((c) => (
+              <th key={c} style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                {c}
+              </th>
+            ))}
+            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.id || JSON.stringify(r)}>
+              <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                <input
+                  type="checkbox"
+                  checked={selectedRows.has(getRowId(r))}
+                  onChange={() => toggleRow(getRowId(r))}
+                />
+              </td>
+              {columns.map((c) => (
+                <td key={c} style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                  {relationOpts[c] ? labelMap[c][r[c]] || String(r[c]) : String(r[c])}
+                </td>
+              ))}
+              <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                <button onClick={() => openEdit(r)}>Edit</button>
+                <button onClick={() => handleDelete(r)} style={{ marginLeft: '0.5rem' }}>
+                  Delete
+                </button>
+              </td>
+            </tr>
+      ))}
+      </tbody>
+      </table>
       <RowFormModal
         visible={showForm}
         onCancel={() => setShowForm(false)}
