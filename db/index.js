@@ -620,7 +620,9 @@ export async function updateTableRow(tableName, id, updates) {
   }
 
   if (tableName === 'user_companies') {
-    const [empId, companyId] = String(id).split('-');
+    const parts = String(id).split('-');
+    const companyId = parts.pop();
+    const empId = parts.join('-');
     await pool.query(
       `UPDATE user_companies SET ${setClause} WHERE empid = ? AND company_id = ?`,
       [...values, empId, companyId],
@@ -678,7 +680,9 @@ export async function deleteTableRow(tableName, id) {
     }
 
     if (tableName === 'user_companies') {
-      const [empId, companyId] = String(id).split('-');
+      const parts = String(id).split('-');
+      const companyId = parts.pop();
+      const empId = parts.join('-');
       const [result] = await pool.query(
         'DELETE FROM user_companies WHERE empid = ? AND company_id = ?',
         [empId, companyId],
