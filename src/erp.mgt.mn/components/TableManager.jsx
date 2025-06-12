@@ -316,9 +316,15 @@ export default function TableManager({ table }) {
   });
   const autoCols = new Set(
     columnMeta
-      .filter((c) => c.extra && c.extra.toLowerCase().includes('auto_increment'))
+      .filter(
+        (c) => c.extra && c.extra.toLowerCase().includes('auto_increment')
+      )
       .map((c) => c.name)
   );
+  if (autoCols.size === 0) {
+    const priCols = columnMeta.filter((c) => c.key === 'PRI');
+    if (priCols.length === 1) autoCols.add(priCols[0].name);
+  }
   if (columnMeta.length === 0 && allColumns.includes('id')) {
     autoCols.add('id');
   }
