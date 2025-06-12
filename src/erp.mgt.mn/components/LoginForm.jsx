@@ -3,6 +3,7 @@ import React, { useState, useContext } from 'react';
 import { login } from '../hooks/useAuth.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { useNavigate } from 'react-router-dom';
+import ErrorMessage from './ErrorMessage.jsx';
 
 export default function LoginForm() {
   // login using employee ID only
@@ -133,9 +134,7 @@ export default function LoginForm() {
         />
       </div>
 
-      {error && (
-        <p style={{ color: 'red', marginBottom: '0.75rem' }}>{error}</p>
-      )}
+      <ErrorMessage message={error} />
 
       <button
         type="submit"

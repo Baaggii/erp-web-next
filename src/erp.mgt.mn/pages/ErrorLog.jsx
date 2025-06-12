@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import ErrorMessage from '../components/ErrorMessage.jsx';
 
 export default function ErrorLogPage() {
   const [logs, setLogs] = useState('');
@@ -20,9 +21,7 @@ export default function ErrorLogPage() {
   return (
     <div>
       <h2>Error Log</h2>
-      {error && (
-        <div style={{ color: 'red', marginBottom: '0.5rem' }}>{error}</div>
-      )}
+      <ErrorMessage message={error} />
       <pre style={{ background: '#f3f4f6', padding: '1rem', whiteSpace: 'pre-wrap' }}>
         {logs}
       </pre>

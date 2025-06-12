@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import ErrorMessage from '../components/ErrorMessage.jsx';
 
 export default function ChangePasswordPage() {
   const [password, setPassword] = useState('');
@@ -36,7 +37,7 @@ export default function ChangePasswordPage() {
     <div style={{ padding: '1rem' }}>
       <h2>Нууц үг солих</h2>
       {success && <p style={{ color: 'green' }}>Нууц үг шинэчлэгдлээ</p>}
-      {error && <p style={{ color: 'red' }}>{error}</p>}
+      <ErrorMessage message={error} />
       <form onSubmit={handleSubmit} style={{ maxWidth: '320px' }}>
         <div style={{ marginBottom: '0.75rem' }}>
           <label htmlFor="newpwd" style={{ display: 'block', marginBottom: '0.25rem' }}>

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import RowFormModal from './RowFormModal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
+import ErrorMessage from './ErrorMessage.jsx';
 
 async function parseJSON(res) {
   const ct = res.headers.get('content-type') || '';
@@ -400,21 +401,19 @@ export default function TableManager({ table }) {
 
   return (
     <div>
-      {error && (
-        <div style={{ color: 'red', marginBottom: '0.5rem' }}>{error}</div>
-      )}
+      <ErrorMessage message={error} />
       <div style={{ marginBottom: '0.5rem' }}>
-        <button onClick={openAdd} style={{ marginRight: '0.5rem' }}>
+        <button onClick={openAdd} style={{ marginRight: '0.5rem', padding: '0.4rem 0.75rem' }}>
           Add Row
         </button>
-        <button onClick={selectAll} style={{ marginRight: '0.5rem' }}>
+        <button onClick={selectAll} style={{ marginRight: '0.5rem', padding: '0.4rem 0.75rem' }}>
           Select All
         </button>
-        <button onClick={deselectAll} style={{ marginRight: '0.5rem' }}>
+        <button onClick={deselectAll} style={{ marginRight: '0.5rem', padding: '0.4rem 0.75rem' }}>
           Deselect All
         </button>
         {selectedRows.size > 0 && (
-          <button onClick={handleDeleteSelected}>Delete Selected</button>
+          <button onClick={handleDeleteSelected} style={{ padding: '0.4rem 0.75rem' }}>Delete Selected</button>
         )}
       </div>
       <div
@@ -444,13 +443,17 @@ export default function TableManager({ table }) {
           </select>
         </div>
         <div>
-          <button onClick={() => setPage(1)} disabled={page === 1} style={{ marginRight: '0.25rem' }}>
+          <button
+            onClick={() => setPage(1)}
+            disabled={page === 1}
+            style={{ marginRight: '0.25rem', padding: '0.3rem 0.6rem' }}
+          >
             {'<<'}
           </button>
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page === 1}
-            style={{ marginRight: '0.25rem' }}
+            style={{ marginRight: '0.25rem', padding: '0.3rem 0.6rem' }}
           >
             {'<'}
           </button>
@@ -460,14 +463,14 @@ export default function TableManager({ table }) {
           <button
             onClick={() => setPage((p) => Math.min(Math.ceil(count / perPage), p + 1))}
             disabled={page >= Math.ceil(count / perPage)}
-            style={{ marginLeft: '0.25rem' }}
+            style={{ marginLeft: '0.25rem', padding: '0.3rem 0.6rem' }}
           >
             {'>'}
           </button>
           <button
             onClick={() => setPage(Math.ceil(count / perPage))}
             disabled={page >= Math.ceil(count / perPage)}
-            style={{ marginLeft: '0.25rem' }}
+            style={{ marginLeft: '0.25rem', padding: '0.3rem 0.6rem' }}
           >
             {'>>'}
           </button>
@@ -547,8 +550,8 @@ export default function TableManager({ table }) {
                 </td>
               ))}
               <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
-                <button onClick={() => openEdit(r)}>Edit</button>
-                <button onClick={() => handleDelete(r)} style={{ marginLeft: '0.5rem' }}>
+                <button onClick={() => openEdit(r)} style={{ padding: '0.3rem 0.6rem' }}>Edit</button>
+                <button onClick={() => handleDelete(r)} style={{ marginLeft: '0.5rem', padding: '0.3rem 0.6rem' }}>
                   Delete
                 </button>
               </td>
