@@ -12,6 +12,7 @@ export default function TableManager({ table }) {
   const [sort, setSort] = useState({ column: '', dir: 'asc' });
   const [relations, setRelations] = useState({});
   const [refData, setRefData] = useState({});
+  const [columnMeta, setColumnMeta] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [selectedRows, setSelectedRows] = useState(new Set());
@@ -27,6 +28,7 @@ export default function TableManager({ table }) {
     setSort({ column: '', dir: 'asc' });
     setRelations({});
     setRefData({});
+    setColumnMeta([]);
     fetch(`/api/tables/${table}/relations`, { credentials: 'include' })
       .then((res) => res.json())
       .then((rels) => {
@@ -37,6 +39,12 @@ export default function TableManager({ table }) {
             return acc;
           }, {})
         );
+      });
+    fetch(`/api/tables/${table}/columns`, { credentials: 'include' })
+      .then((res) => res.json())
+      .then((cols) => {
+        if (canceled) return;
+        setColumnMeta(cols);
       });
     return () => {
       canceled = true;
@@ -93,29 +101,17 @@ export default function TableManager({ table }) {
   }, [relations]);
 
   function getRowId(row) {
-    if (row.id !== undefined) return row.id;
-    if (table === 'company_module_licenses') {
-      return `${row.company_id}-${row.module_key}`;
-    }
-    if (table === 'role_module_permissions') {
-      return `${row.company_id}-${row.role_id}-${row.module_key}`;
-    }
-    if (table === 'user_companies') {
-      return `${row.empid}-${row.company_id}`;
-    }
-    return undefined;
+    const keys = getKeyFields();
+    if (keys.length === 0) return undefined;
+    if (keys.length === 1) return row[keys[0]];
+    return keys.map((k) => row[k]).join('-');
   }
 
   function getKeyFields() {
-    if (table === 'company_module_licenses') {
-      return ['company_id', 'module_key'];
-    }
-    if (table === 'role_module_permissions') {
-      return ['company_id', 'role_id', 'module_key'];
-    }
-    if (table === 'user_companies') {
-      return ['empid', 'company_id'];
-    }
+    const keys = columnMeta
+      .filter((c) => c.key === 'PRI')
+      .map((c) => c.name);
+    if (keys.length > 0) return keys;
     return ['id'];
   }
 
@@ -164,7 +160,7 @@ export default function TableManager({ table }) {
   }
 
   async function handleSubmit(values) {
-    const columns = new Set(rows[0] ? Object.keys(rows[0]) : []);
+    const columns = new Set(allColumns);
     const cleaned = {};
     Object.entries(values).forEach(([k, v]) => {
       if (v !== '') cleaned[k] = v;
@@ -278,9 +274,13 @@ export default function TableManager({ table }) {
   }
 
   if (!table) return null;
-  if (rows.length === 0) return <p>No data.</p>;
 
-  const allColumns = Object.keys(rows[0]);
+  const allColumns = columnMeta.length > 0
+    ? columnMeta.map((c) => c.name)
+    : rows[0]
+    ? Object.keys(rows[0])
+    : [];
+
   const hiddenColumns = ['password', 'created_by', 'created_at'];
   const columns = allColumns.filter((c) => !hiddenColumns.includes(c));
 
@@ -297,9 +297,18 @@ export default function TableManager({ table }) {
       labelMap[col][o.value] = o.label;
     });
   });
+  const autoCols = new Set(
+    columnMeta
+      .filter((c) => c.extra && c.extra.toLowerCase().includes('auto_increment'))
+      .map((c) => c.name)
+  );
+  if (columnMeta.length === 0 && allColumns.includes('id')) {
+    autoCols.add('id');
+  }
   const disabledFields = editing ? getKeyFields() : [];
   const formColumns = allColumns.filter(
-    (c) => c !== 'id' && c !== 'created_at' && c !== 'created_by'
+    (c) =>
+      !autoCols.has(c) && c !== 'created_at' && c !== 'created_by'
   );
 
   return (
@@ -426,6 +435,13 @@ export default function TableManager({ table }) {
           </tr>
         </thead>
         <tbody>
+          {rows.length === 0 && (
+            <tr>
+              <td colSpan={columns.length + 2} style={{ textAlign: 'center', padding: '0.5rem' }}>
+                No data.
+              </td>
+            </tr>
+          )}
           {rows.map((r) => (
             <tr key={r.id || JSON.stringify(r)}>
               <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
