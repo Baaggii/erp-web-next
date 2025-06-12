@@ -10,15 +10,19 @@ export default function TableManager({ table }) {
 
   useEffect(() => {
     if (!table) return;
+    let canceled = false;
     setRows([]);
     setRelations({});
     setRefData({});
     fetch(`/api/tables/${table}`, { credentials: 'include' })
       .then((res) => res.json())
-      .then((data) => setRows(data.rows || []));
+      .then((data) => {
+        if (!canceled) setRows(data.rows || []);
+      });
     fetch(`/api/tables/${table}/relations`, { credentials: 'include' })
       .then((res) => res.json())
       .then((rels) => {
+        if (canceled) return;
         setRelations(
           rels.reduce((acc, r) => {
             acc[r.COLUMN_NAME] = r;
@@ -26,9 +30,13 @@ export default function TableManager({ table }) {
           }, {})
         );
       });
+    return () => {
+      canceled = true;
+    };
   }, [table]);
 
   useEffect(() => {
+    let canceled = false;
     Object.values(relations).forEach((rel) => {
       const col = rel.COLUMN_NAME;
       if (refData[col]) return;
@@ -36,7 +44,8 @@ export default function TableManager({ table }) {
         credentials: 'include',
       })
         .then((res) => res.json())
-        .then((data) =>
+        .then((data) => {
+          if (canceled) return;
           setRefData((d) => ({
             ...d,
             [col]: data.rows.map((r) => ({
@@ -44,9 +53,12 @@ export default function TableManager({ table }) {
               label:
                 r.name || r.label || r[rel.REFERENCED_COLUMN_NAME] || 'value',
             })),
-          }))
-        );
+          }));
+        });
     });
+    return () => {
+      canceled = true;
+    };
   }, [relations]);
 
   function getRowId(row) {
