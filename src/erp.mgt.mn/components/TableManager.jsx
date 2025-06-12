@@ -302,9 +302,6 @@ export default function TableManager({ table }) {
       .filter((c) => c.extra && c.extra.toLowerCase().includes('auto_increment'))
       .map((c) => c.name)
   );
-  if (columnMeta.length === 0 && allColumns.includes('id')) {
-    autoCols.add('id');
-  }
   const disabledFields = editing ? getKeyFields() : [];
   const formColumns = allColumns.filter(
     (c) =>
