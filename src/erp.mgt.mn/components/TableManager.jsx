@@ -317,6 +317,8 @@ export default function TableManager({ table }) {
         throw new Error(data?.message || 'Delete failed');
       }
       const data = await fetchRows();
+      setRows(data.rows || []);
+      setCount(data.count || 0);
       const last = Math.max(1, Math.ceil((data.count || 0) / perPage));
       if (page > last) setPage(last);
       setSelectedRows(new Set());
@@ -349,6 +351,8 @@ export default function TableManager({ table }) {
       }
     }
     const data = await fetchRows();
+    setRows(data.rows || []);
+    setCount(data.count || 0);
     const last = Math.max(1, Math.ceil((data.count || 0) / perPage));
     if (page > last) setPage(last);
     setSelectedRows(new Set());
