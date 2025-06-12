@@ -478,6 +478,21 @@ export async function listTableColumns(tableName) {
   return rows.map((r) => r.COLUMN_NAME);
 }
 
+export async function listTableColumnMeta(tableName) {
+  const [rows] = await pool.query(
+    `SELECT COLUMN_NAME, COLUMN_KEY, EXTRA
+       FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ?`,
+    [tableName],
+  );
+  return rows.map((r) => ({
+    name: r.COLUMN_NAME,
+    key: r.COLUMN_KEY,
+    extra: r.EXTRA,
+  }));
+}
+
 export async function listTableRelationships(tableName) {
   const [rows] = await pool.query(
     `SELECT COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
