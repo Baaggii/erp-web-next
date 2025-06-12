@@ -25,6 +25,8 @@ export default function Users() {
   async function handleAdd() {
     const empid = prompt('EmpID?');
     if (!empid) return;
+    const email = prompt('Email?');
+    if (!email) return;
     const name = prompt('Name?');
     const password = prompt('Password?');
     const roleId = prompt('Role ID (1=admin,2=user)?', '2');
@@ -32,7 +34,7 @@ export default function Users() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ empid, name, password, roleId })
+      body: JSON.stringify({ empid, email, name, password, roleId })
     });
     if (!res.ok) {
       alert('Failed to add user');
@@ -42,13 +44,14 @@ export default function Users() {
   }
 
   async function handleEdit(u) {
+    const email = prompt('Email?', u.email);
     const name = prompt('Name?', u.name);
     const roleId = prompt('Role ID?', u.role_id);
     const res = await fetch(`/api/users/${u.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ name, roleId })
+      body: JSON.stringify({ email, name, roleId })
     });
     if (!res.ok) {
       alert('Failed to update user');
@@ -112,7 +115,8 @@ export default function Users() {
               .filter(
                 (u) =>
                   u.empid.toLowerCase().includes(filter.toLowerCase()) ||
-                  u.name.toLowerCase().includes(filter.toLowerCase())
+                  u.name.toLowerCase().includes(filter.toLowerCase()) ||
+                  (u.email || '').toLowerCase().includes(filter.toLowerCase())
               )
               .map((u) => (
               <tr key={u.id}>
