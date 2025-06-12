@@ -152,6 +152,7 @@ export default function TableManager({ table }) {
     });
   });
   const disabledFields = editing ? getKeyFields() : [];
+  const formColumns = editing ? columns : columns.filter((c) => c !== 'id');
 
   return (
     <div>
@@ -191,7 +192,7 @@ export default function TableManager({ table }) {
         visible={showForm}
         onCancel={() => setShowForm(false)}
         onSubmit={handleSubmit}
-        columns={columns}
+        columns={formColumns}
         row={editing}
         relations={relationOpts}
         disabledFields={disabledFields}
