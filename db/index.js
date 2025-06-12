@@ -467,6 +467,18 @@ export async function listDatabaseTables() {
   return rows.map((r) => Object.values(r)[0]);
 }
 
+export async function listTableRelationships(tableName) {
+  const [rows] = await pool.query(
+    `SELECT COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+       FROM information_schema.KEY_COLUMN_USAGE
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ?
+        AND REFERENCED_TABLE_NAME IS NOT NULL`,
+    [tableName],
+  );
+  return rows;
+}
+
 /**
  * Get up to 50 rows from a table
  */

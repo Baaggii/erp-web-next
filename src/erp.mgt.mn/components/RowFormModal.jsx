@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
 
-export default function RowFormModal({ visible, onCancel, onSubmit, columns, row }) {
+export default function RowFormModal({
+  visible,
+  onCancel,
+  onSubmit,
+  columns,
+  row,
+  relations = {},
+}) {
   const [formVals, setFormVals] = useState(() => {
     const init = {};
     columns.forEach((c) => {
@@ -54,15 +61,33 @@ export default function RowFormModal({ visible, onCancel, onSubmit, columns, row
           {columns.map((c) => (
             <div key={c} style={{ marginBottom: '0.75rem' }}>
               <label style={{ display: 'block', marginBottom: '0.25rem' }}>{c}</label>
-              <input
-                type="text"
-                value={formVals[c]}
-                onChange={(e) =>
-                  setFormVals((v) => ({ ...v, [c]: e.target.value }))
-                }
-                disabled={row && c === 'id'}
-                style={{ width: '100%', padding: '0.5rem' }}
-              />
+              {Array.isArray(relations[c]) ? (
+                <select
+                  value={formVals[c]}
+                  onChange={(e) =>
+                    setFormVals((v) => ({ ...v, [c]: e.target.value }))
+                  }
+                  disabled={row && c === 'id'}
+                  style={{ width: '100%', padding: '0.5rem' }}
+                >
+                  <option value="">-- select --</option>
+                  {relations[c].map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={formVals[c]}
+                  onChange={(e) =>
+                    setFormVals((v) => ({ ...v, [c]: e.target.value }))
+                  }
+                  disabled={row && c === 'id'}
+                  style={{ width: '100%', padding: '0.5rem' }}
+                />
+              )}
             </div>
           ))}
           <div style={{ textAlign: 'right' }}>
