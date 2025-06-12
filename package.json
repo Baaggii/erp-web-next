@@ -8,7 +8,7 @@
     "build:homepage": "vite build --config vite.home.config.js",
     "build:erp": "vite build --config vite.config.js",
     "serve": "node api-server/server.js",
-    "test": "echo \"No tests yet\""
+    "test": "node --test"
   },
   "dependencies": {
     "express": "^4.21.2",
