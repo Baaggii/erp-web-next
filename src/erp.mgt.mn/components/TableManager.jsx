@@ -20,18 +20,15 @@ export default function TableManager({ table }) {
   const { user } = useContext(AuthContext);
 
   function computeAutoInc(meta) {
-    const auto = new Set(
+    return new Set(
       meta
         .filter(
-          (c) => c.extra && c.extra.toLowerCase().includes('auto_increment'),
+          (c) =>
+            typeof c.extra === 'string' &&
+            c.extra.toLowerCase().includes('auto_increment'),
         )
         .map((c) => c.name),
     );
-    if (auto.size === 0) {
-      const pri = meta.filter((c) => c.key === 'PRI');
-      if (pri.length === 1) auto.add(pri[0].name);
-    }
-    return auto;
   }
 
   useEffect(() => {

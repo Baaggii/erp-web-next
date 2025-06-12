@@ -68,7 +68,7 @@ export default function RowFormModal({
                   onChange={(e) =>
                     setFormVals((v) => ({ ...v, [c]: e.target.value }))
                   }
-                  disabled={row && (c === 'id' || disabledFields.includes(c))}
+                  disabled={row && disabledFields.includes(c)}
                   style={{ width: '100%', padding: '0.5rem' }}
                 >
                   <option value="">-- select --</option>
@@ -85,7 +85,7 @@ export default function RowFormModal({
                   onChange={(e) =>
                     setFormVals((v) => ({ ...v, [c]: e.target.value }))
                   }
-                  disabled={row && (c === 'id' || disabledFields.includes(c))}
+                  disabled={row && disabledFields.includes(c)}
                   style={{ width: '100%', padding: '0.5rem' }}
                 />
               )}
