@@ -4,7 +4,7 @@
 This document outlines the roadmap, scope, architecture, milestones, and deliverables for the ERP-Web-Next project—a multi-tenant, React + Express ERP web application with per-company user management, forms, reporting, and mosaic-style dashboard layouts.
 
 ## 2. Objectives
-- **Secure Authentication**: JWT cookie-based login by Employee ID or Email.
+- **Secure Authentication**: JWT cookie-based login by Employee ID.
 - **Multi-company Support**: Assign users to multiple companies with per-company roles.
 - **User Management**: Admin CRUD on users and company assignments; self-service password change.
 - **Forms & Reports**: Dynamic form renderer via JSON schema; embeddable chart/report components.
