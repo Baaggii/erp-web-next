@@ -3,6 +3,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import RowFormModal from './RowFormModal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import ErrorMessage from './ErrorMessage.jsx';
+import { API_BASE } from '../utils/apiBase.js';
 
 async function parseJSON(res) {
   if (res.status === 204) return null;
@@ -56,7 +57,7 @@ export default function TableManager({ table }) {
     setRelations({});
     setRefData({});
     setColumnMeta([]);
-    fetch(`/api/tables/${table}/relations`, { credentials: 'include' })
+    fetch(`${API_BASE}/tables/${table}/relations`, { credentials: 'include' })
       .then((res) => {
         if (!res.ok) throw new Error('Failed to load table relations');
         return parseJSON(res);
@@ -76,7 +77,7 @@ export default function TableManager({ table }) {
           setError(err.message);
         }
       });
-    fetch(`/api/tables/${table}/columns`, { credentials: 'include' })
+    fetch(`${API_BASE}/tables/${table}/columns`, { credentials: 'include' })
       .then((res) => {
         if (!res.ok) throw new Error('Failed to load column metadata');
         return parseJSON(res);
@@ -112,7 +113,7 @@ export default function TableManager({ table }) {
       if (v) params.set(k, v);
     });
     try {
-      const res = await fetch(`/api/tables/${table}?${params.toString()}`, {
+      const res = await fetch(`${API_BASE}/tables/${table}?${params.toString()}`, {
         credentials: 'include',
       });
       if (!res.ok) {
@@ -147,7 +148,7 @@ export default function TableManager({ table }) {
     Object.values(relations).forEach((rel) => {
       const col = rel.COLUMN_NAME;
       if (refData[col]) return;
-      fetch(`/api/tables/${rel.REFERENCED_TABLE_NAME}?perPage=100`, {
+      fetch(`${API_BASE}/tables/${rel.REFERENCED_TABLE_NAME}?perPage=100`, {
         credentials: 'include',
       })
         .then((res) => {
@@ -195,7 +196,7 @@ export default function TableManager({ table }) {
   async function ensureColumnMeta() {
     if (columnMeta.length > 0 || !table) return true;
     try {
-      const res = await fetch(`/api/tables/${table}/columns`, {
+      const res = await fetch(`${API_BASE}/tables/${table}/columns`, {
         credentials: 'include',
       });
       if (!res.ok) {
@@ -271,8 +272,8 @@ export default function TableManager({ table }) {
     });
     const method = editing ? 'PUT' : 'POST';
     const url = editing
-      ? `/api/tables/${table}/${encodeURIComponent(getRowId(editing))}`
-      : `/api/tables/${table}`;
+      ? `${API_BASE}/tables/${table}/${encodeURIComponent(getRowId(editing))}`
+      : `${API_BASE}/tables/${table}`;
 
     if (!editing) {
       if (columns.has('created_by')) cleaned.created_by = user?.empid;
@@ -309,7 +310,7 @@ export default function TableManager({ table }) {
     if (!(await ensureColumnMeta())) return;
     try {
       const res = await fetch(
-        `/api/tables/${table}/${encodeURIComponent(getRowId(row))}`,
+        `${API_BASE}/tables/${table}/${encodeURIComponent(getRowId(row))}`,
         { method: 'DELETE', credentials: 'include' }
       );
       if (!res.ok) {
@@ -338,7 +339,7 @@ export default function TableManager({ table }) {
       if (!selectedRows.has(id)) continue;
       try {
         const res = await fetch(
-          `/api/tables/${table}/${encodeURIComponent(id)}`,
+          `${API_BASE}/tables/${table}/${encodeURIComponent(id)}`,
           { method: 'DELETE', credentials: 'include' }
         );
         if (!res.ok) {

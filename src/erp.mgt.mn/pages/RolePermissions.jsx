@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useContext } from "react";
 import { refreshRolePermissions } from "../hooks/useRolePermissions.js";
 import { AuthContext } from "../context/AuthContext.jsx";
+import { API_BASE } from "../utils/apiBase.js";
 
 export default function RolePermissions() {
   const [perms, setPerms] = useState([]);
@@ -12,7 +13,7 @@ export default function RolePermissions() {
     const params = [];
     if (roleId) params.push(`roleId=${encodeURIComponent(roleId)}`);
     if (company) params.push(`companyId=${encodeURIComponent(company.company_id)}`);
-    const url = params.length ? `/api/role_permissions?${params.join("&")}` : "/api/role_permissions";
+    const url = params.length ? `${API_BASE}/role_permissions?${params.join("&")}` : `${API_BASE}/role_permissions`;
     fetch(url, { credentials: "include" })
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch role permissions");
@@ -31,7 +32,7 @@ export default function RolePermissions() {
   }
 
   async function handleToggle(p) {
-    const res = await fetch("/api/role_permissions", {
+    const res = await fetch(`${API_BASE}/role_permissions`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       credentials: "include",

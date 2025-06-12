@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import ErrorMessage from '../components/ErrorMessage.jsx';
+import { API_BASE } from '../utils/apiBase.js';
 
 export default function ErrorLogPage() {
   const [logs, setLogs] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetch('/api/errors', { credentials: 'include' })
+    fetch(`${API_BASE}/errors`, { credentials: 'include' })
       .then(res => {
         if (!res.ok) throw new Error('Failed to fetch error log');
         return res.text();

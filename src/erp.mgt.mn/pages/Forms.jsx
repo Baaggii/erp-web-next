@@ -1,11 +1,12 @@
 // src/erp.mgt.mn/pages/Forms.jsx
 import React, { useEffect, useState } from 'react';
+import { API_BASE } from '../utils/apiBase.js';
 
 export default function Forms() {
   const [formsList, setFormsList] = useState([]);
 
   useEffect(() => {
-    fetch('/api/forms', { credentials: 'include' })
+    fetch(`${API_BASE}/forms`, { credentials: 'include' })
       .then((res) => {
         if (!res.ok) throw new Error('Failed to fetch forms');
         return res.json();

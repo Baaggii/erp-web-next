@@ -1,6 +1,7 @@
 // src/erp.mgt.mn/pages/Settings.jsx
 import React, { useEffect, useState } from 'react';
 import { useRolePermissions } from '../hooks/useRolePermissions.js';
+import { API_BASE } from '../utils/apiBase.js';
 import { Outlet, Link } from 'react-router-dom';
 
 export default function SettingsPage() {
@@ -20,7 +21,7 @@ export function GeneralSettings() {
   const [settings, setSettings] = useState(null);
 
   useEffect(() => {
-    fetch('/api/settings', { credentials: 'include' })
+    fetch(`${API_BASE}/settings`, { credentials: 'include' })
       .then((res) => {
         if (!res.ok) throw new Error('Failed to fetch settings');
         return res.json();
