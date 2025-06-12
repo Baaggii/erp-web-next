@@ -60,9 +60,13 @@ export async function updateRow(req, res, next) {
     delete updates.created_by;
     delete updates.created_at;
     const columns = await listTableColumns(req.params.table);
-    if (columns.includes('password') && updates.password) {
-      updates.password = await bcrypt.hash(updates.password, 10);
-    }
+    columns
+      .filter((c) => c.toLowerCase().includes('password'))
+      .forEach(async (pwCol) => {
+        if (updates[pwCol]) {
+          updates[pwCol] = await bcrypt.hash(updates[pwCol], 10);
+        }
+      });
     await updateTableRow(req.params.table, req.params.id, updates);
     res.sendStatus(204);
   } catch (err) {
@@ -78,9 +82,13 @@ export async function addRow(req, res, next) {
     if (columns.includes('created_at')) {
       row.created_at = formatDateForDb(new Date());
     }
-    if (columns.includes('password') && row.password) {
-      row.password = await bcrypt.hash(row.password, 10);
-    }
+    columns
+      .filter((c) => c.toLowerCase().includes('password'))
+      .forEach(async (pwCol) => {
+        if (row[pwCol]) {
+          row[pwCol] = await bcrypt.hash(row[pwCol], 10);
+        }
+      });
     const result = await insertTableRow(req.params.table, row);
     res.status(201).json(result);
   } catch (err) {

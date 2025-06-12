@@ -322,7 +322,9 @@ export default function TableManager({ table }) {
       : rows[0]
       ? Object.keys(rows[0])
       : [];
-  const hiddenColumns = ['password', 'created_by', 'created_at'];
+  const hiddenColumns = allColumns
+    .filter((c) => c.toLowerCase().includes('password'))
+    .concat(['created_by', 'created_at']);
   const columns = allColumns.filter((c) => !hiddenColumns.includes(c));
 
   const relationOpts = {};
@@ -349,7 +351,10 @@ export default function TableManager({ table }) {
   const disabledFields = editing ? getKeyFields() : [];
   const formColumns = allColumns.filter(
     (c) =>
-      !autoCols.has(c) && c !== 'created_at' && c !== 'created_by'
+      !autoCols.has(c) &&
+      c !== 'created_at' &&
+      c !== 'created_by' &&
+      !c.toLowerCase().includes('password')
   );
 
   return (
