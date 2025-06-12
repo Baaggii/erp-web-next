@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { API_BASE } from '../utils/apiBase.js';
 import * as XLSX from 'xlsx';
 
 export default function CodingTablesPage() {
@@ -277,7 +276,7 @@ export default function CodingTablesPage() {
       formData.append('otherColumns', JSON.stringify(otherColumns));
       formData.append('uniqueFields', JSON.stringify(uniqueFields));
       formData.append('calcFields', JSON.stringify(parseCalcFields(calcText)));
-      const res = await fetch(`${API_BASE}/coding_tables/upload`, {
+      const res = await fetch('/api/coding_tables/upload', {
         method: 'POST',
         credentials: 'include',
         body: formData,

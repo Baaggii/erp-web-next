@@ -265,7 +265,7 @@ const styles = {
     color: "#fff",
     cursor: "pointer",
     fontSize: "0.9rem",
-    padding: "0.5rem 0.75rem",
+    padding: "0.25rem 0.5rem",
   },
   userSection: {
     display: "flex",

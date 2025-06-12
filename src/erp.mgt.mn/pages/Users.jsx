@@ -1,7 +1,6 @@
 // src/erp.mgt.mn/pages/Users.jsx
 import React, { useEffect, useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
-import { API_BASE } from '../utils/apiBase.js';
 
 export default function Users() {
   const [usersList, setUsersList] = useState([]);
@@ -10,7 +9,7 @@ export default function Users() {
 
   function loadUsers() {
     const params = company ? `?companyId=${encodeURIComponent(company.company_id)}` : '';
-    fetch(`${API_BASE}/users${params}`, { credentials: 'include' })
+    fetch(`/api/users${params}`, { credentials: 'include' })
       .then((res) => {
         if (!res.ok) throw new Error('Failed to fetch users');
         return res.json();
@@ -31,7 +30,7 @@ export default function Users() {
     const name = prompt('Name?');
     const password = prompt('Password?');
     const roleId = prompt('Role ID (1=admin,2=user)?', '2');
-    const res = await fetch(`${API_BASE}/users`, {
+    const res = await fetch('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -48,7 +47,7 @@ export default function Users() {
     const email = prompt('Email?', u.email);
     const name = prompt('Name?', u.name);
     const roleId = prompt('Role ID?', u.role_id);
-    const res = await fetch(`${API_BASE}/users/${u.id}`, {
+    const res = await fetch(`/api/users/${u.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -63,7 +62,7 @@ export default function Users() {
 
   async function handleDelete(u) {
     if (!confirm('Delete user?')) return;
-    const res = await fetch(`${API_BASE}/users/${u.id}`, {
+    const res = await fetch(`/api/users/${u.id}`, {
       method: 'DELETE',
       credentials: 'include'
     });

@@ -223,6 +223,8 @@ CREATE TABLE IF NOT EXISTS user_roles (
   name VARCHAR(50) NOT NULL UNIQUE
 );
 
+INSERT INTO user_roles (name) VALUES ('admin'), ('user');
+
 -- Users table for authentication
 CREATE TABLE IF NOT EXISTS `users` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
@@ -246,6 +248,18 @@ CREATE TABLE IF NOT EXISTS `form_submissions` (
   `submitted_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
+-- Seed initial admin user with known password 'Admin@123'
+-- Generate hash via Node: `require('bcrypt').hash('Admin@123', 10, console.log)`
+INSERT INTO `users` (`empid`, `email`, `password`, `name`, `company`, `role_id`, `created_by`)
+VALUES (
+  'admin',
+  'admin@modmarket.mn',
+  '$2b$10$Z9s94pu0QEKnn1J8/p36Xuw3ULxX5gE/UfjTXyW6uxS0921gys8wu',  -- hash for 'Admin@123'
+  'Administrator',
+  'ModMarket ХХК',
+  (SELECT id FROM user_roles WHERE name='admin'),
+  'admin'
+);
 
 CREATE TABLE companies (
   id INT AUTO_INCREMENT PRIMARY KEY,

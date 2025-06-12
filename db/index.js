@@ -1,49 +1,7 @@
-let mysql;
-try {
-  mysql = await import("mysql2/promise");
-} catch {
-  mysql = {
-    createPool() {
-      return {
-        query: async () => {
-          throw new Error("MySQL not available");
-        },
-        end: async () => {},
-      };
-    },
-  };
-}
-let dotenv;
-try {
-  dotenv = await import("dotenv");
-} catch {
-  dotenv = { config: () => {} };
-}
-let bcrypt;
-try {
-  bcrypt = await import("bcryptjs");
-} catch {
-  bcrypt = { hash: async (s) => s, compare: async () => false };
-}
+import mysql from "mysql2/promise";
+import dotenv from "dotenv";
+import bcrypt from "bcryptjs";
 import defaultModules from "./defaultModules.js";
-
-const tableColumnsCache = new Map();
-
-async function getTableColumnsSafe(tableName) {
-  if (!tableColumnsCache.has(tableName)) {
-    const cols = await listTableColumns(tableName);
-    tableColumnsCache.set(tableName, cols);
-  }
-  return tableColumnsCache.get(tableName);
-}
-
-function ensureValidColumns(columns, names) {
-  for (const name of names) {
-    if (!columns.includes(name)) {
-      throw new Error(`Invalid column name: ${name}`);
-    }
-  }
-}
 
 dotenv.config();
 
@@ -213,11 +171,6 @@ export async function removeCompanyAssignment(empid, companyId) {
     "DELETE FROM user_companies WHERE empid = ? AND company_id = ?",
     [empid, companyId],
   );
-  if (result.affectedRows === 0) {
-    const err = new Error("Assignment not found");
-    err.status = 404;
-    throw err;
-  }
   return result;
 }
 
@@ -514,44 +467,6 @@ export async function listDatabaseTables() {
   return rows.map((r) => Object.values(r)[0]);
 }
 
-export async function listTableColumns(tableName) {
-  const [rows] = await pool.query(
-    `SELECT COLUMN_NAME
-       FROM information_schema.COLUMNS
-      WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME = ?`,
-    [tableName],
-  );
-  return rows.map((r) => r.COLUMN_NAME);
-}
-
-export async function listTableColumnMeta(tableName) {
-  const [rows] = await pool.query(
-    `SELECT COLUMN_NAME, COLUMN_KEY, EXTRA
-       FROM information_schema.COLUMNS
-      WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME = ?`,
-    [tableName],
-  );
-  return rows.map((r) => ({
-    name: r.COLUMN_NAME,
-    key: r.COLUMN_KEY,
-    extra: r.EXTRA,
-  }));
-}
-
-export async function listTableRelationships(tableName) {
-  const [rows] = await pool.query(
-    `SELECT COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
-       FROM information_schema.KEY_COLUMN_USAGE
-      WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME = ?
-        AND REFERENCED_TABLE_NAME IS NOT NULL`,
-    [tableName],
-  );
-  return rows;
-}
-
 /**
  * Get up to 50 rows from a table
  */
@@ -559,13 +474,11 @@ export async function listTableRows(
   tableName,
   { page = 1, perPage = 50, filters = {}, sort = {} } = {},
 ) {
-  const columns = await getTableColumnsSafe(tableName);
   const offset = (Number(page) - 1) * Number(perPage);
   const filterClauses = [];
   const params = [tableName];
   for (const [field, value] of Object.entries(filters)) {
     if (value !== undefined && value !== '') {
-      ensureValidColumns(columns, [field]);
       filterClauses.push(`\`${field}\` LIKE ?`);
       params.push(`%${value}%`);
     }
@@ -573,7 +486,6 @@ export async function listTableRows(
   const where = filterClauses.length > 0 ? `WHERE ${filterClauses.join(' AND ')}` : '';
   let order = '';
   if (sort.column) {
-    ensureValidColumns(columns, [sort.column]);
     const dir = sort.dir && String(sort.dir).toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
     order = `ORDER BY \`${sort.column}\` ${dir}`;
   }
@@ -594,9 +506,7 @@ export async function listTableRows(
  * Update a table row by id
  */
 export async function updateTableRow(tableName, id, updates) {
-  const columns = await getTableColumnsSafe(tableName);
   const keys = Object.keys(updates);
-  ensureValidColumns(columns, keys);
   if (keys.length === 0) return { id };
   const values = Object.values(updates);
   const setClause = keys.map((k) => `\`${k}\` = ?`).join(', ');
@@ -620,9 +530,7 @@ export async function updateTableRow(tableName, id, updates) {
   }
 
   if (tableName === 'user_companies') {
-    const parts = String(id).split('-');
-    const companyId = parts.pop();
-    const empId = parts.join('-');
+    const [empId, companyId] = String(id).split('-');
     await pool.query(
       `UPDATE user_companies SET ${setClause} WHERE empid = ? AND company_id = ?`,
       [...values, empId, companyId],
@@ -630,22 +538,12 @@ export async function updateTableRow(tableName, id, updates) {
     return { empid: empId, company_id: companyId };
   }
 
-  if (tableName === 'modules') {
-    await pool.query(`UPDATE modules SET ${setClause} WHERE module_key = ?`, [
-      ...values,
-      id,
-    ]);
-    return { module_key: id };
-  }
-
   await pool.query(`UPDATE ?? SET ${setClause} WHERE id = ?`, [tableName, ...values, id]);
   return { id };
 }
 
 export async function insertTableRow(tableName, row) {
-  const columns = await getTableColumnsSafe(tableName);
   const keys = Object.keys(row);
-  ensureValidColumns(columns, keys);
   if (keys.length === 0) return null;
   const values = Object.values(row);
   const cols = keys.map((k) => `\`${k}\``).join(', ');
@@ -658,75 +556,33 @@ export async function insertTableRow(tableName, row) {
 }
 
 export async function deleteTableRow(tableName, id) {
-  try {
-    if (tableName === 'company_module_licenses') {
-      const [companyId, moduleKey] = String(id).split('-');
-      const [result] = await pool.query(
-        'DELETE FROM company_module_licenses WHERE company_id = ? AND module_key = ?',
-        [companyId, moduleKey],
-      );
-      if (result.affectedRows === 0) {
-        const err = new Error('Row not found');
-        err.status = 404;
-        throw err;
-      }
-      return { company_id: companyId, module_key: moduleKey };
-    }
-
-    if (tableName === 'role_module_permissions') {
-      const [companyId, roleId, moduleKey] = String(id).split('-');
-      const [result] = await pool.query(
-        'DELETE FROM role_module_permissions WHERE company_id = ? AND role_id = ? AND module_key = ?',
-        [companyId, roleId, moduleKey],
-      );
-      if (result.affectedRows === 0) {
-        const err = new Error('Row not found');
-        err.status = 404;
-        throw err;
-      }
-      return { company_id: companyId, role_id: roleId, module_key: moduleKey };
-    }
-
-    if (tableName === 'user_companies') {
-      const parts = String(id).split('-');
-      const companyId = parts.pop();
-      const empId = parts.join('-');
-      const [result] = await pool.query(
-        'DELETE FROM user_companies WHERE empid = ? AND company_id = ?',
-        [empId, companyId],
-      );
-      if (result.affectedRows === 0) {
-        const err = new Error('Row not found');
-        err.status = 404;
-        throw err;
-      }
-      return { empid: empId, company_id: companyId };
-    }
-
-    if (tableName === 'modules') {
-      const [result] = await pool.query(
-        'DELETE FROM modules WHERE module_key = ?',
-        [id],
-      );
-      if (result.affectedRows === 0) {
-        const err = new Error('Row not found');
-        err.status = 404;
-        throw err;
-      }
-      return { module_key: id };
-    }
-
-    const [result] = await pool.query('DELETE FROM ?? WHERE id = ?', [tableName, id]);
-    if (result.affectedRows === 0) {
-      const err = new Error('Row not found');
-      err.status = 404;
-      throw err;
-    }
-    return { id };
-  } catch (err) {
-    if (err.code === 'ER_ROW_IS_REFERENCED_2') {
-      err.status = 400;
-    }
-    throw err;
+  if (tableName === 'company_module_licenses') {
+    const [companyId, moduleKey] = String(id).split('-');
+    await pool.query(
+      'DELETE FROM company_module_licenses WHERE company_id = ? AND module_key = ?',
+      [companyId, moduleKey],
+    );
+    return { company_id: companyId, module_key: moduleKey };
   }
+
+  if (tableName === 'role_module_permissions') {
+    const [companyId, roleId, moduleKey] = String(id).split('-');
+    await pool.query(
+      'DELETE FROM role_module_permissions WHERE company_id = ? AND role_id = ? AND module_key = ?',
+      [companyId, roleId, moduleKey],
+    );
+    return { company_id: companyId, role_id: roleId, module_key: moduleKey };
+  }
+
+  if (tableName === 'user_companies') {
+    const [empId, companyId] = String(id).split('-');
+    await pool.query(
+      'DELETE FROM user_companies WHERE empid = ? AND company_id = ?',
+      [empId, companyId],
+    );
+    return { empid: empId, company_id: companyId };
+  }
+
+  await pool.query('DELETE FROM ?? WHERE id = ?', [tableName, id]);
+  return { id };
 }

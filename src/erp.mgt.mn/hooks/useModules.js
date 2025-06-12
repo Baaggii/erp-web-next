@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { API_BASE } from '../utils/apiBase.js';
 
 const cache = { data: null };
 const emitter = new EventTarget();
@@ -14,11 +13,10 @@ export function useModules() {
 
   async function fetchModules() {
     try {
-      const res = await fetch(`${API_BASE}/modules`, { credentials: 'include' });
+      const res = await fetch('/api/modules', { credentials: 'include' });
       const rows = res.ok ? await res.json() : [];
-      const filtered = rows.filter((m) => m.module_key !== 'error_log');
-      cache.data = filtered;
-      setModules(filtered);
+      cache.data = rows;
+      setModules(rows);
     } catch (err) {
       console.error('Failed to load modules', err);
       setModules([]);

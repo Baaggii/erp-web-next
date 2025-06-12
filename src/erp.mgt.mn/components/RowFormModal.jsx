@@ -1,20 +1,10 @@
 import React, { useState, useEffect } from 'react';
 
-export default function RowFormModal({
-  visible,
-  onCancel,
-  onSubmit,
-  columns,
-  row,
-  relations = {},
-  disabledFields = [],
-}) {
-  const isPasswordField = (name) => name.toLowerCase().includes('password');
-
+export default function RowFormModal({ visible, onCancel, onSubmit, columns, row }) {
   const [formVals, setFormVals] = useState(() => {
     const init = {};
     columns.forEach((c) => {
-      init[c] = row && !isPasswordField(c) ? String(row[c] ?? '') : '';
+      init[c] = row ? String(row[c] ?? '') : '';
     });
     return init;
   });
@@ -23,7 +13,7 @@ export default function RowFormModal({
     if (!visible) return;
     const vals = {};
     columns.forEach((c) => {
-      vals[c] = row && !isPasswordField(c) ? String(row[c] ?? '') : '';
+      vals[c] = row ? String(row[c] ?? '') : '';
     });
     setFormVals(vals);
   }, [row, columns, visible]);
@@ -64,44 +54,22 @@ export default function RowFormModal({
           {columns.map((c) => (
             <div key={c} style={{ marginBottom: '0.75rem' }}>
               <label style={{ display: 'block', marginBottom: '0.25rem' }}>{c}</label>
-              {Array.isArray(relations[c]) ? (
-                <select
-                  value={formVals[c]}
-                  onChange={(e) =>
-                    setFormVals((v) => ({ ...v, [c]: e.target.value }))
-                  }
-                  disabled={row && disabledFields.includes(c)}
-                  style={{ width: '100%', padding: '0.5rem' }}
-                >
-                  <option value="">-- select --</option>
-                  {relations[c].map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type={isPasswordField(c) ? 'password' : 'text'}
-                  value={formVals[c]}
-                  onChange={(e) =>
-                    setFormVals((v) => ({ ...v, [c]: e.target.value }))
-                  }
-                  disabled={row && disabledFields.includes(c)}
-                  style={{ width: '100%', padding: '0.5rem' }}
-                />
-              )}
+              <input
+                type="text"
+                value={formVals[c]}
+                onChange={(e) =>
+                  setFormVals((v) => ({ ...v, [c]: e.target.value }))
+                }
+                disabled={row && c === 'id'}
+                style={{ width: '100%', padding: '0.5rem' }}
+              />
             </div>
           ))}
           <div style={{ textAlign: 'right' }}>
-            <button
-              type="button"
-              onClick={onCancel}
-              style={{ marginRight: '0.5rem', padding: '0.4rem 0.75rem' }}
-            >
+            <button type="button" onClick={onCancel} style={{ marginRight: '0.5rem' }}>
               Cancel
             </button>
-            <button type="submit" style={{ padding: '0.4rem 0.75rem' }}>Save</button>
+            <button type="submit">Save</button>
           </div>
         </form>
       </div>

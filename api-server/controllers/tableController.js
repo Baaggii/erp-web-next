@@ -4,12 +4,7 @@ import {
   updateTableRow,
   insertTableRow,
   deleteTableRow,
-  listTableRelationships,
-  listTableColumns,
-  listTableColumnMeta,
 } from '../../db/index.js';
-import bcrypt from 'bcryptjs';
-import { formatDateForDb } from '../utils/formatDate.js';
 
 export async function getTables(req, res, next) {
   try {
@@ -36,38 +31,9 @@ export async function getTableRows(req, res, next) {
   }
 }
 
-export async function getTableRelations(req, res, next) {
-  try {
-    const rels = await listTableRelationships(req.params.table);
-    res.json(rels);
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function getTableColumnsMeta(req, res, next) {
-  try {
-    const cols = await listTableColumnMeta(req.params.table);
-    res.json(cols);
-  } catch (err) {
-    next(err);
-  }
-}
-
 export async function updateRow(req, res, next) {
   try {
-    const updates = { ...req.body };
-    delete updates.created_by;
-    delete updates.created_at;
-    const columns = await listTableColumns(req.params.table);
-    columns
-      .filter((c) => c.toLowerCase().includes('password'))
-      .forEach(async (pwCol) => {
-        if (updates[pwCol]) {
-          updates[pwCol] = await bcrypt.hash(updates[pwCol], 10);
-        }
-      });
-    await updateTableRow(req.params.table, req.params.id, updates);
+    await updateTableRow(req.params.table, req.params.id, req.body);
     res.sendStatus(204);
   } catch (err) {
     next(err);
@@ -76,20 +42,7 @@ export async function updateRow(req, res, next) {
 
 export async function addRow(req, res, next) {
   try {
-    const columns = await listTableColumns(req.params.table);
-    const row = { ...req.body };
-    if (columns.includes('created_by')) row.created_by = req.user?.empid;
-    if (columns.includes('created_at')) {
-      row.created_at = formatDateForDb(new Date());
-    }
-    columns
-      .filter((c) => c.toLowerCase().includes('password'))
-      .forEach(async (pwCol) => {
-        if (row[pwCol]) {
-          row[pwCol] = await bcrypt.hash(row[pwCol], 10);
-        }
-      });
-    const result = await insertTableRow(req.params.table, row);
+    const result = await insertTableRow(req.params.table, req.body);
     res.status(201).json(result);
   } catch (err) {
     next(err);

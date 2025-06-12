@@ -1,7 +1,6 @@
 // src/erp.mgt.mn/pages/CompanyLicenses.jsx
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
-import { API_BASE } from '../utils/apiBase.js';
 
 export default function CompanyLicenses() {
   const [licenses, setLicenses] = useState([]);
@@ -13,7 +12,7 @@ export default function CompanyLicenses() {
   }, [company]);
 
   function loadLicenses(companyId) {
-    const url = companyId ? `${API_BASE}/company_modules?companyId=${encodeURIComponent(companyId)}` : `${API_BASE}/company_modules`;
+    const url = companyId ? `/api/company_modules?companyId=${encodeURIComponent(companyId)}` : '/api/company_modules';
     fetch(url, { credentials: 'include' })
       .then(res => {
         if (!res.ok) throw new Error('Failed to fetch licenses');
@@ -28,7 +27,7 @@ export default function CompanyLicenses() {
   }
 
   async function handleToggle(l) {
-    const res = await fetch(`${API_BASE}/company_modules`, {
+    const res = await fetch('/api/company_modules', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
