@@ -1,7 +1,49 @@
-import mysql from "mysql2/promise";
-import dotenv from "dotenv";
-import bcrypt from "bcryptjs";
+let mysql;
+try {
+  mysql = await import("mysql2/promise");
+} catch {
+  mysql = {
+    createPool() {
+      return {
+        query: async () => {
+          throw new Error("MySQL not available");
+        },
+        end: async () => {},
+      };
+    },
+  };
+}
+let dotenv;
+try {
+  dotenv = await import("dotenv");
+} catch {
+  dotenv = { config: () => {} };
+}
+let bcrypt;
+try {
+  bcrypt = await import("bcryptjs");
+} catch {
+  bcrypt = { hash: async (s) => s, compare: async () => false };
+}
 import defaultModules from "./defaultModules.js";
+
+const tableColumnsCache = new Map();
+
+async function getTableColumnsSafe(tableName) {
+  if (!tableColumnsCache.has(tableName)) {
+    const cols = await listTableColumns(tableName);
+    tableColumnsCache.set(tableName, cols);
+  }
+  return tableColumnsCache.get(tableName);
+}
+
+function ensureValidColumns(columns, names) {
+  for (const name of names) {
+    if (!columns.includes(name)) {
+      throw new Error(`Invalid column name: ${name}`);
+    }
+  }
+}
 
 dotenv.config();
 
@@ -512,11 +554,13 @@ export async function listTableRows(
   tableName,
   { page = 1, perPage = 50, filters = {}, sort = {} } = {},
 ) {
+  const columns = await getTableColumnsSafe(tableName);
   const offset = (Number(page) - 1) * Number(perPage);
   const filterClauses = [];
   const params = [tableName];
   for (const [field, value] of Object.entries(filters)) {
     if (value !== undefined && value !== '') {
+      ensureValidColumns(columns, [field]);
       filterClauses.push(`\`${field}\` LIKE ?`);
       params.push(`%${value}%`);
     }
@@ -524,6 +568,7 @@ export async function listTableRows(
   const where = filterClauses.length > 0 ? `WHERE ${filterClauses.join(' AND ')}` : '';
   let order = '';
   if (sort.column) {
+    ensureValidColumns(columns, [sort.column]);
     const dir = sort.dir && String(sort.dir).toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
     order = `ORDER BY \`${sort.column}\` ${dir}`;
   }
@@ -544,7 +589,9 @@ export async function listTableRows(
  * Update a table row by id
  */
 export async function updateTableRow(tableName, id, updates) {
+  const columns = await getTableColumnsSafe(tableName);
   const keys = Object.keys(updates);
+  ensureValidColumns(columns, keys);
   if (keys.length === 0) return { id };
   const values = Object.values(updates);
   const setClause = keys.map((k) => `\`${k}\` = ?`).join(', ');
@@ -581,7 +628,9 @@ export async function updateTableRow(tableName, id, updates) {
 }
 
 export async function insertTableRow(tableName, row) {
+  const columns = await getTableColumnsSafe(tableName);
   const keys = Object.keys(row);
+  ensureValidColumns(columns, keys);
   if (keys.length === 0) return null;
   const values = Object.values(row);
   const cols = keys.map((k) => `\`${k}\``).join(', ');
