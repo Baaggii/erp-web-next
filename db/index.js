@@ -630,6 +630,14 @@ export async function updateTableRow(tableName, id, updates) {
     return { empid: empId, company_id: companyId };
   }
 
+  if (tableName === 'modules') {
+    await pool.query(`UPDATE modules SET ${setClause} WHERE module_key = ?`, [
+      ...values,
+      id,
+    ]);
+    return { module_key: id };
+  }
+
   await pool.query(`UPDATE ?? SET ${setClause} WHERE id = ?`, [tableName, ...values, id]);
   return { id };
 }
@@ -693,6 +701,19 @@ export async function deleteTableRow(tableName, id) {
         throw err;
       }
       return { empid: empId, company_id: companyId };
+    }
+
+    if (tableName === 'modules') {
+      const [result] = await pool.query(
+        'DELETE FROM modules WHERE module_key = ?',
+        [id],
+      );
+      if (result.affectedRows === 0) {
+        const err = new Error('Row not found');
+        err.status = 404;
+        throw err;
+      }
+      return { module_key: id };
     }
 
     const [result] = await pool.query('DELETE FROM ?? WHERE id = ?', [tableName, id]);
