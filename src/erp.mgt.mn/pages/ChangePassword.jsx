@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import ErrorMessage from '../components/ErrorMessage.jsx';
+import { API_BASE } from '../utils/apiBase.js';
 
 export default function ChangePasswordPage() {
   const [password, setPassword] = useState('');
@@ -15,7 +16,7 @@ export default function ChangePasswordPage() {
       return;
     }
     try {
-      const res = await fetch('/api/auth/change-password', {
+      const res = await fetch(`${API_BASE}/auth/change-password`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

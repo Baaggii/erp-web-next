@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import TableManager from '../components/TableManager.jsx';
 import ErrorMessage from '../components/ErrorMessage.jsx';
+import { API_BASE } from '../utils/apiBase.js';
 
 export default function TablesManagement() {
   const [tables, setTables] = useState([]);
@@ -9,7 +10,7 @@ export default function TablesManagement() {
 
   useEffect(() => {
     setError('');
-    fetch('/api/tables', { credentials: 'include' })
+    fetch(`${API_BASE}/tables`, { credentials: 'include' })
       .then((res) => {
         if (!res.ok) throw new Error('Failed to load tables');
         return res.json();

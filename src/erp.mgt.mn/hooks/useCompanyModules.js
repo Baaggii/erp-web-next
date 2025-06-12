@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { API_BASE } from '../utils/apiBase.js';
 
 const cache = {};
 const emitter = new EventTarget();
@@ -13,7 +14,7 @@ export function useCompanyModules(companyId) {
 
   async function fetchModules(id) {
     try {
-      const res = await fetch(`/api/company_modules?companyId=${encodeURIComponent(id)}`, {
+      const res = await fetch(`${API_BASE}/company_modules?companyId=${encodeURIComponent(id)}`, {
         credentials: 'include',
       });
       const rows = res.ok ? await res.json() : [];

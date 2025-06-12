@@ -1,8 +1,10 @@
+import { API_BASE } from './apiBase.js';
+
 let tokenPromise;
 
 async function getToken() {
   if (!tokenPromise) {
-    tokenPromise = fetch('/api/csrf-token', { credentials: 'include' })
+    tokenPromise = fetch(`${API_BASE}/csrf-token`, { credentials: 'include' })
       .then(res => res.json())
       .then(data => data.csrfToken)
       .catch(() => undefined);
