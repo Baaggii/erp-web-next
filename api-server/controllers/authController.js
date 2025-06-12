@@ -1,17 +1,18 @@
-import { getUserByEmpid, updateUserPassword } from '../../db/index.js';
+import { getUserByEmail, updateUserPassword } from '../../db/index.js'; // adjust path to your db folder
 import { hash } from '../services/passwordService.js';
 import jwt from 'jsonwebtoken';
 
 export async function login(req, res, next) {
   try {
-    const { empid, password } = req.body;
-    const user = await getUserByEmpid(empid);
+    const { email, password } = req.body;
+    const user = await getUserByEmail(email);
     if (!user || !(await user.verifyPassword(password))) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
     const token = jwt.sign(
       {
         id: user.id,
+        email: user.email,
         empid: user.empid,
         role: user.role,
         name: user.name,
@@ -29,6 +30,7 @@ export async function login(req, res, next) {
     });
     res.json({
       id: user.id,
+      email: user.email,
       empid: user.empid,
       role: user.role,
       name: user.name,
@@ -46,6 +48,7 @@ export async function logout(req, res) {
 export async function getProfile(req, res) {
   res.json({
     id: req.user.id,
+    email: req.user.email,
     empid: req.user.empid,
     role: req.user.role,
     name: req.user.name,
