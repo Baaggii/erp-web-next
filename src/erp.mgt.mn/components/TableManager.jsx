@@ -11,6 +11,7 @@ export default function TableManager({ table }) {
   const [refData, setRefData] = useState({});
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [selectedRows, setSelectedRows] = useState(new Set());
   const { user } = useContext(AuthContext);
 
   useEffect(() => {
@@ -116,6 +117,26 @@ export default function TableManager({ table }) {
     setShowForm(true);
   }
 
+  function toggleRow(id) {
+    setSelectedRows((s) => {
+      const next = new Set(s);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelectedRows(new Set(rows.map((r) => getRowId(r))));
+  }
+
+  function deselectAll() {
+    setSelectedRows(new Set());
+  }
+
   async function handleSubmit(values) {
     const method = editing ? 'PUT' : 'POST';
     const url = editing
@@ -142,6 +163,7 @@ export default function TableManager({ table }) {
       }).then((r) => r.json());
       setRows(data.rows || []);
       setCount(data.count || 0);
+      setSelectedRows(new Set());
       setShowForm(false);
       setEditing(null);
     } else {
@@ -162,9 +184,34 @@ export default function TableManager({ table }) {
       }).then((r) => r.json());
       setRows(data.rows || []);
       setCount(data.count || 0);
+      setSelectedRows(new Set());
     } else {
       alert('Delete failed');
     }
+  }
+
+  async function handleDeleteSelected() {
+    if (selectedRows.size === 0) return;
+    if (!window.confirm('Delete selected rows?')) return;
+    for (const row of rows) {
+      const id = getRowId(row);
+      if (!selectedRows.has(id)) continue;
+      const res = await fetch(
+        `/api/tables/${table}/${encodeURIComponent(id)}`,
+        { method: 'DELETE', credentials: 'include' }
+      );
+      if (!res.ok) {
+        alert('Delete failed');
+        return;
+      }
+    }
+    const params = new URLSearchParams({ page, perPage });
+    const data = await fetch(`/api/tables/${table}?${params.toString()}`, {
+      credentials: 'include',
+    }).then((r) => r.json());
+    setRows(data.rows || []);
+    setCount(data.count || 0);
+    setSelectedRows(new Set());
   }
 
   if (!table) return null;
@@ -190,12 +237,30 @@ export default function TableManager({ table }) {
 
   return (
     <div>
-      <button onClick={openAdd} style={{ marginBottom: '0.5rem' }}>
-        Add Row
-      </button>
+      <div style={{ marginBottom: '0.5rem' }}>
+        <button onClick={openAdd} style={{ marginRight: '0.5rem' }}>
+          Add Row
+        </button>
+        <button onClick={selectAll} style={{ marginRight: '0.5rem' }}>
+          Select All
+        </button>
+        <button onClick={deselectAll} style={{ marginRight: '0.5rem' }}>
+          Deselect All
+        </button>
+        {selectedRows.size > 0 && (
+          <button onClick={handleDeleteSelected}>Delete Selected</button>
+        )}
+      </div>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ backgroundColor: '#e5e7eb' }}>
+            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+              <input
+                type="checkbox"
+                checked={rows.length > 0 && selectedRows.size === rows.length}
+                onChange={(e) => (e.target.checked ? selectAll() : deselectAll())}
+              />
+            </th>
             {columns.map((c) => (
               <th key={c} style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                 {c}
@@ -207,6 +272,13 @@ export default function TableManager({ table }) {
         <tbody>
           {rows.map((r) => (
             <tr key={r.id || JSON.stringify(r)}>
+              <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                <input
+                  type="checkbox"
+                  checked={selectedRows.has(getRowId(r))}
+                  onChange={() => toggleRow(getRowId(r))}
+                />
+              </td>
               {columns.map((c) => (
                 <td key={c} style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                   {relationOpts[c] ? labelMap[c][r[c]] || String(r[c]) : String(r[c])}
