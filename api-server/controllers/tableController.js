@@ -7,14 +7,6 @@ import {
   listTableRelationships,
 } from '../../db/index.js';
 
-function cleanValues(obj) {
-  const cleaned = {};
-  for (const [k, v] of Object.entries(obj)) {
-    if (v !== '') cleaned[k] = v;
-  }
-  return cleaned;
-}
-
 export async function getTables(req, res, next) {
   try {
     const tables = await listDatabaseTables();
@@ -51,7 +43,7 @@ export async function getTableRelations(req, res, next) {
 
 export async function updateRow(req, res, next) {
   try {
-    const updates = cleanValues({ ...req.body });
+    const updates = { ...req.body };
     delete updates.created_by;
     delete updates.created_at;
     await updateTableRow(req.params.table, req.params.id, updates);
@@ -63,11 +55,11 @@ export async function updateRow(req, res, next) {
 
 export async function addRow(req, res, next) {
   try {
-    const row = cleanValues({
+    const row = {
       ...req.body,
       created_by: req.user?.empid,
       created_at: new Date(),
-    });
+    };
     const result = await insertTableRow(req.params.table, row);
     res.status(201).json(result);
   } catch (err) {
