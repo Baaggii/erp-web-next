@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useContext } from 'react';
+import { AuthContext } from '../context/AuthContext.jsx';
 import RowFormModal from './RowFormModal.jsx';
 
 export default function TableManager({ table }) {
@@ -7,6 +8,7 @@ export default function TableManager({ table }) {
   const [refData, setRefData] = useState({});
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
+  const { user } = useContext(AuthContext);
 
   useEffect(() => {
     if (!table) return;
@@ -103,6 +105,14 @@ export default function TableManager({ table }) {
     const url = editing
       ? `/api/tables/${table}/${encodeURIComponent(getRowId(editing))}`
       : `/api/tables/${table}`;
+
+    if (!editing) {
+      values = {
+        ...values,
+        created_by: user?.empid,
+        created_at: new Date().toISOString(),
+      };
+    }
     const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
@@ -152,7 +162,8 @@ export default function TableManager({ table }) {
     });
   });
   const disabledFields = editing ? getKeyFields() : [];
-  const formColumns = editing ? columns : columns.filter((c) => c !== 'id');
+  const formColumns = columns
+    .filter((c) => c !== 'id' && c !== 'created_at' && c !== 'created_by');
 
   return (
     <div>
