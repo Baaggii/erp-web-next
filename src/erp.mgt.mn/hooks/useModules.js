@@ -15,8 +15,9 @@ export function useModules() {
     try {
       const res = await fetch('/api/modules', { credentials: 'include' });
       const rows = res.ok ? await res.json() : [];
-      cache.data = rows;
-      setModules(rows);
+      const filtered = rows.filter((m) => m.module_key !== 'error_log');
+      cache.data = filtered;
+      setModules(filtered);
     } catch (err) {
       console.error('Failed to load modules', err);
       setModules([]);

@@ -73,7 +73,6 @@ export default function TableManager({ table }) {
             return acc;
           }, {})
         );
-        setError('');
       })
       .catch((err) => {
         if (!canceled) {
@@ -90,7 +89,6 @@ export default function TableManager({ table }) {
         if (canceled) return;
         setColumnMeta(cols);
         setAutoInc(computeAutoInc(cols));
-        setError('');
       })
       .catch((err) => {
         if (!canceled) {
