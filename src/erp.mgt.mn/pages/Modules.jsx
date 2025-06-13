@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { refreshModules } from '../hooks/useModules.js';
-import { API_BASE } from '../utils/apiBase.js';
 
 export default function ModulesPage() {
   const [modules, setModules] = useState([]);
 
   function loadModules() {
-    fetch(`${API_BASE}/modules`, { credentials: 'include' })
+    fetch('/api/modules', { credentials: 'include' })
       .then(res => {
         if (!res.ok) throw new Error('Failed to fetch modules');
         return res.json();
@@ -27,7 +26,7 @@ export default function ModulesPage() {
     const parentKey = prompt('Parent key (optional)?', '');
     const showInSidebar = window.confirm('Show in sidebar?');
     const showInHeader = window.confirm('Show in header?');
-    const res = await fetch(`${API_BASE}/modules`, {
+    const res = await fetch('/api/modules', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -53,7 +52,7 @@ export default function ModulesPage() {
     const parentKey = prompt('Parent key (optional)?', m.parent_key || '');
     const showInSidebar = window.confirm('Show in sidebar?');
     const showInHeader = window.confirm('Show in header?');
-    const res = await fetch(`${API_BASE}/modules/${m.module_key}`, {
+    const res = await fetch(`/api/modules/${m.module_key}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -73,7 +72,7 @@ export default function ModulesPage() {
   }
 
   async function handlePopulate() {
-    const res = await fetch(`${API_BASE}/modules/populate`, {
+    const res = await fetch('/api/modules/populate', {
       method: 'POST',
       credentials: 'include'
     });

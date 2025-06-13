@@ -9,12 +9,10 @@ export default function RowFormModal({
   relations = {},
   disabledFields = [],
 }) {
-  const isPasswordField = (name) => name.toLowerCase().includes('password');
-
   const [formVals, setFormVals] = useState(() => {
     const init = {};
     columns.forEach((c) => {
-      init[c] = row && !isPasswordField(c) ? String(row[c] ?? '') : '';
+      init[c] = row ? String(row[c] ?? '') : '';
     });
     return init;
   });
@@ -23,7 +21,7 @@ export default function RowFormModal({
     if (!visible) return;
     const vals = {};
     columns.forEach((c) => {
-      vals[c] = row && !isPasswordField(c) ? String(row[c] ?? '') : '';
+      vals[c] = row ? String(row[c] ?? '') : '';
     });
     setFormVals(vals);
   }, [row, columns, visible]);
@@ -82,7 +80,7 @@ export default function RowFormModal({
                 </select>
               ) : (
                 <input
-                  type={isPasswordField(c) ? 'password' : 'text'}
+                  type="text"
                   value={formVals[c]}
                   onChange={(e) =>
                     setFormVals((v) => ({ ...v, [c]: e.target.value }))
@@ -94,14 +92,10 @@ export default function RowFormModal({
             </div>
           ))}
           <div style={{ textAlign: 'right' }}>
-            <button
-              type="button"
-              onClick={onCancel}
-              style={{ marginRight: '0.5rem', padding: '0.4rem 0.75rem' }}
-            >
+            <button type="button" onClick={onCancel} style={{ marginRight: '0.5rem' }}>
               Cancel
             </button>
-            <button type="submit" style={{ padding: '0.4rem 0.75rem' }}>Save</button>
+            <button type="submit">Save</button>
           </div>
         </form>
       </div>

@@ -17,7 +17,6 @@ import ReportManagementPage from './pages/ReportManagement.jsx';
 import ModulesPage from './pages/Modules.jsx';
 import SettingsPage, { GeneralSettings } from './pages/Settings.jsx';
 import ChangePasswordPage from './pages/ChangePassword.jsx';
-import ErrorLogPage from './pages/ErrorLog.jsx';
 import BlueLinkPage from './pages/BlueLinkPage.jsx';
 import { useModules } from './hooks/useModules.js';
 
@@ -49,7 +48,6 @@ export default function App() {
     forms_management: <FormsManagementPage />,
     report_management: <ReportManagementPage />,
     change_password: <ChangePasswordPage />,
-    error_log: <ErrorLogPage />,
   };
 
   const indexComponents = {
@@ -66,7 +64,6 @@ export default function App() {
     'coding_tables',
     'forms_management',
     'report_management',
-    'error_log',
   ]);
 
   function renderRoute(mod) {

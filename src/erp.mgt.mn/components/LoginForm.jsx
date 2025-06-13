@@ -2,9 +2,7 @@
 import React, { useState, useContext } from 'react';
 import { login } from '../hooks/useAuth.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
-import { API_BASE } from '../utils/apiBase.js';
 import { useNavigate } from 'react-router-dom';
-import ErrorMessage from './ErrorMessage.jsx';
 
 export default function LoginForm() {
   // login using employee ID only
@@ -29,7 +27,7 @@ export default function LoginForm() {
 
       // Fetch company assignments
       const res = await fetch(
-        `${API_BASE}/user_companies?empid=${encodeURIComponent(loggedIn.empid)}`,
+        `/api/user_companies?empid=${encodeURIComponent(loggedIn.empid)}`,
         { credentials: 'include' },
       );
       const assignments = res.ok ? await res.json() : [];
@@ -135,7 +133,9 @@ export default function LoginForm() {
         />
       </div>
 
-      <ErrorMessage message={error} />
+      {error && (
+        <p style={{ color: 'red', marginBottom: '0.75rem' }}>{error}</p>
+      )}
 
       <button
         type="submit"

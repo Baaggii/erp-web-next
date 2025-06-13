@@ -213,11 +213,6 @@ export async function removeCompanyAssignment(empid, companyId) {
     "DELETE FROM user_companies WHERE empid = ? AND company_id = ?",
     [empid, companyId],
   );
-  if (result.affectedRows === 0) {
-    const err = new Error("Assignment not found");
-    err.status = 404;
-    throw err;
-  }
   return result;
 }
 
@@ -620,22 +615,12 @@ export async function updateTableRow(tableName, id, updates) {
   }
 
   if (tableName === 'user_companies') {
-    const parts = String(id).split('-');
-    const companyId = parts.pop();
-    const empId = parts.join('-');
+    const [empId, companyId] = String(id).split('-');
     await pool.query(
       `UPDATE user_companies SET ${setClause} WHERE empid = ? AND company_id = ?`,
       [...values, empId, companyId],
     );
     return { empid: empId, company_id: companyId };
-  }
-
-  if (tableName === 'modules') {
-    await pool.query(`UPDATE modules SET ${setClause} WHERE module_key = ?`, [
-      ...values,
-      id,
-    ]);
-    return { module_key: id };
   }
 
   await pool.query(`UPDATE ?? SET ${setClause} WHERE id = ?`, [tableName, ...values, id]);
@@ -658,75 +643,33 @@ export async function insertTableRow(tableName, row) {
 }
 
 export async function deleteTableRow(tableName, id) {
-  try {
-    if (tableName === 'company_module_licenses') {
-      const [companyId, moduleKey] = String(id).split('-');
-      const [result] = await pool.query(
-        'DELETE FROM company_module_licenses WHERE company_id = ? AND module_key = ?',
-        [companyId, moduleKey],
-      );
-      if (result.affectedRows === 0) {
-        const err = new Error('Row not found');
-        err.status = 404;
-        throw err;
-      }
-      return { company_id: companyId, module_key: moduleKey };
-    }
-
-    if (tableName === 'role_module_permissions') {
-      const [companyId, roleId, moduleKey] = String(id).split('-');
-      const [result] = await pool.query(
-        'DELETE FROM role_module_permissions WHERE company_id = ? AND role_id = ? AND module_key = ?',
-        [companyId, roleId, moduleKey],
-      );
-      if (result.affectedRows === 0) {
-        const err = new Error('Row not found');
-        err.status = 404;
-        throw err;
-      }
-      return { company_id: companyId, role_id: roleId, module_key: moduleKey };
-    }
-
-    if (tableName === 'user_companies') {
-      const parts = String(id).split('-');
-      const companyId = parts.pop();
-      const empId = parts.join('-');
-      const [result] = await pool.query(
-        'DELETE FROM user_companies WHERE empid = ? AND company_id = ?',
-        [empId, companyId],
-      );
-      if (result.affectedRows === 0) {
-        const err = new Error('Row not found');
-        err.status = 404;
-        throw err;
-      }
-      return { empid: empId, company_id: companyId };
-    }
-
-    if (tableName === 'modules') {
-      const [result] = await pool.query(
-        'DELETE FROM modules WHERE module_key = ?',
-        [id],
-      );
-      if (result.affectedRows === 0) {
-        const err = new Error('Row not found');
-        err.status = 404;
-        throw err;
-      }
-      return { module_key: id };
-    }
-
-    const [result] = await pool.query('DELETE FROM ?? WHERE id = ?', [tableName, id]);
-    if (result.affectedRows === 0) {
-      const err = new Error('Row not found');
-      err.status = 404;
-      throw err;
-    }
-    return { id };
-  } catch (err) {
-    if (err.code === 'ER_ROW_IS_REFERENCED_2') {
-      err.status = 400;
-    }
-    throw err;
+  if (tableName === 'company_module_licenses') {
+    const [companyId, moduleKey] = String(id).split('-');
+    await pool.query(
+      'DELETE FROM company_module_licenses WHERE company_id = ? AND module_key = ?',
+      [companyId, moduleKey],
+    );
+    return { company_id: companyId, module_key: moduleKey };
   }
+
+  if (tableName === 'role_module_permissions') {
+    const [companyId, roleId, moduleKey] = String(id).split('-');
+    await pool.query(
+      'DELETE FROM role_module_permissions WHERE company_id = ? AND role_id = ? AND module_key = ?',
+      [companyId, roleId, moduleKey],
+    );
+    return { company_id: companyId, role_id: roleId, module_key: moduleKey };
+  }
+
+  if (tableName === 'user_companies') {
+    const [empId, companyId] = String(id).split('-');
+    await pool.query(
+      'DELETE FROM user_companies WHERE empid = ? AND company_id = ?',
+      [empId, companyId],
+    );
+    return { empid: empId, company_id: companyId };
+  }
+
+  await pool.query('DELETE FROM ?? WHERE id = ?', [tableName, id]);
+  return { id };
 }

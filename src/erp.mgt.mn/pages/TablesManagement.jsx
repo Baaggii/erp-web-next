@@ -1,31 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import TableManager from '../components/TableManager.jsx';
-import ErrorMessage from '../components/ErrorMessage.jsx';
-import { API_BASE } from '../utils/apiBase.js';
 
 export default function TablesManagement() {
   const [tables, setTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState('');
-  const [error, setError] = useState('');
 
   useEffect(() => {
-    setError('');
-    fetch(`${API_BASE}/tables`, { credentials: 'include' })
-      .then((res) => {
-        if (!res.ok) throw new Error('Failed to load tables');
-        return res.json();
-      })
+    fetch('/api/tables', { credentials: 'include' })
+      .then((res) => res.json())
       .then(setTables)
-      .catch((err) => {
-        console.error('Failed to load tables', err);
-        setError(err.message);
-      });
+      .catch((err) => console.error('Failed to load tables', err));
   }, []);
 
   return (
     <div>
       <h2>Dynamic Tables</h2>
-      <ErrorMessage message={error} />
       <select value={selectedTable} onChange={(e) => setSelectedTable(e.target.value)}>
         <option value="">-- select table --</option>
         {tables.map((t) => (

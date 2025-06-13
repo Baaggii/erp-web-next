@@ -1,7 +1,6 @@
 // src/erp.mgt.mn/pages/UserCompanies.jsx
 import React, { useEffect, useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
-import { API_BASE } from '../utils/apiBase.js';
 
 export default function UserCompanies() {
   const [assignments, setAssignments] = useState([]);
@@ -16,7 +15,7 @@ export default function UserCompanies() {
     const params = [];
     if (empid) params.push(`empid=${encodeURIComponent(empid)}`);
     if (company) params.push(`companyId=${encodeURIComponent(company.company_id)}`);
-    const url = params.length ? `${API_BASE}/user_companies?${params.join('&')}` : `${API_BASE}/user_companies`;
+    const url = params.length ? `/api/user_companies?${params.join('&')}` : '/api/user_companies';
     fetch(url, { credentials: 'include' })
       .then(res => {
         if (!res.ok) throw new Error('Failed to fetch user_companies');
@@ -34,8 +33,8 @@ export default function UserCompanies() {
     async function loadLists() {
       try {
         const [uRes, cRes] = await Promise.all([
-          fetch(`${API_BASE}/users`, { credentials: 'include' }),
-          fetch(`${API_BASE}/companies`, { credentials: 'include' })
+          fetch('/api/users', { credentials: 'include' }),
+          fetch('/api/companies', { credentials: 'include' })
         ]);
         const users = uRes.ok ? await uRes.json() : [];
         const companies = cRes.ok ? await cRes.json() : [];
@@ -64,7 +63,7 @@ export default function UserCompanies() {
 
   async function handleFormSubmit({ empid, companyId, roleId }) {
     const isEdit = Boolean(editing);
-    const res = await fetch(`${API_BASE}/user_companies`, {
+    const res = await fetch('/api/user_companies', {
       method: isEdit ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -84,7 +83,7 @@ export default function UserCompanies() {
 
   async function handleDelete(a) {
     if (!confirm('Delete assignment?')) return;
-    const res = await fetch(`${API_BASE}/user_companies`, {
+    const res = await fetch('/api/user_companies', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
