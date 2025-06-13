@@ -18,6 +18,7 @@ export default function CodingTablesPage() {
   const [sql, setSql] = useState('');
   const [uploading, setUploading] = useState(false);
   const [columnTypes, setColumnTypes] = useState({});
+  const [notNullMap, setNotNullMap] = useState({});
   const [extraFields, setExtraFields] = useState(['', '', '']);
   const [populateRange, setPopulateRange] = useState(false);
   const [startYear, setStartYear] = useState('');
@@ -60,6 +61,7 @@ export default function CodingTablesPage() {
       setOtherColumns([]);
       setUniqueFields([]);
       setColumnTypes({});
+      setNotNullMap({});
       setPopulateRange(false);
       setStartYear('');
       setEndYear('');
@@ -77,6 +79,7 @@ export default function CodingTablesPage() {
     setOtherColumns([]);
     setUniqueFields([]);
     setColumnTypes({});
+    setNotNullMap({});
     setPopulateRange(false);
     setStartYear('');
     setEndYear('');
@@ -93,6 +96,7 @@ export default function CodingTablesPage() {
     setOtherColumns([]);
     setUniqueFields([]);
     setColumnTypes({});
+    setNotNullMap({});
     setPopulateRange(false);
     setStartYear('');
     setEndYear('');
@@ -122,6 +126,13 @@ export default function CodingTablesPage() {
       types[h] = detectType(h, valsByHeader[h]);
     });
     setColumnTypes(types);
+    const nn = {};
+    hdrs.forEach((h) => {
+      nn[h] = valsByHeader[h].every(
+        (v) => v !== undefined && v !== null && v !== ''
+      );
+    });
+    setNotNullMap(nn);
   }
 
   function handleExtract() {
@@ -235,12 +246,14 @@ export default function CodingTablesPage() {
       valuesByHeader[h] = rows.map((r) => r[hdrs.length + idx2]);
     });
     const colTypes = {};
-    const notNullMap = {};
+    const localNotNull = {};
     allHdrs.forEach((h) => {
       colTypes[h] = columnTypes[h] || detectType(h, valuesByHeader[h] || []);
-      notNullMap[h] = (valuesByHeader[h] || []).every(
+      const defNN = (valuesByHeader[h] || []).every(
         (v) => v !== undefined && v !== null && v !== ''
       );
+      localNotNull[h] =
+        notNullMap[h] !== undefined ? notNullMap[h] : defNN;
     });
 
     const uniqueOnly = uniqueFields.filter(
@@ -301,7 +314,7 @@ export default function CodingTablesPage() {
     });
     otherFiltered.forEach((c) => {
       let def = `\`${c}\` ${colTypes[c]}`;
-      if (notNullMap[c]) def += ' NOT NULL';
+      if (localNotNull[c]) def += ' NOT NULL';
       defs.push(def);
       });
     const calcFields = parseCalcFields(calcText);
@@ -332,23 +345,22 @@ export default function CodingTablesPage() {
         vals.push(formatVal(nameVal, colTypes[nameColumn]));
         hasData = true;
       }
-      let skip = false;
       uniqueOnly.forEach((c, idx2) => {
-        if (skip) return;
         const ui = uniqueIdx[idx2];
         let v = ui === -1 ? defaultValForType(colTypes[c]) : r[ui];
-        if (ui !== -1 && (v === undefined || v === null || v === '')) {
-          skip = true;
-          return;
+        if (v === undefined || v === null || v === '') {
+          v = defaultValForType(colTypes[c]);
         }
         cols.push(`\`${c}\``);
         vals.push(formatVal(v, colTypes[c]));
         hasData = true;
       });
-      if (skip) continue;
       otherFiltered.forEach((c, idx2) => {
           const ci = otherIdx[idx2];
-          const v = ci === -1 ? undefined : r[ci];
+          let v = ci === -1 ? undefined : r[ci];
+          if ((v === undefined || v === null || v === '') && localNotNull[c]) {
+            v = defaultValForType(colTypes[c]);
+          }
           if (v !== undefined && v !== null && v !== '') hasData = true;
           cols.push(`\`${c}\``);
           vals.push(formatVal(v, colTypes[c]));
@@ -388,6 +400,7 @@ export default function CodingTablesPage() {
       formData.append('uniqueFields', JSON.stringify(uniqueFields));
       formData.append('calcFields', JSON.stringify(parseCalcFields(calcText)));
       formData.append('columnTypes', JSON.stringify(columnTypes));
+      formData.append('notNullMap', JSON.stringify(notNullMap));
       formData.append('populateRange', String(populateRange));
       formData.append('startYear', startYear);
       formData.append('endYear', endYear);
@@ -415,6 +428,13 @@ export default function CodingTablesPage() {
     setIdCandidates(computeIdCandidates(allHeaders, idFilterMode));
     setUniqueFields((u) => u.filter((f) => allHeaders.includes(f)));
     setOtherColumns((o) => o.filter((f) => allHeaders.includes(f)));
+    setNotNullMap((m) => {
+      const updated = {};
+      allHeaders.forEach((h) => {
+        updated[h] = m[h] || false;
+      });
+      return updated;
+    });
     if (idColumn && !allHeaders.includes(idColumn)) setIdColumn('');
     if (nameColumn && !allHeaders.includes(nameColumn)) setNameColumn('');
   }, [allHeaders, idFilterMode]);
@@ -615,6 +635,19 @@ export default function CodingTablesPage() {
                           })
                         }
                       />
+                      <label style={{ marginLeft: '0.5rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={!notNullMap[h]}
+                          onChange={(e) =>
+                            setNotNullMap({
+                              ...notNullMap,
+                              [h]: !e.target.checked,
+                            })
+                          }
+                        />
+                        Allow Null
+                      </label>
                     </div>
                   ))}
                 </div>
