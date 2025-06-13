@@ -184,6 +184,13 @@ export default function CodingTablesPage() {
     return escapeSqlValue(val);
   }
 
+  function defaultValForType(type) {
+    if (!type) return 0;
+    if (type === 'DATE') return 0;
+    if (type === 'INT' || type.startsWith('DECIMAL')) return 0;
+    return 0;
+  }
+
   function handleGenerateSql() {
     if (!workbook || !sheet || !tableName) return;
     const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheet], { header: 1 });
@@ -283,7 +290,7 @@ export default function CodingTablesPage() {
       uniqueOnly.forEach((c, idx2) => {
         if (skip) return;
         const ui = uniqueIdx[idx2];
-        const v = ui === -1 ? undefined : r[ui];
+        let v = ui === -1 ? defaultValForType(colTypes[c]) : r[ui];
         if (ui !== -1 && (v === undefined || v === null || v === '')) {
           skip = true;
           return;
