@@ -170,6 +170,9 @@ export async function uploadCodingTable(req, res, next) {
         }
       }
     }
+    finalRows = finalRows.filter(
+      (r) => !Object.values(r).some((v) => v === 0 || v === null)
+    );
     if (!tableName) {
       return res.status(400).json({ error: 'Missing params' });
     }
