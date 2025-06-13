@@ -222,6 +222,18 @@ export default function CodingTablesPage() {
     return 0;
   }
 
+  function makeUniqueKeyName(fields) {
+    const base = `uniq_${fields.join('_')}`;
+    if (base.length > 60) {
+      let hash = 0;
+      for (let i = 0; i < base.length; i++) {
+        hash = (hash * 31 + base.charCodeAt(i)) >>> 0;
+      }
+      return `uniq_${hash.toString(16)}`;
+    }
+    return base;
+  }
+
   function handleGenerateSql() {
     if (!workbook || !sheet || !tableName) return;
     const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheet], {
@@ -332,8 +344,9 @@ export default function CodingTablesPage() {
       ...uniqueOnly,
     ];
     if (uniqueKeyFields.length > 0) {
+      const indexName = makeUniqueKeyName(uniqueKeyFields);
       defs.push(
-        `UNIQUE KEY uniq_${uniqueKeyFields.join('_')} (${uniqueKeyFields
+        `UNIQUE KEY ${indexName} (${uniqueKeyFields
           .map((f) => `\`${f}\``)
           .join(', ')})`
       );
