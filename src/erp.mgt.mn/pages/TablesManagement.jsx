@@ -4,6 +4,7 @@ import TableManager from '../components/TableManager.jsx';
 export default function TablesManagement() {
   const [tables, setTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState('');
+  const [refreshId, setRefreshId] = useState(0);
 
   const loadTables = async () => {
     try {
@@ -13,6 +14,9 @@ export default function TablesManagement() {
         setTables(data);
         if (!data.includes(selectedTable)) {
           setSelectedTable('');
+        } else if (selectedTable) {
+          // trigger refresh for currently selected table
+          setRefreshId((r) => r + 1);
         }
       }
     } catch (err) {
@@ -36,7 +40,9 @@ export default function TablesManagement() {
         ))}
       </select>
       <button onClick={loadTables} style={{ marginLeft: '0.5rem' }}>Refresh List</button>
-      {selectedTable && <TableManager table={selectedTable} />}
+      {selectedTable && (
+        <TableManager table={selectedTable} refreshId={refreshId} />
+      )}
     </div>
   );
 }
