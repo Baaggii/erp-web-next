@@ -45,19 +45,6 @@ export default function TableManager({ table }) {
     setRelations({});
     setRefData({});
     setColumnMeta([]);
-    fetch(`/api/tables/${encodeURIComponent(table)}/relations`, {
-      credentials: 'include',
-    })
-      .then((res) => res.json())
-      .then((rels) => {
-        if (canceled) return;
-        setRelations(
-          rels.reduce((acc, r) => {
-            acc[r.COLUMN_NAME] = r;
-            return acc;
-          }, {})
-        );
-      });
     fetch(`/api/tables/${encodeURIComponent(table)}/columns`, {
       credentials: 'include',
     })
@@ -104,32 +91,6 @@ export default function TableManager({ table }) {
   }, [table, page, perPage, filters, sort]);
 
   useEffect(() => {
-    let canceled = false;
-    Object.values(relations).forEach((rel) => {
-      const col = rel.COLUMN_NAME;
-      if (refData[col]) return;
-      fetch(`/api/tables/${encodeURIComponent(rel.REFERENCED_TABLE_NAME)}?perPage=100`, {
-        credentials: 'include',
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (canceled) return;
-          setRefData((d) => ({
-            ...d,
-            [col]: data.rows.map((r) => ({
-              value: r[rel.REFERENCED_COLUMN_NAME],
-              label:
-                r.name || r.label || r[rel.REFERENCED_COLUMN_NAME] || 'value',
-            })),
-          }));
-        });
-    });
-    return () => {
-      canceled = true;
-    };
-  }, [relations]);
-
-  useEffect(() => {
     setSelectedRows(new Set());
   }, [table, page, perPage, filters, sort]);
 
@@ -166,86 +127,14 @@ export default function TableManager({ table }) {
     }
   }
 
-  async function ensureRelationsData() {
-    if (!table) return;
-    // Fetch relation metadata if not already loaded
-    if (Object.keys(relations).length === 0) {
-      try {
-        const res = await fetch(`/api/tables/${encodeURIComponent(table)}/relations`, {
-          credentials: 'include',
-        });
-        if (res.ok) {
-          const rels = await res.json();
-          const map = rels.reduce((acc, r) => {
-            acc[r.COLUMN_NAME] = r;
-            return acc;
-          }, {});
-          setRelations(map);
-          await Promise.all(
-            rels.map(async (r) => {
-              const resp = await fetch(
-                `/api/tables/${encodeURIComponent(r.REFERENCED_TABLE_NAME)}?perPage=100`,
-                { credentials: 'include' },
-              );
-              const data = await resp.json();
-              setRefData((d) => ({
-                ...d,
-                [r.COLUMN_NAME]: data.rows.map((row) => ({
-                  value: row[r.REFERENCED_COLUMN_NAME],
-                  label:
-                    row.name ||
-                    row.label ||
-                    row[r.REFERENCED_COLUMN_NAME] ||
-                    'value',
-                })),
-              }));
-            }),
-          );
-        }
-      } catch (err) {
-        console.error('Failed to fetch table relations', err);
-      }
-    } else {
-      // Ensure reference data for existing relations
-      await Promise.all(
-        Object.values(relations).map(async (r) => {
-          const col = r.COLUMN_NAME;
-          if (refData[col]) return;
-          try {
-            const res = await fetch(
-              `/api/tables/${encodeURIComponent(r.REFERENCED_TABLE_NAME)}?perPage=100`,
-              { credentials: 'include' },
-            );
-            const data = await res.json();
-            setRefData((d) => ({
-              ...d,
-              [col]: data.rows.map((row) => ({
-                value: row[r.REFERENCED_COLUMN_NAME],
-                label:
-                  row.name ||
-                  row.label ||
-                  row[r.REFERENCED_COLUMN_NAME] ||
-                  'value',
-              })),
-            }));
-          } catch (err) {
-            console.error('Failed to fetch relation data', err);
-          }
-        }),
-      );
-    }
-  }
-
   async function openAdd() {
     await ensureColumnMeta();
-    await ensureRelationsData();
     setEditing(null);
     setShowForm(true);
   }
 
   async function openEdit(row) {
     await ensureColumnMeta();
-    await ensureRelationsData();
     setEditing(row);
     setShowForm(true);
   }
