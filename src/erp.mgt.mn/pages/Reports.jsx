@@ -1,11 +1,12 @@
 // src/erp.mgt.mn/pages/Reports.jsx
 import React, { useEffect, useState } from 'react';
+import { API_BASE } from '../utils/apiBase.js';
 
 export default function Reports() {
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    fetch('/api/reports/sales', { credentials: 'include' })
+    fetch(`${API_BASE}/reports/sales`, { credentials: 'include' })
       .then((res) => {
         if (!res.ok) throw new Error('Failed to fetch reports');
         return res.json();

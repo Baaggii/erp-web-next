@@ -1,5 +1,6 @@
 // src/erp.mgt.mn/context/AuthContext.jsx
 import React, { createContext, useState, useEffect, useContext } from 'react';
+import { API_BASE } from '../utils/apiBase.js';
 
 // Create the AuthContext
 export const AuthContext = createContext({
@@ -37,7 +38,7 @@ export default function AuthContextProvider({ children }) {
   useEffect(() => {
     async function loadProfile() {
       try {
-        const res = await fetch('/api/auth/me', {
+        const res = await fetch(`${API_BASE}/auth/me`, {
           credentials: 'include',
         });
 

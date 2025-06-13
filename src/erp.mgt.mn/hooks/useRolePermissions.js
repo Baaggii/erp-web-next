@@ -1,5 +1,6 @@
 import { useContext, useEffect, useState } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
+import { API_BASE } from '../utils/apiBase.js';
 
 // Cache permissions by role so switching users does not refetch unnecessarily
 const cache = {};
@@ -21,7 +22,7 @@ export function useRolePermissions() {
     try {
       const params = [`roleId=${roleId}`];
       if (companyId) params.push(`companyId=${companyId}`);
-      const res = await fetch(`/api/role_permissions?${params.join('&')}`, {
+      const res = await fetch(`${API_BASE}/role_permissions?${params.join('&')}`, {
         credentials: 'include',
       });
       const rows = res.ok ? await res.json() : [];

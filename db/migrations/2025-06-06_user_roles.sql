@@ -5,8 +5,6 @@ CREATE TABLE IF NOT EXISTS user_roles (
   name VARCHAR(50) NOT NULL UNIQUE
 );
 
-INSERT INTO user_roles (name) VALUES ('admin'), ('user');
-
 ALTER TABLE users
   ADD COLUMN role_id INT NOT NULL DEFAULT 2,
   ADD FOREIGN KEY (role_id) REFERENCES user_roles(id);

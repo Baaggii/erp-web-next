@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import ErrorMessage from '../components/ErrorMessage.jsx';
+import { API_BASE } from '../utils/apiBase.js';
 
 export default function ChangePasswordPage() {
   const [password, setPassword] = useState('');
@@ -14,7 +16,7 @@ export default function ChangePasswordPage() {
       return;
     }
     try {
-      const res = await fetch('/api/auth/change-password', {
+      const res = await fetch(`${API_BASE}/auth/change-password`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -36,7 +38,7 @@ export default function ChangePasswordPage() {
     <div style={{ padding: '1rem' }}>
       <h2>Нууц үг солих</h2>
       {success && <p style={{ color: 'green' }}>Нууц үг шинэчлэгдлээ</p>}
-      {error && <p style={{ color: 'red' }}>{error}</p>}
+      <ErrorMessage message={error} />
       <form onSubmit={handleSubmit} style={{ maxWidth: '320px' }}>
         <div style={{ marginBottom: '0.75rem' }}>
           <label htmlFor="newpwd" style={{ display: 'block', marginBottom: '0.25rem' }}>
