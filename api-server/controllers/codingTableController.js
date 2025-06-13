@@ -56,10 +56,12 @@ export async function uploadCodingTable(req, res, next) {
       otherColumns,
       uniqueFields,
       calcFields,
+      columnTypes: columnTypesJson,
     } = req.body;
     const extraCols = otherColumns ? JSON.parse(otherColumns) : [];
     const uniqueCols = uniqueFields ? JSON.parse(uniqueFields) : [];
     const calcDefs = calcFields ? JSON.parse(calcFields) : [];
+    const columnTypeOverride = columnTypesJson ? JSON.parse(columnTypesJson) : {};
     if (!req.file) {
       return res.status(400).json({ error: 'File required' });
     }
@@ -71,8 +73,16 @@ export async function uploadCodingTable(req, res, next) {
     }
     const headerIndex = parseInt(headerRow || '1', 10);
     const data = xlsx.utils.sheet_to_json(ws, { header: 1, blankrows: false });
-    const headers = data[headerIndex - 1];
-    if (!headers) {
+    const rawHeaders = data[headerIndex - 1] || [];
+    const keepIdx = [];
+    const headers = [];
+    rawHeaders.forEach((h, idx) => {
+      if (String(h).length > 1) {
+        headers.push(h);
+        keepIdx.push(idx);
+      }
+    });
+    if (headers.length === 0) {
       fs.unlinkSync(req.file.path);
       return res.status(400).json({ error: 'Header row not found' });
     }
@@ -88,8 +98,9 @@ export async function uploadCodingTable(req, res, next) {
     }
     const rows = data.slice(headerIndex).map((row) => {
       const obj = {};
-      headers.forEach((h, idx) => {
-        obj[h] = row[idx];
+      keepIdx.forEach((colIdx, hIdx) => {
+        const h = headers[hIdx];
+        obj[h] = row[colIdx];
       });
       return obj;
     });
@@ -105,6 +116,9 @@ export async function uploadCodingTable(req, res, next) {
         (v) => v !== undefined && v !== null && v !== ''
       );
     });
+    for (const [col, typ] of Object.entries(columnTypeOverride)) {
+      columnTypes[col] = typ;
+    }
     if (!tableName) {
       return res.status(400).json({ error: 'Missing params' });
     }

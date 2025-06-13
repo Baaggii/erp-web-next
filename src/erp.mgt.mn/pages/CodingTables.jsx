@@ -17,6 +17,7 @@ export default function CodingTablesPage() {
   const [calcText, setCalcText] = useState('');
   const [sql, setSql] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [columnTypes, setColumnTypes] = useState({});
 
   function computeIdCandidates(hdrs, mode) {
     const strs = hdrs.filter((h) => typeof h === 'string');
@@ -44,6 +45,7 @@ export default function CodingTablesPage() {
       setSql('');
       setOtherColumns([]);
       setUniqueFields([]);
+      setColumnTypes({});
     });
   }
 
@@ -57,6 +59,7 @@ export default function CodingTablesPage() {
     setSql('');
     setOtherColumns([]);
     setUniqueFields([]);
+    setColumnTypes({});
   }
 
   function handleHeaderRowChange(e) {
@@ -69,14 +72,34 @@ export default function CodingTablesPage() {
     setSql('');
     setOtherColumns([]);
     setUniqueFields([]);
+    setColumnTypes({});
   }
 
   function extractHeaders(wb, s, row) {
     const data = XLSX.utils.sheet_to_json(wb.Sheets[s], { header: 1 });
     const idx = Number(row) - 1;
-    const hdrs = data[idx] || [];
+    const raw = data[idx] || [];
+    const hdrs = [];
+    const keepIdx = [];
+    raw.forEach((h, i) => {
+      if (String(h).length > 1) {
+        hdrs.push(h);
+        keepIdx.push(i);
+      }
+    });
     setHeaders(hdrs);
     setIdCandidates(computeIdCandidates(hdrs, idFilterMode));
+    const rows = data.slice(idx + 1);
+    const valsByHeader = {};
+    hdrs.forEach((h, i) => {
+      const colIdx = keepIdx[i];
+      valsByHeader[h] = rows.map((r) => r[colIdx]);
+    });
+    const types = {};
+    hdrs.forEach((h) => {
+      types[h] = detectType(h, valsByHeader[h]);
+    });
+    setColumnTypes(types);
   }
 
   function handleExtract() {
@@ -160,8 +183,16 @@ export default function CodingTablesPage() {
     if (!workbook || !sheet || !tableName) return;
     const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheet], { header: 1 });
     const idx = Number(headerRow) - 1;
-    const hdrs = data[idx] || [];
-    const rows = data.slice(idx + 1);
+    const raw = data[idx] || [];
+    const hdrs = [];
+    const keepIdx = [];
+    raw.forEach((h, i) => {
+      if (String(h).length > 1) {
+        hdrs.push(h);
+        keepIdx.push(i);
+      }
+    });
+    const rows = data.slice(idx + 1).map((r) => keepIdx.map((ci) => r[ci]));
 
     const valuesByHeader = {};
     hdrs.forEach((h, i) => {
@@ -170,7 +201,7 @@ export default function CodingTablesPage() {
     const colTypes = {};
     const notNullMap = {};
     hdrs.forEach((h) => {
-      colTypes[h] = detectType(h, valuesByHeader[h]);
+      colTypes[h] = columnTypes[h] || detectType(h, valuesByHeader[h]);
       notNullMap[h] = valuesByHeader[h].every(
         (v) => v !== undefined && v !== null && v !== ''
       );
@@ -291,6 +322,7 @@ export default function CodingTablesPage() {
       formData.append('otherColumns', JSON.stringify(otherColumns));
       formData.append('uniqueFields', JSON.stringify(uniqueFields));
       formData.append('calcFields', JSON.stringify(parseCalcFields(calcText)));
+      formData.append('columnTypes', JSON.stringify(columnTypes));
       const res = await fetch('/api/coding_tables/upload', {
         method: 'POST',
         credentials: 'include',
@@ -432,6 +464,25 @@ export default function CodingTablesPage() {
                       />
                       {h}
                     </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                Column Types:
+                <div>
+                  {headers.map((h) => (
+                    <div key={h} style={{ marginBottom: '0.25rem' }}>
+                      {h}:{' '}
+                      <input
+                        value={columnTypes[h] || ''}
+                        onChange={(e) =>
+                          setColumnTypes({
+                            ...columnTypes,
+                            [h]: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
                   ))}
                 </div>
               </div>
