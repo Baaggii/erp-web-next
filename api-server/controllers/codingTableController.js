@@ -183,17 +183,18 @@ export async function uploadCodingTable(req, res, next) {
         cols.push(`\`${c}\``);
         placeholders.push('?');
         let val = r[c];
+        const hasProp = Object.prototype.hasOwnProperty.call(r, c);
         if (columnTypes[c] === 'DATE') {
           const d = parseExcelDate(val);
           val = d || null;
         }
-        if (val === undefined || val === null || val === '') {
+        if (hasProp && (val === undefined || val === null || val === '')) {
           skip = true;
           break;
         }
-        values.push(val);
+        values.push(val === undefined ? null : val);
         updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
-        hasData = true;
+        if (val !== undefined && val !== null && val !== '') hasData = true;
       }
       if (skip) continue;
       for (const c of extraFiltered) {
