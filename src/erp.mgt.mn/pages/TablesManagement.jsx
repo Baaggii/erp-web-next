@@ -5,11 +5,23 @@ export default function TablesManagement() {
   const [tables, setTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState('');
 
+  const loadTables = async () => {
+    try {
+      const res = await fetch('/api/tables', { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        setTables(data);
+        if (!data.includes(selectedTable)) {
+          setSelectedTable('');
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load tables', err);
+    }
+  };
+
   useEffect(() => {
-    fetch('/api/tables', { credentials: 'include' })
-      .then((res) => res.json())
-      .then(setTables)
-      .catch((err) => console.error('Failed to load tables', err));
+    loadTables();
   }, []);
 
   return (
@@ -23,6 +35,7 @@ export default function TablesManagement() {
           </option>
         ))}
       </select>
+      <button onClick={loadTables} style={{ marginLeft: '0.5rem' }}>Refresh List</button>
       {selectedTable && <TableManager table={selectedTable} />}
     </div>
   );

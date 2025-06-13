@@ -287,6 +287,32 @@ export default function TableManager({ table }) {
     setSelectedRows(new Set());
   }
 
+  async function refreshRows() {
+    if (!table) return;
+    const params = new URLSearchParams({ page, perPage });
+    if (sort.column) {
+      params.set('sort', sort.column);
+      params.set('dir', sort.dir);
+    }
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v) params.set(k, v);
+    });
+    try {
+      const res = await fetch(
+        `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
+        { credentials: 'include' }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setRows(data.rows || []);
+        setCount(data.count || 0);
+        setSelectedRows(new Set());
+      }
+    } catch (err) {
+      console.error('Failed to refresh rows', err);
+    }
+  }
+
   if (!table) return null;
 
   const allColumns =
@@ -336,6 +362,9 @@ export default function TableManager({ table }) {
         </button>
         <button onClick={deselectAll} style={{ marginRight: '0.5rem' }}>
           Deselect All
+        </button>
+        <button onClick={refreshRows} style={{ marginRight: '0.5rem' }}>
+          Refresh Table
         </button>
         {selectedRows.size > 0 && (
           <button onClick={handleDeleteSelected}>Delete Selected</button>
