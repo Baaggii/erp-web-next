@@ -283,6 +283,9 @@ export default function CodingTablesPage() {
         }
       }
     }
+    finalRows = finalRows.filter(
+      (r) => !r.some((v) => v === 0 || v === null)
+    );
 
     let defs = [];
     if (idColumn) {
