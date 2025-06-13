@@ -219,6 +219,8 @@ export default function CodingTablesPage() {
     }
     const idIdx = hdrs.indexOf(idColumn);
     const nameIdx = hdrs.indexOf(nameColumn);
+    const dbIdCol = idColumn ? 'id' : null;
+    const dbNameCol = nameColumn ? 'name' : null;
     if (idColumn && idIdx === -1) return;
     if (nameColumn && nameIdx === -1) return;
     const uniqueIdx = uniqueOnly.map((c) => hdrs.indexOf(c));
@@ -228,10 +230,10 @@ export default function CodingTablesPage() {
 
     let defs = [];
     if (idColumn) {
-      defs.push(`\`${idColumn}\` INT AUTO_INCREMENT PRIMARY KEY`);
+      defs.push(`\`${dbIdCol}\` INT AUTO_INCREMENT PRIMARY KEY`);
     }
     if (nameColumn) {
-      defs.push(`\`${nameColumn}\` ${colTypes[nameColumn]} NOT NULL`);
+      defs.push(`\`${dbNameCol}\` ${colTypes[nameColumn]} NOT NULL`);
     }
     uniqueOnly.forEach((c) => {
       defs.push(`\`${c}\` ${colTypes[c]} NOT NULL`);
@@ -246,7 +248,7 @@ export default function CodingTablesPage() {
       defs.push(`\`${cf.name}\` INT AS (${cf.expression}) STORED`);
     });
     const uniqueKeyFields = [
-      ...(uniqueFields.includes(nameColumn) ? [nameColumn] : []),
+      ...(uniqueFields.includes(nameColumn) ? [dbNameCol] : []),
       ...uniqueOnly,
     ];
     if (uniqueKeyFields.length > 0) {
@@ -265,7 +267,7 @@ export default function CodingTablesPage() {
       if (nameColumn) {
         const nameVal = r[nameIdx];
         if (nameVal === undefined || nameVal === null || nameVal === '') continue;
-        cols.push(`\`${nameColumn}\``);
+        cols.push(`\`${dbNameCol}\``);
         vals.push(formatVal(nameVal, colTypes[nameColumn]));
         hasData = true;
       }

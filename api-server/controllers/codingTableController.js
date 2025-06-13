@@ -122,13 +122,15 @@ export async function uploadCodingTable(req, res, next) {
     if (!tableName) {
       return res.status(400).json({ error: 'Missing params' });
     }
+    const dbIdCol = idColumn ? 'id' : null;
+    const dbNameCol = nameColumn ? 'name' : null;
     let defs = [];
     if (idColumn) {
-      defs.push(`\`${idColumn}\` INT AUTO_INCREMENT PRIMARY KEY`);
+      defs.push(`\`${dbIdCol}\` INT AUTO_INCREMENT PRIMARY KEY`);
     }
     if (nameColumn) {
       defs.push(
-        `\`${nameColumn}\` ${
+        `\`${dbNameCol}\` ${
           columnTypes[nameColumn] || 'VARCHAR(255)'
         } NOT NULL`
       );
@@ -145,7 +147,7 @@ export async function uploadCodingTable(req, res, next) {
       defs.push(`\`${cf.name}\` INT AS (${cf.expression}) STORED`);
     });
     const uniqueKeyFields = [
-      ...(uniqueCols.includes(nameColumn) ? [nameColumn] : []),
+      ...(uniqueCols.includes(nameColumn) ? [dbNameCol] : []),
       ...uniqueOnly,
     ];
     if (uniqueKeyFields.length > 0) {
@@ -165,9 +167,9 @@ export async function uploadCodingTable(req, res, next) {
       if (nameColumn) {
         const nameVal = r[nameColumn];
         if (nameVal === undefined || nameVal === null || nameVal === '') continue;
-        cols.push(`\`${nameColumn}\``);
+        cols.push(`\`${dbNameCol}\``);
         placeholders.push('?');
-        updates.push(`\`${nameColumn}\` = VALUES(\`${nameColumn}\`)`);
+        updates.push(`\`${dbNameCol}\` = VALUES(\`${dbNameCol}\`)`);
         let val = nameVal;
         if (columnTypes[nameColumn] === 'DATE') {
           const d = parseExcelDate(val);
