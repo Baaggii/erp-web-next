@@ -154,14 +154,86 @@ export default function TableManager({ table }) {
     }
   }
 
+  async function ensureRelationsData() {
+    if (!table) return;
+    // Fetch relation metadata if not already loaded
+    if (Object.keys(relations).length === 0) {
+      try {
+        const res = await fetch(`/api/tables/${table}/relations`, {
+          credentials: 'include',
+        });
+        if (res.ok) {
+          const rels = await res.json();
+          const map = rels.reduce((acc, r) => {
+            acc[r.COLUMN_NAME] = r;
+            return acc;
+          }, {});
+          setRelations(map);
+          await Promise.all(
+            rels.map(async (r) => {
+              const resp = await fetch(
+                `/api/tables/${r.REFERENCED_TABLE_NAME}?perPage=100`,
+                { credentials: 'include' },
+              );
+              const data = await resp.json();
+              setRefData((d) => ({
+                ...d,
+                [r.COLUMN_NAME]: data.rows.map((row) => ({
+                  value: row[r.REFERENCED_COLUMN_NAME],
+                  label:
+                    row.name ||
+                    row.label ||
+                    row[r.REFERENCED_COLUMN_NAME] ||
+                    'value',
+                })),
+              }));
+            }),
+          );
+        }
+      } catch (err) {
+        console.error('Failed to fetch table relations', err);
+      }
+    } else {
+      // Ensure reference data for existing relations
+      await Promise.all(
+        Object.values(relations).map(async (r) => {
+          const col = r.COLUMN_NAME;
+          if (refData[col]) return;
+          try {
+            const res = await fetch(
+              `/api/tables/${r.REFERENCED_TABLE_NAME}?perPage=100`,
+              { credentials: 'include' },
+            );
+            const data = await res.json();
+            setRefData((d) => ({
+              ...d,
+              [col]: data.rows.map((row) => ({
+                value: row[r.REFERENCED_COLUMN_NAME],
+                label:
+                  row.name ||
+                  row.label ||
+                  row[r.REFERENCED_COLUMN_NAME] ||
+                  'value',
+              })),
+            }));
+          } catch (err) {
+            console.error('Failed to fetch relation data', err);
+          }
+        }),
+      );
+    }
+  }
+
   async function openAdd() {
     await ensureColumnMeta();
+    await ensureRelationsData();
     setEditing(null);
     setShowForm(true);
   }
 
   async function openEdit(row) {
     await ensureColumnMeta();
+    await ensureRelationsData();
     setEditing(row);
     setShowForm(true);
   }
