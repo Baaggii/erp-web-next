@@ -179,8 +179,9 @@ export default function CodingTablesPage() {
     const uniqueOnly = uniqueFields.filter(
       (c) => c !== idColumn && c !== nameColumn && !otherColumns.includes(c)
     );
-    const otherFiltered = otherColumns
-      .filter((c) => c !== idColumn && c !== nameColumn && !uniqueOnly.includes(c));
+    const otherFiltered = otherColumns.filter(
+      (c) => c !== idColumn && c !== nameColumn && !uniqueOnly.includes(c)
+    );
     if (!idColumn && !nameColumn && uniqueOnly.length === 0 && otherFiltered.length === 0) {
       alert('Please select at least one ID, Name, Unique or Other column');
       return;
@@ -213,9 +214,13 @@ export default function CodingTablesPage() {
     calcFields.forEach((cf) => {
       defs.push(`\`${cf.name}\` INT AS (${cf.expression}) STORED`);
     });
-    if (uniqueFields.length > 0) {
+    const uniqueKeyFields = [
+      ...(uniqueFields.includes(nameColumn) ? [nameColumn] : []),
+      ...uniqueOnly,
+    ];
+    if (uniqueKeyFields.length > 0) {
       defs.push(
-        `UNIQUE KEY uniq_${uniqueFields.join('_')} (${uniqueFields
+        `UNIQUE KEY uniq_${uniqueKeyFields.join('_')} (${uniqueKeyFields
           .map((f) => `\`${f}\``)
           .join(', ')})`
       );

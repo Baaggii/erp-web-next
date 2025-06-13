@@ -112,12 +112,10 @@ export async function uploadCodingTable(req, res, next) {
         } NOT NULL`
       );
     }
-    uniqueCols.forEach((c) => {
-      if (c === idColumn || c === nameColumn) return;
+    uniqueOnly.forEach((c) => {
       defs.push(`\`${c}\` ${columnTypes[c] || 'VARCHAR(255)'} NOT NULL`);
     });
-    extraCols.forEach((c) => {
-      if (c === idColumn || c === nameColumn || uniqueCols.includes(c)) return;
+    extraFiltered.forEach((c) => {
       let def = `\`${c}\` ${columnTypes[c] || 'VARCHAR(255)'}`;
       if (notNullMap[c]) def += ' NOT NULL';
       defs.push(def);
@@ -125,8 +123,12 @@ export async function uploadCodingTable(req, res, next) {
     calcDefs.forEach((cf) => {
       defs.push(`\`${cf.name}\` INT AS (${cf.expression}) STORED`);
     });
-    if (uniqueCols.length > 0) {
-      defs.push(`UNIQUE KEY uniq_${uniqueCols.join('_')} (${uniqueCols.map((c) => `\`${c}\``).join(', ')})`);
+    const uniqueKeyFields = [
+      ...(uniqueCols.includes(nameColumn) ? [nameColumn] : []),
+      ...uniqueOnly,
+    ];
+    if (uniqueKeyFields.length > 0) {
+      defs.push(`UNIQUE KEY uniq_${uniqueKeyFields.join('_')} (${uniqueKeyFields.map((c) => `\`${c}\``).join(', ')})`);
     }
     const createSql = `CREATE TABLE IF NOT EXISTS \`${tableName}\` (
         ${defs.join(',\n        ')}
@@ -154,8 +156,7 @@ export async function uploadCodingTable(req, res, next) {
         hasData = true;
       }
       let skip = false;
-      for (const c of uniqueCols) {
-        if (c === idColumn || c === nameColumn) continue;
+      for (const c of uniqueOnly) {
         cols.push(`\`${c}\``);
         placeholders.push('?');
         let val = r[c];
@@ -172,8 +173,7 @@ export async function uploadCodingTable(req, res, next) {
         hasData = true;
       }
       if (skip) continue;
-      for (const c of extraCols) {
-        if (c === idColumn || c === nameColumn || uniqueCols.includes(c)) continue;
+      for (const c of extraFiltered) {
         cols.push(`\`${c}\``);
         placeholders.push('?');
         let val = r[c];
