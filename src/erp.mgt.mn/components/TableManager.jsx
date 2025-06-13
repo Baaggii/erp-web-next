@@ -45,7 +45,9 @@ export default function TableManager({ table }) {
     setRelations({});
     setRefData({});
     setColumnMeta([]);
-    fetch(`/api/tables/${table}/relations`, { credentials: 'include' })
+    fetch(`/api/tables/${encodeURIComponent(table)}/relations`, {
+      credentials: 'include',
+    })
       .then((res) => res.json())
       .then((rels) => {
         if (canceled) return;
@@ -56,7 +58,9 @@ export default function TableManager({ table }) {
           }, {})
         );
       });
-    fetch(`/api/tables/${table}/columns`, { credentials: 'include' })
+    fetch(`/api/tables/${encodeURIComponent(table)}/columns`, {
+      credentials: 'include',
+    })
       .then((res) => res.json())
       .then((cols) => {
         if (canceled) return;
@@ -83,12 +87,16 @@ export default function TableManager({ table }) {
     Object.entries(filters).forEach(([k, v]) => {
       if (v) params.set(k, v);
     });
-    fetch(`/api/tables/${table}?${params.toString()}`, { credentials: 'include' })
+    fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
+      credentials: 'include',
+    })
       .then((res) => res.json())
       .then((data) => {
         if (canceled) return;
         setRows(data.rows || []);
         setCount(data.count || 0);
+        // clear selections when data changes
+        setSelectedRows(new Set());
       });
     return () => {
       canceled = true;
@@ -100,7 +108,7 @@ export default function TableManager({ table }) {
     Object.values(relations).forEach((rel) => {
       const col = rel.COLUMN_NAME;
       if (refData[col]) return;
-      fetch(`/api/tables/${rel.REFERENCED_TABLE_NAME}?perPage=100`, {
+      fetch(`/api/tables/${encodeURIComponent(rel.REFERENCED_TABLE_NAME)}?perPage=100`, {
         credentials: 'include',
       })
         .then((res) => res.json())
@@ -139,7 +147,7 @@ export default function TableManager({ table }) {
   async function ensureColumnMeta() {
     if (columnMeta.length > 0 || !table) return;
     try {
-      const res = await fetch(`/api/tables/${table}/columns`, {
+      const res = await fetch(`/api/tables/${encodeURIComponent(table)}/columns`, {
         credentials: 'include',
       });
       if (res.ok) {
@@ -159,7 +167,7 @@ export default function TableManager({ table }) {
     // Fetch relation metadata if not already loaded
     if (Object.keys(relations).length === 0) {
       try {
-        const res = await fetch(`/api/tables/${table}/relations`, {
+        const res = await fetch(`/api/tables/${encodeURIComponent(table)}/relations`, {
           credentials: 'include',
         });
         if (res.ok) {
@@ -172,7 +180,7 @@ export default function TableManager({ table }) {
           await Promise.all(
             rels.map(async (r) => {
               const resp = await fetch(
-                `/api/tables/${r.REFERENCED_TABLE_NAME}?perPage=100`,
+                `/api/tables/${encodeURIComponent(r.REFERENCED_TABLE_NAME)}?perPage=100`,
                 { credentials: 'include' },
               );
               const data = await resp.json();
@@ -201,7 +209,7 @@ export default function TableManager({ table }) {
           if (refData[col]) return;
           try {
             const res = await fetch(
-              `/api/tables/${r.REFERENCED_TABLE_NAME}?perPage=100`,
+              `/api/tables/${encodeURIComponent(r.REFERENCED_TABLE_NAME)}?perPage=100`,
               { credentials: 'include' },
             );
             const data = await res.json();
@@ -280,8 +288,8 @@ export default function TableManager({ table }) {
     });
     const method = editing ? 'PUT' : 'POST';
     const url = editing
-      ? `/api/tables/${table}/${encodeURIComponent(getRowId(editing))}`
-      : `/api/tables/${table}`;
+      ? `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(getRowId(editing))}`
+      : `/api/tables/${encodeURIComponent(table)}`;
 
     if (!editing) {
       if (columns.has('created_by')) cleaned.created_by = user?.empid;
@@ -306,7 +314,7 @@ export default function TableManager({ table }) {
       Object.entries(filters).forEach(([k, v]) => {
         if (v) params.set(k, v);
       });
-      const data = await fetch(`/api/tables/${table}?${params.toString()}`, {
+      const data = await fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
         credentials: 'include',
       }).then((r) => r.json());
       setRows(data.rows || []);
@@ -332,7 +340,7 @@ export default function TableManager({ table }) {
   async function handleDelete(row) {
     if (!window.confirm('Delete row?')) return;
     const res = await fetch(
-      `/api/tables/${table}/${encodeURIComponent(getRowId(row))}`,
+      `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(getRowId(row))}`,
       { method: 'DELETE', credentials: 'include' }
     );
     if (res.ok) {
@@ -344,7 +352,7 @@ export default function TableManager({ table }) {
       Object.entries(filters).forEach(([k, v]) => {
         if (v) params.set(k, v);
       });
-      const data = await fetch(`/api/tables/${table}?${params.toString()}`, {
+      const data = await fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
         credentials: 'include',
       }).then((r) => r.json());
       setRows(data.rows || []);
@@ -362,7 +370,7 @@ export default function TableManager({ table }) {
       const id = getRowId(row);
       if (!selectedRows.has(id)) continue;
       const res = await fetch(
-        `/api/tables/${table}/${encodeURIComponent(id)}`,
+        `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`,
         { method: 'DELETE', credentials: 'include' }
       );
       if (!res.ok) {
@@ -378,7 +386,7 @@ export default function TableManager({ table }) {
     Object.entries(filters).forEach(([k, v]) => {
       if (v) params.set(k, v);
     });
-    const data = await fetch(`/api/tables/${table}?${params.toString()}`, {
+    const data = await fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
       credentials: 'include',
     }).then((r) => r.json());
     setRows(data.rows || []);

@@ -13,11 +13,12 @@ import { requireAuth } from '../middlewares/auth.js';
 const router = express.Router();
 
 router.get('/', requireAuth, getTables);
-router.get('/:table', requireAuth, getTableRows);
+// More specific routes must be defined before the generic ':table' pattern
 router.get('/:table/relations', requireAuth, getTableRelations);
 router.get('/:table/columns', requireAuth, getTableColumnsMeta);
 router.put('/:table/:id', requireAuth, updateRow);
-router.post('/:table', requireAuth, addRow);
 router.delete('/:table/:id', requireAuth, deleteRow);
+router.post('/:table', requireAuth, addRow);
+router.get('/:table', requireAuth, getTableRows);
 
 export default router;
