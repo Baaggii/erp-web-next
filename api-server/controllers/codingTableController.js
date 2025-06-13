@@ -170,9 +170,11 @@ export async function uploadCodingTable(req, res, next) {
         }
       }
     }
-    finalRows = finalRows.filter(
-      (r) => !Object.values(r).some((v) => v === 0 || v === null)
-    );
+    if (req.body.populateRange === 'true') {
+      finalRows = finalRows.filter(
+        (r) => !Object.values(r).some((v) => v === 0 || v === null)
+      );
+    }
     if (!tableName) {
       return res.status(400).json({ error: 'Missing params' });
     }
@@ -268,7 +270,8 @@ export async function uploadCodingTable(req, res, next) {
         updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
       }
       if (!hasData) continue;
-      if (values.some((v) => v === 0 || v === null)) continue;
+      if (req.body.populateRange === 'true' && values.some((v) => v === 0 || v === null))
+        continue;
       await pool.query(
         `INSERT INTO \`${tableName}\` (${cols.join(', ')}) VALUES (${placeholders.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')}`,
         values
