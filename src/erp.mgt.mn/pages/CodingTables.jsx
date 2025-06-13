@@ -19,10 +19,18 @@ export default function CodingTablesPage() {
   const [uploading, setUploading] = useState(false);
   const [columnTypes, setColumnTypes] = useState({});
   const [extraFields, setExtraFields] = useState(['', '', '']);
+  const [populateRange, setPopulateRange] = useState(false);
+  const [startYear, setStartYear] = useState('');
+  const [endYear, setEndYear] = useState('');
 
   const allHeaders = useMemo(
     () => [...headers, ...extraFields.filter((f) => f.trim() !== '')],
     [headers, extraFields]
+  );
+
+  const hasDateField = useMemo(
+    () => allHeaders.some((h) => /year|month|date/i.test(h)),
+    [allHeaders]
   );
 
   function computeIdCandidates(hdrs, mode) {
@@ -52,6 +60,9 @@ export default function CodingTablesPage() {
       setOtherColumns([]);
       setUniqueFields([]);
       setColumnTypes({});
+      setPopulateRange(false);
+      setStartYear('');
+      setEndYear('');
     });
   }
 
@@ -66,6 +77,9 @@ export default function CodingTablesPage() {
     setOtherColumns([]);
     setUniqueFields([]);
     setColumnTypes({});
+    setPopulateRange(false);
+    setStartYear('');
+    setEndYear('');
   }
 
   function handleHeaderRowChange(e) {
@@ -79,6 +93,9 @@ export default function CodingTablesPage() {
     setOtherColumns([]);
     setUniqueFields([]);
     setColumnTypes({});
+    setPopulateRange(false);
+    setStartYear('');
+    setEndYear('');
   }
 
   function extractHeaders(wb, s, row) {
@@ -243,6 +260,28 @@ export default function CodingTablesPage() {
     const uniqueIdx = uniqueOnly.map((c) => hdrs.indexOf(c));
     const otherIdx = otherFiltered.map((c) => hdrs.indexOf(c));
 
+    let finalRows = rows;
+    if (populateRange && startYear && endYear) {
+      const yearField = allHdrs.find((h) => /year/i.test(h));
+      if (yearField) {
+        const monthField = allHdrs.find((h) => /month/i.test(h));
+        const yIdx = hdrs.indexOf(yearField);
+        const mIdx = hdrs.indexOf(monthField);
+        finalRows = [];
+        for (let y = Number(startYear); y <= Number(endYear); y++) {
+          const months = monthField ? Array.from({ length: 12 }, (_, i) => i + 1) : [null];
+          for (const mo of months) {
+            for (const r of rows) {
+              const copy = [...r];
+              if (yIdx !== -1) copy[yIdx] = y;
+              if (mIdx !== -1 && mo !== null) copy[mIdx] = mo;
+              finalRows.push(copy);
+            }
+          }
+        }
+      }
+    }
+
     let defs = [];
     if (idColumn) {
       defs.push(`\`${dbIdCol}\` INT AUTO_INCREMENT PRIMARY KEY`);
@@ -275,7 +314,7 @@ export default function CodingTablesPage() {
     }
     let sqlStr = `CREATE TABLE IF NOT EXISTS \`${tableName}\` (\n  ${defs.join(',\n  ')}\n);\n`;
 
-    for (const r of rows) {
+    for (const r of finalRows) {
       const cols = [];
       const vals = [];
       let hasData = false;
@@ -341,6 +380,9 @@ export default function CodingTablesPage() {
       formData.append('uniqueFields', JSON.stringify(uniqueFields));
       formData.append('calcFields', JSON.stringify(parseCalcFields(calcText)));
       formData.append('columnTypes', JSON.stringify(columnTypes));
+      formData.append('populateRange', String(populateRange));
+      formData.append('startYear', startYear);
+      formData.append('endYear', endYear);
       const res = await fetch('/api/coding_tables/upload', {
         method: 'POST',
         credentials: 'include',
@@ -441,6 +483,49 @@ export default function CodingTablesPage() {
                   ))}
                 </div>
               </div>
+              {hasDateField && (
+                <div>
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <label style={{ marginRight: '0.5rem' }}>
+                      <input
+                        type="radio"
+                        name="populateRange"
+                        value="no"
+                        checked={!populateRange}
+                        onChange={() => setPopulateRange(false)}
+                      />
+                      No Range
+                    </label>
+                    <label>
+                      <input
+                        type="radio"
+                        name="populateRange"
+                        value="yes"
+                        checked={populateRange}
+                        onChange={() => setPopulateRange(true)}
+                      />
+                      Populate Range
+                    </label>
+                  </div>
+                  {populateRange && (
+                    <div style={{ marginTop: '0.5rem' }}>
+                      Start Year:{' '}
+                      <input
+                        type="number"
+                        value={startYear}
+                        onChange={(e) => setStartYear(e.target.value)}
+                        style={{ marginRight: '0.5rem' }}
+                      />
+                      End Year:{' '}
+                      <input
+                        type="number"
+                        value={endYear}
+                        onChange={(e) => setEndYear(e.target.value)}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
               <div>
                 ID Column:
                 <select value={idColumn} onChange={(e) => setIdColumn(e.target.value)}>

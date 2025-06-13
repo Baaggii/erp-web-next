@@ -126,6 +126,32 @@ export async function uploadCodingTable(req, res, next) {
     for (const [col, typ] of Object.entries(columnTypeOverride)) {
       columnTypes[col] = typ;
     }
+
+    let finalRows = rows;
+    if (
+      req.body.populateRange === 'true' &&
+      req.body.startYear &&
+      req.body.endYear
+    ) {
+      const yearField = Object.keys(rows[0] || {}).find((h) => /year/i.test(h));
+      if (yearField) {
+        const monthField = Object.keys(rows[0] || {}).find((h) => /month/i.test(h));
+        const sy = Number(req.body.startYear);
+        const ey = Number(req.body.endYear);
+        finalRows = [];
+        for (let y = sy; y <= ey; y++) {
+          const months = monthField ? Array.from({ length: 12 }, (_, i) => i + 1) : [null];
+          for (const mo of months) {
+            for (const r of rows) {
+              const copy = { ...r };
+              copy[yearField] = y;
+              if (monthField && mo !== null) copy[monthField] = mo;
+              finalRows.push(copy);
+            }
+          }
+        }
+      }
+    }
     if (!tableName) {
       return res.status(400).json({ error: 'Missing params' });
     }
@@ -165,7 +191,7 @@ export async function uploadCodingTable(req, res, next) {
       )`;
     await pool.query(createSql);
     let count = 0;
-    for (const r of rows) {
+    for (const r of finalRows) {
       const cols = [];
       const placeholders = [];
       const values = [];
