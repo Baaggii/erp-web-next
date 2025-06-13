@@ -129,6 +129,10 @@ export default function TableManager({ table }) {
     };
   }, [relations]);
 
+  useEffect(() => {
+    setSelectedRows(new Set());
+  }, [table, page, perPage, filters, sort]);
+
   function getRowId(row) {
     const keys = getKeyFields();
     if (keys.length === 0) return undefined;
@@ -258,7 +262,7 @@ export default function TableManager({ table }) {
     });
   }
 
-  function selectAll() {
+  function selectCurrentPage() {
     setSelectedRows(new Set(rows.map((r) => getRowId(r))));
   }
 
@@ -273,11 +277,13 @@ export default function TableManager({ table }) {
       setSort({ column: col, dir: 'asc' });
     }
     setPage(1);
+    setSelectedRows(new Set());
   }
 
   function handleFilterChange(col, val) {
     setFilters((f) => ({ ...f, [col]: val }));
     setPage(1);
+    setSelectedRows(new Set());
   }
 
   async function handleSubmit(values) {
@@ -366,9 +372,7 @@ export default function TableManager({ table }) {
   async function handleDeleteSelected() {
     if (selectedRows.size === 0) return;
     if (!window.confirm('Delete selected rows?')) return;
-    for (const row of rows) {
-      const id = getRowId(row);
-      if (!selectedRows.has(id)) continue;
+    for (const id of selectedRows) {
       const res = await fetch(
         `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`,
         { method: 'DELETE', credentials: 'include' }
@@ -438,7 +442,7 @@ export default function TableManager({ table }) {
         <button onClick={openAdd} style={{ marginRight: '0.5rem' }}>
           Add Row
         </button>
-        <button onClick={selectAll} style={{ marginRight: '0.5rem' }}>
+        <button onClick={selectCurrentPage} style={{ marginRight: '0.5rem' }}>
           Select All
         </button>
         <button onClick={deselectAll} style={{ marginRight: '0.5rem' }}>
@@ -510,8 +514,8 @@ export default function TableManager({ table }) {
             <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
               <input
                 type="checkbox"
-                checked={rows.length > 0 && selectedRows.size === rows.length}
-                onChange={(e) => (e.target.checked ? selectAll() : deselectAll())}
+                checked={rows.length > 0 && rows.every((r) => selectedRows.has(getRowId(r)))}
+                onChange={(e) => (e.target.checked ? selectCurrentPage() : deselectAll())}
               />
             </th>
             {columns.map((c) => (
