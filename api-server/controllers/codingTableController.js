@@ -268,6 +268,7 @@ export async function uploadCodingTable(req, res, next) {
         updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
       }
       if (!hasData) continue;
+      if (values.some((v) => v === 0 || v === null)) continue;
       await pool.query(
         `INSERT INTO \`${tableName}\` (${cols.join(', ')}) VALUES (${placeholders.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')}`,
         values
