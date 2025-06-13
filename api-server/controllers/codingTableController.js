@@ -64,11 +64,13 @@ export async function uploadCodingTable(req, res, next) {
       uniqueFields,
       calcFields,
       columnTypes: columnTypesJson,
+      notNullMap: notNullJson,
     } = req.body;
     const extraCols = otherColumns ? JSON.parse(otherColumns) : [];
     const uniqueCols = uniqueFields ? JSON.parse(uniqueFields) : [];
     const calcDefs = calcFields ? JSON.parse(calcFields) : [];
     const columnTypeOverride = columnTypesJson ? JSON.parse(columnTypesJson) : {};
+    const notNullOverride = notNullJson ? JSON.parse(notNullJson) : {};
     if (!req.file) {
       return res.status(400).json({ error: 'File required' });
     }
@@ -133,16 +135,21 @@ export async function uploadCodingTable(req, res, next) {
     const notNullMap = {};
     headers.forEach((h) => {
       columnTypes[h] = detectType(h, valuesByHeader[h]);
-      notNullMap[h] = valuesByHeader[h].every(
+      const defNN = valuesByHeader[h].every(
         (v) => v !== undefined && v !== null && v !== ''
       );
+      notNullMap[h] =
+        notNullOverride[h] !== undefined ? notNullOverride[h] : defNN;
     });
     addedFields.forEach((f) => {
       columnTypes[f] = columnTypeOverride[f] || 'VARCHAR(255)';
-      notNullMap[f] = false;
+      notNullMap[f] = notNullOverride[f] || false;
     });
     for (const [col, typ] of Object.entries(columnTypeOverride)) {
       columnTypes[col] = typ;
+    }
+    for (const [col, val] of Object.entries(notNullOverride)) {
+      notNullMap[col] = val;
     }
 
     let finalRows = rows;
@@ -234,29 +241,21 @@ export async function uploadCodingTable(req, res, next) {
         values.push(val);
         hasData = true;
       }
-      let skip = false;
       for (const c of uniqueOnly) {
         cols.push(`\`${c}\``);
         placeholders.push('?');
         let val = r[c];
         const hasProp = Object.prototype.hasOwnProperty.call(r, c);
-        if (!hasProp) {
+        if (!hasProp || val === undefined || val === null || val === '') {
           val = defaultValForType(columnTypes[c]);
-        } else {
-          if (columnTypes[c] === 'DATE') {
-            const d = parseExcelDate(val);
-            val = d || null;
-          }
-          if (val === undefined || val === null || val === '') {
-            skip = true;
-            break;
-          }
+        } else if (columnTypes[c] === 'DATE') {
+          const d = parseExcelDate(val);
+          val = d || null;
         }
         values.push(val);
         updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
         hasData = true;
       }
-      if (skip) continue;
       for (const c of extraFiltered) {
         cols.push(`\`${c}\``);
         placeholders.push('?');
@@ -265,8 +264,13 @@ export async function uploadCodingTable(req, res, next) {
           const d = parseExcelDate(val);
           val = d || null;
         }
+        if ((val === undefined || val === null || val === '') && notNullMap[c]) {
+          val = defaultValForType(columnTypes[c]);
+        } else if (val === undefined || val === '') {
+          val = null;
+        }
         if (val !== undefined && val !== null && val !== '') hasData = true;
-        values.push(val === undefined || val === '' ? null : val);
+        values.push(val);
         updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
       }
       if (!hasData) continue;
