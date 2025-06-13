@@ -221,16 +221,18 @@ export default function CodingTablesPage() {
         keepIdx.push(i);
       }
     });
-    const rows = data.slice(idx + 1).map((r) => keepIdx.map((ci) => r[ci]));
     const extra = extraFields.filter((f) => f.trim() !== '');
+    const rows = data
+      .slice(idx + 1)
+      .map((r) => [...keepIdx.map((ci) => r[ci]), ...Array(extra.length).fill(undefined)]);
     const allHdrs = [...hdrs, ...extra];
 
     const valuesByHeader = {};
     hdrs.forEach((h, i) => {
       valuesByHeader[h] = rows.map((r) => r[i]);
     });
-    extra.forEach((h) => {
-      valuesByHeader[h] = rows.map(() => undefined);
+    extra.forEach((h, idx2) => {
+      valuesByHeader[h] = rows.map((r) => r[hdrs.length + idx2]);
     });
     const colTypes = {};
     const notNullMap = {};
@@ -251,22 +253,22 @@ export default function CodingTablesPage() {
       alert('Please select at least one ID, Name, Unique or Other column');
       return;
     }
-    const idIdx = hdrs.indexOf(idColumn);
-    const nameIdx = hdrs.indexOf(nameColumn);
+    const idIdx = allHdrs.indexOf(idColumn);
+    const nameIdx = allHdrs.indexOf(nameColumn);
     const dbIdCol = idColumn ? 'id' : null;
     const dbNameCol = nameColumn ? 'name' : null;
     if (idColumn && idIdx === -1) return;
     if (nameColumn && nameIdx === -1) return;
-    const uniqueIdx = uniqueOnly.map((c) => hdrs.indexOf(c));
-    const otherIdx = otherFiltered.map((c) => hdrs.indexOf(c));
+    const uniqueIdx = uniqueOnly.map((c) => allHdrs.indexOf(c));
+    const otherIdx = otherFiltered.map((c) => allHdrs.indexOf(c));
 
     let finalRows = rows;
     if (populateRange && startYear && endYear) {
       const yearField = allHdrs.find((h) => /year/i.test(h));
       if (yearField) {
         const monthField = allHdrs.find((h) => /month/i.test(h));
-        const yIdx = hdrs.indexOf(yearField);
-        const mIdx = hdrs.indexOf(monthField);
+        const yIdx = allHdrs.indexOf(yearField);
+        const mIdx = allHdrs.indexOf(monthField);
         finalRows = [];
         for (let y = Number(startYear); y <= Number(endYear); y++) {
           const months = monthField ? Array.from({ length: 12 }, (_, i) => i + 1) : [null];

@@ -111,8 +111,22 @@ export async function uploadCodingTable(req, res, next) {
       });
       return obj;
     });
+    const addedFields = [
+      ...new Set([
+        ...uniqueOnly,
+        ...extraFiltered,
+        idColumn,
+        nameColumn,
+      ].filter((c) => c && !headers.includes(c)))
+    ];
+    rows.forEach((r) => {
+      addedFields.forEach((f) => {
+        if (!(f in r)) r[f] = undefined;
+      });
+    });
+    const allHeaders = [...headers, ...addedFields];
     const valuesByHeader = {};
-    headers.forEach((h) => {
+    allHeaders.forEach((h) => {
       valuesByHeader[h] = rows.map((r) => r[h]);
     });
     const columnTypes = {};
@@ -122,6 +136,10 @@ export async function uploadCodingTable(req, res, next) {
       notNullMap[h] = valuesByHeader[h].every(
         (v) => v !== undefined && v !== null && v !== ''
       );
+    });
+    addedFields.forEach((f) => {
+      columnTypes[f] = columnTypeOverride[f] || 'VARCHAR(255)';
+      notNullMap[f] = false;
     });
     for (const [col, typ] of Object.entries(columnTypeOverride)) {
       columnTypes[col] = typ;
@@ -133,9 +151,9 @@ export async function uploadCodingTable(req, res, next) {
       req.body.startYear &&
       req.body.endYear
     ) {
-      const yearField = Object.keys(rows[0] || {}).find((h) => /year/i.test(h));
+      const yearField = allHeaders.find((h) => /year/i.test(h));
       if (yearField) {
-        const monthField = Object.keys(rows[0] || {}).find((h) => /month/i.test(h));
+        const monthField = allHeaders.find((h) => /month/i.test(h));
         const sy = Number(req.body.startYear);
         const ey = Number(req.body.endYear);
         finalRows = [];
