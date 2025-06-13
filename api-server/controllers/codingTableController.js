@@ -45,6 +45,13 @@ export function detectType(name, vals) {
   return 'VARCHAR(255)';
 }
 
+function defaultValForType(type) {
+  if (!type) return 0;
+  if (type === 'DATE') return 0;
+  if (type === 'INT' || type.startsWith('DECIMAL')) return 0;
+  return 0;
+}
+
 export async function uploadCodingTable(req, res, next) {
   try {
     const {
@@ -184,17 +191,21 @@ export async function uploadCodingTable(req, res, next) {
         placeholders.push('?');
         let val = r[c];
         const hasProp = Object.prototype.hasOwnProperty.call(r, c);
-        if (columnTypes[c] === 'DATE') {
-          const d = parseExcelDate(val);
-          val = d || null;
+        if (!hasProp) {
+          val = defaultValForType(columnTypes[c]);
+        } else {
+          if (columnTypes[c] === 'DATE') {
+            const d = parseExcelDate(val);
+            val = d || null;
+          }
+          if (val === undefined || val === null || val === '') {
+            skip = true;
+            break;
+          }
         }
-        if (hasProp && (val === undefined || val === null || val === '')) {
-          skip = true;
-          break;
-        }
-        values.push(val === undefined ? null : val);
+        values.push(val);
         updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
-        if (val !== undefined && val !== null && val !== '') hasData = true;
+        hasData = true;
       }
       if (skip) continue;
       for (const c of extraFiltered) {
