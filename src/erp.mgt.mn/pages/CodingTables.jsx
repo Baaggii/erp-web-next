@@ -354,7 +354,7 @@ export default function CodingTablesPage() {
           vals.push(formatVal(v, colTypes[c]));
         });
       if (!hasData) continue;
-      if (vals.some((v) => v === '0' || v === 'NULL')) continue;
+      if (populateRange && vals.some((v) => v === '0' || v === 'NULL')) continue;
       const updates = cols.map((c) => `${c} = VALUES(${c})`);
       sqlStr += `INSERT INTO \`${tableName}\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
     }
