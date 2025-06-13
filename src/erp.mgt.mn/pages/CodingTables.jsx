@@ -90,7 +90,7 @@ export default function CodingTablesPage() {
 
   function detectType(name, vals) {
     const lower = String(name).toLowerCase();
-    if (lower.includes('per')) return 'DECIMAL(5,2)';
+    if (lower.includes('_per')) return 'DECIMAL(5,2)';
     if (lower.includes('date')) return 'DATE';
     for (const v of vals) {
       if (v === undefined || v === '') continue;

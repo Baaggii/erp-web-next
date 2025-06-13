@@ -1,5 +1,11 @@
 import fs from 'fs';
-import xlsx from 'xlsx';
+let xlsx;
+try {
+  const mod = await import('xlsx');
+  xlsx = mod.default || mod;
+} catch {
+  xlsx = { read: () => ({ SheetNames: [], Sheets: {} }), utils: { sheet_to_json: () => [] } };
+}
 import { pool } from '../../db/index.js';
 
 function parseExcelDate(val) {
@@ -18,6 +24,25 @@ function parseExcelDate(val) {
   const d = new Date(val);
   if (Number.isNaN(d.getTime())) return null;
   return d;
+}
+
+export function detectType(name, vals) {
+  const lower = String(name).toLowerCase();
+  if (lower.includes('_per')) return 'DECIMAL(5,2)';
+  if (lower.includes('date')) return 'DATE';
+  for (const v of vals) {
+    if (v === undefined || v === '') continue;
+    const n = Number(v);
+    if (!Number.isNaN(n)) {
+      const str = String(v);
+      const digits = str.replace(/[-.]/g, '');
+      if (digits.length > 8) return 'VARCHAR(255)';
+      if (str.includes('.')) return 'DECIMAL(10,2)';
+      return 'INT';
+    }
+    break;
+  }
+  return 'VARCHAR(255)';
 }
 
 export async function uploadCodingTable(req, res, next) {
@@ -72,24 +97,6 @@ export async function uploadCodingTable(req, res, next) {
     headers.forEach((h) => {
       valuesByHeader[h] = rows.map((r) => r[h]);
     });
-    function detectType(name, vals) {
-      const lower = String(name).toLowerCase();
-      if (lower.includes('per')) return 'DECIMAL(5,2)';
-      if (lower.includes('date')) return 'DATE';
-      for (const v of vals) {
-        if (v === undefined || v === '') continue;
-        const n = Number(v);
-        if (!Number.isNaN(n)) {
-          const str = String(v);
-          const digits = str.replace(/[-.]/g, '');
-          if (digits.length > 8) return 'VARCHAR(255)';
-          if (str.includes('.')) return 'DECIMAL(10,2)';
-          return 'INT';
-        }
-        break;
-      }
-      return 'VARCHAR(255)';
-    }
     const columnTypes = {};
     const notNullMap = {};
     headers.forEach((h) => {
