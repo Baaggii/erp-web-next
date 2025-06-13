@@ -21,7 +21,8 @@ try {
 }
 let bcrypt;
 try {
-  bcrypt = await import("bcryptjs");
+  const mod = await import("bcryptjs");
+  bcrypt = mod.default || mod;
 } catch {
   bcrypt = { hash: async (s) => s, compare: async () => false };
 }
