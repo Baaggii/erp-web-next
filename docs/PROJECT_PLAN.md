@@ -37,6 +37,12 @@ This document outlines the roadmap, scope, architecture, milestones, and deliver
 
 6. **Coding Tables Upload**
    - Upload Excel sheets to create simple lookup tables.
+   - SQL validation allows flexible column sets:
+     - `id` and `name` columns are optional and may generate SQL on their own.
+     - You may also generate SQL using `unique` and `other` columns so long as they
+       exclude any chosen `id` or `name` column.
+     - Any combination of these groups is valid (e.g. `id` + `unique`, or just
+       `unique` + `other`).
 
 ## 4. Architecture & Tech Stack
 - **Front-end**  
