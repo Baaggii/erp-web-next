@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 
 export default function CodingTablesPage() {
@@ -18,6 +18,12 @@ export default function CodingTablesPage() {
   const [sql, setSql] = useState('');
   const [uploading, setUploading] = useState(false);
   const [columnTypes, setColumnTypes] = useState({});
+  const [extraFields, setExtraFields] = useState(['', '', '']);
+
+  const allHeaders = useMemo(
+    () => [...headers, ...extraFields.filter((f) => f.trim() !== '')],
+    [headers, extraFields]
+  );
 
   function computeIdCandidates(hdrs, mode) {
     const strs = hdrs.filter((h) => typeof h === 'string');
@@ -88,7 +94,6 @@ export default function CodingTablesPage() {
       }
     });
     setHeaders(hdrs);
-    setIdCandidates(computeIdCandidates(hdrs, idFilterMode));
     const rows = data.slice(idx + 1);
     const valsByHeader = {};
     hdrs.forEach((h, i) => {
@@ -193,16 +198,21 @@ export default function CodingTablesPage() {
       }
     });
     const rows = data.slice(idx + 1).map((r) => keepIdx.map((ci) => r[ci]));
+    const extra = extraFields.filter((f) => f.trim() !== '');
+    const allHdrs = [...hdrs, ...extra];
 
     const valuesByHeader = {};
     hdrs.forEach((h, i) => {
       valuesByHeader[h] = rows.map((r) => r[i]);
     });
+    extra.forEach((h) => {
+      valuesByHeader[h] = rows.map(() => undefined);
+    });
     const colTypes = {};
     const notNullMap = {};
-    hdrs.forEach((h) => {
-      colTypes[h] = columnTypes[h] || detectType(h, valuesByHeader[h]);
-      notNullMap[h] = valuesByHeader[h].every(
+    allHdrs.forEach((h) => {
+      colTypes[h] = columnTypes[h] || detectType(h, valuesByHeader[h] || []);
+      notNullMap[h] = (valuesByHeader[h] || []).every(
         (v) => v !== undefined && v !== null && v !== ''
       );
     });
@@ -226,7 +236,6 @@ export default function CodingTablesPage() {
     const uniqueIdx = uniqueOnly.map((c) => hdrs.indexOf(c));
     if (uniqueIdx.some((i) => i === -1)) return;
     const otherIdx = otherFiltered.map((c) => hdrs.indexOf(c));
-    if (otherIdx.some((i) => i === -1)) return;
 
     let defs = [];
     if (idColumn) {
@@ -284,9 +293,9 @@ export default function CodingTablesPage() {
         hasData = true;
       });
       if (skip) continue;
-      otherFiltered.forEach((c) => {
-          const ci = hdrs.indexOf(c);
-          const v = r[ci];
+      otherFiltered.forEach((c, idx2) => {
+          const ci = otherIdx[idx2];
+          const v = ci === -1 ? undefined : r[ci];
           if (v !== undefined && v !== null && v !== '') hasData = true;
           cols.push(`\`${c}\``);
           vals.push(formatVal(v, colTypes[c]));
@@ -346,8 +355,12 @@ export default function CodingTablesPage() {
   }
 
   useEffect(() => {
-    setIdCandidates(computeIdCandidates(headers, idFilterMode));
-  }, [headers, idFilterMode]);
+    setIdCandidates(computeIdCandidates(allHeaders, idFilterMode));
+    setUniqueFields((u) => u.filter((f) => allHeaders.includes(f)));
+    setOtherColumns((o) => o.filter((f) => allHeaders.includes(f)));
+    if (idColumn && !allHeaders.includes(idColumn)) setIdColumn('');
+    if (nameColumn && !allHeaders.includes(nameColumn)) setNameColumn('');
+  }, [allHeaders, idFilterMode]);
 
   return (
     <div>
@@ -397,11 +410,29 @@ export default function CodingTablesPage() {
               pull all columns
             </label>
           </div>
-          {headers.length > 0 && (
+          {allHeaders.length > 0 && (
             <>
               <div>
                 Table Name:
                 <input value={tableName} onChange={(e) => setTableName(e.target.value)} />
+              </div>
+              <div>
+                Additional Fields:
+                <div>
+                  {extraFields.map((f, idx) => (
+                    <input
+                      key={idx}
+                      value={f}
+                      placeholder={`Field ${idx + 1}`}
+                      onChange={(e) => {
+                        const vals = [...extraFields];
+                        vals[idx] = e.target.value;
+                        setExtraFields(vals);
+                      }}
+                      style={{ marginRight: '0.5rem' }}
+                    />
+                  ))}
+                </div>
               </div>
               <div>
                 ID Column:
@@ -418,7 +449,7 @@ export default function CodingTablesPage() {
                 Name Column:
                 <select value={nameColumn} onChange={(e) => setNameColumn(e.target.value)}>
                   <option value="">--select--</option>
-                  {headers.map((h) => (
+                  {allHeaders.map((h) => (
                     <option key={h} value={h}>
                       {h}
                     </option>
@@ -428,7 +459,7 @@ export default function CodingTablesPage() {
               <div>
                 Unique Fields:
                 <div>
-                  {headers.map((h) => (
+                  {allHeaders.map((h) => (
                     <label key={h} style={{ marginRight: '0.5rem' }}>
                       <input
                         type="checkbox"
@@ -450,7 +481,7 @@ export default function CodingTablesPage() {
               <div>
                 Other Columns:
                 <div>
-                  {headers.map((h) => (
+                  {allHeaders.map((h) => (
                     <label key={h} style={{ marginRight: '0.5rem' }}>
                       <input
                         type="checkbox"
@@ -472,7 +503,7 @@ export default function CodingTablesPage() {
               <div>
                 Column Types:
                 <div>
-                  {headers.map((h) => (
+                  {allHeaders.map((h) => (
                     <div key={h} style={{ marginBottom: '0.25rem' }}>
                       {h}:{' '}
                       <input
