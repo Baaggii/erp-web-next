@@ -1,4 +1,5 @@
 import fs from 'fs';
+import crypto from 'crypto';
 let xlsx;
 try {
   const mod = await import('xlsx');
@@ -50,6 +51,15 @@ function defaultValForType(type) {
   if (type === 'DATE') return 0;
   if (type === 'INT' || type.startsWith('DECIMAL')) return 0;
   return 0;
+}
+
+function makeUniqueKeyName(fields) {
+  const base = `uniq_${fields.join('_')}`;
+  if (base.length > 60) {
+    const hash = crypto.createHash('sha1').update(base).digest('hex').slice(0, 8);
+    return `uniq_${hash}`;
+  }
+  return base;
 }
 
 export async function uploadCodingTable(req, res, next) {
@@ -214,7 +224,8 @@ export async function uploadCodingTable(req, res, next) {
       ...uniqueOnly,
     ];
     if (uniqueKeyFields.length > 0) {
-      defs.push(`UNIQUE KEY uniq_${uniqueKeyFields.join('_')} (${uniqueKeyFields.map((c) => `\`${c}\``).join(', ')})`);
+      const indexName = makeUniqueKeyName(uniqueKeyFields);
+      defs.push(`UNIQUE KEY ${indexName} (${uniqueKeyFields.map((c) => `\`${c}\``).join(', ')})`);
     }
     const createSql = `CREATE TABLE IF NOT EXISTS \`${tableName}\` (
         ${defs.join(',\n        ')}
