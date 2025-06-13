@@ -3,7 +3,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import RowFormModal from './RowFormModal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
-export default function TableManager({ table }) {
+export default function TableManager({ table, refreshId = 0 }) {
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
   const [page, setPage] = useState(1);
@@ -88,11 +88,11 @@ export default function TableManager({ table }) {
     return () => {
       canceled = true;
     };
-  }, [table, page, perPage, filters, sort]);
+  }, [table, page, perPage, filters, sort, refreshId]);
 
   useEffect(() => {
     setSelectedRows(new Set());
-  }, [table, page, perPage, filters, sort]);
+  }, [table, page, perPage, filters, sort, refreshId]);
 
   function getRowId(row) {
     const keys = getKeyFields();
