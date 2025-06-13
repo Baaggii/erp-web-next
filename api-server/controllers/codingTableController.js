@@ -91,6 +91,16 @@ export async function uploadCodingTable(req, res, next) {
     if (!tableName) {
       return res.status(400).json({ error: 'Missing params' });
     }
+    const uniqueOnly = uniqueCols.filter(
+      (c) => c !== idColumn && c !== nameColumn && !extraCols.includes(c)
+    );
+    const extraFiltered = extraCols.filter(
+      (c) => c !== idColumn && c !== nameColumn && !uniqueOnly.includes(c)
+    );
+    if (!idColumn && !nameColumn && uniqueOnly.length === 0 && extraFiltered.length === 0) {
+      fs.unlinkSync(req.file.path);
+      return res.status(400).json({ error: 'No columns selected' });
+    }
     let defs = [];
     if (idColumn) {
       defs.push(`\`${idColumn}\` INT AUTO_INCREMENT PRIMARY KEY`);

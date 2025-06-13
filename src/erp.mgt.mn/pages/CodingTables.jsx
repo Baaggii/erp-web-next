@@ -185,9 +185,13 @@ export default function CodingTablesPage() {
     );
     const uniqueIdx = uniqueOnly.map((c) => hdrs.indexOf(c));
     if (uniqueIdx.some((i) => i === -1)) return;
-    const otherIdx = otherColumns
-      .filter((c) => c !== idColumn && c !== nameColumn && !uniqueOnly.includes(c))
-      .map((c) => hdrs.indexOf(c));
+    const otherFiltered = otherColumns
+      .filter((c) => c !== idColumn && c !== nameColumn && !uniqueOnly.includes(c));
+    if (!idColumn && !nameColumn && uniqueOnly.length === 0 && otherFiltered.length === 0) {
+      alert('Please select at least one ID, Name, Unique or Other column');
+      return;
+    }
+    const otherIdx = otherFiltered.map((c) => hdrs.indexOf(c));
     if (otherIdx.some((i) => i === -1)) return;
 
     let defs = [];
@@ -200,12 +204,10 @@ export default function CodingTablesPage() {
     uniqueOnly.forEach((c) => {
       defs.push(`\`${c}\` ${colTypes[c]} NOT NULL`);
     });
-    otherColumns
-      .filter((c) => c !== idColumn && c !== nameColumn && !uniqueOnly.includes(c))
-      .forEach((c) => {
-        let def = `\`${c}\` ${colTypes[c]}`;
-        if (notNullMap[c]) def += ' NOT NULL';
-        defs.push(def);
+    otherFiltered.forEach((c) => {
+      let def = `\`${c}\` ${colTypes[c]}`;
+      if (notNullMap[c]) def += ' NOT NULL';
+      defs.push(def);
       });
     const calcFields = parseCalcFields(calcText);
     calcFields.forEach((cf) => {
@@ -244,9 +246,7 @@ export default function CodingTablesPage() {
         hasData = true;
       });
       if (skip) continue;
-      otherColumns
-        .filter((c) => c !== idColumn && c !== nameColumn && !uniqueOnly.includes(c))
-        .forEach((c) => {
+      otherFiltered.forEach((c) => {
           const ci = hdrs.indexOf(c);
           const v = r[ci];
           if (v !== undefined && v !== null && v !== '') hasData = true;
@@ -262,6 +262,16 @@ export default function CodingTablesPage() {
 
   async function handleUpload() {
     if (!workbook || !sheet || !tableName) return;
+    const uniqueOnly = uniqueFields.filter(
+      (c) => c !== idColumn && c !== nameColumn && !otherColumns.includes(c)
+    );
+    const otherFiltered = otherColumns.filter(
+      (c) => c !== idColumn && c !== nameColumn && !uniqueOnly.includes(c)
+    );
+    if (!idColumn && !nameColumn && uniqueOnly.length === 0 && otherFiltered.length === 0) {
+      alert('Please select at least one ID, Name, Unique or Other column');
+      return;
+    }
     setSql('');
     setUploading(true);
     try {
