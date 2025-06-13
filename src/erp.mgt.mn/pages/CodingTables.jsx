@@ -234,7 +234,6 @@ export default function CodingTablesPage() {
     if (idColumn && idIdx === -1) return;
     if (nameColumn && nameIdx === -1) return;
     const uniqueIdx = uniqueOnly.map((c) => hdrs.indexOf(c));
-    if (uniqueIdx.some((i) => i === -1)) return;
     const otherIdx = otherFiltered.map((c) => hdrs.indexOf(c));
 
     let defs = [];
@@ -283,8 +282,9 @@ export default function CodingTablesPage() {
       let skip = false;
       uniqueOnly.forEach((c, idx2) => {
         if (skip) return;
-        const v = r[uniqueIdx[idx2]];
-        if (v === undefined || v === null || v === '') {
+        const ui = uniqueIdx[idx2];
+        const v = ui === -1 ? undefined : r[ui];
+        if (ui !== -1 && (v === undefined || v === null || v === '')) {
           skip = true;
           return;
         }
