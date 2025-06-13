@@ -103,7 +103,10 @@ export default function CodingTablesPage() {
   }
 
   function extractHeaders(wb, s, row) {
-    const data = XLSX.utils.sheet_to_json(wb.Sheets[s], { header: 1 });
+    const data = XLSX.utils.sheet_to_json(wb.Sheets[s], {
+      header: 1,
+      blankrows: false,
+    });
     const idx = Number(row) - 1;
     const raw = data[idx] || [];
     const hdrs = [];
@@ -221,7 +224,10 @@ export default function CodingTablesPage() {
 
   function handleGenerateSql() {
     if (!workbook || !sheet || !tableName) return;
-    const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheet], { header: 1 });
+    const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheet], {
+      header: 1,
+      blankrows: false,
+    });
     const idx = Number(headerRow) - 1;
     const raw = data[idx] || [];
     const hdrs = [];
