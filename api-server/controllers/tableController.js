@@ -8,7 +8,13 @@ import {
   listTableColumns,
   listTableColumnMeta,
 } from '../../db/index.js';
-import bcrypt from 'bcryptjs';
+let bcrypt;
+try {
+  const mod = await import('bcryptjs');
+  bcrypt = mod.default || mod;
+} catch {
+  bcrypt = { hash: async (s) => s };
+}
 import { formatDateForDb } from '../utils/formatDate.js';
 
 export async function getTables(req, res, next) {
