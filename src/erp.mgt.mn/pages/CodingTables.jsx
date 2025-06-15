@@ -23,7 +23,7 @@ export default function CodingTablesPage() {
   const [uploading, setUploading] = useState(false);
   const [columnTypes, setColumnTypes] = useState({});
   const [notNullMap, setNotNullMap] = useState({});
-  const [extraFields, setExtraFields] = useState(['', '', '']);
+  const [extraFields, setExtraFields] = useState(['']);
   const [populateRange, setPopulateRange] = useState(false);
   const [startYear, setStartYear] = useState('');
   const [endYear, setEndYear] = useState('');
@@ -47,6 +47,14 @@ export default function CodingTablesPage() {
       return Array.from(new Set([...base, ...extraList]));
     }
     return Array.from(new Set([...strs, ...extraList]));
+  }
+
+  function addExtraField() {
+    setExtraFields((f) => [...f, '']);
+  }
+
+  function removeExtraField(idx) {
+    setExtraFields((f) => f.filter((_, i) => i !== idx));
   }
 
   function handleFile(e) {
@@ -538,18 +546,23 @@ export default function CodingTablesPage() {
                 Additional Fields:
                 <div>
                   {extraFields.map((f, idx) => (
-                    <input
-                      key={idx}
-                      value={f}
-                      placeholder={`Field ${idx + 1}`}
-                      onChange={(e) => {
-                        const vals = [...extraFields];
-                        vals[idx] = e.target.value;
-                        setExtraFields(vals);
-                      }}
-                      style={{ marginRight: '0.5rem' }}
-                    />
+                    <span key={idx} style={{ marginRight: '0.5rem' }}>
+                      <input
+                        value={f}
+                        placeholder={`Field ${idx + 1}`}
+                        onChange={(e) => {
+                          const vals = [...extraFields];
+                          vals[idx] = e.target.value;
+                          setExtraFields(vals);
+                        }}
+                        style={{ marginRight: '0.25rem' }}
+                      />
+                      <button type="button" onClick={() => removeExtraField(idx)}>
+                        x
+                      </button>
+                    </span>
                   ))}
+                  <button type="button" onClick={addExtraField}>Add Field</button>
                 </div>
               </div>
               {hasDateField && (
