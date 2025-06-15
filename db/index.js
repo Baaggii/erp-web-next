@@ -578,6 +578,10 @@ export async function listTableRows(
   { page = 1, perPage = 50, filters = {}, sort = {} } = {},
 ) {
   const columns = await getTableColumnsSafe(tableName);
+  logDb(
+    `listTableRows(${tableName}) page=${page} perPage=${perPage} ` +
+      `filters=${JSON.stringify(filters)} sort=${sort.column || ''}:${sort.dir || ''}`,
+  );
   const offset = (Number(page) - 1) * Number(perPage);
   const filterClauses = [];
   const params = [tableName];
@@ -680,6 +684,7 @@ export async function updateTableRow(tableName, id, updates) {
 export async function insertTableRow(tableName, row) {
   const columns = await getTableColumnsSafe(tableName);
   const keys = Object.keys(row);
+  logDb(`insertTableRow(${tableName}) columns=${keys.join(', ')}`);
   ensureValidColumns(columns, keys);
   if (keys.length === 0) return null;
   const values = Object.values(row);
