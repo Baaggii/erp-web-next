@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import RowFormModal from './RowFormModal.jsx';
+import CascadeDeleteModal from './CascadeDeleteModal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
 export default function TableManager({ table, refreshId = 0 }) {
@@ -18,6 +19,8 @@ export default function TableManager({ table, refreshId = 0 }) {
   const [editing, setEditing] = useState(null);
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [localRefresh, setLocalRefresh] = useState(0);
+  const [deleteInfo, setDeleteInfo] = useState(null); // { id, refs }
+  const [showCascade, setShowCascade] = useState(false);
   const { user } = useContext(AuthContext);
 
   function computeAutoInc(meta) {
@@ -243,42 +246,12 @@ export default function TableManager({ table, refreshId = 0 }) {
     }
   }
 
-  async function handleDelete(row) {
-    const id = getRowId(row);
-    if (id === undefined) {
-      alert('Delete failed: table has no primary key');
-      return;
-    }
-    let cascade = false;
-    try {
-      const refRes = await fetch(
-        `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}/references`,
-        { credentials: 'include' }
-      );
-      if (refRes.ok) {
-        const refs = await refRes.json();
-        const total = Array.isArray(refs)
-          ? refs.reduce((a, r) => a + (r.count || 0), 0)
-          : 0;
-        const msg =
-          total > 0
-            ? `Delete row and ${total} related records?`
-            : 'Delete row?';
-        if (!window.confirm(msg)) return;
-        cascade = total > 0;
-      } else {
-        if (!window.confirm('Delete row and related records?')) return;
-        cascade = true;
-      }
-    } catch {
-      if (!window.confirm('Delete row and related records?')) return;
-      cascade = true;
-    }
+  async function executeDeleteRow(id, cascade) {
     const res = await fetch(
       `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}${
         cascade ? '?cascade=true' : ''
       }`,
-      { method: 'DELETE', credentials: 'include' }
+      { method: 'DELETE', credentials: 'include' },
     );
     if (res.ok) {
       const params = new URLSearchParams({ page, perPage });
@@ -289,9 +262,10 @@ export default function TableManager({ table, refreshId = 0 }) {
       Object.entries(filters).forEach(([k, v]) => {
         if (v) params.set(k, v);
       });
-      const data = await fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
-        credentials: 'include',
-      }).then((r) => r.json());
+      const data = await fetch(
+        `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
+        { credentials: 'include' },
+      ).then((r) => r.json());
       setRows(data.rows || []);
       setCount(data.count || 0);
       setSelectedRows(new Set());
@@ -305,6 +279,45 @@ export default function TableManager({ table, refreshId = 0 }) {
       }
       alert(message);
     }
+  }
+
+  async function handleDelete(row) {
+    const id = getRowId(row);
+    if (id === undefined) {
+      alert('Delete failed: table has no primary key');
+      return;
+    }
+    try {
+      const refRes = await fetch(
+        `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}/references`,
+        { credentials: 'include' }
+      );
+      if (refRes.ok) {
+        const refs = await refRes.json();
+        const total = Array.isArray(refs)
+          ? refs.reduce((a, r) => a + (r.count || 0), 0)
+          : 0;
+        if (total > 0) {
+          setDeleteInfo({ id, refs });
+          setShowCascade(true);
+          return;
+        }
+        if (!window.confirm('Delete row?')) return;
+        await executeDeleteRow(id, false);
+        return;
+      }
+    } catch {
+      // ignore error and fall back to confirm
+    }
+    if (!window.confirm('Delete row and related records?')) return;
+    await executeDeleteRow(id, true);
+  }
+
+  async function confirmCascadeDelete() {
+    if (!deleteInfo) return;
+    await executeDeleteRow(deleteInfo.id, true);
+    setShowCascade(false);
+    setDeleteInfo(null);
   }
 
   async function handleDeleteSelected() {
@@ -607,6 +620,15 @@ export default function TableManager({ table, refreshId = 0 }) {
         row={editing}
         relations={relationOpts}
         disabledFields={disabledFields}
+      />
+      <CascadeDeleteModal
+        visible={showCascade}
+        references={deleteInfo?.refs || []}
+        onCancel={() => {
+          setShowCascade(false);
+          setDeleteInfo(null);
+        }}
+        onConfirm={confirmCascadeDelete}
       />
     </div>
   );
