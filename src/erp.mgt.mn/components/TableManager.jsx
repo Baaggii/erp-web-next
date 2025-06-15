@@ -247,14 +247,38 @@ export default function TableManager({ table, refreshId = 0 }) {
   }
 
   async function handleDelete(row) {
-    if (!window.confirm('Delete row?')) return;
     const id = getRowId(row);
     if (id === undefined) {
       alert('Delete failed: table has no primary key');
       return;
     }
+    let cascade = false;
+    try {
+      const refRes = await fetch(
+        `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}/references`,
+        { credentials: 'include' }
+      );
+      if (refRes.ok) {
+        const refs = await refRes.json();
+        const total = Array.isArray(refs)
+          ? refs.reduce((a, r) => a + (r.count || 0), 0)
+          : 0;
+        const msg =
+          total > 0
+            ? `Delete row and ${total} related records?`
+            : 'Delete row?';
+        if (!window.confirm(msg)) return;
+        cascade = total > 0;
+      } else if (!window.confirm('Delete row?')) {
+        return;
+      }
+    } catch {
+      if (!window.confirm('Delete row?')) return;
+    }
     const res = await fetch(
-      `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`,
+      `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}${
+        cascade ? '?cascade=true' : ''
+      }`,
       { method: 'DELETE', credentials: 'include' }
     );
     if (res.ok) {
@@ -292,8 +316,33 @@ export default function TableManager({ table, refreshId = 0 }) {
         alert('Delete failed: table has no primary key');
         return;
       }
+      let cascade = false;
+      try {
+        const refRes = await fetch(
+          `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}/references`,
+          { credentials: 'include' }
+        );
+        if (refRes.ok) {
+          const refs = await refRes.json();
+          const total = Array.isArray(refs)
+            ? refs.reduce((a, r) => a + (r.count || 0), 0)
+            : 0;
+          const msg =
+            total > 0
+              ? `Delete row ${id} and ${total} related records?`
+              : 'Delete row?';
+          if (!window.confirm(msg)) return;
+          cascade = total > 0;
+        } else if (!window.confirm('Delete row?')) {
+          return;
+        }
+      } catch {
+        if (!window.confirm('Delete row?')) return;
+      }
       const res = await fetch(
-        `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`,
+        `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}${
+          cascade ? '?cascade=true' : ''
+        }`,
         { method: 'DELETE', credentials: 'include' }
       );
       if (!res.ok) {
