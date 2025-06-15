@@ -60,10 +60,7 @@ export default function CodingTablesPage() {
     setExtraFields((f) => f.filter((_, i) => i !== idx));
   }
 
-  function handleFile(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    setSelectedFile(file);
+  function loadWorkbook(file) {
     file.arrayBuffer().then((ab) => {
       const wb = XLSX.read(ab);
       setWorkbook(wb);
@@ -85,6 +82,13 @@ export default function CodingTablesPage() {
       setEndYear('');
       setAutoIncStart('1');
     });
+  }
+
+  function handleFile(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    setSelectedFile(file);
+    loadWorkbook(file);
   }
 
   function handleSheetChange(e) {
@@ -124,28 +128,10 @@ export default function CodingTablesPage() {
   }
 
   function refreshFile() {
-    if (!selectedFile) return;
-    selectedFile.arrayBuffer().then((ab) => {
-      const wb = XLSX.read(ab);
-      setWorkbook(wb);
-      setSheets(wb.SheetNames);
-      const firstSheet = wb.SheetNames[0];
-      setSheet(firstSheet);
-      setHeaderRow(1);
-      setHeaders([]);
-      setIdCandidates([]);
-      setIdColumn('');
-      setNameColumn('');
-      setSql('');
-      setOtherColumns([]);
-      setUniqueFields([]);
-      setColumnTypes({});
-      setNotNullMap({});
-      setPopulateRange(false);
-      setStartYear('');
-      setEndYear('');
-      setAutoIncStart('1');
-    });
+    if (!fileInputRef.current) return;
+    // allow re-selecting the same file to pick up any changes
+    fileInputRef.current.value = '';
+    fileInputRef.current.click();
   }
 
   function extractHeaders(wb, s, row) {
