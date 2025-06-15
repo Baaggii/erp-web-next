@@ -5,6 +5,9 @@ import * as db from '../../db/index.js';
 function mockPool(columns) {
   const original = db.pool.query;
   db.pool.query = async (sql, params) => {
+    if (sql.startsWith('SHOW KEYS')) {
+      return [columns.map((c) => ({ Column_name: c }))];
+    }
     if (sql.includes('information_schema.COLUMNS')) {
       return [columns.map((c) => ({ COLUMN_NAME: c }))];
     }
@@ -46,8 +49,8 @@ test('deleteTableRow uses primary key when no id column', async () => {
   const original = db.pool.query;
   let called = false;
   db.pool.query = async (sql, params) => {
-    if (sql.includes('information_schema.COLUMNS')) {
-      return [[{ COLUMN_NAME: 'module_key', COLUMN_KEY: 'PRI', EXTRA: '' }]];
+    if (sql.startsWith('SHOW KEYS')) {
+      return [[{ Column_name: 'module_key' }]];
     }
     called = true;
     assert.equal(sql, 'DELETE FROM ?? WHERE `module_key` = ?');
@@ -62,6 +65,9 @@ test('deleteTableRow uses primary key when no id column', async () => {
 test('deleteTableRow rejects when no primary key', async () => {
   const original = db.pool.query;
   db.pool.query = async (sql) => {
+    if (sql.startsWith('SHOW KEYS')) {
+      return [[]];
+    }
     if (sql.includes('information_schema.COLUMNS')) {
       return [[{ COLUMN_NAME: 'name', COLUMN_KEY: '', EXTRA: '' }]];
     }
@@ -77,6 +83,9 @@ test('deleteTableRow rejects when no primary key', async () => {
 test('updateTableRow rejects when no primary key', async () => {
   const original = db.pool.query;
   db.pool.query = async (sql) => {
+    if (sql.startsWith('SHOW KEYS')) {
+      return [[]];
+    }
     if (sql.includes('information_schema.COLUMNS')) {
       return [[{ COLUMN_NAME: 'name', COLUMN_KEY: '', EXTRA: '' }]];
     }
@@ -87,4 +96,50 @@ test('updateTableRow rejects when no primary key', async () => {
     /no primary key/i,
   );
   db.pool.query = original;
+});
+
+test('updateTableRow uses composite primary key', async () => {
+  const original = db.pool.query;
+  let called = false;
+  db.pool.query = async (sql, params) => {
+    if (sql.startsWith('SHOW KEYS')) {
+      return [[{ Column_name: 'empid' }, { Column_name: 'company_id' }]];
+    }
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'name' }]];
+    }
+    called = true;
+    assert.equal(
+      sql,
+      'UPDATE ?? SET `name` = ? WHERE `empid` = ? AND `company_id` = ?',
+    );
+    assert.deepEqual(params, ['employees', 'Bob', 'E1', 'C2']);
+    return [{}];
+  };
+  await db.updateTableRow('employees', 'E1-C2', { name: 'Bob' });
+  db.pool.query = original;
+  assert.ok(called);
+});
+
+test('deleteTableRow uses composite primary key', async () => {
+  const original = db.pool.query;
+  let called = false;
+  db.pool.query = async (sql, params) => {
+    if (sql.startsWith('SHOW KEYS')) {
+      return [[{ Column_name: 'empid' }, { Column_name: 'company_id' }]];
+    }
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[]];
+    }
+    called = true;
+    assert.equal(
+      sql,
+      'DELETE FROM ?? WHERE `empid` = ? AND `company_id` = ?',
+    );
+    assert.deepEqual(params, ['employees', 'E1', 'C2']);
+    return [{}];
+  };
+  await db.deleteTableRow('employees', 'E1-C2');
+  db.pool.query = original;
+  assert.ok(called);
 });

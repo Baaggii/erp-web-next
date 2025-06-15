@@ -537,13 +537,20 @@ export async function listTableColumnMeta(tableName) {
 }
 
 export async function getPrimaryKeyColumns(tableName) {
+  const [keyRows] = await pool.query(
+    'SHOW KEYS FROM ?? WHERE Key_name = "PRIMARY"',
+    [tableName],
+  );
+  const pks = keyRows.map((r) => r.Column_name);
+  if (pks.length > 0) return pks;
+
   const meta = await listTableColumnMeta(tableName);
-  const pks = meta.filter((m) => m.key === 'PRI').map((m) => m.name);
-  if (pks.length === 0) {
-    const columns = await getTableColumnsSafe(tableName);
-    if (columns.includes('id')) return ['id'];
-  }
-  return pks;
+  const metaPks = meta.filter((m) => m.key === 'PRI').map((m) => m.name);
+  if (metaPks.length > 0) return metaPks;
+
+  const columns = await getTableColumnsSafe(tableName);
+  if (columns.includes('id')) return ['id'];
+  return [];
 }
 
 export async function listTableRelationships(tableName) {
@@ -635,22 +642,33 @@ export async function updateTableRow(tableName, id, updates) {
   }
 
   const pkCols = await getPrimaryKeyColumns(tableName);
-  if (pkCols.length === 1 && pkCols[0] !== 'id') {
-    await pool.query(
-      `UPDATE ?? SET ${setClause} WHERE \`${pkCols[0]}\` = ?`,
-      [tableName, ...values, id],
-    );
-    return { [pkCols[0]]: id };
-  }
-
   if (pkCols.length === 0) {
     const err = new Error(`Table ${tableName} has no primary key`);
     err.status = 400;
     throw err;
   }
 
-  await pool.query(`UPDATE ?? SET ${setClause} WHERE id = ?`, [tableName, ...values, id]);
-  return { id };
+  if (pkCols.length === 1) {
+    const col = pkCols[0];
+    const where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
+    await pool.query(
+      `UPDATE ?? SET ${setClause} WHERE ${where}`,
+      [tableName, ...values, id],
+    );
+    return { [col]: id };
+  }
+
+  const parts = String(id).split('-');
+  const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
+  await pool.query(
+    `UPDATE ?? SET ${setClause} WHERE ${where}`,
+    [tableName, ...values, ...parts],
+  );
+  const result = {};
+  pkCols.forEach((c, i) => {
+    result[c] = parts[i];
+  });
+  return result;
 }
 
 export async function insertTableRow(tableName, row) {
@@ -697,20 +715,25 @@ export async function deleteTableRow(tableName, id) {
   }
 
   const pkCols = await getPrimaryKeyColumns(tableName);
-  if (pkCols.length === 1 && pkCols[0] !== 'id') {
-    await pool.query(
-      `DELETE FROM ?? WHERE \`${pkCols[0]}\` = ?`,
-      [tableName, id],
-    );
-    return { [pkCols[0]]: id };
-  }
-
   if (pkCols.length === 0) {
     const err = new Error(`Table ${tableName} has no primary key`);
     err.status = 400;
     throw err;
   }
 
-  await pool.query('DELETE FROM ?? WHERE id = ?', [tableName, id]);
-  return { id };
+  if (pkCols.length === 1) {
+    const col = pkCols[0];
+    const where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
+    await pool.query(`DELETE FROM ?? WHERE ${where}`, [tableName, id]);
+    return { [col]: id };
+  }
+
+  const parts = String(id).split('-');
+  const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
+  await pool.query(`DELETE FROM ?? WHERE ${where}`, [tableName, ...parts]);
+  const result = {};
+  pkCols.forEach((c, i) => {
+    result[c] = parts[i];
+  });
+  return result;
 }
