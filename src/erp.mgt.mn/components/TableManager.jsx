@@ -266,8 +266,9 @@ export default function TableManager({ table, refreshId = 0 }) {
             : 'Delete row?';
         if (!window.confirm(msg)) return;
         cascade = total > 0;
-      } else if (!window.confirm('Delete row?')) {
-        return;
+      } else {
+        if (!window.confirm('Delete row and related records?')) return;
+        cascade = true;
       }
     } catch {
       if (!window.confirm('Delete row and related records?')) return;
@@ -331,8 +332,9 @@ export default function TableManager({ table, refreshId = 0 }) {
               : 'Delete row?';
           if (!window.confirm(msg)) return;
           cascade = total > 0;
-        } else if (!window.confirm('Delete row?')) {
-          return;
+        } else {
+          if (!window.confirm('Delete row and related records?')) return;
+          cascade = true;
         }
       } catch {
         if (!window.confirm('Delete row and related records?')) return;
