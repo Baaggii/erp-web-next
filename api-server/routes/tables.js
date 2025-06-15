@@ -7,6 +7,7 @@ import {
   updateRow,
   addRow,
   deleteRow,
+  getRowReferences,
 } from '../controllers/tableController.js';
 import { requireAuth } from '../middlewares/auth.js';
 
@@ -16,6 +17,7 @@ router.get('/', requireAuth, getTables);
 // More specific routes must be defined before the generic ':table' pattern
 router.get('/:table/relations', requireAuth, getTableRelations);
 router.get('/:table/columns', requireAuth, getTableColumnsMeta);
+router.get('/:table/:id/references', requireAuth, getRowReferences);
 router.put('/:table/:id', requireAuth, updateRow);
 router.delete('/:table/:id', requireAuth, deleteRow);
 router.post('/:table', requireAuth, addRow);

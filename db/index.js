@@ -749,3 +749,43 @@ export async function deleteTableRow(tableName, id) {
   });
   return result;
 }
+
+export async function listRowReferences(tableName, id) {
+  const pkCols = await getPrimaryKeyColumns(tableName);
+  const parts = String(id).split('-');
+  const [rels] = await pool.query(
+    `SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME
+       FROM information_schema.KEY_COLUMN_USAGE
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND REFERENCED_TABLE_NAME = ?`,
+    [tableName],
+  );
+  const results = [];
+  for (const rel of rels) {
+    const idx = pkCols.indexOf(rel.REFERENCED_COLUMN_NAME);
+    if (idx === -1) continue;
+    const val = parts[idx];
+    const [rows] = await pool.query(
+      'SELECT COUNT(*) AS count FROM ?? WHERE ?? = ?',
+      [rel.TABLE_NAME, rel.COLUMN_NAME, val],
+    );
+    if (rows[0].count > 0) {
+      results.push({
+        table: rel.TABLE_NAME,
+        column: rel.COLUMN_NAME,
+        value: val,
+        count: rows[0].count,
+      });
+    }
+  }
+  return results;
+}
+
+export async function deleteTableRowCascade(tableName, id) {
+  const refs = await listRowReferences(tableName, id);
+  for (const r of refs) {
+    await pool.query('DELETE FROM ?? WHERE ?? = ?', [r.table, r.column, r.value]);
+  }
+  await deleteTableRow(tableName, id);
+  return refs;
+}
