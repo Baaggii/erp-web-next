@@ -643,6 +643,12 @@ export async function updateTableRow(tableName, id, updates) {
     return { [pkCols[0]]: id };
   }
 
+  if (pkCols.length === 0) {
+    const err = new Error(`Table ${tableName} has no primary key`);
+    err.status = 400;
+    throw err;
+  }
+
   await pool.query(`UPDATE ?? SET ${setClause} WHERE id = ?`, [tableName, ...values, id]);
   return { id };
 }
@@ -697,6 +703,12 @@ export async function deleteTableRow(tableName, id) {
       [tableName, id],
     );
     return { [pkCols[0]]: id };
+  }
+
+  if (pkCols.length === 0) {
+    const err = new Error(`Table ${tableName} has no primary key`);
+    err.status = 400;
+    throw err;
   }
 
   await pool.query('DELETE FROM ?? WHERE id = ?', [tableName, id]);

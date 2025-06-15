@@ -107,7 +107,11 @@ export default function TableManager({ table, refreshId = 0 }) {
       .filter((c) => c.key === 'PRI')
       .map((c) => c.name);
     if (keys.length > 0) return keys;
-    return ['id'];
+    if (columnMeta.some((c) => c.name === 'id')) return ['id'];
+    if (rows[0] && Object.prototype.hasOwnProperty.call(rows[0], 'id')) {
+      return ['id'];
+    }
+    return [];
   }
 
   async function ensureColumnMeta() {
@@ -135,6 +139,10 @@ export default function TableManager({ table, refreshId = 0 }) {
   }
 
   async function openEdit(row) {
+    if (getRowId(row) === undefined) {
+      alert('Cannot edit rows without a primary key');
+      return;
+    }
     await ensureColumnMeta();
     setEditing(row);
     setShowForm(true);
@@ -153,7 +161,7 @@ export default function TableManager({ table, refreshId = 0 }) {
   }
 
   function selectCurrentPage() {
-    setSelectedRows(new Set(rows.map((r) => getRowId(r))));
+    setSelectedRows(new Set(rows.map((r) => getRowId(r)).filter((id) => id !== undefined)));
   }
 
   function deselectAll() {
@@ -235,8 +243,13 @@ export default function TableManager({ table, refreshId = 0 }) {
 
   async function handleDelete(row) {
     if (!window.confirm('Delete row?')) return;
+    const id = getRowId(row);
+    if (id === undefined) {
+      alert('Delete failed: table has no primary key');
+      return;
+    }
     const res = await fetch(
-      `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(getRowId(row))}`,
+      `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`,
       { method: 'DELETE', credentials: 'include' }
     );
     if (res.ok) {
@@ -270,6 +283,10 @@ export default function TableManager({ table, refreshId = 0 }) {
     if (selectedRows.size === 0) return;
     if (!window.confirm('Delete selected rows?')) return;
     for (const id of selectedRows) {
+      if (id === undefined) {
+        alert('Delete failed: table has no primary key');
+        return;
+      }
       const res = await fetch(
         `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`,
         { method: 'DELETE', credentials: 'include' }
@@ -425,7 +442,13 @@ export default function TableManager({ table, refreshId = 0 }) {
             <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
               <input
                 type="checkbox"
-                checked={rows.length > 0 && rows.every((r) => selectedRows.has(getRowId(r)))}
+                checked={
+                  rows.length > 0 &&
+                  rows.every((r) => {
+                    const rid = getRowId(r);
+                    return rid !== undefined && selectedRows.has(rid);
+                  })
+                }
                 onChange={(e) => (e.target.checked ? selectCurrentPage() : deselectAll())}
               />
             </th>
@@ -481,11 +504,17 @@ export default function TableManager({ table, refreshId = 0 }) {
           {rows.map((r) => (
             <tr key={r.id || JSON.stringify(r)}>
               <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
-                <input
-                  type="checkbox"
-                  checked={selectedRows.has(getRowId(r))}
-                  onChange={() => toggleRow(getRowId(r))}
-                />
+                {(() => {
+                  const rid = getRowId(r);
+                  return (
+                    <input
+                      type="checkbox"
+                      disabled={rid === undefined}
+                      checked={rid !== undefined && selectedRows.has(rid)}
+                      onChange={() => rid !== undefined && toggleRow(rid)}
+                    />
+                  );
+                })()}
               </td>
               {columns.map((c) => (
                 <td key={c} style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
@@ -493,10 +522,23 @@ export default function TableManager({ table, refreshId = 0 }) {
                 </td>
               ))}
               <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
-                <button onClick={() => openEdit(r)}>Edit</button>
-                <button onClick={() => handleDelete(r)} style={{ marginLeft: '0.5rem' }}>
-                  Delete
-                </button>
+                {(() => {
+                  const rid = getRowId(r);
+                  return (
+                    <>
+                      <button onClick={() => openEdit(r)} disabled={rid === undefined}>
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(r)}
+                        disabled={rid === undefined}
+                        style={{ marginLeft: '0.5rem' }}
+                      >
+                        Delete
+                      </button>
+                    </>
+                  );
+                })()}
               </td>
             </tr>
       ))}

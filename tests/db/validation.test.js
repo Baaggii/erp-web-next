@@ -58,3 +58,33 @@ test('deleteTableRow uses primary key when no id column', async () => {
   db.pool.query = original;
   assert.ok(called);
 });
+
+test('deleteTableRow rejects when no primary key', async () => {
+  const original = db.pool.query;
+  db.pool.query = async (sql) => {
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'name', COLUMN_KEY: '', EXTRA: '' }]];
+    }
+    throw new Error('should not query delete');
+  };
+  await assert.rejects(
+    db.deleteTableRow('nopk', '1'),
+    /no primary key/i,
+  );
+  db.pool.query = original;
+});
+
+test('updateTableRow rejects when no primary key', async () => {
+  const original = db.pool.query;
+  db.pool.query = async (sql) => {
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'name', COLUMN_KEY: '', EXTRA: '' }]];
+    }
+    throw new Error('should not query update');
+  };
+  await assert.rejects(
+    db.updateTableRow('nopk', '1', { name: 'x' }),
+    /no primary key/i,
+  );
+  db.pool.query = original;
+});
