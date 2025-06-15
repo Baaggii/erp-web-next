@@ -1,11 +1,10 @@
 import fs from 'fs';
-import { dirname, resolve } from 'path';
+import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 
-// Resolve the log path relative to this module so it works regardless of the
-// process's current working directory or bundling method.
+// Resolve the log file via URL semantics so bundlers keep the path correct.
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const logFile = resolve(__dirname, '../api-server/logs/db.log');
+const logFile = fileURLToPath(new URL('../api-server/logs/db.log', import.meta.url));
 
 let logFileReady = false;
 
