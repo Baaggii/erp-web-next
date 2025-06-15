@@ -1,10 +1,12 @@
 import fs from 'fs';
-import { dirname } from 'path';
+import path, { dirname } from 'path';
 import { fileURLToPath } from 'url';
 
-// Resolve the log file via URL semantics so bundlers keep the path correct.
+// Resolve the log file relative to the project root rather than to this module.
+// Using process.cwd() ensures the location is stable regardless of how the file
+// is executed (e.g. bundled or transpiled to a temp directory).
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const logFile = fileURLToPath(new URL('../api-server/logs/db.log', import.meta.url));
+const logFile = path.resolve(process.cwd(), 'api-server', 'logs', 'db.log');
 
 let logFileReady = false;
 let initLogged = false;
