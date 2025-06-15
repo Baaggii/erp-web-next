@@ -4,6 +4,8 @@ import {
   updateTableRow,
   insertTableRow,
   deleteTableRow,
+  deleteTableRowCascade,
+  listRowReferences,
   listTableRelationships,
   listTableColumns,
   listTableColumnMeta,
@@ -95,8 +97,21 @@ export async function addRow(req, res, next) {
 
 export async function deleteRow(req, res, next) {
   try {
-    await deleteTableRow(req.params.table, req.params.id);
+    if (req.query.cascade === 'true') {
+      await deleteTableRowCascade(req.params.table, req.params.id);
+    } else {
+      await deleteTableRow(req.params.table, req.params.id);
+    }
     res.sendStatus(204);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getRowReferences(req, res, next) {
+  try {
+    const refs = await listRowReferences(req.params.table, req.params.id);
+    res.json(refs);
   } catch (err) {
     next(err);
   }
