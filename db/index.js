@@ -697,10 +697,10 @@ export async function insertTableRow(tableName, row) {
   return { id: result.insertId };
 }
 
-export async function deleteTableRow(tableName, id) {
+export async function deleteTableRow(tableName, id, conn = pool) {
   if (tableName === 'company_module_licenses') {
     const [companyId, moduleKey] = String(id).split('-');
-    await pool.query(
+    await conn.query(
       'DELETE FROM company_module_licenses WHERE company_id = ? AND module_key = ?',
       [companyId, moduleKey],
     );
@@ -709,7 +709,7 @@ export async function deleteTableRow(tableName, id) {
 
   if (tableName === 'role_module_permissions') {
     const [companyId, roleId, moduleKey] = String(id).split('-');
-    await pool.query(
+    await conn.query(
       'DELETE FROM role_module_permissions WHERE company_id = ? AND role_id = ? AND module_key = ?',
       [companyId, roleId, moduleKey],
     );
@@ -718,7 +718,7 @@ export async function deleteTableRow(tableName, id) {
 
   if (tableName === 'user_companies') {
     const [empId, companyId] = String(id).split('-');
-    await pool.query(
+    await conn.query(
       'DELETE FROM user_companies WHERE empid = ? AND company_id = ?',
       [empId, companyId],
     );
@@ -736,16 +736,66 @@ export async function deleteTableRow(tableName, id) {
   if (pkCols.length === 1) {
     const col = pkCols[0];
     const where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
-    await pool.query(`DELETE FROM ?? WHERE ${where}`, [tableName, id]);
+    await conn.query(`DELETE FROM ?? WHERE ${where}`, [tableName, id]);
     return { [col]: id };
   }
 
   const parts = String(id).split('-');
   const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
-  await pool.query(`DELETE FROM ?? WHERE ${where}`, [tableName, ...parts]);
+  await conn.query(`DELETE FROM ?? WHERE ${where}`, [tableName, ...parts]);
   const result = {};
   pkCols.forEach((c, i) => {
     result[c] = parts[i];
   });
   return result;
+}
+
+export async function listRowReferences(tableName, id, conn = pool) {
+  const pkCols = await getPrimaryKeyColumns(tableName);
+  const parts = String(id).split('-');
+  const [rels] = await conn.query(
+    `SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME
+       FROM information_schema.KEY_COLUMN_USAGE
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND REFERENCED_TABLE_NAME = ?`,
+    [tableName],
+  );
+  const results = [];
+  for (const rel of rels) {
+    const idx = pkCols.indexOf(rel.REFERENCED_COLUMN_NAME);
+    if (idx === -1) continue;
+    const val = parts[idx];
+    const [rows] = await conn.query(
+      'SELECT COUNT(*) AS count FROM ?? WHERE ?? = ?',
+      [rel.TABLE_NAME, rel.COLUMN_NAME, val],
+    );
+    if (rows[0].count > 0) {
+      results.push({
+        table: rel.TABLE_NAME,
+        column: rel.COLUMN_NAME,
+        value: val,
+        count: rows[0].count,
+      });
+    }
+  }
+  return results;
+}
+
+export async function deleteTableRowCascade(tableName, id) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const refs = await listRowReferences(tableName, id, conn);
+    for (const r of refs) {
+      await conn.query('DELETE FROM ?? WHERE ?? = ?', [r.table, r.column, r.value]);
+    }
+    await deleteTableRow(tableName, id, conn);
+    await conn.commit();
+    return refs;
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
 }
