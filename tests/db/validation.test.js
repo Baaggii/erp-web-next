@@ -41,3 +41,20 @@ test('insertTableRow rejects invalid column', async () => {
   );
   restore();
 });
+
+test('deleteTableRow uses primary key when no id column', async () => {
+  const original = db.pool.query;
+  let called = false;
+  db.pool.query = async (sql, params) => {
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'module_key', COLUMN_KEY: 'PRI', EXTRA: '' }]];
+    }
+    called = true;
+    assert.equal(sql, 'DELETE FROM ?? WHERE `module_key` = ?');
+    assert.deepEqual(params, ['modules', 'sales']);
+    return [{}];
+  };
+  await db.deleteTableRow('modules', 'sales');
+  db.pool.query = original;
+  assert.ok(called);
+});
