@@ -98,20 +98,25 @@ export default function TableManager({ table, refreshId = 0 }) {
   function getRowId(row) {
     const keys = getKeyFields();
     if (keys.length === 0) return undefined;
-    if (keys.length === 1) return row[keys[0]];
-    return keys.map((k) => row[k]).join('-');
+    const idVal =
+      keys.length === 1 ? row[keys[0]] : keys.map((k) => row[k]).join('-');
+    console.log('Row id for', table, '=>', idVal);
+    return idVal;
   }
 
   function getKeyFields() {
     const keys = columnMeta
       .filter((c) => c.key === 'PRI')
       .map((c) => c.name);
-    if (keys.length > 0) return keys;
-    if (columnMeta.some((c) => c.name === 'id')) return ['id'];
-    if (rows[0] && Object.prototype.hasOwnProperty.call(rows[0], 'id')) {
-      return ['id'];
+    let result = keys;
+    if (result.length === 0) {
+      if (columnMeta.some((c) => c.name === 'id')) result = ['id'];
+      else if (rows[0] && Object.prototype.hasOwnProperty.call(rows[0], 'id')) {
+        result = ['id'];
+      }
     }
-    return [];
+    console.log('Key fields for', table, ':', result);
+    return result;
   }
 
   async function ensureColumnMeta() {
