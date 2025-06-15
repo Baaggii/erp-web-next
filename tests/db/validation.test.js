@@ -88,3 +88,50 @@ test('updateTableRow rejects when no primary key', async () => {
   );
   db.pool.query = original;
 });
+
+test('updateTableRow uses composite primary key', async () => {
+  const original = db.pool.query;
+  let called = false;
+  db.pool.query = async (sql, params) => {
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[
+        { COLUMN_NAME: 'empid', COLUMN_KEY: 'PRI', EXTRA: '' },
+        { COLUMN_NAME: 'company_id', COLUMN_KEY: 'PRI', EXTRA: '' },
+        { COLUMN_NAME: 'name', COLUMN_KEY: '', EXTRA: '' },
+      ]];
+    }
+    called = true;
+    assert.equal(
+      sql,
+      'UPDATE ?? SET `name` = ? WHERE `empid` = ? AND `company_id` = ?',
+    );
+    assert.deepEqual(params, ['employees', 'Bob', 'E1', 'C2']);
+    return [{}];
+  };
+  await db.updateTableRow('employees', 'E1-C2', { name: 'Bob' });
+  db.pool.query = original;
+  assert.ok(called);
+});
+
+test('deleteTableRow uses composite primary key', async () => {
+  const original = db.pool.query;
+  let called = false;
+  db.pool.query = async (sql, params) => {
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[
+        { COLUMN_NAME: 'empid', COLUMN_KEY: 'PRI', EXTRA: '' },
+        { COLUMN_NAME: 'company_id', COLUMN_KEY: 'PRI', EXTRA: '' },
+      ]];
+    }
+    called = true;
+    assert.equal(
+      sql,
+      'DELETE FROM ?? WHERE `empid` = ? AND `company_id` = ?',
+    );
+    assert.deepEqual(params, ['employees', 'E1', 'C2']);
+    return [{}];
+  };
+  await db.deleteTableRow('employees', 'E1-C2');
+  db.pool.query = original;
+  assert.ok(called);
+});
