@@ -31,6 +31,13 @@ function parseExcelDate(val) {
   return d;
 }
 
+function sanitizeValue(val) {
+  if (typeof val === 'string') {
+    return val.replace(/[\\/"']/g, '');
+  }
+  return val;
+}
+
 export function detectType(name, vals) {
   const lower = String(name).toLowerCase();
   if (lower.includes('_per')) return 'DECIMAL(5,2)';
@@ -263,6 +270,7 @@ export async function uploadCodingTable(req, res, next) {
           const d = parseExcelDate(val);
           val = d || null;
         }
+        val = sanitizeValue(val);
         values.push(val);
         hasData = true;
       }
@@ -277,6 +285,7 @@ export async function uploadCodingTable(req, res, next) {
           const d = parseExcelDate(val);
           val = d || null;
         }
+        val = sanitizeValue(val);
         values.push(val);
         updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
         hasData = true;
@@ -295,6 +304,7 @@ export async function uploadCodingTable(req, res, next) {
           val = null;
         }
         if (val !== undefined && val !== null && val !== '') hasData = true;
+        val = sanitizeValue(val);
         values.push(val);
         updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
       }

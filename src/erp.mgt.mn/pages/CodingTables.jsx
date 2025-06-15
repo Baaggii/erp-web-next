@@ -147,8 +147,14 @@ export default function CodingTablesPage() {
     extractHeaders(workbook, sheet, headerRow);
   }
 
+  function removeSqlUnsafeChars(v) {
+    if (typeof v !== 'string') return v;
+    return v.replace(/[\\/"']/g, '');
+  }
+
   function escapeSqlValue(v) {
-    return `'${String(v).replace(/'/g, "''")}'`;
+    const sanitized = removeSqlUnsafeChars(v);
+    return `'${String(sanitized).replace(/'/g, "''")}'`;
   }
 
   function detectType(name, vals) {
