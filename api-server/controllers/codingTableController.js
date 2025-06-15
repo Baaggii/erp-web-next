@@ -9,6 +9,10 @@ try {
 }
 import { pool } from '../../db/index.js';
 
+function cleanIdentifier(name) {
+  return String(name).replace(/[^A-Za-z0-9_]+/g, '');
+}
+
 function parseExcelDate(val) {
   if (typeof val === 'number') {
     const base = new Date(Date.UTC(1899, 11, 30));
@@ -78,6 +82,11 @@ export async function uploadCodingTable(req, res, next) {
     } = req.body;
     const extraCols = otherColumns ? JSON.parse(otherColumns) : [];
     const uniqueCols = uniqueFields ? JSON.parse(uniqueFields) : [];
+    const cleanTable = cleanIdentifier(tableName);
+    const cleanIdCol = idColumn ? cleanIdentifier(idColumn) : '';
+    const cleanNameCol = nameColumn ? cleanIdentifier(nameColumn) : '';
+    const cleanExtra = extraCols.map(cleanIdentifier);
+    const cleanUnique = uniqueCols.map(cleanIdentifier);
     const calcDefs = calcFields ? JSON.parse(calcFields) : [];
     const columnTypeOverride = columnTypesJson ? JSON.parse(columnTypesJson) : {};
     const notNullOverride = notNullJson ? JSON.parse(notNullJson) : {};
@@ -97,7 +106,8 @@ export async function uploadCodingTable(req, res, next) {
     const headers = [];
     rawHeaders.forEach((h, idx) => {
       if (String(h).length > 1) {
-        headers.push(h);
+        const clean = cleanIdentifier(h);
+        headers.push(clean);
         keepIdx.push(idx);
       }
     });
@@ -105,13 +115,13 @@ export async function uploadCodingTable(req, res, next) {
       fs.unlinkSync(req.file.path);
       return res.status(400).json({ error: 'Header row not found' });
     }
-    const uniqueOnly = uniqueCols.filter(
-      (c) => c !== idColumn && c !== nameColumn && !extraCols.includes(c)
+    const uniqueOnly = cleanUnique.filter(
+      (c) => c !== cleanIdCol && c !== cleanNameCol && !cleanExtra.includes(c)
     );
-    const extraFiltered = extraCols.filter(
-      (c) => c !== idColumn && c !== nameColumn && !uniqueOnly.includes(c)
+    const extraFiltered = cleanExtra.filter(
+      (c) => c !== cleanIdCol && c !== cleanNameCol && !uniqueOnly.includes(c)
     );
-    if (!idColumn && !nameColumn && uniqueOnly.length === 0 && extraFiltered.length === 0) {
+    if (!cleanIdCol && !cleanNameCol && uniqueOnly.length === 0 && extraFiltered.length === 0) {
       fs.unlinkSync(req.file.path);
       return res.status(400).json({ error: 'No columns selected' });
     }
@@ -127,8 +137,8 @@ export async function uploadCodingTable(req, res, next) {
       ...new Set([
         ...uniqueOnly,
         ...extraFiltered,
-        idColumn,
-        nameColumn,
+        cleanIdCol,
+        cleanNameCol,
       ].filter((c) => c && !headers.includes(c)))
     ];
     rows.forEach((r) => {
@@ -192,26 +202,30 @@ export async function uploadCodingTable(req, res, next) {
         (r) => !Object.values(r).some((v) => v === 0 || v === null)
       );
     }
-    if (!tableName) {
+    if (!cleanTable) {
       return res.status(400).json({ error: 'Missing params' });
     }
-    const dbIdCol = idColumn ? 'id' : null;
-    const dbNameCol = nameColumn ? 'name' : null;
+    const dbIdCol = cleanIdCol ? 'id' : null;
+    const dbNameCol = cleanNameCol ? 'name' : null;
     let defs = [];
-    if (idColumn) {
+    if (cleanIdCol) {
       defs.push(`\`${dbIdCol}\` INT AUTO_INCREMENT PRIMARY KEY`);
     }
-    if (nameColumn) {
+    if (cleanNameCol) {
       defs.push(
-        `\`${dbNameCol}\` ${
-          columnTypes[nameColumn] || 'VARCHAR(255)'
-        } NOT NULL`
+        `\`${dbNameCol}\` ${columnTypes[cleanNameCol] || 'VARCHAR(255)'} NOT NULL`
       );
     }
-    uniqueOnly.forEach((c) => {
+    const cleanUniqueOnly = cleanUnique.filter(
+      (c) => c !== cleanIdCol && c !== cleanNameCol && !cleanExtra.includes(c)
+    );
+    const cleanExtraFiltered = cleanExtra.filter(
+      (c) => c !== cleanIdCol && c !== cleanNameCol && !cleanUniqueOnly.includes(c)
+    );
+    cleanUniqueOnly.forEach((c) => {
       defs.push(`\`${c}\` ${columnTypes[c] || 'VARCHAR(255)'} NOT NULL`);
     });
-    extraFiltered.forEach((c) => {
+    cleanExtraFiltered.forEach((c) => {
       let def = `\`${c}\` ${columnTypes[c] || 'VARCHAR(255)'}`;
       if (notNullMap[c]) def += ' NOT NULL';
       defs.push(def);
@@ -220,14 +234,14 @@ export async function uploadCodingTable(req, res, next) {
       defs.push(`\`${cf.name}\` INT AS (${cf.expression}) STORED`);
     });
     const uniqueKeyFields = [
-      ...(uniqueCols.includes(nameColumn) ? [dbNameCol] : []),
-      ...uniqueOnly,
+      ...(cleanUnique.includes(cleanNameCol) ? [dbNameCol] : []),
+      ...cleanUniqueOnly,
     ];
     if (uniqueKeyFields.length > 0) {
       const indexName = makeUniqueKeyName(uniqueKeyFields);
       defs.push(`UNIQUE KEY ${indexName} (${uniqueKeyFields.map((c) => `\`${c}\``).join(', ')})`);
     }
-    const createSql = `CREATE TABLE IF NOT EXISTS \`${tableName}\` (
+    const createSql = `CREATE TABLE IF NOT EXISTS \`${cleanTable}\` (
         ${defs.join(',\n        ')}
       )`;
     await pool.query(createSql);
@@ -238,21 +252,21 @@ export async function uploadCodingTable(req, res, next) {
       const values = [];
       const updates = [];
       let hasData = false;
-      if (nameColumn) {
-        const nameVal = r[nameColumn];
+      if (cleanNameCol) {
+        const nameVal = r[cleanNameCol];
         if (nameVal === undefined || nameVal === null || nameVal === '') continue;
         cols.push(`\`${dbNameCol}\``);
         placeholders.push('?');
         updates.push(`\`${dbNameCol}\` = VALUES(\`${dbNameCol}\`)`);
         let val = nameVal;
-        if (columnTypes[nameColumn] === 'DATE') {
+        if (columnTypes[cleanNameCol] === 'DATE') {
           const d = parseExcelDate(val);
           val = d || null;
         }
         values.push(val);
         hasData = true;
       }
-      for (const c of uniqueOnly) {
+      for (const c of cleanUniqueOnly) {
         cols.push(`\`${c}\``);
         placeholders.push('?');
         let val = r[c];
@@ -267,7 +281,7 @@ export async function uploadCodingTable(req, res, next) {
         updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
         hasData = true;
       }
-      for (const c of extraFiltered) {
+      for (const c of cleanExtraFiltered) {
         cols.push(`\`${c}\``);
         placeholders.push('?');
         let val = r[c];
@@ -288,7 +302,7 @@ export async function uploadCodingTable(req, res, next) {
       if (req.body.populateRange === 'true' && values.some((v) => v === 0 || v === null))
         continue;
       await pool.query(
-        `INSERT INTO \`${tableName}\` (${cols.join(', ')}) VALUES (${placeholders.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')}`,
+        `INSERT INTO \`${cleanTable}\` (${cols.join(', ')}) VALUES (${placeholders.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')}`,
         values
       );
       count++;

@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 
+function cleanIdentifier(name) {
+  return String(name).replace(/[^A-Za-z0-9_]+/g, '');
+}
+
 export default function CodingTablesPage() {
   const [sheets, setSheets] = useState([]);
   const [workbook, setWorkbook] = useState(null);
@@ -113,7 +117,7 @@ export default function CodingTablesPage() {
     const keepIdx = [];
     raw.forEach((h, i) => {
       if (String(h).length > 1) {
-        hdrs.push(h);
+        hdrs.push(cleanIdentifier(h));
         keepIdx.push(i);
       }
     });
@@ -236,6 +240,9 @@ export default function CodingTablesPage() {
 
   function handleGenerateSql() {
     if (!workbook || !sheet || !tableName) return;
+    const tbl = cleanIdentifier(tableName);
+    const idCol = cleanIdentifier(idColumn);
+    const nmCol = cleanIdentifier(nameColumn);
     const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheet], {
       header: 1,
       blankrows: false,
@@ -246,11 +253,11 @@ export default function CodingTablesPage() {
     const keepIdx = [];
     raw.forEach((h, i) => {
       if (String(h).length > 1) {
-        hdrs.push(h);
+        hdrs.push(cleanIdentifier(h));
         keepIdx.push(i);
       }
     });
-    const extra = extraFields.filter((f) => f.trim() !== '');
+    const extra = extraFields.filter((f) => f.trim() !== '').map(cleanIdentifier);
     const rows = data
       .slice(idx + 1)
       .map((r) => [...keepIdx.map((ci) => r[ci]), ...Array(extra.length).fill(undefined)]);
@@ -274,22 +281,24 @@ export default function CodingTablesPage() {
         notNullMap[h] !== undefined ? notNullMap[h] : defNN;
     });
 
-    const uniqueOnly = uniqueFields.filter(
-      (c) => c !== idColumn && c !== nameColumn && !otherColumns.includes(c)
+    const cleanUnique = uniqueFields.map(cleanIdentifier);
+    const cleanOther = otherColumns.map(cleanIdentifier);
+    const uniqueOnly = cleanUnique.filter(
+      (c) => c !== idCol && c !== nmCol && !cleanOther.includes(c)
     );
-    const otherFiltered = otherColumns.filter(
-      (c) => c !== idColumn && c !== nameColumn && !uniqueOnly.includes(c)
+    const otherFiltered = cleanOther.filter(
+      (c) => c !== idCol && c !== nmCol && !uniqueOnly.includes(c)
     );
-    if (!idColumn && !nameColumn && uniqueOnly.length === 0 && otherFiltered.length === 0) {
+    if (!idCol && !nmCol && uniqueOnly.length === 0 && otherFiltered.length === 0) {
       alert('Please select at least one ID, Name, Unique or Other column');
       return;
     }
-    const idIdx = allHdrs.indexOf(idColumn);
-    const nameIdx = allHdrs.indexOf(nameColumn);
-    const dbIdCol = idColumn ? 'id' : null;
-    const dbNameCol = nameColumn ? 'name' : null;
-    if (idColumn && idIdx === -1) return;
-    if (nameColumn && nameIdx === -1) return;
+    const idIdx = allHdrs.indexOf(idCol);
+    const nameIdx = allHdrs.indexOf(nmCol);
+    const dbIdCol = idCol ? 'id' : null;
+    const dbNameCol = nmCol ? 'name' : null;
+    if (idCol && idIdx === -1) return;
+    if (nmCol && nameIdx === -1) return;
     const uniqueIdx = uniqueOnly.map((c) => allHdrs.indexOf(c));
     const otherIdx = otherFiltered.map((c) => allHdrs.indexOf(c));
 
@@ -321,11 +330,11 @@ export default function CodingTablesPage() {
     }
 
     let defs = [];
-    if (idColumn) {
+    if (idCol) {
       defs.push(`\`${dbIdCol}\` INT AUTO_INCREMENT PRIMARY KEY`);
     }
-    if (nameColumn) {
-      defs.push(`\`${dbNameCol}\` ${colTypes[nameColumn]} NOT NULL`);
+    if (nmCol) {
+      defs.push(`\`${dbNameCol}\` ${colTypes[nmCol]} NOT NULL`);
     }
     uniqueOnly.forEach((c) => {
       defs.push(`\`${c}\` ${colTypes[c]} NOT NULL`);
@@ -340,7 +349,7 @@ export default function CodingTablesPage() {
       defs.push(`\`${cf.name}\` INT AS (${cf.expression}) STORED`);
     });
     const uniqueKeyFields = [
-      ...(uniqueFields.includes(nameColumn) ? [dbNameCol] : []),
+      ...(cleanUnique.includes(nmCol) ? [dbNameCol] : []),
       ...uniqueOnly,
     ];
     if (uniqueKeyFields.length > 0) {
@@ -351,17 +360,17 @@ export default function CodingTablesPage() {
           .join(', ')})`
       );
     }
-    let sqlStr = `CREATE TABLE IF NOT EXISTS \`${tableName}\` (\n  ${defs.join(',\n  ')}\n);\n`;
+    let sqlStr = `CREATE TABLE IF NOT EXISTS \`${tbl}\` (\n  ${defs.join(',\n  ')}\n);\n`;
 
     for (const r of finalRows) {
       const cols = [];
       const vals = [];
       let hasData = false;
-      if (nameColumn) {
+      if (nmCol) {
         const nameVal = r[nameIdx];
         if (nameVal === undefined || nameVal === null || nameVal === '') continue;
         cols.push(`\`${dbNameCol}\``);
-        vals.push(formatVal(nameVal, colTypes[nameColumn]));
+        vals.push(formatVal(nameVal, colTypes[nmCol]));
         hasData = true;
       }
       uniqueOnly.forEach((c, idx2) => {
@@ -387,20 +396,25 @@ export default function CodingTablesPage() {
       if (!hasData) continue;
       if (populateRange && vals.some((v) => v === '0' || v === 'NULL')) continue;
       const updates = cols.map((c) => `${c} = VALUES(${c})`);
-      sqlStr += `INSERT INTO \`${tableName}\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
+      sqlStr += `INSERT INTO \`${tbl}\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
     }
     setSql(sqlStr);
   }
 
   async function handleUpload() {
     if (!workbook || !sheet || !tableName) return;
-    const uniqueOnly = uniqueFields.filter(
-      (c) => c !== idColumn && c !== nameColumn && !otherColumns.includes(c)
+    const tbl = cleanIdentifier(tableName);
+    const idCol = cleanIdentifier(idColumn);
+    const nmCol = cleanIdentifier(nameColumn);
+    const cleanUnique = uniqueFields.map(cleanIdentifier);
+    const cleanOther = otherColumns.map(cleanIdentifier);
+    const uniqueOnly = cleanUnique.filter(
+      (c) => c !== idCol && c !== nmCol && !cleanOther.includes(c)
     );
-    const otherFiltered = otherColumns.filter(
-      (c) => c !== idColumn && c !== nameColumn && !uniqueOnly.includes(c)
+    const otherFiltered = cleanOther.filter(
+      (c) => c !== idCol && c !== nmCol && !uniqueOnly.includes(c)
     );
-    if (!idColumn && !nameColumn && uniqueOnly.length === 0 && otherFiltered.length === 0) {
+    if (!idCol && !nmCol && uniqueOnly.length === 0 && otherFiltered.length === 0) {
       alert('Please select at least one ID, Name, Unique or Other column');
       return;
     }
@@ -412,11 +426,11 @@ export default function CodingTablesPage() {
       formData.append('file', blob, 'upload.xlsx');
       formData.append('sheet', sheet);
       formData.append('headerRow', headerRow);
-      formData.append('tableName', tableName);
-      formData.append('idColumn', idColumn);
-      formData.append('nameColumn', nameColumn);
-      formData.append('otherColumns', JSON.stringify(otherColumns));
-      formData.append('uniqueFields', JSON.stringify(uniqueFields));
+      formData.append('tableName', tbl);
+      formData.append('idColumn', idCol);
+      formData.append('nameColumn', nmCol);
+      formData.append('otherColumns', JSON.stringify(cleanOther));
+      formData.append('uniqueFields', JSON.stringify(cleanUnique));
       formData.append('calcFields', JSON.stringify(parseCalcFields(calcText)));
       formData.append('columnTypes', JSON.stringify(columnTypes));
       formData.append('notNullMap', JSON.stringify(notNullMap));
