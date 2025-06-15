@@ -27,6 +27,7 @@ try {
   bcrypt = { hash: async (s) => s, compare: async () => false };
 }
 import defaultModules from "./defaultModules.js";
+import { logDb } from "./debugLog.js";
 
 const tableColumnsCache = new Map();
 
@@ -541,16 +542,20 @@ export async function getPrimaryKeyColumns(tableName) {
     'SHOW KEYS FROM ?? WHERE Key_name = "PRIMARY"',
     [tableName],
   );
-  const pks = keyRows.map((r) => r.Column_name);
-  if (pks.length > 0) return pks;
+  let pks = keyRows.map((r) => r.Column_name);
 
-  const meta = await listTableColumnMeta(tableName);
-  const metaPks = meta.filter((m) => m.key === 'PRI').map((m) => m.name);
-  if (metaPks.length > 0) return metaPks;
+  if (pks.length === 0) {
+    const meta = await listTableColumnMeta(tableName);
+    pks = meta.filter((m) => m.key === 'PRI').map((m) => m.name);
+  }
 
-  const columns = await getTableColumnsSafe(tableName);
-  if (columns.includes('id')) return ['id'];
-  return [];
+  if (pks.length === 0) {
+    const columns = await getTableColumnsSafe(tableName);
+    if (columns.includes('id')) pks = ['id'];
+  }
+
+  logDb(`Primary key columns for ${tableName}: ${pks.join(', ')}`);
+  return pks;
 }
 
 export async function listTableRelationships(tableName) {
@@ -642,6 +647,7 @@ export async function updateTableRow(tableName, id, updates) {
   }
 
   const pkCols = await getPrimaryKeyColumns(tableName);
+  logDb(`updateTableRow(${tableName}, id=${id}) using keys: ${pkCols.join(', ')}`);
   if (pkCols.length === 0) {
     const err = new Error(`Table ${tableName} has no primary key`);
     err.status = 400;
@@ -715,6 +721,7 @@ export async function deleteTableRow(tableName, id) {
   }
 
   const pkCols = await getPrimaryKeyColumns(tableName);
+  logDb(`deleteTableRow(${tableName}, id=${id}) using keys: ${pkCols.join(', ')}`);
   if (pkCols.length === 0) {
     const err = new Error(`Table ${tableName} has no primary key`);
     err.status = 400;
