@@ -3,10 +3,19 @@ import assert from 'node:assert/strict';
 import * as db from '../../db/index.js';
 
 function mockPool(handler) {
-  const original = db.pool.query;
+  const originalQuery = db.pool.query;
+  const originalGet = db.pool.getConnection;
   db.pool.query = handler;
+  db.pool.getConnection = async () => ({
+    beginTransaction: async () => {},
+    commit: async () => {},
+    rollback: async () => {},
+    release: () => {},
+    query: handler,
+  });
   return () => {
-    db.pool.query = original;
+    db.pool.query = originalQuery;
+    db.pool.getConnection = originalGet;
   };
 }
 
