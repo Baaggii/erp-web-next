@@ -536,6 +536,16 @@ export async function listTableColumnMeta(tableName) {
   }));
 }
 
+export async function getPrimaryKeyColumns(tableName) {
+  const meta = await listTableColumnMeta(tableName);
+  const pks = meta.filter((m) => m.key === 'PRI').map((m) => m.name);
+  if (pks.length === 0) {
+    const columns = await getTableColumnsSafe(tableName);
+    if (columns.includes('id')) return ['id'];
+  }
+  return pks;
+}
+
 export async function listTableRelationships(tableName) {
   const [rows] = await pool.query(
     `SELECT COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
@@ -624,6 +634,15 @@ export async function updateTableRow(tableName, id, updates) {
     return { empid: empId, company_id: companyId };
   }
 
+  const pkCols = await getPrimaryKeyColumns(tableName);
+  if (pkCols.length === 1 && pkCols[0] !== 'id') {
+    await pool.query(
+      `UPDATE ?? SET ${setClause} WHERE \`${pkCols[0]}\` = ?`,
+      [tableName, ...values, id],
+    );
+    return { [pkCols[0]]: id };
+  }
+
   await pool.query(`UPDATE ?? SET ${setClause} WHERE id = ?`, [tableName, ...values, id]);
   return { id };
 }
@@ -669,6 +688,15 @@ export async function deleteTableRow(tableName, id) {
       [empId, companyId],
     );
     return { empid: empId, company_id: companyId };
+  }
+
+  const pkCols = await getPrimaryKeyColumns(tableName);
+  if (pkCols.length === 1 && pkCols[0] !== 'id') {
+    await pool.query(
+      `DELETE FROM ?? WHERE \`${pkCols[0]}\` = ?`,
+      [tableName, id],
+    );
+    return { [pkCols[0]]: id };
   }
 
   await pool.query('DELETE FROM ?? WHERE id = ?', [tableName, id]);
