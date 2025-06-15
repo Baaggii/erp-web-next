@@ -7,6 +7,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const logFile = fileURLToPath(new URL('../api-server/logs/db.log', import.meta.url));
 
 let logFileReady = false;
+let initLogged = false;
 
 function ensureLogFile() {
   try {
@@ -33,4 +34,7 @@ export function logDb(message) {
 
 // Ensure the log file is created when this module is loaded
 ensureLogFile();
-logDb('Debug logger initialized');
+if (!initLogged) {
+  logDb('Debug logger initialized');
+  initLogged = true;
+}
