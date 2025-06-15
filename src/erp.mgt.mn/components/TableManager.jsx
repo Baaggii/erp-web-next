@@ -17,6 +17,7 @@ export default function TableManager({ table, refreshId = 0 }) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [selectedRows, setSelectedRows] = useState(new Set());
+  const [localRefresh, setLocalRefresh] = useState(0);
   const { user } = useContext(AuthContext);
 
   function computeAutoInc(meta) {
@@ -88,11 +89,11 @@ export default function TableManager({ table, refreshId = 0 }) {
     return () => {
       canceled = true;
     };
-  }, [table, page, perPage, filters, sort, refreshId]);
+  }, [table, page, perPage, filters, sort, refreshId, localRefresh]);
 
   useEffect(() => {
     setSelectedRows(new Set());
-  }, [table, page, perPage, filters, sort, refreshId]);
+  }, [table, page, perPage, filters, sort, refreshId, localRefresh]);
 
   function getRowId(row) {
     const keys = getKeyFields();
@@ -287,30 +288,8 @@ export default function TableManager({ table, refreshId = 0 }) {
     setSelectedRows(new Set());
   }
 
-  async function refreshRows() {
-    if (!table) return;
-    const params = new URLSearchParams({ page, perPage });
-    if (sort.column) {
-      params.set('sort', sort.column);
-      params.set('dir', sort.dir);
-    }
-    Object.entries(filters).forEach(([k, v]) => {
-      if (v) params.set(k, v);
-    });
-    try {
-      const res = await fetch(
-        `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
-        { credentials: 'include' }
-      );
-      if (res.ok) {
-        const data = await res.json();
-        setRows(data.rows || []);
-        setCount(data.count || 0);
-        setSelectedRows(new Set());
-      }
-    } catch (err) {
-      console.error('Failed to refresh rows', err);
-    }
+  function refreshRows() {
+    setLocalRefresh((r) => r + 1);
   }
 
   if (!table) return null;
