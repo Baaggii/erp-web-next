@@ -38,13 +38,15 @@ export default function CodingTablesPage() {
     [allHeaders]
   );
 
-  function computeIdCandidates(hdrs, mode) {
+  function computeIdCandidates(hdrs, extras, mode) {
     const strs = hdrs.filter((h) => typeof h === 'string');
+    const extraList = extras.filter((f) => typeof f === 'string' && f.trim() !== '');
     if (mode === 'contains') {
       const ids = strs.filter((h) => h.toLowerCase().includes('id'));
-      return ids.length > 0 ? ids : strs;
+      const base = ids.length > 0 ? ids : strs;
+      return Array.from(new Set([...base, ...extraList]));
     }
-    return strs;
+    return Array.from(new Set([...strs, ...extraList]));
   }
 
   function handleFile(e) {
@@ -464,7 +466,7 @@ export default function CodingTablesPage() {
   }
 
   useEffect(() => {
-    setIdCandidates(computeIdCandidates(allHeaders, idFilterMode));
+    setIdCandidates(computeIdCandidates(allHeaders, extraFields, idFilterMode));
     setUniqueFields((u) => u.filter((f) => allHeaders.includes(f)));
     setOtherColumns((o) => o.filter((f) => allHeaders.includes(f)));
     setNotNullMap((m) => {
