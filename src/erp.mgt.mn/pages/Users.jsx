@@ -37,7 +37,14 @@ export default function Users() {
       body: JSON.stringify({ empid, email, name, password, roleId })
     });
     if (!res.ok) {
-      alert('Failed to add user');
+      let message = 'Failed to add user';
+      try {
+        const data = await res.json();
+        if (data && data.message) message += `: ${data.message}`;
+      } catch {
+        // ignore json errors
+      }
+      alert(message);
       return;
     }
     loadUsers();
@@ -54,7 +61,14 @@ export default function Users() {
       body: JSON.stringify({ email, name, roleId })
     });
     if (!res.ok) {
-      alert('Failed to update user');
+      let message = 'Failed to update user';
+      try {
+        const data = await res.json();
+        if (data && data.message) message += `: ${data.message}`;
+      } catch {
+        // ignore json errors
+      }
+      alert(message);
       return;
     }
     loadUsers();
@@ -67,7 +81,14 @@ export default function Users() {
       credentials: 'include'
     });
     if (!res.ok) {
-      alert('Failed to delete user');
+      let message = 'Failed to delete user';
+      try {
+        const data = await res.json();
+        if (data && data.message) message += `: ${data.message}`;
+      } catch {
+        // ignore json errors
+      }
+      alert(message);
       return;
     }
     loadUsers();

@@ -255,7 +255,14 @@ export default function TableManager({ table, refreshId = 0 }) {
       setCount(data.count || 0);
       setSelectedRows(new Set());
     } else {
-      alert('Delete failed');
+      let message = 'Delete failed';
+      try {
+        const data = await res.json();
+        if (data && data.message) message += `: ${data.message}`;
+      } catch {
+        // ignore json errors
+      }
+      alert(message);
     }
   }
 
@@ -268,7 +275,14 @@ export default function TableManager({ table, refreshId = 0 }) {
         { method: 'DELETE', credentials: 'include' }
       );
       if (!res.ok) {
-        alert('Delete failed');
+        let message = `Delete failed for ${id}`;
+        try {
+          const data = await res.json();
+          if (data && data.message) message += `: ${data.message}`;
+        } catch {
+          // ignore json errors
+        }
+        alert(message);
         return;
       }
     }
