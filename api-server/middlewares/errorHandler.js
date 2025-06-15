@@ -1,15 +1,18 @@
 import fs from 'fs';
-import path from 'path';
+import { dirname } from 'path';
+import { fileURLToPath } from 'url';
 
-const logFile = path.resolve('api-server/logs/error.log');
+// Resolve the log path relative to this module so it works regardless of
+// the process's current working directory or bundling method.
+const logFile = fileURLToPath(new URL('../logs/error.log', import.meta.url));
 
 export function errorHandler(err, req, res, next) {
   console.error(err.stack);
   try {
-    fs.mkdirSync(path.dirname(logFile), { recursive: true });
+    fs.mkdirSync(dirname(logFile), { recursive: true });
     fs.appendFileSync(logFile, `[${new Date().toISOString()}] ${err.stack}\n`);
-  } catch {
-    // ignore logging errors
+  } catch (logErr) {
+    console.error('Failed to write error log:', logErr);
   }
   res
     .status(err.status || 500)
