@@ -537,13 +537,20 @@ export async function listTableColumnMeta(tableName) {
 }
 
 export async function getPrimaryKeyColumns(tableName) {
+  const [keyRows] = await pool.query(
+    'SHOW KEYS FROM ?? WHERE Key_name = "PRIMARY"',
+    [tableName],
+  );
+  const pks = keyRows.map((r) => r.Column_name);
+  if (pks.length > 0) return pks;
+
   const meta = await listTableColumnMeta(tableName);
-  const pks = meta.filter((m) => m.key === 'PRI').map((m) => m.name);
-  if (pks.length === 0) {
-    const columns = await getTableColumnsSafe(tableName);
-    if (columns.includes('id')) return ['id'];
-  }
-  return pks;
+  const metaPks = meta.filter((m) => m.key === 'PRI').map((m) => m.name);
+  if (metaPks.length > 0) return metaPks;
+
+  const columns = await getTableColumnsSafe(tableName);
+  if (columns.includes('id')) return ['id'];
+  return [];
 }
 
 export async function listTableRelationships(tableName) {
