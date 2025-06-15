@@ -100,7 +100,9 @@ export default function TableManager({ table, refreshId = 0 }) {
     if (keys.length === 0) return undefined;
     const idVal =
       keys.length === 1 ? row[keys[0]] : keys.map((k) => row[k]).join('-');
-    console.log('Row id for', table, '=>', idVal);
+    if (import.meta.env.DEV) {
+      console.log('Row id for', table, '=>', idVal);
+    }
     return idVal;
   }
 
@@ -115,7 +117,9 @@ export default function TableManager({ table, refreshId = 0 }) {
         result = ['id'];
       }
     }
-    console.log('Key fields for', table, ':', result);
+    if (import.meta.env.DEV) {
+      console.log('Key fields for', table, ':', result);
+    }
     return result;
   }
 
