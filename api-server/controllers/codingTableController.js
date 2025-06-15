@@ -86,6 +86,7 @@ export async function uploadCodingTable(req, res, next) {
       calcFields,
       columnTypes: columnTypesJson,
       notNullMap: notNullJson,
+      autoIncrementStart,
     } = req.body;
     const extraCols = otherColumns ? JSON.parse(otherColumns) : [];
     const uniqueCols = uniqueFields ? JSON.parse(uniqueFields) : [];
@@ -97,6 +98,7 @@ export async function uploadCodingTable(req, res, next) {
     const calcDefs = calcFields ? JSON.parse(calcFields) : [];
     const columnTypeOverride = columnTypesJson ? JSON.parse(columnTypesJson) : {};
     const notNullOverride = notNullJson ? JSON.parse(notNullJson) : {};
+    const autoIncStart = parseInt(autoIncrementStart || '1', 10) || 1;
     if (!req.file) {
       return res.status(400).json({ error: 'File required' });
     }
@@ -248,9 +250,10 @@ export async function uploadCodingTable(req, res, next) {
       const indexName = makeUniqueKeyName(uniqueKeyFields);
       defs.push(`UNIQUE KEY ${indexName} (${uniqueKeyFields.map((c) => `\`${c}\``).join(', ')})`);
     }
+    const autoOpt = cleanIdCol ? ` AUTO_INCREMENT=${autoIncStart}` : '';
     const createSql = `CREATE TABLE IF NOT EXISTS \`${cleanTable}\` (
         ${defs.join(',\n        ')}
-      )`;
+      )${autoOpt}`;
     await pool.query(createSql);
     let count = 0;
     for (const r of finalRows) {
