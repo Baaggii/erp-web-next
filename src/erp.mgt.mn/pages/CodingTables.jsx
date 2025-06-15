@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
 
 function cleanIdentifier(name) {
@@ -27,6 +27,9 @@ export default function CodingTablesPage() {
   const [populateRange, setPopulateRange] = useState(false);
   const [startYear, setStartYear] = useState('');
   const [endYear, setEndYear] = useState('');
+  const [autoIncStart, setAutoIncStart] = useState('1');
+  const fileInputRef = useRef(null);
+  const [selectedFile, setSelectedFile] = useState(null);
 
   const allHeaders = useMemo(
     () => [...headers, ...extraFields.filter((f) => f.trim() !== '')],
@@ -60,6 +63,7 @@ export default function CodingTablesPage() {
   function handleFile(e) {
     const file = e.target.files[0];
     if (!file) return;
+    setSelectedFile(file);
     file.arrayBuffer().then((ab) => {
       const wb = XLSX.read(ab);
       setWorkbook(wb);
@@ -79,6 +83,7 @@ export default function CodingTablesPage() {
       setPopulateRange(false);
       setStartYear('');
       setEndYear('');
+      setAutoIncStart('1');
     });
   }
 
@@ -97,6 +102,7 @@ export default function CodingTablesPage() {
     setPopulateRange(false);
     setStartYear('');
     setEndYear('');
+    setAutoIncStart('1');
   }
 
   function handleHeaderRowChange(e) {
@@ -114,6 +120,32 @@ export default function CodingTablesPage() {
     setPopulateRange(false);
     setStartYear('');
     setEndYear('');
+    setAutoIncStart('1');
+  }
+
+  function refreshFile() {
+    if (!selectedFile) return;
+    selectedFile.arrayBuffer().then((ab) => {
+      const wb = XLSX.read(ab);
+      setWorkbook(wb);
+      setSheets(wb.SheetNames);
+      const firstSheet = wb.SheetNames[0];
+      setSheet(firstSheet);
+      setHeaderRow(1);
+      setHeaders([]);
+      setIdCandidates([]);
+      setIdColumn('');
+      setNameColumn('');
+      setSql('');
+      setOtherColumns([]);
+      setUniqueFields([]);
+      setColumnTypes({});
+      setNotNullMap({});
+      setPopulateRange(false);
+      setStartYear('');
+      setEndYear('');
+      setAutoIncStart('1');
+    });
   }
 
   function extractHeaders(wb, s, row) {
@@ -376,7 +408,7 @@ export default function CodingTablesPage() {
           .join(', ')})`
       );
     }
-    let sqlStr = `CREATE TABLE IF NOT EXISTS \`${tbl}\` (\n  ${defs.join(',\n  ')}\n);\n`;
+    let sqlStr = `CREATE TABLE IF NOT EXISTS \`${tbl}\` (\n  ${defs.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};\n`;
 
     for (const r of finalRows) {
       const cols = [];
@@ -453,6 +485,7 @@ export default function CodingTablesPage() {
       formData.append('populateRange', String(populateRange));
       formData.append('startYear', startYear);
       formData.append('endYear', endYear);
+      formData.append('autoIncrementStart', autoIncStart);
       const res = await fetch('/api/coding_tables/upload', {
         method: 'POST',
         credentials: 'include',
@@ -491,7 +524,10 @@ export default function CodingTablesPage() {
   return (
     <div>
       <h2>Coding Table Upload</h2>
-      <input type="file" accept=".xlsx,.xls" onChange={handleFile} />
+      <input type="file" accept=".xlsx,.xls" onChange={handleFile} ref={fileInputRef} />
+      {selectedFile && (
+        <button onClick={refreshFile} style={{ marginLeft: '0.5rem' }}>Refresh File</button>
+      )}
       {sheets.length > 0 && (
         <div>
           <div>
@@ -618,6 +654,17 @@ export default function CodingTablesPage() {
                     </option>
                   ))}
                 </select>
+                {idColumn && (
+                  <span style={{ marginLeft: '0.5rem' }}>
+                    Start Value:{' '}
+                    <input
+                      type="number"
+                      value={autoIncStart}
+                      onChange={(e) => setAutoIncStart(e.target.value)}
+                      style={{ width: '6rem' }}
+                    />
+                  </span>
+                )}
               </div>
               <div>
                 Name Column:
