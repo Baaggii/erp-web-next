@@ -543,6 +543,21 @@ export async function getPrimaryKeyColumns(tableName) {
   let pks = keyRows.map((r) => r.Column_name);
 
   if (pks.length === 0) {
+    const [uniqRows] = await pool.query(
+      'SHOW INDEX FROM ?? WHERE Non_unique = 0 ORDER BY Seq_in_index',
+      [tableName],
+    );
+    if (uniqRows.length > 0) {
+      const groups = new Map();
+      for (const row of uniqRows) {
+        if (!groups.has(row.Key_name)) groups.set(row.Key_name, []);
+        groups.get(row.Key_name)[row.Seq_in_index - 1] = row.Column_name;
+      }
+      pks = Array.from(groups.values()).sort((a, b) => a.length - b.length)[0];
+    }
+  }
+
+  if (pks.length === 0) {
     const meta = await listTableColumnMeta(tableName);
     pks = meta.filter((m) => m.key === 'PRI').map((m) => m.name);
   }
@@ -651,7 +666,7 @@ export async function updateTableRow(tableName, id, updates) {
   const pkCols = await getPrimaryKeyColumns(tableName);
   logDb(`updateTableRow(${tableName}, id=${id}) using keys: ${pkCols.join(', ')}`);
   if (pkCols.length === 0) {
-    const err = new Error(`Table ${tableName} has no primary key`);
+    const err = new Error(`Table ${tableName} has no primary or unique key`);
     err.status = 400;
     throw err;
   }
@@ -726,7 +741,7 @@ export async function deleteTableRow(tableName, id, conn = pool) {
   const pkCols = await getPrimaryKeyColumns(tableName);
   logDb(`deleteTableRow(${tableName}, id=${id}) using keys: ${pkCols.join(', ')}`);
   if (pkCols.length === 0) {
-    const err = new Error(`Table ${tableName} has no primary key`);
+    const err = new Error(`Table ${tableName} has no primary or unique key`);
     err.status = 400;
     throw err;
   }
