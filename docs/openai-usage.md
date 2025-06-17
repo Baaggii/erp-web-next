@@ -8,6 +8,7 @@ This project includes a small helper module for interacting with the OpenAI API 
    ```
    OPENAI_API_KEY=sk-...
    ```
+3. Start the API server with `npm run serve`.
 
 ## Developer Usage
 Developers can import the helper function `getResponse` in any server side code:
