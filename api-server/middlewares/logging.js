@@ -1,15 +1,14 @@
 import * as jwtService from '../services/jwtService.js';
 import { logActivity } from '../utils/activityLog.js';
+import { getCookieName } from '../utils/cookieNames.js';
 
 export function logger(req, res, next) {
   let user = 'anonymous';
   if (req.user) {
     user = req.user.empid || req.user.id;
-  } else if (req.cookies?.[process.env.COOKIE_NAME || 'token']) {
+  } else if (req.cookies?.[getCookieName()]) {
     try {
-      const payload = jwtService.verify(
-        req.cookies[process.env.COOKIE_NAME || 'token']
-      );
+      const payload = jwtService.verify(req.cookies[getCookieName()]);
       user = payload.empid || payload.id;
     } catch {}
   }

@@ -1,6 +1,7 @@
 import { getUserByEmpId, getUserById, updateUserPassword } from '../../db/index.js';
 import { hash } from '../services/passwordService.js';
 import * as jwtService from '../services/jwtService.js';
+import { getCookieName, getRefreshCookieName } from '../utils/cookieNames.js';
 
 export async function login(req, res, next) {
   try {
@@ -17,13 +18,13 @@ export async function login(req, res, next) {
 
     const refreshToken = jwtService.signRefresh({ id: user.id });
 
-    res.cookie(process.env.COOKIE_NAME || 'token', token, {
+    res.cookie(getCookieName(), token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: jwtService.getExpiryMillis(),
     });
-    res.cookie(process.env.REFRESH_COOKIE_NAME || 'refresh_token', refreshToken, {
+    res.cookie(getRefreshCookieName(), refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
@@ -40,8 +41,8 @@ export async function login(req, res, next) {
 }
 
 export async function logout(req, res) {
-  res.clearCookie(process.env.COOKIE_NAME || 'token');
-  res.clearCookie(process.env.REFRESH_COOKIE_NAME || 'refresh_token');
+  res.clearCookie(getCookieName());
+  res.clearCookie(getRefreshCookieName());
   res.sendStatus(204);
 }
 
@@ -81,7 +82,7 @@ export async function refresh(req, res) {
       empid: user.empid,
       role: user.role,
     });
-    res.cookie(process.env.COOKIE_NAME || 'token', newAccess, {
+    res.cookie(getCookieName(), newAccess, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
@@ -93,8 +94,8 @@ export async function refresh(req, res) {
       role: user.role,
     });
   } catch (err) {
-    res.clearCookie(process.env.COOKIE_NAME || 'token');
-    res.clearCookie(process.env.REFRESH_COOKIE_NAME || 'refresh_token');
+    res.clearCookie(getCookieName());
+    res.clearCookie(getRefreshCookieName());
     return res.status(401).json({ message: 'Invalid or expired refresh token' });
   }
 }
