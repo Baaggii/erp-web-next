@@ -834,3 +834,40 @@ export async function deleteTableRowCascade(tableName, id) {
     conn.release();
   }
 }
+
+export async function setColumnTranslations(tableName, mapping) {
+  const entries = Object.entries(mapping || {});
+  for (const [en, local] of entries) {
+    await pool.query(
+      `INSERT INTO column_translations (table_name, column_en, column_local)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE column_local = VALUES(column_local)`,
+      [tableName, en, local]
+    );
+  }
+  if (entries.length > 0) {
+    await pool.query(
+      `DELETE FROM column_translations WHERE table_name = ? AND column_en NOT IN (${entries
+        .map(() => '?')
+        .join(', ')})`,
+      [tableName, ...entries.map(([en]) => en)]
+    );
+  } else {
+    await pool.query(
+      'DELETE FROM column_translations WHERE table_name = ?',
+      [tableName]
+    );
+  }
+}
+
+export async function getColumnTranslations(tableName) {
+  const [rows] = await pool.query(
+    'SELECT column_en, column_local FROM column_translations WHERE table_name = ?',
+    [tableName]
+  );
+  const map = {};
+  rows.forEach((r) => {
+    map[r.column_en] = r.column_local;
+  });
+  return map;
+}
