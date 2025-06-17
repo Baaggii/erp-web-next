@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>OpenAI Floating Bar</title>
+  <style>
+    #openai-bar {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 280px;
+      background: #fff;
+      border: 1px solid #ccc;
+      padding: 10px;
+      z-index: 1000;
+    }
+    #openai-bar header {
+      cursor: move;
+      background: #f0f0f0;
+      padding: 5px;
+      font-weight: bold;
+    }
+    #openai-bar textarea {
+      width: 100%;
+      height: 60px;
+    }
+    #openai-bar .response {
+      margin-top: 8px;
+      max-height: 150px;
+      overflow: auto;
+    }
+  </style>
+</head>
+<body>
+<div id="openai-bar">
+  <header>Ask AI</header>
+  <textarea id="ai-input" placeholder="Type a prompt..."></textarea>
+  <button id="ai-send">Send</button>
+  <div class="response" id="ai-response"></div>
+</div>
+<script>
+const bar = document.getElementById('openai-bar');
+let drag = false, offsetX = 0, offsetY = 0;
+bar.querySelector('header').addEventListener('mousedown', e => {
+  drag = true;
+  offsetX = e.clientX - bar.offsetLeft;
+  offsetY = e.clientY - bar.offsetTop;
+});
+document.addEventListener('mouseup', () => drag = false);
+document.addEventListener('mousemove', e => {
+  if (drag) {
+    bar.style.left = e.clientX - offsetX + 'px';
+    bar.style.top = e.clientY - offsetY + 'px';
+  }
+});
+
+document.getElementById('ai-send').addEventListener('click', async () => {
+  const prompt = document.getElementById('ai-input').value;
+  const res = await fetch('/api/openai', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt })
+  });
+  const data = await res.json();
+  document.getElementById('ai-response').textContent = data.response;
+});
+</script>
+</body>
+</html>
