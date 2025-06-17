@@ -1,12 +1,24 @@
 import express from 'express';
-import { getResponse } from '../utils/openaiClient.js';
+import multer from 'multer';
+import { getResponse, getResponseWithFile } from '../utils/openaiClient.js';
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 const router = express.Router();
 
-router.post('/', async (req, res, next) => {
+router.post('/', upload.single('file'), async (req, res, next) => {
   try {
     const { prompt } = req.body;
-    const response = await getResponse(prompt);
+    let response;
+    if (req.file) {
+      response = await getResponseWithFile(
+        prompt,
+        req.file.buffer,
+        req.file.mimetype
+      );
+    } else {
+      response = await getResponse(prompt);
+    }
     res.json({ response });
   } catch (err) {
     next(err);

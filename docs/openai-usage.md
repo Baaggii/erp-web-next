@@ -21,6 +21,6 @@ console.log(reply);
 This returns the response text from the chat completion API using the key loaded from `.env`.
 
 ## End User Interface
-The file [`docs/openai-floating-bar.html`](./openai-floating-bar.html) demonstrates a movable floating bar that calls `/api/openai` to fetch a response. Serve it along with the API server and open it in the browser. Users can type prompts and read the replies directly on the page.
+The file [`docs/openai-floating-bar.html`](./openai-floating-bar.html) demonstrates a movable floating bar that calls `/api/openai` to fetch a response. The live ERP build includes a React component with the same functionality. The widget can now be collapsed into a small round button so it never blocks important content. Users may drag the bar anywhere on screen, type prompts, and even attach an image or other file. Uploaded files are sent to the API along with the prompt.
 
-The bar stays visible on every page and can be dragged to any position.
+The bar adapts to smaller screens and can be reopened via the "AI" button when collapsed.
