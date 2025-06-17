@@ -215,7 +215,7 @@ function AssignmentFormModal({ visible, onCancel, onSubmit, assignment, users, c
               </option>
               {users.map((u) => (
                 <option key={u.empid} value={u.empid}>
-                  {u.empid} - {u.name}
+                  {u.empid}
                 </option>
               ))}
             </select>

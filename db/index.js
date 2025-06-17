@@ -73,16 +73,16 @@ export async function testConnection() {
 }
 
 /**
- * Fetch a user by email (or employee ID)
+ * Fetch a user by employee ID
  */
-export async function getUserByEmail(emailOrEmpId) {
+export async function getUserByEmpId(empid) {
   const [rows] = await pool.query(
     `SELECT u.*, r.name AS role
      FROM users u
      JOIN user_roles r ON u.role_id = r.id
-     WHERE u.email = ? OR u.empid = ?
+     WHERE u.empid = ?
      LIMIT 1`,
-    [emailOrEmpId, emailOrEmpId],
+    [empid],
   );
   if (rows.length === 0) return null;
   const user = rows[0];
@@ -95,7 +95,7 @@ export async function getUserByEmail(emailOrEmpId) {
  */
 export async function listUsers() {
   const [rows] = await pool.query(
-    `SELECT u.id, u.empid, u.email, u.name, u.role_id, r.name AS role, u.created_at
+    `SELECT u.id, u.empid, u.role_id, r.name AS role, u.created_at
      FROM users u
      JOIN user_roles r ON u.role_id = r.id`,
   );
@@ -104,7 +104,7 @@ export async function listUsers() {
 
 export async function listUsersByCompany(companyId) {
   const [rows] = await pool.query(
-    `SELECT u.id, u.empid, u.email, u.name, uc.role_id, r.name AS role, u.created_at
+    `SELECT u.id, u.empid, uc.role_id, r.name AS role, u.created_at
        FROM users u
        JOIN user_companies uc ON u.empid = uc.empid
        JOIN user_roles r ON uc.role_id = r.id
@@ -133,16 +133,14 @@ export async function getUserById(id) {
  */
 export async function createUser({
   empid,
-  email,
-  name,
   password,
   role_id,
   created_by,
 }) {
   const hashed = await bcrypt.hash(password, 10);
   const [result] = await pool.query(
-    "INSERT INTO users (empid, email, name, password, role_id, created_by) VALUES (?, ?, ?, ?, ?, ?)",
-    [empid, email, name, hashed, role_id, created_by],
+    "INSERT INTO users (empid, password, role_id, created_by) VALUES (?, ?, ?, ?)",
+    [empid, hashed, role_id, created_by],
   );
   return { id: result.insertId };
 }
@@ -150,10 +148,10 @@ export async function createUser({
 /**
  * Update an existing user
  */
-export async function updateUser(id, { name, email, role_id }) {
+export async function updateUser(id, { role_id }) {
   await pool.query(
-    "UPDATE users SET name = ?, email = ?, role_id = ? WHERE id = ?",
-    [name, email, role_id, id],
+    "UPDATE users SET role_id = ? WHERE id = ?",
+    [role_id, id],
   );
   return { id };
 }
