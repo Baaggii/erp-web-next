@@ -27,7 +27,10 @@ test('listRowReferences counts referencing rows', async () => {
       return [[{ Column_name: 'id' }]];
     }
     if (sql.includes('information_schema.KEY_COLUMN_USAGE')) {
-      return [[{ TABLE_NAME: 'orders', COLUMN_NAME: 'user_id', REFERENCED_COLUMN_NAME: 'id' }]];
+      if (params[0] === 'users') {
+        return [[{ TABLE_NAME: 'orders', COLUMN_NAME: 'user_id', REFERENCED_COLUMN_NAME: 'id' }]];
+      }
+      return [[]];
     }
     if (sql.startsWith('SELECT COUNT(*)')) {
       assert.equal(params[0], 'orders');
@@ -56,6 +59,9 @@ test('deleteTableRowCascade deletes related rows first', async () => {
     }
     if (sql.startsWith('SELECT COUNT(*)')) {
       return [[{ count: 1 }]];
+    }
+    if (sql.startsWith('SELECT `id` FROM')) {
+      return [[{ id: 3 }]];
     }
     if (sql.startsWith('DELETE FROM')) {
       return [{}];

@@ -19,43 +19,11 @@
     <li><a href="https://erp.mgt.mn/">ERP Portal</a></li>
     <li><a href="https://customer.mgt.mn/">Customer Portal</a></li>
   </ul>
-  <!-- Floating OpenAI Bar -->
-  <div id="openai-bar">
-    <header>Ask AI</header>
-    <textarea id="ai-input" placeholder="Type a prompt..."></textarea>
-    <button id="ai-send">Send</button>
-    <div class="response" id="ai-response"></div>
-  </div>
   <script>
     document.getElementById('portalForm').addEventListener('submit', function(e) {
       e.preventDefault();
       var url = document.getElementById('portalSelect').value;
       window.location.href = url;
-    });
-    // Simple draggable floating bar for OpenAI chat
-    const bar = document.getElementById('openai-bar');
-    let drag = false, offsetX = 0, offsetY = 0;
-    bar.querySelector('header').addEventListener('mousedown', e => {
-      drag = true;
-      offsetX = e.clientX - bar.offsetLeft;
-      offsetY = e.clientY - bar.offsetTop;
-    });
-    document.addEventListener('mouseup', () => drag = false);
-    document.addEventListener('mousemove', e => {
-      if (drag) {
-        bar.style.left = e.clientX - offsetX + 'px';
-        bar.style.top = e.clientY - offsetY + 'px';
-      }
-    });
-    document.getElementById('ai-send').addEventListener('click', async () => {
-      const prompt = document.getElementById('ai-input').value;
-      const res = await fetch('/api/openai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt })
-      });
-      const data = await res.json();
-      document.getElementById('ai-response').textContent = data.response;
     });
   </script>
 </body>

@@ -794,17 +794,39 @@ export async function listRowReferences(tableName, id, conn = pool) {
   return results;
 }
 
+async function deleteCascade(conn, tableName, id, visited) {
+  const key = `${tableName}:${id}`;
+  if (visited.has(key)) return;
+  visited.add(key);
+  const refs = await listRowReferences(tableName, id, conn);
+  for (const r of refs) {
+    const pkCols = await getPrimaryKeyColumns(r.table);
+    if (pkCols.length === 0) {
+      await conn.query('DELETE FROM ?? WHERE ?? = ?', [r.table, r.column, r.value]);
+      continue;
+    }
+    const colList = pkCols.map((c) => `\`${c}\``).join(', ');
+    const [rows] = await conn.query(
+      `SELECT ${colList} FROM ?? WHERE ?? = ?`,
+      [r.table, r.column, r.value],
+    );
+    for (const row of rows) {
+      const refId =
+        pkCols.length === 1
+          ? row[pkCols[0]]
+          : pkCols.map((c) => row[c]).join('-');
+      await deleteCascade(conn, r.table, refId, visited);
+    }
+  }
+  await deleteTableRow(tableName, id, conn);
+}
+
 export async function deleteTableRowCascade(tableName, id) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    const refs = await listRowReferences(tableName, id, conn);
-    for (const r of refs) {
-      await conn.query('DELETE FROM ?? WHERE ?? = ?', [r.table, r.column, r.value]);
-    }
-    await deleteTableRow(tableName, id, conn);
+    await deleteCascade(conn, tableName, id, new Set());
     await conn.commit();
-    return refs;
   } catch (err) {
     await conn.rollback();
     throw err;
