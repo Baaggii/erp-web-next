@@ -11,12 +11,30 @@ async function getToken() {
 }
 
 const originalFetch = window.fetch.bind(window);
-window.fetch = async (url, options = {}) => {
+window.fetch = async (url, options = {}, _retry) => {
   const method = (options.method || 'GET').toUpperCase();
   if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
     const token = await getToken();
     options.headers = { ...(options.headers || {}), 'X-CSRF-Token': token };
     options.credentials = options.credentials || 'include';
   }
-  return originalFetch(url, options);
+  const res = await originalFetch(url, options);
+  if (res.status === 401 && !_retry) {
+    let msg;
+    try {
+      const data = await res.clone().json();
+      msg = data.message;
+    } catch {}
+    if (msg && msg.toLowerCase().includes('expired')) {
+      const refreshRes = await originalFetch('/api/auth/refresh', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'X-CSRF-Token': await getToken() },
+      });
+      if (refreshRes.ok) {
+        return window.fetch(url, options, true);
+      }
+    }
+  }
+  return res;
 };

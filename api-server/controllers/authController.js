@@ -1,6 +1,6 @@
-import { getUserByEmail, updateUserPassword } from '../../db/index.js'; // adjust path to your db folder
+import { getUserByEmail, getUserById, updateUserPassword } from '../../db/index.js';
 import { hash } from '../services/passwordService.js';
-import jwt from 'jsonwebtoken';
+import * as jwtService from '../services/jwtService.js';
 
 export async function login(req, res, next) {
   try {
@@ -9,21 +9,22 @@ export async function login(req, res, next) {
     if (!user || !(await user.verifyPassword(password))) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
-    const token = jwt.sign(
-      {
-        id: user.id,
-        email: user.email,
-        empid: user.empid,
-        role: user.role,
-        name: user.name,
-      },
-      process.env.JWT_SECRET,
-      {
-        expiresIn: '2h'
-      }
-    );
+    const token = jwtService.sign({
+      id: user.id,
+      email: user.email,
+      empid: user.empid,
+      role: user.role,
+      name: user.name,
+    });
 
-    res.cookie(process.env.COOKIE_NAME, token, {
+    const refreshToken = jwtService.signRefresh({ id: user.id });
+
+    res.cookie(process.env.COOKIE_NAME || 'token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax'
+    });
+    res.cookie(process.env.REFRESH_COOKIE_NAME || 'refresh_token', refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax'
@@ -41,7 +42,8 @@ export async function login(req, res, next) {
 }
 
 export async function logout(req, res) {
-  res.clearCookie(process.env.COOKIE_NAME);
+  res.clearCookie(process.env.COOKIE_NAME || 'token');
+  res.clearCookie(process.env.REFRESH_COOKIE_NAME || 'refresh_token');
   res.sendStatus(204);
 }
 
@@ -66,5 +68,40 @@ export async function changePassword(req, res, next) {
     res.sendStatus(204);
   } catch (err) {
     next(err);
+  }
+}
+
+export async function refresh(req, res) {
+  const token = req.cookies?.[process.env.REFRESH_COOKIE_NAME || 'refresh_token'];
+  if (!token) {
+    return res.status(401).json({ message: 'Refresh token missing' });
+  }
+  try {
+    const payload = jwtService.verifyRefresh(token);
+    const user = await getUserById(payload.id);
+    if (!user) throw new Error('User not found');
+    const newAccess = jwtService.sign({
+      id: user.id,
+      email: user.email,
+      empid: user.empid,
+      role: user.role,
+      name: user.name,
+    });
+    res.cookie(process.env.COOKIE_NAME || 'token', newAccess, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+    });
+    res.json({
+      id: user.id,
+      email: user.email,
+      empid: user.empid,
+      role: user.role,
+      name: user.name,
+    });
+  } catch (err) {
+    res.clearCookie(process.env.COOKIE_NAME || 'token');
+    res.clearCookie(process.env.REFRESH_COOKIE_NAME || 'refresh_token');
+    return res.status(401).json({ message: 'Invalid or expired refresh token' });
   }
 }
