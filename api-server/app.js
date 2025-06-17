@@ -15,6 +15,7 @@ import userCompanyRoutes from "./routes/user_companies.js";
 import rolePermissionRoutes from "./routes/role_permissions.js";
 import moduleRoutes from "./routes/modules.js";
 import openaiRoutes from "./routes/openai.js";
+import headerMappingRoutes from "./routes/header_mappings.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -54,6 +55,7 @@ app.use("/api/settings", settingsRoutes);
 app.use("/api/user_companies", userCompanyRoutes);
 app.use("/api/role_permissions", rolePermissionRoutes);
 app.use("/api/modules", moduleRoutes);
+app.use("/api/header_mappings", headerMappingRoutes);
 app.use("/api/openai", openaiRoutes);
 
 // Serve static React build and fallback to index.html

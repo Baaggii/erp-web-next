@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
+import { translateToMn } from '../utils/translateToMn.js';
 
 function cleanIdentifier(name) {
   return String(name).replace(/[^A-Za-z0-9_]+/g, '');
@@ -52,6 +53,28 @@ export default function CodingTablesPage() {
       return Array.from(new Set([...base, ...extraList]));
     }
     return Array.from(new Set([...strs, ...extraList]));
+  }
+
+  async function applyHeaderMapping(hdrs, currentMap) {
+    try {
+      const params = new URLSearchParams();
+      params.set('headers', hdrs.join(','));
+      const res = await fetch(`/api/header_mappings?${params.toString()}`, { credentials: 'include' });
+      const fetched = res.ok ? await res.json() : {};
+      const map = { ...currentMap };
+      hdrs.forEach((h) => {
+        if (!map[h]) {
+          map[h] = fetched[h] || translateToMn(h);
+        }
+      });
+      setHeaderMap(map);
+    } catch {
+      const map = { ...currentMap };
+      hdrs.forEach((h) => {
+        if (!map[h]) map[h] = translateToMn(h);
+      });
+      setHeaderMap(map);
+    }
   }
 
   function addExtraField() {
@@ -166,6 +189,9 @@ export default function CodingTablesPage() {
     });
     setHeaders(hdrs);
     setHeaderMap(map);
+    if (!mnRow) {
+      applyHeaderMapping(hdrs, map);
+    }
     const rows = data.slice(idx + 1);
     const valsByHeader = {};
     hdrs.forEach((h, i) => {
@@ -509,6 +535,20 @@ export default function CodingTablesPage() {
     }
   }
 
+  async function saveMappings() {
+    try {
+      await fetch('/api/header_mappings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ mappings: headerMap }),
+      });
+      alert('Mappings saved');
+    } catch {
+      alert('Failed to save mappings');
+    }
+  }
+
   useEffect(() => {
     setIdCandidates(computeIdCandidates(allHeaders, extraFields, idFilterMode));
     setUniqueFields((u) => u.filter((f) => allHeaders.includes(f)));
@@ -625,6 +665,9 @@ export default function CodingTablesPage() {
                     />
                   </div>
                 ))}
+                <button type="button" onClick={saveMappings} style={{ marginTop: '0.5rem' }}>
+                  Add Mappings
+                </button>
               </div>
               {hasDateField && (
                 <div>
