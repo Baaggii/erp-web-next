@@ -1,6 +1,6 @@
 export function getCookieName() {
   const name = process.env.COOKIE_NAME;
-  return name && name !== 'undefined' ? name : 'token';
+  return name && name !== 'undefined' ? name : 'erp_token';
 }
 
 export function getRefreshCookieName() {
