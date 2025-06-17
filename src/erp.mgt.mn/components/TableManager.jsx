@@ -15,7 +15,6 @@ export default function TableManager({ table, refreshId = 0 }) {
   const [relations, setRelations] = useState({});
   const [refData, setRefData] = useState({});
   const [columnMeta, setColumnMeta] = useState([]);
-  const [headerMap, setHeaderMap] = useState({});
   const [autoInc, setAutoInc] = useState(new Set());
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -54,7 +53,6 @@ export default function TableManager({ table, refreshId = 0 }) {
     setRelations({});
     setRefData({});
     setColumnMeta([]);
-    setHeaderMap({});
     fetch(`/api/tables/${encodeURIComponent(table)}/columns`, {
       credentials: 'include',
     })
@@ -64,14 +62,6 @@ export default function TableManager({ table, refreshId = 0 }) {
         setColumnMeta(cols);
         setAutoInc(computeAutoInc(cols));
       });
-    fetch(`/api/tables/${encodeURIComponent(table)}/headers`, {
-      credentials: 'include',
-    })
-      .then((res) => res.json())
-      .then((map) => {
-        if (!canceled) setHeaderMap(map);
-      })
-      .catch(() => {});
     return () => {
       canceled = true;
     };
@@ -623,7 +613,7 @@ export default function TableManager({ table, refreshId = 0 }) {
                 style={{ padding: '0.5rem', border: '1px solid #d1d5db', cursor: 'pointer' }}
                 onClick={() => handleSort(c)}
               >
-                {headerMap[c] || c}
+                {c}
                 {sort.column === c ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}
               </th>
             ))}
@@ -719,7 +709,6 @@ export default function TableManager({ table, refreshId = 0 }) {
         columns={formColumns}
         row={editing}
         relations={relationOpts}
-        headerMap={headerMap}
         disabledFields={disabledFields}
       />
       <CascadeDeleteModal
@@ -737,7 +726,6 @@ export default function TableManager({ table, refreshId = 0 }) {
         row={detailRow}
         columns={allColumns}
         relations={relationOpts}
-        headerMap={headerMap}
         references={detailRefs}
       />
     </div>
