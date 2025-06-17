@@ -1,8 +1,8 @@
+import "dotenv/config";
 import path from "path";
 import { fileURLToPath } from "url";
 import express from "express";
 import cookieParser from "cookie-parser";
-import dotenv from "dotenv";
 import { testConnection } from "../db/index.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
 import { logger } from "./middlewares/logging.js";
@@ -18,8 +18,6 @@ import tableRoutes from "./routes/tables.js";
 import codingTableRoutes from "./routes/coding_tables.js";
 import openaiRoutes from "./routes/openai.js";
 import { requireAuth } from "./middlewares/auth.js";
-
-dotenv.config();
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
