@@ -4,8 +4,6 @@ import {
   getTableRows,
   getTableRelations,
   getTableColumnsMeta,
-  getTableHeaderMap,
-  updateTableHeaderMap,
   updateRow,
   addRow,
   deleteRow,
@@ -19,8 +17,6 @@ router.get('/', requireAuth, getTables);
 // More specific routes must be defined before the generic ':table' pattern
 router.get('/:table/relations', requireAuth, getTableRelations);
 router.get('/:table/columns', requireAuth, getTableColumnsMeta);
-router.get('/:table/headers', requireAuth, getTableHeaderMap);
-router.put('/:table/headers', requireAuth, updateTableHeaderMap);
 router.get('/:table/:id/references', requireAuth, getRowReferences);
 router.put('/:table/:id', requireAuth, updateRow);
 router.delete('/:table/:id', requireAuth, deleteRow);
