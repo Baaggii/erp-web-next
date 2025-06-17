@@ -33,7 +33,8 @@ export async function getUser(req, res, next) {
 export async function createUser(req, res, next) {
   try {
     const newUser = await dbCreateUser({
-      ...req.body,
+      empid: req.body.empid,
+      password: req.body.password,
       role_id: req.body.roleId,
       created_by: req.user.empid
     });
@@ -46,7 +47,6 @@ export async function createUser(req, res, next) {
 export async function updateUser(req, res, next) {
   try {
     const updated = await dbUpdateUser(req.params.id, {
-      ...req.body,
       role_id: req.body.roleId
     });
     res.json(updated);

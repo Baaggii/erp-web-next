@@ -1,20 +1,18 @@
-import { getUserByEmail, getUserById, updateUserPassword } from '../../db/index.js';
+import { getUserByEmpId, getUserById, updateUserPassword } from '../../db/index.js';
 import { hash } from '../services/passwordService.js';
 import * as jwtService from '../services/jwtService.js';
 
 export async function login(req, res, next) {
   try {
-    const { email, password } = req.body;
-    const user = await getUserByEmail(email);
+    const { empid, password } = req.body;
+    const user = await getUserByEmpId(empid);
     if (!user || !(await user.verifyPassword(password))) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
     const token = jwtService.sign({
       id: user.id,
-      email: user.email,
       empid: user.empid,
       role: user.role,
-      name: user.name,
     });
 
     const refreshToken = jwtService.signRefresh({ id: user.id });
@@ -22,24 +20,19 @@ export async function login(req, res, next) {
     res.cookie(process.env.COOKIE_NAME || 'token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax'
+      sameSite: 'lax',
+      maxAge: jwtService.getExpiryMillis(),
     });
     res.cookie(process.env.REFRESH_COOKIE_NAME || 'refresh_token', refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax'
-    });
-    res.cookie(process.env.REFRESH_COOKIE_NAME || 'refresh_token', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax'
+      sameSite: 'lax',
+      maxAge: jwtService.getRefreshExpiryMillis(),
     });
     res.json({
       id: user.id,
-      email: user.email,
       empid: user.empid,
       role: user.role,
-      name: user.name,
     });
   } catch (err) {
     next(err);
@@ -55,10 +48,8 @@ export async function logout(req, res) {
 export async function getProfile(req, res) {
   res.json({
     id: req.user.id,
-    email: req.user.email,
     empid: req.user.empid,
     role: req.user.role,
-    name: req.user.name,
   });
 }
 
@@ -87,22 +78,19 @@ export async function refresh(req, res) {
     if (!user) throw new Error('User not found');
     const newAccess = jwtService.sign({
       id: user.id,
-      email: user.email,
       empid: user.empid,
       role: user.role,
-      name: user.name,
     });
     res.cookie(process.env.COOKIE_NAME || 'token', newAccess, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
+      maxAge: jwtService.getExpiryMillis(),
     });
     res.json({
       id: user.id,
-      email: user.email,
       empid: user.empid,
       role: user.role,
-      name: user.name,
     });
   } catch (err) {
     res.clearCookie(process.env.COOKIE_NAME || 'token');

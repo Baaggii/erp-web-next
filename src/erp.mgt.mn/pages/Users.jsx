@@ -25,16 +25,13 @@ export default function Users() {
   async function handleAdd() {
     const empid = prompt('EmpID?');
     if (!empid) return;
-    const email = prompt('Email?');
-    if (!email) return;
-    const name = prompt('Name?');
     const password = prompt('Password?');
     const roleId = prompt('Role ID (1=admin,2=user)?', '2');
     const res = await fetch('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ empid, email, name, password, roleId })
+      body: JSON.stringify({ empid, password, roleId })
     });
     if (!res.ok) {
       let message = 'Failed to add user';
@@ -51,14 +48,12 @@ export default function Users() {
   }
 
   async function handleEdit(u) {
-    const email = prompt('Email?', u.email);
-    const name = prompt('Name?', u.name);
     const roleId = prompt('Role ID?', u.role_id);
     const res = await fetch(`/api/users/${u.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ email, name, roleId })
+      body: JSON.stringify({ roleId })
     });
     if (!res.ok) {
       let message = 'Failed to update user';
@@ -121,9 +116,6 @@ export default function Users() {
                 ID
               </th>
               <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
-                Нэр
-              </th>
-              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                 Үүрэг
               </th>
               <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
@@ -133,19 +125,13 @@ export default function Users() {
           </thead>
           <tbody>
             {usersList
-              .filter(
-                (u) =>
-                  u.empid.toLowerCase().includes(filter.toLowerCase()) ||
-                  u.name.toLowerCase().includes(filter.toLowerCase()) ||
-                  (u.email || '').toLowerCase().includes(filter.toLowerCase())
+              .filter((u) =>
+                u.empid.toLowerCase().includes(filter.toLowerCase())
               )
               .map((u) => (
               <tr key={u.id}>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                   {u.empid}
-                </td>
-                <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
-                  {u.name}
                 </td>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                   {u.role}
