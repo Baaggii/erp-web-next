@@ -351,9 +351,10 @@ export default function TableManager({ table, refreshId = 0 }) {
       }
     }
 
+    const count = selectedRows.size;
     const confirmMsg = hasRelated
-      ? 'Delete selected rows and related records?'
-      : 'Delete selected rows?';
+      ? `Delete ${count} selected rows and related records?`
+      : `Delete ${count} selected rows?`;
     if (!window.confirm(confirmMsg)) return;
 
     for (const id of selectedRows) {
