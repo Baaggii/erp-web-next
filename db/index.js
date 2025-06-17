@@ -562,11 +562,19 @@ export async function listTableColumnMeta(tableName) {
   } catch {
     labels = {};
   }
+  let headerMap = {};
+  try {
+    const names = rows.map((r) => r.COLUMN_NAME);
+    const { getMappings } = await import('../api-server/services/headerMappings.js');
+    headerMap = await getMappings(names);
+  } catch {
+    headerMap = {};
+  }
   return rows.map((r) => ({
     name: r.COLUMN_NAME,
     key: r.COLUMN_KEY,
     extra: r.EXTRA,
-    label: labels[r.COLUMN_NAME] || r.COLUMN_NAME,
+    label: labels[r.COLUMN_NAME] || headerMap[r.COLUMN_NAME] || r.COLUMN_NAME,
   }));
 }
 
