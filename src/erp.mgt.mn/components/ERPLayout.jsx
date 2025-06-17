@@ -9,6 +9,7 @@ import { useRolePermissions, refreshRolePermissions } from "../hooks/useRolePerm
 import { useCompanyModules } from "../hooks/useCompanyModules.js";
 import { useModules } from "../hooks/useModules.js";
 import modulePath from "../utils/modulePath.js";
+import AskAIFloat from "./AskAIFloat.jsx";
 
 /**
  * A desktop‐style “ERPLayout” with:
@@ -60,6 +61,7 @@ export default function ERPLayout() {
           <Outlet />
         </MainWindow>
       </div>
+      <AskAIFloat />
     </div>
   );
 }

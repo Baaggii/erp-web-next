@@ -7,3 +7,30 @@ nav { max-width:960px; margin:0 auto; display:flex; justify-content:space-betwee
 .button:hover { background:#0056b3; }
 main { max-width:960px; margin:2rem auto; padding:0 1rem; }
 footer { text-align:center; padding:1rem; background:#f1f1f1; font-size:0.9rem; }
+
+/* Styles for the floating OpenAI bar */
+#openai-bar {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 280px;
+  background: #fff;
+  border: 1px solid #ccc;
+  padding: 10px;
+  z-index: 1000;
+}
+#openai-bar header {
+  cursor: move;
+  background: #f0f0f0;
+  padding: 5px;
+  font-weight: bold;
+}
+#openai-bar textarea {
+  width: 100%;
+  height: 60px;
+}
+#openai-bar .response {
+  margin-top: 8px;
+  max-height: 150px;
+  overflow: auto;
+}
