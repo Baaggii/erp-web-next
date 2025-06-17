@@ -9,8 +9,6 @@ import {
   listTableRelationships,
   listTableColumns,
   listTableColumnMeta,
-  getColumnTranslations,
-  setColumnTranslations,
 } from '../../db/index.js';
 let bcrypt;
 try {
@@ -114,25 +112,6 @@ export async function getRowReferences(req, res, next) {
   try {
     const refs = await listRowReferences(req.params.table, req.params.id);
     res.json(refs);
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function getColumnTranslationsHandler(req, res, next) {
-  try {
-    const map = await getColumnTranslations(req.params.table);
-    res.json(map);
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function saveColumnTranslationsHandler(req, res, next) {
-  try {
-    if (req.user.role !== 'admin') return res.sendStatus(403);
-    await setColumnTranslations(req.params.table, req.body);
-    res.sendStatus(204);
   } catch (err) {
     next(err);
   }

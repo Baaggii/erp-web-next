@@ -25,8 +25,6 @@ export default function TableManager({ table, refreshId = 0 }) {
   const [showDetail, setShowDetail] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
   const [detailRefs, setDetailRefs] = useState([]);
-  const [translations, setTranslations] = useState({});
-  const [editTrans, setEditTrans] = useState(false);
   const { user } = useContext(AuthContext);
 
   function computeAutoInc(meta) {
@@ -72,21 +70,6 @@ export default function TableManager({ table, refreshId = 0 }) {
   useEffect(() => {
     setAutoInc(computeAutoInc(columnMeta));
   }, [columnMeta]);
-
-  useEffect(() => {
-    if (!table) return;
-    let canceled = false;
-    fetch(`/api/tables/${encodeURIComponent(table)}/translations`, {
-      credentials: 'include',
-    })
-      .then((res) => res.json())
-      .then((m) => {
-        if (!canceled) setTranslations(m || {});
-      });
-    return () => {
-      canceled = true;
-    };
-  }, [table]);
 
   useEffect(() => {
     if (!table) return;
@@ -551,11 +534,6 @@ export default function TableManager({ table, refreshId = 0 }) {
         {selectedRows.size > 0 && (
           <button onClick={handleDeleteSelected}>Delete Selected</button>
         )}
-        {user?.role === 'admin' && (
-          <button onClick={() => setEditTrans((e) => !e)} style={{ marginLeft: '0.5rem' }}>
-            {editTrans ? 'Cancel Header Edit' : 'Edit Headers'}
-          </button>
-        )}
       </div>
       <div
         style={{
@@ -613,39 +591,6 @@ export default function TableManager({ table, refreshId = 0 }) {
           </button>
         </div>
       </div>
-      {editTrans && (
-        <div style={{ marginBottom: '0.5rem' }}>
-          {columns.map((c) => (
-            <div key={c} style={{ marginBottom: '0.25rem' }}>
-              {c}:{' '}
-              <input
-                value={translations[c] || ''}
-                onChange={(e) =>
-                  setTranslations({ ...translations, [c]: e.target.value })
-                }
-              />
-            </div>
-          ))}
-          <button
-            onClick={async () => {
-              await fetch(`/api/tables/${encodeURIComponent(table)}/translations`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify(translations),
-              });
-              const m = await fetch(
-                `/api/tables/${encodeURIComponent(table)}/translations`,
-                { credentials: 'include' },
-              ).then((r) => r.json());
-              setTranslations(m || {});
-              setEditTrans(false);
-            }}
-          >
-            Save Headers
-          </button>
-        </div>
-      )}
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ backgroundColor: '#e5e7eb' }}>
@@ -668,7 +613,7 @@ export default function TableManager({ table, refreshId = 0 }) {
                 style={{ padding: '0.5rem', border: '1px solid #d1d5db', cursor: 'pointer' }}
                 onClick={() => handleSort(c)}
               >
-                {translations[c] || c}
+                {c}
                 {sort.column === c ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}
               </th>
             ))}
@@ -765,7 +710,6 @@ export default function TableManager({ table, refreshId = 0 }) {
         row={editing}
         relations={relationOpts}
         disabledFields={disabledFields}
-        translations={translations}
       />
       <CascadeDeleteModal
         visible={showCascade}
@@ -783,7 +727,6 @@ export default function TableManager({ table, refreshId = 0 }) {
         columns={allColumns}
         relations={relationOpts}
         references={detailRefs}
-        translations={translations}
       />
     </div>
   );
