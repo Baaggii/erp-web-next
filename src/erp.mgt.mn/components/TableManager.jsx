@@ -25,6 +25,8 @@ export default function TableManager({ table, refreshId = 0 }) {
   const [showDetail, setShowDetail] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
   const [detailRefs, setDetailRefs] = useState([]);
+  const [editLabels, setEditLabels] = useState(false);
+  const [labelEdits, setLabelEdits] = useState({});
   const { user } = useContext(AuthContext);
 
   function computeAutoInc(meta) {
@@ -486,6 +488,10 @@ export default function TableManager({ table, refreshId = 0 }) {
       : rows[0]
       ? Object.keys(rows[0])
       : [];
+  const labels = {};
+  columnMeta.forEach((c) => {
+    labels[c.name] = c.label || c.name;
+  });
   const hiddenColumns = ['password', 'created_by', 'created_at'];
   const columns = allColumns.filter((c) => !hiddenColumns.includes(c));
 
@@ -613,7 +619,7 @@ export default function TableManager({ table, refreshId = 0 }) {
                 style={{ padding: '0.5rem', border: '1px solid #d1d5db', cursor: 'pointer' }}
                 onClick={() => handleSort(c)}
               >
-                {c}
+                {labels[c] || c}
                 {sort.column === c ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}
               </th>
             ))}
@@ -710,6 +716,7 @@ export default function TableManager({ table, refreshId = 0 }) {
         row={editing}
         relations={relationOpts}
         disabledFields={disabledFields}
+        labels={labels}
       />
       <CascadeDeleteModal
         visible={showCascade}
@@ -727,7 +734,58 @@ export default function TableManager({ table, refreshId = 0 }) {
         columns={allColumns}
         relations={relationOpts}
         references={detailRefs}
+        labels={labels}
       />
+      {user?.role === 'admin' && (
+        <button onClick={() => {
+          const map = {};
+          columnMeta.forEach((c) => { map[c.name] = c.label || ''; });
+          setLabelEdits(map);
+          setEditLabels(true);
+        }} style={{ marginTop: '0.5rem' }}>
+          Edit Field Labels
+        </button>
+      )}
+      {editLabels && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.4)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+          <div style={{ backgroundColor: '#fff', padding: '1rem', borderRadius: '4px', maxHeight: '90vh', overflowY: 'auto' }}>
+            <h3 style={{ marginTop: 0 }}>Edit Labels</h3>
+            {columns.map((c) => (
+              <div key={c} style={{ marginBottom: '0.5rem' }}>
+                {c}:{' '}
+                <input value={labelEdits[c] || ''} onChange={(e) => setLabelEdits({ ...labelEdits, [c]: e.target.value })} />
+              </div>
+            ))}
+            <div style={{ textAlign: 'right' }}>
+              <button onClick={() => setEditLabels(false)} style={{ marginRight: '0.5rem' }}>Cancel</button>
+              <button onClick={async () => {
+                await fetch(`/api/tables/${encodeURIComponent(table)}/labels`, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  credentials: 'include',
+                  body: JSON.stringify({ labels: labelEdits }),
+                });
+                const res = await fetch(`/api/tables/${encodeURIComponent(table)}/columns`, { credentials: 'include' });
+                if (res.ok) {
+                  const cols = await res.json();
+                  setColumnMeta(cols);
+                }
+                setEditLabels(false);
+              }}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

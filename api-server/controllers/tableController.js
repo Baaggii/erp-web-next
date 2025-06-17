@@ -9,6 +9,7 @@ import {
   listTableRelationships,
   listTableColumns,
   listTableColumnMeta,
+  saveTableColumnLabels,
 } from '../../db/index.js';
 let bcrypt;
 try {
@@ -112,6 +113,17 @@ export async function getRowReferences(req, res, next) {
   try {
     const refs = await listRowReferences(req.params.table, req.params.id);
     res.json(refs);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function saveColumnLabels(req, res, next) {
+  try {
+    if (req.user.role !== 'admin') return res.sendStatus(403);
+    const labels = req.body.labels || {};
+    await saveTableColumnLabels(req.params.table, labels);
+    res.sendStatus(204);
   } catch (err) {
     next(err);
   }

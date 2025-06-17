@@ -7,7 +7,7 @@ try {
 } catch {
   xlsx = { read: () => ({ SheetNames: [], Sheets: {} }), utils: { sheet_to_json: () => [] } };
 }
-import { pool } from '../../db/index.js';
+import { pool, setTableColumnLabel } from '../../db/index.js';
 
 function cleanIdentifier(name) {
   return String(name).replace(/[^A-Za-z0-9_]+/g, '');
@@ -86,6 +86,7 @@ export async function uploadCodingTable(req, res, next) {
       calcFields,
       columnTypes: columnTypesJson,
       notNullMap: notNullJson,
+      headerMap: headerMapJson,
       autoIncrementStart,
     } = req.body;
     const extraCols = otherColumns ? JSON.parse(otherColumns) : [];
@@ -98,6 +99,7 @@ export async function uploadCodingTable(req, res, next) {
     const calcDefs = calcFields ? JSON.parse(calcFields) : [];
     const columnTypeOverride = columnTypesJson ? JSON.parse(columnTypesJson) : {};
     const notNullOverride = notNullJson ? JSON.parse(notNullJson) : {};
+    const headerMap = headerMapJson ? JSON.parse(headerMapJson) : {};
     const autoIncStart = parseInt(autoIncrementStart || '1', 10) || 1;
     if (!req.file) {
       return res.status(400).json({ error: 'File required' });
@@ -255,6 +257,9 @@ export async function uploadCodingTable(req, res, next) {
         ${defs.join(',\n        ')}
       )${autoOpt}`;
     await pool.query(createSql);
+    for (const [col, label] of Object.entries(headerMap)) {
+      if (label) await setTableColumnLabel(cleanTable, cleanIdentifier(col), label);
+    }
     let count = 0;
     for (const r of finalRows) {
       const cols = [];

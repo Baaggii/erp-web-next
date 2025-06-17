@@ -13,6 +13,7 @@ export default function CodingTablesPage() {
   const [idCandidates, setIdCandidates] = useState([]);
   const [idFilterMode, setIdFilterMode] = useState('contains');
   const [headerRow, setHeaderRow] = useState(1);
+  const [mnHeaderRow, setMnHeaderRow] = useState('');
   const [tableName, setTableName] = useState('');
   const [idColumn, setIdColumn] = useState('');
   const [nameColumn, setNameColumn] = useState('');
@@ -24,6 +25,7 @@ export default function CodingTablesPage() {
   const [columnTypes, setColumnTypes] = useState({});
   const [notNullMap, setNotNullMap] = useState({});
   const [extraFields, setExtraFields] = useState(['']);
+  const [headerMap, setHeaderMap] = useState({});
   const [populateRange, setPopulateRange] = useState(false);
   const [startYear, setStartYear] = useState('');
   const [endYear, setEndYear] = useState('');
@@ -68,7 +70,9 @@ export default function CodingTablesPage() {
       const firstSheet = wb.SheetNames[0];
       setSheet(firstSheet);
       setHeaderRow(1);
+      setMnHeaderRow('');
       setHeaders([]);
+      setHeaderMap({});
       setIdCandidates([]);
       setIdColumn('');
       setNameColumn('');
@@ -95,6 +99,8 @@ export default function CodingTablesPage() {
     const s = e.target.value;
     setSheet(s);
     setHeaders([]);
+    setHeaderMap({});
+    setMnHeaderRow('');
     setIdCandidates([]);
     setIdColumn('');
     setNameColumn('');
@@ -113,6 +119,8 @@ export default function CodingTablesPage() {
     const r = Number(e.target.value) || 1;
     setHeaderRow(r);
     setHeaders([]);
+    setHeaderMap({});
+    setMnHeaderRow('');
     setIdCandidates([]);
     setIdColumn('');
     setNameColumn('');
@@ -134,22 +142,30 @@ export default function CodingTablesPage() {
     fileInputRef.current.click();
   }
 
-  function extractHeaders(wb, s, row) {
+  function extractHeaders(wb, s, row, mnRow) {
     const data = XLSX.utils.sheet_to_json(wb.Sheets[s], {
       header: 1,
       blankrows: false,
     });
     const idx = Number(row) - 1;
+    const mnIdx = mnRow ? Number(mnRow) - 1 : -1;
     const raw = data[idx] || [];
+    const mnRaw = mnIdx >= 0 ? data[mnIdx] || [] : [];
     const hdrs = [];
     const keepIdx = [];
+    const map = {};
     raw.forEach((h, i) => {
       if (String(h).length > 1) {
         hdrs.push(cleanIdentifier(h));
         keepIdx.push(i);
+        const mnVal = mnRaw[i];
+        if (mnVal && String(mnVal).trim()) {
+          map[cleanIdentifier(h)] = String(mnVal).trim();
+        }
       }
     });
     setHeaders(hdrs);
+    setHeaderMap(map);
     const rows = data.slice(idx + 1);
     const valsByHeader = {};
     hdrs.forEach((h, i) => {
@@ -172,7 +188,7 @@ export default function CodingTablesPage() {
 
   function handleExtract() {
     if (!workbook) return;
-    extractHeaders(workbook, sheet, headerRow);
+    extractHeaders(workbook, sheet, headerRow, mnHeaderRow);
   }
 
   function removeSqlUnsafeChars(v) {
@@ -460,6 +476,7 @@ export default function CodingTablesPage() {
       formData.append('file', blob, 'upload.xlsx');
       formData.append('sheet', sheet);
       formData.append('headerRow', headerRow);
+      formData.append('headerMap', JSON.stringify(headerMap));
       formData.append('tableName', tbl);
       formData.append('idColumn', idCol);
       formData.append('nameColumn', nmCol);
@@ -534,6 +551,14 @@ export default function CodingTablesPage() {
               value={headerRow}
               onChange={handleHeaderRowChange}
             />
+            Mongolian Field Name Row:
+            <input
+              type="number"
+              min="1"
+              value={mnHeaderRow}
+              onChange={(e) => setMnHeaderRow(e.target.value)}
+              style={{ marginLeft: '0.5rem' }}
+            />
             <button onClick={handleExtract}>Read Columns</button>
           </div>
           <div>
@@ -586,6 +611,20 @@ export default function CodingTablesPage() {
                   ))}
                   <button type="button" onClick={addExtraField}>Add Field</button>
                 </div>
+              </div>
+              <div>
+                <h4>Mongolian Field Names</h4>
+                {headers.map((h) => (
+                  <div key={h} style={{ marginBottom: '0.25rem' }}>
+                    {h}:{' '}
+                    <input
+                      value={headerMap[h] || ''}
+                      onChange={(e) =>
+                        setHeaderMap({ ...headerMap, [h]: e.target.value })
+                      }
+                    />
+                  </div>
+                ))}
               </div>
               {hasDateField && (
                 <div>
