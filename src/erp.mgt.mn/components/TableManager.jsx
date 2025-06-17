@@ -490,26 +490,37 @@ export default function TableManager({ table, refreshId = 0 }) {
     );
     const doc = new jsPDF();
     const pageHeight = doc.internal.pageSize.getHeight();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 10;
+    const maxWidth = pageWidth - margin * 2;
+
     const header = columns.map((c) => labels[c] || c).join(' | ');
-    let y = 10;
-    doc.text(`Table: ${table}`, 10, y);
+    let y = margin;
+
+    doc.setFontSize(12);
+    doc.text(`Table: ${table}`, margin, y);
+
     y += 10;
     doc.setFontSize(10);
-    doc.text(header, 10, y);
-    y += 7;
+    const headerLines = doc.splitTextToSize(header, maxWidth);
+    doc.text(headerLines, margin, y);
+    y += headerLines.length * 7;
+
     rows.forEach((r) => {
       const line = columns
         .map((c) =>
           relationOpts[c] ? labelMap[c][r[c]] || String(r[c]) : String(r[c])
         )
         .join(' | ');
-      if (y > pageHeight - 10) {
+      const lines = doc.splitTextToSize(line, maxWidth);
+      if (y + lines.length * 7 > pageHeight - margin) {
         doc.addPage();
-        y = 10;
+        y = margin;
       }
-      doc.text(line, 10, y);
-      y += 7;
+      doc.text(lines, margin, y);
+      y += lines.length * 7;
     });
+
     doc.save(`${table}.pdf`);
   }
 
