@@ -23,6 +23,7 @@ export default function CodingTablesPage() {
   const [uploading, setUploading] = useState(false);
   const [columnTypes, setColumnTypes] = useState({});
   const [notNullMap, setNotNullMap] = useState({});
+  const [mnHeaders, setMnHeaders] = useState({});
   const [extraFields, setExtraFields] = useState(['']);
   const [populateRange, setPopulateRange] = useState(false);
   const [startYear, setStartYear] = useState('');
@@ -150,6 +151,11 @@ export default function CodingTablesPage() {
       }
     });
     setHeaders(hdrs);
+    const map = {};
+    hdrs.forEach((h) => {
+      map[h] = h;
+    });
+    setMnHeaders(map);
     const rows = data.slice(idx + 1);
     const valsByHeader = {};
     hdrs.forEach((h, i) => {
@@ -468,6 +474,7 @@ export default function CodingTablesPage() {
       formData.append('calcFields', JSON.stringify(parseCalcFields(calcText)));
       formData.append('columnTypes', JSON.stringify(columnTypes));
       formData.append('notNullMap', JSON.stringify(notNullMap));
+      formData.append('headerTranslations', JSON.stringify(mnHeaders));
       formData.append('populateRange', String(populateRange));
       formData.append('startYear', startYear);
       formData.append('endYear', endYear);
@@ -502,6 +509,16 @@ export default function CodingTablesPage() {
         updated[h] = m[h] || false;
       });
       return updated;
+    });
+    setMnHeaders((m) => {
+      const next = { ...m };
+      allHeaders.forEach((h) => {
+        if (!next[h]) next[h] = h;
+      });
+      Object.keys(next).forEach((k) => {
+        if (!allHeaders.includes(k)) delete next[k];
+      });
+      return next;
     });
     if (idColumn && !allHeaders.includes(idColumn)) setIdColumn('');
     if (nameColumn && !allHeaders.includes(nameColumn)) setNameColumn('');
@@ -704,6 +721,25 @@ export default function CodingTablesPage() {
                       />
                       {h}
                     </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                Mongolian Headers:
+                <div>
+                  {allHeaders.map((h) => (
+                    <div key={h} style={{ marginBottom: '0.25rem' }}>
+                      {h}:{' '}
+                      <input
+                        value={mnHeaders[h] || ''}
+                        onChange={(e) =>
+                          setMnHeaders({
+                            ...mnHeaders,
+                            [h]: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
                   ))}
                 </div>
               </div>
