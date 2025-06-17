@@ -29,6 +29,11 @@ export async function login(req, res, next) {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax'
     });
+    res.cookie(process.env.REFRESH_COOKIE_NAME || 'refresh_token', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax'
+    });
     res.json({
       id: user.id,
       email: user.email,
