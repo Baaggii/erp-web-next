@@ -322,13 +322,13 @@ export default function TableManager({ table, refreshId = 0 }) {
 
   async function handleDeleteSelected() {
     if (selectedRows.size === 0) return;
-    if (!window.confirm('Delete selected rows?')) return;
+    const cascadeMap = new Map();
+    let hasRelated = false;
     for (const id of selectedRows) {
       if (id === undefined) {
         alert('Delete failed: table has no primary key');
         return;
       }
-      let cascade = false;
       try {
         const refRes = await fetch(
           `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}/references`,
@@ -339,20 +339,25 @@ export default function TableManager({ table, refreshId = 0 }) {
           const total = Array.isArray(refs)
             ? refs.reduce((a, r) => a + (r.count || 0), 0)
             : 0;
-          const msg =
-            total > 0
-              ? `Delete row ${id} and ${total} related records?`
-              : 'Delete row?';
-          if (!window.confirm(msg)) return;
-          cascade = total > 0;
+          cascadeMap.set(id, total > 0);
+          if (total > 0) hasRelated = true;
         } else {
-          if (!window.confirm('Delete row and related records?')) return;
-          cascade = true;
+          cascadeMap.set(id, true);
+          hasRelated = true;
         }
       } catch {
-        if (!window.confirm('Delete row and related records?')) return;
-        cascade = true;
+        cascadeMap.set(id, true);
+        hasRelated = true;
       }
+    }
+
+    const confirmMsg = hasRelated
+      ? 'Delete selected rows and related records?'
+      : 'Delete selected rows?';
+    if (!window.confirm(confirmMsg)) return;
+
+    for (const id of selectedRows) {
+      const cascade = cascadeMap.get(id);
       const res = await fetch(
         `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}${
           cascade ? '?cascade=true' : ''
