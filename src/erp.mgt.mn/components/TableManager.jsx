@@ -2,6 +2,7 @@ import React, { useEffect, useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import RowFormModal from './RowFormModal.jsx';
 import CascadeDeleteModal from './CascadeDeleteModal.jsx';
+import RowDetailModal from './RowDetailModal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
 export default function TableManager({ table, refreshId = 0 }) {
@@ -21,6 +22,9 @@ export default function TableManager({ table, refreshId = 0 }) {
   const [localRefresh, setLocalRefresh] = useState(0);
   const [deleteInfo, setDeleteInfo] = useState(null); // { id, refs }
   const [showCascade, setShowCascade] = useState(false);
+  const [showDetail, setShowDetail] = useState(false);
+  const [detailRow, setDetailRow] = useState(null);
+  const [detailRefs, setDetailRefs] = useState([]);
   const { user } = useContext(AuthContext);
 
   function computeAutoInc(meta) {
@@ -66,6 +70,59 @@ export default function TableManager({ table, refreshId = 0 }) {
   useEffect(() => {
     setAutoInc(computeAutoInc(columnMeta));
   }, [columnMeta]);
+
+  useEffect(() => {
+    if (!table) return;
+    let canceled = false;
+    async function load() {
+      try {
+        const res = await fetch(
+          `/api/tables/${encodeURIComponent(table)}/relations`,
+          { credentials: 'include' },
+        );
+        if (!res.ok) return;
+        const rels = await res.json();
+        if (canceled) return;
+        const map = {};
+        rels.forEach((r) => {
+          map[r.COLUMN_NAME] = {
+            table: r.REFERENCED_TABLE_NAME,
+            column: r.REFERENCED_COLUMN_NAME,
+          };
+        });
+        setRelations(map);
+        const dataMap = {};
+        for (const [col, rel] of Object.entries(map)) {
+          try {
+            const params = new URLSearchParams({ perPage: 100 });
+            const refRes = await fetch(
+              `/api/tables/${encodeURIComponent(rel.table)}?${params.toString()}`,
+              { credentials: 'include' },
+            );
+            const json = await refRes.json();
+            if (Array.isArray(json.rows)) {
+              dataMap[col] = json.rows.map((row) => {
+                const cells = Object.values(row).slice(0, 2);
+                return {
+                  value: row[rel.column],
+                  label: cells.join(' - '),
+                };
+              });
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+        if (!canceled) setRefData(dataMap);
+      } catch (err) {
+        console.error('Failed to load table relations', err);
+      }
+    }
+    load();
+    return () => {
+      canceled = true;
+    };
+  }, [table]);
 
   useEffect(() => {
     if (!table) return;
@@ -151,6 +208,30 @@ export default function TableManager({ table, refreshId = 0 }) {
     await ensureColumnMeta();
     setEditing(row);
     setShowForm(true);
+  }
+
+  async function openDetail(row) {
+    setDetailRow(row);
+    const id = getRowId(row);
+    if (id !== undefined) {
+      try {
+        const res = await fetch(
+          `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}/references`,
+          { credentials: 'include' },
+        );
+        if (res.ok) {
+          const refs = await res.json();
+          setDetailRefs(Array.isArray(refs) ? refs : []);
+        } else {
+          setDetailRefs([]);
+        }
+      } catch {
+        setDetailRefs([]);
+      }
+    } else {
+      setDetailRefs([]);
+    }
+    setShowDetail(true);
   }
 
   function toggleRow(id) {
@@ -600,6 +681,9 @@ export default function TableManager({ table, refreshId = 0 }) {
                   const rid = getRowId(r);
                   return (
                     <>
+                      <button onClick={() => openDetail(r)} style={{ marginRight: '0.25rem' }}>
+                        View
+                      </button>
                       <button onClick={() => openEdit(r)} disabled={rid === undefined}>
                         Edit
                       </button>
@@ -635,6 +719,14 @@ export default function TableManager({ table, refreshId = 0 }) {
           setDeleteInfo(null);
         }}
         onConfirm={confirmCascadeDelete}
+      />
+      <RowDetailModal
+        visible={showDetail}
+        onClose={() => setShowDetail(false)}
+        row={detailRow}
+        columns={allColumns}
+        relations={relationOpts}
+        references={detailRefs}
       />
     </div>
   );
