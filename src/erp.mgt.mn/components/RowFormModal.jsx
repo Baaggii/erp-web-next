@@ -7,6 +7,7 @@ export default function RowFormModal({
   columns,
   row,
   relations = {},
+  headerMap = {},
   disabledFields = [],
 }) {
   const [formVals, setFormVals] = useState(() => {
@@ -61,7 +62,7 @@ export default function RowFormModal({
         >
           {columns.map((c) => (
             <div key={c} style={{ marginBottom: '0.75rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.25rem' }}>{c}</label>
+              <label style={{ display: 'block', marginBottom: '0.25rem' }}>{headerMap[c] || c}</label>
               {Array.isArray(relations[c]) ? (
                 <select
                   value={formVals[c]}

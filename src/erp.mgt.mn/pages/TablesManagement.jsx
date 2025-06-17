@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import TableManager from '../components/TableManager.jsx';
+import HeaderMapEditor from '../components/HeaderMapEditor.jsx';
 
 export default function TablesManagement() {
   const [tables, setTables] = useState([]);
@@ -41,7 +42,10 @@ export default function TablesManagement() {
       </select>
       <button onClick={loadTables} style={{ marginLeft: '0.5rem' }}>Refresh List</button>
       {selectedTable && (
-        <TableManager table={selectedTable} refreshId={refreshId} />
+        <>
+          <TableManager table={selectedTable} refreshId={refreshId} />
+          <HeaderMapEditor table={selectedTable} />
+        </>
       )}
     </div>
   );
