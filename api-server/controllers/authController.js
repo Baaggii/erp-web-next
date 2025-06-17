@@ -41,8 +41,13 @@ export async function login(req, res, next) {
 }
 
 export async function logout(req, res) {
-  res.clearCookie(getCookieName());
-  res.clearCookie(getRefreshCookieName());
+  const opts = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+  };
+  res.clearCookie(getCookieName(), opts);
+  res.clearCookie(getRefreshCookieName(), opts);
   res.sendStatus(204);
 }
 
@@ -94,8 +99,13 @@ export async function refresh(req, res) {
       role: user.role,
     });
   } catch (err) {
-    res.clearCookie(getCookieName());
-    res.clearCookie(getRefreshCookieName());
+    const opts = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+    };
+    res.clearCookie(getCookieName(), opts);
+    res.clearCookie(getRefreshCookieName(), opts);
     return res.status(401).json({ message: 'Invalid or expired refresh token' });
   }
 }
