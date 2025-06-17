@@ -480,6 +480,39 @@ export default function TableManager({ table, refreshId = 0 }) {
     setLocalRefresh((r) => r + 1);
   }
 
+  async function exportPdf() {
+    if (rows.length === 0) {
+      alert('No data to export');
+      return;
+    }
+    const { jsPDF } = await import(
+      'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/+esm'
+    );
+    const doc = new jsPDF();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const header = columns.map((c) => labels[c] || c).join(' | ');
+    let y = 10;
+    doc.text(`Table: ${table}`, 10, y);
+    y += 10;
+    doc.setFontSize(10);
+    doc.text(header, 10, y);
+    y += 7;
+    rows.forEach((r) => {
+      const line = columns
+        .map((c) =>
+          relationOpts[c] ? labelMap[c][r[c]] || String(r[c]) : String(r[c])
+        )
+        .join(' | ');
+      if (y > pageHeight - 10) {
+        doc.addPage();
+        y = 10;
+      }
+      doc.text(line, 10, y);
+      y += 7;
+    });
+    doc.save(`${table}.pdf`);
+  }
+
   if (!table) return null;
 
   const allColumns =
@@ -536,6 +569,9 @@ export default function TableManager({ table, refreshId = 0 }) {
         </button>
         <button onClick={refreshRows} style={{ marginRight: '0.5rem' }}>
           Refresh Table
+        </button>
+        <button onClick={exportPdf} style={{ marginRight: '0.5rem' }}>
+          Export PDF
         </button>
         {selectedRows.size > 0 && (
           <button onClick={handleDeleteSelected}>Delete Selected</button>
