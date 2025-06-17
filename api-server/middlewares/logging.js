@@ -1,15 +1,14 @@
-import jwt from 'jsonwebtoken';
+import * as jwtService from '../services/jwtService.js';
 import { logActivity } from '../utils/activityLog.js';
 
 export function logger(req, res, next) {
   let user = 'anonymous';
   if (req.user) {
     user = req.user.empid || req.user.email || req.user.id;
-  } else if (req.cookies?.[process.env.COOKIE_NAME]) {
+  } else if (req.cookies?.[process.env.COOKIE_NAME || 'token']) {
     try {
-      const payload = jwt.verify(
-        req.cookies[process.env.COOKIE_NAME],
-        process.env.JWT_SECRET
+      const payload = jwtService.verify(
+        req.cookies[process.env.COOKIE_NAME || 'token']
       );
       user = payload.empid || payload.email || payload.id;
     } catch {}
