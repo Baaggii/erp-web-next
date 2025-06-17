@@ -8,6 +8,7 @@ export default function RowFormModal({
   row,
   relations = {},
   disabledFields = [],
+  labels = {},
 }) {
   const [formVals, setFormVals] = useState(() => {
     const init = {};
@@ -61,7 +62,9 @@ export default function RowFormModal({
         >
           {columns.map((c) => (
             <div key={c} style={{ marginBottom: '0.75rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.25rem' }}>{c}</label>
+              <label style={{ display: 'block', marginBottom: '0.25rem' }}>
+                {labels[c] || c}
+              </label>
               {Array.isArray(relations[c]) ? (
                 <select
                   value={formVals[c]}

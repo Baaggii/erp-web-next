@@ -520,6 +520,34 @@ export async function listTableColumns(tableName) {
   return rows.map((r) => r.COLUMN_NAME);
 }
 
+export async function getTableColumnLabels(tableName) {
+  const [rows] = await pool.query(
+    'SELECT column_name, mn_label FROM table_column_labels WHERE table_name = ?',
+    [tableName],
+  );
+  const map = {};
+  rows.forEach((r) => {
+    map[r.column_name] = r.mn_label;
+  });
+  return map;
+}
+
+export async function setTableColumnLabel(tableName, columnName, label) {
+  await pool.query(
+    `INSERT INTO table_column_labels (table_name, column_name, mn_label)
+     VALUES (?, ?, ?)
+     ON DUPLICATE KEY UPDATE mn_label = VALUES(mn_label)`,
+    [tableName, columnName, label],
+  );
+  return { tableName, columnName, label };
+}
+
+export async function saveTableColumnLabels(tableName, labels) {
+  for (const [col, lab] of Object.entries(labels)) {
+    await setTableColumnLabel(tableName, col, lab);
+  }
+}
+
 export async function listTableColumnMeta(tableName) {
   const [rows] = await pool.query(
     `SELECT COLUMN_NAME, COLUMN_KEY, EXTRA
@@ -528,10 +556,17 @@ export async function listTableColumnMeta(tableName) {
         AND TABLE_NAME = ?`,
     [tableName],
   );
+  let labels = {};
+  try {
+    labels = await getTableColumnLabels(tableName);
+  } catch {
+    labels = {};
+  }
   return rows.map((r) => ({
     name: r.COLUMN_NAME,
     key: r.COLUMN_KEY,
     extra: r.EXTRA,
+    label: labels[r.COLUMN_NAME] || r.COLUMN_NAME,
   }));
 }
 
