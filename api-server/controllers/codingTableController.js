@@ -7,7 +7,7 @@ try {
 } catch {
   xlsx = { read: () => ({ SheetNames: [], Sheets: {} }), utils: { sheet_to_json: () => [] } };
 }
-import { pool } from '../../db/index.js';
+import { pool, setColumnTranslations } from '../../db/index.js';
 
 function cleanIdentifier(name) {
   return String(name).replace(/[^A-Za-z0-9_]+/g, '');
@@ -109,8 +109,10 @@ export async function uploadCodingTable(req, res, next) {
       return res.status(400).json({ error: 'Sheet not found' });
     }
     const headerIndex = parseInt(headerRow || '1', 10);
+    const mnHeaderIndex = parseInt(req.body.mnHeaderRow || headerIndex + 1, 10);
     const data = xlsx.utils.sheet_to_json(ws, { header: 1, blankrows: false });
     const rawHeaders = data[headerIndex - 1] || [];
+    const rawMnHeaders = data[mnHeaderIndex - 1] || [];
     const keepIdx = [];
     const headers = [];
     rawHeaders.forEach((h, idx) => {
@@ -124,6 +126,11 @@ export async function uploadCodingTable(req, res, next) {
       fs.unlinkSync(req.file.path);
       return res.status(400).json({ error: 'Header row not found' });
     }
+    const headerMap = {};
+    headers.forEach((h, idx) => {
+      const mn = rawMnHeaders[keepIdx[idx]];
+      if (mn) headerMap[h] = String(mn);
+    });
     const uniqueOnly = cleanUnique.filter(
       (c) => c !== cleanIdCol && c !== cleanNameCol && !cleanExtra.includes(c)
     );
@@ -319,6 +326,9 @@ export async function uploadCodingTable(req, res, next) {
         values
       );
       count++;
+    }
+    if (Object.keys(headerMap).length > 0) {
+      await setColumnTranslations(cleanTable, headerMap);
     }
     fs.unlinkSync(req.file.path);
     res.json({ inserted: count });

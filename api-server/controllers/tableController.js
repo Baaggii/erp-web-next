@@ -9,6 +9,8 @@ import {
   listTableRelationships,
   listTableColumns,
   listTableColumnMeta,
+  getColumnTranslations,
+  setColumnTranslations,
 } from '../../db/index.js';
 let bcrypt;
 try {
@@ -57,6 +59,24 @@ export async function getTableColumnsMeta(req, res, next) {
   try {
     const cols = await listTableColumnMeta(req.params.table);
     res.json(cols);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getTableHeaderMap(req, res, next) {
+  try {
+    const map = await getColumnTranslations(req.params.table);
+    res.json(map);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateTableHeaderMap(req, res, next) {
+  try {
+    const updated = await setColumnTranslations(req.params.table, req.body || {});
+    res.json(updated);
   } catch (err) {
     next(err);
   }

@@ -522,17 +522,44 @@ export async function listTableColumns(tableName) {
 
 export async function listTableColumnMeta(tableName) {
   const [rows] = await pool.query(
-    `SELECT COLUMN_NAME, COLUMN_KEY, EXTRA
-       FROM information_schema.COLUMNS
-      WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME = ?`,
-    [tableName],
+    `SELECT c.COLUMN_NAME, c.COLUMN_KEY, c.EXTRA, t.mongolian_header
+       FROM information_schema.COLUMNS c
+       LEFT JOIN column_translations t
+         ON t.table_name = ? AND t.english_header = c.COLUMN_NAME
+      WHERE c.TABLE_SCHEMA = DATABASE()
+        AND c.TABLE_NAME = ?`,
+    [tableName, tableName],
   );
   return rows.map((r) => ({
     name: r.COLUMN_NAME,
     key: r.COLUMN_KEY,
     extra: r.EXTRA,
+    mongolian: r.mongolian_header || null,
   }));
+}
+
+export async function getColumnTranslations(tableName) {
+  const [rows] = await pool.query(
+    'SELECT english_header, mongolian_header FROM column_translations WHERE table_name = ?',
+    [tableName],
+  );
+  const map = {};
+  rows.forEach((r) => {
+    map[r.english_header] = r.mongolian_header;
+  });
+  return map;
+}
+
+export async function setColumnTranslations(tableName, mapping) {
+  for (const [eng, mn] of Object.entries(mapping)) {
+    await pool.query(
+      `INSERT INTO column_translations (table_name, english_header, mongolian_header)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE mongolian_header = VALUES(mongolian_header)`,
+      [tableName, eng, mn],
+    );
+  }
+  return getColumnTranslations(tableName);
 }
 
 export async function getPrimaryKeyColumns(tableName) {
