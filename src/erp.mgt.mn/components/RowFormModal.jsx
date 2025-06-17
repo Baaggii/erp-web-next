@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import SearchSelect from './SearchSelect.jsx';
 
 export default function RowFormModal({
   visible,
@@ -66,21 +67,32 @@ export default function RowFormModal({
                 {labels[c] || c}
               </label>
               {Array.isArray(relations[c]) ? (
-                <select
-                  value={formVals[c]}
-                  onChange={(e) =>
-                    setFormVals((v) => ({ ...v, [c]: e.target.value }))
-                  }
-                  disabled={row && disabledFields.includes(c)}
-                  style={{ width: '100%', padding: '0.5rem' }}
-                >
-                  <option value="">-- select --</option>
-                  {relations[c].map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                relations[c].length > 20 ? (
+                  <SearchSelect
+                    value={formVals[c]}
+                    onChange={(val) =>
+                      setFormVals((v) => ({ ...v, [c]: val }))
+                    }
+                    options={relations[c]}
+                    disabled={row && disabledFields.includes(c)}
+                  />
+                ) : (
+                  <select
+                    value={formVals[c]}
+                    onChange={(e) =>
+                      setFormVals((v) => ({ ...v, [c]: e.target.value }))
+                    }
+                    disabled={row && disabledFields.includes(c)}
+                    style={{ width: '100%', padding: '0.5rem' }}
+                  >
+                    <option value="">-- select --</option>
+                    {relations[c].map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                )
               ) : (
                 <input
                   type="text"
