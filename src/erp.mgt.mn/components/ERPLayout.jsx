@@ -39,6 +39,38 @@ export default function ERPLayout() {
   };
   const windowTitle = titleMap[location.pathname] || "ERP";
 
+  const [tabs, setTabs] = useState([
+    { path: location.pathname, title: windowTitle },
+  ]);
+
+  React.useEffect(() => {
+    const title = titleMap[location.pathname] || "ERP";
+    setTabs((t) => {
+      if (t.some((tab) => tab.path === location.pathname)) return t;
+      return [...t, { path: location.pathname, title }];
+    });
+  }, [location.pathname]);
+
+  function switchTab(path) {
+    navigate(path);
+  }
+
+  function openTab(path, title) {
+    setTabs((t) => {
+      if (t.some((tab) => tab.path === path)) return t;
+      return [...t, { path, title }];
+    });
+    navigate(path);
+  }
+
+  function closeTab(path) {
+    setTabs((t) => t.filter((tab) => tab.path !== path));
+    if (location.pathname === path && tabs.length > 1) {
+      const next = tabs.find((tab) => tab.path !== path) || tabs[0];
+      navigate(next.path);
+    }
+  }
+
   async function handleLogout() {
     await logout();
     setUser(null);
@@ -56,8 +88,13 @@ export default function ERPLayout() {
     <div style={styles.container}>
       <Header user={user} onLogout={handleLogout} onHome={handleHome} />
       <div style={styles.body}>
-        <Sidebar />
-        <MainWindow title={windowTitle}>
+        <Sidebar onOpen={openTab} />
+        <MainWindow
+          title={windowTitle}
+          tabs={tabs}
+          onSwitch={switchTab}
+          onClose={closeTab}
+        >
           <Outlet />
         </MainWindow>
       </div>
@@ -100,8 +137,9 @@ function Header({ user, onLogout, onHome }) {
 }
 
 /** Left sidebar with “menu groups” and “pinned items” **/
-function Sidebar() {
+function Sidebar({ onOpen }) {
   const { company } = useContext(AuthContext);
+  const location = useLocation();
   const perms = useRolePermissions();
   const licensed = useCompanyModules(company?.company_id);
   const modules = useModules();
@@ -157,15 +195,15 @@ function Sidebar() {
       <nav>
         {roots.map((m) =>
           m.children.length > 0 ? (
-            <SidebarGroup key={m.module_key} mod={m} map={map} allMap={allMap} level={0} />
+            <SidebarGroup key={m.module_key} mod={m} map={map} allMap={allMap} level={0} onOpen={onOpen} />
           ) : (
-            <NavLink
+            <button
               key={m.module_key}
-              to={modulePath(m, allMap)}
-              style={({ isActive }) => styles.menuItem({ isActive })}
+              onClick={() => onOpen(modulePath(m, allMap), m.label)}
+              style={styles.menuItem({ isActive: location.pathname === modulePath(m, allMap) })}
             >
               {m.label}
-            </NavLink>
+            </button>
           ),
         )}
       </nav>
@@ -173,7 +211,7 @@ function Sidebar() {
   );
 }
 
-function SidebarGroup({ mod, map, allMap, level }) {
+function SidebarGroup({ mod, map, allMap, level, onOpen }) {
   const [open, setOpen] = useState(false);
   return (
     <div style={{ ...styles.menuGroup, paddingLeft: level ? '1rem' : 0 }}>
@@ -183,18 +221,18 @@ function SidebarGroup({ mod, map, allMap, level }) {
       {open &&
         mod.children.map((c) =>
           c.children.length > 0 ? (
-            <SidebarGroup key={c.module_key} mod={c} map={map} allMap={allMap} level={level + 1} />
+            <SidebarGroup key={c.module_key} mod={c} map={map} allMap={allMap} level={level + 1} onOpen={onOpen} />
           ) : (
-            <NavLink
+            <button
               key={c.module_key}
-              to={modulePath(c, allMap)}
-              style={({ isActive }) => ({
-                ...styles.menuItem({ isActive }),
+              onClick={() => onOpen(modulePath(c, allMap), c.label)}
+              style={{
+                ...styles.menuItem({ isActive: location.pathname === modulePath(c, allMap) }),
                 paddingLeft: `${(level + 1) * 1}rem`,
-              })}
+              }}
             >
               {c.label}
-            </NavLink>
+            </button>
           ),
         )}
     </div>
@@ -204,7 +242,8 @@ function SidebarGroup({ mod, map, allMap, level }) {
 
 
 /** A faux “window” wrapper around the main content **/
-function MainWindow({ children, title }) {
+function MainWindow({ children, title, tabs, onSwitch, onClose }) {
+  const location = useLocation();
   return (
     <div style={styles.windowContainer}>
       <div style={styles.windowHeader}>
@@ -214,6 +253,28 @@ function MainWindow({ children, title }) {
           <button style={styles.windowHeaderBtn}>□</button>
           <button style={styles.windowHeaderBtn}>×</button>
         </div>
+      </div>
+      <div style={styles.tabBar}>
+        {tabs.map((t) => (
+          <div
+            key={t.path}
+            style={location.pathname === t.path ? styles.activeTab : styles.tab}
+            onClick={() => onSwitch(t.path)}
+          >
+            <span>{t.title}</span>
+            {tabs.length > 1 && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClose(t.path);
+                }}
+                style={styles.closeBtn}
+              >
+                ×
+              </button>
+            )}
+          </div>
+        ))}
       </div>
       <div style={styles.windowContent}>{children}</div>
     </div>
@@ -361,6 +422,39 @@ const styles = {
     color: "#f9fafb",
     cursor: "pointer",
     fontSize: "0.9rem",
+  },
+  tabBar: {
+    display: "flex",
+    borderBottom: "1px solid #9ca3af",
+    backgroundColor: "#e5e7eb",
+  },
+  tab: {
+    padding: "0.25rem 0.5rem",
+    marginRight: "2px",
+    cursor: "pointer",
+    backgroundColor: "#d1d5db",
+    display: "flex",
+    alignItems: "center",
+    borderTopLeftRadius: "4px",
+    borderTopRightRadius: "4px",
+  },
+  activeTab: {
+    padding: "0.25rem 0.5rem",
+    marginRight: "2px",
+    cursor: "pointer",
+    backgroundColor: "#ffffff",
+    border: "1px solid #9ca3af",
+    borderBottom: "none",
+    display: "flex",
+    alignItems: "center",
+    borderTopLeftRadius: "4px",
+    borderTopRightRadius: "4px",
+  },
+  closeBtn: {
+    marginLeft: "0.25rem",
+    background: "transparent",
+    border: "none",
+    cursor: "pointer",
   },
   windowContent: {
     flexGrow: 1,
