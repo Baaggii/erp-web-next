@@ -31,9 +31,11 @@ This document outlines the roadmap, scope, architecture, milestones, and deliver
    - Launchable modules (SalesDashboard, GLInquiry, etc.) in resizable tiles.  
    - Layout persistence per user.
 
-5. **Settings**  
-   - Global & tenant-specific configs.  
- - Feature toggles (e.g. enable/disable mosaic).
+5. **Settings**
+   - Global & tenant-specific configs.
+   - Feature toggles (e.g. enable/disable mosaic).
+   - `tableDisplayFields` JSON file maps table names to up to 20 user-facing fields
+     for dynamic forms.
 
 6. **Coding Tables Upload**
    - Upload Excel sheets to create simple lookup tables.

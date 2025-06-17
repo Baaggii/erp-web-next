@@ -1,0 +1,6 @@
+{
+  "tbl_employee": {
+    "idField": "emp_id",
+    "displayFields": ["emp_fname", "emp_lname"]
+  }
+}
