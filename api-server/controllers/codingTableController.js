@@ -7,7 +7,7 @@ try {
 } catch {
   xlsx = { read: () => ({ SheetNames: [], Sheets: {} }), utils: { sheet_to_json: () => [] } };
 }
-import { pool, setColumnTranslations } from '../../db/index.js';
+import { pool } from '../../db/index.js';
 
 function cleanIdentifier(name) {
   return String(name).replace(/[^A-Za-z0-9_]+/g, '');
@@ -87,7 +87,6 @@ export async function uploadCodingTable(req, res, next) {
       columnTypes: columnTypesJson,
       notNullMap: notNullJson,
       autoIncrementStart,
-      headerTranslations,
     } = req.body;
     const extraCols = otherColumns ? JSON.parse(otherColumns) : [];
     const uniqueCols = uniqueFields ? JSON.parse(uniqueFields) : [];
@@ -100,7 +99,6 @@ export async function uploadCodingTable(req, res, next) {
     const columnTypeOverride = columnTypesJson ? JSON.parse(columnTypesJson) : {};
     const notNullOverride = notNullJson ? JSON.parse(notNullJson) : {};
     const autoIncStart = parseInt(autoIncrementStart || '1', 10) || 1;
-    const translations = headerTranslations ? JSON.parse(headerTranslations) : {};
     if (!req.file) {
       return res.status(400).json({ error: 'File required' });
     }
@@ -322,7 +320,6 @@ export async function uploadCodingTable(req, res, next) {
       );
       count++;
     }
-    await setColumnTranslations(cleanTable, translations);
     fs.unlinkSync(req.file.path);
     res.json({ inserted: count });
   } catch (err) {
