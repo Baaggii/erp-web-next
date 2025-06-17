@@ -2,7 +2,7 @@
 import React, { useContext, useState } from "react";
 import HeaderMenu from "./HeaderMenu.jsx";
 import UserMenu from "./UserMenu.jsx";
-import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
+import { useOutlet, useNavigate, useLocation } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext.jsx";
 import { logout } from "../hooks/useAuth.jsx";
 import { useRolePermissions, refreshRolePermissions } from "../hooks/useRolePermissions.js";
@@ -65,6 +65,11 @@ export default function ERPLayout() {
 
   function closeTab(path) {
     setTabs((t) => t.filter((tab) => tab.path !== path));
+    setCache((c) => {
+      const n = { ...c };
+      delete n[path];
+      return n;
+    });
     if (location.pathname === path && tabs.length > 1) {
       const next = tabs.find((tab) => tab.path !== path) || tabs[0];
       navigate(next.path);
@@ -84,6 +89,8 @@ export default function ERPLayout() {
     navigate('/');
   }
 
+  const [cache, setCache] = useState({});
+
   return (
     <div style={styles.container}>
       <Header user={user} onLogout={handleLogout} onHome={handleHome} />
@@ -94,9 +101,9 @@ export default function ERPLayout() {
           tabs={tabs}
           onSwitch={switchTab}
           onClose={closeTab}
-        >
-          <Outlet />
-        </MainWindow>
+          cache={cache}
+          setCache={setCache}
+        />
       </div>
       <AskAIFloat />
     </div>
@@ -242,8 +249,21 @@ function SidebarGroup({ mod, map, allMap, level, onOpen }) {
 
 
 /** A faux “window” wrapper around the main content **/
-function MainWindow({ children, title, tabs, onSwitch, onClose }) {
+function MainWindow({ title, tabs, onSwitch, onClose, cache, setCache }) {
   const location = useLocation();
+  const outlet = useOutlet();
+
+  React.useEffect(() => {
+    setCache((c) => {
+      if (c[location.pathname]) return c;
+      return { ...c, [location.pathname]: outlet };
+    });
+  }, [location.pathname, outlet, setCache]);
+
+  const visible = cache[location.pathname] || outlet;
+
+  const elements = { ...cache, [location.pathname]: visible };
+
   return (
     <div style={styles.windowContainer}>
       <div style={styles.windowHeader}>
@@ -276,7 +296,13 @@ function MainWindow({ children, title, tabs, onSwitch, onClose }) {
           </div>
         ))}
       </div>
-      <div style={styles.windowContent}>{children}</div>
+      <div style={styles.windowContent}>
+        {Object.entries(elements).map(([path, el]) => (
+          <div key={path} style={{ display: path === location.pathname ? 'block' : 'none' }}>
+            {el}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
