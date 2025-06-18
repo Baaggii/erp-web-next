@@ -117,8 +117,14 @@ export default function TableManager({ table, refreshId = 0 }) {
             } catch {
               cfg = {};
             }
+            const idMatches =
+              cfg &&
+              typeof cfg.idField === 'string' &&
+              cfg.idField.toLowerCase() === rel.column.toLowerCase();
             const fields =
-              Array.isArray(cfg.displayFields) && cfg.displayFields.length > 0
+              idMatches &&
+              Array.isArray(cfg.displayFields) &&
+              cfg.displayFields.length > 0
                 ? cfg.displayFields
                 : [];
             if (Array.isArray(json.rows)) {
