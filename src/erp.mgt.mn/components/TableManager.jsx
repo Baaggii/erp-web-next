@@ -121,7 +121,6 @@ export default function TableManager({ table, refreshId = 0 }) {
                 let label = null;
                 if (
                   cfg &&
-                  cfg.idField === rel.column &&
                   Array.isArray(cfg.displayFields) &&
                   cfg.displayFields.length > 0
                 ) {
