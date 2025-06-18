@@ -117,29 +117,19 @@ export default function TableManager({ table, refreshId = 0 }) {
             } catch {
               cfg = {};
             }
-            const idMatches =
+            const configured =
               cfg &&
               typeof cfg.idField === 'string' &&
-              cfg.idField.toLowerCase() === rel.column.toLowerCase();
-            const fields =
-              Array.isArray(cfg.displayFields) && cfg.displayFields.length > 0
-                ? cfg.displayFields
-                : [];
+              cfg.idField.toLowerCase() === rel.column.toLowerCase() &&
+              Array.isArray(cfg.displayFields);
+            const fields = configured ? cfg.displayFields : [];
             if (Array.isArray(json.rows)) {
               dataMap[col] = json.rows.map((row) => {
-                const cells = [];
-                if (idMatches) {
-                  cells.push(row[rel.column]);
-                }
+                const cells = [row[rel.column]];
                 if (fields.length > 0) {
                   fields.forEach((f) => {
                     if (row[f] !== undefined) cells.push(row[f]);
                   });
-                } else {
-                  Object.entries(row)
-                    .filter(([k]) => k !== rel.column)
-                    .slice(0, 2)
-                    .forEach(([, v]) => cells.push(v));
                 }
                 return {
                   value: row[rel.column],
