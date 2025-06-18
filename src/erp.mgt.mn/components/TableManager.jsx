@@ -97,17 +97,46 @@ export default function TableManager({ table, refreshId = 0 }) {
         for (const [col, rel] of Object.entries(map)) {
           try {
             const params = new URLSearchParams({ perPage: 100 });
-            const refRes = await fetch(
-              `/api/tables/${encodeURIComponent(rel.table)}?${params.toString()}`,
-              { credentials: 'include' },
-            );
+            const [refRes, cfgRes] = await Promise.all([
+              fetch(
+                `/api/tables/${encodeURIComponent(rel.table)}?${params.toString()}`,
+                { credentials: 'include' },
+              ),
+              fetch(
+                `/api/display_fields?table=${encodeURIComponent(rel.table)}`,
+                { credentials: 'include' },
+              ),
+            ]);
             const json = await refRes.json();
+            let cfg = null;
+            if (cfgRes.ok) {
+              try {
+                cfg = await cfgRes.json();
+              } catch {
+                cfg = null;
+              }
+            }
             if (Array.isArray(json.rows)) {
               dataMap[col] = json.rows.map((row) => {
-                const cells = Object.values(row).slice(0, 2);
+                let label = null;
+                if (
+                  cfg &&
+                  cfg.idField === rel.column &&
+                  Array.isArray(cfg.displayFields) &&
+                  cfg.displayFields.length > 0
+                ) {
+                  const parts = cfg.displayFields
+                    .map((f) => row[f])
+                    .filter((v) => v !== undefined);
+                  if (parts.length > 0) label = parts.join(' - ');
+                }
+                if (!label) {
+                  const cells = Object.values(row).slice(0, 2);
+                  label = cells.join(' - ');
+                }
                 return {
                   value: row[rel.column],
-                  label: cells.join(' - '),
+                  label,
                 };
               });
             }
