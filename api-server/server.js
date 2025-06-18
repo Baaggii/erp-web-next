@@ -19,6 +19,7 @@ import codingTableRoutes from "./routes/coding_tables.js";
 import openaiRoutes from "./routes/openai.js";
 import headerMappingRoutes from "./routes/header_mappings.js";
 import displayFieldRoutes from "./routes/display_fields.js";
+import transactionFormRoutes from "./routes/transaction_forms.js";
 import { requireAuth } from "./middlewares/auth.js";
 
 // Polyfill for __dirname in ES modules
@@ -54,6 +55,7 @@ app.use("/api/coding_tables", requireAuth, codingTableRoutes);
 app.use("/api/header_mappings", requireAuth, headerMappingRoutes);
 app.use("/api/openai", openaiRoutes);
 app.use("/api/display_fields", displayFieldRoutes);
+app.use("/api/transaction_forms", transactionFormRoutes);
 app.use("/api/tables", requireAuth, tableRoutes);
 
 // Serve static React build and fallback to index.html
