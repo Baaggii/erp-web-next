@@ -25,7 +25,6 @@ export default function TableManager({ table, refreshId = 0 }) {
   const [showDetail, setShowDetail] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
   const [detailRefs, setDetailRefs] = useState([]);
-  const [fieldDisplay, setFieldDisplay] = useState({});
   const [editLabels, setEditLabels] = useState(false);
   const [labelEdits, setLabelEdits] = useState({});
   const { user } = useContext(AuthContext);
@@ -56,7 +55,6 @@ export default function TableManager({ table, refreshId = 0 }) {
     setRelations({});
     setRefData({});
     setColumnMeta([]);
-    setFieldDisplay({});
     fetch(`/api/tables/${encodeURIComponent(table)}/columns`, {
       credentials: 'include',
     })
@@ -106,15 +104,10 @@ export default function TableManager({ table, refreshId = 0 }) {
             const json = await refRes.json();
             if (Array.isArray(json.rows)) {
               dataMap[col] = json.rows.map((row) => {
-                let cells;
-                if (Array.isArray(fieldDisplay[col]) && fieldDisplay[col].length > 0) {
-                  cells = fieldDisplay[col].map((f) => row[f]).filter((v) => v !== undefined);
-                } else {
-                  cells = Object.values(row).slice(0, 2);
-                }
+                const cells = Object.values(row).slice(0, 2);
                 return {
                   value: row[rel.column],
-                  label: cells.join(' '),
+                  label: cells.join(' - '),
                 };
               });
             }
@@ -128,22 +121,6 @@ export default function TableManager({ table, refreshId = 0 }) {
       }
     }
     load();
-    return () => {
-      canceled = true;
-    };
-  }, [table]);
-
-  useEffect(() => {
-    if (!table) return;
-    let canceled = false;
-    fetch(`/api/relation_display_fields?table=${encodeURIComponent(table)}`, {
-      credentials: 'include',
-    })
-      .then((res) => res.json())
-      .then((cfg) => {
-        if (!canceled && cfg && typeof cfg === 'object') setFieldDisplay(cfg);
-      })
-      .catch(() => {});
     return () => {
       canceled = true;
     };

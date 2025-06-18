@@ -18,7 +18,6 @@ import tableRoutes from "./routes/tables.js";
 import codingTableRoutes from "./routes/coding_tables.js";
 import openaiRoutes from "./routes/openai.js";
 import headerMappingRoutes from "./routes/header_mappings.js";
-import relationDisplayRoutes from "./routes/relation_display_fields.js";
 import { requireAuth } from "./middlewares/auth.js";
 
 // Polyfill for __dirname in ES modules
@@ -52,7 +51,6 @@ app.use("/api/modules", requireAuth, moduleRoutes);
 app.use("/api/company_modules", requireAuth, companyModuleRoutes);
 app.use("/api/coding_tables", requireAuth, codingTableRoutes);
 app.use("/api/header_mappings", requireAuth, headerMappingRoutes);
-app.use("/api/relation_display_fields", requireAuth, relationDisplayRoutes);
 app.use("/api/openai", openaiRoutes);
 app.use("/api/tables", requireAuth, tableRoutes);
 
