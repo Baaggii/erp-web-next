@@ -237,13 +237,20 @@ export default function CodingTablesPage() {
       if (!Number.isNaN(n)) {
         const str = String(v);
         const digits = str.replace(/[-.]/g, '');
-        if (digits.length > 8) return 'VARCHAR(255)';
+        if (digits.length > 8) break;
         if (str.includes('.')) return 'DECIMAL(10,2)';
         return 'INT';
       }
       break;
     }
-    return 'VARCHAR(255)';
+    let maxLen = 1;
+    for (const v of vals) {
+      if (v === undefined || v === null) continue;
+      const len = String(v).length;
+      if (len > maxLen) maxLen = len;
+    }
+    if (maxLen > 255) maxLen = 255;
+    return `VARCHAR(${maxLen})`;
   }
 
   function parseExcelDate(val) {
