@@ -15,3 +15,9 @@ The configuration file lives at `config/tableDisplayFields.json` and has the fol
 
 Applications can fetch or update this information via `/api/display_fields`.
 
+When a table contains a foreign key to another table, dynamic forms look up the
+target table's configuration. If a mapping exists, option labels are composed
+from the listed `displayFields` and the underlying value comes from `idField`.
+If no configuration is found the first two columns of the row are used as the
+label.
+
