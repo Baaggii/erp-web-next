@@ -1,16 +1,26 @@
 import React, { useState, useEffect, useContext } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 
 export default function FinanceTransactions() {
   const { user, company } = useContext(AuthContext);
   const [configs, setConfigs] = useState({});
-  const [table, setTable] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [table, setTable] = useState(() => searchParams.get('table') || '');
   const [columns, setColumns] = useState([]);
   const [rows, setRows] = useState([]);
   const [config, setConfig] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [formVals, setFormVals] = useState({});
   const [editingId, setEditingId] = useState(null);
+
+  useEffect(() => {
+    if (table) {
+      setSearchParams({ table });
+    } else {
+      setSearchParams({});
+    }
+  }, [table, setSearchParams]);
 
   useEffect(() => {
     fetch('/api/transaction_forms', { credentials: 'include' })
@@ -104,6 +114,16 @@ export default function FinanceTransactions() {
   }
 
   const fields = config?.visibleFields?.length ? config.visibleFields : columns;
+  const transactionNames = Object.keys(configs);
+
+  if (transactionNames.length === 0) {
+    return (
+      <div>
+        <h2>Finance Transactions</h2>
+        <p>No transactions configured.</p>
+      </div>
+    );
+  }
 
   return (
     <div>
