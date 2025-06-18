@@ -14,7 +14,6 @@ export default function TableManager({ table, refreshId = 0 }) {
   const [sort, setSort] = useState({ column: '', dir: 'asc' });
   const [relations, setRelations] = useState({});
   const [refData, setRefData] = useState({});
-  const [displayCfg, setDisplayCfg] = useState({});
   const [columnMeta, setColumnMeta] = useState([]);
   const [autoInc, setAutoInc] = useState(new Set());
   const [showForm, setShowForm] = useState(false);
@@ -26,9 +25,6 @@ export default function TableManager({ table, refreshId = 0 }) {
   const [showDetail, setShowDetail] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
   const [detailRefs, setDetailRefs] = useState([]);
-  const [detailColumns, setDetailColumns] = useState([]);
-  const [detailRelationsMap, setDetailRelationsMap] = useState({});
-  const [detailLabelsMap, setDetailLabelsMap] = useState({});
   const [editLabels, setEditLabels] = useState(false);
   const [labelEdits, setLabelEdits] = useState({});
   const { user } = useContext(AuthContext);
@@ -98,15 +94,8 @@ export default function TableManager({ table, refreshId = 0 }) {
         });
         setRelations(map);
         const dataMap = {};
-        const cfgMap = {};
         for (const [col, rel] of Object.entries(map)) {
           try {
-            const cfgRes = await fetch(
-              `/api/display_fields?table=${encodeURIComponent(rel.table)}`,
-              { credentials: 'include' },
-            );
-            const cfg = cfgRes.ok ? await cfgRes.json() : { idField: null, displayFields: [] };
-            cfgMap[col] = cfg;
             const params = new URLSearchParams({ perPage: 100 });
             const refRes = await fetch(
               `/api/tables/${encodeURIComponent(rel.table)}?${params.toString()}`,
@@ -115,21 +104,10 @@ export default function TableManager({ table, refreshId = 0 }) {
             const json = await refRes.json();
             if (Array.isArray(json.rows)) {
               dataMap[col] = json.rows.map((row) => {
-                let label;
-                if (
-                  cfg.idField &&
-                  cfg.idField === rel.column &&
-                  Array.isArray(cfg.displayFields) &&
-                  cfg.displayFields.length > 0
-                ) {
-                  label = cfg.displayFields.map((f) => row[f]).join(' - ');
-                } else {
-                  label = Object.values(row).slice(0, 2).join(' - ');
-                }
+                const cells = Object.values(row).slice(0, 2);
                 return {
                   value: row[rel.column],
-                  label,
-                  row,
+                  label: cells.join(' - '),
                 };
               });
             }
@@ -137,10 +115,7 @@ export default function TableManager({ table, refreshId = 0 }) {
             /* ignore */
           }
         }
-        if (!canceled) {
-          setRefData(dataMap);
-          setDisplayCfg(cfgMap);
-        }
+        if (!canceled) setRefData(dataMap);
       } catch (err) {
         console.error('Failed to load table relations', err);
       }
@@ -238,9 +213,6 @@ export default function TableManager({ table, refreshId = 0 }) {
   }
 
   async function openDetail(row) {
-    setDetailColumns(allColumns);
-    setDetailRelationsMap(relationOpts);
-    setDetailLabelsMap(labels);
     setDetailRow(row);
     const id = getRowId(row);
     if (id !== undefined) {
@@ -262,39 +234,6 @@ export default function TableManager({ table, refreshId = 0 }) {
       setDetailRefs([]);
     }
     setShowDetail(true);
-  }
-
-  async function openRefDetail(col, value) {
-    const rel = relations[col];
-    if (!rel) return;
-    try {
-      const params = new URLSearchParams({ [rel.column]: value, perPage: 1 });
-      const res = await fetch(
-        `/api/tables/${encodeURIComponent(rel.table)}?${params.toString()}`,
-        { credentials: 'include' },
-      );
-      const json = await res.json();
-      if (!Array.isArray(json.rows) || json.rows.length === 0) return;
-      const row = json.rows[0];
-      const colsRes = await fetch(
-        `/api/tables/${encodeURIComponent(rel.table)}/columns`,
-        { credentials: 'include' },
-      );
-      const cols = colsRes.ok ? await colsRes.json() : [];
-      const colNames = cols.length > 0 ? cols.map((c) => c.name) : Object.keys(row);
-      const labelsMap = {};
-      cols.forEach((c) => {
-        labelsMap[c.name] = c.label || c.name;
-      });
-      setDetailColumns(colNames);
-      setDetailRelationsMap({});
-      setDetailLabelsMap(labelsMap);
-      setDetailRow(row);
-      setDetailRefs([]);
-      setShowDetail(true);
-    } catch {
-      /* ignore */
-    }
   }
 
   function toggleRow(id) {
@@ -740,16 +679,7 @@ export default function TableManager({ table, refreshId = 0 }) {
               </td>
               {columns.map((c) => (
                 <td key={c} style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
-                  {relationOpts[c] ? (
-                    <span
-                      style={{ color: 'blue', cursor: 'pointer', textDecoration: 'underline' }}
-                      onClick={() => openRefDetail(c, r[c])}
-                    >
-                      {labelMap[c][r[c]] || String(r[c])}
-                    </span>
-                  ) : (
-                    String(r[c])
-                  )}
+                  {relationOpts[c] ? labelMap[c][r[c]] || String(r[c]) : String(r[c])}
                 </td>
               ))}
               <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
@@ -799,17 +729,12 @@ export default function TableManager({ table, refreshId = 0 }) {
       />
       <RowDetailModal
         visible={showDetail}
-        onClose={() => {
-          setShowDetail(false);
-          setDetailColumns([]);
-          setDetailRelationsMap({});
-          setDetailLabelsMap({});
-        }}
+        onClose={() => setShowDetail(false)}
         row={detailRow}
-        columns={detailColumns.length > 0 ? detailColumns : allColumns}
-        relations={Object.keys(detailRelationsMap).length > 0 ? detailRelationsMap : relationOpts}
+        columns={allColumns}
+        relations={relationOpts}
         references={detailRefs}
-        labels={Object.keys(detailLabelsMap).length > 0 ? detailLabelsMap : labels}
+        labels={labels}
       />
       {user?.role === 'admin' && (
         <button onClick={() => {
