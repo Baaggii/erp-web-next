@@ -96,18 +96,13 @@ export default function TableManager({ table, refreshId = 0 }) {
         const dataMap = {};
         for (const [col, rel] of Object.entries(map)) {
           try {
-            const params = new URLSearchParams({ perPage: 100 });
-            const [refRes, cfgRes] = await Promise.all([
-              fetch(
-                `/api/tables/${encodeURIComponent(rel.table)}?${params.toString()}`,
-                { credentials: 'include' },
-              ),
-              fetch(
-                `/api/display_fields?table=${encodeURIComponent(rel.table)}`,
-                { credentials: 'include' },
-              ),
-            ]);
-            const json = await refRes.json();
+            let page = 1;
+            const perPage = 500;
+            let rows = [];
+            const cfgRes = await fetch(
+              `/api/display_fields?table=${encodeURIComponent(rel.table)}`,
+              { credentials: 'include' },
+            );
             let cfg = null;
             if (cfgRes.ok) {
               try {
@@ -116,8 +111,25 @@ export default function TableManager({ table, refreshId = 0 }) {
                 cfg = null;
               }
             }
-            if (Array.isArray(json.rows)) {
-              dataMap[col] = json.rows.map((row) => {
+            while (true) {
+              const params = new URLSearchParams({ page, perPage });
+              const refRes = await fetch(
+                `/api/tables/${encodeURIComponent(rel.table)}?${params.toString()}`,
+                { credentials: 'include' },
+              );
+              const json = await refRes.json();
+              if (Array.isArray(json.rows)) {
+                rows = rows.concat(json.rows);
+                if (rows.length >= (json.count || rows.length) || json.rows.length < perPage) {
+                  break;
+                }
+              } else {
+                break;
+              }
+              page += 1;
+            }
+            if (rows.length > 0) {
+              dataMap[col] = rows.map((row) => {
                 let label = null;
                 const parts = [];
                 if (row[rel.column] !== undefined) parts.push(row[rel.column]);
