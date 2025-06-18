@@ -615,18 +615,15 @@ export async function getPrimaryKeyColumns(tableName) {
 }
 
 export async function listTableRelationships(tableName) {
-  try {
-    const { getRelations } = await import('../api-server/services/fieldRelations.js');
-    const rels = await getRelations(tableName);
-    return Object.entries(rels).map(([col, r]) => ({
-      COLUMN_NAME: col,
-      REFERENCED_TABLE_NAME: r.table,
-      REFERENCED_COLUMN_NAME: r.column,
-      displayFields: Array.isArray(r.displayFields) ? r.displayFields : [],
-    }));
-  } catch {
-    return [];
-  }
+  const [rows] = await pool.query(
+    `SELECT COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+       FROM information_schema.KEY_COLUMN_USAGE
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ?
+        AND REFERENCED_TABLE_NAME IS NOT NULL`,
+    [tableName],
+  );
+  return rows;
 }
 
 /**

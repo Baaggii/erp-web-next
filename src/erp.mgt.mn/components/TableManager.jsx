@@ -90,7 +90,6 @@ export default function TableManager({ table, refreshId = 0 }) {
           map[r.COLUMN_NAME] = {
             table: r.REFERENCED_TABLE_NAME,
             column: r.REFERENCED_COLUMN_NAME,
-            displayFields: r.displayFields || [],
           };
         });
         setRelations(map);
@@ -105,16 +104,10 @@ export default function TableManager({ table, refreshId = 0 }) {
             const json = await refRes.json();
             if (Array.isArray(json.rows)) {
               dataMap[col] = json.rows.map((row) => {
-                let label;
-                if (Array.isArray(rel.displayFields) && rel.displayFields.length > 0) {
-                  label = rel.displayFields.map((f) => row[f]).join(' ');
-                } else {
-                  const cells = Object.values(row).slice(0, 2);
-                  label = cells.join(' - ');
-                }
+                const cells = Object.values(row).slice(0, 2);
                 return {
                   value: row[rel.column],
-                  label,
+                  label: cells.join(' - '),
                 };
               });
             }
