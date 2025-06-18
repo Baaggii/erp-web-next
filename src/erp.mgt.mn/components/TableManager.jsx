@@ -27,6 +27,10 @@ export default function TableManager({ table, refreshId = 0 }) {
   const [detailRefs, setDetailRefs] = useState([]);
   const [editLabels, setEditLabels] = useState(false);
   const [labelEdits, setLabelEdits] = useState({});
+  const [showRelDetail, setShowRelDetail] = useState(false);
+  const [relDetailRow, setRelDetailRow] = useState(null);
+  const [relDetailCols, setRelDetailCols] = useState([]);
+  const [relDetailRelations, setRelDetailRelations] = useState({});
   const { user } = useContext(AuthContext);
 
   function computeAutoInc(meta) {
@@ -97,14 +101,34 @@ export default function TableManager({ table, refreshId = 0 }) {
         for (const [col, rel] of Object.entries(map)) {
           try {
             const params = new URLSearchParams({ perPage: 100 });
-            const refRes = await fetch(
-              `/api/tables/${encodeURIComponent(rel.table)}?${params.toString()}`,
-              { credentials: 'include' },
-            );
+            const [refRes, cfgRes] = await Promise.all([
+              fetch(
+                `/api/tables/${encodeURIComponent(rel.table)}?${params.toString()}`,
+                { credentials: 'include' },
+              ),
+              fetch(`/api/display_fields?table=${encodeURIComponent(rel.table)}`, {
+                credentials: 'include',
+              }),
+            ]);
             const json = await refRes.json();
+            let cfg = {};
+            try {
+              cfg = await cfgRes.json();
+            } catch {
+              cfg = {};
+            }
+            const fields =
+              Array.isArray(cfg.displayFields) && cfg.displayFields.length > 0
+                ? cfg.displayFields
+                : [];
             if (Array.isArray(json.rows)) {
               dataMap[col] = json.rows.map((row) => {
-                const cells = Object.values(row).slice(0, 2);
+                let cells = [];
+                if (fields.length > 0) {
+                  cells = fields.map((f) => row[f]).filter((v) => v !== undefined);
+                } else {
+                  cells = Object.values(row).slice(0, 2);
+                }
                 return {
                   value: row[rel.column],
                   label: cells.join(' - '),
@@ -234,6 +258,54 @@ export default function TableManager({ table, refreshId = 0 }) {
       setDetailRefs([]);
     }
     setShowDetail(true);
+  }
+
+  async function openRelationDetail(col, value) {
+    const rel = relations[col];
+    if (!rel) return;
+    try {
+      const params = new URLSearchParams({ perPage: 1 });
+      params.set(rel.column, value);
+      const rowRes = await fetch(
+        `/api/tables/${encodeURIComponent(rel.table)}?${params.toString()}`,
+        { credentials: 'include' },
+      );
+      const rowJson = await rowRes.json();
+      if (!rowJson.rows || rowJson.rows.length === 0) return;
+      const row = rowJson.rows[0];
+
+      const [colsRes, relsRes] = await Promise.all([
+        fetch(`/api/tables/${encodeURIComponent(rel.table)}/columns`, {
+          credentials: 'include',
+        }),
+        fetch(`/api/tables/${encodeURIComponent(rel.table)}/relations`, {
+          credentials: 'include',
+        }),
+      ]);
+
+      let cols = [];
+      if (colsRes.ok) {
+        const c = await colsRes.json();
+        cols = Array.isArray(c) ? c.map((x) => x.name) : [];
+      }
+
+      let relMap = {};
+      if (relsRes.ok) {
+        const rels = await relsRes.json();
+        rels.forEach((r) => {
+          relMap[r.COLUMN_NAME] = {
+            table: r.REFERENCED_TABLE_NAME,
+            column: r.REFERENCED_COLUMN_NAME,
+          };
+        });
+      }
+      setRelDetailRow(row);
+      setRelDetailCols(cols);
+      setRelDetailRelations(relMap);
+      setShowRelDetail(true);
+    } catch {
+      /* ignore */
+    }
   }
 
   function toggleRow(id) {
@@ -726,7 +798,16 @@ export default function TableManager({ table, refreshId = 0 }) {
               </td>
               {columns.map((c) => (
                 <td key={c} style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
-                  {relationOpts[c] ? labelMap[c][r[c]] || String(r[c]) : String(r[c])}
+                  {relationOpts[c] ? (
+                    <span
+                      style={{ cursor: 'pointer', textDecoration: 'underline' }}
+                      onClick={() => openRelationDetail(c, r[c])}
+                    >
+                      {labelMap[c][r[c]] || String(r[c])}
+                    </span>
+                  ) : (
+                    String(r[c])
+                  )}
                 </td>
               ))}
               <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
@@ -782,6 +863,15 @@ export default function TableManager({ table, refreshId = 0 }) {
         relations={relationOpts}
         references={detailRefs}
         labels={labels}
+      />
+      <RowDetailModal
+        visible={showRelDetail}
+        onClose={() => setShowRelDetail(false)}
+        row={relDetailRow}
+        columns={relDetailCols}
+        relations={{}}
+        references={[]}
+        labels={{}}
       />
       {user?.role === 'admin' && (
         <button onClick={() => {
