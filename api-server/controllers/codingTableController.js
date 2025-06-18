@@ -60,7 +60,6 @@ export function detectType(name, vals) {
     const len = String(v).length;
     if (len > maxLen) maxLen = len;
   }
-  if (maxLen > 255) maxLen = 255;
   return `VARCHAR(${maxLen})`;
 }
 
