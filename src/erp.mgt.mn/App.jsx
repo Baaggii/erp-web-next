@@ -18,6 +18,7 @@ import ModulesPage from './pages/Modules.jsx';
 import SettingsPage, { GeneralSettings } from './pages/Settings.jsx';
 import ChangePasswordPage from './pages/ChangePassword.jsx';
 import BlueLinkPage from './pages/BlueLinkPage.jsx';
+import FinanceTransactionsPage from './pages/FinanceTransactions.jsx';
 import { useModules } from './hooks/useModules.js';
 
 export default function App() {
@@ -48,6 +49,7 @@ export default function App() {
     forms_management: <FormsManagementPage />,
     report_management: <ReportManagementPage />,
     change_password: <ChangePasswordPage />,
+    finance_transactions: <FinanceTransactionsPage />,
   };
 
   const indexComponents = {
