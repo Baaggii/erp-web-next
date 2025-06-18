@@ -130,26 +130,33 @@ export default function TableManager({ table, refreshId = 0 }) {
             }
             if (rows.length > 0) {
               dataMap[col] = rows.map((row) => {
-                let label = null;
                 const parts = [];
                 if (row[rel.column] !== undefined) parts.push(row[rel.column]);
+
+                let displayFields = [];
                 if (
                   cfg &&
                   Array.isArray(cfg.displayFields) &&
                   cfg.displayFields.length > 0
                 ) {
-                  parts.push(
-                    ...cfg.displayFields
-                      .map((f) => row[f])
-                      .filter((v) => v !== undefined),
-                  );
-                }
-                if (parts.length > 0) {
-                  label = parts.join(' - ');
+                  displayFields = cfg.displayFields;
                 } else {
-                  const cells = Object.values(row).slice(0, 2);
-                  label = cells.join(' - ');
+                  displayFields = Object.keys(row)
+                    .filter((f) => f !== rel.column)
+                    .slice(0, 1);
                 }
+
+                parts.push(
+                  ...displayFields
+                    .map((f) => row[f])
+                    .filter((v) => v !== undefined),
+                );
+
+                const label =
+                  parts.length > 0
+                    ? parts.join(' - ')
+                    : Object.values(row).slice(0, 2).join(' - ');
+
                 return {
                   value: row[rel.column],
                   label,
