@@ -100,7 +100,7 @@ export default function TableManager({ table, refreshId = 0 }) {
         const dataMap = {};
         for (const [col, rel] of Object.entries(map)) {
           try {
-            const params = new URLSearchParams({ perPage: 100 });
+            const params = new URLSearchParams({ perPage: 1000 });
             const [refRes, cfgRes] = await Promise.all([
               fetch(
                 `/api/tables/${encodeURIComponent(rel.table)}?${params.toString()}`,
@@ -122,18 +122,24 @@ export default function TableManager({ table, refreshId = 0 }) {
               typeof cfg.idField === 'string' &&
               cfg.idField.toLowerCase() === rel.column.toLowerCase();
             const fields =
-              idMatches &&
-              Array.isArray(cfg.displayFields) &&
-              cfg.displayFields.length > 0
+              Array.isArray(cfg.displayFields) && cfg.displayFields.length > 0
                 ? cfg.displayFields
                 : [];
             if (Array.isArray(json.rows)) {
               dataMap[col] = json.rows.map((row) => {
-                let cells = [];
+                const cells = [];
+                if (idMatches) {
+                  cells.push(row[rel.column]);
+                }
                 if (fields.length > 0) {
-                  cells = fields.map((f) => row[f]).filter((v) => v !== undefined);
+                  fields.forEach((f) => {
+                    if (row[f] !== undefined) cells.push(row[f]);
+                  });
                 } else {
-                  cells = Object.values(row).slice(0, 2);
+                  Object.entries(row)
+                    .filter(([k]) => k !== rel.column)
+                    .slice(0, 2)
+                    .forEach(([, v]) => cells.push(v));
                 }
                 return {
                   value: row[rel.column],
