@@ -97,34 +97,18 @@ export default function TableManager({ table, refreshId = 0 }) {
         for (const [col, rel] of Object.entries(map)) {
           try {
             const params = new URLSearchParams({ perPage: 100 });
-            const [cfgRes, refRes] = await Promise.all([
-              fetch(
-                `/api/display_fields?table=${encodeURIComponent(rel.table)}`,
-                { credentials: 'include' },
-              ).catch(() => null),
-              fetch(
-                `/api/tables/${encodeURIComponent(rel.table)}?${params.toString()}`,
-                { credentials: 'include' },
-              ),
-            ]);
-            const cfg = cfgRes && cfgRes.ok ? await cfgRes.json() : {};
+            const refRes = await fetch(
+              `/api/tables/${encodeURIComponent(rel.table)}?${params.toString()}`,
+              { credentials: 'include' },
+            );
             const json = await refRes.json();
             if (Array.isArray(json.rows)) {
               dataMap[col] = json.rows.map((row) => {
-                const idField = cfg.idField || rel.column;
-                const value = row[idField];
-                let label;
-                if (Array.isArray(cfg.displayFields) && cfg.displayFields.length > 0) {
-                  label = cfg.displayFields
-                    .map((f) => row[f])
-                    .filter((v) => v !== undefined && v !== null)
-                    .join(' - ');
-                  if (!label) label = String(value);
-                } else {
-                  const cells = Object.values(row).slice(0, 2);
-                  label = cells.join(' - ');
-                }
-                return { value, label };
+                const cells = Object.values(row).slice(0, 2);
+                return {
+                  value: row[rel.column],
+                  label: cells.join(' - '),
+                };
               });
             }
           } catch {
