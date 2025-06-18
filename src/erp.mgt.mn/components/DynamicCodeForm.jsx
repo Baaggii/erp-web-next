@@ -12,7 +12,7 @@ export default function DynamicCodeForm({ form, onSubmit }) {
       for (const fld of form.fields) {
         if (fld.type === 'code' && fld.table) {
           try {
-            const params = new URLSearchParams({ perPage: 100 });
+            const params = new URLSearchParams({ perPage: 1000 });
             const res = await fetch(`/api/tables/${encodeURIComponent(fld.table)}?${params.toString()}`, { credentials: 'include' });
             const json = await res.json();
             if (Array.isArray(json.rows)) {
