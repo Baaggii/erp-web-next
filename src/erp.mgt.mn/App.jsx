@@ -18,7 +18,6 @@ import ModulesPage from './pages/Modules.jsx';
 import SettingsPage, { GeneralSettings } from './pages/Settings.jsx';
 import ChangePasswordPage from './pages/ChangePassword.jsx';
 import BlueLinkPage from './pages/BlueLinkPage.jsx';
-import InventoryTransactionForm from './pages/InventoryTransactionForm.jsx';
 import { useModules } from './hooks/useModules.js';
 
 export default function App() {
@@ -49,7 +48,6 @@ export default function App() {
     forms_management: <FormsManagementPage />,
     report_management: <ReportManagementPage />,
     change_password: <ChangePasswordPage />,
-    inventory_transaction: <InventoryTransactionForm />,
   };
 
   const indexComponents = {

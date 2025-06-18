@@ -17,9 +17,7 @@ import companyModuleRoutes from "./routes/company_modules.js";
 import tableRoutes from "./routes/tables.js";
 import codingTableRoutes from "./routes/coding_tables.js";
 import openaiRoutes from "./routes/openai.js";
-import dashboardRoutes from "./routes/dashboard.js";
 import headerMappingRoutes from "./routes/header_mappings.js";
-import displayFieldRoutes from "./routes/display_fields.js";
 import { requireAuth } from "./middlewares/auth.js";
 
 // Polyfill for __dirname in ES modules
@@ -53,9 +51,7 @@ app.use("/api/modules", requireAuth, moduleRoutes);
 app.use("/api/company_modules", requireAuth, companyModuleRoutes);
 app.use("/api/coding_tables", requireAuth, codingTableRoutes);
 app.use("/api/header_mappings", requireAuth, headerMappingRoutes);
-app.use("/api/display_fields", requireAuth, displayFieldRoutes);
 app.use("/api/openai", openaiRoutes);
-app.use("/api/dashboard", requireAuth, dashboardRoutes);
 app.use("/api/tables", requireAuth, tableRoutes);
 
 // Serve static React build and fallback to index.html

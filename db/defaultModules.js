@@ -16,6 +16,5 @@ export default [
   { moduleKey: 'change_password', label: 'Нууц үг солих', parentKey: 'settings', showInSidebar: true, showInHeader: false },
   { moduleKey: 'gl', label: 'Ерөнхий журнал', parentKey: null, showInSidebar: false, showInHeader: true },
   { moduleKey: 'po', label: 'Худалдан авалтын захиалга', parentKey: null, showInSidebar: false, showInHeader: true },
-  { moduleKey: 'sales', label: 'Борлуулалтын самбар', parentKey: null, showInSidebar: false, showInHeader: true },
-  { moduleKey: 'inventory_transaction', label: 'Inventory Txn', parentKey: 'forms', showInSidebar: true, showInHeader: false }
+  { moduleKey: 'sales', label: 'Борлуулалтын самбар', parentKey: null, showInSidebar: false, showInHeader: true }
 ];

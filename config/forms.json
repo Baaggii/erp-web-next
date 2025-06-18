@@ -11,25 +11,6 @@
           "required": true
         }
       ]
-    },
-    {
-      "id": "inventory_transaction",
-      "label": "Inventory Transaction",
-      "fields": [
-        { "name": "transaction_date", "label": "Date", "type": "date" },
-        { "name": "branch_id", "label": "Branch", "type": "code", "table": "branches" },
-        { "name": "employee_id", "label": "Employee", "type": "code", "table": "employees" },
-        { "name": "budget_id", "label": "Budget", "type": "code", "table": "budgets" },
-        { "name": "budget_sub_id", "label": "Budget Sub", "type": "code", "table": "budget_subs" },
-        { "name": "transaction_id", "label": "Transaction", "type": "code", "table": "transactions" },
-        { "name": "inventory_id", "label": "Inventory", "type": "code", "table": "inventories" },
-        { "name": "production_id", "label": "Production", "type": "code", "table": "productions" },
-        { "name": "order_id", "label": "Order", "type": "code", "table": "orders" },
-        { "name": "order_sub_id", "label": "Order Sub", "type": "code", "table": "order_subs" },
-        { "name": "customer_id", "label": "Customer", "type": "code", "table": "customers" },
-        { "name": "qty", "label": "Qty", "type": "number" },
-        { "name": "price", "label": "Price", "type": "number" }
-      ]
     }
   ]
 }
