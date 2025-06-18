@@ -15,8 +15,3 @@ The configuration file lives at `config/tableDisplayFields.json` and has the fol
 
 Applications can fetch or update this information via `/api/display_fields`.
 
-When the table management UI loads related records for foreign key fields,
-it checks this configuration. If the referenced table and column match the
-`idField` entry, the listed `displayFields` are used to build option labels
-instead of the first two columns.
-

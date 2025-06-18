@@ -97,36 +97,17 @@ export default function TableManager({ table, refreshId = 0 }) {
         for (const [col, rel] of Object.entries(map)) {
           try {
             const params = new URLSearchParams({ perPage: 100 });
-            const [cfgRes, refRes] = await Promise.all([
-              fetch(
-                `/api/display_fields?table=${encodeURIComponent(rel.table)}`,
-                { credentials: 'include' },
-              ),
-              fetch(
-                `/api/tables/${encodeURIComponent(rel.table)}?${params.toString()}`,
-                { credentials: 'include' },
-              ),
-            ]);
-            let cfg = { idField: null, displayFields: [] };
-            if (cfgRes.ok) {
-              cfg = await cfgRes.json();
-            }
+            const refRes = await fetch(
+              `/api/tables/${encodeURIComponent(rel.table)}?${params.toString()}`,
+              { credentials: 'include' },
+            );
             const json = await refRes.json();
             if (Array.isArray(json.rows)) {
               dataMap[col] = json.rows.map((row) => {
-                let cells;
-                if (
-                  cfg.idField === rel.column &&
-                  Array.isArray(cfg.displayFields) &&
-                  cfg.displayFields.length > 0
-                ) {
-                  cells = cfg.displayFields.map((f) => row[f]);
-                } else {
-                  cells = Object.values(row).slice(0, 2);
-                }
+                const cells = Object.values(row).slice(0, 2);
                 return {
                   value: row[rel.column],
-                  label: cells.filter((v) => v !== undefined).join(' - '),
+                  label: cells.join(' - '),
                 };
               });
             }
