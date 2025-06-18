@@ -3,4 +3,8 @@
     "idField": "emp_id",
     "displayFields": ["emp_fname", "emp_lname"]
   }
+  "users": {
+    "idField": "empid",
+    "displayFields": ["emp_fname", "emp_lname"]
+  }
 }
