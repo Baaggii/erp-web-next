@@ -31,3 +31,11 @@ await test('set and get display fields', async (t) => {
   assert.deepEqual(cfg, { idField: 'id', displayFields: ['a', 'b'] });
   await restore();
 });
+
+await test('getDisplayFields returns defaults when missing', async (t) => {
+  const { orig, restore } = await withTempFile();
+  await fs.writeFile(filePath, '{}');
+  const cfg = await getDisplayFields('unknown');
+  assert.deepEqual(cfg, { idField: null, displayFields: [] });
+  await restore();
+});
