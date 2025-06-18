@@ -4,10 +4,6 @@
     "displayFields": ["emp_fname", "emp_lname"]
   },
   "tbl_contracter": {
-    "idField": "id",
-    "displayFields": ["manuf_fname", "manuf_lname", "manuf_orgname", "brandname"]
-  },
-  "tbl_contracter": {
     "idField": "manuf_id",
     "displayFields": ["manuf_fname", "manuf_lname", "manuf_orgname", "brandname"]
   }
