@@ -119,17 +119,22 @@ export default function TableManager({ table, refreshId = 0 }) {
             if (Array.isArray(json.rows)) {
               dataMap[col] = json.rows.map((row) => {
                 let label = null;
+                const parts = [];
+                if (row[rel.column] !== undefined) parts.push(row[rel.column]);
                 if (
                   cfg &&
                   Array.isArray(cfg.displayFields) &&
                   cfg.displayFields.length > 0
                 ) {
-                  const parts = cfg.displayFields
-                    .map((f) => row[f])
-                    .filter((v) => v !== undefined);
-                  if (parts.length > 0) label = parts.join(' - ');
+                  parts.push(
+                    ...cfg.displayFields
+                      .map((f) => row[f])
+                      .filter((v) => v !== undefined),
+                  );
                 }
-                if (!label) {
+                if (parts.length > 0) {
+                  label = parts.join(' - ');
+                } else {
                   const cells = Object.values(row).slice(0, 2);
                   label = cells.join(' - ');
                 }
