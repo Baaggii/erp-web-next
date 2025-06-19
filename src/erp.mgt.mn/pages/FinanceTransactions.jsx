@@ -2,11 +2,11 @@ import React, { useState, useEffect, useContext } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 
-export default function FinanceTransactions() {
+export default function FinanceTransactions({ defaultName = '', hideSelector = false }) {
   const { user, company } = useContext(AuthContext);
   const [configs, setConfigs] = useState({});
   const [searchParams, setSearchParams] = useSearchParams();
-  const [name, setName] = useState(() => searchParams.get('name') || '');
+  const [name, setName] = useState(() => defaultName || searchParams.get('name') || '');
   const [table, setTable] = useState('');
   const [columns, setColumns] = useState([]);
   const [rows, setRows] = useState([]);
@@ -16,12 +16,17 @@ export default function FinanceTransactions() {
   const [editingId, setEditingId] = useState(null);
 
   useEffect(() => {
+    if (defaultName) setName(defaultName);
+  }, [defaultName]);
+
+  useEffect(() => {
+    if (defaultName) return; // keep URL clean when using fixed name
     if (name) {
       setSearchParams({ name });
     } else {
       setSearchParams({});
     }
-  }, [name, setSearchParams]);
+  }, [name, setSearchParams, defaultName]);
 
   useEffect(() => {
     fetch('/api/transaction_forms', { credentials: 'include' })
@@ -127,7 +132,7 @@ export default function FinanceTransactions() {
   if (transactionNames.length === 0) {
     return (
       <div>
-        <h2>Finance Transactions</h2>
+        <h2>{defaultName || 'Finance Transactions'}</h2>
         <p>No transactions configured.</p>
       </div>
     );
@@ -135,22 +140,29 @@ export default function FinanceTransactions() {
 
   return (
     <div>
-      <h2>Finance Transactions</h2>
-      <div style={{ marginBottom: '0.5rem' }}>
-        <select value={name} onChange={(e) => setName(e.target.value)}>
-          <option value="">-- select transaction --</option>
-          {transactionNames.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-        {name && (
-          <button onClick={openAdd} style={{ marginLeft: '0.5rem' }}>
-            Add
-          </button>
-        )}
-      </div>
+      <h2>{defaultName || 'Finance Transactions'}</h2>
+      {!hideSelector && (
+        <div style={{ marginBottom: '0.5rem' }}>
+          <select value={name} onChange={(e) => setName(e.target.value)}>
+            <option value="">-- select transaction --</option>
+            {transactionNames.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+          {name && (
+            <button onClick={openAdd} style={{ marginLeft: '0.5rem' }}>
+              Add
+            </button>
+          )}
+        </div>
+      )}
+      {hideSelector && name && (
+        <div style={{ marginBottom: '0.5rem' }}>
+          <button onClick={openAdd}>Add</button>
+        </div>
+      )}
       {name && (
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
           <thead>
