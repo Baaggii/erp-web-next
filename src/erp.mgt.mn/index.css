@@ -149,13 +149,12 @@ footer { text-align:center; padding:1rem; background:#f1f1f1; font-size:0.9rem; 
   overflow-y: auto;
 }
 
-/* Sidebar container now lays out items horizontally */
+/* Sidebar container displays items vertically */
 .sidebar {
   display: flex;
-  flex-direction: row;
-  overflow-x: auto;
-  white-space: nowrap;
-  gap: 1rem;
+  flex-direction: column;
+  overflow-y: auto;
+  gap: 0.5rem;
 }
 
 /* Account dropdown styling */
