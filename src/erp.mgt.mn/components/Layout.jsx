@@ -83,44 +83,44 @@ function Sidebar() {
 
   // You can expand/collapse these groups if you like; this is a static example
   return (
-    <aside className="sidebar" style={styles.sidebar}>
-      <div style={styles.menuGroup}>
+    <aside className="sidebar menu-container" style={styles.sidebar}>
+      <div className="menu-group" style={styles.menuGroup}>
         <div style={styles.groupTitle}>📌 Pinned</div>
-        <NavLink to="/" style={styles.menuItem}>
+        <NavLink to="/" className="menu-item" style={styles.menuItem}>
           Dashboard
         </NavLink>
-        <NavLink to="/forms" style={styles.menuItem}>
+        <NavLink to="/forms" className="menu-item" style={styles.menuItem}>
           Forms
         </NavLink>
-        <NavLink to="/reports" style={styles.menuItem}>
+        <NavLink to="/reports" className="menu-item" style={styles.menuItem}>
           Reports
         </NavLink>
       </div>
 
       <hr style={styles.divider} />
 
-      <div style={styles.menuGroup}>
+      <div className="menu-group" style={styles.menuGroup}>
         <div style={styles.groupTitle}>⚙ Settings</div>
-        <NavLink to="/settings" style={styles.menuItem} end>
+        <NavLink to="/settings" className="menu-item" style={styles.menuItem} end>
           General
         </NavLink>
         {user?.role === 'admin' && (
           <>
-            <NavLink to="/settings/users" style={styles.menuItem}>
+            <NavLink to="/settings/users" className="menu-item" style={styles.menuItem}>
               Users
             </NavLink>
-            <NavLink to="/settings/user-companies" style={styles.menuItem}>
+            <NavLink to="/settings/user-companies" className="menu-item" style={styles.menuItem}>
               User Companies
             </NavLink>
-            <NavLink to="/settings/role-permissions" style={styles.menuItem}>
+            <NavLink to="/settings/role-permissions" className="menu-item" style={styles.menuItem}>
               Role Permissions
             </NavLink>
-            <NavLink to="/settings/modules" style={styles.menuItem}>
+            <NavLink to="/settings/modules" className="menu-item" style={styles.menuItem}>
               Modules
             </NavLink>
           </>
         )}
-        <NavLink to="/settings/change-password" style={styles.menuItem}>
+        <NavLink to="/settings/change-password" className="menu-item" style={styles.menuItem}>
           Change Password
         </NavLink>
       </div>

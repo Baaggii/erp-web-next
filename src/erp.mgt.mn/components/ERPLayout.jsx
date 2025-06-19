@@ -171,8 +171,8 @@ function Sidebar({ onOpen }) {
   }
 
   return (
-    <aside id="sidebar" style={styles.sidebar}>
-      <nav>
+    <aside id="sidebar" className="sidebar" style={styles.sidebar}>
+      <nav className="menu-container">
         {roots.map((m) =>
           m.children.length > 0 ? (
             <SidebarGroup key={m.module_key} mod={m} map={map} allMap={allMap} level={0} onOpen={onOpen} />
@@ -180,6 +180,7 @@ function Sidebar({ onOpen }) {
             <button
               key={m.module_key}
               onClick={() => onOpen(modulePath(m, allMap), m.label)}
+              className="menu-item"
               style={styles.menuItem({ isActive: location.pathname === modulePath(m, allMap) })}
             >
               {m.label}
@@ -193,9 +194,10 @@ function Sidebar({ onOpen }) {
 
 function SidebarGroup({ mod, map, allMap, level, onOpen }) {
   const [open, setOpen] = useState(false);
+  const groupClass = level === 0 ? 'menu-group' : level === 1 ? 'menu-group submenu' : 'menu-group subsubmenu';
   return (
-    <div style={{ ...styles.menuGroup, paddingLeft: level ? '1rem' : 0 }}>
-      <button style={styles.groupBtn} onClick={() => setOpen((o) => !o)}>
+    <div className={groupClass} style={{ ...styles.menuGroup, paddingLeft: level ? '1rem' : 0 }}>
+      <button className="menu-item" style={styles.groupBtn} onClick={() => setOpen((o) => !o)}>
         {mod.label} {open ? '▾' : '▸'}
       </button>
       {open &&
@@ -210,6 +212,7 @@ function SidebarGroup({ mod, map, allMap, level, onOpen }) {
                 ...styles.menuItem({ isActive: location.pathname === modulePath(c, allMap) }),
                 paddingLeft: `${(level + 1) * 1}rem`,
               }}
+              className="menu-item"
             >
               {c.label}
             </button>
