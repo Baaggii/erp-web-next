@@ -597,60 +597,29 @@ export default function CodingTablesPage() {
     }).catch(() => {});
   }
 
-  async function handleUpload() {
-    if (!workbook || !sheet || !tableName) return;
-    const tbl = cleanIdentifier(tableName);
-    const idCol = cleanIdentifier(idColumn);
-    const nmCol = cleanIdentifier(nameColumn);
-    const cleanUnique = uniqueFields.map(cleanIdentifier);
-    const cleanOther = otherColumns.map(cleanIdentifier);
-    const uniqueOnly = cleanUnique.filter(
-      (c) => c !== idCol && c !== nmCol && !cleanOther.includes(c)
-    );
-    const otherFiltered = cleanOther.filter(
-      (c) => c !== idCol && c !== nmCol && !uniqueOnly.includes(c)
-    );
-    if (!idCol && !nmCol && uniqueOnly.length === 0 && otherFiltered.length === 0) {
-      alert('Please select at least one ID, Name, Unique or Other column');
+
+  async function executeGeneratedSql() {
+    if (!sql) {
+      alert('Generate SQL first');
       return;
     }
-    setSql('');
     setUploading(true);
     try {
-      const formData = new FormData();
-      const blob = new Blob([XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })]);
-      formData.append('file', blob, 'upload.xlsx');
-      formData.append('sheet', sheet);
-      formData.append('headerRow', headerRow);
-      formData.append('headerMap', JSON.stringify(headerMap));
-      formData.append('tableName', tbl);
-      formData.append('idColumn', idCol);
-      formData.append('nameColumn', nmCol);
-      formData.append('otherColumns', JSON.stringify(cleanOther));
-      formData.append('uniqueFields', JSON.stringify(cleanUnique));
-      formData.append('calcFields', JSON.stringify(parseCalcFields(calcText)));
-      formData.append('columnTypes', JSON.stringify(columnTypes));
-      formData.append('notNullMap', JSON.stringify(notNullMap));
-      formData.append('defaultValues', JSON.stringify(defaultValues));
-      formData.append('populateRange', String(populateRange));
-      formData.append('startYear', startYear);
-      formData.append('endYear', endYear);
-      formData.append('autoIncrementStart', autoIncStart);
-      const res = await fetch('/api/coding_tables/upload', {
+      const res = await fetch('/api/generated_sql/execute', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql }),
         credentials: 'include',
-        body: formData,
       });
       if (!res.ok) {
-        alert('Upload failed');
+        const data = await res.json().catch(() => ({}));
+        alert(data.message || 'Execution failed');
         return;
       }
-      const json = await res.json();
-      alert(`Inserted ${json.inserted} rows`);
-      setSql('');
+      alert('Table created');
     } catch (err) {
-      console.error('Upload failed', err);
-      alert('Upload failed');
+      console.error('SQL execution failed', err);
+      alert('Execution failed');
     } finally {
       setUploading(false);
     }
@@ -695,14 +664,28 @@ export default function CodingTablesPage() {
       autoIncStart,
     };
     try {
-      await fetch('/api/coding_table_configs', {
+      const res = await fetch('/api/coding_table_configs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ table: tableName, config }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.message || 'Failed to save config');
+        return;
+      }
+      if (sql) {
+        await fetch('/api/generated_sql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ table: tableName, sql }),
+        });
+      }
       alert('Config saved');
-    } catch {
+    } catch (err) {
+      console.error('Save config failed', err);
       alert('Failed to save config');
     }
   }
@@ -1040,12 +1023,12 @@ export default function CodingTablesPage() {
             <div>
               <button onClick={handleGenerateSql}>Populate SQL</button>
               <button onClick={loadFromSql} style={{ marginLeft: '0.5rem' }}>
-                Load From SQL
+                Fill Config from SQL
               </button>
               <button onClick={saveConfig} style={{ marginLeft: '0.5rem' }}>
                 Save Config
               </button>
-              <button onClick={handleUpload} style={{ marginLeft: '0.5rem' }}>
+              <button onClick={executeGeneratedSql} style={{ marginLeft: '0.5rem' }}>
                 Create Coding Table
               </button>
             </div>
