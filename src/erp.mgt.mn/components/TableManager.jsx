@@ -28,6 +28,7 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
   const [detailRefs, setDetailRefs] = useState([]);
   const [editLabels, setEditLabels] = useState(false);
   const [labelEdits, setLabelEdits] = useState({});
+  const [isAdding, setIsAdding] = useState(false);
   const { user, company } = useContext(AuthContext);
 
   function computeAutoInc(meta) {
@@ -270,6 +271,7 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
       vals[c] = v;
     });
     setEditing(vals);
+    setIsAdding(true);
     setShowForm(true);
   }
 
@@ -280,6 +282,7 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
     }
     await ensureColumnMeta();
     setEditing(row);
+    setIsAdding(false);
     setShowForm(true);
   }
 
@@ -358,12 +361,12 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
       }
     }
 
-    const method = editing ? 'PUT' : 'POST';
-    const url = editing
-      ? `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(getRowId(editing))}`
-      : `/api/tables/${encodeURIComponent(table)}`;
+    const method = isAdding ? 'POST' : 'PUT';
+    const url = isAdding
+      ? `/api/tables/${encodeURIComponent(table)}`
+      : `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(getRowId(editing))}`;
 
-    if (!editing) {
+    if (isAdding) {
       if (columns.has('created_by')) cleaned.created_by = user?.empid;
       if (columns.has('created_at')) {
         cleaned.created_at = formatTimestamp(new Date());
@@ -394,18 +397,11 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
         setSelectedRows(new Set());
         setShowForm(false);
         setEditing(null);
-      } else {
-        let message = 'Save failed';
-        try {
-          const data = await res.json();
-          if (data && data.message) message += `: ${data.message}`;
-        } catch (e) {
-          // ignore json parse errors
-        }
-        alert(message);
+        setIsAdding(false);
+        alert('Saved');
       }
     } catch (err) {
-      alert(`Save failed: ${err.message}`);
+      console.error('Save failed', err);
     }
   }
 
@@ -568,22 +564,21 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
       : rows[0]
       ? Object.keys(rows[0])
       : [];
+
+  const ordered = formConfig?.visibleFields?.length
+    ? formConfig.visibleFields.filter((c) => allColumns.includes(c))
+    : allColumns;
   const labels = {};
   columnMeta.forEach((c) => {
     labels[c.name] = c.label || c.name;
   });
   const hiddenColumns = ['password', 'created_by', 'created_at'];
-  let columns = allColumns.filter((c) => !hiddenColumns.includes(c));
-  if (formConfig?.visibleFields?.length) {
-    columns = columns.filter((c) => formConfig.visibleFields.includes(c));
-  }
+  let columns = ordered.filter((c) => !hiddenColumns.includes(c));
 
   const relationOpts = {};
-  allColumns.forEach((c) => {
+  ordered.forEach((c) => {
     if (relations[c] && refData[c]) {
-      if (!formConfig?.visibleFields || formConfig.visibleFields.includes(c)) {
-        relationOpts[c] = refData[c];
-      }
+      relationOpts[c] = refData[c];
     }
   });
   const labelMap = {};
@@ -602,12 +597,9 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
     autoCols.add('id');
   }
   const disabledFields = editing ? getKeyFields() : [];
-  let formColumns = allColumns.filter(
+  let formColumns = ordered.filter(
     (c) => !autoCols.has(c) && c !== 'created_at' && c !== 'created_by'
   );
-  if (formConfig?.visibleFields?.length) {
-    formColumns = formColumns.filter((c) => formConfig.visibleFields.includes(c));
-  }
 
   return (
     <div>
@@ -797,7 +789,11 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
       </table>
       <RowFormModal
         visible={showForm}
-        onCancel={() => setShowForm(false)}
+        onCancel={() => {
+          setShowForm(false);
+          setEditing(null);
+          setIsAdding(false);
+        }}
         onSubmit={handleSubmit}
         columns={formColumns}
         row={editing}
