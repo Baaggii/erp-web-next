@@ -93,6 +93,7 @@ export async function uploadCodingTable(req, res, next) {
       calcFields,
       columnTypes: columnTypesJson,
       notNullMap: notNullJson,
+      defaultValues: defaultValuesJson,
       headerMap: headerMapJson,
       autoIncrementStart,
     } = req.body;
@@ -106,6 +107,7 @@ export async function uploadCodingTable(req, res, next) {
     const calcDefs = calcFields ? JSON.parse(calcFields) : [];
     const columnTypeOverride = columnTypesJson ? JSON.parse(columnTypesJson) : {};
     const notNullOverride = notNullJson ? JSON.parse(notNullJson) : {};
+    const defaultValues = defaultValuesJson ? JSON.parse(defaultValuesJson) : {};
     const headerMap = headerMapJson ? JSON.parse(headerMapJson) : {};
     const autoIncStart = parseInt(autoIncrementStart || '1', 10) || 1;
     if (!req.file) {
@@ -230,9 +232,11 @@ export async function uploadCodingTable(req, res, next) {
       defs.push(`\`${dbIdCol}\` INT AUTO_INCREMENT PRIMARY KEY`);
     }
     if (cleanNameCol) {
-      defs.push(
-        `\`${dbNameCol}\` ${columnTypes[cleanNameCol] || 'VARCHAR(255)'} NOT NULL`
-      );
+      let def = `\`${dbNameCol}\` ${columnTypes[cleanNameCol] || 'VARCHAR(255)'} NOT NULL`;
+      if (defaultValues[cleanNameCol]) {
+        def += ` DEFAULT ${pool.escape(defaultValues[cleanNameCol])}`;
+      }
+      defs.push(def);
     }
     const cleanUniqueOnly = cleanUnique.filter(
       (c) => c !== cleanIdCol && c !== cleanNameCol && !cleanExtra.includes(c)
@@ -241,11 +245,18 @@ export async function uploadCodingTable(req, res, next) {
       (c) => c !== cleanIdCol && c !== cleanNameCol && !cleanUniqueOnly.includes(c)
     );
     cleanUniqueOnly.forEach((c) => {
-      defs.push(`\`${c}\` ${columnTypes[c] || 'VARCHAR(255)'} NOT NULL`);
+      let def = `\`${c}\` ${columnTypes[c] || 'VARCHAR(255)'} NOT NULL`;
+      if (defaultValues[c]) {
+        def += ` DEFAULT ${pool.escape(defaultValues[c])}`;
+      }
+      defs.push(def);
     });
     cleanExtraFiltered.forEach((c) => {
       let def = `\`${c}\` ${columnTypes[c] || 'VARCHAR(255)'}`;
       if (notNullMap[c]) def += ' NOT NULL';
+      if (defaultValues[c]) {
+        def += ` DEFAULT ${pool.escape(defaultValues[c])}`;
+      }
       defs.push(def);
     });
     calcDefs.forEach((cf) => {
@@ -292,7 +303,10 @@ export async function uploadCodingTable(req, res, next) {
       for (const c of cleanUniqueOnly) {
         cols.push(`\`${c}\``);
         placeholders.push('?');
-        let val = r[c];
+        let val =
+          defaultValues[c] !== undefined && defaultValues[c] !== ''
+            ? defaultValues[c]
+            : r[c];
         const hasProp = Object.prototype.hasOwnProperty.call(r, c);
         if (!hasProp || val === undefined || val === null || val === '') {
           val = defaultValForType(columnTypes[c]);
@@ -308,7 +322,10 @@ export async function uploadCodingTable(req, res, next) {
       for (const c of cleanExtraFiltered) {
         cols.push(`\`${c}\``);
         placeholders.push('?');
-        let val = r[c];
+        let val =
+          defaultValues[c] !== undefined && defaultValues[c] !== ''
+            ? defaultValues[c]
+            : r[c];
         if (columnTypes[c] === 'DATE') {
           const d = parseExcelDate(val);
           val = d || null;

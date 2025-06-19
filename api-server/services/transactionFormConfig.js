@@ -26,6 +26,7 @@ export async function getFormConfig(table, name) {
     visibleFields: raw.visibleFields || [],
     requiredFields: raw.requiredFields || [],
     defaultValues: raw.defaultValues || {},
+    editableDefaultFields: raw.editableDefaultFields || [],
     userIdFields: raw.userIdFields || (raw.userIdField ? [raw.userIdField] : []),
     branchIdFields: raw.branchIdFields || (raw.branchIdField ? [raw.branchIdField] : []),
     companyIdFields:
@@ -57,6 +58,7 @@ export async function setFormConfig(table, name, config, options = {}) {
     visibleFields = [],
     requiredFields = [],
     defaultValues = {},
+    editableDefaultFields = [],
     userIdFields = [],
     branchIdFields = [],
     companyIdFields = [],
@@ -82,6 +84,7 @@ export async function setFormConfig(table, name, config, options = {}) {
     visibleFields,
     requiredFields,
     defaultValues,
+    editableDefaultFields,
     userIdFields: uid,
     branchIdFields: bid,
     companyIdFields: cid,
