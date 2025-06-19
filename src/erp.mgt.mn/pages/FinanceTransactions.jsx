@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
+import RowFormModal from '../components/RowFormModal.jsx';
+import RowDetailModal from '../components/RowDetailModal.jsx';
+import CascadeDeleteModal from '../components/CascadeDeleteModal.jsx';
 
 export default function FinanceTransactions({ defaultName = '', hideSelector = false }) {
   const { user, company } = useContext(AuthContext);
@@ -11,9 +14,15 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
   const [columns, setColumns] = useState([]);
   const [rows, setRows] = useState([]);
   const [config, setConfig] = useState(null);
-  const [showForm, setShowForm] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [formVals, setFormVals] = useState({});
-  const [editingId, setEditingId] = useState(null);
+  const [editingRow, setEditingRow] = useState(null);
+  const [detailRow, setDetailRow] = useState(null);
+  const [detailRefs, setDetailRefs] = useState([]);
+  const [showDetail, setShowDetail] = useState(false);
+  const [deleteInfo, setDeleteInfo] = useState(null);
+  const [showCascade, setShowCascade] = useState(false);
 
   useEffect(() => {
     if (defaultName) setName(defaultName);
@@ -73,9 +82,9 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
       if (config?.companyIdFields?.includes(c) && company?.company_id !== undefined) v = company.company_id;
       vals[c] = v;
     });
-    setEditingId(null);
+    setEditingRow(null);
     setFormVals(vals);
-    setShowForm(true);
+    setShowAddForm(true);
   }
 
   function openEdit(row) {
@@ -83,9 +92,29 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
     columns.forEach((c) => {
       vals[c] = row[c] ?? '';
     });
-    setEditingId(row.id);
+    setEditingRow(row);
     setFormVals(vals);
-    setShowForm(true);
+    setShowEditModal(true);
+  }
+
+  async function openView(row) {
+    setDetailRow(row);
+    const id = row.id;
+    if (id !== undefined) {
+      try {
+        const res = await fetch(
+          `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}/references`,
+          { credentials: 'include' },
+        );
+        if (res.ok) {
+          const refs = await res.json();
+          setDetailRefs(Array.isArray(refs) ? refs : []);
+        }
+      } catch {
+        setDetailRefs([]);
+      }
+    }
+    setShowDetail(true);
   }
 
   async function handleSubmit(e) {
@@ -98,7 +127,7 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
       }
     }
     const data = { ...formVals };
-    if (editingId == null) {
+    if (!editingRow) {
       await fetch(`/api/tables/${encodeURIComponent(table)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -106,24 +135,64 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
         body: JSON.stringify(data),
       });
     } else {
-      await fetch(`/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(editingId)}`, {
+      const id = editingRow.id;
+      await fetch(`/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(data),
       });
     }
-    setShowForm(false);
+    setShowAddForm(false);
+    setShowEditModal(false);
+    setEditingRow(null);
     await loadRows();
   }
 
-  async function handleDelete(id) {
-    if (!window.confirm('Delete transaction?')) return;
-    await fetch(`/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-      credentials: 'include',
-    });
-    loadRows();
+  async function executeDelete(id, cascade) {
+    await fetch(
+      `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}${
+        cascade ? '?cascade=true' : ''
+      }`,
+      { method: 'DELETE', credentials: 'include' },
+    );
+    await loadRows();
+  }
+
+  async function handleDelete(row) {
+    const id = row.id;
+    if (id === undefined) return;
+    try {
+      const refRes = await fetch(
+        `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}/references`,
+        { credentials: 'include' },
+      );
+      if (refRes.ok) {
+        const refs = await refRes.json();
+        const total = Array.isArray(refs)
+          ? refs.reduce((a, r) => a + (r.count || 0), 0)
+          : 0;
+        if (total > 0) {
+          setDeleteInfo({ id, refs });
+          setShowCascade(true);
+          return;
+        }
+        if (!window.confirm('Delete row?')) return;
+        await executeDelete(id, false);
+        return;
+      }
+    } catch {
+      // ignore
+    }
+    if (!window.confirm('Delete row and related records?')) return;
+    await executeDelete(id, true);
+  }
+
+  async function confirmCascadeDelete() {
+    if (!deleteInfo) return;
+    await executeDelete(deleteInfo.id, true);
+    setShowCascade(false);
+    setDeleteInfo(null);
   }
 
   const fields = config?.visibleFields?.length ? config.visibleFields : columns;
@@ -184,10 +253,13 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
                   </td>
                 ))}
                 <td style={{ border: '1px solid #ccc', padding: '4px' }}>
+                  <button onClick={() => openView(r)} style={{ marginRight: '0.25rem' }}>
+                    View
+                  </button>
                   <button onClick={() => openEdit(r)} style={{ marginRight: '0.25rem' }}>
                     Edit
                   </button>
-                  <button onClick={() => handleDelete(r.id)}>Delete</button>
+                  <button onClick={() => handleDelete(r)}>Delete</button>
                 </td>
               </tr>
             ))}
@@ -201,53 +273,67 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
           </tbody>
         </table>
       )}
-      {showForm && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.4)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <div
-            style={{
-              backgroundColor: '#fff',
-              padding: '1rem',
-              borderRadius: '4px',
-              maxHeight: '90vh',
-              overflowY: 'auto',
-            }}
-          >
-            <h3 style={{ marginTop: 0 }}>{editingId == null ? 'Add Transaction' : 'Edit Transaction'}</h3>
-            <form onSubmit={handleSubmit}>
-              {fields.map((f) => (
-                <div key={f} style={{ marginBottom: '0.5rem' }}>
-                  <label style={{ display: 'block', marginBottom: '0.25rem' }}>{f}</label>
-                  <input
-                    type="text"
-                    value={formVals[f] ?? ''}
-                    onChange={(e) => setFormVals((v) => ({ ...v, [f]: e.target.value }))}
-                    required={config?.requiredFields?.includes(f)}
-                    style={{ width: '100%', padding: '0.5rem' }}
-                  />
-                </div>
-              ))}
-              <div style={{ textAlign: 'right' }}>
-                <button type="button" onClick={() => setShowForm(false)} style={{ marginRight: '0.5rem' }}>
-                  Cancel
-                </button>
-                <button type="submit">Save</button>
-              </div>
-            </form>
+      {showAddForm && (
+        <form onSubmit={handleSubmit} style={{ marginTop: '1rem', background: '#f9fafb', padding: '1rem', borderRadius: '4px' }}>
+          <h3 style={{ marginTop: 0 }}>Add Transaction</h3>
+          {fields.map((f, idx) => (
+            <div key={f} style={{ marginBottom: '0.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.25rem' }}>{f}</label>
+              <input
+                type="text"
+                value={formVals[f] ?? ''}
+                onChange={(e) => setFormVals((v) => ({ ...v, [f]: e.target.value }))}
+                required={config?.requiredFields?.includes(f)}
+                style={{ width: '100%', padding: '0.5rem' }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const form = e.target.form;
+                    const elements = Array.from(form.querySelectorAll('input'));
+                    const idx2 = elements.indexOf(e.target);
+                    if (idx2 >= 0 && idx2 < elements.length - 1) {
+                      elements[idx2 + 1].focus();
+                    }
+                  }
+                }}
+              />
+            </div>
+          ))}
+          <div style={{ textAlign: 'right' }}>
+            <button type="button" onClick={() => setShowAddForm(false)} style={{ marginRight: '0.5rem' }}>
+              Cancel
+            </button>
+            <button type="submit">Save</button>
           </div>
-        </div>
+        </form>
       )}
+
+      <RowFormModal
+        visible={showEditModal}
+        onCancel={() => {
+          setShowEditModal(false);
+          setEditingRow(null);
+        }}
+        onSubmit={handleSubmit}
+        columns={fields}
+        row={editingRow}
+      />
+      <CascadeDeleteModal
+        visible={showCascade}
+        references={deleteInfo?.refs || []}
+        onCancel={() => {
+          setShowCascade(false);
+          setDeleteInfo(null);
+        }}
+        onConfirm={confirmCascadeDelete}
+      />
+      <RowDetailModal
+        visible={showDetail}
+        onClose={() => setShowDetail(false)}
+        row={detailRow}
+        columns={fields}
+        references={detailRefs}
+      />
     </div>
   );
 }
