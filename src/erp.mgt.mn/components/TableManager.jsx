@@ -348,18 +348,41 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
 
   async function handleSubmit(values) {
     const columns = new Set(allColumns);
-    const cleaned = {};
+    const merged = { ...(editing || {}) };
     Object.entries(values).forEach(([k, v]) => {
-      if (v !== '') cleaned[k] = v;
+      merged[k] = v;
     });
+
+    Object.entries(formConfig?.defaultValues || {}).forEach(([k, v]) => {
+      if (merged[k] === undefined || merged[k] === '') merged[k] = v;
+    });
+
+    if (isAdding) {
+      formConfig?.userIdFields?.forEach((f) => {
+        if (columns.has(f)) merged[f] = user?.empid;
+      });
+      formConfig?.branchIdFields?.forEach((f) => {
+        if (columns.has(f) && company?.branch_id !== undefined)
+          merged[f] = company.branch_id;
+      });
+      formConfig?.companyIdFields?.forEach((f) => {
+        if (columns.has(f) && company?.company_id !== undefined)
+          merged[f] = company.company_id;
+      });
+    }
 
     const required = formConfig?.requiredFields || [];
     for (const f of required) {
-      if (!cleaned[f]) {
+      if (merged[f] === undefined || merged[f] === '') {
         alert('Please fill ' + (labels[f] || f));
         return;
       }
     }
+
+    const cleaned = {};
+    Object.entries(merged).forEach(([k, v]) => {
+      if (v !== '') cleaned[k] = v;
+    });
 
     const method = isAdding ? 'POST' : 'PUT';
     const url = isAdding
@@ -676,10 +699,11 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
           </button>
         </div>
       </div>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
         <thead>
           <tr style={{ backgroundColor: '#e5e7eb' }}>
-            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap' }}>
               <input
                 type="checkbox"
                 checked={
@@ -695,19 +719,19 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
             {columns.map((c) => (
               <th
                 key={c}
-                style={{ padding: '0.5rem', border: '1px solid #d1d5db', cursor: 'pointer' }}
+                style={{ padding: '0.5rem', border: '1px solid #d1d5db', cursor: 'pointer', whiteSpace: 'nowrap' }}
                 onClick={() => handleSort(c)}
               >
                 {labels[c] || c}
                 {sort.column === c ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}
               </th>
             ))}
-            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Action</th>
+            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap' }}>Action</th>
           </tr>
           <tr>
             <th style={{ padding: '0.25rem', border: '1px solid #d1d5db' }}></th>
             {columns.map((c) => (
-              <th key={c} style={{ padding: '0.25rem', border: '1px solid #d1d5db' }}>
+            <th key={c} style={{ padding: '0.25rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap' }}>
                 {Array.isArray(relationOpts[c]) ? (
                   <select
                     value={filters[c] || ''}
@@ -743,7 +767,7 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
           )}
           {rows.map((r) => (
             <tr key={r.id || JSON.stringify(r)}>
-              <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+              <td style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap' }}>
                 {(() => {
                   const rid = getRowId(r);
                   return (
@@ -757,11 +781,22 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
                 })()}
               </td>
               {columns.map((c) => (
-                <td key={c} style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                <td
+                  key={c}
+                  style={{
+                    padding: '0.5rem',
+                    border: '1px solid #d1d5db',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    maxWidth: '200px',
+                  }}
+                  title={relationOpts[c] ? labelMap[c][r[c]] || String(r[c]) : String(r[c])}
+                >
                   {relationOpts[c] ? labelMap[c][r[c]] || String(r[c]) : String(r[c])}
                 </td>
               ))}
-              <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+              <td style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap' }}>
                 {(() => {
                   const rid = getRowId(r);
                   return (
@@ -787,6 +822,7 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
       ))}
       </tbody>
       </table>
+      </div>
       <RowFormModal
         visible={showForm}
         onCancel={() => {

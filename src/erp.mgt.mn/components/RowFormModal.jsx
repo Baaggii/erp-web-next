@@ -21,6 +21,7 @@ export default function RowFormModal({
     return init;
   });
   const inputRefs = useRef({});
+  const [errors, setErrors] = useState({});
 
   useEffect(() => {
     if (!visible) return;
@@ -30,6 +31,7 @@ export default function RowFormModal({
     });
     setFormVals(vals);
     inputRefs.current = {};
+    setErrors({});
   }, [row, columns, visible]);
 
   if (!visible) return null;
@@ -52,7 +54,15 @@ export default function RowFormModal({
     borderRadius: '4px',
     maxHeight: '90vh',
     overflowY: 'auto',
+    width: '70vw',
+    maxWidth: '800px',
     minWidth: '300px',
+  };
+
+  const formStyle = {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '0.75rem 1rem',
   };
 
   function handleKeyDown(e, col) {
@@ -66,6 +76,19 @@ export default function RowFormModal({
       return;
     }
     if (!next) {
+      submitForm();
+    }
+  }
+
+  function submitForm() {
+    const errs = {};
+    requiredFields.forEach((f) => {
+      if (columns.includes(f) && !formVals[f]) {
+        errs[f] = 'Please enter value';
+      }
+    });
+    setErrors(errs);
+    if (Object.keys(errs).length === 0) {
       onSubmit(formVals);
     }
   }
@@ -77,10 +100,18 @@ export default function RowFormModal({
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            onSubmit(formVals);
+            submitForm();
           }}
+          style={formStyle}
         >
-          {columns.map((c) => (
+          {columns.map((c) => {
+            const err = errors[c];
+            const inputStyle = {
+              width: '100%',
+              padding: '0.5rem',
+              border: err ? '1px solid red' : '1px solid #ccc',
+            };
+            return (
             <div key={c} style={{ marginBottom: '0.75rem' }}>
               <label style={{ display: 'block', marginBottom: '0.25rem' }}>
                 {labels[c] || c}
@@ -90,6 +121,7 @@ export default function RowFormModal({
               </label>
               {relationConfigs[c] ? (
                 <AsyncSearchSelect
+                  title={labels[c] || c}
                   table={relationConfigs[c].table}
                   searchColumn={relationConfigs[c].column}
                   labelFields={relationConfigs[c].displayFields || []}
@@ -99,9 +131,11 @@ export default function RowFormModal({
                   }
                   disabled={row && disabledFields.includes(c)}
                   onKeyDown={(e) => handleKeyDown(e, c)}
+                  inputRef={(el) => (inputRefs.current[c] = el)}
                 />
               ) : Array.isArray(relations[c]) ? (
                 <select
+                  title={labels[c] || c}
                   ref={(el) => (inputRefs.current[c] = el)}
                   value={formVals[c]}
                   onChange={(e) =>
@@ -109,7 +143,7 @@ export default function RowFormModal({
                   }
                   onKeyDown={(e) => handleKeyDown(e, c)}
                   disabled={row && disabledFields.includes(c)}
-                  style={{ width: '100%', padding: '0.5rem' }}
+                  style={inputStyle}
                 >
                   <option value="">-- select --</option>
                   {relations[c].map((opt) => (
@@ -120,6 +154,7 @@ export default function RowFormModal({
                 </select>
               ) : (
                 <input
+                  title={labels[c] || c}
                   ref={(el) => (inputRefs.current[c] = el)}
                   type="text"
                   value={formVals[c]}
@@ -128,18 +163,25 @@ export default function RowFormModal({
                   }
                   onKeyDown={(e) => handleKeyDown(e, c)}
                   disabled={row && disabledFields.includes(c)}
-                  style={{ width: '100%', padding: '0.5rem' }}
+                  style={inputStyle}
                 />
               )}
+              {err && (
+                <div style={{ color: 'red', fontSize: '0.8rem' }}>{err}</div>
+              )}
             </div>
-          ))}
-          <div style={{ textAlign: 'right' }}>
+          );
+          })}
+          <div style={{ textAlign: 'right', gridColumn: '1 / span 2' }}>
             <button type="button" onClick={onCancel} style={{ marginRight: '0.5rem' }}>
               Cancel
             </button>
             <button type="submit">Save</button>
           </div>
-        </form>
+        <div style={{ marginTop: '0.5rem', gridColumn: '1 / span 2', fontSize: '0.85rem', color: '#555' }}>
+          Press <strong>Enter</strong> to move to next field. Use arrow keys to navigate selections.
+        </div>
+      </form>
       </div>
     </div>
   );
