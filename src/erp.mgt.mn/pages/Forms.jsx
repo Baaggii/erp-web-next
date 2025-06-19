@@ -1,6 +1,7 @@
 // src/erp.mgt.mn/pages/Forms.jsx
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import slugify from '../utils/slugify.js';
 
 export default function Forms() {
   const [transactions, setTransactions] = useState([]);
@@ -22,7 +23,7 @@ export default function Forms() {
         <ul>
           {transactions.map((t) => (
             <li key={t}>
-              <button onClick={() => navigate(`/finance-transactions?name=${encodeURIComponent(t)}`)}>
+              <button onClick={() => navigate(`/finance-transactions/${slugify(t)}`)}>
                 {t}
               </button>
             </li>
