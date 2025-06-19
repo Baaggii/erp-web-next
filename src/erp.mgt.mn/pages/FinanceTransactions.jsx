@@ -11,9 +11,13 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
   const [columns, setColumns] = useState([]);
   const [rows, setRows] = useState([]);
   const [config, setConfig] = useState(null);
-  const [showForm, setShowForm] = useState(false);
-  const [formVals, setFormVals] = useState({});
-  const [editingId, setEditingId] = useState(null);
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    if (!message) return;
+    const t = setTimeout(() => setMessage(''), 3000);
+    return () => clearTimeout(t);
+  }, [message]);
 
   useEffect(() => {
     if (defaultName) setName(defaultName);
@@ -64,66 +68,20 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
     setRows(data.rows || []);
   }
 
-  function openAdd() {
-    const vals = {};
-    columns.forEach((c) => {
-      let v = (config?.defaultValues || {})[c] || '';
-      if (config?.userIdFields?.includes(c) && user?.empid) v = user.empid;
-      if (config?.branchIdFields?.includes(c) && company?.branch_id !== undefined) v = company.branch_id;
-      if (config?.companyIdFields?.includes(c) && company?.company_id !== undefined) v = company.company_id;
-      vals[c] = v;
-    });
-    setEditingId(null);
-    setFormVals(vals);
-    setShowForm(true);
-  }
-
-  function openEdit(row) {
-    const vals = {};
-    columns.forEach((c) => {
-      vals[c] = row[c] ?? '';
-    });
-    setEditingId(row.id);
-    setFormVals(vals);
-    setShowForm(true);
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    const required = config?.requiredFields || [];
-    for (const f of required) {
-      if (!formVals[f]) {
-        alert('Please fill ' + f);
-        return;
-      }
-    }
-    const data = { ...formVals };
-    if (editingId == null) {
-      await fetch(`/api/tables/${encodeURIComponent(table)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(data),
-      });
-    } else {
-      await fetch(`/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(editingId)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(data),
-      });
-    }
-    setShowForm(false);
-    await loadRows();
-  }
+  // no row editing or modal forms
 
   async function handleDelete(id) {
     if (!window.confirm('Delete transaction?')) return;
-    await fetch(`/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`, {
+    const res = await fetch(`/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`, {
       method: 'DELETE',
       credentials: 'include',
     });
-    loadRows();
+    if (res.ok) {
+      setMessage('Transaction deleted');
+      loadRows();
+    } else {
+      setMessage('Delete failed');
+    }
   }
 
   const fields = config?.visibleFields?.length ? config.visibleFields : columns;
@@ -141,6 +99,9 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
   return (
     <div>
       <h2>{defaultName || 'Finance Transactions'}</h2>
+      {message && (
+        <div style={{ marginBottom: '0.5rem', color: '#065f46' }}>{message}</div>
+      )}
       {!hideSelector && (
         <div style={{ marginBottom: '0.5rem' }}>
           <select value={name} onChange={(e) => setName(e.target.value)}>
@@ -151,16 +112,12 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
               </option>
             ))}
           </select>
-          {name && (
-            <button onClick={openAdd} style={{ marginLeft: '0.5rem' }}>
-              Add
-            </button>
-          )}
+          {/* add functionality removed */}
         </div>
       )}
       {hideSelector && name && (
         <div style={{ marginBottom: '0.5rem' }}>
-          <button onClick={openAdd}>Add</button>
+          {/* add functionality removed */}
         </div>
       )}
       {name && (
@@ -172,7 +129,7 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
                   {f}
                 </th>
               ))}
-              <th style={{ border: '1px solid #ccc', padding: '4px' }}>Action</th>
+              <th style={{ border: '1px solid #ccc', padding: '4px' }}>Delete</th>
             </tr>
           </thead>
           <tbody>
@@ -184,9 +141,6 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
                   </td>
                 ))}
                 <td style={{ border: '1px solid #ccc', padding: '4px' }}>
-                  <button onClick={() => openEdit(r)} style={{ marginRight: '0.25rem' }}>
-                    Edit
-                  </button>
                   <button onClick={() => handleDelete(r.id)}>Delete</button>
                 </td>
               </tr>
@@ -200,53 +154,6 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
             )}
           </tbody>
         </table>
-      )}
-      {showForm && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.4)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <div
-            style={{
-              backgroundColor: '#fff',
-              padding: '1rem',
-              borderRadius: '4px',
-              maxHeight: '90vh',
-              overflowY: 'auto',
-            }}
-          >
-            <h3 style={{ marginTop: 0 }}>{editingId == null ? 'Add Transaction' : 'Edit Transaction'}</h3>
-            <form onSubmit={handleSubmit}>
-              {fields.map((f) => (
-                <div key={f} style={{ marginBottom: '0.5rem' }}>
-                  <label style={{ display: 'block', marginBottom: '0.25rem' }}>{f}</label>
-                  <input
-                    type="text"
-                    value={formVals[f] ?? ''}
-                    onChange={(e) => setFormVals((v) => ({ ...v, [f]: e.target.value }))}
-                    required={config?.requiredFields?.includes(f)}
-                    style={{ width: '100%', padding: '0.5rem' }}
-                  />
-                </div>
-              ))}
-              <div style={{ textAlign: 'right' }}>
-                <button type="button" onClick={() => setShowForm(false)} style={{ marginRight: '0.5rem' }}>
-                  Cancel
-                </button>
-                <button type="submit">Save</button>
-              </div>
-            </form>
-          </div>
-        </div>
       )}
     </div>
   );

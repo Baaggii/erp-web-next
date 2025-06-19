@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-export default function SearchSelect({ value, onChange, options = [], disabled }) {
+export default function SearchSelect({ value, onChange, options = [], disabled, inputRef, onKeyDown }) {
   const [filter, setFilter] = useState('');
   const id = React.useId();
 
@@ -24,6 +24,8 @@ export default function SearchSelect({ value, onChange, options = [], disabled }
         }}
         disabled={disabled}
         style={{ width: '100%', padding: '0.5rem' }}
+        ref={inputRef}
+        onKeyDown={onKeyDown}
       />
       <datalist id={id}>
         {filtered.slice(0, 50).map((opt) => (
