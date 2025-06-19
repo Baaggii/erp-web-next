@@ -703,8 +703,13 @@ export default function CodingTablesPage() {
         body: JSON.stringify({ table: tableName, config }),
       });
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        addToast(data.message || 'Failed to save config', 'error');
+        const status = res.status;
+        let text = '';
+        try {
+          text = await res.text();
+        } catch {}
+        console.error('Failed to save config', status, text);
+        addToast(`Failed to save config. Server returned ${status}`, 'error');
         return;
       }
       if (sql) {
