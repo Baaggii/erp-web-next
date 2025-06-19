@@ -55,14 +55,16 @@ export default function AppLayout({ children, title }) {
             {user && (
               <div className="relative group">
                 <button className="focus:outline-none">{user.empid}</button>
-                <div className="absolute right-0 mt-2 hidden group-focus-within:block group-hover:block bg-white text-gray-700 shadow-lg rounded border">
-                  <button
-                    onClick={handleLogout}
-                    className="block w-full text-left px-4 py-2 hover:bg-gray-100"
-                  >
-                    Logout
-                  </button>
-                </div>
+                <ul className="account-menu absolute right-0 mt-2 hidden group-focus-within:block group-hover:block">
+                  <li>
+                    <button
+                      onClick={handleLogout}
+                      className="block w-full text-left px-4 py-2"
+                    >
+                      Logout
+                    </button>
+                  </li>
+                </ul>
               </div>
             )}
           </div>

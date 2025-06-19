@@ -83,7 +83,7 @@ function Sidebar() {
 
   // You can expand/collapse these groups if you like; this is a static example
   return (
-    <aside style={styles.sidebar}>
+    <aside className="sidebar" style={styles.sidebar}>
       <div style={styles.menuGroup}>
         <div style={styles.groupTitle}>📌 Pinned</div>
         <NavLink to="/" style={styles.menuItem}>
@@ -210,13 +210,14 @@ const styles = {
     backgroundColor: '#f3f4f6',
   },
   sidebar: {
-    width: '220px',
     backgroundColor: '#374151',
     color: '#e5e7eb',
     display: 'flex',
-    flexDirection: 'column',
-    padding: '1rem 0.5rem',
-    flexShrink: 0,
+    flexDirection: 'row',
+    overflowX: 'auto',
+    whiteSpace: 'nowrap',
+    gap: '1rem',
+    padding: '1rem',
   },
   menuGroup: {
     marginBottom: '1rem',

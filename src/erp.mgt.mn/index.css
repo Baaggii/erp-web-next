@@ -149,8 +149,39 @@ footer { text-align:center; padding:1rem; background:#f1f1f1; font-size:0.9rem; 
   overflow-y: auto;
 }
 
+/* Sidebar container now lays out items horizontally */
 .sidebar {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  overflow-x: auto;
+  white-space: nowrap;
+  gap: 1rem;
+}
+
+/* Account dropdown styling */
+.account-menu {
+  background-color: #1f2937; /* dark gray */
+  color: #f9fafb; /* off-white text */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+.account-menu li:hover {
+  background-color: #374151; /* darker on hover */
+}
+
+/* Table cell behaviour */
+td {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+th {
+  white-space: normal;
+  word-break: break-word;
+  padding: 0.5rem;
+  font-weight: 600;
+  text-align: left;
 }
 
