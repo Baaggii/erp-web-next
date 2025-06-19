@@ -71,12 +71,7 @@ export default function LoginForm() {
             value={selectedCompany}
             onChange={(e) => setSelectedCompany(e.target.value)}
             required
-            style={{
-              width: '100%',
-              padding: '0.5rem',
-              borderRadius: '3px',
-              border: '1px solid #9ca3af',
-            }}
+            style={{ width: '100%', padding: '0.5rem', borderRadius: '3px' }}
           >
             <option value="" disabled>
               Сонгоно уу...
@@ -94,7 +89,7 @@ export default function LoginForm() {
             backgroundColor: '#2563eb',
             color: '#fff',
             padding: '0.5rem 1rem',
-            border: '1px solid #2563eb',
+            border: 'none',
             borderRadius: '3px',
             cursor: 'pointer',
           }}
@@ -117,12 +112,7 @@ export default function LoginForm() {
           value={empid}
           onChange={(ev) => setEmpid(ev.target.value)}
           required
-          style={{
-            width: '100%',
-            padding: '0.5rem',
-            borderRadius: '3px',
-            border: '1px solid #9ca3af',
-          }}
+          style={{ width: '100%', padding: '0.5rem', borderRadius: '3px' }}
         />
       </div>
 
@@ -139,12 +129,7 @@ export default function LoginForm() {
           value={password}
           onChange={(ev) => setPassword(ev.target.value)}
           required
-          style={{
-            width: '100%',
-            padding: '0.5rem',
-            borderRadius: '3px',
-            border: '1px solid #9ca3af',
-          }}
+          style={{ width: '100%', padding: '0.5rem', borderRadius: '3px' }}
         />
       </div>
 
@@ -158,7 +143,7 @@ export default function LoginForm() {
           backgroundColor: '#2563eb',
           color: '#fff',
           padding: '0.5rem 1rem',
-          border: '1px solid #2563eb',
+          border: 'none',
           borderRadius: '3px',
           cursor: 'pointer',
         }}

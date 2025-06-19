@@ -331,13 +331,12 @@ const styles = {
     gap: "0.75rem",
   },
   iconBtn: {
-    background: "#374151",
-    border: "1px solid #4b5563",
+    background: "transparent",
+    border: "none",
     color: "#fff",
     cursor: "pointer",
     fontSize: "0.9rem",
     padding: "0.25rem 0.5rem",
-    borderRadius: "4px",
   },
   userSection: {
     display: "flex",
@@ -353,7 +352,7 @@ const styles = {
   logoutBtn: {
     backgroundColor: "#dc2626",
     color: "#fff",
-    border: "1px solid #dc2626",
+    border: "none",
     borderRadius: "3px",
     padding: "0.25rem 0.75rem",
     cursor: "pointer",
@@ -363,8 +362,7 @@ const styles = {
     display: "flex",
     flexGrow: 1,
     backgroundColor: "#f3f4f6",
-    overflow: "hidden",
-    marginLeft: "240px",
+    overflow: "auto",
   },
   sidebar: {
     width: "240px",
@@ -375,11 +373,9 @@ const styles = {
     padding: "1rem 0.5rem",
     flexShrink: 0,
     overflowY: "auto",
-    position: "fixed",
+    position: "sticky",
     top: "48px",
-    left: 0,
     height: "calc(100vh - 48px)",
-    zIndex: 10,
   },
   menuGroup: {
     marginBottom: "1rem",
@@ -393,7 +389,7 @@ const styles = {
     display: "block",
     width: "100%",
     background: "transparent",
-    border: "1px solid #4b5563",
+    border: "none",
     color: "#e5e7eb",
     textAlign: "left",
     padding: "0.4rem 0.75rem",
@@ -441,7 +437,7 @@ const styles = {
   windowHeaderBtn: {
     marginLeft: "0.5rem",
     background: "transparent",
-    border: "1px solid #f9fafb",
+    border: "none",
     color: "#f9fafb",
     cursor: "pointer",
     fontSize: "0.9rem",
@@ -476,13 +472,12 @@ const styles = {
   closeBtn: {
     marginLeft: "0.25rem",
     background: "transparent",
-    border: "1px solid #9ca3af",
+    border: "none",
     cursor: "pointer",
   },
   windowContent: {
     flexGrow: 1,
     padding: "1rem",
-    overflowX: "auto",
-    overflowY: "auto",
+    overflow: "auto",
   },
 };
