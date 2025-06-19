@@ -651,19 +651,6 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
     });
   });
 
-  const columnWidths = useMemo(() => {
-    const map = {};
-    columns.forEach((c) => {
-      const avg = getAverageLength(c, rows);
-      let w = 150;
-      if (avg <= 10) w = 120;
-      else if (avg <= 20) w = 200;
-      else if (avg > 30) w = 300;
-      else w = Math.min(300, Math.max(120, avg * 10));
-      map[c] = w;
-    });
-    return map;
-  }, [columns, rows]);
 
   const columnAlign = useMemo(() => {
     const map = {};
@@ -674,11 +661,6 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
     return map;
   }, [columns, rows]);
 
-  const tableMinWidth = useMemo(() => {
-    let w = columns.reduce((sum, c) => sum + columnWidths[c], 0);
-    w += 60 + 120;
-    return w;
-  }, [columns, columnWidths]);
   const autoCols = new Set(autoInc);
   if (columnMeta.length > 0 && autoCols.size === 0) {
     const pk = columnMeta.filter((c) => c.key === 'PRI').map((c) => c.name);
@@ -777,11 +759,11 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
           </button>
         </div>
       </div>
-      <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: tableMinWidth }}>
-        <thead>
+      <div className="table-container">
+      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'auto' }}>
+        <thead className="sticky-header">
           <tr style={{ backgroundColor: '#e5e7eb' }}>
-            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', width: 60, minWidth: 60, textAlign: 'center' }}>
+            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', width: 60, textAlign: 'center' }}>
               <input
                 type="checkbox"
                 checked={
@@ -804,9 +786,6 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
                   whiteSpace: 'normal',
                   wordBreak: 'break-word',
                   lineHeight: 1.2,
-                  minWidth: '100px',
-                  maxWidth: '300px',
-                  width: columnWidths[c],
                   textAlign: columnAlign[c],
                 }}
                 onClick={() => handleSort(c)}
@@ -815,12 +794,12 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
                 {sort.column === c ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}
               </th>
             ))}
-            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', width: 120, minWidth: 120 }}>Action</th>
+            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', width: 120 }}>Action</th>
           </tr>
           <tr>
-            <th style={{ padding: '0.25rem', border: '1px solid #d1d5db', width: 60, minWidth: 60 }}></th>
+            <th style={{ padding: '0.25rem', border: '1px solid #d1d5db', width: 60 }}></th>
             {columns.map((c) => (
-            <th key={c} style={{ padding: '0.25rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', minWidth: '100px', maxWidth: '300px', width: columnWidths[c], textAlign: columnAlign[c] }}>
+            <th key={c} style={{ padding: '0.25rem', border: '1px solid #d1d5db', whiteSpace: 'normal', textAlign: columnAlign[c] }}>
                 {Array.isArray(relationOpts[c]) ? (
                   <select
                     value={filters[c] || ''}
@@ -843,7 +822,7 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
                 )}
               </th>
             ))}
-            <th style={{ minWidth: '100px', maxWidth: '300px' }}></th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -856,7 +835,7 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
           )}
           {rows.map((r) => (
             <tr key={r.id || JSON.stringify(r)}>
-              <td style={{ padding: '0.5rem', border: '1px solid #d1d5db', width: 60, minWidth: 60, textAlign: 'center' }}>
+              <td style={{ padding: '0.5rem', border: '1px solid #d1d5db', width: 60, textAlign: 'center' }}>
                 {(() => {
                   const rid = getRowId(r);
                   return (
@@ -875,12 +854,7 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
                 style={{
                   padding: '0.5rem',
                   border: '1px solid #d1d5db',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  minWidth: '100px',
-                  maxWidth: '300px',
-                  width: columnWidths[c],
+                  wordBreak: 'break-word',
                   textAlign: columnAlign[c],
                 }}
                   title={relationOpts[c] ? labelMap[c][r[c]] || String(r[c]) : String(r[c])}

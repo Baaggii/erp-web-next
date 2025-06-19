@@ -85,7 +85,7 @@ function Header({ user, onLogout, onHome }) {
   }
 
   return (
-    <header style={styles.header}>
+    <header className="sticky-header" style={styles.header}>
       <div style={styles.logoSection}>
         <img
           src="/assets/logo‐small.png"
@@ -171,7 +171,7 @@ function Sidebar({ onOpen }) {
   }
 
   return (
-    <aside style={styles.sidebar}>
+    <aside id="sidebar" style={styles.sidebar}>
       <nav>
         {roots.map((m) =>
           m.children.length > 0 ? (
@@ -289,6 +289,7 @@ const styles = {
     flexDirection: "column",
     height: "100vh",
     fontFamily: "Arial, sans-serif",
+    overflowX: "hidden",
   },
   header: {
     display: "flex",
@@ -298,7 +299,8 @@ const styles = {
     padding: "0 1rem",
     height: "48px",
     flexShrink: 0,
-    position: "relative",
+    position: "sticky",
+    top: 0,
     zIndex: 20,
   },
   logoSection: {
@@ -357,6 +359,7 @@ const styles = {
     display: "flex",
     flexGrow: 1,
     backgroundColor: "#f3f4f6",
+    overflow: "auto",
   },
   sidebar: {
     width: "240px",
@@ -367,6 +370,9 @@ const styles = {
     padding: "1rem 0.5rem",
     flexShrink: 0,
     overflowY: "auto",
+    position: "sticky",
+    top: "48px",
+    height: "calc(100vh - 48px)",
   },
   menuGroup: {
     marginBottom: "1rem",
