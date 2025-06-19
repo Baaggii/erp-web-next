@@ -6,6 +6,11 @@ export default defineConfig({
   base: '/',             // Asset base path
   publicDir: 'src/erp.mgt.mn',   // Copy all files here (e.g. .htaccess)
   plugins: [react()],
+  server: {
+    proxy: {
+      '/api': 'http://localhost:3002'
+    }
+  },
   build: {
     outDir: '../../../../erp.mgt.mn',
     emptyOutDir: true
