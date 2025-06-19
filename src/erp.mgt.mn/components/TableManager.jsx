@@ -661,6 +661,18 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
     return map;
   }, [columns, rows]);
 
+  const columnWidths = useMemo(() => {
+    const map = {};
+    if (rows.length === 0) return map;
+    columns.forEach((c) => {
+      const avg = getAverageLength(c, rows);
+      if (avg <= 4) map[c] = 80;
+      else if (avg <= 10) map[c] = 120;
+      else map[c] = 200;
+    });
+    return map;
+  }, [columns, rows]);
+
   const autoCols = new Set(autoInc);
   if (columnMeta.length > 0 && autoCols.size === 0) {
     const pk = columnMeta.filter((c) => c.key === 'PRI').map((c) => c.name);
@@ -803,6 +815,7 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
                   whiteSpace: 'nowrap',
                   lineHeight: 1.2,
                   textAlign: columnAlign[c],
+                  minWidth: columnWidths[c],
                 }}
                 onClick={() => handleSort(c)}
               >
@@ -815,7 +828,7 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
           <tr>
             <th style={{ padding: '0.25rem', border: '1px solid #d1d5db', width: 60 }}></th>
             {columns.map((c) => (
-            <th key={c} style={{ padding: '0.25rem', border: '1px solid #d1d5db', whiteSpace: 'normal', textAlign: columnAlign[c] }}>
+            <th key={c} style={{ padding: '0.25rem', border: '1px solid #d1d5db', whiteSpace: 'normal', textAlign: columnAlign[c], minWidth: columnWidths[c] }}>
                 {Array.isArray(relationOpts[c]) ? (
                   <select
                     value={filters[c] || ''}
@@ -864,20 +877,37 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
                   );
                 })()}
               </td>
-              {columns.map((c) => (
-              <td
-                key={c}
-                style={{
+              {columns.map((c) => {
+                const w = columnWidths[c];
+                const style = {
                   padding: '0.5rem',
                   border: '1px solid #d1d5db',
-                  wordBreak: 'break-word',
                   textAlign: columnAlign[c],
-                }}
-                  title={relationOpts[c] ? labelMap[c][r[c]] || String(r[c]) : String(r[c])}
-                >
-                  {relationOpts[c] ? labelMap[c][r[c]] || String(r[c]) : String(r[c])}
-                </td>
-              ))}
+                };
+                if (w) {
+                  style.minWidth = w;
+                  if (w <= 120) {
+                    style.maxWidth = w;
+                    style.whiteSpace = 'nowrap';
+                  } else {
+                    style.maxWidth = w;
+                    style.whiteSpace = 'nowrap';
+                    style.textOverflow = 'ellipsis';
+                    style.overflowX = 'auto';
+                  }
+                }
+                return (
+                  <td
+                    key={c}
+                    style={style}
+                    title={
+                      relationOpts[c] ? labelMap[c][r[c]] || String(r[c]) : String(r[c])
+                    }
+                  >
+                    {relationOpts[c] ? labelMap[c][r[c]] || String(r[c]) : String(r[c])}
+                  </td>
+                );
+              })}
               <td style={actionCellStyle}>
                 {(() => {
                   const rid = getRowId(r);
