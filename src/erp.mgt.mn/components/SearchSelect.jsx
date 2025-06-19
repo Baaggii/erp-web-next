@@ -1,6 +1,13 @@
 import React, { useState } from 'react';
 
-export default function SearchSelect({ value, onChange, options = [], disabled }) {
+export default function SearchSelect({
+  value,
+  onChange,
+  options = [],
+  disabled,
+  inputRef,
+  ...rest
+}) {
   const [filter, setFilter] = useState('');
   const id = React.useId();
 
@@ -16,6 +23,7 @@ export default function SearchSelect({ value, onChange, options = [], disabled }
   return (
     <div>
       <input
+        ref={inputRef}
         list={id}
         value={value}
         onChange={(e) => {
@@ -24,6 +32,7 @@ export default function SearchSelect({ value, onChange, options = [], disabled }
         }}
         disabled={disabled}
         style={{ width: '100%', padding: '0.5rem' }}
+        {...rest}
       />
       <datalist id={id}>
         {filtered.slice(0, 50).map((opt) => (
