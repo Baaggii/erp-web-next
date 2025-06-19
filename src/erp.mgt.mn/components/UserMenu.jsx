@@ -54,6 +54,7 @@ const styles = {
     background: '#ffffff',
     border: '1px solid #d1d5db',
     borderRadius: '3px',
+    boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
     minWidth: '150px',
     padding: '0.25rem 0',
     zIndex: 10,
@@ -67,5 +68,6 @@ const styles = {
     padding: '0.5rem',
     cursor: 'pointer',
     fontSize: '0.9rem',
+    color: '#1f2937',
   },
 };

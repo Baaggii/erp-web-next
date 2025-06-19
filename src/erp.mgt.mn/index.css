@@ -12,14 +12,14 @@ footer { text-align:center; padding:1rem; background:#f1f1f1; font-size:0.9rem; 
 #openai-bar {
   position: fixed;
   bottom: 16px;
-  right: 16px;
+  left: 16px;
   width: 300px;
   max-height: 70vh;
   background: #fff;
   border: 1px solid #ccc;
   border-radius: 8px;
   padding: 10px;
-  z-index: 9999;
+  z-index: 50;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
   resize: vertical;
 }
@@ -68,8 +68,8 @@ footer { text-align:center; padding:1rem; background:#f1f1f1; font-size:0.9rem; 
 #openai-toggle {
   position: fixed;
   bottom: 16px;
-  right: 16px;
-  z-index: 9999;
+  left: 16px;
+  z-index: 50;
   background: #2563eb;
   color: #fff;
   border: none;
@@ -84,11 +84,11 @@ footer { text-align:center; padding:1rem; background:#f1f1f1; font-size:0.9rem; 
 @media (max-width: 600px) {
   #openai-bar {
     width: 90vw;
-    right: 5vw;
+    left: 5vw;
     bottom: 10px;
   }
   #openai-toggle {
-    right: 10px;
+    left: 10px;
     bottom: 10px;
   }
 }
@@ -147,5 +147,10 @@ footer { text-align:center; padding:1rem; background:#f1f1f1; font-size:0.9rem; 
   flex-direction: column;
   height: 100vh;
   overflow-y: auto;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
 }
 
