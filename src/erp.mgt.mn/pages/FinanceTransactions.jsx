@@ -63,9 +63,9 @@ export default function FinanceTransactions() {
     const vals = {};
     columns.forEach((c) => {
       let v = (config?.defaultValues || {})[c] || '';
-      if (config?.userIdField === c && user?.empid) v = user.empid;
-      if (config?.branchIdField === c && company?.branch_id !== undefined) v = company.branch_id;
-      if (config?.companyIdField === c && company?.company_id !== undefined) v = company.company_id;
+      if (config?.userIdFields?.includes(c) && user?.empid) v = user.empid;
+      if (config?.branchIdFields?.includes(c) && company?.branch_id !== undefined) v = company.branch_id;
+      if (config?.companyIdFields?.includes(c) && company?.company_id !== undefined) v = company.company_id;
       vals[c] = v;
     });
     setEditingId(null);

@@ -19,16 +19,16 @@ async function writeConfig(cfg) {
 export async function getFormConfig(table, name) {
   const cfg = await readConfig();
   const byTable = cfg[table] || {};
-  return (
-    byTable[name] || {
-      visibleFields: [],
-      requiredFields: [],
-      defaultValues: {},
-      userIdField: null,
-      branchIdField: null,
-      companyIdField: null,
-    }
-  );
+  const raw = byTable[name] || {};
+  return {
+    visibleFields: raw.visibleFields || [],
+    requiredFields: raw.requiredFields || [],
+    defaultValues: raw.defaultValues || {},
+    userIdFields: raw.userIdFields || (raw.userIdField ? [raw.userIdField] : []),
+    branchIdFields: raw.branchIdFields || (raw.branchIdField ? [raw.branchIdField] : []),
+    companyIdFields:
+      raw.companyIdFields || (raw.companyIdField ? [raw.companyIdField] : []),
+  };
 }
 
 export async function getConfigsByTable(table) {
@@ -52,19 +52,33 @@ export async function setFormConfig(table, name, config) {
     visibleFields = [],
     requiredFields = [],
     defaultValues = {},
-    userIdField = null,
-    branchIdField = null,
-    companyIdField = null,
+    userIdFields = [],
+    branchIdFields = [],
+    companyIdFields = [],
+    userIdField,
+    branchIdField,
+    companyIdField,
   } = config || {};
+  const uid = userIdFields.length ? userIdFields : userIdField ? [userIdField] : [];
+  const bid = branchIdFields.length
+    ? branchIdFields
+    : branchIdField
+    ? [branchIdField]
+    : [];
+  const cid = companyIdFields.length
+    ? companyIdFields
+    : companyIdField
+    ? [companyIdField]
+    : [];
   const cfg = await readConfig();
   if (!cfg[table]) cfg[table] = {};
   cfg[table][name] = {
     visibleFields,
     requiredFields,
     defaultValues,
-    userIdField,
-    branchIdField,
-    companyIdField,
+    userIdFields: uid,
+    branchIdFields: bid,
+    companyIdFields: cid,
   };
   await writeConfig(cfg);
   return cfg[table][name];
