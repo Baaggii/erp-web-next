@@ -221,3 +221,16 @@ th {
   text-align: left;
 }
 
+/* Default button styling for visibility */
+button {
+  border: 1px solid #9ca3af;
+  padding: 0.35rem 0.75rem;
+  border-radius: 4px;
+  background-color: #f3f4f6;
+  cursor: pointer;
+}
+
+button:hover {
+  background-color: #e5e7eb;
+}
+
