@@ -355,20 +355,3 @@ export async function uploadCodingTable(req, res, next) {
     next(err);
   }
 }
-
-export async function executeSql(req, res, next) {
-  try {
-    const { sql } = req.body;
-    if (!sql) return res.status(400).json({ error: 'sql required' });
-    const statements = sql
-      .split(/;\s*\n/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    for (const stmt of statements) {
-      await pool.query(stmt);
-    }
-    res.sendStatus(204);
-  } catch (err) {
-    next(err);
-  }
-}
