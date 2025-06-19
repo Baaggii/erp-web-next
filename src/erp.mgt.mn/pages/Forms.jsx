@@ -1,7 +1,7 @@
 // src/erp.mgt.mn/pages/Forms.jsx
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import slugify from '../utils/slugify.js';
+
 
 export default function Forms() {
   const [transactions, setTransactions] = useState([]);
@@ -10,7 +10,14 @@ export default function Forms() {
   useEffect(() => {
     fetch('/api/transaction_forms', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
-      .then((data) => setTransactions(Object.keys(data)))
+      .then((data) =>
+        setTransactions(
+          Object.entries(data).map(([name, info]) => ({
+            name,
+            moduleKey: info.moduleKey,
+          }))
+        )
+      )
       .catch((err) => console.error('Error fetching forms:', err));
   }, []);
 
@@ -22,9 +29,15 @@ export default function Forms() {
       ) : (
         <ul>
           {transactions.map((t) => (
-            <li key={t}>
-              <button onClick={() => navigate(`/finance-transactions/${slugify(t)}`)}>
-                {t}
+            <li key={t.moduleKey}>
+              <button
+                onClick={() =>
+                  navigate(
+                    `/finance-transactions/${t.moduleKey.replace(/_/g, '-')}`
+                  )
+                }
+              >
+                {t.name}
               </button>
             </li>
           ))}

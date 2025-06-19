@@ -33,13 +33,13 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
       .then((res) => (res.ok ? res.json() : {}))
       .then((data) => {
         setConfigs(data);
-        if (name && data[name]) setTable(data[name]);
+        if (name && data[name]) setTable(data[name].table ?? data[name]);
       })
       .catch(() => setConfigs({}));
   }, []);
 
   useEffect(() => {
-    if (name && configs[name]) setTable(configs[name]);
+    if (name && configs[name]) setTable(configs[name].table ?? configs[name]);
   }, [name, configs]);
 
   useEffect(() => {

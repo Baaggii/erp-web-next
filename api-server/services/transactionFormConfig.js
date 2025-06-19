@@ -43,7 +43,10 @@ export async function listTransactionNames() {
   const result = {};
   for (const [tbl, names] of Object.entries(cfg)) {
     for (const name of Object.keys(names)) {
-      result[name] = tbl;
+      result[name] = {
+        table: tbl,
+        moduleKey: slugify(name),
+      };
     }
   }
   return result;
