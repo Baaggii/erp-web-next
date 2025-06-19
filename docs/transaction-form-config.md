@@ -8,9 +8,9 @@ Each **transaction** entry allows you to specify:
 - **visibleFields** – list of columns shown in the form
 - **requiredFields** – columns that cannot be left empty
 - **defaultValues** – map of column default values
-- **userIdField** – field storing the creating user ID
-- **branchIdField** – field storing the branch ID
-- **companyIdField** – field storing the company ID
+- **userIdFields** – fields automatically filled with the creating user ID
+- **branchIdFields** – fields automatically filled with the branch ID
+- **companyIdFields** – fields automatically filled with the company ID
 
 Example snippet:
 
@@ -21,17 +21,17 @@ Example snippet:
       "visibleFields": ["tran_date", "description"],
       "requiredFields": ["tran_date"],
       "defaultValues": { "status": "N" },
-      "userIdField": "created_by",
-      "branchIdField": "branch_id",
-      "companyIdField": "company_id"
+      "userIdFields": ["created_by"],
+      "branchIdFields": ["branch_id"],
+      "companyIdFields": ["company_id"]
     },
     "Issue": {
       "visibleFields": ["tran_date", "description"],
       "requiredFields": ["tran_date"],
       "defaultValues": { "status": "N" },
-      "userIdField": "created_by",
-      "branchIdField": "branch_id",
-      "companyIdField": "company_id"
+      "userIdFields": ["created_by"],
+      "branchIdFields": ["branch_id"],
+      "companyIdFields": ["company_id"]
     }
   }
 }

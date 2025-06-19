@@ -10,9 +10,9 @@ export default function FormsManagement() {
     visibleFields: [],
     requiredFields: [],
     defaultValues: {},
-    userIdField: '',
-    branchIdField: '',
-    companyIdField: '',
+    userIdFields: [],
+    branchIdFields: [],
+    companyIdFields: [],
   });
 
   useEffect(() => {
@@ -37,9 +37,9 @@ export default function FormsManagement() {
             visibleFields: data[name].visibleFields || [],
             requiredFields: data[name].requiredFields || [],
             defaultValues: data[name].defaultValues || {},
-            userIdField: data[name].userIdField || '',
-            branchIdField: data[name].branchIdField || '',
-            companyIdField: data[name].companyIdField || '',
+            userIdFields: data[name].userIdFields || [],
+            branchIdFields: data[name].branchIdFields || [],
+            companyIdFields: data[name].companyIdFields || [],
           });
         } else {
           setName('');
@@ -47,9 +47,9 @@ export default function FormsManagement() {
             visibleFields: [],
             requiredFields: [],
             defaultValues: {},
-            userIdField: '',
-            branchIdField: '',
-            companyIdField: '',
+            userIdFields: [],
+            branchIdFields: [],
+            companyIdFields: [],
           });
         }
       })
@@ -60,9 +60,9 @@ export default function FormsManagement() {
           visibleFields: [],
           requiredFields: [],
           defaultValues: {},
-          userIdField: '',
-          branchIdField: '',
-          companyIdField: '',
+          userIdFields: [],
+          branchIdFields: [],
+          companyIdFields: [],
         });
       });
   }, [table]);
@@ -76,9 +76,9 @@ export default function FormsManagement() {
           visibleFields: cfg.visibleFields || [],
           requiredFields: cfg.requiredFields || [],
           defaultValues: cfg.defaultValues || {},
-          userIdField: cfg.userIdField || '',
-          branchIdField: cfg.branchIdField || '',
-          companyIdField: cfg.companyIdField || '',
+          userIdFields: cfg.userIdFields || [],
+          branchIdFields: cfg.branchIdFields || [],
+          companyIdFields: cfg.companyIdFields || [],
         }),
       )
       .catch(() => {
@@ -86,9 +86,9 @@ export default function FormsManagement() {
           visibleFields: [],
           requiredFields: [],
           defaultValues: {},
-          userIdField: '',
-          branchIdField: '',
-          companyIdField: '',
+          userIdFields: [],
+          branchIdFields: [],
+          companyIdFields: [],
         });
       });
   }, [table, name]);
@@ -144,9 +144,9 @@ export default function FormsManagement() {
       visibleFields: [],
       requiredFields: [],
       defaultValues: {},
-      userIdField: '',
-      branchIdField: '',
-      companyIdField: '',
+      userIdFields: [],
+      branchIdFields: [],
+      companyIdFields: [],
     });
   }
 
@@ -230,12 +230,17 @@ export default function FormsManagement() {
           </table>
           <div style={{ marginTop: '1rem' }}>
             <label>
-              User ID field:{' '}
+              User ID fields:{' '}
               <select
-                value={config.userIdField}
-                onChange={(e) => setConfig((c) => ({ ...c, userIdField: e.target.value }))}
+                multiple
+                value={config.userIdFields}
+                onChange={(e) =>
+                  setConfig((c) => ({
+                    ...c,
+                    userIdFields: Array.from(e.target.selectedOptions, (o) => o.value),
+                  }))
+                }
               >
-                <option value="">-- none --</option>
                 {columns.map((c) => (
                   <option key={c} value={c}>
                     {c}
@@ -244,12 +249,17 @@ export default function FormsManagement() {
               </select>
             </label>
             <label style={{ marginLeft: '1rem' }}>
-              Branch ID field:{' '}
+              Branch ID fields:{' '}
               <select
-                value={config.branchIdField}
-                onChange={(e) => setConfig((c) => ({ ...c, branchIdField: e.target.value }))}
+                multiple
+                value={config.branchIdFields}
+                onChange={(e) =>
+                  setConfig((c) => ({
+                    ...c,
+                    branchIdFields: Array.from(e.target.selectedOptions, (o) => o.value),
+                  }))
+                }
               >
-                <option value="">-- none --</option>
                 {columns.map((c) => (
                   <option key={c} value={c}>
                     {c}
@@ -258,12 +268,17 @@ export default function FormsManagement() {
               </select>
             </label>
             <label style={{ marginLeft: '1rem' }}>
-              Company ID field:{' '}
+              Company ID fields:{' '}
               <select
-                value={config.companyIdField}
-                onChange={(e) => setConfig((c) => ({ ...c, companyIdField: e.target.value }))}
+                multiple
+                value={config.companyIdFields}
+                onChange={(e) =>
+                  setConfig((c) => ({
+                    ...c,
+                    companyIdFields: Array.from(e.target.selectedOptions, (o) => o.value),
+                  }))
+                }
               >
-                <option value="">-- none --</option>
                 {columns.map((c) => (
                   <option key={c} value={c}>
                     {c}
