@@ -85,6 +85,15 @@ export async function setFormConfig(table, name, config, options = {}) {
   };
   await writeConfig(cfg);
   try {
+    // Ensure the parent module exists so child modules can be created
+    await upsertModule(
+      'finance_transactions',
+      'Finance Transactions',
+      null,
+      true,
+      false,
+    );
+
     const moduleKey = slugify(name);
     await upsertModule(
       moduleKey,

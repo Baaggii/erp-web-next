@@ -1,5 +1,6 @@
 export default [
   { moduleKey: 'dashboard', label: 'Самбар', parentKey: null, showInSidebar: true, showInHeader: false },
+  { moduleKey: 'finance_transactions', label: 'Finance Transactions', parentKey: null, showInSidebar: true, showInHeader: false },
   { moduleKey: 'forms', label: 'Маягтууд', parentKey: null, showInSidebar: true, showInHeader: false },
   { moduleKey: 'reports', label: 'Тайлан', parentKey: null, showInSidebar: true, showInHeader: false },
   { moduleKey: 'settings', label: 'Тохиргоо', parentKey: null, showInSidebar: true, showInHeader: false },

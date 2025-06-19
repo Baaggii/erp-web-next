@@ -43,5 +43,6 @@ To obtain a configuration for a specific transaction use
 posted with `{ table, name, config, showInSidebar?, showInHeader? }` in the request body and can be removed via
 `DELETE /api/transaction_forms?table=tbl&name=transaction`.
 Saving a configuration automatically creates a module using a slug of the transaction
-name under the parent `finance_transactions`. The optional `showInSidebar` and
+name under the parent `finance_transactions`. If this parent module does not
+exist it will be created automatically. The optional `showInSidebar` and
 `showInHeader` flags determine where the generated module appears in the UI.
