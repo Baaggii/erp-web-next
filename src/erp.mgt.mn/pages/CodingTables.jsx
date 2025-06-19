@@ -709,7 +709,7 @@ export default function CodingTablesPage() {
           text = await res.text();
         } catch {}
         console.error('Failed to save config', status, text);
-        addToast(`Failed to save config. Server returned ${status}`, 'error');
+        addToast('Failed to save config. Please check API availability.', 'error');
         return;
       }
       if (sql) {
