@@ -759,8 +759,15 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
           </button>
         </div>
       </div>
-      <div className="table-container">
-      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'auto' }}>
+      <div className="table-container overflow-x-auto">
+      <table
+        style={{
+          borderCollapse: 'collapse',
+          tableLayout: 'auto',
+          minWidth: '1200px',
+          maxWidth: '2000px',
+        }}
+      >
         <thead className="sticky-header">
           <tr style={{ backgroundColor: '#e5e7eb' }}>
             <th style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', width: 60, textAlign: 'center' }}>
@@ -783,8 +790,7 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
                   padding: '0.5rem',
                   border: '1px solid #d1d5db',
                   cursor: 'pointer',
-                  whiteSpace: 'normal',
-                  wordBreak: 'break-word',
+                  whiteSpace: 'nowrap',
                   lineHeight: 1.2,
                   textAlign: columnAlign[c],
                 }}
