@@ -1,0 +1,26 @@
+import fs from 'fs/promises';
+import path from 'path';
+
+const jsonPath = path.join(process.cwd(), 'config', 'generatedSql.json');
+const sqlPath = path.join(process.cwd(), 'config', 'generated.sql');
+
+async function readMap() {
+  try {
+    const data = await fs.readFile(jsonPath, 'utf8');
+    return JSON.parse(data);
+  } catch {
+    return {};
+  }
+}
+
+async function writeFiles(map) {
+  const sqlCombined = Object.values(map).join('\n\n');
+  await fs.writeFile(jsonPath, JSON.stringify(map, null, 2));
+  await fs.writeFile(sqlPath, sqlCombined);
+}
+
+export async function saveSql(table, sql) {
+  const map = await readMap();
+  map[table] = sql;
+  await writeFiles(map);
+}

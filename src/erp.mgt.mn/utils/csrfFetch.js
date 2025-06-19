@@ -36,7 +36,7 @@ window.fetch = async (url, options = {}, _retry) => {
       }
     }
   }
-  if (!res.ok) {
+    if (!res.ok) {
     let respText = '';
     try {
       respText = await res.clone().text();
@@ -44,7 +44,9 @@ window.fetch = async (url, options = {}, _retry) => {
     const payload = options.body ? options.body : '';
     const details = `${method} ${url}\nPayload: ${payload}\nResponse: ${res.status} - ${respText}`;
     if (import.meta.env.DEV) console.error('API Error:', details);
-    alert(`\u274C Request failed\n${details}`);
+    window.dispatchEvent(
+      new CustomEvent('toast', { detail: { message: `❌ Request failed\n${details}`, type: 'error' } })
+    );
   }
   return res;
 };

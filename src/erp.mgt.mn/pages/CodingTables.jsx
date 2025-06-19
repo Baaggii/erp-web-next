@@ -500,9 +500,15 @@ export default function CodingTablesPage() {
       if (!hasData) continue;
       if (populateRange && vals.some((v) => v === '0' || v === 'NULL')) continue;
       const updates = cols.map((c) => `${c} = VALUES(${c})`);
-      sqlStr += `INSERT INTO \`${tbl}\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
-    }
+    sqlStr += `INSERT INTO \`${tbl}\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
+  }
     setSql(sqlStr);
+    fetch('/api/generated_sql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ table: tbl, sql: sqlStr }),
+    }).catch(() => {});
   }
 
   async function handleUpload() {
@@ -597,7 +603,6 @@ export default function CodingTablesPage() {
       notNullMap,
       defaultValues,
       extraFields: extraFields.filter((f) => f.trim() !== ''),
-      headerMap,
       populateRange,
       startYear,
       endYear,
@@ -661,7 +666,6 @@ export default function CodingTablesPage() {
         setExtraFields(
           cfg.extraFields && cfg.extraFields.length > 0 ? cfg.extraFields : ['']
         );
-        setHeaderMap(cfg.headerMap || {});
         setPopulateRange(cfg.populateRange || false);
         setStartYear(cfg.startYear || '');
         setEndYear(cfg.endYear || '');
