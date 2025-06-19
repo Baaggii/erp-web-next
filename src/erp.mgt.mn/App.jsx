@@ -5,6 +5,7 @@ import { TabProvider } from './context/TabContext.jsx';
 import { ToastProvider } from './context/ToastContext.jsx';
 import RequireAuth from './components/RequireAuth.jsx';
 import ERPLayout from './components/ERPLayout.jsx';
+import AppLayout from './components/AppLayout.jsx';
 import LoginPage from './pages/Login.jsx';
 import FormsPage from './pages/Forms.jsx';
 import ReportsPage from './pages/Reports.jsx';
@@ -20,6 +21,7 @@ import ModulesPage from './pages/Modules.jsx';
 import SettingsPage, { GeneralSettings } from './pages/Settings.jsx';
 import ChangePasswordPage from './pages/ChangePassword.jsx';
 import BlueLinkPage from './pages/BlueLinkPage.jsx';
+import InventoryPage from './pages/InventoryPage.jsx';
 import FinanceTransactionsPage from './pages/FinanceTransactions.jsx';
 import { useModules } from './hooks/useModules.js';
 
@@ -117,6 +119,14 @@ export default function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route element={<RequireAuth />}>
               <Route path="/" element={<ERPLayout />}>{roots.map(renderRoute)}</Route>
+              <Route
+                path="/inventory-demo"
+                element={
+                  <AppLayout title="Inventory">
+                    <InventoryPage />
+                  </AppLayout>
+                }
+              />
             </Route>
           </Routes>
           </HashRouter>
