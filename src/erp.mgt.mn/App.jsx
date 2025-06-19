@@ -52,6 +52,14 @@ export default function App() {
     finance_transactions: <FinanceTransactionsPage />,
   };
 
+  modules.forEach((m) => {
+    if (m.parent_key === 'finance_transactions') {
+      componentMap[m.module_key] = (
+        <FinanceTransactionsPage defaultName={m.label} hideSelector />
+      );
+    }
+  });
+
   const indexComponents = {
     settings: <GeneralSettings />,
   };
