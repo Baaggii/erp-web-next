@@ -171,7 +171,7 @@ export default function RowFormModal({
               )}
             </div>
           );
-          })
+          })}
           <div style={{ textAlign: 'right', gridColumn: '1 / span 2' }}>
             <button type="button" onClick={onCancel} style={{ marginRight: '0.5rem' }}>
               Cancel
