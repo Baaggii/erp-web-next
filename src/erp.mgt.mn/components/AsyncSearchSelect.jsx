@@ -8,6 +8,8 @@ export default function AsyncSearchSelect({
   onChange,
   disabled,
   onKeyDown,
+  inputRef,
+  ...rest
 }) {
   const [input, setInput] = useState(value || '');
   const [options, setOptions] = useState([]);
@@ -82,6 +84,7 @@ export default function AsyncSearchSelect({
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>
       <input
+        ref={inputRef}
         value={input}
         onChange={(e) => {
           setInput(e.target.value);
@@ -97,6 +100,7 @@ export default function AsyncSearchSelect({
         }}
         disabled={disabled}
         style={{ width: '100%', padding: '0.5rem' }}
+        {...rest}
       />
       {show && options.length > 0 && (
         <ul
