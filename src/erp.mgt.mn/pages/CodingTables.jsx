@@ -588,6 +588,26 @@ export default function CodingTablesPage() {
       const updates = cols.map((c) => `${c} = VALUES(${c})`);
     sqlStr += `INSERT INTO \`${tbl}\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
   }
+
+  async function handleExecuteSql() {
+    if (!sql) return;
+    try {
+      const res = await fetch('/api/coding_tables/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ sql }),
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        alert(`SQL Error: ${txt}`);
+        return;
+      }
+      alert('Table created');
+    } catch (err) {
+      alert('SQL execution failed');
+    }
+  }
     setSql(sqlStr);
     fetch('/api/generated_sql', {
       method: 'POST',
@@ -695,12 +715,21 @@ export default function CodingTablesPage() {
       autoIncStart,
     };
     try {
-      await fetch('/api/coding_table_configs', {
+      const res = await fetch('/api/coding_table_configs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ table: tableName, config }),
       });
+      if (!res.ok) throw new Error('save failed');
+      if (sql) {
+        await fetch('/api/generated_sql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ table: tableName, sql }),
+        });
+      }
       alert('Config saved');
     } catch {
       alert('Failed to save config');
@@ -1040,12 +1069,12 @@ export default function CodingTablesPage() {
             <div>
               <button onClick={handleGenerateSql}>Populate SQL</button>
               <button onClick={loadFromSql} style={{ marginLeft: '0.5rem' }}>
-                Load From SQL
+                Fill Config from SQL
               </button>
               <button onClick={saveConfig} style={{ marginLeft: '0.5rem' }}>
                 Save Config
               </button>
-              <button onClick={handleUpload} style={{ marginLeft: '0.5rem' }}>
+              <button onClick={handleExecuteSql} style={{ marginLeft: '0.5rem' }}>
                 Create Coding Table
               </button>
             </div>
