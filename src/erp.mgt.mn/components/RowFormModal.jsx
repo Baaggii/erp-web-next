@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
+import Modal from './Modal.jsx';
 
 export default function RowFormModal({
   visible,
@@ -36,29 +37,6 @@ export default function RowFormModal({
 
   if (!visible) return null;
 
-  const overlay = {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  };
-
-  const modal = {
-    backgroundColor: '#fff',
-    padding: '1rem',
-    borderRadius: '4px',
-    maxHeight: '90vh',
-    overflowY: 'auto',
-    width: '70vw',
-    maxWidth: '800px',
-    minWidth: '300px',
-  };
-
   const formStyle = {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
@@ -94,16 +72,14 @@ export default function RowFormModal({
   }
 
   return (
-    <div style={overlay}>
-      <div style={modal}>
-        <h3 style={{ marginTop: 0 }}>{row ? 'Edit Row' : 'Add Row'}</h3>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            submitForm();
-          }}
-          style={formStyle}
-        >
+    <Modal visible={visible} title={row ? 'Edit Row' : 'Add Row'} onClose={onCancel} width="70vw">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          submitForm();
+        }}
+        style={formStyle}
+      >
           {columns.map((c) => {
             const err = errors[c];
             const inputStyle = {
@@ -172,17 +148,16 @@ export default function RowFormModal({
             </div>
           );
           })}
-          <div style={{ textAlign: 'right', gridColumn: '1 / span 2' }}>
-            <button type="button" onClick={onCancel} style={{ marginRight: '0.5rem' }}>
-              Cancel
-            </button>
-            <button type="submit">Save</button>
-          </div>
+        <div style={{ textAlign: 'right', gridColumn: '1 / span 2' }}>
+          <button type="button" onClick={onCancel} style={{ marginRight: '0.5rem' }}>
+            Cancel
+          </button>
+          <button type="submit">Save</button>
+        </div>
         <div style={{ marginTop: '0.5rem', gridColumn: '1 / span 2', fontSize: '0.85rem', color: '#555' }}>
           Press <strong>Enter</strong> to move to next field. Use arrow keys to navigate selections.
         </div>
       </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
