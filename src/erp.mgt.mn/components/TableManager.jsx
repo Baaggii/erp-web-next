@@ -55,8 +55,6 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
   const [editLabels, setEditLabels] = useState(false);
   const [labelEdits, setLabelEdits] = useState({});
   const [isAdding, setIsAdding] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const savingRef = useRef(false);
   const { user, company } = useContext(AuthContext);
   const { addToast } = useToast();
 
@@ -386,9 +384,6 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
   }
 
   async function handleSubmit(values) {
-    if (savingRef.current) return;
-    savingRef.current = true;
-    setIsSaving(true);
     const columns = new Set(allColumns);
     const merged = { ...(editing || {}) };
     Object.entries(values).forEach(([k, v]) => {
@@ -467,9 +462,6 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
       }
     } catch (err) {
       console.error('Save failed', err);
-    } finally {
-      savingRef.current = false;
-      setIsSaving(false);
     }
   }
 
@@ -974,7 +966,6 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
           setIsAdding(false);
         }}
         onSubmit={handleSubmit}
-        saving={isSaving}
         columns={formColumns}
         row={editing}
         relations={relationOpts}
