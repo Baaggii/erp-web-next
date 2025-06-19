@@ -325,6 +325,92 @@ export default function CodingTablesPage() {
     return base;
   }
 
+  function parseSqlConfig(sqlText) {
+    const m = sqlText.match(/CREATE TABLE IF NOT EXISTS\s+`([^`]+)`\s*\(([^]*?)\)\s*(?:AUTO_INCREMENT=(\d+))?;/m);
+    if (!m) return null;
+    const table = m[1];
+    const body = m[2];
+    const autoInc = m[3] || '1';
+    const lines = body
+      .split(/,\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const columnTypes = {};
+    const notNull = {};
+    const defaults = {};
+    const calc = [];
+    const other = [];
+    let idCol = '';
+    let nameCol = '';
+    let uniqueLine = '';
+    for (const ln of lines) {
+      if (ln.startsWith('UNIQUE KEY')) {
+        uniqueLine = ln;
+        continue;
+      }
+      const colMatch = ln.match(/^`([^`]+)`\s+([^ ]+)(.*)$/);
+      if (!colMatch) continue;
+      const col = colMatch[1];
+      const type = colMatch[2];
+      const rest = colMatch[3] || '';
+      if (/AS \(/.test(rest)) {
+        const cm = rest.match(/AS \(([^)]+)\)/);
+        if (cm) calc.push(`${col}: ${cm[1]}`);
+        continue;
+      }
+      columnTypes[col] = type;
+      notNull[col] = /NOT NULL/.test(rest);
+      const def = rest.match(/DEFAULT ([^ ]+)/);
+      if (def) {
+        defaults[col] = def[1].replace(/^'|'$/g, '');
+      }
+      if (/AUTO_INCREMENT/.test(rest) && /PRIMARY KEY/.test(rest)) {
+        idCol = col;
+      } else if (col === 'name') {
+        nameCol = col;
+      } else {
+        other.push(col);
+      }
+    }
+    const uniq = [];
+    if (uniqueLine) {
+      const um = uniqueLine.match(/\(([^)]+)\)/);
+      if (um) {
+        um[1]
+          .split(',')
+          .map((s) => s.trim().replace(/`/g, ''))
+          .forEach((c) => uniq.push(c));
+      }
+    }
+    return {
+      table,
+      idColumn: idCol,
+      nameColumn: nameCol,
+      otherColumns: other.filter((c) => c !== idCol && c !== nameCol && !uniq.includes(c)),
+      uniqueFields: uniq.filter((c) => c !== idCol && c !== nameCol),
+      calcText: calc.join('\n'),
+      columnTypes,
+      notNullMap: notNull,
+      defaultValues: defaults,
+      autoIncStart: autoInc,
+    };
+  }
+
+  function loadFromSql() {
+    const cfg = parseSqlConfig(sql);
+    if (!cfg) return;
+    setTableName(cfg.table);
+    setIdColumn(cfg.idColumn);
+    setNameColumn(cfg.nameColumn);
+    setOtherColumns(cfg.otherColumns);
+    setUniqueFields(cfg.uniqueFields);
+    setCalcText(cfg.calcText);
+    setColumnTypes(cfg.columnTypes);
+    setNotNullMap(cfg.notNullMap);
+    setDefaultValues(cfg.defaultValues);
+    setAutoIncStart(cfg.autoIncStart || '1');
+  }
+
   function handleGenerateSql() {
     if (!workbook || !sheet || !tableName) return;
     const tbl = cleanIdentifier(tableName);
@@ -953,6 +1039,9 @@ export default function CodingTablesPage() {
               </div>
             <div>
               <button onClick={handleGenerateSql}>Populate SQL</button>
+              <button onClick={loadFromSql} style={{ marginLeft: '0.5rem' }}>
+                Load From SQL
+              </button>
               <button onClick={saveConfig} style={{ marginLeft: '0.5rem' }}>
                 Save Config
               </button>

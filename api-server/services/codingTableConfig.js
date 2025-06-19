@@ -3,8 +3,13 @@ import path from 'path';
 
 const filePath = path.join(process.cwd(), 'config', 'codingTableConfigs.json');
 
+async function ensureDir() {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+}
+
 async function readConfig() {
   try {
+    await ensureDir();
     const data = await fs.readFile(filePath, 'utf8');
     return JSON.parse(data);
   } catch {
@@ -13,6 +18,7 @@ async function readConfig() {
 }
 
 async function writeConfig(cfg) {
+  await ensureDir();
   await fs.writeFile(filePath, JSON.stringify(cfg, null, 2));
 }
 
