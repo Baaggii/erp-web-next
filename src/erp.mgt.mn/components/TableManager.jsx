@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext } from 'react';
+import React, { useEffect, useState, useContext, useMemo } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import RowFormModal from './RowFormModal.jsx';
 import CascadeDeleteModal from './CascadeDeleteModal.jsx';
@@ -44,6 +44,16 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
       if (pk.length === 1) return new Set(pk);
     }
     return new Set(auto);
+  }
+
+  function getAverageLength(columnKey, data) {
+    const values = data
+      .slice(0, 20)
+      .map((r) => (r[columnKey] ?? '').toString());
+    if (values.length === 0) return 0;
+    return Math.round(
+      values.reduce((sum, val) => sum + val.length, 0) / values.length,
+    );
   }
 
   useEffect(() => {
@@ -611,6 +621,20 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
       labelMap[col][o.value] = o.label;
     });
   });
+
+  const columnWidths = useMemo(() => {
+    const map = {};
+    columns.forEach((c) => {
+      const avg = getAverageLength(c, rows);
+      let w = 150;
+      if (avg <= 10) w = 120;
+      else if (avg <= 20) w = 200;
+      else if (avg > 30) w = 300;
+      else w = Math.min(300, Math.max(120, avg * 10));
+      map[c] = w;
+    });
+    return map;
+  }, [columns, rows]);
   const autoCols = new Set(autoInc);
   if (columnMeta.length > 0 && autoCols.size === 0) {
     const pk = columnMeta.filter((c) => c.key === 'PRI').map((c) => c.name);
@@ -703,7 +727,7 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
       <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
         <thead>
           <tr style={{ backgroundColor: '#e5e7eb' }}>
-            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap' }}>
+            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', minWidth: '100px', maxWidth: '300px' }}>
               <input
                 type="checkbox"
                 checked={
@@ -719,19 +743,29 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
             {columns.map((c) => (
               <th
                 key={c}
-                style={{ padding: '0.5rem', border: '1px solid #d1d5db', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                style={{
+                  padding: '0.5rem',
+                  border: '1px solid #d1d5db',
+                  cursor: 'pointer',
+                  whiteSpace: 'normal',
+                  wordBreak: 'break-word',
+                  lineHeight: 1.2,
+                  minWidth: '100px',
+                  maxWidth: '300px',
+                  width: columnWidths[c],
+                }}
                 onClick={() => handleSort(c)}
               >
                 {labels[c] || c}
                 {sort.column === c ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}
               </th>
             ))}
-            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap' }}>Action</th>
+            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', minWidth: '100px', maxWidth: '300px' }}>Action</th>
           </tr>
           <tr>
-            <th style={{ padding: '0.25rem', border: '1px solid #d1d5db' }}></th>
+            <th style={{ padding: '0.25rem', border: '1px solid #d1d5db', minWidth: '100px', maxWidth: '300px' }}></th>
             {columns.map((c) => (
-            <th key={c} style={{ padding: '0.25rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap' }}>
+            <th key={c} style={{ padding: '0.25rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', minWidth: '100px', maxWidth: '300px', width: columnWidths[c] }}>
                 {Array.isArray(relationOpts[c]) ? (
                   <select
                     value={filters[c] || ''}
@@ -754,7 +788,7 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
                 )}
               </th>
             ))}
-            <th></th>
+            <th style={{ minWidth: '100px', maxWidth: '300px' }}></th>
           </tr>
         </thead>
         <tbody>
@@ -767,7 +801,7 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
           )}
           {rows.map((r) => (
             <tr key={r.id || JSON.stringify(r)}>
-              <td style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap' }}>
+              <td style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', minWidth: '100px', maxWidth: '300px' }}>
                 {(() => {
                   const rid = getRowId(r);
                   return (
@@ -789,14 +823,16 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
-                    maxWidth: '200px',
+                    minWidth: '100px',
+                    maxWidth: '300px',
+                    width: columnWidths[c],
                   }}
                   title={relationOpts[c] ? labelMap[c][r[c]] || String(r[c]) : String(r[c])}
                 >
                   {relationOpts[c] ? labelMap[c][r[c]] || String(r[c]) : String(r[c])}
                 </td>
               ))}
-              <td style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap' }}>
+              <td style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', minWidth: '100px', maxWidth: '300px' }}>
                 {(() => {
                   const rid = getRowId(r);
                   return (
