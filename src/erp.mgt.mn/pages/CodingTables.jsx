@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { translateToMn } from '../utils/translateToMn.js';
+import { useToast } from '../context/ToastContext.jsx';
 
 function cleanIdentifier(name) {
   return String(name).replace(/[^A-Za-z0-9_]+/g, '');
 }
 
 export default function CodingTablesPage() {
+  const { addToast } = useToast();
   const [sheets, setSheets] = useState([]);
   const [workbook, setWorkbook] = useState(null);
   const [sheet, setSheet] = useState('');
@@ -639,9 +641,34 @@ export default function CodingTablesPage() {
     }
   }
 
+  function validateConfig(cfg) {
+    if (!cfg || typeof cfg !== 'object') {
+      return 'Config is not an object';
+    }
+    if (cfg.columnTypes && typeof cfg.columnTypes !== 'object') {
+      return 'columnTypes must be an object';
+    }
+    if (cfg.columnTypes) {
+      for (const [k, v] of Object.entries(cfg.columnTypes)) {
+        if (typeof v !== 'string') return `Type for ${k} must be string`;
+        if (!/^[A-Za-z0-9_(), ]*$/.test(v))
+          return `Invalid type for ${k}`;
+      }
+    }
+    if (cfg.notNullMap && typeof cfg.notNullMap !== 'object') {
+      return 'notNullMap must be an object';
+    }
+    if (cfg.notNullMap) {
+      for (const [k, v] of Object.entries(cfg.notNullMap)) {
+        if (typeof v !== 'boolean') return `${k} notNull must be true/false`;
+      }
+    }
+    return null;
+  }
+
   async function saveConfig() {
     if (!tableName) {
-      alert('Table name required');
+      addToast('Table name required', 'error');
       return;
     }
     const config = {
@@ -663,6 +690,11 @@ export default function CodingTablesPage() {
       endYear,
       autoIncStart,
     };
+    const validationError = validateConfig(config);
+    if (validationError) {
+      addToast(validationError, 'error');
+      return;
+    }
     try {
       const res = await fetch('/api/coding_table_configs', {
         method: 'POST',
@@ -672,7 +704,7 @@ export default function CodingTablesPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        alert(data.message || 'Failed to save config');
+        addToast(data.message || 'Failed to save config', 'error');
         return;
       }
       if (sql) {
@@ -683,10 +715,10 @@ export default function CodingTablesPage() {
           body: JSON.stringify({ table: tableName, sql }),
         });
       }
-      alert('Config saved');
+      addToast('Config saved', 'success');
     } catch (err) {
       console.error('Save config failed', err);
-      alert('Failed to save config');
+      addToast('Failed to save config', 'error');
     }
   }
 
