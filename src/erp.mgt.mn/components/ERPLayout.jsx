@@ -103,6 +103,12 @@ function Header({ user, onLogout, onHome }) {
         <button style={styles.iconBtn}>❔ Тусламж</button>
       </nav>
       <HeaderMenu onOpen={handleOpen} />
+      {company && (
+        <span style={styles.locationInfo}>
+          {company.branch_name && `📍 ${company.branch_name} | `}
+          🏢 {company.company_name}
+        </span>
+      )}
       <div style={styles.userSection}>
         <UserMenu user={user} onLogout={onLogout} />
       </div>
@@ -292,6 +298,8 @@ const styles = {
     padding: "0 1rem",
     height: "48px",
     flexShrink: 0,
+    position: "relative",
+    zIndex: 20,
   },
   logoSection: {
     display: "flex",
@@ -329,6 +337,12 @@ const styles = {
     display: "flex",
     alignItems: "center",
     flex: "0 0 auto",
+    gap: "0.5rem",
+  },
+  locationInfo: {
+    color: "#e5e7eb",
+    fontSize: "0.85rem",
+    marginRight: "0.75rem",
   },
   logoutBtn: {
     backgroundColor: "#dc2626",
@@ -345,13 +359,14 @@ const styles = {
     backgroundColor: "#f3f4f6",
   },
   sidebar: {
-    width: "220px",
+    width: "240px",
     backgroundColor: "#374151",
     color: "#e5e7eb",
     display: "flex",
     flexDirection: "column",
     padding: "1rem 0.5rem",
     flexShrink: 0,
+    overflowY: "auto",
   },
   menuGroup: {
     marginBottom: "1rem",

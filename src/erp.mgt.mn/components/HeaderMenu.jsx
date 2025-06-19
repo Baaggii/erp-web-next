@@ -28,7 +28,7 @@ export default function HeaderMenu({ onOpen }) {
 }
 
 const styles = {
-  menu: { marginLeft: '2rem', flexGrow: 1 },
+  menu: { marginLeft: '2rem', flexGrow: 1, position: 'relative', zIndex: 30 },
   btn: {
     background: 'transparent',
     border: 'none',

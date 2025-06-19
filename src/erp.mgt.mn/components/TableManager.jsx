@@ -6,6 +6,31 @@ import CascadeDeleteModal from './CascadeDeleteModal.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
+const actionCellStyle = {
+  padding: '0.5rem',
+  border: '1px solid #d1d5db',
+  width: 150,
+  minWidth: 150,
+  whiteSpace: 'nowrap',
+  display: 'flex',
+  justifyContent: 'flex-end',
+  gap: '0.25rem',
+};
+const actionBtnStyle = {
+  background: '#f3f4f6',
+  border: '1px solid #d1d5db',
+  borderRadius: '3px',
+  fontSize: '0.8rem',
+  padding: '0.25rem 0.5rem',
+  cursor: 'pointer',
+};
+const deleteBtnStyle = {
+  ...actionBtnStyle,
+  backgroundColor: '#fee2e2',
+  borderColor: '#fecaca',
+  color: '#b91c1c',
+};
+
 export default function TableManager({ table, refreshId = 0, formConfig = null, initialPerPage = 10, addLabel = 'Add Row' }) {
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
@@ -863,23 +888,30 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
                   {relationOpts[c] ? labelMap[c][r[c]] || String(r[c]) : String(r[c])}
                 </td>
               ))}
-              <td style={{ padding: '0.5rem', border: '1px solid #d1d5db', width: 120, minWidth: 120, whiteSpace: 'nowrap' }}>
+              <td style={actionCellStyle}>
                 {(() => {
                   const rid = getRowId(r);
                   return (
                     <>
-                      <button onClick={() => openDetail(r)} style={{ marginRight: '0.25rem' }}>
-                        View
+                      <button
+                        onClick={() => openDetail(r)}
+                        style={actionBtnStyle}
+                      >
+                        👁 View
                       </button>
-                      <button onClick={() => openEdit(r)} disabled={rid === undefined}>
-                        Edit
+                      <button
+                        onClick={() => openEdit(r)}
+                        disabled={rid === undefined}
+                        style={actionBtnStyle}
+                      >
+                        🖉 Edit
                       </button>
                       <button
                         onClick={() => handleDelete(r)}
                         disabled={rid === undefined}
-                        style={{ marginLeft: '0.5rem' }}
+                        style={deleteBtnStyle}
                       >
-                        Delete
+                        ❌ Delete
                       </button>
                     </>
                   );

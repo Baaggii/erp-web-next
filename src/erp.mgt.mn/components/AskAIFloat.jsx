@@ -56,19 +56,29 @@ export default function AskAIFloat() {
   return (
     <>
       {open ? (
-        <div id="openai-bar" ref={barRef} style={{ position: 'fixed', bottom: '20px', right: '20px', width: '280px', background: '#fff', border: '1px solid #ccc', padding: '10px', zIndex: 1000 }}>
-          <header onMouseDown={handleMouseDown} style={{ cursor: 'move', background: '#f0f0f0', padding: '5px', fontWeight: 'bold', position: 'relative' }}>
+        <div id="openai-bar" ref={barRef}>
+          <header onMouseDown={handleMouseDown}>
             Ask AI
-            <button onClick={() => setOpen(false)} style={{ position: 'absolute', right: '4px', top: '2px', border: 'none', background: 'transparent', cursor: 'pointer' }}>✕</button>
+            <button onClick={() => setOpen(false)} className="close-btn">✕</button>
           </header>
-          <textarea value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="Type a prompt..." style={{ width: '100%', height: '60px' }}></textarea>
-          <input type="file" onChange={e => setFile(e.target.files[0])} style={{ margin: '4px 0' }} />
-          <button onClick={sendPrompt}>Send</button>
-          <div className="response" style={{ marginTop: '8px', maxHeight: '150px', overflow: 'auto' }}>{response}</div>
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="Type a prompt..."
+          />
+          <input
+            type="file"
+            onChange={(e) => setFile(e.target.files[0])}
+            style={{ margin: '4px 0' }}
+          />
+          <button onClick={sendPrompt} className="send-btn">Send</button>
+          <div className="response">{response}</div>
         </div>
-        ) : (
-          <button id="openai-toggle" onClick={() => setOpen(true)} style={{ position: 'fixed', bottom: '20px', right: '20px', zIndex: 1000 }}>AI</button>
-        )}
+      ) : (
+        <button id="openai-toggle" onClick={() => setOpen(true)}>
+          AI
+        </button>
+      )}
     </>
   );
 }
