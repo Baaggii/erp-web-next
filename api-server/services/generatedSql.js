@@ -4,8 +4,13 @@ import path from 'path';
 const jsonPath = path.join(process.cwd(), 'config', 'generatedSql.json');
 const sqlPath = path.join(process.cwd(), 'config', 'generated.sql');
 
+async function ensureDir() {
+  await fs.mkdir(path.dirname(jsonPath), { recursive: true });
+}
+
 async function readMap() {
   try {
+    await ensureDir();
     const data = await fs.readFile(jsonPath, 'utf8');
     return JSON.parse(data);
   } catch {
@@ -14,6 +19,7 @@ async function readMap() {
 }
 
 async function writeFiles(map) {
+  await ensureDir();
   const sqlCombined = Object.values(map).join('\n\n');
   await fs.writeFile(jsonPath, JSON.stringify(map, null, 2));
   await fs.writeFile(sqlPath, sqlCombined);
