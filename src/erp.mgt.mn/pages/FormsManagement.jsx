@@ -3,6 +3,8 @@ import React, { useEffect, useState } from 'react';
 export default function FormsManagement() {
   const [tables, setTables] = useState([]);
   const [table, setTable] = useState('');
+  const [names, setNames] = useState([]);
+  const [name, setName] = useState('');
   const [columns, setColumns] = useState([]);
   const [config, setConfig] = useState({
     visibleFields: [],
@@ -28,15 +30,32 @@ export default function FormsManagement() {
       .catch(() => setColumns([]));
     fetch(`/api/transaction_forms?table=${encodeURIComponent(table)}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
-      .then((cfg) => setConfig({
-        visibleFields: cfg.visibleFields || [],
-        requiredFields: cfg.requiredFields || [],
-        defaultValues: cfg.defaultValues || {},
-        userIdField: cfg.userIdField || '',
-        branchIdField: cfg.branchIdField || '',
-        companyIdField: cfg.companyIdField || '',
-      }))
+      .then((data) => {
+        setNames(Object.keys(data));
+        if (data[name]) {
+          setConfig({
+            visibleFields: data[name].visibleFields || [],
+            requiredFields: data[name].requiredFields || [],
+            defaultValues: data[name].defaultValues || {},
+            userIdField: data[name].userIdField || '',
+            branchIdField: data[name].branchIdField || '',
+            companyIdField: data[name].companyIdField || '',
+          });
+        } else {
+          setName('');
+          setConfig({
+            visibleFields: [],
+            requiredFields: [],
+            defaultValues: {},
+            userIdField: '',
+            branchIdField: '',
+            companyIdField: '',
+          });
+        }
+      })
       .catch(() => {
+        setNames([]);
+        setName('');
         setConfig({
           visibleFields: [],
           requiredFields: [],
@@ -47,6 +66,32 @@ export default function FormsManagement() {
         });
       });
   }, [table]);
+
+  useEffect(() => {
+    if (!table || !name) return;
+    fetch(`/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`, { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((cfg) =>
+        setConfig({
+          visibleFields: cfg.visibleFields || [],
+          requiredFields: cfg.requiredFields || [],
+          defaultValues: cfg.defaultValues || {},
+          userIdField: cfg.userIdField || '',
+          branchIdField: cfg.branchIdField || '',
+          companyIdField: cfg.companyIdField || '',
+        }),
+      )
+      .catch(() => {
+        setConfig({
+          visibleFields: [],
+          requiredFields: [],
+          defaultValues: {},
+          userIdField: '',
+          branchIdField: '',
+          companyIdField: '',
+        });
+      });
+  }, [table, name]);
 
   function toggleVisible(field) {
     setConfig((c) => {
@@ -72,13 +117,37 @@ export default function FormsManagement() {
   }
 
   async function handleSave() {
+    if (!name) {
+      alert('Please enter transaction name');
+      return;
+    }
     await fetch('/api/transaction_forms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ table, config }),
+      body: JSON.stringify({ table, name, config }),
     });
     alert('Saved');
+    if (!names.includes(name)) setNames((n) => [...n, name]);
+  }
+
+  async function handleDelete() {
+    if (!table || !name) return;
+    if (!window.confirm('Delete transaction configuration?')) return;
+    await fetch(`/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    setNames((n) => n.filter((x) => x !== name));
+    setName('');
+    setConfig({
+      visibleFields: [],
+      requiredFields: [],
+      defaultValues: {},
+      userIdField: '',
+      branchIdField: '',
+      companyIdField: '',
+    });
   }
 
   return (
@@ -96,6 +165,31 @@ export default function FormsManagement() {
       </div>
       {table && (
         <div>
+          <div style={{ marginBottom: '1rem' }}>
+            <select
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              style={{ marginRight: '0.5rem' }}
+            >
+              <option value="">-- select transaction --</option>
+              {names.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+            <input
+              type="text"
+              placeholder="Transaction name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            {name && (
+              <button onClick={handleDelete} style={{ marginLeft: '0.5rem' }}>
+                Delete
+              </button>
+            )}
+          </div>
           <table style={{ borderCollapse: 'collapse', width: '100%' }}>
             <thead>
               <tr>

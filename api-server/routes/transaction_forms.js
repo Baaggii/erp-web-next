@@ -1,18 +1,27 @@
 import express from 'express';
-import { getFormConfig, getAllFormConfigs, setFormConfig } from '../services/transactionFormConfig.js';
+import {
+  getFormConfig,
+  getConfigsByTable,
+  listTransactionNames,
+  setFormConfig,
+  deleteFormConfig,
+} from '../services/transactionFormConfig.js';
 import { requireAuth } from '../middlewares/auth.js';
 
 const router = express.Router();
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
-    const table = req.query.table;
-    if (table) {
-      const cfg = await getFormConfig(table);
+    const { table, name } = req.query;
+    if (table && name) {
+      const cfg = await getFormConfig(table, name);
       res.json(cfg);
-    } else {
-      const all = await getAllFormConfigs();
+    } else if (table) {
+      const all = await getConfigsByTable(table);
       res.json(all);
+    } else {
+      const names = await listTransactionNames();
+      res.json(names);
     }
   } catch (err) {
     next(err);
@@ -21,9 +30,22 @@ router.get('/', requireAuth, async (req, res, next) => {
 
 router.post('/', requireAuth, async (req, res, next) => {
   try {
-    const { table, config } = req.body;
-    if (!table) return res.status(400).json({ message: 'table is required' });
-    await setFormConfig(table, config || {});
+    const { table, name, config } = req.body;
+    if (!table || !name)
+      return res.status(400).json({ message: 'table and name are required' });
+    await setFormConfig(table, name, config || {});
+    res.sendStatus(204);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/', requireAuth, async (req, res, next) => {
+  try {
+    const { table, name } = req.query;
+    if (!table || !name)
+      return res.status(400).json({ message: 'table and name are required' });
+    await deleteFormConfig(table, name);
     res.sendStatus(204);
   } catch (err) {
     next(err);

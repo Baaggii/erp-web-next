@@ -16,10 +16,11 @@ async function writeConfig(cfg) {
   await fs.writeFile(filePath, JSON.stringify(cfg, null, 2));
 }
 
-export async function getFormConfig(table) {
+export async function getFormConfig(table, name) {
   const cfg = await readConfig();
+  const byTable = cfg[table] || {};
   return (
-    cfg[table] || {
+    byTable[name] || {
       visibleFields: [],
       requiredFields: [],
       defaultValues: {},
@@ -30,11 +31,23 @@ export async function getFormConfig(table) {
   );
 }
 
-export async function getAllFormConfigs() {
-  return readConfig();
+export async function getConfigsByTable(table) {
+  const cfg = await readConfig();
+  return cfg[table] || {};
 }
 
-export async function setFormConfig(table, config) {
+export async function listTransactionNames() {
+  const cfg = await readConfig();
+  const result = {};
+  for (const [tbl, names] of Object.entries(cfg)) {
+    for (const name of Object.keys(names)) {
+      result[name] = tbl;
+    }
+  }
+  return result;
+}
+
+export async function setFormConfig(table, name, config) {
   const {
     visibleFields = [],
     requiredFields = [],
@@ -44,7 +57,8 @@ export async function setFormConfig(table, config) {
     companyIdField = null,
   } = config || {};
   const cfg = await readConfig();
-  cfg[table] = {
+  if (!cfg[table]) cfg[table] = {};
+  cfg[table][name] = {
     visibleFields,
     requiredFields,
     defaultValues,
@@ -53,5 +67,14 @@ export async function setFormConfig(table, config) {
     companyIdField,
   };
   await writeConfig(cfg);
-  return cfg[table];
+  return cfg[table][name];
+}
+
+export async function deleteFormConfig(table, name) {
+  const cfg = await readConfig();
+  if (cfg[table]) {
+    delete cfg[table][name];
+    if (Object.keys(cfg[table]).length === 0) delete cfg[table];
+    await writeConfig(cfg);
+  }
 }
