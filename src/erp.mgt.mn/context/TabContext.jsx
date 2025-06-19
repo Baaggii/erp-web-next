@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useCallback } from 'react';
 
 const TabContext = createContext();
 
@@ -7,20 +7,20 @@ export function TabProvider({ children }) {
   const [activeKey, setActiveKey] = useState(null);
   const [cache, setCache] = useState({});
 
-  function openTab({ key, label, content }) {
+  const openTab = useCallback(({ key, label, content }) => {
     setTabs((t) => {
       if (t.some((tab) => tab.key === key)) return t;
       return [...t, { key, label }];
     });
     if (content) setCache((c) => ({ ...c, [key]: content }));
     setActiveKey(key);
-  }
+  }, []);
 
-  function switchTab(key) {
+  const switchTab = useCallback((key) => {
     setActiveKey(key);
-  }
+  }, []);
 
-  function closeTab(key) {
+  const closeTab = useCallback((key) => {
     setTabs((t) => t.filter((tab) => tab.key !== key));
     setCache((c) => {
       const n = { ...c };
@@ -32,11 +32,11 @@ export function TabProvider({ children }) {
       const remaining = tabs.filter((t) => t.key !== key);
       return remaining[0]?.key || null;
     });
-  }
+  }, [tabs]);
 
-  function setTabContent(key, content) {
+  const setTabContent = useCallback((key, content) => {
     setCache((c) => ({ ...c, [key]: content }));
-  }
+  }, []);
 
   return (
     <TabContext.Provider value={{ tabs, activeKey, openTab, closeTab, switchTab, setTabContent, cache }}>
