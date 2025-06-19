@@ -578,6 +578,44 @@ export default function CodingTablesPage() {
     }
   }
 
+  async function saveConfig() {
+    if (!tableName) {
+      alert('Table name required');
+      return;
+    }
+    const config = {
+      sheet,
+      headerRow,
+      mnHeaderRow,
+      idFilterMode,
+      idColumn,
+      nameColumn,
+      otherColumns,
+      uniqueFields,
+      calcText,
+      columnTypes,
+      notNullMap,
+      defaultValues,
+      extraFields: extraFields.filter((f) => f.trim() !== ''),
+      headerMap,
+      populateRange,
+      startYear,
+      endYear,
+      autoIncStart,
+    };
+    try {
+      await fetch('/api/coding_table_configs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ table: tableName, config }),
+      });
+      alert('Config saved');
+    } catch {
+      alert('Failed to save config');
+    }
+  }
+
   useEffect(() => {
     setIdCandidates(computeIdCandidates(allHeaders, extraFields, idFilterMode));
     setUniqueFields((u) => u.filter((f) => allHeaders.includes(f)));
@@ -599,6 +637,38 @@ export default function CodingTablesPage() {
     if (idColumn && !allHeaders.includes(idColumn)) setIdColumn('');
     if (nameColumn && !allHeaders.includes(nameColumn)) setNameColumn('');
   }, [allHeaders, idFilterMode]);
+
+  useEffect(() => {
+    if (!tableName) return;
+    fetch(`/api/coding_table_configs?table=${encodeURIComponent(tableName)}`, {
+      credentials: 'include',
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((cfg) => {
+        if (!cfg) return;
+        setSheet(cfg.sheet || sheet);
+        setHeaderRow(cfg.headerRow || 1);
+        setMnHeaderRow(cfg.mnHeaderRow || '');
+        setIdFilterMode(cfg.idFilterMode || 'contains');
+        setIdColumn(cfg.idColumn || '');
+        setNameColumn(cfg.nameColumn || '');
+        setOtherColumns(cfg.otherColumns || []);
+        setUniqueFields(cfg.uniqueFields || []);
+        setCalcText(cfg.calcText || '');
+        setColumnTypes(cfg.columnTypes || {});
+        setNotNullMap(cfg.notNullMap || {});
+        setDefaultValues(cfg.defaultValues || {});
+        setExtraFields(
+          cfg.extraFields && cfg.extraFields.length > 0 ? cfg.extraFields : ['']
+        );
+        setHeaderMap(cfg.headerMap || {});
+        setPopulateRange(cfg.populateRange || false);
+        setStartYear(cfg.startYear || '');
+        setEndYear(cfg.endYear || '');
+        setAutoIncStart(cfg.autoIncStart || '1');
+      })
+      .catch(() => {});
+  }, [tableName]);
 
   return (
     <div>
@@ -879,7 +949,12 @@ export default function CodingTablesPage() {
               </div>
             <div>
               <button onClick={handleGenerateSql}>Populate SQL</button>
-              <button onClick={handleUpload}>Create Coding Table</button>
+              <button onClick={saveConfig} style={{ marginLeft: '0.5rem' }}>
+                Save Config
+              </button>
+              <button onClick={handleUpload} style={{ marginLeft: '0.5rem' }}>
+                Create Coding Table
+              </button>
             </div>
               {sql && (
                 <div>
