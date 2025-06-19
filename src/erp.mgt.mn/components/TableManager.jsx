@@ -5,15 +5,16 @@ import CascadeDeleteModal from './CascadeDeleteModal.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
-export default function TableManager({ table, refreshId = 0 }) {
+export default function TableManager({ table, refreshId = 0, formConfig = null, initialPerPage = 50, addLabel = 'Add Row' }) {
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(50);
+  const [perPage, setPerPage] = useState(initialPerPage);
   const [filters, setFilters] = useState({});
   const [sort, setSort] = useState({ column: '', dir: 'asc' });
   const [relations, setRelations] = useState({});
   const [refData, setRefData] = useState({});
+  const [relationConfigs, setRelationConfigs] = useState({});
   const [columnMeta, setColumnMeta] = useState([]);
   const [autoInc, setAutoInc] = useState(new Set());
   const [showForm, setShowForm] = useState(false);
@@ -27,7 +28,7 @@ export default function TableManager({ table, refreshId = 0 }) {
   const [detailRefs, setDetailRefs] = useState([]);
   const [editLabels, setEditLabels] = useState(false);
   const [labelEdits, setLabelEdits] = useState({});
-  const { user } = useContext(AuthContext);
+  const { user, company } = useContext(AuthContext);
 
   function computeAutoInc(meta) {
     const auto = meta
@@ -94,6 +95,7 @@ export default function TableManager({ table, refreshId = 0 }) {
         });
         setRelations(map);
         const dataMap = {};
+        const cfgMap = {};
         for (const [col, rel] of Object.entries(map)) {
           try {
             let page = 1;
@@ -128,6 +130,11 @@ export default function TableManager({ table, refreshId = 0 }) {
               }
               page += 1;
             }
+            cfgMap[col] = {
+              table: rel.table,
+              column: rel.column,
+              displayFields: cfg?.displayFields || [],
+            };
             if (rows.length > 0) {
               dataMap[col] = rows.map((row) => {
                 const parts = [];
@@ -167,7 +174,10 @@ export default function TableManager({ table, refreshId = 0 }) {
             /* ignore */
           }
         }
-        if (!canceled) setRefData(dataMap);
+        if (!canceled) {
+          setRefData(dataMap);
+          setRelationConfigs(cfgMap);
+        }
       } catch (err) {
         console.error('Failed to load table relations', err);
       }
@@ -250,7 +260,16 @@ export default function TableManager({ table, refreshId = 0 }) {
 
   async function openAdd() {
     await ensureColumnMeta();
-    setEditing(null);
+    const vals = {};
+    const all = columnMeta.map((c) => c.name);
+    all.forEach((c) => {
+      let v = (formConfig?.defaultValues || {})[c] || '';
+      if (formConfig?.userIdFields?.includes(c) && user?.empid) v = user.empid;
+      if (formConfig?.branchIdFields?.includes(c) && company?.branch_id !== undefined) v = company.branch_id;
+      if (formConfig?.companyIdFields?.includes(c) && company?.company_id !== undefined) v = company.company_id;
+      vals[c] = v;
+    });
+    setEditing(vals);
     setShowForm(true);
   }
 
@@ -330,6 +349,15 @@ export default function TableManager({ table, refreshId = 0 }) {
     Object.entries(values).forEach(([k, v]) => {
       if (v !== '') cleaned[k] = v;
     });
+
+    const required = formConfig?.requiredFields || [];
+    for (const f of required) {
+      if (!cleaned[f]) {
+        alert('Please fill ' + (labels[f] || f));
+        return;
+      }
+    }
+
     const method = editing ? 'PUT' : 'POST';
     const url = editing
       ? `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(getRowId(editing))}`
@@ -545,12 +573,17 @@ export default function TableManager({ table, refreshId = 0 }) {
     labels[c.name] = c.label || c.name;
   });
   const hiddenColumns = ['password', 'created_by', 'created_at'];
-  const columns = allColumns.filter((c) => !hiddenColumns.includes(c));
+  let columns = allColumns.filter((c) => !hiddenColumns.includes(c));
+  if (formConfig?.visibleFields?.length) {
+    columns = columns.filter((c) => formConfig.visibleFields.includes(c));
+  }
 
   const relationOpts = {};
   allColumns.forEach((c) => {
     if (relations[c] && refData[c]) {
-      relationOpts[c] = refData[c];
+      if (!formConfig?.visibleFields || formConfig.visibleFields.includes(c)) {
+        relationOpts[c] = refData[c];
+      }
     }
   });
   const labelMap = {};
@@ -569,16 +602,18 @@ export default function TableManager({ table, refreshId = 0 }) {
     autoCols.add('id');
   }
   const disabledFields = editing ? getKeyFields() : [];
-  const formColumns = allColumns.filter(
-    (c) =>
-      !autoCols.has(c) && c !== 'created_at' && c !== 'created_by'
+  let formColumns = allColumns.filter(
+    (c) => !autoCols.has(c) && c !== 'created_at' && c !== 'created_by'
   );
+  if (formConfig?.visibleFields?.length) {
+    formColumns = formColumns.filter((c) => formConfig.visibleFields.includes(c));
+  }
 
   return (
     <div>
       <div style={{ marginBottom: '0.5rem' }}>
         <button onClick={openAdd} style={{ marginRight: '0.5rem' }}>
-          Add Row
+          {addLabel}
         </button>
         <button onClick={selectCurrentPage} style={{ marginRight: '0.5rem' }}>
           Select All
@@ -767,8 +802,10 @@ export default function TableManager({ table, refreshId = 0 }) {
         columns={formColumns}
         row={editing}
         relations={relationOpts}
+        relationConfigs={relationConfigs}
         disabledFields={disabledFields}
         labels={labels}
+        requiredFields={formConfig?.requiredFields || []}
       />
       <CascadeDeleteModal
         visible={showCascade}
