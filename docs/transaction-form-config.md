@@ -8,6 +8,7 @@ Each **transaction** entry allows you to specify:
 - **visibleFields** – list of columns shown in the form
 - **requiredFields** – columns that cannot be left empty
 - **defaultValues** – map of column default values
+- **editableDefaultFields** – list of columns where users may change the prefilled default
 - **userIdFields** – fields automatically filled with the creating user ID
 - **branchIdFields** – fields automatically filled with the branch ID
 - **companyIdFields** – fields automatically filled with the company ID
@@ -21,6 +22,7 @@ Example snippet:
       "visibleFields": ["tran_date", "description"],
       "requiredFields": ["tran_date"],
       "defaultValues": { "status": "N" },
+      "editableDefaultFields": ["status"],
       "userIdFields": ["created_by"],
       "branchIdFields": ["branch_id"],
       "companyIdFields": ["company_id"]
@@ -29,6 +31,7 @@ Example snippet:
       "visibleFields": ["tran_date", "description"],
       "requiredFields": ["tran_date"],
       "defaultValues": { "status": "N" },
+      "editableDefaultFields": ["status"],
       "userIdFields": ["created_by"],
       "branchIdFields": ["branch_id"],
       "companyIdFields": ["company_id"]

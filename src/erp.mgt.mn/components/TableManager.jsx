@@ -669,7 +669,17 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
   if (columnMeta.length === 0 && autoCols.size === 0 && allColumns.includes('id')) {
     autoCols.add('id');
   }
-  const disabledFields = editing ? getKeyFields() : [];
+  const lockedDefaults = Object.entries(formConfig?.defaultValues || {})
+    .filter(
+      ([k, v]) =>
+        v !== undefined && v !== '' &&
+        !(formConfig?.editableDefaultFields || []).includes(k)
+    )
+    .map(([k]) => k);
+
+  const disabledFields = editing
+    ? [...getKeyFields(), ...lockedDefaults]
+    : lockedDefaults;
   let formColumns = ordered.filter(
     (c) => !autoCols.has(c) && c !== 'created_at' && c !== 'created_by'
   );

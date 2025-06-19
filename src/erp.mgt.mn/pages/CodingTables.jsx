@@ -25,6 +25,7 @@ export default function CodingTablesPage() {
   const [uploading, setUploading] = useState(false);
   const [columnTypes, setColumnTypes] = useState({});
   const [notNullMap, setNotNullMap] = useState({});
+  const [defaultValues, setDefaultValues] = useState({});
   const [extraFields, setExtraFields] = useState(['']);
   const [headerMap, setHeaderMap] = useState({});
   const [populateRange, setPopulateRange] = useState(false);
@@ -104,6 +105,7 @@ export default function CodingTablesPage() {
       setUniqueFields([]);
       setColumnTypes({});
       setNotNullMap({});
+      setDefaultValues({});
       setPopulateRange(false);
       setStartYear('');
       setEndYear('');
@@ -132,6 +134,7 @@ export default function CodingTablesPage() {
     setUniqueFields([]);
     setColumnTypes({});
     setNotNullMap({});
+    setDefaultValues({});
     setPopulateRange(false);
     setStartYear('');
     setEndYear('');
@@ -152,6 +155,7 @@ export default function CodingTablesPage() {
     setUniqueFields([]);
     setColumnTypes({});
     setNotNullMap({});
+    setDefaultValues({});
     setPopulateRange(false);
     setStartYear('');
     setEndYear('');
@@ -417,14 +421,25 @@ export default function CodingTablesPage() {
       defs.push(`\`${dbIdCol}\` INT AUTO_INCREMENT PRIMARY KEY`);
     }
     if (nmCol) {
-      defs.push(`\`${dbNameCol}\` ${colTypes[nmCol]} NOT NULL`);
+      let def = `\`${dbNameCol}\` ${colTypes[nmCol]} NOT NULL`;
+      if (defaultValues[nmCol]) {
+        def += ` DEFAULT ${formatVal(defaultValues[nmCol], colTypes[nmCol])}`;
+      }
+      defs.push(def);
     }
     uniqueOnly.forEach((c) => {
-      defs.push(`\`${c}\` ${colTypes[c]} NOT NULL`);
+      let def = `\`${c}\` ${colTypes[c]} NOT NULL`;
+      if (defaultValues[c]) {
+        def += ` DEFAULT ${formatVal(defaultValues[c], colTypes[c])}`;
+      }
+      defs.push(def);
     });
     otherFiltered.forEach((c) => {
       let def = `\`${c}\` ${colTypes[c]}`;
       if (localNotNull[c]) def += ' NOT NULL';
+      if (defaultValues[c]) {
+        def += ` DEFAULT ${formatVal(defaultValues[c], colTypes[c])}`;
+      }
       defs.push(def);
       });
     const calcFields = parseCalcFields(calcText);
@@ -458,9 +473,12 @@ export default function CodingTablesPage() {
       }
       uniqueOnly.forEach((c, idx2) => {
         const ui = uniqueIdx[idx2];
-        let v = ui === -1 ? defaultValForType(colTypes[c]) : r[ui];
-        if (v === undefined || v === null || v === '') {
-          v = defaultValForType(colTypes[c]);
+        let v = defaultValues[c];
+        if (v === undefined || v === '') {
+          v = ui === -1 ? defaultValForType(colTypes[c]) : r[ui];
+          if (v === undefined || v === null || v === '') {
+            v = defaultValForType(colTypes[c]);
+          }
         }
         cols.push(`\`${c}\``);
         vals.push(formatVal(v, colTypes[c]));
@@ -468,9 +486,12 @@ export default function CodingTablesPage() {
       });
       otherFiltered.forEach((c, idx2) => {
           const ci = otherIdx[idx2];
-          let v = ci === -1 ? undefined : r[ci];
-          if ((v === undefined || v === null || v === '') && localNotNull[c]) {
-            v = defaultValForType(colTypes[c]);
+          let v = defaultValues[c];
+          if (v === undefined || v === '') {
+            v = ci === -1 ? undefined : r[ci];
+            if ((v === undefined || v === null || v === '') && localNotNull[c]) {
+              v = defaultValForType(colTypes[c]);
+            }
           }
           if (v !== undefined && v !== null && v !== '') hasData = true;
           cols.push(`\`${c}\``);
@@ -518,6 +539,7 @@ export default function CodingTablesPage() {
       formData.append('calcFields', JSON.stringify(parseCalcFields(calcText)));
       formData.append('columnTypes', JSON.stringify(columnTypes));
       formData.append('notNullMap', JSON.stringify(notNullMap));
+      formData.append('defaultValues', JSON.stringify(defaultValues));
       formData.append('populateRange', String(populateRange));
       formData.append('startYear', startYear);
       formData.append('endYear', endYear);
@@ -564,6 +586,13 @@ export default function CodingTablesPage() {
       const updated = {};
       allHeaders.forEach((h) => {
         updated[h] = m[h] || false;
+      });
+      return updated;
+    });
+    setDefaultValues((d) => {
+      const updated = {};
+      allHeaders.forEach((h) => {
+        updated[h] = d[h] || '';
       });
       return updated;
     });
@@ -824,6 +853,17 @@ export default function CodingTablesPage() {
                         />
                         Allow Null
                       </label>
+                      <input
+                        style={{ marginLeft: '0.5rem', width: '8rem' }}
+                        placeholder="Default"
+                        value={defaultValues[h] || ''}
+                        onChange={(e) =>
+                          setDefaultValues({
+                            ...defaultValues,
+                            [h]: e.target.value,
+                          })
+                        }
+                      />
                     </div>
                   ))}
                 </div>

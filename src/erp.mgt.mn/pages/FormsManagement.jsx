@@ -10,6 +10,7 @@ export default function FormsManagement() {
     visibleFields: [],
     requiredFields: [],
     defaultValues: {},
+    editableDefaultFields: [],
     userIdFields: [],
     branchIdFields: [],
     companyIdFields: [],
@@ -37,6 +38,7 @@ export default function FormsManagement() {
             visibleFields: data[name].visibleFields || [],
             requiredFields: data[name].requiredFields || [],
             defaultValues: data[name].defaultValues || {},
+            editableDefaultFields: data[name].editableDefaultFields || [],
             userIdFields: data[name].userIdFields || [],
             branchIdFields: data[name].branchIdFields || [],
             companyIdFields: data[name].companyIdFields || [],
@@ -47,6 +49,7 @@ export default function FormsManagement() {
             visibleFields: [],
             requiredFields: [],
             defaultValues: {},
+            editableDefaultFields: [],
             userIdFields: [],
             branchIdFields: [],
             companyIdFields: [],
@@ -60,6 +63,7 @@ export default function FormsManagement() {
           visibleFields: [],
           requiredFields: [],
           defaultValues: {},
+          editableDefaultFields: [],
           userIdFields: [],
           branchIdFields: [],
           companyIdFields: [],
@@ -76,6 +80,7 @@ export default function FormsManagement() {
           visibleFields: cfg.visibleFields || [],
           requiredFields: cfg.requiredFields || [],
           defaultValues: cfg.defaultValues || {},
+          editableDefaultFields: cfg.editableDefaultFields || [],
           userIdFields: cfg.userIdFields || [],
           branchIdFields: cfg.branchIdFields || [],
           companyIdFields: cfg.companyIdFields || [],
@@ -86,6 +91,7 @@ export default function FormsManagement() {
           visibleFields: [],
           requiredFields: [],
           defaultValues: {},
+          editableDefaultFields: [],
           userIdFields: [],
           branchIdFields: [],
           companyIdFields: [],
@@ -116,6 +122,14 @@ export default function FormsManagement() {
     }));
   }
 
+  function toggleEditable(field) {
+    setConfig((c) => {
+      const set = new Set(c.editableDefaultFields);
+      set.has(field) ? set.delete(field) : set.add(field);
+      return { ...c, editableDefaultFields: Array.from(set) };
+    });
+  }
+
   async function handleSave() {
     if (!name) {
       alert('Please enter transaction name');
@@ -140,14 +154,15 @@ export default function FormsManagement() {
     });
     setNames((n) => n.filter((x) => x !== name));
     setName('');
-    setConfig({
-      visibleFields: [],
-      requiredFields: [],
-      defaultValues: {},
-      userIdFields: [],
-      branchIdFields: [],
-      companyIdFields: [],
-    });
+        setConfig({
+          visibleFields: [],
+          requiredFields: [],
+          defaultValues: {},
+          editableDefaultFields: [],
+          userIdFields: [],
+          branchIdFields: [],
+          companyIdFields: [],
+        });
   }
 
   return (
@@ -198,6 +213,7 @@ export default function FormsManagement() {
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Visible</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Required</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Default</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>Editable</th>
               </tr>
             </thead>
             <tbody>
@@ -223,6 +239,13 @@ export default function FormsManagement() {
                       type="text"
                       value={config.defaultValues[col] || ''}
                       onChange={(e) => changeDefault(col, e.target.value)}
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.editableDefaultFields.includes(col)}
+                      onChange={() => toggleEditable(col)}
                     />
                   </td>
                 </tr>
