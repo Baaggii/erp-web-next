@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 
 export default function RowFormModal({
   visible,
@@ -7,8 +8,10 @@ export default function RowFormModal({
   columns,
   row,
   relations = {},
+  relationConfigs = {},
   disabledFields = [],
   labels = {},
+  requiredFields = [],
 }) {
   const [formVals, setFormVals] = useState(() => {
     const init = {};
@@ -17,6 +20,7 @@ export default function RowFormModal({
     });
     return init;
   });
+  const inputRefs = useRef({});
 
   useEffect(() => {
     if (!visible) return;
@@ -25,6 +29,7 @@ export default function RowFormModal({
       vals[c] = row ? String(row[c] ?? '') : '';
     });
     setFormVals(vals);
+    inputRefs.current = {};
   }, [row, columns, visible]);
 
   if (!visible) return null;
@@ -50,6 +55,21 @@ export default function RowFormModal({
     minWidth: '300px',
   };
 
+  function handleKeyDown(e, col) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const enabled = columns.filter((c) => !disabledFields.includes(c));
+    const idx = enabled.indexOf(col);
+    const next = enabled[idx + 1];
+    if (next && inputRefs.current[next]) {
+      inputRefs.current[next].focus();
+      return;
+    }
+    if (!next) {
+      onSubmit(formVals);
+    }
+  }
+
   return (
     <div style={overlay}>
       <div style={modal}>
@@ -64,13 +84,30 @@ export default function RowFormModal({
             <div key={c} style={{ marginBottom: '0.75rem' }}>
               <label style={{ display: 'block', marginBottom: '0.25rem' }}>
                 {labels[c] || c}
+                {requiredFields.includes(c) && (
+                  <span style={{ color: 'red' }}>*</span>
+                )}
               </label>
-              {Array.isArray(relations[c]) ? (
+              {relationConfigs[c] ? (
+                <AsyncSearchSelect
+                  table={relationConfigs[c].table}
+                  searchColumn={relationConfigs[c].column}
+                  labelFields={relationConfigs[c].displayFields || []}
+                  value={formVals[c]}
+                  onChange={(val) =>
+                    setFormVals((v) => ({ ...v, [c]: val }))
+                  }
+                  disabled={row && disabledFields.includes(c)}
+                  onKeyDown={(e) => handleKeyDown(e, c)}
+                />
+              ) : Array.isArray(relations[c]) ? (
                 <select
+                  ref={(el) => (inputRefs.current[c] = el)}
                   value={formVals[c]}
                   onChange={(e) =>
                     setFormVals((v) => ({ ...v, [c]: e.target.value }))
                   }
+                  onKeyDown={(e) => handleKeyDown(e, c)}
                   disabled={row && disabledFields.includes(c)}
                   style={{ width: '100%', padding: '0.5rem' }}
                 >
@@ -83,11 +120,13 @@ export default function RowFormModal({
                 </select>
               ) : (
                 <input
+                  ref={(el) => (inputRefs.current[c] = el)}
                   type="text"
                   value={formVals[c]}
                   onChange={(e) =>
                     setFormVals((v) => ({ ...v, [c]: e.target.value }))
                   }
+                  onKeyDown={(e) => handleKeyDown(e, c)}
                   disabled={row && disabledFields.includes(c)}
                   style={{ width: '100%', padding: '0.5rem' }}
                 />

@@ -20,6 +20,7 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
   const [columnMeta, setColumnMeta] = useState([]);
   const [relations, setRelations] = useState({});
   const [refData, setRefData] = useState({});
+  const [relationConfigs, setRelationConfigs] = useState({});
 
   useEffect(() => {
     if (defaultName) setName(defaultName);
@@ -70,6 +71,8 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
   useEffect(() => {
     if (!table) return;
     let canceled = false;
+    setRefData({});
+    setRelationConfigs({});
     async function load() {
       try {
         const res = await fetch(
@@ -88,6 +91,7 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
         });
         setRelations(map);
         const dataMap = {};
+        const cfgMap = {};
         for (const [col, rel] of Object.entries(map)) {
           try {
             let page = 1;
@@ -122,6 +126,11 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
               }
               page += 1;
             }
+            cfgMap[col] = {
+              table: rel.table,
+              column: rel.column,
+              displayFields: cfg?.displayFields || [],
+            };
             if (rows.length > 0) {
               dataMap[col] = rows.map((row) => {
                 const parts = [];
@@ -146,7 +155,10 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
             /* ignore */
           }
         }
-        if (!canceled) setRefData(dataMap);
+        if (!canceled) {
+          setRefData(dataMap);
+          setRelationConfigs(cfgMap);
+        }
       } catch (err) {
         console.error('Failed to load table relations', err);
       }
@@ -199,24 +211,29 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
       }
     }
     const data = { ...values };
-    if (editingRow && editingRow.id != null) {
-      await fetch(`/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(editingRow.id)}`, {
-        method: 'PUT',
+    const method = editingRow && editingRow.id != null ? 'PUT' : 'POST';
+    const url = editingRow && editingRow.id != null
+      ? `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(editingRow.id)}`
+      : `/api/tables/${encodeURIComponent(table)}`;
+    try {
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(data),
       });
-    } else {
-      await fetch(`/api/tables/${encodeURIComponent(table)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(data),
-      });
+      if (res.ok) {
+        alert('Transaction saved successfully');
+        setShowForm(false);
+        setEditingRow(null);
+        await loadRows();
+      } else {
+        const msg = await res.text();
+        alert('Save failed: ' + msg);
+      }
+    } catch (err) {
+      alert('Save failed: ' + err.message);
     }
-    setShowForm(false);
-    setEditingRow(null);
-    await loadRows();
   }
 
   async function handleDelete(id) {
@@ -344,7 +361,9 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
         columns={fields}
         row={editingRow}
         relations={relationOpts}
+        relationConfigs={relationConfigs}
         labels={labels}
+        requiredFields={config?.requiredFields || []}
       />
     </div>
   );
