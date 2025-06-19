@@ -36,16 +36,22 @@ window.fetch = async (url, options = {}, _retry) => {
       }
     }
   }
-    if (!res.ok) {
-    let respText = '';
+  if (!res.ok) {
+    let errorMsg = res.statusText;
     try {
-      respText = await res.clone().text();
-    } catch {}
-    const payload = options.body ? options.body : '';
-    const details = `${method} ${url}\nPayload: ${payload}\nResponse: ${res.status} - ${respText}`;
-    if (import.meta.env.DEV) console.error('API Error:', details);
+      const data = await res.clone().json();
+      if (data && data.message) errorMsg = data.message;
+    } catch {
+      try {
+        const text = await res.clone().text();
+        errorMsg = text.slice(0, 200);
+      } catch {}
+    }
+    if (import.meta.env.DEV) {
+      console.error('API Error:', method, url, errorMsg);
+    }
     window.dispatchEvent(
-      new CustomEvent('toast', { detail: { message: `❌ Request failed\n${details}`, type: 'error' } })
+      new CustomEvent('toast', { detail: { message: `❌ Request failed: ${errorMsg}`, type: 'error' } })
     );
   }
   return res;
