@@ -1,5 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { upsertModule } from '../../db/index.js';
+import { slugify } from '../utils/slugify.js';
 
 const filePath = path.join(process.cwd(), 'config', 'transactionForms.json');
 
@@ -47,7 +49,7 @@ export async function listTransactionNames() {
   return result;
 }
 
-export async function setFormConfig(table, name, config) {
+export async function setFormConfig(table, name, config, options = {}) {
   const {
     visibleFields = [],
     requiredFields = [],
@@ -59,6 +61,7 @@ export async function setFormConfig(table, name, config) {
     branchIdField,
     companyIdField,
   } = config || {};
+  const { showInSidebar = true, showInHeader = false } = options;
   const uid = userIdFields.length ? userIdFields : userIdField ? [userIdField] : [];
   const bid = branchIdFields.length
     ? branchIdFields
@@ -81,6 +84,18 @@ export async function setFormConfig(table, name, config) {
     companyIdFields: cid,
   };
   await writeConfig(cfg);
+  try {
+    const moduleKey = slugify(name);
+    await upsertModule(
+      moduleKey,
+      name,
+      'finance_transactions',
+      showInSidebar,
+      showInHeader,
+    );
+  } catch (err) {
+    console.error('Failed to auto-create module', err);
+  }
   return cfg[table][name];
 }
 

@@ -40,5 +40,8 @@ Example snippet:
 Clients can retrieve a list of transaction names via `/api/transaction_forms`.
 To obtain a configuration for a specific transaction use
 `/api/transaction_forms?table=tbl&name=transaction`. New configurations are
-posted with `{ table, name, config }` in the request body and can be removed via
+posted with `{ table, name, config, showInSidebar?, showInHeader? }` in the request body and can be removed via
 `DELETE /api/transaction_forms?table=tbl&name=transaction`.
+Saving a configuration automatically creates a module using a slug of the transaction
+name under the parent `finance_transactions`. The optional `showInSidebar` and
+`showInHeader` flags determine where the generated module appears in the UI.
