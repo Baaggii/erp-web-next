@@ -24,7 +24,7 @@ router.post('/', requireAuth, async (req, res, next) => {
     const { table, config } = req.body;
     if (!table) return res.status(400).json({ message: 'table is required' });
     await setConfig(table, config || {});
-    res.sendStatus(204);
+    res.status(200).json({ message: 'Config saved successfully' });
   } catch (err) {
     next(err);
   }
