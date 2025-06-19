@@ -114,6 +114,7 @@ export default function UserCompanies() {
       {assignments.length === 0 ? (
         <p>Хуваарилалт алга.</p>
       ) : (
+        <div className="table-container overflow-x-auto" style={{ maxHeight: '70vh' }}>
         <table
           style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.5rem' }}
         >
@@ -141,6 +142,7 @@ export default function UserCompanies() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
       <AssignmentFormModal
         visible={showForm}

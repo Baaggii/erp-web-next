@@ -53,5 +53,8 @@ const styles = {
   tabContent: {
     border: '1px solid #ccc',
     padding: '1rem',
+    overflowX: 'auto',
+    overflowY: 'auto',
+    maxHeight: '70vh',
   },
 };

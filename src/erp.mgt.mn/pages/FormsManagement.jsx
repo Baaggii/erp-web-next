@@ -190,6 +190,7 @@ export default function FormsManagement() {
               </button>
             )}
           </div>
+          <div className="table-container overflow-x-auto" style={{ maxHeight: '70vh' }}>
           <table style={{ borderCollapse: 'collapse', width: '100%' }}>
             <thead>
               <tr>
@@ -228,6 +229,7 @@ export default function FormsManagement() {
               ))}
             </tbody>
           </table>
+          </div>
           <div style={{ marginTop: '1rem' }}>
             <label>
               User ID fields:{' '}

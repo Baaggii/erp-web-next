@@ -208,6 +208,7 @@ const styles = {
     display: 'flex',
     flexGrow: 1,
     backgroundColor: '#f3f4f6',
+    marginLeft: '240px',
   },
   sidebar: {
     backgroundColor: '#374151',
@@ -219,6 +220,11 @@ const styles = {
     padding: '1rem',
     flexShrink: 0,
     gap: '0.5rem',
+    position: 'fixed',
+    top: '48px',
+    left: 0,
+    height: 'calc(100vh - 48px)',
+    zIndex: 10,
   },
   menuGroup: {
     marginBottom: '1rem',

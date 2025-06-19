@@ -363,6 +363,7 @@ const styles = {
     flexGrow: 1,
     backgroundColor: "#f3f4f6",
     overflow: "auto",
+    marginLeft: "240px",
   },
   sidebar: {
     width: "240px",
@@ -373,9 +374,11 @@ const styles = {
     padding: "1rem 0.5rem",
     flexShrink: 0,
     overflowY: "auto",
-    position: "sticky",
+    position: "fixed",
     top: "48px",
+    left: 0,
     height: "calc(100vh - 48px)",
+    zIndex: 10,
   },
   menuGroup: {
     marginBottom: "1rem",
