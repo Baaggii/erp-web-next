@@ -1,11 +1,12 @@
 // src/erp.mgt.mn/pages/Forms.jsx
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import FinanceTransactionsPage from './FinanceTransactions.jsx';
+import { useTabs } from '../context/TabContext.jsx';
 
 
 export default function Forms() {
   const [transactions, setTransactions] = useState([]);
-  const navigate = useNavigate();
+  const { openTab } = useTabs();
 
   useEffect(() => {
     fetch('/api/transaction_forms', { credentials: 'include' })
@@ -15,6 +16,7 @@ export default function Forms() {
           Object.entries(data).map(([name, info]) => ({
             name,
             moduleKey: info.moduleKey,
+            table: info.table,
           }))
         )
       )
@@ -32,9 +34,16 @@ export default function Forms() {
             <li key={t.moduleKey}>
               <button
                 onClick={() =>
-                  navigate(
-                    `/finance-transactions/${t.moduleKey.replace(/_/g, '-')}`
-                  )
+                  openTab({
+                    key: t.moduleKey,
+                    label: t.name,
+                    content: (
+                      <FinanceTransactionsPage
+                        defaultName={t.name}
+                        hideSelector
+                      />
+                    ),
+                  })
                 }
               >
                 {t.name}

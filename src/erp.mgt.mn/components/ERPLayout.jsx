@@ -1,5 +1,5 @@
 // src/erp.mgt.mn/components/ERPLayout.jsx
-import React, { useContext, useState } from "react";
+import React, { useContext, useState, useEffect } from "react";
 import HeaderMenu from "./HeaderMenu.jsx";
 import UserMenu from "./UserMenu.jsx";
 import { useOutlet, useNavigate, useLocation } from "react-router-dom";
@@ -10,6 +10,7 @@ import { useCompanyModules } from "../hooks/useCompanyModules.js";
 import { useModules } from "../hooks/useModules.js";
 import modulePath from "../utils/modulePath.js";
 import AskAIFloat from "./AskAIFloat.jsx";
+import { useTabs } from "../context/TabContext.jsx";
 
 /**
  * A desktop‐style “ERPLayout” with:
@@ -39,41 +40,16 @@ export default function ERPLayout() {
   };
   const windowTitle = titleMap[location.pathname] || "ERP";
 
-  const [tabs, setTabs] = useState([
-    { path: location.pathname, title: windowTitle },
-  ]);
+  const { tabs, activeKey, openTab, closeTab, switchTab, setTabContent, cache } = useTabs();
 
-  React.useEffect(() => {
+  useEffect(() => {
     const title = titleMap[location.pathname] || "ERP";
-    setTabs((t) => {
-      if (t.some((tab) => tab.path === location.pathname)) return t;
-      return [...t, { path: location.pathname, title }];
-    });
-  }, [location.pathname]);
+    openTab({ key: location.pathname, label: title });
+  }, [location.pathname, openTab]);
 
-  function switchTab(path) {
+  function handleOpen(path, label) {
+    openTab({ key: path, label });
     navigate(path);
-  }
-
-  function openTab(path, title) {
-    setTabs((t) => {
-      if (t.some((tab) => tab.path === path)) return t;
-      return [...t, { path, title }];
-    });
-    navigate(path);
-  }
-
-  function closeTab(path) {
-    setTabs((t) => t.filter((tab) => tab.path !== path));
-    setCache((c) => {
-      const n = { ...c };
-      delete n[path];
-      return n;
-    });
-    if (location.pathname === path && tabs.length > 1) {
-      const next = tabs.find((tab) => tab.path !== path) || tabs[0];
-      navigate(next.path);
-    }
   }
 
   async function handleLogout() {
@@ -89,21 +65,12 @@ export default function ERPLayout() {
     navigate('/');
   }
 
-  const [cache, setCache] = useState({});
-
   return (
     <div style={styles.container}>
       <Header user={user} onLogout={handleLogout} onHome={handleHome} />
       <div style={styles.body}>
-        <Sidebar onOpen={openTab} />
-        <MainWindow
-          title={windowTitle}
-          tabs={tabs}
-          onSwitch={switchTab}
-          onClose={closeTab}
-          cache={cache}
-          setCache={setCache}
-        />
+        <Sidebar onOpen={handleOpen} />
+        <MainWindow title={windowTitle} />
       </div>
       <AskAIFloat />
     </div>
@@ -249,20 +216,22 @@ function SidebarGroup({ mod, map, allMap, level, onOpen }) {
 
 
 /** A faux “window” wrapper around the main content **/
-function MainWindow({ title, tabs, onSwitch, onClose, cache, setCache }) {
+function MainWindow({ title }) {
   const location = useLocation();
   const outlet = useOutlet();
+  const navigate = useNavigate();
+  const { tabs, activeKey, switchTab, closeTab, setTabContent, cache } = useTabs();
 
-  React.useEffect(() => {
-    setCache((c) => {
-      if (c[location.pathname]) return c;
-      return { ...c, [location.pathname]: outlet };
-    });
-  }, [location.pathname, outlet, setCache]);
+  useEffect(() => {
+    setTabContent(location.pathname, outlet);
+  }, [location.pathname, outlet, setTabContent]);
 
-  const visible = cache[location.pathname] || outlet;
+  function handleSwitch(key) {
+    switchTab(key);
+    if (key.startsWith('/')) navigate(key);
+  }
 
-  const elements = { ...cache, [location.pathname]: visible };
+  const elements = { ...cache, [location.pathname]: outlet };
 
   return (
     <div style={styles.windowContainer}>
@@ -277,16 +246,16 @@ function MainWindow({ title, tabs, onSwitch, onClose, cache, setCache }) {
       <div style={styles.tabBar}>
         {tabs.map((t) => (
           <div
-            key={t.path}
-            style={location.pathname === t.path ? styles.activeTab : styles.tab}
-            onClick={() => onSwitch(t.path)}
+            key={t.key}
+            style={activeKey === t.key ? styles.activeTab : styles.tab}
+            onClick={() => handleSwitch(t.key)}
           >
-            <span>{t.title}</span>
+            <span>{t.label}</span>
             {tabs.length > 1 && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  onClose(t.path);
+                  closeTab(t.key);
                 }}
                 style={styles.closeBtn}
               >
@@ -297,9 +266,9 @@ function MainWindow({ title, tabs, onSwitch, onClose, cache, setCache }) {
         ))}
       </div>
       <div style={styles.windowContent}>
-        {Object.entries(elements).map(([path, el]) => (
-          <div key={path} style={{ display: path === location.pathname ? 'block' : 'none' }}>
-            {el}
+        {tabs.map((t) => (
+          <div key={t.key} style={{ display: t.key === activeKey ? 'block' : 'none' }}>
+            {t.key === location.pathname ? elements[t.key] : cache[t.key]}
           </div>
         ))}
       </div>
