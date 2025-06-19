@@ -1,13 +1,6 @@
 import React, { useState } from 'react';
 
-export default function SearchSelect({
-  value,
-  onChange,
-  options = [],
-  disabled,
-  onKeyDown,
-  inputRef,
-}) {
+export default function SearchSelect({ value, onChange, options = [], disabled }) {
   const [filter, setFilter] = useState('');
   const id = React.useId();
 
@@ -29,8 +22,6 @@ export default function SearchSelect({
           onChange(e.target.value);
           setFilter(e.target.value);
         }}
-        onKeyDown={onKeyDown}
-        ref={inputRef}
         disabled={disabled}
         style={{ width: '100%', padding: '0.5rem' }}
       />
