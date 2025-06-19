@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useContext } from 'react';
+import RowFormModal from '../components/RowFormModal.jsx';
 import { useSearchParams } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 
@@ -12,8 +13,20 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
   const [rows, setRows] = useState([]);
   const [config, setConfig] = useState(null);
   const [showForm, setShowForm] = useState(false);
-  const [formVals, setFormVals] = useState({});
   const [editingId, setEditingId] = useState(null);
+  const [editingRow, setEditingRow] = useState(null);
+  const [page, setPage] = useState(1);
+  const [perPage] = useState(10);
+  const [count, setCount] = useState(0);
+  const [relations, setRelations] = useState({});
+  const [relationOpts, setRelationOpts] = useState({});
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    if (!message) return;
+    const t = setTimeout(() => setMessage(''), 3000);
+    return () => clearTimeout(t);
+  }, [message]);
 
   useEffect(() => {
     if (defaultName) setName(defaultName);
@@ -56,12 +69,54 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
 
   useEffect(() => {
     if (table && name) loadRows();
-  }, [table, name]);
+  }, [table, name, page]);
 
   async function loadRows() {
-    const res = await fetch(`/api/tables/${encodeURIComponent(table)}`, { credentials: 'include' });
+    const params = new URLSearchParams({ page, perPage });
+    const res = await fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, { credentials: 'include' });
     const data = res.ok ? await res.json() : {};
     setRows(data.rows || []);
+    setCount(data.count || 0);
+  }
+
+  async function loadRelations() {
+    try {
+      const res = await fetch(`/api/tables/${encodeURIComponent(table)}/relations`, { credentials: 'include' });
+      if (!res.ok) return;
+      const rels = await res.json();
+      const map = {};
+      rels.forEach((r) => {
+        map[r.COLUMN_NAME] = { table: r.REFERENCED_TABLE_NAME, column: r.REFERENCED_COLUMN_NAME };
+      });
+      setRelations(map);
+      const opts = {};
+      for (const [col, rel] of Object.entries(map)) {
+        try {
+          const cfgRes = await fetch(`/api/display_fields?table=${encodeURIComponent(rel.table)}`, { credentials: 'include' });
+          let cfg = null;
+          if (cfgRes.ok) cfg = await cfgRes.json();
+          const p = new URLSearchParams({ perPage: 500 });
+          const rowsRes = await fetch(`/api/tables/${encodeURIComponent(rel.table)}?${p.toString()}`, { credentials: 'include' });
+          const rowsJson = await rowsRes.json();
+          if (Array.isArray(rowsJson.rows)) {
+            opts[col] = rowsJson.rows.map((row) => {
+              const parts = [];
+              if (row[rel.column] !== undefined) parts.push(row[rel.column]);
+              const display = Array.isArray(cfg?.displayFields) && cfg.displayFields.length > 0 ? cfg.displayFields : Object.keys(row).filter((f) => f !== rel.column).slice(0, 1);
+              parts.push(...display.map((f) => row[f]).filter((v) => v !== undefined));
+              const label = parts.length > 0 ? parts.join(' - ') : Object.values(row).slice(0, 2).join(' - ');
+              return { value: row[rel.column], label };
+            });
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      setRelationOpts(opts);
+    } catch {
+      setRelations({});
+      setRelationOpts({});
+    }
   }
 
   function openAdd() {
@@ -74,7 +129,8 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
       vals[c] = v;
     });
     setEditingId(null);
-    setFormVals(vals);
+    setEditingRow(vals);
+    loadRelations();
     setShowForm(true);
   }
 
@@ -84,46 +140,60 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
       vals[c] = row[c] ?? '';
     });
     setEditingId(row.id);
-    setFormVals(vals);
+    setEditingRow(vals);
+    loadRelations();
     setShowForm(true);
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
+  async function handleSubmit(values) {
     const required = config?.requiredFields || [];
     for (const f of required) {
-      if (!formVals[f]) {
+      if (!values[f]) {
         alert('Please fill ' + f);
         return;
       }
     }
-    const data = { ...formVals };
-    if (editingId == null) {
-      await fetch(`/api/tables/${encodeURIComponent(table)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(data),
-      });
+    const data = { ...values };
+    const url = editingId == null
+      ? `/api/tables/${encodeURIComponent(table)}`
+      : `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(editingId)}`;
+    const method = editingId == null ? 'POST' : 'PUT';
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(data),
+    });
+    if (res.ok) {
+      setMessage('Transaction saved successfully');
+      setShowForm(false);
+      setEditingRow(null);
+      await loadRows();
     } else {
-      await fetch(`/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(editingId)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(data),
-      });
+      let msg = 'Save failed';
+      try {
+        const json = await res.json();
+        if (json && json.message) msg += `: ${json.message}`;
+      } catch {
+        /* ignore */
+      }
+      setMessage(msg);
     }
-    setShowForm(false);
-    await loadRows();
   }
 
   async function handleDelete(id) {
     if (!window.confirm('Delete transaction?')) return;
-    await fetch(`/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`, {
+    const res = await fetch(`/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`, {
       method: 'DELETE',
       credentials: 'include',
     });
-    loadRows();
+    if (res.ok) {
+      setMessage('Transaction deleted');
+      loadRows();
+      setEditingRow(null);
+    } else {
+      setMessage('Delete failed');
+    }
   }
 
   const fields = config?.visibleFields?.length ? config.visibleFields : columns;
@@ -141,6 +211,9 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
   return (
     <div>
       <h2>{defaultName || 'Finance Transactions'}</h2>
+      {message && (
+        <div style={{ marginBottom: '0.5rem', color: '#065f46' }}>{message}</div>
+      )}
       {!hideSelector && (
         <div style={{ marginBottom: '0.5rem' }}>
           <select value={name} onChange={(e) => setName(e.target.value)}>
@@ -200,53 +273,33 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
             )}
           </tbody>
         </table>
+        <div style={{ marginTop: '0.5rem' }}>
+          <button onClick={() => setPage(1)} disabled={page === 1} style={{ marginRight: '0.25rem' }}>
+            {'<<'}
+          </button>
+          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} style={{ marginRight: '0.25rem' }}>
+            {'<'}
+          </button>
+          <span>
+            Page {page} of {Math.max(1, Math.ceil(count / perPage))}
+          </span>
+          <button onClick={() => setPage((p) => Math.min(Math.ceil(count / perPage), p + 1))} disabled={page >= Math.ceil(count / perPage)} style={{ marginLeft: '0.25rem' }}>
+            {'>'}
+          </button>
+          <button onClick={() => setPage(Math.ceil(count / perPage))} disabled={page >= Math.ceil(count / perPage)} style={{ marginLeft: '0.25rem' }}>
+            {'>>'}
+          </button>
+        </div>
       )}
       {showForm && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.4)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <div
-            style={{
-              backgroundColor: '#fff',
-              padding: '1rem',
-              borderRadius: '4px',
-              maxHeight: '90vh',
-              overflowY: 'auto',
-            }}
-          >
-            <h3 style={{ marginTop: 0 }}>{editingId == null ? 'Add Transaction' : 'Edit Transaction'}</h3>
-            <form onSubmit={handleSubmit}>
-              {fields.map((f) => (
-                <div key={f} style={{ marginBottom: '0.5rem' }}>
-                  <label style={{ display: 'block', marginBottom: '0.25rem' }}>{f}</label>
-                  <input
-                    type="text"
-                    value={formVals[f] ?? ''}
-                    onChange={(e) => setFormVals((v) => ({ ...v, [f]: e.target.value }))}
-                    required={config?.requiredFields?.includes(f)}
-                    style={{ width: '100%', padding: '0.5rem' }}
-                  />
-                </div>
-              ))}
-              <div style={{ textAlign: 'right' }}>
-                <button type="button" onClick={() => setShowForm(false)} style={{ marginRight: '0.5rem' }}>
-                  Cancel
-                </button>
-                <button type="submit">Save</button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <RowFormModal
+          visible={showForm}
+          onCancel={() => { setShowForm(false); setEditingRow(null); }}
+          onSubmit={handleSubmit}
+          columns={fields}
+          row={editingRow}
+          relations={relationOpts}
+        />
       )}
     </div>
   );
