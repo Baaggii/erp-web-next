@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
-import SearchSelect from './SearchSelect.jsx';
+import React, { useState, useEffect } from 'react';
 
 export default function RowFormModal({
   visible,
@@ -18,16 +17,6 @@ export default function RowFormModal({
     });
     return init;
   });
-
-  const inputRefs = useRef([]);
-
-  function handleKeyDown(e, idx) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const next = inputRefs.current[idx + 1];
-      if (next) next.focus();
-    }
-  }
 
   useEffect(() => {
     if (!visible) return;
@@ -71,22 +60,27 @@ export default function RowFormModal({
             onSubmit(formVals);
           }}
         >
-          {columns.map((c, idx) => (
+          {columns.map((c) => (
             <div key={c} style={{ marginBottom: '0.75rem' }}>
               <label style={{ display: 'block', marginBottom: '0.25rem' }}>
                 {labels[c] || c}
               </label>
               {Array.isArray(relations[c]) ? (
-                <SearchSelect
+                <select
                   value={formVals[c]}
-                  onChange={(val) =>
-                    setFormVals((v) => ({ ...v, [c]: val }))
+                  onChange={(e) =>
+                    setFormVals((v) => ({ ...v, [c]: e.target.value }))
                   }
-                  options={relations[c]}
                   disabled={row && disabledFields.includes(c)}
-                  onKeyDown={(e) => handleKeyDown(e, idx)}
-                  inputRef={(el) => (inputRefs.current[idx] = el)}
-                />
+                  style={{ width: '100%', padding: '0.5rem' }}
+                >
+                  <option value="">-- select --</option>
+                  {relations[c].map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
               ) : (
                 <input
                   type="text"
@@ -96,8 +90,6 @@ export default function RowFormModal({
                   }
                   disabled={row && disabledFields.includes(c)}
                   style={{ width: '100%', padding: '0.5rem' }}
-                  ref={(el) => (inputRefs.current[idx] = el)}
-                  onKeyDown={(e) => handleKeyDown(e, idx)}
                 />
               )}
             </div>
