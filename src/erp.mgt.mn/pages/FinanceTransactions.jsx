@@ -6,7 +6,8 @@ export default function FinanceTransactions() {
   const { user, company } = useContext(AuthContext);
   const [configs, setConfigs] = useState({});
   const [searchParams, setSearchParams] = useSearchParams();
-  const [table, setTable] = useState(() => searchParams.get('table') || '');
+  const [name, setName] = useState(() => searchParams.get('name') || '');
+  const [table, setTable] = useState('');
   const [columns, setColumns] = useState([]);
   const [rows, setRows] = useState([]);
   const [config, setConfig] = useState(null);
@@ -15,35 +16,42 @@ export default function FinanceTransactions() {
   const [editingId, setEditingId] = useState(null);
 
   useEffect(() => {
-    if (table) {
-      setSearchParams({ table });
+    if (name) {
+      setSearchParams({ name });
     } else {
       setSearchParams({});
     }
-  }, [table, setSearchParams]);
+  }, [name, setSearchParams]);
 
   useEffect(() => {
     fetch('/api/transaction_forms', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
-      .then((data) => setConfigs(data))
+      .then((data) => {
+        setConfigs(data);
+        if (name && data[name]) setTable(data[name]);
+      })
       .catch(() => setConfigs({}));
   }, []);
 
   useEffect(() => {
-    if (!table) return;
+    if (name && configs[name]) setTable(configs[name]);
+  }, [name, configs]);
+
+  useEffect(() => {
+    if (!table || !name) return;
     fetch(`/api/tables/${encodeURIComponent(table)}/columns`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : []))
       .then((cols) => setColumns(cols.map((c) => c.name || c)))
       .catch(() => setColumns([]));
-    fetch(`/api/transaction_forms?table=${encodeURIComponent(table)}`, { credentials: 'include' })
+    fetch(`/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
       .then((cfg) => setConfig(cfg))
       .catch(() => setConfig(null));
-  }, [table]);
+  }, [table, name]);
 
   useEffect(() => {
-    if (table) loadRows();
-  }, [table]);
+    if (table && name) loadRows();
+  }, [table, name]);
 
   async function loadRows() {
     const res = await fetch(`/api/tables/${encodeURIComponent(table)}`, { credentials: 'include' });
@@ -129,21 +137,21 @@ export default function FinanceTransactions() {
     <div>
       <h2>Finance Transactions</h2>
       <div style={{ marginBottom: '0.5rem' }}>
-        <select value={table} onChange={(e) => setTable(e.target.value)}>
+        <select value={name} onChange={(e) => setName(e.target.value)}>
           <option value="">-- select transaction --</option>
-          {Object.keys(configs).map((t) => (
+          {transactionNames.map((t) => (
             <option key={t} value={t}>
               {t}
             </option>
           ))}
         </select>
-        {table && (
+        {name && (
           <button onClick={openAdd} style={{ marginLeft: '0.5rem' }}>
             Add
           </button>
         )}
       </div>
-      {table && (
+      {name && (
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
           <thead>
             <tr>

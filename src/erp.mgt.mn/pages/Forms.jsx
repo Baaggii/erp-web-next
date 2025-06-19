@@ -22,7 +22,7 @@ export default function Forms() {
         <ul>
           {transactions.map((t) => (
             <li key={t}>
-              <button onClick={() => navigate(`/finance-transactions?table=${encodeURIComponent(t)}`)}>
+              <button onClick={() => navigate(`/finance-transactions?name=${encodeURIComponent(t)}`)}>
                 {t}
               </button>
             </li>
