@@ -23,6 +23,7 @@ export default function RowFormModal({
   });
   const inputRefs = useRef({});
   const [errors, setErrors] = useState({});
+  const [submitLocked, setSubmitLocked] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
@@ -58,7 +59,9 @@ export default function RowFormModal({
     }
   }
 
-  function submitForm() {
+  async function submitForm() {
+    if (submitLocked) return;
+    setSubmitLocked(true);
     const errs = {};
     requiredFields.forEach((f) => {
       if (columns.includes(f) && !formVals[f]) {
@@ -67,8 +70,9 @@ export default function RowFormModal({
     });
     setErrors(errs);
     if (Object.keys(errs).length === 0) {
-      onSubmit(formVals);
+      await Promise.resolve(onSubmit(formVals));
     }
+    setSubmitLocked(false);
   }
 
   return (

@@ -103,6 +103,7 @@ export default function Users() {
       {usersList.length === 0 ? (
         <p>Хэрэглэгч олдсонгүй.</p>
       ) : (
+        <div className="table-container overflow-x-auto" style={{ maxHeight: '70vh' }}>
         <table
           style={{
             width: '100%',
@@ -146,6 +147,7 @@ export default function Users() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

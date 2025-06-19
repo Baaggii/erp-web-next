@@ -14,7 +14,7 @@ export default function AppLayout({ children, title }) {
 
   return (
     <div className="flex h-screen">
-      <aside className="w-64 bg-gray-800 text-white sticky top-0 h-screen overflow-y-auto flex-shrink-0">
+      <aside className="w-64 bg-gray-800 text-white fixed top-0 left-0 h-screen overflow-y-auto flex-shrink-0 z-10">
         <nav className="p-4 space-y-2">
           <NavLink
             to="/"
@@ -42,7 +42,7 @@ export default function AppLayout({ children, title }) {
           </NavLink>
         </nav>
       </aside>
-      <div className="flex flex-col flex-grow min-w-0">
+      <div className="flex flex-col flex-grow min-w-0 ml-64">
         <header className="sticky top-0 z-10 bg-white shadow-md flex items-center justify-between px-4 py-2">
           <h1 className="text-lg font-semibold">{title || 'ERP'}</h1>
           <div className="flex items-center space-x-3 text-sm">

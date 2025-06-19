@@ -96,6 +96,7 @@ export default function ModulesPage() {
       {modules.length === 0 ? (
         <p>No modules.</p>
       ) : (
+        <div className="table-container overflow-x-auto" style={{ maxHeight: '70vh' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.5rem' }}>
           <thead>
             <tr style={{ backgroundColor: '#e5e7eb' }}>
@@ -122,6 +123,7 @@ export default function ModulesPage() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

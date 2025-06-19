@@ -64,6 +64,7 @@ export default function RolePermissions() {
       {perms.length === 0 ? (
         <p>Эрх олдсонгүй.</p>
       ) : (
+        <div className="table-container overflow-x-auto" style={{ maxHeight: '70vh' }}>
         <table
           style={{
             width: "100%",
@@ -108,6 +109,7 @@ export default function RolePermissions() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );
