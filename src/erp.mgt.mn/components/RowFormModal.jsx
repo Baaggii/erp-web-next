@@ -13,6 +13,7 @@ export default function RowFormModal({
   disabledFields = [],
   labels = {},
   requiredFields = [],
+  saving = false,
 }) {
   const [formVals, setFormVals] = useState(() => {
     const init = {};
@@ -152,7 +153,7 @@ export default function RowFormModal({
           <button type="button" onClick={onCancel} style={{ marginRight: '0.5rem' }}>
             Cancel
           </button>
-          <button type="submit">Save</button>
+          <button type="submit" disabled={saving}>Save</button>
         </div>
         <div style={{ marginTop: '0.5rem', gridColumn: '1 / span 2', fontSize: '0.85rem', color: '#555' }}>
           Press <strong>Enter</strong> to move to next field. Use arrow keys to navigate selections.
