@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
+import RowFormModal from '../components/RowFormModal.jsx';
 
 export default function FinanceTransactions({ defaultName = '', hideSelector = false }) {
   const { user, company } = useContext(AuthContext);
@@ -12,8 +13,13 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
   const [rows, setRows] = useState([]);
   const [config, setConfig] = useState(null);
   const [showForm, setShowForm] = useState(false);
-  const [formVals, setFormVals] = useState({});
-  const [editingId, setEditingId] = useState(null);
+  const [editingRow, setEditingRow] = useState(null);
+  const [count, setCount] = useState(0);
+  const [page, setPage] = useState(1);
+  const perPage = 10;
+  const [columnMeta, setColumnMeta] = useState([]);
+  const [relations, setRelations] = useState({});
+  const [refData, setRefData] = useState({});
 
   useEffect(() => {
     if (defaultName) setName(defaultName);
@@ -44,10 +50,17 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
 
   useEffect(() => {
     if (!table || !name) return;
+    setPage(1);
     fetch(`/api/tables/${encodeURIComponent(table)}/columns`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : []))
-      .then((cols) => setColumns(cols.map((c) => c.name || c)))
-      .catch(() => setColumns([]));
+      .then((cols) => {
+        setColumns(cols.map((c) => c.name || c));
+        setColumnMeta(cols);
+      })
+      .catch(() => {
+        setColumns([]);
+        setColumnMeta([]);
+      });
     fetch(`/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
       .then((cfg) => setConfig(cfg))
@@ -55,13 +68,108 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
   }, [table, name]);
 
   useEffect(() => {
+    if (!table) return;
+    let canceled = false;
+    async function load() {
+      try {
+        const res = await fetch(
+          `/api/tables/${encodeURIComponent(table)}/relations`,
+          { credentials: 'include' },
+        );
+        if (!res.ok) return;
+        const rels = await res.json();
+        if (canceled) return;
+        const map = {};
+        rels.forEach((r) => {
+          map[r.COLUMN_NAME] = {
+            table: r.REFERENCED_TABLE_NAME,
+            column: r.REFERENCED_COLUMN_NAME,
+          };
+        });
+        setRelations(map);
+        const dataMap = {};
+        for (const [col, rel] of Object.entries(map)) {
+          try {
+            let page = 1;
+            const perPage = 500;
+            let rows = [];
+            const cfgRes = await fetch(
+              `/api/display_fields?table=${encodeURIComponent(rel.table)}`,
+              { credentials: 'include' },
+            );
+            let cfg = null;
+            if (cfgRes.ok) {
+              try {
+                cfg = await cfgRes.json();
+              } catch {
+                cfg = null;
+              }
+            }
+            while (true) {
+              const params = new URLSearchParams({ page, perPage });
+              const refRes = await fetch(
+                `/api/tables/${encodeURIComponent(rel.table)}?${params.toString()}`,
+                { credentials: 'include' },
+              );
+              const json = await refRes.json();
+              if (Array.isArray(json.rows)) {
+                rows = rows.concat(json.rows);
+                if (rows.length >= (json.count || rows.length) || json.rows.length < perPage) {
+                  break;
+                }
+              } else {
+                break;
+              }
+              page += 1;
+            }
+            if (rows.length > 0) {
+              dataMap[col] = rows.map((row) => {
+                const parts = [];
+                if (row[rel.column] !== undefined) parts.push(row[rel.column]);
+                let displayFields = [];
+                if (cfg && Array.isArray(cfg.displayFields) && cfg.displayFields.length > 0) {
+                  displayFields = cfg.displayFields;
+                } else {
+                  displayFields = Object.keys(row)
+                    .filter((f) => f !== rel.column)
+                    .slice(0, 1);
+                }
+                parts.push(...displayFields.map((f) => row[f]).filter((v) => v !== undefined));
+                const label =
+                  parts.length > 0
+                    ? parts.join(' - ')
+                    : Object.values(row).slice(0, 2).join(' - ');
+                return { value: row[rel.column], label };
+              });
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+        if (!canceled) setRefData(dataMap);
+      } catch (err) {
+        console.error('Failed to load table relations', err);
+      }
+    }
+    load();
+    return () => {
+      canceled = true;
+    };
+  }, [table]);
+
+  useEffect(() => {
     if (table && name) loadRows();
-  }, [table, name]);
+  }, [table, name, page]);
 
   async function loadRows() {
-    const res = await fetch(`/api/tables/${encodeURIComponent(table)}`, { credentials: 'include' });
+    const params = new URLSearchParams({ page, perPage });
+    const res = await fetch(
+      `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
+      { credentials: 'include' },
+    );
     const data = res.ok ? await res.json() : {};
     setRows(data.rows || []);
+    setCount(data.count || 0);
   }
 
   function openAdd() {
@@ -73,47 +181,41 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
       if (config?.companyIdFields?.includes(c) && company?.company_id !== undefined) v = company.company_id;
       vals[c] = v;
     });
-    setEditingId(null);
-    setFormVals(vals);
+    setEditingRow(vals);
     setShowForm(true);
   }
 
   function openEdit(row) {
-    const vals = {};
-    columns.forEach((c) => {
-      vals[c] = row[c] ?? '';
-    });
-    setEditingId(row.id);
-    setFormVals(vals);
+    setEditingRow(row);
     setShowForm(true);
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
+  async function handleModalSubmit(values) {
     const required = config?.requiredFields || [];
     for (const f of required) {
-      if (!formVals[f]) {
+      if (!values[f]) {
         alert('Please fill ' + f);
         return;
       }
     }
-    const data = { ...formVals };
-    if (editingId == null) {
+    const data = { ...values };
+    if (editingRow && editingRow.id != null) {
+      await fetch(`/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(editingRow.id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(data),
+      });
+    } else {
       await fetch(`/api/tables/${encodeURIComponent(table)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(data),
       });
-    } else {
-      await fetch(`/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(editingId)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(data),
-      });
     }
     setShowForm(false);
+    setEditingRow(null);
     await loadRows();
   }
 
@@ -127,6 +229,21 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
   }
 
   const fields = config?.visibleFields?.length ? config.visibleFields : columns;
+  const relationOpts = {};
+  fields.forEach((f) => {
+    if (relations[f] && refData[f]) relationOpts[f] = refData[f];
+  });
+  const labelMap = {};
+  Object.entries(relationOpts).forEach(([col, opts]) => {
+    labelMap[col] = {};
+    opts.forEach((o) => {
+      labelMap[col][o.value] = o.label;
+    });
+  });
+  const labels = {};
+  columnMeta.forEach((c) => {
+    labels[c.name] = c.label || c.name;
+  });
   const transactionNames = Object.keys(configs);
 
   if (transactionNames.length === 0) {
@@ -164,12 +281,13 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
         </div>
       )}
       {name && (
+        <>
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
           <thead>
             <tr>
               {fields.map((f) => (
                 <th key={f} style={{ border: '1px solid #ccc', padding: '4px' }}>
-                  {f}
+                  {labels[f] || f}
                 </th>
               ))}
               <th style={{ border: '1px solid #ccc', padding: '4px' }}>Action</th>
@@ -180,7 +298,7 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
               <tr key={r.id}>
                 {fields.map((f) => (
                   <td key={f} style={{ border: '1px solid #ccc', padding: '4px' }}>
-                    {String(r[f] ?? '')}
+                    {relationOpts[f] ? labelMap[f][r[f]] || String(r[f] ?? '') : String(r[f] ?? '')}
                   </td>
                 ))}
                 <td style={{ border: '1px solid #ccc', padding: '4px' }}>
@@ -200,54 +318,34 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
             )}
           </tbody>
         </table>
-      )}
-      {showForm && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.4)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <div
-            style={{
-              backgroundColor: '#fff',
-              padding: '1rem',
-              borderRadius: '4px',
-              maxHeight: '90vh',
-              overflowY: 'auto',
-            }}
-          >
-            <h3 style={{ marginTop: 0 }}>{editingId == null ? 'Add Transaction' : 'Edit Transaction'}</h3>
-            <form onSubmit={handleSubmit}>
-              {fields.map((f) => (
-                <div key={f} style={{ marginBottom: '0.5rem' }}>
-                  <label style={{ display: 'block', marginBottom: '0.25rem' }}>{f}</label>
-                  <input
-                    type="text"
-                    value={formVals[f] ?? ''}
-                    onChange={(e) => setFormVals((v) => ({ ...v, [f]: e.target.value }))}
-                    required={config?.requiredFields?.includes(f)}
-                    style={{ width: '100%', padding: '0.5rem' }}
-                  />
-                </div>
-              ))}
-              <div style={{ textAlign: 'right' }}>
-                <button type="button" onClick={() => setShowForm(false)} style={{ marginRight: '0.5rem' }}>
-                  Cancel
-                </button>
-                <button type="submit">Save</button>
-              </div>
-            </form>
-          </div>
+        <div style={{ marginTop: '0.5rem' }}>
+          <button onClick={() => setPage(1)} disabled={page === 1} style={{ marginRight: '0.25rem' }}>
+            {'<<'}
+          </button>
+          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} style={{ marginRight: '0.25rem' }}>
+            {'<'}
+          </button>
+          <span>
+            Page {page} of {Math.max(1, Math.ceil(count / perPage))}
+          </span>
+          <button onClick={() => setPage((p) => Math.min(Math.ceil(count / perPage), p + 1))} disabled={page >= Math.ceil(count / perPage)} style={{ marginLeft: '0.25rem' }}>
+            {'>'}
+          </button>
+          <button onClick={() => setPage(Math.ceil(count / perPage))} disabled={page >= Math.ceil(count / perPage)} style={{ marginLeft: '0.25rem' }}>
+            {'>>'}
+          </button>
         </div>
+        </>
       )}
+      <RowFormModal
+        visible={showForm}
+        onCancel={() => setShowForm(false)}
+        onSubmit={handleModalSubmit}
+        columns={fields}
+        row={editingRow}
+        relations={relationOpts}
+        labels={labels}
+      />
     </div>
   );
 }
