@@ -1,28 +1,8 @@
 import React from 'react';
+import Modal from './Modal.jsx';
 
 export default function RowDetailModal({ visible, onClose, row = {}, columns = [], relations = {}, references = [], labels = {} }) {
   if (!visible) return null;
-
-  const overlay = {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  };
-
-  const modal = {
-    backgroundColor: '#fff',
-    padding: '1rem',
-    borderRadius: '4px',
-    maxHeight: '90vh',
-    overflowY: 'auto',
-    minWidth: '300px',
-  };
 
   const labelMap = {};
   Object.entries(relations).forEach(([col, opts]) => {
@@ -35,9 +15,7 @@ export default function RowDetailModal({ visible, onClose, row = {}, columns = [
   const cols = columns.length > 0 ? columns : Object.keys(row);
 
   return (
-    <div style={overlay}>
-      <div style={modal}>
-        <h3 style={{ marginTop: 0 }}>Row Details</h3>
+    <Modal visible={visible} title="Row Details" onClose={onClose}>
         <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '1rem' }}>
           <tbody>
             {cols.map((c) => (
@@ -63,7 +41,6 @@ export default function RowDetailModal({ visible, onClose, row = {}, columns = [
         <div style={{ textAlign: 'right' }}>
           <button type="button" onClick={onClose}>Close</button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

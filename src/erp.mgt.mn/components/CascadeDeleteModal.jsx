@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import Modal from './Modal.jsx';
 
 export default function CascadeDeleteModal({ visible, references = [], onCancel, onConfirm }) {
   const [rowsByTable, setRowsByTable] = useState({});
@@ -29,31 +30,8 @@ export default function CascadeDeleteModal({ visible, references = [], onCancel,
 
   if (!visible) return null;
 
-  const overlay = {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  };
-
-  const modal = {
-    backgroundColor: '#fff',
-    padding: '1rem',
-    borderRadius: '4px',
-    maxHeight: '90vh',
-    overflowY: 'auto',
-    minWidth: '300px',
-  };
-
   return (
-    <div style={overlay}>
-      <div style={modal}>
-        <h3 style={{ marginTop: 0 }}>Delete Related Records?</h3>
+    <Modal visible={visible} title="Delete Related Records?" onClose={onCancel}>
         {references.map((r) => (
           <div key={`${r.table}-${r.column}-${r.value}`} style={{ marginBottom: '1rem' }}>
             <strong>{r.table}</strong> ({r.count})
@@ -76,7 +54,6 @@ export default function CascadeDeleteModal({ visible, references = [], onCancel,
           </button>
           <button type="button" onClick={onConfirm}>Delete All</button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
