@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useContext, useMemo } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
+import { useToast } from '../context/ToastContext.jsx';
 import RowFormModal from './RowFormModal.jsx';
 import CascadeDeleteModal from './CascadeDeleteModal.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
-export default function TableManager({ table, refreshId = 0, formConfig = null, initialPerPage = 50, addLabel = 'Add Row' }) {
+export default function TableManager({ table, refreshId = 0, formConfig = null, initialPerPage = 10, addLabel = 'Add Row' }) {
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
   const [page, setPage] = useState(1);
@@ -30,6 +31,7 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
   const [labelEdits, setLabelEdits] = useState({});
   const [isAdding, setIsAdding] = useState(false);
   const { user, company } = useContext(AuthContext);
+  const { addToast } = useToast();
 
   function computeAutoInc(meta) {
     const auto = meta
@@ -287,7 +289,7 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
 
   async function openEdit(row) {
     if (getRowId(row) === undefined) {
-      alert('Cannot edit rows without a primary key');
+      addToast('Cannot edit rows without a primary key', 'error');
       return;
     }
     await ensureColumnMeta();
@@ -384,7 +386,7 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
     const required = formConfig?.requiredFields || [];
     for (const f of required) {
       if (merged[f] === undefined || merged[f] === '') {
-        alert('Please fill ' + (labels[f] || f));
+        addToast('Please fill ' + (labels[f] || f), 'error');
         return;
       }
     }
@@ -431,7 +433,7 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
         setShowForm(false);
         setEditing(null);
         setIsAdding(false);
-        alert('Saved');
+        addToast('Saved', 'success');
       }
     } catch (err) {
       console.error('Save failed', err);
@@ -461,6 +463,7 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
       setRows(data.rows || []);
       setCount(data.count || 0);
       setSelectedRows(new Set());
+      addToast('Deleted', 'success');
     } else {
       let message = 'Delete failed';
       try {
@@ -469,14 +472,14 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
       } catch {
         // ignore json errors
       }
-      alert(message);
+      addToast(message, 'error');
     }
   }
 
   async function handleDelete(row) {
     const id = getRowId(row);
     if (id === undefined) {
-      alert('Delete failed: table has no primary key');
+      addToast('Delete failed: table has no primary key', 'error');
       return;
     }
     try {
@@ -518,7 +521,7 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
     let hasRelated = false;
     for (const id of selectedRows) {
       if (id === undefined) {
-        alert('Delete failed: table has no primary key');
+        addToast('Delete failed: table has no primary key', 'error');
         return;
       }
       try {
@@ -565,7 +568,7 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
         } catch {
           // ignore json errors
         }
-        alert(message);
+        addToast(message, 'error');
         return;
       }
     }
@@ -583,6 +586,7 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
     setRows(data.rows || []);
     setCount(data.count || 0);
     setSelectedRows(new Set());
+    addToast('Deleted', 'success');
   }
 
   function refreshRows() {
@@ -635,6 +639,21 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
     });
     return map;
   }, [columns, rows]);
+
+  const columnAlign = useMemo(() => {
+    const map = {};
+    columns.forEach((c) => {
+      const sample = rows.find((r) => r[c] !== null && r[c] !== undefined);
+      map[c] = typeof sample?.[c] === 'number' ? 'right' : 'left';
+    });
+    return map;
+  }, [columns, rows]);
+
+  const tableMinWidth = useMemo(() => {
+    let w = columns.reduce((sum, c) => sum + columnWidths[c], 0);
+    w += 60 + 120;
+    return w;
+  }, [columns, columnWidths]);
   const autoCols = new Set(autoInc);
   if (columnMeta.length > 0 && autoCols.size === 0) {
     const pk = columnMeta.filter((c) => c.key === 'PRI').map((c) => c.name);
@@ -650,7 +669,17 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
 
   return (
     <div>
-      <div style={{ marginBottom: '0.5rem' }}>
+      <div
+        style={{
+          marginBottom: '0.5rem',
+          position: 'sticky',
+          top: 0,
+          background: '#fff',
+          zIndex: 1,
+          paddingTop: '0.5rem',
+          paddingBottom: '0.5rem',
+        }}
+      >
         <button onClick={openAdd} style={{ marginRight: '0.5rem' }}>
           {addLabel}
         </button>
@@ -686,7 +715,7 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
             }}
             style={{ marginLeft: '0.25rem' }}
           >
-            {[10, 20, 50, 100].map((n) => (
+            {[10, 25, 50].map((n) => (
               <option key={n} value={n}>
                 {n}
               </option>
@@ -724,10 +753,10 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
         </div>
       </div>
       <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: tableMinWidth }}>
         <thead>
           <tr style={{ backgroundColor: '#e5e7eb' }}>
-            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', minWidth: '100px', maxWidth: '300px' }}>
+            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', width: 60, minWidth: 60, textAlign: 'center' }}>
               <input
                 type="checkbox"
                 checked={
@@ -753,6 +782,7 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
                   minWidth: '100px',
                   maxWidth: '300px',
                   width: columnWidths[c],
+                  textAlign: columnAlign[c],
                 }}
                 onClick={() => handleSort(c)}
               >
@@ -760,12 +790,12 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
                 {sort.column === c ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}
               </th>
             ))}
-            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', minWidth: '100px', maxWidth: '300px' }}>Action</th>
+            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', width: 120, minWidth: 120 }}>Action</th>
           </tr>
           <tr>
-            <th style={{ padding: '0.25rem', border: '1px solid #d1d5db', minWidth: '100px', maxWidth: '300px' }}></th>
+            <th style={{ padding: '0.25rem', border: '1px solid #d1d5db', width: 60, minWidth: 60 }}></th>
             {columns.map((c) => (
-            <th key={c} style={{ padding: '0.25rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', minWidth: '100px', maxWidth: '300px', width: columnWidths[c] }}>
+            <th key={c} style={{ padding: '0.25rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', minWidth: '100px', maxWidth: '300px', width: columnWidths[c], textAlign: columnAlign[c] }}>
                 {Array.isArray(relationOpts[c]) ? (
                   <select
                     value={filters[c] || ''}
@@ -801,7 +831,7 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
           )}
           {rows.map((r) => (
             <tr key={r.id || JSON.stringify(r)}>
-              <td style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', minWidth: '100px', maxWidth: '300px' }}>
+              <td style={{ padding: '0.5rem', border: '1px solid #d1d5db', width: 60, minWidth: 60, textAlign: 'center' }}>
                 {(() => {
                   const rid = getRowId(r);
                   return (
@@ -815,24 +845,25 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
                 })()}
               </td>
               {columns.map((c) => (
-                <td
-                  key={c}
-                  style={{
-                    padding: '0.5rem',
-                    border: '1px solid #d1d5db',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    minWidth: '100px',
-                    maxWidth: '300px',
-                    width: columnWidths[c],
-                  }}
+              <td
+                key={c}
+                style={{
+                  padding: '0.5rem',
+                  border: '1px solid #d1d5db',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  minWidth: '100px',
+                  maxWidth: '300px',
+                  width: columnWidths[c],
+                  textAlign: columnAlign[c],
+                }}
                   title={relationOpts[c] ? labelMap[c][r[c]] || String(r[c]) : String(r[c])}
                 >
                   {relationOpts[c] ? labelMap[c][r[c]] || String(r[c]) : String(r[c])}
                 </td>
               ))}
-              <td style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', minWidth: '100px', maxWidth: '300px' }}>
+              <td style={{ padding: '0.5rem', border: '1px solid #d1d5db', width: 120, minWidth: 120, whiteSpace: 'nowrap' }}>
                 {(() => {
                   const rid = getRowId(r);
                   return (
@@ -858,6 +889,62 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
       ))}
       </tbody>
       </table>
+      </div>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'flex-start',
+          alignItems: 'center',
+          marginTop: '0.5rem',
+          gap: '1rem',
+        }}
+      >
+        <div>
+          Rows per page:
+          <select
+            value={perPage}
+            onChange={(e) => {
+              setPage(1);
+              setPerPage(Number(e.target.value));
+            }}
+            style={{ marginLeft: '0.25rem' }}
+          >
+            {[10, 25, 50].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <button onClick={() => setPage(1)} disabled={page === 1} style={{ marginRight: '0.25rem' }}>
+            {'<<'}
+          </button>
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+            style={{ marginRight: '0.25rem' }}
+          >
+            {'<'}
+          </button>
+          <span>
+            Page {page} of {Math.max(1, Math.ceil(count / perPage))}
+          </span>
+          <button
+            onClick={() => setPage((p) => Math.min(Math.ceil(count / perPage), p + 1))}
+            disabled={page >= Math.ceil(count / perPage)}
+            style={{ marginLeft: '0.25rem' }}
+          >
+            {'>'}
+          </button>
+          <button
+            onClick={() => setPage(Math.ceil(count / perPage))}
+            disabled={page >= Math.ceil(count / perPage)}
+            style={{ marginLeft: '0.25rem' }}
+          >
+            {'>>'}
+          </button>
+        </div>
       </div>
       <RowFormModal
         visible={showForm}
