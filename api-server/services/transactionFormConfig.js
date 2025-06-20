@@ -30,9 +30,13 @@ export async function getFormConfig(table, name) {
     branchIdFields: raw.branchIdFields || (raw.branchIdField ? [raw.branchIdField] : []),
     companyIdFields:
       raw.companyIdFields || (raw.companyIdField ? [raw.companyIdField] : []),
-    moduleKey: raw.moduleKey || 'finance_transactions',
-    allowedBranches: raw.allowedBranches || [],
-    allowedDepartments: raw.allowedDepartments || [],
+    moduleKey: typeof raw.moduleKey === 'string' ? raw.moduleKey : 'finance_transactions',
+    allowedBranches: Array.isArray(raw.allowedBranches)
+      ? raw.allowedBranches.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
+      : [],
+    allowedDepartments: Array.isArray(raw.allowedDepartments)
+      ? raw.allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
+      : [],
   };
 }
 
@@ -81,16 +85,30 @@ export async function setFormConfig(table, name, config, options = {}) {
     showInHeader = false,
     moduleKey = 'finance_transactions',
   } = options;
-  const uid = userIdFields.length ? userIdFields : userIdField ? [userIdField] : [];
-  const bid = branchIdFields.length
+  const uid = (userIdFields.length ? userIdFields : userIdField ? [userIdField] : [])
+    .map(String)
+    .filter(Boolean);
+  const bid = (branchIdFields.length
     ? branchIdFields
     : branchIdField
     ? [branchIdField]
-    : [];
-  const cid = companyIdFields.length
+    : [])
+    .map(String)
+    .filter(Boolean)
+    .map((v) => Number(v))
+    .filter((v) => !Number.isNaN(v));
+  const cid = (companyIdFields.length
     ? companyIdFields
     : companyIdField
     ? [companyIdField]
+    : [])
+    .map(String)
+    .filter(Boolean);
+  const ab = Array.isArray(allowedBranches)
+    ? allowedBranches.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
+    : [];
+  const ad = Array.isArray(allowedDepartments)
+    ? allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
     : [];
   const cfg = await readConfig();
   if (!cfg[table]) cfg[table] = {};
@@ -103,8 +121,8 @@ export async function setFormConfig(table, name, config, options = {}) {
     branchIdFields: bid,
     companyIdFields: cid,
     moduleKey,
-    allowedBranches,
-    allowedDepartments,
+    allowedBranches: ab,
+    allowedDepartments: ad,
   };
   await writeConfig(cfg);
   try {
