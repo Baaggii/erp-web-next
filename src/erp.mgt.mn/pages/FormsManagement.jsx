@@ -60,8 +60,8 @@ export default function FormsManagement() {
             userIdFields: data[name].userIdFields || [],
             branchIdFields: data[name].branchIdFields || [],
             companyIdFields: data[name].companyIdFields || [],
-            allowedBranches: data[name].allowedBranches || [],
-            allowedDepartments: data[name].allowedDepartments || [],
+            allowedBranches: (data[name].allowedBranches || []).map(String),
+            allowedDepartments: (data[name].allowedDepartments || []).map(String),
           });
         } else {
           setName('');
@@ -110,8 +110,8 @@ export default function FormsManagement() {
           userIdFields: cfg.userIdFields || [],
           branchIdFields: cfg.branchIdFields || [],
           companyIdFields: cfg.companyIdFields || [],
-          allowedBranches: cfg.allowedBranches || [],
-          allowedDepartments: cfg.allowedDepartments || [],
+          allowedBranches: (cfg.allowedBranches || []).map(String),
+          allowedDepartments: (cfg.allowedDepartments || []).map(String),
         });
       })
       .catch(() => {
