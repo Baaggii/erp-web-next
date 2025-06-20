@@ -8,6 +8,7 @@ export default function UserCompanies() {
   const { company } = useContext(AuthContext);
   const [usersList, setUsersList] = useState([]);
   const [companiesList, setCompaniesList] = useState([]);
+  const [branchesList, setBranchesList] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
 
@@ -32,14 +33,17 @@ export default function UserCompanies() {
   useEffect(() => {
     async function loadLists() {
       try {
-        const [uRes, cRes] = await Promise.all([
+        const [uRes, cRes, bRes] = await Promise.all([
           fetch('/api/users', { credentials: 'include' }),
-          fetch('/api/companies', { credentials: 'include' })
+          fetch('/api/companies', { credentials: 'include' }),
+          fetch('/api/tables/branches?perPage=500', { credentials: 'include' })
         ]);
         const users = uRes.ok ? await uRes.json() : [];
         const companies = cRes.ok ? await cRes.json() : [];
+        const branches = bRes.ok ? await bRes.json() : { rows: [] };
         setUsersList(users);
         setCompaniesList(companies);
+        setBranchesList(branches.rows || []);
       } catch (err) {
         console.error('Error loading lists:', err);
       }
@@ -61,13 +65,13 @@ export default function UserCompanies() {
     setShowForm(true);
   }
 
-  async function handleFormSubmit({ empid, companyId, roleId }) {
+  async function handleFormSubmit({ empid, companyId, roleId, branchId }) {
     const isEdit = Boolean(editing);
     const res = await fetch('/api/user_companies', {
       method: isEdit ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ empid, companyId, roleId })
+      body: JSON.stringify({ empid, companyId, roleId, branchId })
     });
     if (!res.ok) {
       const { message } = await res
@@ -122,6 +126,7 @@ export default function UserCompanies() {
             <tr style={{ backgroundColor: '#e5e7eb' }}>
               <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Хэрэглэгч</th>
               <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Компани</th>
+              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Салбар</th>
               <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Үүрэг</th>
               <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Үйлдэл</th>
             </tr>
@@ -131,6 +136,7 @@ export default function UserCompanies() {
               <tr key={a.empid + '-' + a.company_id}>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>{a.empid}</td>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>{a.company_name}</td>
+                <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>{a.branch_name || ''}</td>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>{a.role}</td>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                   <button onClick={() => handleEdit(a)}>Засах</button>
@@ -163,11 +169,13 @@ function AssignmentFormModal({ visible, onCancel, onSubmit, assignment, users, c
   const [empid, setEmpid] = useState(assignment?.empid || '');
   const [companyId, setCompanyId] = useState(assignment?.company_id || '');
   const [roleId, setRoleId] = useState(String(assignment?.role_id || 2));
+  const [branchId, setBranchId] = useState(assignment?.branch_id || '');
 
   useEffect(() => {
     setEmpid(assignment?.empid || '');
     setCompanyId(assignment?.company_id || '');
     setRoleId(String(assignment?.role_id || 2));
+    setBranchId(assignment?.branch_id || '');
   }, [assignment]);
 
   if (!visible) return null;
@@ -200,7 +208,7 @@ function AssignmentFormModal({ visible, onCancel, onSubmit, assignment, users, c
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            onSubmit({ empid, companyId, roleId });
+            onSubmit({ empid, companyId, roleId, branchId });
           }}
         >
           <div style={{ marginBottom: '0.75rem' }}>
@@ -235,9 +243,28 @@ function AssignmentFormModal({ visible, onCancel, onSubmit, assignment, users, c
               <option value="" disabled>
                 Сонгоно уу...
               </option>
-              {companies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
+          {companies.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+          <div style={{ marginBottom: '0.75rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.25rem' }}>Салбар</label>
+            <select
+              value={branchId}
+              onChange={(e) => setBranchId(e.target.value)}
+              required
+              style={{ width: '100%', padding: '0.5rem' }}
+            >
+              <option value="" disabled>
+                Сонгоно уу...
+              </option>
+              {branchesList.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
                 </option>
               ))}
             </select>

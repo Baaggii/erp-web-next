@@ -1,7 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { upsertModule } from '../../db/index.js';
-import { slugify } from '../utils/slugify.js';
 
 const filePath = path.join(process.cwd(), 'config', 'transactionForms.json');
 
@@ -31,6 +30,8 @@ export async function getFormConfig(table, name) {
     branchIdFields: raw.branchIdFields || (raw.branchIdField ? [raw.branchIdField] : []),
     companyIdFields:
       raw.companyIdFields || (raw.companyIdField ? [raw.companyIdField] : []),
+    moduleKey: raw.moduleKey || 'finance_transactions',
+    allowedBranches: raw.allowedBranches || [],
   };
 }
 
@@ -39,14 +40,18 @@ export async function getConfigsByTable(table) {
   return cfg[table] || {};
 }
 
-export async function listTransactionNames() {
+export async function listTransactionNames({ moduleKey, branchId } = {}) {
   const cfg = await readConfig();
   const result = {};
   for (const [tbl, names] of Object.entries(cfg)) {
-    for (const name of Object.keys(names)) {
+    for (const [name, info] of Object.entries(names)) {
+      const modKey = info.moduleKey || 'finance_transactions';
+      const allowed = info.allowedBranches || [];
+      if (moduleKey && moduleKey !== modKey) continue;
+      if (branchId && allowed.length > 0 && !allowed.includes(Number(branchId))) continue;
       result[name] = {
         table: tbl,
-        moduleKey: slugify(name),
+        moduleKey: modKey,
       };
     }
   }
@@ -62,11 +67,16 @@ export async function setFormConfig(table, name, config, options = {}) {
     userIdFields = [],
     branchIdFields = [],
     companyIdFields = [],
+    allowedBranches = [],
     userIdField,
     branchIdField,
     companyIdField,
   } = config || {};
-  const { showInSidebar = true, showInHeader = false } = options;
+  const {
+    showInSidebar = true,
+    showInHeader = false,
+    moduleKey = 'finance_transactions',
+  } = options;
   const uid = userIdFields.length ? userIdFields : userIdField ? [userIdField] : [];
   const bid = branchIdFields.length
     ? branchIdFields
@@ -88,26 +98,12 @@ export async function setFormConfig(table, name, config, options = {}) {
     userIdFields: uid,
     branchIdFields: bid,
     companyIdFields: cid,
+    moduleKey,
+    allowedBranches,
   };
   await writeConfig(cfg);
   try {
-    // Ensure the parent module exists so child modules can be created
-    await upsertModule(
-      'finance_transactions',
-      'Finance Transactions',
-      null,
-      true,
-      false,
-    );
-
-    const moduleKey = slugify(name);
-    await upsertModule(
-      moduleKey,
-      name,
-      'finance_transactions',
-      showInSidebar,
-      showInHeader,
-    );
+    await upsertModule(moduleKey, moduleKey.replace(/_/g, ' '), null, true, false);
   } catch (err) {
     console.error('Failed to auto-create module', err);
   }

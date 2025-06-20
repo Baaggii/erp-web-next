@@ -179,13 +179,14 @@ export async function assignCompanyToUser(
   empid,
   companyId,
   role_id,
+  branchId,
   createdBy,
 ) {
   const [result] = await pool.query(
-    `INSERT INTO user_companies (empid, company_id, role_id, created_by)
-     VALUES (?, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE role_id = VALUES(role_id)`,
-    [empid, companyId, role_id, createdBy],
+    `INSERT INTO user_companies (empid, company_id, role_id, branch_id, created_by)
+     VALUES (?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE role_id = VALUES(role_id), branch_id = VALUES(branch_id)`,
+    [empid, companyId, role_id, branchId, createdBy],
   );
   return { affectedRows: result.affectedRows };
 }
@@ -195,10 +196,12 @@ export async function assignCompanyToUser(
  */
 export async function listUserCompanies(empid) {
   const [rows] = await pool.query(
-    `SELECT uc.empid, uc.company_id, c.name AS company_name, uc.role_id, r.name AS role
+    `SELECT uc.empid, uc.company_id, c.name AS company_name, uc.role_id, r.name AS role,
+            uc.branch_id, b.name AS branch_name
      FROM user_companies uc
      JOIN companies c ON uc.company_id = c.id
      JOIN user_roles r ON uc.role_id = r.id
+     LEFT JOIN branches b ON uc.branch_id = b.id
      WHERE uc.empid = ?`,
     [empid],
   );
@@ -219,10 +222,10 @@ export async function removeCompanyAssignment(empid, companyId) {
 /**
  * Update a user's company assignment role
  */
-export async function updateCompanyAssignment(empid, companyId, role_id) {
+export async function updateCompanyAssignment(empid, companyId, role_id, branchId) {
   const [result] = await pool.query(
-    "UPDATE user_companies SET role_id = ? WHERE empid = ? AND company_id = ?",
-    [role_id, empid, companyId],
+    "UPDATE user_companies SET role_id = ?, branch_id = ? WHERE empid = ? AND company_id = ?",
+    [role_id, branchId, empid, companyId],
   );
   return result;
 }
@@ -238,10 +241,12 @@ export async function listAllUserCompanies(companyId) {
     params.push(companyId);
   }
   const [rows] = await pool.query(
-    `SELECT uc.empid, uc.company_id, c.name AS company_name, uc.role_id, r.name AS role
+    `SELECT uc.empid, uc.company_id, c.name AS company_name, uc.role_id, r.name AS role,
+            uc.branch_id, b.name AS branch_name
      FROM user_companies uc
      JOIN companies c ON uc.company_id = c.id
      JOIN user_roles r ON uc.role_id = r.id
+     LEFT JOIN branches b ON uc.branch_id = b.id
      ${where}`,
     params,
   );

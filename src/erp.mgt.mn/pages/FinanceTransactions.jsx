@@ -1,14 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import TableManager from '../components/TableManager.jsx';
+import SearchSelect from '../components/SearchSelect.jsx';
+import { AuthContext } from '../context/AuthContext.jsx';
 
-export default function FinanceTransactions({ defaultName = '', hideSelector = false }) {
+export default function FinanceTransactions({ moduleKey = 'finance_transactions', defaultName = '', hideSelector = false }) {
   const [configs, setConfigs] = useState({});
   const [searchParams, setSearchParams] = useSearchParams();
   const [name, setName] = useState(() => defaultName || searchParams.get('name') || '');
   const [table, setTable] = useState('');
   const [config, setConfig] = useState(null);
   const [refreshId, setRefreshId] = useState(0);
+  const { company } = useContext(AuthContext);
 
   useEffect(() => {
     if (defaultName) setName(defaultName);
@@ -21,14 +24,17 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
   }, [name, setSearchParams, defaultName]);
 
   useEffect(() => {
-    fetch('/api/transaction_forms', { credentials: 'include' })
+    const params = new URLSearchParams({ moduleKey });
+    if (company?.branch_id !== undefined)
+      params.set('branchId', company.branch_id);
+    fetch(`/api/transaction_forms?${params.toString()}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
       .then((data) => {
         setConfigs(data);
         if (name && data[name]) setTable(data[name].table ?? data[name]);
       })
       .catch(() => setConfigs({}));
-  }, []);
+  }, [moduleKey, company]);
 
   useEffect(() => {
     if (name && configs[name]) setTable(configs[name].table ?? configs[name]);
@@ -48,13 +54,15 @@ export default function FinanceTransactions({ defaultName = '', hideSelector = f
     <div>
       <h2>{defaultName || 'Finance Transactions'}</h2>
       {!hideSelector && transactionNames.length > 0 && (
-        <div style={{ marginBottom: '0.5rem' }}>
-          <select value={name} onChange={(e) => { setName(e.target.value); setRefreshId((r) => r + 1); }}>
-            <option value="">-- select transaction --</option>
-            {transactionNames.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
+        <div style={{ marginBottom: '0.5rem', maxWidth: '300px' }}>
+          <SearchSelect
+            value={name}
+            onChange={(v) => {
+              setName(v);
+              setRefreshId((r) => r + 1);
+            }}
+            options={transactionNames.map((t) => ({ value: t, label: t }))}
+          />
         </div>
       )}
       {table && config && (
