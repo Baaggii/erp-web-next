@@ -12,6 +12,7 @@ Each **transaction** entry allows you to specify:
 - **userIdFields** – fields automatically filled with the creating user ID
 - **branchIdFields** – fields automatically filled with the branch ID
 - **companyIdFields** – fields automatically filled with the company ID
+- **moduleKey** – module slug used to group the form under a module
 - **allowedBranches** – restrict usage to these branch IDs
 - **allowedDepartments** – restrict usage to these department IDs
 
@@ -28,6 +29,7 @@ Example snippet:
       "userIdFields": ["created_by"],
       "branchIdFields": ["branch_id"],
       "companyIdFields": ["company_id"],
+      "moduleKey": "finance_transactions",
       "allowedBranches": [1, 2],
       "allowedDepartments": [5]
     },
@@ -39,6 +41,7 @@ Example snippet:
       "userIdFields": ["created_by"],
       "branchIdFields": ["branch_id"],
       "companyIdFields": ["company_id"],
+      "moduleKey": "finance_transactions",
       "allowedBranches": [1, 2],
       "allowedDepartments": [5]
     }

@@ -34,7 +34,7 @@ export default function FormsManagement() {
       .then((data) => setBranches(data.rows || []))
       .catch(() => setBranches([]));
 
-    fetch('/api/tables/code_departments?perPage=500', { credentials: 'include' })
+    fetch('/api/tables/code_department?perPage=500', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : { rows: [] }))
       .then((data) => setDepartments(data.rows || []))
       .catch(() => setDepartments([]));
