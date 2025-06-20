@@ -36,7 +36,7 @@ export default function UserCompanies() {
         const [uRes, cRes, bRes] = await Promise.all([
           fetch('/api/users', { credentials: 'include' }),
           fetch('/api/companies', { credentials: 'include' }),
-          fetch('/api/tables/branches?perPage=500', { credentials: 'include' })
+          fetch('/api/tables/code_branches?perPage=500', { credentials: 'include' })
         ]);
         const users = uRes.ok ? await uRes.json() : [];
         const companies = cRes.ok ? await cRes.json() : [];

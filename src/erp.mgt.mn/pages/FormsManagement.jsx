@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useModules } from '../hooks/useModules.js';
 
 export default function FormsManagement() {
   const [tables, setTables] = useState([]);
@@ -8,6 +9,7 @@ export default function FormsManagement() {
   const [moduleKey, setModuleKey] = useState('finance_transactions');
   const [branches, setBranches] = useState([]);
   const [columns, setColumns] = useState([]);
+  const modules = useModules();
   const [config, setConfig] = useState({
     visibleFields: [],
     requiredFields: [],
@@ -25,7 +27,7 @@ export default function FormsManagement() {
       .then((data) => setTables(data))
       .catch(() => setTables([]));
 
-    fetch('/api/tables/branches?perPage=500', { credentials: 'include' })
+    fetch('/api/tables/code_branches?perPage=500', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : { rows: [] }))
       .then((data) => setBranches(data.rows || []))
       .catch(() => setBranches([]));
@@ -218,13 +220,18 @@ export default function FormsManagement() {
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
-            <input
-              type="text"
-              placeholder="module_key"
+            <select
               value={moduleKey}
               onChange={(e) => setModuleKey(e.target.value)}
               style={{ marginLeft: '0.5rem' }}
-            />
+            >
+              <option value="">-- select module --</option>
+              {modules.map((m) => (
+                <option key={m.module_key} value={m.module_key}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
             {name && (
               <button onClick={handleDelete} style={{ marginLeft: '0.5rem' }}>
                 Delete

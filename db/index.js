@@ -201,7 +201,7 @@ export async function listUserCompanies(empid) {
      FROM user_companies uc
      JOIN companies c ON uc.company_id = c.id
      JOIN user_roles r ON uc.role_id = r.id
-     LEFT JOIN branches b ON uc.branch_id = b.id
+    LEFT JOIN code_branches b ON uc.branch_id = b.id
      WHERE uc.empid = ?`,
     [empid],
   );
@@ -246,7 +246,7 @@ export async function listAllUserCompanies(companyId) {
      FROM user_companies uc
      JOIN companies c ON uc.company_id = c.id
      JOIN user_roles r ON uc.role_id = r.id
-     LEFT JOIN branches b ON uc.branch_id = b.id
+     LEFT JOIN code_branches b ON uc.branch_id = b.id
      ${where}`,
     params,
   );
