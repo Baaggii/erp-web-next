@@ -12,6 +12,8 @@ Each **transaction** entry allows you to specify:
 - **userIdFields** – fields automatically filled with the creating user ID
 - **branchIdFields** – fields automatically filled with the branch ID
 - **companyIdFields** – fields automatically filled with the company ID
+- **allowedBranches** – restrict usage to these branch IDs
+- **allowedDepartments** – restrict usage to these department IDs
 
 Example snippet:
 
@@ -25,7 +27,9 @@ Example snippet:
       "editableDefaultFields": ["status"],
       "userIdFields": ["created_by"],
       "branchIdFields": ["branch_id"],
-      "companyIdFields": ["company_id"]
+      "companyIdFields": ["company_id"],
+      "allowedBranches": [1, 2],
+      "allowedDepartments": [5]
     },
     "Issue": {
       "visibleFields": ["tran_date", "description"],
@@ -34,7 +38,9 @@ Example snippet:
       "editableDefaultFields": ["status"],
       "userIdFields": ["created_by"],
       "branchIdFields": ["branch_id"],
-      "companyIdFields": ["company_id"]
+      "companyIdFields": ["company_id"],
+      "allowedBranches": [1, 2],
+      "allowedDepartments": [5]
     }
   }
 }
