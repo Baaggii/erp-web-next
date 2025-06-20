@@ -12,7 +12,7 @@ const router = express.Router();
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
-    const { table, name, moduleKey, branchId } = req.query;
+    const { table, name, moduleKey, branchId, departmentId } = req.query;
     if (table && name) {
       const cfg = await getFormConfig(table, name);
       res.json(cfg);
@@ -20,7 +20,7 @@ router.get('/', requireAuth, async (req, res, next) => {
       const all = await getConfigsByTable(table);
       res.json(all);
     } else {
-      const names = await listTransactionNames({ moduleKey, branchId });
+      const names = await listTransactionNames({ moduleKey, branchId, departmentId });
       res.json(names);
     }
   } catch (err) {

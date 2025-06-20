@@ -32,6 +32,7 @@ export async function getFormConfig(table, name) {
       raw.companyIdFields || (raw.companyIdField ? [raw.companyIdField] : []),
     moduleKey: raw.moduleKey || 'finance_transactions',
     allowedBranches: raw.allowedBranches || [],
+    allowedDepartments: raw.allowedDepartments || [],
   };
 }
 
@@ -40,15 +41,17 @@ export async function getConfigsByTable(table) {
   return cfg[table] || {};
 }
 
-export async function listTransactionNames({ moduleKey, branchId } = {}) {
+export async function listTransactionNames({ moduleKey, branchId, departmentId } = {}) {
   const cfg = await readConfig();
   const result = {};
   for (const [tbl, names] of Object.entries(cfg)) {
     for (const [name, info] of Object.entries(names)) {
       const modKey = info.moduleKey || 'finance_transactions';
       const allowed = info.allowedBranches || [];
+      const deptAllowed = info.allowedDepartments || [];
       if (moduleKey && moduleKey !== modKey) continue;
       if (branchId && allowed.length > 0 && !allowed.includes(Number(branchId))) continue;
+      if (departmentId && deptAllowed.length > 0 && !deptAllowed.includes(Number(departmentId))) continue;
       result[name] = {
         table: tbl,
         moduleKey: modKey,
@@ -68,6 +71,7 @@ export async function setFormConfig(table, name, config, options = {}) {
     branchIdFields = [],
     companyIdFields = [],
     allowedBranches = [],
+    allowedDepartments = [],
     userIdField,
     branchIdField,
     companyIdField,
@@ -100,6 +104,7 @@ export async function setFormConfig(table, name, config, options = {}) {
     companyIdFields: cid,
     moduleKey,
     allowedBranches,
+    allowedDepartments,
   };
   await writeConfig(cfg);
   try {
