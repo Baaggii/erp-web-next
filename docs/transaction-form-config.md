@@ -50,9 +50,9 @@ Example snippet:
 ```
 
 Clients can retrieve a list of transaction names via `/api/transaction_forms`.
-Each item in the returned object now includes the underlying table and the
-`moduleKey` (slug) used for routing so the front‑end can build links without
-replicating the slugify logic.
+Each entry includes the underlying table, `moduleKey` slug and the full
+configuration parsed from the file.  This allows the front‑end to populate
+forms without issuing additional requests or duplicating any parsing logic.
 To obtain a configuration for a specific transaction use
 `/api/transaction_forms?table=tbl&name=transaction`. New configurations are
 posted with `{ table, name, config, showInSidebar?, showInHeader? }` in the request body and can be removed via

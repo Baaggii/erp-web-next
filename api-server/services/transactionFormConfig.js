@@ -17,17 +17,15 @@ async function writeConfig(cfg) {
   await fs.writeFile(filePath, JSON.stringify(cfg, null, 2));
 }
 
-export async function getFormConfig(table, name) {
-  const cfg = await readConfig();
-  const byTable = cfg[table] || {};
-  const raw = byTable[name] || {};
+function parseEntry(raw = {}) {
   return {
     visibleFields: raw.visibleFields || [],
     requiredFields: raw.requiredFields || [],
     defaultValues: raw.defaultValues || {},
     editableDefaultFields: raw.editableDefaultFields || [],
     userIdFields: raw.userIdFields || (raw.userIdField ? [raw.userIdField] : []),
-    branchIdFields: raw.branchIdFields || (raw.branchIdField ? [raw.branchIdField] : []),
+    branchIdFields:
+      raw.branchIdFields || (raw.branchIdField ? [raw.branchIdField] : []),
     companyIdFields:
       raw.companyIdFields || (raw.companyIdField ? [raw.companyIdField] : []),
     moduleKey: typeof raw.moduleKey === 'string' ? raw.moduleKey : 'finance_transactions',
@@ -40,9 +38,21 @@ export async function getFormConfig(table, name) {
   };
 }
 
+export async function getFormConfig(table, name) {
+  const cfg = await readConfig();
+  const byTable = cfg[table] || {};
+  const raw = byTable[name];
+  return parseEntry(raw);
+}
+
 export async function getConfigsByTable(table) {
   const cfg = await readConfig();
-  return cfg[table] || {};
+  const byTable = cfg[table] || {};
+  const result = {};
+  for (const [name, info] of Object.entries(byTable)) {
+    result[name] = parseEntry(info);
+  }
+  return result;
 }
 
 export async function listTransactionNames({ moduleKey, branchId, departmentId } = {}) {
@@ -50,16 +60,14 @@ export async function listTransactionNames({ moduleKey, branchId, departmentId }
   const result = {};
   for (const [tbl, names] of Object.entries(cfg)) {
     for (const [name, info] of Object.entries(names)) {
-      const modKey = info.moduleKey || 'finance_transactions';
-      const allowed = info.allowedBranches || [];
-      const deptAllowed = info.allowedDepartments || [];
+      const parsed = parseEntry(info);
+      const modKey = parsed.moduleKey;
+      const allowed = parsed.allowedBranches;
+      const deptAllowed = parsed.allowedDepartments;
       if (moduleKey && moduleKey !== modKey) continue;
       if (branchId && allowed.length > 0 && !allowed.includes(Number(branchId))) continue;
       if (departmentId && deptAllowed.length > 0 && !deptAllowed.includes(Number(departmentId))) continue;
-      result[name] = {
-        table: tbl,
-        moduleKey: modKey,
-      };
+      result[name] = { table: tbl, ...parsed };
     }
   }
   return result;
