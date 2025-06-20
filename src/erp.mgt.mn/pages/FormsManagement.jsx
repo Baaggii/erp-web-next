@@ -5,6 +5,8 @@ export default function FormsManagement() {
   const [table, setTable] = useState('');
   const [names, setNames] = useState([]);
   const [name, setName] = useState('');
+  const [moduleKey, setModuleKey] = useState('finance_transactions');
+  const [branches, setBranches] = useState([]);
   const [columns, setColumns] = useState([]);
   const [config, setConfig] = useState({
     visibleFields: [],
@@ -14,6 +16,7 @@ export default function FormsManagement() {
     userIdFields: [],
     branchIdFields: [],
     companyIdFields: [],
+    allowedBranches: [],
   });
 
   useEffect(() => {
@@ -21,6 +24,11 @@ export default function FormsManagement() {
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => setTables(data))
       .catch(() => setTables([]));
+
+    fetch('/api/tables/branches?perPage=500', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { rows: [] }))
+      .then((data) => setBranches(data.rows || []))
+      .catch(() => setBranches([]));
   }, []);
 
   useEffect(() => {
@@ -34,6 +42,7 @@ export default function FormsManagement() {
       .then((data) => {
         setNames(Object.keys(data));
         if (data[name]) {
+          setModuleKey(data[name].moduleKey || 'finance_transactions');
           setConfig({
             visibleFields: data[name].visibleFields || [],
             requiredFields: data[name].requiredFields || [],
@@ -42,6 +51,7 @@ export default function FormsManagement() {
             userIdFields: data[name].userIdFields || [],
             branchIdFields: data[name].branchIdFields || [],
             companyIdFields: data[name].companyIdFields || [],
+            allowedBranches: data[name].allowedBranches || [],
           });
         } else {
           setName('');
@@ -53,6 +63,7 @@ export default function FormsManagement() {
             userIdFields: [],
             branchIdFields: [],
             companyIdFields: [],
+            allowedBranches: [],
           });
         }
       })
@@ -67,7 +78,9 @@ export default function FormsManagement() {
           userIdFields: [],
           branchIdFields: [],
           companyIdFields: [],
+          allowedBranches: [],
         });
+        setModuleKey('finance_transactions');
       });
   }, [table]);
 
@@ -75,7 +88,8 @@ export default function FormsManagement() {
     if (!table || !name) return;
     fetch(`/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
-      .then((cfg) =>
+      .then((cfg) => {
+        setModuleKey(cfg.moduleKey || 'finance_transactions');
         setConfig({
           visibleFields: cfg.visibleFields || [],
           requiredFields: cfg.requiredFields || [],
@@ -84,8 +98,9 @@ export default function FormsManagement() {
           userIdFields: cfg.userIdFields || [],
           branchIdFields: cfg.branchIdFields || [],
           companyIdFields: cfg.companyIdFields || [],
-        }),
-      )
+          allowedBranches: cfg.allowedBranches || [],
+        });
+      })
       .catch(() => {
         setConfig({
           visibleFields: [],
@@ -95,7 +110,9 @@ export default function FormsManagement() {
           userIdFields: [],
           branchIdFields: [],
           companyIdFields: [],
+          allowedBranches: [],
         });
+        setModuleKey('finance_transactions');
       });
   }, [table, name]);
 
@@ -139,7 +156,7 @@ export default function FormsManagement() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ table, name, config }),
+      body: JSON.stringify({ table, name, config, moduleKey }),
     });
     alert('Saved');
     if (!names.includes(name)) setNames((n) => [...n, name]);
@@ -154,15 +171,17 @@ export default function FormsManagement() {
     });
     setNames((n) => n.filter((x) => x !== name));
     setName('');
-        setConfig({
-          visibleFields: [],
-          requiredFields: [],
-          defaultValues: {},
-          editableDefaultFields: [],
-          userIdFields: [],
-          branchIdFields: [],
-          companyIdFields: [],
-        });
+    setConfig({
+      visibleFields: [],
+      requiredFields: [],
+      defaultValues: {},
+      editableDefaultFields: [],
+      userIdFields: [],
+      branchIdFields: [],
+      companyIdFields: [],
+      allowedBranches: [],
+    });
+    setModuleKey('finance_transactions');
   }
 
   return (
@@ -198,6 +217,13 @@ export default function FormsManagement() {
               placeholder="Transaction name"
               value={name}
               onChange={(e) => setName(e.target.value)}
+            />
+            <input
+              type="text"
+              placeholder="module_key"
+              value={moduleKey}
+              onChange={(e) => setModuleKey(e.target.value)}
+              style={{ marginLeft: '0.5rem' }}
             />
             {name && (
               <button onClick={handleDelete} style={{ marginLeft: '0.5rem' }}>
@@ -307,6 +333,25 @@ export default function FormsManagement() {
                 {columns.map((c) => (
                   <option key={c} value={c}>
                     {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ marginLeft: '1rem' }}>
+              Allowed branches:{' '}
+              <select
+                multiple
+                value={config.allowedBranches}
+                onChange={(e) =>
+                  setConfig((c) => ({
+                    ...c,
+                    allowedBranches: Array.from(e.target.selectedOptions, (o) => o.value),
+                  }))
+                }
+              >
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.code} - {b.name}
                   </option>
                 ))}
               </select>
