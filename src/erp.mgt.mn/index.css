@@ -119,7 +119,6 @@ footer { text-align:center; padding:1rem; background:#f1f1f1; font-size:0.9rem; 
   border-radius: 4px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.15);
   animation: fade-slide 0.3s ease;
-  user-select: text;
 }
 
 .toast-success { color: #16a34a; }

@@ -30,8 +30,8 @@ export async function assignCompany(req, res, next) {
     if (req.user.role !== 'admin') {
       return res.sendStatus(403);
     }
-    const { empid, companyId, roleId, branchId } = req.body;
-    await assignCompanyToUser(empid, companyId, roleId, branchId, req.user.empid);
+    const { empid, companyId, roleId } = req.body;
+    await assignCompanyToUser(empid, companyId, roleId, req.user.empid);
     res.sendStatus(201);
   } catch (err) {
     if (err.code === 'ER_NO_REFERENCED_ROW_2') {
@@ -46,8 +46,8 @@ export async function updateAssignment(req, res, next) {
     if (req.user.role !== 'admin') {
       return res.sendStatus(403);
     }
-    const { empid, companyId, roleId, branchId } = req.body;
-    await updateCompanyAssignment(empid, companyId, roleId, branchId);
+    const { empid, companyId, roleId } = req.body;
+    await updateCompanyAssignment(empid, companyId, roleId);
     res.sendStatus(200);
   } catch (err) {
     next(err);

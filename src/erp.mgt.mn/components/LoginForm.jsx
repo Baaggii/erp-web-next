@@ -53,7 +53,7 @@ export default function LoginForm() {
         onSubmit={(e) => {
           e.preventDefault();
           const choice = companyChoices.find(
-            (c) => `${c.company_id}-${c.branch_id || ''}` === selectedCompany,
+            (c) => String(c.company_id) === selectedCompany,
           );
           if (choice) {
             setCompany(choice);
@@ -77,11 +77,8 @@ export default function LoginForm() {
               Сонгоно уу...
             </option>
             {companyChoices.map((c) => (
-              <option
-                key={c.company_id + '-' + (c.branch_id || '')}
-                value={`${c.company_id}-${c.branch_id || ''}`}
-              >
-                {c.branch_name ? `${c.branch_name} | ` : ''}{c.company_name}
+              <option key={c.company_id} value={c.company_id}>
+                {c.company_name}
               </option>
             ))}
           </select>
