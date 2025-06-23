@@ -1,11 +1,16 @@
 import React, { useEffect, useState } from 'react';
+import { useModules } from '../hooks/useModules.js';
 
 export default function FormsManagement() {
   const [tables, setTables] = useState([]);
   const [table, setTable] = useState('');
   const [names, setNames] = useState([]);
   const [name, setName] = useState('');
+  const [moduleKey, setModuleKey] = useState('finance_transactions');
+  const [branches, setBranches] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [columns, setColumns] = useState([]);
+  const modules = useModules();
   const [config, setConfig] = useState({
     visibleFields: [],
     requiredFields: [],
@@ -14,6 +19,8 @@ export default function FormsManagement() {
     userIdFields: [],
     branchIdFields: [],
     companyIdFields: [],
+    allowedBranches: [],
+    allowedDepartments: [],
   });
 
   useEffect(() => {
@@ -21,6 +28,16 @@ export default function FormsManagement() {
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => setTables(data))
       .catch(() => setTables([]));
+
+    fetch('/api/tables/code_branches?perPage=500', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { rows: [] }))
+      .then((data) => setBranches(data.rows || []))
+      .catch(() => setBranches([]));
+
+    fetch('/api/tables/code_department?perPage=500', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { rows: [] }))
+      .then((data) => setDepartments(data.rows || []))
+      .catch(() => setDepartments([]));
   }, []);
 
   useEffect(() => {
@@ -34,6 +51,7 @@ export default function FormsManagement() {
       .then((data) => {
         setNames(Object.keys(data));
         if (data[name]) {
+          setModuleKey(data[name].moduleKey || 'finance_transactions');
           setConfig({
             visibleFields: data[name].visibleFields || [],
             requiredFields: data[name].requiredFields || [],
@@ -42,6 +60,8 @@ export default function FormsManagement() {
             userIdFields: data[name].userIdFields || [],
             branchIdFields: data[name].branchIdFields || [],
             companyIdFields: data[name].companyIdFields || [],
+            allowedBranches: (data[name].allowedBranches || []).map(String),
+            allowedDepartments: (data[name].allowedDepartments || []).map(String),
           });
         } else {
           setName('');
@@ -53,6 +73,8 @@ export default function FormsManagement() {
             userIdFields: [],
             branchIdFields: [],
             companyIdFields: [],
+            allowedBranches: [],
+            allowedDepartments: [],
           });
         }
       })
@@ -67,7 +89,10 @@ export default function FormsManagement() {
           userIdFields: [],
           branchIdFields: [],
           companyIdFields: [],
+          allowedBranches: [],
+          allowedDepartments: [],
         });
+        setModuleKey('finance_transactions');
       });
   }, [table]);
 
@@ -75,7 +100,8 @@ export default function FormsManagement() {
     if (!table || !name) return;
     fetch(`/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
-      .then((cfg) =>
+      .then((cfg) => {
+        setModuleKey(cfg.moduleKey || 'finance_transactions');
         setConfig({
           visibleFields: cfg.visibleFields || [],
           requiredFields: cfg.requiredFields || [],
@@ -84,8 +110,10 @@ export default function FormsManagement() {
           userIdFields: cfg.userIdFields || [],
           branchIdFields: cfg.branchIdFields || [],
           companyIdFields: cfg.companyIdFields || [],
-        }),
-      )
+          allowedBranches: (cfg.allowedBranches || []).map(String),
+          allowedDepartments: (cfg.allowedDepartments || []).map(String),
+        });
+      })
       .catch(() => {
         setConfig({
           visibleFields: [],
@@ -95,7 +123,10 @@ export default function FormsManagement() {
           userIdFields: [],
           branchIdFields: [],
           companyIdFields: [],
+          allowedBranches: [],
+          allowedDepartments: [],
         });
+        setModuleKey('finance_transactions');
       });
   }, [table, name]);
 
@@ -135,11 +166,16 @@ export default function FormsManagement() {
       alert('Please enter transaction name');
       return;
     }
+    const cfg = {
+      ...config,
+      allowedBranches: config.allowedBranches.map((b) => Number(b)).filter((b) => !Number.isNaN(b)),
+      allowedDepartments: config.allowedDepartments.map((d) => Number(d)).filter((d) => !Number.isNaN(d)),
+    };
     await fetch('/api/transaction_forms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ table, name, config }),
+      body: JSON.stringify({ table, name, config: cfg, moduleKey }),
     });
     alert('Saved');
     if (!names.includes(name)) setNames((n) => [...n, name]);
@@ -154,15 +190,18 @@ export default function FormsManagement() {
     });
     setNames((n) => n.filter((x) => x !== name));
     setName('');
-        setConfig({
-          visibleFields: [],
-          requiredFields: [],
-          defaultValues: {},
-          editableDefaultFields: [],
-          userIdFields: [],
-          branchIdFields: [],
-          companyIdFields: [],
-        });
+    setConfig({
+      visibleFields: [],
+      requiredFields: [],
+      defaultValues: {},
+      editableDefaultFields: [],
+      userIdFields: [],
+      branchIdFields: [],
+      companyIdFields: [],
+      allowedBranches: [],
+      allowedDepartments: [],
+    });
+    setModuleKey('finance_transactions');
   }
 
   return (
@@ -199,6 +238,18 @@ export default function FormsManagement() {
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
+            <select
+              value={moduleKey}
+              onChange={(e) => setModuleKey(e.target.value)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              <option value="">-- select module --</option>
+              {modules.map((m) => (
+                <option key={m.module_key} value={m.module_key}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
             {name && (
               <button onClick={handleDelete} style={{ marginLeft: '0.5rem' }}>
                 Delete
@@ -272,6 +323,8 @@ export default function FormsManagement() {
                   </option>
                 ))}
               </select>
+              <button type="button" onClick={() => setConfig((c) => ({ ...c, userIdFields: columns }))}>All</button>
+              <button type="button" onClick={() => setConfig((c) => ({ ...c, userIdFields: [] }))}>None</button>
             </label>
             <label style={{ marginLeft: '1rem' }}>
               Branch ID fields:{' '}
@@ -291,6 +344,8 @@ export default function FormsManagement() {
                   </option>
                 ))}
               </select>
+              <button type="button" onClick={() => setConfig((c) => ({ ...c, branchIdFields: columns }))}>All</button>
+              <button type="button" onClick={() => setConfig((c) => ({ ...c, branchIdFields: [] }))}>None</button>
             </label>
             <label style={{ marginLeft: '1rem' }}>
               Company ID fields:{' '}
@@ -310,6 +365,50 @@ export default function FormsManagement() {
                   </option>
                 ))}
               </select>
+              <button type="button" onClick={() => setConfig((c) => ({ ...c, companyIdFields: columns }))}>All</button>
+              <button type="button" onClick={() => setConfig((c) => ({ ...c, companyIdFields: [] }))}>None</button>
+            </label>
+            <label style={{ marginLeft: '1rem' }}>
+              Allowed branches:{' '}
+              <select
+                multiple
+                value={config.allowedBranches}
+                onChange={(e) =>
+                  setConfig((c) => ({
+                    ...c,
+                    allowedBranches: Array.from(e.target.selectedOptions, (o) => o.value),
+                  }))
+                }
+              >
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.code} - {b.name}
+                  </option>
+                ))}
+              </select>
+              <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedBranches: branches.map((b) => String(b.id)) }))}>All</button>
+              <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedBranches: [] }))}>None</button>
+            </label>
+            <label style={{ marginLeft: '1rem' }}>
+              Allowed departments:{' '}
+              <select
+                multiple
+                value={config.allowedDepartments}
+                onChange={(e) =>
+                  setConfig((c) => ({
+                    ...c,
+                    allowedDepartments: Array.from(e.target.selectedOptions, (o) => o.value),
+                  }))
+                }
+              >
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.code} - {d.name}
+                  </option>
+                ))}
+              </select>
+              <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedDepartments: departments.map((d) => String(d.id)) }))}>All</button>
+              <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedDepartments: [] }))}>None</button>
             </label>
           </div>
           <div style={{ marginTop: '1rem' }}>

@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { translateToMn } from '../utils/translateToMn.js';
+import { useToast } from '../context/ToastContext.jsx';
 
 function cleanIdentifier(name) {
   return String(name).replace(/[^A-Za-z0-9_]+/g, '');
 }
 
 export default function CodingTablesPage() {
+  const { addToast } = useToast();
   const [sheets, setSheets] = useState([]);
   const [workbook, setWorkbook] = useState(null);
   const [sheet, setSheet] = useState('');
@@ -325,6 +327,92 @@ export default function CodingTablesPage() {
     return base;
   }
 
+  function parseSqlConfig(sqlText) {
+    const m = sqlText.match(/CREATE TABLE IF NOT EXISTS\s+`([^`]+)`\s*\(([^]*?)\)\s*(?:AUTO_INCREMENT=(\d+))?;/m);
+    if (!m) return null;
+    const table = m[1];
+    const body = m[2];
+    const autoInc = m[3] || '1';
+    const lines = body
+      .split(/,\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const columnTypes = {};
+    const notNull = {};
+    const defaults = {};
+    const calc = [];
+    const other = [];
+    let idCol = '';
+    let nameCol = '';
+    let uniqueLine = '';
+    for (const ln of lines) {
+      if (ln.startsWith('UNIQUE KEY')) {
+        uniqueLine = ln;
+        continue;
+      }
+      const colMatch = ln.match(/^`([^`]+)`\s+([^ ]+)(.*)$/);
+      if (!colMatch) continue;
+      const col = colMatch[1];
+      const type = colMatch[2];
+      const rest = colMatch[3] || '';
+      if (/AS \(/.test(rest)) {
+        const cm = rest.match(/AS \(([^)]+)\)/);
+        if (cm) calc.push(`${col}: ${cm[1]}`);
+        continue;
+      }
+      columnTypes[col] = type;
+      notNull[col] = /NOT NULL/.test(rest);
+      const def = rest.match(/DEFAULT ([^ ]+)/);
+      if (def) {
+        defaults[col] = def[1].replace(/^'|'$/g, '');
+      }
+      if (/AUTO_INCREMENT/.test(rest) && /PRIMARY KEY/.test(rest)) {
+        idCol = col;
+      } else if (col === 'name') {
+        nameCol = col;
+      } else {
+        other.push(col);
+      }
+    }
+    const uniq = [];
+    if (uniqueLine) {
+      const um = uniqueLine.match(/\(([^)]+)\)/);
+      if (um) {
+        um[1]
+          .split(',')
+          .map((s) => s.trim().replace(/`/g, ''))
+          .forEach((c) => uniq.push(c));
+      }
+    }
+    return {
+      table,
+      idColumn: idCol,
+      nameColumn: nameCol,
+      otherColumns: other.filter((c) => c !== idCol && c !== nameCol && !uniq.includes(c)),
+      uniqueFields: uniq.filter((c) => c !== idCol && c !== nameCol),
+      calcText: calc.join('\n'),
+      columnTypes,
+      notNullMap: notNull,
+      defaultValues: defaults,
+      autoIncStart: autoInc,
+    };
+  }
+
+  function loadFromSql() {
+    const cfg = parseSqlConfig(sql);
+    if (!cfg) return;
+    setTableName(cfg.table);
+    setIdColumn(cfg.idColumn);
+    setNameColumn(cfg.nameColumn);
+    setOtherColumns(cfg.otherColumns);
+    setUniqueFields(cfg.uniqueFields);
+    setCalcText(cfg.calcText);
+    setColumnTypes(cfg.columnTypes);
+    setNotNullMap(cfg.notNullMap);
+    setDefaultValues(cfg.defaultValues);
+    setAutoIncStart(cfg.autoIncStart || '1');
+  }
+
   function handleGenerateSql() {
     if (!workbook || !sheet || !tableName) return;
     const tbl = cleanIdentifier(tableName);
@@ -500,65 +588,40 @@ export default function CodingTablesPage() {
       if (!hasData) continue;
       if (populateRange && vals.some((v) => v === '0' || v === 'NULL')) continue;
       const updates = cols.map((c) => `${c} = VALUES(${c})`);
-      sqlStr += `INSERT INTO \`${tbl}\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
-    }
+    sqlStr += `INSERT INTO \`${tbl}\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
+  }
     setSql(sqlStr);
+    fetch('/api/generated_sql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ table: tbl, sql: sqlStr }),
+    }).catch(() => {});
   }
 
-  async function handleUpload() {
-    if (!workbook || !sheet || !tableName) return;
-    const tbl = cleanIdentifier(tableName);
-    const idCol = cleanIdentifier(idColumn);
-    const nmCol = cleanIdentifier(nameColumn);
-    const cleanUnique = uniqueFields.map(cleanIdentifier);
-    const cleanOther = otherColumns.map(cleanIdentifier);
-    const uniqueOnly = cleanUnique.filter(
-      (c) => c !== idCol && c !== nmCol && !cleanOther.includes(c)
-    );
-    const otherFiltered = cleanOther.filter(
-      (c) => c !== idCol && c !== nmCol && !uniqueOnly.includes(c)
-    );
-    if (!idCol && !nmCol && uniqueOnly.length === 0 && otherFiltered.length === 0) {
-      alert('Please select at least one ID, Name, Unique or Other column');
+
+  async function executeGeneratedSql() {
+    if (!sql) {
+      alert('Generate SQL first');
       return;
     }
-    setSql('');
     setUploading(true);
     try {
-      const formData = new FormData();
-      const blob = new Blob([XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })]);
-      formData.append('file', blob, 'upload.xlsx');
-      formData.append('sheet', sheet);
-      formData.append('headerRow', headerRow);
-      formData.append('headerMap', JSON.stringify(headerMap));
-      formData.append('tableName', tbl);
-      formData.append('idColumn', idCol);
-      formData.append('nameColumn', nmCol);
-      formData.append('otherColumns', JSON.stringify(cleanOther));
-      formData.append('uniqueFields', JSON.stringify(cleanUnique));
-      formData.append('calcFields', JSON.stringify(parseCalcFields(calcText)));
-      formData.append('columnTypes', JSON.stringify(columnTypes));
-      formData.append('notNullMap', JSON.stringify(notNullMap));
-      formData.append('defaultValues', JSON.stringify(defaultValues));
-      formData.append('populateRange', String(populateRange));
-      formData.append('startYear', startYear);
-      formData.append('endYear', endYear);
-      formData.append('autoIncrementStart', autoIncStart);
-      const res = await fetch('/api/coding_tables/upload', {
+      const res = await fetch('/api/generated_sql/execute', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql }),
         credentials: 'include',
-        body: formData,
       });
       if (!res.ok) {
-        alert('Upload failed');
+        const data = await res.json().catch(() => ({}));
+        alert(data.message || 'Execution failed');
         return;
       }
-      const json = await res.json();
-      alert(`Inserted ${json.inserted} rows`);
-      setSql('');
+      alert('Table created');
     } catch (err) {
-      console.error('Upload failed', err);
-      alert('Upload failed');
+      console.error('SQL execution failed', err);
+      alert('Execution failed');
     } finally {
       setUploading(false);
     }
@@ -575,6 +638,92 @@ export default function CodingTablesPage() {
       alert('Mappings saved');
     } catch {
       alert('Failed to save mappings');
+    }
+  }
+
+  function validateConfig(cfg) {
+    if (!cfg || typeof cfg !== 'object') {
+      return 'Config is not an object';
+    }
+    if (cfg.columnTypes && typeof cfg.columnTypes !== 'object') {
+      return 'columnTypes must be an object';
+    }
+    if (cfg.columnTypes) {
+      for (const [k, v] of Object.entries(cfg.columnTypes)) {
+        if (typeof v !== 'string') return `Type for ${k} must be string`;
+        if (!/^[A-Za-z0-9_(), ]*$/.test(v))
+          return `Invalid type for ${k}`;
+      }
+    }
+    if (cfg.notNullMap && typeof cfg.notNullMap !== 'object') {
+      return 'notNullMap must be an object';
+    }
+    if (cfg.notNullMap) {
+      for (const [k, v] of Object.entries(cfg.notNullMap)) {
+        if (typeof v !== 'boolean') return `${k} notNull must be true/false`;
+      }
+    }
+    return null;
+  }
+
+  async function saveConfig() {
+    if (!tableName) {
+      addToast('Table name required', 'error');
+      return;
+    }
+    const config = {
+      sheet,
+      headerRow,
+      mnHeaderRow,
+      idFilterMode,
+      idColumn,
+      nameColumn,
+      otherColumns,
+      uniqueFields,
+      calcText,
+      columnTypes,
+      notNullMap,
+      defaultValues,
+      extraFields: extraFields.filter((f) => f.trim() !== ''),
+      populateRange,
+      startYear,
+      endYear,
+      autoIncStart,
+    };
+    const validationError = validateConfig(config);
+    if (validationError) {
+      addToast(validationError, 'error');
+      return;
+    }
+    try {
+      const res = await fetch('/api/coding_table_configs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ table: tableName, config }),
+      });
+      if (!res.ok) {
+        const status = res.status;
+        let text = '';
+        try {
+          text = await res.text();
+        } catch {}
+        console.error('Failed to save config', status, text);
+        addToast('Failed to save config. Please check API availability.', 'error');
+        return;
+      }
+      if (sql) {
+        await fetch('/api/generated_sql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ table: tableName, sql }),
+        });
+      }
+      addToast('Config saved', 'success');
+    } catch (err) {
+      console.error('Save config failed', err);
+      addToast('Failed to save config', 'error');
     }
   }
 
@@ -599,6 +748,37 @@ export default function CodingTablesPage() {
     if (idColumn && !allHeaders.includes(idColumn)) setIdColumn('');
     if (nameColumn && !allHeaders.includes(nameColumn)) setNameColumn('');
   }, [allHeaders, idFilterMode]);
+
+  useEffect(() => {
+    if (!tableName) return;
+    fetch(`/api/coding_table_configs?table=${encodeURIComponent(tableName)}`, {
+      credentials: 'include',
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((cfg) => {
+        if (!cfg) return;
+        setSheet(cfg.sheet || sheet);
+        setHeaderRow(cfg.headerRow || 1);
+        setMnHeaderRow(cfg.mnHeaderRow || '');
+        setIdFilterMode(cfg.idFilterMode || 'contains');
+        setIdColumn(cfg.idColumn || '');
+        setNameColumn(cfg.nameColumn || '');
+        setOtherColumns(cfg.otherColumns || []);
+        setUniqueFields(cfg.uniqueFields || []);
+        setCalcText(cfg.calcText || '');
+        setColumnTypes(cfg.columnTypes || {});
+        setNotNullMap(cfg.notNullMap || {});
+        setDefaultValues(cfg.defaultValues || {});
+        setExtraFields(
+          cfg.extraFields && cfg.extraFields.length > 0 ? cfg.extraFields : ['']
+        );
+        setPopulateRange(cfg.populateRange || false);
+        setStartYear(cfg.startYear || '');
+        setEndYear(cfg.endYear || '');
+        setAutoIncStart(cfg.autoIncStart || '1');
+      })
+      .catch(() => {});
+  }, [tableName]);
 
   return (
     <div>
@@ -879,7 +1059,15 @@ export default function CodingTablesPage() {
               </div>
             <div>
               <button onClick={handleGenerateSql}>Populate SQL</button>
-              <button onClick={handleUpload}>Create Coding Table</button>
+              <button onClick={loadFromSql} style={{ marginLeft: '0.5rem' }}>
+                Fill Config from SQL
+              </button>
+              <button onClick={saveConfig} style={{ marginLeft: '0.5rem' }}>
+                Save Config
+              </button>
+              <button onClick={executeGeneratedSql} style={{ marginLeft: '0.5rem' }}>
+                Create Coding Table
+              </button>
             </div>
               {sql && (
                 <div>

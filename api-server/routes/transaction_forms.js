@@ -12,7 +12,7 @@ const router = express.Router();
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
-    const { table, name } = req.query;
+    const { table, name, moduleKey, branchId, departmentId } = req.query;
     if (table && name) {
       const cfg = await getFormConfig(table, name);
       res.json(cfg);
@@ -20,7 +20,7 @@ router.get('/', requireAuth, async (req, res, next) => {
       const all = await getConfigsByTable(table);
       res.json(all);
     } else {
-      const names = await listTransactionNames();
+      const names = await listTransactionNames({ moduleKey, branchId, departmentId });
       res.json(names);
     }
   } catch (err) {
@@ -30,12 +30,13 @@ router.get('/', requireAuth, async (req, res, next) => {
 
 router.post('/', requireAuth, async (req, res, next) => {
   try {
-    const { table, name, config, showInSidebar, showInHeader } = req.body;
+    const { table, name, config, showInSidebar, showInHeader, moduleKey } = req.body;
     if (!table || !name)
       return res.status(400).json({ message: 'table and name are required' });
     await setFormConfig(table, name, config || {}, {
       showInSidebar,
       showInHeader,
+      moduleKey,
     });
     res.sendStatus(204);
   } catch (err) {

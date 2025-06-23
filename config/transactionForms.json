@@ -1,1 +1,67 @@
-{}
+{
+  "transactions_income": {
+    "Бараа бүтээгдэхүүн борлуулсан санхүүгийн орлого1": {
+      "visibleFields": [
+        "or_g_id",
+        "or_burtgel",
+        "or_chig",
+        "or_torol",
+        "or_type_id",
+        "or_av_now",
+        "or_date",
+        "orcash_or_id",
+        "or_or",
+        "or_vallut_id",
+        "or_valut_choice",
+        "or_bcode",
+        "or_orderid",
+        "or_tailbar1",
+        "or_eb",
+        "or_emp_receiver",
+        "or_tur_receiver",
+        "or_other_receiver",
+        "or_org_id"
+      ],
+      "requiredFields": [
+        "or_g_id",
+        "or_burtgel",
+        "or_chig",
+        "or_torol",
+        "or_type_id",
+        "or_av_now",
+        "or_date",
+        "or_or",
+        "or_vallut_id",
+        "or_valut_choice",
+        "or_tailbar1",
+        "or_eb",
+        "TRTYPENAME",
+        "trtype",
+        "UITransTypeName"
+      ],
+      "defaultValues": {
+        "or_g_id": "-1",
+        "or_av_now": "0",
+        "or_vallut_id": "1",
+        "or_valut_choice": "11",
+        "TRTYPENAME": "Бараа бүтээгдэхүүн борлуулсан орлого",
+        "trtype": "ssor",
+        "UITransTypeName": "1914"
+      },
+      "editableDefaultFields": [],
+      "userIdFields": [
+        "ortr_confirm_emp"
+      ],
+      "branchIdFields": [
+        "ortr_transbranch",
+        "branch_id"
+      ],
+      "companyIdFields": [
+        "company_id"
+      ],
+      "allowedBranches": [],
+      "allowedDepartments": [],
+      "moduleKey": "finance_transactions"
+    }
+  }
+}

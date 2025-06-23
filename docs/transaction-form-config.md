@@ -12,6 +12,9 @@ Each **transaction** entry allows you to specify:
 - **userIdFields** – fields automatically filled with the creating user ID
 - **branchIdFields** – fields automatically filled with the branch ID
 - **companyIdFields** – fields automatically filled with the company ID
+- **moduleKey** – module slug used to group the form under a module
+- **allowedBranches** – restrict usage to these branch IDs
+- **allowedDepartments** – restrict usage to these department IDs
 
 Example snippet:
 
@@ -25,7 +28,10 @@ Example snippet:
       "editableDefaultFields": ["status"],
       "userIdFields": ["created_by"],
       "branchIdFields": ["branch_id"],
-      "companyIdFields": ["company_id"]
+      "companyIdFields": ["company_id"],
+      "moduleKey": "finance_transactions",
+      "allowedBranches": [1, 2],
+      "allowedDepartments": [5]
     },
     "Issue": {
       "visibleFields": ["tran_date", "description"],
@@ -34,16 +40,19 @@ Example snippet:
       "editableDefaultFields": ["status"],
       "userIdFields": ["created_by"],
       "branchIdFields": ["branch_id"],
-      "companyIdFields": ["company_id"]
+      "companyIdFields": ["company_id"],
+      "moduleKey": "finance_transactions",
+      "allowedBranches": [1, 2],
+      "allowedDepartments": [5]
     }
   }
 }
 ```
 
 Clients can retrieve a list of transaction names via `/api/transaction_forms`.
-Each item in the returned object now includes the underlying table and the
-`moduleKey` (slug) used for routing so the front‑end can build links without
-replicating the slugify logic.
+Each entry includes the underlying table, `moduleKey` slug and the full
+configuration parsed from the file.  This allows the front‑end to populate
+forms without issuing additional requests or duplicating any parsing logic.
 To obtain a configuration for a specific transaction use
 `/api/transaction_forms?table=tbl&name=transaction`. New configurations are
 posted with `{ table, name, config, showInSidebar?, showInHeader? }` in the request body and can be removed via

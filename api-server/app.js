@@ -17,13 +17,16 @@ import moduleRoutes from "./routes/modules.js";
 import openaiRoutes from "./routes/openai.js";
 import headerMappingRoutes from "./routes/header_mappings.js";
 import displayFieldRoutes from "./routes/display_fields.js";
+import codingTableConfigRoutes from "./routes/coding_table_configs.js";
+import generatedSqlRoutes from "./routes/generated_sql.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 app.use(cookieParser());
 
 // Setup CSRF protection using cookies
@@ -59,6 +62,8 @@ app.use("/api/modules", moduleRoutes);
 app.use("/api/header_mappings", headerMappingRoutes);
 app.use("/api/openai", openaiRoutes);
 app.use("/api/display_fields", displayFieldRoutes);
+app.use("/api/coding_table_configs", codingTableConfigRoutes);
+app.use("/api/generated_sql", generatedSqlRoutes);
 
 // Serve static React build and fallback to index.html
 // NOTE: adjust this path to where your SPA build actually lives.
