@@ -40,6 +40,23 @@ export default function RowFormModal({
     return map;
   }, [columns]);
 
+  function isValidDate(value, format) {
+    if (!value) return true;
+    const map = {
+      'YYYY-MM-DD': /^\d{4}-\d{2}-\d{2}$/,
+      'HH:MM:SS': /^\d{2}:\d{2}:\d{2}$/,
+      'YYYY-MM-DD HH:MM:SS': /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/,
+    };
+    const re = map[format];
+    if (!re) return true;
+    if (!re.test(value)) return false;
+    if (format !== 'HH:MM:SS') {
+      const d = new Date(value.replace(' ', 'T'));
+      return !isNaN(d.getTime());
+    }
+    return true;
+  }
+
   useEffect(() => {
     if (!visible) return;
     const vals = {};
@@ -62,7 +79,16 @@ export default function RowFormModal({
   function handleKeyDown(e, col) {
     if (e.key !== 'Enter') return;
     e.preventDefault();
-    if (requiredFields.includes(col) && !formVals[col]) {
+    const val = e.target.value;
+    if (formVals[col] !== val) {
+      setFormVals((v) => ({ ...v, [col]: val }));
+      onChange({ [col]: val });
+    }
+    if (placeholders[col] && !isValidDate(val, placeholders[col])) {
+      setErrors((er) => ({ ...er, [col]: 'Invalid date' }));
+      return;
+    }
+    if (requiredFields.includes(col) && !val) {
       setErrors((er) => ({ ...er, [col]: 'Please enter value' }));
       return;
     }
@@ -91,7 +117,15 @@ export default function RowFormModal({
     });
     setErrors(errs);
     if (Object.keys(errs).length === 0) {
-      await Promise.resolve(onSubmit(formVals));
+      const ok = window.confirm(
+        'Save this transaction? Have you checked all data and accept responsibility?',
+      );
+      if (ok) {
+        await Promise.resolve(onSubmit(formVals));
+      } else {
+        setSubmitLocked(false);
+        return;
+      }
     }
     setSubmitLocked(false);
   }
