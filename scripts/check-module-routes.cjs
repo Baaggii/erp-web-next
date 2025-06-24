@@ -14,17 +14,18 @@ while ((m = routeRegex.exec(appJsx))) {
 }
 routePaths.add('/');
 
-const roots = ['dashboard','forms','reports','settings'];
-const settingsChildren = [
-  'users',
-  'user_companies',
-  'role_permissions',
-  'company_licenses',
-  'tables_management',
-  'forms_management',
-  'report_management',
-  'change_password',
-];
+const { createRequire } = require('module');
+const path = require('path');
+const requireModule = createRequire(__filename);
+const defaultModules = requireModule('../db/defaultModules.js').default;
+
+const roots = defaultModules
+  .filter((m) => m.parentKey === null)
+  .map((m) => m.moduleKey);
+
+const settingsChildren = defaultModules
+  .filter((m) => m.parentKey === 'settings')
+  .map((m) => m.moduleKey);
 
 function modulePath(key, parent) {
   const segments = [];
