@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useModules } from '../hooks/useModules.js';
+import { refreshTxnModules } from '../hooks/useTxnModules.js';
 
 export default function FormsManagement() {
   const [tables, setTables] = useState([]);
@@ -194,6 +195,7 @@ export default function FormsManagement() {
         config: cfg,
       }),
     });
+    refreshTxnModules();
     alert('Saved');
     if (!names.includes(name)) setNames((n) => [...n, name]);
   }
@@ -205,6 +207,7 @@ export default function FormsManagement() {
       method: 'DELETE',
       credentials: 'include',
     });
+    refreshTxnModules();
     setNames((n) => n.filter((x) => x !== name));
     setName('');
     setConfig({
