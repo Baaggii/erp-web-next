@@ -36,6 +36,14 @@ export default function CodingTablesPage() {
   const [autoIncStart, setAutoIncStart] = useState('1');
   const fileInputRef = useRef(null);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [configNames, setConfigNames] = useState([]);
+
+  useEffect(() => {
+    fetch('/api/coding_table_configs', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((data) => setConfigNames(Object.keys(data)))
+      .catch(() => setConfigNames([]));
+  }, []);
 
   const allHeaders = useMemo(
     () => [...headers, ...extraFields.filter((f) => f.trim() !== '')],
@@ -721,9 +729,28 @@ export default function CodingTablesPage() {
         });
       }
       addToast('Config saved', 'success');
+      if (!configNames.includes(tableName))
+        setConfigNames((n) => [...n, tableName]);
     } catch (err) {
       console.error('Save config failed', err);
       addToast('Failed to save config', 'error');
+    }
+  }
+
+  async function deleteConfig() {
+    if (!tableName) return;
+    if (!window.confirm('Delete configuration?')) return;
+    try {
+      await fetch(`/api/coding_table_configs?table=${encodeURIComponent(tableName)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      setConfigNames((n) => n.filter((x) => x !== tableName));
+      setTableName('');
+      addToast('Config deleted', 'success');
+    } catch (err) {
+      console.error('Delete config failed', err);
+      addToast('Failed to delete config', 'error');
     }
   }
 
@@ -843,7 +870,32 @@ export default function CodingTablesPage() {
             <>
               <div>
                 Table Name:
-                <input value={tableName} onChange={(e) => setTableName(e.target.value)} />
+                <select
+                  value={tableName}
+                  onChange={(e) => setTableName(e.target.value)}
+                  style={{ marginRight: '0.5rem' }}
+                >
+                  <option value="">-- new --</option>
+                  {configNames.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={tableName}
+                  onChange={(e) => setTableName(e.target.value)}
+                  placeholder="Table name"
+                />
+                {tableName && configNames.includes(tableName) && (
+                  <button
+                    type="button"
+                    onClick={deleteConfig}
+                    style={{ marginLeft: '0.5rem' }}
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
               <div>
                 Additional Fields:
