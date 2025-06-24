@@ -72,10 +72,12 @@ export default function App() {
 
   modules.forEach((m) => {
     if (txnModules.has(m.module_key)) {
-      componentMap[m.module_key] = <FinanceTransactionsPage moduleKey={m.module_key} />;
+      componentMap[m.module_key] = (
+        <FinanceTransactionsPage moduleKey={m.module_key} />
+      );
     } else if (txnModules.has(m.parent_key)) {
       componentMap[m.module_key] = (
-        <FinanceTransactionsPage moduleKey={m.module_key} defaultName={m.label} hideSelector />
+        <FinanceTransactionsPage moduleKey={m.parent_key} />
       );
     }
   });

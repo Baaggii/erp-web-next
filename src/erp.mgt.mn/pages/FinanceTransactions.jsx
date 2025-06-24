@@ -6,7 +6,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import { useRolePermissions } from '../hooks/useRolePermissions.js';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
 
-export default function FinanceTransactions({ moduleKey = 'finance_transactions', defaultName = '', hideSelector = false }) {
+export default function FinanceTransactions({ moduleKey = 'finance_transactions', defaultName = '' }) {
   const [configs, setConfigs] = useState({});
   const [searchParams, setSearchParams] = useSearchParams();
   const [name, setName] = useState(() => defaultName || searchParams.get('name') || '');
@@ -82,10 +82,12 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   if (!perms || !licensed) return <p>Loading...</p>;
   if (!perms[moduleKey] || !licensed[moduleKey]) return <p>Access denied.</p>;
 
+  const caption = defaultName || 'Choose transaction';
+
   return (
     <div>
       <h2>{defaultName || 'Transactions'}</h2>
-      {!hideSelector && transactionNames.length > 0 && (
+      {transactionNames.length > 0 && (
         <div style={{ marginBottom: '0.5rem', maxWidth: '300px' }}>
           <SearchSelect
             value={name}
@@ -95,10 +97,10 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
               setShowTable(false);
             }}
             options={[
-              { value: '', label: 'Choose transaction' },
+              { value: '', label: caption },
               ...transactionNames.map((t) => ({ value: t, label: t })),
             ]}
-            placeholder="Choose transaction"
+            placeholder={caption}
           />
         </div>
       )}
