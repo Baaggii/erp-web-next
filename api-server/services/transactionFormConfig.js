@@ -95,7 +95,8 @@ export async function setFormConfig(table, name, config, options = {}) {
     showInHeader = false,
     moduleKey: providedModuleKey,
   } = options;
-  const moduleSlug = providedModuleKey || slugify(name);
+  const moduleSlug =
+    providedModuleKey || slugify(`${parentModuleKey}_${name}`);
   const uid = (userIdFields.length ? userIdFields : userIdField ? [userIdField] : [])
     .map(String)
     .filter(Boolean);
