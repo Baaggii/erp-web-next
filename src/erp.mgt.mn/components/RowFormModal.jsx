@@ -13,6 +13,7 @@ export default function RowFormModal({
   disabledFields = [],
   labels = {},
   requiredFields = [],
+  onChange = () => {},
 }) {
   const [formVals, setFormVals] = useState(() => {
     const init = {};
@@ -113,6 +114,7 @@ export default function RowFormModal({
                   onChange={(val) => {
                     setFormVals((v) => ({ ...v, [c]: val }));
                     setErrors((er) => ({ ...er, [c]: undefined }));
+                    onChange({ [c]: val });
                   }}
                   disabled={row && disabledFields.includes(c)}
                   onKeyDown={(e) => handleKeyDown(e, c)}
@@ -126,6 +128,7 @@ export default function RowFormModal({
                   onChange={(e) => {
                     setFormVals((v) => ({ ...v, [c]: e.target.value }));
                     setErrors((er) => ({ ...er, [c]: undefined }));
+                    onChange({ [c]: e.target.value });
                   }}
                   onKeyDown={(e) => handleKeyDown(e, c)}
                   disabled={row && disabledFields.includes(c)}
@@ -147,6 +150,7 @@ export default function RowFormModal({
                   onChange={(e) => {
                     setFormVals((v) => ({ ...v, [c]: e.target.value }));
                     setErrors((er) => ({ ...er, [c]: undefined }));
+                    onChange({ [c]: e.target.value });
                   }}
                   onKeyDown={(e) => handleKeyDown(e, c)}
                   disabled={row && disabledFields.includes(c)}

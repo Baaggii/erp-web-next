@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import TableManager from '../components/TableManager.jsx';
 import SearchSelect from '../components/SearchSelect.jsx';
@@ -12,6 +12,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const [config, setConfig] = useState(null);
   const [refreshId, setRefreshId] = useState(0);
   const { company } = useContext(AuthContext);
+  const tableRef = useRef(null);
 
   useEffect(() => {
     if (defaultName) setName(defaultName);
@@ -66,7 +67,13 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
         </div>
       )}
       {table && config && (
+        <div style={{ marginBottom: '0.5rem' }}>
+          <button onClick={() => tableRef.current?.openAdd()}>Add Transaction</button>
+        </div>
+      )}
+      {table && config && (
         <TableManager
+          ref={tableRef}
           table={table}
           refreshId={refreshId}
           formConfig={config}
