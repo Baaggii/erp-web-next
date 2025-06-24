@@ -6,10 +6,10 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import { useRolePermissions } from '../hooks/useRolePermissions.js';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
 
-export default function FinanceTransactions({ moduleKey = 'finance_transactions', defaultName = '' }) {
+export default function FinanceTransactions({ moduleKey = 'finance_transactions', moduleLabel = '' }) {
   const [configs, setConfigs] = useState({});
   const [searchParams, setSearchParams] = useSearchParams();
-  const [name, setName] = useState(() => defaultName || searchParams.get('name') || '');
+  const [name, setName] = useState(() => searchParams.get('name') || '');
   const [table, setTable] = useState('');
   const [config, setConfig] = useState(null);
   const [refreshId, setRefreshId] = useState(0);
@@ -20,14 +20,9 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const tableRef = useRef(null);
 
   useEffect(() => {
-    if (defaultName) setName(defaultName);
-  }, [defaultName]);
-
-  useEffect(() => {
-    if (defaultName) return;
     if (name) setSearchParams({ name });
     else setSearchParams({});
-  }, [name, setSearchParams, defaultName]);
+  }, [name, setSearchParams]);
 
   useEffect(() => {
     const params = new URLSearchParams({ moduleKey });
@@ -82,11 +77,11 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   if (!perms || !licensed) return <p>Loading...</p>;
   if (!perms[moduleKey] || !licensed[moduleKey]) return <p>Access denied.</p>;
 
-  const caption = defaultName || 'Choose transaction';
+  const caption = moduleLabel || 'Choose transaction';
 
   return (
     <div>
-      <h2>{defaultName || 'Transactions'}</h2>
+      <h2>{moduleLabel || 'Transactions'}</h2>
       {transactionNames.length > 0 && (
         <div style={{ marginBottom: '0.5rem', maxWidth: '300px' }}>
           <SearchSelect
