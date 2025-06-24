@@ -5,6 +5,7 @@ import {
   populateRoleModulePermissions,
   populateCompanyModuleLicenses,
 } from "../../db/index.js";
+import { logActivity } from "../utils/activityLog.js";
 
 export async function listModules(req, res, next) {
   try {
@@ -17,8 +18,21 @@ export async function listModules(req, res, next) {
 
 export async function saveModule(req, res, next) {
   try {
-    if (req.user.role !== 'admin') return res.sendStatus(403);
     const moduleKey = req.params.moduleKey || req.body.moduleKey;
+    const origin = req.get('x-origin');
+    // Guard against unintended updates from the forms configuration page
+    if (origin === 'form-management') {
+      logActivity(
+        `saveModule blocked: ${req.user.email || req.user.id} -> ${moduleKey} origin=${origin}`,
+      );
+      return res
+        .status(403)
+        .json({ message: 'Forbidden: Cannot update module from forms config' });
+    }
+    logActivity(
+      `saveModule attempt: ${req.user.email || req.user.id} -> ${moduleKey} origin=${origin}`,
+    );
+    if (req.user.role !== 'admin') return res.sendStatus(403);
     const label = req.body.label;
     const parentKey = req.body.parentKey || null;
     const showInSidebar = req.body.showInSidebar ?? true;
