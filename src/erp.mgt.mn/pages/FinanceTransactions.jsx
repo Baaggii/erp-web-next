@@ -99,9 +99,21 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
 
   useEffect(() => {
     if (!table || !name) return;
-    fetch(`/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`, { credentials: 'include' })
+    fetch(
+      `/api/transaction_forms?table=${encodeURIComponent(
+        table,
+      )}&name=${encodeURIComponent(name)}`,
+      { credentials: 'include' },
+    )
       .then((res) => (res.ok ? res.json() : null))
-      .then((cfg) => setConfig(cfg))
+      .then((cfg) => {
+        if (cfg && cfg.moduleKey) {
+          setConfig(cfg);
+        } else {
+          setConfig(null);
+          setShowTable(false);
+        }
+      })
       .catch(() => setConfig(null));
   }, [table, name]);
 
