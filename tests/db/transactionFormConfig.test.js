@@ -27,7 +27,7 @@ function mockPool(handler) {
   };
 }
 
-await test('setFormConfig writes moduleKey without creating modules', async () => {
+await test('setFormConfig writes moduleKey without touching modules', async () => {
   const { orig, restore } = await withTempFile();
   await fs.writeFile(filePath, '{}');
   const calls = [];
@@ -60,7 +60,7 @@ await test('setFormConfig stores moduleLabel when provided', async () => {
   await restore();
 });
 
-await test('setFormConfig ignores sidebar/header flags and slug', async () => {
+await test('setFormConfig forwards sidebar/header flags', async () => {
   const { orig, restore } = await withTempFile();
   await fs.writeFile(filePath, '{}');
   const calls = [];
