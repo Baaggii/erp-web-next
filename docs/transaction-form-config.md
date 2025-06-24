@@ -58,10 +58,10 @@ configuration parsed from the file.  This allows the front‑end to populate
 forms without issuing additional requests or duplicating any parsing logic.
 To obtain a configuration for a specific transaction use
 `/api/transaction_forms?table=tbl&name=transaction`. New configurations are
-posted with `{ table, name, config, showInSidebar?, showInHeader? }` in the request body and can be removed via
+posted with `{ table, name, config }` in the request body and can be removed via
 `DELETE /api/transaction_forms?table=tbl&name=transaction`.
-Saving a configuration automatically creates modules based on the provided
-`moduleKey`. If no `moduleKey` is supplied the value `finance_transactions` is
-used. The optional `moduleLabel` lets you set a custom name for the parent
-module. The optional `showInSidebar` and `showInHeader` flags determine where the
-generated module appears in the UI.
+Saving a configuration does **not** create or update any modules.  The provided
+`moduleKey` is merely stored with the configuration so that transactions can be
+grouped under an existing parent module.  If no `moduleKey` is supplied the
+value `finance_transactions` is used.  The optional `moduleLabel` is only saved
+with the configuration and does not create a module with that label.
