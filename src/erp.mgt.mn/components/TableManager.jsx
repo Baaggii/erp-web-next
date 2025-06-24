@@ -1,4 +1,11 @@
-import React, { useEffect, useState, useContext, useMemo } from 'react';
+import React, {
+  useEffect,
+  useState,
+  useContext,
+  useMemo,
+  useImperativeHandle,
+  forwardRef,
+} from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import RowFormModal from './RowFormModal.jsx';
@@ -31,7 +38,7 @@ const deleteBtnStyle = {
   color: '#b91c1c',
 };
 
-export default function TableManager({ table, refreshId = 0, formConfig = null, initialPerPage = 10, addLabel = 'Add Row' }) {
+export default forwardRef(function TableManager({ table, refreshId = 0, formConfig = null, initialPerPage = 10, addLabel = 'Add Row' }, ref) {
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
   const [page, setPage] = useState(1);
@@ -323,6 +330,8 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
     setShowForm(true);
   }
 
+  useImperativeHandle(ref, () => ({ openAdd }));
+
   async function openDetail(row) {
     setDetailRow(row);
     const id = getRowId(row);
@@ -365,6 +374,11 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
 
   function deselectAll() {
     setSelectedRows(new Set());
+  }
+
+  function handleFieldChange(changes) {
+    if (!editing) return;
+    setEditing((e) => ({ ...e, ...changes }));
   }
 
   function handleSort(col) {
@@ -1015,6 +1029,7 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
           setIsAdding(false);
         }}
         onSubmit={handleSubmit}
+        onChange={handleFieldChange}
         columns={formColumns}
         row={editing}
         relations={relationOpts}
@@ -1093,4 +1108,4 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
       )}
     </div>
   );
-}
+});
