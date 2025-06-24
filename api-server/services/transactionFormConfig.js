@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { upsertModule } from '../../db/index.js';
+import { upsertModule, deleteModule } from '../../db/index.js';
 import { slugify } from '../utils/slugify.js';
 
 const filePath = path.join(process.cwd(), 'config', 'transactionForms.json');
@@ -158,9 +158,26 @@ export async function setFormConfig(table, name, config, options = {}) {
 
 export async function deleteFormConfig(table, name) {
   const cfg = await readConfig();
-  if (cfg[table]) {
-    delete cfg[table][name];
-    if (Object.keys(cfg[table]).length === 0) delete cfg[table];
-    await writeConfig(cfg);
+  if (!cfg[table] || !cfg[table][name]) return;
+  const { moduleKey: parentKey } = parseEntry(cfg[table][name]);
+  const slug = slugify(`${parentKey}_${name}`);
+  delete cfg[table][name];
+  if (Object.keys(cfg[table]).length === 0) delete cfg[table];
+  await writeConfig(cfg);
+  try {
+    await deleteModule(slug);
+    let used = false;
+    for (const tbl of Object.values(cfg)) {
+      for (const info of Object.values(tbl)) {
+        if (parseEntry(info).moduleKey === parentKey) {
+          used = true;
+          break;
+        }
+      }
+      if (used) break;
+    }
+    if (!used) await deleteModule(parentKey);
+  } catch (err) {
+    console.error('Failed to auto-delete module', err);
   }
 }
