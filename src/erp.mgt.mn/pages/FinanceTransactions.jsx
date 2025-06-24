@@ -47,7 +47,8 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   }, [name, setSearchParams, paramKey]);
 
   useEffect(() => {
-    const params = new URLSearchParams({ moduleKey });
+    const params = new URLSearchParams();
+    if (moduleKey) params.set('moduleKey', moduleKey);
     if (company?.branch_id !== undefined)
       params.set('branchId', company.branch_id);
     if (company?.department_id !== undefined)
@@ -100,7 +101,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   if (!perms || !licensed) return <p>Loading...</p>;
   if (!perms[moduleKey] || !licensed[moduleKey]) return <p>Access denied.</p>;
 
-  const caption = moduleLabel || 'Choose transaction';
+  const caption = 'Choose transaction';
 
   return (
     <div>
