@@ -39,13 +39,9 @@ await test('setFormConfig writes moduleKey and creates modules with slug', async
   restoreDb();
   const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
   assert.equal(data.tbl['Sample Transaction'].moduleKey, 'parent_mod');
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 1);
   assert.equal(calls[0].params[0], 'parent_mod');
   assert.equal(calls[0].params[1], slugify('parent_mod'));
-  assert.equal(
-    calls[1].params[0],
-    slugify('parent_mod_Sample Transaction')
-  );
   await restore();
 });
 
@@ -63,7 +59,7 @@ await test('setFormConfig uses moduleLabel when provided', async () => {
   restoreDb();
   const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
   assert.equal(data.tbl.Labeled.moduleLabel, 'My Transactions');
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 1);
   assert.equal(calls[0].params[0], 'parent_mod');
   assert.equal(calls[0].params[1], 'My Transactions');
   await restore();
@@ -85,10 +81,10 @@ await test('setFormConfig forwards sidebar/header flags and slug', async () => {
   restoreDb();
   const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
   assert.equal(data.tbl.Flagged.moduleKey, 'parent_mod');
-  assert.equal(calls.length, 2);
-  assert.equal(calls[1].params[0], 'custom_slug');
-  assert.equal(calls[1].params[3], 0);
-  assert.equal(calls[1].params[4], 1);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].params[0], 'parent_mod');
+  assert.equal(calls[0].params[3], 1); // parent defaults showInSidebar true
+  assert.equal(calls[0].params[4], 0); // parent defaults showInHeader false
   await restore();
 });
 

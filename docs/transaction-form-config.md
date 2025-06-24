@@ -60,8 +60,10 @@ To obtain a configuration for a specific transaction use
 `/api/transaction_forms?table=tbl&name=transaction`. New configurations are
 posted with `{ table, name, config, showInSidebar?, showInHeader? }` in the request body and can be removed via
 `DELETE /api/transaction_forms?table=tbl&name=transaction`.
-Saving a configuration automatically creates modules based on the provided
-`moduleKey`. If no `moduleKey` is supplied the value `finance_transactions` is
-used. The optional `moduleLabel` lets you set a custom name for the parent
-module. The optional `showInSidebar` and `showInHeader` flags determine where the
-generated module appears in the UI.
+Saving a configuration does **not** generate a module for every transaction.
+Only the parent module referenced by `moduleKey` is created (or updated) if it
+does not already exist.  All transactions share this parent module and are
+grouped under it.  If no `moduleKey` is supplied the value
+`finance_transactions` is used.  The optional `moduleLabel` lets you set a custom
+name for the parent module.  The optional `showInSidebar` and `showInHeader`
+flags previously applied to child modules and currently have no effect.
