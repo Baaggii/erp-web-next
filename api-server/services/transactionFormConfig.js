@@ -36,6 +36,7 @@ function parseEntry(raw = {}) {
     allowedDepartments: Array.isArray(raw.allowedDepartments)
       ? raw.allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
       : [],
+    moduleLabel: typeof raw.moduleLabel === 'string' ? raw.moduleLabel : '',
   };
 }
 
@@ -86,6 +87,7 @@ export async function setFormConfig(table, name, config, options = {}) {
     allowedBranches = [],
     allowedDepartments = [],
     moduleKey: parentModuleKey = 'finance_transactions',
+    moduleLabel,
     userIdField,
     branchIdField,
     companyIdField,
@@ -131,14 +133,16 @@ export async function setFormConfig(table, name, config, options = {}) {
     branchIdFields: bid,
     companyIdFields: cid,
     moduleKey: parentModuleKey,
+    moduleLabel: moduleLabel || undefined,
     allowedBranches: ab,
     allowedDepartments: ad,
   };
   await writeConfig(cfg);
   try {
+    const parentLabel = moduleLabel || slugify(parentModuleKey);
     await upsertModule(
       parentModuleKey,
-      parentModuleKey,
+      parentLabel,
       null,
       true,
       false,

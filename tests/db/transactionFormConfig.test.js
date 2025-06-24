@@ -41,10 +41,31 @@ await test('setFormConfig writes moduleKey and creates modules with slug', async
   assert.equal(data.tbl['Sample Transaction'].moduleKey, 'parent_mod');
   assert.equal(calls.length, 2);
   assert.equal(calls[0].params[0], 'parent_mod');
+  assert.equal(calls[0].params[1], slugify('parent_mod'));
   assert.equal(
     calls[1].params[0],
     slugify('parent_mod_Sample Transaction')
   );
+  await restore();
+});
+
+await test('setFormConfig uses moduleLabel when provided', async () => {
+  const { orig, restore } = await withTempFile();
+  await fs.writeFile(filePath, '{}');
+  const calls = [];
+  const restoreDb = mockPool((sql, params) => calls.push({ sql, params }));
+
+  await setFormConfig('tbl', 'Labeled', {
+    moduleKey: 'parent_mod',
+    moduleLabel: 'My Transactions',
+  });
+
+  restoreDb();
+  const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
+  assert.equal(data.tbl.Labeled.moduleLabel, 'My Transactions');
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].params[0], 'parent_mod');
+  assert.equal(calls[0].params[1], 'My Transactions');
   await restore();
 });
 

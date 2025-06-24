@@ -13,6 +13,7 @@ Each **transaction** entry allows you to specify:
 - **branchIdFields** – fields automatically filled with the branch ID
 - **companyIdFields** – fields automatically filled with the company ID
 - **moduleKey** – module slug used to group the form under a module
+- **moduleLabel** – optional label for the parent module
 - **allowedBranches** – restrict usage to these branch IDs
 - **allowedDepartments** – restrict usage to these department IDs
 
@@ -30,6 +31,7 @@ Example snippet:
       "branchIdFields": ["branch_id"],
       "companyIdFields": ["company_id"],
       "moduleKey": "finance_transactions",
+      "moduleLabel": "Finance",
       "allowedBranches": [1, 2],
       "allowedDepartments": [5]
     },
@@ -42,6 +44,7 @@ Example snippet:
       "branchIdFields": ["branch_id"],
       "companyIdFields": ["company_id"],
       "moduleKey": "finance_transactions",
+      "moduleLabel": "Finance",
       "allowedBranches": [1, 2],
       "allowedDepartments": [5]
     }
@@ -59,5 +62,6 @@ posted with `{ table, name, config, showInSidebar?, showInHeader? }` in the requ
 `DELETE /api/transaction_forms?table=tbl&name=transaction`.
 Saving a configuration automatically creates modules based on the provided
 `moduleKey`. If no `moduleKey` is supplied the value `finance_transactions` is
-used. The optional `showInSidebar` and `showInHeader` flags determine where the
+used. The optional `moduleLabel` lets you set a custom name for the parent
+module. The optional `showInSidebar` and `showInHeader` flags determine where the
 generated module appears in the UI.
