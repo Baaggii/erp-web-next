@@ -46,4 +46,7 @@ If the sidebar links do not match the available React routes, run:
 node scripts/check-module-routes.cjs
 ```
 
-It prints `All sidebar modules have matching routes.` when every module has a corresponding route, or lists the missing ones so you can correct them.
+The script loads module definitions from `db/defaultModules.js` and compares them
+to the available React routes. It prints `All sidebar modules have matching routes.`
+when every module has a corresponding route, or lists the missing ones so you can
+correct them.
