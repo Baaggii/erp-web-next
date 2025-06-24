@@ -472,7 +472,8 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         setShowForm(false);
         setEditing(null);
         setIsAdding(false);
-        addToast('Saved', 'success');
+        const msg = isAdding ? 'New transaction saved' : 'Saved';
+        addToast(msg, 'success');
       } else {
         let message = 'Save failed';
         try {
