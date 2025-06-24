@@ -11,6 +11,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const [table, setTable] = useState('');
   const [config, setConfig] = useState(null);
   const [refreshId, setRefreshId] = useState(0);
+  const [showTable, setShowTable] = useState(false);
   const { company } = useContext(AuthContext);
   const tableRef = useRef(null);
 
@@ -28,11 +29,31 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
     const params = new URLSearchParams({ moduleKey });
     if (company?.branch_id !== undefined)
       params.set('branchId', company.branch_id);
+    if (company?.department_id !== undefined)
+      params.set('departmentId', company.department_id);
     fetch(`/api/transaction_forms?${params.toString()}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
       .then((data) => {
-        setConfigs(data);
-        if (name && data[name]) setTable(data[name].table ?? data[name]);
+        const filtered = {};
+        Object.entries(data).forEach(([n, info]) => {
+          const allowedB = info.allowedBranches || [];
+          const allowedD = info.allowedDepartments || [];
+          if (
+            allowedB.length > 0 &&
+            company?.branch_id !== undefined &&
+            !allowedB.includes(company.branch_id)
+          )
+            return;
+          if (
+            allowedD.length > 0 &&
+            company?.department_id !== undefined &&
+            !allowedD.includes(company.department_id)
+          )
+            return;
+          filtered[n] = info;
+        });
+        setConfigs(filtered);
+        if (name && filtered[name]) setTable(filtered[name].table ?? filtered[name]);
       })
       .catch(() => setConfigs({}));
   }, [moduleKey, company]);
@@ -61,25 +82,34 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
             onChange={(v) => {
               setName(v);
               setRefreshId((r) => r + 1);
+              setShowTable(false);
             }}
             options={transactionNames.map((t) => ({ value: t, label: t }))}
+            placeholder="Choose transaction"
           />
         </div>
       )}
       {table && config && (
         <div style={{ marginBottom: '0.5rem' }}>
-          <button onClick={() => tableRef.current?.openAdd()}>Add Transaction</button>
+          <button onClick={() => tableRef.current?.openAdd()} style={{ marginRight: '0.5rem' }}>
+            Add Transaction
+          </button>
+          <button onClick={() => setShowTable((v) => !v)}>
+            {showTable ? 'Hide Table' : 'View Table'}
+          </button>
         </div>
       )}
       {table && config && (
-        <TableManager
-          ref={tableRef}
-          table={table}
-          refreshId={refreshId}
-          formConfig={config}
-          initialPerPage={10}
-          addLabel="Add Transaction"
-        />
+        <div style={{ display: showTable ? 'block' : 'none' }}>
+          <TableManager
+            ref={tableRef}
+            table={table}
+            refreshId={refreshId}
+            formConfig={config}
+            initialPerPage={10}
+            addLabel="Add Transaction"
+          />
+        </div>
       )}
       {transactionNames.length === 0 && (
         <p>No transactions configured.</p>

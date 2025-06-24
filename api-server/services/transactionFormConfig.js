@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { upsertModule } from '../../db/index.js';
+import { slugify } from '../utils/slugify.js';
 
 const filePath = path.join(process.cwd(), 'config', 'transactionForms.json');
 
@@ -91,8 +92,9 @@ export async function setFormConfig(table, name, config, options = {}) {
   const {
     showInSidebar = true,
     showInHeader = false,
-    moduleKey = 'finance_transactions',
+    moduleKey: providedModuleKey,
   } = options;
+  const moduleKey = providedModuleKey || slugify(name);
   const uid = (userIdFields.length ? userIdFields : userIdField ? [userIdField] : [])
     .map(String)
     .filter(Boolean);
@@ -132,7 +134,13 @@ export async function setFormConfig(table, name, config, options = {}) {
   };
   await writeConfig(cfg);
   try {
-    await upsertModule(moduleKey, moduleKey.replace(/_/g, ' '), null, true, false);
+    await upsertModule(
+      moduleKey,
+      name,
+      'finance_transactions',
+      showInSidebar,
+      showInHeader,
+    );
   } catch (err) {
     console.error('Failed to auto-create module', err);
   }
