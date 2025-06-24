@@ -68,7 +68,6 @@ export default function App() {
     forms_management: <FormsManagementPage />,
     report_management: <ReportManagementPage />,
     change_password: <ChangePasswordPage />,
-    finance_transactions: <FinanceTransactionsPage />,
   };
 
   modules.forEach((m) => {
