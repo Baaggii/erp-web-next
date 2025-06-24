@@ -18,6 +18,17 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const perms = useRolePermissions();
   const licensed = useCompanyModules(company?.company_id);
   const tableRef = useRef(null);
+  const prevModuleKey = useRef(moduleKey);
+
+  useEffect(() => {
+    if (prevModuleKey.current !== moduleKey) {
+      setName('');
+      setTable('');
+      setConfig(null);
+      setShowTable(false);
+    }
+    prevModuleKey.current = moduleKey;
+  }, [moduleKey]);
 
   useEffect(() => {
     if (name) setSearchParams({ name });
