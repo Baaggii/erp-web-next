@@ -72,16 +72,7 @@ export default function App() {
           moduleKey={m.module_key}
           defaultName={m.label}
           hideSelector
-          title={m.label}
         />
-      );
-    }
-  });
-
-  modules.forEach((m) => {
-    if (!componentMap[m.module_key]) {
-      componentMap[m.module_key] = (
-        <FinanceTransactionsPage moduleKey={m.module_key} title={m.label} />
       );
     }
   });
