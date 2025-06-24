@@ -147,13 +147,6 @@ export async function setFormConfig(table, name, config, options = {}) {
       true,
       false,
     );
-    await upsertModule(
-      moduleSlug,
-      name,
-      parentModuleKey,
-      showInSidebar,
-      showInHeader,
-    );
   } catch (err) {
     console.error('Failed to auto-create module', err);
   }
