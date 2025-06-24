@@ -47,6 +47,10 @@ export default function RowFormModal({
   function handleKeyDown(e, col) {
     if (e.key !== 'Enter') return;
     e.preventDefault();
+    if (requiredFields.includes(col) && !formVals[col]) {
+      setErrors((er) => ({ ...er, [col]: 'Please enter value' }));
+      return;
+    }
     const enabled = columns.filter((c) => !disabledFields.includes(c));
     const idx = enabled.indexOf(col);
     const next = enabled[idx + 1];
@@ -106,9 +110,10 @@ export default function RowFormModal({
                   searchColumn={relationConfigs[c].column}
                   labelFields={relationConfigs[c].displayFields || []}
                   value={formVals[c]}
-                  onChange={(val) =>
-                    setFormVals((v) => ({ ...v, [c]: val }))
-                  }
+                  onChange={(val) => {
+                    setFormVals((v) => ({ ...v, [c]: val }));
+                    setErrors((er) => ({ ...er, [c]: undefined }));
+                  }}
                   disabled={row && disabledFields.includes(c)}
                   onKeyDown={(e) => handleKeyDown(e, c)}
                   inputRef={(el) => (inputRefs.current[c] = el)}
@@ -118,9 +123,10 @@ export default function RowFormModal({
                   title={labels[c] || c}
                   ref={(el) => (inputRefs.current[c] = el)}
                   value={formVals[c]}
-                  onChange={(e) =>
-                    setFormVals((v) => ({ ...v, [c]: e.target.value }))
-                  }
+                  onChange={(e) => {
+                    setFormVals((v) => ({ ...v, [c]: e.target.value }));
+                    setErrors((er) => ({ ...er, [c]: undefined }));
+                  }}
                   onKeyDown={(e) => handleKeyDown(e, c)}
                   disabled={row && disabledFields.includes(c)}
                   style={inputStyle}
@@ -138,9 +144,10 @@ export default function RowFormModal({
                   ref={(el) => (inputRefs.current[c] = el)}
                   type="text"
                   value={formVals[c]}
-                  onChange={(e) =>
-                    setFormVals((v) => ({ ...v, [c]: e.target.value }))
-                  }
+                  onChange={(e) => {
+                    setFormVals((v) => ({ ...v, [c]: e.target.value }));
+                    setErrors((er) => ({ ...er, [c]: undefined }));
+                  }}
                   onKeyDown={(e) => handleKeyDown(e, c)}
                   disabled={row && disabledFields.includes(c)}
                   style={inputStyle}
