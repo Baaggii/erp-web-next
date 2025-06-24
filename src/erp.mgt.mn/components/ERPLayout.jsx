@@ -8,7 +8,7 @@ import { logout } from "../hooks/useAuth.jsx";
 import { useRolePermissions, refreshRolePermissions } from "../hooks/useRolePermissions.js";
 import { useCompanyModules } from "../hooks/useCompanyModules.js";
 import { useModules } from "../hooks/useModules.js";
-import { useTransactionModules } from "../hooks/useTransactionModules.js";
+import { useTxnModules } from "../hooks/useTxnModules.js";
 import modulePath from "../utils/modulePath.js";
 import AskAIFloat from "./AskAIFloat.jsx";
 import { useTabs } from "../context/TabContext.jsx";
@@ -53,7 +53,7 @@ export default function ERPLayout() {
   const windowTitle = titleForPath(location.pathname);
 
   const { tabs, activeKey, openTab, closeTab, switchTab, setTabContent, cache } = useTabs();
-  const txnModuleKeys = useTransactionModules();
+  const txnModuleKeys = useTxnModules();
 
   useEffect(() => {
     const title = titleForPath(location.pathname);
