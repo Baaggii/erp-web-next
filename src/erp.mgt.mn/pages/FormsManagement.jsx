@@ -309,6 +309,7 @@ export default function FormsManagement() {
               User ID fields:{' '}
               <select
                 multiple
+                size={8}
                 value={config.userIdFields}
                 onChange={(e) =>
                   setConfig((c) => ({
@@ -330,6 +331,7 @@ export default function FormsManagement() {
               Branch ID fields:{' '}
               <select
                 multiple
+                size={8}
                 value={config.branchIdFields}
                 onChange={(e) =>
                   setConfig((c) => ({
@@ -351,6 +353,7 @@ export default function FormsManagement() {
               Company ID fields:{' '}
               <select
                 multiple
+                size={8}
                 value={config.companyIdFields}
                 onChange={(e) =>
                   setConfig((c) => ({
@@ -372,6 +375,7 @@ export default function FormsManagement() {
               Allowed branches:{' '}
               <select
                 multiple
+                size={8}
                 value={config.allowedBranches}
                 onChange={(e) =>
                   setConfig((c) => ({
@@ -393,6 +397,7 @@ export default function FormsManagement() {
               Allowed departments:{' '}
               <select
                 multiple
+                size={8}
                 value={config.allowedDepartments}
                 onChange={(e) =>
                   setConfig((c) => ({

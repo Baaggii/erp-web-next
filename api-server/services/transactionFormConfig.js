@@ -102,9 +102,7 @@ export async function setFormConfig(table, name, config, options = {}) {
     ? [branchIdField]
     : [])
     .map(String)
-    .filter(Boolean)
-    .map((v) => Number(v))
-    .filter((v) => !Number.isNaN(v));
+    .filter(Boolean);
   const cid = (companyIdFields.length
     ? companyIdFields
     : companyIdField
