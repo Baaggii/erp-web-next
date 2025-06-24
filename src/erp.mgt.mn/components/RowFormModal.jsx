@@ -40,8 +40,14 @@ export default function RowFormModal({
     return map;
   }, [columns]);
 
+  function normalizeDateInput(value) {
+    if (typeof value !== 'string') return value;
+    return value.replace(/^(\d{4})\.(\d{2})\.(\d{2})/, '$1-$2-$3');
+  }
+
   function isValidDate(value, format) {
     if (!value) return true;
+    const normalized = normalizeDateInput(value);
     const map = {
       'YYYY-MM-DD': /^\d{4}-\d{2}-\d{2}$/,
       'HH:MM:SS': /^\d{2}:\d{2}:\d{2}$/,
@@ -49,9 +55,9 @@ export default function RowFormModal({
     };
     const re = map[format];
     if (!re) return true;
-    if (!re.test(value)) return false;
+    if (!re.test(normalized)) return false;
     if (format !== 'HH:MM:SS') {
-      const d = new Date(value.replace(' ', 'T'));
+      const d = new Date(normalized.replace(' ', 'T'));
       return !isNaN(d.getTime());
     }
     return true;
@@ -79,10 +85,11 @@ export default function RowFormModal({
   function handleKeyDown(e, col) {
     if (e.key !== 'Enter') return;
     e.preventDefault();
-    const val = e.target.value;
+    let val = normalizeDateInput(e.target.value);
     if (formVals[col] !== val) {
       setFormVals((v) => ({ ...v, [col]: val }));
       onChange({ [col]: val });
+      if (val !== e.target.value) e.target.value = val;
     }
     if (placeholders[col] && !isValidDate(val, placeholders[col])) {
       setErrors((er) => ({ ...er, [col]: 'Invalid date' }));
@@ -121,7 +128,11 @@ export default function RowFormModal({
         'Save this transaction? Have you checked all data and accept responsibility?',
       );
       if (ok) {
-        await Promise.resolve(onSubmit(formVals));
+        const normalized = {};
+        Object.entries(formVals).forEach(([k, v]) => {
+          normalized[k] = placeholders[k] ? normalizeDateInput(v) : v;
+        });
+        await Promise.resolve(onSubmit(normalized));
       } else {
         setSubmitLocked(false);
         return;

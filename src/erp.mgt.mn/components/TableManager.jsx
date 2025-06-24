@@ -13,6 +13,11 @@ import CascadeDeleteModal from './CascadeDeleteModal.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
+function normalizeDateInput(value) {
+  if (typeof value !== 'string') return value;
+  return value.replace(/^(\d{4})\.(\d{2})\.(\d{2})/, '$1-$2-$3');
+}
+
 const actionCellStyle = {
   padding: '0.5rem',
   border: '1px solid #d1d5db',
@@ -432,7 +437,9 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
 
     const cleaned = {};
     Object.entries(merged).forEach(([k, v]) => {
-      if (v !== '') cleaned[k] = v;
+      if (v !== '') {
+        cleaned[k] = typeof v === 'string' ? normalizeDateInput(v) : v;
+      }
     });
 
     const method = isAdding ? 'POST' : 'PUT';
