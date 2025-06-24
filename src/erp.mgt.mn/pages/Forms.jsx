@@ -1,28 +1,55 @@
 // src/erp.mgt.mn/pages/Forms.jsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useContext } from 'react';
 import FinanceTransactionsPage from './FinanceTransactions.jsx';
 import { useModules } from '../hooks/useModules.js';
+import { AuthContext } from '../context/AuthContext.jsx';
+import { useRolePermissions } from '../hooks/useRolePermissions.js';
+import { useCompanyModules } from '../hooks/useCompanyModules.js';
 
 
 export default function Forms() {
   const [transactions, setTransactions] = useState({});
   const modules = useModules();
+  const { company } = useContext(AuthContext);
+  const perms = useRolePermissions();
+  const licensed = useCompanyModules(company?.company_id);
 
   useEffect(() => {
-    fetch('/api/transaction_forms', { credentials: 'include' })
+    const params = new URLSearchParams();
+    if (company?.branch_id !== undefined)
+      params.set('branchId', company.branch_id);
+    if (company?.department_id !== undefined)
+      params.set('departmentId', company.department_id);
+    const url = `/api/transaction_forms${params.toString() ? `?${params.toString()}` : ''}`;
+    fetch(url, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
       .then((data) => {
         const grouped = {};
         Object.entries(data).forEach(([name, info]) => {
-          const key = info.moduleKey;
-          if (!key) return;
+          const allowedB = info.allowedBranches || [];
+          const allowedD = info.allowedDepartments || [];
+          const key = info.moduleKey || 'finance_transactions';
+          if (
+            allowedB.length > 0 &&
+            company?.branch_id !== undefined &&
+            !allowedB.includes(company.branch_id)
+          )
+            return;
+          if (
+            allowedD.length > 0 &&
+            company?.department_id !== undefined &&
+            !allowedD.includes(company.department_id)
+          )
+            return;
+          if (perms && !perms[key]) return;
+          if (licensed && !licensed[key]) return;
           if (!grouped[key]) grouped[key] = [];
           grouped[key].push(name);
         });
         setTransactions(grouped);
       })
       .catch((err) => console.error('Error fetching forms:', err));
-  }, []);
+  }, [company, perms, licensed]);
 
   const groups = Object.entries(transactions);
 
