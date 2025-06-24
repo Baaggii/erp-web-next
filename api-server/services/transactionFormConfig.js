@@ -90,10 +90,6 @@ export async function setFormConfig(table, name, config, options = {}) {
     branchIdField,
     companyIdField,
   } = config || {};
-  const {
-    showInSidebar = true,
-    showInHeader = false,
-  } = options;
   const uid = (userIdFields.length ? userIdFields : userIdField ? [userIdField] : [])
     .map(String)
     .filter(Boolean);

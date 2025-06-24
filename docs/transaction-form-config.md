@@ -60,9 +60,8 @@ configuration parsed from the file.  This allows the front‑end to populate
 forms without issuing additional requests or duplicating any parsing logic.
 To obtain a configuration for a specific transaction use
 `/api/transaction_forms?table=tbl&name=transaction`. New configurations are
-posted with `{ table, name, config, showInSidebar?, showInHeader? }` in the request body and can be removed via
+posted with `{ table, name, config }` in the request body and can be removed via
 `DELETE /api/transaction_forms?table=tbl&name=transaction`.
 Saving a configuration does **not** create or update any modules. The optional
 `moduleKey` and `moduleLabel` values are stored with the form entry but must be
-managed separately in the modules table. The optional `showInSidebar` and
-`showInHeader` flags currently have no effect.
+managed separately in the modules table.
