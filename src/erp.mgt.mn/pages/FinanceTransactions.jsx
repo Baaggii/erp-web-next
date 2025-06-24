@@ -6,10 +6,17 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import { useRolePermissions } from '../hooks/useRolePermissions.js';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
 
-export default function FinanceTransactions({ moduleKey = 'finance_transactions', defaultName = '', hideSelector = false }) {
+export default function FinanceTransactions({
+  moduleKey = 'finance_transactions',
+  defaultName = '',
+  hideSelector = false,
+  title = '',
+}) {
   const [configs, setConfigs] = useState({});
   const [searchParams, setSearchParams] = useSearchParams();
-  const [name, setName] = useState(() => defaultName || searchParams.get('name') || '');
+  const [name, setName] = useState(() =>
+    hideSelector && defaultName ? defaultName : searchParams.get('name') || '',
+  );
   const [table, setTable] = useState('');
   const [config, setConfig] = useState(null);
   const [refreshId, setRefreshId] = useState(0);
@@ -20,14 +27,14 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const tableRef = useRef(null);
 
   useEffect(() => {
-    if (defaultName) setName(defaultName);
-  }, [defaultName]);
+    if (hideSelector && defaultName) setName(defaultName);
+  }, [defaultName, hideSelector]);
 
   useEffect(() => {
-    if (defaultName) return;
+    if (hideSelector) return;
     if (name) setSearchParams({ name });
     else setSearchParams({});
-  }, [name, setSearchParams, defaultName]);
+  }, [name, setSearchParams, hideSelector]);
 
   useEffect(() => {
     const params = new URLSearchParams({ moduleKey });
@@ -43,6 +50,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
           const allowedB = info.allowedBranches || [];
           const allowedD = info.allowedDepartments || [];
           const mKey = info.moduleKey || 'finance_transactions';
+          if (mKey !== moduleKey) return;
           if (
             allowedB.length > 0 &&
             company?.branch_id !== undefined &&
@@ -84,7 +92,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
 
   return (
     <div>
-      <h2>{defaultName || 'Finance Transactions'}</h2>
+      <h2>{title || 'Finance Transactions'}</h2>
       {!hideSelector && transactionNames.length > 0 && (
         <div style={{ marginBottom: '0.5rem', maxWidth: '300px' }}>
           <SearchSelect
@@ -95,10 +103,10 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
               setShowTable(false);
             }}
             options={[
-              { value: '', label: 'Choose transaction' },
+              { value: '', label: '-- Choose transaction --' },
               ...transactionNames.map((t) => ({ value: t, label: t })),
             ]}
-            placeholder="Choose transaction"
+            placeholder="-- Choose transaction --"
           />
         </div>
       )}
@@ -113,16 +121,15 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
         </div>
       )}
       {table && config && (
-        <div style={{ display: showTable ? 'block' : 'none' }}>
-          <TableManager
-            ref={tableRef}
-            table={table}
-            refreshId={refreshId}
-            formConfig={config}
-            initialPerPage={10}
-            addLabel="Add Transaction"
-          />
-        </div>
+        <TableManager
+          ref={tableRef}
+          table={table}
+          refreshId={refreshId}
+          formConfig={config}
+          initialPerPage={10}
+          addLabel="Add Transaction"
+          visible={showTable}
+        />
       )}
       {transactionNames.length === 0 && (
         <p>No transactions configured.</p>

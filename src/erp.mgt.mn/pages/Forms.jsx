@@ -37,7 +37,7 @@ export default function Forms() {
             <div key={key} style={{ marginBottom: '1rem' }}>
               <FinanceTransactionsPage
                 moduleKey={key}
-                defaultName={mod ? mod.label : key}
+                title={mod ? mod.label : key}
               />
             </div>
           );
