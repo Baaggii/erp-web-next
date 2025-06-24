@@ -30,14 +30,10 @@ router.get('/', requireAuth, async (req, res, next) => {
 
 router.post('/', requireAuth, async (req, res, next) => {
   try {
-    const { table, name, config, showInSidebar, showInHeader, moduleKey } = req.body;
+    const { table, name, config } = req.body;
     if (!table || !name)
       return res.status(400).json({ message: 'table and name are required' });
-    await setFormConfig(table, name, config || {}, {
-      showInSidebar,
-      showInHeader,
-      moduleKey,
-    });
+    await setFormConfig(table, name, config || {});
     res.sendStatus(204);
   } catch (err) {
     next(err);
