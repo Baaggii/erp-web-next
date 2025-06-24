@@ -16,6 +16,7 @@ export default function AsyncSearchSelect({
   const [show, setShow] = useState(false);
   const [highlight, setHighlight] = useState(-1);
   const containerRef = useRef(null);
+  const match = options.find((o) => String(o.value) === String(input));
 
   useEffect(() => {
     setInput(value || '');
@@ -67,9 +68,11 @@ export default function AsyncSearchSelect({
       e.preventDefault();
       setHighlight((h) => Math.max(h - 1, 0));
     } else if (e.key === 'Enter') {
-      if (highlight >= 0 && highlight < options.length) {
+      let idx = highlight;
+      if (idx < 0 && options.length > 0) idx = 0;
+      if (idx >= 0 && idx < options.length) {
         e.preventDefault();
-        const opt = options[highlight];
+        const opt = options[idx];
         onChange(opt.value);
         setInput(String(opt.value));
         setShow(false);
@@ -95,8 +98,8 @@ export default function AsyncSearchSelect({
         onFocus={() => setShow(true)}
         onBlur={handleBlur}
         onKeyDown={(e) => {
-          if (onKeyDown) onKeyDown(e);
           handleSelectKeyDown(e);
+          if (onKeyDown) onKeyDown(e);
         }}
         disabled={disabled}
         style={{ width: '100%', padding: '0.5rem' }}
@@ -136,6 +139,9 @@ export default function AsyncSearchSelect({
             </li>
           ))}
         </ul>
+      )}
+      {match && (
+        <div style={{ fontSize: '0.8rem', color: '#555' }}>{match.label}</div>
       )}
     </div>
   );

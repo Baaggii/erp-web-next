@@ -446,19 +446,28 @@ export default function TableManager({ table, refreshId = 0, formConfig = null, 
           params.set('sort', sort.column);
           params.set('dir', sort.dir);
         }
-      Object.entries(filters).forEach(([k, v]) => {
-        if (v) params.set(k, v);
-      });
-      const data = await fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
-        credentials: 'include',
-      }).then((r) => r.json());
-      setRows(data.rows || []);
-      setCount(data.count || 0);
+        Object.entries(filters).forEach(([k, v]) => {
+          if (v) params.set(k, v);
+        });
+        const data = await fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
+          credentials: 'include',
+        }).then((r) => r.json());
+        setRows(data.rows || []);
+        setCount(data.count || 0);
         setSelectedRows(new Set());
         setShowForm(false);
         setEditing(null);
         setIsAdding(false);
         addToast('Saved', 'success');
+      } else {
+        let message = 'Save failed';
+        try {
+          const data = await res.json();
+          if (data && data.message) message += `: ${data.message}`;
+        } catch {
+          // ignore
+        }
+        addToast(message, 'error');
       }
     } catch (err) {
       console.error('Save failed', err);
