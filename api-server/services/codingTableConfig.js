@@ -37,3 +37,11 @@ export async function setConfig(table, config = {}) {
   await writeConfig(cfg);
   return cfg[table];
 }
+
+export async function deleteConfig(table) {
+  const cfg = await readConfig();
+  if (cfg[table]) {
+    delete cfg[table];
+    await writeConfig(cfg);
+  }
+}

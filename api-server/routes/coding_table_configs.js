@@ -1,5 +1,10 @@
 import express from 'express';
-import { getConfig, getAllConfigs, setConfig } from '../services/codingTableConfig.js';
+import {
+  getConfig,
+  getAllConfigs,
+  setConfig,
+  deleteConfig,
+} from '../services/codingTableConfig.js';
 import { requireAuth } from '../middlewares/auth.js';
 
 const router = express.Router();
@@ -25,6 +30,17 @@ router.post('/', requireAuth, async (req, res, next) => {
     if (!table) return res.status(400).json({ message: 'table is required' });
     await setConfig(table, config || {});
     res.status(200).json({ message: 'Config saved successfully' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/', requireAuth, async (req, res, next) => {
+  try {
+    const table = req.query.table;
+    if (!table) return res.status(400).json({ message: 'table is required' });
+    await deleteConfig(table);
+    res.sendStatus(204);
   } catch (err) {
     next(err);
   }
