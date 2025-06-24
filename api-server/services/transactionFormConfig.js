@@ -1,5 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { deleteModule } from '../../db/index.js';
+import { slugify } from '../utils/slugify.js';
 
 const filePath = path.join(process.cwd(), 'config', 'transactionForms.json');
 
@@ -90,10 +92,6 @@ export async function setFormConfig(table, name, config, options = {}) {
     branchIdField,
     companyIdField,
   } = config || {};
-  const {
-    showInSidebar = true,
-    showInHeader = false,
-  } = options;
   const uid = (userIdFields.length ? userIdFields : userIdField ? [userIdField] : [])
     .map(String)
     .filter(Boolean);
