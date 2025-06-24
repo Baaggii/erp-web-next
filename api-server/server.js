@@ -21,7 +21,6 @@ import headerMappingRoutes from "./routes/header_mappings.js";
 import displayFieldRoutes from "./routes/display_fields.js";
 import codingTableConfigRoutes from "./routes/coding_table_configs.js";
 import generatedSqlRoutes from "./routes/generated_sql.js";
-import formsRoutes from "./routes/forms.js";
 import transactionFormRoutes from "./routes/transaction_forms.js";
 import { requireAuth } from "./middlewares/auth.js";
 
@@ -61,7 +60,6 @@ app.use("/api/openai", openaiRoutes);
 app.use("/api/display_fields", displayFieldRoutes);
 app.use("/api/coding_table_configs", codingTableConfigRoutes);
 app.use("/api/generated_sql", generatedSqlRoutes);
-app.use("/api/forms", formsRoutes);
 app.use("/api/transaction_forms", transactionFormRoutes);
 app.use("/api/tables", requireAuth, tableRoutes);
 

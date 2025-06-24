@@ -20,10 +20,9 @@ This document outlines the roadmap, scope, architecture, milestones, and deliver
    - `/erp/api/users/:id/password`: PUT (old/new/confirm)  
    - `/erp/api/user_companies`: GET|POST|PUT|DELETE
 
-2. **Forms**  
-   - `/erp/api/forms`: list & JSON schema endpoints.  
-   - React renderer to POST form data.
-
+2. **Dynamic Forms**
+   - `/erp/api/transaction_forms`: configuration endpoints.
+   - React renderer uses these configs.
 3. **Reports**  
    - Data fetching endpoints; generic `<ReportsViewer>` wrapper.
 
