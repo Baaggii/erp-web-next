@@ -84,7 +84,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
 
   return (
     <div>
-      <h2>{defaultName || 'Finance Transactions'}</h2>
+      <h2>{defaultName || 'Transactions'}</h2>
       {!hideSelector && transactionNames.length > 0 && (
         <div style={{ marginBottom: '0.5rem', maxWidth: '300px' }}>
           <SearchSelect

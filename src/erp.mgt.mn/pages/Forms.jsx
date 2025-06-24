@@ -14,7 +14,8 @@ export default function Forms() {
       .then((data) => {
         const grouped = {};
         Object.entries(data).forEach(([name, info]) => {
-          const key = info.moduleKey || 'finance_transactions';
+          const key = info.moduleKey;
+          if (!key) return;
           if (!grouped[key]) grouped[key] = [];
           grouped[key].push(name);
         });
