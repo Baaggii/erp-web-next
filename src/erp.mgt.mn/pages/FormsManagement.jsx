@@ -174,6 +174,7 @@ export default function FormsManagement() {
     }
     const cfg = {
       ...config,
+      moduleKey,
       allowedBranches: config.allowedBranches.map((b) => Number(b)).filter((b) => !Number.isNaN(b)),
       allowedDepartments: config.allowedDepartments.map((d) => Number(d)).filter((d) => !Number.isNaN(d)),
     };
@@ -181,7 +182,7 @@ export default function FormsManagement() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ table, name, config: cfg, moduleKey }),
+      body: JSON.stringify({ table, name, config: cfg }),
     });
     alert('Saved');
     if (!names.includes(name)) setNames((n) => [...n, name]);
