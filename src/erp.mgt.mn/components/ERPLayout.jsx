@@ -24,6 +24,7 @@ export default function ERPLayout() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const modules = useModules();
   const titleMap = {
     "/": "Blue Link демо",
     "/forms": "Маягтууд",
@@ -39,15 +40,25 @@ export default function ERPLayout() {
     "/settings/report-management": "Тайлангийн удирдлага",
     "/settings/change-password": "Нууц үг солих",
   };
-  const windowTitle = titleMap[location.pathname] || "ERP";
+
+  function titleForPath(path) {
+    if (titleMap[path]) return titleMap[path];
+    const seg = path.replace(/^\/+/, '').split('/')[0];
+    const mod = modules.find(
+      (m) => m.module_key.replace(/_/g, '-') === seg,
+    );
+    return mod ? mod.label : 'ERP';
+  }
+
+  const windowTitle = titleForPath(location.pathname);
 
   const { tabs, activeKey, openTab, closeTab, switchTab, setTabContent, cache } = useTabs();
   const txnModuleKeys = useTransactionModules();
 
   useEffect(() => {
-    const title = titleMap[location.pathname] || "ERP";
+    const title = titleForPath(location.pathname);
     openTab({ key: location.pathname, label: title });
-  }, [location.pathname, openTab]);
+  }, [location.pathname, modules, openTab]);
 
   function handleOpen(path, label, key) {
     if (txnModuleKeys && txnModuleKeys.has(key)) {
