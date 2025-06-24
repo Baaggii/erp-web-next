@@ -46,22 +46,28 @@ export default function FormsManagement() {
       .then((res) => (res.ok ? res.json() : []))
       .then((cols) => setColumns(cols.map((c) => c.name || c)))
       .catch(() => setColumns([]));
-    fetch(`/api/transaction_forms?table=${encodeURIComponent(table)}`, { credentials: 'include' })
+    const params = new URLSearchParams({ table, moduleKey });
+    fetch(`/api/transaction_forms?${params.toString()}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
       .then((data) => {
-        setNames(Object.keys(data));
-        if (data[name]) {
-          setModuleKey(data[name].moduleKey || 'finance_transactions');
+        const filtered = {};
+        Object.entries(data).forEach(([n, info]) => {
+          if (!info || (info.moduleKey || 'finance_transactions') !== moduleKey) return;
+          filtered[n] = info;
+        });
+        setNames(Object.keys(filtered));
+        if (filtered[name]) {
+          setModuleKey(filtered[name].moduleKey || 'finance_transactions');
           setConfig({
-            visibleFields: data[name].visibleFields || [],
-            requiredFields: data[name].requiredFields || [],
-            defaultValues: data[name].defaultValues || {},
-            editableDefaultFields: data[name].editableDefaultFields || [],
-            userIdFields: data[name].userIdFields || [],
-            branchIdFields: data[name].branchIdFields || [],
-            companyIdFields: data[name].companyIdFields || [],
-            allowedBranches: (data[name].allowedBranches || []).map(String),
-            allowedDepartments: (data[name].allowedDepartments || []).map(String),
+            visibleFields: filtered[name].visibleFields || [],
+            requiredFields: filtered[name].requiredFields || [],
+            defaultValues: filtered[name].defaultValues || {},
+            editableDefaultFields: filtered[name].editableDefaultFields || [],
+            userIdFields: filtered[name].userIdFields || [],
+            branchIdFields: filtered[name].branchIdFields || [],
+            companyIdFields: filtered[name].companyIdFields || [],
+            allowedBranches: (filtered[name].allowedBranches || []).map(String),
+            allowedDepartments: (filtered[name].allowedDepartments || []).map(String),
           });
         } else {
           setName('');
@@ -94,7 +100,7 @@ export default function FormsManagement() {
         });
         setModuleKey('finance_transactions');
       });
-  }, [table]);
+  }, [table, moduleKey]);
 
   useEffect(() => {
     if (!table || !name) return;
