@@ -41,6 +41,9 @@ await test('setFormConfig writes moduleKey and creates modules with slug', async
   assert.equal(data.tbl['Sample Transaction'].moduleKey, 'parent_mod');
   assert.equal(calls.length, 2);
   assert.equal(calls[0].params[0], 'parent_mod');
-  assert.equal(calls[1].params[0], slugify('Sample Transaction'));
+  assert.equal(
+    calls[1].params[0],
+    slugify('parent_mod_Sample Transaction')
+  );
   await restore();
 });
