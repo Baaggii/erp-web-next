@@ -21,6 +21,11 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const prevModuleKey = useRef(moduleKey);
 
   useEffect(() => {
+    setName('');
+    setSearchParams({});
+  }, []);
+
+  useEffect(() => {
     if (prevModuleKey.current !== moduleKey) {
       setName('');
       setTable('');
