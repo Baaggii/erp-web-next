@@ -85,6 +85,7 @@ export async function setFormConfig(table, name, config, options = {}) {
     companyIdFields = [],
     allowedBranches = [],
     allowedDepartments = [],
+    moduleKey: parentModuleKey = 'finance_transactions',
     userIdField,
     branchIdField,
     companyIdField,
@@ -94,7 +95,7 @@ export async function setFormConfig(table, name, config, options = {}) {
     showInHeader = false,
     moduleKey: providedModuleKey,
   } = options;
-  const moduleKey = providedModuleKey || slugify(name);
+  const moduleSlug = providedModuleKey || slugify(name);
   const uid = (userIdFields.length ? userIdFields : userIdField ? [userIdField] : [])
     .map(String)
     .filter(Boolean);
@@ -128,16 +129,23 @@ export async function setFormConfig(table, name, config, options = {}) {
     userIdFields: uid,
     branchIdFields: bid,
     companyIdFields: cid,
-    moduleKey,
+    moduleKey: parentModuleKey,
     allowedBranches: ab,
     allowedDepartments: ad,
   };
   await writeConfig(cfg);
   try {
     await upsertModule(
-      moduleKey,
+      parentModuleKey,
+      parentModuleKey,
+      null,
+      true,
+      false,
+    );
+    await upsertModule(
+      moduleSlug,
       name,
-      'finance_transactions',
+      parentModuleKey,
       showInSidebar,
       showInHeader,
     );

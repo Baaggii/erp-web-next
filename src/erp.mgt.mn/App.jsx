@@ -24,9 +24,24 @@ import BlueLinkPage from './pages/BlueLinkPage.jsx';
 import InventoryPage from './pages/InventoryPage.jsx';
 import FinanceTransactionsPage from './pages/FinanceTransactions.jsx';
 import { useModules } from './hooks/useModules.js';
+import { useEffect, useState } from 'react';
 
 export default function App() {
   const modules = useModules();
+  const [txnModules, setTxnModules] = useState(new Set());
+
+  useEffect(() => {
+    fetch('/api/transaction_forms', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((data) => {
+        const set = new Set();
+        Object.values(data).forEach((info) => {
+          if (info && info.moduleKey) set.add(info.moduleKey);
+        });
+        setTxnModules(set);
+      })
+      .catch(() => setTxnModules(new Set()));
+  }, []);
 
   const moduleMap = {};
   modules.forEach((m) => {
@@ -56,23 +71,12 @@ export default function App() {
     finance_transactions: <FinanceTransactionsPage />,
   };
 
-  function isFinanceDescendant(mod) {
-    let cur = mod;
-    while (cur) {
-      if (cur.module_key === 'finance_transactions') return true;
-      cur = cur.parent_key ? moduleMap[cur.parent_key] : null;
-    }
-    return false;
-  }
-
   modules.forEach((m) => {
-    if (m.module_key !== 'finance_transactions' && isFinanceDescendant(m)) {
+    if (txnModules.has(m.module_key)) {
+      componentMap[m.module_key] = <FinanceTransactionsPage moduleKey={m.module_key} />;
+    } else if (txnModules.has(m.parent_key)) {
       componentMap[m.module_key] = (
-        <FinanceTransactionsPage
-          moduleKey={m.module_key}
-          defaultName={m.label}
-          hideSelector
-        />
+        <FinanceTransactionsPage moduleKey={m.module_key} defaultName={m.label} hideSelector />
       );
     }
   });

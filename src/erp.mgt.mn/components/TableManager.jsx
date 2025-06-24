@@ -51,7 +51,7 @@ const deleteBtnStyle = {
   color: '#b91c1c',
 };
 
-export default forwardRef(function TableManager({ table, refreshId = 0, formConfig = null, initialPerPage = 10, addLabel = 'Add Row' }, ref) {
+export default forwardRef(function TableManager({ table, refreshId = 0, formConfig = null, initialPerPage = 10, addLabel = 'Add Row', showTable = true }, ref) {
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
   const [page, setPage] = useState(1);
@@ -779,6 +779,8 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
           <button onClick={handleDeleteSelected}>Delete Selected</button>
         )}
       </div>
+      {showTable && (
+        <>
       <div
         style={{
           display: 'flex',
@@ -1052,6 +1054,8 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
           </button>
         </div>
       </div>
+        </>
+      )}
       <RowFormModal
         visible={showForm}
         onCancel={() => {

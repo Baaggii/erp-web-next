@@ -113,16 +113,15 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
         </div>
       )}
       {table && config && (
-        <div style={{ display: showTable ? 'block' : 'none' }}>
-          <TableManager
-            ref={tableRef}
-            table={table}
-            refreshId={refreshId}
-            formConfig={config}
-            initialPerPage={10}
-            addLabel="Add Transaction"
-          />
-        </div>
+        <TableManager
+          ref={tableRef}
+          table={table}
+          refreshId={refreshId}
+          formConfig={config}
+          initialPerPage={10}
+          addLabel="Add Transaction"
+          showTable={showTable}
+        />
       )}
       {transactionNames.length === 0 && (
         <p>No transactions configured.</p>
