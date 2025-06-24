@@ -30,7 +30,7 @@ export default function Forms() {
         Object.entries(data).forEach(([name, info]) => {
           const allowedB = info.allowedBranches || [];
           const allowedD = info.allowedDepartments || [];
-          const key = info.moduleKey || 'finance_transactions';
+          const key = info.moduleKey || '';
           if (
             allowedB.length > 0 &&
             company?.branch_id !== undefined &&

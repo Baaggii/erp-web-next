@@ -27,7 +27,7 @@ function parseEntry(raw = {}) {
       raw.branchIdFields || (raw.branchIdField ? [raw.branchIdField] : []),
     companyIdFields:
       raw.companyIdFields || (raw.companyIdField ? [raw.companyIdField] : []),
-    moduleKey: typeof raw.moduleKey === 'string' ? raw.moduleKey : 'finance_transactions',
+    moduleKey: typeof raw.moduleKey === 'string' ? raw.moduleKey : '',
     allowedBranches: Array.isArray(raw.allowedBranches)
       ? raw.allowedBranches.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
       : [],
@@ -84,7 +84,7 @@ export async function setFormConfig(table, name, config, options = {}) {
     companyIdFields = [],
     allowedBranches = [],
     allowedDepartments = [],
-    moduleKey: parentModuleKey = 'finance_transactions',
+    moduleKey: parentModuleKey = '',
     moduleLabel,
     userIdField,
     branchIdField,

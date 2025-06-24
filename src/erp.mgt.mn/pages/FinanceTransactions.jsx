@@ -60,7 +60,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
         Object.entries(data).forEach(([n, info]) => {
           const allowedB = info.allowedBranches || [];
           const allowedD = info.allowedDepartments || [];
-          const mKey = info.moduleKey || 'finance_transactions';
+          const mKey = info.moduleKey;
           if (mKey !== moduleKey) return;
           if (
             allowedB.length > 0 &&
