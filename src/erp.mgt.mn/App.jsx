@@ -75,10 +75,6 @@ export default function App() {
       componentMap[m.module_key] = (
         <FinanceTransactionsPage moduleKey={m.module_key} />
       );
-    } else if (txnModules.has(m.parent_key)) {
-      componentMap[m.module_key] = (
-        <FinanceTransactionsPage moduleKey={m.parent_key} />
-      );
     }
   });
 
