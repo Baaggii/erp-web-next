@@ -80,6 +80,7 @@ export default function SearchSelect({
             padding: 0,
             background: '#fff',
             border: '1px solid #ccc',
+            boxSizing: 'border-box',
             width: '100%',
             maxHeight: '150px',
             overflowY: 'auto',

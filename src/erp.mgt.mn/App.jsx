@@ -56,10 +56,23 @@ export default function App() {
     finance_transactions: <FinanceTransactionsPage />,
   };
 
+  function isFinanceDescendant(mod) {
+    let cur = mod;
+    while (cur) {
+      if (cur.module_key === 'finance_transactions') return true;
+      cur = cur.parent_key ? moduleMap[cur.parent_key] : null;
+    }
+    return false;
+  }
+
   modules.forEach((m) => {
-    if (m.parent_key === 'finance_transactions') {
+    if (m.module_key !== 'finance_transactions' && isFinanceDescendant(m)) {
       componentMap[m.module_key] = (
-        <FinanceTransactionsPage defaultName={m.label} hideSelector />
+        <FinanceTransactionsPage
+          moduleKey={m.module_key}
+          defaultName={m.label}
+          hideSelector
+        />
       );
     }
   });
