@@ -8,6 +8,7 @@ import { logout } from "../hooks/useAuth.jsx";
 import { useRolePermissions, refreshRolePermissions } from "../hooks/useRolePermissions.js";
 import { useCompanyModules } from "../hooks/useCompanyModules.js";
 import { useModules } from "../hooks/useModules.js";
+import { useTransactionModules } from "../hooks/useTransactionModules.js";
 import modulePath from "../utils/modulePath.js";
 import AskAIFloat from "./AskAIFloat.jsx";
 import { useTabs } from "../context/TabContext.jsx";
@@ -41,15 +42,21 @@ export default function ERPLayout() {
   const windowTitle = titleMap[location.pathname] || "ERP";
 
   const { tabs, activeKey, openTab, closeTab, switchTab, setTabContent, cache } = useTabs();
+  const txnModuleKeys = useTransactionModules();
 
   useEffect(() => {
     const title = titleMap[location.pathname] || "ERP";
     openTab({ key: location.pathname, label: title });
   }, [location.pathname, openTab]);
 
-  function handleOpen(path, label) {
-    openTab({ key: path, label });
-    navigate(path);
+  function handleOpen(path, label, key) {
+    if (txnModuleKeys && txnModuleKeys.has(key)) {
+      openTab({ key: path, label });
+      navigate(path);
+    } else {
+      openTab({ key: path, label });
+      navigate(path);
+    }
   }
 
   async function handleLogout() {
@@ -179,7 +186,7 @@ function Sidebar({ onOpen }) {
           ) : (
             <button
               key={m.module_key}
-              onClick={() => onOpen(modulePath(m, allMap), m.label)}
+              onClick={() => onOpen(modulePath(m, allMap), m.label, m.module_key)}
               className="menu-item"
               style={styles.menuItem({ isActive: location.pathname === modulePath(m, allMap) })}
             >
@@ -207,7 +214,7 @@ function SidebarGroup({ mod, map, allMap, level, onOpen }) {
           ) : (
             <button
               key={c.module_key}
-              onClick={() => onOpen(modulePath(c, allMap), c.label)}
+              onClick={() => onOpen(modulePath(c, allMap), c.label, c.module_key)}
               style={{
                 ...styles.menuItem({ isActive: location.pathname === modulePath(c, allMap) }),
                 paddingLeft: `${(level + 1) * 1}rem`,
