@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { upsertModule, deleteModule } from '../../db/index.js';
+import { deleteModule } from '../../db/index.js';
 import { slugify } from '../utils/slugify.js';
 
 const filePath = path.join(process.cwd(), 'config', 'transactionForms.json');
@@ -75,7 +75,7 @@ export async function listTransactionNames({ moduleKey, branchId, departmentId }
   return result;
 }
 
-export async function setFormConfig(table, name, config, options = {}) {
+export async function setFormConfig(table, name, config) {
   const {
     visibleFields = [],
     requiredFields = [],
@@ -92,13 +92,6 @@ export async function setFormConfig(table, name, config, options = {}) {
     branchIdField,
     companyIdField,
   } = config || {};
-  const {
-    showInSidebar = true,
-    showInHeader = false,
-    moduleKey: providedModuleKey,
-  } = options;
-  const moduleSlug =
-    providedModuleKey || slugify(`${parentModuleKey}_${name}`);
   const uid = (userIdFields.length ? userIdFields : userIdField ? [userIdField] : [])
     .map(String)
     .filter(Boolean);
@@ -138,25 +131,6 @@ export async function setFormConfig(table, name, config, options = {}) {
     allowedDepartments: ad,
   };
   await writeConfig(cfg);
-  try {
-    const parentLabel = moduleLabel || slugify(parentModuleKey);
-    await upsertModule(
-      parentModuleKey,
-      parentLabel,
-      null,
-      true,
-      false,
-    );
-    await upsertModule(
-      moduleSlug,
-      name,
-      parentModuleKey,
-      showInSidebar,
-      showInHeader,
-    );
-  } catch (err) {
-    console.error('Failed to auto-create module', err);
-  }
   return cfg[table][name];
 }
 
