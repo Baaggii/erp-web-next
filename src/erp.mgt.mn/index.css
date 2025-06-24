@@ -11,10 +11,6 @@ button {
   background-color: #f3f4f6;
   cursor: pointer;
 }
-select {
-  border: 1px solid #ccc;
-  border-radius: 4px;
-}
 button:hover {
   background-color: #e5e7eb;
 }
