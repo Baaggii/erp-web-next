@@ -9,6 +9,7 @@ export default function AsyncSearchSelect({
   disabled,
   onKeyDown,
   inputRef,
+  onFocus,
   ...rest
 }) {
   const [input, setInput] = useState(value || '');
@@ -95,7 +96,10 @@ export default function AsyncSearchSelect({
           setShow(true);
           setHighlight(-1);
         }}
-        onFocus={() => setShow(true)}
+        onFocus={(e) => {
+          setShow(true);
+          if (onFocus) onFocus(e);
+        }}
         onBlur={handleBlur}
         onKeyDown={(e) => {
           handleSelectKeyDown(e);

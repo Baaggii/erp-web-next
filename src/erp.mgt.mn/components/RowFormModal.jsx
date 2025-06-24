@@ -25,6 +25,20 @@ export default function RowFormModal({
   const inputRefs = useRef({});
   const [errors, setErrors] = useState({});
   const [submitLocked, setSubmitLocked] = useState(false);
+  const placeholders = React.useMemo(() => {
+    const map = {};
+    columns.forEach((c) => {
+      const lower = c.toLowerCase();
+      if (lower.includes('timestamp') || (lower.includes('date') && lower.includes('time'))) {
+        map[c] = 'YYYY-MM-DD HH:MM:SS';
+      } else if (lower.includes('date')) {
+        map[c] = 'YYYY-MM-DD';
+      } else if (lower.includes('time')) {
+        map[c] = 'HH:MM:SS';
+      }
+    });
+    return map;
+  }, [columns]);
 
   useEffect(() => {
     if (!visible) return;
@@ -56,7 +70,9 @@ export default function RowFormModal({
     const idx = enabled.indexOf(col);
     const next = enabled[idx + 1];
     if (next && inputRefs.current[next]) {
-      inputRefs.current[next].focus();
+      const el = inputRefs.current[next];
+      el.focus();
+      if (el.select) el.select();
       return;
     }
     if (!next) {
@@ -118,6 +134,7 @@ export default function RowFormModal({
                   }}
                   disabled={row && disabledFields.includes(c)}
                   onKeyDown={(e) => handleKeyDown(e, c)}
+                  onFocus={(e) => e.target.select()}
                   inputRef={(el) => (inputRefs.current[c] = el)}
                 />
               ) : Array.isArray(relations[c]) ? (
@@ -146,6 +163,7 @@ export default function RowFormModal({
                   title={labels[c] || c}
                   ref={(el) => (inputRefs.current[c] = el)}
                   type="text"
+                  placeholder={placeholders[c] || ''}
                   value={formVals[c]}
                   onChange={(e) => {
                     setFormVals((v) => ({ ...v, [c]: e.target.value }));
@@ -153,6 +171,7 @@ export default function RowFormModal({
                     onChange({ [c]: e.target.value });
                   }}
                   onKeyDown={(e) => handleKeyDown(e, c)}
+                  onFocus={(e) => e.target.select()}
                   disabled={row && disabledFields.includes(c)}
                   style={inputStyle}
                 />
@@ -170,7 +189,7 @@ export default function RowFormModal({
           <button type="submit">Save</button>
         </div>
         <div style={{ marginTop: '0.5rem', gridColumn: '1 / span 2', fontSize: '0.85rem', color: '#555' }}>
-          Press <strong>Enter</strong> to move to next field. Use arrow keys to navigate selections.
+          Press <strong>Enter</strong> to move to next field. The field will be automatically selected. Use arrow keys to navigate selections.
         </div>
       </form>
     </Modal>
