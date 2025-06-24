@@ -31,12 +31,14 @@ export default function Forms() {
       {groups.length === 0 ? (
         <p>Маягт олдсонгүй.</p>
       ) : (
-        groups.map(([key, names]) => {
+        groups.map(([key]) => {
           const mod = modules.find((m) => m.module_key === key);
           return (
             <div key={key} style={{ marginBottom: '1rem' }}>
-              <h3>{mod ? mod.label : key}</h3>
-              <FinanceTransactionsPage moduleKey={key} />
+              <FinanceTransactionsPage
+                moduleKey={key}
+                defaultName={mod ? mod.label : key}
+              />
             </div>
           );
         })
