@@ -3,6 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import TableManager from '../components/TableManager.jsx';
 import SearchSelect from '../components/SearchSelect.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
+import { useRolePermissions } from '../hooks/useRolePermissions.js';
+import { useCompanyModules } from '../hooks/useCompanyModules.js';
 
 export default function FinanceTransactions({ moduleKey = 'finance_transactions', defaultName = '', hideSelector = false }) {
   const [configs, setConfigs] = useState({});
@@ -13,6 +15,8 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const [refreshId, setRefreshId] = useState(0);
   const [showTable, setShowTable] = useState(false);
   const { company } = useContext(AuthContext);
+  const perms = useRolePermissions();
+  const licensed = useCompanyModules(company?.company_id);
   const tableRef = useRef(null);
 
   useEffect(() => {
@@ -38,6 +42,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
         Object.entries(data).forEach(([n, info]) => {
           const allowedB = info.allowedBranches || [];
           const allowedD = info.allowedDepartments || [];
+          const mKey = info.moduleKey || 'finance_transactions';
           if (
             allowedB.length > 0 &&
             company?.branch_id !== undefined &&
@@ -50,13 +55,15 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
             !allowedD.includes(company.department_id)
           )
             return;
+          if (perms && !perms[mKey]) return;
+          if (licensed && !licensed[mKey]) return;
           filtered[n] = info;
         });
         setConfigs(filtered);
         if (name && filtered[name]) setTable(filtered[name].table ?? filtered[name]);
       })
       .catch(() => setConfigs({}));
-  }, [moduleKey, company]);
+  }, [moduleKey, company, perms, licensed]);
 
   useEffect(() => {
     if (name && configs[name]) setTable(configs[name].table ?? configs[name]);
@@ -72,6 +79,9 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
 
   const transactionNames = Object.keys(configs);
 
+  if (!perms || !licensed) return <p>Loading...</p>;
+  if (!perms[moduleKey] || !licensed[moduleKey]) return <p>Access denied.</p>;
+
   return (
     <div>
       <h2>{defaultName || 'Finance Transactions'}</h2>
@@ -84,7 +94,10 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
               setRefreshId((r) => r + 1);
               setShowTable(false);
             }}
-            options={transactionNames.map((t) => ({ value: t, label: t }))}
+            options={[
+              { value: '', label: 'Choose transaction' },
+              ...transactionNames.map((t) => ({ value: t, label: t })),
+            ]}
             placeholder="Choose transaction"
           />
         </div>
