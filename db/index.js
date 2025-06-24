@@ -350,6 +350,11 @@ export async function upsertModule(
   return { moduleKey, label, parentKey, showInSidebar, showInHeader };
 }
 
+export async function deleteModule(moduleKey) {
+  await pool.query('DELETE FROM modules WHERE module_key = ?', [moduleKey]);
+  return { moduleKey };
+}
+
 export async function populateDefaultModules() {
   for (const m of defaultModules) {
     await upsertModule(
