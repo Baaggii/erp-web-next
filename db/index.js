@@ -337,6 +337,9 @@ export async function upsertModule(
   showInSidebar = true,
   showInHeader = false,
 ) {
+  logDb(
+    `upsertModule ${moduleKey} label=${label} parent=${parentKey} sidebar=${showInSidebar} header=${showInHeader}`,
+  );
   await pool.query(
     `INSERT INTO modules (module_key, label, parent_key, show_in_sidebar, show_in_header)
      VALUES (?, ?, ?, ?, ?)
@@ -351,6 +354,7 @@ export async function upsertModule(
 }
 
 export async function deleteModule(moduleKey) {
+  logDb(`deleteModule ${moduleKey}`);
   await pool.query('DELETE FROM modules WHERE module_key = ?', [moduleKey]);
   return { moduleKey };
 }
