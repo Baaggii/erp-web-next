@@ -4,7 +4,6 @@ import fs from 'fs/promises';
 import path from 'path';
 import { setFormConfig, deleteFormConfig } from '../../api-server/services/transactionFormConfig.js';
 import * as db from '../../db/index.js';
-import { slugify } from '../../api-server/utils/slugify.js';
 
 const filePath = path.join(process.cwd(), 'config', 'transactionForms.json');
 
@@ -81,7 +80,7 @@ await test('setFormConfig ignores sidebar/header flags and slug', async () => {
   await restore();
 });
 
-await test('deleteFormConfig removes modules and parent when unused', async () => {
+await test('deleteFormConfig removes entry when unused', async () => {
   const { orig, restore } = await withTempFile();
   await fs.writeFile(
     filePath,
@@ -95,13 +94,11 @@ await test('deleteFormConfig removes modules and parent when unused', async () =
   restoreDb();
   const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
   assert.deepEqual(data, {});
-  assert.equal(calls.length, 2);
-  assert.equal(calls[0].params[0], slugify('parent_A'));
-  assert.equal(calls[1].params[0], 'parent');
+  assert.equal(calls.length, 0);
   await restore();
 });
 
-await test('deleteFormConfig keeps parent module when still used', async () => {
+await test('deleteFormConfig keeps other entries intact', async () => {
   const { orig, restore } = await withTempFile();
   await fs.writeFile(
     filePath,
@@ -116,7 +113,6 @@ await test('deleteFormConfig keeps parent module when still used', async () => {
   const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
   assert.ok(!data.tbl.A);
   assert.ok(data.tbl.B);
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].params[0], slugify('parent_A'));
+  assert.equal(calls.length, 0);
   await restore();
 });

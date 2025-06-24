@@ -24,24 +24,11 @@ import BlueLinkPage from './pages/BlueLinkPage.jsx';
 import InventoryPage from './pages/InventoryPage.jsx';
 import FinanceTransactionsPage from './pages/FinanceTransactions.jsx';
 import { useModules } from './hooks/useModules.js';
-import { useEffect, useState } from 'react';
+import { useTxnModules } from './hooks/useTxnModules.js';
 
 export default function App() {
   const modules = useModules();
-  const [txnModules, setTxnModules] = useState(new Set());
-
-  useEffect(() => {
-    fetch('/api/transaction_forms', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : {}))
-      .then((data) => {
-        const set = new Set();
-        Object.values(data).forEach((info) => {
-          if (info && info.moduleKey) set.add(info.moduleKey);
-        });
-        setTxnModules(set);
-      })
-      .catch(() => setTxnModules(new Set()));
-  }, []);
+  const txnModules = useTxnModules();
 
   const moduleMap = {};
   modules.forEach((m) => {

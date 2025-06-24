@@ -5,6 +5,7 @@ import { useModules } from '../hooks/useModules.js';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { useRolePermissions } from '../hooks/useRolePermissions.js';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
+import { useTxnModules } from '../hooks/useTxnModules.js';
 
 
 export default function Forms() {
@@ -13,6 +14,7 @@ export default function Forms() {
   const { company } = useContext(AuthContext);
   const perms = useRolePermissions();
   const licensed = useCompanyModules(company?.company_id);
+  const txnModules = useTxnModules();
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -49,7 +51,7 @@ export default function Forms() {
         setTransactions(grouped);
       })
       .catch((err) => console.error('Error fetching forms:', err));
-  }, [company, perms, licensed]);
+  }, [company, perms, licensed, txnModules]);
 
   const groups = Object.entries(transactions);
 

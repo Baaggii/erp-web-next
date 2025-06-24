@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useModules } from '../hooks/useModules.js';
-import slugify from '../utils/slugify.js';
+import { refreshTxnModules } from '../hooks/useTxnModules.js';
 
 export default function FormsManagement() {
   const [tables, setTables] = useState([]);
@@ -8,9 +8,6 @@ export default function FormsManagement() {
   const [names, setNames] = useState([]);
   const [name, setName] = useState('');
   const [moduleKey, setModuleKey] = useState('finance_transactions');
-  const [moduleSlug, setModuleSlug] = useState('');
-  const [showInSidebar, setShowInSidebar] = useState(true);
-  const [showInHeader, setShowInHeader] = useState(false);
   const [branches, setBranches] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [columns, setColumns] = useState([]);
@@ -140,27 +137,11 @@ export default function FormsManagement() {
       });
   }, [table, name]);
 
-  useEffect(() => {
-    if (!name) {
-      setModuleSlug('');
-      setShowInSidebar(true);
-      setShowInHeader(false);
-      return;
-    }
-    const mod = modules.find(
-      (m) => m.parent_key === moduleKey && m.label === name,
-    );
-    if (mod) {
-      const def = slugify(`${moduleKey}_${name}`);
-      setModuleSlug(mod.module_key === def ? '' : mod.module_key);
-      setShowInSidebar(!!mod.show_in_sidebar);
-      setShowInHeader(!!mod.show_in_header);
-    } else {
-      setModuleSlug('');
-      setShowInSidebar(true);
-      setShowInHeader(false);
-    }
-  }, [modules, name, moduleKey]);
+  // If a user selects a predefined transaction name, the associated module
+  // parent key will be applied automatically based on the stored
+  // configuration retrieved above. The module slug and sidebar/header flags
+  // were previously set here but have been removed as they are no longer
+  // managed from this page.
 
   function toggleVisible(field) {
     setConfig((c) => {
@@ -212,11 +193,9 @@ export default function FormsManagement() {
         table,
         name,
         config: cfg,
-        showInSidebar,
-        showInHeader,
-        moduleKey: moduleSlug || undefined,
       }),
     });
+    refreshTxnModules();
     alert('Saved');
     if (!names.includes(name)) setNames((n) => [...n, name]);
   }
@@ -228,6 +207,7 @@ export default function FormsManagement() {
       method: 'DELETE',
       credentials: 'include',
     });
+    refreshTxnModules();
     setNames((n) => n.filter((x) => x !== name));
     setName('');
     setConfig({
@@ -242,9 +222,6 @@ export default function FormsManagement() {
       allowedDepartments: [],
     });
     setModuleKey('finance_transactions');
-    setModuleSlug('');
-    setShowInSidebar(true);
-    setShowInHeader(false);
   }
 
   return (
@@ -293,29 +270,7 @@ export default function FormsManagement() {
                 </option>
               ))}
             </select>
-            <input
-              type="text"
-              placeholder="Module slug (optional)"
-              value={moduleSlug}
-              onChange={(e) => setModuleSlug(e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
-            />
-            <label style={{ marginLeft: '0.5rem' }}>
-              <input
-                type="checkbox"
-                checked={showInSidebar}
-                onChange={(e) => setShowInSidebar(e.target.checked)}
-              />{' '}
-              Sidebar
-            </label>
-            <label style={{ marginLeft: '0.5rem' }}>
-              <input
-                type="checkbox"
-                checked={showInHeader}
-                onChange={(e) => setShowInHeader(e.target.checked)}
-              />{' '}
-              Header
-            </label>
+            
             {name && (
               <button onClick={handleDelete} style={{ marginLeft: '0.5rem' }}>
                 Delete
