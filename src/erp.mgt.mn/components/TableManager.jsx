@@ -13,9 +13,17 @@ import CascadeDeleteModal from './CascadeDeleteModal.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
-function normalizeDateInput(value) {
+function normalizeDateInput(value, format) {
   if (typeof value !== 'string') return value;
-  return value.replace(/^(\d{4})\.(\d{2})\.(\d{2})/, '$1-$2-$3');
+  let v = value.replace(/^(\d{4})\.(\d{2})\.(\d{2})/, '$1-$2-$3');
+  const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
+  if (isoRe.test(v)) {
+    const d = new Date(v);
+    if (format === 'YYYY-MM-DD') return d.toISOString().slice(0, 10);
+    if (format === 'HH:MM:SS') return d.toISOString().slice(11, 19);
+    return d.toISOString().slice(0, 19).replace('T', ' ');
+  }
+  return v;
 }
 
 const actionCellStyle = {
@@ -438,7 +446,8 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     const cleaned = {};
     Object.entries(merged).forEach(([k, v]) => {
       if (v !== '') {
-        cleaned[k] = typeof v === 'string' ? normalizeDateInput(v) : v;
+        cleaned[k] =
+          typeof v === 'string' ? normalizeDateInput(v, placeholders[k]) : v;
       }
     });
 
@@ -667,6 +676,20 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
   });
   const hiddenColumns = ['password', 'created_by', 'created_at'];
   let columns = ordered.filter((c) => !hiddenColumns.includes(c));
+  const placeholders = useMemo(() => {
+    const map = {};
+    columns.forEach((c) => {
+      const lower = c.toLowerCase();
+      if (lower.includes('timestamp') || (lower.includes('date') && lower.includes('time'))) {
+        map[c] = 'YYYY-MM-DD HH:MM:SS';
+      } else if (lower.includes('date')) {
+        map[c] = 'YYYY-MM-DD';
+      } else if (lower.includes('time')) {
+        map[c] = 'HH:MM:SS';
+      }
+    });
+    return map;
+  }, [columns]);
 
   const relationOpts = {};
   ordered.forEach((c) => {
@@ -927,15 +950,15 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
                     style.overflowX = 'auto';
                   }
                 }
+                const raw = relationOpts[c]
+                  ? labelMap[c][r[c]] || String(r[c])
+                  : String(r[c]);
+                const display = placeholders[c]
+                  ? normalizeDateInput(raw, placeholders[c])
+                  : raw;
                 return (
-                  <td
-                    key={c}
-                    style={style}
-                    title={
-                      relationOpts[c] ? labelMap[c][r[c]] || String(r[c]) : String(r[c])
-                    }
-                  >
-                    {relationOpts[c] ? labelMap[c][r[c]] || String(r[c]) : String(r[c])}
+                  <td key={c} style={style} title={raw}>
+                    {display}
                   </td>
                 );
               })}

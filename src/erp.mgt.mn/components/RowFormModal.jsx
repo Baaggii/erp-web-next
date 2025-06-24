@@ -18,7 +18,17 @@ export default function RowFormModal({
   const [formVals, setFormVals] = useState(() => {
     const init = {};
     columns.forEach((c) => {
-      init[c] = row ? String(row[c] ?? '') : '';
+      const lower = c.toLowerCase();
+      let placeholder = '';
+      if (lower.includes('timestamp') || (lower.includes('date') && lower.includes('time'))) {
+        placeholder = 'YYYY-MM-DD HH:MM:SS';
+      } else if (lower.includes('date')) {
+        placeholder = 'YYYY-MM-DD';
+      } else if (lower.includes('time')) {
+        placeholder = 'HH:MM:SS';
+      }
+      const raw = row ? String(row[c] ?? '') : '';
+      init[c] = placeholder ? normalizeDateInput(raw, placeholder) : raw;
     });
     return init;
   });
@@ -40,14 +50,22 @@ export default function RowFormModal({
     return map;
   }, [columns]);
 
-  function normalizeDateInput(value) {
+  function normalizeDateInput(value, format) {
     if (typeof value !== 'string') return value;
-    return value.replace(/^(\d{4})\.(\d{2})\.(\d{2})/, '$1-$2-$3');
+    let v = value.replace(/^(\d{4})\.(\d{2})\.(\d{2})/, '$1-$2-$3');
+    const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
+    if (isoRe.test(v)) {
+      const d = new Date(v);
+      if (format === 'YYYY-MM-DD') return d.toISOString().slice(0, 10);
+      if (format === 'HH:MM:SS') return d.toISOString().slice(11, 19);
+      return d.toISOString().slice(0, 19).replace('T', ' ');
+    }
+    return v;
   }
 
   function isValidDate(value, format) {
     if (!value) return true;
-    const normalized = normalizeDateInput(value);
+    const normalized = normalizeDateInput(value, format);
     const map = {
       'YYYY-MM-DD': /^\d{4}-\d{2}-\d{2}$/,
       'HH:MM:SS': /^\d{2}:\d{2}:\d{2}$/,
@@ -67,12 +85,13 @@ export default function RowFormModal({
     if (!visible) return;
     const vals = {};
     columns.forEach((c) => {
-      vals[c] = row ? String(row[c] ?? '') : '';
+      const raw = row ? String(row[c] ?? '') : '';
+      vals[c] = placeholders[c] ? normalizeDateInput(raw, placeholders[c]) : raw;
     });
     setFormVals(vals);
     inputRefs.current = {};
     setErrors({});
-  }, [row, columns, visible]);
+  }, [row, columns, visible, placeholders]);
 
   if (!visible) return null;
 
@@ -85,7 +104,7 @@ export default function RowFormModal({
   function handleKeyDown(e, col) {
     if (e.key !== 'Enter') return;
     e.preventDefault();
-    let val = normalizeDateInput(e.target.value);
+    let val = normalizeDateInput(e.target.value, placeholders[col]);
     if (formVals[col] !== val) {
       setFormVals((v) => ({ ...v, [col]: val }));
       onChange({ [col]: val });
@@ -130,7 +149,9 @@ export default function RowFormModal({
       if (ok) {
         const normalized = {};
         Object.entries(formVals).forEach(([k, v]) => {
-          normalized[k] = placeholders[k] ? normalizeDateInput(v) : v;
+          normalized[k] = placeholders[k]
+            ? normalizeDateInput(v, placeholders[k])
+            : v;
         });
         await Promise.resolve(onSubmit(normalized));
       } else {
