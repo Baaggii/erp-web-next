@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useModules } from '../hooks/useModules.js';
+import slugify from '../utils/slugify.js';
 
 export default function FormsManagement() {
   const [tables, setTables] = useState([]);
@@ -7,6 +8,9 @@ export default function FormsManagement() {
   const [names, setNames] = useState([]);
   const [name, setName] = useState('');
   const [moduleKey, setModuleKey] = useState('finance_transactions');
+  const [moduleSlug, setModuleSlug] = useState('');
+  const [showInSidebar, setShowInSidebar] = useState(true);
+  const [showInHeader, setShowInHeader] = useState(false);
   const [branches, setBranches] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [columns, setColumns] = useState([]);
@@ -136,6 +140,28 @@ export default function FormsManagement() {
       });
   }, [table, name]);
 
+  useEffect(() => {
+    if (!name) {
+      setModuleSlug('');
+      setShowInSidebar(true);
+      setShowInHeader(false);
+      return;
+    }
+    const mod = modules.find(
+      (m) => m.parent_key === moduleKey && m.label === name,
+    );
+    if (mod) {
+      const def = slugify(`${moduleKey}_${name}`);
+      setModuleSlug(mod.module_key === def ? '' : mod.module_key);
+      setShowInSidebar(!!mod.show_in_sidebar);
+      setShowInHeader(!!mod.show_in_header);
+    } else {
+      setModuleSlug('');
+      setShowInSidebar(true);
+      setShowInHeader(false);
+    }
+  }, [modules, name, moduleKey]);
+
   function toggleVisible(field) {
     setConfig((c) => {
       const vis = new Set(c.visibleFields);
@@ -182,7 +208,14 @@ export default function FormsManagement() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ table, name, config: cfg }),
+      body: JSON.stringify({
+        table,
+        name,
+        config: cfg,
+        showInSidebar,
+        showInHeader,
+        moduleKey: moduleSlug || undefined,
+      }),
     });
     alert('Saved');
     if (!names.includes(name)) setNames((n) => [...n, name]);
@@ -209,6 +242,9 @@ export default function FormsManagement() {
       allowedDepartments: [],
     });
     setModuleKey('finance_transactions');
+    setModuleSlug('');
+    setShowInSidebar(true);
+    setShowInHeader(false);
   }
 
   return (
@@ -257,6 +293,29 @@ export default function FormsManagement() {
                 </option>
               ))}
             </select>
+            <input
+              type="text"
+              placeholder="Module slug (optional)"
+              value={moduleSlug}
+              onChange={(e) => setModuleSlug(e.target.value)}
+              style={{ marginLeft: '0.5rem' }}
+            />
+            <label style={{ marginLeft: '0.5rem' }}>
+              <input
+                type="checkbox"
+                checked={showInSidebar}
+                onChange={(e) => setShowInSidebar(e.target.checked)}
+              />{' '}
+              Sidebar
+            </label>
+            <label style={{ marginLeft: '0.5rem' }}>
+              <input
+                type="checkbox"
+                checked={showInHeader}
+                onChange={(e) => setShowInHeader(e.target.checked)}
+              />{' '}
+              Header
+            </label>
             {name && (
               <button onClick={handleDelete} style={{ marginLeft: '0.5rem' }}>
                 Delete
