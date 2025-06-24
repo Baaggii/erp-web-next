@@ -12,7 +12,9 @@ Each **transaction** entry allows you to specify:
 - **userIdFields** – fields automatically filled with the creating user ID
 - **branchIdFields** – fields automatically filled with the branch ID
 - **companyIdFields** – fields automatically filled with the company ID
-- **moduleKey** – module slug used to group the form under a module
+- **moduleKey** – module slug used to group the form under a module. If omitted,
+  the transaction will not be associated with any module and is hidden from the
+  Forms list.
 - **moduleLabel** – optional label for the parent module
 - **allowedBranches** – restrict usage to these branch IDs
 - **allowedDepartments** – restrict usage to these department IDs

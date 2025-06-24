@@ -7,7 +7,7 @@ export default function FormsManagement() {
   const [table, setTable] = useState('');
   const [names, setNames] = useState([]);
   const [name, setName] = useState('');
-  const [moduleKey, setModuleKey] = useState('finance_transactions');
+  const [moduleKey, setModuleKey] = useState('');
   const [branches, setBranches] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [columns, setColumns] = useState([]);
@@ -53,12 +53,12 @@ export default function FormsManagement() {
       .then((data) => {
         const filtered = {};
         Object.entries(data).forEach(([n, info]) => {
-          if (!info || (info.moduleKey || 'finance_transactions') !== moduleKey) return;
+          if (!info || info.moduleKey !== moduleKey) return;
           filtered[n] = info;
         });
         setNames(Object.keys(filtered));
         if (filtered[name]) {
-          setModuleKey(filtered[name].moduleKey || 'finance_transactions');
+          setModuleKey(filtered[name].moduleKey || '');
           setConfig({
             visibleFields: filtered[name].visibleFields || [],
             requiredFields: filtered[name].requiredFields || [],
@@ -99,7 +99,7 @@ export default function FormsManagement() {
           allowedBranches: [],
           allowedDepartments: [],
         });
-        setModuleKey('finance_transactions');
+        setModuleKey('');
       });
   }, [table, moduleKey]);
 
@@ -108,7 +108,7 @@ export default function FormsManagement() {
     fetch(`/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
       .then((cfg) => {
-        setModuleKey(cfg.moduleKey || 'finance_transactions');
+        setModuleKey(cfg.moduleKey || '');
         setConfig({
           visibleFields: cfg.visibleFields || [],
           requiredFields: cfg.requiredFields || [],
@@ -133,7 +133,7 @@ export default function FormsManagement() {
           allowedBranches: [],
           allowedDepartments: [],
         });
-        setModuleKey('finance_transactions');
+        setModuleKey('');
       });
   }, [table, name]);
 
@@ -221,7 +221,7 @@ export default function FormsManagement() {
       allowedBranches: [],
       allowedDepartments: [],
     });
-    setModuleKey('finance_transactions');
+    setModuleKey('');
   }
 
   return (
