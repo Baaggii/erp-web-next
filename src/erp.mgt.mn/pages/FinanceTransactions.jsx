@@ -9,7 +9,8 @@ import { useCompanyModules } from '../hooks/useCompanyModules.js';
 export default function FinanceTransactions({ moduleKey = 'finance_transactions', moduleLabel = '' }) {
   const [configs, setConfigs] = useState({});
   const [searchParams, setSearchParams] = useSearchParams();
-  const [name, setName] = useState(() => searchParams.get('name') || '');
+  const paramKey = `name_${moduleKey}`;
+  const [name, setName] = useState(() => searchParams.get(paramKey) || '');
   const [table, setTable] = useState('');
   const [config, setConfig] = useState(null);
   const [refreshId, setRefreshId] = useState(0);
@@ -20,10 +21,6 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const tableRef = useRef(null);
   const prevModuleKey = useRef(moduleKey);
 
-  useEffect(() => {
-    setName('');
-    setSearchParams({});
-  }, []);
 
   useEffect(() => {
     if (prevModuleKey.current !== moduleKey) {
@@ -31,14 +28,23 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
       setTable('');
       setConfig(null);
       setShowTable(false);
+      setSearchParams((prev) => {
+        const sp = new URLSearchParams(prev);
+        sp.delete(`name_${prevModuleKey.current}`);
+        return sp;
+      });
     }
     prevModuleKey.current = moduleKey;
-  }, [moduleKey]);
+  }, [moduleKey, setSearchParams]);
 
   useEffect(() => {
-    if (name) setSearchParams({ name });
-    else setSearchParams({});
-  }, [name, setSearchParams]);
+    setSearchParams((prev) => {
+      const sp = new URLSearchParams(prev);
+      if (name) sp.set(paramKey, name);
+      else sp.delete(paramKey);
+      return sp;
+    });
+  }, [name, setSearchParams, paramKey]);
 
   useEffect(() => {
     const params = new URLSearchParams({ moduleKey });
@@ -54,6 +60,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
           const allowedB = info.allowedBranches || [];
           const allowedD = info.allowedDepartments || [];
           const mKey = info.moduleKey || 'finance_transactions';
+          if (mKey !== moduleKey) return;
           if (
             allowedB.length > 0 &&
             company?.branch_id !== undefined &&
