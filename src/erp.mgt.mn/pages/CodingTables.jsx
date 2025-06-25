@@ -192,7 +192,7 @@ export default function CodingTablesPage() {
     const keepIdx = [];
     const map = {};
     raw.forEach((h, i) => {
-      if (String(h).length > 1) {
+      if (String(h).trim().length > 0) {
         hdrs.push(cleanIdentifier(h));
         keepIdx.push(i);
         const mnVal = mnRaw[i];
@@ -435,7 +435,7 @@ export default function CodingTablesPage() {
     const hdrs = [];
     const keepIdx = [];
     raw.forEach((h, i) => {
-      if (String(h).length > 1) {
+      if (String(h).trim().length > 0) {
         hdrs.push(cleanIdentifier(h));
         keepIdx.push(i);
       }
