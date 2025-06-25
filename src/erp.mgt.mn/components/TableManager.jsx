@@ -720,20 +720,9 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     if (rows.length === 0) return map;
     columns.forEach((c) => {
       const avg = getAverageLength(c, rows);
-      const lower = c.toLowerCase();
-      if (lower.includes('date')) {
-        map[c] = 120;
-      } else if (lower.includes('code')) {
-        map[c] = Math.max(60, avg * 8);
-      } else if (avg > 20) {
-        map[c] = '20ch';
-      } else if (avg <= 4) {
-        map[c] = 80;
-      } else if (avg <= 10) {
-        map[c] = 120;
-      } else {
-        map[c] = 200;
-      }
+      if (avg <= 4) map[c] = 80;
+      else if (avg <= 10) map[c] = 120;
+      else map[c] = 200;
     });
     return map;
   }, [columns, rows]);
@@ -883,8 +872,6 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
                   lineHeight: 1.2,
                   textAlign: columnAlign[c],
                   minWidth: columnWidths[c],
-                  resize: 'horizontal',
-                  overflow: 'auto',
                 }}
                 onClick={() => handleSort(c)}
               >
@@ -897,7 +884,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
           <tr>
             <th style={{ padding: '0.25rem', border: '1px solid #d1d5db', width: 60 }}></th>
             {columns.map((c) => (
-            <th key={c} style={{ padding: '0.25rem', border: '1px solid #d1d5db', whiteSpace: 'normal', textAlign: columnAlign[c], minWidth: columnWidths[c], resize: 'horizontal', overflow: 'auto' }}>
+            <th key={c} style={{ padding: '0.25rem', border: '1px solid #d1d5db', whiteSpace: 'normal', textAlign: columnAlign[c], minWidth: columnWidths[c] }}>
                 {Array.isArray(relationOpts[c]) ? (
                   <select
                     value={filters[c] || ''}
@@ -968,38 +955,11 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
                 const raw = relationOpts[c]
                   ? labelMap[c][r[c]] || String(r[c])
                   : String(r[c]);
-                let display = placeholders[c]
+                const display = placeholders[c]
                   ? normalizeDateInput(raw, placeholders[c])
                   : raw;
-                if (placeholders[c] && placeholders[c].includes('YYYY-MM-DD')) {
-                  display = display.slice(0, 10);
-                }
-                const longText = raw && raw.length > 20;
-                const cellStyle = { ...style };
-                if (longText) {
-                  cellStyle.maxWidth = '20ch';
-                  cellStyle.whiteSpace = 'nowrap';
-                  cellStyle.textOverflow = 'ellipsis';
-                  cellStyle.overflow = 'hidden';
-                  cellStyle.cursor = 'pointer';
-                }
                 return (
-                  <td
-                    key={c}
-                    style={cellStyle}
-                    title={raw}
-                    onClick={(e) => {
-                      if (!longText) return;
-                      const el = e.currentTarget;
-                      if (el.style.whiteSpace === 'normal') {
-                        el.style.whiteSpace = 'nowrap';
-                        el.style.overflow = 'hidden';
-                      } else {
-                        el.style.whiteSpace = 'normal';
-                        el.style.overflow = 'visible';
-                      }
-                    }}
-                  >
+                  <td key={c} style={style} title={raw}>
                     {display}
                   </td>
                 );
