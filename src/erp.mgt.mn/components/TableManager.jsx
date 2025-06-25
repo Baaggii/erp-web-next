@@ -17,6 +17,8 @@ function ch(n) {
   return Math.round(n * 8);
 }
 
+const MAX_WIDTH = ch(40);
+
 function normalizeDateInput(value, format) {
   if (typeof value !== 'string') return value;
   let v = value.replace(/^(\d{4})\.(\d{2})\.(\d{2})/, '$1-$2-$3');
@@ -726,11 +728,13 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     if (rows.length === 0) return map;
     columns.forEach((c) => {
       const avg = getAverageLength(c, rows);
-      if (avg <= 4) map[c] = ch(Math.max(avg + 1, 5));
+      let w;
+      if (avg <= 4) w = ch(Math.max(avg + 1, 5));
       else if (placeholders[c] && placeholders[c].includes('YYYY-MM-DD'))
-        map[c] = ch(12);
-      else if (avg <= 10) map[c] = ch(12);
-      else map[c] = ch(20);
+        w = ch(12);
+      else if (avg <= 10) w = ch(12);
+      else w = ch(20);
+      map[c] = Math.min(w, MAX_WIDTH);
     });
     return map;
   }, [columns, rows, placeholders]);
@@ -849,7 +853,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
       <table
         style={{
           borderCollapse: 'collapse',
-          tableLayout: 'auto',
+          tableLayout: 'fixed',
           minWidth: '1200px',
           maxWidth: '2000px',
         }}
@@ -875,20 +879,26 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
                 style={{
                   padding: '0.5rem',
                   border: '1px solid #d1d5db',
-                  cursor: 'pointer',
                   whiteSpace: 'normal',
                   wordBreak: 'break-word',
                   lineHeight: 1.2,
+                  fontSize: '0.75rem',
                   textAlign: columnAlign[c],
                   width: columnWidths[c],
                   minWidth: columnWidths[c],
+                  maxWidth: MAX_WIDTH,
                   resize: 'horizontal',
-                  overflow: 'auto',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  ...(columnWidths[c] <= ch(8)
+                    ? {
+                        writingMode: 'vertical-rl',
+                        transform: 'rotate(180deg)',
+                      }
+                    : {}),
                 }}
-                onClick={() => handleSort(c)}
               >
                 {labels[c] || c}
-                {sort.column === c ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}
               </th>
             ))}
             <th style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', width: 120 }}>Action</th>
@@ -903,11 +913,14 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
                 border: '1px solid #d1d5db',
                 whiteSpace: 'normal',
                 wordBreak: 'break-word',
+                fontSize: '0.75rem',
                 textAlign: columnAlign[c],
                 width: columnWidths[c],
                 minWidth: columnWidths[c],
+                maxWidth: MAX_WIDTH,
                 resize: 'horizontal',
-                overflow: 'auto',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
               }}
             >
                 {Array.isArray(relationOpts[c]) ? (
@@ -944,7 +957,16 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
             </tr>
           )}
           {rows.map((r) => (
-            <tr key={r.id || JSON.stringify(r)}>
+            <tr
+              key={r.id || JSON.stringify(r)}
+              onClick={(e) => {
+                const t = e.target.tagName;
+                if (t !== 'INPUT' && t !== 'BUTTON' && t !== 'SELECT' && t !== 'A') {
+                  openDetail(r);
+                }
+              }}
+              style={{ cursor: 'pointer' }}
+            >
               <td style={{ padding: '0.5rem', border: '1px solid #d1d5db', width: 60, textAlign: 'center' }}>
                 {(() => {
                   const rid = getRowId(r);
@@ -968,6 +990,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
                 if (w) {
                   style.width = w;
                   style.minWidth = w;
+                  style.maxWidth = MAX_WIDTH;
                   if (w <= 120) {
                     style.whiteSpace = 'nowrap';
                   } else {
@@ -975,6 +998,8 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
                     style.overflowX = 'auto';
                   }
                 }
+                style.overflow = 'hidden';
+                style.textOverflow = 'ellipsis';
                 const raw = relationOpts[c]
                   ? labelMap[c][r[c]] || String(r[c])
                   : String(r[c]);
@@ -987,7 +1012,6 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
                     key={c}
                     style={style}
                     title={raw}
-                    onClick={() => showFull && openDetail(r)}
                   >
                     {display}
                   </td>
