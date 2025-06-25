@@ -35,6 +35,10 @@ function parseEntry(raw = {}) {
       ? raw.allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
       : [],
     moduleLabel: typeof raw.moduleLabel === 'string' ? raw.moduleLabel : '',
+    dateColumn: typeof raw.dateColumn === 'string' ? raw.dateColumn : '',
+    transTypeField: typeof raw.transTypeField === 'string' ? raw.transTypeField : '',
+    transTypeValue: typeof raw.transTypeValue === 'string' ? raw.transTypeValue : '',
+    transTypeLabel: typeof raw.transTypeLabel === 'string' ? raw.transTypeLabel : '',
   };
 }
 
@@ -89,6 +93,10 @@ export async function setFormConfig(table, name, config, options = {}) {
     userIdField,
     branchIdField,
     companyIdField,
+    dateColumn = '',
+    transTypeField = '',
+    transTypeValue = '',
+    transTypeLabel = '',
   } = config || {};
   const uid = (userIdFields.length ? userIdFields : userIdField ? [userIdField] : [])
     .map(String)
@@ -127,6 +135,10 @@ export async function setFormConfig(table, name, config, options = {}) {
     moduleLabel: moduleLabel || undefined,
     allowedBranches: ab,
     allowedDepartments: ad,
+    dateColumn,
+    transTypeField,
+    transTypeValue,
+    transTypeLabel,
   };
   await writeConfig(cfg);
   return cfg[table][name];

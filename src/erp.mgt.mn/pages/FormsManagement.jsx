@@ -11,6 +11,7 @@ export default function FormsManagement() {
   const [branches, setBranches] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [columns, setColumns] = useState([]);
+  const [transTypes, setTransTypes] = useState([]);
   const modules = useModules();
   const [config, setConfig] = useState({
     visibleFields: [],
@@ -22,6 +23,10 @@ export default function FormsManagement() {
     companyIdFields: [],
     allowedBranches: [],
     allowedDepartments: [],
+    dateColumn: '',
+    transTypeField: '',
+    transTypeValue: '',
+    transTypeLabel: '',
   });
 
   useEffect(() => {
@@ -39,6 +44,11 @@ export default function FormsManagement() {
       .then((res) => (res.ok ? res.json() : { rows: [] }))
       .then((data) => setDepartments(data.rows || []))
       .catch(() => setDepartments([]));
+
+    fetch('/api/tables/code_transaction?perPage=500', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { rows: [] }))
+      .then((data) => setTransTypes(data.rows || []))
+      .catch(() => setTransTypes([]));
   }, []);
 
   useEffect(() => {
@@ -69,6 +79,10 @@ export default function FormsManagement() {
             companyIdFields: filtered[name].companyIdFields || [],
             allowedBranches: (filtered[name].allowedBranches || []).map(String),
             allowedDepartments: (filtered[name].allowedDepartments || []).map(String),
+            dateColumn: filtered[name].dateColumn || '',
+            transTypeField: filtered[name].transTypeField || '',
+            transTypeValue: filtered[name].transTypeValue || '',
+            transTypeLabel: filtered[name].transTypeLabel || '',
           });
         } else {
           setName('');
@@ -82,6 +96,10 @@ export default function FormsManagement() {
             companyIdFields: [],
             allowedBranches: [],
             allowedDepartments: [],
+            dateColumn: '',
+            transTypeField: '',
+            transTypeValue: '',
+            transTypeLabel: '',
           });
         }
       })
@@ -98,6 +116,10 @@ export default function FormsManagement() {
           companyIdFields: [],
           allowedBranches: [],
           allowedDepartments: [],
+          dateColumn: '',
+          transTypeField: '',
+          transTypeValue: '',
+          transTypeLabel: '',
         });
         setModuleKey('');
       });
@@ -119,6 +141,10 @@ export default function FormsManagement() {
           companyIdFields: cfg.companyIdFields || [],
           allowedBranches: (cfg.allowedBranches || []).map(String),
           allowedDepartments: (cfg.allowedDepartments || []).map(String),
+          dateColumn: cfg.dateColumn || '',
+          transTypeField: cfg.transTypeField || '',
+          transTypeValue: cfg.transTypeValue || '',
+          transTypeLabel: cfg.transTypeLabel || '',
         });
       })
       .catch(() => {
@@ -132,6 +158,10 @@ export default function FormsManagement() {
           companyIdFields: [],
           allowedBranches: [],
           allowedDepartments: [],
+          dateColumn: '',
+          transTypeField: '',
+          transTypeValue: '',
+          transTypeLabel: '',
         });
         setModuleKey('');
       });
@@ -220,6 +250,10 @@ export default function FormsManagement() {
       companyIdFields: [],
       allowedBranches: [],
       allowedDepartments: [],
+      dateColumn: '',
+      transTypeField: '',
+      transTypeValue: '',
+      transTypeLabel: '',
     });
     setModuleKey('');
   }
@@ -435,6 +469,53 @@ export default function FormsManagement() {
               </select>
               <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedDepartments: departments.map((d) => String(d.id)) }))}>All</button>
               <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedDepartments: [] }))}>None</button>
+            </label>
+            <label style={{ marginLeft: '1rem' }}>
+              Date column:{' '}
+              <select
+                value={config.dateColumn}
+                onChange={(e) => setConfig((c) => ({ ...c, dateColumn: e.target.value }))}
+              >
+                <option value=""></option>
+                {columns.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ marginLeft: '1rem' }}>
+              Transaction type field:{' '}
+              <select
+                value={config.transTypeField}
+                onChange={(e) => setConfig((c) => ({ ...c, transTypeField: e.target.value }))}
+              >
+                <option value=""></option>
+                {columns.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ marginLeft: '1rem' }}>
+              Transaction type value:{' '}
+              <select
+                value={config.transTypeValue}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const t = transTypes.find((tt) => String(tt.UITransType) === val) || {};
+                  setName(t.UITransTypeName || name);
+                  setConfig((c) => ({ ...c, transTypeValue: val, transTypeLabel: t.UITransTypeName || '' }));
+                }}
+              >
+                <option value=""></option>
+                {transTypes.map((t) => (
+                  <option key={t.UITransType} value={t.UITransType}>
+                    {t.UITransTypeName}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
           <div style={{ marginTop: '1rem' }}>
