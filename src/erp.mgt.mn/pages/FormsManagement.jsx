@@ -104,7 +104,7 @@ export default function FormsManagement() {
   }, [table, moduleKey]);
 
   useEffect(() => {
-    if (!table || !name) return;
+    if (!table || !name || !names.includes(name)) return;
     fetch(`/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
       .then((cfg) => {
@@ -135,7 +135,7 @@ export default function FormsManagement() {
         });
         setModuleKey('');
       });
-  }, [table, name]);
+  }, [table, name, names]);
 
   // If a user selects a predefined transaction name, the associated module
   // parent key will be applied automatically based on the stored
