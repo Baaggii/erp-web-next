@@ -2,6 +2,7 @@ import React, { useContext } from 'react';
 import { HashRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import AuthContextProvider, { AuthContext } from './context/AuthContext.jsx';
 import { TabProvider } from './context/TabContext.jsx';
+import { TxnSessionProvider } from './context/TxnSessionContext.jsx';
 import { ToastProvider } from './context/ToastContext.jsx';
 import RequireAuth from './components/RequireAuth.jsx';
 import ERPLayout from './components/ERPLayout.jsx';
@@ -114,11 +115,12 @@ export default function App() {
   return (
     <ToastProvider>
       <AuthContextProvider>
-        <TabProvider>
-          <HashRouter>
+        <TxnSessionProvider>
+          <TabProvider>
+            <HashRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
-            <Route element={<RequireAuth />}>
+            <Route element={<RequireAuth />}> 
               <Route path="/" element={<ERPLayout />}>{roots.map(renderRoute)}</Route>
               <Route
                 path="/inventory-demo"
@@ -132,6 +134,7 @@ export default function App() {
           </Routes>
           </HashRouter>
         </TabProvider>
+        </TxnSessionProvider>
       </AuthContextProvider>
     </ToastProvider>
   );
