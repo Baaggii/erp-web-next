@@ -2,7 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import path from 'path';
-import { getDisplayFields, setDisplayFields } from '../../api-server/services/displayFieldConfig.js';
+import {
+  getDisplayFields,
+  setDisplayFields,
+  removeDisplayFields,
+} from '../../api-server/services/displayFieldConfig.js';
 
 const filePath = path.join(process.cwd(), 'config', 'tableDisplayFields.json');
 
@@ -29,5 +33,15 @@ await test('set and get display fields', async (t) => {
   await setDisplayFields('tbl', { idField: 'id', displayFields: ['a', 'b'] });
   const cfg = await getDisplayFields('tbl');
   assert.deepEqual(cfg, { idField: 'id', displayFields: ['a', 'b'] });
+  await restore();
+});
+
+await test('removeDisplayFields deletes config', async (t) => {
+  const { orig, restore } = await withTempFile();
+  await fs.writeFile(filePath, '{}');
+  await setDisplayFields('tbl', { idField: 'id', displayFields: ['x'] });
+  await removeDisplayFields('tbl');
+  const cfg = await getDisplayFields('tbl');
+  assert.deepEqual(cfg, { idField: null, displayFields: [] });
   await restore();
 });

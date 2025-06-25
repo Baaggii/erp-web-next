@@ -12,6 +12,8 @@ import { useTxnModules } from "../hooks/useTxnModules.js";
 import modulePath from "../utils/modulePath.js";
 import AskAIFloat from "./AskAIFloat.jsx";
 import { useTabs } from "../context/TabContext.jsx";
+import { useIsLoading } from "../context/LoadingContext.jsx";
+import Spinner from "./Spinner.jsx";
 
 /**
  * A desktop‐style “ERPLayout” with:
@@ -306,11 +308,21 @@ function MainWindow({ title }) {
       </div>
       <div style={styles.windowContent}>
         {tabs.map((t) => (
-          <div key={t.key} style={{ display: t.key === activeKey ? 'block' : 'none' }}>
+          <TabPanel key={t.key} tabKey={t.key} active={t.key === activeKey}>
             {t.key === location.pathname ? elements[t.key] : cache[t.key]}
-          </div>
+          </TabPanel>
         ))}
       </div>
+    </div>
+  );
+}
+
+function TabPanel({ tabKey, active, children }) {
+  const loading = useIsLoading(tabKey);
+  return (
+    <div style={{ position: 'relative', display: active ? 'block' : 'none' }}>
+      {loading && <Spinner />}
+      {children}
     </div>
   );
 }

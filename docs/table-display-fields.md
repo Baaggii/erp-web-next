@@ -14,4 +14,6 @@ The configuration file lives at `config/tableDisplayFields.json` and has the fol
 ```
 
 Applications can fetch or update this information via `/api/display_fields`.
+To remove a configuration for a table, send a `DELETE` request to
+`/api/display_fields?table=TABLE_NAME`.
 

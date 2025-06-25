@@ -4,6 +4,7 @@ import AuthContextProvider, { AuthContext } from './context/AuthContext.jsx';
 import { TabProvider } from './context/TabContext.jsx';
 import { TxnSessionProvider } from './context/TxnSessionContext.jsx';
 import { ToastProvider } from './context/ToastContext.jsx';
+import { LoadingProvider } from './context/LoadingContext.jsx';
 import RequireAuth from './components/RequireAuth.jsx';
 import ERPLayout from './components/ERPLayout.jsx';
 import AppLayout from './components/AppLayout.jsx';
@@ -18,6 +19,7 @@ import TablesManagementPage from './pages/TablesManagement.jsx';
 import CodingTablesPage from './pages/CodingTables.jsx';
 import FormsManagementPage from './pages/FormsManagement.jsx';
 import ReportManagementPage from './pages/ReportManagement.jsx';
+import RelationsConfigPage from './pages/RelationsConfig.jsx';
 import ModulesPage from './pages/Modules.jsx';
 import SettingsPage, { GeneralSettings } from './pages/Settings.jsx';
 import ChangePasswordPage from './pages/ChangePassword.jsx';
@@ -55,6 +57,7 @@ export default function App() {
     coding_tables: <CodingTablesPage />,
     forms_management: <FormsManagementPage />,
     report_management: <ReportManagementPage />,
+    relations_config: <RelationsConfigPage />,
     change_password: <ChangePasswordPage />,
   };
 
@@ -80,6 +83,7 @@ export default function App() {
     'coding_tables',
     'forms_management',
     'report_management',
+    'relations_config',
   ]);
 
   function renderRoute(mod) {
@@ -116,8 +120,9 @@ export default function App() {
     <ToastProvider>
       <AuthContextProvider>
         <TxnSessionProvider>
-          <TabProvider>
-            <HashRouter>
+          <LoadingProvider>
+            <TabProvider>
+              <HashRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route element={<RequireAuth />}> 
@@ -132,8 +137,9 @@ export default function App() {
               />
             </Route>
           </Routes>
-          </HashRouter>
-        </TabProvider>
+            </HashRouter>
+            </TabProvider>
+          </LoadingProvider>
         </TxnSessionProvider>
       </AuthContextProvider>
     </ToastProvider>

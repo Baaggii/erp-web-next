@@ -13,13 +13,21 @@ import CascadeDeleteModal from './CascadeDeleteModal.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
+function ch(n) {
+  return Math.round(n * 8);
+}
+
+const MAX_WIDTH = ch(40);
+
 function normalizeDateInput(value, format) {
   if (typeof value !== 'string') return value;
   let v = value.replace(/^(\d{4})\.(\d{2})\.(\d{2})/, '$1-$2-$3');
   const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
   if (isoRe.test(v)) {
     const d = new Date(v);
-    if (format === 'YYYY-MM-DD') return d.toISOString().slice(0, 10);
+    if (format && format.includes('YYYY-MM-DD')) {
+      return d.toISOString().slice(0, 10);
+    }
     if (format === 'HH:MM:SS') return d.toISOString().slice(11, 19);
     return d.toISOString().slice(0, 19).replace('T', ' ');
   }
@@ -720,12 +728,16 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     if (rows.length === 0) return map;
     columns.forEach((c) => {
       const avg = getAverageLength(c, rows);
-      if (avg <= 4) map[c] = 80;
-      else if (avg <= 10) map[c] = 120;
-      else map[c] = 200;
+      let w;
+      if (avg <= 4) w = ch(Math.max(avg + 1, 5));
+      else if (placeholders[c] && placeholders[c].includes('YYYY-MM-DD'))
+        w = ch(12);
+      else if (avg <= 10) w = ch(12);
+      else w = ch(20);
+      map[c] = Math.min(w, MAX_WIDTH);
     });
     return map;
-  }, [columns, rows]);
+  }, [columns, rows, placeholders]);
 
   const autoCols = new Set(autoInc);
   if (columnMeta.length > 0 && autoCols.size === 0) {
@@ -841,7 +853,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
       <table
         style={{
           borderCollapse: 'collapse',
-          tableLayout: 'auto',
+          tableLayout: 'fixed',
           minWidth: '1200px',
           maxWidth: '2000px',
         }}
@@ -867,16 +879,26 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
                 style={{
                   padding: '0.5rem',
                   border: '1px solid #d1d5db',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
+                  whiteSpace: 'normal',
+                  wordBreak: 'break-word',
                   lineHeight: 1.2,
+                  fontSize: '0.75rem',
                   textAlign: columnAlign[c],
+                  width: columnWidths[c],
                   minWidth: columnWidths[c],
+                  maxWidth: MAX_WIDTH,
+                  resize: 'horizontal',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  ...(columnWidths[c] <= ch(8)
+                    ? {
+                        writingMode: 'vertical-rl',
+                        transform: 'rotate(180deg)',
+                      }
+                    : {}),
                 }}
-                onClick={() => handleSort(c)}
               >
                 {labels[c] || c}
-                {sort.column === c ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}
               </th>
             ))}
             <th style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', width: 120 }}>Action</th>
@@ -884,7 +906,23 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
           <tr>
             <th style={{ padding: '0.25rem', border: '1px solid #d1d5db', width: 60 }}></th>
             {columns.map((c) => (
-            <th key={c} style={{ padding: '0.25rem', border: '1px solid #d1d5db', whiteSpace: 'normal', textAlign: columnAlign[c], minWidth: columnWidths[c] }}>
+            <th
+              key={c}
+              style={{
+                padding: '0.25rem',
+                border: '1px solid #d1d5db',
+                whiteSpace: 'normal',
+                wordBreak: 'break-word',
+                fontSize: '0.75rem',
+                textAlign: columnAlign[c],
+                width: columnWidths[c],
+                minWidth: columnWidths[c],
+                maxWidth: MAX_WIDTH,
+                resize: 'horizontal',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
                 {Array.isArray(relationOpts[c]) ? (
                   <select
                     value={filters[c] || ''}
@@ -919,7 +957,16 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
             </tr>
           )}
           {rows.map((r) => (
-            <tr key={r.id || JSON.stringify(r)}>
+            <tr
+              key={r.id || JSON.stringify(r)}
+              onClick={(e) => {
+                const t = e.target.tagName;
+                if (t !== 'INPUT' && t !== 'BUTTON' && t !== 'SELECT' && t !== 'A') {
+                  openDetail(r);
+                }
+              }}
+              style={{ cursor: 'pointer' }}
+            >
               <td style={{ padding: '0.5rem', border: '1px solid #d1d5db', width: 60, textAlign: 'center' }}>
                 {(() => {
                   const rid = getRowId(r);
@@ -941,25 +988,31 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
                   textAlign: columnAlign[c],
                 };
                 if (w) {
+                  style.width = w;
                   style.minWidth = w;
+                  style.maxWidth = MAX_WIDTH;
                   if (w <= 120) {
-                    style.maxWidth = w;
                     style.whiteSpace = 'nowrap';
                   } else {
-                    style.maxWidth = w;
                     style.whiteSpace = 'nowrap';
-                    style.textOverflow = 'ellipsis';
                     style.overflowX = 'auto';
                   }
                 }
+                style.overflow = 'hidden';
+                style.textOverflow = 'ellipsis';
                 const raw = relationOpts[c]
                   ? labelMap[c][r[c]] || String(r[c])
                   : String(r[c]);
                 const display = placeholders[c]
                   ? normalizeDateInput(raw, placeholders[c])
                   : raw;
+                const showFull = display.length > 20;
                 return (
-                  <td key={c} style={style} title={raw}>
+                  <td
+                    key={c}
+                    style={style}
+                    title={raw}
+                  >
                     {display}
                   </td>
                 );

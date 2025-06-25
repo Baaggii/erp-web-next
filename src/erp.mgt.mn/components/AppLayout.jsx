@@ -54,7 +54,10 @@ export default function AppLayout({ children, title }) {
             )}
             {user && (
               <div className="relative group">
-                <button className="focus:outline-none">{user.empid}</button>
+                <button className="focus:outline-none">
+                  {company?.employee_name || user.name || user.empid} (
+                  {company?.role || user.role})
+                </button>
                 <ul className="account-menu absolute right-0 mt-2 hidden group-focus-within:block group-hover:block">
                   <li>
                     <button
