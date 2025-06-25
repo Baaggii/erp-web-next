@@ -4,6 +4,8 @@ import { login } from '../hooks/useAuth.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { refreshRolePermissions } from '../hooks/useRolePermissions.js';
 import { refreshCompanyModules } from '../hooks/useCompanyModules.js';
+import { refreshModules } from '../hooks/useModules.js';
+import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { useNavigate } from 'react-router-dom';
 
 export default function LoginForm() {
@@ -40,11 +42,15 @@ export default function LoginForm() {
         const roleId = choice.role_id || loggedIn.role_id || (loggedIn.role === 'admin' ? 1 : 2);
         refreshRolePermissions(roleId, choice.company_id);
         refreshCompanyModules(choice.company_id);
+        refreshModules();
+        refreshTxnModules();
         navigate('/');
       } else if (assignments.length > 1) {
         setCompany(null);
         setCompanyChoices(assignments);
       } else {
+        refreshModules();
+        refreshTxnModules();
         navigate('/');
       }
     } catch (err) {
@@ -65,6 +71,8 @@ export default function LoginForm() {
             setCompany(choice);
             refreshRolePermissions(choice.role_id, choice.company_id);
             refreshCompanyModules(choice.company_id);
+            refreshModules();
+            refreshTxnModules();
             navigate('/');
           }
         }}
