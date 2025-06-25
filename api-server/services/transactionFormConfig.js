@@ -124,6 +124,9 @@ export async function setFormConfig(table, name, config, options = {}) {
 
   const defaults = { ...defaultValues };
   if (transTypeField && transTypeValue) defaults[transTypeField] = transTypeValue;
+  if (dateColumn && !defaults[dateColumn]) {
+    defaults[dateColumn] = new Date().toISOString().slice(0, 10);
+  }
 
   const vis = Array.isArray(visibleFields)
     ? Array.from(new Set(visibleFields))
