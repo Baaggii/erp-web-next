@@ -488,7 +488,16 @@ export default function FormsManagement() {
               Transaction type field:{' '}
               <select
                 value={config.transTypeField}
-                onChange={(e) => setConfig((c) => ({ ...c, transTypeField: e.target.value }))}
+                onChange={(e) => {
+                  const field = e.target.value;
+                  setConfig((c) => {
+                    const defs = { ...c.defaultValues };
+                    if (c.transTypeField && defs[c.transTypeField] !== undefined)
+                      delete defs[c.transTypeField];
+                    if (field && c.transTypeValue) defs[field] = c.transTypeValue;
+                    return { ...c, transTypeField: field, defaultValues: defs };
+                  });
+                }}
               >
                 <option value=""></option>
                 {columns.map((c) => (
@@ -504,9 +513,22 @@ export default function FormsManagement() {
                 value={config.transTypeValue}
                 onChange={(e) => {
                   const val = e.target.value;
-                  const t = transTypes.find((tt) => String(tt.UITransType) === val) || {};
+                  const t =
+                    transTypes.find((tt) => String(tt.UITransType) === val) || {};
                   setName(t.UITransTypeName || name);
-                  setConfig((c) => ({ ...c, transTypeValue: val, transTypeLabel: t.UITransTypeName || '' }));
+                  setConfig((c) => {
+                    const defs = { ...c.defaultValues };
+                    if (c.transTypeField) {
+                      if (val) defs[c.transTypeField] = val;
+                      else delete defs[c.transTypeField];
+                    }
+                    return {
+                      ...c,
+                      transTypeValue: val,
+                      transTypeLabel: t.UITransTypeName || '',
+                      defaultValues: defs,
+                    };
+                  });
                 }}
               >
                 <option value=""></option>
