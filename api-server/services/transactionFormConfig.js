@@ -35,9 +35,6 @@ function parseEntry(raw = {}) {
       ? raw.allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
       : [],
     moduleLabel: typeof raw.moduleLabel === 'string' ? raw.moduleLabel : '',
-    dateFields: raw.dateFields || [],
-    transTypeField: typeof raw.transTypeField === 'string' ? raw.transTypeField : '',
-    transTypeValue: raw.transTypeValue ?? '',
   };
 }
 
@@ -87,9 +84,6 @@ export async function setFormConfig(table, name, config, options = {}) {
     companyIdFields = [],
     allowedBranches = [],
     allowedDepartments = [],
-    dateFields = [],
-    transTypeField = '',
-    transTypeValue = '',
     moduleKey: parentModuleKey = '',
     moduleLabel,
     userIdField,
@@ -133,9 +127,6 @@ export async function setFormConfig(table, name, config, options = {}) {
     moduleLabel: moduleLabel || undefined,
     allowedBranches: ab,
     allowedDepartments: ad,
-    dateFields,
-    transTypeField,
-    transTypeValue,
   };
   await writeConfig(cfg);
   return cfg[table][name];
