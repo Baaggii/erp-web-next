@@ -122,20 +122,27 @@ export async function setFormConfig(table, name, config, options = {}) {
     ? allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
     : [];
 
-  const defaults = { ...defaultValues };
-  if (transTypeField && transTypeValue) defaults[transTypeField] = transTypeValue;
-  if (dateColumn && !defaults[dateColumn]) {
-    defaults[dateColumn] = new Date().toISOString().slice(0, 10);
+  const cfg = await readConfig();
+  if (!cfg[table]) cfg[table] = {};
+  const prev = parseEntry(cfg[table][name]);
+
+  const finalDateCol = dateColumn || prev.dateColumn;
+  const finalTypeField = transTypeField || prev.transTypeField;
+  const finalTypeValue = transTypeValue || prev.transTypeValue;
+  const finalTypeLabel = transTypeLabel || prev.transTypeLabel;
+
+  const defaults = { ...prev.defaultValues, ...defaultValues };
+  if (finalTypeField && finalTypeValue) defaults[finalTypeField] = finalTypeValue;
+  if (finalDateCol && !defaults[finalDateCol]) {
+    defaults[finalDateCol] = new Date().toISOString().slice(0, 10);
   }
 
   const vis = Array.isArray(visibleFields)
     ? Array.from(new Set(visibleFields))
     : [];
-  if (dateColumn && !vis.includes(dateColumn)) vis.push(dateColumn);
-  if (transTypeField && !vis.includes(transTypeField)) vis.push(transTypeField);
+  if (finalDateCol && !vis.includes(finalDateCol)) vis.push(finalDateCol);
+  if (finalTypeField && !vis.includes(finalTypeField)) vis.push(finalTypeField);
 
-  const cfg = await readConfig();
-  if (!cfg[table]) cfg[table] = {};
   cfg[table][name] = {
     visibleFields: vis,
     requiredFields,
@@ -148,10 +155,10 @@ export async function setFormConfig(table, name, config, options = {}) {
     moduleLabel: moduleLabel || undefined,
     allowedBranches: ab,
     allowedDepartments: ad,
-    dateColumn,
-    transTypeField,
-    transTypeValue,
-    transTypeLabel,
+    dateColumn: finalDateCol,
+    transTypeField: finalTypeField,
+    transTypeValue: finalTypeValue,
+    transTypeLabel: finalTypeLabel,
   };
   await writeConfig(cfg);
   return cfg[table][name];
