@@ -23,6 +23,11 @@ Each **transaction** entry allows you to specify:
 - **transTypeValue** – default value for `transTypeField`
 - **transTypeLabel** – human readable label for the selected type
 
+When creating or updating a configuration, always include the
+`dateColumn`, `transTypeField` and `transTypeValue` properties in the
+POST body. Omitting them will result in empty values being stored on
+disk.
+
 Example snippet:
 
 ```json
