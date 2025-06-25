@@ -34,6 +34,8 @@ export async function login(req, res, next) {
       id: user.id,
       empid: user.empid,
       role: user.role,
+      name: user.employee_name || null,
+      role_id: user.role_id,
     });
   } catch (err) {
     next(err);
@@ -51,12 +53,22 @@ export async function logout(req, res) {
   res.sendStatus(204);
 }
 
-export async function getProfile(req, res) {
-  res.json({
-    id: req.user.id,
-    empid: req.user.empid,
-    role: req.user.role,
-  });
+export async function getProfile(req, res, next) {
+  try {
+    const user = await getUserById(req.user.id);
+    if (!user) {
+      return res.status(401).json({ message: 'User not found' });
+    }
+    res.json({
+      id: user.id,
+      empid: user.empid,
+      role: user.role,
+      name: user.employee_name || null,
+      role_id: user.role_id,
+    });
+  } catch (err) {
+    next(err);
+  }
 }
 
 export async function changePassword(req, res, next) {
@@ -97,6 +109,8 @@ export async function refresh(req, res) {
       id: user.id,
       empid: user.empid,
       role: user.role,
+      name: user.employee_name || null,
+      role_id: user.role_id,
     });
   } catch (err) {
     const opts = {

@@ -77,9 +77,10 @@ export async function testConnection() {
  */
 export async function getUserByEmpId(empid) {
   const [rows] = await pool.query(
-    `SELECT u.*, r.name AS role
+    `SELECT u.*, r.name AS role, e.name AS employee_name
      FROM users u
      JOIN user_roles r ON u.role_id = r.id
+     LEFT JOIN employees e ON e.code = u.empid
      WHERE u.empid = ?
      LIMIT 1`,
     [empid],
@@ -119,9 +120,10 @@ export async function listUsersByCompany(companyId) {
  */
 export async function getUserById(id) {
   const [rows] = await pool.query(
-    `SELECT u.*, r.name AS role
+    `SELECT u.*, r.name AS role, e.name AS employee_name
      FROM users u
      JOIN user_roles r ON u.role_id = r.id
+     LEFT JOIN employees e ON e.code = u.empid
      WHERE u.id = ?`,
     [id],
   );
