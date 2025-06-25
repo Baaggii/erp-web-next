@@ -136,5 +136,8 @@ await test('setFormConfig stores date and transaction type fields', async () => 
   assert.equal(data.tbl.Configured.transTypeField, 'tran_type');
   assert.equal(data.tbl.Configured.transTypeValue, '10');
   assert.equal(data.tbl.Configured.transTypeLabel, 'Sale');
+  assert.equal(data.tbl.Configured.defaultValues.tran_type, '10');
+  assert.ok(data.tbl.Configured.visibleFields.includes('tran_date'));
+  assert.ok(data.tbl.Configured.visibleFields.includes('tran_type'));
   await restore();
 });
