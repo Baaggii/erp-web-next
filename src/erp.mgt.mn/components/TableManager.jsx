@@ -876,9 +876,11 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
                   padding: '0.5rem',
                   border: '1px solid #d1d5db',
                   cursor: 'pointer',
-                  whiteSpace: 'nowrap',
+                  whiteSpace: 'normal',
+                  wordBreak: 'break-word',
                   lineHeight: 1.2,
                   textAlign: columnAlign[c],
+                  width: columnWidths[c],
                   minWidth: columnWidths[c],
                   resize: 'horizontal',
                   overflow: 'auto',
@@ -900,7 +902,9 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
                 padding: '0.25rem',
                 border: '1px solid #d1d5db',
                 whiteSpace: 'normal',
+                wordBreak: 'break-word',
                 textAlign: columnAlign[c],
+                width: columnWidths[c],
                 minWidth: columnWidths[c],
                 resize: 'horizontal',
                 overflow: 'auto',
@@ -962,28 +966,22 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
                   textAlign: columnAlign[c],
                 };
                 if (w) {
+                  style.width = w;
                   style.minWidth = w;
                   if (w <= 120) {
-                    style.maxWidth = w;
                     style.whiteSpace = 'nowrap';
                   } else {
-                    style.maxWidth = w;
                     style.whiteSpace = 'nowrap';
-                    style.textOverflow = 'ellipsis';
                     style.overflowX = 'auto';
                   }
                 }
                 const raw = relationOpts[c]
                   ? labelMap[c][r[c]] || String(r[c])
                   : String(r[c]);
-                let display = placeholders[c]
+                const display = placeholders[c]
                   ? normalizeDateInput(raw, placeholders[c])
                   : raw;
-                let showFull = false;
-                if (display.length > 20) {
-                  display = display.slice(0, 20) + '…';
-                  showFull = true;
-                }
+                const showFull = display.length > 20;
                 return (
                   <td
                     key={c}
