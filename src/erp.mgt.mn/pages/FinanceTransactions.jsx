@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import TableManager from '../components/TableManager.jsx';
-import SearchSelect from '../components/SearchSelect.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { useRolePermissions } from '../hooks/useRolePermissions.js';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
@@ -139,23 +138,26 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   return (
     <div>
       <h2>{moduleLabel || 'Transactions'}</h2>
-      {transactionNames.length > 0 && (
-        <div style={{ marginBottom: '0.5rem', maxWidth: '300px' }}>
-          <SearchSelect
-            value={name}
-            onChange={(v) => {
-              setName(v);
-              setRefreshId((r) => r + 1);
-              setShowTable(false);
-            }}
-            options={[
-              { value: '', label: caption },
-              ...transactionNames.map((t) => ({ value: t, label: t })),
-            ]}
-            placeholder={caption}
-          />
-        </div>
-      )}
+        {transactionNames.length > 0 && (
+          <div style={{ marginBottom: '0.5rem', maxWidth: '300px' }}>
+            <select
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                setRefreshId((r) => r + 1);
+                setShowTable(false);
+              }}
+              style={{ width: '100%', padding: '0.5rem', borderRadius: '3px', border: '1px solid #ccc' }}
+            >
+              <option value="">{caption}</option>
+              {transactionNames.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       {table && config && (
         <div style={{ marginBottom: '0.5rem' }}>
           <button onClick={() => tableRef.current?.openAdd()} style={{ marginRight: '0.5rem' }}>
