@@ -22,7 +22,8 @@ export default function Forms() {
       params.set('branchId', company.branch_id);
     if (company?.department_id !== undefined)
       params.set('departmentId', company.department_id);
-    const url = `/api/transaction_forms${params.toString() ? `?${params.toString()}` : ''}`;
+    params.set('moduleKey', 'forms');
+    const url = `/api/transaction_forms?${params.toString()}`;
     fetch(url, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
       .then((data) => {
@@ -30,7 +31,8 @@ export default function Forms() {
         Object.entries(data).forEach(([name, info]) => {
           const allowedB = info.allowedBranches || [];
           const allowedD = info.allowedDepartments || [];
-          const key = info.moduleKey || '';
+          const key = info.moduleKey || 'forms';
+          if (key !== 'forms') return;
           if (
             allowedB.length > 0 &&
             company?.branch_id !== undefined &&
