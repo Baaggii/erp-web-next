@@ -5,29 +5,27 @@ import SearchSelect from '../components/SearchSelect.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { useRolePermissions } from '../hooks/useRolePermissions.js';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
+import { useTxnSession } from '../context/TxnSessionContext.jsx';
 
 export default function FinanceTransactions({ moduleKey = 'finance_transactions', moduleLabel = '' }) {
   const [configs, setConfigs] = useState({});
   const [searchParams, setSearchParams] = useSearchParams();
   const paramKey = `name_${moduleKey}`;
-  const [name, setName] = useState(() => searchParams.get(paramKey) || '');
-  const [table, setTable] = useState('');
-  const [config, setConfig] = useState(null);
-  const [refreshId, setRefreshId] = useState(0);
-  const [showTable, setShowTable] = useState(false);
+  const [sessionState, setSessionState] = useTxnSession(moduleKey);
+  const [name, setName] = useState(() => sessionState.name || searchParams.get(paramKey) || '');
+  const [table, setTable] = useState(() => sessionState.table || '');
+  const [config, setConfig] = useState(() => sessionState.config || null);
+  const [refreshId, setRefreshId] = useState(() => sessionState.refreshId || 0);
+  const [showTable, setShowTable] = useState(() => sessionState.showTable || false);
   const { company } = useContext(AuthContext);
   const perms = useRolePermissions();
   const licensed = useCompanyModules(company?.company_id);
   const tableRef = useRef(null);
   const prevModuleKey = useRef(moduleKey);
 
-
+  
   useEffect(() => {
     if (prevModuleKey.current !== moduleKey) {
-      setName('');
-      setTable('');
-      setConfig(null);
-      setShowTable(false);
       setSearchParams((prev) => {
         const sp = new URLSearchParams(prev);
         sp.delete(`name_${prevModuleKey.current}`);
@@ -36,6 +34,20 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
     }
     prevModuleKey.current = moduleKey;
   }, [moduleKey, setSearchParams]);
+
+  // load stored session for this module
+  useEffect(() => {
+    setName(sessionState.name || '');
+    setTable(sessionState.table || '');
+    setConfig(sessionState.config || null);
+    setRefreshId(sessionState.refreshId || 0);
+    setShowTable(sessionState.showTable || false);
+  }, [moduleKey]);
+
+  // persist state to session
+  useEffect(() => {
+    setSessionState({ name, table, config, refreshId, showTable });
+  }, [name, table, config, refreshId, showTable, setSessionState]);
 
   useEffect(() => {
     setSearchParams((prev) => {
