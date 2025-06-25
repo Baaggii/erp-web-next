@@ -212,8 +212,16 @@ export default function FormsManagement() {
     const cfg = {
       ...config,
       moduleKey,
-      allowedBranches: config.allowedBranches.map((b) => Number(b)).filter((b) => !Number.isNaN(b)),
-      allowedDepartments: config.allowedDepartments.map((d) => Number(d)).filter((d) => !Number.isNaN(d)),
+      allowedBranches: config.allowedBranches
+        .map((b) => Number(b))
+        .filter((b) => !Number.isNaN(b)),
+      allowedDepartments: config.allowedDepartments
+        .map((d) => Number(d))
+        .filter((d) => !Number.isNaN(d)),
+      dateColumn: config.dateColumn || '',
+      transTypeField: config.transTypeField || '',
+      transTypeValue: config.transTypeValue || '',
+      transTypeLabel: config.transTypeLabel || '',
     };
     await fetch('/api/transaction_forms', {
       method: 'POST',
