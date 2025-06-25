@@ -13,13 +13,19 @@ import CascadeDeleteModal from './CascadeDeleteModal.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
+function ch(n) {
+  return Math.round(n * 8);
+}
+
 function normalizeDateInput(value, format) {
   if (typeof value !== 'string') return value;
   let v = value.replace(/^(\d{4})\.(\d{2})\.(\d{2})/, '$1-$2-$3');
   const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
   if (isoRe.test(v)) {
     const d = new Date(v);
-    if (format === 'YYYY-MM-DD') return d.toISOString().slice(0, 10);
+    if (format && format.includes('YYYY-MM-DD')) {
+      return d.toISOString().slice(0, 10);
+    }
     if (format === 'HH:MM:SS') return d.toISOString().slice(11, 19);
     return d.toISOString().slice(0, 19).replace('T', ' ');
   }
@@ -720,12 +726,14 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     if (rows.length === 0) return map;
     columns.forEach((c) => {
       const avg = getAverageLength(c, rows);
-      if (avg <= 4) map[c] = 80;
-      else if (avg <= 10) map[c] = 120;
-      else map[c] = 200;
+      if (avg <= 4) map[c] = ch(Math.max(avg + 1, 5));
+      else if (placeholders[c] && placeholders[c].includes('YYYY-MM-DD'))
+        map[c] = ch(12);
+      else if (avg <= 10) map[c] = ch(12);
+      else map[c] = ch(20);
     });
     return map;
-  }, [columns, rows]);
+  }, [columns, rows, placeholders]);
 
   const autoCols = new Set(autoInc);
   if (columnMeta.length > 0 && autoCols.size === 0) {
@@ -872,6 +880,8 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
                   lineHeight: 1.2,
                   textAlign: columnAlign[c],
                   minWidth: columnWidths[c],
+                  resize: 'horizontal',
+                  overflow: 'auto',
                 }}
                 onClick={() => handleSort(c)}
               >
@@ -884,7 +894,18 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
           <tr>
             <th style={{ padding: '0.25rem', border: '1px solid #d1d5db', width: 60 }}></th>
             {columns.map((c) => (
-            <th key={c} style={{ padding: '0.25rem', border: '1px solid #d1d5db', whiteSpace: 'normal', textAlign: columnAlign[c], minWidth: columnWidths[c] }}>
+            <th
+              key={c}
+              style={{
+                padding: '0.25rem',
+                border: '1px solid #d1d5db',
+                whiteSpace: 'normal',
+                textAlign: columnAlign[c],
+                minWidth: columnWidths[c],
+                resize: 'horizontal',
+                overflow: 'auto',
+              }}
+            >
                 {Array.isArray(relationOpts[c]) ? (
                   <select
                     value={filters[c] || ''}
@@ -955,11 +976,21 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
                 const raw = relationOpts[c]
                   ? labelMap[c][r[c]] || String(r[c])
                   : String(r[c]);
-                const display = placeholders[c]
+                let display = placeholders[c]
                   ? normalizeDateInput(raw, placeholders[c])
                   : raw;
+                let showFull = false;
+                if (display.length > 20) {
+                  display = display.slice(0, 20) + '…';
+                  showFull = true;
+                }
                 return (
-                  <td key={c} style={style} title={raw}>
+                  <td
+                    key={c}
+                    style={style}
+                    title={raw}
+                    onClick={() => showFull && openDetail(r)}
+                  >
                     {display}
                   </td>
                 );
