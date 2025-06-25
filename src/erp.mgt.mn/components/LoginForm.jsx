@@ -1,6 +1,8 @@
 // src/erp.mgt.mn/components/LoginForm.jsx
 import React, { useState, useContext } from 'react';
 import { login } from '../hooks/useAuth.jsx';
+import { refreshRolePermissions } from '../hooks/useRolePermissions.js';
+import { refreshModules } from '../hooks/useModules.js';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { useNavigate } from 'react-router-dom';
 
@@ -34,6 +36,11 @@ export default function LoginForm() {
 
       if (assignments.length === 1) {
         setCompany(assignments[0]);
+        refreshModules();
+        refreshRolePermissions(
+          assignments[0].role_id || loggedIn.role_id,
+          assignments[0].company_id,
+        );
         navigate('/');
       } else if (assignments.length > 1) {
         setCompany(null);
@@ -57,6 +64,11 @@ export default function LoginForm() {
           );
           if (choice) {
             setCompany(choice);
+            refreshModules();
+            refreshRolePermissions(
+              choice.role_id || choice.roleId || loggedIn.role_id,
+              choice.company_id,
+            );
             navigate('/');
           }
         }}
