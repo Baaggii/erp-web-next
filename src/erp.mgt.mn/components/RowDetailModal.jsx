@@ -30,7 +30,14 @@ export default function RowDetailModal({ visible, onClose, row = {}, columns = [
                 >
                   {labels[c] || c}
                 </th>
-                <td style={{ padding: '0.25rem', border: '1px solid #d1d5db' }}>
+                <td
+                  style={{
+                    padding: '0.25rem',
+                    border: '1px solid #d1d5db',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                  }}
+                >
                   {relations[c] ? labelMap[c][row[c]] || String(row[c]) : String(row[c])}
                 </td>
               </tr>
