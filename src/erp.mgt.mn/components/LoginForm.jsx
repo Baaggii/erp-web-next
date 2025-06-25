@@ -1,6 +1,7 @@
 // src/erp.mgt.mn/components/LoginForm.jsx
 import React, { useState, useContext } from 'react';
 import { login } from '../hooks/useAuth.jsx';
+import { refreshModules } from '../hooks/useModules.js';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { useNavigate } from 'react-router-dom';
 
@@ -24,6 +25,7 @@ export default function LoginForm() {
 
       // The login response already returns the user profile
       setUser(loggedIn);
+      refreshModules();
 
       // Fetch company assignments
       const res = await fetch(
@@ -57,6 +59,7 @@ export default function LoginForm() {
           );
           if (choice) {
             setCompany(choice);
+            refreshModules();
             navigate('/');
           }
         }}
