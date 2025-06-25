@@ -20,7 +20,7 @@ export default function RowDetailModal({ visible, onClose, row = {}, columns = [
           <tbody>
             {cols.map((c) => (
               <tr key={c}>
-                <th style={{ textAlign: 'left', padding: '0.25rem', border: '1px solid #d1d5db', width: '15ch' }}>{labels[c] || c}</th>
+                <th style={{ textAlign: 'left', padding: '0.25rem', border: '1px solid #d1d5db' }}>{labels[c] || c}</th>
                 <td style={{ padding: '0.25rem', border: '1px solid #d1d5db' }}>
                   {relations[c] ? labelMap[c][row[c]] || String(row[c]) : String(row[c])}
                 </td>

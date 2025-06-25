@@ -26,23 +26,20 @@ export default function SearchSelect({
   });
 
   const match = options.find((o) => String(o.value) === String(input));
-  const displayed = show && match && String(match.value) === String(input)
-    ? options
-    : filtered;
 
   function handleKeyDown(e) {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setHighlight((h) => Math.min(h + 1, displayed.length - 1));
+      setHighlight((h) => Math.min(h + 1, filtered.length - 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setHighlight((h) => Math.max(h - 1, 0));
     } else if (e.key === 'Enter') {
       let idx = highlight;
-      if (idx < 0 && displayed.length > 0) idx = 0;
-      if (idx >= 0 && idx < displayed.length) {
+      if (idx < 0 && filtered.length > 0) idx = 0;
+      if (idx >= 0 && idx < filtered.length) {
         e.preventDefault();
-        const opt = displayed[idx];
+        const opt = filtered[idx];
         onChange(opt.value);
         setInput(String(opt.value));
         setShow(false);
@@ -70,35 +67,10 @@ export default function SearchSelect({
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         disabled={disabled}
-        style={{
-          width: '100%',
-          padding: '0.5rem',
-          paddingRight: '1.5rem',
-          border: '1px solid #ccc',
-          borderRadius: '3px',
-        }}
+        style={{ width: '100%', padding: '0.5rem' }}
         {...rest}
       />
-      <span
-        onMouseDown={(e) => {
-          e.preventDefault();
-          setShow((v) => !v);
-          setHighlight(-1);
-        }}
-        style={{
-          position: 'absolute',
-          right: '0.5rem',
-          top: '50%',
-          transform: 'translateY(-50%)',
-          pointerEvents: 'auto',
-          color: '#555',
-          cursor: 'pointer',
-          userSelect: 'none',
-        }}
-      >
-        ▼
-      </span>
-      {show && displayed.length > 0 && (
+      {show && filtered.length > 0 && (
         <ul
           style={{
             position: 'absolute',
@@ -114,7 +86,7 @@ export default function SearchSelect({
             overflowY: 'auto',
           }}
         >
-          {displayed.slice(0, 50).map((opt, idx) => (
+          {filtered.slice(0, 50).map((opt, idx) => (
             <li
               key={opt.value}
               onMouseDown={() => {

@@ -720,15 +720,12 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     if (rows.length === 0) return map;
     columns.forEach((c) => {
       const avg = getAverageLength(c, rows);
-      if (placeholders[c]) {
-        map[c] = `${placeholders[c].length}ch`;
-      } else if (avg <= 2) map[c] = '6ch';
-      else if (avg <= 4) map[c] = '8ch';
-      else if (avg <= 10) map[c] = '12ch';
-      else map[c] = '20ch';
+      if (avg <= 4) map[c] = 80;
+      else if (avg <= 10) map[c] = 120;
+      else map[c] = 200;
     });
     return map;
-  }, [columns, rows, placeholders]);
+  }, [columns, rows]);
 
   const autoCols = new Set(autoInc);
   if (columnMeta.length > 0 && autoCols.size === 0) {
@@ -875,9 +872,6 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
                   lineHeight: 1.2,
                   textAlign: columnAlign[c],
                   minWidth: columnWidths[c],
-                  maxWidth: columnWidths[c],
-                  resize: 'horizontal',
-                  overflow: 'hidden',
                 }}
                 onClick={() => handleSort(c)}
               >
@@ -890,7 +884,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
           <tr>
             <th style={{ padding: '0.25rem', border: '1px solid #d1d5db', width: 60 }}></th>
             {columns.map((c) => (
-            <th key={c} style={{ padding: '0.25rem', border: '1px solid #d1d5db', whiteSpace: 'normal', textAlign: columnAlign[c], minWidth: columnWidths[c], maxWidth: columnWidths[c], resize: 'horizontal', overflow: 'hidden' }}>
+            <th key={c} style={{ padding: '0.25rem', border: '1px solid #d1d5db', whiteSpace: 'normal', textAlign: columnAlign[c], minWidth: columnWidths[c] }}>
                 {Array.isArray(relationOpts[c]) ? (
                   <select
                     value={filters[c] || ''}
@@ -948,10 +942,15 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
                 };
                 if (w) {
                   style.minWidth = w;
-                  style.maxWidth = w;
-                  style.whiteSpace = 'nowrap';
-                  style.textOverflow = 'ellipsis';
-                  style.overflow = 'hidden';
+                  if (w <= 120) {
+                    style.maxWidth = w;
+                    style.whiteSpace = 'nowrap';
+                  } else {
+                    style.maxWidth = w;
+                    style.whiteSpace = 'nowrap';
+                    style.textOverflow = 'ellipsis';
+                    style.overflowX = 'auto';
+                  }
                 }
                 const raw = relationOpts[c]
                   ? labelMap[c][r[c]] || String(r[c])
