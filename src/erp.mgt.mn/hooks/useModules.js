@@ -14,11 +14,17 @@ export function useModules() {
   async function fetchModules() {
     try {
       const res = await fetch('/api/modules', { credentials: 'include' });
-      const rows = res.ok ? await res.json() : [];
+      if (!res.ok) {
+        cache.data = null;
+        setModules([]);
+        return;
+      }
+      const rows = await res.json();
       cache.data = rows;
       setModules(rows);
     } catch (err) {
       console.error('Failed to load modules', err);
+      cache.data = null;
       setModules([]);
     }
   }
