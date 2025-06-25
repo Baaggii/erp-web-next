@@ -121,12 +121,22 @@ export async function setFormConfig(table, name, config, options = {}) {
   const ad = Array.isArray(allowedDepartments)
     ? allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
     : [];
+
+  const defaults = { ...defaultValues };
+  if (transTypeField && transTypeValue) defaults[transTypeField] = transTypeValue;
+
+  const vis = Array.isArray(visibleFields)
+    ? Array.from(new Set(visibleFields))
+    : [];
+  if (dateColumn && !vis.includes(dateColumn)) vis.push(dateColumn);
+  if (transTypeField && !vis.includes(transTypeField)) vis.push(transTypeField);
+
   const cfg = await readConfig();
   if (!cfg[table]) cfg[table] = {};
   cfg[table][name] = {
-    visibleFields,
+    visibleFields: vis,
     requiredFields,
-    defaultValues,
+    defaultValues: defaults,
     editableDefaultFields,
     userIdFields: uid,
     branchIdFields: bid,
