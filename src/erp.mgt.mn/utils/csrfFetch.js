@@ -1,5 +1,17 @@
 let tokenPromise;
 
+function dispatchStart(key) {
+  window.dispatchEvent(new CustomEvent('loading:start', { detail: { key } }));
+}
+
+function dispatchEnd(key) {
+  window.dispatchEvent(new CustomEvent('loading:end', { detail: { key } }));
+}
+
+function currentKey() {
+  return window.__activeTabKey || 'global';
+}
+
 async function getToken() {
   if (!tokenPromise) {
     tokenPromise = fetch('/api/csrf-token', { credentials: 'include' })
@@ -12,13 +24,20 @@ async function getToken() {
 
 const originalFetch = window.fetch.bind(window);
 window.fetch = async (url, options = {}, _retry) => {
+  const key = currentKey();
+  dispatchStart(key);
   const method = (options.method || 'GET').toUpperCase();
   if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
     const token = await getToken();
     options.headers = { ...(options.headers || {}), 'X-CSRF-Token': token };
     options.credentials = options.credentials || 'include';
   }
-  const res = await originalFetch(url, options);
+  let res;
+  try {
+    res = await originalFetch(url, options);
+  } finally {
+    dispatchEnd(key);
+  }
   if (res.status === 401 && !_retry) {
     let msg;
     try {
