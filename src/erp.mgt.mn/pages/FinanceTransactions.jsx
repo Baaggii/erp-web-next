@@ -16,9 +16,6 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const [config, setConfig] = useState(() => sessionState.config || null);
   const [refreshId, setRefreshId] = useState(() => sessionState.refreshId || 0);
   const [showTable, setShowTable] = useState(() => sessionState.showTable || false);
-  const [dateFilter, setDateFilter] = useState(() => sessionState.dateFilter || '');
-  const [typeFilter, setTypeFilter] = useState(() => sessionState.typeFilter || '');
-  const [transTypes, setTransTypes] = useState([]);
   const { company } = useContext(AuthContext);
   const perms = useRolePermissions();
   const licensed = useCompanyModules(company?.company_id);
@@ -48,8 +45,8 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
 
   // persist state to session
   useEffect(() => {
-    setSessionState({ name, table, config, refreshId, showTable, dateFilter, typeFilter });
-  }, [name, table, config, refreshId, showTable, dateFilter, typeFilter, setSessionState]);
+    setSessionState({ name, table, config, refreshId, showTable });
+  }, [name, table, config, refreshId, showTable, setSessionState]);
 
   useEffect(() => {
     setSearchParams((prev) => {
@@ -59,13 +56,6 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
       return sp;
     });
   }, [name, setSearchParams, paramKey]);
-
-  useEffect(() => {
-    fetch('/api/tables/code_transaction?perPage=500', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : { rows: [] }))
-      .then((data) => setTransTypes(data.rows || []))
-      .catch(() => setTransTypes([]));
-  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -138,34 +128,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
       .catch(() => setConfig(null));
   }, [table, name]);
 
-  useEffect(() => {
-    if (!config) {
-      setDateFilter('');
-      setTypeFilter('');
-      return;
-    }
-    if (config.dateColumn) {
-      setDateFilter(new Date().toISOString().slice(0, 10));
-    } else {
-      setDateFilter('');
-    }
-    if (config.transTypeField) {
-      setTypeFilter(config.transTypeValue || '');
-    } else {
-      setTypeFilter('');
-    }
-  }, [config]);
-
   const transactionNames = Object.keys(configs);
-
-  const initialFilters = React.useMemo(() => {
-    const map = {};
-    if (config) {
-      if (config.dateColumn && dateFilter) map[config.dateColumn] = dateFilter;
-      if (config.transTypeField && typeFilter) map[config.transTypeField] = typeFilter;
-    }
-    return map;
-  }, [config, dateFilter, typeFilter]);
 
   if (!perms || !licensed) return <p>Loading...</p>;
   if (!perms[moduleKey] || !licensed[moduleKey]) return <p>Access denied.</p>;
@@ -203,36 +166,6 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
           <button onClick={() => setShowTable((v) => !v)}>
             {showTable ? 'Hide Table' : 'View Table'}
           </button>
-          {config.dateColumn && (
-            <span style={{ marginLeft: '1rem' }}>
-              <input
-                type="date"
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
-              />
-              <button onClick={() => setDateFilter('')} style={{ marginLeft: '0.25rem' }}>
-                Clear
-              </button>
-            </span>
-          )}
-          {config.transTypeField && (
-            <span style={{ marginLeft: '1rem' }}>
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-              >
-                <option value=""></option>
-                {transTypes.map((t) => (
-                  <option key={t.UITransType} value={t.UITransType}>
-                    {t.UITransTypeName}
-                  </option>
-                ))}
-              </select>
-              <button onClick={() => setTypeFilter('')} style={{ marginLeft: '0.25rem' }}>
-                Clear
-              </button>
-            </span>
-          )}
         </div>
       )}
       {table && config && (
@@ -244,7 +177,6 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
           initialPerPage={10}
           addLabel="Add Transaction"
           showTable={showTable}
-          initialFilters={initialFilters}
         />
       )}
       {transactionNames.length === 0 && (

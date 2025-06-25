@@ -59,12 +59,12 @@ const deleteBtnStyle = {
   color: '#b91c1c',
 };
 
-export default forwardRef(function TableManager({ table, refreshId = 0, formConfig = null, initialPerPage = 10, addLabel = 'Add Row', showTable = true, initialFilters = {} }, ref) {
+export default forwardRef(function TableManager({ table, refreshId = 0, formConfig = null, initialPerPage = 10, addLabel = 'Add Row', showTable = true }, ref) {
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(initialPerPage);
-  const [filters, setFilters] = useState(initialFilters);
+  const [filters, setFilters] = useState({});
   const [sort, setSort] = useState({ column: '', dir: 'asc' });
   const [relations, setRelations] = useState({});
   const [refData, setRefData] = useState({});
@@ -117,7 +117,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     setRows([]);
     setCount(0);
     setPage(1);
-    setFilters(initialFilters || {});
+    setFilters({});
     setSort({ column: '', dir: 'asc' });
     setRelations({});
     setRefData({});
@@ -135,10 +135,6 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
       canceled = true;
     };
   }, [table]);
-
-  useEffect(() => {
-    setFilters(initialFilters || {});
-  }, [initialFilters]);
 
   useEffect(() => {
     setAutoInc(computeAutoInc(columnMeta));

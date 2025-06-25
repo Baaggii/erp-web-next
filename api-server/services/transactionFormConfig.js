@@ -35,10 +35,6 @@ function parseEntry(raw = {}) {
       ? raw.allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
       : [],
     moduleLabel: typeof raw.moduleLabel === 'string' ? raw.moduleLabel : '',
-    dateColumn: typeof raw.dateColumn === 'string' ? raw.dateColumn : '',
-    transTypeField: typeof raw.transTypeField === 'string' ? raw.transTypeField : '',
-    transTypeValue: typeof raw.transTypeValue === 'string' ? raw.transTypeValue : '',
-    transTypeLabel: typeof raw.transTypeLabel === 'string' ? raw.transTypeLabel : '',
   };
 }
 
@@ -93,10 +89,6 @@ export async function setFormConfig(table, name, config, options = {}) {
     userIdField,
     branchIdField,
     companyIdField,
-    dateColumn = '',
-    transTypeField = '',
-    transTypeValue = '',
-    transTypeLabel = '',
   } = config || {};
   const uid = (userIdFields.length ? userIdFields : userIdField ? [userIdField] : [])
     .map(String)
@@ -121,32 +113,12 @@ export async function setFormConfig(table, name, config, options = {}) {
   const ad = Array.isArray(allowedDepartments)
     ? allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
     : [];
-
   const cfg = await readConfig();
   if (!cfg[table]) cfg[table] = {};
-  const prev = parseEntry(cfg[table][name]);
-
-  const finalDateCol = dateColumn || prev.dateColumn;
-  const finalTypeField = transTypeField || prev.transTypeField;
-  const finalTypeValue = transTypeValue || prev.transTypeValue;
-  const finalTypeLabel = transTypeLabel || prev.transTypeLabel;
-
-  const defaults = { ...prev.defaultValues, ...defaultValues };
-  if (finalTypeField && finalTypeValue) defaults[finalTypeField] = finalTypeValue;
-  if (finalDateCol && !defaults[finalDateCol]) {
-    defaults[finalDateCol] = new Date().toISOString().slice(0, 10);
-  }
-
-  const vis = Array.isArray(visibleFields)
-    ? Array.from(new Set(visibleFields))
-    : [];
-  if (finalDateCol && !vis.includes(finalDateCol)) vis.push(finalDateCol);
-  if (finalTypeField && !vis.includes(finalTypeField)) vis.push(finalTypeField);
-
   cfg[table][name] = {
-    visibleFields: vis,
+    visibleFields,
     requiredFields,
-    defaultValues: defaults,
+    defaultValues,
     editableDefaultFields,
     userIdFields: uid,
     branchIdFields: bid,
@@ -155,10 +127,6 @@ export async function setFormConfig(table, name, config, options = {}) {
     moduleLabel: moduleLabel || undefined,
     allowedBranches: ab,
     allowedDepartments: ad,
-    dateColumn: finalDateCol,
-    transTypeField: finalTypeField,
-    transTypeValue: finalTypeValue,
-    transTypeLabel: finalTypeLabel,
   };
   await writeConfig(cfg);
   return cfg[table][name];

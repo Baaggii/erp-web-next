@@ -18,18 +18,6 @@ Each **transaction** entry allows you to specify:
 - **moduleLabel** – optional label for the parent module
 - **allowedBranches** – restrict usage to these branch IDs
 - **allowedDepartments** – restrict usage to these department IDs
-- **dateColumn** – column used to filter transactions by date
-- **transTypeField** – column containing the transaction type
-- **transTypeValue** – default value for `transTypeField`
-- **transTypeLabel** – human readable label for the selected type
-
-If `defaultValues` does not specify one for `dateColumn`, it will be
-initialized with the current date when the configuration is saved.
-
-When creating or updating a configuration, always include the
-`dateColumn`, `transTypeField` and `transTypeValue` properties in the
-POST body. Omitting them will result in empty values being stored on
-disk.
 
 Example snippet:
 
@@ -47,11 +35,7 @@ Example snippet:
       "moduleKey": "finance_transactions",
       "moduleLabel": "Finance",
       "allowedBranches": [1, 2],
-      "allowedDepartments": [5],
-      "dateColumn": "tran_date",
-      "transTypeField": "tran_type",
-      "transTypeValue": "1",
-      "transTypeLabel": "Sale"
+      "allowedDepartments": [5]
     },
     "Issue": {
       "visibleFields": ["tran_date", "description"],
@@ -64,11 +48,7 @@ Example snippet:
       "moduleKey": "finance_transactions",
       "moduleLabel": "Finance",
       "allowedBranches": [1, 2],
-      "allowedDepartments": [5],
-      "dateColumn": "tran_date",
-      "transTypeField": "tran_type",
-      "transTypeValue": "1",
-      "transTypeLabel": "Sale"
+      "allowedDepartments": [5]
     }
   }
 }
