@@ -116,3 +116,30 @@ await test('deleteFormConfig keeps other entries intact', async () => {
   assert.equal(calls.length, 0);
   await restore();
 });
+
+await test('setFormConfig stores date and transaction type fields', async () => {
+  const { orig, restore } = await withTempFile();
+  await fs.writeFile(filePath, '{}');
+  const restoreDb = mockPool(() => {});
+
+  await setFormConfig('tbl', 'Configured', {
+    moduleKey: 'parent',
+    dateColumn: 'tran_date',
+    transTypeField: 'tran_type',
+    transTypeValue: '10',
+    transTypeLabel: 'Sale',
+  });
+
+  restoreDb();
+  const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
+  assert.equal(data.tbl.Configured.dateColumn, 'tran_date');
+  assert.equal(data.tbl.Configured.transTypeField, 'tran_type');
+  assert.equal(data.tbl.Configured.transTypeValue, '10');
+  assert.equal(data.tbl.Configured.transTypeLabel, 'Sale');
+  assert.equal(data.tbl.Configured.defaultValues.tran_type, '10');
+  const today = new Date().toISOString().slice(0, 10);
+  assert.equal(data.tbl.Configured.defaultValues.tran_date, today);
+  assert.ok(data.tbl.Configured.visibleFields.includes('tran_date'));
+  assert.ok(data.tbl.Configured.visibleFields.includes('tran_type'));
+  await restore();
+});
