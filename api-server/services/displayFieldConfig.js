@@ -35,3 +35,9 @@ export async function setDisplayFields(table, { idField, displayFields }) {
   await writeConfig(cfg);
   return cfg[table];
 }
+
+export async function removeDisplayFields(table) {
+  const cfg = await readConfig();
+  delete cfg[table];
+  await writeConfig(cfg);
+}
