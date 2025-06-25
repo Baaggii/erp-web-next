@@ -18,10 +18,6 @@ Each **transaction** entry allows you to specify:
 - **moduleLabel** – optional label for the parent module
 - **allowedBranches** – restrict usage to these branch IDs
 - **allowedDepartments** – restrict usage to these department IDs
-- **dateFields** – list of columns considered transaction dates
-- **transTypeField** – column that stores the transaction type
-- **transTypeValue** – value inserted into the transaction type field when adding
-  a new row
 
 Example snippet:
 
@@ -39,10 +35,7 @@ Example snippet:
       "moduleKey": "finance_transactions",
       "moduleLabel": "Finance",
       "allowedBranches": [1, 2],
-      "allowedDepartments": [5],
-      "dateFields": ["tran_date"],
-      "transTypeField": "tran_type",
-      "transTypeValue": "SALE"
+      "allowedDepartments": [5]
     },
     "Issue": {
       "visibleFields": ["tran_date", "description"],
@@ -55,10 +48,7 @@ Example snippet:
       "moduleKey": "finance_transactions",
       "moduleLabel": "Finance",
       "allowedBranches": [1, 2],
-      "allowedDepartments": [5],
-      "dateFields": ["tran_date"],
-      "transTypeField": "tran_type",
-      "transTypeValue": "ISSUE"
+      "allowedDepartments": [5]
     }
   }
 }

@@ -335,12 +335,6 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
       if (formConfig?.companyIdFields?.includes(c) && company?.company_id !== undefined) v = company.company_id;
       vals[c] = v;
     });
-    if (
-      formConfig?.transTypeField &&
-      all.includes(formConfig.transTypeField)
-    ) {
-      vals[formConfig.transTypeField] = formConfig.transTypeValue || '';
-    }
     setEditing(vals);
     setIsAdding(true);
     setShowForm(true);
@@ -447,9 +441,6 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         if (columns.has(f) && company?.company_id !== undefined)
           merged[f] = company.company_id;
       });
-      if (formConfig?.transTypeField && columns.has(formConfig.transTypeField)) {
-        merged[formConfig.transTypeField] = formConfig.transTypeValue;
-      }
     }
 
     const required = formConfig?.requiredFields || [];
