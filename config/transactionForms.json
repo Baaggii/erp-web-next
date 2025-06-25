@@ -61,7 +61,11 @@
       ],
       "allowedBranches": [],
       "allowedDepartments": [],
-      "moduleKey": "finance_transactions"
+      "moduleKey": "finance_transactions",
+      "dateColumn": "or_date",
+      "transTypeField": "UITransTypeName",
+      "transTypeValue": "1914",
+      "transTypeLabel": "Бараа бүтээгдэхүүн борлуулсан орлого"
     }
   }
 }
