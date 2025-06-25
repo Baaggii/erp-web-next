@@ -61,7 +61,10 @@
       ],
       "allowedBranches": [],
       "allowedDepartments": [],
-      "moduleKey": "finance_transactions"
+      "moduleKey": "finance_transactions",
+      "dateFields": ["or_date"],
+      "transTypeField": "trtype",
+      "transTypeValue": "1914"
     }
   }
 }
