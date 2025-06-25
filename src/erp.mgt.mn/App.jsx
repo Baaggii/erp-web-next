@@ -19,6 +19,7 @@ import TablesManagementPage from './pages/TablesManagement.jsx';
 import CodingTablesPage from './pages/CodingTables.jsx';
 import FormsManagementPage from './pages/FormsManagement.jsx';
 import ReportManagementPage from './pages/ReportManagement.jsx';
+import RelationsConfigPage from './pages/RelationsConfig.jsx';
 import ModulesPage from './pages/Modules.jsx';
 import SettingsPage, { GeneralSettings } from './pages/Settings.jsx';
 import ChangePasswordPage from './pages/ChangePassword.jsx';
@@ -56,6 +57,7 @@ export default function App() {
     coding_tables: <CodingTablesPage />,
     forms_management: <FormsManagementPage />,
     report_management: <ReportManagementPage />,
+    relations_config: <RelationsConfigPage />,
     change_password: <ChangePasswordPage />,
   };
 
@@ -81,6 +83,7 @@ export default function App() {
     'coding_tables',
     'forms_management',
     'report_management',
+    'relations_config',
   ]);
 
   function renderRoute(mod) {
