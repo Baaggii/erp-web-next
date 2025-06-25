@@ -141,7 +141,6 @@ function Sidebar({ onOpen }) {
   const perms = useRolePermissions();
   const licensed = useCompanyModules(company?.company_id);
   const modules = useModules();
-  const txnModuleKeys = useTxnModules();
 
   if (!perms || !licensed) return null;
 
@@ -150,22 +149,11 @@ function Sidebar({ onOpen }) {
     allMap[m.module_key] = { ...m };
   });
 
-  function isFormsDescendant(mod) {
-    let cur = mod;
-    while (cur) {
-      if (cur.module_key === 'forms') return mod.module_key !== 'forms';
-      cur = cur.parent_key ? allMap[cur.parent_key] : null;
-    }
-    return false;
-  }
-
   const map = {};
   modules.forEach((m) => {
-    if (!perms[m.module_key] || !licensed[m.module_key] || !m.show_in_sidebar)
-      return;
-    if (isFormsDescendant(m) && txnModuleKeys && !txnModuleKeys.has(m.module_key))
-      return;
-    map[m.module_key] = { ...m, children: [] };
+    if (perms[m.module_key] && licensed[m.module_key] && m.show_in_sidebar) {
+      map[m.module_key] = { ...m, children: [] };
+    }
   });
 
   // Ensure parents exist for permitted modules so children don't become
