@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { AuthContext } from '../context/AuthContext.jsx';
 
 export default function UserMenu({ user, onLogout }) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
+  const { company } = useContext(AuthContext);
 
   if (!user) return null;
 
@@ -24,7 +26,9 @@ export default function UserMenu({ user, onLogout }) {
   return (
     <div style={styles.wrapper}>
       <button style={styles.userBtn} onClick={toggle}>
-        {user.full_name ? `${user.full_name} (${user.empid})` : user.empid} ▾
+        {company?.employee_name || user.name
+          ? `${company?.employee_name || user.name} (${company?.role || user.role})`
+          : `${user.empid} (${user.role})`} ▾
       </button>
       {open && (
         <div style={styles.menu}>
