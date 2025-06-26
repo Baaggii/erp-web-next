@@ -180,7 +180,7 @@ export default function FormsManagement() {
       allowedBranches: config.allowedBranches.map((b) => Number(b)).filter((b) => !Number.isNaN(b)),
       allowedDepartments: config.allowedDepartments.map((d) => Number(d)).filter((d) => !Number.isNaN(d)),
     };
-    await fetch('/api/transaction_forms', {
+    const res = await fetch('/api/transaction_forms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -190,6 +190,10 @@ export default function FormsManagement() {
         config: cfg,
       }),
     });
+    if (!res.ok) {
+      alert('Save failed');
+      return;
+    }
     refreshTxnModules();
     alert('Saved');
     if (!names.includes(name)) setNames((n) => [...n, name]);
