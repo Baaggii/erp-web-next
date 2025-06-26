@@ -84,7 +84,11 @@ export async function getUserByEmpId(empid) {
 <<<<<<< codex/fix-login-error--unknown-column-e.name
   LEFT JOIN tbl_employee e ON e.emp_id = u.empid
 =======
+<<<<<<< codex/fix-login-error--unknown-column-e.name
+  LEFT JOIN tbl_employee e ON e.emp_id = u.empid
+=======
   LEFT JOIN tbl_employee e ON e.code = u.empid
+>>>>>>> master
 >>>>>>> master
       WHERE u.empid = ?
       LIMIT 1`,
@@ -101,19 +105,25 @@ export async function getUserByEmpId(empid) {
  */
 export async function listUsers() {
   const [rows] = await pool.query(
-    `SELECT u.id, u.empid, u.role_id, r.name AS role, u.created_at
-     FROM users u
-     JOIN user_roles r ON u.role_id = r.id`,
+    `SELECT u.id, u.empid, u.role_id, r.name AS role,
+            CONCAT_WS(' ', e.emp_fname, e.emp_lname) AS employee_name,
+            u.created_at
+       FROM users u
+       JOIN user_roles r ON u.role_id = r.id
+  LEFT JOIN tbl_employee e ON e.emp_id = u.empid`,
   );
   return rows;
 }
 
 export async function listUsersByCompany(companyId) {
   const [rows] = await pool.query(
-    `SELECT u.id, u.empid, uc.role_id, r.name AS role, u.created_at
+    `SELECT u.id, u.empid, uc.role_id, r.name AS role,
+            CONCAT_WS(' ', e.emp_fname, e.emp_lname) AS employee_name,
+            u.created_at
        FROM users u
        JOIN user_companies uc ON u.empid = uc.empid
        JOIN user_roles r ON uc.role_id = r.id
+  LEFT JOIN tbl_employee e ON e.emp_id = u.empid
       WHERE uc.company_id = ?`,
     [companyId],
   );
@@ -261,7 +271,11 @@ export async function listAllUserCompanies(companyId) {
 <<<<<<< codex/fix-login-error--unknown-column-e.name
        LEFT JOIN tbl_employee e ON uc.empid = e.emp_id
 =======
+<<<<<<< codex/fix-login-error--unknown-column-e.name
+       LEFT JOIN tbl_employee e ON uc.empid = e.emp_id
+=======
        LEFT JOIN tbl_employee e ON uc.empid = e.code
+>>>>>>> master
 >>>>>>> master
        ${where}`,
     params,
