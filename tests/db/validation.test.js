@@ -119,10 +119,10 @@ test('updateTableRow uses composite primary key', async () => {
       sql,
       'UPDATE ?? SET `name` = ? WHERE `empid` = ? AND `company_id` = ?',
     );
-    assert.deepEqual(params, ['employees', 'Bob', 'E1', 'C2']);
+    assert.deepEqual(params, ['tbl_employee', 'Bob', 'E1', 'C2']);
     return [{}];
   };
-  await db.updateTableRow('employees', 'E1-C2', { name: 'Bob' });
+  await db.updateTableRow('tbl_employee', 'E1-C2', { name: 'Bob' });
   db.pool.query = original;
   assert.ok(called);
 });
@@ -142,10 +142,10 @@ test('deleteTableRow uses composite primary key', async () => {
       sql,
       'DELETE FROM ?? WHERE `empid` = ? AND `company_id` = ?',
     );
-    assert.deepEqual(params, ['employees', 'E1', 'C2']);
+    assert.deepEqual(params, ['tbl_employee', 'E1', 'C2']);
     return [{}];
   };
-  await db.deleteTableRow('employees', 'E1-C2');
+  await db.deleteTableRow('tbl_employee', 'E1-C2');
   db.pool.query = original;
   assert.ok(called);
 });

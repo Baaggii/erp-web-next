@@ -80,7 +80,7 @@ export async function getUserByEmpId(empid) {
     `SELECT u.*, r.name AS role, e.name AS employee_name
      FROM users u
      JOIN user_roles r ON u.role_id = r.id
-     LEFT JOIN employees e ON e.code = u.empid
+     LEFT JOIN tbl_employee e ON e.code = u.empid
      WHERE u.empid = ?
      LIMIT 1`,
     [empid],
@@ -123,7 +123,7 @@ export async function getUserById(id) {
     `SELECT u.*, r.name AS role, e.name AS employee_name
      FROM users u
      JOIN user_roles r ON u.role_id = r.id
-     LEFT JOIN employees e ON e.code = u.empid
+     LEFT JOIN tbl_employee e ON e.code = u.empid
      WHERE u.id = ?`,
     [id],
   );
@@ -204,7 +204,7 @@ export async function listUserCompanies(empid) {
      JOIN companies c ON uc.company_id = c.id
      JOIN user_roles r ON uc.role_id = r.id
     LEFT JOIN code_branches b ON uc.branch_id = b.id
-    LEFT JOIN employees e ON uc.empid = e.code
+    LEFT JOIN tbl_employee e ON uc.empid = e.code
      WHERE uc.empid = ?`,
     [empid],
   );
@@ -250,7 +250,7 @@ export async function listAllUserCompanies(companyId) {
      JOIN companies c ON uc.company_id = c.id
      JOIN user_roles r ON uc.role_id = r.id
      LEFT JOIN code_branches b ON uc.branch_id = b.id
-     LEFT JOIN employees e ON uc.empid = e.code
+     LEFT JOIN tbl_employee e ON uc.empid = e.code
      ${where}`,
     params,
   );
