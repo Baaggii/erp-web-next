@@ -592,7 +592,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     setSelectedRows(new Set());
   }
 
-  async function handleSubmit(values) {
+  async function handleSubmit(values, { addAnother = false } = {}) {
     const columns = new Set(allColumns);
     const merged = { ...(editing || {}) };
     Object.entries(values).forEach(([k, v]) => {
@@ -667,16 +667,26 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         setRows(data.rows || []);
         setCount(data.count || 0);
         setSelectedRows(new Set());
-        setShowForm(false);
-        setEditing(null);
-        setIsAdding(false);
         const msg = isAdding ? 'New transaction saved' : 'Saved';
         addToast(msg, 'success');
         if (isAdding) {
-          const again = window.confirm('Add another transaction row?');
-          if (again) {
-            setTimeout(() => openAdd(), 0);
+          let again = addAnother;
+          if (!addAnother) {
+            again = window.confirm(
+              'Transaction saved successfully. Do you want to add another?',
+            );
           }
+          if (again) {
+            await openAdd();
+          } else {
+            setShowForm(false);
+            setEditing(null);
+            setIsAdding(false);
+          }
+        } else {
+          setShowForm(false);
+          setEditing(null);
+          setIsAdding(false);
         }
       } else {
         let message = 'Save failed';
