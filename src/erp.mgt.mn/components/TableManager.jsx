@@ -90,6 +90,11 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
   const { user, company } = useContext(AuthContext);
   const { addToast } = useToast();
 
+  const validCols = useMemo(
+    () => new Set(columnMeta.map((c) => c.name)),
+    [columnMeta],
+  );
+
   function computeAutoInc(meta) {
     const auto = meta
       .filter(
@@ -165,7 +170,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
       const today = new Date().toISOString().slice(0, 10);
       setDateFilter(today);
       formConfig.dateField.forEach((d) => {
-        newFilters[d] = today;
+        if (validCols.has(d)) newFilters[d] = today;
       });
     } else {
       setDateFilter('');
@@ -173,14 +178,15 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     if (formConfig.transactionTypeField) {
       const val = formConfig.transactionTypeValue || '';
       setTypeFilter(val);
-      newFilters[formConfig.transactionTypeField] = val;
+      if (validCols.has(formConfig.transactionTypeField))
+        newFilters[formConfig.transactionTypeField] = val;
     } else {
       setTypeFilter('');
     }
     if (Object.keys(newFilters).length > 0) {
       setFilters((f) => ({ ...f, ...newFilters }));
     }
-  }, [formConfig]);
+  }, [formConfig, validCols]);
 
   useEffect(() => {
     if (!formConfig?.transactionTypeField) {
@@ -226,18 +232,23 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
       setFilters((f) => {
         const obj = { ...f };
         formConfig.dateField.forEach((d) => {
-          obj[d] = dateFilter || '';
+          if (validCols.has(d)) obj[d] = dateFilter || '';
         });
         return obj;
       });
     }
-  }, [dateFilter, formConfig]);
+  }, [dateFilter, formConfig, validCols]);
 
   useEffect(() => {
     if (formConfig?.transactionTypeField) {
-      setFilters((f) => ({ ...f, [formConfig.transactionTypeField]: typeFilter || '' }));
+      if (validCols.has(formConfig.transactionTypeField)) {
+        setFilters((f) => ({
+          ...f,
+          [formConfig.transactionTypeField]: typeFilter || '',
+        }));
+      }
     }
-  }, [typeFilter, formConfig]);
+  }, [typeFilter, formConfig, validCols]);
 
   useEffect(() => {
     if (!table) return;
@@ -928,10 +939,11 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
           marginBottom: '0.5rem',
           position: 'sticky',
           top: 0,
-          background: '#fff',
+          background: '#ff9',
           zIndex: 1,
           paddingTop: '0.5rem',
           paddingBottom: '0.5rem',
+          textAlign: 'left',
         }}
       >
         <button onClick={openAdd} style={{ marginRight: '0.5rem' }}>
@@ -956,10 +968,11 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
           gridTemplateColumns: 'repeat(2, 1fr)',
           gap: '0.5rem',
           marginBottom: '0.5rem',
+          textAlign: 'left',
         }}
       >
       {formConfig?.dateField?.length > 0 && (
-        <div style={{ backgroundColor: '#eef6ff', padding: '0.25rem' }}>
+        <div style={{ backgroundColor: '#00e0ff', padding: '0.25rem', textAlign: 'left' }}>
           Date:{' '}
           <select
             value={datePreset}
@@ -971,12 +984,24 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
                 return;
               }
               const now = new Date();
-              let d = now;
-              if (val === 'month') d = new Date(now.getFullYear(), now.getMonth(), 1);
-              else if (val === 'quarter')
-                d = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
-              else if (val === 'year') d = new Date(now.getFullYear(), 0, 1);
-              setDateFilter(d.toISOString().slice(0, 10));
+              let start = now;
+              let end = now;
+              if (val === 'month') {
+                start = new Date(now.getFullYear(), now.getMonth(), 1);
+                end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+              } else if (val === 'quarter') {
+                const q = Math.floor(now.getMonth() / 3);
+                start = new Date(now.getFullYear(), q * 3, 1);
+                end = new Date(now.getFullYear(), q * 3 + 3, 0);
+              } else if (val === 'year') {
+                start = new Date(now.getFullYear(), 0, 1);
+                end = new Date(now.getFullYear(), 12, 0);
+              }
+              setDateFilter(
+                `${start.toISOString().slice(0, 10)}-${end
+                  .toISOString()
+                  .slice(0, 10)}`,
+              );
             }}
             style={{ marginRight: '0.5rem' }}
           >
@@ -1004,7 +1029,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         </div>
       )}
       {formConfig?.transactionTypeField && (
-        <div style={{ backgroundColor: '#fef8e7', padding: '0.25rem' }}>
+        <div style={{ backgroundColor: '#ffd600', padding: '0.25rem', textAlign: 'left' }}>
           Type:{' '}
           {typeOptions.length > 0 ? (
             <select
