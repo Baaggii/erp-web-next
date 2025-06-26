@@ -81,7 +81,11 @@ export async function getUserByEmpId(empid) {
             CONCAT_WS(' ', e.emp_fname, e.emp_lname) AS employee_name
        FROM users u
        JOIN user_roles r ON u.role_id = r.id
+<<<<<<< codex/fix-login-error--unknown-column-e.name
   LEFT JOIN tbl_employee e ON e.emp_id = u.empid
+=======
+  LEFT JOIN tbl_employee e ON e.code = u.empid
+>>>>>>> master
       WHERE u.empid = ?
       LIMIT 1`,
     [empid],
@@ -254,7 +258,11 @@ export async function listAllUserCompanies(companyId) {
        JOIN companies c ON uc.company_id = c.id
        JOIN user_roles r ON uc.role_id = r.id
        LEFT JOIN code_branches b ON uc.branch_id = b.id
+<<<<<<< codex/fix-login-error--unknown-column-e.name
        LEFT JOIN tbl_employee e ON uc.empid = e.emp_id
+=======
+       LEFT JOIN tbl_employee e ON uc.empid = e.code
+>>>>>>> master
        ${where}`,
     params,
   );
