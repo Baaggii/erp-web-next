@@ -147,7 +147,7 @@ export default function RowFormModal({
     }
   }
 
-  async function submitForm() {
+  async function submitForm(addAnother = false) {
     if (submitLocked) return;
     setSubmitLocked(true);
     const errs = {};
@@ -168,7 +168,7 @@ export default function RowFormModal({
             ? normalizeDateInput(v, placeholders[k])
             : v;
         });
-        await Promise.resolve(onSubmit(normalized));
+        await Promise.resolve(onSubmit(normalized, addAnother));
       } else {
         setSubmitLocked(false);
         return;
@@ -394,6 +394,13 @@ export default function RowFormModal({
             className="px-3 py-1 bg-gray-200 rounded"
           >
             Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => submitForm(true)}
+            className="px-3 py-1 bg-green-600 text-white rounded"
+          >
+            Save & Add Another
           </button>
           <button type="submit" className="px-3 py-1 bg-blue-600 text-white rounded">
             Save
