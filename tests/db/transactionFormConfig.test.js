@@ -2,7 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import path from 'path';
-import { setFormConfig, deleteFormConfig } from '../../api-server/services/transactionFormConfig.js';
+import {
+  setFormConfig,
+  deleteFormConfig,
+  getFormConfig,
+} from '../../api-server/services/transactionFormConfig.js';
 import * as db from '../../db/index.js';
 
 const filePath = path.join(process.cwd(), 'config', 'transactionForms.json');
@@ -76,6 +80,29 @@ await test('setFormConfig forwards sidebar/header flags', async () => {
   restoreDb();
   const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
   assert.equal(data.tbl.Flagged.moduleKey, 'parent_mod');
+  assert.equal(calls.length, 0);
+  await restore();
+});
+
+await test('setFormConfig persists extra fields', async () => {
+  const { orig, restore } = await withTempFile();
+  await fs.writeFile(filePath, '{}');
+  const calls = [];
+  const restoreDb = mockPool((sql, params) => calls.push({ sql, params }));
+
+  await setFormConfig('tbl', 'WithExtras', {
+    dateField: 'tran_date',
+    transactionTypeField: 'ttype',
+    transactionTypeValue: '3',
+    imageNameFields: ['img'],
+  });
+
+  restoreDb();
+  const cfg = await getFormConfig('tbl', 'WithExtras');
+  assert.equal(cfg.dateField, 'tran_date');
+  assert.equal(cfg.transactionTypeField, 'ttype');
+  assert.equal(cfg.transactionTypeValue, '3');
+  assert.deepEqual(cfg.imageNameFields, ['img']);
   assert.equal(calls.length, 0);
   await restore();
 });
