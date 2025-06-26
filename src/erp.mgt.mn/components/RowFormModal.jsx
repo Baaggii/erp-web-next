@@ -14,6 +14,10 @@ export default function RowFormModal({
   labels = {},
   requiredFields = [],
   onChange = () => {},
+  headerFields = [],
+  footerFields = [],
+  printEmpField = [],
+  printCustField = [],
 }) {
   const [formVals, setFormVals] = useState(() => {
     const init = {};
@@ -95,6 +99,12 @@ export default function RowFormModal({
 
   if (!visible) return null;
 
+  const headerSet = new Set(headerFields);
+  const footerSet = new Set(footerFields);
+  const headerCols = columns.filter((c) => headerSet.has(c));
+  const footerCols = columns.filter((c) => footerSet.has(c));
+  const mainCols = columns.filter((c) => !headerSet.has(c) && !footerSet.has(c));
+
   const formStyle = {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
@@ -161,6 +171,122 @@ export default function RowFormModal({
     }
     setSubmitLocked(false);
   }
+  function renderField(c) {
+    const err = errors[c];
+    const inputStyle = {
+      width: '100%',
+      padding: '0.5rem',
+      border: err ? '1px solid red' : '1px solid #ccc',
+    };
+    return (
+      <div key={c} style={{ marginBottom: '0.75rem' }}>
+        <label style={{ display: 'block', marginBottom: '0.25rem' }}>
+          {labels[c] || c}
+          {requiredFields.includes(c) && <span style={{ color: 'red' }}>*</span>}
+        </label>
+        {relationConfigs[c] ? (
+          <AsyncSearchSelect
+            title={labels[c] || c}
+            table={relationConfigs[c].table}
+            searchColumn={relationConfigs[c].column}
+            labelFields={relationConfigs[c].displayFields || []}
+            value={formVals[c]}
+            onChange={(val) => {
+              setFormVals((v) => ({ ...v, [c]: val }));
+              setErrors((er) => ({ ...er, [c]: undefined }));
+              onChange({ [c]: val });
+            }}
+            disabled={row && disabledFields.includes(c)}
+            onKeyDown={(e) => handleKeyDown(e, c)}
+            onFocus={(e) => e.target.select()}
+            inputRef={(el) => (inputRefs.current[c] = el)}
+          />
+        ) : Array.isArray(relations[c]) ? (
+          <select
+            title={labels[c] || c}
+            ref={(el) => (inputRefs.current[c] = el)}
+            value={formVals[c]}
+            onChange={(e) => {
+              setFormVals((v) => ({ ...v, [c]: e.target.value }));
+              setErrors((er) => ({ ...er, [c]: undefined }));
+              onChange({ [c]: e.target.value });
+            }}
+            onKeyDown={(e) => handleKeyDown(e, c)}
+            disabled={row && disabledFields.includes(c)}
+            style={inputStyle}
+          >
+            <option value="">-- select --</option>
+            {relations[c].map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            title={labels[c] || c}
+            ref={(el) => (inputRefs.current[c] = el)}
+            type="text"
+            placeholder={placeholders[c] || ''}
+            value={formVals[c]}
+            onChange={(e) => {
+              setFormVals((v) => ({ ...v, [c]: e.target.value }));
+              setErrors((er) => ({ ...er, [c]: undefined }));
+              onChange({ [c]: e.target.value });
+            }}
+            onKeyDown={(e) => handleKeyDown(e, c)}
+            onFocus={(e) => e.target.select()}
+            disabled={row && disabledFields.includes(c)}
+            style={inputStyle}
+          />
+        )}
+        {err && <div style={{ color: 'red', fontSize: '0.8rem' }}>{err}</div>}
+      </div>
+    );
+  }
+
+  function renderSection(title, cols) {
+    if (cols.length === 0) return null;
+    return (
+      <div style={{ marginBottom: '1rem' }}>
+        <h3 style={{ marginTop: 0 }}>{title}</h3>
+        <div style={formStyle}>{cols.map(renderField)}</div>
+      </div>
+    );
+  }
+
+  function handlePrint(mode) {
+    const all = [...headerCols, ...mainCols, ...footerCols];
+    const list = mode === 'emp' ? printEmpField : printCustField;
+    const allowed = new Set(list.length > 0 ? list : all);
+    const h = headerCols.filter((c) => allowed.has(c));
+    const m = mainCols.filter((c) => allowed.has(c));
+    const f = footerCols.filter((c) => allowed.has(c));
+
+    const rowHtml = (cols) =>
+      cols
+        .map(
+          (c) =>
+            `<tr><th>${labels[c] || c}</th><td>${
+              formVals[c] !== undefined ? formVals[c] : ''
+            }</td></tr>`,
+        )
+        .join('');
+
+    let html = '<html><head><title>Print</title>';
+    html +=
+      '<style>table{width:100%;border-collapse:collapse;margin-bottom:1rem;}th,td{border:1px solid #666;padding:4px;text-align:left;}h3{margin:0 0 4px 0;}</style>';
+    html += '</head><body>';
+    if (h.length) html += `<h3>Header</h3><table>${rowHtml(h)}</table>`;
+    if (m.length) html += `<h3>Main</h3><table>${rowHtml(m)}</table>`;
+    if (f.length) html += `<h3>Footer</h3><table>${rowHtml(f)}</table>`;
+    html += '</body></html>';
+    const w = window.open('', '_blank');
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    w.print();
+  }
 
   return (
     <Modal visible={visible} title={row ? 'Edit Row' : 'Add Row'} onClose={onCancel} width="70vw">
@@ -169,92 +295,23 @@ export default function RowFormModal({
           e.preventDefault();
           submitForm();
         }}
-        style={formStyle}
       >
-          {columns.map((c) => {
-            const err = errors[c];
-            const inputStyle = {
-              width: '100%',
-              padding: '0.5rem',
-              border: err ? '1px solid red' : '1px solid #ccc',
-            };
-            return (
-            <div key={c} style={{ marginBottom: '0.75rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.25rem' }}>
-                {labels[c] || c}
-                {requiredFields.includes(c) && (
-                  <span style={{ color: 'red' }}>*</span>
-                )}
-              </label>
-              {relationConfigs[c] ? (
-                <AsyncSearchSelect
-                  title={labels[c] || c}
-                  table={relationConfigs[c].table}
-                  searchColumn={relationConfigs[c].column}
-                  labelFields={relationConfigs[c].displayFields || []}
-                  value={formVals[c]}
-                  onChange={(val) => {
-                    setFormVals((v) => ({ ...v, [c]: val }));
-                    setErrors((er) => ({ ...er, [c]: undefined }));
-                    onChange({ [c]: val });
-                  }}
-                  disabled={row && disabledFields.includes(c)}
-                  onKeyDown={(e) => handleKeyDown(e, c)}
-                  onFocus={(e) => e.target.select()}
-                  inputRef={(el) => (inputRefs.current[c] = el)}
-                />
-              ) : Array.isArray(relations[c]) ? (
-                <select
-                  title={labels[c] || c}
-                  ref={(el) => (inputRefs.current[c] = el)}
-                  value={formVals[c]}
-                  onChange={(e) => {
-                    setFormVals((v) => ({ ...v, [c]: e.target.value }));
-                    setErrors((er) => ({ ...er, [c]: undefined }));
-                    onChange({ [c]: e.target.value });
-                  }}
-                  onKeyDown={(e) => handleKeyDown(e, c)}
-                  disabled={row && disabledFields.includes(c)}
-                  style={inputStyle}
-                >
-                  <option value="">-- select --</option>
-                  {relations[c].map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  title={labels[c] || c}
-                  ref={(el) => (inputRefs.current[c] = el)}
-                  type="text"
-                  placeholder={placeholders[c] || ''}
-                  value={formVals[c]}
-                  onChange={(e) => {
-                    setFormVals((v) => ({ ...v, [c]: e.target.value }));
-                    setErrors((er) => ({ ...er, [c]: undefined }));
-                    onChange({ [c]: e.target.value });
-                  }}
-                  onKeyDown={(e) => handleKeyDown(e, c)}
-                  onFocus={(e) => e.target.select()}
-                  disabled={row && disabledFields.includes(c)}
-                  style={inputStyle}
-                />
-              )}
-              {err && (
-                <div style={{ color: 'red', fontSize: '0.8rem' }}>{err}</div>
-              )}
-            </div>
-          );
-          })}
-        <div style={{ textAlign: 'right', gridColumn: '1 / span 2' }}>
+        {renderSection('Header', headerCols)}
+        {renderSection('Details', mainCols)}
+        {renderSection('Footer', footerCols)}
+        <div style={{ textAlign: 'right', marginTop: '0.5rem' }}>
+          <button type="button" onClick={() => handlePrint('emp')} style={{ marginRight: '0.5rem' }}>
+            Print Emp
+          </button>
+          <button type="button" onClick={() => handlePrint('cust')} style={{ marginRight: '0.5rem' }}>
+            Print Cust
+          </button>
           <button type="button" onClick={onCancel} style={{ marginRight: '0.5rem' }}>
             Cancel
           </button>
           <button type="submit">Save</button>
         </div>
-        <div style={{ marginTop: '0.5rem', gridColumn: '1 / span 2', fontSize: '0.85rem', color: '#555' }}>
+        <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#555' }}>
           Press <strong>Enter</strong> to move to next field. The field will be automatically selected. Use arrow keys to navigate selections.
         </div>
       </form>

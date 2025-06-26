@@ -26,6 +26,10 @@ Each **transaction** entry allows you to specify:
 - **allowedBranches** – restrict usage to these branch IDs
 - **allowedDepartments** – restrict usage to these department IDs
 
+The form displays header fields (system filled values) separately from other
+fields. When printing, the `printEmpField` and `printCustField` lists control
+which fields appear on the employee or customer copy of the document.
+
 Example snippet:
 
 ```json
