@@ -27,6 +27,12 @@ export default function FormsManagement() {
     imagenameField: [],
     printEmpField: [],
     printCustField: [],
+    totalCurrencyFields: [],
+    totalAmountFields: [],
+    signatureFields: [],
+    headerFields: [],
+    mainFields: [],
+    footerFields: [],
     transactionTypeField: '',
     transactionTypeValue: '',
     allowedBranches: [],
@@ -87,6 +93,12 @@ export default function FormsManagement() {
             imagenameField: filtered[name].imagenameField || [],
             printEmpField: filtered[name].printEmpField || [],
             printCustField: filtered[name].printCustField || [],
+            totalCurrencyFields: filtered[name].totalCurrencyFields || [],
+            totalAmountFields: filtered[name].totalAmountFields || [],
+            signatureFields: filtered[name].signatureFields || [],
+            headerFields: filtered[name].headerFields || [],
+            mainFields: filtered[name].mainFields || [],
+            footerFields: filtered[name].footerFields || [],
             transactionTypeField: filtered[name].transactionTypeField || '',
             transactionTypeValue: filtered[name].transactionTypeValue || '',
             allowedBranches: (filtered[name].allowedBranches || []).map(String),
@@ -107,6 +119,12 @@ export default function FormsManagement() {
             imagenameField: [],
             printEmpField: [],
             printCustField: [],
+            totalCurrencyFields: [],
+            totalAmountFields: [],
+            signatureFields: [],
+            headerFields: [],
+            mainFields: [],
+            footerFields: [],
             transactionTypeField: '',
             transactionTypeValue: '',
             allowedBranches: [],
@@ -130,6 +148,12 @@ export default function FormsManagement() {
           imagenameField: [],
           printEmpField: [],
           printCustField: [],
+          totalCurrencyFields: [],
+          totalAmountFields: [],
+          signatureFields: [],
+          headerFields: [],
+          mainFields: [],
+          footerFields: [],
           transactionTypeField: '',
           transactionTypeValue: '',
           allowedBranches: [],
@@ -158,6 +182,12 @@ export default function FormsManagement() {
           imagenameField: cfg.imagenameField || [],
           printEmpField: cfg.printEmpField || [],
           printCustField: cfg.printCustField || [],
+          totalCurrencyFields: cfg.totalCurrencyFields || [],
+          totalAmountFields: cfg.totalAmountFields || [],
+          signatureFields: cfg.signatureFields || [],
+          headerFields: cfg.headerFields || [],
+          mainFields: cfg.mainFields || [],
+          footerFields: cfg.footerFields || [],
           transactionTypeField: cfg.transactionTypeField || '',
           transactionTypeValue: cfg.transactionTypeValue || '',
           allowedBranches: (cfg.allowedBranches || []).map(String),
@@ -178,6 +208,12 @@ export default function FormsManagement() {
           imagenameField: [],
           printEmpField: [],
           printCustField: [],
+          totalCurrencyFields: [],
+          totalAmountFields: [],
+          signatureFields: [],
+          headerFields: [],
+          mainFields: [],
+          footerFields: [],
           transactionTypeField: '',
           transactionTypeValue: '',
           allowedBranches: [],
@@ -290,6 +326,12 @@ export default function FormsManagement() {
       imagenameField: [],
       printEmpField: [],
       printCustField: [],
+      totalCurrencyFields: [],
+      totalAmountFields: [],
+      signatureFields: [],
+      headerFields: [],
+      mainFields: [],
+      footerFields: [],
       transactionTypeField: '',
       transactionTypeValue: '',
       allowedBranches: [],
@@ -314,6 +356,12 @@ export default function FormsManagement() {
       imagenameField: cfg.imagenameField || [],
       printEmpField: cfg.printEmpField || [],
       printCustField: cfg.printCustField || [],
+      totalCurrencyFields: cfg.totalCurrencyFields || [],
+      totalAmountFields: cfg.totalAmountFields || [],
+      signatureFields: cfg.signatureFields || [],
+      headerFields: cfg.headerFields || [],
+      mainFields: cfg.mainFields || [],
+      footerFields: cfg.footerFields || [],
       transactionTypeField: cfg.transactionTypeField || '',
       transactionTypeValue: cfg.transactionTypeValue || '',
       allowedBranches: (cfg.allowedBranches || []).map(String),
@@ -444,6 +492,12 @@ export default function FormsManagement() {
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>ImageName</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>PrintEmp</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>PrintCust</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>TotalCur</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>TotalAmt</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>Signature</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>Header</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>Main</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>Footer</th>
               </tr>
             </thead>
             <tbody>
@@ -532,6 +586,48 @@ export default function FormsManagement() {
                       type="checkbox"
                       checked={config.printCustField.includes(col)}
                       onChange={() => toggleFieldList(col, 'printCustField')}
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.totalCurrencyFields.includes(col)}
+                      onChange={() => toggleFieldList(col, 'totalCurrencyFields')}
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.totalAmountFields.includes(col)}
+                      onChange={() => toggleFieldList(col, 'totalAmountFields')}
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.signatureFields.includes(col)}
+                      onChange={() => toggleFieldList(col, 'signatureFields')}
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.headerFields.includes(col)}
+                      onChange={() => toggleFieldList(col, 'headerFields')}
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.mainFields.includes(col)}
+                      onChange={() => toggleFieldList(col, 'mainFields')}
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.footerFields.includes(col)}
+                      onChange={() => toggleFieldList(col, 'footerFields')}
                     />
                   </td>
                 </tr>

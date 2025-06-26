@@ -80,6 +80,24 @@ await test('setFormConfig forwards sidebar/header flags', async () => {
   await restore();
 });
 
+await test('setFormConfig stores additional field lists', async () => {
+  const { orig, restore } = await withTempFile();
+  await fs.writeFile(filePath, '{}');
+  await setFormConfig('tbl', 'Extra', {
+    moduleKey: 'parent_mod',
+    totalCurrencyFields: ['tc'],
+    totalAmountFields: ['ta'],
+    signatureFields: ['sig'],
+    headerFields: ['h'],
+    mainFields: ['m'],
+    footerFields: ['f'],
+  });
+  const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
+  assert.deepEqual(data.tbl.Extra.totalCurrencyFields, ['tc']);
+  assert.deepEqual(data.tbl.Extra.footerFields, ['f']);
+  await restore();
+});
+
 await test('deleteFormConfig removes entry when unused', async () => {
   const { orig, restore } = await withTempFile();
   await fs.writeFile(

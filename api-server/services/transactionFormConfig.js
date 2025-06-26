@@ -48,6 +48,12 @@ function parseEntry(raw = {}) {
     imagenameField: arrify(raw.imagenameField),
     printEmpField: arrify(raw.printEmpField),
     printCustField: arrify(raw.printCustField),
+    totalCurrencyFields: arrify(raw.totalCurrencyFields),
+    totalAmountFields: arrify(raw.totalAmountFields),
+    signatureFields: arrify(raw.signatureFields),
+    headerFields: arrify(raw.headerFields),
+    mainFields: arrify(raw.mainFields),
+    footerFields: arrify(raw.footerFields),
     transactionTypeField:
       typeof raw.transactionTypeField === 'string'
         ? raw.transactionTypeField
@@ -123,6 +129,12 @@ export async function setFormConfig(table, name, config, options = {}) {
     imagenameField = [],
     printEmpField = [],
     printCustField = [],
+    totalCurrencyFields = [],
+    totalAmountFields = [],
+    signatureFields = [],
+    headerFields = [],
+    mainFields = [],
+    footerFields = [],
     transactionTypeField = '',
     transactionTypeValue = '',
   } = config || {};
@@ -154,6 +166,12 @@ export async function setFormConfig(table, name, config, options = {}) {
     imagenameField: arrify(imagenameField),
     printEmpField: arrify(printEmpField),
     printCustField: arrify(printCustField),
+    totalCurrencyFields: arrify(totalCurrencyFields),
+    totalAmountFields: arrify(totalAmountFields),
+    signatureFields: arrify(signatureFields),
+    headerFields: arrify(headerFields),
+    mainFields: arrify(mainFields),
+    footerFields: arrify(footerFields),
     transactionTypeField: transactionTypeField || '',
     transactionTypeValue: transactionTypeValue || '',
     moduleKey: parentModuleKey,

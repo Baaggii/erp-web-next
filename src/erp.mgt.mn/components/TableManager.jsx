@@ -956,17 +956,30 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     (c) => !autoCols.has(c) && c !== 'created_at' && c !== 'created_by'
   );
 
-  const headerFields = [
-    ...(formConfig?.userIdFields || []),
-    ...(formConfig?.branchIdFields || []),
-    ...(formConfig?.companyIdFields || []),
-    ...(formConfig?.dateField || []),
-  ];
-  if (formConfig?.transactionTypeField)
-    headerFields.push(formConfig.transactionTypeField);
-  const footerFields = Array.from(
-    new Set([...(formConfig?.printEmpField || []), ...(formConfig?.printCustField || [])])
-  );
+  let headerFields = [];
+  if (formConfig?.headerFields && formConfig.headerFields.length > 0) {
+    headerFields = [...formConfig.headerFields];
+  } else {
+    headerFields = [
+      ...(formConfig?.userIdFields || []),
+      ...(formConfig?.branchIdFields || []),
+      ...(formConfig?.companyIdFields || []),
+      ...(formConfig?.dateField || []),
+    ];
+    if (formConfig?.transactionTypeField)
+      headerFields.push(formConfig.transactionTypeField);
+  }
+
+  const mainFields = formConfig?.mainFields || [];
+
+  let footerFields = [];
+  if (formConfig?.footerFields && formConfig.footerFields.length > 0) {
+    footerFields = [...formConfig.footerFields];
+  } else {
+    footerFields = Array.from(
+      new Set([...(formConfig?.printEmpField || []), ...(formConfig?.printCustField || [])])
+    );
+  }
 
   return (
     <div>
@@ -1444,6 +1457,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         labels={labels}
         requiredFields={formConfig?.requiredFields || []}
         headerFields={headerFields}
+        mainFields={mainFields}
         footerFields={footerFields}
         printEmpField={formConfig?.printEmpField || []}
         printCustField={formConfig?.printCustField || []}
