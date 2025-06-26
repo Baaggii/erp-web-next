@@ -27,6 +27,19 @@ function parseEntry(raw = {}) {
       raw.branchIdFields || (raw.branchIdField ? [raw.branchIdField] : []),
     companyIdFields:
       raw.companyIdFields || (raw.companyIdField ? [raw.companyIdField] : []),
+    dateField: raw.dateField || [],
+    emailField: raw.emailField || [],
+    imagenameField: raw.imagenameField || [],
+    printEmpField: raw.printEmpField || [],
+    printCustField: raw.printCustField || [],
+    transactionTypeField:
+      typeof raw.transactionTypeField === 'string'
+        ? raw.transactionTypeField
+        : '',
+    transactionTypeValue:
+      typeof raw.transactionTypeValue === 'string'
+        ? raw.transactionTypeValue
+        : '',
     moduleKey: typeof raw.moduleKey === 'string' ? raw.moduleKey : '',
     allowedBranches: Array.isArray(raw.allowedBranches)
       ? raw.allowedBranches.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
@@ -89,6 +102,13 @@ export async function setFormConfig(table, name, config, options = {}) {
     userIdField,
     branchIdField,
     companyIdField,
+    dateField = [],
+    emailField = [],
+    imagenameField = [],
+    printEmpField = [],
+    printCustField = [],
+    transactionTypeField = '',
+    transactionTypeValue = '',
   } = config || {};
   const uid = (userIdFields.length ? userIdFields : userIdField ? [userIdField] : [])
     .map(String)
@@ -123,6 +143,13 @@ export async function setFormConfig(table, name, config, options = {}) {
     userIdFields: uid,
     branchIdFields: bid,
     companyIdFields: cid,
+    dateField,
+    emailField,
+    imagenameField,
+    printEmpField,
+    printCustField,
+    transactionTypeField,
+    transactionTypeValue,
     moduleKey: parentModuleKey,
     moduleLabel: moduleLabel || undefined,
     allowedBranches: ab,

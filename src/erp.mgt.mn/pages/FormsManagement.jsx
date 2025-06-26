@@ -7,6 +7,7 @@ export default function FormsManagement() {
   const [table, setTable] = useState('');
   const [names, setNames] = useState([]);
   const [name, setName] = useState('');
+  const [dupConfigs, setDupConfigs] = useState({});
   const [moduleKey, setModuleKey] = useState('');
   const [branches, setBranches] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -20,6 +21,13 @@ export default function FormsManagement() {
     userIdFields: [],
     branchIdFields: [],
     companyIdFields: [],
+    dateField: [],
+    emailField: [],
+    imagenameField: [],
+    printEmpField: [],
+    printCustField: [],
+    transactionTypeField: '',
+    transactionTypeValue: '',
     allowedBranches: [],
     allowedDepartments: [],
   });
@@ -57,6 +65,7 @@ export default function FormsManagement() {
           filtered[n] = info;
         });
         setNames(Object.keys(filtered));
+        setDupConfigs(filtered);
         if (filtered[name]) {
           setModuleKey(filtered[name].moduleKey || '');
           setConfig({
@@ -67,6 +76,13 @@ export default function FormsManagement() {
             userIdFields: filtered[name].userIdFields || [],
             branchIdFields: filtered[name].branchIdFields || [],
             companyIdFields: filtered[name].companyIdFields || [],
+            dateField: filtered[name].dateField || [],
+            emailField: filtered[name].emailField || [],
+            imagenameField: filtered[name].imagenameField || [],
+            printEmpField: filtered[name].printEmpField || [],
+            printCustField: filtered[name].printCustField || [],
+            transactionTypeField: filtered[name].transactionTypeField || '',
+            transactionTypeValue: filtered[name].transactionTypeValue || '',
             allowedBranches: (filtered[name].allowedBranches || []).map(String),
             allowedDepartments: (filtered[name].allowedDepartments || []).map(String),
           });
@@ -80,6 +96,13 @@ export default function FormsManagement() {
             userIdFields: [],
             branchIdFields: [],
             companyIdFields: [],
+            dateField: [],
+            emailField: [],
+            imagenameField: [],
+            printEmpField: [],
+            printCustField: [],
+            transactionTypeField: '',
+            transactionTypeValue: '',
             allowedBranches: [],
             allowedDepartments: [],
           });
@@ -96,6 +119,13 @@ export default function FormsManagement() {
           userIdFields: [],
           branchIdFields: [],
           companyIdFields: [],
+          dateField: [],
+          emailField: [],
+          imagenameField: [],
+          printEmpField: [],
+          printCustField: [],
+          transactionTypeField: '',
+          transactionTypeValue: '',
           allowedBranches: [],
           allowedDepartments: [],
         });
@@ -117,6 +147,13 @@ export default function FormsManagement() {
           userIdFields: cfg.userIdFields || [],
           branchIdFields: cfg.branchIdFields || [],
           companyIdFields: cfg.companyIdFields || [],
+          dateField: cfg.dateField || [],
+          emailField: cfg.emailField || [],
+          imagenameField: cfg.imagenameField || [],
+          printEmpField: cfg.printEmpField || [],
+          printCustField: cfg.printCustField || [],
+          transactionTypeField: cfg.transactionTypeField || '',
+          transactionTypeValue: cfg.transactionTypeValue || '',
           allowedBranches: (cfg.allowedBranches || []).map(String),
           allowedDepartments: (cfg.allowedDepartments || []).map(String),
         });
@@ -130,6 +167,13 @@ export default function FormsManagement() {
           userIdFields: [],
           branchIdFields: [],
           companyIdFields: [],
+          dateField: [],
+          emailField: [],
+          imagenameField: [],
+          printEmpField: [],
+          printCustField: [],
+          transactionTypeField: '',
+          transactionTypeValue: '',
           allowedBranches: [],
           allowedDepartments: [],
         });
@@ -171,6 +215,14 @@ export default function FormsManagement() {
       const set = new Set(c.editableDefaultFields);
       set.has(field) ? set.delete(field) : set.add(field);
       return { ...c, editableDefaultFields: Array.from(set) };
+    });
+  }
+
+  function toggleFieldList(field, key) {
+    setConfig((c) => {
+      const set = new Set(c[key]);
+      set.has(field) ? set.delete(field) : set.add(field);
+      return { ...c, [key]: Array.from(set) };
     });
   }
 
@@ -218,10 +270,40 @@ export default function FormsManagement() {
       userIdFields: [],
       branchIdFields: [],
       companyIdFields: [],
+      dateField: [],
+      emailField: [],
+      imagenameField: [],
+      printEmpField: [],
+      printCustField: [],
+      transactionTypeField: '',
+      transactionTypeValue: '',
       allowedBranches: [],
       allowedDepartments: [],
     });
     setModuleKey('');
+  }
+
+  function handleDuplicate(nameToCopy) {
+    const cfg = dupConfigs[nameToCopy];
+    if (!cfg) return;
+    setConfig({
+      visibleFields: cfg.visibleFields || [],
+      requiredFields: cfg.requiredFields || [],
+      defaultValues: cfg.defaultValues || {},
+      editableDefaultFields: cfg.editableDefaultFields || [],
+      userIdFields: cfg.userIdFields || [],
+      branchIdFields: cfg.branchIdFields || [],
+      companyIdFields: cfg.companyIdFields || [],
+      dateField: cfg.dateField || [],
+      emailField: cfg.emailField || [],
+      imagenameField: cfg.imagenameField || [],
+      printEmpField: cfg.printEmpField || [],
+      printCustField: cfg.printCustField || [],
+      transactionTypeField: cfg.transactionTypeField || '',
+      transactionTypeValue: cfg.transactionTypeValue || '',
+      allowedBranches: (cfg.allowedBranches || []).map(String),
+      allowedDepartments: (cfg.allowedDepartments || []).map(String),
+    });
   }
 
   return (
@@ -270,6 +352,22 @@ export default function FormsManagement() {
                 </option>
               ))}
             </select>
+            <select
+              onChange={(e) => {
+                if (e.target.value) {
+                  handleDuplicate(e.target.value);
+                  e.target.value = '';
+                }
+              }}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              <option value="">Duplicate from existing</option>
+              {Object.keys(dupConfigs).map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
             
             {name && (
               <button onClick={handleDelete} style={{ marginLeft: '0.5rem' }}>
@@ -279,13 +377,21 @@ export default function FormsManagement() {
           </div>
           <div className="table-container overflow-x-auto" style={{ maxHeight: '70vh' }}>
           <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-            <thead>
+            <thead className="sticky-header">
               <tr>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Field</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Visible</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Required</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Default</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Editable</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>UserID</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>BranchID</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>CompanyID</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>Date</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>Email</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>ImageName</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>PrintEmp</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>PrintCust</th>
               </tr>
             </thead>
             <tbody>
@@ -320,78 +426,68 @@ export default function FormsManagement() {
                       onChange={() => toggleEditable(col)}
                     />
                   </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.userIdFields.includes(col)}
+                      onChange={() => toggleFieldList(col, 'userIdFields')}
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.branchIdFields.includes(col)}
+                      onChange={() => toggleFieldList(col, 'branchIdFields')}
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.companyIdFields.includes(col)}
+                      onChange={() => toggleFieldList(col, 'companyIdFields')}
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.dateField.includes(col)}
+                      onChange={() => toggleFieldList(col, 'dateField')}
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.emailField.includes(col)}
+                      onChange={() => toggleFieldList(col, 'emailField')}
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.imagenameField.includes(col)}
+                      onChange={() => toggleFieldList(col, 'imagenameField')}
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.printEmpField.includes(col)}
+                      onChange={() => toggleFieldList(col, 'printEmpField')}
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.printCustField.includes(col)}
+                      onChange={() => toggleFieldList(col, 'printCustField')}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
           </div>
           <div style={{ marginTop: '1rem' }}>
-            <label>
-              User ID fields:{' '}
-              <select
-                multiple
-                size={8}
-                value={config.userIdFields}
-                onChange={(e) =>
-                  setConfig((c) => ({
-                    ...c,
-                    userIdFields: Array.from(e.target.selectedOptions, (o) => o.value),
-                  }))
-                }
-              >
-                {columns.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-              <button type="button" onClick={() => setConfig((c) => ({ ...c, userIdFields: columns }))}>All</button>
-              <button type="button" onClick={() => setConfig((c) => ({ ...c, userIdFields: [] }))}>None</button>
-            </label>
-            <label style={{ marginLeft: '1rem' }}>
-              Branch ID fields:{' '}
-              <select
-                multiple
-                size={8}
-                value={config.branchIdFields}
-                onChange={(e) =>
-                  setConfig((c) => ({
-                    ...c,
-                    branchIdFields: Array.from(e.target.selectedOptions, (o) => o.value),
-                  }))
-                }
-              >
-                {columns.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-              <button type="button" onClick={() => setConfig((c) => ({ ...c, branchIdFields: columns }))}>All</button>
-              <button type="button" onClick={() => setConfig((c) => ({ ...c, branchIdFields: [] }))}>None</button>
-            </label>
-            <label style={{ marginLeft: '1rem' }}>
-              Company ID fields:{' '}
-              <select
-                multiple
-                size={8}
-                value={config.companyIdFields}
-                onChange={(e) =>
-                  setConfig((c) => ({
-                    ...c,
-                    companyIdFields: Array.from(e.target.selectedOptions, (o) => o.value),
-                  }))
-                }
-              >
-                {columns.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-              <button type="button" onClick={() => setConfig((c) => ({ ...c, companyIdFields: columns }))}>All</button>
-              <button type="button" onClick={() => setConfig((c) => ({ ...c, companyIdFields: [] }))}>None</button>
-            </label>
             <label style={{ marginLeft: '1rem' }}>
               Allowed branches:{' '}
               <select
