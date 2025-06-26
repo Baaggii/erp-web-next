@@ -242,6 +242,9 @@ export default function FormsManagement() {
       moduleKey,
       allowedBranches: config.allowedBranches.map((b) => Number(b)).filter((b) => !Number.isNaN(b)),
       allowedDepartments: config.allowedDepartments.map((d) => Number(d)).filter((d) => !Number.isNaN(d)),
+      transactionTypeValue: config.transactionTypeValue
+        ? String(config.transactionTypeValue)
+        : '',
     };
     if (cfg.transactionTypeField && cfg.transactionTypeValue) {
       cfg.defaultValues = {
@@ -412,7 +415,7 @@ export default function FormsManagement() {
                 <option value="">-- select type --</option>
                 {txnTypes.map((t) => (
                   <option key={t.UITransType} value={t.UITransType}>
-                    {t.UITransTypeName}
+                    {t.UITransType} - {t.UITransTypeName}
                   </option>
                 ))}
               </select>
