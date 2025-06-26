@@ -17,6 +17,12 @@ Each **transaction** entry allows you to specify:
 - **imagenameField** – list of columns containing image file names
 - **printEmpField** – columns printed as employee info
 - **printCustField** – columns printed as customer info
+- **totalCurrencyFields** – fields summed to display total currency amount
+- **totalAmountFields** – fields summed to display total amount
+- **signatureFields** – fields printed as signature labels
+- **headerFields** – fields shown in the header section
+- **mainFields** – fields shown in the main section
+- **footerFields** – fields shown in the footer section
 - **transactionTypeField** – column used to store the transaction type code
 - **transactionTypeValue** – default transaction type code value
 - **moduleKey** – module slug used to group the form under a module. If omitted,

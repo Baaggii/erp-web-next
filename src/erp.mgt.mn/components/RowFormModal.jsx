@@ -16,6 +16,7 @@ export default function RowFormModal({
   onChange = () => {},
   headerFields = [],
   footerFields = [],
+  mainFields = [],
   printEmpField = [],
   printCustField = [],
 }) {
@@ -101,9 +102,13 @@ export default function RowFormModal({
 
   const headerSet = new Set(headerFields);
   const footerSet = new Set(footerFields);
+  const mainSet = new Set(mainFields);
   const headerCols = columns.filter((c) => headerSet.has(c));
   const footerCols = columns.filter((c) => footerSet.has(c));
-  const mainCols = columns.filter((c) => !headerSet.has(c) && !footerSet.has(c));
+  const mainCols =
+    mainFields.length > 0
+      ? columns.filter((c) => mainSet.has(c))
+      : columns.filter((c) => !headerSet.has(c) && !footerSet.has(c));
 
   const formStyle = {
     display: 'grid',
