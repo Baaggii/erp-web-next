@@ -21,7 +21,10 @@ export default function RowFormModal({
   printCustField = [],
   totalAmountFields = [],
   totalCurrencyFields = [],
+  multiRow = false,
 }) {
+  const [rows, setRows] = useState([]);
+  const [baseRow, setBaseRow] = useState(row || {});
   const [formVals, setFormVals] = useState(() => {
     const init = {};
     columns.forEach((c) => {
@@ -96,6 +99,7 @@ export default function RowFormModal({
       vals[c] = placeholders[c] ? normalizeDateInput(raw, placeholders[c]) : raw;
     });
     setFormVals(vals);
+    setBaseRow(row || {});
     inputRefs.current = {};
     setErrors({});
   }, [row, columns, visible, placeholders]);
@@ -168,7 +172,27 @@ export default function RowFormModal({
             ? normalizeDateInput(v, placeholders[k])
             : v;
         });
-        await Promise.resolve(onSubmit(normalized));
+        if (multiRow) {
+          const newRows = [...rows, normalized];
+          const again = window.confirm('Add another row?');
+          if (again) {
+            setRows(newRows);
+            const vals = {};
+            columns.forEach((c) => {
+              const raw = baseRow ? String(baseRow[c] ?? '') : '';
+              vals[c] = placeholders[c]
+                ? normalizeDateInput(raw, placeholders[c])
+                : raw;
+            });
+            setFormVals(vals);
+            setErrors({});
+            setSubmitLocked(false);
+            return;
+          }
+          await Promise.resolve(onSubmit(newRows));
+        } else {
+          await Promise.resolve(onSubmit(normalized));
+        }
       } else {
         setSubmitLocked(false);
         return;
@@ -255,10 +279,11 @@ export default function RowFormModal({
 
   function renderMainTable(cols) {
     if (cols.length === 0) return null;
+    const dataRows = multiRow ? [...rows, formVals] : [formVals];
     const totals = {};
     cols.forEach((c) => {
       if (totalAmountSet.has(c) || totalCurrencySet.has(c)) {
-        totals[c] = Number(formVals[c] || 0);
+        totals[c] = dataRows.reduce((s, r) => s + Number(r[c] || 0), 0);
       }
     });
     return (
@@ -275,6 +300,16 @@ export default function RowFormModal({
             </tr>
           </thead>
           <tbody>
+            {multiRow &&
+              rows.map((r, idx) => (
+                <tr key={idx} className="bg-gray-50">
+                  {cols.map((c) => (
+                    <td key={c} className="border px-2 py-1">
+                      {r[c]}
+                    </td>
+                  ))}
+                </tr>
+              ))}
             <tr>
               {cols.map((c) => (
                 <td key={c} className="border px-2 py-1">
@@ -326,16 +361,18 @@ export default function RowFormModal({
     const m = mainCols.filter((c) => allowed.has(c));
     const f = footerCols.filter((c) => allowed.has(c));
 
+    const dataRows = multiRow ? [...rows, formVals] : [formVals];
     const rowHtml = (cols, skipEmpty = false) =>
-      cols
-        .filter((c) =>
-          skipEmpty ? formVals[c] !== '' && formVals[c] !== null && formVals[c] !== 0 : true,
-        )
-        .map(
-          (c) =>
-            `<tr><th>${labels[c] || c}</th><td>${
-              formVals[c] !== undefined ? formVals[c] : ''
-            }</td></tr>`,
+      dataRows
+        .map((r) =>
+          cols
+            .filter((c) =>
+              skipEmpty ? r[c] !== '' && r[c] !== null && r[c] !== 0 : true,
+            )
+            .map(
+              (c) => `<tr><th>${labels[c] || c}</th><td>${r[c] ?? ''}</td></tr>`,
+            )
+            .join(''),
         )
         .join('');
 
@@ -368,17 +405,22 @@ export default function RowFormModal({
           e.preventDefault();
           submitForm();
         }}
-        className="p-4 space-y-4"
+        className="modal max-h-[80vh] overflow-y-auto flex flex-col"
       >
-        {renderSection('Header', headerCols)}
-        {renderMainTable(mainCols)}
-        {renderSection('Footer', footerCols)}
-        <div className="mt-2 text-right space-x-2">
-          <button
-            type="button"
-            onClick={() => handlePrint('emp')}
-            className="px-3 py-1 bg-gray-200 rounded"
-          >
+        <div className="header p-4">
+          {renderSection('Header', headerCols)}
+        </div>
+        <div className="main p-4 flex-grow overflow-auto">
+          {renderMainTable(mainCols)}
+        </div>
+        <div className="footer p-4">
+          {renderSection('Footer', footerCols)}
+          <div className="mt-2 text-right space-x-2">
+            <button
+              type="button"
+              onClick={() => handlePrint('emp')}
+              className="px-3 py-1 bg-gray-200 rounded"
+            >
             Print Emp
           </button>
           <button
@@ -398,9 +440,10 @@ export default function RowFormModal({
           <button type="submit" className="px-3 py-1 bg-blue-600 text-white rounded">
             Save
           </button>
-        </div>
-        <div className="text-sm text-gray-600">
-          Press <strong>Enter</strong> to move to next field. The field will be automatically selected. Use arrow keys to navigate selections.
+          </div>
+          <div className="text-sm text-gray-600">
+            Press <strong>Enter</strong> to move to next field. The field will be automatically selected. Use arrow keys to navigate selections.
+          </div>
         </div>
       </form>
     </Modal>

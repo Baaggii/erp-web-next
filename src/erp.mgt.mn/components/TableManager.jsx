@@ -592,7 +592,13 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     setSelectedRows(new Set());
   }
 
-  async function handleSubmit(values) {
+  async function handleSubmit(values, batch = false) {
+    if (Array.isArray(values)) {
+      for (const row of values) {
+        await handleSubmit(row, true);
+      }
+      return;
+    }
     const columns = new Set(allColumns);
     const merged = { ...(editing || {}) };
     Object.entries(values).forEach(([k, v]) => {
@@ -672,7 +678,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         setIsAdding(false);
         const msg = isAdding ? 'New transaction saved' : 'Saved';
         addToast(msg, 'success');
-        if (isAdding) {
+        if (isAdding && !batch) {
           const again = window.confirm('Add another transaction row?');
           if (again) {
             setTimeout(() => openAdd(), 0);
@@ -1463,6 +1469,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         printCustField={formConfig?.printCustField || []}
         totalAmountFields={formConfig?.totalAmountFields || []}
         totalCurrencyFields={formConfig?.totalCurrencyFields || []}
+        multiRow={true}
       />
       <CascadeDeleteModal
         visible={showCascade}
