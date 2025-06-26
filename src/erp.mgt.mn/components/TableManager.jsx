@@ -83,6 +83,8 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
   const [editLabels, setEditLabels] = useState(false);
   const [labelEdits, setLabelEdits] = useState({});
   const [isAdding, setIsAdding] = useState(false);
+  const [dateFilter, setDateFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
   const { user, company } = useContext(AuthContext);
   const { addToast } = useToast();
 
@@ -139,6 +141,39 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
   useEffect(() => {
     setAutoInc(computeAutoInc(columnMeta));
   }, [columnMeta]);
+
+  useEffect(() => {
+    if (!formConfig) return;
+    if (formConfig.dateField && formConfig.dateField.length > 0) {
+      const today = new Date().toISOString().slice(0, 10);
+      setDateFilter(today);
+    } else {
+      setDateFilter('');
+    }
+    if (formConfig.transactionTypeField && formConfig.transactionTypeValue) {
+      setTypeFilter(formConfig.transactionTypeValue);
+    } else {
+      setTypeFilter('');
+    }
+  }, [formConfig]);
+
+  useEffect(() => {
+    if (formConfig?.dateField && formConfig.dateField.length > 0) {
+      setFilters((f) => {
+        const obj = { ...f };
+        formConfig.dateField.forEach((d) => {
+          obj[d] = dateFilter || '';
+        });
+        return obj;
+      });
+    }
+  }, [dateFilter, formConfig]);
+
+  useEffect(() => {
+    if (formConfig?.transactionTypeField) {
+      setFilters((f) => ({ ...f, [formConfig.transactionTypeField]: typeFilter || '' }));
+    }
+  }, [typeFilter, formConfig]);
 
   useEffect(() => {
     if (!table) return;
@@ -793,6 +828,28 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
       </div>
       {showTable && (
         <>
+      {formConfig?.dateField?.length > 0 && (
+        <div style={{ marginBottom: '0.5rem' }}>
+          Date:{' '}
+          <input
+            type="date"
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value)}
+            style={{ marginRight: '0.5rem' }}
+          />
+          <button onClick={() => setDateFilter('')}>Clear Date Filter</button>
+        </div>
+      )}
+      {formConfig?.transactionTypeField && (
+        <div style={{ marginBottom: '0.5rem' }}>
+          Type: {typeFilter || ''}
+          {typeFilter && (
+            <button onClick={() => setTypeFilter('')} style={{ marginLeft: '0.5rem' }}>
+              Clear Transaction Type Filter
+            </button>
+          )}
+        </div>
+      )}
       <div
         style={{
           display: 'flex',
