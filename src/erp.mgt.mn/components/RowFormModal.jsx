@@ -171,76 +171,149 @@ export default function RowFormModal({
     }
     setSubmitLocked(false);
   }
-  function renderField(c) {
+  function renderField(c, withLabel = true) {
     const err = errors[c];
     const inputStyle = {
       width: '100%',
       padding: '0.5rem',
       border: err ? '1px solid red' : '1px solid #ccc',
     };
+
+    const control = relationConfigs[c] ? (
+      <AsyncSearchSelect
+        title={labels[c] || c}
+        table={relationConfigs[c].table}
+        searchColumn={relationConfigs[c].column}
+        labelFields={relationConfigs[c].displayFields || []}
+        value={formVals[c]}
+        onChange={(val) => {
+          setFormVals((v) => ({ ...v, [c]: val }));
+          setErrors((er) => ({ ...er, [c]: undefined }));
+          onChange({ [c]: val });
+        }}
+        disabled={row && disabledFields.includes(c)}
+        onKeyDown={(e) => handleKeyDown(e, c)}
+        onFocus={(e) => e.target.select()}
+        inputRef={(el) => (inputRefs.current[c] = el)}
+      />
+    ) : Array.isArray(relations[c]) ? (
+      <select
+        title={labels[c] || c}
+        ref={(el) => (inputRefs.current[c] = el)}
+        value={formVals[c]}
+        onChange={(e) => {
+          setFormVals((v) => ({ ...v, [c]: e.target.value }));
+          setErrors((er) => ({ ...er, [c]: undefined }));
+          onChange({ [c]: e.target.value });
+        }}
+        onKeyDown={(e) => handleKeyDown(e, c)}
+        disabled={row && disabledFields.includes(c)}
+        style={inputStyle}
+      >
+        <option value="">-- select --</option>
+        {relations[c].map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+    ) : (
+      <input
+        title={labels[c] || c}
+        ref={(el) => (inputRefs.current[c] = el)}
+        type="text"
+        placeholder={placeholders[c] || ''}
+        value={formVals[c]}
+        onChange={(e) => {
+          setFormVals((v) => ({ ...v, [c]: e.target.value }));
+          setErrors((er) => ({ ...er, [c]: undefined }));
+          onChange({ [c]: e.target.value });
+        }}
+        onKeyDown={(e) => handleKeyDown(e, c)}
+        onFocus={(e) => e.target.select()}
+        disabled={row && disabledFields.includes(c)}
+        style={inputStyle}
+      />
+    );
+
+    if (!withLabel) return <>{control}</>;
+
     return (
       <div key={c} style={{ marginBottom: '0.75rem' }}>
         <label style={{ display: 'block', marginBottom: '0.25rem' }}>
           {labels[c] || c}
           {requiredFields.includes(c) && <span style={{ color: 'red' }}>*</span>}
         </label>
-        {relationConfigs[c] ? (
-          <AsyncSearchSelect
-            title={labels[c] || c}
-            table={relationConfigs[c].table}
-            searchColumn={relationConfigs[c].column}
-            labelFields={relationConfigs[c].displayFields || []}
-            value={formVals[c]}
-            onChange={(val) => {
-              setFormVals((v) => ({ ...v, [c]: val }));
-              setErrors((er) => ({ ...er, [c]: undefined }));
-              onChange({ [c]: val });
-            }}
-            disabled={row && disabledFields.includes(c)}
-            onKeyDown={(e) => handleKeyDown(e, c)}
-            onFocus={(e) => e.target.select()}
-            inputRef={(el) => (inputRefs.current[c] = el)}
-          />
-        ) : Array.isArray(relations[c]) ? (
-          <select
-            title={labels[c] || c}
-            ref={(el) => (inputRefs.current[c] = el)}
-            value={formVals[c]}
-            onChange={(e) => {
-              setFormVals((v) => ({ ...v, [c]: e.target.value }));
-              setErrors((er) => ({ ...er, [c]: undefined }));
-              onChange({ [c]: e.target.value });
-            }}
-            onKeyDown={(e) => handleKeyDown(e, c)}
-            disabled={row && disabledFields.includes(c)}
-            style={inputStyle}
-          >
-            <option value="">-- select --</option>
-            {relations[c].map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <input
-            title={labels[c] || c}
-            ref={(el) => (inputRefs.current[c] = el)}
-            type="text"
-            placeholder={placeholders[c] || ''}
-            value={formVals[c]}
-            onChange={(e) => {
-              setFormVals((v) => ({ ...v, [c]: e.target.value }));
-              setErrors((er) => ({ ...er, [c]: undefined }));
-              onChange({ [c]: e.target.value });
-            }}
-            onKeyDown={(e) => handleKeyDown(e, c)}
-            onFocus={(e) => e.target.select()}
-            disabled={row && disabledFields.includes(c)}
-            style={inputStyle}
-          />
-        )}
+        {control}
         {err && <div style={{ color: 'red', fontSize: '0.8rem' }}>{err}</div>}
+      </div>
+    );
+  }
+
+  function renderMainTable(cols) {
+    if (cols.length === 0) return null;
+    const qtyCols = cols.filter((c) => /qty|quantity/i.test(c));
+    const amtCols = cols.filter((c) => /amount|amt/i.test(c));
+    const totalQty = qtyCols.reduce(
+      (sum, c) => sum + Number(formVals[c] || 0),
+      0,
+    );
+    const totalAmt = amtCols.reduce(
+      (sum, c) => sum + Number(formVals[c] || 0),
+      0,
+    );
+    return (
+      <div style={{ marginBottom: '1rem' }}>
+        <h3 style={{ marginTop: 0 }}>Main</h3>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr>
+              {cols.map((c) => (
+                <th
+                  key={c}
+                  style={{ border: '1px solid #ccc', padding: '0.25rem' }}
+                >
+                  {labels[c] || c}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              {cols.map((c) => (
+                <td
+                  key={c}
+                  style={{ border: '1px solid #ccc', padding: '0.25rem' }}
+                >
+                  {renderField(c, false)}
+                </td>
+              ))}
+            </tr>
+          </tbody>
+          {(qtyCols.length > 0 || amtCols.length > 0) && (
+            <tfoot>
+              <tr>
+                {cols.map((c) => {
+                  let val = '';
+                  if (qtyCols.includes(c)) val = totalQty;
+                  if (amtCols.includes(c)) val = totalAmt;
+                  return (
+                    <td
+                      key={c}
+                      style={{
+                        border: '1px solid #ccc',
+                        padding: '0.25rem',
+                        fontWeight: 'bold',
+                      }}
+                    >
+                      {val !== '' ? val : ''}
+                    </td>
+                  );
+                })}
+              </tr>
+            </tfoot>
+          )}
+        </table>
       </div>
     );
   }
@@ -250,7 +323,7 @@ export default function RowFormModal({
     return (
       <div style={{ marginBottom: '1rem' }}>
         <h3 style={{ marginTop: 0 }}>{title}</h3>
-        <div style={formStyle}>{cols.map(renderField)}</div>
+        <div style={formStyle}>{cols.map((c) => renderField(c))}</div>
       </div>
     );
   }
@@ -297,7 +370,7 @@ export default function RowFormModal({
         }}
       >
         {renderSection('Header', headerCols)}
-        {renderSection('Details', mainCols)}
+        {renderMainTable(mainCols)}
         {renderSection('Footer', footerCols)}
         <div style={{ textAlign: 'right', marginTop: '0.5rem' }}>
           <button type="button" onClick={() => handlePrint('emp')} style={{ marginRight: '0.5rem' }}>

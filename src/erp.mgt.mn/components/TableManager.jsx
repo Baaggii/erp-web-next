@@ -672,6 +672,12 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         setIsAdding(false);
         const msg = isAdding ? 'New transaction saved' : 'Saved';
         addToast(msg, 'success');
+        if (isAdding) {
+          const again = window.confirm('Add another transaction row?');
+          if (again) {
+            setTimeout(() => openAdd(), 0);
+          }
+        }
       } else {
         let message = 'Save failed';
         try {
