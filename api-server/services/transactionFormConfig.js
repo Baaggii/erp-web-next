@@ -165,7 +165,7 @@ export async function setFormConfig(table, name, config, options = {}) {
       continue;
     }
     if (key === 'dateField' || key === 'transactionTypeField' || key === 'transactionTypeValue') {
-      entry[key] = typeof value === 'string' ? value : undefined;
+      entry[key] = typeof value === 'string' && value !== '' ? value : undefined;
       continue;
     }
     if (key === 'imageNameFields') {
