@@ -11,6 +11,7 @@ export default function FormsManagement() {
   const [moduleKey, setModuleKey] = useState('');
   const [branches, setBranches] = useState([]);
   const [departments, setDepartments] = useState([]);
+  const [txnTypes, setTxnTypes] = useState([]);
   const [columns, setColumns] = useState([]);
   const modules = useModules();
   const [config, setConfig] = useState({
@@ -47,6 +48,11 @@ export default function FormsManagement() {
       .then((res) => (res.ok ? res.json() : { rows: [] }))
       .then((data) => setDepartments(data.rows || []))
       .catch(() => setDepartments([]));
+
+    fetch('/api/tables/code_transaction?perPage=500', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { rows: [] }))
+      .then((data) => setTxnTypes(data.rows || []))
+      .catch(() => setTxnTypes([]));
   }, []);
 
   useEffect(() => {
@@ -237,6 +243,12 @@ export default function FormsManagement() {
       allowedBranches: config.allowedBranches.map((b) => Number(b)).filter((b) => !Number.isNaN(b)),
       allowedDepartments: config.allowedDepartments.map((d) => Number(d)).filter((d) => !Number.isNaN(d)),
     };
+    if (cfg.transactionTypeField && cfg.transactionTypeValue) {
+      cfg.defaultValues = {
+        ...cfg.defaultValues,
+        [cfg.transactionTypeField]: cfg.transactionTypeValue,
+      };
+    }
     await fetch('/api/transaction_forms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -368,6 +380,43 @@ export default function FormsManagement() {
                 </option>
               ))}
             </select>
+
+            {columns.length > 0 && (
+              <select
+                value={config.transactionTypeField}
+                onChange={(e) =>
+                  setConfig((c) => ({ ...c, transactionTypeField: e.target.value }))
+                }
+                style={{ marginLeft: '0.5rem' }}
+              >
+                <option value="">-- transaction type field --</option>
+                {columns.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {txnTypes.length > 0 && (
+              <select
+                value={config.transactionTypeValue}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setConfig((c) => ({ ...c, transactionTypeValue: val }));
+                  const found = txnTypes.find((t) => String(t.UITransType) === val);
+                  if (found && found.UITransTypeName) setName(found.UITransTypeName);
+                }}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                <option value="">-- select type --</option>
+                {txnTypes.map((t) => (
+                  <option key={t.UITransType} value={t.UITransType}>
+                    {t.UITransTypeName}
+                  </option>
+                ))}
+              </select>
+            )}
             
             {name && (
               <button onClick={handleDelete} style={{ marginLeft: '0.5rem' }}>

@@ -12,6 +12,13 @@ Each **transaction** entry allows you to specify:
 - **userIdFields** – fields automatically filled with the creating user ID
 - **branchIdFields** – fields automatically filled with the branch ID
 - **companyIdFields** – fields automatically filled with the company ID
+- **dateField** – list of columns treated as date for default filtering
+- **emailField** – list of columns that store email addresses
+- **imagenameField** – list of columns containing image file names
+- **printEmpField** – columns printed as employee info
+- **printCustField** – columns printed as customer info
+- **transactionTypeField** – column used to store the transaction type code
+- **transactionTypeValue** – default transaction type code value
 - **moduleKey** – module slug used to group the form under a module. If omitted,
   the transaction will not be associated with any module and is hidden from the
   Forms list.
