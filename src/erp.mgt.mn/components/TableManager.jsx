@@ -84,6 +84,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
   const [labelEdits, setLabelEdits] = useState({});
   const [isAdding, setIsAdding] = useState(false);
   const [dateFilter, setDateFilter] = useState('');
+  const [datePreset, setDatePreset] = useState('custom');
   const [typeFilter, setTypeFilter] = useState('');
   const [typeOptions, setTypeOptions] = useState([]);
   const { user, company } = useContext(AuthContext);
@@ -202,7 +203,10 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         if (canceled) return;
         const opts = (data.rows || []).map((r) => ({
           value: r.UITransType?.toString() ?? '',
-          label: r.UITransTypeName ?? r.UITransType,
+          label:
+            r.UITransType !== undefined
+              ? `${r.UITransType} - ${r.UITransTypeName ?? ''}`
+              : r.UITransTypeName,
         }));
         setTypeOptions(opts);
       })
@@ -946,20 +950,61 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
           <button onClick={handleDeleteSelected}>Delete Selected</button>
         )}
       </div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, 1fr)',
+          gap: '0.5rem',
+          marginBottom: '0.5rem',
+        }}
+      >
       {formConfig?.dateField?.length > 0 && (
-        <div style={{ marginBottom: '0.5rem' }}>
+        <div style={{ backgroundColor: '#eef6ff', padding: '0.25rem' }}>
           Date:{' '}
-          <input
-            type="date"
-            value={dateFilter}
-            onChange={(e) => setDateFilter(e.target.value)}
+          <select
+            value={datePreset}
+            onChange={(e) => {
+              const val = e.target.value;
+              setDatePreset(val);
+              if (val === 'custom') {
+                setDateFilter('');
+                return;
+              }
+              const now = new Date();
+              let d = now;
+              if (val === 'month') d = new Date(now.getFullYear(), now.getMonth(), 1);
+              else if (val === 'quarter')
+                d = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
+              else if (val === 'year') d = new Date(now.getFullYear(), 0, 1);
+              setDateFilter(d.toISOString().slice(0, 10));
+            }}
             style={{ marginRight: '0.5rem' }}
-          />
-          <button onClick={() => setDateFilter('')}>Clear Date Filter</button>
+          >
+            <option value="custom">Custom</option>
+            <option value="month">This Month</option>
+            <option value="quarter">This Quarter</option>
+            <option value="year">This Year</option>
+          </select>
+          {datePreset === 'custom' && (
+            <input
+              type="date"
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              style={{ marginRight: '0.5rem' }}
+            />
+          )}
+          <button
+            onClick={() => {
+              setDateFilter('');
+              setDatePreset('custom');
+            }}
+          >
+            Clear Date Filter
+          </button>
         </div>
       )}
       {formConfig?.transactionTypeField && (
-        <div style={{ marginBottom: '0.5rem' }}>
+        <div style={{ backgroundColor: '#fef8e7', padding: '0.25rem' }}>
           Type:{' '}
           {typeOptions.length > 0 ? (
             <select
@@ -982,6 +1027,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
           )}
         </div>
       )}
+      </div>
       {showTable && (
         <>
       <div
@@ -1067,6 +1113,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
             {columns.map((c) => (
               <th
                 key={c}
+                onClick={() => handleSort(c)}
                 style={{
                   padding: '0.5rem',
                   border: '1px solid #d1d5db',
@@ -1081,15 +1128,19 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
                   resize: 'horizontal',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
+                  cursor: 'pointer',
                   ...(columnWidths[c] <= ch(8)
                     ? {
                         writingMode: 'vertical-rl',
                         transform: 'rotate(180deg)',
+                        overflowWrap: 'break-word',
+                        maxHeight: '15ch',
                       }
                     : {}),
                 }}
               >
                 {labels[c] || c}
+                {sort.column === c ? (sort.dir === 'asc' ? ' \u2191' : ' \u2193') : ''}
               </th>
             ))}
             <th style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', width: 120 }}>Action</th>
@@ -1330,7 +1381,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         visible={showDetail}
         onClose={() => setShowDetail(false)}
         row={detailRow}
-        columns={allColumns}
+        columns={columns}
         relations={relationOpts}
         references={detailRefs}
         labels={labels}
