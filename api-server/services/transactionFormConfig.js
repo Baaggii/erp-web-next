@@ -16,38 +16,68 @@ async function writeConfig(cfg) {
   await fs.writeFile(filePath, JSON.stringify(cfg, null, 2));
 }
 
+// Base configuration structure. New properties can be added here without
+// modifying parsing or persistence logic. Unknown fields will be ignored when
+// saving configurations.
+const DEFAULT_ENTRY = {
+  visibleFields: [],
+  requiredFields: [],
+  defaultValues: {},
+  editableDefaultFields: [],
+  userIdFields: [],
+  branchIdFields: [],
+  companyIdFields: [],
+  moduleKey: '',
+  moduleLabel: '',
+  allowedBranches: [],
+  allowedDepartments: [],
+  dateField: '',
+  transactionTypeField: '',
+  transactionTypeValue: '',
+  imageNameFields: [],
+};
+
 function parseEntry(raw = {}) {
-  return {
-    visibleFields: raw.visibleFields || [],
-    requiredFields: raw.requiredFields || [],
-    defaultValues: raw.defaultValues || {},
-    editableDefaultFields: raw.editableDefaultFields || [],
-    userIdFields: raw.userIdFields || (raw.userIdField ? [raw.userIdField] : []),
-    branchIdFields:
-      raw.branchIdFields || (raw.branchIdField ? [raw.branchIdField] : []),
-    companyIdFields:
-      raw.companyIdFields || (raw.companyIdField ? [raw.companyIdField] : []),
-    moduleKey: typeof raw.moduleKey === 'string' ? raw.moduleKey : '',
-    allowedBranches: Array.isArray(raw.allowedBranches)
-      ? raw.allowedBranches.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
-      : [],
-    allowedDepartments: Array.isArray(raw.allowedDepartments)
-      ? raw.allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
-      : [],
-    moduleLabel: typeof raw.moduleLabel === 'string' ? raw.moduleLabel : '',
-    dateField: typeof raw.dateField === 'string' ? raw.dateField : '',
-    transactionTypeField:
-      typeof raw.transactionTypeField === 'string'
-        ? raw.transactionTypeField
-        : '',
-    transactionTypeValue:
-      typeof raw.transactionTypeValue === 'string'
-        ? raw.transactionTypeValue
-        : '',
-    imageNameFields: Array.isArray(raw.imageNameFields)
-      ? raw.imageNameFields
-      : [],
-  };
+  const result = {};
+  for (const [key, def] of Object.entries(DEFAULT_ENTRY)) {
+    let value = raw[key];
+    if (key === 'userIdFields') {
+      value = value || (raw.userIdField ? [raw.userIdField] : []);
+      result[key] = Array.isArray(value) ? value : [];
+      continue;
+    }
+    if (key === 'branchIdFields') {
+      value = value || (raw.branchIdField ? [raw.branchIdField] : []);
+      result[key] = Array.isArray(value) ? value : [];
+      continue;
+    }
+    if (key === 'companyIdFields') {
+      value = value || (raw.companyIdField ? [raw.companyIdField] : []);
+      result[key] = Array.isArray(value) ? value : [];
+      continue;
+    }
+    if (key === 'allowedBranches' || key === 'allowedDepartments') {
+      const arr = Array.isArray(value) ? value : [];
+      result[key] = arr
+        .map((v) => Number(v))
+        .filter((v) => !Number.isNaN(v));
+      continue;
+    }
+    if (Array.isArray(def)) {
+      result[key] = Array.isArray(value) ? value : [];
+      continue;
+    }
+    if (typeof def === 'object') {
+      result[key] = value && typeof value === 'object' ? value : {};
+      continue;
+    }
+    if (typeof def === 'string') {
+      result[key] = typeof value === 'string' ? value : '';
+      continue;
+    }
+    result[key] = value ?? def;
+  }
+  return result;
 }
 
 export async function getFormConfig(table, name) {
@@ -87,69 +117,77 @@ export async function listTransactionNames({ moduleKey, branchId, departmentId }
 
 export async function setFormConfig(table, name, config, options = {}) {
   const {
-    visibleFields = [],
-    requiredFields = [],
-    defaultValues = {},
-    editableDefaultFields = [],
-    userIdFields = [],
-    branchIdFields = [],
-    companyIdFields = [],
-    allowedBranches = [],
-    allowedDepartments = [],
-    moduleKey: parentModuleKey = '',
-    moduleLabel,
     userIdField,
     branchIdField,
     companyIdField,
-    dateField,
-    transactionTypeField,
-    transactionTypeValue,
-    imageNameFields = [],
+    ...rest
   } = config || {};
-  const uid = (userIdFields.length ? userIdFields : userIdField ? [userIdField] : [])
-    .map(String)
-    .filter(Boolean);
-  const bid = (branchIdFields.length
-    ? branchIdFields
-    : branchIdField
-    ? [branchIdField]
-    : [])
-    .map(String)
-    .filter(Boolean);
-  const cid = (companyIdFields.length
-    ? companyIdFields
-    : companyIdField
-    ? [companyIdField]
-    : [])
-    .map(String)
-    .filter(Boolean);
-  const ab = Array.isArray(allowedBranches)
-    ? allowedBranches.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
-    : [];
-  const ad = Array.isArray(allowedDepartments)
-    ? allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
-    : [];
+
+  const entry = {};
+
+  for (const [key, def] of Object.entries(DEFAULT_ENTRY)) {
+    let value = rest[key];
+    if (key === 'userIdFields') {
+      value = value && value.length ? value : userIdField ? [userIdField] : [];
+      entry[key] = Array.isArray(value)
+        ? value.map(String).filter(Boolean)
+        : [];
+      continue;
+    }
+    if (key === 'branchIdFields') {
+      value = value && value.length ? value : branchIdField ? [branchIdField] : [];
+      entry[key] = Array.isArray(value)
+        ? value.map(String).filter(Boolean)
+        : [];
+      continue;
+    }
+    if (key === 'companyIdFields') {
+      value = value && value.length ? value : companyIdField ? [companyIdField] : [];
+      entry[key] = Array.isArray(value)
+        ? value.map(String).filter(Boolean)
+        : [];
+      continue;
+    }
+    if (key === 'allowedBranches' || key === 'allowedDepartments') {
+      entry[key] = Array.isArray(value)
+        ? value.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
+        : [];
+      continue;
+    }
+    if (key === 'moduleKey') {
+      entry[key] = typeof value === 'string' ? value : '';
+      continue;
+    }
+    if (key === 'moduleLabel') {
+      entry[key] = typeof value === 'string' && value ? value : undefined;
+      continue;
+    }
+    if (key === 'dateField' || key === 'transactionTypeField' || key === 'transactionTypeValue') {
+      entry[key] = typeof value === 'string' ? value : undefined;
+      continue;
+    }
+    if (key === 'imageNameFields') {
+      entry[key] = Array.isArray(value) ? value : undefined;
+      continue;
+    }
+    if (Array.isArray(def)) {
+      entry[key] = Array.isArray(value) ? value : [];
+      continue;
+    }
+    if (typeof def === 'object') {
+      entry[key] = value && typeof value === 'object' ? value : {};
+      continue;
+    }
+    if (typeof def === 'string') {
+      entry[key] = typeof value === 'string' ? value : undefined;
+      continue;
+    }
+    entry[key] = value ?? def;
+  }
+
   const cfg = await readConfig();
   if (!cfg[table]) cfg[table] = {};
-  cfg[table][name] = {
-    visibleFields,
-    requiredFields,
-    defaultValues,
-    editableDefaultFields,
-    userIdFields: uid,
-    branchIdFields: bid,
-    companyIdFields: cid,
-    moduleKey: parentModuleKey,
-    moduleLabel: moduleLabel || undefined,
-    allowedBranches: ab,
-    allowedDepartments: ad,
-    dateField: typeof dateField === 'string' ? dateField : undefined,
-    transactionTypeField:
-      typeof transactionTypeField === 'string' ? transactionTypeField : undefined,
-    transactionTypeValue:
-      typeof transactionTypeValue === 'string' ? transactionTypeValue : undefined,
-    imageNameFields: Array.isArray(imageNameFields) ? imageNameFields : undefined,
-  };
+  cfg[table][name] = entry;
   await writeConfig(cfg);
   return cfg[table][name];
 }
