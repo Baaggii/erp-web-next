@@ -15,9 +15,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const [table, setTable] = useState(() => sessionState.table || '');
   const [config, setConfig] = useState(() => sessionState.config || null);
   const [refreshId, setRefreshId] = useState(() => sessionState.refreshId || 0);
-  const [showTable, setShowTable] = useState(() =>
-    sessionState.showTable || !!sessionState.config,
-  );
+  const [showTable, setShowTable] = useState(() => sessionState.showTable || false);
   const { company } = useContext(AuthContext);
   const perms = useRolePermissions();
   const licensed = useCompanyModules(company?.company_id);
@@ -122,16 +120,12 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
       .then((cfg) => {
         if (cfg && cfg.moduleKey) {
           setConfig(cfg);
-          setShowTable(true);
         } else {
           setConfig(null);
           setShowTable(false);
         }
       })
-      .catch(() => {
-        setConfig(null);
-        setShowTable(false);
-      });
+      .catch(() => setConfig(null));
   }, [table, name]);
 
   const transactionNames = Object.keys(configs);
@@ -151,7 +145,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
               onChange={(e) => {
                 setName(e.target.value);
                 setRefreshId((r) => r + 1);
-                setShowTable(true);
+                setShowTable(false);
               }}
               style={{ width: '100%', padding: '0.5rem', borderRadius: '3px', border: '1px solid #ccc' }}
             >
