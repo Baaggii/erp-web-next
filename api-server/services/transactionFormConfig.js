@@ -22,14 +22,6 @@ function parseEntry(raw = {}) {
     requiredFields: raw.requiredFields || [],
     defaultValues: raw.defaultValues || {},
     editableDefaultFields: raw.editableDefaultFields || [],
-    dateField: typeof raw.dateField === 'string' ? raw.dateField : '',
-    emailField: typeof raw.emailField === 'string' ? raw.emailField : '',
-    imagenameField: typeof raw.imagenameField === 'string' ? raw.imagenameField : '',
-    printField: typeof raw.printField === 'string' ? raw.printField : '',
-    transactionTypeField:
-      typeof raw.transactionTypeField === 'string' ? raw.transactionTypeField : '',
-    transactionTypeValue:
-      typeof raw.transactionTypeValue === 'string' ? raw.transactionTypeValue : '',
     userIdFields: raw.userIdFields || (raw.userIdField ? [raw.userIdField] : []),
     branchIdFields:
       raw.branchIdFields || (raw.branchIdField ? [raw.branchIdField] : []),
@@ -121,14 +113,6 @@ export async function setFormConfig(table, name, config, options = {}) {
   const ad = Array.isArray(allowedDepartments)
     ? allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
     : [];
-  const {
-    dateField = '',
-    emailField = '',
-    imagenameField = '',
-    printField = '',
-    transactionTypeField = '',
-    transactionTypeValue = '',
-  } = config || {};
   const cfg = await readConfig();
   if (!cfg[table]) cfg[table] = {};
   cfg[table][name] = {
@@ -136,12 +120,6 @@ export async function setFormConfig(table, name, config, options = {}) {
     requiredFields,
     defaultValues,
     editableDefaultFields,
-    dateField,
-    emailField,
-    imagenameField,
-    printField,
-    transactionTypeField,
-    transactionTypeValue,
     userIdFields: uid,
     branchIdFields: bid,
     companyIdFields: cid,

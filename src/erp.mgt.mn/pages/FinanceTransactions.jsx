@@ -16,8 +16,6 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const [config, setConfig] = useState(() => sessionState.config || null);
   const [refreshId, setRefreshId] = useState(() => sessionState.refreshId || 0);
   const [showTable, setShowTable] = useState(() => sessionState.showTable || false);
-  const [dateFilter, setDateFilter] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
   const { company } = useContext(AuthContext);
   const perms = useRolePermissions();
   const licensed = useCompanyModules(company?.company_id);
@@ -130,17 +128,6 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
       .catch(() => setConfig(null));
   }, [table, name]);
 
-  useEffect(() => {
-    if (!config) return;
-    if (config.dateField) {
-      const today = new Date().toISOString().slice(0, 10);
-      setDateFilter(today);
-    }
-    if (config.transactionTypeField && config.transactionTypeValue) {
-      setTypeFilter(config.transactionTypeValue);
-    }
-  }, [config]);
-
   const transactionNames = Object.keys(configs);
 
   if (!perms || !licensed) return <p>Loading...</p>;
@@ -179,27 +166,6 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
           <button onClick={() => setShowTable((v) => !v)}>
             {showTable ? 'Hide Table' : 'View Table'}
           </button>
-          {config.dateField && (
-            <>
-              <input
-                type="date"
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
-                style={{ marginLeft: '0.5rem' }}
-              />
-              <button onClick={() => setDateFilter('')} style={{ marginLeft: '0.25rem' }}>
-                Clear Date Filter
-              </button>
-            </>
-          )}
-          {config.transactionTypeField && (
-            <>
-              <span style={{ marginLeft: '0.5rem' }}>Type: {typeFilter}</span>
-              <button onClick={() => setTypeFilter('')} style={{ marginLeft: '0.25rem' }}>
-                Clear Type Filter
-              </button>
-            </>
-          )}
         </div>
       )}
       {table && config && (
@@ -211,10 +177,6 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
           initialPerPage={10}
           addLabel="Add Transaction"
           showTable={showTable}
-          initialFilters={{
-            ...(config.dateField && dateFilter ? { [config.dateField]: dateFilter } : {}),
-            ...(config.transactionTypeField && typeFilter ? { [config.transactionTypeField]: typeFilter } : {}),
-          }}
         />
       )}
       {transactionNames.length === 0 && (
