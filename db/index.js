@@ -528,7 +528,8 @@ export async function listTableColumns(tableName) {
     `SELECT COLUMN_NAME
        FROM information_schema.COLUMNS
       WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME = ?`,
+        AND TABLE_NAME = ?
+      ORDER BY ORDINAL_POSITION`,
     [tableName],
   );
   return rows.map((r) => r.COLUMN_NAME);
@@ -567,7 +568,8 @@ export async function listTableColumnMeta(tableName) {
     `SELECT COLUMN_NAME, COLUMN_KEY, EXTRA
        FROM information_schema.COLUMNS
       WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME = ?`,
+        AND TABLE_NAME = ?
+      ORDER BY ORDINAL_POSITION`,
     [tableName],
   );
   let labels = {};
@@ -658,8 +660,14 @@ export async function listTableRows(
   for (const [field, value] of Object.entries(filters)) {
     if (value !== undefined && value !== '') {
       ensureValidColumns(columns, [field]);
-      filterClauses.push(`\`${field}\` LIKE ?`);
-      params.push(`%${value}%`);
+      const range = String(value).match(/^(\d{4}[-.]\d{2}[-.]\d{2})\s*-\s*(\d{4}[-.]\d{2}[-.]\d{2})$/);
+      if (range) {
+        filterClauses.push(`\`${field}\` BETWEEN ? AND ?`);
+        params.push(range[1], range[2]);
+      } else {
+        filterClauses.push(`\`${field}\` LIKE ?`);
+        params.push(`%${value}%`);
+      }
     }
   }
   const where = filterClauses.length > 0 ? `WHERE ${filterClauses.join(' AND ')}` : '';

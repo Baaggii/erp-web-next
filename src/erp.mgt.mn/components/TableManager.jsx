@@ -85,6 +85,8 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
   const [isAdding, setIsAdding] = useState(false);
   const [dateFilter, setDateFilter] = useState('');
   const [datePreset, setDatePreset] = useState('custom');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [typeOptions, setTypeOptions] = useState([]);
   const { user, company } = useContext(AuthContext);
@@ -169,11 +171,17 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     if (formConfig.dateField && formConfig.dateField.length > 0) {
       const today = new Date().toISOString().slice(0, 10);
       setDateFilter(today);
+      setCustomStartDate('');
+      setCustomEndDate('');
+      setDatePreset('custom');
       formConfig.dateField.forEach((d) => {
         if (validCols.has(d)) newFilters[d] = today;
       });
     } else {
       setDateFilter('');
+      setCustomStartDate('');
+      setCustomEndDate('');
+      setDatePreset('custom');
     }
     if (formConfig.transactionTypeField) {
       const val = formConfig.transactionTypeValue || '';
@@ -226,6 +234,16 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
       canceled = true;
     };
   }, [formConfig]);
+
+  useEffect(() => {
+    if (datePreset === 'custom') {
+      if (customStartDate && customEndDate) {
+        setDateFilter(`${customStartDate}-${customEndDate}`);
+      } else {
+        setDateFilter('');
+      }
+    }
+  }, [customStartDate, customEndDate, datePreset]);
 
   useEffect(() => {
     if (formConfig?.dateField && formConfig.dateField.length > 0) {
@@ -979,29 +997,34 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
             onChange={(e) => {
               const val = e.target.value;
               setDatePreset(val);
+              const now = new Date();
               if (val === 'custom') {
+                setCustomStartDate('');
+                setCustomEndDate('');
                 setDateFilter('');
                 return;
               }
-              const now = new Date();
-              let start = now;
-              let end = now;
               if (val === 'month') {
-                start = new Date(now.getFullYear(), now.getMonth(), 1);
-                end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-              } else if (val === 'quarter') {
-                const q = Math.floor(now.getMonth() / 3);
-                start = new Date(now.getFullYear(), q * 3, 1);
-                end = new Date(now.getFullYear(), q * 3 + 3, 0);
-              } else if (val === 'year') {
-                start = new Date(now.getFullYear(), 0, 1);
-                end = new Date(now.getFullYear(), 12, 0);
+                const m = String(now.getMonth() + 1).padStart(2, '0');
+                setDateFilter(`${now.getFullYear()}.${m}`);
+                return;
               }
-              setDateFilter(
-                `${start.toISOString().slice(0, 10)}-${end
-                  .toISOString()
-                  .slice(0, 10)}`,
-              );
+              if (val === 'year') {
+                setDateFilter(String(now.getFullYear()));
+                return;
+              }
+              if (val === 'quarter') {
+                const q = Math.floor(now.getMonth() / 3);
+                const start = new Date(now.getFullYear(), q * 3, 1);
+                const end = new Date(now.getFullYear(), q * 3 + 3, 0);
+                setDateFilter(
+                  `${start.toISOString().slice(0, 10)}-${end
+                    .toISOString()
+                    .slice(0, 10)}`,
+                );
+                return;
+              }
+              setDateFilter('');
             }}
             style={{ marginRight: '0.5rem' }}
           >
@@ -1011,17 +1034,27 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
             <option value="year">This Year</option>
           </select>
           {datePreset === 'custom' && (
-            <input
-              type="date"
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-              style={{ marginRight: '0.5rem' }}
-            />
+            <>
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                style={{ marginRight: '0.25rem' }}
+              />
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                style={{ marginRight: '0.5rem' }}
+              />
+            </>
           )}
           <button
             onClick={() => {
               setDateFilter('');
               setDatePreset('custom');
+              setCustomStartDate('');
+              setCustomEndDate('');
             }}
           >
             Clear Date Filter
