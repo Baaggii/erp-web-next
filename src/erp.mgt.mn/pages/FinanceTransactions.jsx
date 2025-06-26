@@ -21,6 +21,9 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const licensed = useCompanyModules(company?.company_id);
   const tableRef = useRef(null);
   const prevModuleKey = useRef(moduleKey);
+  const [date, setDate] = useState('');
+  const [type, setType] = useState('');
+  const [transactionTypes, setTransactionTypes] = useState([]);
 
   
   useEffect(() => {
@@ -47,6 +50,27 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   useEffect(() => {
     setSessionState({ name, table, config, refreshId, showTable });
   }, [name, table, config, refreshId, showTable, setSessionState]);
+
+  useEffect(() => {
+    if (config?.dateField) {
+      setDate(new Date().toISOString().slice(0, 10));
+    } else {
+      setDate('');
+    }
+    if (config?.transactionTypeField) {
+      setType(config.transactionTypeValue || '');
+    } else {
+      setType('');
+    }
+  }, [config]);
+
+  useEffect(() => {
+    if (!config || !config.transactionTypeField) return;
+    fetch('/api/tables/code_transaction?perPage=500', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { rows: [] }))
+      .then((data) => setTransactionTypes(data.rows || []))
+      .catch(() => setTransactionTypes([]));
+  }, [config]);
 
   useEffect(() => {
     setSearchParams((prev) => {
@@ -160,6 +184,37 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
         )}
       {table && config && (
         <div style={{ marginBottom: '0.5rem' }}>
+          {config.dateField && (
+            <span>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+              />
+              <button onClick={() => setDate('')} style={{ marginLeft: '0.25rem' }}>
+                Clear Date Filter
+              </button>
+            </span>
+          )}
+          {config.transactionTypeField && (
+            <span style={{ marginLeft: '0.5rem' }}>
+              <select value={type} onChange={(e) => setType(e.target.value)}>
+                <option value="">-- all --</option>
+                {transactionTypes.map((t) => (
+                  <option key={t.UITransTypeName} value={t.UITransTypeName}>
+                    {t.UITransTypeName}
+                  </option>
+                ))}
+              </select>
+              <button onClick={() => setType('')} style={{ marginLeft: '0.25rem' }}>
+                Clear Transaction Type Filter
+              </button>
+            </span>
+          )}
+        </div>
+      )}
+      {table && config && (
+        <div style={{ marginBottom: '0.5rem' }}>
           <button onClick={() => tableRef.current?.openAdd()} style={{ marginRight: '0.5rem' }}>
             Add Transaction
           </button>
@@ -177,6 +232,10 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
           initialPerPage={10}
           addLabel="Add Transaction"
           showTable={showTable}
+          externalFilters={{
+            ...(config.dateField ? { [config.dateField]: date } : {}),
+            ...(config.transactionTypeField ? { [config.transactionTypeField]: type } : {}),
+          }}
         />
       )}
       {transactionNames.length === 0 && (
