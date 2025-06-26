@@ -85,6 +85,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
   const [isAdding, setIsAdding] = useState(false);
   const [dateFilter, setDateFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [typeOptions, setTypeOptions] = useState([]);
   const { user, company } = useContext(AuthContext);
   const { addToast } = useToast();
 
@@ -155,6 +156,30 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     } else {
       setTypeFilter('');
     }
+  }, [formConfig]);
+
+  useEffect(() => {
+    if (!formConfig?.transactionTypeField) {
+      setTypeOptions([]);
+      return;
+    }
+    let canceled = false;
+    fetch('/api/tables/code_transaction?perPage=500', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { rows: [] }))
+      .then((data) => {
+        if (canceled) return;
+        const opts = (data.rows || []).map((r) => ({
+          value: r.UITransType?.toString() ?? '',
+          label: r.UITransTypeName ?? r.UITransType,
+        }));
+        setTypeOptions(opts);
+      })
+      .catch(() => {
+        if (!canceled) setTypeOptions([]);
+      });
+    return () => {
+      canceled = true;
+    };
   }, [formConfig]);
 
   useEffect(() => {
@@ -370,6 +395,9 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
       if (formConfig?.companyIdFields?.includes(c) && company?.company_id !== undefined) v = company.company_id;
       vals[c] = v;
     });
+    if (formConfig?.transactionTypeField && formConfig.transactionTypeValue) {
+      vals[formConfig.transactionTypeField] = formConfig.transactionTypeValue;
+    }
     setEditing(vals);
     setIsAdding(true);
     setShowForm(true);
@@ -842,11 +870,21 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
       )}
       {formConfig?.transactionTypeField && (
         <div style={{ marginBottom: '0.5rem' }}>
-          Type: {typeFilter || ''}
+          Type:{' '}
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            style={{ marginRight: '0.5rem' }}
+          >
+            <option value="">-- all --</option>
+            {typeOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
           {typeFilter && (
-            <button onClick={() => setTypeFilter('')} style={{ marginLeft: '0.5rem' }}>
-              Clear Transaction Type Filter
-            </button>
+            <button onClick={() => setTypeFilter('')}>Clear Transaction Type Filter</button>
           )}
         </div>
       )}
