@@ -1,7 +1,9 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-const filePath = path.join(process.cwd(), 'config', 'transactionForms.json');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const filePath = path.join(__dirname, '..', '..', 'config', 'transactionForms.json');
 
 async function readConfig() {
   try {
