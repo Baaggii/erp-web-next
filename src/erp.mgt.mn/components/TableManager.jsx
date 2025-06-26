@@ -59,12 +59,12 @@ const deleteBtnStyle = {
   color: '#b91c1c',
 };
 
-export default forwardRef(function TableManager({ table, refreshId = 0, formConfig = null, initialPerPage = 10, addLabel = 'Add Row', showTable = true }, ref) {
+export default forwardRef(function TableManager({ table, refreshId = 0, formConfig = null, initialPerPage = 10, addLabel = 'Add Row', showTable = true, externalFilters = {} }, ref) {
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(initialPerPage);
-  const [filters, setFilters] = useState({});
+  const [filters, setFilters] = useState(externalFilters);
   const [sort, setSort] = useState({ column: '', dir: 'asc' });
   const [relations, setRelations] = useState({});
   const [refData, setRefData] = useState({});
@@ -78,6 +78,10 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
   const [deleteInfo, setDeleteInfo] = useState(null); // { id, refs }
   const [showCascade, setShowCascade] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
+
+  useEffect(() => {
+    setFilters(externalFilters);
+  }, [externalFilters]);
   const [detailRow, setDetailRow] = useState(null);
   const [detailRefs, setDetailRefs] = useState([]);
   const [editLabels, setEditLabels] = useState(false);
@@ -117,7 +121,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     setRows([]);
     setCount(0);
     setPage(1);
-    setFilters({});
+    setFilters(externalFilters);
     setSort({ column: '', dir: 'asc' });
     setRelations({});
     setRefData({});
