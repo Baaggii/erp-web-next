@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import Modal from './Modal.jsx';
+import DataGridMainSection from './DataGridMainSection.jsx';
 
 export default function RowFormModal({
   visible,
@@ -39,6 +40,7 @@ export default function RowFormModal({
     });
     return init;
   });
+  const [mainRows, setMainRows] = useState([]);
   const inputRefs = useRef({});
   const [errors, setErrors] = useState({});
   const [submitLocked, setSubmitLocked] = useState(false);
@@ -96,6 +98,7 @@ export default function RowFormModal({
       vals[c] = placeholders[c] ? normalizeDateInput(raw, placeholders[c]) : raw;
     });
     setFormVals(vals);
+    setMainRows(row?.rows || []);
     inputRefs.current = {};
     setErrors({});
   }, [row, columns, visible, placeholders]);
@@ -168,7 +171,7 @@ export default function RowFormModal({
             ? normalizeDateInput(v, placeholders[k])
             : v;
         });
-        await Promise.resolve(onSubmit(normalized));
+        await Promise.resolve(onSubmit({ ...normalized, rows: mainRows }));
       } else {
         setSubmitLocked(false);
         return;
@@ -255,56 +258,17 @@ export default function RowFormModal({
 
   function renderMainTable(cols) {
     if (cols.length === 0) return null;
-    const totals = {};
-    cols.forEach((c) => {
-      if (totalAmountSet.has(c) || totalCurrencySet.has(c)) {
-        totals[c] = Number(formVals[c] || 0);
-      }
-    });
     return (
-      <div className="mb-4">
-        <h3 className="mt-0 mb-1 font-semibold">Main</h3>
-        <table className="min-w-full border border-gray-300 text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              {cols.map((c) => (
-                <th key={c} className="border px-2 py-1">
-                  {labels[c] || c}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              {cols.map((c) => (
-                <td key={c} className="border px-2 py-1">
-                  {renderField(c, false)}
-                </td>
-              ))}
-            </tr>
-          </tbody>
-          {(totalAmountFields.length > 0 || totalCurrencyFields.length > 0) && (
-            <tfoot>
-              <tr>
-                {cols.map((c, idx) => {
-                  let val = '';
-                  if (idx === 0) val = 'НИЙТ';
-                  if (totalAmountSet.has(c)) val = totals[c];
-                  if (totalCurrencySet.has(c)) val = totals[c];
-                  return (
-                    <td
-                      key={c}
-                      className="border px-2 py-1 font-semibold"
-                    >
-                      {val !== '' ? val : ''}
-                    </td>
-                  );
-                })}
-              </tr>
-            </tfoot>
-          )}
-        </table>
-      </div>
+      <DataGridMainSection
+        columns={cols}
+        labels={labels}
+        relations={relations}
+        relationConfigs={relationConfigs}
+        totalAmountFields={totalAmountFields}
+        totalCurrencyFields={totalCurrencyFields}
+        initialRows={mainRows}
+        onChange={(rows) => setMainRows(rows)}
+      />
     );
   }
 
@@ -326,18 +290,24 @@ export default function RowFormModal({
     const m = mainCols.filter((c) => allowed.has(c));
     const f = footerCols.filter((c) => allowed.has(c));
 
-    const rowHtml = (cols, skipEmpty = false) =>
-      cols
-        .filter((c) =>
-          skipEmpty ? formVals[c] !== '' && formVals[c] !== null && formVals[c] !== 0 : true,
-        )
-        .map(
-          (c) =>
-            `<tr><th>${labels[c] || c}</th><td>${
-              formVals[c] !== undefined ? formVals[c] : ''
-            }</td></tr>`,
+    const rowHtml = (cols, data, skipEmpty = false) => {
+      const rows = Array.isArray(data) ? data : [data];
+      return rows
+        .map((r) =>
+          cols
+            .filter((c) =>
+              skipEmpty ? r[c] !== '' && r[c] !== null && r[c] !== 0 : true,
+            )
+            .map(
+              (c) =>
+                `<tr><th>${labels[c] || c}</th><td>${
+                  r[c] !== undefined ? r[c] : ''
+                }</td></tr>`,
+            )
+            .join(''),
         )
         .join('');
+    };
 
     let html = '<html><head><title>Print</title>';
     html +=
@@ -345,9 +315,9 @@ export default function RowFormModal({
     html +=
       '<link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.1/dist/tailwind.min.css" rel="stylesheet">';
     html += '</head><body>';
-    if (h.length) html += `<h3>Header</h3><table>${rowHtml(h)}</table>`;
-    if (m.length) html += `<h3>Main</h3><table>${rowHtml(m, true)}</table>`;
-    if (f.length) html += `<h3>Footer</h3><table>${rowHtml(f)}</table>`;
+    if (h.length) html += `<h3>Header</h3><table>${rowHtml(h, formVals)}</table>`;
+    if (m.length) html += `<h3>Main</h3><table>${rowHtml(m, mainRows, true)}</table>`;
+    if (f.length) html += `<h3>Footer</h3><table>${rowHtml(f, formVals)}</table>`;
     html += '</body></html>';
     const w = window.open('', '_blank');
     w.document.write(html);
