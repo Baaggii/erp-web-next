@@ -59,12 +59,12 @@ const deleteBtnStyle = {
   color: '#b91c1c',
 };
 
-export default forwardRef(function TableManager({ table, refreshId = 0, formConfig = null, initialPerPage = 10, addLabel = 'Add Row', showTable = true }, ref) {
+export default forwardRef(function TableManager({ table, refreshId = 0, formConfig = null, initialPerPage = 10, addLabel = 'Add Row', showTable = true, initialFilters = {} }, ref) {
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(initialPerPage);
-  const [filters, setFilters] = useState({});
+  const [filters, setFilters] = useState(initialFilters);
   const [sort, setSort] = useState({ column: '', dir: 'asc' });
   const [relations, setRelations] = useState({});
   const [refData, setRefData] = useState({});
@@ -85,6 +85,10 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
   const [isAdding, setIsAdding] = useState(false);
   const { user, company } = useContext(AuthContext);
   const { addToast } = useToast();
+
+  useEffect(() => {
+    setFilters(initialFilters);
+  }, [initialFilters]);
 
   function computeAutoInc(meta) {
     const auto = meta
