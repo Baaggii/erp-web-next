@@ -11,8 +11,6 @@ export default function FormsManagement() {
   const [branches, setBranches] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [columns, setColumns] = useState([]);
-  const [duplicateFrom, setDuplicateFrom] = useState('');
-  const [transactionTypes, setTransactionTypes] = useState([]);
   const modules = useModules();
   const [config, setConfig] = useState({
     visibleFields: [],
@@ -24,34 +22,7 @@ export default function FormsManagement() {
     companyIdFields: [],
     allowedBranches: [],
     allowedDepartments: [],
-    dateField: '',
-    transactionTypeField: '',
-    transactionTypeValue: '',
   });
-
-  useEffect(() => {
-    if (!table || !duplicateFrom) return;
-    fetch(`/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(duplicateFrom)}`, {
-      credentials: 'include',
-    })
-      .then((res) => (res.ok ? res.json() : {}))
-      .then((cfg) => {
-        setConfig({
-          visibleFields: cfg.visibleFields || [],
-          requiredFields: cfg.requiredFields || [],
-          defaultValues: cfg.defaultValues || {},
-          editableDefaultFields: cfg.editableDefaultFields || [],
-          userIdFields: cfg.userIdFields || [],
-          branchIdFields: cfg.branchIdFields || [],
-          companyIdFields: cfg.companyIdFields || [],
-          allowedBranches: (cfg.allowedBranches || []).map(String),
-          allowedDepartments: (cfg.allowedDepartments || []).map(String),
-          dateField: cfg.dateField || '',
-          transactionTypeField: cfg.transactionTypeField || '',
-          transactionTypeValue: cfg.transactionTypeValue || '',
-        });
-      });
-  }, [duplicateFrom, table]);
 
   useEffect(() => {
     fetch('/api/tables', { credentials: 'include' })
@@ -68,11 +39,6 @@ export default function FormsManagement() {
       .then((res) => (res.ok ? res.json() : { rows: [] }))
       .then((data) => setDepartments(data.rows || []))
       .catch(() => setDepartments([]));
-
-    fetch('/api/tables/code_transaction?perPage=500', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : { rows: [] }))
-      .then((data) => setTransactionTypes(data.rows || []))
-      .catch(() => setTransactionTypes([]));
   }, []);
 
   useEffect(() => {
@@ -103,9 +69,6 @@ export default function FormsManagement() {
             companyIdFields: filtered[name].companyIdFields || [],
             allowedBranches: (filtered[name].allowedBranches || []).map(String),
             allowedDepartments: (filtered[name].allowedDepartments || []).map(String),
-            dateField: filtered[name].dateField || '',
-            transactionTypeField: filtered[name].transactionTypeField || '',
-            transactionTypeValue: filtered[name].transactionTypeValue || '',
           });
         } else {
           setName('');
@@ -119,9 +82,6 @@ export default function FormsManagement() {
             companyIdFields: [],
             allowedBranches: [],
             allowedDepartments: [],
-            dateField: '',
-            transactionTypeField: '',
-            transactionTypeValue: '',
           });
         }
       })
@@ -138,9 +98,6 @@ export default function FormsManagement() {
           companyIdFields: [],
           allowedBranches: [],
           allowedDepartments: [],
-          dateField: '',
-          transactionTypeField: '',
-          transactionTypeValue: '',
         });
         setModuleKey('');
       });
@@ -162,9 +119,6 @@ export default function FormsManagement() {
           companyIdFields: cfg.companyIdFields || [],
           allowedBranches: (cfg.allowedBranches || []).map(String),
           allowedDepartments: (cfg.allowedDepartments || []).map(String),
-          dateField: cfg.dateField || '',
-          transactionTypeField: cfg.transactionTypeField || '',
-          transactionTypeValue: cfg.transactionTypeValue || '',
         });
       })
       .catch(() => {
@@ -178,9 +132,6 @@ export default function FormsManagement() {
           companyIdFields: [],
           allowedBranches: [],
           allowedDepartments: [],
-          dateField: '',
-          transactionTypeField: '',
-          transactionTypeValue: '',
         });
         setModuleKey('');
       });
@@ -269,9 +220,6 @@ export default function FormsManagement() {
       companyIdFields: [],
       allowedBranches: [],
       allowedDepartments: [],
-      dateField: '',
-      transactionTypeField: '',
-      transactionTypeValue: '',
     });
     setModuleKey('');
   }
@@ -328,18 +276,6 @@ export default function FormsManagement() {
                 Delete
               </button>
             )}
-            <select
-              value={duplicateFrom}
-              onChange={(e) => setDuplicateFrom(e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              <option value="">-- duplicate from --</option>
-              {names.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
           </div>
           <div className="table-container overflow-x-auto" style={{ maxHeight: '70vh' }}>
           <table style={{ borderCollapse: 'collapse', width: '100%' }}>
@@ -499,51 +435,6 @@ export default function FormsManagement() {
               </select>
               <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedDepartments: departments.map((d) => String(d.id)) }))}>All</button>
               <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedDepartments: [] }))}>None</button>
-            </label>
-            <label style={{ marginLeft: '1rem' }}>
-              Date field:{' '}
-              <select
-                value={config.dateField}
-                onChange={(e) => setConfig((c) => ({ ...c, dateField: e.target.value }))}
-              >
-                <option value="">-- select --</option>
-                {columns.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label style={{ marginLeft: '1rem' }}>
-              Transaction type field:{' '}
-              <select
-                value={config.transactionTypeField}
-                onChange={(e) => setConfig((c) => ({ ...c, transactionTypeField: e.target.value }))}
-              >
-                <option value="">-- select --</option>
-                {columns.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label style={{ marginLeft: '1rem' }}>
-              Transaction type value:{' '}
-              <select
-                value={config.transactionTypeValue}
-                onChange={(e) => {
-                  setConfig((c) => ({ ...c, transactionTypeValue: e.target.value }));
-                  setName(e.target.value);
-                }}
-              >
-                <option value="">-- select type --</option>
-                {transactionTypes.map((t) => (
-                  <option key={t.UITransTypeName} value={t.UITransTypeName}>
-                    {t.UITransTypeName}
-                  </option>
-                ))}
-              </select>
             </label>
           </div>
           <div style={{ marginTop: '1rem' }}>
