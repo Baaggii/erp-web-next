@@ -19,6 +19,8 @@ export default function RowFormModal({
   mainFields = [],
   printEmpField = [],
   printCustField = [],
+  totalAmountFields = [],
+  totalCurrencyFields = [],
 }) {
   const [formVals, setFormVals] = useState(() => {
     const init = {};
@@ -103,6 +105,8 @@ export default function RowFormModal({
   const headerSet = new Set(headerFields);
   const footerSet = new Set(footerFields);
   const mainSet = new Set(mainFields);
+  const totalAmountSet = new Set(totalAmountFields);
+  const totalCurrencySet = new Set(totalCurrencyFields);
   const headerCols = columns.filter((c) => headerSet.has(c));
   const footerCols = columns.filter((c) => footerSet.has(c));
   const mainCols =
@@ -257,16 +261,12 @@ export default function RowFormModal({
 
   function renderMainTable(cols) {
     if (cols.length === 0) return null;
-    const qtyCols = cols.filter((c) => /qty|quantity/i.test(c));
-    const amtCols = cols.filter((c) => /amount|amt/i.test(c));
-    const totalQty = qtyCols.reduce(
-      (sum, c) => sum + Number(formVals[c] || 0),
-      0,
-    );
-    const totalAmt = amtCols.reduce(
-      (sum, c) => sum + Number(formVals[c] || 0),
-      0,
-    );
+    const totals = {};
+    cols.forEach((c) => {
+      if (totalAmountSet.has(c) || totalCurrencySet.has(c)) {
+        totals[c] = Number(formVals[c] || 0);
+      }
+    });
     return (
       <div style={{ marginBottom: '1rem' }}>
         <h3 style={{ marginTop: 0 }}>Main</h3>
@@ -295,13 +295,14 @@ export default function RowFormModal({
               ))}
             </tr>
           </tbody>
-          {(qtyCols.length > 0 || amtCols.length > 0) && (
+          {(totalAmountFields.length > 0 || totalCurrencyFields.length > 0) && (
             <tfoot>
               <tr>
-                {cols.map((c) => {
+                {cols.map((c, idx) => {
                   let val = '';
-                  if (qtyCols.includes(c)) val = totalQty;
-                  if (amtCols.includes(c)) val = totalAmt;
+                  if (idx === 0) val = 'НИЙТ';
+                  if (totalAmountSet.has(c)) val = totals[c];
+                  if (totalCurrencySet.has(c)) val = totals[c];
                   return (
                     <td
                       key={c}
@@ -341,8 +342,11 @@ export default function RowFormModal({
     const m = mainCols.filter((c) => allowed.has(c));
     const f = footerCols.filter((c) => allowed.has(c));
 
-    const rowHtml = (cols) =>
+    const rowHtml = (cols, skipEmpty = false) =>
       cols
+        .filter((c) =>
+          skipEmpty ? formVals[c] !== '' && formVals[c] !== null && formVals[c] !== 0 : true,
+        )
         .map(
           (c) =>
             `<tr><th>${labels[c] || c}</th><td>${
@@ -356,7 +360,7 @@ export default function RowFormModal({
       '<style>table{width:100%;border-collapse:collapse;margin-bottom:1rem;}th,td{border:1px solid #666;padding:4px;text-align:left;}h3{margin:0 0 4px 0;}</style>';
     html += '</head><body>';
     if (h.length) html += `<h3>Header</h3><table>${rowHtml(h)}</table>`;
-    if (m.length) html += `<h3>Main</h3><table>${rowHtml(m)}</table>`;
+    if (m.length) html += `<h3>Main</h3><table>${rowHtml(m, true)}</table>`;
     if (f.length) html += `<h3>Footer</h3><table>${rowHtml(f)}</table>`;
     html += '</body></html>';
     const w = window.open('', '_blank');
