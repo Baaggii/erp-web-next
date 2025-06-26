@@ -29,6 +29,7 @@ const DEFAULT_ENTRY = {
   userIdFields: [],
   branchIdFields: [],
   companyIdFields: [],
+  editable: false,
   moduleKey: '',
   moduleLabel: '',
   allowedBranches: [],
@@ -153,23 +154,27 @@ export async function setFormConfig(table, name, config, options = {}) {
     if (key === 'allowedBranches' || key === 'allowedDepartments') {
       entry[key] = Array.isArray(value)
         ? value.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
-        : [];
+        : DEFAULT_ENTRY[key];
+      continue;
+    }
+    if (key === 'editable') {
+      entry[key] = typeof value === 'boolean' ? value : DEFAULT_ENTRY[key];
       continue;
     }
     if (key === 'moduleKey') {
-      entry[key] = typeof value === 'string' ? value : '';
+      entry[key] = typeof value === 'string' ? value : DEFAULT_ENTRY[key];
       continue;
     }
     if (key === 'moduleLabel') {
-      entry[key] = typeof value === 'string' && value ? value : undefined;
+      entry[key] = typeof value === 'string' ? value : DEFAULT_ENTRY[key];
       continue;
     }
     if (key === 'dateField' || key === 'transactionTypeField' || key === 'transactionTypeValue') {
-      entry[key] = typeof value === 'string' && value !== '' ? value : undefined;
+      entry[key] = typeof value === 'string' ? value : DEFAULT_ENTRY[key];
       continue;
     }
     if (key === 'imageNameFields') {
-      entry[key] = Array.isArray(value) ? value : undefined;
+      entry[key] = Array.isArray(value) ? value : DEFAULT_ENTRY[key];
       continue;
     }
     if (Array.isArray(def)) {
@@ -181,7 +186,7 @@ export async function setFormConfig(table, name, config, options = {}) {
       continue;
     }
     if (typeof def === 'string') {
-      entry[key] = typeof value === 'string' ? value : undefined;
+      entry[key] = typeof value === 'string' ? value : def;
       continue;
     }
     entry[key] = value ?? def;
