@@ -67,7 +67,16 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
     if (company?.department_id !== undefined)
       params.set('departmentId', company.department_id);
     fetch(`/api/transaction_forms?${params.toString()}`, { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : {}))
+      .then((res) => {
+        if (!res.ok) {
+          addToast('Failed to load transaction forms', 'error');
+          return {};
+        }
+        return res.json().catch(() => {
+          addToast('Failed to parse transaction forms', 'error');
+          return {};
+        });
+      })
       .then((data) => {
         const filtered = {};
         Object.entries(data).forEach(([n, info]) => {
@@ -94,7 +103,10 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
         setConfigs(filtered);
         if (name && filtered[name]) setTable(filtered[name].table ?? filtered[name]);
       })
-      .catch(() => setConfigs({}));
+      .catch(() => {
+        addToast('Failed to load transaction forms', 'error');
+        setConfigs({});
+      });
   }, [moduleKey, company, perms, licensed]);
 
   useEffect(() => {
