@@ -11,8 +11,10 @@ export default function FormsManagement() {
   const [branches, setBranches] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [columns, setColumns] = useState([]);
+  const [duplicateFrom, setDuplicateFrom] = useState('');
+  const [transTypes, setTransTypes] = useState([]);
   const modules = useModules();
-  const [config, setConfig] = useState({
+  const EMPTY_CFG = {
     visibleFields: [],
     requiredFields: [],
     defaultValues: {},
@@ -22,7 +24,13 @@ export default function FormsManagement() {
     companyIdFields: [],
     allowedBranches: [],
     allowedDepartments: [],
-  });
+    dateField: '',
+    transactionTypeField: '',
+    transactionTypeValue: '',
+    imageNameFields: [],
+  };
+
+  const [config, setConfig] = useState({ ...EMPTY_CFG });
 
   useEffect(() => {
     fetch('/api/tables', { credentials: 'include' })
@@ -39,7 +47,34 @@ export default function FormsManagement() {
       .then((res) => (res.ok ? res.json() : { rows: [] }))
       .then((data) => setDepartments(data.rows || []))
       .catch(() => setDepartments([]));
+
+    fetch('/api/tables/code_transaction?perPage=500', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { rows: [] }))
+      .then((data) =>
+        setTransTypes(
+          (data.rows || []).map((r) => ({
+            value: r.UITransTypeName,
+            label: r.UITransTypeName,
+          })),
+        ),
+      )
+      .catch(() => setTransTypes([]));
   }, []);
+
+  useEffect(() => {
+    if (!table || !duplicateFrom) return;
+    fetch(
+      `/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(
+        duplicateFrom,
+      )}`,
+      { credentials: 'include' },
+    )
+      .then((res) => (res.ok ? res.json() : null))
+      .then((cfg) => {
+        if (cfg) setConfig({ ...EMPTY_CFG, ...cfg });
+      })
+      .catch(() => {});
+  }, [duplicateFrom, table]);
 
   useEffect(() => {
     if (!table) return;
@@ -60,45 +95,20 @@ export default function FormsManagement() {
         if (filtered[name]) {
           setModuleKey(filtered[name].moduleKey || '');
           setConfig({
-            visibleFields: filtered[name].visibleFields || [],
-            requiredFields: filtered[name].requiredFields || [],
-            defaultValues: filtered[name].defaultValues || {},
-            editableDefaultFields: filtered[name].editableDefaultFields || [],
-            userIdFields: filtered[name].userIdFields || [],
-            branchIdFields: filtered[name].branchIdFields || [],
-            companyIdFields: filtered[name].companyIdFields || [],
+            ...EMPTY_CFG,
+            ...filtered[name],
             allowedBranches: (filtered[name].allowedBranches || []).map(String),
             allowedDepartments: (filtered[name].allowedDepartments || []).map(String),
           });
         } else {
           setName('');
-          setConfig({
-            visibleFields: [],
-            requiredFields: [],
-            defaultValues: {},
-            editableDefaultFields: [],
-            userIdFields: [],
-            branchIdFields: [],
-            companyIdFields: [],
-            allowedBranches: [],
-            allowedDepartments: [],
-          });
+          setConfig({ ...EMPTY_CFG });
         }
       })
       .catch(() => {
         setNames([]);
         setName('');
-        setConfig({
-          visibleFields: [],
-          requiredFields: [],
-          defaultValues: {},
-          editableDefaultFields: [],
-          userIdFields: [],
-          branchIdFields: [],
-          companyIdFields: [],
-          allowedBranches: [],
-          allowedDepartments: [],
-        });
+        setConfig({ ...EMPTY_CFG });
         setModuleKey('');
       });
   }, [table, moduleKey]);
@@ -110,29 +120,14 @@ export default function FormsManagement() {
       .then((cfg) => {
         setModuleKey(cfg.moduleKey || '');
         setConfig({
-          visibleFields: cfg.visibleFields || [],
-          requiredFields: cfg.requiredFields || [],
-          defaultValues: cfg.defaultValues || {},
-          editableDefaultFields: cfg.editableDefaultFields || [],
-          userIdFields: cfg.userIdFields || [],
-          branchIdFields: cfg.branchIdFields || [],
-          companyIdFields: cfg.companyIdFields || [],
+          ...EMPTY_CFG,
+          ...cfg,
           allowedBranches: (cfg.allowedBranches || []).map(String),
           allowedDepartments: (cfg.allowedDepartments || []).map(String),
         });
       })
       .catch(() => {
-        setConfig({
-          visibleFields: [],
-          requiredFields: [],
-          defaultValues: {},
-          editableDefaultFields: [],
-          userIdFields: [],
-          branchIdFields: [],
-          companyIdFields: [],
-          allowedBranches: [],
-          allowedDepartments: [],
-        });
+        setConfig({ ...EMPTY_CFG });
         setModuleKey('');
       });
   }, [table, name, names]);
@@ -210,17 +205,7 @@ export default function FormsManagement() {
     refreshTxnModules();
     setNames((n) => n.filter((x) => x !== name));
     setName('');
-    setConfig({
-      visibleFields: [],
-      requiredFields: [],
-      defaultValues: {},
-      editableDefaultFields: [],
-      userIdFields: [],
-      branchIdFields: [],
-      companyIdFields: [],
-      allowedBranches: [],
-      allowedDepartments: [],
-    });
+    setConfig({ ...EMPTY_CFG });
     setModuleKey('');
   }
 
@@ -267,6 +252,19 @@ export default function FormsManagement() {
               {modules.map((m) => (
                 <option key={m.module_key} value={m.module_key}>
                   {m.label}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={duplicateFrom}
+              onChange={(e) => setDuplicateFrom(e.target.value)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              <option value="">Duplicate from...</option>
+              {names.map((n) => (
+                <option key={n} value={n}>
+                  {n}
                 </option>
               ))}
             </select>
@@ -435,6 +433,68 @@ export default function FormsManagement() {
               </select>
               <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedDepartments: departments.map((d) => String(d.id)) }))}>All</button>
               <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedDepartments: [] }))}>None</button>
+            </label>
+            <label style={{ marginLeft: '1rem' }}>
+              Date field:{' '}
+              <select
+                value={config.dateField}
+                onChange={(e) => setConfig((c) => ({ ...c, dateField: e.target.value }))}
+              >
+                <option value="">-- none --</option>
+                {columns.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ marginLeft: '1rem' }}>
+              Transaction type field:{' '}
+              <select
+                value={config.transactionTypeField}
+                onChange={(e) => setConfig((c) => ({ ...c, transactionTypeField: e.target.value }))}
+              >
+                <option value="">-- none --</option>
+                {columns.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ marginLeft: '1rem' }}>
+              Transaction type value:{' '}
+              <select
+                value={config.transactionTypeValue}
+                onChange={(e) => setConfig((c) => ({ ...c, transactionTypeValue: e.target.value }))}
+              >
+                <option value="">-- select --</option>
+                {transTypes.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ marginLeft: '1rem' }}>
+              Image name fields:{' '}
+              <select
+                multiple
+                size={8}
+                value={config.imageNameFields}
+                onChange={(e) =>
+                  setConfig((c) => ({
+                    ...c,
+                    imageNameFields: Array.from(e.target.selectedOptions, (o) => o.value),
+                  }))
+                }
+              >
+                {columns.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
           <div style={{ marginTop: '1rem' }}>
