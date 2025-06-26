@@ -59,12 +59,12 @@ const deleteBtnStyle = {
   color: '#b91c1c',
 };
 
-export default forwardRef(function TableManager({ table, refreshId = 0, formConfig = null, initialPerPage = 10, addLabel = 'Add Row', showTable = true, extraFilters = {} }, ref) {
+export default forwardRef(function TableManager({ table, refreshId = 0, formConfig = null, initialPerPage = 10, addLabel = 'Add Row', showTable = true }, ref) {
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(initialPerPage);
-  const [filters, setFilters] = useState(extraFilters);
+  const [filters, setFilters] = useState({});
   const [sort, setSort] = useState({ column: '', dir: 'asc' });
   const [relations, setRelations] = useState({});
   const [refData, setRefData] = useState({});
@@ -85,10 +85,6 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
   const [isAdding, setIsAdding] = useState(false);
   const { user, company } = useContext(AuthContext);
   const { addToast } = useToast();
-
-  useEffect(() => {
-    setFilters((f) => ({ ...f, ...extraFilters }));
-  }, [extraFilters]);
 
   function computeAutoInc(meta) {
     const auto = meta
@@ -266,8 +262,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
       params.set('sort', sort.column);
       params.set('dir', sort.dir);
     }
-    const qFilters = { ...filters, ...extraFilters };
-    Object.entries(qFilters).forEach(([k, v]) => {
+    Object.entries(filters).forEach(([k, v]) => {
       if (v) params.set(k, v);
     });
     fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
@@ -284,11 +279,11 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     return () => {
       canceled = true;
     };
-  }, [table, page, perPage, filters, sort, refreshId, localRefresh, extraFilters]);
+  }, [table, page, perPage, filters, sort, refreshId, localRefresh]);
 
   useEffect(() => {
     setSelectedRows(new Set());
-  }, [table, page, perPage, filters, sort, refreshId, localRefresh, extraFilters]);
+  }, [table, page, perPage, filters, sort, refreshId, localRefresh]);
 
   function getRowId(row) {
     const keys = getKeyFields();
@@ -489,8 +484,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
           params.set('sort', sort.column);
           params.set('dir', sort.dir);
         }
-        const qFilters3 = { ...filters, ...extraFilters };
-        Object.entries(qFilters3).forEach(([k, v]) => {
+        Object.entries(filters).forEach(([k, v]) => {
           if (v) params.set(k, v);
         });
         const data = await fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
@@ -532,8 +526,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         params.set('sort', sort.column);
         params.set('dir', sort.dir);
       }
-      const qFilters2 = { ...filters, ...extraFilters };
-      Object.entries(qFilters2).forEach(([k, v]) => {
+      Object.entries(filters).forEach(([k, v]) => {
         if (v) params.set(k, v);
       });
       const data = await fetch(
@@ -657,8 +650,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
       params.set('sort', sort.column);
       params.set('dir', sort.dir);
     }
-    const qFilters4 = { ...filters, ...extraFilters };
-    Object.entries(qFilters4).forEach(([k, v]) => {
+    Object.entries(filters).forEach(([k, v]) => {
       if (v) params.set(k, v);
     });
     const data = await fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {

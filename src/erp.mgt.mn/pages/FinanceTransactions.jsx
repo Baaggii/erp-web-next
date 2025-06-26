@@ -16,7 +16,6 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const [config, setConfig] = useState(() => sessionState.config || null);
   const [refreshId, setRefreshId] = useState(() => sessionState.refreshId || 0);
   const [showTable, setShowTable] = useState(() => sessionState.showTable || false);
-  const [dateFilter, setDateFilter] = useState('');
   const { company } = useContext(AuthContext);
   const perms = useRolePermissions();
   const licensed = useCompanyModules(company?.company_id);
@@ -121,11 +120,6 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
       .then((cfg) => {
         if (cfg && cfg.moduleKey) {
           setConfig(cfg);
-          if (cfg.dateField) {
-            setDateFilter(new Date().toISOString().slice(0, 10));
-          } else {
-            setDateFilter('');
-          }
         } else {
           setConfig(null);
           setShowTable(false);
@@ -174,17 +168,6 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
           </button>
         </div>
       )}
-      {table && config?.dateField && (
-        <div style={{ marginBottom: '0.5rem' }}>
-          <input
-            type="date"
-            value={dateFilter}
-            onChange={(e) => setDateFilter(e.target.value)}
-            style={{ marginRight: '0.5rem' }}
-          />
-          <button onClick={() => setDateFilter('')}>Clear Date Filter</button>
-        </div>
-      )}
       {table && config && (
         <TableManager
           ref={tableRef}
@@ -194,9 +177,6 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
           initialPerPage={10}
           addLabel="Add Transaction"
           showTable={showTable}
-          extraFilters={
-            dateFilter && config.dateField ? { [config.dateField]: dateFilter } : {}
-          }
         />
       )}
       {transactionNames.length === 0 && (
