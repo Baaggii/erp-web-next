@@ -488,7 +488,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     }
   }
 
-  async function openAdd() {
+  async function openAdd(carry = null) {
     await ensureColumnMeta();
     const vals = {};
     const all = columnMeta.map((c) => c.name);
@@ -501,6 +501,11 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     });
     if (formConfig?.transactionTypeField && formConfig.transactionTypeValue) {
       vals[formConfig.transactionTypeField] = formConfig.transactionTypeValue;
+    }
+    if (carry) {
+      Object.entries(carry).forEach(([k, v]) => {
+        if (vals[k] !== undefined) vals[k] = v;
+      });
     }
     setEditing(vals);
     setIsAdding(true);
@@ -592,7 +597,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     setSelectedRows(new Set());
   }
 
-  async function handleSubmit(values) {
+  async function handleSubmit(values, addAnother = false) {
     const columns = new Set(allColumns);
     const merged = { ...(editing || {}) };
     Object.entries(values).forEach(([k, v]) => {
@@ -667,16 +672,37 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         setRows(data.rows || []);
         setCount(data.count || 0);
         setSelectedRows(new Set());
-        setShowForm(false);
-        setEditing(null);
-        setIsAdding(false);
         const msg = isAdding ? 'New transaction saved' : 'Saved';
         addToast(msg, 'success');
         if (isAdding) {
-          const again = window.confirm('Add another transaction row?');
-          if (again) {
-            setTimeout(() => openAdd(), 0);
+          const carry = {};
+          const hf = [
+            ...(formConfig?.headerFields || []),
+            ...(formConfig?.footerFields || []),
+          ];
+          hf.forEach((f) => {
+            if (merged[f] !== undefined) carry[f] = merged[f];
+          });
+          if (addAnother) {
+            setEditing(null);
+            setTimeout(() => openAdd(carry), 0);
+          } else {
+            const again = window.confirm(
+              'Transaction saved successfully. Do you want to add another?'
+            );
+            if (again) {
+              setEditing(null);
+              setTimeout(() => openAdd(carry), 0);
+            } else {
+              setShowForm(false);
+              setEditing(null);
+              setIsAdding(false);
+            }
           }
+        } else {
+          setShowForm(false);
+          setEditing(null);
+          setIsAdding(false);
         }
       } else {
         let message = 'Save failed';
