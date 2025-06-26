@@ -77,10 +77,9 @@ export async function testConnection() {
  */
 export async function getUserByEmpId(empid) {
   const [rows] = await pool.query(
-    `SELECT u.*, r.name AS role, e.name AS employee_name
+    `SELECT u.*, r.name AS role
      FROM users u
      JOIN user_roles r ON u.role_id = r.id
-     LEFT JOIN employees e ON e.code = u.empid
      WHERE u.empid = ?
      LIMIT 1`,
     [empid],
@@ -120,10 +119,9 @@ export async function listUsersByCompany(companyId) {
  */
 export async function getUserById(id) {
   const [rows] = await pool.query(
-    `SELECT u.*, r.name AS role, e.name AS employee_name
+    `SELECT u.*, r.name AS role
      FROM users u
      JOIN user_roles r ON u.role_id = r.id
-     LEFT JOIN employees e ON e.code = u.empid
      WHERE u.id = ?`,
     [id],
   );
@@ -199,12 +197,11 @@ export async function assignCompanyToUser(
 export async function listUserCompanies(empid) {
   const [rows] = await pool.query(
     `SELECT uc.empid, uc.company_id, c.name AS company_name, uc.role_id, r.name AS role,
-            uc.branch_id, b.name AS branch_name, e.name AS employee_name
+            uc.branch_id, b.name AS branch_name
      FROM user_companies uc
      JOIN companies c ON uc.company_id = c.id
      JOIN user_roles r ON uc.role_id = r.id
     LEFT JOIN code_branches b ON uc.branch_id = b.id
-    LEFT JOIN employees e ON uc.empid = e.code
      WHERE uc.empid = ?`,
     [empid],
   );
@@ -245,12 +242,11 @@ export async function listAllUserCompanies(companyId) {
   }
   const [rows] = await pool.query(
     `SELECT uc.empid, uc.company_id, c.name AS company_name, uc.role_id, r.name AS role,
-            uc.branch_id, b.name AS branch_name, e.name AS employee_name
+            uc.branch_id, b.name AS branch_name
      FROM user_companies uc
      JOIN companies c ON uc.company_id = c.id
      JOIN user_roles r ON uc.role_id = r.id
      LEFT JOIN code_branches b ON uc.branch_id = b.id
-     LEFT JOIN employees e ON uc.empid = e.code
      ${where}`,
     params,
   );
