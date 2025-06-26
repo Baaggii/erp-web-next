@@ -16,22 +16,38 @@ async function writeConfig(cfg) {
   await fs.writeFile(filePath, JSON.stringify(cfg, null, 2));
 }
 
+function arrify(val) {
+  if (Array.isArray(val)) return val.map((v) => String(v));
+  if (val === undefined || val === null) return [];
+  return [String(val)];
+}
+
 function parseEntry(raw = {}) {
   return {
-    visibleFields: raw.visibleFields || [],
-    requiredFields: raw.requiredFields || [],
+    visibleFields: Array.isArray(raw.visibleFields)
+      ? raw.visibleFields.map(String)
+      : [],
+    requiredFields: Array.isArray(raw.requiredFields)
+      ? raw.requiredFields.map(String)
+      : [],
     defaultValues: raw.defaultValues || {},
-    editableDefaultFields: raw.editableDefaultFields || [],
-    userIdFields: raw.userIdFields || (raw.userIdField ? [raw.userIdField] : []),
-    branchIdFields:
+    editableDefaultFields: Array.isArray(raw.editableDefaultFields)
+      ? raw.editableDefaultFields.map(String)
+      : [],
+    userIdFields: arrify(
+      raw.userIdFields || (raw.userIdField ? [raw.userIdField] : []),
+    ),
+    branchIdFields: arrify(
       raw.branchIdFields || (raw.branchIdField ? [raw.branchIdField] : []),
-    companyIdFields:
+    ),
+    companyIdFields: arrify(
       raw.companyIdFields || (raw.companyIdField ? [raw.companyIdField] : []),
-    dateField: raw.dateField || [],
-    emailField: raw.emailField || [],
-    imagenameField: raw.imagenameField || [],
-    printEmpField: raw.printEmpField || [],
-    printCustField: raw.printCustField || [],
+    ),
+    dateField: arrify(raw.dateField),
+    emailField: arrify(raw.emailField),
+    imagenameField: arrify(raw.imagenameField),
+    printEmpField: arrify(raw.printEmpField),
+    printCustField: arrify(raw.printCustField),
     transactionTypeField:
       typeof raw.transactionTypeField === 'string'
         ? raw.transactionTypeField
@@ -110,23 +126,13 @@ export async function setFormConfig(table, name, config, options = {}) {
     transactionTypeField = '',
     transactionTypeValue = '',
   } = config || {};
-  const uid = (userIdFields.length ? userIdFields : userIdField ? [userIdField] : [])
-    .map(String)
-    .filter(Boolean);
-  const bid = (branchIdFields.length
-    ? branchIdFields
-    : branchIdField
-    ? [branchIdField]
-    : [])
-    .map(String)
-    .filter(Boolean);
-  const cid = (companyIdFields.length
-    ? companyIdFields
-    : companyIdField
-    ? [companyIdField]
-    : [])
-    .map(String)
-    .filter(Boolean);
+  const uid = arrify(userIdFields.length ? userIdFields : userIdField ? [userIdField] : []);
+  const bid = arrify(
+    branchIdFields.length ? branchIdFields : branchIdField ? [branchIdField] : [],
+  );
+  const cid = arrify(
+    companyIdFields.length ? companyIdFields : companyIdField ? [companyIdField] : [],
+  );
   const ab = Array.isArray(allowedBranches)
     ? allowedBranches.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
     : [];
@@ -136,20 +142,20 @@ export async function setFormConfig(table, name, config, options = {}) {
   const cfg = await readConfig();
   if (!cfg[table]) cfg[table] = {};
   cfg[table][name] = {
-    visibleFields,
-    requiredFields,
+    visibleFields: arrify(visibleFields),
+    requiredFields: arrify(requiredFields),
     defaultValues,
-    editableDefaultFields,
+    editableDefaultFields: arrify(editableDefaultFields),
     userIdFields: uid,
     branchIdFields: bid,
     companyIdFields: cid,
-    dateField,
-    emailField,
-    imagenameField,
-    printEmpField,
-    printCustField,
-    transactionTypeField,
-    transactionTypeValue,
+    dateField: arrify(dateField),
+    emailField: arrify(emailField),
+    imagenameField: arrify(imagenameField),
+    printEmpField: arrify(printEmpField),
+    printCustField: arrify(printCustField),
+    transactionTypeField: transactionTypeField || '',
+    transactionTypeValue: transactionTypeValue || '',
     moduleKey: parentModuleKey,
     moduleLabel: moduleLabel || undefined,
     allowedBranches: ab,
