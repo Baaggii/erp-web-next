@@ -950,6 +950,18 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     (c) => !autoCols.has(c) && c !== 'created_at' && c !== 'created_by'
   );
 
+  const headerFields = [
+    ...(formConfig?.userIdFields || []),
+    ...(formConfig?.branchIdFields || []),
+    ...(formConfig?.companyIdFields || []),
+    ...(formConfig?.dateField || []),
+  ];
+  if (formConfig?.transactionTypeField)
+    headerFields.push(formConfig.transactionTypeField);
+  const footerFields = Array.from(
+    new Set([...(formConfig?.printEmpField || []), ...(formConfig?.printCustField || [])])
+  );
+
   return (
     <div>
       <div
@@ -1425,6 +1437,10 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         disabledFields={disabledFields}
         labels={labels}
         requiredFields={formConfig?.requiredFields || []}
+        headerFields={headerFields}
+        footerFields={footerFields}
+        printEmpField={formConfig?.printEmpField || []}
+        printCustField={formConfig?.printCustField || []}
       />
       <CascadeDeleteModal
         visible={showCascade}
