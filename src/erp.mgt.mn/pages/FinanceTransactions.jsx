@@ -5,6 +5,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import { useRolePermissions } from '../hooks/useRolePermissions.js';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
 import { useTxnSession } from '../context/TxnSessionContext.jsx';
+import { useToast } from '../context/ToastContext.jsx';
 
 export default function FinanceTransactions({ moduleKey = 'finance_transactions', moduleLabel = '' }) {
   const [configs, setConfigs] = useState({});
@@ -21,6 +22,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const licensed = useCompanyModules(company?.company_id);
   const tableRef = useRef(null);
   const prevModuleKey = useRef(moduleKey);
+  const { addToast } = useToast();
 
   
   useEffect(() => {
@@ -65,7 +67,16 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
     if (company?.department_id !== undefined)
       params.set('departmentId', company.department_id);
     fetch(`/api/transaction_forms?${params.toString()}`, { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : {}))
+      .then((res) => {
+        if (!res.ok) {
+          addToast('Failed to load transaction forms', 'error');
+          return {};
+        }
+        return res.json().catch(() => {
+          addToast('Failed to parse transaction forms', 'error');
+          return {};
+        });
+      })
       .then((data) => {
         const filtered = {};
         Object.entries(data).forEach(([n, info]) => {
@@ -92,7 +103,10 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
         setConfigs(filtered);
         if (name && filtered[name]) setTable(filtered[name].table ?? filtered[name]);
       })
-      .catch(() => setConfigs({}));
+      .catch(() => {
+        addToast('Failed to load transaction forms', 'error');
+        setConfigs({});
+      });
   }, [moduleKey, company, perms, licensed]);
 
   useEffect(() => {
@@ -116,17 +130,28 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
       )}&name=${encodeURIComponent(name)}`,
       { credentials: 'include' },
     )
-      .then((res) => (res.ok ? res.json() : null))
+      .then((res) => {
+        if (!res.ok) {
+          addToast('Failed to load transaction configuration', 'error');
+          return null;
+        }
+        return res.json().catch(() => null);
+      })
       .then((cfg) => {
         if (cfg && cfg.moduleKey) {
           setConfig(cfg);
         } else {
           setConfig(null);
           setShowTable(false);
+          addToast('Transaction configuration not found', 'error');
         }
       })
-      .catch(() => setConfig(null));
-  }, [table, name]);
+      .catch(() => {
+        setConfig(null);
+        setShowTable(false);
+        addToast('Failed to load transaction configuration', 'error');
+      });
+  }, [table, name, addToast]);
 
   const transactionNames = Object.keys(configs);
 

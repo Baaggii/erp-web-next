@@ -128,11 +128,25 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     fetch(`/api/tables/${encodeURIComponent(table)}/columns`, {
       credentials: 'include',
     })
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) {
+          addToast('Failed to load table columns', 'error');
+          return [];
+        }
+        return res.json().catch(() => {
+          addToast('Failed to parse table columns', 'error');
+          return [];
+        });
+      })
       .then((cols) => {
         if (canceled) return;
-        setColumnMeta(cols);
-        setAutoInc(computeAutoInc(cols));
+        if (Array.isArray(cols)) {
+          setColumnMeta(cols);
+          setAutoInc(computeAutoInc(cols));
+        }
+      })
+      .catch(() => {
+        addToast('Failed to load table columns', 'error');
       });
     return () => {
       canceled = true;
@@ -174,7 +188,16 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     }
     let canceled = false;
     fetch('/api/tables/code_transaction?perPage=500', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : { rows: [] }))
+      .then((res) => {
+        if (!res.ok) {
+          addToast('Failed to load transaction types', 'error');
+          return { rows: [] };
+        }
+        return res.json().catch(() => {
+          addToast('Failed to parse transaction types', 'error');
+          return { rows: [] };
+        });
+      })
       .then((data) => {
         if (canceled) return;
         const opts = (data.rows || []).map((r) => ({
@@ -184,7 +207,10 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         setTypeOptions(opts);
       })
       .catch(() => {
-        if (!canceled) setTypeOptions([]);
+        if (!canceled) {
+          addToast('Failed to load transaction types', 'error');
+          setTypeOptions([]);
+        }
       });
     return () => {
       canceled = true;
@@ -218,8 +244,14 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
           `/api/tables/${encodeURIComponent(table)}/relations`,
           { credentials: 'include' },
         );
-        if (!res.ok) return;
-        const rels = await res.json();
+        if (!res.ok) {
+          addToast('Failed to load table relations', 'error');
+          return;
+        }
+        const rels = await res.json().catch(() => {
+          addToast('Failed to parse table relations', 'error');
+          return [];
+        });
         if (canceled) return;
         const map = {};
         rels.forEach((r) => {
@@ -245,8 +277,11 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
               try {
                 cfg = await cfgRes.json();
               } catch {
+                addToast('Failed to parse display fields', 'error');
                 cfg = null;
               }
+            } else {
+              addToast('Failed to load display fields', 'error');
             }
             while (true) {
               const params = new URLSearchParams({ page, perPage });
@@ -254,7 +289,14 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
                 `/api/tables/${encodeURIComponent(rel.table)}?${params.toString()}`,
                 { credentials: 'include' },
               );
-              const json = await refRes.json();
+              if (!refRes.ok) {
+                addToast('Failed to load reference data', 'error');
+                break;
+              }
+              const json = await refRes.json().catch(() => {
+                addToast('Failed to parse reference data', 'error');
+                return {};
+              });
               if (Array.isArray(json.rows)) {
                 rows = rows.concat(json.rows);
                 if (rows.length >= (json.count || rows.length) || json.rows.length < perPage) {
@@ -315,6 +357,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         }
       } catch (err) {
         console.error('Failed to load table relations', err);
+        addToast('Failed to load table relations', 'error');
       }
     }
     load();
@@ -337,13 +380,25 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
       credentials: 'include',
     })
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) {
+          addToast('Failed to load table data', 'error');
+          return { rows: [], count: 0 };
+        }
+        return res.json().catch(() => {
+          addToast('Failed to parse table data', 'error');
+          return { rows: [], count: 0 };
+        });
+      })
       .then((data) => {
         if (canceled) return;
         setRows(data.rows || []);
         setCount(data.count || 0);
         // clear selections when data changes
         setSelectedRows(new Set());
+      })
+      .catch(() => {
+        addToast('Failed to load table data', 'error');
       });
     return () => {
       canceled = true;
@@ -382,14 +437,21 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         credentials: 'include',
       });
       if (res.ok) {
-        const cols = await res.json();
-        if (Array.isArray(cols)) {
-          setColumnMeta(cols);
-          setAutoInc(computeAutoInc(cols));
+        try {
+          const cols = await res.json();
+          if (Array.isArray(cols)) {
+            setColumnMeta(cols);
+            setAutoInc(computeAutoInc(cols));
+          }
+        } catch {
+          addToast('Failed to parse table columns', 'error');
         }
+      } else {
+        addToast('Failed to load table columns', 'error');
       }
     } catch (err) {
       console.error('Failed to fetch column metadata', err);
+      addToast('Failed to load table columns', 'error');
     }
   }
 
@@ -435,12 +497,19 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
           { credentials: 'include' },
         );
         if (res.ok) {
-          const refs = await res.json();
-          setDetailRefs(Array.isArray(refs) ? refs : []);
+          try {
+            const refs = await res.json();
+            setDetailRefs(Array.isArray(refs) ? refs : []);
+          } catch {
+            addToast('Failed to parse reference info', 'error');
+            setDetailRefs([]);
+          }
         } else {
+          addToast('Failed to load reference info', 'error');
           setDetailRefs([]);
         }
       } catch {
+        addToast('Failed to load reference info', 'error');
         setDetailRefs([]);
       }
     } else {
@@ -647,7 +716,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         return;
       }
     } catch {
-      // ignore error and fall back to confirm
+      addToast('Failed to check references', 'error');
     }
     if (!window.confirm('Delete row and related records?')) return;
     await executeDeleteRow(id, true);
@@ -686,6 +755,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
           hasRelated = true;
         }
       } catch {
+        addToast('Failed to check references', 'error');
         cascadeMap.set(id, true);
         hasRelated = true;
       }
@@ -725,9 +795,22 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     Object.entries(filters).forEach(([k, v]) => {
       if (v) params.set(k, v);
     });
-    const data = await fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
-      credentials: 'include',
-    }).then((r) => r.json());
+    const dataRes = await fetch(
+      `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
+      {
+        credentials: 'include',
+      },
+    );
+    let data = { rows: [], count: 0 };
+    if (dataRes.ok) {
+      try {
+        data = await dataRes.json();
+      } catch {
+        addToast('Failed to parse table data', 'error');
+      }
+    } else {
+      addToast('Failed to load table data', 'error');
+    }
     setRows(data.rows || []);
     setCount(data.count || 0);
     setSelectedRows(new Set());
