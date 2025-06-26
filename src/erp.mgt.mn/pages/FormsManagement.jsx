@@ -132,6 +132,13 @@ export default function FormsManagement() {
       });
   }, [table, name, names]);
 
+  useEffect(() => {
+    if (!table || !name) return;
+    if (!names.includes(name)) {
+      setConfig({ ...EMPTY_CFG });
+    }
+  }, [table, name, names]);
+
   // If a user selects a predefined transaction name, the associated module
   // parent key will be applied automatically based on the stored
   // configuration retrieved above. The module slug and sidebar/header flags
