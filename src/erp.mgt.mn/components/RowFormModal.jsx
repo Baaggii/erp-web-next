@@ -114,11 +114,7 @@ export default function RowFormModal({
       ? columns.filter((c) => mainSet.has(c))
       : columns.filter((c) => !headerSet.has(c) && !footerSet.has(c));
 
-  const formStyle = {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: '0.75rem 1rem',
-  };
+  const formGrid = 'grid grid-cols-1 md:grid-cols-2 gap-3';
 
   function handleKeyDown(e, col) {
     if (e.key !== 'Enter') return;
@@ -182,11 +178,7 @@ export default function RowFormModal({
   }
   function renderField(c, withLabel = true) {
     const err = errors[c];
-    const inputStyle = {
-      width: '100%',
-      padding: '0.5rem',
-      border: err ? '1px solid red' : '1px solid #ccc',
-    };
+    const inputClass = `w-full p-2 border rounded ${err ? 'border-red-500' : 'border-gray-300'}`;
 
     const control = relationConfigs[c] ? (
       <AsyncSearchSelect
@@ -217,7 +209,7 @@ export default function RowFormModal({
         }}
         onKeyDown={(e) => handleKeyDown(e, c)}
         disabled={row && disabledFields.includes(c)}
-        style={inputStyle}
+        className={inputClass}
       >
         <option value="">-- select --</option>
         {relations[c].map((opt) => (
@@ -241,20 +233,22 @@ export default function RowFormModal({
         onKeyDown={(e) => handleKeyDown(e, c)}
         onFocus={(e) => e.target.select()}
         disabled={row && disabledFields.includes(c)}
-        style={inputStyle}
+        className={inputClass}
       />
     );
 
     if (!withLabel) return <>{control}</>;
 
     return (
-      <div key={c} style={{ marginBottom: '0.75rem' }}>
-        <label style={{ display: 'block', marginBottom: '0.25rem' }}>
+      <div key={c} className="mb-3">
+        <label className="block mb-1 font-medium">
           {labels[c] || c}
-          {requiredFields.includes(c) && <span style={{ color: 'red' }}>*</span>}
+          {requiredFields.includes(c) && (
+            <span className="text-red-500">*</span>
+          )}
         </label>
         {control}
-        {err && <div style={{ color: 'red', fontSize: '0.8rem' }}>{err}</div>}
+        {err && <div className="text-red-500 text-sm">{err}</div>}
       </div>
     );
   }
@@ -268,16 +262,13 @@ export default function RowFormModal({
       }
     });
     return (
-      <div style={{ marginBottom: '1rem' }}>
-        <h3 style={{ marginTop: 0 }}>Main</h3>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
+      <div className="mb-4">
+        <h3 className="mt-0 mb-1 font-semibold">Main</h3>
+        <table className="min-w-full border border-gray-300 text-sm">
+          <thead className="bg-gray-50">
             <tr>
               {cols.map((c) => (
-                <th
-                  key={c}
-                  style={{ border: '1px solid #ccc', padding: '0.25rem' }}
-                >
+                <th key={c} className="border px-2 py-1">
                   {labels[c] || c}
                 </th>
               ))}
@@ -286,10 +277,7 @@ export default function RowFormModal({
           <tbody>
             <tr>
               {cols.map((c) => (
-                <td
-                  key={c}
-                  style={{ border: '1px solid #ccc', padding: '0.25rem' }}
-                >
+                <td key={c} className="border px-2 py-1">
                   {renderField(c, false)}
                 </td>
               ))}
@@ -306,11 +294,7 @@ export default function RowFormModal({
                   return (
                     <td
                       key={c}
-                      style={{
-                        border: '1px solid #ccc',
-                        padding: '0.25rem',
-                        fontWeight: 'bold',
-                      }}
+                      className="border px-2 py-1 font-semibold"
                     >
                       {val !== '' ? val : ''}
                     </td>
@@ -327,9 +311,9 @@ export default function RowFormModal({
   function renderSection(title, cols) {
     if (cols.length === 0) return null;
     return (
-      <div style={{ marginBottom: '1rem' }}>
-        <h3 style={{ marginTop: 0 }}>{title}</h3>
-        <div style={formStyle}>{cols.map((c) => renderField(c))}</div>
+      <div className="mb-4">
+        <h3 className="mt-0 mb-1 font-semibold">{title}</h3>
+        <div className={formGrid}>{cols.map((c) => renderField(c))}</div>
       </div>
     );
   }
@@ -357,7 +341,9 @@ export default function RowFormModal({
 
     let html = '<html><head><title>Print</title>';
     html +=
-      '<style>table{width:100%;border-collapse:collapse;margin-bottom:1rem;}th,td{border:1px solid #666;padding:4px;text-align:left;}h3{margin:0 0 4px 0;}</style>';
+      '<style>@media print{body{margin:1rem;font-size:12px}}table{width:100%;border-collapse:collapse;margin-bottom:1rem;}th,td{border:1px solid #666;padding:4px;text-align:left;}h3{margin:0 0 4px 0;font-weight:600;}</style>';
+    html +=
+      '<link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.1/dist/tailwind.min.css" rel="stylesheet">';
     html += '</head><body>';
     if (h.length) html += `<h3>Header</h3><table>${rowHtml(h)}</table>`;
     if (m.length) html += `<h3>Main</h3><table>${rowHtml(m, true)}</table>`;
@@ -371,29 +357,49 @@ export default function RowFormModal({
   }
 
   return (
-    <Modal visible={visible} title={row ? 'Edit Row' : 'Add Row'} onClose={onCancel} width="70vw">
+    <Modal
+      visible={visible}
+      title={row ? 'Edit Row' : 'Add Row'}
+      onClose={onCancel}
+      width="70vw"
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault();
           submitForm();
         }}
+        className="p-4 space-y-4"
       >
         {renderSection('Header', headerCols)}
         {renderMainTable(mainCols)}
         {renderSection('Footer', footerCols)}
-        <div style={{ textAlign: 'right', marginTop: '0.5rem' }}>
-          <button type="button" onClick={() => handlePrint('emp')} style={{ marginRight: '0.5rem' }}>
+        <div className="mt-2 text-right space-x-2">
+          <button
+            type="button"
+            onClick={() => handlePrint('emp')}
+            className="px-3 py-1 bg-gray-200 rounded"
+          >
             Print Emp
           </button>
-          <button type="button" onClick={() => handlePrint('cust')} style={{ marginRight: '0.5rem' }}>
+          <button
+            type="button"
+            onClick={() => handlePrint('cust')}
+            className="px-3 py-1 bg-gray-200 rounded"
+          >
             Print Cust
           </button>
-          <button type="button" onClick={onCancel} style={{ marginRight: '0.5rem' }}>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-3 py-1 bg-gray-200 rounded"
+          >
             Cancel
           </button>
-          <button type="submit">Save</button>
+          <button type="submit" className="px-3 py-1 bg-blue-600 text-white rounded">
+            Save
+          </button>
         </div>
-        <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#555' }}>
+        <div className="text-sm text-gray-600">
           Press <strong>Enter</strong> to move to next field. The field will be automatically selected. Use arrow keys to navigate selections.
         </div>
       </form>
