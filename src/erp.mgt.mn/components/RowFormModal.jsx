@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import Modal from './Modal.jsx';
+import InlineTransactionTable from './InlineTransactionTable.jsx';
 
 export default function RowFormModal({
   visible,
@@ -21,6 +22,7 @@ export default function RowFormModal({
   printCustField = [],
   totalAmountFields = [],
   totalCurrencyFields = [],
+  inline = false,
 }) {
   const [formVals, setFormVals] = useState(() => {
     const init = {};
@@ -255,6 +257,22 @@ export default function RowFormModal({
 
   function renderMainTable(cols) {
     if (cols.length === 0) return null;
+    if (inline) {
+      return (
+        <div className="mb-4">
+          <h3 className="mt-0 mb-1 font-semibold">Main</h3>
+          <InlineTransactionTable
+            fields={cols}
+            relations={relations}
+            relationConfigs={relationConfigs}
+            labels={labels}
+            totalAmountFields={totalAmountFields}
+            totalCurrencyFields={totalCurrencyFields}
+            onRowSubmit={onSubmit}
+          />
+        </div>
+      );
+    }
     const totals = {};
     cols.forEach((c) => {
       if (totalAmountSet.has(c) || totalCurrencySet.has(c)) {
@@ -356,6 +374,15 @@ export default function RowFormModal({
     w.print();
   }
 
+  if (inline) {
+    return (
+      <div className="p-4 space-y-4">
+        {renderSection('Header', headerCols)}
+        {renderMainTable(mainCols)}
+        {renderSection('Footer', footerCols)}
+      </div>
+    );
+  }
   return (
     <Modal
       visible={visible}
