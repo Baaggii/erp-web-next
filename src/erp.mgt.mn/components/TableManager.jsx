@@ -1461,6 +1461,8 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         footerFields={footerFields}
         printEmpField={formConfig?.printEmpField || []}
         printCustField={formConfig?.printCustField || []}
+        totalAmountFields={formConfig?.totalAmountFields || []}
+        totalCurrencyFields={formConfig?.totalCurrencyFields || []}
       />
       <CascadeDeleteModal
         visible={showCascade}
