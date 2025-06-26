@@ -51,14 +51,14 @@ export default function FormsManagement() {
     fetch('/api/tables/code_transaction?perPage=500', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : { rows: [] }))
       .then((data) =>
-        setTransTypes(
-          (data.rows || []).map((r) => ({
-            value: r.UITransTypeName,
-            label: r.UITransTypeName,
-          })),
-        ),
-      )
-      .catch(() => setTransTypes([]));
+          setTransTypes(
+            (data.rows || []).map((r) => ({
+              value: r.UITransType,
+              label: r.UITransTypeName,
+            })),
+          ),
+        )
+        .catch(() => setTransTypes([]));
   }, []);
 
   useEffect(() => {
