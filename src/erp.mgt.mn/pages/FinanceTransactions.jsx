@@ -16,7 +16,6 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const [config, setConfig] = useState(() => sessionState.config || null);
   const [refreshId, setRefreshId] = useState(() => sessionState.refreshId || 0);
   const [showTable, setShowTable] = useState(() => sessionState.showTable || false);
-  const [filters, setFilters] = useState({});
   const { company } = useContext(AuthContext);
   const perms = useRolePermissions();
   const licensed = useCompanyModules(company?.company_id);
@@ -42,13 +41,12 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
     setConfig(sessionState.config || null);
     setRefreshId(sessionState.refreshId || 0);
     setShowTable(sessionState.showTable || false);
-    setFilters(sessionState.filters || {});
   }, [moduleKey]);
 
   // persist state to session
   useEffect(() => {
-    setSessionState({ name, table, config, refreshId, showTable, filters });
-  }, [name, table, config, refreshId, showTable, filters, setSessionState]);
+    setSessionState({ name, table, config, refreshId, showTable });
+  }, [name, table, config, refreshId, showTable, setSessionState]);
 
   useEffect(() => {
     setSearchParams((prev) => {
@@ -130,19 +128,6 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
       .catch(() => setConfig(null));
   }, [table, name]);
 
-  useEffect(() => {
-    if (!config) return;
-    const f = {};
-    if (config.dateField) {
-      const today = new Date().toISOString().slice(0, 10);
-      f[config.dateField] = today;
-    }
-    if (config.transactionTypeField && config.transactionTypeValue) {
-      f[config.transactionTypeField] = config.transactionTypeValue;
-    }
-    setFilters(f);
-  }, [config]);
-
   const transactionNames = Object.keys(configs);
 
   if (!perms || !licensed) return <p>Loading...</p>;
@@ -184,41 +169,6 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
         </div>
       )}
       {table && config && (
-        <div style={{ marginBottom: '0.5rem' }}>
-          {config.dateField && (
-            <>
-              <label>
-                Date:{' '}
-                <input
-                  type="date"
-                  value={filters[config.dateField] || ''}
-                  onChange={(e) =>
-                    setFilters((f) => ({ ...f, [config.dateField]: e.target.value }))
-                  }
-                />
-              </label>
-              {filters[config.dateField] && (
-                <button onClick={() => setFilters((f) => { const cp = { ...f }; delete cp[config.dateField]; return cp; })} style={{ marginLeft: '0.5rem' }}>
-                  Clear Date Filter
-                </button>
-              )}
-            </>
-          )}
-          {config.transactionTypeField && (
-            <>
-              <span style={{ marginLeft: '1rem' }}>
-                Type: {filters[config.transactionTypeField] || config.transactionTypeValue || ''}
-              </span>
-              {filters[config.transactionTypeField] && (
-                <button onClick={() => setFilters((f) => { const cp = { ...f }; delete cp[config.transactionTypeField]; return cp; })} style={{ marginLeft: '0.5rem' }}>
-                  Clear Transaction Type Filter
-                </button>
-              )}
-            </>
-          )}
-        </div>
-      )}
-      {table && config && (
         <TableManager
           ref={tableRef}
           table={table}
@@ -227,7 +177,6 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
           initialPerPage={10}
           addLabel="Add Transaction"
           showTable={showTable}
-          externalFilters={filters}
         />
       )}
       {transactionNames.length === 0 && (

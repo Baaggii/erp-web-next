@@ -29,8 +29,7 @@ export default function BlueLinkPage() {
     <div style={{ padding: '1rem' }}>
       <h2 style={{ marginTop: 0 }}>Blue Link демо</h2>
       <p>
-        Welcome, {company?.employee_name || user?.name || user?.empid} (
-        {company?.role || user?.role})
+        Welcome, {user?.name || user?.empid}
         {company && ` (${company.company_name})`}
       </p>
       <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>

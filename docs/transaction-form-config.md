@@ -18,12 +18,6 @@ Each **transaction** entry allows you to specify:
 - **moduleLabel** – optional label for the parent module
 - **allowedBranches** – restrict usage to these branch IDs
 - **allowedDepartments** – restrict usage to these department IDs
-- **dateField** – name of the date column prefilled with today and used for
-  date filtering
-- **transactionTypeField** – column storing the transaction type used for
-  filtering
-- **transactionTypeValue** – default value placed in `transactionTypeField`
-- **imageNameFields** – list of columns that contain image file names to show
 
 Example snippet:
 
