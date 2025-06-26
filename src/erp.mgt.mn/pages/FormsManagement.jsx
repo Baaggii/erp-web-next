@@ -1,14 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useModules } from '../hooks/useModules.js';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
-import AsyncSearchSelect from '../components/AsyncSearchSelect.jsx';
 
 export default function FormsManagement() {
   const [tables, setTables] = useState([]);
   const [table, setTable] = useState('');
   const [names, setNames] = useState([]);
   const [name, setName] = useState('');
-  const [dupName, setDupName] = useState('');
   const [moduleKey, setModuleKey] = useState('');
   const [branches, setBranches] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -22,12 +20,6 @@ export default function FormsManagement() {
     userIdFields: [],
     branchIdFields: [],
     companyIdFields: [],
-    dateField: '',
-    emailField: '',
-    imagenameField: '',
-    printField: '',
-    transactionTypeField: '',
-    transactionTypeValue: '',
     allowedBranches: [],
     allowedDepartments: [],
   });
@@ -75,12 +67,6 @@ export default function FormsManagement() {
             userIdFields: filtered[name].userIdFields || [],
             branchIdFields: filtered[name].branchIdFields || [],
             companyIdFields: filtered[name].companyIdFields || [],
-            dateField: filtered[name].dateField || '',
-            emailField: filtered[name].emailField || '',
-            imagenameField: filtered[name].imagenameField || '',
-            printField: filtered[name].printField || '',
-            transactionTypeField: filtered[name].transactionTypeField || '',
-            transactionTypeValue: filtered[name].transactionTypeValue || '',
             allowedBranches: (filtered[name].allowedBranches || []).map(String),
             allowedDepartments: (filtered[name].allowedDepartments || []).map(String),
           });
@@ -94,12 +80,6 @@ export default function FormsManagement() {
             userIdFields: [],
             branchIdFields: [],
             companyIdFields: [],
-            dateField: '',
-            emailField: '',
-            imagenameField: '',
-            printField: '',
-            transactionTypeField: '',
-            transactionTypeValue: '',
             allowedBranches: [],
             allowedDepartments: [],
           });
@@ -116,12 +96,6 @@ export default function FormsManagement() {
           userIdFields: [],
           branchIdFields: [],
           companyIdFields: [],
-          dateField: '',
-          emailField: '',
-          imagenameField: '',
-          printField: '',
-          transactionTypeField: '',
-          transactionTypeValue: '',
           allowedBranches: [],
           allowedDepartments: [],
         });
@@ -143,12 +117,6 @@ export default function FormsManagement() {
           userIdFields: cfg.userIdFields || [],
           branchIdFields: cfg.branchIdFields || [],
           companyIdFields: cfg.companyIdFields || [],
-          dateField: cfg.dateField || '',
-          emailField: cfg.emailField || '',
-          imagenameField: cfg.imagenameField || '',
-          printField: cfg.printField || '',
-          transactionTypeField: cfg.transactionTypeField || '',
-          transactionTypeValue: cfg.transactionTypeValue || '',
           allowedBranches: (cfg.allowedBranches || []).map(String),
           allowedDepartments: (cfg.allowedDepartments || []).map(String),
         });
@@ -168,33 +136,6 @@ export default function FormsManagement() {
         setModuleKey('');
       });
   }, [table, name, names]);
-
-  useEffect(() => {
-    if (!table || !dupName) return;
-    if (!names.includes(dupName)) return;
-    fetch(`/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(dupName)}`, { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : {}))
-      .then((cfg) => {
-        setConfig({
-          visibleFields: cfg.visibleFields || [],
-          requiredFields: cfg.requiredFields || [],
-          defaultValues: cfg.defaultValues || {},
-          editableDefaultFields: cfg.editableDefaultFields || [],
-          userIdFields: cfg.userIdFields || [],
-          branchIdFields: cfg.branchIdFields || [],
-          companyIdFields: cfg.companyIdFields || [],
-          dateField: cfg.dateField || '',
-          emailField: cfg.emailField || '',
-          imagenameField: cfg.imagenameField || '',
-          printField: cfg.printField || '',
-          transactionTypeField: cfg.transactionTypeField || '',
-          transactionTypeValue: cfg.transactionTypeValue || '',
-          allowedBranches: (cfg.allowedBranches || []).map(String),
-          allowedDepartments: (cfg.allowedDepartments || []).map(String),
-        });
-      })
-      .catch(() => {});
-  }, [dupName, table, names]);
 
   // If a user selects a predefined transaction name, the associated module
   // parent key will be applied automatically based on the stored
@@ -244,12 +185,6 @@ export default function FormsManagement() {
       allowedBranches: config.allowedBranches.map((b) => Number(b)).filter((b) => !Number.isNaN(b)),
       allowedDepartments: config.allowedDepartments.map((d) => Number(d)).filter((d) => !Number.isNaN(d)),
     };
-    if (cfg.transactionTypeField && cfg.transactionTypeValue) {
-      cfg.defaultValues = {
-        ...cfg.defaultValues,
-        [cfg.transactionTypeField]: cfg.transactionTypeValue,
-      };
-    }
     await fetch('/api/transaction_forms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -283,12 +218,6 @@ export default function FormsManagement() {
       userIdFields: [],
       branchIdFields: [],
       companyIdFields: [],
-      dateField: '',
-      emailField: '',
-      imagenameField: '',
-      printField: '',
-      transactionTypeField: '',
-      transactionTypeValue: '',
       allowedBranches: [],
       allowedDepartments: [],
     });
@@ -330,18 +259,6 @@ export default function FormsManagement() {
               onChange={(e) => setName(e.target.value)}
             />
             <select
-              value={dupName}
-              onChange={(e) => setDupName(e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              <option value="">Duplicate from...</option>
-              {names.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-            <select
               value={moduleKey}
               onChange={(e) => setModuleKey(e.target.value)}
               style={{ marginLeft: '0.5rem' }}
@@ -353,28 +270,6 @@ export default function FormsManagement() {
                 </option>
               ))}
             </select>
-            <select
-              value={config.transactionTypeField}
-              onChange={(e) =>
-                setConfig((c) => ({ ...c, transactionTypeField: e.target.value }))
-              }
-              style={{ marginLeft: '0.5rem' }}
-            >
-              <option value="">-- trans type field --</option>
-              {columns.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-            <AsyncSearchSelect
-              table="code_transaction"
-              searchColumn="tr_id"
-              labelFields={["tr_name"]}
-              value={config.transactionTypeValue}
-              onChange={(val) => setConfig((c) => ({ ...c, transactionTypeValue: val }))}
-              style={{ marginLeft: '0.5rem', width: '150px' }}
-            />
             
             {name && (
               <button onClick={handleDelete} style={{ marginLeft: '0.5rem' }}>
@@ -391,13 +286,6 @@ export default function FormsManagement() {
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Required</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Default</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Editable</th>
-                <th style={{ border: '1px solid #ccc', padding: '4px' }}>Date Field</th>
-                <th style={{ border: '1px solid #ccc', padding: '4px' }}>Email Field</th>
-                <th style={{ border: '1px solid #ccc', padding: '4px' }}>Image Name</th>
-                <th style={{ border: '1px solid #ccc', padding: '4px' }}>Print Field</th>
-                <th style={{ border: '1px solid #ccc', padding: '4px' }}>User ID</th>
-                <th style={{ border: '1px solid #ccc', padding: '4px' }}>Branch ID</th>
-                <th style={{ border: '1px solid #ccc', padding: '4px' }}>Company ID</th>
               </tr>
             </thead>
             <tbody>
@@ -430,77 +318,6 @@ export default function FormsManagement() {
                       type="checkbox"
                       checked={config.editableDefaultFields.includes(col)}
                       onChange={() => toggleEditable(col)}
-                    />
-                  </td>
-                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
-                    <input
-                      type="radio"
-                      name="dateField"
-                      checked={config.dateField === col}
-                      onChange={() => setConfig((c) => ({ ...c, dateField: col }))}
-                    />
-                  </td>
-                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
-                    <input
-                      type="radio"
-                      name="emailField"
-                      checked={config.emailField === col}
-                      onChange={() => setConfig((c) => ({ ...c, emailField: col }))}
-                    />
-                  </td>
-                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
-                    <input
-                      type="radio"
-                      name="imagenameField"
-                      checked={config.imagenameField === col}
-                      onChange={() => setConfig((c) => ({ ...c, imagenameField: col }))}
-                    />
-                  </td>
-                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
-                    <input
-                      type="radio"
-                      name="printField"
-                      checked={config.printField === col}
-                      onChange={() => setConfig((c) => ({ ...c, printField: col }))}
-                    />
-                  </td>
-                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={config.userIdFields.includes(col)}
-                      onChange={() =>
-                        setConfig((c) => {
-                          const set = new Set(c.userIdFields);
-                          set.has(col) ? set.delete(col) : set.add(col);
-                          return { ...c, userIdFields: Array.from(set) };
-                        })
-                      }
-                    />
-                  </td>
-                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={config.branchIdFields.includes(col)}
-                      onChange={() =>
-                        setConfig((c) => {
-                          const set = new Set(c.branchIdFields);
-                          set.has(col) ? set.delete(col) : set.add(col);
-                          return { ...c, branchIdFields: Array.from(set) };
-                        })
-                      }
-                    />
-                  </td>
-                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={config.companyIdFields.includes(col)}
-                      onChange={() =>
-                        setConfig((c) => {
-                          const set = new Set(c.companyIdFields);
-                          set.has(col) ? set.delete(col) : set.add(col);
-                          return { ...c, companyIdFields: Array.from(set) };
-                        })
-                      }
                     />
                   </td>
                 </tr>
