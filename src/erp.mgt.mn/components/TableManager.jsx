@@ -59,7 +59,7 @@ const deleteBtnStyle = {
   color: '#b91c1c',
 };
 
-export default forwardRef(function TableManager({ table, refreshId = 0, formConfig = null, initialPerPage = 10, addLabel = 'Add Row', showTable = true }, ref) {
+export default forwardRef(function TableManager({ table, refreshId = 0, formConfig = null, initialPerPage = 10, addLabel = 'Add Row', showTable = true, externalFilters = {} }, ref) {
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
   const [page, setPage] = useState(1);
@@ -262,8 +262,8 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
       params.set('sort', sort.column);
       params.set('dir', sort.dir);
     }
-    Object.entries(filters).forEach(([k, v]) => {
-      if (v) params.set(k, v);
+    Object.entries({ ...filters, ...externalFilters }).forEach(([k, v]) => {
+      if (v !== undefined && v !== '') params.set(k, v);
     });
     fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
       credentials: 'include',
@@ -484,8 +484,8 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
           params.set('sort', sort.column);
           params.set('dir', sort.dir);
         }
-        Object.entries(filters).forEach(([k, v]) => {
-          if (v) params.set(k, v);
+        Object.entries({ ...filters, ...externalFilters }).forEach(([k, v]) => {
+          if (v !== undefined && v !== '') params.set(k, v);
         });
         const data = await fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
           credentials: 'include',
@@ -526,8 +526,8 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         params.set('sort', sort.column);
         params.set('dir', sort.dir);
       }
-      Object.entries(filters).forEach(([k, v]) => {
-        if (v) params.set(k, v);
+      Object.entries({ ...filters, ...externalFilters }).forEach(([k, v]) => {
+        if (v !== undefined && v !== '') params.set(k, v);
       });
       const data = await fetch(
         `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
@@ -650,8 +650,8 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
       params.set('sort', sort.column);
       params.set('dir', sort.dir);
     }
-    Object.entries(filters).forEach(([k, v]) => {
-      if (v) params.set(k, v);
+    Object.entries({ ...filters, ...externalFilters }).forEach(([k, v]) => {
+      if (v !== undefined && v !== '') params.set(k, v);
     });
     const data = await fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
       credentials: 'include',

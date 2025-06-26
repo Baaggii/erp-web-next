@@ -35,6 +35,11 @@ function parseEntry(raw = {}) {
       ? raw.allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
       : [],
     moduleLabel: typeof raw.moduleLabel === 'string' ? raw.moduleLabel : '',
+    dateField: typeof raw.dateField === 'string' ? raw.dateField : '',
+    transactionTypeField:
+      typeof raw.transactionTypeField === 'string' ? raw.transactionTypeField : '',
+    transactionTypeValue:
+      typeof raw.transactionTypeValue === 'string' ? raw.transactionTypeValue : '',
   };
 }
 
@@ -86,6 +91,9 @@ export async function setFormConfig(table, name, config, options = {}) {
     allowedDepartments = [],
     moduleKey: parentModuleKey = '',
     moduleLabel,
+    dateField = '',
+    transactionTypeField = '',
+    transactionTypeValue = '',
     userIdField,
     branchIdField,
     companyIdField,
@@ -127,6 +135,9 @@ export async function setFormConfig(table, name, config, options = {}) {
     moduleLabel: moduleLabel || undefined,
     allowedBranches: ab,
     allowedDepartments: ad,
+    dateField: dateField || undefined,
+    transactionTypeField: transactionTypeField || undefined,
+    transactionTypeValue: transactionTypeValue || undefined,
   };
   await writeConfig(cfg);
   return cfg[table][name];
