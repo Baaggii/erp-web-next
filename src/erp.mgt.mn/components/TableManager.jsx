@@ -145,16 +145,25 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
 
   useEffect(() => {
     if (!formConfig) return;
+    const newFilters = {};
     if (formConfig.dateField && formConfig.dateField.length > 0) {
       const today = new Date().toISOString().slice(0, 10);
       setDateFilter(today);
+      formConfig.dateField.forEach((d) => {
+        newFilters[d] = today;
+      });
     } else {
       setDateFilter('');
     }
-    if (formConfig.transactionTypeField && formConfig.transactionTypeValue) {
-      setTypeFilter(formConfig.transactionTypeValue);
+    if (formConfig.transactionTypeField) {
+      const val = formConfig.transactionTypeValue || '';
+      setTypeFilter(val);
+      newFilters[formConfig.transactionTypeField] = val;
     } else {
       setTypeFilter('');
+    }
+    if (Object.keys(newFilters).length > 0) {
+      setFilters((f) => ({ ...f, ...newFilters }));
     }
   }, [formConfig]);
 
@@ -854,8 +863,6 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
           <button onClick={handleDeleteSelected}>Delete Selected</button>
         )}
       </div>
-      {showTable && (
-        <>
       {formConfig?.dateField?.length > 0 && (
         <div style={{ marginBottom: '0.5rem' }}>
           Date:{' '}
@@ -871,23 +878,29 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
       {formConfig?.transactionTypeField && (
         <div style={{ marginBottom: '0.5rem' }}>
           Type:{' '}
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            style={{ marginRight: '0.5rem' }}
-          >
-            <option value="">-- all --</option>
-            {typeOptions.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+          {typeOptions.length > 0 ? (
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              style={{ marginRight: '0.5rem' }}
+            >
+              <option value="">-- all --</option>
+              {typeOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span style={{ marginRight: '0.5rem' }}>{typeFilter || 'All'}</span>
+          )}
           {typeFilter && (
             <button onClick={() => setTypeFilter('')}>Clear Transaction Type Filter</button>
           )}
         </div>
       )}
+      {showTable && (
+        <>
       <div
         style={{
           display: 'flex',
