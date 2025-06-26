@@ -4,6 +4,7 @@ import TableManager from '../components/TableManager.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { useRolePermissions } from '../hooks/useRolePermissions.js';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
+import { useTxnModules } from '../hooks/useTxnModules.js';
 import { useTxnSession } from '../context/TxnSessionContext.jsx';
 
 export default function FinanceTransactions({ moduleKey = 'finance_transactions', moduleLabel = '' }) {
@@ -19,6 +20,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const { company } = useContext(AuthContext);
   const perms = useRolePermissions();
   const licensed = useCompanyModules(company?.company_id);
+  const txnModules = useTxnModules();
   const tableRef = useRef(null);
   const prevModuleKey = useRef(moduleKey);
 
@@ -93,7 +95,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
         if (name && filtered[name]) setTable(filtered[name].table ?? filtered[name]);
       })
       .catch(() => setConfigs({}));
-  }, [moduleKey, company, perms, licensed]);
+  }, [moduleKey, company, perms, licensed, txnModules]);
 
   useEffect(() => {
     if (name && configs[name]) setTable(configs[name].table ?? configs[name]);
