@@ -22,6 +22,7 @@ export default function FormsManagement() {
     userIdFields: [],
     branchIdFields: [],
     companyIdFields: [],
+    editable: false,
     allowedBranches: [],
     allowedDepartments: [],
     dateField: '',
@@ -176,9 +177,30 @@ export default function FormsManagement() {
     });
   }
 
+  function validate() {
+    const errs = {};
+    if (!moduleKey) errs.moduleKey = true;
+    if (!config.dateField) errs.dateField = true;
+    if (!config.transactionTypeField) errs.transactionTypeField = true;
+    if (!config.transactionTypeValue) errs.transactionTypeValue = true;
+    if (typeof config.editable !== 'boolean') errs.editable = true;
+    return errs;
+  }
+
+  const errors = validate();
+  const canSave =
+    name && table && Object.keys(errors).length === 0;
+
+  const [showErrors, setShowErrors] = useState(false);
+
   async function handleSave() {
     if (!name) {
       alert('Please enter transaction name');
+      return;
+    }
+    const errs = validate();
+    if (Object.keys(errs).length > 0) {
+      setShowErrors(true);
       return;
     }
     const cfg = {
@@ -187,6 +209,12 @@ export default function FormsManagement() {
       allowedBranches: config.allowedBranches.map((b) => Number(b)).filter((b) => !Number.isNaN(b)),
       allowedDepartments: config.allowedDepartments.map((d) => Number(d)).filter((d) => !Number.isNaN(d)),
     };
+    if (cfg.transactionTypeField && cfg.transactionTypeValue) {
+      cfg.defaultValues = {
+        ...cfg.defaultValues,
+        [cfg.transactionTypeField]: cfg.transactionTypeValue,
+      };
+    }
     const res = await fetch('/api/transaction_forms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -257,7 +285,10 @@ export default function FormsManagement() {
             <select
               value={moduleKey}
               onChange={(e) => setModuleKey(e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
+              style={{
+                marginLeft: '0.5rem',
+                borderColor: showErrors && errors.moduleKey ? 'red' : undefined,
+              }}
             >
               <option value="">-- select module --</option>
               {modules.map((m) => (
@@ -266,6 +297,9 @@ export default function FormsManagement() {
                 </option>
               ))}
             </select>
+            {showErrors && errors.moduleKey && (
+              <span style={{ color: 'red', marginLeft: '0.25rem' }}>Required</span>
+            )}
 
             <select
               value={duplicateFrom}
@@ -279,6 +313,25 @@ export default function FormsManagement() {
                 </option>
               ))}
             </select>
+
+            <label style={{ marginLeft: '0.5rem' }}>
+              Editable:{' '}
+              <input
+                type="checkbox"
+                checked={config.editable}
+                onChange={(e) =>
+                  setConfig((c) => ({ ...c, editable: e.target.checked }))
+                }
+                style={{
+                  borderColor: showErrors && errors.editable ? 'red' : undefined,
+                }}
+              />
+            </label>
+            {showErrors && errors.editable && (
+              <span style={{ color: 'red', marginLeft: '0.25rem' }}>
+                Required
+              </span>
+            )}
             
             {name && (
               <button onClick={handleDelete} style={{ marginLeft: '0.5rem' }}>
@@ -450,6 +503,7 @@ export default function FormsManagement() {
               <select
                 value={config.dateField}
                 onChange={(e) => setConfig((c) => ({ ...c, dateField: e.target.value }))}
+                style={{ borderColor: showErrors && errors.dateField ? 'red' : undefined }}
               >
                 <option value="">-- none --</option>
                 {columns.map((c) => (
@@ -458,12 +512,18 @@ export default function FormsManagement() {
                   </option>
                 ))}
               </select>
+              {showErrors && errors.dateField && (
+                <span style={{ color: 'red', marginLeft: '0.25rem' }}>Required</span>
+              )}
             </label>
             <label style={{ marginLeft: '1rem' }}>
               Transaction type field:{' '}
               <select
                 value={config.transactionTypeField}
                 onChange={(e) => setConfig((c) => ({ ...c, transactionTypeField: e.target.value }))}
+                style={{
+                  borderColor: showErrors && errors.transactionTypeField ? 'red' : undefined,
+                }}
               >
                 <option value="">-- none --</option>
                 {columns.map((c) => (
@@ -472,12 +532,18 @@ export default function FormsManagement() {
                   </option>
                 ))}
               </select>
+              {showErrors && errors.transactionTypeField && (
+                <span style={{ color: 'red', marginLeft: '0.25rem' }}>Required</span>
+              )}
             </label>
             <label style={{ marginLeft: '1rem' }}>
               Transaction type value:{' '}
               <select
                 value={config.transactionTypeValue}
                 onChange={(e) => setConfig((c) => ({ ...c, transactionTypeValue: e.target.value }))}
+                style={{
+                  borderColor: showErrors && errors.transactionTypeValue ? 'red' : undefined,
+                }}
               >
                 <option value="">-- select --</option>
                 {transTypes.map((t) => (
@@ -486,6 +552,9 @@ export default function FormsManagement() {
                   </option>
                 ))}
               </select>
+              {showErrors && errors.transactionTypeValue && (
+                <span style={{ color: 'red', marginLeft: '0.25rem' }}>Required</span>
+              )}
             </label>
             <label style={{ marginLeft: '1rem' }}>
               Image name fields:{' '}
@@ -509,6 +578,11 @@ export default function FormsManagement() {
             </label>
           </div>
           <div style={{ marginTop: '1rem' }}>
+            {!canSave && showErrors && (
+              <div style={{ color: 'red', marginBottom: '0.5rem' }}>
+                Please complete all required configuration fields before saving.
+              </div>
+            )}
             <button onClick={handleSave}>Save Configuration</button>
           </div>
         </div>
