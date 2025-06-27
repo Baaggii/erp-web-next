@@ -24,6 +24,7 @@ export default function CodingTablesPage() {
   const [uniqueFields, setUniqueFields] = useState([]);
   const [calcText, setCalcText] = useState('');
   const [sql, setSql] = useState('');
+  const [sqlOther, setSqlOther] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
   const [insertedCount, setInsertedCount] = useState(0);
@@ -423,6 +424,21 @@ export default function CodingTablesPage() {
     setAutoIncStart(cfg.autoIncStart || '1');
   }
 
+  async function loadTableStructure() {
+    if (!tableName) return;
+    try {
+      const res = await fetch(
+        `/api/generated_sql/structure?table=${encodeURIComponent(tableName)}`,
+        { credentials: 'include' },
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      setSql(data.sql || '');
+    } catch {
+      // ignore errors
+    }
+  }
+
   function handleGenerateSql() {
     if (!workbook || !sheet || !tableName) return;
     const tbl = cleanIdentifier(tableName);
@@ -486,6 +502,7 @@ export default function CodingTablesPage() {
     if (nmCol && nameIdx === -1) return;
     const uniqueIdx = uniqueOnly.map((c) => allHdrs.indexOf(c));
     const otherIdx = otherFiltered.map((c) => allHdrs.indexOf(c));
+    const stateIdx = allHdrs.findIndex((h) => /state/i.test(h));
 
     let finalRows = rows;
     if (populateRange && startYear && endYear) {
@@ -513,6 +530,15 @@ export default function CodingTablesPage() {
         (r) => !r.some((v) => v === 0 || v === null)
       );
     }
+
+    const mainRows =
+      stateIdx === -1
+        ? finalRows
+        : finalRows.filter((r) => String(r[stateIdx]) === '1');
+    const otherRows =
+      stateIdx === -1
+        ? []
+        : finalRows.filter((r) => String(r[stateIdx]) !== '1');
 
     let defs = [];
     if (idCol) {
@@ -556,33 +582,33 @@ export default function CodingTablesPage() {
           .join(', ')})`
       );
     }
-    let sqlStr = `CREATE TABLE IF NOT EXISTS \`${tbl}\` (\n  ${defs.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};\n`;
-
-    for (const r of finalRows) {
-      const cols = [];
-      const vals = [];
-      let hasData = false;
-      if (nmCol) {
-        const nameVal = r[nameIdx];
-        if (nameVal === undefined || nameVal === null || nameVal === '') continue;
-        cols.push(`\`${dbNameCol}\``);
-        vals.push(formatVal(nameVal, colTypes[nmCol]));
-        hasData = true;
-      }
-      uniqueOnly.forEach((c, idx2) => {
-        const ui = uniqueIdx[idx2];
-        let v = defaultValues[c];
-        if (v === undefined || v === '') {
-          v = ui === -1 ? defaultValForType(colTypes[c]) : r[ui];
-          if (v === undefined || v === null || v === '') {
-            v = defaultValForType(colTypes[c]);
-          }
+    function buildSql(rows, tableNameForSql) {
+      let out = `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defs.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};\n`;
+      for (const r of rows) {
+        const cols = [];
+        const vals = [];
+        let hasData = false;
+        if (nmCol) {
+          const nameVal = r[nameIdx];
+          if (nameVal === undefined || nameVal === null || nameVal === '') continue;
+          cols.push(`\`${dbNameCol}\``);
+          vals.push(formatVal(nameVal, colTypes[nmCol]));
+          hasData = true;
         }
-        cols.push(`\`${c}\``);
-        vals.push(formatVal(v, colTypes[c]));
-        hasData = true;
-      });
-      otherFiltered.forEach((c, idx2) => {
+        uniqueOnly.forEach((c, idx2) => {
+          const ui = uniqueIdx[idx2];
+          let v = defaultValues[c];
+          if (v === undefined || v === '') {
+            v = ui === -1 ? defaultValForType(colTypes[c]) : r[ui];
+            if (v === undefined || v === null || v === '') {
+              v = defaultValForType(colTypes[c]);
+            }
+          }
+          cols.push(`\`${c}\``);
+          vals.push(formatVal(v, colTypes[c]));
+          hasData = true;
+        });
+        otherFiltered.forEach((c, idx2) => {
           const ci = otherIdx[idx2];
           let v = defaultValues[c];
           if (v === undefined || v === '') {
@@ -595,18 +621,32 @@ export default function CodingTablesPage() {
           cols.push(`\`${c}\``);
           vals.push(formatVal(v, colTypes[c]));
         });
-      if (!hasData) continue;
-      if (populateRange && vals.some((v) => v === '0' || v === 'NULL')) continue;
-      const updates = cols.map((c) => `${c} = VALUES(${c})`);
-    sqlStr += `INSERT INTO \`${tbl}\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
-  }
+        if (!hasData) continue;
+        if (populateRange && vals.some((v) => v === '0' || v === 'NULL')) continue;
+        const updates = cols.map((c) => `${c} = VALUES(${c})`);
+        out += `INSERT INTO \`${tableNameForSql}\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
+      }
+      return out;
+    }
+
+    const sqlStr = buildSql(mainRows, tbl);
+    const sqlOtherStr = otherRows.length ? buildSql(otherRows, `${tbl}_other`) : '';
     setSql(sqlStr);
+    setSqlOther(sqlOtherStr);
     fetch('/api/generated_sql', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({ table: tbl, sql: sqlStr }),
     }).catch(() => {});
+    if (sqlOtherStr) {
+      fetch('/api/generated_sql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ table: `${tbl}_other`, sql: sqlOtherStr }),
+      }).catch(() => {});
+    }
   }
 
 
@@ -1158,6 +1198,9 @@ export default function CodingTablesPage() {
               <button onClick={loadFromSql} style={{ marginLeft: '0.5rem' }}>
                 Fill Config from SQL
               </button>
+              <button onClick={loadTableStructure} style={{ marginLeft: '0.5rem' }}>
+                Load Structure
+              </button>
               <button onClick={saveConfig} style={{ marginLeft: '0.5rem' }}>
                 Save Config
               </button>
@@ -1168,6 +1211,16 @@ export default function CodingTablesPage() {
               {sql && (
                 <div>
                   <textarea value={sql} onChange={(e) => setSql(e.target.value)} rows={10} cols={80} />
+                </div>
+              )}
+              {sqlOther && (
+                <div style={{ marginTop: '0.5rem' }}>
+                  <textarea
+                    value={sqlOther}
+                    onChange={(e) => setSqlOther(e.target.value)}
+                    rows={10}
+                    cols={80}
+                  />
                 </div>
               )}
               {uploading && (
