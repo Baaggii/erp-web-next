@@ -558,6 +558,7 @@ export default function CodingTablesPage() {
       ...(nmCol ? [nmCol] : []),
       ...uniqueOnly,
       ...otherFiltered,
+      ...extra,
     ];
 
     let finalRows = rows;
@@ -581,18 +582,12 @@ export default function CodingTablesPage() {
         }
       }
     }
-    if (populateRange) {
-      finalRows = finalRows.filter((r) =>
-        fieldsToCheck.every((f) => {
-          const idxF = allHdrs.indexOf(f);
-          if (idxF === -1) return true;
-          const v = r[idxF];
-          if (v === null) return false;
-          if (v === 0 && !allowZeroMap[f]) return false;
-          return true;
-        })
-      );
-    }
+    // When populating a range of records we previously filtered out rows that
+    // contained disallowed values (NULL or 0 when "Allow 0" was unchecked).
+    // This meant such rows were dropped completely instead of being moved to
+    // the `_other` table.  By keeping all rows here and letting the later
+    // `zeroInvalid` check decide where they belong, zero value records will be
+    // preserved and inserted into the `_other` table as expected.
 
     const mainRows = [];
     const otherRows = [];
@@ -620,7 +615,9 @@ export default function CodingTablesPage() {
         const idxF = allHdrs.indexOf(f);
         if (idxF === -1) return false;
         const v = r[idxF];
-        return v === null || (v === 0 && !allowZeroMap[f]);
+        const isZero =
+          v === 0 || (typeof v === 'string' && v.trim() !== '' && Number(v) === 0);
+        return v === null || (isZero && !allowZeroMap[f]);
       });
       const stateVal = stateIdx === -1 ? '1' : String(r[stateIdx]);
       if (!zeroInvalid && stateVal === '1') mainRows.push(r);
@@ -727,16 +724,9 @@ export default function CodingTablesPage() {
           vals.push(formatVal(v, colTypes[c]));
         });
         if (!hasData) continue;
-        if (
-          populateRange &&
-          vals.some((v, i) => {
-            const field = cols[i].replace(/`/g, '');
-            if (v === 'NULL') return true;
-            if (v === '0' && !allowZeroMap[field]) return true;
-            return false;
-          })
-        )
-          continue;
+        // Do not drop rows when populateRange is enabled even if some values
+        // are disallowed. Those rows will be inserted into the `_other` table
+        // instead.
         const updates = cols.map((c) => `${c} = VALUES(${c})`);
         out += `INSERT INTO \`${tableNameForSql}\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
       }
