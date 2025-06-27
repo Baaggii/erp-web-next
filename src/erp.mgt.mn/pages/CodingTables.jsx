@@ -30,6 +30,7 @@ export default function CodingTablesPage() {
   const [insertedCount, setInsertedCount] = useState(0);
   const [columnTypes, setColumnTypes] = useState({});
   const [notNullMap, setNotNullMap] = useState({});
+  const [allowZeroMap, setAllowZeroMap] = useState({});
   const [defaultValues, setDefaultValues] = useState({});
   const [defaultFrom, setDefaultFrom] = useState({});
   const [extraFields, setExtraFields] = useState(['']);
@@ -122,6 +123,7 @@ export default function CodingTablesPage() {
       setUniqueFields([]);
       setColumnTypes({});
       setNotNullMap({});
+      setAllowZeroMap({});
       setDefaultValues({});
       setPopulateRange(false);
       setStartYear('');
@@ -151,6 +153,7 @@ export default function CodingTablesPage() {
     setUniqueFields([]);
     setColumnTypes({});
     setNotNullMap({});
+    setAllowZeroMap({});
     setDefaultValues({});
     setPopulateRange(false);
     setStartYear('');
@@ -172,6 +175,7 @@ export default function CodingTablesPage() {
     setUniqueFields([]);
     setColumnTypes({});
     setNotNullMap({});
+    setAllowZeroMap({});
     setDefaultValues({});
     setPopulateRange(false);
     setStartYear('');
@@ -241,6 +245,11 @@ export default function CodingTablesPage() {
       );
     });
     setNotNullMap(nn);
+    const az = {};
+    hdrs.forEach((h) => {
+      az[h] = false;
+    });
+    setAllowZeroMap(az);
   }
 
   function handleExtract() {
@@ -418,6 +427,7 @@ export default function CodingTablesPage() {
       calcText: calc.join('\n'),
       columnTypes,
       notNullMap: notNull,
+      allowZeroMap: {},
       defaultValues: defaults,
       autoIncStart: autoInc,
     };
@@ -434,6 +444,7 @@ export default function CodingTablesPage() {
     setCalcText(cfg.calcText);
     setColumnTypes(cfg.columnTypes);
     setNotNullMap(cfg.notNullMap);
+    setAllowZeroMap(cfg.allowZeroMap || {});
     setDefaultValues(cfg.defaultValues);
     setAutoIncStart(cfg.autoIncStart || '1');
   }
@@ -448,6 +459,21 @@ export default function CodingTablesPage() {
       if (!res.ok) return;
       const data = await res.json();
       setSql(data.sql || '');
+      if (data.sql) {
+        const cfg = parseSqlConfig(data.sql);
+        if (cfg) {
+          setIdColumn(cfg.idColumn);
+          setNameColumn(cfg.nameColumn);
+          setOtherColumns(cfg.otherColumns);
+          setUniqueFields(cfg.uniqueFields);
+          setCalcText(cfg.calcText);
+          setColumnTypes(cfg.columnTypes);
+          setNotNullMap(cfg.notNullMap);
+          setAllowZeroMap(cfg.allowZeroMap || {});
+          setDefaultValues(cfg.defaultValues);
+          setAutoIncStart(cfg.autoIncStart || '1');
+        }
+      }
     } catch {
       // ignore errors
     }
@@ -522,6 +548,13 @@ export default function CodingTablesPage() {
     const otherIdx = otherFiltered.map((c) => allHdrs.indexOf(c));
     const stateIdx = allHdrs.findIndex((h) => /state/i.test(h));
 
+    const fieldsToCheck = [
+      ...(idCol ? [idCol] : []),
+      ...(nmCol ? [nmCol] : []),
+      ...uniqueOnly,
+      ...otherFiltered,
+    ];
+
     let finalRows = rows;
     if (populateRange && startYear && endYear) {
       const yearField = allHdrs.find((h) => /year/i.test(h));
@@ -544,8 +577,15 @@ export default function CodingTablesPage() {
       }
     }
     if (populateRange) {
-      finalRows = finalRows.filter(
-        (r) => !r.some((v) => v === 0 || v === null)
+      finalRows = finalRows.filter((r) =>
+        fieldsToCheck.every((f) => {
+          const idxF = allHdrs.indexOf(f);
+          if (idxF === -1) return true;
+          const v = r[idxF];
+          if (v === null) return false;
+          if (v === 0 && !allowZeroMap[f]) return false;
+          return true;
+        })
       );
     }
 
@@ -571,8 +611,14 @@ export default function CodingTablesPage() {
         dupList.push(key);
         return;
       }
+      const zeroInvalid = fieldsToCheck.some((f) => {
+        const idxF = allHdrs.indexOf(f);
+        if (idxF === -1) return false;
+        const v = r[idxF];
+        return v === null || (v === 0 && !allowZeroMap[f]);
+      });
       const stateVal = stateIdx === -1 ? '1' : String(r[stateIdx]);
-      if (stateVal === '1') mainRows.push(r);
+      if (!zeroInvalid && stateVal === '1') mainRows.push(r);
       else otherRows.push(r);
     });
     setDuplicateInfo(dupList.join('\n'));
@@ -640,7 +686,7 @@ export default function CodingTablesPage() {
         uniqueOnly.forEach((c, idx2) => {
           const ui = uniqueIdx[idx2];
           let v = defaultValues[c];
-          if (v === undefined || v === '' || v === 0) {
+          if (v === undefined || v === '' || (!allowZeroMap[c] && v === 0)) {
             const from = defaultFrom[c];
             if (from) {
               const fi = allHdrs.indexOf(from);
@@ -648,7 +694,7 @@ export default function CodingTablesPage() {
             } else {
               v = ui === -1 ? defaultValForType(colTypes[c]) : r[ui];
             }
-            if (v === undefined || v === null || v === '' || v === 0) {
+            if (v === undefined || v === null || v === '' || (!allowZeroMap[c] && v === 0)) {
               v = defaultValForType(colTypes[c]);
             }
           }
@@ -659,7 +705,7 @@ export default function CodingTablesPage() {
         otherFiltered.forEach((c, idx2) => {
           const ci = otherIdx[idx2];
           let v = defaultValues[c];
-          if (v === undefined || v === '' || v === 0) {
+          if (v === undefined || v === '' || (!allowZeroMap[c] && v === 0)) {
             const from = defaultFrom[c];
             if (from) {
               const fi = allHdrs.indexOf(from);
@@ -667,16 +713,25 @@ export default function CodingTablesPage() {
             } else {
               v = ci === -1 ? undefined : r[ci];
             }
-            if ((v === undefined || v === null || v === '' || v === 0) && localNotNull[c]) {
+            if ((v === undefined || v === null || v === '' || (!allowZeroMap[c] && v === 0)) && localNotNull[c]) {
               v = defaultValForType(colTypes[c]);
             }
           }
-          if (v !== undefined && v !== null && v !== '' && v !== 0) hasData = true;
+          if (v !== undefined && v !== null && v !== '' && (allowZeroMap[c] ? true : v !== 0)) hasData = true;
           cols.push(`\`${dbCols[c]}\``);
           vals.push(formatVal(v, colTypes[c]));
         });
         if (!hasData) continue;
-        if (populateRange && vals.some((v) => v === '0' || v === 'NULL')) continue;
+        if (
+          populateRange &&
+          vals.some((v, i) => {
+            const field = cols[i].replace(/`/g, '');
+            if (v === 'NULL') return true;
+            if (v === '0' && !allowZeroMap[field]) return true;
+            return false;
+          })
+        )
+          continue;
         const updates = cols.map((c) => `${c} = VALUES(${c})`);
         out += `INSERT INTO \`${tableNameForSql}\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
       }
@@ -837,6 +892,14 @@ export default function CodingTablesPage() {
         if (typeof v !== 'boolean') return `${k} notNull must be true/false`;
       }
     }
+    if (cfg.allowZeroMap && typeof cfg.allowZeroMap !== 'object') {
+      return 'allowZeroMap must be an object';
+    }
+    if (cfg.allowZeroMap) {
+      for (const [k, v] of Object.entries(cfg.allowZeroMap)) {
+        if (typeof v !== 'boolean') return `${k} allowZero must be true/false`;
+      }
+    }
     return null;
   }
 
@@ -857,6 +920,7 @@ export default function CodingTablesPage() {
       calcText,
       columnTypes,
       notNullMap,
+      allowZeroMap,
       defaultValues,
       defaultFrom,
       renameMap,
@@ -943,6 +1007,13 @@ export default function CodingTablesPage() {
       });
       return updated;
     });
+    setAllowZeroMap((m) => {
+      const updated = {};
+      allHeaders.forEach((h) => {
+        updated[h] = m[h] || false;
+      });
+      return updated;
+    });
     setDefaultValues((d) => {
       const updated = {};
       allHeaders.forEach((h) => {
@@ -987,6 +1058,7 @@ export default function CodingTablesPage() {
         setCalcText(cfg.calcText || '');
         setColumnTypes(cfg.columnTypes || {});
         setNotNullMap(cfg.notNullMap || {});
+        setAllowZeroMap(cfg.allowZeroMap || {});
         setDefaultValues(cfg.defaultValues || {});
         setDefaultFrom(cfg.defaultFrom || {});
         setRenameMap(cfg.renameMap || {});
@@ -1285,6 +1357,19 @@ export default function CodingTablesPage() {
                           }
                         />
                         Allow Null
+                      </label>
+                      <label style={{ marginLeft: '0.5rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={allowZeroMap[h] || false}
+                          onChange={(e) =>
+                            setAllowZeroMap({
+                              ...allowZeroMap,
+                              [h]: e.target.checked,
+                            })
+                          }
+                        />
+                        Allow 0
                       </label>
                       <input
                         style={{ marginLeft: '0.5rem', width: '8rem' }}
