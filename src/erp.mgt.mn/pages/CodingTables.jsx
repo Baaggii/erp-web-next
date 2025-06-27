@@ -31,12 +31,16 @@ export default function CodingTablesPage() {
   const [columnTypes, setColumnTypes] = useState({});
   const [notNullMap, setNotNullMap] = useState({});
   const [defaultValues, setDefaultValues] = useState({});
+  const [defaultFrom, setDefaultFrom] = useState({});
   const [extraFields, setExtraFields] = useState(['']);
   const [headerMap, setHeaderMap] = useState({});
+  const [renameMap, setRenameMap] = useState({});
   const [populateRange, setPopulateRange] = useState(false);
   const [startYear, setStartYear] = useState('');
   const [endYear, setEndYear] = useState('');
   const [autoIncStart, setAutoIncStart] = useState('1');
+  const [duplicateInfo, setDuplicateInfo] = useState('');
+  const [summaryInfo, setSummaryInfo] = useState('');
   const fileInputRef = useRef(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [configNames, setConfigNames] = useState([]);
@@ -195,7 +199,7 @@ export default function CodingTablesPage() {
     const keepIdx = [];
     const map = {};
     raw.forEach((h, i) => {
-      if (String(h).length > 1) {
+      if (String(h).trim().length > 0) {
         hdrs.push(cleanIdentifier(h));
         keepIdx.push(i);
         const mnVal = mnRaw[i];
@@ -206,6 +210,16 @@ export default function CodingTablesPage() {
     });
     setHeaders(hdrs);
     setHeaderMap(map);
+    const rMap = {};
+    hdrs.forEach((h) => {
+      rMap[h] = h;
+    });
+    setRenameMap(rMap);
+    const defFrom = {};
+    hdrs.forEach((h) => {
+      defFrom[h] = '';
+    });
+    setDefaultFrom(defFrom);
     if (!mnRow) {
       applyHeaderMapping(hdrs, map);
     }
@@ -453,7 +467,7 @@ export default function CodingTablesPage() {
     const hdrs = [];
     const keepIdx = [];
     raw.forEach((h, i) => {
-      if (String(h).length > 1) {
+      if (String(h).trim().length > 0) {
         hdrs.push(cleanIdentifier(h));
         keepIdx.push(i);
       }
@@ -463,6 +477,10 @@ export default function CodingTablesPage() {
       .slice(idx + 1)
       .map((r) => [...keepIdx.map((ci) => r[ci]), ...Array(extra.length).fill(undefined)]);
     const allHdrs = [...hdrs, ...extra];
+    const dbCols = {};
+    allHdrs.forEach((h) => {
+      dbCols[h] = cleanIdentifier(renameMap[h] || h);
+    });
 
     const valuesByHeader = {};
     hdrs.forEach((h, i) => {
@@ -496,8 +514,8 @@ export default function CodingTablesPage() {
     }
     const idIdx = allHdrs.indexOf(idCol);
     const nameIdx = allHdrs.indexOf(nmCol);
-    const dbIdCol = idCol ? 'id' : null;
-    const dbNameCol = nmCol ? 'name' : null;
+    const dbIdCol = idCol ? cleanIdentifier(renameMap[idCol] || 'id') : null;
+    const dbNameCol = nmCol ? cleanIdentifier(renameMap[nmCol] || 'name') : null;
     if (idCol && idIdx === -1) return;
     if (nmCol && nameIdx === -1) return;
     const uniqueIdx = uniqueOnly.map((c) => allHdrs.indexOf(c));
@@ -540,6 +558,22 @@ export default function CodingTablesPage() {
         ? []
         : finalRows.filter((r) => String(r[stateIdx]) !== '1');
 
+    let dupList = [];
+    if (uniqueOnly.length > 0) {
+      const seen = new Set();
+      finalRows.forEach((r) => {
+        const key = uniqueOnly
+          .map((c, idx2) => {
+            const ui = uniqueIdx[idx2];
+            return ui === -1 ? '' : r[ui];
+          })
+          .join('|');
+        if (seen.has(key)) dupList.push(key);
+        else seen.add(key);
+      });
+    }
+    setDuplicateInfo(dupList.join('\n'));
+
     let defs = [];
     if (idCol) {
       defs.push(`\`${dbIdCol}\` INT AUTO_INCREMENT PRIMARY KEY`);
@@ -552,14 +586,16 @@ export default function CodingTablesPage() {
       defs.push(def);
     }
     uniqueOnly.forEach((c) => {
-      let def = `\`${c}\` ${colTypes[c]} NOT NULL`;
+      const dbC = dbCols[c];
+      let def = `\`${dbC}\` ${colTypes[c]} NOT NULL`;
       if (defaultValues[c]) {
         def += ` DEFAULT ${formatVal(defaultValues[c], colTypes[c])}`;
       }
       defs.push(def);
     });
     otherFiltered.forEach((c) => {
-      let def = `\`${c}\` ${colTypes[c]}`;
+      const dbC = dbCols[c];
+      let def = `\`${dbC}\` ${colTypes[c]}`;
       if (localNotNull[c]) def += ' NOT NULL';
       if (defaultValues[c]) {
         def += ` DEFAULT ${formatVal(defaultValues[c], colTypes[c])}`;
@@ -572,7 +608,7 @@ export default function CodingTablesPage() {
     });
     const uniqueKeyFields = [
       ...(cleanUnique.includes(nmCol) ? [dbNameCol] : []),
-      ...uniqueOnly,
+      ...uniqueOnly.map((c) => dbCols[c]),
     ];
     if (uniqueKeyFields.length > 0) {
       const indexName = makeUniqueKeyName(uniqueKeyFields);
@@ -599,12 +635,18 @@ export default function CodingTablesPage() {
           const ui = uniqueIdx[idx2];
           let v = defaultValues[c];
           if (v === undefined || v === '') {
-            v = ui === -1 ? defaultValForType(colTypes[c]) : r[ui];
+            const from = defaultFrom[c];
+            if (from) {
+              const fi = allHdrs.indexOf(from);
+              v = fi === -1 ? undefined : r[fi];
+            } else {
+              v = ui === -1 ? defaultValForType(colTypes[c]) : r[ui];
+            }
             if (v === undefined || v === null || v === '') {
               v = defaultValForType(colTypes[c]);
             }
           }
-          cols.push(`\`${c}\``);
+          cols.push(`\`${dbCols[c]}\``);
           vals.push(formatVal(v, colTypes[c]));
           hasData = true;
         });
@@ -612,13 +654,19 @@ export default function CodingTablesPage() {
           const ci = otherIdx[idx2];
           let v = defaultValues[c];
           if (v === undefined || v === '') {
-            v = ci === -1 ? undefined : r[ci];
+            const from = defaultFrom[c];
+            if (from) {
+              const fi = allHdrs.indexOf(from);
+              v = fi === -1 ? undefined : r[fi];
+            } else {
+              v = ci === -1 ? undefined : r[ci];
+            }
             if ((v === undefined || v === null || v === '') && localNotNull[c]) {
               v = defaultValForType(colTypes[c]);
             }
           }
           if (v !== undefined && v !== null && v !== '') hasData = true;
-          cols.push(`\`${c}\``);
+          cols.push(`\`${dbCols[c]}\``);
           vals.push(formatVal(v, colTypes[c]));
         });
         if (!hasData) continue;
@@ -633,6 +681,9 @@ export default function CodingTablesPage() {
     const sqlOtherStr = otherRows.length ? buildSql(otherRows, `${tbl}_other`) : '';
     setSql(sqlStr);
     setSqlOther(sqlOtherStr);
+    setSummaryInfo(
+      `Prepared ${finalRows.length} rows, duplicates: ${dupList.length}`
+    );
     fetch('/api/generated_sql', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -699,6 +750,11 @@ export default function CodingTablesPage() {
         addToast(`Inserted ${totalInserted} records`, 'info');
         setUploadProgress((p) => ({ done: p.done + 1, total: chunks.length }));
       }
+      setSummaryInfo(
+        `Inserted ${totalInserted} rows. Duplicates: ${
+          duplicateInfo ? duplicateInfo.split('\n').length : 0
+        }`
+      );
       addToast(`Table created with ${totalInserted} rows`, 'success');
     } catch (err) {
       console.error('SQL execution failed', err);
@@ -706,6 +762,34 @@ export default function CodingTablesPage() {
     } finally {
       setUploading(false);
       setUploadProgress({ done: 0, total: 0 });
+    }
+  }
+
+  async function executeOtherSql() {
+    if (!sqlOther) {
+      alert('Generate SQL first');
+      return;
+    }
+    setUploading(true);
+    try {
+      const res = await fetch('/api/generated_sql/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql: sqlOther }),
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.message || 'Execution failed');
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      addToast(`Other table inserted ${data.inserted || 0} rows`, 'success');
+    } catch (err) {
+      console.error('SQL execution failed', err);
+      alert('Execution failed');
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -766,6 +850,8 @@ export default function CodingTablesPage() {
       columnTypes,
       notNullMap,
       defaultValues,
+      defaultFrom,
+      renameMap,
       extraFields: extraFields.filter((f) => f.trim() !== ''),
       populateRange,
       startYear,
@@ -856,6 +942,20 @@ export default function CodingTablesPage() {
       });
       return updated;
     });
+    setDefaultFrom((d) => {
+      const updated = {};
+      allHeaders.forEach((h) => {
+        updated[h] = d[h] || '';
+      });
+      return updated;
+    });
+    setRenameMap((m) => {
+      const updated = {};
+      allHeaders.forEach((h) => {
+        updated[h] = m[h] || h;
+      });
+      return updated;
+    });
     if (idColumn && !allHeaders.includes(idColumn)) setIdColumn('');
     if (nameColumn && !allHeaders.includes(nameColumn)) setNameColumn('');
   }, [allHeaders, idFilterMode]);
@@ -880,6 +980,8 @@ export default function CodingTablesPage() {
         setColumnTypes(cfg.columnTypes || {});
         setNotNullMap(cfg.notNullMap || {});
         setDefaultValues(cfg.defaultValues || {});
+        setDefaultFrom(cfg.defaultFrom || {});
+        setRenameMap(cfg.renameMap || {});
         setExtraFields(
           cfg.extraFields && cfg.extraFields.length > 0 ? cfg.extraFields : ['']
         );
@@ -1009,6 +1111,13 @@ export default function CodingTablesPage() {
                 {headers.map((h) => (
                   <div key={h} style={{ marginBottom: '0.25rem' }}>
                     {h}:{' '}
+                    <input
+                      value={renameMap[h] || h}
+                      onChange={(e) =>
+                        setRenameMap({ ...renameMap, [h]: e.target.value })
+                      }
+                      style={{ marginRight: '0.5rem' }}
+                    />
                     <input
                       value={headerMap[h] || ''}
                       onChange={(e) =>
@@ -1180,6 +1289,25 @@ export default function CodingTablesPage() {
                           })
                         }
                       />
+                      <select
+                        value={defaultFrom[h] || ''}
+                        onChange={(e) =>
+                          setDefaultFrom({
+                            ...defaultFrom,
+                            [h]: e.target.value,
+                          })
+                        }
+                        style={{ marginLeft: '0.25rem' }}
+                      >
+                        <option value="">from field...</option>
+                        {allHeaders
+                          .filter((x) => x !== h)
+                          .map((o) => (
+                            <option key={o} value={o}>
+                              {o}
+                            </option>
+                          ))}
+                      </select>
                     </div>
                   ))}
                 </div>
@@ -1207,6 +1335,11 @@ export default function CodingTablesPage() {
               <button onClick={executeGeneratedSql} style={{ marginLeft: '0.5rem' }}>
                 Create Coding Table
               </button>
+              {sqlOther && (
+                <button onClick={executeOtherSql} style={{ marginLeft: '0.5rem' }}>
+                  Create _other Table
+                </button>
+              )}
             </div>
               {sql && (
                 <div>
@@ -1222,6 +1355,14 @@ export default function CodingTablesPage() {
                     cols={80}
                   />
                 </div>
+              )}
+              {duplicateInfo && (
+                <div style={{ marginTop: '0.5rem' }}>
+                  <textarea value={duplicateInfo} readOnly rows={3} cols={80} />
+                </div>
+              )}
+              {summaryInfo && (
+                <div style={{ marginTop: '0.5rem' }}>{summaryInfo}</div>
               )}
               {uploading && (
                 <div style={{ marginTop: '1rem' }}>
