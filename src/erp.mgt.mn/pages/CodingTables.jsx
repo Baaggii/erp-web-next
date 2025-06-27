@@ -558,6 +558,7 @@ export default function CodingTablesPage() {
       ...(nmCol ? [nmCol] : []),
       ...uniqueOnly,
       ...otherFiltered,
+      ...extra,
     ];
 
     let finalRows = rows;
