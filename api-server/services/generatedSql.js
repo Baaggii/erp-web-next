@@ -41,8 +41,16 @@ export async function runSql(sql) {
   for (const stmt of statements) {
     const [res] = await pool.query(stmt);
     if (res && typeof res.affectedRows === 'number') {
-      inserted += res.affectedRows;
+      const change = typeof res.changedRows === 'number' ? res.changedRows : 0;
+      inserted += res.affectedRows - change;
     }
   }
   return inserted;
+}
+
+export async function getTableStructure(table) {
+  const [rows] = await pool.query(`SHOW CREATE TABLE \`${table}\``);
+  if (!rows || rows.length === 0) return '';
+  const key = Object.keys(rows[0]).find((k) => /create table/i.test(k));
+  return rows[0][key] + ';';
 }

@@ -1,5 +1,5 @@
 import express from 'express';
-import { saveSql, runSql } from '../services/generatedSql.js';
+import { saveSql, runSql, getTableStructure } from '../services/generatedSql.js';
 import { requireAuth } from '../middlewares/auth.js';
 
 const router = express.Router();
@@ -25,6 +25,18 @@ router.post('/execute', requireAuth, async (req, res, next) => {
     }
     const inserted = await runSql(sql);
     res.json({ inserted });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/structure', requireAuth, async (req, res, next) => {
+  try {
+    const { table } = req.query;
+    if (!table) return res.status(400).json({ message: 'table required' });
+    const sql = await getTableStructure(table);
+    if (!sql) return res.status(404).json({ message: 'not found' });
+    res.json({ sql });
   } catch (err) {
     next(err);
   }
