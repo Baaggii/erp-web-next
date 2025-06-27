@@ -621,8 +621,11 @@ export default function CodingTablesPage() {
           .join(', ')})`
       );
     }
-    function buildSql(rows, tableNameForSql) {
-      let out = `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defs.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};\n`;
+    const defsNoUnique = defs.filter((d) => !d.trim().startsWith('UNIQUE KEY'));
+
+    function buildSql(rows, tableNameForSql, useUnique = true) {
+      const defArr = useUnique ? defs : defsNoUnique;
+      let out = `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};\n`;
       for (const r of rows) {
         const cols = [];
         const vals = [];
@@ -680,10 +683,10 @@ export default function CodingTablesPage() {
       return out;
     }
 
-    const sqlStr = buildSql(mainRows, tbl);
+    const sqlStr = buildSql(mainRows, tbl, true);
     const otherCombined = [...otherRows, ...dupRows];
     const sqlOtherStr =
-      otherCombined.length > 0 ? buildSql(otherCombined, `${tbl}_other`) : '';
+      otherCombined.length > 0 ? buildSql(otherCombined, `${tbl}_other`, false) : '';
     setSql(sqlStr);
     setSqlOther(sqlOtherStr);
     setSummaryInfo(
