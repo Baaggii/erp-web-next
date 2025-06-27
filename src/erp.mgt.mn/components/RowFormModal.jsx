@@ -25,8 +25,11 @@ export default function RowFormModal({
   inline = false,
   useGrid = false,
 }) {
+  const headerSet = new Set(headerFields);
+  const footerSet = new Set(footerFields);
   const [formVals, setFormVals] = useState(() => {
     const init = {};
+    const now = new Date();
     columns.forEach((c) => {
       const lower = c.toLowerCase();
       let placeholder = '';
@@ -38,7 +41,13 @@ export default function RowFormModal({
         placeholder = 'HH:MM:SS';
       }
       const raw = row ? String(row[c] ?? '') : '';
-      init[c] = placeholder ? normalizeDateInput(raw, placeholder) : raw;
+      let val = placeholder ? normalizeDateInput(raw, placeholder) : raw;
+      if (!row && !val && placeholder && (headerSet.has(c) || footerSet.has(c))) {
+        if (placeholder === 'YYYY-MM-DD') val = now.toISOString().slice(0, 10);
+        else if (placeholder === 'HH:MM:SS') val = now.toISOString().slice(11, 19);
+        else val = now.toISOString().slice(0, 19).replace('T', ' ');
+      }
+      init[c] = val;
     });
     return init;
   });
@@ -118,7 +127,7 @@ export default function RowFormModal({
       ? columns.filter((c) => mainSet.has(c))
       : columns.filter((c) => !headerSet.has(c) && !footerSet.has(c));
 
-  const formGrid = 'grid grid-cols-1 md:grid-cols-2 gap-3';
+  const formGrid = 'grid grid-cols-1 md:grid-cols-2 gap-0';
 
   function handleKeyDown(e, col) {
     if (e.key !== 'Enter') return;
@@ -355,7 +364,7 @@ export default function RowFormModal({
   function renderSection(title, cols) {
     if (cols.length === 0) return null;
     return (
-      <div className="mb-4">
+      <div className="mb-2">
         <h3 className="mt-0 mb-1 font-semibold">{title}</h3>
         <div className={formGrid}>{cols.map((c) => renderField(c))}</div>
       </div>
@@ -403,9 +412,11 @@ export default function RowFormModal({
   if (inline) {
     return (
       <div className="p-4 space-y-4">
-        {renderSection('Header', headerCols)}
+        <div className="grid md:grid-cols-2 gap-0">
+          {renderSection('Header', headerCols)}
+          {renderSection('Footer', footerCols)}
+        </div>
         {renderMainTable(mainCols)}
-        {renderSection('Footer', footerCols)}
       </div>
     );
   }
@@ -423,9 +434,11 @@ export default function RowFormModal({
         }}
         className="p-4 space-y-4"
       >
-        {renderSection('Header', headerCols)}
+        <div className="grid md:grid-cols-2 gap-0">
+          {renderSection('Header', headerCols)}
+          {renderSection('Footer', footerCols)}
+        </div>
         {renderMainTable(mainCols)}
-        {renderSection('Footer', footerCols)}
         <div className="mt-2 text-right space-x-2">
           <button
             type="button"

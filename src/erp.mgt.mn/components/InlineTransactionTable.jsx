@@ -20,7 +20,7 @@ export default forwardRef(function InlineTransactionTable({
 }, ref) {
   const [rows, setRows] = useState(() => (collectRows ? [{}] : []));
   const inputRefs = useRef({});
-  const focusRow = useRef(null);
+  const focusRow = useRef(collectRows ? 0 : null);
   const addBtnRef = useRef(null);
 
   const totalAmountSet = new Set(totalAmountFields);
@@ -28,7 +28,8 @@ export default forwardRef(function InlineTransactionTable({
 
   useEffect(() => {
     if (!collectRows) return;
-    const idx = focusRow.current ?? 0;
+    if (focusRow.current === null) return;
+    const idx = focusRow.current;
     const el = inputRefs.current[`${idx}-0`];
     if (el) {
       el.focus();
@@ -179,27 +180,44 @@ export default forwardRef(function InlineTransactionTable({
   }
 
   return (
-    <div>
-      <table className="min-w-full border border-gray-300 text-sm">
+    <div className="overflow-x-auto">
+      <table className="min-w-max border border-gray-300 text-xs whitespace-nowrap">
         <thead className="bg-gray-50">
           <tr>
-            {fields.map((f) => (
-              <th key={f} className="border px-2 py-1">
-                {labels[f] || f}
-              </th>
-            ))}
-            <th className="border px-2 py-1" />
+            {fields.map((f) => {
+              const label = labels[f] || f;
+              const vertical = label.length <= 8;
+              return (
+                <th
+                  key={f}
+                  className="border px-1 py-1"
+                  style={{
+                    whiteSpace: 'normal',
+                    wordBreak: 'break-word',
+                    lineHeight: '1.1',
+                    fontSize: '0.75rem',
+                    maxHeight: '3em',
+                    ...(vertical
+                      ? { writingMode: 'vertical-rl', transform: 'rotate(180deg)' }
+                      : {}),
+                  }}
+                >
+                  {label}
+                </th>
+              );
+            })}
+            <th className="border px-1 py-1" />
           </tr>
         </thead>
         <tbody>
           {rows.map((r, idx) => (
             <tr key={idx}>
               {fields.map((f, cIdx) => (
-                <td key={f} className="border px-2 py-1">
+                <td key={f} className="border px-1 py-1">
                   {renderCell(idx, f, cIdx)}
                 </td>
               ))}
-              <td className="border px-2 py-1 text-right">
+              <td className="border px-1 py-1 text-right">
                 {collectRows ? (
                   <button onClick={() => removeRow(idx)}>Delete</button>
                 ) : r._saved ? (
@@ -217,19 +235,19 @@ export default forwardRef(function InlineTransactionTable({
           <tfoot>
             <tr>
               {fields.map((f, i) => (
-                <td key={f} className="border px-2 py-1 font-semibold">
+                <td key={f} className="border px-1 py-1 font-semibold">
                   {i === 0 ? 'НИЙТ' : ''}
                 </td>
               ))}
-              <td className="border px-2 py-1">{count}</td>
+              <td className="border px-1 py-1">{count}</td>
             </tr>
             <tr>
               {fields.map((f) => (
-                <td key={f} className="border px-2 py-1 font-semibold">
+                <td key={f} className="border px-1 py-1 font-semibold">
                   {totals[f] !== undefined ? totals[f] : ''}
                 </td>
               ))}
-              <td className="border px-2 py-1" />
+              <td className="border px-1 py-1" />
             </tr>
           </tfoot>
         )}
