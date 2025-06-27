@@ -24,6 +24,7 @@ export default function CodingTablesPage() {
   const [uniqueFields, setUniqueFields] = useState([]);
   const [calcText, setCalcText] = useState('');
   const [sql, setSql] = useState('');
+  const [otherSql, setOtherSql] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
   const [insertedCount, setInsertedCount] = useState(0);
@@ -514,6 +515,15 @@ export default function CodingTablesPage() {
       );
     }
 
+    const stateField = allHdrs.find((h) => /state/i.test(h));
+    const stateIdx = stateField ? allHdrs.indexOf(stateField) : -1;
+    let mainRows = finalRows;
+    let otherRows = [];
+    if (stateIdx !== -1) {
+      mainRows = finalRows.filter((r) => String(r[stateIdx]) === '1');
+      otherRows = finalRows.filter((r) => String(r[stateIdx]) !== '1');
+    }
+
     let defs = [];
     if (idCol) {
       defs.push(`\`${dbIdCol}\` INT AUTO_INCREMENT PRIMARY KEY`);
@@ -557,8 +567,9 @@ export default function CodingTablesPage() {
       );
     }
     let sqlStr = `CREATE TABLE IF NOT EXISTS \`${tbl}\` (\n  ${defs.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};\n`;
+    let otherSqlStr = `CREATE TABLE IF NOT EXISTS \`${tbl}_other\` (\n  ${defs.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};\n`;
 
-    for (const r of finalRows) {
+    for (const r of mainRows) {
       const cols = [];
       const vals = [];
       let hasData = false;
@@ -600,24 +611,74 @@ export default function CodingTablesPage() {
       const updates = cols.map((c) => `${c} = VALUES(${c})`);
     sqlStr += `INSERT INTO \`${tbl}\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
   }
+
+    for (const r of otherRows) {
+      const cols = [];
+      const vals = [];
+      let hasData = false;
+      if (nmCol) {
+        const nameVal = r[nameIdx];
+        if (nameVal === undefined || nameVal === null || nameVal === '') continue;
+        cols.push(`\`${dbNameCol}\``);
+        vals.push(formatVal(nameVal, colTypes[nmCol]));
+        hasData = true;
+      }
+      uniqueOnly.forEach((c, idx2) => {
+        const ui = uniqueIdx[idx2];
+        let v = defaultValues[c];
+        if (v === undefined || v === '') {
+          v = ui === -1 ? defaultValForType(colTypes[c]) : r[ui];
+          if (v === undefined || v === null || v === '') {
+            v = defaultValForType(colTypes[c]);
+          }
+        }
+        cols.push(`\`${c}\``);
+        vals.push(formatVal(v, colTypes[c]));
+        hasData = true;
+      });
+      otherFiltered.forEach((c, idx2) => {
+          const ci = otherIdx[idx2];
+          let v = defaultValues[c];
+          if (v === undefined || v === '') {
+            v = ci === -1 ? undefined : r[ci];
+            if ((v === undefined || v === null || v === '') && localNotNull[c]) {
+              v = defaultValForType(colTypes[c]);
+            }
+          }
+          if (v !== undefined && v !== null && v !== '') hasData = true;
+          cols.push(`\`${c}\``);
+          vals.push(formatVal(v, colTypes[c]));
+        });
+      if (!hasData) continue;
+      if (populateRange && vals.some((v) => v === '0' || v === 'NULL')) continue;
+      const updates = cols.map((c) => `${c} = VALUES(${c})`);
+    otherSqlStr += `INSERT INTO \`${tbl}_other\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
+  }
     setSql(sqlStr);
+    setOtherSql(otherSqlStr);
     fetch('/api/generated_sql', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({ table: tbl, sql: sqlStr }),
     }).catch(() => {});
+    fetch('/api/generated_sql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ table: `${tbl}_other`, sql: otherSqlStr }),
+    }).catch(() => {});
   }
 
 
-  async function executeGeneratedSql() {
-    if (!sql) {
+  async function executeSql(sqlText) {
+    if (!sqlText) {
       alert('Generate SQL first');
       return;
     }
     setUploading(true);
     try {
-      const statements = sql
+      const statements = sqlText
         .split(/;\s*\n/)
         .map((s) => s.trim())
         .filter(Boolean)
@@ -665,8 +726,16 @@ export default function CodingTablesPage() {
       alert('Execution failed');
     } finally {
       setUploading(false);
-      setUploadProgress({ done: 0, total: 0 });
-    }
+    setUploadProgress({ done: 0, total: 0 });
+  }
+
+  async function executeGeneratedSql() {
+    await executeSql(sql);
+  }
+
+  async function executeOtherSql() {
+    await executeSql(otherSql);
+  }
   }
 
   async function saveMappings() {
@@ -1164,10 +1233,18 @@ export default function CodingTablesPage() {
               <button onClick={executeGeneratedSql} style={{ marginLeft: '0.5rem' }}>
                 Create Coding Table
               </button>
+              <button onClick={executeOtherSql} style={{ marginLeft: '0.5rem' }}>
+                Create Other Table
+              </button>
             </div>
               {sql && (
                 <div>
                   <textarea value={sql} onChange={(e) => setSql(e.target.value)} rows={10} cols={80} />
+                </div>
+              )}
+              {otherSql && (
+                <div style={{ marginTop: '0.5rem' }}>
+                  <textarea value={otherSql} onChange={(e) => setOtherSql(e.target.value)} rows={10} cols={80} />
                 </div>
               )}
               {uploading && (

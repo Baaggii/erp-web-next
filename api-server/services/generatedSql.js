@@ -41,7 +41,9 @@ export async function runSql(sql) {
   for (const stmt of statements) {
     const [res] = await pool.query(stmt);
     if (res && typeof res.affectedRows === 'number') {
-      inserted += res.affectedRows;
+      if (/^insert/i.test(stmt)) {
+        inserted += res.affectedRows === 1 ? 1 : 0;
+      }
     }
   }
   return inserted;
