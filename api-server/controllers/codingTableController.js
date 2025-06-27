@@ -125,7 +125,7 @@ export async function uploadCodingTable(req, res, next) {
     const keepIdx = [];
     const headers = [];
     rawHeaders.forEach((h, idx) => {
-      if (String(h).length > 1) {
+      if (String(h).trim().length > 0) {
         const clean = cleanIdentifier(h);
         headers.push(clean);
         keepIdx.push(idx);
