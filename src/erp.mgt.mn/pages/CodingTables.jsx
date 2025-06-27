@@ -247,7 +247,7 @@ export default function CodingTablesPage() {
     setNotNullMap(nn);
     const az = {};
     hdrs.forEach((h) => {
-      az[h] = false;
+      az[h] = !nn[h];
     });
     setAllowZeroMap(az);
   }
@@ -362,7 +362,7 @@ export default function CodingTablesPage() {
   }
 
   function parseSqlConfig(sqlText) {
-    const m = sqlText.match(/CREATE TABLE IF NOT EXISTS\s+`([^`]+)`\s*\(([^]*?)\)\s*(?:AUTO_INCREMENT=(\d+))?;/m);
+    const m = sqlText.match(/CREATE TABLE(?: IF NOT EXISTS)?\s+`([^`]+)`\s*\(([^]*?)\)\s*(?:.*?AUTO_INCREMENT=(\d+))?/m);
     if (!m) return null;
     const table = m[1];
     const body = m[2];
@@ -427,7 +427,9 @@ export default function CodingTablesPage() {
       calcText: calc.join('\n'),
       columnTypes,
       notNullMap: notNull,
-      allowZeroMap: {},
+      allowZeroMap: Object.fromEntries(
+        Object.keys(notNull).map((k) => [k, !notNull[k]])
+      ),
       defaultValues: defaults,
       autoIncStart: autoInc,
     };
@@ -436,6 +438,8 @@ export default function CodingTablesPage() {
   function loadFromSql() {
     const cfg = parseSqlConfig(sql);
     if (!cfg) return;
+    const hdrs = Object.keys(cfg.columnTypes || {});
+    setHeaders(hdrs);
     setTableName(cfg.table);
     setIdColumn(cfg.idColumn);
     setNameColumn(cfg.nameColumn);
@@ -462,6 +466,7 @@ export default function CodingTablesPage() {
       if (data.sql) {
         const cfg = parseSqlConfig(data.sql);
         if (cfg) {
+          setHeaders(Object.keys(cfg.columnTypes || {}));
           setIdColumn(cfg.idColumn);
           setNameColumn(cfg.nameColumn);
           setOtherColumns(cfg.otherColumns);
@@ -1010,7 +1015,7 @@ export default function CodingTablesPage() {
     setAllowZeroMap((m) => {
       const updated = {};
       allHeaders.forEach((h) => {
-        updated[h] = m[h] || false;
+        updated[h] = m[h] !== undefined ? m[h] : !notNullMap[h];
       });
       return updated;
     });
@@ -1037,7 +1042,7 @@ export default function CodingTablesPage() {
     });
     if (idColumn && !allHeaders.includes(idColumn)) setIdColumn('');
     if (nameColumn && !allHeaders.includes(nameColumn)) setNameColumn('');
-  }, [allHeaders, idFilterMode]);
+  }, [allHeaders, idFilterMode, notNullMap]);
 
   useEffect(() => {
     if (!tableName) return;
