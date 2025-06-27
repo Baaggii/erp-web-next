@@ -1442,7 +1442,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
       )}
       <RowFormModal
         visible={showForm}
-        inline
+        useGrid
         onCancel={() => {
           setShowForm(false);
           setEditing(null);

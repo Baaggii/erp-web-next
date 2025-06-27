@@ -23,9 +23,13 @@ export default function RowFormModal({
   totalAmountFields = [],
   totalCurrencyFields = [],
   inline = false,
+  useGrid = false,
 }) {
+  const headerSet = new Set(headerFields);
+  const footerSet = new Set(footerFields);
   const [formVals, setFormVals] = useState(() => {
     const init = {};
+    const now = new Date();
     columns.forEach((c) => {
       const lower = c.toLowerCase();
       let placeholder = '';
@@ -37,13 +41,20 @@ export default function RowFormModal({
         placeholder = 'HH:MM:SS';
       }
       const raw = row ? String(row[c] ?? '') : '';
-      init[c] = placeholder ? normalizeDateInput(raw, placeholder) : raw;
+      let val = placeholder ? normalizeDateInput(raw, placeholder) : raw;
+      if (!row && !val && placeholder && (headerSet.has(c) || footerSet.has(c))) {
+        if (placeholder === 'YYYY-MM-DD') val = now.toISOString().slice(0, 10);
+        else if (placeholder === 'HH:MM:SS') val = now.toISOString().slice(11, 19);
+        else val = now.toISOString().slice(0, 19).replace('T', ' ');
+      }
+      init[c] = val;
     });
     return init;
   });
   const inputRefs = useRef({});
   const [errors, setErrors] = useState({});
   const [submitLocked, setSubmitLocked] = useState(false);
+  const tableRef = useRef(null);
   const placeholders = React.useMemo(() => {
     const map = {};
     columns.forEach((c) => {
@@ -116,7 +127,7 @@ export default function RowFormModal({
       ? columns.filter((c) => mainSet.has(c))
       : columns.filter((c) => !headerSet.has(c) && !footerSet.has(c));
 
-  const formGrid = 'grid grid-cols-1 md:grid-cols-2 gap-3';
+  const formGrid = 'grid grid-cols-1 md:grid-cols-2 gap-0';
 
   function handleKeyDown(e, col) {
     if (e.key !== 'Enter') return;
@@ -152,6 +163,28 @@ export default function RowFormModal({
   async function submitForm() {
     if (submitLocked) return;
     setSubmitLocked(true);
+    if (useGrid && tableRef.current) {
+      const rows = tableRef.current.getRows();
+      for (const r of rows) {
+        const hasValue = Object.values(r).some((v) => {
+          if (v === null || v === undefined || v === '') return false;
+          if (typeof v === 'object' && 'value' in v) return v.value !== '';
+          return true;
+        });
+        if (!hasValue) continue;
+        const normalized = {};
+        Object.entries(r).forEach(([k, v]) => {
+          const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
+          normalized[k] = placeholders[k]
+            ? normalizeDateInput(raw, placeholders[k])
+            : raw;
+        });
+        await Promise.resolve(onSubmit(normalized));
+      }
+      tableRef.current.clearRows();
+      setSubmitLocked(false);
+      return;
+    }
     const errs = {};
     requiredFields.forEach((f) => {
       if (columns.includes(f) && !formVals[f]) {
@@ -257,17 +290,19 @@ export default function RowFormModal({
 
   function renderMainTable(cols) {
     if (cols.length === 0) return null;
-    if (inline) {
+    if (inline || useGrid) {
       return (
         <div className="mb-4">
           <h3 className="mt-0 mb-1 font-semibold">Main</h3>
           <InlineTransactionTable
+            ref={useGrid ? tableRef : undefined}
             fields={cols}
             relations={relations}
             relationConfigs={relationConfigs}
             labels={labels}
             totalAmountFields={totalAmountFields}
             totalCurrencyFields={totalCurrencyFields}
+            collectRows={useGrid}
             onRowSubmit={onSubmit}
           />
         </div>
@@ -329,7 +364,7 @@ export default function RowFormModal({
   function renderSection(title, cols) {
     if (cols.length === 0) return null;
     return (
-      <div className="mb-4">
+      <div className="mb-2">
         <h3 className="mt-0 mb-1 font-semibold">{title}</h3>
         <div className={formGrid}>{cols.map((c) => renderField(c))}</div>
       </div>
@@ -377,9 +412,11 @@ export default function RowFormModal({
   if (inline) {
     return (
       <div className="p-4 space-y-4">
-        {renderSection('Header', headerCols)}
+        <div className="grid md:grid-cols-2 gap-0">
+          {renderSection('Header', headerCols)}
+          {renderSection('Footer', footerCols)}
+        </div>
         {renderMainTable(mainCols)}
-        {renderSection('Footer', footerCols)}
       </div>
     );
   }
@@ -397,9 +434,11 @@ export default function RowFormModal({
         }}
         className="p-4 space-y-4"
       >
-        {renderSection('Header', headerCols)}
+        <div className="grid md:grid-cols-2 gap-0">
+          {renderSection('Header', headerCols)}
+          {renderSection('Footer', footerCols)}
+        </div>
         {renderMainTable(mainCols)}
-        {renderSection('Footer', footerCols)}
         <div className="mt-2 text-right space-x-2">
           <button
             type="button"
