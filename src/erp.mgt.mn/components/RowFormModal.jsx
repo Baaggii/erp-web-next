@@ -115,8 +115,6 @@ export default function RowFormModal({
 
   if (!visible) return null;
 
-  const headerSet = new Set(headerFields);
-  const footerSet = new Set(footerFields);
   const mainSet = new Set(mainFields);
   const totalAmountSet = new Set(totalAmountFields);
   const totalCurrencySet = new Set(totalCurrencyFields);
