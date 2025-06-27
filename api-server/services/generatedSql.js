@@ -37,7 +37,12 @@ export async function runSql(sql) {
     .split(/;\s*\n/)
     .map((s) => s.trim())
     .filter(Boolean);
+  let inserted = 0;
   for (const stmt of statements) {
-    await pool.query(stmt);
+    const [res] = await pool.query(stmt);
+    if (res && typeof res.affectedRows === 'number') {
+      inserted += res.affectedRows;
+    }
   }
+  return inserted;
 }
