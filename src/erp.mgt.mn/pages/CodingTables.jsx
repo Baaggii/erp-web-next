@@ -615,7 +615,9 @@ export default function CodingTablesPage() {
         const idxF = allHdrs.indexOf(f);
         if (idxF === -1) return false;
         const v = r[idxF];
-        return v === null || (v === 0 && !allowZeroMap[f]);
+        const isZero =
+          v === 0 || (typeof v === 'string' && v.trim() !== '' && Number(v) === 0);
+        return v === null || (isZero && !allowZeroMap[f]);
       });
       const stateVal = stateIdx === -1 ? '1' : String(r[stateIdx]);
       if (!zeroInvalid && stateVal === '1') mainRows.push(r);
