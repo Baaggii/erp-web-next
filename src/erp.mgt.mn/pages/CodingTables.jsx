@@ -25,6 +25,7 @@ export default function CodingTablesPage() {
   const [calcText, setCalcText] = useState('');
   const [sql, setSql] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
   const [columnTypes, setColumnTypes] = useState({});
   const [notNullMap, setNotNullMap] = useState({});
   const [defaultValues, setDefaultValues] = useState({});
@@ -615,16 +616,40 @@ export default function CodingTablesPage() {
     }
     setUploading(true);
     try {
-      const res = await fetch('/api/generated_sql/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql }),
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        alert(data.message || 'Execution failed');
-        return;
+      const statements = sql
+        .split(/;\s*\n/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((s) => s + ';');
+      const chunks = [];
+      let current = [];
+      let size = 0;
+      const limit = 500000; // ~0.5MB per chunk
+      for (const stmt of statements) {
+        const len = stmt.length + 1; // include newline
+        if (size + len > limit && current.length) {
+          chunks.push(current.join('\n'));
+          current = [];
+          size = 0;
+        }
+        current.push(stmt);
+        size += len;
+      }
+      if (current.length) chunks.push(current.join('\n'));
+      setUploadProgress({ done: 0, total: chunks.length });
+      for (const chunk of chunks) {
+        const res = await fetch('/api/generated_sql/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql: chunk }),
+          credentials: 'include',
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          alert(data.message || 'Execution failed');
+          return;
+        }
+        setUploadProgress((p) => ({ done: p.done + 1, total: chunks.length }));
       }
       alert('Table created');
     } catch (err) {
@@ -632,6 +657,7 @@ export default function CodingTablesPage() {
       alert('Execution failed');
     } finally {
       setUploading(false);
+      setUploadProgress({ done: 0, total: 0 });
     }
   }
 
@@ -721,12 +747,20 @@ export default function CodingTablesPage() {
         return;
       }
       if (sql) {
-        await fetch('/api/generated_sql', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ table: tableName, sql }),
-        });
+        if (sql.length > 5_000_000) {
+          addToast('SQL too large to save, executing only', 'info');
+        } else {
+          const resSql = await fetch('/api/generated_sql', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ table: tableName, sql }),
+          });
+          if (!resSql.ok) {
+            const msg = await resSql.text().catch(() => resSql.statusText);
+            addToast(`Failed to save SQL: ${msg}`, 'error');
+          }
+        }
       }
       addToast('Config saved', 'success');
       if (!configNames.includes(tableName))
@@ -1128,7 +1162,7 @@ export default function CodingTablesPage() {
               )}
               {uploading && (
                 <div style={{ marginTop: '1rem' }}>
-                  <progress /> Creating table...
+                  <progress value={uploadProgress.done} max={uploadProgress.total || 1} /> Creating table...
                 </div>
               )}
             </>
