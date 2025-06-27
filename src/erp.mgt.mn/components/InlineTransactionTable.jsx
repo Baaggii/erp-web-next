@@ -187,4 +187,4 @@ export default forwardRef(function InlineTransactionTable({
       </button>
     </div>
   );
-}
+});
