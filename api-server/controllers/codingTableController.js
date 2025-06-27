@@ -303,13 +303,14 @@ export async function uploadCodingTable(req, res, next) {
       for (const c of cleanUniqueOnly) {
         cols.push(`\`${c}\``);
         placeholders.push('?');
-        let val =
-          defaultValues[c] !== undefined && defaultValues[c] !== ''
-            ? defaultValues[c]
-            : r[c];
-        const hasProp = Object.prototype.hasOwnProperty.call(r, c);
-        if (!hasProp || val === undefined || val === null || val === '') {
-          val = defaultValForType(columnTypes[c]);
+        let val = r[c];
+        const blank =
+          val === undefined || val === null || val === '' || val === 0;
+        if (blank) {
+          val =
+            defaultValues[c] !== undefined && defaultValues[c] !== ''
+              ? defaultValues[c]
+              : defaultValForType(columnTypes[c]);
         } else if (columnTypes[c] === 'DATE') {
           const d = parseExcelDate(val);
           val = d || null;
@@ -322,20 +323,23 @@ export async function uploadCodingTable(req, res, next) {
       for (const c of cleanExtraFiltered) {
         cols.push(`\`${c}\``);
         placeholders.push('?');
-        let val =
-          defaultValues[c] !== undefined && defaultValues[c] !== ''
-            ? defaultValues[c]
-            : r[c];
-        if (columnTypes[c] === 'DATE') {
+        let val = r[c];
+        const blank =
+          val === undefined || val === null || val === '' || val === 0;
+        if (blank) {
+          if (defaultValues[c] !== undefined && defaultValues[c] !== '') {
+            val = defaultValues[c];
+          } else if (notNullMap[c]) {
+            val = defaultValForType(columnTypes[c]);
+          } else {
+            val = null;
+          }
+        } else if (columnTypes[c] === 'DATE') {
           const d = parseExcelDate(val);
           val = d || null;
         }
-        if ((val === undefined || val === null || val === '') && notNullMap[c]) {
-          val = defaultValForType(columnTypes[c]);
-        } else if (val === undefined || val === '') {
-          val = null;
-        }
-        if (val !== undefined && val !== null && val !== '') hasData = true;
+        if (val !== undefined && val !== null && val !== '' && val !== 0)
+          hasData = true;
         val = sanitizeValue(val);
         values.push(val);
         updates.push(`\`${c}\` = VALUES(\`${c}\`)`);

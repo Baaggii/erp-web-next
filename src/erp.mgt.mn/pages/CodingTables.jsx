@@ -549,29 +549,32 @@ export default function CodingTablesPage() {
       );
     }
 
-    const mainRows =
-      stateIdx === -1
-        ? finalRows
-        : finalRows.filter((r) => String(r[stateIdx]) === '1');
-    const otherRows =
-      stateIdx === -1
-        ? []
-        : finalRows.filter((r) => String(r[stateIdx]) !== '1');
-
-    let dupList = [];
-    if (uniqueOnly.length > 0) {
-      const seen = new Set();
-      finalRows.forEach((r) => {
-        const key = uniqueOnly
+    const mainRows = [];
+    const otherRows = [];
+    const dupRows = [];
+    const seenKeys = new Set();
+    const dupList = [];
+    finalRows.forEach((r) => {
+      let key = '';
+      if (uniqueOnly.length > 0) {
+        key = uniqueOnly
           .map((c, idx2) => {
             const ui = uniqueIdx[idx2];
             return ui === -1 ? '' : r[ui];
           })
           .join('|');
-        if (seen.has(key)) dupList.push(key);
-        else seen.add(key);
-      });
-    }
+      }
+      const isDup = key && seenKeys.has(key);
+      if (key) seenKeys.add(key);
+      if (isDup) {
+        dupRows.push(r);
+        dupList.push(key);
+        return;
+      }
+      const stateVal = stateIdx === -1 ? '1' : String(r[stateIdx]);
+      if (stateVal === '1') mainRows.push(r);
+      else otherRows.push(r);
+    });
     setDuplicateInfo(dupList.join('\n'));
 
     let defs = [];
@@ -634,7 +637,7 @@ export default function CodingTablesPage() {
         uniqueOnly.forEach((c, idx2) => {
           const ui = uniqueIdx[idx2];
           let v = defaultValues[c];
-          if (v === undefined || v === '') {
+          if (v === undefined || v === '' || v === 0) {
             const from = defaultFrom[c];
             if (from) {
               const fi = allHdrs.indexOf(from);
@@ -642,7 +645,7 @@ export default function CodingTablesPage() {
             } else {
               v = ui === -1 ? defaultValForType(colTypes[c]) : r[ui];
             }
-            if (v === undefined || v === null || v === '') {
+            if (v === undefined || v === null || v === '' || v === 0) {
               v = defaultValForType(colTypes[c]);
             }
           }
@@ -653,7 +656,7 @@ export default function CodingTablesPage() {
         otherFiltered.forEach((c, idx2) => {
           const ci = otherIdx[idx2];
           let v = defaultValues[c];
-          if (v === undefined || v === '') {
+          if (v === undefined || v === '' || v === 0) {
             const from = defaultFrom[c];
             if (from) {
               const fi = allHdrs.indexOf(from);
@@ -661,11 +664,11 @@ export default function CodingTablesPage() {
             } else {
               v = ci === -1 ? undefined : r[ci];
             }
-            if ((v === undefined || v === null || v === '') && localNotNull[c]) {
+            if ((v === undefined || v === null || v === '' || v === 0) && localNotNull[c]) {
               v = defaultValForType(colTypes[c]);
             }
           }
-          if (v !== undefined && v !== null && v !== '') hasData = true;
+          if (v !== undefined && v !== null && v !== '' && v !== 0) hasData = true;
           cols.push(`\`${dbCols[c]}\``);
           vals.push(formatVal(v, colTypes[c]));
         });
@@ -678,7 +681,9 @@ export default function CodingTablesPage() {
     }
 
     const sqlStr = buildSql(mainRows, tbl);
-    const sqlOtherStr = otherRows.length ? buildSql(otherRows, `${tbl}_other`) : '';
+    const otherCombined = [...otherRows, ...dupRows];
+    const sqlOtherStr =
+      otherCombined.length > 0 ? buildSql(otherCombined, `${tbl}_other`) : '';
     setSql(sqlStr);
     setSqlOther(sqlOtherStr);
     setSummaryInfo(
@@ -1280,7 +1285,7 @@ export default function CodingTablesPage() {
                       </label>
                       <input
                         style={{ marginLeft: '0.5rem', width: '8rem' }}
-                        placeholder="Default"
+                        placeholder="Default if blank/0"
                         value={defaultValues[h] || ''}
                         onChange={(e) =>
                           setDefaultValues({
@@ -1342,12 +1347,19 @@ export default function CodingTablesPage() {
               )}
             </div>
               {sql && (
-                <div>
-                  <textarea value={sql} onChange={(e) => setSql(e.target.value)} rows={10} cols={80} />
+                <div style={{ marginTop: '0.5rem' }}>
+                  <div>SQL for main table:</div>
+                  <textarea
+                    value={sql}
+                    onChange={(e) => setSql(e.target.value)}
+                    rows={10}
+                    cols={80}
+                  />
                 </div>
               )}
               {sqlOther && (
                 <div style={{ marginTop: '0.5rem' }}>
+                  <div>SQL for _other table:</div>
                   <textarea
                     value={sqlOther}
                     onChange={(e) => setSqlOther(e.target.value)}
@@ -1358,6 +1370,7 @@ export default function CodingTablesPage() {
               )}
               {duplicateInfo && (
                 <div style={{ marginTop: '0.5rem' }}>
+                  <div>Duplicate keys:</div>
                   <textarea value={duplicateInfo} readOnly rows={3} cols={80} />
                 </div>
               )}
