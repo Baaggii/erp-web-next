@@ -1,4 +1,10 @@
-import React, { useState, forwardRef, useImperativeHandle } from 'react';
+import React, {
+  useState,
+  forwardRef,
+  useImperativeHandle,
+  useRef,
+  useEffect,
+} from 'react';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 
 export default forwardRef(function InlineTransactionTable({
@@ -12,22 +18,39 @@ export default forwardRef(function InlineTransactionTable({
   onRowSubmit = () => {},
   onRowsChange = () => {},
 }, ref) {
-  const [rows, setRows] = useState([]);
+  const [rows, setRows] = useState(() => (collectRows ? [{}] : []));
+  const inputRefs = useRef({});
+  const focusRow = useRef(null);
+  const addBtnRef = useRef(null);
 
   const totalAmountSet = new Set(totalAmountFields);
   const totalCurrencySet = new Set(totalCurrencyFields);
 
+  useEffect(() => {
+    if (!collectRows) return;
+    const idx = focusRow.current ?? 0;
+    const el = inputRefs.current[`${idx}-0`];
+    if (el) {
+      el.focus();
+      if (el.select) el.select();
+    }
+    focusRow.current = null;
+  }, [rows, collectRows]);
+
   useImperativeHandle(ref, () => ({
     getRows: () => rows,
-    clearRows: () => setRows(() => {
-      onRowsChange([]);
-      return [];
-    }),
+    clearRows: () =>
+      setRows(() => {
+        const next = collectRows ? [{}] : [];
+        onRowsChange(next);
+        return next;
+      }),
   }));
 
   function addRow() {
     setRows((r) => {
       const next = [...r, {}];
+      focusRow.current = next.length - 1;
       onRowsChange(next);
       return next;
     });
@@ -77,7 +100,30 @@ export default forwardRef(function InlineTransactionTable({
     totalAmountFields.some((f) => Number(r[f] || 0)),
   ).length;
 
-  function renderCell(idx, f) {
+  function handleKeyDown(e, rowIdx, colIdx) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const nextCol = colIdx + 1;
+    if (nextCol < fields.length) {
+      const el = inputRefs.current[`${rowIdx}-${nextCol}`];
+      if (el) {
+        el.focus();
+        if (el.select) el.select();
+      }
+      return;
+    }
+    if (rowIdx < rows.length - 1) {
+      const el = inputRefs.current[`${rowIdx + 1}-0`];
+      if (el) {
+        el.focus();
+        if (el.select) el.select();
+      }
+      return;
+    }
+    addBtnRef.current?.focus();
+  }
+
+  function renderCell(idx, f, colIdx) {
     const val = rows[idx]?.[f] ?? '';
     const isRel = relationConfigs[f] || Array.isArray(relations[f]);
     if (rows[idx]?._saved && !collectRows) {
@@ -96,6 +142,8 @@ export default forwardRef(function InlineTransactionTable({
             onChange={(v, label) =>
               handleChange(idx, f, label ? { value: v, label } : v)
             }
+            inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
+            onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
           />
         );
       }
@@ -106,6 +154,8 @@ export default forwardRef(function InlineTransactionTable({
             className="w-full border px-1"
             value={inputVal}
             onChange={(e) => handleChange(idx, f, e.target.value)}
+            ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
+            onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
           >
             <option value="">-- select --</option>
             {relations[f].map((opt) => (
@@ -122,6 +172,8 @@ export default forwardRef(function InlineTransactionTable({
         className="w-full border px-1"
         value={typeof val === 'object' ? val.value : val}
         onChange={(e) => handleChange(idx, f, e.target.value)}
+        ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
+        onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
       />
     );
   }
@@ -142,9 +194,9 @@ export default forwardRef(function InlineTransactionTable({
         <tbody>
           {rows.map((r, idx) => (
             <tr key={idx}>
-              {fields.map((f) => (
+              {fields.map((f, cIdx) => (
                 <td key={f} className="border px-2 py-1">
-                  {renderCell(idx, f)}
+                  {renderCell(idx, f, cIdx)}
                 </td>
               ))}
               <td className="border px-2 py-1 text-right">
@@ -182,7 +234,11 @@ export default forwardRef(function InlineTransactionTable({
           </tfoot>
         )}
       </table>
-      <button onClick={addRow} className="mt-2 px-2 py-1 bg-gray-200 rounded">
+      <button
+        onClick={addRow}
+        ref={addBtnRef}
+        className="mt-2 px-2 py-1 bg-gray-200 rounded"
+      >
         + Add Row
       </button>
     </div>

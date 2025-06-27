@@ -157,11 +157,18 @@ export default function RowFormModal({
     if (useGrid && tableRef.current) {
       const rows = tableRef.current.getRows();
       for (const r of rows) {
+        const hasValue = Object.values(r).some((v) => {
+          if (v === null || v === undefined || v === '') return false;
+          if (typeof v === 'object' && 'value' in v) return v.value !== '';
+          return true;
+        });
+        if (!hasValue) continue;
         const normalized = {};
         Object.entries(r).forEach(([k, v]) => {
+          const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
           normalized[k] = placeholders[k]
-            ? normalizeDateInput(v, placeholders[k])
-            : v;
+            ? normalizeDateInput(raw, placeholders[k])
+            : raw;
         });
         await Promise.resolve(onSubmit(normalized));
       }
