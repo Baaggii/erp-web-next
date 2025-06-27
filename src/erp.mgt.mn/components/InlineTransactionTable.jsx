@@ -1,50 +1,94 @@
-import React, { useState } from 'react';
+import React, {
+  useState,
+  forwardRef,
+  useImperativeHandle,
+  useRef,
+  useEffect,
+} from 'react';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
-import Modal from './Modal.jsx';
 
-export default function InlineTransactionTable({
+export default forwardRef(function InlineTransactionTable({
   fields = [],
   relations = {},
   relationConfigs = {},
   labels = {},
   totalAmountFields = [],
   totalCurrencyFields = [],
+  collectRows = false,
   onRowSubmit = () => {},
-}) {
-  const [rows, setRows] = useState([]);
-  const [picker, setPicker] = useState(null); // { row, field }
+  onRowsChange = () => {},
+}, ref) {
+  const [rows, setRows] = useState(() => (collectRows ? [{}] : []));
+  const inputRefs = useRef({});
+  const focusRow = useRef(null);
+  const addBtnRef = useRef(null);
 
   const totalAmountSet = new Set(totalAmountFields);
   const totalCurrencySet = new Set(totalCurrencyFields);
 
+  useEffect(() => {
+    if (!collectRows) return;
+    const idx = focusRow.current ?? 0;
+    const el = inputRefs.current[`${idx}-0`];
+    if (el) {
+      el.focus();
+      if (el.select) el.select();
+    }
+    focusRow.current = null;
+  }, [rows, collectRows]);
+
+  useImperativeHandle(ref, () => ({
+    getRows: () => rows,
+    clearRows: () =>
+      setRows(() => {
+        const next = collectRows ? [{}] : [];
+        onRowsChange(next);
+        return next;
+      }),
+  }));
+
   function addRow() {
-    setRows((r) => [...r, {}]);
+    setRows((r) => {
+      const next = [...r, {}];
+      focusRow.current = next.length - 1;
+      onRowsChange(next);
+      return next;
+    });
+  }
+
+  function removeRow(idx) {
+    setRows((r) => {
+      const next = r.filter((_, i) => i !== idx);
+      onRowsChange(next);
+      return next;
+    });
   }
 
   function handleChange(rowIdx, field, value) {
-    setRows((r) =>
-      r.map((row, i) => (i === rowIdx ? { ...row, [field]: value } : row)),
-    );
+    setRows((r) => {
+      const next = r.map((row, i) => (i === rowIdx ? { ...row, [field]: value } : row));
+      onRowsChange(next);
+      return next;
+    });
   }
 
   async function saveRow(idx) {
     const row = rows[idx] || {};
-    const ok = await Promise.resolve(onRowSubmit(row));
+    const cleaned = {};
+    Object.entries(row).forEach(([k, v]) => {
+      if (k === '_saved') return;
+      cleaned[k] = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
+    });
+    const ok = await Promise.resolve(onRowSubmit(cleaned));
     if (ok !== false) {
-      setRows((r) => r.map((row, i) => (i === idx ? { ...row, _saved: true } : row)));
+      setRows((r) => {
+        const next = r.map((row, i) => (i === idx ? { ...row, _saved: true } : row));
+        onRowsChange(next);
+        return next;
+      });
     }
   }
 
-  function openPicker(row, field) {
-    setPicker({ row, field });
-  }
-
-  function handlePickerSelect(value) {
-    if (picker) {
-      handleChange(picker.row, picker.field, value);
-    }
-    setPicker(null);
-  }
 
   const totals = {};
   fields.forEach((f) => {
@@ -56,25 +100,80 @@ export default function InlineTransactionTable({
     totalAmountFields.some((f) => Number(r[f] || 0)),
   ).length;
 
-  function renderCell(idx, f) {
+  function handleKeyDown(e, rowIdx, colIdx) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const nextCol = colIdx + 1;
+    if (nextCol < fields.length) {
+      const el = inputRefs.current[`${rowIdx}-${nextCol}`];
+      if (el) {
+        el.focus();
+        if (el.select) el.select();
+      }
+      return;
+    }
+    if (rowIdx < rows.length - 1) {
+      const el = inputRefs.current[`${rowIdx + 1}-0`];
+      if (el) {
+        el.focus();
+        if (el.select) el.select();
+      }
+      return;
+    }
+    addBtnRef.current?.focus();
+  }
+
+  function renderCell(idx, f, colIdx) {
     const val = rows[idx]?.[f] ?? '';
     const isRel = relationConfigs[f] || Array.isArray(relations[f]);
-    if (rows[idx]?._saved) {
+    if (rows[idx]?._saved && !collectRows) {
       return typeof val === 'object' ? val.label : val;
     }
     if (isRel) {
-      const label = typeof val === 'object' ? val.label : val;
-      return (
-        <div className="cursor-pointer" onClick={() => openPicker(idx, f)}>
-          {label || 'Select'}
-        </div>
-      );
+      if (relationConfigs[f]) {
+        const conf = relationConfigs[f];
+        const inputVal = typeof val === 'object' ? val.value : val;
+        return (
+          <AsyncSearchSelect
+            table={conf.table}
+            searchColumn={conf.column}
+            labelFields={conf.displayFields || []}
+            value={inputVal}
+            onChange={(v, label) =>
+              handleChange(idx, f, label ? { value: v, label } : v)
+            }
+            inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
+            onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
+          />
+        );
+      }
+      if (Array.isArray(relations[f])) {
+        const inputVal = typeof val === 'object' ? val.value : val;
+        return (
+          <select
+            className="w-full border px-1"
+            value={inputVal}
+            onChange={(e) => handleChange(idx, f, e.target.value)}
+            ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
+            onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
+          >
+            <option value="">-- select --</option>
+            {relations[f].map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        );
+      }
     }
     return (
       <input
         className="w-full border px-1"
-        value={val}
+        value={typeof val === 'object' ? val.value : val}
         onChange={(e) => handleChange(idx, f, e.target.value)}
+        ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
+        onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
       />
     );
   }
@@ -95,13 +194,15 @@ export default function InlineTransactionTable({
         <tbody>
           {rows.map((r, idx) => (
             <tr key={idx}>
-              {fields.map((f) => (
+              {fields.map((f, cIdx) => (
                 <td key={f} className="border px-2 py-1">
-                  {renderCell(idx, f)}
+                  {renderCell(idx, f, cIdx)}
                 </td>
               ))}
               <td className="border px-2 py-1 text-right">
-                {r._saved ? (
+                {collectRows ? (
+                  <button onClick={() => removeRow(idx)}>Delete</button>
+                ) : r._saved ? (
                   <button onClick={() => handleChange(idx, '_saved', false)}>
                     Edit
                   </button>
@@ -133,24 +234,13 @@ export default function InlineTransactionTable({
           </tfoot>
         )}
       </table>
-      <button onClick={addRow} className="mt-2 px-2 py-1 bg-gray-200 rounded">
+      <button
+        onClick={addRow}
+        ref={addBtnRef}
+        className="mt-2 px-2 py-1 bg-gray-200 rounded"
+      >
         + Add Row
       </button>
-      {picker && (
-        <Modal
-          visible={true}
-          title={labels[picker.field] || picker.field}
-          onClose={() => setPicker(null)}
-        >
-          <AsyncSearchSelect
-            table={relationConfigs[picker.field]?.table}
-            searchColumn={relationConfigs[picker.field]?.column}
-            labelFields={relationConfigs[picker.field]?.displayFields || []}
-            value={rows[picker.row]?.[picker.field] || ''}
-            onChange={handlePickerSelect}
-          />
-        </Modal>
-      )}
     </div>
   );
-}
+});
