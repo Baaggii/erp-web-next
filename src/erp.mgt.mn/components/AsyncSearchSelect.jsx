@@ -74,7 +74,7 @@ export default function AsyncSearchSelect({
       if (idx >= 0 && idx < options.length) {
         e.preventDefault();
         const opt = options[idx];
-        onChange(opt.value);
+        onChange(opt.value, opt.label);
         setInput(String(opt.value));
         setShow(false);
       }
@@ -128,7 +128,7 @@ export default function AsyncSearchSelect({
             <li
               key={opt.value}
               onMouseDown={() => {
-                onChange(opt.value);
+                onChange(opt.value, opt.label);
                 setInput(String(opt.value));
                 setShow(false);
               }}
