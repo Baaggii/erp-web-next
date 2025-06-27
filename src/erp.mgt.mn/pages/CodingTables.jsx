@@ -26,6 +26,7 @@ export default function CodingTablesPage() {
   const [sql, setSql] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
+  const [insertedCount, setInsertedCount] = useState(0);
   const [columnTypes, setColumnTypes] = useState({});
   const [notNullMap, setNotNullMap] = useState({});
   const [defaultValues, setDefaultValues] = useState({});
@@ -637,6 +638,8 @@ export default function CodingTablesPage() {
       }
       if (current.length) chunks.push(current.join('\n'));
       setUploadProgress({ done: 0, total: chunks.length });
+      setInsertedCount(0);
+      let totalInserted = 0;
       for (const chunk of chunks) {
         const res = await fetch('/api/generated_sql/execute', {
           method: 'POST',
@@ -649,9 +652,14 @@ export default function CodingTablesPage() {
           alert(data.message || 'Execution failed');
           return;
         }
+        const data = await res.json().catch(() => ({}));
+        const inserted = data.inserted || 0;
+        totalInserted += inserted;
+        setInsertedCount(totalInserted);
+        addToast(`Inserted ${totalInserted} records`, 'info');
         setUploadProgress((p) => ({ done: p.done + 1, total: chunks.length }));
       }
-      alert('Table created');
+      addToast(`Table created with ${totalInserted} rows`, 'success');
     } catch (err) {
       console.error('SQL execution failed', err);
       alert('Execution failed');
@@ -747,19 +755,21 @@ export default function CodingTablesPage() {
         return;
       }
       if (sql) {
+        let toSave = sql;
         if (sql.length > 5_000_000) {
-          addToast('SQL too large to save, executing only', 'info');
-        } else {
-          const resSql = await fetch('/api/generated_sql', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ table: tableName, sql }),
-          });
-          if (!resSql.ok) {
-            const msg = await resSql.text().catch(() => resSql.statusText);
-            addToast(`Failed to save SQL: ${msg}`, 'error');
-          }
+          const first = sql.split(/;\s*\n/)[0];
+          toSave = `${first.trim()};`;
+          addToast('SQL too large, saving only table structure', 'info');
+        }
+        const resSql = await fetch('/api/generated_sql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ table: tableName, sql: toSave }),
+        });
+        if (!resSql.ok) {
+          const msg = await resSql.text().catch(() => resSql.statusText);
+          addToast(`Failed to save SQL: ${msg}`, 'error');
         }
       }
       addToast('Config saved', 'success');
