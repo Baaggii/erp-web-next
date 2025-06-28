@@ -19,6 +19,11 @@ function ch(n) {
 
 const MAX_WIDTH = ch(40);
 
+const currencyFmt = new Intl.NumberFormat('en-US', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
 function normalizeDateInput(value, format) {
   if (typeof value !== 'string') return value;
   let v = value.replace(/^(\d{4})\.(\d{2})\.(\d{2})/, '$1-$2-$3');
@@ -191,10 +196,20 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     } else {
       setTypeFilter('');
     }
+    if (company?.branch_id !== undefined && formConfig.branchIdFields) {
+      formConfig.branchIdFields.forEach((f) => {
+        if (validCols.has(f)) newFilters[f] = company.branch_id;
+      });
+    }
+    if (user?.empid !== undefined && formConfig.userIdFields) {
+      formConfig.userIdFields.forEach((f) => {
+        if (validCols.has(f)) newFilters[f] = user.empid;
+      });
+    }
     if (Object.keys(newFilters).length > 0) {
       setFilters((f) => ({ ...f, ...newFilters }));
     }
-  }, [formConfig, validCols]);
+  }, [formConfig, validCols, user, company]);
 
   useEffect(() => {
     if (!formConfig?.transactionTypeField) {
@@ -1067,7 +1082,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
               }
               if (val === 'month') {
                 const m = String(now.getMonth() + 1).padStart(2, '0');
-                setDateFilter(`${now.getFullYear()}.${m}`);
+                setDateFilter(`${now.getFullYear()}-${m}`);
                 return;
               }
               if (val === 'year') {
@@ -1143,6 +1158,36 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
           )}
           {typeFilter && (
             <button onClick={() => setTypeFilter('')}>Clear Transaction Type Filter</button>
+          )}
+        </div>
+      )}
+      {formConfig?.branchIdFields?.length > 0 && company?.branch_id !== undefined && (
+        <div style={{ backgroundColor: '#ddffee', padding: '0.25rem', textAlign: 'left' }}>
+          Branch:{' '}
+          <span style={{ marginRight: '0.5rem' }}>{company.branch_id}</span>
+          {user?.role === 'admin' && (
+            <button
+              onClick={() =>
+                formConfig.branchIdFields.forEach((f) => handleFilterChange(f, ''))
+              }
+            >
+              Clear Branch Filter
+            </button>
+          )}
+        </div>
+      )}
+      {formConfig?.userIdFields?.length > 0 && user?.empid !== undefined && (
+        <div style={{ backgroundColor: '#ffeecc', padding: '0.25rem', textAlign: 'left' }}>
+          User:{' '}
+          <span style={{ marginRight: '0.5rem' }}>{user.empid}</span>
+          {user?.role === 'admin' && (
+            <button
+              onClick={() =>
+                formConfig.userIdFields.forEach((f) => handleFilterChange(f, ''))
+              }
+            >
+              Clear User Filter
+            </button>
           )}
         </div>
       )}
@@ -1364,9 +1409,12 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
                 const raw = relationOpts[c]
                   ? labelMap[c][r[c]] || String(r[c])
                   : String(r[c]);
-                const display = placeholders[c]
-                  ? normalizeDateInput(raw, placeholders[c])
-                  : raw;
+                let display = raw;
+                if (c === 'TotalCur' || totalCurrencySet.has(c)) {
+                  display = currencyFmt.format(Number(r[c] || 0));
+                } else if (placeholders[c]) {
+                  display = normalizeDateInput(raw, placeholders[c]);
+                }
                 const showFull = display.length > 20;
                 return (
                   <td
@@ -1421,13 +1469,44 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
                 textAlign: 'center',
               }}
             >
-              TOTAL
+              НИЙТ
             </td>
             {columns.map((c) => {
               let val = '';
-              if (c === 'TotalCur') val = totals.sums[c] ?? '';
-              else if (c === 'TotalAmt') val = totals.count;
+              if (c === 'TotalCur') val = currencyFmt.format(totals.sums[c] || 0);
+              else if (totalCurrencySet.has(c))
+                val = currencyFmt.format(totals.sums[c] || 0);
               else if (totals.sums[c] !== undefined) val = totals.sums[c];
+              return (
+                <td
+                  key={c}
+                  style={{
+                    padding: '0.5rem',
+                    border: '1px solid #d1d5db',
+                    textAlign: columnAlign[c],
+                    fontWeight: 'bold',
+                  }}
+                >
+                  {val}
+                </td>
+              );
+            })}
+            <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}></td>
+          </tr>
+          <tr>
+            <td
+              style={{
+                padding: '0.5rem',
+                border: '1px solid #d1d5db',
+                fontWeight: 'bold',
+                textAlign: 'center',
+              }}
+            >
+              мөрийн тоо
+            </td>
+            {columns.map((c) => {
+              let val = '';
+              if (c === 'TotalAmt') val = totals.count;
               return (
                 <td
                   key={c}
