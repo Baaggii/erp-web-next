@@ -513,7 +513,7 @@ export default function CodingTablesPage() {
     }
   }
 
-  function handleGenerateSql() {
+  function generateFromWorkbook({ structure = true, records = true } = {}) {
     if (!workbook || !sheet || !tableName) return;
     const tbl = cleanIdentifier(tableName);
     const idCol = cleanIdentifier(idColumn);
@@ -776,237 +776,45 @@ export default function CodingTablesPage() {
     const otherCombined = [...otherRows, ...dupRows];
     const structOtherStr = buildStructure(`${tbl}_other`, false);
     const insertOtherStr = buildInsert(otherCombined, `${tbl}_other`);
-    const sqlStr = structMainStr + insertMainStr;
-    const sqlOtherStr = otherCombined.length > 0 ? structOtherStr + insertOtherStr : '';
-    const moveStr = '';
-    setStructSql(structMainStr);
-    setRecordsSql(insertMainStr);
-    setStructSqlOther(structOtherStr);
-    setRecordsSqlOther(insertOtherStr);
-    setSql(sqlStr);
-    setSqlOther(sqlOtherStr);
-    setSqlMove(moveStr);
-    setSummaryInfo(
-      `Prepared ${finalRows.length} rows, duplicates: ${dupList.length}`
-    );
-    fetch('/api/generated_sql', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ table: tbl, sql: sqlStr }),
-    }).catch(() => {});
-    if (sqlOtherStr) {
+    if (structure) {
+      const sqlStr = structMainStr + insertMainStr;
+      const sqlOtherStr =
+        otherCombined.length > 0 ? structOtherStr + insertOtherStr : '';
+      setStructSql(structMainStr);
+      setStructSqlOther(structOtherStr);
+      setSql(sqlStr);
+      setSqlOther(sqlOtherStr);
+      setSqlMove('');
       fetch('/api/generated_sql', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ table: `${tbl}_other`, sql: sqlOtherStr }),
+        body: JSON.stringify({ table: tbl, sql: sqlStr }),
       }).catch(() => {});
-    }
-  }
-
-  function handleGenerateRecords() {
-    if (!workbook || !sheet || !tableName) return;
-    const tbl = cleanIdentifier(tableName);
-    const idCol = cleanIdentifier(idColumn);
-    const nmCol = cleanIdentifier(nameColumn);
-    const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheet], {
-      header: 1,
-      blankrows: false,
-    });
-    const idx = Number(headerRow) - 1;
-    const raw = data[idx] || [];
-    const hdrs = [];
-    const keepIdx = [];
-    raw.forEach((h, i) => {
-      if (String(h).trim().length > 0) {
-        hdrs.push(cleanIdentifier(h));
-        keepIdx.push(i);
-      }
-    });
-    const extra = extraFields.filter((f) => f.trim() !== '').map(cleanIdentifier);
-    const rows = data
-      .slice(idx + 1)
-      .map((r) => [...keepIdx.map((ci) => r[ci]), ...Array(extra.length).fill(undefined)]);
-    const allHdrs = [...hdrs, ...extra];
-    const dbCols = {};
-    allHdrs.forEach((h) => {
-      dbCols[h] = cleanIdentifier(renameMap[h] || h);
-    });
-
-    const valuesByHeader = {};
-    hdrs.forEach((h, i) => {
-      valuesByHeader[h] = rows.map((r) => r[i]);
-    });
-    extra.forEach((h, idx2) => {
-      valuesByHeader[h] = rows.map((r) => r[hdrs.length + idx2]);
-    });
-    const colTypes = {};
-    const localNotNull = {};
-    allHdrs.forEach((h) => {
-      colTypes[h] = columnTypes[h] || detectType(h, valuesByHeader[h] || []);
-      const defNN = (valuesByHeader[h] || []).every(
-        (v) => v !== undefined && v !== null && v !== ''
-      );
-      localNotNull[h] =
-        notNullMap[h] !== undefined ? notNullMap[h] : defNN;
-    });
-
-    const cleanUnique = uniqueFields.map(cleanIdentifier);
-    const cleanOther = otherColumns.map(cleanIdentifier);
-    const uniqueOnly = cleanUnique.filter(
-      (c) => c !== idCol && c !== nmCol && !cleanOther.includes(c)
-    );
-    const otherFiltered = cleanOther.filter(
-      (c) => c !== idCol && c !== nmCol && !uniqueOnly.includes(c)
-    );
-    if (!idCol && !nmCol && uniqueOnly.length === 0 && otherFiltered.length === 0) {
-      alert('Please select at least one ID, Name, Unique or Other column');
-      return;
-    }
-    const idIdx = allHdrs.indexOf(idCol);
-    const nameIdx = allHdrs.indexOf(nmCol);
-    const dbIdCol = idCol ? cleanIdentifier(renameMap[idCol] || 'id') : null;
-    const dbNameCol = nmCol ? cleanIdentifier(renameMap[nmCol] || 'name') : null;
-    if (idCol && idIdx === -1) return;
-    if (nmCol && nameIdx === -1) return;
-    const uniqueIdx = uniqueOnly.map((c) => allHdrs.indexOf(c));
-    const otherIdx = otherFiltered.map((c) => allHdrs.indexOf(c));
-    const stateIdx = allHdrs.findIndex((h) => /state/i.test(h));
-
-    const fieldsToCheck = [
-      ...(idCol ? [idCol] : []),
-      ...(nmCol ? [nmCol] : []),
-      ...uniqueOnly,
-      ...otherFiltered,
-      ...extra,
-    ];
-
-    let finalRows = rows;
-    if (populateRange && startYear && endYear) {
-      const yearField = allHdrs.find((h) => /year/i.test(h));
-      if (yearField) {
-        const monthField = allHdrs.find((h) => /month/i.test(h));
-        const yIdx = allHdrs.indexOf(yearField);
-        const mIdx = allHdrs.indexOf(monthField);
-        finalRows = [];
-        for (let y = Number(startYear); y <= Number(endYear); y++) {
-          const months = monthField ? Array.from({ length: 12 }, (_, i) => i + 1) : [null];
-          for (const mo of months) {
-            for (const r of rows) {
-              const copy = [...r];
-              if (yIdx !== -1) copy[yIdx] = y;
-              if (mIdx !== -1 && mo !== null) copy[mIdx] = mo;
-              finalRows.push(copy);
-            }
-          }
-        }
+      if (sqlOtherStr) {
+        fetch('/api/generated_sql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ table: `${tbl}_other`, sql: sqlOtherStr }),
+        }).catch(() => {});
       }
     }
-    const mainRows = [];
-    const otherRows = [];
-    const dupRows = [];
-    const seenKeys = new Set();
-    const dupList = [];
-    finalRows.forEach((r) => {
-      let key = '';
-      if (uniqueOnly.length > 0) {
-        key = uniqueOnly
-          .map((c, idx2) => {
-            const ui = uniqueIdx[idx2];
-            return ui === -1 ? '' : r[ui];
-          })
-          .join('|');
-      }
-      const isDup = key && seenKeys.has(key);
-      if (key) seenKeys.add(key);
-      if (isDup) {
-        dupRows.push(r);
-        dupList.push(key);
-        return;
-      }
-      const zeroInvalid = fieldsToCheck.some((f) => {
-        const idxF = allHdrs.indexOf(f);
-        if (idxF === -1) return false;
-        const v = r[idxF];
-        const isZero =
-          v === 0 || (typeof v === 'string' && v.trim() !== '' && Number(v) === 0);
-        return v === null || (isZero && !allowZeroMap[f]);
-      });
-      const stateVal = stateIdx === -1 ? '1' : String(r[stateIdx]);
-      if (!zeroInvalid && stateVal === '1') mainRows.push(r);
-      else otherRows.push(r);
-    });
-    setDuplicateInfo(dupList.join('\n'));
-    setDuplicateRecords(dupRows.map((r) => r.join(',')).join('\n'));
-
-    function buildInsert(rows, tableNameForSql) {
-      let out = '';
-      for (const r of rows) {
-        const cols = [];
-        const vals = [];
-        let hasData = false;
-        if (nmCol) {
-          const nameVal = r[nameIdx];
-          if (nameVal === undefined || nameVal === null || nameVal === '') continue;
-          cols.push(`\`${dbNameCol}\``);
-          vals.push(formatVal(nameVal, colTypes[nmCol]));
-          hasData = true;
-        }
-        uniqueOnly.forEach((c, idx2) => {
-          const ui = uniqueIdx[idx2];
-          let v = ui === -1 ? undefined : r[ui];
-          if (v === undefined || v === null || v === '') {
-            const from = defaultFrom[c];
-            if (from) {
-              const fi = allHdrs.indexOf(from);
-              v = fi === -1 ? undefined : r[fi];
-            }
-            if (v === undefined || v === null || v === '') {
-              v = defaultValues[c];
-            }
-            if ((v === undefined || v === null || v === '') && localNotNull[c]) {
-              v = defaultValForType(colTypes[c]);
-            }
-          }
-          cols.push(`\`${dbCols[c]}\``);
-          vals.push(formatVal(v, colTypes[c]));
-          hasData = true;
-        });
-        otherFiltered.forEach((c, idx2) => {
-          const ci = otherIdx[idx2];
-          let v = ci === -1 ? undefined : r[ci];
-          if (v === undefined || v === null || v === '') {
-            const from = defaultFrom[c];
-            if (from) {
-              const fi = allHdrs.indexOf(from);
-              v = fi === -1 ? undefined : r[fi];
-            }
-            if (v === undefined || v === null || v === '') {
-              v = defaultValues[c];
-            }
-            if ((v === undefined || v === null || v === '') && localNotNull[c]) {
-              v = defaultValForType(colTypes[c]);
-            }
-          }
-          if (v !== undefined && v !== null && v !== '' && (allowZeroMap[c] ? true : v !== 0)) hasData = true;
-          cols.push(`\`${dbCols[c]}\``);
-          vals.push(formatVal(v, colTypes[c]));
-        });
-        if (!hasData) continue;
-        const updates = cols.map((c) => `${c} = VALUES(${c})`);
-        out += `INSERT INTO \`${tableNameForSql}\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
-      }
-      return out;
+    if (records) {
+      setRecordsSql(insertMainStr);
+      setRecordsSqlOther(insertOtherStr);
     }
-
-    const insertMainStr = buildInsert(mainRows, tbl);
-    const insertOtherStr = buildInsert([...otherRows, ...dupRows], `${tbl}_other`);
-    setRecordsSql(insertMainStr);
-    setRecordsSqlOther(insertOtherStr);
     setSummaryInfo(
       `Prepared ${finalRows.length} rows, duplicates: ${dupList.length}`
     );
+  }
+
+  function handleGenerateSql() {
+    generateFromWorkbook({ structure: true, records: true });
+  }
+
+  function handleGenerateRecords() {
+    generateFromWorkbook({ structure: false, records: true });
   }
 
 
