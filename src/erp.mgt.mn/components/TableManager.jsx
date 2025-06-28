@@ -429,12 +429,13 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
       credentials: 'include',
     })
       .then((res) => {
+        if (canceled) return { rows: [], count: 0 };
         if (!res.ok) {
           addToast('Failed to load table data', 'error');
           return { rows: [], count: 0 };
         }
         return res.json().catch(() => {
-          addToast('Failed to parse table data', 'error');
+          if (!canceled) addToast('Failed to parse table data', 'error');
           return { rows: [], count: 0 };
         });
       })
@@ -446,7 +447,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         setSelectedRows(new Set());
       })
       .catch(() => {
-        addToast('Failed to load table data', 'error');
+        if (!canceled) addToast('Failed to load table data', 'error');
       });
     return () => {
       canceled = true;
@@ -885,7 +886,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
       : [];
 
   const ordered = formConfig?.visibleFields?.length
-    ? formConfig.visibleFields.filter((c) => allColumns.includes(c))
+    ? allColumns.filter((c) => formConfig.visibleFields.includes(c))
     : allColumns;
   const labels = {};
   columnMeta.forEach((c) => {
@@ -1007,7 +1008,12 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
   const totals = useMemo(() => {
     const sums = {};
     columns.forEach((c) => {
-      if (totalAmountSet.has(c) || totalCurrencySet.has(c) || c === 'TotalCur') {
+      if (
+        totalAmountSet.has(c) ||
+        totalCurrencySet.has(c) ||
+        c === 'TotalCur' ||
+        c === 'TotalAmt'
+      ) {
         sums[c] = rows.reduce((sum, r) => sum + Number(r[c] || 0), 0);
       }
     });
