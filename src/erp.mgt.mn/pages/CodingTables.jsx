@@ -1613,7 +1613,7 @@ export default function CodingTablesPage() {
               <button onClick={executeSeparateSql} style={{ marginLeft: '0.5rem' }}>
                 Create Tables & Records
               </button>
-              {(recordsSql || recordsSqlOther) && (
+              {(structSql || structSqlOther) && (
                 <button onClick={executeRecordsSql} style={{ marginLeft: '0.5rem' }}>
                   Populate Records
                 </button>
@@ -1637,6 +1637,7 @@ export default function CodingTablesPage() {
                       onChange={(e) => setRecordsSql(e.target.value)}
                       rows={10}
                       cols={40}
+                      placeholder="No records generated"
                     />
                   </div>
                 </div>
@@ -1658,6 +1659,7 @@ export default function CodingTablesPage() {
                     onChange={(e) => setRecordsSqlOther(e.target.value)}
                     rows={10}
                     cols={40}
+                    placeholder="No records generated"
                   />
                 </div>
               </div>
