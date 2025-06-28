@@ -929,11 +929,68 @@ export default function CodingTablesPage() {
     setDuplicateInfo(dupList.join('\n'));
     setDuplicateRecords(dupRows.map((r) => r.join(',')).join('\n'));
 
-    const structMainStr = buildStructure(tbl, true);
+    function buildInsert(rows, tableNameForSql) {
+      let out = '';
+      for (const r of rows) {
+        const cols = [];
+        const vals = [];
+        let hasData = false;
+        if (nmCol) {
+          const nameVal = r[nameIdx];
+          if (nameVal === undefined || nameVal === null || nameVal === '') continue;
+          cols.push(`\`${dbNameCol}\``);
+          vals.push(formatVal(nameVal, colTypes[nmCol]));
+          hasData = true;
+        }
+        uniqueOnly.forEach((c, idx2) => {
+          const ui = uniqueIdx[idx2];
+          let v = ui === -1 ? undefined : r[ui];
+          if (v === undefined || v === null || v === '') {
+            const from = defaultFrom[c];
+            if (from) {
+              const fi = allHdrs.indexOf(from);
+              v = fi === -1 ? undefined : r[fi];
+            }
+            if (v === undefined || v === null || v === '') {
+              v = defaultValues[c];
+            }
+            if ((v === undefined || v === null || v === '') && localNotNull[c]) {
+              v = defaultValForType(colTypes[c]);
+            }
+          }
+          cols.push(`\`${dbCols[c]}\``);
+          vals.push(formatVal(v, colTypes[c]));
+          hasData = true;
+        });
+        otherFiltered.forEach((c, idx2) => {
+          const ci = otherIdx[idx2];
+          let v = ci === -1 ? undefined : r[ci];
+          if (v === undefined || v === null || v === '') {
+            const from = defaultFrom[c];
+            if (from) {
+              const fi = allHdrs.indexOf(from);
+              v = fi === -1 ? undefined : r[fi];
+            }
+            if (v === undefined || v === null || v === '') {
+              v = defaultValues[c];
+            }
+            if ((v === undefined || v === null || v === '') && localNotNull[c]) {
+              v = defaultValForType(colTypes[c]);
+            }
+          }
+          if (v !== undefined && v !== null && v !== '' && (allowZeroMap[c] ? true : v !== 0)) hasData = true;
+          cols.push(`\`${dbCols[c]}\``);
+          vals.push(formatVal(v, colTypes[c]));
+        });
+        if (!hasData) continue;
+        const updates = cols.map((c) => `${c} = VALUES(${c})`);
+        out += `INSERT INTO \`${tableNameForSql}\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
+      }
+      return out;
+    }
+
     const insertMainStr = buildInsert(mainRows, tbl);
-    const otherCombined = [...otherRows, ...dupRows];
-    const structOtherStr = buildStructure(`${tbl}_other`, false);
-    const insertOtherStr = buildInsert(otherCombined, `${tbl}_other`);
+    const insertOtherStr = buildInsert([...otherRows, ...dupRows], `${tbl}_other`);
     setRecordsSql(insertMainStr);
     setRecordsSqlOther(insertOtherStr);
     setSummaryInfo(
