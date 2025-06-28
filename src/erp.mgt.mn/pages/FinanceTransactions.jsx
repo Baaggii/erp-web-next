@@ -110,20 +110,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   }, [moduleKey, company, perms, licensed]);
 
   useEffect(() => {
-    if (!name) {
-      setTable('');
-      setConfig(null);
-      setShowTable(false);
-      return;
-    }
-    if (configs[name]) {
-      const tbl = configs[name].table ?? configs[name];
-      if (tbl !== table) {
-        setTable(tbl);
-        setConfig(null);
-        setShowTable(false);
-      }
-    }
+    if (name && configs[name]) setTable(configs[name].table ?? configs[name]);
   }, [name, configs]);
 
   useEffect(() => {
@@ -136,10 +123,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   }, [configs]);
 
   useEffect(() => {
-    if (!table || !name) {
-      setConfig(null);
-      return;
-    }
+    if (!table || !name) return;
     let canceled = false;
     fetch(
       `/api/transaction_forms?table=${encodeURIComponent(
@@ -192,20 +176,9 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
             <select
               value={name}
               onChange={(e) => {
-                const newName = e.target.value;
-                setName(newName);
+                setName(e.target.value);
                 setRefreshId((r) => r + 1);
                 setShowTable(false);
-                if (!newName) {
-                  setTable('');
-                  setConfig(null);
-                } else if (configs[newName]) {
-                  const tbl = configs[newName].table ?? configs[newName];
-                  if (tbl !== table) {
-                    setTable(tbl);
-                    setConfig(null);
-                  }
-                }
               }}
               style={{ width: '100%', padding: '0.5rem', borderRadius: '3px', border: '1px solid #ccc' }}
             >
