@@ -1820,7 +1820,7 @@ export default function CodingTablesPage() {
               <button onClick={executeSeparateSql} style={{ marginLeft: '0.5rem' }}>
                 Create Tables & Records
               </button>
-              {(structSql || structSqlOther) && (
+              {(recordsSql || recordsSqlOther) && (
                 <button onClick={executeRecordsSql} style={{ marginLeft: '0.5rem' }}>
                   Insert Records
                 </button>
