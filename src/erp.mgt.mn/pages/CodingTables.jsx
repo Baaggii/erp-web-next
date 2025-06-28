@@ -25,6 +25,8 @@ export default function CodingTablesPage() {
   const [calcText, setCalcText] = useState('');
   const [sql, setSql] = useState('');
   const [sqlOther, setSqlOther] = useState('');
+  const [sqlInsert, setSqlInsert] = useState('');
+  const [sqlInsertOther, setSqlInsertOther] = useState('');
   const [sqlMove, setSqlMove] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
@@ -121,6 +123,8 @@ export default function CodingTablesPage() {
       setNameColumn('');
       setSql('');
       setSqlOther('');
+      setSqlInsert('');
+      setSqlInsertOther('');
       setSqlMove('');
       setOtherColumns([]);
       setUniqueFields([]);
@@ -153,6 +157,8 @@ export default function CodingTablesPage() {
     setNameColumn('');
     setSql('');
     setSqlOther('');
+    setSqlInsert('');
+    setSqlInsertOther('');
     setSqlMove('');
     setOtherColumns([]);
     setUniqueFields([]);
@@ -177,6 +183,8 @@ export default function CodingTablesPage() {
     setNameColumn('');
     setSql('');
     setSqlOther('');
+    setSqlInsert('');
+    setSqlInsertOther('');
     setSqlMove('');
     setOtherColumns([]);
     setUniqueFields([]);
@@ -497,7 +505,7 @@ export default function CodingTablesPage() {
     }
   }
 
-  function handleGenerateSql() {
+  function handleGenerateSql(insertOnly = false) {
     if (!workbook || !sheet || !tableName) return;
     const tbl = cleanIdentifier(tableName);
     const idCol = cleanIdentifier(idColumn);
@@ -686,9 +694,12 @@ export default function CodingTablesPage() {
     }
     const defsNoUnique = defs.filter((d) => !d.trim().startsWith('UNIQUE KEY'));
 
-    function buildSql(rows, tableNameForSql, useUnique = true) {
+    function buildSql(rows, tableNameForSql, useUnique = true, includeCreate = true) {
       const defArr = useUnique ? defs : defsNoUnique;
-      let out = `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};\n`;
+      let out = '';
+      if (includeCreate) {
+        out += `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};\n`;
+      }
       for (const r of rows) {
         const cols = [];
         const vals = [];
@@ -751,29 +762,36 @@ export default function CodingTablesPage() {
     }
 
     const sqlStr = buildSql(mainRows, tbl, true);
+    const sqlInsertStr = buildSql(mainRows, tbl, true, false);
     const otherCombined = [...otherRows, ...dupRows];
     const sqlOtherStr =
       otherCombined.length > 0 ? buildSql(otherCombined, `${tbl}_other`, false) : '';
+    const sqlInsertOtherStr =
+      otherCombined.length > 0 ? buildSql(otherCombined, `${tbl}_other`, false, false) : '';
     const moveStr = '';
     setSql(sqlStr);
+    setSqlInsert(sqlInsertStr);
     setSqlOther(sqlOtherStr);
+    setSqlInsertOther(sqlInsertOtherStr);
     setSqlMove(moveStr);
     setSummaryInfo(
       `Prepared ${finalRows.length} rows, duplicates: ${dupList.length}`
     );
-    fetch('/api/generated_sql', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ table: tbl, sql: sqlStr }),
-    }).catch(() => {});
-    if (sqlOtherStr) {
+    if (!insertOnly) {
       fetch('/api/generated_sql', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ table: `${tbl}_other`, sql: sqlOtherStr }),
+        body: JSON.stringify({ table: tbl, sql: sqlStr }),
       }).catch(() => {});
+      if (sqlOtherStr) {
+        fetch('/api/generated_sql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ table: `${tbl}_other`, sql: sqlOtherStr }),
+        }).catch(() => {});
+      }
     }
   }
 
@@ -1458,25 +1476,57 @@ export default function CodingTablesPage() {
               )}
             </div>
               {sql && (
-                <div style={{ marginTop: '0.5rem' }}>
-                  <div>SQL for main table:</div>
-                  <textarea
-                    value={sql}
-                    onChange={(e) => setSql(e.target.value)}
-                    rows={10}
-                    cols={80}
-                  />
+                <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
+                  <div>
+                    <div>SQL for main table:</div>
+                    <textarea
+                      value={sql}
+                      onChange={(e) => setSql(e.target.value)}
+                      rows={10}
+                      cols={80}
+                    />
+                  </div>
+                  <div>
+                    <div>
+                      Insert only{' '}
+                      <button onClick={() => handleGenerateSql(true)} style={{ marginLeft: '0.5rem' }}>
+                        Populate
+                      </button>
+                    </div>
+                    <textarea
+                      value={sqlInsert}
+                      onChange={(e) => setSqlInsert(e.target.value)}
+                      rows={10}
+                      cols={80}
+                    />
+                  </div>
                 </div>
               )}
               {sqlOther && (
-                <div style={{ marginTop: '0.5rem' }}>
-                  <div>SQL for _other table:</div>
-                  <textarea
-                    value={sqlOther}
-                    onChange={(e) => setSqlOther(e.target.value)}
-                    rows={10}
-                    cols={80}
-                  />
+                <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
+                  <div>
+                    <div>SQL for _other table:</div>
+                    <textarea
+                      value={sqlOther}
+                      onChange={(e) => setSqlOther(e.target.value)}
+                      rows={10}
+                      cols={80}
+                    />
+                  </div>
+                  <div>
+                    <div>
+                      Insert only{' '}
+                      <button onClick={() => handleGenerateSql(true)} style={{ marginLeft: '0.5rem' }}>
+                        Populate
+                      </button>
+                    </div>
+                    <textarea
+                      value={sqlInsertOther}
+                      onChange={(e) => setSqlInsertOther(e.target.value)}
+                      rows={10}
+                      cols={80}
+                    />
+                  </div>
                 </div>
               )}
               {sqlMove && (
