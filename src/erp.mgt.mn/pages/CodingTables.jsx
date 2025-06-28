@@ -124,8 +124,10 @@ export default function CodingTablesPage() {
       setIdCandidates([]);
       setIdColumn('');
       setNameColumn('');
-      setSql('');
-      setSqlOther('');
+      setStructSql('');
+      setStructSqlOther('');
+      setRecordsSql('');
+      setRecordsSqlOther('');
       setSqlMove('');
       setOtherColumns([]);
       setUniqueFields([]);
@@ -156,8 +158,10 @@ export default function CodingTablesPage() {
     setIdCandidates([]);
     setIdColumn('');
     setNameColumn('');
-    setSql('');
-    setSqlOther('');
+    setStructSql('');
+    setStructSqlOther('');
+    setRecordsSql('');
+    setRecordsSqlOther('');
     setSqlMove('');
     setOtherColumns([]);
     setUniqueFields([]);
@@ -180,8 +184,10 @@ export default function CodingTablesPage() {
     setIdCandidates([]);
     setIdColumn('');
     setNameColumn('');
-    setSql('');
-    setSqlOther('');
+    setStructSql('');
+    setStructSqlOther('');
+    setRecordsSql('');
+    setRecordsSqlOther('');
     setSqlMove('');
     setOtherColumns([]);
     setUniqueFields([]);
@@ -452,7 +458,8 @@ export default function CodingTablesPage() {
   }
 
   function loadFromSql() {
-    const cfg = parseSqlConfig(sql.trim());
+    const base = structSql || sql;
+    const cfg = parseSqlConfig(base.trim());
     if (!cfg) return;
     const hdrs = Object.keys(cfg.columnTypes || {});
     setHeaders(hdrs);
@@ -478,6 +485,10 @@ export default function CodingTablesPage() {
       );
       if (!res.ok) return;
       const data = await res.json();
+      setStructSql(data.sql || '');
+      setStructSqlOther('');
+      setRecordsSql('');
+      setRecordsSqlOther('');
       setSql(data.sql || '');
       setSqlOther('');
       setSqlMove('');
@@ -1000,13 +1011,13 @@ export default function CodingTablesPage() {
 
 
   async function executeGeneratedSql() {
-    if (!sql) {
+    if (!structSql) {
       alert('Generate SQL first');
       return;
     }
     setUploading(true);
     try {
-      const statements = sql
+      const statements = structSql
         .split(/;\s*\n/)
         .map((s) => s.trim())
         .filter(Boolean)
@@ -1145,7 +1156,7 @@ export default function CodingTablesPage() {
   }
 
   async function executeOtherSql() {
-    if (!sqlOther) {
+    if (!structSqlOther) {
       alert('Generate SQL first');
       return;
     }
@@ -1154,7 +1165,7 @@ export default function CodingTablesPage() {
       const res = await fetch('/api/generated_sql/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql: sqlOther }),
+        body: JSON.stringify({ sql: structSqlOther }),
         credentials: 'include',
       });
       if (!res.ok) {
@@ -1820,13 +1831,13 @@ export default function CodingTablesPage() {
               <button onClick={executeSeparateSql} style={{ marginLeft: '0.5rem' }}>
                 Create Tables & Records
               </button>
-              {(structSql || structSqlOther) && (
+              {(recordsSql || recordsSqlOther) && (
                 <button onClick={executeRecordsSql} style={{ marginLeft: '0.5rem' }}>
                   Insert Records
                 </button>
               )}
             </div>
-              {structSql && (
+              {(structSql || recordsSql) && (
                 <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
                   <div>
                     <div>Main table structure:</div>
@@ -1849,6 +1860,7 @@ export default function CodingTablesPage() {
                   </div>
                 </div>
               )}
+              {(structSqlOther || recordsSqlOther) && (
               <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
                 <div>
                   <div>_other table structure:</div>
@@ -1870,6 +1882,7 @@ export default function CodingTablesPage() {
                   />
                 </div>
               </div>
+              )}
               {sqlMove && (
                 <div style={{ marginTop: '0.5rem' }}>
                   <div>SQL to move unsuccessful rows:</div>
