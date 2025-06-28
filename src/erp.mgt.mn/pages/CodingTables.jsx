@@ -1637,6 +1637,7 @@ export default function CodingTablesPage() {
                       onChange={(e) => setRecordsSql(e.target.value)}
                       rows={10}
                       cols={40}
+                      placeholder="No records generated"
                     />
                   </div>
                 </div>
@@ -1658,6 +1659,7 @@ export default function CodingTablesPage() {
                     onChange={(e) => setRecordsSqlOther(e.target.value)}
                     rows={10}
                     cols={40}
+                    placeholder="No records generated"
                   />
                 </div>
               </div>
