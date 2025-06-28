@@ -25,6 +25,10 @@ export default function CodingTablesPage() {
   const [calcText, setCalcText] = useState('');
   const [sql, setSql] = useState('');
   const [sqlOther, setSqlOther] = useState('');
+  const [structSql, setStructSql] = useState('');
+  const [structSqlOther, setStructSqlOther] = useState('');
+  const [recordsSql, setRecordsSql] = useState('');
+  const [recordsSqlOther, setRecordsSqlOther] = useState('');
   const [sqlMove, setSqlMove] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
@@ -686,9 +690,13 @@ export default function CodingTablesPage() {
     }
     const defsNoUnique = defs.filter((d) => !d.trim().startsWith('UNIQUE KEY'));
 
-    function buildSql(rows, tableNameForSql, useUnique = true) {
+    function buildStructure(tableNameForSql, useUnique = true) {
       const defArr = useUnique ? defs : defsNoUnique;
-      let out = `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};\n`;
+      return `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};\n`;
+    }
+
+    function buildInsert(rows, tableNameForSql) {
+      let out = '';
       for (const r of rows) {
         const cols = [];
         const vals = [];
@@ -750,11 +758,20 @@ export default function CodingTablesPage() {
       return out;
     }
 
-    const sqlStr = buildSql(mainRows, tbl, true);
+    const structMainStr = buildStructure(tbl, true);
+    const insertMainStr = buildInsert(mainRows, tbl);
     const otherCombined = [...otherRows, ...dupRows];
-    const sqlOtherStr =
-      otherCombined.length > 0 ? buildSql(otherCombined, `${tbl}_other`, false) : '';
+    const structOtherStr =
+      otherCombined.length > 0 ? buildStructure(`${tbl}_other`, false) : '';
+    const insertOtherStr =
+      otherCombined.length > 0 ? buildInsert(otherCombined, `${tbl}_other`) : '';
+    const sqlStr = structMainStr + insertMainStr;
+    const sqlOtherStr = otherCombined.length > 0 ? structOtherStr + insertOtherStr : '';
     const moveStr = '';
+    setStructSql(structMainStr);
+    setRecordsSql(insertMainStr);
+    setStructSqlOther(structOtherStr);
+    setRecordsSqlOther(insertOtherStr);
     setSql(sqlStr);
     setSqlOther(sqlOtherStr);
     setSqlMove(moveStr);
@@ -869,6 +886,42 @@ export default function CodingTablesPage() {
       }
       const data = await res.json().catch(() => ({}));
       addToast(`Other table inserted ${data.inserted || 0} rows`, 'success');
+    } catch (err) {
+      console.error('SQL execution failed', err);
+      alert('Execution failed');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function executeRecordsSql() {
+    if (!recordsSql && !recordsSqlOther) {
+      alert('Generate SQL first');
+      return;
+    }
+    setUploading(true);
+    try {
+      if (recordsSql) {
+        const resMain = await fetch('/api/generated_sql/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql: recordsSql }),
+          credentials: 'include',
+        });
+        if (!resMain.ok) throw new Error('main failed');
+        await resMain.json().catch(() => ({}));
+      }
+      if (recordsSqlOther) {
+        const resOther = await fetch('/api/generated_sql/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql: recordsSqlOther }),
+          credentials: 'include',
+        });
+        if (!resOther.ok) throw new Error('other failed');
+        await resOther.json().catch(() => ({}));
+      }
+      addToast('Records inserted', 'success');
     } catch (err) {
       console.error('SQL execution failed', err);
       alert('Execution failed');
@@ -1451,32 +1504,59 @@ export default function CodingTablesPage() {
               <button onClick={executeGeneratedSql} style={{ marginLeft: '0.5rem' }}>
                 Create Coding Table
               </button>
-              {sqlOther && (
+              {structSqlOther && (
                 <button onClick={executeOtherSql} style={{ marginLeft: '0.5rem' }}>
                   Create _other Table
                 </button>
               )}
+              {(recordsSql || recordsSqlOther) && (
+                <button onClick={executeRecordsSql} style={{ marginLeft: '0.5rem' }}>
+                  Populate Records
+                </button>
+              )}
             </div>
-              {sql && (
-                <div style={{ marginTop: '0.5rem' }}>
-                  <div>SQL for main table:</div>
-                  <textarea
-                    value={sql}
-                    onChange={(e) => setSql(e.target.value)}
-                    rows={10}
-                    cols={80}
-                  />
+              {structSql && (
+                <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
+                  <div>
+                    <div>Main table structure:</div>
+                    <textarea
+                      value={structSql}
+                      onChange={(e) => setStructSql(e.target.value)}
+                      rows={10}
+                      cols={40}
+                    />
+                  </div>
+                  <div>
+                    <div>Main table records:</div>
+                    <textarea
+                      value={recordsSql}
+                      onChange={(e) => setRecordsSql(e.target.value)}
+                      rows={10}
+                      cols={40}
+                    />
+                  </div>
                 </div>
               )}
-              {sqlOther && (
-                <div style={{ marginTop: '0.5rem' }}>
-                  <div>SQL for _other table:</div>
-                  <textarea
-                    value={sqlOther}
-                    onChange={(e) => setSqlOther(e.target.value)}
-                    rows={10}
-                    cols={80}
-                  />
+              {structSqlOther && (
+                <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
+                  <div>
+                    <div>_other table structure:</div>
+                    <textarea
+                      value={structSqlOther}
+                      onChange={(e) => setStructSqlOther(e.target.value)}
+                      rows={10}
+                      cols={40}
+                    />
+                  </div>
+                  <div>
+                    <div>_other table records:</div>
+                    <textarea
+                      value={recordsSqlOther}
+                      onChange={(e) => setRecordsSqlOther(e.target.value)}
+                      rows={10}
+                      cols={40}
+                    />
+                  </div>
                 </div>
               )}
               {sqlMove && (
