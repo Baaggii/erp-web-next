@@ -192,7 +192,7 @@ export default function RowFormModal({
     setErrors(errs);
     if (Object.keys(errs).length === 0) {
       const ok = window.confirm(
-        'Save this transaction? Have you checked all data and accept responsibility?',
+        'Post this transaction? Have you checked all data and accept responsibility?',
       );
       if (ok) {
         const normalized = {};
@@ -301,6 +301,7 @@ export default function RowFormModal({
             totalAmountFields={totalAmountFields}
             totalCurrencyFields={totalCurrencyFields}
             collectRows={useGrid}
+            minRows={3}
             onRowSubmit={onSubmit}
           />
         </div>
@@ -460,7 +461,7 @@ export default function RowFormModal({
             Cancel
           </button>
           <button type="submit" className="px-3 py-1 bg-blue-600 text-white rounded">
-            Save
+            Post
           </button>
         </div>
         <div className="text-sm text-gray-600">

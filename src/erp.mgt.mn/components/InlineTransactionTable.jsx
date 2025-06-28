@@ -15,10 +15,13 @@ export default forwardRef(function InlineTransactionTable({
   totalAmountFields = [],
   totalCurrencyFields = [],
   collectRows = false,
+  minRows = 1,
   onRowSubmit = () => {},
   onRowsChange = () => {},
 }, ref) {
-  const [rows, setRows] = useState(() => (collectRows ? [{}] : []));
+  const [rows, setRows] = useState(() =>
+    collectRows ? Array.from({ length: minRows }, () => ({})) : [],
+  );
   const inputRefs = useRef({});
   const focusRow = useRef(collectRows ? 0 : null);
   const addBtnRef = useRef(null);
@@ -28,6 +31,13 @@ export default forwardRef(function InlineTransactionTable({
 
   useEffect(() => {
     if (!collectRows) return;
+    if (rows.length < minRows) {
+      setRows((r) => {
+        const next = [...r];
+        while (next.length < minRows) next.push({});
+        return next;
+      });
+    }
     if (focusRow.current === null) return;
     const idx = focusRow.current;
     const el = inputRefs.current[`${idx}-0`];
@@ -36,13 +46,15 @@ export default forwardRef(function InlineTransactionTable({
       if (el.select) el.select();
     }
     focusRow.current = null;
-  }, [rows, collectRows]);
+  }, [rows, collectRows, minRows]);
 
   useImperativeHandle(ref, () => ({
     getRows: () => rows,
     clearRows: () =>
       setRows(() => {
-        const next = collectRows ? [{}] : [];
+        const next = collectRows
+          ? Array.from({ length: minRows }, () => ({}))
+          : [];
         onRowsChange(next);
         return next;
       }),
