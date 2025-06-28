@@ -761,10 +761,8 @@ export default function CodingTablesPage() {
     const structMainStr = buildStructure(tbl, true);
     const insertMainStr = buildInsert(mainRows, tbl);
     const otherCombined = [...otherRows, ...dupRows];
-    const structOtherStr =
-      otherCombined.length > 0 ? buildStructure(`${tbl}_other`, false) : '';
-    const insertOtherStr =
-      otherCombined.length > 0 ? buildInsert(otherCombined, `${tbl}_other`) : '';
+    const structOtherStr = buildStructure(`${tbl}_other`, false);
+    const insertOtherStr = buildInsert(otherCombined, `${tbl}_other`);
     const sqlStr = structMainStr + insertMainStr;
     const sqlOtherStr = otherCombined.length > 0 ? structOtherStr + insertOtherStr : '';
     const moveStr = '';
