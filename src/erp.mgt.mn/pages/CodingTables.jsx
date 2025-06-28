@@ -1826,7 +1826,7 @@ export default function CodingTablesPage() {
                 </button>
               )}
             </div>
-              {structSql && (
+              {(structSql || recordsSql) && (
                 <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
                   <div>
                     <div>Main table structure:</div>
@@ -1849,6 +1849,7 @@ export default function CodingTablesPage() {
                   </div>
                 </div>
               )}
+              {(structSqlOther || recordsSqlOther) && (
               <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
                 <div>
                   <div>_other table structure:</div>
@@ -1870,6 +1871,7 @@ export default function CodingTablesPage() {
                   />
                 </div>
               </div>
+              )}
               {sqlMove && (
                 <div style={{ marginTop: '0.5rem' }}>
                   <div>SQL to move unsuccessful rows:</div>
