@@ -46,6 +46,7 @@ export default function CodingTablesPage() {
   const [endYear, setEndYear] = useState('');
   const [autoIncStart, setAutoIncStart] = useState('1');
   const [duplicateInfo, setDuplicateInfo] = useState('');
+  const [duplicateRecords, setDuplicateRecords] = useState('');
   const [summaryInfo, setSummaryInfo] = useState('');
   const fileInputRef = useRef(null);
   const [selectedFile, setSelectedFile] = useState(null);
@@ -641,6 +642,7 @@ export default function CodingTablesPage() {
       else otherRows.push(r);
     });
     setDuplicateInfo(dupList.join('\n'));
+    setDuplicateRecords(dupRows.map((r) => r.join(',')).join('\n'));
 
     let extras = [];
     if (sql) {
@@ -973,6 +975,7 @@ export default function CodingTablesPage() {
     }
     setUploading(true);
     try {
+      const failedAll = [];
       if (recordsSql) {
         const resMain = await fetch('/api/generated_sql/execute', {
           method: 'POST',
@@ -981,7 +984,8 @@ export default function CodingTablesPage() {
           credentials: 'include',
         });
         if (!resMain.ok) throw new Error('main failed');
-        await resMain.json().catch(() => ({}));
+        const dataMain = await resMain.json().catch(() => ({}));
+        if (Array.isArray(dataMain.failed)) failedAll.push(...dataMain.failed);
       }
       if (recordsSqlOther) {
         const resOther = await fetch('/api/generated_sql/execute', {
@@ -991,7 +995,11 @@ export default function CodingTablesPage() {
           credentials: 'include',
         });
         if (!resOther.ok) throw new Error('other failed');
-        await resOther.json().catch(() => ({}));
+        const dataOther = await resOther.json().catch(() => ({}));
+        if (Array.isArray(dataOther.failed)) failedAll.push(...dataOther.failed);
+      }
+      if (failedAll.length > 0) {
+        setSqlMove(failedAll.join('\n'));
       }
       addToast('Records inserted', 'success');
     } catch (err) {
@@ -1645,6 +1653,12 @@ export default function CodingTablesPage() {
                 <div style={{ marginTop: '0.5rem' }}>
                   <div>Duplicate keys:</div>
                   <textarea value={duplicateInfo} readOnly rows={3} cols={80} />
+                </div>
+              )}
+              {duplicateRecords && (
+                <div style={{ marginTop: '0.5rem' }}>
+                  <div>Duplicate records:</div>
+                  <textarea value={duplicateRecords} readOnly rows={3} cols={80} />
                 </div>
               )}
               {summaryInfo && (
