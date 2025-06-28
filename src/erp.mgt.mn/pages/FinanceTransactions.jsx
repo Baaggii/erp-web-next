@@ -124,6 +124,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
 
   useEffect(() => {
     if (!table || !name) return;
+    let canceled = false;
     fetch(
       `/api/transaction_forms?table=${encodeURIComponent(
         table,
@@ -131,6 +132,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
       { credentials: 'include' },
     )
       .then((res) => {
+        if (canceled) return null;
         if (!res.ok) {
           addToast('Failed to load transaction configuration', 'error');
           return null;
@@ -138,6 +140,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
         return res.json().catch(() => null);
       })
       .then((cfg) => {
+        if (canceled) return;
         if (cfg && cfg.moduleKey) {
           setConfig(cfg);
         } else {
@@ -147,10 +150,15 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
         }
       })
       .catch(() => {
-        setConfig(null);
-        setShowTable(false);
-        addToast('Failed to load transaction configuration', 'error');
+        if (!canceled) {
+          setConfig(null);
+          setShowTable(false);
+          addToast('Failed to load transaction configuration', 'error');
+        }
       });
+    return () => {
+      canceled = true;
+    };
   }, [table, name, addToast]);
 
   const transactionNames = Object.keys(configs);
