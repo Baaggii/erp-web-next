@@ -25,6 +25,7 @@ export default function CodingTablesPage() {
   const [calcText, setCalcText] = useState('');
   const [sql, setSql] = useState('');
   const [sqlOther, setSqlOther] = useState('');
+  const [sqlMove, setSqlMove] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
   const [insertedCount, setInsertedCount] = useState(0);
@@ -119,6 +120,8 @@ export default function CodingTablesPage() {
       setIdColumn('');
       setNameColumn('');
       setSql('');
+      setSqlOther('');
+      setSqlMove('');
       setOtherColumns([]);
       setUniqueFields([]);
       setColumnTypes({});
@@ -149,6 +152,8 @@ export default function CodingTablesPage() {
     setIdColumn('');
     setNameColumn('');
     setSql('');
+    setSqlOther('');
+    setSqlMove('');
     setOtherColumns([]);
     setUniqueFields([]);
     setColumnTypes({});
@@ -171,6 +176,8 @@ export default function CodingTablesPage() {
     setIdColumn('');
     setNameColumn('');
     setSql('');
+    setSqlOther('');
+    setSqlMove('');
     setOtherColumns([]);
     setUniqueFields([]);
     setColumnTypes({});
@@ -436,7 +443,7 @@ export default function CodingTablesPage() {
   }
 
   function loadFromSql() {
-    const cfg = parseSqlConfig(sql);
+    const cfg = parseSqlConfig(sql.trim());
     if (!cfg) return;
     const hdrs = Object.keys(cfg.columnTypes || {});
     setHeaders(hdrs);
@@ -446,10 +453,10 @@ export default function CodingTablesPage() {
     setOtherColumns(cfg.otherColumns);
     setUniqueFields(cfg.uniqueFields);
     setCalcText(cfg.calcText);
-    setColumnTypes(cfg.columnTypes);
-    setNotNullMap(cfg.notNullMap);
-    setAllowZeroMap(cfg.allowZeroMap || {});
-    setDefaultValues(cfg.defaultValues);
+    setColumnTypes((prev) => ({ ...prev, ...cfg.columnTypes }));
+    setNotNullMap((prev) => ({ ...prev, ...cfg.notNullMap }));
+    setAllowZeroMap((prev) => ({ ...prev, ...cfg.allowZeroMap }));
+    setDefaultValues((prev) => ({ ...prev, ...cfg.defaultValues }));
     setAutoIncStart(cfg.autoIncStart || '1');
   }
 
@@ -463,6 +470,8 @@ export default function CodingTablesPage() {
       if (!res.ok) return;
       const data = await res.json();
       setSql(data.sql || '');
+      setSqlOther('');
+      setSqlMove('');
       if (data.sql) {
         const cfg = parseSqlConfig(data.sql);
         if (cfg) {
@@ -625,32 +634,31 @@ export default function CodingTablesPage() {
     });
     setDuplicateInfo(dupList.join('\n'));
 
+    let extras = [];
+    if (sql) {
+      const m = sql.match(/CREATE TABLE[^\(]*\([^]*?\)/m);
+      if (m) {
+        const body = m[0].replace(/^[^\(]*\(|\)[^\)]*$/g, '');
+        const lines = body.split(/,\n/).map((l) => l.trim());
+        extras = lines.filter((l) => /^(KEY|CONSTRAINT|FOREIGN KEY)/i.test(l));
+      }
+    }
+
     let defs = [];
     if (idCol) {
       defs.push(`\`${dbIdCol}\` INT AUTO_INCREMENT PRIMARY KEY`);
     }
     if (nmCol) {
-      let def = `\`${dbNameCol}\` ${colTypes[nmCol]} NOT NULL`;
-      if (defaultValues[nmCol]) {
-        def += ` DEFAULT ${formatVal(defaultValues[nmCol], colTypes[nmCol])}`;
-      }
-      defs.push(def);
+      defs.push(`\`${dbNameCol}\` ${colTypes[nmCol]} NOT NULL`);
     }
     uniqueOnly.forEach((c) => {
       const dbC = dbCols[c];
-      let def = `\`${dbC}\` ${colTypes[c]} NOT NULL`;
-      if (defaultValues[c]) {
-        def += ` DEFAULT ${formatVal(defaultValues[c], colTypes[c])}`;
-      }
-      defs.push(def);
+      defs.push(`\`${dbC}\` ${colTypes[c]} NOT NULL`);
     });
     otherFiltered.forEach((c) => {
       const dbC = dbCols[c];
       let def = `\`${dbC}\` ${colTypes[c]}`;
       if (localNotNull[c]) def += ' NOT NULL';
-      if (defaultValues[c]) {
-        def += ` DEFAULT ${formatVal(defaultValues[c], colTypes[c])}`;
-      }
       defs.push(def);
       });
     const calcFields = parseCalcFields(calcText);
@@ -668,6 +676,9 @@ export default function CodingTablesPage() {
           .map((f) => `\`${f}\``)
           .join(', ')})`
       );
+    }
+    if (extras.length > 0) {
+      defs.push(...extras.filter((l) => !/^UNIQUE KEY/i.test(l)));
     }
     const defsNoUnique = defs.filter((d) => !d.trim().startsWith('UNIQUE KEY'));
 
@@ -687,16 +698,17 @@ export default function CodingTablesPage() {
         }
         uniqueOnly.forEach((c, idx2) => {
           const ui = uniqueIdx[idx2];
-          let v = defaultValues[c];
-          if (v === undefined || v === '' || (!allowZeroMap[c] && v === 0)) {
+          let v = ui === -1 ? undefined : r[ui];
+          if (v === undefined || v === null || v === '') {
             const from = defaultFrom[c];
             if (from) {
               const fi = allHdrs.indexOf(from);
               v = fi === -1 ? undefined : r[fi];
-            } else {
-              v = ui === -1 ? defaultValForType(colTypes[c]) : r[ui];
             }
-            if (v === undefined || v === null || v === '' || (!allowZeroMap[c] && v === 0)) {
+            if (v === undefined || v === null || v === '') {
+              v = defaultValues[c];
+            }
+            if ((v === undefined || v === null || v === '') && localNotNull[c]) {
               v = defaultValForType(colTypes[c]);
             }
           }
@@ -706,16 +718,17 @@ export default function CodingTablesPage() {
         });
         otherFiltered.forEach((c, idx2) => {
           const ci = otherIdx[idx2];
-          let v = defaultValues[c];
-          if (v === undefined || v === '' || (!allowZeroMap[c] && v === 0)) {
+          let v = ci === -1 ? undefined : r[ci];
+          if (v === undefined || v === null || v === '') {
             const from = defaultFrom[c];
             if (from) {
               const fi = allHdrs.indexOf(from);
               v = fi === -1 ? undefined : r[fi];
-            } else {
-              v = ci === -1 ? undefined : r[ci];
             }
-            if ((v === undefined || v === null || v === '' || (!allowZeroMap[c] && v === 0)) && localNotNull[c]) {
+            if (v === undefined || v === null || v === '') {
+              v = defaultValues[c];
+            }
+            if ((v === undefined || v === null || v === '') && localNotNull[c]) {
               v = defaultValForType(colTypes[c]);
             }
           }
@@ -737,8 +750,11 @@ export default function CodingTablesPage() {
     const otherCombined = [...otherRows, ...dupRows];
     const sqlOtherStr =
       otherCombined.length > 0 ? buildSql(otherCombined, `${tbl}_other`, false) : '';
+    const moveStr =
+      sqlOtherStr ? `INSERT INTO \`${tbl}\` SELECT * FROM \`${tbl}_other\`;` : '';
     setSql(sqlStr);
     setSqlOther(sqlOtherStr);
+    setSqlMove(moveStr);
     setSummaryInfo(
       `Prepared ${finalRows.length} rows, duplicates: ${dupList.length}`
     );
@@ -1447,6 +1463,17 @@ export default function CodingTablesPage() {
                     value={sqlOther}
                     onChange={(e) => setSqlOther(e.target.value)}
                     rows={10}
+                    cols={80}
+                  />
+                </div>
+              )}
+              {sqlMove && (
+                <div style={{ marginTop: '0.5rem' }}>
+                  <div>SQL to move unsuccessful rows:</div>
+                  <textarea
+                    value={sqlMove}
+                    onChange={(e) => setSqlMove(e.target.value)}
+                    rows={4}
                     cols={80}
                   />
                 </div>
