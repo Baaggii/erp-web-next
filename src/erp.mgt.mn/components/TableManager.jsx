@@ -415,15 +415,15 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
   }, [table]);
 
   useEffect(() => {
-    if (!table) return;
+    if (!table || columnMeta.length === 0) return;
     let canceled = false;
     const params = new URLSearchParams({ page, perPage });
-    if (sort.column) {
+    if (sort.column && validCols.has(sort.column)) {
       params.set('sort', sort.column);
       params.set('dir', sort.dir);
     }
     Object.entries(filters).forEach(([k, v]) => {
-      if (v) params.set(k, v);
+      if (v && validCols.has(k)) params.set(k, v);
     });
     fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
       credentials: 'include',
@@ -451,7 +451,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     return () => {
       canceled = true;
     };
-  }, [table, page, perPage, filters, sort, refreshId, localRefresh]);
+  }, [table, page, perPage, filters, sort, refreshId, localRefresh, columnMeta, validCols]);
 
   useEffect(() => {
     setSelectedRows(new Set());
@@ -1504,23 +1504,24 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
             >
               мөрийн тоо
             </td>
-            {columns.map((c) => {
-              let val = '';
-              if (c === 'TotalAmt') val = totals.count;
-              return (
-                <td
-                  key={c}
-                  style={{
-                    padding: '0.5rem',
-                    border: '1px solid #d1d5db',
-                    textAlign: columnAlign[c],
-                    fontWeight: 'bold',
-                  }}
-                >
-                  {val}
-                </td>
-              );
-            })}
+            {columns.length > 0 && (
+              <td
+                style={{
+                  padding: '0.5rem',
+                  border: '1px solid #d1d5db',
+                  textAlign: columnAlign[columns[0]],
+                  fontWeight: 'bold',
+                }}
+              >
+                {totals.count}
+              </td>
+            )}
+            {columns.slice(1).map((c) => (
+              <td
+                key={c}
+                style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}
+              ></td>
+            ))}
             <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}></td>
           </tr>
         </tfoot>
