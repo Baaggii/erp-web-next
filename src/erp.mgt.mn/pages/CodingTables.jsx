@@ -375,7 +375,7 @@ export default function CodingTablesPage() {
     const body = m[2];
     const autoInc = m[3] || '1';
     const lines = body
-      .split(/,\n/)
+      .split(/,\s*\n/)
       .map((l) => l.trim())
       .filter(Boolean);
     const columnTypes = {};
@@ -481,10 +481,10 @@ export default function CodingTablesPage() {
           setOtherColumns(cfg.otherColumns);
           setUniqueFields(cfg.uniqueFields);
           setCalcText(cfg.calcText);
-          setColumnTypes(cfg.columnTypes);
-          setNotNullMap(cfg.notNullMap);
-          setAllowZeroMap(cfg.allowZeroMap || {});
-          setDefaultValues(cfg.defaultValues);
+          setColumnTypes((prev) => ({ ...prev, ...cfg.columnTypes }));
+          setNotNullMap((prev) => ({ ...prev, ...cfg.notNullMap }));
+          setAllowZeroMap((prev) => ({ ...prev, ...cfg.allowZeroMap }));
+          setDefaultValues((prev) => ({ ...prev, ...cfg.defaultValues }));
           setAutoIncStart(cfg.autoIncStart || '1');
         }
       }
@@ -750,8 +750,7 @@ export default function CodingTablesPage() {
     const otherCombined = [...otherRows, ...dupRows];
     const sqlOtherStr =
       otherCombined.length > 0 ? buildSql(otherCombined, `${tbl}_other`, false) : '';
-    const moveStr =
-      sqlOtherStr ? `INSERT INTO \`${tbl}\` SELECT * FROM \`${tbl}_other\`;` : '';
+    const moveStr = '';
     setSql(sqlStr);
     setSqlOther(sqlOtherStr);
     setSqlMove(moveStr);
@@ -805,6 +804,7 @@ export default function CodingTablesPage() {
       setUploadProgress({ done: 0, total: chunks.length });
       setInsertedCount(0);
       let totalInserted = 0;
+      const failedAll = [];
       for (const chunk of chunks) {
         const res = await fetch('/api/generated_sql/execute', {
           method: 'POST',
@@ -819,6 +819,9 @@ export default function CodingTablesPage() {
         }
         const data = await res.json().catch(() => ({}));
         const inserted = data.inserted || 0;
+        if (Array.isArray(data.failed) && data.failed.length > 0) {
+          failedAll.push(...data.failed);
+        }
         totalInserted += inserted;
         setInsertedCount(totalInserted);
         addToast(`Inserted ${totalInserted} records`, 'info');
@@ -829,6 +832,9 @@ export default function CodingTablesPage() {
           duplicateInfo ? duplicateInfo.split('\n').length : 0
         }`
       );
+      if (failedAll.length > 0) {
+        setSqlMove(failedAll.join('\n'));
+      }
       addToast(`Table created with ${totalInserted} rows`, 'success');
     } catch (err) {
       console.error('SQL execution failed', err);
@@ -964,17 +970,19 @@ export default function CodingTablesPage() {
         return;
       }
       if (sql) {
-        let toSave = sql;
-        if (sql.length > 5_000_000) {
-          const first = sql.split(/;\s*\n/)[0];
-          toSave = `${first.trim()};`;
-          addToast('SQL too large, saving only table structure', 'info');
+        let struct = '';
+        const m = sql.match(/CREATE TABLE[^;]+;/i);
+        if (m) struct = m[0];
+        else struct = sql.split(/;\s*\n/)[0] + ';';
+        if (struct.length > 5_000_000) {
+          struct = struct.slice(0, 5_000_000);
+          addToast('SQL too large, truncated structure', 'info');
         }
         const resSql = await fetch('/api/generated_sql', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ table: tableName, sql: toSave }),
+          body: JSON.stringify({ table: tableName, sql: struct }),
         });
         if (!resSql.ok) {
           const msg = await resSql.text().catch(() => resSql.statusText);

@@ -38,14 +38,19 @@ export async function runSql(sql) {
     .map((s) => s.trim())
     .filter(Boolean);
   let inserted = 0;
+  const failed = [];
   for (const stmt of statements) {
-    const [res] = await pool.query(stmt);
-    if (res && typeof res.affectedRows === 'number') {
-      const change = typeof res.changedRows === 'number' ? res.changedRows : 0;
-      inserted += res.affectedRows - change;
+    try {
+      const [res] = await pool.query(stmt);
+      if (res && typeof res.affectedRows === 'number') {
+        const change = typeof res.changedRows === 'number' ? res.changedRows : 0;
+        inserted += res.affectedRows - change;
+      }
+    } catch (err) {
+      failed.push(stmt);
     }
   }
-  return inserted;
+  return { inserted, failed };
 }
 
 export async function getTableStructure(table) {
