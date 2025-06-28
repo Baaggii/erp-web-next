@@ -23,8 +23,8 @@ router.post('/execute', requireAuth, async (req, res, next) => {
     if (!sql) {
       return res.status(400).json({ message: 'sql required' });
     }
-    const { inserted, failed } = await runSql(sql);
-    res.json({ inserted, failed });
+    const inserted = await runSql(sql);
+    res.json({ inserted });
   } catch (err) {
     next(err);
   }
