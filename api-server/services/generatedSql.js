@@ -47,7 +47,7 @@ export async function runSql(sql) {
         inserted += res.affectedRows - change;
       }
     } catch (err) {
-      failed.push(stmt);
+      failed.push({ sql: stmt, error: err.message });
     }
   }
   return { inserted, failed };

@@ -870,7 +870,11 @@ export default function CodingTablesPage() {
         const data = await res.json().catch(() => ({}));
         const inserted = data.inserted || 0;
         if (Array.isArray(data.failed) && data.failed.length > 0) {
-          failedAll.push(...data.failed);
+          failedAll.push(
+            ...data.failed.map((f) =>
+              typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
+            )
+          );
         }
         totalInserted += inserted;
         setInsertedCount(totalInserted);
@@ -944,7 +948,11 @@ export default function CodingTablesPage() {
         const data = await res.json().catch(() => ({}));
         const inserted = data.inserted || 0;
         if (Array.isArray(data.failed) && data.failed.length > 0) {
-          failedAll.push(...data.failed);
+          failedAll.push(
+            ...data.failed.map((f) =>
+              typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
+            )
+          );
         }
         totalInserted += inserted;
         setInsertedCount(totalInserted);
@@ -1014,7 +1022,12 @@ export default function CodingTablesPage() {
         });
         if (!resMain.ok) throw new Error('main failed');
         const dataMain = await resMain.json().catch(() => ({}));
-        if (Array.isArray(dataMain.failed)) failedAll.push(...dataMain.failed);
+        if (Array.isArray(dataMain.failed))
+          failedAll.push(
+            ...dataMain.failed.map((f) =>
+              typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
+            )
+          );
       }
       if (recordsSqlOther) {
         const resOther = await fetch('/api/generated_sql/execute', {
@@ -1025,7 +1038,12 @@ export default function CodingTablesPage() {
         });
         if (!resOther.ok) throw new Error('other failed');
         const dataOther = await resOther.json().catch(() => ({}));
-        if (Array.isArray(dataOther.failed)) failedAll.push(...dataOther.failed);
+        if (Array.isArray(dataOther.failed))
+          failedAll.push(
+            ...dataOther.failed.map((f) =>
+              typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
+            )
+          );
       }
       if (failedAll.length > 0) {
         const tbl = cleanIdentifier(tableName);
@@ -1049,7 +1067,13 @@ export default function CodingTablesPage() {
         } else {
           const dataMove = await resMove.json().catch(() => ({}));
           if (Array.isArray(dataMove.failed) && dataMove.failed.length > 0) {
-            setSqlMove(dataMove.failed.join('\n'));
+            setSqlMove(
+              dataMove.failed
+                .map((f) =>
+                  typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
+                )
+                .join('\n')
+            );
           }
         }
       }
@@ -1270,6 +1294,9 @@ export default function CodingTablesPage() {
         setDefaultValues(cfg.defaultValues || {});
         setDefaultFrom(cfg.defaultFrom || {});
         setRenameMap(cfg.renameMap || {});
+        if (cfg.columnTypes) {
+          setHeaders(Object.keys(cfg.columnTypes));
+        }
         setExtraFields(
           cfg.extraFields && cfg.extraFields.length > 0 ? cfg.extraFields : ['']
         );
