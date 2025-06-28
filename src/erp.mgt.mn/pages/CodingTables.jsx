@@ -1285,13 +1285,13 @@ export default function CodingTablesPage() {
         setIdFilterMode(cfg.idFilterMode || 'contains');
         setIdColumn(cfg.idColumn || '');
         setNameColumn(cfg.nameColumn || '');
+        const extras =
+          cfg.extraFields && cfg.extraFields.length > 0 ? cfg.extraFields : [''];
+        setExtraFields(extras);
         setOtherColumns(cfg.otherColumns || []);
         setUniqueFields(cfg.uniqueFields || []);
         setCalcText(cfg.calcText || '');
         setColumnTypes(cfg.columnTypes || {});
-        const extras =
-          cfg.extraFields && cfg.extraFields.length > 0 ? cfg.extraFields : [''];
-        setExtraFields(extras);
         if (cfg.columnTypes) {
           const hdrs = Object.keys(cfg.columnTypes).filter(
             (h) => !extras.includes(h)
