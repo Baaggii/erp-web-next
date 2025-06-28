@@ -369,11 +369,15 @@ export default function CodingTablesPage() {
   }
 
   function parseSqlConfig(sqlText) {
-    const m = sqlText.match(/CREATE TABLE(?: IF NOT EXISTS)?\s+`([^`]+)`\s*\(([^]*?)\)\s*(?:.*?AUTO_INCREMENT=(\d+))?/m);
+    const m = sqlText.match(/CREATE TABLE(?: IF NOT EXISTS)?\s+`([^`]+)`/i);
     if (!m) return null;
     const table = m[1];
-    const body = m[2];
-    const autoInc = m[3] || '1';
+    const start = sqlText.indexOf('(', m.index + m[0].length);
+    const end = sqlText.lastIndexOf(')');
+    if (start === -1 || end === -1 || end <= start) return null;
+    const body = sqlText.slice(start + 1, end);
+    const autoMatch = sqlText.slice(end).match(/AUTO_INCREMENT=(\d+)/i);
+    const autoInc = autoMatch ? autoMatch[1] : '1';
     const lines = body
       .split(/,\s*\n/)
       .map((l) => l.trim())
