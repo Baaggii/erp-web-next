@@ -1289,11 +1289,14 @@ export default function CodingTablesPage() {
         setUniqueFields(cfg.uniqueFields || []);
         setCalcText(cfg.calcText || '');
         setColumnTypes(cfg.columnTypes || {});
-        setExtraFields(
-          cfg.extraFields && cfg.extraFields.length > 0 ? cfg.extraFields : ['']
-        );
+        const extras =
+          cfg.extraFields && cfg.extraFields.length > 0 ? cfg.extraFields : [''];
+        setExtraFields(extras);
         if (cfg.columnTypes) {
-          setHeaders(Object.keys(cfg.columnTypes));
+          const hdrs = Object.keys(cfg.columnTypes).filter(
+            (h) => !extras.includes(h)
+          );
+          setHeaders(hdrs);
         }
         setNotNullMap(cfg.notNullMap || {});
         setAllowZeroMap(cfg.allowZeroMap || {});
