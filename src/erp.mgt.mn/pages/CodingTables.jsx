@@ -1289,17 +1289,17 @@ export default function CodingTablesPage() {
         setUniqueFields(cfg.uniqueFields || []);
         setCalcText(cfg.calcText || '');
         setColumnTypes(cfg.columnTypes || {});
+        setExtraFields(
+          cfg.extraFields && cfg.extraFields.length > 0 ? cfg.extraFields : ['']
+        );
+        if (cfg.columnTypes) {
+          setHeaders(Object.keys(cfg.columnTypes));
+        }
         setNotNullMap(cfg.notNullMap || {});
         setAllowZeroMap(cfg.allowZeroMap || {});
         setDefaultValues(cfg.defaultValues || {});
         setDefaultFrom(cfg.defaultFrom || {});
         setRenameMap(cfg.renameMap || {});
-        if (cfg.columnTypes) {
-          setHeaders(Object.keys(cfg.columnTypes));
-        }
-        setExtraFields(
-          cfg.extraFields && cfg.extraFields.length > 0 ? cfg.extraFields : ['']
-        );
         setPopulateRange(cfg.populateRange || false);
         setStartYear(cfg.startYear || '');
         setEndYear(cfg.endYear || '');
