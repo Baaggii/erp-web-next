@@ -279,7 +279,10 @@ export async function uploadCodingTable(req, res, next) {
       if (label) await setTableColumnLabel(cleanTable, cleanIdentifier(col), label);
     }
     let count = 0;
+    const errors = [];
+    let rowIndex = 0;
     for (const r of finalRows) {
+      rowIndex++;
       const cols = [];
       const placeholders = [];
       const values = [];
@@ -347,14 +350,18 @@ export async function uploadCodingTable(req, res, next) {
       if (!hasData) continue;
       if (req.body.populateRange === 'true' && values.some((v) => v === 0 || v === null))
         continue;
-      await pool.query(
-        `INSERT INTO \`${cleanTable}\` (${cols.join(', ')}) VALUES (${placeholders.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')}`,
-        values
-      );
-      count++;
+      try {
+        await pool.query(
+          `INSERT INTO \`${cleanTable}\` (${cols.join(', ')}) VALUES (${placeholders.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')}`,
+          values
+        );
+        count++;
+      } catch (err) {
+        errors.push({ row: rowIndex, data: r, message: err.message });
+      }
     }
     fs.unlinkSync(req.file.path);
-    res.json({ inserted: count });
+    res.json({ inserted: count, errors });
   } catch (err) {
     next(err);
   }
