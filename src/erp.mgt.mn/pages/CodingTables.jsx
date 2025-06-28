@@ -761,10 +761,8 @@ export default function CodingTablesPage() {
     const structMainStr = buildStructure(tbl, true);
     const insertMainStr = buildInsert(mainRows, tbl);
     const otherCombined = [...otherRows, ...dupRows];
-    const structOtherStr =
-      otherCombined.length > 0 ? buildStructure(`${tbl}_other`, false) : '';
-    const insertOtherStr =
-      otherCombined.length > 0 ? buildInsert(otherCombined, `${tbl}_other`) : '';
+    const structOtherStr = buildStructure(`${tbl}_other`, false);
+    const insertOtherStr = buildInsert(otherCombined, `${tbl}_other`);
     const sqlStr = structMainStr + insertMainStr;
     const sqlOtherStr = otherCombined.length > 0 ? structOtherStr + insertOtherStr : '';
     const moveStr = '';
@@ -813,6 +811,80 @@ export default function CodingTablesPage() {
       const limit = 500000; // ~0.5MB per chunk
       for (const stmt of statements) {
         const len = stmt.length + 1; // include newline
+        if (size + len > limit && current.length) {
+          chunks.push(current.join('\n'));
+          current = [];
+          size = 0;
+        }
+        current.push(stmt);
+        size += len;
+      }
+      if (current.length) chunks.push(current.join('\n'));
+      setUploadProgress({ done: 0, total: chunks.length });
+      setInsertedCount(0);
+      let totalInserted = 0;
+      const failedAll = [];
+      for (const chunk of chunks) {
+        const res = await fetch('/api/generated_sql/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql: chunk }),
+          credentials: 'include',
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          alert(data.message || 'Execution failed');
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        const inserted = data.inserted || 0;
+        if (Array.isArray(data.failed) && data.failed.length > 0) {
+          failedAll.push(...data.failed);
+        }
+        totalInserted += inserted;
+        setInsertedCount(totalInserted);
+        addToast(`Inserted ${totalInserted} records`, 'info');
+        setUploadProgress((p) => ({ done: p.done + 1, total: chunks.length }));
+      }
+      setSummaryInfo(
+        `Inserted ${totalInserted} rows. Duplicates: ${
+          duplicateInfo ? duplicateInfo.split('\n').length : 0
+        }`
+      );
+      if (failedAll.length > 0) {
+        setSqlMove(failedAll.join('\n'));
+      }
+      addToast(`Table created with ${totalInserted} rows`, 'success');
+    } catch (err) {
+      console.error('SQL execution failed', err);
+      alert('Execution failed');
+    } finally {
+      setUploading(false);
+      setUploadProgress({ done: 0, total: 0 });
+    }
+  }
+
+  async function executeSeparateSql() {
+    const combined = [structSql, structSqlOther, recordsSql, recordsSqlOther]
+      .filter(Boolean)
+      .join('\n');
+    if (!combined) {
+      alert('No SQL to execute');
+      return;
+    }
+    setUploading(true);
+    try {
+      const statements = combined
+        .split(/;\s*\n/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((s) => s + ';');
+      const chunks = [];
+      let current = [];
+      let size = 0;
+      const limit = 500000;
+      for (const stmt of statements) {
+        const len = stmt.length + 1;
         if (size + len > limit && current.length) {
           chunks.push(current.join('\n'));
           current = [];
@@ -1504,11 +1576,12 @@ export default function CodingTablesPage() {
               <button onClick={executeGeneratedSql} style={{ marginLeft: '0.5rem' }}>
                 Create Coding Table
               </button>
-              {structSqlOther && (
-                <button onClick={executeOtherSql} style={{ marginLeft: '0.5rem' }}>
-                  Create _other Table
-                </button>
-              )}
+              <button onClick={executeOtherSql} style={{ marginLeft: '0.5rem' }}>
+                Create _other Table
+              </button>
+              <button onClick={executeSeparateSql} style={{ marginLeft: '0.5rem' }}>
+                Create Tables & Records
+              </button>
               {(recordsSql || recordsSqlOther) && (
                 <button onClick={executeRecordsSql} style={{ marginLeft: '0.5rem' }}>
                   Populate Records
@@ -1537,28 +1610,26 @@ export default function CodingTablesPage() {
                   </div>
                 </div>
               )}
-              {structSqlOther && (
-                <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
-                  <div>
-                    <div>_other table structure:</div>
-                    <textarea
-                      value={structSqlOther}
-                      onChange={(e) => setStructSqlOther(e.target.value)}
-                      rows={10}
-                      cols={40}
-                    />
-                  </div>
-                  <div>
-                    <div>_other table records:</div>
-                    <textarea
-                      value={recordsSqlOther}
-                      onChange={(e) => setRecordsSqlOther(e.target.value)}
-                      rows={10}
-                      cols={40}
-                    />
-                  </div>
+              <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
+                <div>
+                  <div>_other table structure:</div>
+                  <textarea
+                    value={structSqlOther}
+                    onChange={(e) => setStructSqlOther(e.target.value)}
+                    rows={10}
+                    cols={40}
+                  />
                 </div>
-              )}
+                <div>
+                  <div>_other table records:</div>
+                  <textarea
+                    value={recordsSqlOther}
+                    onChange={(e) => setRecordsSqlOther(e.target.value)}
+                    rows={10}
+                    cols={40}
+                  />
+                </div>
+              </div>
               {sqlMove && (
                 <div style={{ marginTop: '0.5rem' }}>
                   <div>SQL to move unsuccessful rows:</div>
