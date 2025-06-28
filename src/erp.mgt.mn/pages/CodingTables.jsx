@@ -810,10 +810,16 @@ export default function CodingTablesPage() {
   }
 
   function handleGenerateSql() {
+    setStructSql('');
+    setStructSqlOther('');
+    setRecordsSql('');
+    setRecordsSqlOther('');
     generateFromWorkbook({ structure: true, records: true });
   }
 
   function handleGenerateRecords() {
+    setRecordsSql('');
+    setRecordsSqlOther('');
     generateFromWorkbook({ structure: false, records: true });
   }
 
