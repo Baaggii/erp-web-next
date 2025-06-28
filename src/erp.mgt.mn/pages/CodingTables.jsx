@@ -999,7 +999,30 @@ export default function CodingTablesPage() {
         if (Array.isArray(dataOther.failed)) failedAll.push(...dataOther.failed);
       }
       if (failedAll.length > 0) {
-        setSqlMove(failedAll.join('\n'));
+        const tbl = cleanIdentifier(tableName);
+        const moveSql = failedAll
+          .map((stmt) => {
+            const re = new RegExp(`INSERT INTO\\s+\`${tbl}\``, 'i');
+            if (re.test(stmt) && !/\_other`/i.test(stmt)) {
+              return stmt.replace(re, `INSERT INTO \`${tbl}_other\``);
+            }
+            return stmt;
+          })
+          .join('\n');
+        const resMove = await fetch('/api/generated_sql/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql: moveSql }),
+          credentials: 'include',
+        });
+        if (!resMove.ok) {
+          setSqlMove(moveSql);
+        } else {
+          const dataMove = await resMove.json().catch(() => ({}));
+          if (Array.isArray(dataMove.failed) && dataMove.failed.length > 0) {
+            setSqlMove(dataMove.failed.join('\n'));
+          }
+        }
       }
       addToast('Records inserted', 'success');
     } catch (err) {
