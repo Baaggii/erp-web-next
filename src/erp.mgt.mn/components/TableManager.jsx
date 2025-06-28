@@ -981,6 +981,36 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     );
   }
 
+  const totalAmountSet = useMemo(
+    () => new Set(formConfig?.totalAmountFields || []),
+    [formConfig],
+  );
+  const totalCurrencySet = useMemo(
+    () => new Set(formConfig?.totalCurrencyFields || []),
+    [formConfig],
+  );
+  const totals = useMemo(() => {
+    const sums = {};
+    columns.forEach((c) => {
+      if (totalAmountSet.has(c) || totalCurrencySet.has(c) || c === 'TotalCur') {
+        sums[c] = rows.reduce((sum, r) => sum + Number(r[c] || 0), 0);
+      }
+    });
+    return { sums, count: rows.length };
+  }, [columns, rows, totalAmountSet, totalCurrencySet]);
+
+  const showTotals = useMemo(
+    () =>
+      columns.some(
+        (c) =>
+          totalAmountSet.has(c) ||
+          totalCurrencySet.has(c) ||
+          c === 'TotalCur' ||
+          c === 'TotalAmt',
+      ),
+    [columns, totalAmountSet, totalCurrencySet],
+  );
+
   return (
     <div>
       <div
@@ -1380,6 +1410,42 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
             </tr>
       ))}
       </tbody>
+      {showTotals && (
+        <tfoot>
+          <tr>
+            <td
+              style={{
+                padding: '0.5rem',
+                border: '1px solid #d1d5db',
+                fontWeight: 'bold',
+                textAlign: 'center',
+              }}
+            >
+              TOTAL
+            </td>
+            {columns.map((c) => {
+              let val = '';
+              if (c === 'TotalCur') val = totals.sums[c] ?? '';
+              else if (c === 'TotalAmt') val = totals.count;
+              else if (totals.sums[c] !== undefined) val = totals.sums[c];
+              return (
+                <td
+                  key={c}
+                  style={{
+                    padding: '0.5rem',
+                    border: '1px solid #d1d5db',
+                    textAlign: columnAlign[c],
+                    fontWeight: 'bold',
+                  }}
+                >
+                  {val}
+                </td>
+              );
+            })}
+            <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}></td>
+          </tr>
+        </tfoot>
+      )}
       </table>
       </div>
       <div
