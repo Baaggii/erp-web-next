@@ -181,8 +181,9 @@ export default forwardRef(function InlineTransactionTable({
       }
     }
     return (
-      <input
-        className="w-full border px-1"
+      <textarea
+        rows={1}
+        className="w-full border px-1 resize-y whitespace-pre-wrap"
         value={typeof val === 'object' ? val.value : val}
         onChange={(e) => handleChange(idx, f, e.target.value)}
         ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
