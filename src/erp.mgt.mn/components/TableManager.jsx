@@ -17,6 +17,24 @@ function ch(n) {
   return Math.round(n * 8);
 }
 
+function logRowsMemory(rows) {
+  if (process.env.NODE_ENV === 'production') return;
+  try {
+    const sizeMB = JSON.stringify(rows).length / 1024 / 1024;
+    const timestamp = new Date().toISOString();
+    const message = `Loaded ${rows.length} transactions (~${sizeMB.toFixed(2)} MB) at ${timestamp}`;
+    if (!window.memoryLogs) window.memoryLogs = [];
+    window.memoryLogs.push(message);
+    if (sizeMB > 10 || rows.length > 10000) {
+      console.warn(message);
+    } else {
+      console.log(message);
+    }
+  } catch (err) {
+    console.error('Failed to compute memory usage', err);
+  }
+}
+
 const MAX_WIDTH = ch(40);
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
@@ -454,10 +472,12 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
       })
       .then((data) => {
         if (canceled) return;
-        setRows(data.rows || []);
+        const rows = data.rows || [];
+        setRows(rows);
         setCount(data.count || 0);
         // clear selections when data changes
         setSelectedRows(new Set());
+        logRowsMemory(rows);
       })
       .catch(() => {
         if (!canceled) addToast('Failed to load table data', 'error');
@@ -693,8 +713,10 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         const data = await fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
           credentials: 'include',
         }).then((r) => r.json());
-        setRows(data.rows || []);
+        const rows = data.rows || [];
+        setRows(rows);
         setCount(data.count || 0);
+        logRowsMemory(rows);
         setSelectedRows(new Set());
         setShowForm(false);
         setEditing(null);
@@ -742,8 +764,10 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
         { credentials: 'include' },
       ).then((r) => r.json());
-      setRows(data.rows || []);
+      const rows = data.rows || [];
+      setRows(rows);
       setCount(data.count || 0);
+      logRowsMemory(rows);
       setSelectedRows(new Set());
       addToast('Deleted', 'success');
     } else {
@@ -879,8 +903,10 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     } else {
       addToast('Failed to load table data', 'error');
     }
-    setRows(data.rows || []);
+    const rows = data.rows || [];
+    setRows(rows);
     setCount(data.count || 0);
+    logRowsMemory(rows);
     setSelectedRows(new Set());
     addToast('Deleted', 'success');
   }
