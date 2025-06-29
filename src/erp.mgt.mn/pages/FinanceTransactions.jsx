@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import TableManager from '../components/TableManager.jsx';
+import TransactionsTable from '../components/TransactionsTable.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { useRolePermissions } from '../hooks/useRolePermissions.js';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
@@ -15,14 +16,13 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const [name, setName] = useState(() => sessionState.name || searchParams.get(paramKey) || '');
   const [table, setTable] = useState(() => sessionState.table || '');
   const [config, setConfig] = useState(() => sessionState.config || null);
-  const [refreshId, setRefreshId] = useState(() => sessionState.refreshId || 0);
-  const [showTable, setShowTable] = useState(() => sessionState.showTable || false);
   const { company } = useContext(AuthContext);
   const perms = useRolePermissions();
   const licensed = useCompanyModules(company?.company_id);
-  const tableRef = useRef(null);
   const prevModuleKey = useRef(moduleKey);
   const { addToast } = useToast();
+  const [dateFilter, setDateFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
 
   
   useEffect(() => {
@@ -41,14 +41,12 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
     setName(sessionState.name || '');
     setTable(sessionState.table || '');
     setConfig(sessionState.config || null);
-    setRefreshId(sessionState.refreshId || 0);
-    setShowTable(sessionState.showTable || false);
   }, [moduleKey]);
 
   // persist state to session
   useEffect(() => {
-    setSessionState({ name, table, config, refreshId, showTable });
-  }, [name, table, config, refreshId, showTable, setSessionState]);
+    setSessionState({ name, table, config });
+  }, [name, table, config, setSessionState]);
 
   useEffect(() => {
     setSearchParams((prev) => {
@@ -220,23 +218,32 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
         )}
       {table && config && (
         <div style={{ marginBottom: '0.5rem' }}>
-          <button onClick={() => tableRef.current?.openAdd()} style={{ marginRight: '0.5rem' }}>
-            Add Transaction
-          </button>
-          <button onClick={() => setShowTable((v) => !v)}>
-            {showTable ? 'Hide Table' : 'View Table'}
-          </button>
+          <label style={{ marginRight: '0.5rem' }}>
+            Date:
+            <input
+              type="date"
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              style={{ marginLeft: '0.25rem' }}
+            />
+          </label>
+          <label style={{ marginRight: '0.5rem' }}>
+            Type:
+            <input
+              type="text"
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              style={{ marginLeft: '0.25rem' }}
+            />
+          </label>
         </div>
       )}
       {table && config && (
-        <TableManager
-          ref={tableRef}
-          table={table}
-          refreshId={refreshId}
-          formConfig={config}
-          initialPerPage={10}
-          addLabel="Add Transaction"
-          showTable={showTable}
+        <TransactionsTable
+          branchId={company?.branch_id}
+          type={typeFilter}
+          date={dateFilter}
+          perPage={10}
         />
       )}
       {transactionNames.length === 0 && (
