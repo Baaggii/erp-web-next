@@ -87,7 +87,7 @@ export default function RowFormModal({
 
   function normalizeDateInput(value, format) {
     if (typeof value !== 'string') return value;
-    let v = value.replace(/^(\d{4})\.(\d{2})\.(\d{2})/, '$1-$2-$3');
+    let v = value.replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
     const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
     if (isoRe.test(v)) {
       const d = new Date(v);
@@ -96,6 +96,11 @@ export default function RowFormModal({
       return d.toISOString().slice(0, 19).replace('T', ' ');
     }
     return v;
+  }
+
+  function normalizeNumberInput(value) {
+    if (typeof value !== 'string') return value;
+    return value.replace(',', '.');
   }
 
   function isValidDate(value, format) {
@@ -165,6 +170,9 @@ export default function RowFormModal({
     if (e.key !== 'Enter') return;
     e.preventDefault();
     let val = normalizeDateInput(e.target.value, placeholders[col]);
+    if (totalAmountSet.has(col) || totalCurrencySet.has(col)) {
+      val = normalizeNumberInput(val);
+    }
     if (formVals[col] !== val) {
       setFormVals((v) => ({ ...v, [col]: val }));
       onChange({ [col]: val });
@@ -176,6 +184,14 @@ export default function RowFormModal({
     }
     if (requiredFields.includes(col) && !val) {
       setErrors((er) => ({ ...er, [col]: 'Please enter value' }));
+      return;
+    }
+    if (
+      (totalAmountSet.has(col) || totalCurrencySet.has(col)) &&
+      val !== '' &&
+      isNaN(Number(normalizeNumberInput(val)))
+    ) {
+      setErrors((er) => ({ ...er, [col]: 'Invalid number' }));
       return;
     }
     const enabled = columns.filter((c) => !disabledFields.includes(c));
@@ -215,15 +231,18 @@ export default function RowFormModal({
         const normalized = {};
         Object.entries(r).forEach(([k, v]) => {
           const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
-          normalized[k] = placeholders[k]
-            ? normalizeDateInput(raw, placeholders[k])
-            : raw;
+          let val = placeholders[k] ? normalizeDateInput(raw, placeholders[k]) : raw;
+          if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
+            val = normalizeNumberInput(val);
+          }
+          normalized[k] = val;
         });
         requiredFields.forEach((f) => {
           if (!normalized[f]) hasMissing = true;
           if (
             (totalAmountSet.has(f) || totalCurrencySet.has(f)) &&
-            isNaN(Number(normalized[f]))
+            normalized[f] !== '' &&
+            isNaN(Number(normalizeNumberInput(normalized[f])))
           )
             hasInvalid = true;
           const ph = placeholders[f];
@@ -274,9 +293,11 @@ export default function RowFormModal({
       if (ok) {
         const normalized = {};
         Object.entries(formVals).forEach(([k, v]) => {
-          normalized[k] = placeholders[k]
-            ? normalizeDateInput(v, placeholders[k])
-            : v;
+          let val = placeholders[k] ? normalizeDateInput(v, placeholders[k]) : v;
+          if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
+            val = normalizeNumberInput(val);
+          }
+          normalized[k] = val;
         });
         await Promise.resolve(onSubmit(normalized));
       } else {

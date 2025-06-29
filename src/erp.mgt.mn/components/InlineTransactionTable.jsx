@@ -12,6 +12,24 @@ const currencyFmt = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 2,
 });
 
+function normalizeNumberInput(value) {
+  if (typeof value !== 'string') return value;
+  return value.replace(',', '.');
+}
+
+function normalizeDateInput(value, format) {
+  if (typeof value !== 'string') return value;
+  let v = value.replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
+  const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
+  if (isoRe.test(v)) {
+    const d = new Date(v);
+    if (format === 'YYYY-MM-DD') return d.toISOString().slice(0, 10);
+    if (format === 'HH:MM:SS') return d.toISOString().slice(11, 19);
+    return d.toISOString().slice(0, 19).replace('T', ' ');
+  }
+  return v;
+}
+
 export default forwardRef(function InlineTransactionTable({
   fields = [],
   relations = {},
@@ -55,7 +73,7 @@ export default forwardRef(function InlineTransactionTable({
   function isValidDate(value, format) {
     if (!value) return true;
     const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
-    let v = String(value).replace(/^(\d{4})\.(\d{2})\.(\d{2})/, '$1-$2-$3');
+    let v = normalizeDateInput(String(value), format);
     if (isoRe.test(v)) {
       const d = new Date(v);
       if (format === 'YYYY-MM-DD') v = d.toISOString().slice(0, 10);
@@ -113,7 +131,13 @@ export default forwardRef(function InlineTransactionTable({
     if (requiredFields.length > 0 && rows.length > 0) {
       const prev = rows[rows.length - 1];
       for (const f of requiredFields) {
-        const val = prev[f];
+        let val = prev[f];
+        if (placeholders[f]) {
+          val = normalizeDateInput(val, placeholders[f]);
+        }
+        if (totalAmountSet.has(f) || totalCurrencySet.has(f)) {
+          val = normalizeNumberInput(val);
+        }
         if (!val) {
           setErrorMsg('Please fill required fields before adding new row.');
           setInvalidCell({ row: rows.length - 1, field: f });
@@ -126,7 +150,8 @@ export default forwardRef(function InlineTransactionTable({
         }
         if (
           (totalAmountSet.has(f) || totalCurrencySet.has(f)) &&
-          isNaN(Number(val))
+          val !== '' &&
+          isNaN(Number(normalizeNumberInput(val)))
         ) {
           setErrorMsg('Invalid number in ' + (labels[f] || f));
           setInvalidCell({ row: rows.length - 1, field: f });
@@ -181,7 +206,13 @@ export default forwardRef(function InlineTransactionTable({
   async function saveRow(idx) {
     const row = rows[idx] || {};
     for (const f of requiredFields) {
-      const val = row[f];
+      let val = row[f];
+      if (placeholders[f]) {
+        val = normalizeDateInput(val, placeholders[f]);
+      }
+      if (totalAmountSet.has(f) || totalCurrencySet.has(f)) {
+        val = normalizeNumberInput(val);
+      }
       if (!val) {
         setErrorMsg('Please fill required fields.');
         setInvalidCell({ row: idx, field: f });
@@ -194,7 +225,8 @@ export default forwardRef(function InlineTransactionTable({
       }
       if (
         (totalAmountSet.has(f) || totalCurrencySet.has(f)) &&
-        isNaN(Number(val))
+        val !== '' &&
+        isNaN(Number(normalizeNumberInput(val)))
       ) {
         setErrorMsg('Invalid number in ' + (labels[f] || f));
         setInvalidCell({ row: idx, field: f });
@@ -220,7 +252,12 @@ export default forwardRef(function InlineTransactionTable({
     const cleaned = {};
     Object.entries(row).forEach(([k, v]) => {
       if (k === '_saved') return;
-      cleaned[k] = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
+      let val = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
+      if (placeholders[k]) val = normalizeDateInput(val, placeholders[k]);
+      if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
+        val = normalizeNumberInput(val);
+      }
+      cleaned[k] = val;
     });
     const ok = await Promise.resolve(onRowSubmit(cleaned));
     if (ok !== false) {
@@ -242,11 +279,14 @@ export default forwardRef(function InlineTransactionTable({
         f === 'TotalCur' ||
         f === 'TotalAmt'
       ) {
-        sums[f] = rows.reduce((sum, r) => sum + Number(r[f] || 0), 0);
+        sums[f] = rows.reduce(
+          (sum, r) => sum + Number(normalizeNumberInput(r[f] || 0)),
+          0,
+        );
       }
     });
     const count = rows.filter((r) =>
-      totalAmountFields.some((col) => Number(r[col] || 0)),
+      totalAmountFields.some((col) => Number(normalizeNumberInput(r[col] || 0))),
     ).length;
     return { sums, count };
   }, [rows, fields, totalAmountSet, totalCurrencySet, totalAmountFields]);
@@ -254,6 +294,46 @@ export default forwardRef(function InlineTransactionTable({
   function handleKeyDown(e, rowIdx, colIdx) {
     if (e.key !== 'Enter') return;
     e.preventDefault();
+    const field = fields[colIdx];
+    let val = e.target.value;
+    if (placeholders[field]) {
+      val = val.replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
+    }
+    if (totalAmountSet.has(field) || totalCurrencySet.has(field)) {
+      val = normalizeNumberInput(val);
+    }
+    if (rows[rowIdx]?.[field] !== val) {
+      handleChange(rowIdx, field, val);
+      if (val !== e.target.value) e.target.value = val;
+    }
+    if (
+      requiredFields.includes(field) &&
+      (val === '' || val === undefined)
+    ) {
+      setErrorMsg('Please fill required fields.');
+      setInvalidCell({ row: rowIdx, field });
+      e.target.focus();
+      if (e.target.select) e.target.select();
+      return;
+    }
+    if (
+      (totalAmountSet.has(field) || totalCurrencySet.has(field)) &&
+      val !== '' &&
+      isNaN(Number(normalizeNumberInput(val)))
+    ) {
+      setErrorMsg('Invalid number in ' + (labels[field] || field));
+      setInvalidCell({ row: rowIdx, field });
+      e.target.focus();
+      if (e.target.select) e.target.select();
+      return;
+    }
+    if (placeholders[field] && !isValidDate(val, placeholders[field])) {
+      setErrorMsg('Invalid date in ' + (labels[field] || field));
+      setInvalidCell({ row: rowIdx, field });
+      e.target.focus();
+      if (e.target.select) e.target.select();
+      return;
+    }
     const nextCol = colIdx + 1;
     if (nextCol < fields.length) {
       const el = inputRefs.current[`${rowIdx}-${nextCol}`];

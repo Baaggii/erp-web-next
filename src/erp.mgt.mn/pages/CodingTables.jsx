@@ -41,6 +41,7 @@ export default function CodingTablesPage() {
   const [extraFields, setExtraFields] = useState(['']);
   const [headerMap, setHeaderMap] = useState({});
   const [renameMap, setRenameMap] = useState({});
+  const [duplicateHeaders, setDuplicateHeaders] = useState(new Set());
   const [populateRange, setPopulateRange] = useState(false);
   const [startYear, setStartYear] = useState('');
   const [endYear, setEndYear] = useState('');
@@ -223,11 +224,13 @@ export default function CodingTablesPage() {
     const keepIdx = [];
     const map = {};
     const seen = {};
+    const dup = new Set();
     raw.forEach((h, i) => {
       if (String(h).trim().length > 0) {
         let clean = cleanIdentifier(h);
         if (seen[clean]) {
           seen[clean] += 1;
+          dup.add(clean);
           clean = `${clean}_${seen[clean]}`;
         } else {
           seen[clean] = 1;
@@ -278,7 +281,8 @@ export default function CodingTablesPage() {
       az[h] = !nn[h];
     });
     setAllowZeroMap(az);
-    if (Object.values(seen).some((v) => v > 1)) {
+    setDuplicateHeaders(dup);
+    if (dup.size > 0) {
       addToast('Duplicate header names detected. Please rename them.', 'warning');
     }
   }
@@ -1510,13 +1514,24 @@ export default function CodingTablesPage() {
               <div>
                 <h4>Mongolian Field Names</h4>
                 {allFields.map((h) => (
-                  <div key={h} style={{ marginBottom: '0.25rem' }}>
+                  <div
+                    key={h}
+                    style={{
+                      marginBottom: '0.25rem',
+                      color: duplicateHeaders.has(h) ? 'red' : 'inherit',
+                    }}
+                  >
                     {h}:{' '}
                     <input
                       value={renameMap[h] || h}
-                      onChange={(e) =>
-                        setRenameMap({ ...renameMap, [h]: e.target.value })
-                      }
+                      onChange={(e) => {
+                        setRenameMap({ ...renameMap, [h]: e.target.value });
+                        setDuplicateHeaders((d) => {
+                          const next = new Set(d);
+                          next.delete(h);
+                          return next;
+                        });
+                      }}
                       style={{ marginRight: '0.5rem' }}
                     />
                     <input
