@@ -150,7 +150,7 @@ export default function RowFormModal({
     setFormVals(vals);
     inputRefs.current = {};
     setErrors({});
-  }, [row, visible, placeholders, user, company]);
+  }, [row, visible, user, company]);
 
   if (!visible) return null;
 
