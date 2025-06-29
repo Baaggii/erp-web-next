@@ -7,6 +7,11 @@ import React, {
 } from 'react';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 
+const currencyFmt = new Intl.NumberFormat('en-US', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
 export default forwardRef(function InlineTransactionTable({
   fields = [],
   relations = {},
@@ -103,15 +108,23 @@ export default forwardRef(function InlineTransactionTable({
   }
 
 
-  const totals = {};
-  fields.forEach((f) => {
-    if (totalAmountSet.has(f) || totalCurrencySet.has(f)) {
-      totals[f] = rows.reduce((sum, r) => sum + Number(r[f] || 0), 0);
-    }
-  });
-  const count = rows.filter((r) =>
-    totalAmountFields.some((f) => Number(r[f] || 0)),
-  ).length;
+  const totals = React.useMemo(() => {
+    const sums = {};
+    fields.forEach((f) => {
+      if (
+        totalAmountSet.has(f) ||
+        totalCurrencySet.has(f) ||
+        f === 'TotalCur' ||
+        f === 'TotalAmt'
+      ) {
+        sums[f] = rows.reduce((sum, r) => sum + Number(r[f] || 0), 0);
+      }
+    });
+    const count = rows.filter((r) =>
+      totalAmountFields.some((col) => Number(r[col] || 0)),
+    ).length;
+    return { sums, count };
+  }, [rows, fields, totalAmountSet, totalCurrencySet, totalAmountFields]);
 
   function handleKeyDown(e, rowIdx, colIdx) {
     if (e.key !== 'Enter') return;
@@ -183,18 +196,23 @@ export default forwardRef(function InlineTransactionTable({
     return (
       <textarea
         rows={1}
-        className="w-full border px-1 resize-y whitespace-pre-wrap"
+        className="w-full border px-1 resize-none whitespace-pre-wrap"
+        style={{ overflow: 'hidden' }}
         value={typeof val === 'object' ? val.value : val}
         onChange={(e) => handleChange(idx, f, e.target.value)}
         ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
         onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
+        onInput={(e) => {
+          e.target.style.height = 'auto';
+          e.target.style.height = `${e.target.scrollHeight}px`;
+        }}
       />
     );
   }
 
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-max border border-gray-300 text-xs whitespace-nowrap">
+      <table className="min-w-max border border-gray-300 text-xs">
         <thead className="bg-gray-50">
           <tr>
             {fields.map((f) => {
@@ -226,7 +244,7 @@ export default forwardRef(function InlineTransactionTable({
           {rows.map((r, idx) => (
             <tr key={idx}>
               {fields.map((f, cIdx) => (
-                <td key={f} className="border px-1 py-1">
+                <td key={f} className="border px-1 py-1 align-top">
                   {renderCell(idx, f, cIdx)}
                 </td>
               ))}
@@ -247,18 +265,35 @@ export default forwardRef(function InlineTransactionTable({
         {(totalAmountFields.length > 0 || totalCurrencyFields.length > 0) && (
           <tfoot>
             <tr>
-              {fields.map((f, i) => (
-                <td key={f} className="border px-1 py-1 font-semibold">
-                  {i === 0 ? 'НИЙТ' : ''}
-                </td>
-              ))}
-              <td className="border px-1 py-1">{count}</td>
+              <td className="border px-1 py-1 font-semibold text-center">НИЙТ</td>
+              {fields.map((f) => {
+                let val = '';
+                if (totalCurrencySet.has(f) || f === 'TotalCur') {
+                  val = currencyFmt.format(totals.sums[f] || 0);
+                } else if (totalAmountSet.has(f) || f === 'TotalAmt') {
+                  val = totals.sums[f] !== undefined ? totals.sums[f] : '';
+                } else if (totals.sums[f] !== undefined) {
+                  val = totals.sums[f];
+                }
+                return (
+                  <td key={f} className="border px-1 py-1 font-semibold">
+                    {val}
+                  </td>
+                );
+              })}
+              <td className="border px-1 py-1" />
             </tr>
             <tr>
-              {fields.map((f) => (
-                <td key={f} className="border px-1 py-1 font-semibold">
-                  {totals[f] !== undefined ? totals[f] : ''}
+              <td className="border px-1 py-1 font-semibold text-center">
+                мөрийн тоо
+              </td>
+              {fields.length > 0 && (
+                <td className="border px-1 py-1 font-semibold">
+                  {totals.count}
                 </td>
+              )}
+              {fields.slice(1).map((f) => (
+                <td key={f} className="border px-1 py-1"></td>
               ))}
               <td className="border px-1 py-1" />
             </tr>
