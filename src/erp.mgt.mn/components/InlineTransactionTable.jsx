@@ -31,6 +31,8 @@ export default forwardRef(function InlineTransactionTable({
   const inputRefs = useRef({});
   const focusRow = useRef(collectRows ? 0 : null);
   const addBtnRef = useRef(null);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [invalidCell, setInvalidCell] = useState(null);
 
   const totalAmountSet = new Set(totalAmountFields);
   const totalCurrencySet = new Set(totalCurrencyFields);
@@ -112,19 +114,37 @@ export default forwardRef(function InlineTransactionTable({
       for (const f of requiredFields) {
         const val = prev[f];
         if (!val) {
-          alert('Please fill required fields before adding new row.');
+          setErrorMsg('Please fill required fields before adding new row.');
+          setInvalidCell({ row: rows.length - 1, field: f });
+          const el = inputRefs.current[`${rows.length - 1}-${fields.indexOf(f)}`];
+          if (el) {
+            el.focus();
+            if (el.select) el.select();
+          }
           return;
         }
         if (
           (totalAmountSet.has(f) || totalCurrencySet.has(f)) &&
           isNaN(Number(val))
         ) {
-          alert('Invalid number in ' + (labels[f] || f));
+          setErrorMsg('Invalid number in ' + (labels[f] || f));
+          setInvalidCell({ row: rows.length - 1, field: f });
+          const el = inputRefs.current[`${rows.length - 1}-${fields.indexOf(f)}`];
+          if (el) {
+            el.focus();
+            if (el.select) el.select();
+          }
           return;
         }
         const ph = placeholders[f];
         if (ph && !isValidDate(val, ph)) {
-          alert('Invalid date in ' + (labels[f] || f));
+          setErrorMsg('Invalid date in ' + (labels[f] || f));
+          setInvalidCell({ row: rows.length - 1, field: f });
+          const el = inputRefs.current[`${rows.length - 1}-${fields.indexOf(f)}`];
+          if (el) {
+            el.focus();
+            if (el.select) el.select();
+          }
           return;
         }
       }
@@ -151,6 +171,10 @@ export default forwardRef(function InlineTransactionTable({
       onRowsChange(next);
       return next;
     });
+    if (invalidCell && invalidCell.row === rowIdx && invalidCell.field === field) {
+      setInvalidCell(null);
+      setErrorMsg('');
+    }
   }
 
   async function saveRow(idx) {
@@ -234,6 +258,7 @@ export default forwardRef(function InlineTransactionTable({
   function renderCell(idx, f, colIdx) {
     const val = rows[idx]?.[f] ?? '';
     const isRel = relationConfigs[f] || Array.isArray(relations[f]);
+    const invalid = invalidCell && invalidCell.row === idx && invalidCell.field === f;
     if (rows[idx]?._saved && !collectRows) {
       return typeof val === 'object' ? val.label : val;
     }
@@ -252,6 +277,7 @@ export default forwardRef(function InlineTransactionTable({
             }
             inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
             onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
+            className={invalid ? 'border-red-500 bg-red-100' : ''}
           />
         );
       }
@@ -259,7 +285,7 @@ export default forwardRef(function InlineTransactionTable({
         const inputVal = typeof val === 'object' ? val.value : val;
         return (
           <select
-            className="w-full border px-1"
+            className={`w-full border px-1 ${invalid ? 'border-red-500 bg-red-100' : ''}`}
             value={inputVal}
             onChange={(e) => handleChange(idx, f, e.target.value)}
             ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
@@ -278,7 +304,7 @@ export default forwardRef(function InlineTransactionTable({
     return (
       <textarea
         rows={1}
-        className="w-full border px-1 resize-none whitespace-pre-wrap"
+        className={`w-full border px-1 resize-none whitespace-pre-wrap ${invalid ? 'border-red-500 bg-red-100' : ''}`}
         style={{ overflow: 'hidden' }}
         value={typeof val === 'object' ? val.value : val}
         onChange={(e) => handleChange(idx, f, e.target.value)}
@@ -347,7 +373,6 @@ export default forwardRef(function InlineTransactionTable({
         {(totalAmountFields.length > 0 || totalCurrencyFields.length > 0) && (
           <tfoot>
             <tr>
-              <td className="border px-1 py-1 font-semibold text-center">НИЙТ</td>
               {fields.map((f) => {
                 let val = '';
                 if (totalCurrencySet.has(f) || f === 'TotalCur') {
@@ -363,25 +388,24 @@ export default forwardRef(function InlineTransactionTable({
                   </td>
                 );
               })}
-              <td className="border px-1 py-1" />
+              <td className="border px-1 py-1 font-semibold text-center">НИЙТ</td>
             </tr>
             <tr>
+              {fields.map((f, idx) => (
+                <td key={f} className="border px-1 py-1 font-semibold">
+                  {idx === 0 ? totals.count : ''}
+                </td>
+              ))}
               <td className="border px-1 py-1 font-semibold text-center">
                 мөрийн тоо
               </td>
-              {fields.length > 0 && (
-                <td className="border px-1 py-1 font-semibold">
-                  {totals.count}
-                </td>
-              )}
-              {fields.slice(1).map((f) => (
-                <td key={f} className="border px-1 py-1"></td>
-              ))}
-              <td className="border px-1 py-1" />
             </tr>
           </tfoot>
         )}
       </table>
+      {errorMsg && (
+        <div className="text-red-600 text-sm mt-1">{errorMsg}</div>
+      )}
       <button
         onClick={addRow}
         ref={addBtnRef}

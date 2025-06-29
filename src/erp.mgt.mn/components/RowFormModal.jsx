@@ -434,6 +434,25 @@ export default function RowFormModal({
     );
   }
 
+  function renderHeaderTable(cols) {
+    if (cols.length === 0) return null;
+    return (
+      <div className="mb-4">
+        <h3 className="mt-0 mb-1 font-semibold">Header</h3>
+        <table className="min-w-full border border-gray-300 text-sm">
+          <tbody>
+            {cols.map((c) => (
+              <tr key={c}>
+                <th className="border px-2 py-1 text-left">{labels[c] || c}</th>
+                <td className="border px-2 py-1">{formVals[c]}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
   function renderSection(title, cols) {
     if (cols.length === 0) return null;
     return (
@@ -468,12 +487,16 @@ export default function RowFormModal({
     const mainTableHtml = () => {
       if (!useGrid) return rowHtml(m, true);
       if (gridRows.length === 0) return '';
-      const header = m.map((c) => `<th>${labels[c] || c}</th>`).join('');
+      const used = m.filter((c) =>
+        gridRows.some((r) => r[c] !== '' && r[c] !== null && r[c] !== 0),
+      );
+      if (used.length === 0) return '';
+      const header = used.map((c) => `<th>${labels[c] || c}</th>`).join('');
       const body = gridRows
         .map(
           (r) =>
             '<tr>' +
-            m.map((c) => `<td>${r[c] !== undefined ? r[c] : ''}</td>`).join('') +
+            used.map((c) => `<td>${r[c] !== undefined ? r[c] : ''}</td>`).join('') +
             '</tr>',
         )
         .join('');
@@ -486,9 +509,9 @@ export default function RowFormModal({
     html +=
       '<link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.1/dist/tailwind.min.css" rel="stylesheet">';
     html += '</head><body>';
-    if (h.length) html += `<h3>Header</h3><table>${rowHtml(h)}</table>`;
+    if (h.length) html += `<h3>Header</h3><table>${rowHtml(h, true)}</table>`;
     if (m.length) html += `<h3>Main</h3>${mainTableHtml()}`;
-    if (f.length) html += `<h3>Footer</h3><table>${rowHtml(f)}</table>`;
+    if (f.length) html += `<h3>Footer</h3><table>${rowHtml(f, true)}</table>`;
     html += '</body></html>';
     const w = window.open('', '_blank');
     w.document.write(html);
@@ -500,7 +523,7 @@ export default function RowFormModal({
   if (inline) {
     return (
       <div className="p-4 space-y-4">
-        {renderSection('Header', headerCols)}
+        {renderHeaderTable(headerCols)}
         {renderMainTable(mainCols)}
         {renderSection('Footer', footerCols)}
       </div>
@@ -520,7 +543,7 @@ export default function RowFormModal({
         }}
         className="p-4 space-y-4"
       >
-        {renderSection('Header', headerCols)}
+        {renderHeaderTable(headerCols)}
         {renderMainTable(mainCols)}
         {renderSection('Footer', footerCols)}
         <div className="mt-2 text-right space-x-2">
