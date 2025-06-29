@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { debugLog } from '../utils/debug.js';
 
 const cache = { keys: null };
 const emitter = new EventTarget();
@@ -28,10 +29,12 @@ export function useTxnModules() {
   }
 
   useEffect(() => {
+    debugLog('useTxnModules effect: initial fetch');
     if (!cache.keys) fetchKeys();
   }, []);
 
   useEffect(() => {
+    debugLog('useTxnModules effect: refresh listener');
     const handler = () => fetchKeys();
     emitter.addEventListener('refresh', handler);
     return () => emitter.removeEventListener('refresh', handler);

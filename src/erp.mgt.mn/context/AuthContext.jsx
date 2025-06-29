@@ -1,5 +1,6 @@
 // src/erp.mgt.mn/context/AuthContext.jsx
 import React, { createContext, useState, useEffect, useContext } from 'react';
+import { debugLog } from '../utils/debug.js';
 
 // Create the AuthContext
 export const AuthContext = createContext({
@@ -15,6 +16,7 @@ export default function AuthContextProvider({ children }) {
 
   // Persist selected company across reloads
   useEffect(() => {
+    debugLog('AuthContext: load stored company');
     const stored = localStorage.getItem('erp_selected_company');
     if (stored) {
       try {
@@ -26,6 +28,7 @@ export default function AuthContextProvider({ children }) {
   }, []);
 
   useEffect(() => {
+    debugLog('AuthContext: persist company');
     if (company) {
       localStorage.setItem('erp_selected_company', JSON.stringify(company));
     } else {
@@ -35,6 +38,7 @@ export default function AuthContextProvider({ children }) {
 
   // On mount, attempt to load the current profile (if a cookie is present)
   useEffect(() => {
+    debugLog('AuthContext: load profile');
     async function loadProfile() {
       try {
         const res = await fetch('/api/auth/me', {

@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
 import './utils/csrfFetch.js';
+import './utils/debug.js';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(

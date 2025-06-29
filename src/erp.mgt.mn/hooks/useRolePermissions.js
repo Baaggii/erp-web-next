@@ -1,4 +1,5 @@
 import { useContext, useEffect, useState } from 'react';
+import { debugLog } from '../utils/debug.js';
 import { AuthContext } from '../context/AuthContext.jsx';
 
 // Cache permissions by role so switching users does not refetch unnecessarily
@@ -39,6 +40,7 @@ export function useRolePermissions() {
   }
 
   useEffect(() => {
+    debugLog('useRolePermissions effect: load perms');
     if (!user) {
       setPerms(null);
       return;
@@ -58,6 +60,7 @@ export function useRolePermissions() {
 
   // Listen for refresh events
   useEffect(() => {
+    debugLog('useRolePermissions effect: refresh listener');
     if (!user) return;
     const roleId =
       company?.role_id || user.role_id || (user.role === 'admin' ? 1 : 2);

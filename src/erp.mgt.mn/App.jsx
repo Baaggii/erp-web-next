@@ -1,10 +1,11 @@
-import React, { useContext } from 'react';
+import React, { useContext, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import AuthContextProvider, { AuthContext } from './context/AuthContext.jsx';
 import { TabProvider } from './context/TabContext.jsx';
 import { TxnSessionProvider } from './context/TxnSessionContext.jsx';
 import { ToastProvider } from './context/ToastContext.jsx';
 import { LoadingProvider } from './context/LoadingContext.jsx';
+import { debugLog } from './utils/debug.js';
 import RequireAuth from './components/RequireAuth.jsx';
 import ERPLayout from './components/ERPLayout.jsx';
 import AppLayout from './components/AppLayout.jsx';
@@ -32,6 +33,10 @@ import { useTxnModules } from './hooks/useTxnModules.js';
 export default function App() {
   const modules = useModules();
   const txnModules = useTxnModules();
+
+  useEffect(() => {
+    debugLog('Component mounted: App');
+  }, []);
 
   const moduleMap = {};
   modules.forEach((m) => {

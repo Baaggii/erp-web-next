@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useModules } from '../hooks/useModules.js';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
+import { debugLog } from '../utils/debug.js';
 
 export default function FormsManagement() {
   const [tables, setTables] = useState([]);
@@ -14,6 +15,9 @@ export default function FormsManagement() {
   const [txnTypes, setTxnTypes] = useState([]);
   const [columns, setColumns] = useState([]);
   const modules = useModules();
+  useEffect(() => {
+    debugLog('Component mounted: FormsManagement');
+  }, []);
   const [config, setConfig] = useState({
     visibleFields: [],
     requiredFields: [],
@@ -503,7 +507,9 @@ export default function FormsManagement() {
             <tbody>
               {columns.map((col) => (
                 <tr key={col}>
-                  <td style={{ border: '1px solid #ccc', padding: '4px' }}>{col}</td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px' }}>
+                    {col != null ? col : ''}
+                  </td>
                   <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
                     <input
                       type="checkbox"
