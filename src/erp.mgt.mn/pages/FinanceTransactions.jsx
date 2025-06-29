@@ -65,10 +65,13 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
     if (sessionLoaded.current) return;
     console.log('FinanceTransactions load session effect');
     setName(sessionState.name || '');
-    setTable(sessionState.table || '');
-    setConfig(sessionState.config || null);
+    const storedTable = sessionState.table || '';
+    if (storedTable !== table) setTable(storedTable);
+    if (sessionState.config !== undefined && sessionState.config !== config)
+      setConfig(sessionState.config || null);
     setRefreshId(sessionState.refreshId || 0);
-    setShowTable(sessionState.showTable || false);
+    const storedShowTable = sessionState.showTable || false;
+    if (storedShowTable !== showTable) setShowTable(storedShowTable);
     sessionLoaded.current = true;
   }, [moduleKey]);
 
@@ -131,7 +134,10 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
           filtered[n] = info;
         });
         setConfigs(filtered);
-        if (name && filtered[name]) setTable(filtered[name].table ?? filtered[name]);
+        if (name && filtered[name]) {
+          const tbl = filtered[name].table ?? filtered[name];
+          if (tbl !== table) setTable(tbl);
+        }
       })
       .catch(() => {
         addToast('Failed to load transaction forms', 'error');
@@ -142,17 +148,17 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   useEffect(() => {
     console.log('FinanceTransactions table sync effect');
     if (!name) {
-      setTable('');
-      setConfig(null);
-      setShowTable(false);
+      if (table !== '') setTable('');
+      if (config !== null) setConfig(null);
+      if (showTable) setShowTable(false);
       return;
     }
     if (configs[name]) {
       const tbl = configs[name].table ?? configs[name];
       if (tbl !== table) {
         setTable(tbl);
-        setConfig(null);
-        setShowTable(false);
+        if (config !== null) setConfig(null);
+        if (showTable) setShowTable(false);
       }
     }
   }, [name, configs]);
@@ -161,16 +167,16 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
     console.log('FinanceTransactions configs empty effect');
     if (Object.keys(configs).length === 0) {
       setName('');
-      setTable('');
-      setConfig(null);
-      setShowTable(false);
+      if (table !== '') setTable('');
+      if (config !== null) setConfig(null);
+      if (showTable) setShowTable(false);
     }
   }, [configs]);
 
   useEffect(() => {
     console.log('FinanceTransactions fetch config effect');
     if (!table || !name) {
-      setConfig(null);
+      if (config !== null) setConfig(null);
       return;
     }
     let canceled = false;
@@ -191,17 +197,17 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
       .then((cfg) => {
         if (canceled) return;
         if (cfg && cfg.moduleKey) {
-          setConfig(cfg);
+          if (cfg !== config) setConfig(cfg);
         } else {
-          setConfig(null);
-          setShowTable(false);
+          if (config !== null) setConfig(null);
+          if (showTable) setShowTable(false);
           addToast('Transaction configuration not found', 'error');
         }
       })
       .catch(() => {
         if (!canceled) {
-          setConfig(null);
-          setShowTable(false);
+          if (config !== null) setConfig(null);
+          if (showTable) setShowTable(false);
           addToast('Failed to load transaction configuration', 'error');
         }
       });
@@ -228,15 +234,15 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
                 const newName = e.target.value;
                 setName(newName);
                 setRefreshId((r) => r + 1);
-                setShowTable(false);
+                if (showTable) setShowTable(false);
                 if (!newName) {
-                  setTable('');
-                  setConfig(null);
+                  if (table !== '') setTable('');
+                  if (config !== null) setConfig(null);
                 } else if (configs[newName]) {
                   const tbl = configs[newName].table ?? configs[newName];
                   if (tbl !== table) {
                     setTable(tbl);
-                    setConfig(null);
+                    if (config !== null) setConfig(null);
                   }
                 }
               }}
