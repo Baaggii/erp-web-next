@@ -750,7 +750,13 @@ export default function CodingTablesPage() {
       return out;
     }
 
-    const fields = Object.keys(columnTypes || {});
+    const fields = [
+      ...(idCol ? [idCol] : []),
+      ...(nmCol ? [nmCol] : []),
+      ...uniqueOnly,
+      ...otherFiltered,
+      ...extra,
+    ];
 
     const structMainStr = buildStructure(tbl, true);
     const insertMainStr = buildInsert(mainRows, tbl, fields);
@@ -1119,6 +1125,17 @@ export default function CodingTablesPage() {
       addToast('Table name required', 'error');
       return;
     }
+    const usedFields = new Set([
+      idColumn,
+      nameColumn,
+      ...otherColumns,
+      ...uniqueFields,
+      ...extraFields.filter((f) => f.trim() !== ''),
+    ]);
+    const filterMap = (obj) =>
+      Object.fromEntries(
+        Object.entries(obj || {}).filter(([k]) => usedFields.has(k))
+      );
     const config = {
       sheet,
       headerRow,
@@ -1129,12 +1146,12 @@ export default function CodingTablesPage() {
       otherColumns,
       uniqueFields,
       calcText,
-      columnTypes,
-      notNullMap,
-      allowZeroMap,
-      defaultValues,
-      defaultFrom,
-      renameMap,
+      columnTypes: filterMap(columnTypes),
+      notNullMap: filterMap(notNullMap),
+      allowZeroMap: filterMap(allowZeroMap),
+      defaultValues: filterMap(defaultValues),
+      defaultFrom: filterMap(defaultFrom),
+      renameMap: filterMap(renameMap),
       extraFields: extraFields.filter((f) => f.trim() !== ''),
       populateRange,
       startYear,
