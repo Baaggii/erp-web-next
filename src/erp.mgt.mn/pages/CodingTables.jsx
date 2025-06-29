@@ -1274,20 +1274,49 @@ export default function CodingTablesPage() {
         setCalcText(cfg.calcText || '');
         setColumnTypes(cfg.columnTypes || {});
         if (cfg.columnTypes) {
-        const baseHeaders = Object.keys(cfg.columnTypes || {});
-        const merged = Array.from(new Set([
-          ...baseHeaders,
-          ...(cfg.otherColumns || []),
-          ...(cfg.uniqueFields || [])
-        ]));
-        setHeaders(merged);
-      }
+          const baseHeaders = Object.keys(cfg.columnTypes || {});
+          const merged = Array.from(
+            new Set([
+              ...baseHeaders,
+              ...(cfg.otherColumns || []),
+              ...(cfg.uniqueFields || []),
+            ])
+          );
+          setHeaders(merged);
+        }
 
-        setNotNullMap(cfg.notNullMap || {});
-        setAllowZeroMap(cfg.allowZeroMap || {});
-        setDefaultValues(cfg.defaultValues || {});
-        setDefaultFrom(cfg.defaultFrom || {});
-        setRenameMap(cfg.renameMap || {});
+        const fieldSet = new Set([
+          ...Object.keys(cfg.columnTypes || {}),
+          ...extras.filter((f) => f.trim() !== ''),
+          ...(cfg.otherColumns || []),
+          ...(cfg.uniqueFields || []),
+          ...(cfg.idColumn ? [cfg.idColumn] : []),
+          ...(cfg.nameColumn ? [cfg.nameColumn] : []),
+          ...Object.keys(cfg.notNullMap || {}),
+          ...Object.keys(cfg.allowZeroMap || {}),
+          ...Object.keys(cfg.defaultValues || {}),
+          ...Object.keys(cfg.defaultFrom || {}),
+          ...Object.keys(cfg.renameMap || {}),
+        ]);
+        const fields = Array.from(fieldSet);
+        const nn = {};
+        const az = {};
+        const dv = {};
+        const df = {};
+        const rm = {};
+        fields.forEach((f) => {
+          nn[f] = cfg.notNullMap && f in cfg.notNullMap ? cfg.notNullMap[f] : false;
+          az[f] = cfg.allowZeroMap && f in cfg.allowZeroMap ? cfg.allowZeroMap[f] : !nn[f];
+          dv[f] = cfg.defaultValues && f in cfg.defaultValues ? cfg.defaultValues[f] : '';
+          df[f] = cfg.defaultFrom && f in cfg.defaultFrom ? cfg.defaultFrom[f] : '';
+          rm[f] = cfg.renameMap && f in cfg.renameMap ? cfg.renameMap[f] : f;
+        });
+
+        setNotNullMap(nn);
+        setAllowZeroMap(az);
+        setDefaultValues(dv);
+        setDefaultFrom(df);
+        setRenameMap(rm);
         setPopulateRange(cfg.populateRange || false);
         setStartYear(cfg.startYear || '');
         setEndYear(cfg.endYear || '');
