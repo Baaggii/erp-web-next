@@ -1,3 +1,4 @@
+import isEqual from 'lodash.isequal';
 import React, {
   useState,
   useEffect,
@@ -14,6 +15,11 @@ import { useTxnSession } from '../context/TxnSessionContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 
 export default function FinanceTransactions({ moduleKey = 'finance_transactions', moduleLabel = '' }) {
+  const renderCount = useRef(0);
+  renderCount.current++;
+  if (renderCount.current > 10) {
+    console.warn('⚠️ Excessive renders: FinanceTransactions', renderCount.current);
+  }
   const [configs, setConfigs] = useState({});
   const [searchParams, setSearchParams] = useSearchParams();
   const paramKey = useMemo(() => `name_${moduleKey}`, [moduleKey]);
@@ -32,6 +38,9 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const renderCount = useRef(0);
   const mounted = useRef(false);
   const sessionLoaded = useRef(false);
+  const prevSessionRef = useRef({});
+  const prevConfigRef = useRef(null);
+
 
   useEffect(() => {
     console.log('FinanceTransactions render monitor effect');
@@ -61,19 +70,31 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   }, [moduleKey]);
 
   // load stored session for this module
-  useEffect(() => {
-    if (sessionLoaded.current) return;
-    console.log('FinanceTransactions load session effect');
-    setName(sessionState.name || '');
-    const storedTable = sessionState.table || '';
-    if (storedTable !== table) setTable(storedTable);
-    if (sessionState.config !== undefined && sessionState.config !== config)
-      setConfig(sessionState.config || null);
-    setRefreshId(sessionState.refreshId || 0);
-    const storedShowTable = sessionState.showTable || false;
-    if (storedShowTable !== showTable) setShowTable(storedShowTable);
-    sessionLoaded.current = true;
-  }, [moduleKey]);
+  // load stored session for this module
+useEffect(() => {
+  if (sessionLoaded.current) return;
+  console.log('FinanceTransactions load session effect');
+
+  const next = {
+    name: sessionState.name || '',
+    table: sessionState.table || '',
+    config: sessionState.config || null,
+    refreshId: sessionState.refreshId || 0,
+    showTable: sessionState.showTable || false,
+  };
+
+  if (!isEqual(prevSessionRef.current, next)) {
+    setName(next.name);
+    setTable(next.table);
+    setConfig(next.config);
+    setRefreshId(next.refreshId);
+    setShowTable(next.showTable);
+    prevSessionRef.current = next;
+  }
+
+  sessionLoaded.current = true;
+}, [moduleKey]);
+
 
   // persist state to session
   useEffect(() => {
@@ -174,47 +195,49 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   }, [configs]);
 
   useEffect(() => {
-    console.log('FinanceTransactions fetch config effect');
-    if (!table || !name) {
-      if (config !== null) setConfig(null);
-      return;
-    }
-    let canceled = false;
-    fetch(
-      `/api/transaction_forms?table=${encodeURIComponent(
-        table,
-      )}&name=${encodeURIComponent(name)}`,
-      { credentials: 'include' },
-    )
-      .then((res) => {
-        if (canceled) return null;
-        if (!res.ok) {
-          addToast('Failed to load transaction configuration', 'error');
-          return null;
+  console.log('FinanceTransactions fetch config effect');
+  if (!table || !name) {
+    if (config !== null) setConfig(null);
+    return;
+  }
+  let canceled = false;
+  fetch(
+    `/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`,
+    { credentials: 'include' }
+  )
+    .then((res) => {
+      if (canceled) return null;
+      if (!res.ok) {
+        addToast('Failed to load transaction configuration', 'error');
+        return null;
+      }
+      return res.json().catch(() => null);
+    })
+    .then((cfg) => {
+      if (canceled) return;
+      if (cfg && cfg.moduleKey) {
+        if (!isEqual(cfg, prevConfigRef.current)) {
+          setConfig(cfg);
+          prevConfigRef.current = cfg;
         }
-        return res.json().catch(() => null);
-      })
-      .then((cfg) => {
-        if (canceled) return;
-        if (cfg && cfg.moduleKey) {
-          if (cfg !== config) setConfig(cfg);
-        } else {
-          if (config !== null) setConfig(null);
-          if (showTable) setShowTable(false);
-          addToast('Transaction configuration not found', 'error');
-        }
-      })
-      .catch(() => {
-        if (!canceled) {
-          if (config !== null) setConfig(null);
-          if (showTable) setShowTable(false);
-          addToast('Failed to load transaction configuration', 'error');
-        }
-      });
-    return () => {
-      canceled = true;
-    };
-  }, [table, name, addToast]);
+      } else {
+        if (config !== null) setConfig(null);
+        if (showTable) setShowTable(false);
+        addToast('Transaction configuration not found', 'error');
+      }
+    })
+    .catch(() => {
+      if (!canceled) {
+        if (config !== null) setConfig(null);
+        if (showTable) setShowTable(false);
+        addToast('Failed to load transaction configuration', 'error');
+      }
+    });
+  return () => {
+    canceled = true;
+  };
+}, [table, name, addToast]);
+
 
   const transactionNames = useMemo(() => Object.keys(configs), [configs]);
 
@@ -232,9 +255,10 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
               value={name}
               onChange={(e) => {
                 const newName = e.target.value;
+                if (newName === name) return;
                 setName(newName);
                 setRefreshId((r) => r + 1);
-                if (showTable) setShowTable(false);
+                setShowTable(false);
                 if (!newName) {
                   if (table !== '') setTable('');
                   if (config !== null) setConfig(null);
@@ -246,6 +270,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
                   }
                 }
               }}
+
               style={{ width: '100%', padding: '0.5rem', borderRadius: '3px', border: '1px solid #ccc' }}
             >
               <option value="">{caption}</option>
