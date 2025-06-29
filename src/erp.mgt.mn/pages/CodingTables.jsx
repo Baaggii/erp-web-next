@@ -42,6 +42,7 @@ export default function CodingTablesPage() {
   const [headerMap, setHeaderMap] = useState({});
   const [renameMap, setRenameMap] = useState({});
   const [duplicateHeaders, setDuplicateHeaders] = useState(new Set());
+  const [initialDuplicates, setInitialDuplicates] = useState(new Set());
   const [populateRange, setPopulateRange] = useState(false);
   const [startYear, setStartYear] = useState('');
   const [endYear, setEndYear] = useState('');
@@ -61,10 +62,12 @@ export default function CodingTablesPage() {
   }, []);
 
   const allFields = useMemo(() => {
-    return [
-      ...headers,
-      ...extraFields.filter((f) => f.trim() !== ''),
-    ];
+    return Array.from(
+      new Set([
+        ...headers,
+        ...extraFields.filter((f) => f.trim() !== ''),
+      ]),
+    );
   }, [headers, extraFields]);
 
   const hasDateField = useMemo(
@@ -230,16 +233,18 @@ export default function CodingTablesPage() {
         let clean = cleanIdentifier(h);
         if (seen[clean]) {
           seen[clean] += 1;
-          dup.add(clean);
-          clean = `${clean}_${seen[clean]}`;
+          const suffixed = `${clean}_${seen[clean]}`;
+          dup.add(suffixed);
+          hdrs.push(suffixed);
         } else {
           seen[clean] = 1;
+          hdrs.push(clean);
         }
-        hdrs.push(clean);
         keepIdx.push(i);
         const mnVal = mnRaw[i];
+        const key = hdrs[hdrs.length - 1];
         if (mnVal && String(mnVal).trim()) {
-          map[clean] = String(mnVal).trim();
+          map[key] = String(mnVal).trim();
         }
       }
     });
@@ -282,6 +287,7 @@ export default function CodingTablesPage() {
     });
     setAllowZeroMap(az);
     setDuplicateHeaders(dup);
+    setInitialDuplicates(dup);
     if (dup.size > 0) {
       addToast('Duplicate header names detected. Please rename them.', 'warning');
     }
@@ -829,6 +835,10 @@ export default function CodingTablesPage() {
   }
 
   function handleGenerateSql() {
+    if (duplicateHeaders.size > 0) {
+      alert('Please rename duplicate fields first');
+      return;
+    }
     setStructSql('');
     setStructSqlOther('');
     setRecordsSql('');
@@ -837,6 +847,10 @@ export default function CodingTablesPage() {
   }
 
   function handleGenerateRecords() {
+    if (duplicateHeaders.size > 0) {
+      alert('Please rename duplicate fields first');
+      return;
+    }
     setRecordsSql('');
     setRecordsSqlOther('');
     generateFromWorkbook({ structure: false, records: true });
@@ -1513,6 +1527,19 @@ export default function CodingTablesPage() {
               </div>
               <div>
                 <h4>Mongolian Field Names</h4>
+                {initialDuplicates.size > 0 && (
+                  <div style={{ marginBottom: '0.25rem' }}>
+                    {duplicateHeaders.size > 0 ? (
+                      <span style={{ color: 'red' }}>
+                        Duplicate fields: {Array.from(duplicateHeaders).join(', ')}
+                      </span>
+                    ) : (
+                      <span style={{ color: 'green' }}>
+                        Duplicates renamed: {Array.from(initialDuplicates).join(', ')}
+                      </span>
+                    )}
+                  </div>
+                )}
                 {allFields.map((h) => (
                   <div
                     key={h}
