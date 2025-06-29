@@ -1,5 +1,5 @@
 // src/erp.mgt.mn/components/ERPLayout.jsx
-import React, { useContext, useState, useEffect } from "react";
+import React, { useContext, useState, useEffect, useRef } from "react";
 import HeaderMenu from "./HeaderMenu.jsx";
 import UserMenu from "./UserMenu.jsx";
 import { useOutlet, useNavigate, useLocation } from "react-router-dom";
@@ -23,6 +23,11 @@ import Spinner from "./Spinner.jsx";
  */
 export default function ERPLayout() {
   const { user, setUser, company } = useContext(AuthContext);
+  const renderCount = useRef(0);
+  renderCount.current++;
+  if (renderCount.current > 10) {
+    console.warn('Excessive renders: ERPLayout', renderCount.current);
+  }
   useEffect(() => {
     if (window.erpDebug) console.warn('Mounted: ERPLayout');
   }, []);
