@@ -106,6 +106,7 @@ export default forwardRef(function InlineTransactionTable({
         onRowsChange(next);
         return next;
       }),
+    hasInvalid: () => invalidCell !== null,
   }));
 
   function addRow() {
@@ -182,19 +183,37 @@ export default forwardRef(function InlineTransactionTable({
     for (const f of requiredFields) {
       const val = row[f];
       if (!val) {
-        alert('Please fill required fields.');
+        setErrorMsg('Please fill required fields.');
+        setInvalidCell({ row: idx, field: f });
+        const el = inputRefs.current[`${idx}-${fields.indexOf(f)}`];
+        if (el) {
+          el.focus();
+          if (el.select) el.select();
+        }
         return;
       }
       if (
         (totalAmountSet.has(f) || totalCurrencySet.has(f)) &&
         isNaN(Number(val))
       ) {
-        alert('Invalid number in ' + (labels[f] || f));
+        setErrorMsg('Invalid number in ' + (labels[f] || f));
+        setInvalidCell({ row: idx, field: f });
+        const el = inputRefs.current[`${idx}-${fields.indexOf(f)}`];
+        if (el) {
+          el.focus();
+          if (el.select) el.select();
+        }
         return;
       }
       const ph = placeholders[f];
       if (ph && !isValidDate(val, ph)) {
-        alert('Invalid date in ' + (labels[f] || f));
+        setErrorMsg('Invalid date in ' + (labels[f] || f));
+        setInvalidCell({ row: idx, field: f });
+        const el = inputRefs.current[`${idx}-${fields.indexOf(f)}`];
+        if (el) {
+          el.focus();
+          if (el.select) el.select();
+        }
         return;
       }
     }

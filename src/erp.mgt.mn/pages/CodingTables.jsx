@@ -60,11 +60,10 @@ export default function CodingTablesPage() {
   }, []);
 
   const allFields = useMemo(() => {
-    const list = [
+    return [
       ...headers,
       ...extraFields.filter((f) => f.trim() !== ''),
     ];
-    return Array.from(new Set(list));
   }, [headers, extraFields]);
 
   const hasDateField = useMemo(
@@ -223,13 +222,21 @@ export default function CodingTablesPage() {
     const hdrs = [];
     const keepIdx = [];
     const map = {};
+    const seen = {};
     raw.forEach((h, i) => {
       if (String(h).trim().length > 0) {
-        hdrs.push(cleanIdentifier(h));
+        let clean = cleanIdentifier(h);
+        if (seen[clean]) {
+          seen[clean] += 1;
+          clean = `${clean}_${seen[clean]}`;
+        } else {
+          seen[clean] = 1;
+        }
+        hdrs.push(clean);
         keepIdx.push(i);
         const mnVal = mnRaw[i];
         if (mnVal && String(mnVal).trim()) {
-          map[cleanIdentifier(h)] = String(mnVal).trim();
+          map[clean] = String(mnVal).trim();
         }
       }
     });
@@ -271,6 +278,9 @@ export default function CodingTablesPage() {
       az[h] = !nn[h];
     });
     setAllowZeroMap(az);
+    if (Object.values(seen).some((v) => v > 1)) {
+      addToast('Duplicate header names detected. Please rename them.', 'warning');
+    }
   }
 
   function handleExtract() {
