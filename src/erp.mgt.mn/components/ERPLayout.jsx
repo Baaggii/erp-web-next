@@ -23,13 +23,19 @@ import Spinner from "./Spinner.jsx";
  */
 export default function ERPLayout() {
   const { user, setUser, company } = useContext(AuthContext);
+  const mounted = useRef(false);
   const renderCount = useRef(0);
-  renderCount.current++;
-  if (renderCount.current > 10) {
-    console.warn('Excessive renders: ERPLayout', renderCount.current);
+  if (renderCount.current < 50) {
+    renderCount.current += 1;
+    if (renderCount.current > 10 && renderCount.current % 5 === 0) {
+      console.warn('Excessive renders: ERPLayout', renderCount.current);
+    }
   }
   useEffect(() => {
-    if (window.erpDebug) console.warn('Mounted: ERPLayout');
+    if (!mounted.current) {
+      mounted.current = true;
+      if (window.erpDebug) console.warn('Mounted: ERPLayout');
+    }
   }, []);
   const navigate = useNavigate();
   const location = useLocation();
