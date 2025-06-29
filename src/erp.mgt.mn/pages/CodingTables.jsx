@@ -59,14 +59,17 @@ export default function CodingTablesPage() {
       .catch(() => setConfigNames([]));
   }, []);
 
-  const allHeaders = useMemo(
-    () => [...headers, ...extraFields.filter((f) => f.trim() !== '')],
-    [headers, extraFields]
-  );
+  const allFields = useMemo(() => {
+    const list = [
+      ...headers,
+      ...extraFields.filter((f) => f.trim() !== ''),
+    ];
+    return Array.from(new Set(list));
+  }, [headers, extraFields]);
 
   const hasDateField = useMemo(
-    () => allHeaders.some((h) => /year|month|date/i.test(h)),
-    [allHeaders]
+    () => allFields.some((h) => /year|month|date/i.test(h)),
+    [allFields]
   );
 
   function computeIdCandidates(hdrs, extras, mode) {
@@ -747,13 +750,13 @@ export default function CodingTablesPage() {
       return out;
     }
 
-    const allFields = Object.keys(columnTypes || {});
+    const fields = Object.keys(columnTypes || {});
 
     const structMainStr = buildStructure(tbl, true);
-    const insertMainStr = buildInsert(mainRows, tbl, allFields);
+    const insertMainStr = buildInsert(mainRows, tbl, fields);
     const otherCombined = [...otherRows, ...dupRows];
     const structOtherStr = buildStructure(`${tbl}_other`, false);
-    const insertOtherStr = buildInsert(otherCombined, `${tbl}_other`, allFields);
+    const insertOtherStr = buildInsert(otherCombined, `${tbl}_other`, fields);
     if (structure) {
       const sqlStr = structMainStr + insertMainStr;
       const sqlOtherStr =
@@ -1207,47 +1210,68 @@ export default function CodingTablesPage() {
   }
 
   useEffect(() => {
-    setIdCandidates(computeIdCandidates(allHeaders, extraFields, idFilterMode));
-    setUniqueFields((u) => u.filter((f) => allHeaders.includes(f)));
-    setOtherColumns((o) => o.filter((f) => allHeaders.includes(f)));
+    setIdCandidates(computeIdCandidates(allFields, extraFields, idFilterMode));
+    setUniqueFields((u) => u.filter((f) => allFields.includes(f)));
+    setOtherColumns((o) => o.filter((f) => allFields.includes(f)));
+
     setNotNullMap((m) => {
       const updated = {};
-      allHeaders.forEach((h) => {
-        updated[h] = m[h] || false;
+      allFields.forEach((h) => {
+        updated[h] = h in m ? m[h] : false;
       });
-      return updated;
+      const same =
+        Object.keys(m).length === Object.keys(updated).length &&
+        Object.keys(updated).every((k) => m[k] === updated[k]);
+      return same ? m : updated;
     });
+
     setAllowZeroMap((m) => {
       const updated = {};
-      allHeaders.forEach((h) => {
-        updated[h] = m[h] !== undefined ? m[h] : !notNullMap[h];
+      allFields.forEach((h) => {
+        updated[h] = h in m ? m[h] : !notNullMap[h];
       });
-      return updated;
+      const same =
+        Object.keys(m).length === Object.keys(updated).length &&
+        Object.keys(updated).every((k) => m[k] === updated[k]);
+      return same ? m : updated;
     });
+
     setDefaultValues((d) => {
       const updated = {};
-      allHeaders.forEach((h) => {
-        updated[h] = d[h] || '';
+      allFields.forEach((h) => {
+        updated[h] = h in d ? d[h] : '';
       });
-      return updated;
+      const same =
+        Object.keys(d).length === Object.keys(updated).length &&
+        Object.keys(updated).every((k) => d[k] === updated[k]);
+      return same ? d : updated;
     });
+
     setDefaultFrom((d) => {
       const updated = {};
-      allHeaders.forEach((h) => {
-        updated[h] = d[h] || '';
+      allFields.forEach((h) => {
+        updated[h] = h in d ? d[h] : '';
       });
-      return updated;
+      const same =
+        Object.keys(d).length === Object.keys(updated).length &&
+        Object.keys(updated).every((k) => d[k] === updated[k]);
+      return same ? d : updated;
     });
+
     setRenameMap((m) => {
       const updated = {};
-      allHeaders.forEach((h) => {
-        updated[h] = m[h] || h;
+      allFields.forEach((h) => {
+        updated[h] = h in m ? m[h] : h;
       });
-      return updated;
+      const same =
+        Object.keys(m).length === Object.keys(updated).length &&
+        Object.keys(updated).every((k) => m[k] === updated[k]);
+      return same ? m : updated;
     });
-    if (idColumn && !allHeaders.includes(idColumn)) setIdColumn('');
-    if (nameColumn && !allHeaders.includes(nameColumn)) setNameColumn('');
-  }, [allHeaders, idFilterMode, notNullMap]);
+
+    if (idColumn && !allFields.includes(idColumn)) setIdColumn('');
+    if (nameColumn && !allFields.includes(nameColumn)) setNameColumn('');
+  }, [allFields, idFilterMode, notNullMap]);
 
   useEffect(() => {
     if (!tableName) return;
@@ -1271,20 +1295,52 @@ export default function CodingTablesPage() {
         setCalcText(cfg.calcText || '');
         setColumnTypes(cfg.columnTypes || {});
         if (cfg.columnTypes) {
-        const baseHeaders = Object.keys(cfg.columnTypes || {});
-        const merged = Array.from(new Set([
-          ...baseHeaders,
-          ...(cfg.otherColumns || []),
-          ...(cfg.uniqueFields || [])
-        ]));
-        setHeaders(merged);
-      }
+          const baseHeaders = Object.keys(cfg.columnTypes || {});
+          const merged = Array.from(
+            new Set([
+              ...baseHeaders,
+              ...(cfg.otherColumns || []),
+              ...(cfg.uniqueFields || []),
+              ...extras.filter((f) => f.trim() !== ''),
+              ...(cfg.idColumn ? [cfg.idColumn] : []),
+              ...(cfg.nameColumn ? [cfg.nameColumn] : []),
+            ])
+          );
+          setHeaders(merged);
+        }
 
-        setNotNullMap(cfg.notNullMap || {});
-        setAllowZeroMap(cfg.allowZeroMap || {});
-        setDefaultValues(cfg.defaultValues || {});
-        setDefaultFrom(cfg.defaultFrom || {});
-        setRenameMap(cfg.renameMap || {});
+        const fieldSet = new Set([
+          ...Object.keys(cfg.columnTypes || {}),
+          ...extras.filter((f) => f.trim() !== ''),
+          ...(cfg.otherColumns || []),
+          ...(cfg.uniqueFields || []),
+          ...(cfg.idColumn ? [cfg.idColumn] : []),
+          ...(cfg.nameColumn ? [cfg.nameColumn] : []),
+          ...Object.keys(cfg.notNullMap || {}),
+          ...Object.keys(cfg.allowZeroMap || {}),
+          ...Object.keys(cfg.defaultValues || {}),
+          ...Object.keys(cfg.defaultFrom || {}),
+          ...Object.keys(cfg.renameMap || {}),
+        ]);
+        const fields = Array.from(fieldSet);
+        const nn = {};
+        const az = {};
+        const dv = {};
+        const df = {};
+        const rm = {};
+        fields.forEach((f) => {
+          nn[f] = cfg.notNullMap && f in cfg.notNullMap ? cfg.notNullMap[f] : false;
+          az[f] = cfg.allowZeroMap && f in cfg.allowZeroMap ? cfg.allowZeroMap[f] : !nn[f];
+          dv[f] = cfg.defaultValues && f in cfg.defaultValues ? cfg.defaultValues[f] : '';
+          df[f] = cfg.defaultFrom && f in cfg.defaultFrom ? cfg.defaultFrom[f] : '';
+          rm[f] = cfg.renameMap && f in cfg.renameMap ? cfg.renameMap[f] : f;
+        });
+
+        setNotNullMap(nn);
+        setAllowZeroMap(az);
+        setDefaultValues(dv);
+        setDefaultFrom(df);
+        setRenameMap(rm);
         setPopulateRange(cfg.populateRange || false);
         setStartYear(cfg.startYear || '');
         setEndYear(cfg.endYear || '');
@@ -1352,7 +1408,7 @@ export default function CodingTablesPage() {
               pull all columns
             </label>
           </div>
-          {allHeaders.length > 0 && (
+          {allFields.length > 0 && (
             <>
               <div>
                 Table Name:
@@ -1408,7 +1464,7 @@ export default function CodingTablesPage() {
               </div>
               <div>
                 <h4>Mongolian Field Names</h4>
-                {headers.map((h) => (
+                {allFields.map((h) => (
                   <div key={h} style={{ marginBottom: '0.25rem' }}>
                     {h}:{' '}
                     <input
@@ -1499,7 +1555,7 @@ export default function CodingTablesPage() {
                 Name Column:
                 <select value={nameColumn} onChange={(e) => setNameColumn(e.target.value)}>
                   <option value="">--select--</option>
-                  {allHeaders.map((h) => (
+                  {allFields.map((h) => (
                     <option key={h} value={h}>
                       {h}
                     </option>
@@ -1509,7 +1565,7 @@ export default function CodingTablesPage() {
               <div>
                 Unique Fields:
                 <div>
-                  {allHeaders.map((h) => (
+                  {allFields.map((h) => (
                     <label key={h} style={{ marginRight: '0.5rem' }}>
                       <input
                         type="checkbox"
@@ -1531,7 +1587,7 @@ export default function CodingTablesPage() {
               <div>
                 Other Columns:
                 <div>
-                  {allHeaders.map((h) => (
+                  {allFields.map((h) => (
                     <label key={h} style={{ marginRight: '0.5rem' }}>
                       <input
                         type="checkbox"
@@ -1553,7 +1609,7 @@ export default function CodingTablesPage() {
               <div>
                 Column Types:
                 <div>
-                  {allHeaders.map((h) => (
+                  {allFields.map((h) => (
                     <div key={h} style={{ marginBottom: '0.25rem' }}>
                       {h}:{' '}
                       <input
@@ -1613,7 +1669,7 @@ export default function CodingTablesPage() {
                         style={{ marginLeft: '0.25rem' }}
                       >
                         <option value="">from field...</option>
-                        {allHeaders
+                        {allFields
                           .filter((x) => x !== h)
                           .map((o) => (
                             <option key={o} value={o}>
