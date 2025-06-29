@@ -674,21 +674,27 @@ export default function CodingTablesPage() {
     }
 
     let defs = [];
+    const seenDef = new Set();
+    const addDef = (col, def) => {
+      if (seenDef.has(col)) return;
+      seenDef.add(col);
+      defs.push(def);
+    };
     if (idCol) {
-      defs.push(`\`${dbIdCol}\` INT AUTO_INCREMENT PRIMARY KEY`);
+      addDef(dbIdCol, `\`${dbIdCol}\` INT AUTO_INCREMENT PRIMARY KEY`);
     }
     if (nmCol) {
-      defs.push(`\`${dbNameCol}\` ${colTypes[nmCol]} NOT NULL`);
+      addDef(dbNameCol, `\`${dbNameCol}\` ${colTypes[nmCol]} NOT NULL`);
     }
     uniqueOnly.forEach((c) => {
       const dbC = dbCols[c];
-      defs.push(`\`${dbC}\` ${colTypes[c]} NOT NULL`);
+      addDef(dbC, `\`${dbC}\` ${colTypes[c]} NOT NULL`);
     });
     otherFiltered.forEach((c) => {
       const dbC = dbCols[c];
       let def = `\`${dbC}\` ${colTypes[c]}`;
       if (localNotNull[c]) def += ' NOT NULL';
-      defs.push(def);
+      addDef(dbC, def);
       });
     const calcFields = parseCalcFields(calcText);
     calcFields.forEach((cf) => {
@@ -755,13 +761,20 @@ export default function CodingTablesPage() {
       return out;
     }
 
-    const fields = [
+    let fields = [
       ...(idCol && hasIdValues ? [idCol] : []),
       ...(nmCol ? [nmCol] : []),
       ...uniqueOnly,
       ...otherFiltered,
       ...extra,
     ];
+    const seenCols = new Set();
+    fields = fields.filter((f) => {
+      const db = dbCols[f] || cleanIdentifier(renameMap[f] || f);
+      if (seenCols.has(db)) return false;
+      seenCols.add(db);
+      return true;
+    });
 
     const structMainStr = buildStructure(tbl, true);
     const insertMainStr = buildInsert(mainRows, tbl, fields);
