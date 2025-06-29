@@ -1271,10 +1271,15 @@ export default function CodingTablesPage() {
         setCalcText(cfg.calcText || '');
         setColumnTypes(cfg.columnTypes || {});
         if (cfg.columnTypes) {
-          // include all fields defined in columnTypes, even ones listed as extraFields
-          const hdrs = Object.keys(cfg.columnTypes || {});
-          setHeaders(hdrs);
-        }
+        const baseHeaders = Object.keys(cfg.columnTypes || {});
+        const merged = Array.from(new Set([
+          ...baseHeaders,
+          ...(cfg.otherColumns || []),
+          ...(cfg.uniqueFields || [])
+        ]));
+        setHeaders(merged);
+      }
+
         setNotNullMap(cfg.notNullMap || {});
         setAllowZeroMap(cfg.allowZeroMap || {});
         setDefaultValues(cfg.defaultValues || {});
