@@ -59,17 +59,14 @@ export default function CodingTablesPage() {
       .catch(() => setConfigNames([]));
   }, []);
 
-  const allFields = useMemo(() => {
-    const list = [
-      ...headers,
-      ...extraFields.filter((f) => f.trim() !== ''),
-    ];
-    return Array.from(new Set(list));
-  }, [headers, extraFields]);
+  const allHeaders = useMemo(
+    () => [...headers, ...extraFields.filter((f) => f.trim() !== '')],
+    [headers, extraFields]
+  );
 
   const hasDateField = useMemo(
-    () => allFields.some((h) => /year|month|date/i.test(h)),
-    [allFields]
+    () => allHeaders.some((h) => /year|month|date/i.test(h)),
+    [allHeaders]
   );
 
   function computeIdCandidates(hdrs, extras, mode) {
@@ -750,13 +747,13 @@ export default function CodingTablesPage() {
       return out;
     }
 
-    const fields = Object.keys(columnTypes || {});
+    const allFields = Object.keys(columnTypes || {});
 
     const structMainStr = buildStructure(tbl, true);
-    const insertMainStr = buildInsert(mainRows, tbl, fields);
+    const insertMainStr = buildInsert(mainRows, tbl, allFields);
     const otherCombined = [...otherRows, ...dupRows];
     const structOtherStr = buildStructure(`${tbl}_other`, false);
-    const insertOtherStr = buildInsert(otherCombined, `${tbl}_other`, fields);
+    const insertOtherStr = buildInsert(otherCombined, `${tbl}_other`, allFields);
     if (structure) {
       const sqlStr = structMainStr + insertMainStr;
       const sqlOtherStr =
@@ -1210,47 +1207,47 @@ export default function CodingTablesPage() {
   }
 
   useEffect(() => {
-    setIdCandidates(computeIdCandidates(allFields, extraFields, idFilterMode));
-    setUniqueFields((u) => u.filter((f) => allFields.includes(f)));
-    setOtherColumns((o) => o.filter((f) => allFields.includes(f)));
+    setIdCandidates(computeIdCandidates(allHeaders, extraFields, idFilterMode));
+    setUniqueFields((u) => u.filter((f) => allHeaders.includes(f)));
+    setOtherColumns((o) => o.filter((f) => allHeaders.includes(f)));
     setNotNullMap((m) => {
       const updated = {};
-      allFields.forEach((h) => {
-        updated[h] = h in m ? m[h] : false;
+      allHeaders.forEach((h) => {
+        updated[h] = m[h] || false;
       });
       return updated;
     });
     setAllowZeroMap((m) => {
       const updated = {};
-      allFields.forEach((h) => {
-        updated[h] = h in m ? m[h] : !notNullMap[h];
+      allHeaders.forEach((h) => {
+        updated[h] = m[h] !== undefined ? m[h] : !notNullMap[h];
       });
       return updated;
     });
     setDefaultValues((d) => {
       const updated = {};
-      allFields.forEach((h) => {
-        updated[h] = h in d ? d[h] : '';
+      allHeaders.forEach((h) => {
+        updated[h] = d[h] || '';
       });
       return updated;
     });
     setDefaultFrom((d) => {
       const updated = {};
-      allFields.forEach((h) => {
-        updated[h] = h in d ? d[h] : '';
+      allHeaders.forEach((h) => {
+        updated[h] = d[h] || '';
       });
       return updated;
     });
     setRenameMap((m) => {
       const updated = {};
-      allFields.forEach((h) => {
-        updated[h] = h in m ? m[h] : h;
+      allHeaders.forEach((h) => {
+        updated[h] = m[h] || h;
       });
       return updated;
     });
-    if (idColumn && !allFields.includes(idColumn)) setIdColumn('');
-    if (nameColumn && !allFields.includes(nameColumn)) setNameColumn('');
-  }, [allFields, idFilterMode, notNullMap]);
+    if (idColumn && !allHeaders.includes(idColumn)) setIdColumn('');
+    if (nameColumn && !allHeaders.includes(nameColumn)) setNameColumn('');
+  }, [allHeaders, idFilterMode, notNullMap]);
 
   useEffect(() => {
     if (!tableName) return;
@@ -1355,7 +1352,7 @@ export default function CodingTablesPage() {
               pull all columns
             </label>
           </div>
-          {allFields.length > 0 && (
+          {allHeaders.length > 0 && (
             <>
               <div>
                 Table Name:
@@ -1502,7 +1499,7 @@ export default function CodingTablesPage() {
                 Name Column:
                 <select value={nameColumn} onChange={(e) => setNameColumn(e.target.value)}>
                   <option value="">--select--</option>
-                  {allFields.map((h) => (
+                  {allHeaders.map((h) => (
                     <option key={h} value={h}>
                       {h}
                     </option>
@@ -1512,7 +1509,7 @@ export default function CodingTablesPage() {
               <div>
                 Unique Fields:
                 <div>
-                  {allFields.map((h) => (
+                  {allHeaders.map((h) => (
                     <label key={h} style={{ marginRight: '0.5rem' }}>
                       <input
                         type="checkbox"
@@ -1534,7 +1531,7 @@ export default function CodingTablesPage() {
               <div>
                 Other Columns:
                 <div>
-                  {allFields.map((h) => (
+                  {allHeaders.map((h) => (
                     <label key={h} style={{ marginRight: '0.5rem' }}>
                       <input
                         type="checkbox"
@@ -1556,7 +1553,7 @@ export default function CodingTablesPage() {
               <div>
                 Column Types:
                 <div>
-                  {allFields.map((h) => (
+                  {allHeaders.map((h) => (
                     <div key={h} style={{ marginBottom: '0.25rem' }}>
                       {h}:{' '}
                       <input
@@ -1616,7 +1613,7 @@ export default function CodingTablesPage() {
                         style={{ marginLeft: '0.25rem' }}
                       >
                         <option value="">from field...</option>
-                        {allFields
+                        {allHeaders
                           .filter((x) => x !== h)
                           .map((o) => (
                             <option key={o} value={o}>
