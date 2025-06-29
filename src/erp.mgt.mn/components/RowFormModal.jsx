@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef, useContext } from 'react';
+import React, { useState, useEffect, useRef, useContext, memo } from 'react';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import Modal from './Modal.jsx';
 import InlineTransactionTable from './InlineTransactionTable.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 
-export default function RowFormModal({
+const RowFormModal = function RowFormModal({
   visible,
   onCancel,
   onSubmit,
@@ -26,6 +26,20 @@ export default function RowFormModal({
   inline = false,
   useGrid = false,
 }) {
+  const mounted = useRef(false);
+  const renderCount = useRef(0);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'production') {
+      renderCount.current++;
+      if (renderCount.current > 5) console.warn('Excessive re-renders');
+    }
+  });
+
+  useEffect(() => {
+    if (mounted.current) return;
+    mounted.current = true;
+  }, []);
   const headerSet = new Set(headerFields);
   const footerSet = new Set(footerFields);
   const { user, company } = useContext(AuthContext);
@@ -629,3 +643,5 @@ export default function RowFormModal({
     </Modal>
   );
 }
+
+export default memo(RowFormModal);
