@@ -25,9 +25,14 @@ export function TabProvider({ children }) {
       if (t.some((tab) => tab.key === key)) return t;
       return [...t, { key, label }];
     });
-    if (content) setCache((c) => ({ ...c, [key]: content }));
+    if (content) {
+      setCache((c) => {
+        if (c[key] === content) return c;
+        return { ...c, [key]: content };
+      });
+    }
     trackSetState('TabProvider.setActiveKey');
-    setActiveKey(key);
+    setActiveKey((k) => (k === key ? k : key));
     window.__activeTabKey = key;
   }, []);
 
@@ -56,7 +61,10 @@ export function TabProvider({ children }) {
 
   const setTabContent = useCallback((key, content) => {
     trackSetState('TabProvider.setCache');
-    setCache((c) => ({ ...c, [key]: content }));
+    setCache((c) => {
+      if (c[key] === content) return c;
+      return { ...c, [key]: content };
+    });
   }, []);
 
   const value = useMemo(
