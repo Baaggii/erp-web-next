@@ -326,7 +326,7 @@ export default function RowFormModal({
             totalAmountFields={totalAmountFields}
             totalCurrencyFields={totalCurrencyFields}
             collectRows={useGrid}
-            minRows={3}
+            minRows={1}
             onRowSubmit={onSubmit}
           />
         </div>
