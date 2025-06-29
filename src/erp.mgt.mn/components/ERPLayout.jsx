@@ -24,10 +24,12 @@ import Spinner from "./Spinner.jsx";
 export default function ERPLayout() {
   const { user, setUser, company } = useContext(AuthContext);
   const renderCount = useRef(0);
+  useEffect(() => {
   renderCount.current++;
   if (renderCount.current > 10) {
-    console.warn('Excessive renders: ERPLayout', renderCount.current);
+    console.warn('ERPLayout re-rendering too many times', renderCount.current);
   }
+}, []);
   useEffect(() => {
     if (window.erpDebug) console.warn('Mounted: ERPLayout');
   }, []);
