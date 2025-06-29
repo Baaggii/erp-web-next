@@ -26,7 +26,7 @@ const currencyFmt = new Intl.NumberFormat('en-US', {
 
 function normalizeDateInput(value, format) {
   if (typeof value !== 'string') return value;
-  let v = value.replace(/^(\d{4})\.(\d{2})\.(\d{2})/, '$1-$2-$3');
+  let v = value.replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
   const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
   if (isoRe.test(v)) {
     const d = new Date(v);
@@ -1027,7 +1027,10 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         c === 'TotalCur' ||
         c === 'TotalAmt'
       ) {
-        sums[c] = rows.reduce((sum, r) => sum + Number(r[c] || 0), 0);
+        sums[c] = rows.reduce(
+          (sum, r) => sum + Number(String(r[c] ?? 0).replace(',', '.')),
+          0,
+        );
       }
     });
     return { sums, count: rows.length };
