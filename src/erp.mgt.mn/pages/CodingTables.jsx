@@ -586,7 +586,7 @@ export default function CodingTablesPage() {
     const stateIdx = allHdrs.findIndex((h) => /state/i.test(h));
 
     const fieldsToCheck = [
-      ...(idCol ? [idCol] : []),
+      ...(idCol && idIdx !== -1 ? [idCol] : []),
       ...(nmCol ? [nmCol] : []),
       ...uniqueOnly,
       ...otherFiltered,
@@ -751,7 +751,7 @@ export default function CodingTablesPage() {
     }
 
     const fields = [
-      ...(idCol ? [idCol] : []),
+      ...(idCol && idIdx !== -1 ? [idCol] : []),
       ...(nmCol ? [nmCol] : []),
       ...uniqueOnly,
       ...otherFiltered,
