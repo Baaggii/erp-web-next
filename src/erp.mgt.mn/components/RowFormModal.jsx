@@ -196,6 +196,11 @@ export default function RowFormModal({
     if (submitLocked) return;
     setSubmitLocked(true);
     if (useGrid && tableRef.current) {
+      if (tableRef.current.hasInvalid && tableRef.current.hasInvalid()) {
+        alert('Please correct highlighted fields.');
+        setSubmitLocked(false);
+        return;
+      }
       const rows = tableRef.current.getRows();
       const cleanedRows = [];
       let hasMissing = false;
@@ -441,12 +446,27 @@ export default function RowFormModal({
         <h3 className="mt-0 mb-1 font-semibold">Header</h3>
         <table className="min-w-full border border-gray-300 text-sm">
           <tbody>
-            {cols.map((c) => (
-              <tr key={c}>
-                <th className="border px-2 py-1 text-left">{labels[c] || c}</th>
-                <td className="border px-2 py-1">{formVals[c]}</td>
-              </tr>
-            ))}
+            {cols.map((c) => {
+              let val = formVals[c];
+              if ((val === '' || val === undefined) && headerSet.has(c)) {
+                if (
+                  ['created_by', 'employee_id', 'emp_id', 'empid', 'user_id'].includes(c) &&
+                  user?.empid
+                ) {
+                  val = user.empid;
+                } else if (c === 'branch_id' && company?.branch_id !== undefined) {
+                  val = company.branch_id;
+                } else if (c === 'company_id' && company?.company_id !== undefined) {
+                  val = company.company_id;
+                }
+              }
+              return (
+                <tr key={c}>
+                  <th className="border px-2 py-1 text-left">{labels[c] || c}</th>
+                  <td className="border px-2 py-1">{val}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -474,7 +494,12 @@ export default function RowFormModal({
     const rowHtml = (cols, skipEmpty = false) =>
       cols
         .filter((c) =>
-          skipEmpty ? formVals[c] !== '' && formVals[c] !== null && formVals[c] !== 0 : true,
+          skipEmpty
+            ? formVals[c] !== '' &&
+              formVals[c] !== null &&
+              formVals[c] !== 0 &&
+              formVals[c] !== undefined
+            : true,
         )
         .map(
           (c) =>
@@ -488,7 +513,9 @@ export default function RowFormModal({
       if (!useGrid) return rowHtml(m, true);
       if (gridRows.length === 0) return '';
       const used = m.filter((c) =>
-        gridRows.some((r) => r[c] !== '' && r[c] !== null && r[c] !== 0),
+        gridRows.some(
+          (r) => r[c] !== '' && r[c] !== null && r[c] !== 0 && r[c] !== undefined,
+        ),
       );
       if (used.length === 0) return '';
       const header = used.map((c) => `<th>${labels[c] || c}</th>`).join('');
