@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import React, { useContext, useEffect } from 'react';
 import MosaicLayout from '../components/MosaicLayout.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 
@@ -16,6 +16,10 @@ const initialLayout = {
 
 export default function BlueLinkPage() {
   const { user, company } = useContext(AuthContext);
+
+  useEffect(() => {
+    if (window.erpDebug) console.warn('Mounted: BlueLinkPage');
+  }, []);
 
   const cardStyle = {
     background: '#f0f4ff',

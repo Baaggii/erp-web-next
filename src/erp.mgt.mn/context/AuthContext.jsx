@@ -1,6 +1,6 @@
 // src/erp.mgt.mn/context/AuthContext.jsx
-import React, { createContext, useState, useEffect, useContext } from 'react';
-import { debugLog } from '../utils/debug.js';
+import React, { createContext, useState, useEffect, useContext, useMemo } from 'react';
+import { debugLog, trackSetState } from '../utils/debug.js';
 
 // Create the AuthContext
 export const AuthContext = createContext({
@@ -20,6 +20,7 @@ export default function AuthContextProvider({ children }) {
     const stored = localStorage.getItem('erp_selected_company');
     if (stored) {
       try {
+        trackSetState('AuthContext.setCompany');
         setCompany(JSON.parse(stored));
       } catch {
         // ignore parse errors
@@ -47,6 +48,7 @@ export default function AuthContextProvider({ children }) {
 
         if (res.ok) {
           const data = await res.json();
+          trackSetState('AuthContext.setUser');
           setUser(data);
         } else {
           // Not logged in or token expired → ignore
@@ -59,8 +61,10 @@ export default function AuthContextProvider({ children }) {
     loadProfile();
   }, []);
 
+  const value = useMemo(() => ({ user, setUser, company, setCompany }), [user, company]);
+
   return (
-    <AuthContext.Provider value={{ user, setUser, company, setCompany }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,4 +1,5 @@
-import React, { createContext, useCallback, useContext, useState, useEffect } from 'react';
+import React, { createContext, useCallback, useContext, useState, useEffect, useMemo } from 'react';
+import { trackSetState } from '../utils/debug.js';
 
 const ToastContext = createContext({ addToast: () => {} });
 
@@ -7,8 +8,10 @@ export function ToastProvider({ children }) {
 
   const addToast = useCallback((message, type = 'info') => {
     const id = Date.now() + Math.random();
+    trackSetState('ToastProvider.setToasts');
     setToasts((t) => [...t, { id, message, type }]);
     setTimeout(() => {
+      trackSetState('ToastProvider.setToasts');
       setToasts((t) => t.filter((toast) => toast.id !== id));
     }, 5000);
   }, []);
@@ -22,8 +25,10 @@ export function ToastProvider({ children }) {
     return () => window.removeEventListener('toast', handle);
   }, [addToast]);
 
+  const value = useMemo(() => ({ addToast }), [addToast]);
+
   return (
-    <ToastContext.Provider value={{ addToast }}>
+    <ToastContext.Provider value={value}>
       {children}
       <div className="toast-container">
         {toasts.map((t) => (
