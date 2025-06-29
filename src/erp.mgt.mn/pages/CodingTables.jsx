@@ -1213,41 +1213,62 @@ export default function CodingTablesPage() {
     setIdCandidates(computeIdCandidates(allFields, extraFields, idFilterMode));
     setUniqueFields((u) => u.filter((f) => allFields.includes(f)));
     setOtherColumns((o) => o.filter((f) => allFields.includes(f)));
+
     setNotNullMap((m) => {
       const updated = {};
       allFields.forEach((h) => {
         updated[h] = h in m ? m[h] : false;
       });
-      return updated;
+      const same =
+        Object.keys(m).length === Object.keys(updated).length &&
+        Object.keys(updated).every((k) => m[k] === updated[k]);
+      return same ? m : updated;
     });
+
     setAllowZeroMap((m) => {
       const updated = {};
       allFields.forEach((h) => {
         updated[h] = h in m ? m[h] : !notNullMap[h];
       });
-      return updated;
+      const same =
+        Object.keys(m).length === Object.keys(updated).length &&
+        Object.keys(updated).every((k) => m[k] === updated[k]);
+      return same ? m : updated;
     });
+
     setDefaultValues((d) => {
       const updated = {};
       allFields.forEach((h) => {
         updated[h] = h in d ? d[h] : '';
       });
-      return updated;
+      const same =
+        Object.keys(d).length === Object.keys(updated).length &&
+        Object.keys(updated).every((k) => d[k] === updated[k]);
+      return same ? d : updated;
     });
+
     setDefaultFrom((d) => {
       const updated = {};
       allFields.forEach((h) => {
         updated[h] = h in d ? d[h] : '';
       });
-      return updated;
+      const same =
+        Object.keys(d).length === Object.keys(updated).length &&
+        Object.keys(updated).every((k) => d[k] === updated[k]);
+      return same ? d : updated;
     });
+
     setRenameMap((m) => {
       const updated = {};
       allFields.forEach((h) => {
         updated[h] = h in m ? m[h] : h;
       });
-      return updated;
+      const same =
+        Object.keys(m).length === Object.keys(updated).length &&
+        Object.keys(updated).every((k) => m[k] === updated[k]);
+      return same ? m : updated;
     });
+
     if (idColumn && !allFields.includes(idColumn)) setIdColumn('');
     if (nameColumn && !allFields.includes(nameColumn)) setNameColumn('');
   }, [allFields, idFilterMode, notNullMap]);
@@ -1280,6 +1301,9 @@ export default function CodingTablesPage() {
               ...baseHeaders,
               ...(cfg.otherColumns || []),
               ...(cfg.uniqueFields || []),
+              ...extras.filter((f) => f.trim() !== ''),
+              ...(cfg.idColumn ? [cfg.idColumn] : []),
+              ...(cfg.nameColumn ? [cfg.nameColumn] : []),
             ])
           );
           setHeaders(merged);
