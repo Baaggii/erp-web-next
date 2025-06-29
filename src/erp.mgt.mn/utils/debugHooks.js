@@ -6,9 +6,22 @@ export function setupDebugHooks() {
   if (React.__erpDebugPatched) return;
   React.__erpDebugPatched = true;
 
-  function patchEffect(name) {
-    const orig = React[name];
-    React[name] = (cb, deps) => {
+  function replaceHook(name, wrapper) {
+    const desc = Object.getOwnPropertyDescriptor(React, name);
+    if (!desc || typeof desc.value !== 'function') return;
+    try {
+      Object.defineProperty(React, name, {
+        configurable: true,
+        enumerable: desc.enumerable,
+        value: wrapper(desc.value),
+      });
+    } catch (err) {
+      console.warn('Unable to patch', name, err);
+    }
+  }
+
+  ['useEffect', 'useLayoutEffect'].forEach((name) =>
+    replaceHook(name, (orig) => (cb, deps) => {
       if (deps === undefined) {
         console.warn(`${name} without dependency array`);
       }
@@ -16,21 +29,16 @@ export function setupDebugHooks() {
         debugLog(`${name} run`, deps);
         return cb();
       }, deps);
-    };
-  }
+    }),
+  );
 
-  ['useEffect', 'useLayoutEffect'].forEach(patchEffect);
-
-  function patchMemo(name) {
-    const orig = React[name];
-    React[name] = (cb, deps) => {
+  ['useMemo', 'useCallback'].forEach((name) =>
+    replaceHook(name, (orig) => (cb, deps) => {
       if (deps === undefined) {
         console.warn(`${name} without dependency array`);
       }
       debugLog(`${name} evaluate`, deps);
       return orig(cb, deps);
-    };
-  }
-
-  ['useMemo', 'useCallback'].forEach(patchMemo);
+    }),
+  );
 }
