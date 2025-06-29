@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useContext, useRef } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useContext,
+  useRef,
+  useMemo,
+} from 'react';
 import { useSearchParams } from 'react-router-dom';
 import TableManager from '../components/TableManager.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
@@ -10,7 +16,7 @@ import { useToast } from '../context/ToastContext.jsx';
 export default function FinanceTransactions({ moduleKey = 'finance_transactions', moduleLabel = '' }) {
   const [configs, setConfigs] = useState({});
   const [searchParams, setSearchParams] = useSearchParams();
-  const paramKey = `name_${moduleKey}`;
+  const paramKey = useMemo(() => `name_${moduleKey}`, [moduleKey]);
   const [sessionState, setSessionState] = useTxnSession(moduleKey);
   const [name, setName] = useState(() => sessionState.name || searchParams.get(paramKey) || '');
   const [table, setTable] = useState(() => sessionState.table || '');
@@ -25,21 +31,25 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const { addToast } = useToast();
   const renderCount = useRef(0);
   const mounted = useRef(false);
+  const sessionLoaded = useRef(false);
 
   useEffect(() => {
+    console.log('FinanceTransactions render monitor effect');
     if (process.env.NODE_ENV !== 'production') {
       renderCount.current++;
       if (renderCount.current > 5) console.warn('Excessive re-renders');
     }
-  });
+  }, []);
 
   useEffect(() => {
     if (mounted.current) return;
+    console.log('FinanceTransactions mount effect');
     mounted.current = true;
   }, []);
 
   
   useEffect(() => {
+    console.log('FinanceTransactions moduleKey effect');
     if (prevModuleKey.current !== moduleKey) {
       setSearchParams((prev) => {
         const sp = new URLSearchParams(prev);
@@ -48,32 +58,38 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
       });
     }
     prevModuleKey.current = moduleKey;
-  }, [moduleKey, setSearchParams]);
+  }, [moduleKey]);
 
   // load stored session for this module
   useEffect(() => {
+    if (sessionLoaded.current) return;
+    console.log('FinanceTransactions load session effect');
     setName(sessionState.name || '');
     setTable(sessionState.table || '');
     setConfig(sessionState.config || null);
     setRefreshId(sessionState.refreshId || 0);
     setShowTable(sessionState.showTable || false);
+    sessionLoaded.current = true;
   }, [moduleKey]);
 
   // persist state to session
   useEffect(() => {
+    console.log('FinanceTransactions persist session effect');
     setSessionState({ name, table, config, refreshId, showTable });
-  }, [name, table, config, refreshId, showTable, setSessionState]);
+  }, [name, table, config, refreshId, showTable]);
 
   useEffect(() => {
+    console.log('FinanceTransactions search param effect');
     setSearchParams((prev) => {
       const sp = new URLSearchParams(prev);
       if (name) sp.set(paramKey, name);
       else sp.delete(paramKey);
       return sp;
     });
-  }, [name, setSearchParams, paramKey]);
+  }, [name, paramKey]);
 
   useEffect(() => {
+    console.log('FinanceTransactions load forms effect');
     const params = new URLSearchParams();
     if (moduleKey) params.set('moduleKey', moduleKey);
     if (company?.branch_id !== undefined)
@@ -124,6 +140,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   }, [moduleKey, company, perms, licensed]);
 
   useEffect(() => {
+    console.log('FinanceTransactions table sync effect');
     if (!name) {
       setTable('');
       setConfig(null);
@@ -141,6 +158,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   }, [name, configs]);
 
   useEffect(() => {
+    console.log('FinanceTransactions configs empty effect');
     if (Object.keys(configs).length === 0) {
       setName('');
       setTable('');
@@ -150,6 +168,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   }, [configs]);
 
   useEffect(() => {
+    console.log('FinanceTransactions fetch config effect');
     if (!table || !name) {
       setConfig(null);
       return;
@@ -191,7 +210,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
     };
   }, [table, name, addToast]);
 
-  const transactionNames = Object.keys(configs);
+  const transactionNames = useMemo(() => Object.keys(configs), [configs]);
 
   if (!perms || !licensed) return <p>Loading...</p>;
   if (!perms[moduleKey] || !licensed[moduleKey]) return <p>Access denied.</p>;
