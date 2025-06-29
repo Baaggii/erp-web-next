@@ -23,6 +23,7 @@ export default forwardRef(function InlineTransactionTable({
   minRows = 1,
   onRowSubmit = () => {},
   onRowsChange = () => {},
+  requiredFields = [],
 }, ref) {
   const [rows, setRows] = useState(() =>
     collectRows ? Array.from({ length: minRows }, () => ({})) : [],
@@ -33,6 +34,46 @@ export default forwardRef(function InlineTransactionTable({
 
   const totalAmountSet = new Set(totalAmountFields);
   const totalCurrencySet = new Set(totalCurrencyFields);
+
+  const placeholders = React.useMemo(() => {
+    const map = {};
+    fields.forEach((f) => {
+      const lower = f.toLowerCase();
+      if (lower.includes('timestamp') || (lower.includes('date') && lower.includes('time'))) {
+        map[f] = 'YYYY-MM-DD HH:MM:SS';
+      } else if (lower.includes('date')) {
+        map[f] = 'YYYY-MM-DD';
+      } else if (lower.includes('time')) {
+        map[f] = 'HH:MM:SS';
+      }
+    });
+    return map;
+  }, [fields]);
+
+  function isValidDate(value, format) {
+    if (!value) return true;
+    const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
+    let v = String(value).replace(/^(\d{4})\.(\d{2})\.(\d{2})/, '$1-$2-$3');
+    if (isoRe.test(v)) {
+      const d = new Date(v);
+      if (format === 'YYYY-MM-DD') v = d.toISOString().slice(0, 10);
+      else if (format === 'HH:MM:SS') v = d.toISOString().slice(11, 19);
+      else v = d.toISOString().slice(0, 19).replace('T', ' ');
+    }
+    const map = {
+      'YYYY-MM-DD': /^\d{4}-\d{2}-\d{2}$/,
+      'HH:MM:SS': /^\d{2}:\d{2}:\d{2}$/,
+      'YYYY-MM-DD HH:MM:SS': /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/,
+    };
+    const re = map[format];
+    if (!re) return true;
+    if (!re.test(v)) return false;
+    if (format !== 'HH:MM:SS') {
+      const d = new Date(v.replace(' ', 'T'));
+      return !isNaN(d.getTime());
+    }
+    return true;
+  }
 
   useEffect(() => {
     if (!collectRows) return;
@@ -66,6 +107,28 @@ export default forwardRef(function InlineTransactionTable({
   }));
 
   function addRow() {
+    if (requiredFields.length > 0 && rows.length > 0) {
+      const prev = rows[rows.length - 1];
+      for (const f of requiredFields) {
+        const val = prev[f];
+        if (!val) {
+          alert('Please fill required fields before adding new row.');
+          return;
+        }
+        if (
+          (totalAmountSet.has(f) || totalCurrencySet.has(f)) &&
+          isNaN(Number(val))
+        ) {
+          alert('Invalid number in ' + (labels[f] || f));
+          return;
+        }
+        const ph = placeholders[f];
+        if (ph && !isValidDate(val, ph)) {
+          alert('Invalid date in ' + (labels[f] || f));
+          return;
+        }
+      }
+    }
     setRows((r) => {
       const next = [...r, {}];
       focusRow.current = next.length - 1;
@@ -92,6 +155,25 @@ export default forwardRef(function InlineTransactionTable({
 
   async function saveRow(idx) {
     const row = rows[idx] || {};
+    for (const f of requiredFields) {
+      const val = row[f];
+      if (!val) {
+        alert('Please fill required fields.');
+        return;
+      }
+      if (
+        (totalAmountSet.has(f) || totalCurrencySet.has(f)) &&
+        isNaN(Number(val))
+      ) {
+        alert('Invalid number in ' + (labels[f] || f));
+        return;
+      }
+      const ph = placeholders[f];
+      if (ph && !isValidDate(val, ph)) {
+        alert('Invalid date in ' + (labels[f] || f));
+        return;
+      }
+    }
     const cleaned = {};
     Object.entries(row).forEach(([k, v]) => {
       if (k === '_saved') return;
