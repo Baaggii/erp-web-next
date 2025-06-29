@@ -84,15 +84,12 @@ const deleteBtnStyle = {
   color: '#b91c1c',
 };
 
-const RENDER_LIMIT = 50;
 const TableManager = forwardRef(function TableManager({ table, refreshId = 0, formConfig = null, initialPerPage = 10, addLabel = 'Add Row', showTable = true }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
-  if (renderCount.current < RENDER_LIMIT) {
-    renderCount.current += 1;
-    if (renderCount.current > 10 && renderCount.current % 5 === 0) {
-      console.warn('Excessive renders: TableManager', renderCount.current);
-    }
+  renderCount.current++;
+  if (renderCount.current > 10) {
+    console.warn('Excessive renders: TableManager', renderCount.current);
   }
 
   useEffect(() => {
@@ -132,7 +129,6 @@ const TableManager = forwardRef(function TableManager({ table, refreshId = 0, fo
   const [typeOptions, setTypeOptions] = useState([]);
   const { user, company } = useContext(AuthContext);
   const { addToast } = useToast();
-  const initFilters = useRef(false);
 
   const validCols = useMemo(
     () => new Set(columnMeta.map((c) => c.name)),
@@ -221,11 +217,7 @@ const TableManager = forwardRef(function TableManager({ table, refreshId = 0, fo
   }, [columnMeta]);
 
   useEffect(() => {
-    initFilters.current = false;
-  }, [formConfig, validCols, user, company]);
-
-  useEffect(() => {
-    if (!formConfig || initFilters.current) return;
+    if (!formConfig) return;
     const newFilters = {};
     if (formConfig.dateField && formConfig.dateField.length > 0) {
       const today = new Date().toISOString().slice(0, 10);
@@ -261,14 +253,9 @@ const TableManager = forwardRef(function TableManager({ table, refreshId = 0, fo
       });
     }
     if (Object.keys(newFilters).length > 0) {
-      setFilters((f) => {
-        const next = { ...f, ...newFilters };
-        const changed = Object.keys(newFilters).some((k) => f[k] !== newFilters[k]);
-        return changed ? next : f;
-      });
+      setFilters((f) => ({ ...f, ...newFilters }));
     }
-    initFilters.current = true;
-  }, [formConfig, validCols, user, company, branchIdFields, userIdFields]);
+  }, [formConfig, validCols, user, company]);
 
   useEffect(() => {
     if (!formConfig?.transactionTypeField) {
@@ -312,9 +299,9 @@ const TableManager = forwardRef(function TableManager({ table, refreshId = 0, fo
   useEffect(() => {
     if (datePreset === 'custom') {
       if (customStartDate && customEndDate) {
-        setDateFilter((v) => (v === `${customStartDate}-${customEndDate}` ? v : `${customStartDate}-${customEndDate}`));
+        setDateFilter(`${customStartDate}-${customEndDate}`);
       } else {
-        setDateFilter((v) => (v === '' ? v : ''));
+        setDateFilter('');
       }
     }
   }, [customStartDate, customEndDate, datePreset]);
@@ -323,25 +310,22 @@ const TableManager = forwardRef(function TableManager({ table, refreshId = 0, fo
     if (formConfig?.dateField && formConfig.dateField.length > 0) {
       setFilters((f) => {
         const obj = { ...f };
-        let changed = false;
         formConfig.dateField.forEach((d) => {
-          if (validCols.has(d) && obj[d] !== (dateFilter || '')) {
-            obj[d] = dateFilter || '';
-            changed = true;
-          }
+          if (validCols.has(d)) obj[d] = dateFilter || '';
         });
-        return changed ? obj : f;
+        return obj;
       });
     }
   }, [dateFilter, formConfig, validCols]);
 
   useEffect(() => {
-    if (formConfig?.transactionTypeField && validCols.has(formConfig.transactionTypeField)) {
-      setFilters((f) => {
-        const val = typeFilter || '';
-        if (f[formConfig.transactionTypeField] === val) return f;
-        return { ...f, [formConfig.transactionTypeField]: val };
-      });
+    if (formConfig?.transactionTypeField) {
+      if (validCols.has(formConfig.transactionTypeField)) {
+        setFilters((f) => ({
+          ...f,
+          [formConfig.transactionTypeField]: typeFilter || '',
+        }));
+      }
     }
   }, [typeFilter, formConfig, validCols]);
 
