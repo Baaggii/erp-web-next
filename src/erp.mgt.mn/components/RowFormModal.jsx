@@ -163,13 +163,15 @@ export default function RowFormModal({
     setSubmitLocked(true);
     if (useGrid && tableRef.current) {
       const rows = tableRef.current.getRows();
-      for (const r of rows) {
+      const cleanedRows = [];
+      let hasMissing = false;
+      rows.forEach((r) => {
         const hasValue = Object.values(r).some((v) => {
           if (v === null || v === undefined || v === '') return false;
           if (typeof v === 'object' && 'value' in v) return v.value !== '';
           return true;
         });
-        if (!hasValue) continue;
+        if (!hasValue) return;
         const normalized = {};
         Object.entries(r).forEach(([k, v]) => {
           const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
@@ -177,9 +179,32 @@ export default function RowFormModal({
             ? normalizeDateInput(raw, placeholders[k])
             : raw;
         });
-        await Promise.resolve(onSubmit(normalized));
+        requiredFields.forEach((f) => {
+          if (!normalized[f]) hasMissing = true;
+        });
+        cleanedRows.push(normalized);
+      });
+
+      if (hasMissing) {
+        alert('Please fill all required fields.');
+        setSubmitLocked(false);
+        return;
       }
-      tableRef.current.clearRows();
+
+      if (cleanedRows.length === 0) {
+        setSubmitLocked(false);
+        return;
+      }
+
+      const ok = window.confirm(
+        'Post these transactions? Have you checked all data and accept responsibility?'
+      );
+      if (ok) {
+        for (const r of cleanedRows) {
+          await Promise.resolve(onSubmit(r));
+        }
+        tableRef.current.clearRows();
+      }
       setSubmitLocked(false);
       return;
     }
