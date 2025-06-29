@@ -23,6 +23,20 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const tableRef = useRef(null);
   const prevModuleKey = useRef(moduleKey);
   const { addToast } = useToast();
+  const renderCount = useRef(0);
+  const mounted = useRef(false);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'production') {
+      renderCount.current++;
+      if (renderCount.current > 5) console.warn('Excessive re-renders');
+    }
+  });
+
+  useEffect(() => {
+    if (mounted.current) return;
+    mounted.current = true;
+  }, []);
 
   
   useEffect(() => {
@@ -230,6 +244,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
       )}
       {table && config && (
         <TableManager
+          key={`${moduleKey}-${name}`}
           ref={tableRef}
           table={table}
           refreshId={refreshId}

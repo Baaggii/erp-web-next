@@ -5,6 +5,8 @@ import React, {
   useMemo,
   useImperativeHandle,
   forwardRef,
+  useRef,
+  memo,
 } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
@@ -82,7 +84,21 @@ const deleteBtnStyle = {
   color: '#b91c1c',
 };
 
-export default forwardRef(function TableManager({ table, refreshId = 0, formConfig = null, initialPerPage = 10, addLabel = 'Add Row', showTable = true }, ref) {
+const TableManager = forwardRef(function TableManager({ table, refreshId = 0, formConfig = null, initialPerPage = 10, addLabel = 'Add Row', showTable = true }, ref) {
+  const mounted = useRef(false);
+  const renderCount = useRef(0);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'production') {
+      renderCount.current++;
+      if (renderCount.current > 5) console.warn('Excessive re-renders');
+    }
+  });
+
+  useEffect(() => {
+    if (mounted.current) return;
+    mounted.current = true;
+  }, []);
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
   const [page, setPage] = useState(1);
@@ -1635,6 +1651,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         </>
       )}
       <RowFormModal
+        key={`rowform-${table}`}
         visible={showForm}
         useGrid
         onCancel={() => {
@@ -1730,3 +1747,14 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     </div>
   );
 });
+
+function propsEqual(prev, next) {
+  return (
+    prev.table === next.table &&
+    prev.refreshId === next.refreshId &&
+    prev.formConfig === next.formConfig &&
+    prev.showTable === next.showTable
+  );
+}
+
+export default memo(TableManager, propsEqual);
