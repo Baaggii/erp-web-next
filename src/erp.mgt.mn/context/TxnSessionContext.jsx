@@ -7,12 +7,10 @@ export function TxnSessionProvider({ children }) {
   const [sessions, setSessions] = useState({});
 
   const getSession = (key) => {
-    if (!sessions[key]) {
-      trackSetState('TxnSessionProvider.setSessions');
-      setSessions((s) => ({ ...s, [key]: {} }));
-      return {};
-    }
-    return sessions[key];
+    // Simply return the stored session or an empty object. Avoid triggering a
+    // state update during render which previously caused update loops when a
+    // new session key was accessed for the first time.
+    return sessions[key] || {};
   };
 
   const setSession = (key, state) => {
