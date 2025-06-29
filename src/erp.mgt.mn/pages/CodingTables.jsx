@@ -1411,7 +1411,7 @@ export default function CodingTablesPage() {
               </div>
               <div>
                 <h4>Mongolian Field Names</h4>
-                {headers.map((h) => (
+                {allFields.map((h) => (
                   <div key={h} style={{ marginBottom: '0.25rem' }}>
                     {h}:{' '}
                     <input
