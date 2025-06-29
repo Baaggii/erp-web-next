@@ -102,6 +102,19 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     [columnMeta],
   );
 
+  const branchIdFields = useMemo(() => {
+    if (formConfig?.branchIdFields && formConfig.branchIdFields.length > 0)
+      return formConfig.branchIdFields.filter((f) => validCols.has(f));
+    return ['branch_id'].filter((f) => validCols.has(f));
+  }, [formConfig, validCols]);
+
+  const userIdFields = useMemo(() => {
+    if (formConfig?.userIdFields && formConfig.userIdFields.length > 0)
+      return formConfig.userIdFields.filter((f) => validCols.has(f));
+    const candidates = ['created_by', 'employee_id', 'emp_id', 'empid', 'user_id'];
+    return candidates.filter((f) => validCols.has(f));
+  }, [formConfig, validCols]);
+
   function computeAutoInc(meta) {
     const auto = meta
       .filter(
@@ -196,13 +209,13 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     } else {
       setTypeFilter('');
     }
-    if (company?.branch_id !== undefined && formConfig.branchIdFields) {
-      formConfig.branchIdFields.forEach((f) => {
+    if (company?.branch_id !== undefined && branchIdFields.length > 0) {
+      branchIdFields.forEach((f) => {
         if (validCols.has(f)) newFilters[f] = company.branch_id;
       });
     }
-    if (user?.empid !== undefined && formConfig.userIdFields) {
-      formConfig.userIdFields.forEach((f) => {
+    if (user?.empid !== undefined && userIdFields.length > 0) {
+      userIdFields.forEach((f) => {
         if (validCols.has(f)) newFilters[f] = user.empid;
       });
     }
@@ -510,8 +523,8 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     const all = columnMeta.map((c) => c.name);
     all.forEach((c) => {
       let v = (formConfig?.defaultValues || {})[c] || '';
-      if (formConfig?.userIdFields?.includes(c) && user?.empid) v = user.empid;
-      if (formConfig?.branchIdFields?.includes(c) && company?.branch_id !== undefined) v = company.branch_id;
+      if (userIdFields.includes(c) && user?.empid) v = user.empid;
+      if (branchIdFields.includes(c) && company?.branch_id !== undefined) v = company.branch_id;
       if (formConfig?.companyIdFields?.includes(c) && company?.company_id !== undefined) v = company.company_id;
       vals[c] = v;
     });
@@ -620,10 +633,10 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     });
 
     if (isAdding) {
-      formConfig?.userIdFields?.forEach((f) => {
+      userIdFields.forEach((f) => {
         if (columns.has(f)) merged[f] = user?.empid;
       });
-      formConfig?.branchIdFields?.forEach((f) => {
+      branchIdFields.forEach((f) => {
         if (columns.has(f) && company?.branch_id !== undefined)
           merged[f] = company.branch_id;
       });
@@ -977,8 +990,8 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     headerFields = [...formConfig.headerFields];
   } else {
     headerFields = [
-      ...(formConfig?.userIdFields || []),
-      ...(formConfig?.branchIdFields || []),
+      ...userIdFields,
+      ...branchIdFields,
       ...(formConfig?.companyIdFields || []),
       ...(formConfig?.dateField || []),
     ];
@@ -1167,14 +1180,14 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
           )}
         </div>
       )}
-      {formConfig?.branchIdFields?.length > 0 && company?.branch_id !== undefined && (
+      {branchIdFields.length > 0 && company?.branch_id !== undefined && (
         <div style={{ backgroundColor: '#ddffee', padding: '0.25rem', textAlign: 'left' }}>
           Branch:{' '}
           <span style={{ marginRight: '0.5rem' }}>{company.branch_id}</span>
           {user?.role === 'admin' && (
             <button
               onClick={() =>
-                formConfig.branchIdFields.forEach((f) => handleFilterChange(f, ''))
+                branchIdFields.forEach((f) => handleFilterChange(f, ''))
               }
             >
               Clear Branch Filter
@@ -1182,14 +1195,14 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
           )}
         </div>
       )}
-      {formConfig?.userIdFields?.length > 0 && user?.empid !== undefined && (
+      {userIdFields.length > 0 && user?.empid !== undefined && (
         <div style={{ backgroundColor: '#ffeecc', padding: '0.25rem', textAlign: 'left' }}>
           User:{' '}
           <span style={{ marginRight: '0.5rem' }}>{user.empid}</span>
           {user?.role === 'admin' && (
             <button
               onClick={() =>
-                formConfig.userIdFields.forEach((f) => handleFilterChange(f, ''))
+                userIdFields.forEach((f) => handleFilterChange(f, ''))
               }
             >
               Clear User Filter
