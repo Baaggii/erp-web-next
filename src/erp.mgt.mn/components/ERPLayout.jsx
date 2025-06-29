@@ -23,6 +23,9 @@ import Spinner from "./Spinner.jsx";
  */
 export default function ERPLayout() {
   const { user, setUser, company } = useContext(AuthContext);
+  useEffect(() => {
+    if (window.erpDebug) console.warn('Mounted: ERPLayout');
+  }, []);
   const navigate = useNavigate();
   const location = useLocation();
 

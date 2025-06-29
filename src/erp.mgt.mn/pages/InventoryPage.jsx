@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 
 const data = [
   { id: 1, name: 'Бараа 1', qty: 10, price: 1000 },
@@ -7,6 +7,9 @@ const data = [
 ];
 
 export default function InventoryPage() {
+  useEffect(() => {
+    if (window.erpDebug) console.warn('Mounted: InventoryPage');
+  }, []);
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full border text-sm bg-white max-h-[70vh] overflow-auto">

@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
+import { trackSetState } from '../utils/debug.js';
 
 const LoadingContext = createContext({ loaders: {} });
 
@@ -8,10 +9,12 @@ export function LoadingProvider({ children }) {
   useEffect(() => {
     function start(e) {
       const key = (e.detail && e.detail.key) || 'global';
+      trackSetState('LoadingProvider.setLoaders');
       setLoaders((l) => ({ ...l, [key]: (l[key] || 0) + 1 }));
     }
     function end(e) {
       const key = (e.detail && e.detail.key) || 'global';
+      trackSetState('LoadingProvider.setLoaders');
       setLoaders((l) => ({ ...l, [key]: Math.max(0, (l[key] || 0) - 1) }));
     }
     window.addEventListener('loading:start', start);
@@ -22,8 +25,10 @@ export function LoadingProvider({ children }) {
     };
   }, []);
 
+  const value = useMemo(() => ({ loaders }), [loaders]);
+
   return (
-    <LoadingContext.Provider value={{ loaders }}>
+    <LoadingContext.Provider value={value}>
       {children}
     </LoadingContext.Provider>
   );
