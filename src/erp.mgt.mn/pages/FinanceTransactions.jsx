@@ -35,7 +35,6 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const tableRef = useRef(null);
   const prevModuleKey = useRef(moduleKey);
   const { addToast } = useToast();
-  const renderCount = useRef(0);
   const mounted = useRef(false);
   const sessionLoaded = useRef(false);
   const prevSessionRef = useRef({});
