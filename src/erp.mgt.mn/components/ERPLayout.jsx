@@ -63,7 +63,7 @@ export default function ERPLayout() {
   useEffect(() => {
     const title = titleForPath(location.pathname);
     openTab({ key: location.pathname, label: title });
-  }, [location.pathname, modules, openTab]);
+  }, [location.pathname, openTab]);
 
   function handleOpen(path, label, key) {
     if (txnModuleKeys && txnModuleKeys.has(key)) {
