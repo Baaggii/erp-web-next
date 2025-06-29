@@ -147,7 +147,9 @@ export default function RowFormModal({
       }
       vals[c] = v;
     });
-    setFormVals(vals);
+    // Avoid triggering a state update if the values haven't actually changed.
+    const same = Object.keys(vals).every((k) => formVals[k] === vals[k]);
+    if (!same) setFormVals(vals);
     inputRefs.current = {};
     setErrors({});
   }, [row, visible, user, company]);
