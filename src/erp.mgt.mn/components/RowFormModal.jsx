@@ -28,9 +28,11 @@ const RowFormModal = function RowFormModal({
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
-  renderCount.current++;
-  if (renderCount.current > 10) {
-    console.warn('Excessive renders: RowFormModal', renderCount.current);
+  if (renderCount.current < 50) {
+    renderCount.current += 1;
+    if (renderCount.current > 10 && renderCount.current % 5 === 0) {
+      console.warn('Excessive renders: RowFormModal', renderCount.current);
+    }
   }
 
   useEffect(() => {
@@ -39,8 +41,8 @@ const RowFormModal = function RowFormModal({
       if (window.erpDebug) console.warn('Mounted: RowFormModal');
     }
   }, []);
-  const headerSet = new Set(headerFields);
-  const footerSet = new Set(footerFields);
+  const headerSet = React.useMemo(() => new Set(headerFields), [headerFields]);
+  const footerSet = React.useMemo(() => new Set(footerFields), [footerFields]);
   const { user, company } = useContext(AuthContext);
   const [formVals, setFormVals] = useState(() => {
     const init = {};
@@ -169,9 +171,9 @@ const RowFormModal = function RowFormModal({
 
   if (!visible) return null;
 
-  const mainSet = new Set(mainFields);
-  const totalAmountSet = new Set(totalAmountFields);
-  const totalCurrencySet = new Set(totalCurrencyFields);
+  const mainSet = React.useMemo(() => new Set(mainFields), [mainFields]);
+  const totalAmountSet = React.useMemo(() => new Set(totalAmountFields), [totalAmountFields]);
+  const totalCurrencySet = React.useMemo(() => new Set(totalCurrencyFields), [totalCurrencyFields]);
   const headerCols = columns.filter((c) => headerSet.has(c));
   const footerCols = columns.filter((c) => footerSet.has(c));
   const mainCols =
