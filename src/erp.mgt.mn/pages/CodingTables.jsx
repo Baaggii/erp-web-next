@@ -60,7 +60,10 @@ export default function CodingTablesPage() {
   }, []);
 
   const allHeaders = useMemo(
-    () => [...headers, ...extraFields.filter((f) => f.trim() !== '')],
+    () =>
+      Array.from(
+        new Set([...headers, ...extraFields.filter((f) => f.trim() !== '')])
+      ),
     [headers, extraFields]
   );
 
@@ -708,74 +711,52 @@ export default function CodingTablesPage() {
       return `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};\n`;
     }
 
-    function buildInsert(rows, tableNameForSql) {
+    function buildInsert(rows, tableNameForSql, fields = allHdrs) {
+      if (!rows.length || !fields.length) return '';
+      const cols = fields.map((f) => `\`${dbCols[f] || cleanIdentifier(renameMap[f] || f)}\``);
+      const idxMap = fields.map((f) => allHdrs.indexOf(f));
       let out = '';
       for (const r of rows) {
-        const cols = [];
-        const vals = [];
-        let hasData = false;
         if (nmCol) {
           const nameVal = r[nameIdx];
           if (nameVal === undefined || nameVal === null || nameVal === '') continue;
-          cols.push(`\`${dbNameCol}\``);
-          vals.push(formatVal(nameVal, colTypes[nmCol]));
-          hasData = true;
         }
-        uniqueOnly.forEach((c, idx2) => {
-          const ui = uniqueIdx[idx2];
-          let v = ui === -1 ? undefined : r[ui];
+        let hasData = false;
+        const vals = idxMap.map((idx, i) => {
+          const f = fields[i];
+          let v = idx === -1 ? undefined : r[idx];
           if (v === undefined || v === null || v === '') {
-            const from = defaultFrom[c];
+            const from = defaultFrom[f];
             if (from) {
               const fi = allHdrs.indexOf(from);
               v = fi === -1 ? undefined : r[fi];
             }
             if (v === undefined || v === null || v === '') {
-              v = defaultValues[c];
+              v = defaultValues[f];
             }
-            if ((v === undefined || v === null || v === '') && localNotNull[c]) {
-              v = defaultValForType(colTypes[c]);
-            }
-          }
-          cols.push(`\`${dbCols[c]}\``);
-          vals.push(formatVal(v, colTypes[c]));
-          hasData = true;
-        });
-        otherFiltered.forEach((c, idx2) => {
-          const ci = otherIdx[idx2];
-          let v = ci === -1 ? undefined : r[ci];
-          if (v === undefined || v === null || v === '') {
-            const from = defaultFrom[c];
-            if (from) {
-              const fi = allHdrs.indexOf(from);
-              v = fi === -1 ? undefined : r[fi];
-            }
-            if (v === undefined || v === null || v === '') {
-              v = defaultValues[c];
-            }
-            if ((v === undefined || v === null || v === '') && localNotNull[c]) {
-              v = defaultValForType(colTypes[c]);
+            if ((v === undefined || v === null || v === '') && localNotNull[f]) {
+              v = defaultValForType(colTypes[f]);
             }
           }
-          if (v !== undefined && v !== null && v !== '' && (allowZeroMap[c] ? true : v !== 0)) hasData = true;
-          cols.push(`\`${dbCols[c]}\``);
-          vals.push(formatVal(v, colTypes[c]));
+          if (v !== undefined && v !== null && v !== '' && (allowZeroMap[f] ? true : v !== 0)) {
+            hasData = true;
+          }
+          return formatVal(v, colTypes[f]);
         });
         if (!hasData) continue;
-        // Do not drop rows when populateRange is enabled even if some values
-        // are disallowed. Those rows will be inserted into the `_other` table
-        // instead.
         const updates = cols.map((c) => `${c} = VALUES(${c})`);
         out += `INSERT INTO \`${tableNameForSql}\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
       }
       return out;
     }
 
+    const allFields = Array.from(new Set([...headers, ...extraFields]));
+
     const structMainStr = buildStructure(tbl, true);
-    const insertMainStr = buildInsert(mainRows, tbl);
+    const insertMainStr = buildInsert(mainRows, tbl, allFields);
     const otherCombined = [...otherRows, ...dupRows];
     const structOtherStr = buildStructure(`${tbl}_other`, false);
-    const insertOtherStr = buildInsert(otherCombined, `${tbl}_other`);
+    const insertOtherStr = buildInsert(otherCombined, `${tbl}_other`, allFields);
     if (structure) {
       const sqlStr = structMainStr + insertMainStr;
       const sqlOtherStr =
@@ -1293,9 +1274,7 @@ export default function CodingTablesPage() {
         setCalcText(cfg.calcText || '');
         setColumnTypes(cfg.columnTypes || {});
         if (cfg.columnTypes) {
-          const hdrs = Object.keys(cfg.columnTypes).filter(
-            (h) => !extras.includes(h)
-          );
+          const hdrs = Object.keys(cfg.columnTypes || {});
           setHeaders(hdrs);
         }
         setNotNullMap(cfg.notNullMap || {});
