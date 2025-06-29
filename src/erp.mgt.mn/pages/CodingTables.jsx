@@ -60,7 +60,10 @@ export default function CodingTablesPage() {
   }, []);
 
   const allHeaders = useMemo(
-    () => [...headers, ...extraFields.filter((f) => f.trim() !== '')],
+    () =>
+      Array.from(
+        new Set([...headers, ...extraFields.filter((f) => f.trim() !== '')])
+      ),
     [headers, extraFields]
   );
 
@@ -708,7 +711,7 @@ export default function CodingTablesPage() {
       return `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};\n`;
     }
 
-    function buildInsert(rows, tableNameForSql, fields) {
+    function buildInsert(rows, tableNameForSql, fields = allHdrs) {
       if (!rows.length || !fields.length) return '';
       const cols = fields.map((f) => `\`${dbCols[f] || cleanIdentifier(renameMap[f] || f)}\``);
       const idxMap = fields.map((f) => allHdrs.indexOf(f));
@@ -747,7 +750,7 @@ export default function CodingTablesPage() {
       return out;
     }
 
-    const allFields = Object.keys(columnTypes || {});
+    const allFields = Array.from(new Set([...headers, ...extraFields]));
 
     const structMainStr = buildStructure(tbl, true);
     const insertMainStr = buildInsert(mainRows, tbl, allFields);
@@ -1271,7 +1274,6 @@ export default function CodingTablesPage() {
         setCalcText(cfg.calcText || '');
         setColumnTypes(cfg.columnTypes || {});
         if (cfg.columnTypes) {
-          // include all fields defined in columnTypes, even ones listed as extraFields
           const hdrs = Object.keys(cfg.columnTypes || {});
           setHeaders(hdrs);
         }
