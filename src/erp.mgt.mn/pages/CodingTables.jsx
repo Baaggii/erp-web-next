@@ -577,6 +577,11 @@ export default function CodingTablesPage() {
     }
     const idIdx = allHdrs.indexOf(idCol);
     const nameIdx = allHdrs.indexOf(nmCol);
+    const hasIdValues =
+      idCol && idIdx !== -1 && rows.some((r) => {
+        const v = r[idIdx];
+        return v !== undefined && v !== null && v !== '';
+      });
     const dbIdCol = idCol ? cleanIdentifier(renameMap[idCol] || 'id') : null;
     const dbNameCol = nmCol ? cleanIdentifier(renameMap[nmCol] || 'name') : null;
     if (idCol && idIdx === -1) return;
@@ -586,7 +591,7 @@ export default function CodingTablesPage() {
     const stateIdx = allHdrs.findIndex((h) => /state/i.test(h));
 
     const fieldsToCheck = [
-      ...(idCol ? [idCol] : []),
+      ...(idCol && hasIdValues ? [idCol] : []),
       ...(nmCol ? [nmCol] : []),
       ...uniqueOnly,
       ...otherFiltered,
@@ -751,7 +756,7 @@ export default function CodingTablesPage() {
     }
 
     const fields = [
-      ...(idCol ? [idCol] : []),
+      ...(idCol && hasIdValues ? [idCol] : []),
       ...(nmCol ? [nmCol] : []),
       ...uniqueOnly,
       ...otherFiltered,
