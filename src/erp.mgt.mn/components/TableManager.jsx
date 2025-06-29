@@ -20,22 +20,27 @@ function ch(n) {
 }
 
 function logRowsMemory(rows) {
-  if (process.env.NODE_ENV === 'production') return;
-  try {
-    const sizeMB = JSON.stringify(rows).length / 1024 / 1024;
-    const timestamp = new Date().toISOString();
-    const message = `Loaded ${rows.length} transactions (~${sizeMB.toFixed(2)} MB) at ${timestamp}`;
-    if (!window.memoryLogs) window.memoryLogs = [];
-    window.memoryLogs.push(message);
-    if (sizeMB > 10 || rows.length > 10000) {
-      console.warn(message);
-    } else {
-      console.log(message);
+    if (process.env.NODE_ENV === 'production') return;
+    try {
+      const sizeMB = JSON.stringify(rows).length / 1024 / 1024;
+      const timestamp = new Date().toISOString();
+      const message = `Loaded ${rows.length} transactions (~${sizeMB.toFixed(2)} MB) at ${timestamp}`;
+      if (!window.memoryLogs) window.memoryLogs = [];
+      if (window.memoryLogs.length >= 20) {
+        window.memoryLogs.shift(); // remove oldest
+      }
+      window.memoryLogs.push(message);
+      if (window.erpDebug) {
+        if (sizeMB > 10 || rows.length > 10000) {
+          console.warn(message);
+        } else {
+          console.log(message);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to compute memory usage', err);
     }
-  } catch (err) {
-    console.error('Failed to compute memory usage', err);
   }
-}
 
 const MAX_WIDTH = ch(40);
 
@@ -84,20 +89,31 @@ const deleteBtnStyle = {
   color: '#b91c1c',
 };
 
-const TableManager = forwardRef(function TableManager({ table, refreshId = 0, formConfig = null, initialPerPage = 10, addLabel = 'Add Row', showTable = true }, ref) {
+const TableManager = forwardRef(function TableManager({
+  table,
+  refreshId = 0,
+  formConfig = null,
+  initialPerPage = 10,
+  addLabel = 'Add Row',
+  showTable = true
+}, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
+  const warned = useRef(false);
+
   renderCount.current++;
-  if (renderCount.current > 10) {
-    console.warn('Excessive renders: TableManager', renderCount.current);
+  if (renderCount.current > 10 && !warned.current) {
+    console.warn(`⚠️ Excessive renders: TableManager ${renderCount.current}`);
+    warned.current = true;
   }
 
   useEffect(() => {
     if (!mounted.current) {
       mounted.current = true;
-      if (window.erpDebug) console.warn('Mounted: TableManager');
+      if (window.erpDebug) console.warn('✅ Mounted: TableManager');
     }
   }, []);
+  
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
   const [page, setPage] = useState(1);
@@ -130,22 +146,19 @@ const TableManager = forwardRef(function TableManager({ table, refreshId = 0, fo
   const { user, company } = useContext(AuthContext);
   const { addToast } = useToast();
 
-  const validCols = useMemo(
-    () => new Set(columnMeta.map((c) => c.name)),
-    [columnMeta],
-  );
+  const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
 
   const branchIdFields = useMemo(() => {
-    if (formConfig?.branchIdFields && formConfig.branchIdFields.length > 0)
-      return formConfig.branchIdFields.filter((f) => validCols.has(f));
-    return ['branch_id'].filter((f) => validCols.has(f));
+    if (formConfig?.branchIdFields?.length)
+      return formConfig.branchIdFields.filter(f => validCols.has(f));
+    return ['branch_id'].filter(f => validCols.has(f));
   }, [formConfig, validCols]);
 
   const userIdFields = useMemo(() => {
-    if (formConfig?.userIdFields && formConfig.userIdFields.length > 0)
-      return formConfig.userIdFields.filter((f) => validCols.has(f));
-    const candidates = ['created_by', 'employee_id', 'emp_id', 'empid', 'user_id'];
-    return candidates.filter((f) => validCols.has(f));
+    if (formConfig?.userIdFields?.length)
+      return formConfig.userIdFields.filter(f => validCols.has(f));
+    const defaultFields = ['created_by', 'employee_id', 'emp_id', 'empid', 'user_id'];
+    return defaultFields.filter(f => validCols.has(f));
   }, [formConfig, validCols]);
 
   function computeAutoInc(meta) {
