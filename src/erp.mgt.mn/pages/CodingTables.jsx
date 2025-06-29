@@ -457,23 +457,52 @@ export default function CodingTablesPage() {
     };
   }
 
+  function applyConfig(cfg) {
+    const extras =
+      cfg.extraFields && cfg.extraFields.length > 0 ? cfg.extraFields : [''];
+    setExtraFields(extras);
+    setIdColumn(cfg.idColumn || '');
+    setNameColumn(cfg.nameColumn || '');
+    setOtherColumns(cfg.otherColumns || []);
+    setUniqueFields(cfg.uniqueFields || []);
+    setCalcText(cfg.calcText || '');
+
+    const workingHeaders = Array.from(
+      new Set([
+        cfg.idColumn,
+        cfg.nameColumn,
+        ...(cfg.uniqueFields || []),
+        ...(cfg.otherColumns || []),
+      ].filter(Boolean))
+    );
+
+    const filterMap = (obj = {}) =>
+      Object.fromEntries(
+        workingHeaders
+          .map((h) => (obj[h] !== undefined ? [h, obj[h]] : null))
+          .filter(Boolean)
+      );
+
+    setHeaders(workingHeaders);
+    setColumnTypes(filterMap(cfg.columnTypes));
+    setNotNullMap(filterMap(cfg.notNullMap));
+    setAllowZeroMap(filterMap(cfg.allowZeroMap));
+    setDefaultValues(filterMap(cfg.defaultValues));
+    setDefaultFrom(filterMap(cfg.defaultFrom));
+    setRenameMap(filterMap(cfg.renameMap));
+
+    setPopulateRange(cfg.populateRange || false);
+    setStartYear(cfg.startYear || '');
+    setEndYear(cfg.endYear || '');
+    setAutoIncStart(cfg.autoIncStart || '1');
+  }
+
   function loadFromSql() {
     const base = structSql || sql;
     const cfg = parseSqlConfig(base.trim());
     if (!cfg) return;
-    const hdrs = Object.keys(cfg.columnTypes || {});
-    setHeaders(hdrs);
     setTableName(cfg.table);
-    setIdColumn(cfg.idColumn);
-    setNameColumn(cfg.nameColumn);
-    setOtherColumns(cfg.otherColumns);
-    setUniqueFields(cfg.uniqueFields);
-    setCalcText(cfg.calcText);
-    setColumnTypes((prev) => ({ ...prev, ...cfg.columnTypes }));
-    setNotNullMap((prev) => ({ ...prev, ...cfg.notNullMap }));
-    setAllowZeroMap((prev) => ({ ...prev, ...cfg.allowZeroMap }));
-    setDefaultValues((prev) => ({ ...prev, ...cfg.defaultValues }));
-    setAutoIncStart(cfg.autoIncStart || '1');
+    applyConfig(cfg);
   }
 
   async function loadTableStructure() {
@@ -495,17 +524,7 @@ export default function CodingTablesPage() {
       if (data.sql) {
         const cfg = parseSqlConfig(data.sql);
         if (cfg) {
-          setHeaders(Object.keys(cfg.columnTypes || {}));
-          setIdColumn(cfg.idColumn);
-          setNameColumn(cfg.nameColumn);
-          setOtherColumns(cfg.otherColumns);
-          setUniqueFields(cfg.uniqueFields);
-          setCalcText(cfg.calcText);
-          setColumnTypes((prev) => ({ ...prev, ...cfg.columnTypes }));
-          setNotNullMap((prev) => ({ ...prev, ...cfg.notNullMap }));
-          setAllowZeroMap((prev) => ({ ...prev, ...cfg.allowZeroMap }));
-          setDefaultValues((prev) => ({ ...prev, ...cfg.defaultValues }));
-          setAutoIncStart(cfg.autoIncStart || '1');
+          applyConfig(cfg);
         }
       }
     } catch {
@@ -1261,29 +1280,7 @@ export default function CodingTablesPage() {
         setHeaderRow(cfg.headerRow || 1);
         setMnHeaderRow(cfg.mnHeaderRow || '');
         setIdFilterMode(cfg.idFilterMode || 'contains');
-        setIdColumn(cfg.idColumn || '');
-        setNameColumn(cfg.nameColumn || '');
-        const extras =
-          cfg.extraFields && cfg.extraFields.length > 0 ? cfg.extraFields : [''];
-        setExtraFields(extras);
-        setOtherColumns(cfg.otherColumns || []);
-        setUniqueFields(cfg.uniqueFields || []);
-        setCalcText(cfg.calcText || '');
-        setColumnTypes(cfg.columnTypes || {});
-        if (cfg.columnTypes) {
-          // include all fields defined in columnTypes, even ones listed as extraFields
-          const hdrs = Object.keys(cfg.columnTypes || {});
-          setHeaders(hdrs);
-        }
-        setNotNullMap(cfg.notNullMap || {});
-        setAllowZeroMap(cfg.allowZeroMap || {});
-        setDefaultValues(cfg.defaultValues || {});
-        setDefaultFrom(cfg.defaultFrom || {});
-        setRenameMap(cfg.renameMap || {});
-        setPopulateRange(cfg.populateRange || false);
-        setStartYear(cfg.startYear || '');
-        setEndYear(cfg.endYear || '');
-        setAutoIncStart(cfg.autoIncStart || '1');
+        applyConfig(cfg);
       })
       .catch(() => {});
   }, [tableName]);
