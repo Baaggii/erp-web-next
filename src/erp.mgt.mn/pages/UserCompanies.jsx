@@ -1,6 +1,7 @@
 // src/erp.mgt.mn/pages/UserCompanies.jsx
 import React, { useEffect, useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
+import { debugLog } from '../utils/debug.js';
 
 export default function UserCompanies() {
   const [assignments, setAssignments] = useState([]);
@@ -11,6 +12,10 @@ export default function UserCompanies() {
   const [branchesList, setBranchesList] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
+
+  useEffect(() => {
+    debugLog('Component mounted: UserCompanies');
+  }, []);
 
   function loadAssignments(empid) {
     const params = [];
@@ -134,10 +139,18 @@ export default function UserCompanies() {
           <tbody>
             {assignments.map(a => (
               <tr key={a.empid + '-' + a.company_id}>
-                <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>{a.empid}</td>
-                <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>{a.company_name}</td>
-                <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>{a.branch_name || ''}</td>
-                <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>{a.role}</td>
+                <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                  {a.empid != null ? a.empid : ''}
+                </td>
+                <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                  {a.company_name != null ? a.company_name : ''}
+                </td>
+                <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                  {a.branch_name != null ? a.branch_name : ''}
+                </td>
+                <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                  {a.role != null ? a.role : ''}
+                </td>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                   <button onClick={() => handleEdit(a)}>Засах</button>
                   <button onClick={() => handleDelete(a)} style={{ marginLeft: '0.5rem' }}>
