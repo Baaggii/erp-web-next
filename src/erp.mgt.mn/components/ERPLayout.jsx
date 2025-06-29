@@ -266,9 +266,12 @@ function MainWindow({ title }) {
   const navigate = useNavigate();
   const { tabs, activeKey, switchTab, closeTab, setTabContent, cache } = useTabs();
 
+  // Store rendered outlet by path once the route changes. Avoid tracking
+  // the `outlet` object itself to prevent endless updates caused by React
+  // creating a new element on every render.
   useEffect(() => {
     setTabContent(location.pathname, outlet);
-  }, [location.pathname, outlet, setTabContent]);
+  }, [location.pathname, setTabContent]);
 
   function handleSwitch(key) {
     switchTab(key);
