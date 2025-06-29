@@ -87,17 +87,16 @@ const deleteBtnStyle = {
 const TableManager = forwardRef(function TableManager({ table, refreshId = 0, formConfig = null, initialPerPage = 10, addLabel = 'Add Row', showTable = true }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
+  renderCount.current++;
+  if (renderCount.current > 10) {
+    console.warn('Excessive renders: TableManager', renderCount.current);
+  }
 
   useEffect(() => {
-    if (process.env.NODE_ENV !== 'production') {
-      renderCount.current++;
-      if (renderCount.current > 5) console.warn('Excessive re-renders');
+    if (!mounted.current) {
+      mounted.current = true;
+      if (window.erpDebug) console.warn('Mounted: TableManager');
     }
-  });
-
-  useEffect(() => {
-    if (mounted.current) return;
-    mounted.current = true;
   }, []);
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);

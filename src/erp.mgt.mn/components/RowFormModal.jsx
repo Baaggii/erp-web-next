@@ -28,17 +28,16 @@ const RowFormModal = function RowFormModal({
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
+  renderCount.current++;
+  if (renderCount.current > 10) {
+    console.warn('Excessive renders: RowFormModal', renderCount.current);
+  }
 
   useEffect(() => {
-    if (process.env.NODE_ENV !== 'production') {
-      renderCount.current++;
-      if (renderCount.current > 5) console.warn('Excessive re-renders');
+    if (!mounted.current) {
+      mounted.current = true;
+      if (window.erpDebug) console.warn('Mounted: RowFormModal');
     }
-  });
-
-  useEffect(() => {
-    if (mounted.current) return;
-    mounted.current = true;
   }, []);
   const headerSet = new Set(headerFields);
   const footerSet = new Set(footerFields);

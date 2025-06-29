@@ -43,6 +43,19 @@ export default forwardRef(function InlineTransactionTable({
   onRowsChange = () => {},
   requiredFields = [],
 }, ref) {
+  const mounted = useRef(false);
+  const renderCount = useRef(0);
+  renderCount.current++;
+  if (renderCount.current > 10) {
+    console.warn('Excessive renders: InlineTransactionTable', renderCount.current);
+  }
+
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      if (window.erpDebug) console.warn('Mounted: InlineTransactionTable');
+    }
+  }, []);
   const [rows, setRows] = useState(() =>
     collectRows ? Array.from({ length: minRows }, () => ({})) : [],
   );

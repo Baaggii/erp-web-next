@@ -8,6 +8,7 @@ export default defineConfig({
   plugins: [react()],
   build: {
     outDir: '../../../../erp.mgt.mn',
-    emptyOutDir: true
+    emptyOutDir: true,
+    minify: false
   }
 });
