@@ -354,7 +354,12 @@ const RowFormModal = function RowFormModal({
         ref={(el) => (inputRefs.current[c] = el)}
         value={formVals[c]}
         onChange={(e) => {
-          setFormVals((v) => ({ ...v, [c]: e.target.value }));
+          setFormVals((prev) => {
+            if (prev[c] === e.target.value) return prev;
+            const updated = { ...prev, [c]: e.target.value };
+            onChange({ [c]: e.target.value });
+            return updated;
+          });
           setErrors((er) => ({ ...er, [c]: undefined }));
           onChange({ [c]: e.target.value });
         }}
@@ -377,7 +382,12 @@ const RowFormModal = function RowFormModal({
         placeholder={placeholders[c] || ''}
         value={formVals[c]}
         onChange={(e) => {
-          setFormVals((v) => ({ ...v, [c]: e.target.value }));
+          setFormVals((prev) => {
+            if (prev[c] === e.target.value) return prev;
+            const updated = { ...prev, [c]: e.target.value };
+            onChange({ [c]: e.target.value });
+            return updated;
+          });
           setErrors((er) => ({ ...er, [c]: undefined }));
           onChange({ [c]: e.target.value });
         }}
