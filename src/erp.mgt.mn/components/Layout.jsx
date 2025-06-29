@@ -1,5 +1,5 @@
 // src/erp.mgt.mn/components/ERPLayout.jsx
-import React, { useContext } from 'react';
+import React, { useContext, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { logout } from '../hooks/useAuth.jsx';
@@ -14,6 +14,10 @@ export default function ERPLayout() {
   const { user, setUser } = useContext(AuthContext);
   const navigate = useNavigate();
   const location = useLocation();
+
+  useEffect(() => {
+    if (window.erpDebug) console.warn('Mounted: Layout');
+  }, []);
 
   const titleMap = {
     '/': 'Dashboard',

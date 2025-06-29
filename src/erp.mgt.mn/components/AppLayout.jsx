@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import React, { useContext, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { logout } from '../hooks/useAuth.jsx';
@@ -6,6 +6,10 @@ import { logout } from '../hooks/useAuth.jsx';
 export default function AppLayout({ children, title }) {
   const { user, company } = useContext(AuthContext);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (window.erpDebug) console.warn('Mounted: AppLayout');
+  }, []);
 
   async function handleLogout() {
     await logout();

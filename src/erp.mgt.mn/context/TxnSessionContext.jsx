@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useMemo } from 'react';
+import { trackSetState } from '../utils/debug.js';
 
 const TxnSessionContext = createContext();
 
@@ -7,6 +8,7 @@ export function TxnSessionProvider({ children }) {
 
   const getSession = (key) => {
     if (!sessions[key]) {
+      trackSetState('TxnSessionProvider.setSessions');
       setSessions((s) => ({ ...s, [key]: {} }));
       return {};
     }
@@ -14,10 +16,12 @@ export function TxnSessionProvider({ children }) {
   };
 
   const setSession = (key, state) => {
+    trackSetState('TxnSessionProvider.setSessions');
     setSessions((s) => ({ ...s, [key]: { ...s[key], ...state } }));
   };
 
   const clearSession = (key) => {
+    trackSetState('TxnSessionProvider.setSessions');
     setSessions((s) => {
       const copy = { ...s };
       delete copy[key];
@@ -25,8 +29,13 @@ export function TxnSessionProvider({ children }) {
     });
   };
 
+  const value = useMemo(
+    () => ({ getSession, setSession, clearSession }),
+    [getSession, setSession, clearSession]
+  );
+
   return (
-    <TxnSessionContext.Provider value={{ getSession, setSession, clearSession }}>
+    <TxnSessionContext.Provider value={value}>
       {children}
     </TxnSessionContext.Provider>
   );
