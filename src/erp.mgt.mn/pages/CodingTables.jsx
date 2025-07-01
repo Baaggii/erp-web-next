@@ -729,11 +729,14 @@ export default function CodingTablesPage() {
       }
       const zeroInvalid = fieldsToCheck.some((f) => {
         const idxF = allHdrs.indexOf(f);
-        if (idxF === -1) return false;
-        const v = r[idxF];
+        const v = resolvedValue(r, idxF, f);
         const isZero =
           v === 0 || (typeof v === 'string' && v.trim() !== '' && Number(v) === 0);
-        return v === null || (isZero && !allowZeroMap[f]);
+        if (isZero && !allowZeroMap[f]) return true;
+        if (localNotNull[f]) {
+          return v === undefined || v === null || v === '';
+        }
+        return false;
       });
       const stateVal = stateIdx === -1 ? '1' : String(r[stateIdx]);
       if (!zeroInvalid && stateVal === '1') mainRows.push(r);
