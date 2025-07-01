@@ -85,10 +85,10 @@ export default function CodingTablesPage() {
     return Array.from(new Set([...strs, ...extraList]));
   }
 
-  function uniqueRenamedFields(exclude) {
+  function uniqueRenamedFields(fields = allFields, exclude) {
     const seen = new Set();
     const opts = [];
-    for (const f of allFields) {
+    for (const f of fields) {
       if (f === exclude) continue;
       const label = renameMap[f] || f;
       if (!seen.has(label)) {
@@ -250,11 +250,12 @@ export default function CodingTablesPage() {
     raw.forEach((h, i) => {
       if (String(h).trim().length > 0) {
         let clean = cleanIdentifier(h);
-        if (seen[clean]) {
-          seen[clean] += 1;
-          const suffixed = `${clean}_${seen[clean]}`;
+        if (clean in seen) {
+          const suffixNum = seen[clean];
+          const suffixed = `${clean}_${suffixNum}`;
           dup.add(suffixed);
           hdrs.push(suffixed);
+          seen[clean] = suffixNum + 1;
         } else {
           seen[clean] = 1;
           hdrs.push(clean);
@@ -1639,9 +1640,9 @@ export default function CodingTablesPage() {
                 ID Column:
                 <select value={idColumn} onChange={(e) => setIdColumn(e.target.value)}>
                   <option value="">--none--</option>
-                  {idCandidates.map((h) => (
-                    <option key={h} value={h}>
-                      {h}
+                  {uniqueRenamedFields(idCandidates).map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
                     </option>
                   ))}
                 </select>
@@ -1661,9 +1662,9 @@ export default function CodingTablesPage() {
                 Name Column:
                 <select value={nameColumn} onChange={(e) => setNameColumn(e.target.value)}>
                   <option value="">--select--</option>
-                  {allFields.map((h) => (
-                    <option key={h} value={h}>
-                      {h}
+                  {uniqueRenamedFields().map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
                     </option>
                   ))}
                 </select>
@@ -1671,7 +1672,7 @@ export default function CodingTablesPage() {
               <div>
                 Unique Fields:
                 <div>
-                  {allFields.map((h) => (
+                  {uniqueRenamedFields().map(({ value: h, label }) => (
                     <label key={h} style={{ marginRight: '0.5rem' }}>
                       <input
                         type="checkbox"
@@ -1685,7 +1686,7 @@ export default function CodingTablesPage() {
                           }
                         }}
                       />
-                      {h}
+                      {label}
                     </label>
                   ))}
                 </div>
@@ -1693,7 +1694,7 @@ export default function CodingTablesPage() {
               <div>
                 Other Columns:
                 <div>
-                  {allFields.map((h) => (
+                  {uniqueRenamedFields().map(({ value: h, label }) => (
                     <label key={h} style={{ marginRight: '0.5rem' }}>
                       <input
                         type="checkbox"
@@ -1707,7 +1708,7 @@ export default function CodingTablesPage() {
                           }
                         }}
                       />
-                      {h}
+                      {label}
                     </label>
                   ))}
                 </div>
@@ -1715,9 +1716,9 @@ export default function CodingTablesPage() {
               <div>
                 Column Types:
                 <div>
-                  {allFields.map((h) => (
+                  {uniqueRenamedFields().map(({ value: h, label }) => (
                     <div key={h} style={{ marginBottom: '0.25rem' }}>
-                      {h}:{' '}
+                      {label}:{' '}
                       <input
                         value={columnTypes[h] || ''}
                         onChange={(e) =>
@@ -1775,7 +1776,7 @@ export default function CodingTablesPage() {
                         style={{ marginLeft: '0.25rem' }}
                       >
                         <option value="">from field...</option>
-                        {uniqueRenamedFields(h).map((o) => (
+                        {uniqueRenamedFields(allFields, h).map((o) => (
                           <option key={o.value} value={o.value}>
                             {o.label}
                           </option>
