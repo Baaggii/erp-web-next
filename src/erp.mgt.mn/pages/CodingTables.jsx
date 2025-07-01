@@ -806,10 +806,6 @@ export default function CodingTablesPage() {
       const idxMap = fields.map((f) => allHdrs.indexOf(f));
       let out = '';
       for (const r of rows) {
-        if (nmCol) {
-          const nameVal = r[nameIdx];
-          if (nameVal === undefined || nameVal === null || nameVal === '') continue;
-        }
         let hasData = false;
         const vals = idxMap.map((idx, i) => {
           const f = fields[i];
@@ -857,7 +853,12 @@ export default function CodingTablesPage() {
     const insertMainStr = buildInsert(mainRows, tbl, fields);
     const otherCombined = [...otherRows, ...dupRows];
     const structOtherStr = buildStructure(`${tbl}_other`, false);
-    const insertOtherStr = buildInsert(otherCombined, `${tbl}_other`, fields);
+    const fieldsWithoutId = fields.filter((f) => f !== idCol);
+    const insertOtherStr = buildInsert(
+      otherCombined,
+      `${tbl}_other`,
+      fieldsWithoutId
+    );
     if (structure) {
       const sqlStr = structMainStr + insertMainStr;
       const sqlOtherStr =
