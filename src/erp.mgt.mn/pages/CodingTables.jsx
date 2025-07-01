@@ -62,12 +62,11 @@ export default function CodingTablesPage() {
   }, []);
 
   const allFields = useMemo(() => {
-    return Array.from(
-      new Set([
-        ...headers,
-        ...extraFields.filter((f) => f.trim() !== ''),
-      ]),
-    );
+    // keep duplicates so user can easily spot them
+    return [
+      ...headers,
+      ...extraFields.filter((f) => f.trim() !== ''),
+    ];
   }, [headers, extraFields]);
 
   const hasDateField = useMemo(
@@ -84,6 +83,20 @@ export default function CodingTablesPage() {
       return Array.from(new Set([...base, ...extraList]));
     }
     return Array.from(new Set([...strs, ...extraList]));
+  }
+
+  function uniqueRenamedFields(fields = allFields, exclude) {
+    const seen = new Set();
+    const opts = [];
+    for (const f of fields) {
+      if (f === exclude) continue;
+      const label = renameMap[f] || f;
+      if (!seen.has(label)) {
+        seen.add(label);
+        opts.push({ value: f, label });
+      }
+    }
+    return opts;
   }
 
   async function applyHeaderMapping(hdrs, currentMap) {
@@ -231,19 +244,24 @@ export default function CodingTablesPage() {
       .filter((f) => f.trim() !== '')
       .map((f) => cleanIdentifier(f));
     extras.forEach((ex) => {
-      if (ex) seen[ex] = 1;
+      if (ex) {
+        const key = ex.toLowerCase();
+        seen[key] = (seen[key] || 0) + 1;
+      }
     });
     const dup = new Set();
     raw.forEach((h, i) => {
       if (String(h).trim().length > 0) {
-        let clean = cleanIdentifier(h);
-        if (seen[clean]) {
-          seen[clean] += 1;
-          const suffixed = `${clean}_${seen[clean]}`;
+        const clean = cleanIdentifier(h);
+        const key = clean.toLowerCase();
+        if (key in seen) {
+          const suffixNum = seen[key];
+          const suffixed = `${clean}_${suffixNum}`;
           dup.add(suffixed);
           hdrs.push(suffixed);
+          seen[key] = suffixNum + 1;
         } else {
-          seen[clean] = 1;
+          seen[key] = 1;
           hdrs.push(clean);
         }
         keepIdx.push(i);
@@ -1626,9 +1644,9 @@ export default function CodingTablesPage() {
                 ID Column:
                 <select value={idColumn} onChange={(e) => setIdColumn(e.target.value)}>
                   <option value="">--none--</option>
-                  {idCandidates.map((h) => (
-                    <option key={h} value={h}>
-                      {h}
+                  {uniqueRenamedFields(idCandidates).map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
                     </option>
                   ))}
                 </select>
@@ -1648,9 +1666,9 @@ export default function CodingTablesPage() {
                 Name Column:
                 <select value={nameColumn} onChange={(e) => setNameColumn(e.target.value)}>
                   <option value="">--select--</option>
-                  {allFields.map((h) => (
-                    <option key={h} value={h}>
-                      {h}
+                  {uniqueRenamedFields().map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
                     </option>
                   ))}
                 </select>
@@ -1658,7 +1676,7 @@ export default function CodingTablesPage() {
               <div>
                 Unique Fields:
                 <div>
-                  {allFields.map((h) => (
+                  {uniqueRenamedFields().map(({ value: h, label }) => (
                     <label key={h} style={{ marginRight: '0.5rem' }}>
                       <input
                         type="checkbox"
@@ -1672,7 +1690,7 @@ export default function CodingTablesPage() {
                           }
                         }}
                       />
-                      {h}
+                      {label}
                     </label>
                   ))}
                 </div>
@@ -1680,7 +1698,7 @@ export default function CodingTablesPage() {
               <div>
                 Other Columns:
                 <div>
-                  {allFields.map((h) => (
+                  {uniqueRenamedFields().map(({ value: h, label }) => (
                     <label key={h} style={{ marginRight: '0.5rem' }}>
                       <input
                         type="checkbox"
@@ -1694,7 +1712,7 @@ export default function CodingTablesPage() {
                           }
                         }}
                       />
-                      {h}
+                      {label}
                     </label>
                   ))}
                 </div>
@@ -1702,9 +1720,9 @@ export default function CodingTablesPage() {
               <div>
                 Column Types:
                 <div>
-                  {allFields.map((h) => (
+                  {uniqueRenamedFields().map(({ value: h, label }) => (
                     <div key={h} style={{ marginBottom: '0.25rem' }}>
-                      {h}:{' '}
+                      {label}:{' '}
                       <input
                         value={columnTypes[h] || ''}
                         onChange={(e) =>
@@ -1762,13 +1780,11 @@ export default function CodingTablesPage() {
                         style={{ marginLeft: '0.25rem' }}
                       >
                         <option value="">from field...</option>
-                        {allFields
-                          .filter((x) => x !== h)
-                          .map((o) => (
-                            <option key={o} value={o}>
-                              {o}
-                            </option>
-                          ))}
+                        {uniqueRenamedFields(allFields, h).map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
                       </select>
                     </div>
                   ))}
