@@ -1260,10 +1260,7 @@ export default function CodingTablesPage() {
       return;
     }
     const usedFields = new Set([
-      idColumn,
-      nameColumn,
-      ...otherColumns,
-      ...uniqueFields,
+      ...headers,
       ...extraFields.filter((f) => f.trim() !== ''),
     ]);
     const filterMap = (obj) =>
@@ -1457,6 +1454,7 @@ export default function CodingTablesPage() {
               ...extras.filter((f) => f.trim() !== ''),
               ...(cfg.idColumn ? [cfg.idColumn] : []),
               ...(cfg.nameColumn ? [cfg.nameColumn] : []),
+              ...Object.keys(cfg.renameMap || {}),
             ])
           );
           setHeaders(merged);
