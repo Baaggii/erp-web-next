@@ -710,23 +710,6 @@ export default function CodingTablesPage() {
     const seenKeys = new Set();
     const dupList = [];
 
-    function resolvedValue(row, idx, field) {
-      let v = idx === -1 ? undefined : row[idx];
-      if (v === undefined || v === null || v === '') {
-        const from = defaultFrom[field];
-        if (from) {
-          const fi = allHdrs.indexOf(from);
-          v = fi === -1 ? undefined : row[fi];
-        }
-        if (v === undefined || v === null || v === '') {
-          v = defaultValues[field];
-        }
-        if ((v === undefined || v === null || v === '') && localNotNull[field]) {
-          v = defaultValForType(colTypes[field]);
-        }
-      }
-      return v;
-    }
     finalRows.forEach((r) => {
       let key = '';
       if (uniqueOnly.length > 0) {
