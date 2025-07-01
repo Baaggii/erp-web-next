@@ -87,13 +87,16 @@ export default function CodingTablesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [extraFields]);
 
-  function computeIdCandidates(hdrs, extras, mode) {
+  function computeIdCandidates(hdrs, extras, map, mode) {
     const strs = hdrs.filter((h) => typeof h === 'string');
     const extraList = extras
       .filter((f) => typeof f === 'string' && f.trim() !== '')
-      .map((f) => normalizeField(f));
+      .map((f) => normalizeField(map[f] || f));
     if (mode === 'contains') {
-      const ids = strs.filter((h) => h.toLowerCase().includes('id'));
+      const ids = strs.filter((h) => {
+        const name = map[h] || h;
+        return String(name).toLowerCase().includes('id');
+      });
       const base = ids.length > 0 ? ids : strs;
       return Array.from(new Set([...base, ...extraList]));
     }
@@ -1331,7 +1334,9 @@ export default function CodingTablesPage() {
   }
 
   useEffect(() => {
-    setIdCandidates(computeIdCandidates(allFields, extraFields, idFilterMode));
+    setIdCandidates(
+      computeIdCandidates(allFields, extraFields, renameMap, idFilterMode)
+    );
     setUniqueFields((u) => u.filter((f) => allFields.includes(f)));
     setOtherColumns((o) => o.filter((f) => allFields.includes(f)));
 
@@ -1392,7 +1397,7 @@ export default function CodingTablesPage() {
 
     if (idColumn && !allFields.includes(idColumn)) setIdColumn('');
     if (nameColumn && !allFields.includes(nameColumn)) setNameColumn('');
-  }, [allFields, idFilterMode, notNullMap]);
+  }, [allFields, idFilterMode, notNullMap, renameMap]);
 
   useEffect(() => {
     if (!tableName) return;
