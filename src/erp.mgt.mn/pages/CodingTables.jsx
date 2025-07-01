@@ -270,9 +270,9 @@ export default function CodingTablesPage() {
         }
         keepIdx.push(i);
         const mnVal = mnRaw[i];
-        const key = hdrs[hdrs.length - 1];
+        const hdrKey = hdrs[hdrs.length - 1];
         if (mnVal && String(mnVal).trim()) {
-          map[key] = String(mnVal).trim();
+          map[hdrKey] = String(mnVal).trim();
         }
       }
     });
