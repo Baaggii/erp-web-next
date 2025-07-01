@@ -823,7 +823,15 @@ export default function CodingTablesPage() {
               v = defaultValForType(colTypes[f]);
             }
           }
-          if (v !== undefined && v !== null && v !== '' && (allowZeroMap[f] ? true : v !== 0)) {
+          if (
+            v !== undefined &&
+            v !== null &&
+            v !== '' &&
+            (allowZeroMap[f] ? true : v !== 0)
+          ) {
+            hasData = true;
+          }
+          if (localNotNull[f]) {
             hasData = true;
           }
           return formatVal(v, colTypes[f]);
