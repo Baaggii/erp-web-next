@@ -244,20 +244,24 @@ export default function CodingTablesPage() {
       .filter((f) => f.trim() !== '')
       .map((f) => cleanIdentifier(f));
     extras.forEach((ex) => {
-      if (ex) seen[ex] = 1;
+      if (ex) {
+        const key = ex.toLowerCase();
+        seen[key] = (seen[key] || 0) + 1;
+      }
     });
     const dup = new Set();
     raw.forEach((h, i) => {
       if (String(h).trim().length > 0) {
-        let clean = cleanIdentifier(h);
-        if (clean in seen) {
-          const suffixNum = seen[clean];
+        const clean = cleanIdentifier(h);
+        const key = clean.toLowerCase();
+        if (key in seen) {
+          const suffixNum = seen[key];
           const suffixed = `${clean}_${suffixNum}`;
           dup.add(suffixed);
           hdrs.push(suffixed);
-          seen[clean] = suffixNum + 1;
+          seen[key] = suffixNum + 1;
         } else {
-          seen[clean] = 1;
+          seen[key] = 1;
           hdrs.push(clean);
         }
         keepIdx.push(i);
