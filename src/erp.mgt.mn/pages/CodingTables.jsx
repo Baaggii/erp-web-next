@@ -62,12 +62,11 @@ export default function CodingTablesPage() {
   }, []);
 
   const allFields = useMemo(() => {
-    return Array.from(
-      new Set([
-        ...headers,
-        ...extraFields.filter((f) => f.trim() !== ''),
-      ]),
-    );
+    // keep duplicates so user can easily spot them
+    return [
+      ...headers,
+      ...extraFields.filter((f) => f.trim() !== ''),
+    ];
   }, [headers, extraFields]);
 
   const hasDateField = useMemo(
@@ -84,6 +83,20 @@ export default function CodingTablesPage() {
       return Array.from(new Set([...base, ...extraList]));
     }
     return Array.from(new Set([...strs, ...extraList]));
+  }
+
+  function uniqueRenamedFields(exclude) {
+    const seen = new Set();
+    const opts = [];
+    for (const f of allFields) {
+      if (f === exclude) continue;
+      const label = renameMap[f] || f;
+      if (!seen.has(label)) {
+        seen.add(label);
+        opts.push({ value: f, label });
+      }
+    }
+    return opts;
   }
 
   async function applyHeaderMapping(hdrs, currentMap) {
@@ -1762,13 +1775,11 @@ export default function CodingTablesPage() {
                         style={{ marginLeft: '0.25rem' }}
                       >
                         <option value="">from field...</option>
-                        {allFields
-                          .filter((x) => x !== h)
-                          .map((o) => (
-                            <option key={o} value={o}>
-                              {o}
-                            </option>
-                          ))}
+                        {uniqueRenamedFields(h).map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
                       </select>
                     </div>
                   ))}
