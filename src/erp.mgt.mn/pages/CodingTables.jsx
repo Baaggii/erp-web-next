@@ -7,6 +7,10 @@ function cleanIdentifier(name) {
   return String(name).replace(/[^A-Za-z0-9_]+/g, '');
 }
 
+function normalizeField(name) {
+  return cleanIdentifier(name).toLowerCase();
+}
+
 export default function CodingTablesPage() {
   const { addToast } = useToast();
   const [sheets, setSheets] = useState([]);
@@ -80,7 +84,7 @@ export default function CodingTablesPage() {
     const strs = hdrs.filter((h) => typeof h === 'string');
     const extraList = extras
       .filter((f) => typeof f === 'string' && f.trim() !== '')
-      .map((f) => cleanIdentifier(f));
+      .map((f) => normalizeField(f));
     if (mode === 'contains') {
       const ids = strs.filter((h) => h.toLowerCase().includes('id'));
       const base = ids.length > 0 ? ids : strs;
@@ -246,10 +250,9 @@ export default function CodingTablesPage() {
     const seen = {};
     const extras = extraFields
       .filter((f) => f.trim() !== '')
-      .map((f) => cleanIdentifier(f));
-    extras.forEach((ex) => {
-      if (ex) {
-        const key = ex.toLowerCase();
+      .map((f) => normalizeField(f));
+    extras.forEach((key) => {
+      if (key) {
         seen[key] = (seen[key] || 0) + 1;
       }
     });
@@ -257,7 +260,7 @@ export default function CodingTablesPage() {
     raw.forEach((h, i) => {
       if (String(h).trim().length > 0) {
         const clean = cleanIdentifier(h);
-        const key = clean.toLowerCase();
+        const key = normalizeField(h);
         if (key in seen) {
           const suffixNum = seen[key];
           const suffixed = `${clean}_${suffixNum}`;
