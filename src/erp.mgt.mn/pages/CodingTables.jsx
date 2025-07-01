@@ -917,13 +917,14 @@ export default function CodingTablesPage() {
 
 
   async function executeGeneratedSql() {
-    if (!structSql) {
+    const combined = [sql, sqlOther].filter(Boolean).join('\n');
+    if (!combined) {
       alert('Generate SQL first');
       return;
     }
     setUploading(true);
     try {
-      const statements = structSql
+      const statements = combined
         .split(/;\s*\n/)
         .map((s) => s.trim())
         .filter(Boolean)
