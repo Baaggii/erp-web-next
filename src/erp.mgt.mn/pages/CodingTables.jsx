@@ -709,6 +709,24 @@ export default function CodingTablesPage() {
     const dupRows = [];
     const seenKeys = new Set();
     const dupList = [];
+
+    function resolvedValue(row, idx, field) {
+      let v = idx === -1 ? undefined : row[idx];
+      if (v === undefined || v === null || v === '') {
+        const from = defaultFrom[field];
+        if (from) {
+          const fi = allHdrs.indexOf(from);
+          v = fi === -1 ? undefined : row[fi];
+        }
+        if (v === undefined || v === null || v === '') {
+          v = defaultValues[field];
+        }
+        if ((v === undefined || v === null || v === '') && localNotNull[field]) {
+          v = defaultValForType(colTypes[field]);
+        }
+      }
+      return v;
+    }
     finalRows.forEach((r) => {
       let key = '';
       if (uniqueOnly.length > 0) {
@@ -728,11 +746,14 @@ export default function CodingTablesPage() {
       }
       const zeroInvalid = fieldsToCheck.some((f) => {
         const idxF = allHdrs.indexOf(f);
-        if (idxF === -1) return false;
-        const v = r[idxF];
+        const v = resolvedValue(r, idxF, f);
         const isZero =
           v === 0 || (typeof v === 'string' && v.trim() !== '' && Number(v) === 0);
-        return v === null || (isZero && !allowZeroMap[f]);
+        if (isZero && !allowZeroMap[f]) return true;
+        if (localNotNull[f]) {
+          return v === undefined || v === null || v === '';
+        }
+        return false;
       });
       const stateVal = stateIdx === -1 ? '1' : String(r[stateIdx]);
       if (!zeroInvalid && stateVal === '1') mainRows.push(r);
@@ -806,10 +827,6 @@ export default function CodingTablesPage() {
       const idxMap = fields.map((f) => allHdrs.indexOf(f));
       let out = '';
       for (const r of rows) {
-        if (nmCol) {
-          const nameVal = r[nameIdx];
-          if (nameVal === undefined || nameVal === null || nameVal === '') continue;
-        }
         let hasData = false;
         const vals = idxMap.map((idx, i) => {
           const f = fields[i];
@@ -827,7 +844,15 @@ export default function CodingTablesPage() {
               v = defaultValForType(colTypes[f]);
             }
           }
-          if (v !== undefined && v !== null && v !== '' && (allowZeroMap[f] ? true : v !== 0)) {
+          if (
+            v !== undefined &&
+            v !== null &&
+            v !== '' &&
+            (allowZeroMap[f] ? true : v !== 0)
+          ) {
+            hasData = true;
+          }
+          if (localNotNull[f]) {
             hasData = true;
           }
           return formatVal(v, colTypes[f]);
@@ -857,7 +882,12 @@ export default function CodingTablesPage() {
     const insertMainStr = buildInsert(mainRows, tbl, fields);
     const otherCombined = [...otherRows, ...dupRows];
     const structOtherStr = buildStructure(`${tbl}_other`, false);
-    const insertOtherStr = buildInsert(otherCombined, `${tbl}_other`, fields);
+    const fieldsWithoutId = fields.filter((f) => f !== idCol);
+    const insertOtherStr = buildInsert(
+      otherCombined,
+      `${tbl}_other`,
+      fieldsWithoutId
+    );
     if (structure) {
       const sqlStr = structMainStr + insertMainStr;
       const sqlOtherStr =
