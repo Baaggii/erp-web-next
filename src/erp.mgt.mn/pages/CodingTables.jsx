@@ -108,11 +108,9 @@ export default function CodingTablesPage() {
     const opts = [];
     for (const f of fields) {
       if (f === exclude) continue;
-      const label = renameMap[f] || f;
-      if (!seen.has(label)) {
-        seen.add(label);
-        opts.push({ value: f, label });
-      }
+      if (seen.has(f)) continue;
+      seen.add(f);
+      opts.push({ value: f, label: renameMap[f] || f });
     }
     return opts;
   }
