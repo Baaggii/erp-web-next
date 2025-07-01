@@ -80,6 +80,13 @@ export default function CodingTablesPage() {
     [allFields]
   );
 
+  useEffect(() => {
+    if (workbook && headers.length > 0) {
+      extractHeaders(workbook, sheet, headerRow, mnHeaderRow);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [extraFields]);
+
   function computeIdCandidates(hdrs, extras, mode) {
     const strs = hdrs.filter((h) => typeof h === 'string');
     const extraList = extras
