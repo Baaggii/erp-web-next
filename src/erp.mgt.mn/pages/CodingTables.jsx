@@ -709,6 +709,24 @@ export default function CodingTablesPage() {
     const dupRows = [];
     const seenKeys = new Set();
     const dupList = [];
+
+    function resolvedValue(row, idx, field) {
+      let v = idx === -1 ? undefined : row[idx];
+      if (v === undefined || v === null || v === '') {
+        const from = defaultFrom[field];
+        if (from) {
+          const fi = allHdrs.indexOf(from);
+          v = fi === -1 ? undefined : row[fi];
+        }
+        if (v === undefined || v === null || v === '') {
+          v = defaultValues[field];
+        }
+        if ((v === undefined || v === null || v === '') && localNotNull[field]) {
+          v = defaultValForType(colTypes[field]);
+        }
+      }
+      return v;
+    }
     finalRows.forEach((r) => {
       let key = '';
       if (uniqueOnly.length > 0) {
@@ -728,11 +746,11 @@ export default function CodingTablesPage() {
       }
       const zeroInvalid = fieldsToCheck.some((f) => {
         const idxF = allHdrs.indexOf(f);
-        if (idxF === -1) return false;
-        const v = r[idxF];
+        const v = resolvedValue(r, idxF, f);
+        if (v === undefined || v === null || v === '') return true;
         const isZero =
           v === 0 || (typeof v === 'string' && v.trim() !== '' && Number(v) === 0);
-        return v === null || (isZero && !allowZeroMap[f]);
+        return isZero && !allowZeroMap[f];
       });
       const stateVal = stateIdx === -1 ? '1' : String(r[stateIdx]);
       if (!zeroInvalid && stateVal === '1') mainRows.push(r);
