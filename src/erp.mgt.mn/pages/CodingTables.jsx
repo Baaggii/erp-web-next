@@ -587,13 +587,33 @@ export default function CodingTablesPage() {
     const raw = data[idx] || [];
     const hdrs = [];
     const keepIdx = [];
+    const seen = {};
+    const extrasNorm = extraFields
+      .filter((f) => f.trim() !== '')
+      .map((f) => normalizeField(f));
+    extrasNorm.forEach((key) => {
+      if (key) {
+        seen[key] = (seen[key] || 0) + 1;
+      }
+    });
     raw.forEach((h, i) => {
       if (String(h).trim().length > 0) {
-        hdrs.push(cleanIdentifier(h));
+        const clean = cleanIdentifier(h);
+        const key = normalizeField(h);
+        if (key in seen) {
+          const suffixNum = seen[key];
+          hdrs.push(`${clean}_${suffixNum}`);
+          seen[key] = suffixNum + 1;
+        } else {
+          seen[key] = 1;
+          hdrs.push(clean);
+        }
         keepIdx.push(i);
       }
     });
-    const extra = extraFields.filter((f) => f.trim() !== '').map(cleanIdentifier);
+    const extra = extraFields
+      .filter((f) => f.trim() !== '')
+      .map((f) => cleanIdentifier(f));
     const rows = data
       .slice(idx + 1)
       .map((r) => [...keepIdx.map((ci) => r[ci]), ...Array(extra.length).fill(undefined)]);
