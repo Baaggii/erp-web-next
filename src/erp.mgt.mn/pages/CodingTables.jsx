@@ -62,10 +62,12 @@ export default function CodingTablesPage() {
   }, []);
 
   const allFields = useMemo(() => {
-    // keep duplicates so user can easily spot them
+    // keep duplicates so user can easily spot them and clean extras the same way
     return [
       ...headers,
-      ...extraFields.filter((f) => f.trim() !== ''),
+      ...extraFields
+        .filter((f) => f.trim() !== '')
+        .map((f) => cleanIdentifier(f)),
     ];
   }, [headers, extraFields]);
 
@@ -76,7 +78,9 @@ export default function CodingTablesPage() {
 
   function computeIdCandidates(hdrs, extras, mode) {
     const strs = hdrs.filter((h) => typeof h === 'string');
-    const extraList = extras.filter((f) => typeof f === 'string' && f.trim() !== '');
+    const extraList = extras
+      .filter((f) => typeof f === 'string' && f.trim() !== '')
+      .map((f) => cleanIdentifier(f));
     if (mode === 'contains') {
       const ids = strs.filter((h) => h.toLowerCase().includes('id'));
       const base = ids.length > 0 ? ids : strs;
