@@ -806,6 +806,10 @@ export default function CodingTablesPage() {
       const idxMap = fields.map((f) => allHdrs.indexOf(f));
       let out = '';
       for (const r of rows) {
+        if (nmCol) {
+          const nameVal = r[nameIdx];
+          if (nameVal === undefined || nameVal === null || nameVal === '') continue;
+        }
         let hasData = false;
         const vals = idxMap.map((idx, i) => {
           const f = fields[i];
