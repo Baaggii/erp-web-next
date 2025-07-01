@@ -1434,19 +1434,19 @@ export default function CodingTablesPage() {
       .then((res) => (res.ok ? res.json() : null))
       .then((cfg) => {
         if (!cfg) return;
-        setSheet(cfg.sheet ?? '');
-        setHeaderRow(cfg.headerRow ?? 1);
-        setMnHeaderRow(cfg.mnHeaderRow ?? '');
-        setIdFilterMode(cfg.idFilterMode ?? 'contains');
-        setIdColumn(cfg.idColumn ?? '');
-        setNameColumn(cfg.nameColumn ?? '');
+        setSheet(cfg.sheet || sheet);
+        setHeaderRow(cfg.headerRow || 1);
+        setMnHeaderRow(cfg.mnHeaderRow || '');
+        setIdFilterMode(cfg.idFilterMode || 'contains');
+        setIdColumn(cfg.idColumn || '');
+        setNameColumn(cfg.nameColumn || '');
         const extras =
           cfg.extraFields && cfg.extraFields.length > 0 ? cfg.extraFields : [''];
         setExtraFields(extras);
-        setOtherColumns(cfg.otherColumns ?? []);
-        setUniqueFields(cfg.uniqueFields ?? []);
-        setCalcText(cfg.calcText ?? '');
-        setColumnTypes(cfg.columnTypes ?? {});
+        setOtherColumns(cfg.otherColumns || []);
+        setUniqueFields(cfg.uniqueFields || []);
+        setCalcText(cfg.calcText || '');
+        setColumnTypes(cfg.columnTypes || {});
         if (cfg.columnTypes) {
           const baseHeaders = Object.keys(cfg.columnTypes || {});
           const merged = Array.from(
@@ -1494,10 +1494,10 @@ export default function CodingTablesPage() {
         setDefaultValues(dv);
         setDefaultFrom(df);
         setRenameMap(rm);
-        setPopulateRange(cfg.populateRange ?? false);
-        setStartYear(cfg.startYear ?? '');
-        setEndYear(cfg.endYear ?? '');
-        setAutoIncStart(cfg.autoIncStart ?? '1');
+        setPopulateRange(cfg.populateRange || false);
+        setStartYear(cfg.startYear || '');
+        setEndYear(cfg.endYear || '');
+        setAutoIncStart(cfg.autoIncStart || '1');
       })
       .catch(() => {});
   }, [tableName]);
