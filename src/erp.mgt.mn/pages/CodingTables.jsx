@@ -227,6 +227,12 @@ export default function CodingTablesPage() {
     const keepIdx = [];
     const map = {};
     const seen = {};
+    const extras = extraFields
+      .filter((f) => f.trim() !== '')
+      .map((f) => cleanIdentifier(f));
+    extras.forEach((ex) => {
+      if (ex) seen[ex] = 1;
+    });
     const dup = new Set();
     raw.forEach((h, i) => {
       if (String(h).trim().length > 0) {
