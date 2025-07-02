@@ -469,11 +469,38 @@ export default function CodingTablesPage() {
         uniqueLine = ln;
         continue;
       }
-      const colMatch = ln.match(/^`([^`]+)`\s+([A-Za-z0-9_(),]+(?:\s+UNSIGNED)?)(.*)$/i);
+      const colMatch = ln.match(/^`([^`]+)`\s+(.*)$/);
       if (!colMatch) continue;
       const col = colMatch[1];
-      const type = colMatch[2];
-      const rest = colMatch[3] || '';
+      let rest = colMatch[2];
+      let type = '';
+      let i = 0;
+      let depth = 0;
+      let quote = null;
+      while (i < rest.length) {
+        const ch = rest[i];
+        if (quote) {
+          if (ch === quote) quote = null;
+        } else if (ch === '"' || ch === "'") {
+          quote = ch;
+        } else if (ch === '(') {
+          depth++;
+        } else if (ch === ')') {
+          if (depth > 0) depth--;
+        } else if (depth === 0 && /\s/.test(ch)) {
+          const after = rest.slice(i).trimStart();
+          if (/^(UNSIGNED|NOT|NULL|DEFAULT|AUTO_INCREMENT|COMMENT|PRIMARY|UNIQUE|KEY|CHARACTER|COLLATE)/i.test(after)) {
+            type = rest.slice(0, i).trim();
+            rest = after;
+            break;
+          }
+        }
+        i++;
+      }
+      if (!type) {
+        type = rest.trim();
+        rest = '';
+      }
       if (/AS \(/.test(rest)) {
         const cm = rest.match(/AS \(([^)]+)\)/);
         if (cm) calc.push(`${col}: ${cm[1]}`);
