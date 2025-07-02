@@ -103,11 +103,12 @@ export default function CodingTablesPage() {
     return Array.from(new Set([...strs, ...extraList]));
   }
 
-  function uniqueRenamedFields(fields = allFields, exclude) {
+  function uniqueRenamedFields(fields = allFields, exclude, skipId = true) {
     const seen = new Set();
     const opts = [];
     for (const f of fields) {
       if (f === exclude) continue;
+      if (skipId && f === idColumn) continue;
       if (seen.has(f)) continue;
       seen.add(f);
       opts.push({ value: f, label: renameMap[f] || f });
@@ -1488,12 +1489,11 @@ export default function CodingTablesPage() {
           df[f] = cfg.defaultFrom && f in cfg.defaultFrom ? cfg.defaultFrom[f] : '';
           rm[f] = cfg.renameMap && f in cfg.renameMap ? cfg.renameMap[f] : f;
         });
-
+        setRenameMap(rm);
         setNotNullMap(nn);
         setAllowZeroMap(az);
         setDefaultValues(dv);
         setDefaultFrom(df);
-        setRenameMap(rm);
         setPopulateRange(cfg.populateRange || false);
         setStartYear(cfg.startYear || '');
         setEndYear(cfg.endYear || '');
@@ -1638,9 +1638,11 @@ export default function CodingTablesPage() {
                       color: duplicateHeaders.has(h) ? 'red' : 'inherit',
                     }}
                   >
-                    {h}:{' '}
+                    <code>{h}</code>
+                    {' → '}
                     <input
-                      value={renameMap[h] || h}
+                      value={renameMap[h] || ''}
+                      placeholder={h}
                       onChange={(e) => {
                         setRenameMap({ ...renameMap, [h]: e.target.value });
                         setDuplicateHeaders((d) => {
@@ -1710,7 +1712,7 @@ export default function CodingTablesPage() {
                 ID Column:
                 <select value={idColumn} onChange={(e) => setIdColumn(e.target.value)}>
                   <option value="">--none--</option>
-                  {uniqueRenamedFields(idCandidates).map((o) => (
+                  {uniqueRenamedFields(idCandidates, undefined, false).map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
                     </option>
