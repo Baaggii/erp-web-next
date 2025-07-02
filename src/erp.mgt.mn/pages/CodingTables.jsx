@@ -81,7 +81,11 @@ export default function CodingTablesPage() {
   );
 
   useEffect(() => {
-    if (workbook && headers.length > 0) {
+    if (
+      workbook &&
+      headers.length > 0 &&
+      (!tableName || !configNames.includes(tableName))
+    ) {
       extractHeaders(workbook, sheet, headerRow, mnHeaderRow);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -453,7 +457,7 @@ export default function CodingTablesPage() {
     const autoMatch = sqlText.slice(end).match(/AUTO_INCREMENT=(\d+)/i);
     const autoInc = autoMatch ? autoMatch[1] : '1';
     const lines = body
-      .split(/,\s*\n/)
+      .split(/,\s*\r?\n/)
       .map((l) => l.trim())
       .filter(Boolean);
     const columnTypes = {};
@@ -465,7 +469,7 @@ export default function CodingTablesPage() {
     let nameCol = '';
     let uniqueLine = '';
     for (const ln of lines) {
-      if (ln.startsWith('UNIQUE KEY')) {
+      if (ln.trimStart().startsWith('UNIQUE KEY')) {
         uniqueLine = ln;
         continue;
       }
@@ -1458,7 +1462,12 @@ export default function CodingTablesPage() {
     })
       .then((res) => (res.ok ? res.json() : null))
       .then((cfg) => {
-        if (!cfg) return;
+        if (!cfg) {
+          if (workbook && headers.length > 0) {
+            extractHeaders(workbook, sheet, headerRow, mnHeaderRow);
+          }
+          return;
+        }
         setSheet(cfg.sheet ?? '');
         setHeaderRow(cfg.headerRow ?? 1);
         setMnHeaderRow(cfg.mnHeaderRow ?? '');
