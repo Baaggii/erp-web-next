@@ -22,6 +22,25 @@ function arrify(val) {
   return [String(val)];
 }
 
+function parseViewSource(raw) {
+  const result = {};
+  if (raw && typeof raw === 'object') {
+    for (const [field, info] of Object.entries(raw)) {
+      if (typeof info === 'string') {
+        result[field] = { view: info, fields: [] };
+      } else if (info && typeof info.view === 'string') {
+        result[field] = {
+          view: info.view,
+          fields: Array.isArray(info.fields)
+            ? info.fields.map(String)
+            : [],
+        };
+      }
+    }
+  }
+  return result;
+}
+
 function parseEntry(raw = {}) {
   return {
     visibleFields: Array.isArray(raw.visibleFields)
@@ -70,6 +89,7 @@ function parseEntry(raw = {}) {
       ? raw.allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
       : [],
     moduleLabel: typeof raw.moduleLabel === 'string' ? raw.moduleLabel : '',
+    viewSource: parseViewSource(raw.viewSource),
   };
 }
 
@@ -137,6 +157,7 @@ export async function setFormConfig(table, name, config, options = {}) {
     footerFields = [],
     transactionTypeField = '',
     transactionTypeValue = '',
+    viewSource = {},
   } = config || {};
   const uid = arrify(userIdFields.length ? userIdFields : userIdField ? [userIdField] : []);
   const bid = arrify(
@@ -178,6 +199,7 @@ export async function setFormConfig(table, name, config, options = {}) {
     moduleLabel: moduleLabel || undefined,
     allowedBranches: ab,
     allowedDepartments: ad,
+    viewSource: parseViewSource(viewSource),
   };
   await writeConfig(cfg);
   return cfg[table][name];
