@@ -1,7 +1,10 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-const filePath = path.join(process.cwd(), 'config', 'codingTableConfigs.json');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.resolve(__dirname, '..', '..');
+const filePath = path.join(rootDir, 'config', 'codingTableConfigs.json');
 
 async function ensureDir() {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
