@@ -42,6 +42,7 @@ export default forwardRef(function InlineTransactionTable({
   onRowSubmit = () => {},
   onRowsChange = () => {},
   requiredFields = [],
+  defaultValues = {},
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -57,7 +58,7 @@ export default forwardRef(function InlineTransactionTable({
     }
   }, []);
   const [rows, setRows] = useState(() =>
-    collectRows ? Array.from({ length: minRows }, () => ({})) : [],
+    collectRows ? Array.from({ length: minRows }, () => ({ ...defaultValues })) : [],
   );
   const inputRefs = useRef({});
   const focusRow = useRef(collectRows ? 0 : null);
@@ -132,7 +133,7 @@ export default forwardRef(function InlineTransactionTable({
     clearRows: () =>
       setRows(() => {
         const next = collectRows
-          ? Array.from({ length: minRows }, () => ({}))
+          ? Array.from({ length: minRows }, () => ({ ...defaultValues }))
           : [];
         onRowsChange(next);
         return next;
@@ -166,7 +167,7 @@ export default forwardRef(function InlineTransactionTable({
       }
     }
     setRows((r) => {
-      const next = [...r, {}];
+      const next = [...r, { ...defaultValues }];
       focusRow.current = next.length - 1;
       onRowsChange(next);
       return next;
