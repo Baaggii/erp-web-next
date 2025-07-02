@@ -291,10 +291,19 @@ const RowFormModal = function RowFormModal({
         'Post these transactions? Have you checked all data and accept responsibility?'
       );
       if (ok) {
+        let allOk = true;
         for (const r of cleanedRows) {
-          await Promise.resolve(onSubmit(r));
+          try {
+            const res = await Promise.resolve(onSubmit(r));
+            if (res === false) allOk = false;
+          } catch (err) {
+            console.error('Submit failed', err);
+            allOk = false;
+          }
         }
-        tableRef.current.clearRows();
+        if (allOk) {
+          tableRef.current.clearRows();
+        }
       }
       setSubmitLocked(false);
       return;
@@ -319,7 +328,17 @@ const RowFormModal = function RowFormModal({
           }
           normalized[k] = val;
         });
-        await Promise.resolve(onSubmit(normalized));
+        try {
+          const res = await Promise.resolve(onSubmit(normalized));
+          if (res === false) {
+            setSubmitLocked(false);
+            return;
+          }
+        } catch (err) {
+          console.error('Submit failed', err);
+          setSubmitLocked(false);
+          return;
+        }
       } else {
         setSubmitLocked(false);
         return;

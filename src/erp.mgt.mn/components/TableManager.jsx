@@ -759,6 +759,7 @@ const TableManager = forwardRef(function TableManager({
             setTimeout(() => openAdd(), 0);
           }
         }
+        return true;
       } else {
         let message = 'Save failed';
         try {
@@ -768,9 +769,11 @@ const TableManager = forwardRef(function TableManager({
           // ignore
         }
         addToast(message, 'error');
+        return false;
       }
     } catch (err) {
       console.error('Save failed', err);
+      return false;
     }
   }
 
