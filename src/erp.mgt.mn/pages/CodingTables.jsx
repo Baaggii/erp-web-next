@@ -81,7 +81,11 @@ export default function CodingTablesPage() {
   );
 
   useEffect(() => {
-    if (workbook && headers.length > 0) {
+    if (
+      workbook &&
+      headers.length > 0 &&
+      (!tableName || !configNames.includes(tableName))
+    ) {
       extractHeaders(workbook, sheet, headerRow, mnHeaderRow);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -453,7 +457,7 @@ export default function CodingTablesPage() {
     const autoMatch = sqlText.slice(end).match(/AUTO_INCREMENT=(\d+)/i);
     const autoInc = autoMatch ? autoMatch[1] : '1';
     const lines = body
-      .split(/,\s*\n/)
+      .split(/,\s*\r?\n/)
       .map((l) => l.trim())
       .filter(Boolean);
     const columnTypes = {};
@@ -465,15 +469,42 @@ export default function CodingTablesPage() {
     let nameCol = '';
     let uniqueLine = '';
     for (const ln of lines) {
-      if (ln.startsWith('UNIQUE KEY')) {
+      if (ln.trimStart().startsWith('UNIQUE KEY')) {
         uniqueLine = ln;
         continue;
       }
-      const colMatch = ln.match(/^`([^`]+)`\s+([A-Za-z0-9_(),]+(?:\s+UNSIGNED)?)(.*)$/i);
+      const colMatch = ln.match(/^`([^`]+)`\s+(.*)$/);
       if (!colMatch) continue;
       const col = colMatch[1];
-      const type = colMatch[2];
-      const rest = colMatch[3] || '';
+      let rest = colMatch[2];
+      let type = '';
+      let i = 0;
+      let depth = 0;
+      let quote = null;
+      while (i < rest.length) {
+        const ch = rest[i];
+        if (quote) {
+          if (ch === quote) quote = null;
+        } else if (ch === '"' || ch === "'") {
+          quote = ch;
+        } else if (ch === '(') {
+          depth++;
+        } else if (ch === ')') {
+          if (depth > 0) depth--;
+        } else if (depth === 0 && /\s/.test(ch)) {
+          const after = rest.slice(i).trimStart();
+          if (/^(UNSIGNED|NOT|NULL|DEFAULT|AUTO_INCREMENT|COMMENT|PRIMARY|UNIQUE|KEY|CHARACTER|COLLATE)/i.test(after)) {
+            type = rest.slice(0, i).trim();
+            rest = after;
+            break;
+          }
+        }
+        i++;
+      }
+      if (!type) {
+        type = rest.trim();
+        rest = '';
+      }
       if (/AS \(/.test(rest)) {
         const cm = rest.match(/AS \(([^)]+)\)/);
         if (cm) calc.push(`${col}: ${cm[1]}`);
@@ -1431,7 +1462,12 @@ export default function CodingTablesPage() {
     })
       .then((res) => (res.ok ? res.json() : null))
       .then((cfg) => {
-        if (!cfg) return;
+        if (!cfg) {
+          if (workbook && headers.length > 0) {
+            extractHeaders(workbook, sheet, headerRow, mnHeaderRow);
+          }
+          return;
+        }
         setSheet(cfg.sheet ?? '');
         setHeaderRow(cfg.headerRow ?? 1);
         setMnHeaderRow(cfg.mnHeaderRow ?? '');
