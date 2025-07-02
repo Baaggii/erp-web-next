@@ -163,31 +163,6 @@ export default forwardRef(function InlineTransactionTable({
           }
           return;
         }
-        if (
-          totalCurrencySet.has(f) &&
-          val !== '' &&
-          isNaN(Number(normalizeNumberInput(val)))
-        ) {
-          setErrorMsg('Invalid number in ' + (labels[f] || f));
-          setInvalidCell({ row: rows.length - 1, field: f });
-          const el = inputRefs.current[`${rows.length - 1}-${fields.indexOf(f)}`];
-          if (el) {
-            el.focus();
-            if (el.select) el.select();
-          }
-          return;
-        }
-        const ph = placeholders[f];
-        if (ph && !isValidDate(val, ph)) {
-          setErrorMsg('Invalid date in ' + (labels[f] || f));
-          setInvalidCell({ row: rows.length - 1, field: f });
-          const el = inputRefs.current[`${rows.length - 1}-${fields.indexOf(f)}`];
-          if (el) {
-            el.focus();
-            if (el.select) el.select();
-          }
-          return;
-        }
       }
     }
     setRows((r) => {
@@ -436,7 +411,7 @@ export default forwardRef(function InlineTransactionTable({
   }
 
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto overflow-y-visible relative">
       <table className="min-w-max border border-gray-300 text-xs">
         <thead className="bg-gray-50">
           <tr>
