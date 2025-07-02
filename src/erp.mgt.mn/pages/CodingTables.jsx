@@ -469,7 +469,7 @@ export default function CodingTablesPage() {
         uniqueLine = ln;
         continue;
       }
-      const colMatch = ln.match(/^`([^`]+)`\s+([^ ]+)(.*)$/);
+      const colMatch = ln.match(/^`([^`]+)`\s+([A-Za-z0-9_(),]+(?:\s+UNSIGNED)?)(.*)$/i);
       if (!colMatch) continue;
       const col = colMatch[1];
       const type = colMatch[2];
@@ -1261,10 +1261,7 @@ export default function CodingTablesPage() {
       return;
     }
     const usedFields = new Set([
-      idColumn,
-      nameColumn,
-      ...otherColumns,
-      ...uniqueFields,
+      ...headers,
       ...extraFields.filter((f) => f.trim() !== ''),
     ]);
     const filterMap = (obj) =>
@@ -1435,19 +1432,19 @@ export default function CodingTablesPage() {
       .then((res) => (res.ok ? res.json() : null))
       .then((cfg) => {
         if (!cfg) return;
-        setSheet(cfg.sheet || sheet);
-        setHeaderRow(cfg.headerRow || 1);
-        setMnHeaderRow(cfg.mnHeaderRow || '');
-        setIdFilterMode(cfg.idFilterMode || 'contains');
-        setIdColumn(cfg.idColumn || '');
-        setNameColumn(cfg.nameColumn || '');
+        setSheet(cfg.sheet ?? '');
+        setHeaderRow(cfg.headerRow ?? 1);
+        setMnHeaderRow(cfg.mnHeaderRow ?? '');
+        setIdFilterMode(cfg.idFilterMode ?? 'contains');
+        setIdColumn(cfg.idColumn ?? '');
+        setNameColumn(cfg.nameColumn ?? '');
         const extras =
           cfg.extraFields && cfg.extraFields.length > 0 ? cfg.extraFields : [''];
         setExtraFields(extras);
-        setOtherColumns(cfg.otherColumns || []);
-        setUniqueFields(cfg.uniqueFields || []);
-        setCalcText(cfg.calcText || '');
-        setColumnTypes(cfg.columnTypes || {});
+        setOtherColumns(cfg.otherColumns ?? []);
+        setUniqueFields(cfg.uniqueFields ?? []);
+        setCalcText(cfg.calcText ?? '');
+        setColumnTypes(cfg.columnTypes ?? {});
         if (cfg.columnTypes) {
           const baseHeaders = Object.keys(cfg.columnTypes || {});
           const merged = Array.from(
@@ -1458,6 +1455,7 @@ export default function CodingTablesPage() {
               ...extras.filter((f) => f.trim() !== ''),
               ...(cfg.idColumn ? [cfg.idColumn] : []),
               ...(cfg.nameColumn ? [cfg.nameColumn] : []),
+              ...Object.keys(cfg.renameMap || {}),
             ])
           );
           setHeaders(merged);
@@ -1494,10 +1492,10 @@ export default function CodingTablesPage() {
         setAllowZeroMap(az);
         setDefaultValues(dv);
         setDefaultFrom(df);
-        setPopulateRange(cfg.populateRange || false);
-        setStartYear(cfg.startYear || '');
-        setEndYear(cfg.endYear || '');
-        setAutoIncStart(cfg.autoIncStart || '1');
+        setPopulateRange(cfg.populateRange ?? false);
+        setStartYear(cfg.startYear ?? '');
+        setEndYear(cfg.endYear ?? '');
+        setAutoIncStart(cfg.autoIncStart ?? '1');
       })
       .catch(() => {});
   }, [tableName]);
