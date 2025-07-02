@@ -152,9 +152,9 @@ export default forwardRef(function InlineTransactionTable({
         if (totalCurrencySet.has(f)) {
           val = normalizeNumberInput(val);
         }
-        if (!val) {
+        if (val === '' || val === null || val === undefined) {
           setErrorMsg(
-            `Please fill ${labels[f] || f} before adding new row.`,
+            `Шинэ мөр нэмэхийн өмнө ${labels[f] || f} талбарыг бөглөнө үү.`,
           );
           setInvalidCell({ row: rows.length - 1, field: f });
           const el = inputRefs.current[`${rows.length - 1}-${fields.indexOf(f)}`];
@@ -204,8 +204,8 @@ export default forwardRef(function InlineTransactionTable({
       if (totalCurrencySet.has(f)) {
         val = normalizeNumberInput(val);
       }
-      if (!val) {
-        setErrorMsg(`Please fill ${labels[f] || f}.`);
+      if (val === '' || val === null || val === undefined) {
+        setErrorMsg(`${labels[f] || f} талбарыг бөглөнө үү.`);
         setInvalidCell({ row: idx, field: f });
         const el = inputRefs.current[`${idx}-${fields.indexOf(f)}`];
         if (el) {
@@ -219,7 +219,7 @@ export default forwardRef(function InlineTransactionTable({
         val !== '' &&
         isNaN(Number(normalizeNumberInput(val)))
       ) {
-        setErrorMsg('Invalid number in ' + (labels[f] || f));
+        setErrorMsg((labels[f] || f) + ' талбарт буруу тоо байна');
         setInvalidCell({ row: idx, field: f });
         const el = inputRefs.current[`${idx}-${fields.indexOf(f)}`];
         if (el) {
@@ -230,7 +230,7 @@ export default forwardRef(function InlineTransactionTable({
       }
       const ph = placeholders[f];
       if (ph && !isValidDate(val, ph)) {
-        setErrorMsg('Invalid date in ' + (labels[f] || f));
+        setErrorMsg((labels[f] || f) + ' талбарт буруу огноо байна');
         setInvalidCell({ row: idx, field: f });
         const el = inputRefs.current[`${idx}-${fields.indexOf(f)}`];
         if (el) {
@@ -304,7 +304,7 @@ export default forwardRef(function InlineTransactionTable({
       requiredFields.includes(field) &&
       (val === '' || val === undefined)
     ) {
-      setErrorMsg(`Please fill ${labels[field] || field}.`);
+      setErrorMsg(`${labels[field] || field} талбарыг бөглөнө үү.`);
       setInvalidCell({ row: rowIdx, field });
       e.target.focus();
       if (e.target.select) e.target.select();
@@ -315,14 +315,14 @@ export default forwardRef(function InlineTransactionTable({
       val !== '' &&
       isNaN(Number(normalizeNumberInput(val)))
     ) {
-      setErrorMsg('Invalid number in ' + (labels[field] || field));
+      setErrorMsg((labels[field] || field) + ' талбарт буруу тоо байна');
       setInvalidCell({ row: rowIdx, field });
       e.target.focus();
       if (e.target.select) e.target.select();
       return;
     }
     if (placeholders[field] && !isValidDate(val, placeholders[field])) {
-      setErrorMsg('Invalid date in ' + (labels[field] || field));
+      setErrorMsg((labels[field] || field) + ' талбарт буруу огноо байна');
       setInvalidCell({ row: rowIdx, field });
       e.target.focus();
       if (e.target.select) e.target.select();
@@ -504,7 +504,7 @@ export default forwardRef(function InlineTransactionTable({
         ref={addBtnRef}
         className="mt-2 px-2 py-1 bg-gray-200 rounded"
       >
-        + Add Row
+        + Мөр нэмэх
       </button>
     </div>
   );

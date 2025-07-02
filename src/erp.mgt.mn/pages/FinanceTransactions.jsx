@@ -240,14 +240,14 @@ useEffect(() => {
 
   const transactionNames = useMemo(() => Object.keys(configs), [configs]);
 
-  if (!perms || !licensed) return <p>Loading...</p>;
-  if (!perms[moduleKey] || !licensed[moduleKey]) return <p>Access denied.</p>;
+  if (!perms || !licensed) return <p>Ачааллаж байна...</p>;
+  if (!perms[moduleKey] || !licensed[moduleKey]) return <p>Нэвтрэх эрхгүй.</p>;
 
-  const caption = 'Choose transaction';
+  const caption = 'Гүйлгээ сонгоно уу';
 
   return (
     <div>
-      <h2>{moduleLabel || 'Transactions'}</h2>
+      <h2>{moduleLabel || 'Гүйлгээ'}</h2>
         {transactionNames.length > 0 && (
           <div style={{ marginBottom: '0.5rem', maxWidth: '300px' }}>
             <select
@@ -284,10 +284,10 @@ useEffect(() => {
       {table && config && (
         <div style={{ marginBottom: '0.5rem' }}>
           <button onClick={() => tableRef.current?.openAdd()} style={{ marginRight: '0.5rem' }}>
-            Add Transaction
+            Гүйлгээ нэмэх
           </button>
           <button onClick={() => setShowTable((v) => !v)}>
-            {showTable ? 'Hide Table' : 'View Table'}
+            {showTable ? 'Хүснэгт нуух' : 'Хүснэгт харах'}
           </button>
         </div>
       )}
@@ -299,12 +299,12 @@ useEffect(() => {
           refreshId={refreshId}
           formConfig={config}
           initialPerPage={10}
-          addLabel="Add Transaction"
+          addLabel="Гүйлгээ нэмэх"
           showTable={showTable}
         />
       )}
       {transactionNames.length === 0 && (
-        <p>No transactions configured.</p>
+        <p>Гүйлгээ тохируулаагүй байна.</p>
       )}
     </div>
   );

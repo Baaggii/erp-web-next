@@ -28,7 +28,7 @@ export default function AsyncSearchSelect({
     const controller = new AbortController();
     async function load() {
       try {
-        const params = new URLSearchParams({ perPage: 10 });
+        const params = new URLSearchParams({ perPage: 1000 });
         if (input) params.set(searchColumn, input);
         const res = await fetch(
           `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
@@ -113,7 +113,7 @@ export default function AsyncSearchSelect({
         <ul
           style={{
             position: 'absolute',
-            zIndex: 1000,
+            zIndex: 1100,
             listStyle: 'none',
             margin: 0,
             padding: 0,
