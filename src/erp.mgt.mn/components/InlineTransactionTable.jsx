@@ -148,11 +148,13 @@ export default forwardRef(function InlineTransactionTable({
         if (placeholders[f]) {
           val = normalizeDateInput(val, placeholders[f]);
         }
-        if (totalAmountSet.has(f) || totalCurrencySet.has(f)) {
+        if (totalCurrencySet.has(f)) {
           val = normalizeNumberInput(val);
         }
         if (!val) {
-          setErrorMsg('Please fill required fields before adding new row.');
+          setErrorMsg(
+            `Please fill ${labels[f] || f} before adding new row.`,
+          );
           setInvalidCell({ row: rows.length - 1, field: f });
           const el = inputRefs.current[`${rows.length - 1}-${fields.indexOf(f)}`];
           if (el) {
@@ -162,7 +164,7 @@ export default forwardRef(function InlineTransactionTable({
           return;
         }
         if (
-          (totalAmountSet.has(f) || totalCurrencySet.has(f)) &&
+          totalCurrencySet.has(f) &&
           val !== '' &&
           isNaN(Number(normalizeNumberInput(val)))
         ) {
@@ -223,11 +225,11 @@ export default forwardRef(function InlineTransactionTable({
       if (placeholders[f]) {
         val = normalizeDateInput(val, placeholders[f]);
       }
-      if (totalAmountSet.has(f) || totalCurrencySet.has(f)) {
+      if (totalCurrencySet.has(f)) {
         val = normalizeNumberInput(val);
       }
       if (!val) {
-        setErrorMsg('Please fill required fields.');
+        setErrorMsg(`Please fill ${labels[f] || f}.`);
         setInvalidCell({ row: idx, field: f });
         const el = inputRefs.current[`${idx}-${fields.indexOf(f)}`];
         if (el) {
@@ -237,7 +239,7 @@ export default forwardRef(function InlineTransactionTable({
         return;
       }
       if (
-        (totalAmountSet.has(f) || totalCurrencySet.has(f)) &&
+        totalCurrencySet.has(f) &&
         val !== '' &&
         isNaN(Number(normalizeNumberInput(val)))
       ) {
@@ -299,7 +301,10 @@ export default forwardRef(function InlineTransactionTable({
       }
     });
     const count = rows.filter((r) =>
-      totalAmountFields.some((col) => Number(normalizeNumberInput(r[col] || 0))),
+      totalAmountFields.some((col) => {
+        const v = r[col];
+        return v !== undefined && v !== null && String(v).trim() !== '';
+      }),
     ).length;
     return { sums, count };
   }, [rows, fields, totalAmountSet, totalCurrencySet, totalAmountFields]);
@@ -312,7 +317,7 @@ export default forwardRef(function InlineTransactionTable({
     if (placeholders[field]) {
       val = val.replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
     }
-    if (totalAmountSet.has(field) || totalCurrencySet.has(field)) {
+    if (totalCurrencySet.has(field)) {
       val = normalizeNumberInput(val);
     }
     if (rows[rowIdx]?.[field] !== val) {
@@ -323,14 +328,14 @@ export default forwardRef(function InlineTransactionTable({
       requiredFields.includes(field) &&
       (val === '' || val === undefined)
     ) {
-      setErrorMsg('Please fill required fields.');
+      setErrorMsg(`Please fill ${labels[field] || field}.`);
       setInvalidCell({ row: rowIdx, field });
       e.target.focus();
       if (e.target.select) e.target.select();
       return;
     }
     if (
-      (totalAmountSet.has(field) || totalCurrencySet.has(field)) &&
+      totalCurrencySet.has(field) &&
       val !== '' &&
       isNaN(Number(normalizeNumberInput(val)))
     ) {

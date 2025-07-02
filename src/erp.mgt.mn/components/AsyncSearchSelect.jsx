@@ -113,7 +113,7 @@ export default function AsyncSearchSelect({
         <ul
           style={{
             position: 'absolute',
-            zIndex: 10,
+            zIndex: 50,
             listStyle: 'none',
             margin: 0,
             padding: 0,
