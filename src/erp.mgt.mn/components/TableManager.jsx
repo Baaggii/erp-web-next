@@ -127,6 +127,7 @@ const TableManager = forwardRef(function TableManager({
   const [autoInc, setAutoInc] = useState(new Set());
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [rowDefaults, setRowDefaults] = useState({});
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [localRefresh, setLocalRefresh] = useState(0);
   const [deleteInfo, setDeleteInfo] = useState(null); // { id, refs }
@@ -568,6 +569,7 @@ const TableManager = forwardRef(function TableManager({
   async function openAdd() {
     await ensureColumnMeta();
     const vals = {};
+    const defaults = {};
     const all = columnMeta.map((c) => c.name);
     all.forEach((c) => {
       let v = (formConfig?.defaultValues || {})[c] || '';
@@ -575,10 +577,24 @@ const TableManager = forwardRef(function TableManager({
       if (branchIdFields.includes(c) && company?.branch_id !== undefined) v = company.branch_id;
       if (formConfig?.companyIdFields?.includes(c) && company?.company_id !== undefined) v = company.company_id;
       vals[c] = v;
+      defaults[c] = v;
+      if (!v && formConfig?.dateField?.includes(c)) {
+        const lower = c.toLowerCase();
+        const now = new Date();
+        if (lower.includes('timestamp') || (lower.includes('date') && lower.includes('time'))) {
+          defaults[c] = formatTimestamp(now);
+        } else if (lower.includes('date')) {
+          defaults[c] = now.toISOString().slice(0, 10);
+        } else if (lower.includes('time')) {
+          defaults[c] = now.toISOString().slice(11, 19);
+        }
+      }
     });
     if (formConfig?.transactionTypeField && formConfig.transactionTypeValue) {
       vals[formConfig.transactionTypeField] = formConfig.transactionTypeValue;
+      defaults[formConfig.transactionTypeField] = formConfig.transactionTypeValue;
     }
+    setRowDefaults(defaults);
     setEditing(vals);
     setIsAdding(true);
     setShowForm(true);
@@ -1685,6 +1701,8 @@ const TableManager = forwardRef(function TableManager({
         disabledFields={disabledFields}
         labels={labels}
         requiredFields={formConfig?.requiredFields || []}
+        defaultValues={rowDefaults}
+        dateField={formConfig?.dateField || []}
         headerFields={headerFields}
         mainFields={mainFields}
         footerFields={footerFields}

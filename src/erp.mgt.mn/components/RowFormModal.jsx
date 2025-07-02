@@ -23,6 +23,8 @@ const RowFormModal = function RowFormModal({
   printCustField = [],
   totalAmountFields = [],
   totalCurrencyFields = [],
+  defaultValues = {},
+  dateField = [],
   inline = false,
   useGrid = false,
 }) {
@@ -60,9 +62,9 @@ const RowFormModal = function RowFormModal({
       } else if (lower.includes('time')) {
         placeholder = 'HH:MM:SS';
       }
-      const raw = row ? String(row[c] ?? '') : '';
+      const raw = row ? String(row[c] ?? '') : String(defaultValues[c] ?? '');
       let val = placeholder ? normalizeDateInput(raw, placeholder) : raw;
-      if (!row && !val && placeholder && (headerSet.has(c) || footerSet.has(c))) {
+      if (!row && !val && dateField.includes(c)) {
         if (placeholder === 'YYYY-MM-DD') val = now.toISOString().slice(0, 10);
         else if (placeholder === 'HH:MM:SS') val = now.toISOString().slice(11, 19);
         else val = now.toISOString().slice(0, 19).replace('T', ' ');
@@ -143,8 +145,14 @@ const RowFormModal = function RowFormModal({
     if (!visible) return;
     const vals = {};
     columns.forEach((c) => {
-      const raw = row ? String(row[c] ?? '') : '';
+      const raw = row ? String(row[c] ?? '') : String(defaultValues[c] ?? '');
       let v = placeholders[c] ? normalizeDateInput(raw, placeholders[c]) : raw;
+      if (!row && !v && dateField.includes(c)) {
+        const now = new Date();
+        if (placeholders[c] === 'YYYY-MM-DD') v = now.toISOString().slice(0, 10);
+        else if (placeholders[c] === 'HH:MM:SS') v = now.toISOString().slice(11, 19);
+        else v = now.toISOString().slice(0, 19).replace('T', ' ');
+      }
       if (!row && !v && headerSet.has(c)) {
         if (
           ['created_by', 'employee_id', 'emp_id', 'empid', 'user_id'].includes(c) &&
@@ -156,12 +164,6 @@ const RowFormModal = function RowFormModal({
         } else if (c === 'company_id' && company?.company_id !== undefined) {
           v = company.company_id;
         }
-      }
-      if (!row && !v && placeholders[c] && (headerSet.has(c) || footerSet.has(c))) {
-        const now = new Date();
-        if (placeholders[c] === 'YYYY-MM-DD') v = now.toISOString().slice(0, 10);
-        else if (placeholders[c] === 'HH:MM:SS') v = now.toISOString().slice(11, 19);
-        else v = now.toISOString().slice(0, 19).replace('T', ' ');
       }
       vals[c] = v;
     });
@@ -287,10 +289,7 @@ const RowFormModal = function RowFormModal({
         return;
       }
 
-      const ok = window.confirm(
-        'Post these transactions? Have you checked all data and accept responsibility?'
-      );
-      if (ok) {
+      {
         let allOk = true;
         for (const r of cleanedRows) {
           try {
@@ -316,30 +315,22 @@ const RowFormModal = function RowFormModal({
     });
     setErrors(errs);
     if (Object.keys(errs).length === 0) {
-      const ok = window.confirm(
-        'Post this transaction? Have you checked all data and accept responsibility?',
-      );
-      if (ok) {
-        const normalized = {};
-        Object.entries(formVals).forEach(([k, v]) => {
-          let val = placeholders[k] ? normalizeDateInput(v, placeholders[k]) : v;
-          if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
-            val = normalizeNumberInput(val);
-          }
-          normalized[k] = val;
-        });
-        try {
-          const res = await Promise.resolve(onSubmit(normalized));
-          if (res === false) {
-            setSubmitLocked(false);
-            return;
-          }
-        } catch (err) {
-          console.error('Submit failed', err);
+      const normalized = {};
+      Object.entries(formVals).forEach(([k, v]) => {
+        let val = placeholders[k] ? normalizeDateInput(v, placeholders[k]) : v;
+        if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
+          val = normalizeNumberInput(val);
+        }
+        normalized[k] = val;
+      });
+      try {
+        const res = await Promise.resolve(onSubmit(normalized));
+        if (res === false) {
           setSubmitLocked(false);
           return;
         }
-      } else {
+      } catch (err) {
+        console.error('Submit failed', err);
         setSubmitLocked(false);
         return;
       }
@@ -452,6 +443,7 @@ const RowFormModal = function RowFormModal({
             onRowSubmit={onSubmit}
             onRowsChange={setGridRows}
             requiredFields={requiredFields}
+            defaultValues={defaultValues}
           />
         </div>
       );
