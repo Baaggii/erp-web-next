@@ -310,22 +310,52 @@ export async function uploadCodingTable(req, res, next) {
     for (const [col, label] of Object.entries(headerMap)) {
       if (label) await setTableColumnLabel(cleanTable, cleanIdentifier(col), label);
     }
+    const insertCols = [];
+    if (cleanNameCol) insertCols.push(dbNameCol);
+    insertCols.push(...cleanUniqueOnly, ...cleanExtraFiltered, ...cleanExtraFieldsFiltered);
+    const updateClauses = insertCols.map((c) => `\`${c}\` = VALUES(\`${c}\`)`);
+    const placeholders = '(' + insertCols.map(() => '?').join(', ') + ')';
+    const queryPrefix = `INSERT INTO \`${cleanTable}\` (${insertCols.map((c) => `\`${c}\``).join(', ')}) VALUES `;
+
     let count = 0;
     const errors = [];
     let rowIndex = 0;
+    let batch = [];
+    let idxBatch = [];
+
+    async function flushBatch() {
+      if (batch.length === 0) return;
+      const sql =
+        queryPrefix +
+        batch.map(() => placeholders).join(', ') +
+        ` ON DUPLICATE KEY UPDATE ${updateClauses.join(', ')}`;
+      try {
+        await pool.query(sql, batch.flat());
+        count += batch.length;
+      } catch (err) {
+        for (let i = 0; i < batch.length; i++) {
+          const rowSql = queryPrefix + placeholders + ` ON DUPLICATE KEY UPDATE ${updateClauses.join(', ')}`;
+          try {
+            await pool.query(rowSql, batch[i]);
+            count++;
+          } catch (e) {
+            const idx = idxBatch[i];
+            errors.push({ row: idx, data: finalRows[idx - 1], message: e.message });
+          }
+        }
+      }
+      batch = [];
+      idxBatch = [];
+    }
+
     for (const r of finalRows) {
       rowIndex++;
-      const cols = [];
-      const placeholders = [];
       const values = [];
-      const updates = [];
       let hasData = false;
+
       if (cleanNameCol) {
         const nameVal = r[cleanNameCol];
         if (nameVal === undefined || nameVal === null || nameVal === '') continue;
-        cols.push(`\`${dbNameCol}\``);
-        placeholders.push('?');
-        updates.push(`\`${dbNameCol}\` = VALUES(\`${dbNameCol}\`)`);
         let val = nameVal;
         if (columnTypes[cleanNameCol] === 'DATE') {
           const d = parseExcelDate(val);
@@ -335,12 +365,10 @@ export async function uploadCodingTable(req, res, next) {
         values.push(val);
         hasData = true;
       }
+
       for (const c of cleanUniqueOnly) {
-        cols.push(`\`${c}\``);
-        placeholders.push('?');
         let val = r[c];
-        const blank =
-          val === undefined || val === null || val === '' || val === 0;
+        const blank = val === undefined || val === null || val === '' || val === 0;
         if (blank) {
           val =
             defaultValues[c] !== undefined && defaultValues[c] !== ''
@@ -352,15 +380,12 @@ export async function uploadCodingTable(req, res, next) {
         }
         val = sanitizeValue(val);
         values.push(val);
-        updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
         hasData = true;
       }
+
       for (const c of cleanExtraFiltered) {
-        cols.push(`\`${c}\``);
-        placeholders.push('?');
         let val = r[c];
-        const blank =
-          val === undefined || val === null || val === '' || val === 0;
+        const blank = val === undefined || val === null || val === '' || val === 0;
         if (blank) {
           if (defaultValues[c] !== undefined && defaultValues[c] !== '') {
             val = defaultValues[c];
@@ -373,18 +398,14 @@ export async function uploadCodingTable(req, res, next) {
           const d = parseExcelDate(val);
           val = d || null;
         }
-        if (val !== undefined && val !== null && val !== '' && val !== 0)
-          hasData = true;
+        if (val !== undefined && val !== null && val !== '' && val !== 0) hasData = true;
         val = sanitizeValue(val);
         values.push(val);
-        updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
       }
+
       for (const c of cleanExtraFieldsFiltered) {
-        cols.push(`\`${c}\``);
-        placeholders.push('?');
         let val = r[c];
-        const blank =
-          val === undefined || val === null || val === '' || val === 0;
+        const blank = val === undefined || val === null || val === '' || val === 0;
         if (blank) {
           if (defaultValues[c] !== undefined && defaultValues[c] !== '') {
             val = defaultValues[c];
@@ -397,25 +418,20 @@ export async function uploadCodingTable(req, res, next) {
           const d = parseExcelDate(val);
           val = d || null;
         }
-        if (val !== undefined && val !== null && val !== '' && val !== 0)
-          hasData = true;
+        if (val !== undefined && val !== null && val !== '' && val !== 0) hasData = true;
         val = sanitizeValue(val);
         values.push(val);
-        updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
       }
+
       if (!hasData) continue;
-      if (req.body.populateRange === 'true' && values.some((v) => v === 0 || v === null))
-        continue;
-      try {
-        await pool.query(
-          `INSERT INTO \`${cleanTable}\` (${cols.join(', ')}) VALUES (${placeholders.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')}`,
-          values
-        );
-        count++;
-      } catch (err) {
-        errors.push({ row: rowIndex, data: r, message: err.message });
-      }
+      if (req.body.populateRange === 'true' && values.some((v) => v === 0 || v === null)) continue;
+
+      batch.push(values);
+      idxBatch.push(rowIndex);
+      if (batch.length >= 5000) await flushBatch();
     }
+
+    await flushBatch();
     fs.unlinkSync(req.file.path);
     res.json({ inserted: count, errors });
   } catch (err) {

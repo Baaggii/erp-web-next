@@ -25,6 +25,25 @@ async function writeConfig(cfg) {
   await fs.writeFile(filePath, JSON.stringify(cfg, null, 2));
 }
 
+function parseViewSource(raw) {
+  const result = {};
+  if (raw && typeof raw === 'object') {
+    for (const [field, info] of Object.entries(raw)) {
+      if (typeof info === 'string') {
+        result[field] = { view: info, fields: [] };
+      } else if (info && typeof info.view === 'string') {
+        result[field] = {
+          view: info.view,
+          fields: Array.isArray(info.fields)
+            ? info.fields.map(String)
+            : [],
+        };
+      }
+    }
+  }
+  return result;
+}
+
 function parseConfig(raw = {}) {
   const renameMap =
     raw && typeof raw.renameMap === 'object' && raw.renameMap !== null
@@ -69,6 +88,7 @@ function parseConfig(raw = {}) {
     extraFields: Array.isArray(raw.extraFields)
       ? raw.extraFields.map(String)
       : [],
+    viewSource: parseViewSource(raw.viewSource),
     populateRange: !!raw.populateRange,
     startYear: raw.startYear ? String(raw.startYear) : '',
     endYear: raw.endYear ? String(raw.endYear) : '',
@@ -92,7 +112,10 @@ export async function getAllConfigs() {
 
 export async function setConfig(table, config = {}) {
   const cfg = await readConfig();
-  cfg[table] = config;
+  cfg[table] = {
+    ...config,
+    viewSource: parseViewSource(config.viewSource),
+  };
   await writeConfig(cfg);
   return cfg[table];
 }
