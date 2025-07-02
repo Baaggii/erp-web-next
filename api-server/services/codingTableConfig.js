@@ -25,13 +25,69 @@ async function writeConfig(cfg) {
   await fs.writeFile(filePath, JSON.stringify(cfg, null, 2));
 }
 
+function parseConfig(raw = {}) {
+  const renameMap =
+    raw && typeof raw.renameMap === 'object' && raw.renameMap !== null
+      ? raw.renameMap
+      : {};
+  const columnTypes =
+    raw && typeof raw.columnTypes === 'object' && raw.columnTypes !== null
+      ? raw.columnTypes
+      : {};
+  return {
+    sheet: typeof raw.sheet === 'string' ? raw.sheet : '',
+    headerRow: Number(raw.headerRow) || 1,
+    mnHeaderRow: raw.mnHeaderRow ? String(raw.mnHeaderRow) : '',
+    idFilterMode: typeof raw.idFilterMode === 'string' ? raw.idFilterMode : 'contains',
+    idColumn: typeof raw.idColumn === 'string' ? raw.idColumn : '',
+    nameColumn: typeof raw.nameColumn === 'string' ? raw.nameColumn : '',
+    otherColumns: Array.isArray(raw.otherColumns)
+      ? raw.otherColumns.map(String)
+      : [],
+    uniqueFields: Array.isArray(raw.uniqueFields)
+      ? raw.uniqueFields.map(String)
+      : [],
+    calcText: typeof raw.calcText === 'string' ? raw.calcText : '',
+    columnTypes,
+    notNullMap:
+      raw && typeof raw.notNullMap === 'object' && raw.notNullMap !== null
+        ? raw.notNullMap
+        : {},
+    allowZeroMap:
+      raw && typeof raw.allowZeroMap === 'object' && raw.allowZeroMap !== null
+        ? raw.allowZeroMap
+        : {},
+    defaultValues:
+      raw && typeof raw.defaultValues === 'object' && raw.defaultValues !== null
+        ? raw.defaultValues
+        : {},
+    defaultFrom:
+      raw && typeof raw.defaultFrom === 'object' && raw.defaultFrom !== null
+        ? raw.defaultFrom
+        : {},
+    renameMap,
+    extraFields: Array.isArray(raw.extraFields)
+      ? raw.extraFields.map(String)
+      : [],
+    populateRange: !!raw.populateRange,
+    startYear: raw.startYear ? String(raw.startYear) : '',
+    endYear: raw.endYear ? String(raw.endYear) : '',
+    autoIncStart: raw.autoIncStart ? String(raw.autoIncStart) : '1',
+  };
+}
+
 export async function getConfig(table) {
   const cfg = await readConfig();
-  return cfg[table] || {};
+  return parseConfig(cfg[table]);
 }
 
 export async function getAllConfigs() {
-  return readConfig();
+  const cfg = await readConfig();
+  const result = {};
+  for (const [tbl, info] of Object.entries(cfg)) {
+    result[tbl] = parseConfig(info);
+  }
+  return result;
 }
 
 export async function setConfig(table, config = {}) {
