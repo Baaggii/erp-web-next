@@ -37,6 +37,7 @@ export default function FormsManagement() {
     headerFields: [],
     mainFields: [],
     footerFields: [],
+    viewSource: {},
     transactionTypeField: '',
     transactionTypeValue: '',
     allowedBranches: [],
@@ -103,6 +104,7 @@ export default function FormsManagement() {
             headerFields: filtered[name].headerFields || [],
             mainFields: filtered[name].mainFields || [],
             footerFields: filtered[name].footerFields || [],
+            viewSource: filtered[name].viewSource || {},
             transactionTypeField: filtered[name].transactionTypeField || '',
             transactionTypeValue: filtered[name].transactionTypeValue || '',
             allowedBranches: (filtered[name].allowedBranches || []).map(String),
@@ -129,6 +131,7 @@ export default function FormsManagement() {
             headerFields: [],
             mainFields: [],
             footerFields: [],
+            viewSource: {},
             transactionTypeField: '',
             transactionTypeValue: '',
             allowedBranches: [],
@@ -158,6 +161,7 @@ export default function FormsManagement() {
           headerFields: [],
           mainFields: [],
           footerFields: [],
+          viewSource: {},
           transactionTypeField: '',
           transactionTypeValue: '',
           allowedBranches: [],
@@ -218,6 +222,7 @@ export default function FormsManagement() {
           headerFields: [],
           mainFields: [],
           footerFields: [],
+          viewSource: {},
           transactionTypeField: '',
           transactionTypeValue: '',
           allowedBranches: [],
@@ -269,6 +274,17 @@ export default function FormsManagement() {
       const set = new Set(c[key]);
       set.has(field) ? set.delete(field) : set.add(field);
       return { ...c, [key]: Array.from(set) };
+    });
+  }
+
+  function changeViewSource(field, key, value) {
+    setConfig((c) => {
+      const entry = c.viewSource[field] || { view: '', fields: [] };
+      const next = { ...entry, [key]: value };
+      const vs = { ...c.viewSource };
+      if (!next.view && next.fields.length === 0) delete vs[field];
+      else vs[field] = next;
+      return { ...c, viewSource: vs };
     });
   }
 
@@ -336,6 +352,7 @@ export default function FormsManagement() {
       headerFields: [],
       mainFields: [],
       footerFields: [],
+      viewSource: {},
       transactionTypeField: '',
       transactionTypeValue: '',
       allowedBranches: [],
@@ -366,6 +383,7 @@ export default function FormsManagement() {
       headerFields: cfg.headerFields || [],
       mainFields: cfg.mainFields || [],
       footerFields: cfg.footerFields || [],
+      viewSource: cfg.viewSource || {},
       transactionTypeField: cfg.transactionTypeField || '',
       transactionTypeValue: cfg.transactionTypeValue || '',
       allowedBranches: (cfg.allowedBranches || []).map(String),
@@ -502,6 +520,8 @@ export default function FormsManagement() {
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Header</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Main</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Footer</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>View</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>View Fields</th>
               </tr>
             </thead>
             <tbody>
@@ -634,6 +654,26 @@ export default function FormsManagement() {
                       type="checkbox"
                       checked={config.footerFields.includes(col)}
                       onChange={() => toggleFieldList(col, 'footerFields')}
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px' }}>
+                    <input
+                      type="text"
+                      value={config.viewSource[col]?.view || ''}
+                      onChange={(e) => changeViewSource(col, 'view', e.target.value)}
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px' }}>
+                    <input
+                      type="text"
+                      value={(config.viewSource[col]?.fields || []).join(',')}
+                      onChange={(e) =>
+                        changeViewSource(
+                          col,
+                          'fields',
+                          e.target.value.split(',').map((v) => v.trim()).filter(Boolean),
+                        )
+                      }
                     />
                   </td>
                 </tr>
