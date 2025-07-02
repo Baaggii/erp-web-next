@@ -42,6 +42,8 @@ This document outlines the roadmap, scope, architecture, milestones, and deliver
        exclude any chosen `id` or `name` column.
      - Any combination of these groups is valid (e.g. `id` + `unique`, or just
        `unique` + `other`).
+   - Config may map a column to a SQL view using `viewSource` so additional
+     fields can be fetched dynamically during form entry.
 
 ## 4. Architecture & Tech Stack
 - **Front-end**  

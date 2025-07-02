@@ -31,6 +31,11 @@ Each **transaction** entry allows you to specify:
 - **moduleLabel** – optional label for the parent module
 - **allowedBranches** – restrict usage to these branch IDs
 - **allowedDepartments** – restrict usage to these department IDs
+- **viewSource** – optional mapping of a table field to a SQL view. Each entry
+  defines `{ "view": "VIEW_NAME", "fields": ["col1", ...] }` and allows the
+  listed `fields` to be fetched from the view using the field value as the `WHERE`
+  parameter. These fields are shown in the form but are not saved back to the
+  transaction table.
 
 The form displays header fields (system filled values) separately from other
 fields. When printing, the `printEmpField` and `printCustField` lists control
