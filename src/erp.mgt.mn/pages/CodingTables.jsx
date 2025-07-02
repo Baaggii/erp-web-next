@@ -857,7 +857,9 @@ export default function CodingTablesPage() {
       if (!rows.length || !fields.length) return '';
       const cols = fields.map((f) => `\`${dbCols[f] || cleanIdentifier(renameMap[f] || f)}\``);
       const idxMap = fields.map((f) => allHdrs.indexOf(f));
-      let out = '';
+      const updates = cols.map((c) => `${c} = VALUES(${c})`);
+      const parts = [];
+      let chunkValues = [];
       for (const r of rows) {
         let hasData = false;
         const vals = idxMap.map((idx, i) => {
@@ -890,10 +892,16 @@ export default function CodingTablesPage() {
           return formatVal(v, colTypes[f]);
         });
         if (!hasData) continue;
-        const updates = cols.map((c) => `${c} = VALUES(${c})`);
-        out += `INSERT INTO \`${tableNameForSql}\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
+        chunkValues.push(`(${vals.join(', ')})`);
+        if (chunkValues.length >= 5000) {
+          parts.push(`INSERT INTO \`${tableNameForSql}\` (${cols.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`);
+          chunkValues = [];
+        }
       }
-      return out;
+      if (chunkValues.length > 0) {
+        parts.push(`INSERT INTO \`${tableNameForSql}\` (${cols.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`);
+      }
+      return parts.join('\n');
     }
 
     let fields = [
