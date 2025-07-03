@@ -20,6 +20,7 @@ function parseExcelDate(val) {
     return base;
   }
   if (typeof val === 'string') {
+    if (val.includes(',')) val = val.replace(/,/g, '-');
     const m = val.match(/^(\d{4})[.-](\d{1,2})[.-](\d{1,2})$/);
     if (m) {
       const [, y, mo, d] = m;
@@ -40,9 +41,10 @@ function sanitizeValue(val) {
 
 function normalizeNumeric(val, type) {
   if (!type) return val;
-  if (type === 'INT' || type.startsWith('DECIMAL')) {
+  const t = String(type).toUpperCase();
+  if (/INT|DECIMAL|NUMERIC|DOUBLE|FLOAT|LONG|BIGINT|NUMBER/.test(t)) {
     if (typeof val === 'string' && val.includes(',')) {
-      const replaced = val.replace(',', '.');
+      const replaced = val.replace(/,/g, '.');
       const num = Number(replaced);
       if (!Number.isNaN(num)) {
         return num;
