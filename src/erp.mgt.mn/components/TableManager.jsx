@@ -94,7 +94,7 @@ const TableManager = forwardRef(function TableManager({
   refreshId = 0,
   formConfig = null,
   initialPerPage = 10,
-  addLabel = 'Мөр нэмэх',
+  addLabel = 'Add Row',
   showTable = true
 }, ref) {
   const mounted = useRef(false);
@@ -767,14 +767,17 @@ const TableManager = forwardRef(function TableManager({
         setShowForm(false);
         setEditing(null);
         setIsAdding(false);
-        const msg = isAdding ? 'Шинэ гүйлгээ хадгалагдлаа' : 'Хадгалагдлаа';
+        const msg = isAdding ? 'New transaction saved' : 'Saved';
         addToast(msg, 'success');
         if (isAdding) {
-          setTimeout(() => openAdd(), 0);
+          const again = window.confirm('Add another transaction row?');
+          if (again) {
+            setTimeout(() => openAdd(), 0);
+          }
         }
         return true;
       } else {
-        let message = 'Хадгалахад алдаа гарлаа';
+        let message = 'Save failed';
         try {
           const data = await res.json();
           if (data && data.message) message += `: ${data.message}`;

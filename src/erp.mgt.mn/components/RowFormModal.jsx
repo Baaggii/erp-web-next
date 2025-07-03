@@ -201,11 +201,11 @@ const RowFormModal = function RowFormModal({
       if (val !== e.target.value) e.target.value = val;
     }
     if (placeholders[col] && !isValidDate(val, placeholders[col])) {
-      setErrors((er) => ({ ...er, [col]: 'Хугацааны формат буруу' }));
+      setErrors((er) => ({ ...er, [col]: 'Invalid date' }));
       return;
     }
-    if (requiredFields.includes(col) && (val === '' || val === null || val === undefined)) {
-      setErrors((er) => ({ ...er, [col]: 'Утга оруулна уу' }));
+    if (requiredFields.includes(col) && !val) {
+      setErrors((er) => ({ ...er, [col]: 'Please enter value' }));
       return;
     }
     if (
@@ -213,7 +213,7 @@ const RowFormModal = function RowFormModal({
       val !== '' &&
       isNaN(Number(normalizeNumberInput(val)))
     ) {
-      setErrors((er) => ({ ...er, [col]: 'Буруу тоон утга' }));
+      setErrors((er) => ({ ...er, [col]: 'Invalid number' }));
       return;
     }
     const enabled = columns.filter((c) => !disabledFields.includes(c));
@@ -235,7 +235,7 @@ const RowFormModal = function RowFormModal({
     setSubmitLocked(true);
     if (useGrid && tableRef.current) {
       if (tableRef.current.hasInvalid && tableRef.current.hasInvalid()) {
-        alert('Тэмдэглэсэн талбаруудыг засна уу.');
+        alert('Please correct highlighted fields.');
         setSubmitLocked(false);
         return;
       }
@@ -260,12 +260,7 @@ const RowFormModal = function RowFormModal({
           normalized[k] = val;
         });
         requiredFields.forEach((f) => {
-          if (
-            normalized[f] === '' ||
-            normalized[f] === null ||
-            normalized[f] === undefined
-          )
-            hasMissing = true;
+          if (!normalized[f]) hasMissing = true;
           if (
             (totalAmountSet.has(f) || totalCurrencySet.has(f)) &&
             normalized[f] !== '' &&
@@ -279,12 +274,12 @@ const RowFormModal = function RowFormModal({
       });
 
       if (hasMissing) {
-        alert('Шаардлагатай талбаруудыг бөглөнө үү.');
+        alert('Please fill all required fields.');
         setSubmitLocked(false);
         return;
       }
       if (hasInvalid) {
-        alert('Буруу утгуудыг засна уу.');
+        alert('Please correct invalid values.');
         setSubmitLocked(false);
         return;
       }
@@ -314,11 +309,8 @@ const RowFormModal = function RowFormModal({
     }
     const errs = {};
     requiredFields.forEach((f) => {
-      if (
-        columns.includes(f) &&
-        (formVals[f] === '' || formVals[f] === null || formVals[f] === undefined)
-      ) {
-        errs[f] = 'Утга оруулна уу';
+      if (columns.includes(f) && !formVals[f]) {
+        errs[f] = 'Please enter value';
       }
     });
     setErrors(errs);
@@ -629,7 +621,7 @@ const RowFormModal = function RowFormModal({
   return (
     <Modal
       visible={visible}
-      title={row ? 'Мөр засах' : 'Мөр нэмэх'}
+      title={row ? 'Edit Row' : 'Add Row'}
       onClose={onCancel}
       width="70vw"
     >
