@@ -813,26 +813,35 @@ export default function CodingTablesPage() {
       if (key) seenKeys.add(key);
       if (isDup) {
         const copy = [...r];
-        copy[errorDescIdx] = 'duplicate';
+        const colNames = uniqueOnly.map((c) => renameMap[c] || c).join(', ');
+        copy[errorDescIdx] = colNames ? `duplicate: ${colNames}` : 'duplicate';
         dupRows.push(copy);
         dupList.push(key);
         return;
       }
-      const zeroInvalid = fieldsToCheck.some((f) => {
+      const invalidCols = [];
+      for (const f of fieldsToCheck) {
         const idxF = allHdrs.indexOf(f);
         const v = resolvedValue(r, idxF, f);
         const isZero =
           v === 0 || (typeof v === 'string' && v.trim() !== '' && Number(v) === 0);
-        if (isZero && !allowZeroMap[f]) return true;
-        if (localNotNull[f]) {
-          return v === undefined || v === null || v === '';
+        if (isZero && !allowZeroMap[f]) {
+          invalidCols.push(renameMap[f] || f);
+          continue;
         }
-        return false;
-      });
+        if (localNotNull[f] && (v === undefined || v === null || v === '')) {
+          invalidCols.push(renameMap[f] || f);
+        }
+      }
       const stateVal = stateIdx === -1 ? '1' : String(r[stateIdx]);
       const reasons = [];
-      if (zeroInvalid) reasons.push('invalid value');
-      if (stateVal !== '1') reasons.push('inactive state');
+      if (invalidCols.length > 0) {
+        reasons.push(`invalid value: ${invalidCols.join(', ')}`);
+      }
+      if (stateVal !== '1') {
+        const sCol = stateIdx === -1 ? '' : renameMap[allHdrs[stateIdx]] || allHdrs[stateIdx];
+        reasons.push(sCol ? `inactive state: ${sCol}` : 'inactive state');
+      }
       if (reasons.length === 0) {
         mainRows.push(r);
       } else {
