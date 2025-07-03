@@ -23,6 +23,7 @@ Each **transaction** entry allows you to specify:
 - **headerFields** – fields shown in the header section
 - **mainFields** – fields shown in the main section
 - **footerFields** – fields shown in the footer section
+- **viewSource** – map of field names to SQL view names
 - **transactionTypeField** – column used to store the transaction type code
 - **transactionTypeValue** – default transaction type code value
 - **moduleKey** – module slug used to group the form under a module. If omitted,
@@ -49,6 +50,7 @@ Example snippet:
       "userIdFields": ["created_by"],
       "branchIdFields": ["branch_id"],
       "companyIdFields": ["company_id"],
+      "viewSource": { "branch_id": "v_branch" },
       "moduleKey": "finance_transactions",
       "moduleLabel": "Finance",
       "allowedBranches": [1, 2],

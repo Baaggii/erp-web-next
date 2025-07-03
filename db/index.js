@@ -523,6 +523,13 @@ export async function listDatabaseTables() {
   return rows.map((r) => Object.values(r)[0]);
 }
 
+export async function listDatabaseViews() {
+  const [rows] = await pool.query(
+    "SHOW FULL TABLES WHERE TABLE_TYPE = 'VIEW'",
+  );
+  return rows.map((r) => Object.values(r)[0]);
+}
+
 export async function listTableColumns(tableName) {
   const [rows] = await pool.query(
     `SELECT COLUMN_NAME

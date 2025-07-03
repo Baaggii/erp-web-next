@@ -42,6 +42,18 @@ await test('setFormConfig writes moduleKey without touching modules', async () =
   await restore();
 });
 
+await test('setFormConfig stores viewSource map', async () => {
+  const { orig, restore } = await withTempFile();
+  await fs.writeFile(filePath, '{}');
+  await setFormConfig('tbl', 'ViewTest', {
+    moduleKey: 'parent_mod',
+    viewSource: { branch_id: 'v_branch' },
+  });
+  const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
+  assert.deepEqual(data.tbl.ViewTest.viewSource, { branch_id: 'v_branch' });
+  await restore();
+});
+
 await test('setFormConfig stores moduleLabel when provided', async () => {
   const { orig, restore } = await withTempFile();
   await fs.writeFile(filePath, '{}');
