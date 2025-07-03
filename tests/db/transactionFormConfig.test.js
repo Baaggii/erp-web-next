@@ -103,11 +103,11 @@ await test('setFormConfig stores viewSource config', async () => {
   await fs.writeFile(filePath, '{}');
   await setFormConfig('tbl', 'ViewCfg', {
     moduleKey: 'parent_mod',
-    viewSource: { ref_id: { view: 'v_ref', fields: ['name'] } },
+    viewSource: { ref_id: { table: 'tbl_ref', view: 'v_ref' } },
   });
   const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
   assert.deepEqual(data.tbl.ViewCfg.viewSource, {
-    ref_id: { view: 'v_ref', fields: ['name'] },
+    ref_id: { table: 'tbl_ref', view: 'v_ref' },
   });
   await restore();
 });
