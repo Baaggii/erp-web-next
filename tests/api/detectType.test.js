@@ -15,3 +15,13 @@ test('detectType limits VARCHAR length to max data length', () => {
   const vals = ['a', 'abcd', 'abc'];
   assert.equal(detectType('name', vals), 'VARCHAR(4)');
 });
+
+test('detectType ignores Excel error values', () => {
+  const vals = ['#N/A', '#VALUE!', '123'];
+  assert.equal(detectType('amount', vals), 'INT');
+});
+
+test('detectType ignores special character values', () => {
+  const vals = ['-', '+', '123'];
+  assert.equal(detectType('amount', vals), 'INT');
+});
