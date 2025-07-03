@@ -33,7 +33,22 @@ function parseExcelDate(val) {
 
 function sanitizeValue(val) {
   if (typeof val === 'string') {
-    return val.replace(/[\\/"']/g, '');
+    return val.replace(/[\\/"'\[\]]/g, '');
+  }
+  return val;
+}
+
+function normalizeNumeric(val, type) {
+  if (!type) return val;
+  if (type === 'INT' || type.startsWith('DECIMAL')) {
+    if (typeof val === 'string' && val.includes(',')) {
+      const replaced = val.replace(',', '.');
+      const num = Number(replaced);
+      if (!Number.isNaN(num)) {
+        return num;
+      }
+      return replaced;
+    }
   }
   return val;
 }
@@ -331,6 +346,7 @@ export async function uploadCodingTable(req, res, next) {
           const d = parseExcelDate(val);
           val = d || null;
         }
+        val = normalizeNumeric(val, columnTypes[cleanNameCol]);
         val = sanitizeValue(val);
         values.push(val);
         hasData = true;
@@ -350,6 +366,7 @@ export async function uploadCodingTable(req, res, next) {
           const d = parseExcelDate(val);
           val = d || null;
         }
+        val = normalizeNumeric(val, columnTypes[c]);
         val = sanitizeValue(val);
         values.push(val);
         updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
@@ -375,6 +392,7 @@ export async function uploadCodingTable(req, res, next) {
         }
         if (val !== undefined && val !== null && val !== '' && val !== 0)
           hasData = true;
+        val = normalizeNumeric(val, columnTypes[c]);
         val = sanitizeValue(val);
         values.push(val);
         updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
@@ -399,6 +417,7 @@ export async function uploadCodingTable(req, res, next) {
         }
         if (val !== undefined && val !== null && val !== '' && val !== 0)
           hasData = true;
+        val = normalizeNumeric(val, columnTypes[c]);
         val = sanitizeValue(val);
         values.push(val);
         updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
