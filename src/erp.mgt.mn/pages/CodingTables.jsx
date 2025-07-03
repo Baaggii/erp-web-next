@@ -37,6 +37,8 @@ export default function CodingTablesPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
   const [insertedCount, setInsertedCount] = useState(0);
+  const [groupMessage, setGroupMessage] = useState('');
+  const [groupByField, setGroupByField] = useState('');
   const [columnTypes, setColumnTypes] = useState({});
   const [notNullMap, setNotNullMap] = useState({});
   const [allowZeroMap, setAllowZeroMap] = useState({});
@@ -57,6 +59,7 @@ export default function CodingTablesPage() {
   const fileInputRef = useRef(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [configNames, setConfigNames] = useState([]);
+  const interruptRef = useRef(false);
 
   useEffect(() => {
     fetch('/api/coding_table_configs', { credentials: 'include' })
@@ -64,6 +67,18 @@ export default function CodingTablesPage() {
       .then((data) => setConfigNames(Object.keys(data)))
       .catch(() => setConfigNames([]));
   }, []);
+
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape' && uploading) {
+        if (window.confirm('Interrupt insert process?')) {
+          interruptRef.current = true;
+        }
+      }
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [uploading]);
 
   const allFields = useMemo(() => {
     // keep duplicates so user can easily spot them and clean extras the same way
@@ -904,6 +919,26 @@ export default function CodingTablesPage() {
       return parts.join('\n');
     }
 
+    function buildGroupedInsertSQL(allRows, tableNameForSql, fields, groupByFn) {
+      if (typeof groupByFn !== 'function') {
+        return buildInsert(allRows, tableNameForSql, fields);
+      }
+      const grouped = {};
+      for (const row of allRows) {
+        const key = String(groupByFn(row) ?? '');
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(row);
+      }
+      const keys = Object.keys(grouped);
+      const parts = [];
+      for (let i = 0; i < keys.length; i++) {
+        const key = keys[i];
+        parts.push(`-- Progress: Group ${i + 1} of ${keys.length} (${key})`);
+        parts.push(buildInsert(grouped[key], tableNameForSql, fields));
+      }
+      return parts.filter(Boolean).join('\n');
+    }
+
     let fields = [
       ...(nmCol ? [nmCol] : []),
       ...uniqueOnly,
@@ -919,14 +954,22 @@ export default function CodingTablesPage() {
     });
 
     const structMainStr = buildStructure(tbl, true);
-    const insertMainStr = buildInsert(mainRows, tbl, fields);
+    const groupIdx = allHdrs.indexOf(groupByField);
+    const groupFn = groupIdx === -1 ? null : (row) => row[groupIdx];
+    const insertMainStr = buildGroupedInsertSQL(
+      mainRows,
+      tbl,
+      fields,
+      groupFn
+    );
     const otherCombined = [...otherRows, ...dupRows];
     const structOtherStr = buildStructure(`${tbl}_other`, false);
     const fieldsWithoutId = fields.filter((f) => f !== idCol);
-    const insertOtherStr = buildInsert(
+    const insertOtherStr = buildGroupedInsertSQL(
       otherCombined,
       `${tbl}_other`,
-      fieldsWithoutId
+      fieldsWithoutId,
+      groupFn
     );
     if (structure) {
       const sqlStr = structMainStr + insertMainStr;
@@ -983,6 +1026,71 @@ export default function CodingTablesPage() {
     generateFromWorkbook({ structure: false, records: true });
   }
 
+  async function runStatements(statements) {
+    setUploadProgress({ done: 0, total: statements.length });
+    setInsertedCount(0);
+    setGroupMessage(
+      statements.length > 0 ? `Statement 1/${statements.length}` : ''
+    );
+    let totalInserted = 0;
+    const failedAll = [];
+    interruptRef.current = false;
+    for (let i = 0; i < statements.length; i++) {
+      if (interruptRef.current) break;
+      let stmt = statements[i];
+      const progressMatch = stmt.match(/^--\s*Progress:\s*(.*)\n/);
+      if (progressMatch) {
+        setGroupMessage(progressMatch[1]);
+        stmt = stmt.slice(progressMatch[0].length).trim();
+        if (!stmt) {
+          setUploadProgress({ done: i + 1, total: statements.length });
+          continue;
+        }
+      }
+      const valMatch = stmt.match(/VALUES\s+(.+?)(?:ON DUPLICATE|;)/is);
+      let rowCount = 0;
+      if (valMatch) {
+        rowCount = valMatch[1].split(/\),\s*\(/).length;
+      }
+      if (!progressMatch) {
+        setGroupMessage(
+          rowCount > 0
+            ? `Group ${i + 1}/${statements.length} (${rowCount} records)`
+            : `Statement ${i + 1}/${statements.length}`
+        );
+      }
+      const res = await fetch('/api/generated_sql/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql: stmt }),
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.message || 'Execution failed');
+        return { inserted: totalInserted, failed: failedAll, aborted: true };
+      }
+      const data = await res.json().catch(() => ({}));
+      const inserted = data.inserted || 0;
+      if (Array.isArray(data.failed) && data.failed.length > 0) {
+        failedAll.push(
+          ...data.failed.map((f) =>
+            typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
+          )
+        );
+      }
+      totalInserted += inserted;
+      setInsertedCount(totalInserted);
+      addToast(`Inserted ${totalInserted} records`, 'info');
+      setUploadProgress({ done: i + 1, total: statements.length });
+      if (i < statements.length - 1) {
+        await new Promise((r) => setTimeout(r, 250));
+      }
+    }
+    setGroupMessage('');
+    return { inserted: totalInserted, failed: failedAll, aborted: interruptRef.current };
+  }
+
 
   async function executeGeneratedSql() {
     const combined = [sql, sqlOther].filter(Boolean).join('\n');
@@ -997,60 +1105,20 @@ export default function CodingTablesPage() {
         .map((s) => s.trim())
         .filter(Boolean)
         .map((s) => s + ';');
-      const chunks = [];
-      let current = [];
-      let size = 0;
-      const limit = 500000; // ~0.5MB per chunk
-      for (const stmt of statements) {
-        const len = stmt.length + 1; // include newline
-        if (size + len > limit && current.length) {
-          chunks.push(current.join('\n'));
-          current = [];
-          size = 0;
+      const { inserted, failed, aborted } = await runStatements(statements);
+      if (aborted) {
+        addToast('Insert interrupted', 'warning');
+      } else {
+        setSummaryInfo(
+          `Inserted ${inserted} rows. Duplicates: ${
+            duplicateInfo ? duplicateInfo.split('\n').length : 0
+          }`
+        );
+        if (failed.length > 0) {
+          setSqlMove(failed.join('\n'));
         }
-        current.push(stmt);
-        size += len;
+        addToast(`Table created with ${inserted} rows`, 'success');
       }
-      if (current.length) chunks.push(current.join('\n'));
-      setUploadProgress({ done: 0, total: chunks.length });
-      setInsertedCount(0);
-      let totalInserted = 0;
-      const failedAll = [];
-      for (const chunk of chunks) {
-        const res = await fetch('/api/generated_sql/execute', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sql: chunk }),
-          credentials: 'include',
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          alert(data.message || 'Execution failed');
-          return;
-        }
-        const data = await res.json().catch(() => ({}));
-        const inserted = data.inserted || 0;
-        if (Array.isArray(data.failed) && data.failed.length > 0) {
-          failedAll.push(
-            ...data.failed.map((f) =>
-              typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
-            )
-          );
-        }
-        totalInserted += inserted;
-        setInsertedCount(totalInserted);
-        addToast(`Inserted ${totalInserted} records`, 'info');
-        setUploadProgress((p) => ({ done: p.done + 1, total: chunks.length }));
-      }
-      setSummaryInfo(
-        `Inserted ${totalInserted} rows. Duplicates: ${
-          duplicateInfo ? duplicateInfo.split('\n').length : 0
-        }`
-      );
-      if (failedAll.length > 0) {
-        setSqlMove(failedAll.join('\n'));
-      }
-      addToast(`Table created with ${totalInserted} rows`, 'success');
     } catch (err) {
       console.error('SQL execution failed', err);
       alert('Execution failed');
@@ -1075,60 +1143,20 @@ export default function CodingTablesPage() {
         .map((s) => s.trim())
         .filter(Boolean)
         .map((s) => s + ';');
-      const chunks = [];
-      let current = [];
-      let size = 0;
-      const limit = 500000;
-      for (const stmt of statements) {
-        const len = stmt.length + 1;
-        if (size + len > limit && current.length) {
-          chunks.push(current.join('\n'));
-          current = [];
-          size = 0;
+      const { inserted, failed, aborted } = await runStatements(statements);
+      if (aborted) {
+        addToast('Insert interrupted', 'warning');
+      } else {
+        setSummaryInfo(
+          `Inserted ${inserted} rows. Duplicates: ${
+            duplicateInfo ? duplicateInfo.split('\n').length : 0
+          }`
+        );
+        if (failed.length > 0) {
+          setSqlMove(failed.join('\n'));
         }
-        current.push(stmt);
-        size += len;
+        addToast(`Table created with ${inserted} rows`, 'success');
       }
-      if (current.length) chunks.push(current.join('\n'));
-      setUploadProgress({ done: 0, total: chunks.length });
-      setInsertedCount(0);
-      let totalInserted = 0;
-      const failedAll = [];
-      for (const chunk of chunks) {
-        const res = await fetch('/api/generated_sql/execute', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sql: chunk }),
-          credentials: 'include',
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          alert(data.message || 'Execution failed');
-          return;
-        }
-        const data = await res.json().catch(() => ({}));
-        const inserted = data.inserted || 0;
-        if (Array.isArray(data.failed) && data.failed.length > 0) {
-          failedAll.push(
-            ...data.failed.map((f) =>
-              typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
-            )
-          );
-        }
-        totalInserted += inserted;
-        setInsertedCount(totalInserted);
-        addToast(`Inserted ${totalInserted} records`, 'info');
-        setUploadProgress((p) => ({ done: p.done + 1, total: chunks.length }));
-      }
-      setSummaryInfo(
-        `Inserted ${totalInserted} rows. Duplicates: ${
-          duplicateInfo ? duplicateInfo.split('\n').length : 0
-        }`
-      );
-      if (failedAll.length > 0) {
-        setSqlMove(failedAll.join('\n'));
-      }
-      addToast(`Table created with ${totalInserted} rows`, 'success');
     } catch (err) {
       console.error('SQL execution failed', err);
       alert('Execution failed');
@@ -1145,19 +1173,12 @@ export default function CodingTablesPage() {
     }
     setUploading(true);
     try {
-      const res = await fetch('/api/generated_sql/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql: structSqlOther }),
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        alert(data.message || 'Execution failed');
-        return;
+      const { inserted } = await runStatements([structSqlOther]);
+      if (!interruptRef.current) {
+        addToast(`Other table inserted ${inserted} rows`, 'success');
+      } else {
+        addToast('Insert interrupted', 'warning');
       }
-      const data = await res.json().catch(() => ({}));
-      addToast(`Other table inserted ${data.inserted || 0} rows`, 'success');
     } catch (err) {
       console.error('SQL execution failed', err);
       alert('Execution failed');
@@ -1173,42 +1194,19 @@ export default function CodingTablesPage() {
     }
     setUploading(true);
     try {
-      const failedAll = [];
-      if (recordsSql) {
-        const resMain = await fetch('/api/generated_sql/execute', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sql: recordsSql }),
-          credentials: 'include',
-        });
-        if (!resMain.ok) throw new Error('main failed');
-        const dataMain = await resMain.json().catch(() => ({}));
-        if (Array.isArray(dataMain.failed))
-          failedAll.push(
-            ...dataMain.failed.map((f) =>
-              typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
-            )
-          );
-      }
-      if (recordsSqlOther) {
-        const resOther = await fetch('/api/generated_sql/execute', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sql: recordsSqlOther }),
-          credentials: 'include',
-        });
-        if (!resOther.ok) throw new Error('other failed');
-        const dataOther = await resOther.json().catch(() => ({}));
-        if (Array.isArray(dataOther.failed))
-          failedAll.push(
-            ...dataOther.failed.map((f) =>
-              typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
-            )
-          );
-      }
-      if (failedAll.length > 0) {
+      const statements = [recordsSql, recordsSqlOther]
+        .filter(Boolean)
+        .flatMap((s) =>
+          s
+            .split(/;\s*\n/)
+            .map((st) => st.trim())
+            .filter(Boolean)
+            .map((st) => st + ';')
+        );
+      const { inserted, failed, aborted } = await runStatements(statements);
+      if (failed.length > 0) {
         const tbl = cleanIdentifier(tableName);
-        const moveSql = failedAll
+        const moveSql = failed
           .map((stmt) => {
             const re = new RegExp(`INSERT INTO\\s+\`${tbl}\``, 'i');
             if (re.test(stmt) && !/\_other`/i.test(stmt)) {
@@ -1238,7 +1236,11 @@ export default function CodingTablesPage() {
           }
         }
       }
-      addToast('Records inserted', 'success');
+      if (aborted) {
+        addToast('Insert interrupted', 'warning');
+      } else {
+        addToast('Records inserted', 'success');
+      }
     } catch (err) {
       console.error('SQL execution failed', err);
       alert('Execution failed');
@@ -1828,6 +1830,17 @@ export default function CodingTablesPage() {
                 </div>
               </div>
               <div>
+                Group By Column:
+                <select value={groupByField} onChange={(e) => setGroupByField(e.target.value)}>
+                  <option value="">--none--</option>
+                  {allFields.map((h) => (
+                    <option key={h} value={h}>
+                      {renameMap[h] || h}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
                 Column Types:
                 <div>
                   {uniqueRenamedFields().map(({ value: h, label }) => (
@@ -2012,7 +2025,11 @@ export default function CodingTablesPage() {
               )}
               {uploading && (
                 <div style={{ marginTop: '1rem' }}>
-                  <progress value={uploadProgress.done} max={uploadProgress.total || 1} /> Creating table...
+                  <progress
+                    value={uploadProgress.done}
+                    max={uploadProgress.total || 1}
+                  />{' '}
+                  {groupMessage || 'Creating table...'}
                 </div>
               )}
             </>
