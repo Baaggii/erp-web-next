@@ -20,6 +20,7 @@ function parseExcelDate(val) {
     return base;
   }
   if (typeof val === 'string') {
+    if (val.includes(',')) val = val.replace(/,/g, '-');
     const m = val.match(/^(\d{4})[.-](\d{1,2})[.-](\d{1,2})$/);
     if (m) {
       const [, y, mo, d] = m;
@@ -33,7 +34,23 @@ function parseExcelDate(val) {
 
 function sanitizeValue(val) {
   if (typeof val === 'string') {
-    return val.replace(/[\\/"']/g, '');
+    return val.replace(/[\\/"'\[\]]/g, '');
+  }
+  return val;
+}
+
+function normalizeNumeric(val, type) {
+  if (!type) return val;
+  const t = String(type).toUpperCase();
+  if (/INT|DECIMAL|NUMERIC|DOUBLE|FLOAT|LONG|BIGINT|NUMBER/.test(t)) {
+    if (typeof val === 'string' && val.includes(',')) {
+      const replaced = val.replace(/,/g, '.');
+      const num = Number(replaced);
+      if (!Number.isNaN(num)) {
+        return num;
+      }
+      return replaced;
+    }
   }
   return val;
 }
@@ -331,6 +348,7 @@ export async function uploadCodingTable(req, res, next) {
           const d = parseExcelDate(val);
           val = d || null;
         }
+        val = normalizeNumeric(val, columnTypes[cleanNameCol]);
         val = sanitizeValue(val);
         values.push(val);
         hasData = true;
@@ -350,6 +368,7 @@ export async function uploadCodingTable(req, res, next) {
           const d = parseExcelDate(val);
           val = d || null;
         }
+        val = normalizeNumeric(val, columnTypes[c]);
         val = sanitizeValue(val);
         values.push(val);
         updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
@@ -375,6 +394,7 @@ export async function uploadCodingTable(req, res, next) {
         }
         if (val !== undefined && val !== null && val !== '' && val !== 0)
           hasData = true;
+        val = normalizeNumeric(val, columnTypes[c]);
         val = sanitizeValue(val);
         values.push(val);
         updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
@@ -399,6 +419,7 @@ export async function uploadCodingTable(req, res, next) {
         }
         if (val !== undefined && val !== null && val !== '' && val !== 0)
           hasData = true;
+        val = normalizeNumeric(val, columnTypes[c]);
         val = sanitizeValue(val);
         values.push(val);
         updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
