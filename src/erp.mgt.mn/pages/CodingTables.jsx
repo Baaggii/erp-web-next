@@ -1035,6 +1035,14 @@ export default function CodingTablesPage() {
     generateFromWorkbook({ structure: false, records: true });
   }
 
+  function splitSqlStatements(sqlText) {
+    return sqlText
+      .split(/;\s*\n/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((s) => (s.endsWith(';') ? s.slice(0, -1) : s) + ';');
+  }
+
   async function runStatements(statements) {
     setUploadProgress({ done: 0, total: statements.length });
     setInsertedCount(0);
@@ -1109,11 +1117,7 @@ export default function CodingTablesPage() {
     }
     setUploading(true);
     try {
-      const statements = combined
-        .split(/;\s*\n/)
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .map((s) => s + ';');
+      const statements = splitSqlStatements(combined);
       const { inserted, failed, aborted } = await runStatements(statements);
       if (aborted) {
         addToast('Insert interrupted', 'warning');
@@ -1147,11 +1151,7 @@ export default function CodingTablesPage() {
     }
     setUploading(true);
     try {
-      const statements = combined
-        .split(/;\s*\n/)
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .map((s) => s + ';');
+      const statements = splitSqlStatements(combined);
       const { inserted, failed, aborted } = await runStatements(statements);
       if (aborted) {
         addToast('Insert interrupted', 'warning');
@@ -1205,13 +1205,7 @@ export default function CodingTablesPage() {
     try {
       const statements = [recordsSql, recordsSqlOther]
         .filter(Boolean)
-        .flatMap((s) =>
-          s
-            .split(/;\s*\n/)
-            .map((st) => st.trim())
-            .filter(Boolean)
-            .map((st) => st + ';')
-        );
+        .flatMap((s) => splitSqlStatements(s));
       const { inserted, failed, aborted } = await runStatements(statements);
       if (failed.length > 0) {
         const tbl = cleanIdentifier(tableName);
@@ -1366,7 +1360,7 @@ export default function CodingTablesPage() {
         let struct = '';
         const m = sql.match(/CREATE TABLE[^;]+;/i);
         if (m) struct = m[0];
-        else struct = sql.split(/;\s*\n/)[0] + ';';
+        else struct = splitSqlStatements(sql)[0];
         if (struct.length > 5_000_000) {
           struct = struct.slice(0, 5_000_000);
           addToast('SQL too large, truncated structure', 'info');
@@ -1850,17 +1844,6 @@ export default function CodingTablesPage() {
                 </select>
               </div>
               <div>
-                Group Size:
-                <input
-                  type="number"
-                  min="1"
-                  value={groupSize}
-                  onChange={(e) =>
-                    setGroupSize(parseInt(e.target.value, 10) || 1)
-                  }
-                />
-              </div>
-              <div>
                 Column Types:
                 <div>
                   {uniqueRenamedFields().map(({ value: h, label }) => (
@@ -1940,6 +1923,17 @@ export default function CodingTablesPage() {
                   cols={40}
                   value={calcText}
                   onChange={(e) => setCalcText(e.target.value)}
+                />
+              </div>
+              <div>
+                Group Size:
+                <input
+                  type="number"
+                  min="1"
+                  value={groupSize}
+                  onChange={(e) =>
+                    setGroupSize(parseInt(e.target.value, 10) || 1)
+                  }
                 />
               </div>
             <div>
