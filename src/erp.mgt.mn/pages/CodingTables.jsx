@@ -39,6 +39,7 @@ export default function CodingTablesPage() {
   const [insertedCount, setInsertedCount] = useState(0);
   const [groupMessage, setGroupMessage] = useState('');
   const [groupByField, setGroupByField] = useState('');
+  const [groupSize, setGroupSize] = useState(5000);
   const [columnTypes, setColumnTypes] = useState({});
   const [notNullMap, setNotNullMap] = useState({});
   const [allowZeroMap, setAllowZeroMap] = useState({});
@@ -868,7 +869,7 @@ export default function CodingTablesPage() {
       return `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};\n`;
     }
 
-    function buildInsert(rows, tableNameForSql, fields) {
+    function buildInsert(rows, tableNameForSql, fields, chunkLimit = 5000) {
       if (!rows.length || !fields.length) return '';
       const cols = fields.map((f) => `\`${dbCols[f] || cleanIdentifier(renameMap[f] || f)}\``);
       const idxMap = fields.map((f) => allHdrs.indexOf(f));
@@ -908,7 +909,7 @@ export default function CodingTablesPage() {
         });
         if (!hasData) continue;
         chunkValues.push(`(${vals.join(', ')})`);
-        if (chunkValues.length >= 5000) {
+        if (chunkValues.length >= chunkLimit) {
           parts.push(`INSERT INTO \`${tableNameForSql}\` (${cols.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`);
           chunkValues = [];
         }
@@ -919,9 +920,15 @@ export default function CodingTablesPage() {
       return parts.join('\n');
     }
 
-    function buildGroupedInsertSQL(allRows, tableNameForSql, fields, groupByFn) {
+    function buildGroupedInsertSQL(
+      allRows,
+      tableNameForSql,
+      fields,
+      groupByFn,
+      chunkLimit = 5000
+    ) {
       if (typeof groupByFn !== 'function') {
-        return buildInsert(allRows, tableNameForSql, fields);
+        return buildInsert(allRows, tableNameForSql, fields, chunkLimit);
       }
       const grouped = {};
       for (const row of allRows) {
@@ -934,7 +941,7 @@ export default function CodingTablesPage() {
       for (let i = 0; i < keys.length; i++) {
         const key = keys[i];
         parts.push(`-- Progress: Group ${i + 1} of ${keys.length} (${key})`);
-        parts.push(buildInsert(grouped[key], tableNameForSql, fields));
+        parts.push(buildInsert(grouped[key], tableNameForSql, fields, chunkLimit));
       }
       return parts.filter(Boolean).join('\n');
     }
@@ -960,7 +967,8 @@ export default function CodingTablesPage() {
       mainRows,
       tbl,
       fields,
-      groupFn
+      groupFn,
+      parseInt(groupSize, 10) || 5000
     );
     const otherCombined = [...otherRows, ...dupRows];
     const structOtherStr = buildStructure(`${tbl}_other`, false);
@@ -969,7 +977,8 @@ export default function CodingTablesPage() {
       otherCombined,
       `${tbl}_other`,
       fieldsWithoutId,
-      groupFn
+      groupFn,
+      parseInt(groupSize, 10) || 5000
     );
     if (structure) {
       const sqlStr = structMainStr + insertMainStr;
@@ -1839,6 +1848,17 @@ export default function CodingTablesPage() {
                     </option>
                   ))}
                 </select>
+              </div>
+              <div>
+                Group Size:
+                <input
+                  type="number"
+                  min="1"
+                  value={groupSize}
+                  onChange={(e) =>
+                    setGroupSize(parseInt(e.target.value, 10) || 1)
+                  }
+                />
               </div>
               <div>
                 Column Types:
