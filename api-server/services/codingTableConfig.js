@@ -29,14 +29,10 @@ function parseViewSource(raw) {
   const result = {};
   if (raw && typeof raw === 'object') {
     for (const [field, info] of Object.entries(raw)) {
-      if (typeof info === 'string') {
-        result[field] = { view: info, fields: [] };
-      } else if (info && typeof info.view === 'string') {
+      if (info && typeof info.table === 'string' && typeof info.view === 'string') {
         result[field] = {
+          table: info.table,
           view: info.view,
-          fields: Array.isArray(info.fields)
-            ? info.fields.map(String)
-            : [],
         };
       }
     }
