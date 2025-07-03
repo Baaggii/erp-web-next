@@ -55,7 +55,7 @@ export default function FormsManagement() {
       .then((data) =>
         setBranches(
           (data.rows || data || []).filter(
-            (row) => row && row.id != null,
+            (row) => row && typeof row === 'object' && row.id != null,
           ),
         ),
       )
@@ -66,7 +66,7 @@ export default function FormsManagement() {
       .then((data) =>
         setDepartments(
           (data.rows || data || []).filter(
-            (row) => row && row.id != null,
+            (row) => row && typeof row === 'object' && row.id != null,
           ),
         ),
       )
@@ -713,7 +713,9 @@ export default function FormsManagement() {
                   }))
                 }
               >
-                {branches.filter((b) => b && b.id != null).map((b) => (
+                {branches
+                  .filter((b) => b && typeof b === 'object' && b.id != null)
+                  .map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.code} - {b.name}
                   </option>
@@ -725,7 +727,7 @@ export default function FormsManagement() {
                   setConfig((c) => ({
                     ...c,
                     allowedBranches: branches
-                      .filter((b) => b && b.id != null)
+                      .filter((b) => b && typeof b === 'object' && b.id != null)
                       .map((b) => String(b.id)),
                   }))
                 }
@@ -747,7 +749,9 @@ export default function FormsManagement() {
                   }))
                 }
               >
-                {departments.filter((d) => d && d.id != null).map((d) => (
+                {departments
+                  .filter((d) => d && typeof d === 'object' && d.id != null)
+                  .map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.code} - {d.name}
                   </option>
@@ -759,7 +763,7 @@ export default function FormsManagement() {
                   setConfig((c) => ({
                     ...c,
                     allowedDepartments: departments
-                      .filter((d) => d && d.id != null)
+                      .filter((d) => d && typeof d === 'object' && d.id != null)
                       .map((d) => String(d.id)),
                   }))
                 }
