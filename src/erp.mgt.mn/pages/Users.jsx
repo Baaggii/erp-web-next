@@ -1,11 +1,16 @@
 // src/erp.mgt.mn/pages/Users.jsx
 import React, { useEffect, useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
+import { debugLog } from '../utils/debug.js';
 
 export default function Users() {
   const [usersList, setUsersList] = useState([]);
   const [filter, setFilter] = useState('');
   const { company } = useContext(AuthContext);
+
+  useEffect(() => {
+    debugLog('Component mounted: Users');
+  }, []);
 
   function loadUsers() {
     const params = company ? `?companyId=${encodeURIComponent(company.company_id)}` : '';
@@ -132,10 +137,10 @@ export default function Users() {
               .map((u) => (
               <tr key={u.id}>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
-                  {u.empid}
+                  {u.empid != null ? u.empid : ''}
                 </td>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
-                  {u.role}
+                  {u.role != null ? u.role : ''}
                 </td>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                   <button onClick={() => handleEdit(u)}>Засах</button>

@@ -1,5 +1,5 @@
 // src/erp.mgt.mn/components/ERPLayout.jsx
-import React, { useContext, useState, useEffect } from "react";
+import React, { useContext, useState, useEffect, useRef } from "react";
 import HeaderMenu from "./HeaderMenu.jsx";
 import UserMenu from "./UserMenu.jsx";
 import { useOutlet, useNavigate, useLocation } from "react-router-dom";
@@ -23,6 +23,16 @@ import Spinner from "./Spinner.jsx";
  */
 export default function ERPLayout() {
   const { user, setUser, company } = useContext(AuthContext);
+  const renderCount = useRef(0);
+  useEffect(() => {
+  renderCount.current++;
+  if (renderCount.current > 10) {
+    console.warn('ERPLayout re-rendering too many times', renderCount.current);
+  }
+}, []);
+  useEffect(() => {
+    if (window.erpDebug) console.warn('Mounted: ERPLayout');
+  }, []);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -60,7 +70,7 @@ export default function ERPLayout() {
   useEffect(() => {
     const title = titleForPath(location.pathname);
     openTab({ key: location.pathname, label: title });
-  }, [location.pathname, modules, openTab]);
+  }, [location.pathname, openTab]);
 
   function handleOpen(path, label, key) {
     if (txnModuleKeys && txnModuleKeys.has(key)) {
@@ -263,9 +273,12 @@ function MainWindow({ title }) {
   const navigate = useNavigate();
   const { tabs, activeKey, switchTab, closeTab, setTabContent, cache } = useTabs();
 
+  // Store rendered outlet by path once the route changes. Avoid tracking
+  // the `outlet` object itself to prevent endless updates caused by React
+  // creating a new element on every render.
   useEffect(() => {
     setTabContent(location.pathname, outlet);
-  }, [location.pathname, outlet, setTabContent]);
+  }, [location.pathname, setTabContent]);
 
   function handleSwitch(key) {
     switchTab(key);

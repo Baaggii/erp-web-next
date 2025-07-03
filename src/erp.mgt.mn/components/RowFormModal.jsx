@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useContext, memo } from 'react';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import Modal from './Modal.jsx';
 import InlineTransactionTable from './InlineTransactionTable.jsx';
+import { AuthContext } from '../context/AuthContext.jsx';
 
-export default function RowFormModal({
+const RowFormModal = function RowFormModal({
   visible,
   onCancel,
   onSubmit,
@@ -22,11 +23,32 @@ export default function RowFormModal({
   printCustField = [],
   totalAmountFields = [],
   totalCurrencyFields = [],
+  defaultValues = {},
+  dateField = [],
   inline = false,
   useGrid = false,
 }) {
+  const mounted = useRef(false);
+  const renderCount = useRef(0);
+  const warned = useRef(false);
+
+  renderCount.current++;
+  if (renderCount.current > 10 && !warned.current) {
+    console.warn(`⚠️ Excessive renders: RowFormModal ${renderCount.current}`);
+    warned.current = true;
+  }
+
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      if (window.erpDebug) {
+        console.warn('✅ Mounted: RowFormModal');
+      }
+    }
+  }, []);
   const headerSet = new Set(headerFields);
   const footerSet = new Set(footerFields);
+  const { user, company } = useContext(AuthContext);
   const [formVals, setFormVals] = useState(() => {
     const init = {};
     const now = new Date();
@@ -40,12 +62,24 @@ export default function RowFormModal({
       } else if (lower.includes('time')) {
         placeholder = 'HH:MM:SS';
       }
-      const raw = row ? String(row[c] ?? '') : '';
+      const raw = row ? String(row[c] ?? '') : String(defaultValues[c] ?? '');
       let val = placeholder ? normalizeDateInput(raw, placeholder) : raw;
-      if (!row && !val && placeholder && (headerSet.has(c) || footerSet.has(c))) {
+      if (!row && !val && dateField.includes(c)) {
         if (placeholder === 'YYYY-MM-DD') val = now.toISOString().slice(0, 10);
         else if (placeholder === 'HH:MM:SS') val = now.toISOString().slice(11, 19);
         else val = now.toISOString().slice(0, 19).replace('T', ' ');
+      }
+      if (!row && !val && headerSet.has(c)) {
+        if (
+          ['created_by', 'employee_id', 'emp_id', 'empid', 'user_id'].includes(c) &&
+          user?.empid
+        ) {
+          val = user.empid;
+        } else if (c === 'branch_id' && company?.branch_id !== undefined) {
+          val = company.branch_id;
+        } else if (c === 'company_id' && company?.company_id !== undefined) {
+          val = company.company_id;
+        }
       }
       init[c] = val;
     });
@@ -55,6 +89,7 @@ export default function RowFormModal({
   const [errors, setErrors] = useState({});
   const [submitLocked, setSubmitLocked] = useState(false);
   const tableRef = useRef(null);
+  const [gridRows, setGridRows] = useState([]);
   const placeholders = React.useMemo(() => {
     const map = {};
     columns.forEach((c) => {
@@ -72,7 +107,7 @@ export default function RowFormModal({
 
   function normalizeDateInput(value, format) {
     if (typeof value !== 'string') return value;
-    let v = value.replace(/^(\d{4})\.(\d{2})\.(\d{2})/, '$1-$2-$3');
+    let v = value.replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
     const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
     if (isoRe.test(v)) {
       const d = new Date(v);
@@ -81,6 +116,11 @@ export default function RowFormModal({
       return d.toISOString().slice(0, 19).replace('T', ' ');
     }
     return v;
+  }
+
+  function normalizeNumberInput(value) {
+    if (typeof value !== 'string') return value;
+    return value.replace(',', '.');
   }
 
   function isValidDate(value, format) {
@@ -105,13 +145,34 @@ export default function RowFormModal({
     if (!visible) return;
     const vals = {};
     columns.forEach((c) => {
-      const raw = row ? String(row[c] ?? '') : '';
-      vals[c] = placeholders[c] ? normalizeDateInput(raw, placeholders[c]) : raw;
+      const raw = row ? String(row[c] ?? '') : String(defaultValues[c] ?? '');
+      let v = placeholders[c] ? normalizeDateInput(raw, placeholders[c]) : raw;
+      if (!row && !v && dateField.includes(c)) {
+        const now = new Date();
+        if (placeholders[c] === 'YYYY-MM-DD') v = now.toISOString().slice(0, 10);
+        else if (placeholders[c] === 'HH:MM:SS') v = now.toISOString().slice(11, 19);
+        else v = now.toISOString().slice(0, 19).replace('T', ' ');
+      }
+      if (!row && !v && headerSet.has(c)) {
+        if (
+          ['created_by', 'employee_id', 'emp_id', 'empid', 'user_id'].includes(c) &&
+          user?.empid
+        ) {
+          v = user.empid;
+        } else if (c === 'branch_id' && company?.branch_id !== undefined) {
+          v = company.branch_id;
+        } else if (c === 'company_id' && company?.company_id !== undefined) {
+          v = company.company_id;
+        }
+      }
+      vals[c] = v;
     });
-    setFormVals(vals);
+    // Avoid triggering a state update if the values haven't actually changed.
+    const same = Object.keys(vals).every((k) => formVals[k] === vals[k]);
+    if (!same) setFormVals(vals);
     inputRefs.current = {};
     setErrors({});
-  }, [row, columns, visible, placeholders]);
+  }, [row, visible, user, company]);
 
   if (!visible) return null;
 
@@ -131,17 +192,28 @@ export default function RowFormModal({
     if (e.key !== 'Enter') return;
     e.preventDefault();
     let val = normalizeDateInput(e.target.value, placeholders[col]);
+    if (totalAmountSet.has(col) || totalCurrencySet.has(col)) {
+      val = normalizeNumberInput(val);
+    }
     if (formVals[col] !== val) {
       setFormVals((v) => ({ ...v, [col]: val }));
       onChange({ [col]: val });
       if (val !== e.target.value) e.target.value = val;
     }
     if (placeholders[col] && !isValidDate(val, placeholders[col])) {
-      setErrors((er) => ({ ...er, [col]: 'Invalid date' }));
+      setErrors((er) => ({ ...er, [col]: 'Хугацааны формат буруу' }));
       return;
     }
-    if (requiredFields.includes(col) && !val) {
-      setErrors((er) => ({ ...er, [col]: 'Please enter value' }));
+    if (requiredFields.includes(col) && (val === '' || val === null || val === undefined)) {
+      setErrors((er) => ({ ...er, [col]: 'Утга оруулна уу' }));
+      return;
+    }
+    if (
+      (totalAmountSet.has(col) || totalCurrencySet.has(col)) &&
+      val !== '' &&
+      isNaN(Number(normalizeNumberInput(val)))
+    ) {
+      setErrors((er) => ({ ...er, [col]: 'Буруу тоон утга' }));
       return;
     }
     const enabled = columns.filter((c) => !disabledFields.includes(c));
@@ -162,47 +234,116 @@ export default function RowFormModal({
     if (submitLocked) return;
     setSubmitLocked(true);
     if (useGrid && tableRef.current) {
+      if (tableRef.current.hasInvalid && tableRef.current.hasInvalid()) {
+        alert('Тэмдэглэсэн талбаруудыг засна уу.');
+        setSubmitLocked(false);
+        return;
+      }
       const rows = tableRef.current.getRows();
-      for (const r of rows) {
+      const cleanedRows = [];
+      const rowIndices = [];
+      let hasMissing = false;
+      let hasInvalid = false;
+      rows.forEach((r, idx) => {
         const hasValue = Object.values(r).some((v) => {
           if (v === null || v === undefined || v === '') return false;
           if (typeof v === 'object' && 'value' in v) return v.value !== '';
           return true;
         });
-        if (!hasValue) continue;
+        if (!hasValue) return;
         const normalized = {};
         Object.entries(r).forEach(([k, v]) => {
           const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
-          normalized[k] = placeholders[k]
-            ? normalizeDateInput(raw, placeholders[k])
-            : raw;
+          let val = placeholders[k] ? normalizeDateInput(raw, placeholders[k]) : raw;
+          if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
+            val = normalizeNumberInput(val);
+          }
+          normalized[k] = val;
         });
-        await Promise.resolve(onSubmit(normalized));
+        requiredFields.forEach((f) => {
+          if (
+            normalized[f] === '' ||
+            normalized[f] === null ||
+            normalized[f] === undefined
+          )
+            hasMissing = true;
+          if (
+            (totalAmountSet.has(f) || totalCurrencySet.has(f)) &&
+            normalized[f] !== '' &&
+            isNaN(Number(normalizeNumberInput(normalized[f])))
+          )
+            hasInvalid = true;
+          const ph = placeholders[f];
+          if (ph && !isValidDate(normalized[f], ph)) hasInvalid = true;
+        });
+        cleanedRows.push(normalized);
+        rowIndices.push(idx);
+      });
+
+      if (hasMissing) {
+        alert('Шаардлагатай талбаруудыг бөглөнө үү.');
+        setSubmitLocked(false);
+        return;
       }
-      tableRef.current.clearRows();
+      if (hasInvalid) {
+        alert('Буруу утгуудыг засна уу.');
+        setSubmitLocked(false);
+        return;
+      }
+
+      if (cleanedRows.length === 0) {
+        setSubmitLocked(false);
+        return;
+      }
+
+      {
+        const failedRows = [];
+        for (let i = 0; i < cleanedRows.length; i++) {
+          const r = cleanedRows[i];
+          try {
+            const res = await Promise.resolve(onSubmit(r));
+            if (res === false) failedRows.push(rows[rowIndices[i]]);
+          } catch (err) {
+            console.error('Submit failed', err);
+            failedRows.push(rows[rowIndices[i]]);
+          }
+        }
+        if (failedRows.length === 0) {
+          tableRef.current.clearRows();
+        } else if (tableRef.current.replaceRows) {
+          tableRef.current.replaceRows(failedRows);
+        }
+      }
       setSubmitLocked(false);
       return;
     }
     const errs = {};
     requiredFields.forEach((f) => {
-      if (columns.includes(f) && !formVals[f]) {
-        errs[f] = 'Please enter value';
+      if (
+        columns.includes(f) &&
+        (formVals[f] === '' || formVals[f] === null || formVals[f] === undefined)
+      ) {
+        errs[f] = 'Утга оруулна уу';
       }
     });
     setErrors(errs);
     if (Object.keys(errs).length === 0) {
-      const ok = window.confirm(
-        'Post this transaction? Have you checked all data and accept responsibility?',
-      );
-      if (ok) {
-        const normalized = {};
-        Object.entries(formVals).forEach(([k, v]) => {
-          normalized[k] = placeholders[k]
-            ? normalizeDateInput(v, placeholders[k])
-            : v;
-        });
-        await Promise.resolve(onSubmit(normalized));
-      } else {
+      const normalized = {};
+      Object.entries(formVals).forEach(([k, v]) => {
+        let val = placeholders[k] ? normalizeDateInput(v, placeholders[k]) : v;
+        if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
+          val = normalizeNumberInput(val);
+        }
+        normalized[k] = val;
+      });
+      try {
+        const res = await Promise.resolve(onSubmit(normalized));
+        if (res === false) {
+          setSubmitLocked(false);
+          return;
+        }
+      } catch (err) {
+        console.error('Submit failed', err);
         setSubmitLocked(false);
         return;
       }
@@ -236,7 +377,12 @@ export default function RowFormModal({
         ref={(el) => (inputRefs.current[c] = el)}
         value={formVals[c]}
         onChange={(e) => {
-          setFormVals((v) => ({ ...v, [c]: e.target.value }));
+          setFormVals((prev) => {
+            if (prev[c] === e.target.value) return prev;
+            const updated = { ...prev, [c]: e.target.value };
+            onChange({ [c]: e.target.value });
+            return updated;
+          });
           setErrors((er) => ({ ...er, [c]: undefined }));
           onChange({ [c]: e.target.value });
         }}
@@ -259,7 +405,12 @@ export default function RowFormModal({
         placeholder={placeholders[c] || ''}
         value={formVals[c]}
         onChange={(e) => {
-          setFormVals((v) => ({ ...v, [c]: e.target.value }));
+          setFormVals((prev) => {
+            if (prev[c] === e.target.value) return prev;
+            const updated = { ...prev, [c]: e.target.value };
+            onChange({ [c]: e.target.value });
+            return updated;
+          });
           setErrors((er) => ({ ...er, [c]: undefined }));
           onChange({ [c]: e.target.value });
         }}
@@ -301,8 +452,11 @@ export default function RowFormModal({
             totalAmountFields={totalAmountFields}
             totalCurrencyFields={totalCurrencyFields}
             collectRows={useGrid}
-            minRows={3}
+            minRows={1}
             onRowSubmit={onSubmit}
+            onRowsChange={setGridRows}
+            requiredFields={requiredFields}
+            defaultValues={defaultValues}
           />
         </div>
       );
@@ -360,6 +514,40 @@ export default function RowFormModal({
     );
   }
 
+  function renderHeaderTable(cols) {
+    if (cols.length === 0) return null;
+    return (
+      <div className="mb-4">
+        <h3 className="mt-0 mb-1 font-semibold">Header</h3>
+        <table className="min-w-full border border-gray-300 text-sm">
+          <tbody>
+            {cols.map((c) => {
+              let val = formVals[c];
+              if ((val === '' || val === undefined) && headerSet.has(c)) {
+                if (
+                  ['created_by', 'employee_id', 'emp_id', 'empid', 'user_id'].includes(c) &&
+                  user?.empid
+                ) {
+                  val = user.empid;
+                } else if (c === 'branch_id' && company?.branch_id !== undefined) {
+                  val = company.branch_id;
+                } else if (c === 'company_id' && company?.company_id !== undefined) {
+                  val = company.company_id;
+                }
+              }
+              return (
+                <tr key={c}>
+                  <th className="border px-2 py-1 text-left">{labels[c] || c}</th>
+                  <td className="border px-2 py-1">{val}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
   function renderSection(title, cols) {
     if (cols.length === 0) return null;
     return (
@@ -381,7 +569,12 @@ export default function RowFormModal({
     const rowHtml = (cols, skipEmpty = false) =>
       cols
         .filter((c) =>
-          skipEmpty ? formVals[c] !== '' && formVals[c] !== null && formVals[c] !== 0 : true,
+          skipEmpty
+            ? formVals[c] !== '' &&
+              formVals[c] !== null &&
+              formVals[c] !== 0 &&
+              formVals[c] !== undefined
+            : true,
         )
         .map(
           (c) =>
@@ -391,15 +584,36 @@ export default function RowFormModal({
         )
         .join('');
 
+    const mainTableHtml = () => {
+      if (!useGrid) return rowHtml(m, true);
+      if (gridRows.length === 0) return '';
+      const used = m.filter((c) =>
+        gridRows.some(
+          (r) => r[c] !== '' && r[c] !== null && r[c] !== 0 && r[c] !== undefined,
+        ),
+      );
+      if (used.length === 0) return '';
+      const header = used.map((c) => `<th>${labels[c] || c}</th>`).join('');
+      const body = gridRows
+        .map(
+          (r) =>
+            '<tr>' +
+            used.map((c) => `<td>${r[c] !== undefined ? r[c] : ''}</td>`).join('') +
+            '</tr>',
+        )
+        .join('');
+      return `<table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`;
+    };
+
     let html = '<html><head><title>Print</title>';
     html +=
       '<style>@media print{body{margin:1rem;font-size:12px}}table{width:100%;border-collapse:collapse;margin-bottom:1rem;}th,td{border:1px solid #666;padding:4px;text-align:left;}h3{margin:0 0 4px 0;font-weight:600;}</style>';
     html +=
       '<link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.1/dist/tailwind.min.css" rel="stylesheet">';
     html += '</head><body>';
-    if (h.length) html += `<h3>Header</h3><table>${rowHtml(h)}</table>`;
-    if (m.length) html += `<h3>Main</h3><table>${rowHtml(m, true)}</table>`;
-    if (f.length) html += `<h3>Footer</h3><table>${rowHtml(f)}</table>`;
+    if (h.length) html += `<h3>Header</h3><table>${rowHtml(h, true)}</table>`;
+    if (m.length) html += `<h3>Main</h3>${mainTableHtml()}`;
+    if (f.length) html += `<h3>Footer</h3><table>${rowHtml(f, true)}</table>`;
     html += '</body></html>';
     const w = window.open('', '_blank');
     w.document.write(html);
@@ -411,18 +625,16 @@ export default function RowFormModal({
   if (inline) {
     return (
       <div className="p-4 space-y-4">
-        <div className="grid md:grid-cols-2 gap-0">
-          {renderSection('Header', headerCols)}
-          {renderSection('Footer', footerCols)}
-        </div>
+        {renderHeaderTable(headerCols)}
         {renderMainTable(mainCols)}
+        {renderSection('Footer', footerCols)}
       </div>
     );
   }
   return (
     <Modal
       visible={visible}
-      title={row ? 'Edit Row' : 'Add Row'}
+      title={row ? 'Мөр засах' : 'Мөр нэмэх'}
       onClose={onCancel}
       width="70vw"
     >
@@ -433,11 +645,9 @@ export default function RowFormModal({
         }}
         className="p-4 space-y-4"
       >
-        <div className="grid md:grid-cols-2 gap-0">
-          {renderSection('Header', headerCols)}
-          {renderSection('Footer', footerCols)}
-        </div>
+        {renderHeaderTable(headerCols)}
         {renderMainTable(mainCols)}
+        {renderSection('Footer', footerCols)}
         <div className="mt-2 text-right space-x-2">
           <button
             type="button"
@@ -471,3 +681,5 @@ export default function RowFormModal({
     </Modal>
   );
 }
+
+export default memo(RowFormModal);

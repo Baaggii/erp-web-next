@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { debugLog } from '../utils/debug.js';
 
 const cache = { data: null };
 const emitter = new EventTarget();
@@ -24,12 +25,14 @@ export function useModules() {
   }
 
   useEffect(() => {
+    debugLog('useModules effect: initial fetch');
     if (!cache.data) {
       fetchModules();
     }
   }, []);
 
   useEffect(() => {
+    debugLog('useModules effect: refresh listener');
     const handler = () => fetchModules();
     emitter.addEventListener('refresh', handler);
     return () => emitter.removeEventListener('refresh', handler);

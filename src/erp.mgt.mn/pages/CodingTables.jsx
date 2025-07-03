@@ -7,6 +7,10 @@ function cleanIdentifier(name) {
   return String(name).replace(/[^A-Za-z0-9_]+/g, '');
 }
 
+function normalizeField(name) {
+  return cleanIdentifier(name).toLowerCase();
+}
+
 export default function CodingTablesPage() {
   const { addToast } = useToast();
   const [sheets, setSheets] = useState([]);
@@ -25,6 +29,10 @@ export default function CodingTablesPage() {
   const [calcText, setCalcText] = useState('');
   const [sql, setSql] = useState('');
   const [sqlOther, setSqlOther] = useState('');
+  const [structSql, setStructSql] = useState('');
+  const [structSqlOther, setStructSqlOther] = useState('');
+  const [recordsSql, setRecordsSql] = useState('');
+  const [recordsSqlOther, setRecordsSqlOther] = useState('');
   const [sqlMove, setSqlMove] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
@@ -37,11 +45,14 @@ export default function CodingTablesPage() {
   const [extraFields, setExtraFields] = useState(['']);
   const [headerMap, setHeaderMap] = useState({});
   const [renameMap, setRenameMap] = useState({});
+  const [duplicateHeaders, setDuplicateHeaders] = useState(new Set());
+  const [initialDuplicates, setInitialDuplicates] = useState(new Set());
   const [populateRange, setPopulateRange] = useState(false);
   const [startYear, setStartYear] = useState('');
   const [endYear, setEndYear] = useState('');
   const [autoIncStart, setAutoIncStart] = useState('1');
   const [duplicateInfo, setDuplicateInfo] = useState('');
+  const [duplicateRecords, setDuplicateRecords] = useState('');
   const [summaryInfo, setSummaryInfo] = useState('');
   const fileInputRef = useRef(null);
   const [selectedFile, setSelectedFile] = useState(null);
@@ -54,25 +65,59 @@ export default function CodingTablesPage() {
       .catch(() => setConfigNames([]));
   }, []);
 
-  const allHeaders = useMemo(
-    () => [...headers, ...extraFields.filter((f) => f.trim() !== '')],
-    [headers, extraFields]
-  );
+  const allFields = useMemo(() => {
+    // keep duplicates so user can easily spot them and clean extras the same way
+    return [
+      ...headers,
+      ...extraFields
+        .filter((f) => f.trim() !== '')
+        .map((f) => cleanIdentifier(f)),
+    ];
+  }, [headers, extraFields]);
 
   const hasDateField = useMemo(
-    () => allHeaders.some((h) => /year|month|date/i.test(h)),
-    [allHeaders]
+    () => allFields.some((h) => /year|month|date/i.test(h)),
+    [allFields]
   );
 
-  function computeIdCandidates(hdrs, extras, mode) {
+  useEffect(() => {
+    if (
+      workbook &&
+      headers.length > 0 &&
+      (!tableName || !configNames.includes(tableName))
+    ) {
+      extractHeaders(workbook, sheet, headerRow, mnHeaderRow);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [extraFields]);
+
+  function computeIdCandidates(hdrs, extras, map, mode) {
     const strs = hdrs.filter((h) => typeof h === 'string');
-    const extraList = extras.filter((f) => typeof f === 'string' && f.trim() !== '');
+    const extraList = extras
+      .filter((f) => typeof f === 'string' && f.trim() !== '')
+      .map((f) => normalizeField(map[f] || f));
     if (mode === 'contains') {
-      const ids = strs.filter((h) => h.toLowerCase().includes('id'));
+      const ids = strs.filter((h) => {
+        const name = map[h] || h;
+        return String(name).toLowerCase().includes('id');
+      });
       const base = ids.length > 0 ? ids : strs;
       return Array.from(new Set([...base, ...extraList]));
     }
     return Array.from(new Set([...strs, ...extraList]));
+  }
+
+  function uniqueRenamedFields(fields = allFields, exclude, skipId = true) {
+    const seen = new Set();
+    const opts = [];
+    for (const f of fields) {
+      if (f === exclude) continue;
+      if (skipId && f === idColumn) continue;
+      if (seen.has(f)) continue;
+      seen.add(f);
+      opts.push({ value: f, label: renameMap[f] || f });
+    }
+    return opts;
   }
 
   async function applyHeaderMapping(hdrs, currentMap) {
@@ -119,8 +164,10 @@ export default function CodingTablesPage() {
       setIdCandidates([]);
       setIdColumn('');
       setNameColumn('');
-      setSql('');
-      setSqlOther('');
+      setStructSql('');
+      setStructSqlOther('');
+      setRecordsSql('');
+      setRecordsSqlOther('');
       setSqlMove('');
       setOtherColumns([]);
       setUniqueFields([]);
@@ -151,8 +198,10 @@ export default function CodingTablesPage() {
     setIdCandidates([]);
     setIdColumn('');
     setNameColumn('');
-    setSql('');
-    setSqlOther('');
+    setStructSql('');
+    setStructSqlOther('');
+    setRecordsSql('');
+    setRecordsSqlOther('');
     setSqlMove('');
     setOtherColumns([]);
     setUniqueFields([]);
@@ -175,8 +224,10 @@ export default function CodingTablesPage() {
     setIdCandidates([]);
     setIdColumn('');
     setNameColumn('');
-    setSql('');
-    setSqlOther('');
+    setStructSql('');
+    setStructSqlOther('');
+    setRecordsSql('');
+    setRecordsSqlOther('');
     setSqlMove('');
     setOtherColumns([]);
     setUniqueFields([]);
@@ -209,13 +260,35 @@ export default function CodingTablesPage() {
     const hdrs = [];
     const keepIdx = [];
     const map = {};
+    const seen = {};
+    const extras = extraFields
+      .filter((f) => f.trim() !== '')
+      .map((f) => normalizeField(f));
+    extras.forEach((key) => {
+      if (key) {
+        seen[key] = (seen[key] || 0) + 1;
+      }
+    });
+    const dup = new Set();
     raw.forEach((h, i) => {
       if (String(h).trim().length > 0) {
-        hdrs.push(cleanIdentifier(h));
+        const clean = cleanIdentifier(h);
+        const key = normalizeField(h);
+        if (key in seen) {
+          const suffixNum = seen[key];
+          const suffixed = `${clean}_${suffixNum}`;
+          dup.add(suffixed);
+          hdrs.push(suffixed);
+          seen[key] = suffixNum + 1;
+        } else {
+          seen[key] = 1;
+          hdrs.push(clean);
+        }
         keepIdx.push(i);
         const mnVal = mnRaw[i];
+        const hdrKey = hdrs[hdrs.length - 1];
         if (mnVal && String(mnVal).trim()) {
-          map[cleanIdentifier(h)] = String(mnVal).trim();
+          map[hdrKey] = String(mnVal).trim();
         }
       }
     });
@@ -257,6 +330,11 @@ export default function CodingTablesPage() {
       az[h] = !nn[h];
     });
     setAllowZeroMap(az);
+    setDuplicateHeaders(dup);
+    setInitialDuplicates(dup);
+    if (dup.size > 0) {
+      addToast('Duplicate header names detected. Please rename them.', 'warning');
+    }
   }
 
   function handleExtract() {
@@ -379,7 +457,7 @@ export default function CodingTablesPage() {
     const autoMatch = sqlText.slice(end).match(/AUTO_INCREMENT=(\d+)/i);
     const autoInc = autoMatch ? autoMatch[1] : '1';
     const lines = body
-      .split(/,\s*\n/)
+      .split(/,\s*\r?\n/)
       .map((l) => l.trim())
       .filter(Boolean);
     const columnTypes = {};
@@ -391,15 +469,42 @@ export default function CodingTablesPage() {
     let nameCol = '';
     let uniqueLine = '';
     for (const ln of lines) {
-      if (ln.startsWith('UNIQUE KEY')) {
+      if (ln.trimStart().startsWith('UNIQUE KEY')) {
         uniqueLine = ln;
         continue;
       }
-      const colMatch = ln.match(/^`([^`]+)`\s+([^ ]+)(.*)$/);
+      const colMatch = ln.match(/^`([^`]+)`\s+(.*)$/);
       if (!colMatch) continue;
       const col = colMatch[1];
-      const type = colMatch[2];
-      const rest = colMatch[3] || '';
+      let rest = colMatch[2];
+      let type = '';
+      let i = 0;
+      let depth = 0;
+      let quote = null;
+      while (i < rest.length) {
+        const ch = rest[i];
+        if (quote) {
+          if (ch === quote) quote = null;
+        } else if (ch === '"' || ch === "'") {
+          quote = ch;
+        } else if (ch === '(') {
+          depth++;
+        } else if (ch === ')') {
+          if (depth > 0) depth--;
+        } else if (depth === 0 && /\s/.test(ch)) {
+          const after = rest.slice(i).trimStart();
+          if (/^(UNSIGNED|NOT|NULL|DEFAULT|AUTO_INCREMENT|COMMENT|PRIMARY|UNIQUE|KEY|CHARACTER|COLLATE)/i.test(after)) {
+            type = rest.slice(0, i).trim();
+            rest = after;
+            break;
+          }
+        }
+        i++;
+      }
+      if (!type) {
+        type = rest.trim();
+        rest = '';
+      }
       if (/AS \(/.test(rest)) {
         const cm = rest.match(/AS \(([^)]+)\)/);
         if (cm) calc.push(`${col}: ${cm[1]}`);
@@ -447,7 +552,8 @@ export default function CodingTablesPage() {
   }
 
   function loadFromSql() {
-    const cfg = parseSqlConfig(sql.trim());
+    const base = structSql || sql;
+    const cfg = parseSqlConfig(base.trim());
     if (!cfg) return;
     const hdrs = Object.keys(cfg.columnTypes || {});
     setHeaders(hdrs);
@@ -473,6 +579,10 @@ export default function CodingTablesPage() {
       );
       if (!res.ok) return;
       const data = await res.json();
+      setStructSql(data.sql || '');
+      setStructSqlOther('');
+      setRecordsSql('');
+      setRecordsSqlOther('');
       setSql(data.sql || '');
       setSqlOther('');
       setSqlMove('');
@@ -497,7 +607,7 @@ export default function CodingTablesPage() {
     }
   }
 
-  function handleGenerateSql() {
+  function generateFromWorkbook({ structure = true, records = true } = {}) {
     if (!workbook || !sheet || !tableName) return;
     const tbl = cleanIdentifier(tableName);
     const idCol = cleanIdentifier(idColumn);
@@ -510,13 +620,33 @@ export default function CodingTablesPage() {
     const raw = data[idx] || [];
     const hdrs = [];
     const keepIdx = [];
+    const seen = {};
+    const extrasNorm = extraFields
+      .filter((f) => f.trim() !== '')
+      .map((f) => normalizeField(f));
+    extrasNorm.forEach((key) => {
+      if (key) {
+        seen[key] = (seen[key] || 0) + 1;
+      }
+    });
     raw.forEach((h, i) => {
       if (String(h).trim().length > 0) {
-        hdrs.push(cleanIdentifier(h));
+        const clean = cleanIdentifier(h);
+        const key = normalizeField(h);
+        if (key in seen) {
+          const suffixNum = seen[key];
+          hdrs.push(`${clean}_${suffixNum}`);
+          seen[key] = suffixNum + 1;
+        } else {
+          seen[key] = 1;
+          hdrs.push(clean);
+        }
         keepIdx.push(i);
       }
     });
-    const extra = extraFields.filter((f) => f.trim() !== '').map(cleanIdentifier);
+    const extra = extraFields
+      .filter((f) => f.trim() !== '')
+      .map((f) => cleanIdentifier(f));
     const rows = data
       .slice(idx + 1)
       .map((r) => [...keepIdx.map((ci) => r[ci]), ...Array(extra.length).fill(undefined)]);
@@ -558,6 +688,11 @@ export default function CodingTablesPage() {
     }
     const idIdx = allHdrs.indexOf(idCol);
     const nameIdx = allHdrs.indexOf(nmCol);
+    const hasIdValues =
+      idCol && idIdx !== -1 && rows.some((r) => {
+        const v = r[idIdx];
+        return v !== undefined && v !== null && v !== '';
+      });
     const dbIdCol = idCol ? cleanIdentifier(renameMap[idCol] || 'id') : null;
     const dbNameCol = nmCol ? cleanIdentifier(renameMap[nmCol] || 'name') : null;
     if (idCol && idIdx === -1) return;
@@ -567,7 +702,6 @@ export default function CodingTablesPage() {
     const stateIdx = allHdrs.findIndex((h) => /state/i.test(h));
 
     const fieldsToCheck = [
-      ...(idCol ? [idCol] : []),
       ...(nmCol ? [nmCol] : []),
       ...uniqueOnly,
       ...otherFiltered,
@@ -607,6 +741,24 @@ export default function CodingTablesPage() {
     const dupRows = [];
     const seenKeys = new Set();
     const dupList = [];
+
+    function resolvedValue(row, idx, field) {
+      let v = idx === -1 ? undefined : row[idx];
+      if (v === undefined || v === null || v === '') {
+        const from = defaultFrom[field];
+        if (from) {
+          const fi = allHdrs.indexOf(from);
+          v = fi === -1 ? undefined : row[fi];
+        }
+        if (v === undefined || v === null || v === '') {
+          v = defaultValues[field];
+        }
+        if ((v === undefined || v === null || v === '') && localNotNull[field]) {
+          v = defaultValForType(colTypes[field]);
+        }
+      }
+      return v;
+    }
     finalRows.forEach((r) => {
       let key = '';
       if (uniqueOnly.length > 0) {
@@ -626,17 +778,21 @@ export default function CodingTablesPage() {
       }
       const zeroInvalid = fieldsToCheck.some((f) => {
         const idxF = allHdrs.indexOf(f);
-        if (idxF === -1) return false;
-        const v = r[idxF];
+        const v = resolvedValue(r, idxF, f);
         const isZero =
           v === 0 || (typeof v === 'string' && v.trim() !== '' && Number(v) === 0);
-        return v === null || (isZero && !allowZeroMap[f]);
+        if (isZero && !allowZeroMap[f]) return true;
+        if (localNotNull[f]) {
+          return v === undefined || v === null || v === '';
+        }
+        return false;
       });
       const stateVal = stateIdx === -1 ? '1' : String(r[stateIdx]);
       if (!zeroInvalid && stateVal === '1') mainRows.push(r);
       else otherRows.push(r);
     });
     setDuplicateInfo(dupList.join('\n'));
+    setDuplicateRecords(dupRows.map((r) => r.join(',')).join('\n'));
 
     let extras = [];
     if (sql) {
@@ -649,21 +805,27 @@ export default function CodingTablesPage() {
     }
 
     let defs = [];
+    const seenDef = new Set();
+    const addDef = (col, def) => {
+      if (seenDef.has(col)) return;
+      seenDef.add(col);
+      defs.push(def);
+    };
     if (idCol) {
-      defs.push(`\`${dbIdCol}\` INT AUTO_INCREMENT PRIMARY KEY`);
+      addDef(dbIdCol, `\`${dbIdCol}\` INT AUTO_INCREMENT PRIMARY KEY`);
     }
     if (nmCol) {
-      defs.push(`\`${dbNameCol}\` ${colTypes[nmCol]} NOT NULL`);
+      addDef(dbNameCol, `\`${dbNameCol}\` ${colTypes[nmCol]} NOT NULL`);
     }
     uniqueOnly.forEach((c) => {
       const dbC = dbCols[c];
-      defs.push(`\`${dbC}\` ${colTypes[c]} NOT NULL`);
+      addDef(dbC, `\`${dbC}\` ${colTypes[c]} NOT NULL`);
     });
     otherFiltered.forEach((c) => {
       const dbC = dbCols[c];
       let def = `\`${dbC}\` ${colTypes[c]}`;
       if (localNotNull[c]) def += ' NOT NULL';
-      defs.push(def);
+      addDef(dbC, def);
       });
     const calcFields = parseCalcFields(calcText);
     calcFields.forEach((cf) => {
@@ -686,106 +848,151 @@ export default function CodingTablesPage() {
     }
     const defsNoUnique = defs.filter((d) => !d.trim().startsWith('UNIQUE KEY'));
 
-    function buildSql(rows, tableNameForSql, useUnique = true) {
+    function buildStructure(tableNameForSql, useUnique = true) {
       const defArr = useUnique ? defs : defsNoUnique;
-      let out = `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};\n`;
-      for (const r of rows) {
-        const cols = [];
-        const vals = [];
-        let hasData = false;
-        if (nmCol) {
-          const nameVal = r[nameIdx];
-          if (nameVal === undefined || nameVal === null || nameVal === '') continue;
-          cols.push(`\`${dbNameCol}\``);
-          vals.push(formatVal(nameVal, colTypes[nmCol]));
-          hasData = true;
-        }
-        uniqueOnly.forEach((c, idx2) => {
-          const ui = uniqueIdx[idx2];
-          let v = ui === -1 ? undefined : r[ui];
-          if (v === undefined || v === null || v === '') {
-            const from = defaultFrom[c];
-            if (from) {
-              const fi = allHdrs.indexOf(from);
-              v = fi === -1 ? undefined : r[fi];
-            }
-            if (v === undefined || v === null || v === '') {
-              v = defaultValues[c];
-            }
-            if ((v === undefined || v === null || v === '') && localNotNull[c]) {
-              v = defaultValForType(colTypes[c]);
-            }
-          }
-          cols.push(`\`${dbCols[c]}\``);
-          vals.push(formatVal(v, colTypes[c]));
-          hasData = true;
-        });
-        otherFiltered.forEach((c, idx2) => {
-          const ci = otherIdx[idx2];
-          let v = ci === -1 ? undefined : r[ci];
-          if (v === undefined || v === null || v === '') {
-            const from = defaultFrom[c];
-            if (from) {
-              const fi = allHdrs.indexOf(from);
-              v = fi === -1 ? undefined : r[fi];
-            }
-            if (v === undefined || v === null || v === '') {
-              v = defaultValues[c];
-            }
-            if ((v === undefined || v === null || v === '') && localNotNull[c]) {
-              v = defaultValForType(colTypes[c]);
-            }
-          }
-          if (v !== undefined && v !== null && v !== '' && (allowZeroMap[c] ? true : v !== 0)) hasData = true;
-          cols.push(`\`${dbCols[c]}\``);
-          vals.push(formatVal(v, colTypes[c]));
-        });
-        if (!hasData) continue;
-        // Do not drop rows when populateRange is enabled even if some values
-        // are disallowed. Those rows will be inserted into the `_other` table
-        // instead.
-        const updates = cols.map((c) => `${c} = VALUES(${c})`);
-        out += `INSERT INTO \`${tableNameForSql}\` (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')};\n`;
-      }
-      return out;
+      return `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};\n`;
     }
 
-    const sqlStr = buildSql(mainRows, tbl, true);
+    function buildInsert(rows, tableNameForSql, fields) {
+      if (!rows.length || !fields.length) return '';
+      const cols = fields.map((f) => `\`${dbCols[f] || cleanIdentifier(renameMap[f] || f)}\``);
+      const idxMap = fields.map((f) => allHdrs.indexOf(f));
+      const updates = cols.map((c) => `${c} = VALUES(${c})`);
+      const parts = [];
+      let chunkValues = [];
+      for (const r of rows) {
+        let hasData = false;
+        const vals = idxMap.map((idx, i) => {
+          const f = fields[i];
+          let v = idx === -1 ? undefined : r[idx];
+          if (v === undefined || v === null || v === '') {
+            const from = defaultFrom[f];
+            if (from) {
+              const fi = allHdrs.indexOf(from);
+              v = fi === -1 ? undefined : r[fi];
+            }
+            if (v === undefined || v === null || v === '') {
+              v = defaultValues[f];
+            }
+            if ((v === undefined || v === null || v === '') && localNotNull[f]) {
+              v = defaultValForType(colTypes[f]);
+            }
+          }
+          if (
+            v !== undefined &&
+            v !== null &&
+            v !== '' &&
+            (allowZeroMap[f] ? true : v !== 0)
+          ) {
+            hasData = true;
+          }
+          if (localNotNull[f]) {
+            hasData = true;
+          }
+          return formatVal(v, colTypes[f]);
+        });
+        if (!hasData) continue;
+        chunkValues.push(`(${vals.join(', ')})`);
+        if (chunkValues.length >= 5000) {
+          parts.push(`INSERT INTO \`${tableNameForSql}\` (${cols.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`);
+          chunkValues = [];
+        }
+      }
+      if (chunkValues.length > 0) {
+        parts.push(`INSERT INTO \`${tableNameForSql}\` (${cols.join(', ')}) VALUES ${chunkValues.join(', ')} ON DUPLICATE KEY UPDATE ${updates.join(', ')};`);
+      }
+      return parts.join('\n');
+    }
+
+    let fields = [
+      ...(nmCol ? [nmCol] : []),
+      ...uniqueOnly,
+      ...otherFiltered,
+      ...extra,
+    ];
+    const seenCols = new Set();
+    fields = fields.filter((f) => {
+      const db = dbCols[f] || cleanIdentifier(renameMap[f] || f);
+      if (seenCols.has(db)) return false;
+      seenCols.add(db);
+      return true;
+    });
+
+    const structMainStr = buildStructure(tbl, true);
+    const insertMainStr = buildInsert(mainRows, tbl, fields);
     const otherCombined = [...otherRows, ...dupRows];
-    const sqlOtherStr =
-      otherCombined.length > 0 ? buildSql(otherCombined, `${tbl}_other`, false) : '';
-    const moveStr = '';
-    setSql(sqlStr);
-    setSqlOther(sqlOtherStr);
-    setSqlMove(moveStr);
-    setSummaryInfo(
-      `Prepared ${finalRows.length} rows, duplicates: ${dupList.length}`
+    const structOtherStr = buildStructure(`${tbl}_other`, false);
+    const fieldsWithoutId = fields.filter((f) => f !== idCol);
+    const insertOtherStr = buildInsert(
+      otherCombined,
+      `${tbl}_other`,
+      fieldsWithoutId
     );
-    fetch('/api/generated_sql', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ table: tbl, sql: sqlStr }),
-    }).catch(() => {});
-    if (sqlOtherStr) {
+    if (structure) {
+      const sqlStr = structMainStr + insertMainStr;
+      const sqlOtherStr =
+        otherCombined.length > 0 ? structOtherStr + insertOtherStr : '';
+      setStructSql(structMainStr);
+      setStructSqlOther(structOtherStr);
+      setSql(sqlStr);
+      setSqlOther(sqlOtherStr);
+      setSqlMove('');
       fetch('/api/generated_sql', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ table: `${tbl}_other`, sql: sqlOtherStr }),
+        body: JSON.stringify({ table: tbl, sql: sqlStr }),
       }).catch(() => {});
+      if (sqlOtherStr) {
+        fetch('/api/generated_sql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ table: `${tbl}_other`, sql: sqlOtherStr }),
+        }).catch(() => {});
+      }
     }
+    if (records) {
+      setRecordsSql(insertMainStr);
+      setRecordsSqlOther(insertOtherStr);
+    }
+    setSummaryInfo(
+      `Prepared ${finalRows.length} rows, duplicates: ${dupList.length}`
+    );
+  }
+
+  function handleGenerateSql() {
+    if (duplicateHeaders.size > 0) {
+      alert('Please rename duplicate fields first');
+      return;
+    }
+    setStructSql('');
+    setStructSqlOther('');
+    setRecordsSql('');
+    setRecordsSqlOther('');
+    generateFromWorkbook({ structure: true, records: true });
+  }
+
+  function handleGenerateRecords() {
+    if (duplicateHeaders.size > 0) {
+      alert('Please rename duplicate fields first');
+      return;
+    }
+    setRecordsSql('');
+    setRecordsSqlOther('');
+    generateFromWorkbook({ structure: false, records: true });
   }
 
 
   async function executeGeneratedSql() {
-    if (!sql) {
+    const combined = [sql, sqlOther].filter(Boolean).join('\n');
+    if (!combined) {
       alert('Generate SQL first');
       return;
     }
     setUploading(true);
     try {
-      const statements = sql
+      const statements = combined
         .split(/;\s*\n/)
         .map((s) => s.trim())
         .filter(Boolean)
@@ -824,7 +1031,89 @@ export default function CodingTablesPage() {
         const data = await res.json().catch(() => ({}));
         const inserted = data.inserted || 0;
         if (Array.isArray(data.failed) && data.failed.length > 0) {
-          failedAll.push(...data.failed);
+          failedAll.push(
+            ...data.failed.map((f) =>
+              typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
+            )
+          );
+        }
+        totalInserted += inserted;
+        setInsertedCount(totalInserted);
+        addToast(`Inserted ${totalInserted} records`, 'info');
+        setUploadProgress((p) => ({ done: p.done + 1, total: chunks.length }));
+      }
+      setSummaryInfo(
+        `Inserted ${totalInserted} rows. Duplicates: ${
+          duplicateInfo ? duplicateInfo.split('\n').length : 0
+        }`
+      );
+      if (failedAll.length > 0) {
+        setSqlMove(failedAll.join('\n'));
+      }
+      addToast(`Table created with ${totalInserted} rows`, 'success');
+    } catch (err) {
+      console.error('SQL execution failed', err);
+      alert('Execution failed');
+    } finally {
+      setUploading(false);
+      setUploadProgress({ done: 0, total: 0 });
+    }
+  }
+
+  async function executeSeparateSql() {
+    const combined = [structSql, structSqlOther, recordsSql, recordsSqlOther]
+      .filter(Boolean)
+      .join('\n');
+    if (!combined) {
+      alert('No SQL to execute');
+      return;
+    }
+    setUploading(true);
+    try {
+      const statements = combined
+        .split(/;\s*\n/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((s) => s + ';');
+      const chunks = [];
+      let current = [];
+      let size = 0;
+      const limit = 500000;
+      for (const stmt of statements) {
+        const len = stmt.length + 1;
+        if (size + len > limit && current.length) {
+          chunks.push(current.join('\n'));
+          current = [];
+          size = 0;
+        }
+        current.push(stmt);
+        size += len;
+      }
+      if (current.length) chunks.push(current.join('\n'));
+      setUploadProgress({ done: 0, total: chunks.length });
+      setInsertedCount(0);
+      let totalInserted = 0;
+      const failedAll = [];
+      for (const chunk of chunks) {
+        const res = await fetch('/api/generated_sql/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql: chunk }),
+          credentials: 'include',
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          alert(data.message || 'Execution failed');
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        const inserted = data.inserted || 0;
+        if (Array.isArray(data.failed) && data.failed.length > 0) {
+          failedAll.push(
+            ...data.failed.map((f) =>
+              typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
+            )
+          );
         }
         totalInserted += inserted;
         setInsertedCount(totalInserted);
@@ -850,7 +1139,7 @@ export default function CodingTablesPage() {
   }
 
   async function executeOtherSql() {
-    if (!sqlOther) {
+    if (!structSqlOther) {
       alert('Generate SQL first');
       return;
     }
@@ -859,7 +1148,7 @@ export default function CodingTablesPage() {
       const res = await fetch('/api/generated_sql/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql: sqlOther }),
+        body: JSON.stringify({ sql: structSqlOther }),
         credentials: 'include',
       });
       if (!res.ok) {
@@ -869,6 +1158,87 @@ export default function CodingTablesPage() {
       }
       const data = await res.json().catch(() => ({}));
       addToast(`Other table inserted ${data.inserted || 0} rows`, 'success');
+    } catch (err) {
+      console.error('SQL execution failed', err);
+      alert('Execution failed');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function executeRecordsSql() {
+    if (!recordsSql && !recordsSqlOther) {
+      alert('Generate SQL first');
+      return;
+    }
+    setUploading(true);
+    try {
+      const failedAll = [];
+      if (recordsSql) {
+        const resMain = await fetch('/api/generated_sql/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql: recordsSql }),
+          credentials: 'include',
+        });
+        if (!resMain.ok) throw new Error('main failed');
+        const dataMain = await resMain.json().catch(() => ({}));
+        if (Array.isArray(dataMain.failed))
+          failedAll.push(
+            ...dataMain.failed.map((f) =>
+              typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
+            )
+          );
+      }
+      if (recordsSqlOther) {
+        const resOther = await fetch('/api/generated_sql/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql: recordsSqlOther }),
+          credentials: 'include',
+        });
+        if (!resOther.ok) throw new Error('other failed');
+        const dataOther = await resOther.json().catch(() => ({}));
+        if (Array.isArray(dataOther.failed))
+          failedAll.push(
+            ...dataOther.failed.map((f) =>
+              typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
+            )
+          );
+      }
+      if (failedAll.length > 0) {
+        const tbl = cleanIdentifier(tableName);
+        const moveSql = failedAll
+          .map((stmt) => {
+            const re = new RegExp(`INSERT INTO\\s+\`${tbl}\``, 'i');
+            if (re.test(stmt) && !/\_other`/i.test(stmt)) {
+              return stmt.replace(re, `INSERT INTO \`${tbl}_other\``);
+            }
+            return stmt;
+          })
+          .join('\n');
+        const resMove = await fetch('/api/generated_sql/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql: moveSql }),
+          credentials: 'include',
+        });
+        if (!resMove.ok) {
+          setSqlMove(moveSql);
+        } else {
+          const dataMove = await resMove.json().catch(() => ({}));
+          if (Array.isArray(dataMove.failed) && dataMove.failed.length > 0) {
+            setSqlMove(
+              dataMove.failed
+                .map((f) =>
+                  typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
+                )
+                .join('\n')
+            );
+          }
+        }
+      }
+      addToast('Records inserted', 'success');
     } catch (err) {
       console.error('SQL execution failed', err);
       alert('Execution failed');
@@ -929,6 +1299,14 @@ export default function CodingTablesPage() {
       addToast('Table name required', 'error');
       return;
     }
+    const usedFields = new Set([
+      ...headers,
+      ...extraFields.filter((f) => f.trim() !== ''),
+    ]);
+    const filterMap = (obj) =>
+      Object.fromEntries(
+        Object.entries(obj || {}).filter(([k]) => usedFields.has(k))
+      );
     const config = {
       sheet,
       headerRow,
@@ -939,12 +1317,12 @@ export default function CodingTablesPage() {
       otherColumns,
       uniqueFields,
       calcText,
-      columnTypes,
-      notNullMap,
-      allowZeroMap,
-      defaultValues,
-      defaultFrom,
-      renameMap,
+      columnTypes: filterMap(columnTypes),
+      notNullMap: filterMap(notNullMap),
+      allowZeroMap: filterMap(allowZeroMap),
+      defaultValues: filterMap(defaultValues),
+      defaultFrom: filterMap(defaultFrom),
+      renameMap: filterMap(renameMap),
       extraFields: extraFields.filter((f) => f.trim() !== ''),
       populateRange,
       startYear,
@@ -1020,47 +1398,70 @@ export default function CodingTablesPage() {
   }
 
   useEffect(() => {
-    setIdCandidates(computeIdCandidates(allHeaders, extraFields, idFilterMode));
-    setUniqueFields((u) => u.filter((f) => allHeaders.includes(f)));
-    setOtherColumns((o) => o.filter((f) => allHeaders.includes(f)));
+    setIdCandidates(
+      computeIdCandidates(allFields, extraFields, renameMap, idFilterMode)
+    );
+    setUniqueFields((u) => u.filter((f) => allFields.includes(f)));
+    setOtherColumns((o) => o.filter((f) => allFields.includes(f)));
+
     setNotNullMap((m) => {
       const updated = {};
-      allHeaders.forEach((h) => {
-        updated[h] = m[h] || false;
+      allFields.forEach((h) => {
+        updated[h] = h in m ? m[h] : false;
       });
-      return updated;
+      const same =
+        Object.keys(m).length === Object.keys(updated).length &&
+        Object.keys(updated).every((k) => m[k] === updated[k]);
+      return same ? m : updated;
     });
+
     setAllowZeroMap((m) => {
       const updated = {};
-      allHeaders.forEach((h) => {
-        updated[h] = m[h] !== undefined ? m[h] : !notNullMap[h];
+      allFields.forEach((h) => {
+        updated[h] = h in m ? m[h] : !notNullMap[h];
       });
-      return updated;
+      const same =
+        Object.keys(m).length === Object.keys(updated).length &&
+        Object.keys(updated).every((k) => m[k] === updated[k]);
+      return same ? m : updated;
     });
+
     setDefaultValues((d) => {
       const updated = {};
-      allHeaders.forEach((h) => {
-        updated[h] = d[h] || '';
+      allFields.forEach((h) => {
+        updated[h] = h in d ? d[h] : '';
       });
-      return updated;
+      const same =
+        Object.keys(d).length === Object.keys(updated).length &&
+        Object.keys(updated).every((k) => d[k] === updated[k]);
+      return same ? d : updated;
     });
+
     setDefaultFrom((d) => {
       const updated = {};
-      allHeaders.forEach((h) => {
-        updated[h] = d[h] || '';
+      allFields.forEach((h) => {
+        updated[h] = h in d ? d[h] : '';
       });
-      return updated;
+      const same =
+        Object.keys(d).length === Object.keys(updated).length &&
+        Object.keys(updated).every((k) => d[k] === updated[k]);
+      return same ? d : updated;
     });
+
     setRenameMap((m) => {
       const updated = {};
-      allHeaders.forEach((h) => {
-        updated[h] = m[h] || h;
+      allFields.forEach((h) => {
+        updated[h] = h in m ? m[h] : h;
       });
-      return updated;
+      const same =
+        Object.keys(m).length === Object.keys(updated).length &&
+        Object.keys(updated).every((k) => m[k] === updated[k]);
+      return same ? m : updated;
     });
-    if (idColumn && !allHeaders.includes(idColumn)) setIdColumn('');
-    if (nameColumn && !allHeaders.includes(nameColumn)) setNameColumn('');
-  }, [allHeaders, idFilterMode, notNullMap]);
+
+    if (idColumn && !allFields.includes(idColumn)) setIdColumn('');
+    if (nameColumn && !allFields.includes(nameColumn)) setNameColumn('');
+  }, [allFields, idFilterMode, notNullMap, renameMap]);
 
   useEffect(() => {
     if (!tableName) return;
@@ -1069,29 +1470,76 @@ export default function CodingTablesPage() {
     })
       .then((res) => (res.ok ? res.json() : null))
       .then((cfg) => {
-        if (!cfg) return;
-        setSheet(cfg.sheet || sheet);
-        setHeaderRow(cfg.headerRow || 1);
-        setMnHeaderRow(cfg.mnHeaderRow || '');
-        setIdFilterMode(cfg.idFilterMode || 'contains');
-        setIdColumn(cfg.idColumn || '');
-        setNameColumn(cfg.nameColumn || '');
-        setOtherColumns(cfg.otherColumns || []);
-        setUniqueFields(cfg.uniqueFields || []);
-        setCalcText(cfg.calcText || '');
-        setColumnTypes(cfg.columnTypes || {});
-        setNotNullMap(cfg.notNullMap || {});
-        setAllowZeroMap(cfg.allowZeroMap || {});
-        setDefaultValues(cfg.defaultValues || {});
-        setDefaultFrom(cfg.defaultFrom || {});
-        setRenameMap(cfg.renameMap || {});
-        setExtraFields(
-          cfg.extraFields && cfg.extraFields.length > 0 ? cfg.extraFields : ['']
-        );
-        setPopulateRange(cfg.populateRange || false);
-        setStartYear(cfg.startYear || '');
-        setEndYear(cfg.endYear || '');
-        setAutoIncStart(cfg.autoIncStart || '1');
+        if (!cfg) {
+          if (workbook && headers.length > 0) {
+            extractHeaders(workbook, sheet, headerRow, mnHeaderRow);
+          }
+          return;
+        }
+        setSheet(cfg.sheet ?? '');
+        setHeaderRow(cfg.headerRow ?? 1);
+        setMnHeaderRow(cfg.mnHeaderRow ?? '');
+        setIdFilterMode(cfg.idFilterMode ?? 'contains');
+        setIdColumn(cfg.idColumn ?? '');
+        setNameColumn(cfg.nameColumn ?? '');
+        const extras =
+          cfg.extraFields && cfg.extraFields.length > 0 ? cfg.extraFields : [''];
+        setExtraFields(extras);
+        setOtherColumns(cfg.otherColumns ?? []);
+        setUniqueFields(cfg.uniqueFields ?? []);
+        setCalcText(cfg.calcText ?? '');
+        setColumnTypes(cfg.columnTypes ?? {});
+        if (cfg.columnTypes) {
+          const baseHeaders = Object.keys(cfg.columnTypes || {});
+          const merged = Array.from(
+            new Set([
+              ...baseHeaders,
+              ...(cfg.otherColumns || []),
+              ...(cfg.uniqueFields || []),
+              ...extras.filter((f) => f.trim() !== ''),
+              ...(cfg.idColumn ? [cfg.idColumn] : []),
+              ...(cfg.nameColumn ? [cfg.nameColumn] : []),
+              ...Object.keys(cfg.renameMap || {}),
+            ])
+          );
+          setHeaders(merged);
+        }
+
+        const fieldSet = new Set([
+          ...Object.keys(cfg.columnTypes || {}),
+          ...extras.filter((f) => f.trim() !== ''),
+          ...(cfg.otherColumns || []),
+          ...(cfg.uniqueFields || []),
+          ...(cfg.idColumn ? [cfg.idColumn] : []),
+          ...(cfg.nameColumn ? [cfg.nameColumn] : []),
+          ...Object.keys(cfg.notNullMap || {}),
+          ...Object.keys(cfg.allowZeroMap || {}),
+          ...Object.keys(cfg.defaultValues || {}),
+          ...Object.keys(cfg.defaultFrom || {}),
+          ...Object.keys(cfg.renameMap || {}),
+        ]);
+        const fields = Array.from(fieldSet);
+        const nn = {};
+        const az = {};
+        const dv = {};
+        const df = {};
+        const rm = {};
+        fields.forEach((f) => {
+          nn[f] = cfg.notNullMap && f in cfg.notNullMap ? cfg.notNullMap[f] : false;
+          az[f] = cfg.allowZeroMap && f in cfg.allowZeroMap ? cfg.allowZeroMap[f] : !nn[f];
+          dv[f] = cfg.defaultValues && f in cfg.defaultValues ? cfg.defaultValues[f] : '';
+          df[f] = cfg.defaultFrom && f in cfg.defaultFrom ? cfg.defaultFrom[f] : '';
+          rm[f] = cfg.renameMap && f in cfg.renameMap ? cfg.renameMap[f] : f;
+        });
+        setRenameMap(rm);
+        setNotNullMap(nn);
+        setAllowZeroMap(az);
+        setDefaultValues(dv);
+        setDefaultFrom(df);
+        setPopulateRange(cfg.populateRange ?? false);
+        setStartYear(cfg.startYear ?? '');
+        setEndYear(cfg.endYear ?? '');
+        setAutoIncStart(cfg.autoIncStart ?? '1');
       })
       .catch(() => {});
   }, [tableName]);
@@ -1155,7 +1603,7 @@ export default function CodingTablesPage() {
               pull all columns
             </label>
           </div>
-          {allHeaders.length > 0 && (
+          {allFields.length > 0 && (
             <>
               <div>
                 Table Name:
@@ -1211,14 +1659,40 @@ export default function CodingTablesPage() {
               </div>
               <div>
                 <h4>Mongolian Field Names</h4>
-                {headers.map((h) => (
-                  <div key={h} style={{ marginBottom: '0.25rem' }}>
-                    {h}:{' '}
+                {initialDuplicates.size > 0 && (
+                  <div style={{ marginBottom: '0.25rem' }}>
+                    {duplicateHeaders.size > 0 ? (
+                      <span style={{ color: 'red' }}>
+                        Duplicate fields: {Array.from(duplicateHeaders).join(', ')}
+                      </span>
+                    ) : (
+                      <span style={{ color: 'green' }}>
+                        Duplicates renamed: {Array.from(initialDuplicates).join(', ')}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {allFields.map((h) => (
+                  <div
+                    key={h}
+                    style={{
+                      marginBottom: '0.25rem',
+                      color: duplicateHeaders.has(h) ? 'red' : 'inherit',
+                    }}
+                  >
+                    <code>{h}</code>
+                    {' → '}
                     <input
-                      value={renameMap[h] || h}
-                      onChange={(e) =>
-                        setRenameMap({ ...renameMap, [h]: e.target.value })
-                      }
+                      value={renameMap[h] || ''}
+                      placeholder={h}
+                      onChange={(e) => {
+                        setRenameMap({ ...renameMap, [h]: e.target.value });
+                        setDuplicateHeaders((d) => {
+                          const next = new Set(d);
+                          next.delete(h);
+                          return next;
+                        });
+                      }}
                       style={{ marginRight: '0.5rem' }}
                     />
                     <input
@@ -1280,9 +1754,9 @@ export default function CodingTablesPage() {
                 ID Column:
                 <select value={idColumn} onChange={(e) => setIdColumn(e.target.value)}>
                   <option value="">--none--</option>
-                  {idCandidates.map((h) => (
-                    <option key={h} value={h}>
-                      {h}
+                  {uniqueRenamedFields(idCandidates, undefined, false).map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
                     </option>
                   ))}
                 </select>
@@ -1302,9 +1776,9 @@ export default function CodingTablesPage() {
                 Name Column:
                 <select value={nameColumn} onChange={(e) => setNameColumn(e.target.value)}>
                   <option value="">--select--</option>
-                  {allHeaders.map((h) => (
-                    <option key={h} value={h}>
-                      {h}
+                  {uniqueRenamedFields().map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
                     </option>
                   ))}
                 </select>
@@ -1312,7 +1786,7 @@ export default function CodingTablesPage() {
               <div>
                 Unique Fields:
                 <div>
-                  {allHeaders.map((h) => (
+                  {uniqueRenamedFields().map(({ value: h, label }) => (
                     <label key={h} style={{ marginRight: '0.5rem' }}>
                       <input
                         type="checkbox"
@@ -1326,7 +1800,7 @@ export default function CodingTablesPage() {
                           }
                         }}
                       />
-                      {h}
+                      {label}
                     </label>
                   ))}
                 </div>
@@ -1334,7 +1808,7 @@ export default function CodingTablesPage() {
               <div>
                 Other Columns:
                 <div>
-                  {allHeaders.map((h) => (
+                  {uniqueRenamedFields().map(({ value: h, label }) => (
                     <label key={h} style={{ marginRight: '0.5rem' }}>
                       <input
                         type="checkbox"
@@ -1348,7 +1822,7 @@ export default function CodingTablesPage() {
                           }
                         }}
                       />
-                      {h}
+                      {label}
                     </label>
                   ))}
                 </div>
@@ -1356,9 +1830,9 @@ export default function CodingTablesPage() {
               <div>
                 Column Types:
                 <div>
-                  {allHeaders.map((h) => (
+                  {uniqueRenamedFields().map(({ value: h, label }) => (
                     <div key={h} style={{ marginBottom: '0.25rem' }}>
-                      {h}:{' '}
+                      {label}:{' '}
                       <input
                         value={columnTypes[h] || ''}
                         onChange={(e) =>
@@ -1416,13 +1890,11 @@ export default function CodingTablesPage() {
                         style={{ marginLeft: '0.25rem' }}
                       >
                         <option value="">from field...</option>
-                        {allHeaders
-                          .filter((x) => x !== h)
-                          .map((o) => (
-                            <option key={o} value={o}>
-                              {o}
-                            </option>
-                          ))}
+                        {uniqueRenamedFields(allFields, h).map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
                       </select>
                     </div>
                   ))}
@@ -1439,6 +1911,9 @@ export default function CodingTablesPage() {
               </div>
             <div>
               <button onClick={handleGenerateSql}>Populate SQL</button>
+              <button onClick={handleGenerateRecords} style={{ marginLeft: '0.5rem' }}>
+                Populate Records
+              </button>
               <button onClick={loadFromSql} style={{ marginLeft: '0.5rem' }}>
                 Fill Config from SQL
               </button>
@@ -1451,33 +1926,63 @@ export default function CodingTablesPage() {
               <button onClick={executeGeneratedSql} style={{ marginLeft: '0.5rem' }}>
                 Create Coding Table
               </button>
-              {sqlOther && (
-                <button onClick={executeOtherSql} style={{ marginLeft: '0.5rem' }}>
-                  Create _other Table
+              <button onClick={executeOtherSql} style={{ marginLeft: '0.5rem' }}>
+                Create _other Table
+              </button>
+              <button onClick={executeSeparateSql} style={{ marginLeft: '0.5rem' }}>
+                Create Tables & Records
+              </button>
+              {(recordsSql || recordsSqlOther) && (
+                <button onClick={executeRecordsSql} style={{ marginLeft: '0.5rem' }}>
+                  Insert Records
                 </button>
               )}
             </div>
-              {sql && (
-                <div style={{ marginTop: '0.5rem' }}>
-                  <div>SQL for main table:</div>
-                  <textarea
-                    value={sql}
-                    onChange={(e) => setSql(e.target.value)}
-                    rows={10}
-                    cols={80}
-                  />
+              {(structSql || recordsSql) && (
+                <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
+                  <div>
+                    <div>Main table structure:</div>
+                    <textarea
+                      value={structSql}
+                      onChange={(e) => setStructSql(e.target.value)}
+                      rows={10}
+                      cols={40}
+                    />
+                  </div>
+                  <div>
+                    <div>Main table records:</div>
+                    <textarea
+                      value={recordsSql}
+                      onChange={(e) => setRecordsSql(e.target.value)}
+                      rows={10}
+                      cols={40}
+                      placeholder="No records generated"
+                    />
+                  </div>
                 </div>
               )}
-              {sqlOther && (
-                <div style={{ marginTop: '0.5rem' }}>
-                  <div>SQL for _other table:</div>
+              {(structSqlOther || recordsSqlOther) && (
+              <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
+                <div>
+                  <div>_other table structure:</div>
                   <textarea
-                    value={sqlOther}
-                    onChange={(e) => setSqlOther(e.target.value)}
+                    value={structSqlOther}
+                    onChange={(e) => setStructSqlOther(e.target.value)}
                     rows={10}
-                    cols={80}
+                    cols={40}
                   />
                 </div>
+                <div>
+                  <div>_other table records:</div>
+                  <textarea
+                    value={recordsSqlOther}
+                    onChange={(e) => setRecordsSqlOther(e.target.value)}
+                    rows={10}
+                    cols={40}
+                    placeholder="No records generated"
+                  />
+                </div>
+              </div>
               )}
               {sqlMove && (
                 <div style={{ marginTop: '0.5rem' }}>
@@ -1494,6 +1999,12 @@ export default function CodingTablesPage() {
                 <div style={{ marginTop: '0.5rem' }}>
                   <div>Duplicate keys:</div>
                   <textarea value={duplicateInfo} readOnly rows={3} cols={80} />
+                </div>
+              )}
+              {duplicateRecords && (
+                <div style={{ marginTop: '0.5rem' }}>
+                  <div>Duplicate records:</div>
+                  <textarea value={duplicateRecords} readOnly rows={3} cols={80} />
                 </div>
               )}
               {summaryInfo && (

@@ -5,6 +5,8 @@ import React, {
   useMemo,
   useImperativeHandle,
   forwardRef,
+  useRef,
+  memo,
 } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
@@ -17,6 +19,29 @@ function ch(n) {
   return Math.round(n * 8);
 }
 
+function logRowsMemory(rows) {
+    if (process.env.NODE_ENV === 'production') return;
+    try {
+      const sizeMB = JSON.stringify(rows).length / 1024 / 1024;
+      const timestamp = new Date().toISOString();
+      const message = `Loaded ${rows.length} transactions (~${sizeMB.toFixed(2)} MB) at ${timestamp}`;
+      if (!window.memoryLogs) window.memoryLogs = [];
+      if (window.memoryLogs.length >= 20) {
+        window.memoryLogs.shift(); // remove oldest
+      }
+      window.memoryLogs.push(message);
+      if (window.erpDebug) {
+        if (sizeMB > 10 || rows.length > 10000) {
+          console.warn(message);
+        } else {
+          console.log(message);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to compute memory usage', err);
+    }
+  }
+
 const MAX_WIDTH = ch(40);
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
@@ -26,7 +51,7 @@ const currencyFmt = new Intl.NumberFormat('en-US', {
 
 function normalizeDateInput(value, format) {
   if (typeof value !== 'string') return value;
-  let v = value.replace(/^(\d{4})\.(\d{2})\.(\d{2})/, '$1-$2-$3');
+  let v = value.replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
   const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
   if (isoRe.test(v)) {
     const d = new Date(v);
@@ -64,7 +89,31 @@ const deleteBtnStyle = {
   color: '#b91c1c',
 };
 
-export default forwardRef(function TableManager({ table, refreshId = 0, formConfig = null, initialPerPage = 10, addLabel = 'Add Row', showTable = true }, ref) {
+const TableManager = forwardRef(function TableManager({
+  table,
+  refreshId = 0,
+  formConfig = null,
+  initialPerPage = 10,
+  addLabel = 'Мөр нэмэх',
+  showTable = true
+}, ref) {
+  const mounted = useRef(false);
+  const renderCount = useRef(0);
+  const warned = useRef(false);
+
+  renderCount.current++;
+  if (renderCount.current > 10 && !warned.current) {
+    console.warn(`⚠️ Excessive renders: TableManager ${renderCount.current}`);
+    warned.current = true;
+  }
+
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      if (window.erpDebug) console.warn('✅ Mounted: TableManager');
+    }
+  }, []);
+  
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
   const [page, setPage] = useState(1);
@@ -78,6 +127,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
   const [autoInc, setAutoInc] = useState(new Set());
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [rowDefaults, setRowDefaults] = useState({});
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [localRefresh, setLocalRefresh] = useState(0);
   const [deleteInfo, setDeleteInfo] = useState(null); // { id, refs }
@@ -97,10 +147,20 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
   const { user, company } = useContext(AuthContext);
   const { addToast } = useToast();
 
-  const validCols = useMemo(
-    () => new Set(columnMeta.map((c) => c.name)),
-    [columnMeta],
-  );
+  const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
+
+  const branchIdFields = useMemo(() => {
+    if (formConfig?.branchIdFields?.length)
+      return formConfig.branchIdFields.filter(f => validCols.has(f));
+    return ['branch_id'].filter(f => validCols.has(f));
+  }, [formConfig, validCols]);
+
+  const userIdFields = useMemo(() => {
+    if (formConfig?.userIdFields?.length)
+      return formConfig.userIdFields.filter(f => validCols.has(f));
+    const defaultFields = ['created_by', 'employee_id', 'emp_id', 'empid', 'user_id'];
+    return defaultFields.filter(f => validCols.has(f));
+  }, [formConfig, validCols]);
 
   function computeAutoInc(meta) {
     const auto = meta
@@ -196,13 +256,13 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     } else {
       setTypeFilter('');
     }
-    if (company?.branch_id !== undefined && formConfig.branchIdFields) {
-      formConfig.branchIdFields.forEach((f) => {
+    if (company?.branch_id !== undefined && branchIdFields.length > 0) {
+      branchIdFields.forEach((f) => {
         if (validCols.has(f)) newFilters[f] = company.branch_id;
       });
     }
-    if (user?.empid !== undefined && formConfig.userIdFields) {
-      formConfig.userIdFields.forEach((f) => {
+    if (user?.empid !== undefined && userIdFields.length > 0) {
+      userIdFields.forEach((f) => {
         if (validCols.has(f)) newFilters[f] = user.empid;
       });
     }
@@ -441,10 +501,12 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
       })
       .then((data) => {
         if (canceled) return;
-        setRows(data.rows || []);
+        const rows = data.rows || [];
+        setRows(rows);
         setCount(data.count || 0);
         // clear selections when data changes
         setSelectedRows(new Set());
+        logRowsMemory(rows);
       })
       .catch(() => {
         if (!canceled) addToast('Failed to load table data', 'error');
@@ -507,17 +569,32 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
   async function openAdd() {
     await ensureColumnMeta();
     const vals = {};
+    const defaults = {};
     const all = columnMeta.map((c) => c.name);
     all.forEach((c) => {
       let v = (formConfig?.defaultValues || {})[c] || '';
-      if (formConfig?.userIdFields?.includes(c) && user?.empid) v = user.empid;
-      if (formConfig?.branchIdFields?.includes(c) && company?.branch_id !== undefined) v = company.branch_id;
+      if (userIdFields.includes(c) && user?.empid) v = user.empid;
+      if (branchIdFields.includes(c) && company?.branch_id !== undefined) v = company.branch_id;
       if (formConfig?.companyIdFields?.includes(c) && company?.company_id !== undefined) v = company.company_id;
       vals[c] = v;
+      defaults[c] = v;
+      if (!v && formConfig?.dateField?.includes(c)) {
+        const lower = c.toLowerCase();
+        const now = new Date();
+        if (lower.includes('timestamp') || (lower.includes('date') && lower.includes('time'))) {
+          defaults[c] = formatTimestamp(now);
+        } else if (lower.includes('date')) {
+          defaults[c] = now.toISOString().slice(0, 10);
+        } else if (lower.includes('time')) {
+          defaults[c] = now.toISOString().slice(11, 19);
+        }
+      }
     });
     if (formConfig?.transactionTypeField && formConfig.transactionTypeValue) {
       vals[formConfig.transactionTypeField] = formConfig.transactionTypeValue;
+      defaults[formConfig.transactionTypeField] = formConfig.transactionTypeValue;
     }
+    setRowDefaults(defaults);
     setEditing(vals);
     setIsAdding(true);
     setShowForm(true);
@@ -620,10 +697,10 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     });
 
     if (isAdding) {
-      formConfig?.userIdFields?.forEach((f) => {
+      userIdFields.forEach((f) => {
         if (columns.has(f)) merged[f] = user?.empid;
       });
-      formConfig?.branchIdFields?.forEach((f) => {
+      branchIdFields.forEach((f) => {
         if (columns.has(f) && company?.branch_id !== undefined)
           merged[f] = company.branch_id;
       });
@@ -642,7 +719,9 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     }
 
     const cleaned = {};
+    const skipFields = new Set([...autoCols, 'id']);
     Object.entries(merged).forEach(([k, v]) => {
+      if (skipFields.has(k)) return;
       if (v !== '') {
         cleaned[k] =
           typeof v === 'string' ? normalizeDateInput(v, placeholders[k]) : v;
@@ -680,22 +759,22 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         const data = await fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
           credentials: 'include',
         }).then((r) => r.json());
-        setRows(data.rows || []);
+        const rows = data.rows || [];
+        setRows(rows);
         setCount(data.count || 0);
+        logRowsMemory(rows);
         setSelectedRows(new Set());
         setShowForm(false);
         setEditing(null);
         setIsAdding(false);
-        const msg = isAdding ? 'New transaction saved' : 'Saved';
+        const msg = isAdding ? 'Шинэ гүйлгээ хадгалагдлаа' : 'Хадгалагдлаа';
         addToast(msg, 'success');
         if (isAdding) {
-          const again = window.confirm('Add another transaction row?');
-          if (again) {
-            setTimeout(() => openAdd(), 0);
-          }
+          setTimeout(() => openAdd(), 0);
         }
+        return true;
       } else {
-        let message = 'Save failed';
+        let message = 'Хадгалахад алдаа гарлаа';
         try {
           const data = await res.json();
           if (data && data.message) message += `: ${data.message}`;
@@ -703,9 +782,11 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
           // ignore
         }
         addToast(message, 'error');
+        return false;
       }
     } catch (err) {
       console.error('Save failed', err);
+      return false;
     }
   }
 
@@ -729,8 +810,10 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
         { credentials: 'include' },
       ).then((r) => r.json());
-      setRows(data.rows || []);
+      const rows = data.rows || [];
+      setRows(rows);
       setCount(data.count || 0);
+      logRowsMemory(rows);
       setSelectedRows(new Set());
       addToast('Deleted', 'success');
     } else {
@@ -866,8 +949,10 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     } else {
       addToast('Failed to load table data', 'error');
     }
-    setRows(data.rows || []);
+    const rows = data.rows || [];
+    setRows(rows);
     setCount(data.count || 0);
+    logRowsMemory(rows);
     setSelectedRows(new Set());
     addToast('Deleted', 'success');
   }
@@ -977,8 +1062,8 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     headerFields = [...formConfig.headerFields];
   } else {
     headerFields = [
-      ...(formConfig?.userIdFields || []),
-      ...(formConfig?.branchIdFields || []),
+      ...userIdFields,
+      ...branchIdFields,
       ...(formConfig?.companyIdFields || []),
       ...(formConfig?.dateField || []),
     ];
@@ -1014,7 +1099,10 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         c === 'TotalCur' ||
         c === 'TotalAmt'
       ) {
-        sums[c] = rows.reduce((sum, r) => sum + Number(r[c] || 0), 0);
+        sums[c] = rows.reduce(
+          (sum, r) => sum + Number(String(r[c] ?? 0).replace(',', '.')),
+          0,
+        );
       }
     });
     return { sums, count: rows.length };
@@ -1167,14 +1255,14 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
           )}
         </div>
       )}
-      {formConfig?.branchIdFields?.length > 0 && company?.branch_id !== undefined && (
+      {branchIdFields.length > 0 && company?.branch_id !== undefined && (
         <div style={{ backgroundColor: '#ddffee', padding: '0.25rem', textAlign: 'left' }}>
           Branch:{' '}
           <span style={{ marginRight: '0.5rem' }}>{company.branch_id}</span>
           {user?.role === 'admin' && (
             <button
               onClick={() =>
-                formConfig.branchIdFields.forEach((f) => handleFilterChange(f, ''))
+                branchIdFields.forEach((f) => handleFilterChange(f, ''))
               }
             >
               Clear Branch Filter
@@ -1182,14 +1270,14 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
           )}
         </div>
       )}
-      {formConfig?.userIdFields?.length > 0 && user?.empid !== undefined && (
+      {userIdFields.length > 0 && user?.empid !== undefined && (
         <div style={{ backgroundColor: '#ffeecc', padding: '0.25rem', textAlign: 'left' }}>
           User:{' '}
           <span style={{ marginRight: '0.5rem' }}>{user.empid}</span>
           {user?.role === 'admin' && (
             <button
               onClick={() =>
-                formConfig.userIdFields.forEach((f) => handleFilterChange(f, ''))
+                userIdFields.forEach((f) => handleFilterChange(f, ''))
               }
             >
               Clear User Filter
@@ -1593,6 +1681,7 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         </>
       )}
       <RowFormModal
+        key={`rowform-${table}`}
         visible={showForm}
         useGrid
         onCancel={() => {
@@ -1609,6 +1698,8 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
         disabledFields={disabledFields}
         labels={labels}
         requiredFields={formConfig?.requiredFields || []}
+        defaultValues={rowDefaults}
+        dateField={formConfig?.dateField || []}
         headerFields={headerFields}
         mainFields={mainFields}
         footerFields={footerFields}
@@ -1688,3 +1779,14 @@ export default forwardRef(function TableManager({ table, refreshId = 0, formConf
     </div>
   );
 });
+
+function propsEqual(prev, next) {
+  return (
+    prev.table === next.table &&
+    prev.refreshId === next.refreshId &&
+    prev.formConfig === next.formConfig &&
+    prev.showTable === next.showTable
+  );
+}
+
+export default memo(TableManager, propsEqual);

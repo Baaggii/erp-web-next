@@ -899,3 +899,45 @@ export async function deleteTableRowCascade(tableName, id) {
     conn.release();
   }
 }
+
+export async function listInventoryTransactions({
+  branchId,
+  startDate,
+  endDate,
+  page = 1,
+  perPage = 50,
+} = {}) {
+  const clauses = [];
+  const params = [];
+  if (branchId !== undefined && branchId !== '') {
+    clauses.push('branch_id = ?');
+    params.push(branchId);
+  }
+  if (startDate) {
+    clauses.push('transaction_date >= ?');
+    params.push(startDate);
+  }
+  if (endDate) {
+    clauses.push('transaction_date <= ?');
+    params.push(endDate);
+  }
+  const where = clauses.length > 0 ? 'WHERE ' + clauses.join(' AND ') : '';
+
+  const [countRows] = await pool.query(
+    `SELECT COUNT(*) AS count FROM inventory_transactions ${where}`,
+    params,
+  );
+  const count = countRows[0].count;
+
+  let sql = `SELECT * FROM inventory_transactions ${where} ORDER BY id DESC`;
+  const qParams = [...params];
+  if (count > 100) {
+    const limit = Math.min(Number(perPage) || 50, 500);
+    const offset = (Number(page) - 1) * limit;
+    sql += ' LIMIT ? OFFSET ?';
+    qParams.push(limit, offset);
+  }
+
+  const [rows] = await pool.query(sql, qParams);
+  return { rows, count };
+}

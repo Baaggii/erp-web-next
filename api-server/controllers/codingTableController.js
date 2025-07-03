@@ -89,6 +89,7 @@ export async function uploadCodingTable(req, res, next) {
       nameColumn,
       headerRow,
       otherColumns,
+      extraFields,
       uniqueFields,
       calcFields,
       columnTypes: columnTypesJson,
@@ -98,11 +99,13 @@ export async function uploadCodingTable(req, res, next) {
       autoIncrementStart,
     } = req.body;
     const extraCols = otherColumns ? JSON.parse(otherColumns) : [];
+    const extraFieldCols = extraFields ? JSON.parse(extraFields) : [];
     const uniqueCols = uniqueFields ? JSON.parse(uniqueFields) : [];
     const cleanTable = cleanIdentifier(tableName);
     const cleanIdCol = idColumn ? cleanIdentifier(idColumn) : '';
     const cleanNameCol = nameColumn ? cleanIdentifier(nameColumn) : '';
     const cleanExtra = extraCols.map(cleanIdentifier);
+    const cleanExtraFields = extraFieldCols.map(cleanIdentifier);
     const cleanUnique = uniqueCols.map(cleanIdentifier);
     const calcDefs = calcFields ? JSON.parse(calcFields) : [];
     const columnTypeOverride = columnTypesJson ? JSON.parse(columnTypesJson) : {};
@@ -136,12 +139,25 @@ export async function uploadCodingTable(req, res, next) {
       return res.status(400).json({ error: 'Header row not found' });
     }
     const uniqueOnly = cleanUnique.filter(
-      (c) => c !== cleanIdCol && c !== cleanNameCol && !cleanExtra.includes(c)
+      (c) =>
+        c !== cleanIdCol &&
+        c !== cleanNameCol &&
+        !cleanExtra.includes(c) &&
+        !cleanExtraFields.includes(c)
     );
     const extraFiltered = cleanExtra.filter(
       (c) => c !== cleanIdCol && c !== cleanNameCol && !uniqueOnly.includes(c)
     );
-    if (!cleanIdCol && !cleanNameCol && uniqueOnly.length === 0 && extraFiltered.length === 0) {
+    const extraFieldFiltered = cleanExtraFields.filter(
+      (c) => c !== cleanIdCol && c !== cleanNameCol && !uniqueOnly.includes(c)
+    );
+    if (
+      !cleanIdCol &&
+      !cleanNameCol &&
+      uniqueOnly.length === 0 &&
+      extraFiltered.length === 0 &&
+      extraFieldFiltered.length === 0
+    ) {
       fs.unlinkSync(req.file.path);
       return res.status(400).json({ error: 'No columns selected' });
     }
@@ -157,6 +173,7 @@ export async function uploadCodingTable(req, res, next) {
       ...new Set([
         ...uniqueOnly,
         ...extraFiltered,
+        ...extraFieldFiltered,
         cleanIdCol,
         cleanNameCol,
       ].filter((c) => c && !headers.includes(c)))
@@ -239,9 +256,16 @@ export async function uploadCodingTable(req, res, next) {
       defs.push(def);
     }
     const cleanUniqueOnly = cleanUnique.filter(
-      (c) => c !== cleanIdCol && c !== cleanNameCol && !cleanExtra.includes(c)
+      (c) =>
+        c !== cleanIdCol &&
+        c !== cleanNameCol &&
+        !cleanExtra.includes(c) &&
+        !cleanExtraFields.includes(c)
     );
     const cleanExtraFiltered = cleanExtra.filter(
+      (c) => c !== cleanIdCol && c !== cleanNameCol && !cleanUniqueOnly.includes(c)
+    );
+    const cleanExtraFieldsFiltered = cleanExtraFields.filter(
       (c) => c !== cleanIdCol && c !== cleanNameCol && !cleanUniqueOnly.includes(c)
     );
     cleanUniqueOnly.forEach((c) => {
@@ -252,6 +276,14 @@ export async function uploadCodingTable(req, res, next) {
       defs.push(def);
     });
     cleanExtraFiltered.forEach((c) => {
+      let def = `\`${c}\` ${columnTypes[c] || 'VARCHAR(255)'}`;
+      if (notNullMap[c]) def += ' NOT NULL';
+      if (defaultValues[c]) {
+        def += ` DEFAULT ${pool.escape(defaultValues[c])}`;
+      }
+      defs.push(def);
+    });
+    cleanExtraFieldsFiltered.forEach((c) => {
       let def = `\`${c}\` ${columnTypes[c] || 'VARCHAR(255)'}`;
       if (notNullMap[c]) def += ' NOT NULL';
       if (defaultValues[c]) {
@@ -279,7 +311,10 @@ export async function uploadCodingTable(req, res, next) {
       if (label) await setTableColumnLabel(cleanTable, cleanIdentifier(col), label);
     }
     let count = 0;
+    const errors = [];
+    let rowIndex = 0;
     for (const r of finalRows) {
+      rowIndex++;
       const cols = [];
       const placeholders = [];
       const values = [];
@@ -344,17 +379,45 @@ export async function uploadCodingTable(req, res, next) {
         values.push(val);
         updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
       }
+      for (const c of cleanExtraFieldsFiltered) {
+        cols.push(`\`${c}\``);
+        placeholders.push('?');
+        let val = r[c];
+        const blank =
+          val === undefined || val === null || val === '' || val === 0;
+        if (blank) {
+          if (defaultValues[c] !== undefined && defaultValues[c] !== '') {
+            val = defaultValues[c];
+          } else if (notNullMap[c]) {
+            val = defaultValForType(columnTypes[c]);
+          } else {
+            val = null;
+          }
+        } else if (columnTypes[c] === 'DATE') {
+          const d = parseExcelDate(val);
+          val = d || null;
+        }
+        if (val !== undefined && val !== null && val !== '' && val !== 0)
+          hasData = true;
+        val = sanitizeValue(val);
+        values.push(val);
+        updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
+      }
       if (!hasData) continue;
       if (req.body.populateRange === 'true' && values.some((v) => v === 0 || v === null))
         continue;
-      await pool.query(
-        `INSERT INTO \`${cleanTable}\` (${cols.join(', ')}) VALUES (${placeholders.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')}`,
-        values
-      );
-      count++;
+      try {
+        await pool.query(
+          `INSERT INTO \`${cleanTable}\` (${cols.join(', ')}) VALUES (${placeholders.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')}`,
+          values
+        );
+        count++;
+      } catch (err) {
+        errors.push({ row: rowIndex, data: r, message: err.message });
+      }
     }
     fs.unlinkSync(req.file.path);
-    res.json({ inserted: count });
+    res.json({ inserted: count, errors });
   } catch (err) {
     next(err);
   }

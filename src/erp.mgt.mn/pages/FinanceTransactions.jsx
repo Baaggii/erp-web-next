@@ -1,4 +1,11 @@
-import React, { useState, useEffect, useContext, useRef } from 'react';
+import isEqual from 'lodash.isequal';
+import React, {
+  useState,
+  useEffect,
+  useContext,
+  useRef,
+  useMemo,
+} from 'react';
 import { useSearchParams } from 'react-router-dom';
 import TableManager from '../components/TableManager.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
@@ -8,9 +15,14 @@ import { useTxnSession } from '../context/TxnSessionContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 
 export default function FinanceTransactions({ moduleKey = 'finance_transactions', moduleLabel = '' }) {
+  const renderCount = useRef(0);
+  renderCount.current++;
+  if (renderCount.current > 10) {
+    console.warn('⚠️ Excessive renders: FinanceTransactions', renderCount.current);
+  }
   const [configs, setConfigs] = useState({});
   const [searchParams, setSearchParams] = useSearchParams();
-  const paramKey = `name_${moduleKey}`;
+  const paramKey = useMemo(() => `name_${moduleKey}`, [moduleKey]);
   const [sessionState, setSessionState] = useTxnSession(moduleKey);
   const [name, setName] = useState(() => sessionState.name || searchParams.get(paramKey) || '');
   const [table, setTable] = useState(() => sessionState.table || '');
@@ -23,9 +35,29 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const tableRef = useRef(null);
   const prevModuleKey = useRef(moduleKey);
   const { addToast } = useToast();
+  const mounted = useRef(false);
+  const sessionLoaded = useRef(false);
+  const prevSessionRef = useRef({});
+  const prevConfigRef = useRef(null);
+
+
+  useEffect(() => {
+    console.log('FinanceTransactions render monitor effect');
+    if (process.env.NODE_ENV !== 'production') {
+      renderCount.current++;
+      if (renderCount.current > 5) console.warn('Excessive re-renders');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (mounted.current) return;
+    console.log('FinanceTransactions mount effect');
+    mounted.current = true;
+  }, []);
 
   
   useEffect(() => {
+    console.log('FinanceTransactions moduleKey effect');
     if (prevModuleKey.current !== moduleKey) {
       setSearchParams((prev) => {
         const sp = new URLSearchParams(prev);
@@ -34,32 +66,53 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
       });
     }
     prevModuleKey.current = moduleKey;
-  }, [moduleKey, setSearchParams]);
+  }, [moduleKey]);
 
   // load stored session for this module
-  useEffect(() => {
-    setName(sessionState.name || '');
-    setTable(sessionState.table || '');
-    setConfig(sessionState.config || null);
-    setRefreshId(sessionState.refreshId || 0);
-    setShowTable(sessionState.showTable || false);
-  }, [moduleKey]);
+  // load stored session for this module
+useEffect(() => {
+  if (sessionLoaded.current) return;
+  console.log('FinanceTransactions load session effect');
+
+  const next = {
+    name: sessionState.name || '',
+    table: sessionState.table || '',
+    config: sessionState.config || null,
+    refreshId: sessionState.refreshId || 0,
+    showTable: sessionState.showTable || false,
+  };
+
+  if (!isEqual(prevSessionRef.current, next)) {
+    setName(next.name);
+    setTable(next.table);
+    setConfig(next.config);
+    setRefreshId(next.refreshId);
+    setShowTable(next.showTable);
+    prevSessionRef.current = next;
+  }
+
+  sessionLoaded.current = true;
+}, [moduleKey]);
+
 
   // persist state to session
   useEffect(() => {
+    console.log('FinanceTransactions persist session effect');
     setSessionState({ name, table, config, refreshId, showTable });
-  }, [name, table, config, refreshId, showTable, setSessionState]);
+  }, [name, table, config, refreshId, showTable]);
 
   useEffect(() => {
+    console.log('FinanceTransactions search param effect');
     setSearchParams((prev) => {
       const sp = new URLSearchParams(prev);
       if (name) sp.set(paramKey, name);
       else sp.delete(paramKey);
       return sp;
     });
-  }, [name, setSearchParams, paramKey]);
+  }, [name, paramKey]);
 
   useEffect(() => {
+    console.log('FinanceTransactions load forms effect');
     const params = new URLSearchParams();
     if (moduleKey) params.set('moduleKey', moduleKey);
     if (company?.branch_id !== undefined)
@@ -101,7 +154,10 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
           filtered[n] = info;
         });
         setConfigs(filtered);
-        if (name && filtered[name]) setTable(filtered[name].table ?? filtered[name]);
+        if (name && filtered[name]) {
+          const tbl = filtered[name].table ?? filtered[name];
+          if (tbl !== table) setTable(tbl);
+        }
       })
       .catch(() => {
         addToast('Failed to load transaction forms', 'error');
@@ -110,103 +166,110 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   }, [moduleKey, company, perms, licensed]);
 
   useEffect(() => {
+    console.log('FinanceTransactions table sync effect');
     if (!name) {
-      setTable('');
-      setConfig(null);
-      setShowTable(false);
+      if (table !== '') setTable('');
+      if (config !== null) setConfig(null);
+      if (showTable) setShowTable(false);
       return;
     }
     if (configs[name]) {
       const tbl = configs[name].table ?? configs[name];
       if (tbl !== table) {
         setTable(tbl);
-        setConfig(null);
-        setShowTable(false);
+        if (config !== null) setConfig(null);
+        if (showTable) setShowTable(false);
       }
     }
   }, [name, configs]);
 
   useEffect(() => {
+    console.log('FinanceTransactions configs empty effect');
     if (Object.keys(configs).length === 0) {
       setName('');
-      setTable('');
-      setConfig(null);
-      setShowTable(false);
+      if (table !== '') setTable('');
+      if (config !== null) setConfig(null);
+      if (showTable) setShowTable(false);
     }
   }, [configs]);
 
   useEffect(() => {
-    if (!table || !name) {
-      setConfig(null);
-      return;
-    }
-    let canceled = false;
-    fetch(
-      `/api/transaction_forms?table=${encodeURIComponent(
-        table,
-      )}&name=${encodeURIComponent(name)}`,
-      { credentials: 'include' },
-    )
-      .then((res) => {
-        if (canceled) return null;
-        if (!res.ok) {
-          addToast('Failed to load transaction configuration', 'error');
-          return null;
-        }
-        return res.json().catch(() => null);
-      })
-      .then((cfg) => {
-        if (canceled) return;
-        if (cfg && cfg.moduleKey) {
+  console.log('FinanceTransactions fetch config effect');
+  if (!table || !name) {
+    if (config !== null) setConfig(null);
+    return;
+  }
+  let canceled = false;
+  fetch(
+    `/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`,
+    { credentials: 'include' }
+  )
+    .then((res) => {
+      if (canceled) return null;
+      if (!res.ok) {
+        addToast('Failed to load transaction configuration', 'error');
+        return null;
+      }
+      return res.json().catch(() => null);
+    })
+    .then((cfg) => {
+      if (canceled) return;
+      if (cfg && cfg.moduleKey) {
+        if (!isEqual(cfg, prevConfigRef.current)) {
           setConfig(cfg);
-        } else {
-          setConfig(null);
-          setShowTable(false);
-          addToast('Transaction configuration not found', 'error');
+          prevConfigRef.current = cfg;
         }
-      })
-      .catch(() => {
-        if (!canceled) {
-          setConfig(null);
-          setShowTable(false);
-          addToast('Failed to load transaction configuration', 'error');
-        }
-      });
-    return () => {
-      canceled = true;
-    };
-  }, [table, name, addToast]);
+      } else {
+        if (config !== null) setConfig(null);
+        if (showTable) setShowTable(false);
+        addToast('Transaction configuration not found', 'error');
+      }
+    })
+    .catch(() => {
+      if (!canceled) {
+        if (config !== null) setConfig(null);
+        if (showTable) setShowTable(false);
+        addToast('Failed to load transaction configuration', 'error');
+      }
+    });
+  return () => {
+    canceled = true;
+  };
+}, [table, name, addToast]);
 
-  const transactionNames = Object.keys(configs);
 
-  if (!perms || !licensed) return <p>Loading...</p>;
-  if (!perms[moduleKey] || !licensed[moduleKey]) return <p>Access denied.</p>;
+  const transactionNames = useMemo(() => Object.keys(configs), [configs]);
 
-  const caption = 'Choose transaction';
+  if (!perms || !licensed) return <p>Ачааллаж байна...</p>;
+  if (!perms[moduleKey] || !licensed[moduleKey]) return <p>Нэвтрэх эрхгүй.</p>;
+
+  const caption = 'Гүйлгээ сонгоно уу';
 
   return (
     <div>
-      <h2>{moduleLabel || 'Transactions'}</h2>
+      <h2>{moduleLabel || 'Гүйлгээ'}</h2>
         {transactionNames.length > 0 && (
           <div style={{ marginBottom: '0.5rem', maxWidth: '300px' }}>
             <select
               value={name}
               onChange={(e) => {
                 const newName = e.target.value;
+                if (newName === name) return;
                 setName(newName);
                 setRefreshId((r) => r + 1);
                 setShowTable(false);
                 if (!newName) {
-                  setTable('');
-                  setConfig(null);
+                  if (table !== '') setTable('');
+                  if (config !== null) setConfig(null);
                 } else if (configs[newName]) {
                   const tbl = configs[newName].table ?? configs[newName];
                   if (tbl !== table) {
                     setTable(tbl);
-                    setConfig(null);
+                    if (config !== null) setConfig(null);
                   }
                 }
               }}
+
               style={{ width: '100%', padding: '0.5rem', borderRadius: '3px', border: '1px solid #ccc' }}
             >
               <option value="">{caption}</option>
@@ -221,26 +284,27 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
       {table && config && (
         <div style={{ marginBottom: '0.5rem' }}>
           <button onClick={() => tableRef.current?.openAdd()} style={{ marginRight: '0.5rem' }}>
-            Add Transaction
+            Гүйлгээ нэмэх
           </button>
           <button onClick={() => setShowTable((v) => !v)}>
-            {showTable ? 'Hide Table' : 'View Table'}
+            {showTable ? 'Хүснэгт нуух' : 'Хүснэгт харах'}
           </button>
         </div>
       )}
       {table && config && (
         <TableManager
+          key={`${moduleKey}-${name}`}
           ref={tableRef}
           table={table}
           refreshId={refreshId}
           formConfig={config}
           initialPerPage={10}
-          addLabel="Add Transaction"
+          addLabel="Гүйлгээ нэмэх"
           showTable={showTable}
         />
       )}
       {transactionNames.length === 0 && (
-        <p>No transactions configured.</p>
+        <p>Гүйлгээ тохируулаагүй байна.</p>
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import MosaicLayout from '../components/MosaicLayout.jsx';
 
 const initialLayout = {
@@ -19,6 +19,9 @@ const initialLayout = {
 };
 
 export default function Dashboard() {
+  useEffect(() => {
+    if (window.erpDebug) console.warn('Mounted: Dashboard');
+  }, []);
   return (
     <div>
       <h2>Самбар</h2>

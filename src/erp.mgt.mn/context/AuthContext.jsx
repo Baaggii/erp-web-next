@@ -1,5 +1,6 @@
 // src/erp.mgt.mn/context/AuthContext.jsx
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useState, useEffect, useContext, useMemo } from 'react';
+import { debugLog, trackSetState } from '../utils/debug.js';
 
 // Create the AuthContext
 export const AuthContext = createContext({
@@ -15,9 +16,11 @@ export default function AuthContextProvider({ children }) {
 
   // Persist selected company across reloads
   useEffect(() => {
+    debugLog('AuthContext: load stored company');
     const stored = localStorage.getItem('erp_selected_company');
     if (stored) {
       try {
+        trackSetState('AuthContext.setCompany');
         setCompany(JSON.parse(stored));
       } catch {
         // ignore parse errors
@@ -26,6 +29,7 @@ export default function AuthContextProvider({ children }) {
   }, []);
 
   useEffect(() => {
+    debugLog('AuthContext: persist company');
     if (company) {
       localStorage.setItem('erp_selected_company', JSON.stringify(company));
     } else {
@@ -35,6 +39,7 @@ export default function AuthContextProvider({ children }) {
 
   // On mount, attempt to load the current profile (if a cookie is present)
   useEffect(() => {
+    debugLog('AuthContext: load profile');
     async function loadProfile() {
       try {
         const res = await fetch('/api/auth/me', {
@@ -43,6 +48,7 @@ export default function AuthContextProvider({ children }) {
 
         if (res.ok) {
           const data = await res.json();
+          trackSetState('AuthContext.setUser');
           setUser(data);
         } else {
           // Not logged in or token expired → ignore
@@ -55,8 +61,10 @@ export default function AuthContextProvider({ children }) {
     loadProfile();
   }, []);
 
+  const value = useMemo(() => ({ user, setUser, company, setCompany }), [user, company]);
+
   return (
-    <AuthContext.Provider value={{ user, setUser, company, setCompany }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
