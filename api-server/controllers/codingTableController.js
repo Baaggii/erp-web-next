@@ -51,7 +51,7 @@ function normalizeExcelError(val, type) {
 function normalizeSpecialChars(val, type) {
   if (typeof val === 'string') {
     const t = val.trim();
-    if (t && /^[^A-Za-z0-9]+$/.test(t)) {
+    if (t && /^[^\p{L}\p{N}]+$/u.test(t)) {
       return defaultValForType(type);
     }
   }

@@ -25,3 +25,8 @@ test('detectType ignores special character values', () => {
   const vals = ['-', '+', '123'];
   assert.equal(detectType('amount', vals), 'INT');
 });
+
+test('detectType handles Mongolian text as string', () => {
+  const vals = ['Монгол'];
+  assert.equal(detectType('desc', vals), 'VARCHAR(6)');
+});
