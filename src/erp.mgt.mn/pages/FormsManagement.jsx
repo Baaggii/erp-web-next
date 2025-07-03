@@ -52,12 +52,24 @@ export default function FormsManagement() {
 
     fetch('/api/tables/code_branches?perPage=500', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : { rows: [] }))
-      .then((data) => setBranches(data.rows || []))
+      .then((data) =>
+        setBranches(
+          (data.rows || data || []).filter(
+            (row) => row && typeof row === 'object' && row.id != null,
+          ),
+        ),
+      )
       .catch(() => setBranches([]));
 
     fetch('/api/tables/code_department?perPage=500', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : { rows: [] }))
-      .then((data) => setDepartments(data.rows || []))
+      .then((data) =>
+        setDepartments(
+          (data.rows || data || []).filter(
+            (row) => row && typeof row === 'object' && row.id != null,
+          ),
+        ),
+      )
       .catch(() => setDepartments([]));
 
     fetch('/api/tables/code_transaction?perPage=500', { credentials: 'include' })
@@ -279,10 +291,10 @@ export default function FormsManagement() {
 
   function changeViewSource(field, key, value) {
     setConfig((c) => {
-      const entry = c.viewSource[field] || { view: '', fields: [] };
+      const entry = c.viewSource[field] || { table: '', view: '' };
       const next = { ...entry, [key]: value };
       const vs = { ...c.viewSource };
-      if (!next.view && next.fields.length === 0) delete vs[field];
+      if (!next.table && !next.view) delete vs[field];
       else vs[field] = next;
       return { ...c, viewSource: vs };
     });
@@ -520,8 +532,8 @@ export default function FormsManagement() {
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Header</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Main</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Footer</th>
-                <th style={{ border: '1px solid #ccc', padding: '4px' }}>View</th>
-                <th style={{ border: '1px solid #ccc', padding: '4px' }}>View Fields</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>Table</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>View Table</th>
               </tr>
             </thead>
             <tbody>
@@ -657,24 +669,30 @@ export default function FormsManagement() {
                     />
                   </td>
                   <td style={{ border: '1px solid #ccc', padding: '4px' }}>
-                    <input
-                      type="text"
-                      value={config.viewSource[col]?.view || ''}
-                      onChange={(e) => changeViewSource(col, 'view', e.target.value)}
-                    />
+                    <select
+                      value={config.viewSource[col]?.table || ''}
+                      onChange={(e) => changeViewSource(col, 'table', e.target.value)}
+                    >
+                      <option value="">-- none --</option>
+                      {tables.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
                   </td>
                   <td style={{ border: '1px solid #ccc', padding: '4px' }}>
-                    <input
-                      type="text"
-                      value={(config.viewSource[col]?.fields || []).join(',')}
-                      onChange={(e) =>
-                        changeViewSource(
-                          col,
-                          'fields',
-                          e.target.value.split(',').map((v) => v.trim()).filter(Boolean),
-                        )
-                      }
-                    />
+                    <select
+                      value={config.viewSource[col]?.view || ''}
+                      onChange={(e) => changeViewSource(col, 'view', e.target.value)}
+                    >
+                      <option value="">-- none --</option>
+                      {tables.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
                   </td>
                 </tr>
               ))}
@@ -695,13 +713,27 @@ export default function FormsManagement() {
                   }))
                 }
               >
-                {branches.map((b) => (
+                {branches
+                  .filter((b) => b && typeof b === 'object' && b.id != null)
+                  .map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.code} - {b.name}
                   </option>
                 ))}
               </select>
-              <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedBranches: branches.map((b) => String(b.id)) }))}>All</button>
+              <button
+                type="button"
+                onClick={() =>
+                  setConfig((c) => ({
+                    ...c,
+                    allowedBranches: branches
+                      .filter((b) => b && typeof b === 'object' && b.id != null)
+                      .map((b) => String(b.id)),
+                  }))
+                }
+              >
+                All
+              </button>
               <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedBranches: [] }))}>None</button>
             </label>
             <label style={{ marginLeft: '1rem' }}>
@@ -717,13 +749,27 @@ export default function FormsManagement() {
                   }))
                 }
               >
-                {departments.map((d) => (
+                {departments
+                  .filter((d) => d && typeof d === 'object' && d.id != null)
+                  .map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.code} - {d.name}
                   </option>
                 ))}
               </select>
-              <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedDepartments: departments.map((d) => String(d.id)) }))}>All</button>
+              <button
+                type="button"
+                onClick={() =>
+                  setConfig((c) => ({
+                    ...c,
+                    allowedDepartments: departments
+                      .filter((d) => d && typeof d === 'object' && d.id != null)
+                      .map((d) => String(d.id)),
+                  }))
+                }
+              >
+                All
+              </button>
               <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedDepartments: [] }))}>None</button>
             </label>
           </div>
