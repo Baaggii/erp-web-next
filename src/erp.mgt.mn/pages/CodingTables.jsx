@@ -379,6 +379,16 @@ export default function CodingTablesPage() {
     return val;
   }
 
+  function normalizeSpecialChars(val, type) {
+    if (typeof val === 'string') {
+      const t = val.trim();
+      if (t && /^[^A-Za-z0-9]+$/.test(t)) {
+        return defaultValForType(type);
+      }
+    }
+    return val;
+  }
+
   function normalizeNumeric(val, type) {
     if (!type) return val;
     const t = String(type).toUpperCase();
@@ -398,7 +408,8 @@ export default function CodingTablesPage() {
     if (lower.includes('_per')) return 'DECIMAL(5,2)';
     if (lower.includes('date')) return 'DATE';
     for (const v of vals) {
-      const cleanV = normalizeExcelError(v);
+      let cleanV = normalizeExcelError(v);
+      cleanV = normalizeSpecialChars(cleanV);
       if (cleanV === undefined || cleanV === '') continue;
       const n = Number(cleanV);
       if (!Number.isNaN(n)) {
@@ -461,6 +472,7 @@ export default function CodingTablesPage() {
 
   function formatVal(val, type) {
     val = normalizeExcelError(val, type);
+    val = normalizeSpecialChars(val, type);
     if (typeof val === 'string' && val.trim() === '') {
       val = defaultValForType(type);
     }
@@ -799,6 +811,7 @@ export default function CodingTablesPage() {
     function resolvedValue(row, idx, field) {
       let v = idx === -1 ? undefined : row[idx];
       v = normalizeExcelError(v, colTypes[field]);
+      v = normalizeSpecialChars(v, colTypes[field]);
       if (typeof v === 'string' && v.trim() === '') {
         v = defaultValForType(colTypes[field]);
       }
@@ -953,6 +966,7 @@ export default function CodingTablesPage() {
             v = r[idx];
           }
           v = normalizeExcelError(v, colTypes[f]);
+          v = normalizeSpecialChars(v, colTypes[f]);
           if (typeof v === 'string' && v.trim() === '') {
             v = defaultValForType(colTypes[f]);
           }

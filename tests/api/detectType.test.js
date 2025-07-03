@@ -20,3 +20,8 @@ test('detectType ignores Excel error values', () => {
   const vals = ['#N/A', '#VALUE!', '123'];
   assert.equal(detectType('amount', vals), 'INT');
 });
+
+test('detectType ignores special character values', () => {
+  const vals = ['-', '+', '123'];
+  assert.equal(detectType('amount', vals), 'INT');
+});

@@ -48,6 +48,16 @@ function normalizeExcelError(val, type) {
   return val;
 }
 
+function normalizeSpecialChars(val, type) {
+  if (typeof val === 'string') {
+    const t = val.trim();
+    if (t && /^[^A-Za-z0-9]+$/.test(t)) {
+      return defaultValForType(type);
+    }
+  }
+  return val;
+}
+
 function normalizeNumeric(val, type) {
   if (!type) return val;
   const t = String(type).toUpperCase();
@@ -69,7 +79,8 @@ export function detectType(name, vals) {
   if (lower.includes('_per')) return 'DECIMAL(5,2)';
   if (lower.includes('date')) return 'DATE';
   for (const v of vals) {
-    const cleanV = normalizeExcelError(v);
+    let cleanV = normalizeExcelError(v);
+    cleanV = normalizeSpecialChars(cleanV);
     if (cleanV === undefined || cleanV === '') continue;
     const n = Number(cleanV);
     if (!Number.isNaN(n)) {
@@ -360,6 +371,7 @@ export async function uploadCodingTable(req, res, next) {
         placeholders.push('?');
         updates.push(`\`${dbNameCol}\` = VALUES(\`${dbNameCol}\`)`);
         let val = normalizeExcelError(nameVal, columnTypes[cleanNameCol]);
+        val = normalizeSpecialChars(val, columnTypes[cleanNameCol]);
         if (columnTypes[cleanNameCol] === 'DATE') {
           const d = parseExcelDate(val);
           val = d || null;
@@ -373,6 +385,7 @@ export async function uploadCodingTable(req, res, next) {
         cols.push(`\`${c}\``);
         placeholders.push('?');
         let val = normalizeExcelError(r[c], columnTypes[c]);
+        val = normalizeSpecialChars(val, columnTypes[c]);
         const blank =
           val === undefined ||
           val === null ||
@@ -398,6 +411,7 @@ export async function uploadCodingTable(req, res, next) {
         cols.push(`\`${c}\``);
         placeholders.push('?');
         let val = normalizeExcelError(r[c], columnTypes[c]);
+        val = normalizeSpecialChars(val, columnTypes[c]);
         const blank =
           val === undefined ||
           val === null ||
@@ -427,6 +441,7 @@ export async function uploadCodingTable(req, res, next) {
         cols.push(`\`${c}\``);
         placeholders.push('?');
         let val = normalizeExcelError(r[c], columnTypes[c]);
+        val = normalizeSpecialChars(val, columnTypes[c]);
         const blank =
           val === undefined ||
           val === null ||
