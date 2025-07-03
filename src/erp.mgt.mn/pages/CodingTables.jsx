@@ -39,7 +39,7 @@ export default function CodingTablesPage() {
   const [insertedCount, setInsertedCount] = useState(0);
   const [groupMessage, setGroupMessage] = useState('');
   const [groupByField, setGroupByField] = useState('');
-  const [groupSize, setGroupSize] = useState(5000);
+  const [groupSize, setGroupSize] = useState(100);
   const [columnTypes, setColumnTypes] = useState({});
   const [notNullMap, setNotNullMap] = useState({});
   const [allowZeroMap, setAllowZeroMap] = useState({});
@@ -61,6 +61,7 @@ export default function CodingTablesPage() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [configNames, setConfigNames] = useState([]);
   const interruptRef = useRef(false);
+  const abortCtrlRef = useRef(null);
 
   useEffect(() => {
     fetch('/api/coding_table_configs', { credentials: 'include' })
@@ -74,6 +75,7 @@ export default function CodingTablesPage() {
       if (e.key === 'Escape' && uploading) {
         if (window.confirm('Interrupt insert process?')) {
           interruptRef.current = true;
+          if (abortCtrlRef.current) abortCtrlRef.current.abort();
         }
       }
     }
@@ -360,7 +362,7 @@ export default function CodingTablesPage() {
 
   function removeSqlUnsafeChars(v) {
     if (typeof v !== 'string') return v;
-    return v.replace(/[\\/"']/g, '');
+    return v.replace(/[\\/"'\[\]]/g, '');
   }
 
   function escapeSqlValue(v) {
@@ -368,15 +370,39 @@ export default function CodingTablesPage() {
     return `'${String(sanitized).replace(/'/g, "''")}'`;
   }
 
+  const excelErrorRegex = /^#(?:N\/A|VALUE!?|DIV\/0!?|REF!?|NUM!?|NAME\??|NULL!?)/i;
+
+  function normalizeExcelError(val, type) {
+    if (typeof val === 'string' && excelErrorRegex.test(val.trim())) {
+      return defaultValForType(type);
+    }
+    return val;
+  }
+
+  function normalizeNumeric(val, type) {
+    if (!type) return val;
+    const t = String(type).toUpperCase();
+    if (/INT|DECIMAL|NUMERIC|DOUBLE|FLOAT|LONG|BIGINT|NUMBER/.test(t)) {
+      if (typeof val === 'string' && val.includes(',')) {
+        const replaced = val.replace(/,/g, '.');
+        const num = Number(replaced);
+        if (!Number.isNaN(num)) return num;
+        return replaced;
+      }
+    }
+    return val;
+  }
+
   function detectType(name, vals) {
     const lower = String(name).toLowerCase();
     if (lower.includes('_per')) return 'DECIMAL(5,2)';
     if (lower.includes('date')) return 'DATE';
     for (const v of vals) {
-      if (v === undefined || v === '') continue;
-      const n = Number(v);
+      const cleanV = normalizeExcelError(v);
+      if (cleanV === undefined || cleanV === '') continue;
+      const n = Number(cleanV);
       if (!Number.isNaN(n)) {
-        const str = String(v);
+        const str = String(cleanV);
         const digits = str.replace(/[-.]/g, '');
         if (digits.length > 8) break;
         if (str.includes('.')) return 'DECIMAL(10,2)';
@@ -401,6 +427,7 @@ export default function CodingTablesPage() {
       return base;
     }
     if (typeof val === 'string') {
+      if (val.includes(',')) val = val.replace(/,/g, '-');
       const m = val.match(/^(\d{4})[.-](\d{1,2})[.-](\d{1,2})$/);
       if (m) {
         const [, y, mo, d] = m;
@@ -433,13 +460,20 @@ export default function CodingTablesPage() {
   }
 
   function formatVal(val, type) {
+    val = normalizeExcelError(val, type);
+    if (typeof val === 'string' && val.trim() === '') {
+      val = defaultValForType(type);
+    }
     if (val === undefined || val === null || val === '') return 'NULL';
     if (type === 'DATE') {
       const d = parseExcelDate(val);
       if (!d) return 'NULL';
       return `'${d.toISOString().slice(0, 10)}'`;
     }
-    if (type === 'INT' || type.startsWith('DECIMAL')) return String(val);
+    val = normalizeNumeric(val, type);
+    if (/INT|DECIMAL|NUMERIC|DOUBLE|FLOAT|LONG|BIGINT|NUMBER/.test(String(type).toUpperCase())) {
+      return String(val);
+    }
     return escapeSqlValue(val);
   }
 
@@ -667,10 +701,12 @@ export default function CodingTablesPage() {
       .slice(idx + 1)
       .map((r) => [...keepIdx.map((ci) => r[ci]), ...Array(extra.length).fill(undefined)]);
     const allHdrs = [...hdrs, ...extra];
+    const errorDescIdx = allHdrs.length;
     const dbCols = {};
     allHdrs.forEach((h) => {
       dbCols[h] = cleanIdentifier(renameMap[h] || h);
     });
+    dbCols.error_description = 'error_description';
 
     const valuesByHeader = {};
     hdrs.forEach((h, i) => {
@@ -689,6 +725,8 @@ export default function CodingTablesPage() {
       localNotNull[h] =
         notNullMap[h] !== undefined ? notNullMap[h] : defNN;
     });
+    colTypes.error_description = 'VARCHAR(255)';
+    localNotNull.error_description = false;
 
     const cleanUnique = uniqueFields.map(cleanIdentifier);
     const cleanOther = otherColumns.map(cleanIdentifier);
@@ -760,6 +798,10 @@ export default function CodingTablesPage() {
 
     function resolvedValue(row, idx, field) {
       let v = idx === -1 ? undefined : row[idx];
+      v = normalizeExcelError(v, colTypes[field]);
+      if (typeof v === 'string' && v.trim() === '') {
+        v = defaultValForType(colTypes[field]);
+      }
       if (v === undefined || v === null || v === '') {
         const from = defaultFrom[field];
         if (from) {
@@ -788,24 +830,43 @@ export default function CodingTablesPage() {
       const isDup = key && seenKeys.has(key);
       if (key) seenKeys.add(key);
       if (isDup) {
-        dupRows.push(r);
+        const copy = [...r];
+        const colNames = uniqueOnly.map((c) => renameMap[c] || c).join(', ');
+        copy[errorDescIdx] = colNames ? `duplicate: ${colNames}` : 'duplicate';
+        dupRows.push(copy);
         dupList.push(key);
         return;
       }
-      const zeroInvalid = fieldsToCheck.some((f) => {
+      const invalidCols = [];
+      for (const f of fieldsToCheck) {
         const idxF = allHdrs.indexOf(f);
         const v = resolvedValue(r, idxF, f);
         const isZero =
           v === 0 || (typeof v === 'string' && v.trim() !== '' && Number(v) === 0);
-        if (isZero && !allowZeroMap[f]) return true;
-        if (localNotNull[f]) {
-          return v === undefined || v === null || v === '';
+        if (isZero && !allowZeroMap[f]) {
+          invalidCols.push(renameMap[f] || f);
+          continue;
         }
-        return false;
-      });
+        if (localNotNull[f] && (v === undefined || v === null || v === '')) {
+          invalidCols.push(renameMap[f] || f);
+        }
+      }
       const stateVal = stateIdx === -1 ? '1' : String(r[stateIdx]);
-      if (!zeroInvalid && stateVal === '1') mainRows.push(r);
-      else otherRows.push(r);
+      const reasons = [];
+      if (invalidCols.length > 0) {
+        reasons.push(`invalid value: ${invalidCols.join(', ')}`);
+      }
+      if (stateVal !== '1') {
+        const sCol = stateIdx === -1 ? '' : renameMap[allHdrs[stateIdx]] || allHdrs[stateIdx];
+        reasons.push(sCol ? `inactive state: ${sCol}` : 'inactive state');
+      }
+      if (reasons.length === 0) {
+        mainRows.push(r);
+      } else {
+        const copy = [...r];
+        copy[errorDescIdx] = reasons.join('; ');
+        otherRows.push(copy);
+      }
     });
     setDuplicateInfo(dupList.join('\n'));
     setDuplicateRecords(dupRows.map((r) => r.join(',')).join('\n'));
@@ -864,12 +925,17 @@ export default function CodingTablesPage() {
     }
     const defsNoUnique = defs.filter((d) => !d.trim().startsWith('UNIQUE KEY'));
 
-    function buildStructure(tableNameForSql, useUnique = true) {
-      const defArr = useUnique ? defs : defsNoUnique;
+    function buildStructure(
+      tableNameForSql,
+      useUnique = true,
+      includeError = false
+    ) {
+      const defArr = [...(useUnique ? defs : defsNoUnique)];
+      if (includeError) defArr.push('`error_description` VARCHAR(255)');
       return `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};\n`;
     }
 
-    function buildInsert(rows, tableNameForSql, fields, chunkLimit = 5000) {
+    function buildInsert(rows, tableNameForSql, fields, chunkLimit = 100) {
       if (!rows.length || !fields.length) return '';
       const cols = fields.map((f) => `\`${dbCols[f] || cleanIdentifier(renameMap[f] || f)}\``);
       const idxMap = fields.map((f) => allHdrs.indexOf(f));
@@ -880,7 +946,16 @@ export default function CodingTablesPage() {
         let hasData = false;
         const vals = idxMap.map((idx, i) => {
           const f = fields[i];
-          let v = idx === -1 ? undefined : r[idx];
+          let v;
+          if (idx === -1) {
+            v = f === 'error_description' ? r[errorDescIdx] : undefined;
+          } else {
+            v = r[idx];
+          }
+          v = normalizeExcelError(v, colTypes[f]);
+          if (typeof v === 'string' && v.trim() === '') {
+            v = defaultValForType(colTypes[f]);
+          }
           if (v === undefined || v === null || v === '') {
             const from = defaultFrom[f];
             if (from) {
@@ -925,7 +1000,7 @@ export default function CodingTablesPage() {
       tableNameForSql,
       fields,
       groupByFn,
-      chunkLimit = 5000
+      chunkLimit = 100
     ) {
       if (typeof groupByFn !== 'function') {
         return buildInsert(allRows, tableNameForSql, fields, chunkLimit);
@@ -968,17 +1043,18 @@ export default function CodingTablesPage() {
       tbl,
       fields,
       groupFn,
-      parseInt(groupSize, 10) || 5000
+      parseInt(groupSize, 10) || 100
     );
     const otherCombined = [...otherRows, ...dupRows];
-    const structOtherStr = buildStructure(`${tbl}_other`, false);
+    const structOtherStr = buildStructure(`${tbl}_other`, false, true);
     const fieldsWithoutId = fields.filter((f) => f !== idCol);
+    const fieldsOther = [...fieldsWithoutId, 'error_description'];
     const insertOtherStr = buildGroupedInsertSQL(
       otherCombined,
       `${tbl}_other`,
-      fieldsWithoutId,
+      fieldsOther,
       groupFn,
-      parseInt(groupSize, 10) || 5000
+      parseInt(groupSize, 10) || 100
     );
     if (structure) {
       const sqlStr = structMainStr + insertMainStr;
@@ -1052,6 +1128,7 @@ export default function CodingTablesPage() {
     let totalInserted = 0;
     const failedAll = [];
     interruptRef.current = false;
+    abortCtrlRef.current = new AbortController();
     for (let i = 0; i < statements.length; i++) {
       if (interruptRef.current) break;
       let stmt = statements[i];
@@ -1076,12 +1153,22 @@ export default function CodingTablesPage() {
             : `Statement ${i + 1}/${statements.length}`
         );
       }
-      const res = await fetch('/api/generated_sql/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql: stmt }),
-        credentials: 'include',
-      });
+      let res;
+      try {
+        res = await fetch('/api/generated_sql/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql: stmt }),
+          credentials: 'include',
+          signal: abortCtrlRef.current.signal,
+        });
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          return { inserted: totalInserted, failed: failedAll, aborted: true };
+        }
+        alert('Execution failed');
+        return { inserted: totalInserted, failed: failedAll, aborted: true };
+      }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         alert(data.message || 'Execution failed');
@@ -1105,6 +1192,7 @@ export default function CodingTablesPage() {
       }
     }
     setGroupMessage('');
+    abortCtrlRef.current = null;
     return { inserted: totalInserted, failed: failedAll, aborted: interruptRef.current };
   }
 
@@ -1469,7 +1557,7 @@ export default function CodingTablesPage() {
   }, [allFields, idFilterMode, notNullMap, renameMap]);
 
   useEffect(() => {
-    if (!tableName) return;
+    if (!tableName || !configNames.includes(tableName)) return;
     fetch(`/api/coding_table_configs?table=${encodeURIComponent(tableName)}`, {
       credentials: 'include',
     })
@@ -1547,7 +1635,7 @@ export default function CodingTablesPage() {
         setAutoIncStart(cfg.autoIncStart ?? '1');
       })
       .catch(() => {});
-  }, [tableName]);
+  }, [tableName, configNames]);
 
   return (
     <div>

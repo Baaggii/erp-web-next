@@ -20,6 +20,7 @@ function parseExcelDate(val) {
     return base;
   }
   if (typeof val === 'string') {
+    if (val.includes(',')) val = val.replace(/,/g, '-');
     const m = val.match(/^(\d{4})[.-](\d{1,2})[.-](\d{1,2})$/);
     if (m) {
       const [, y, mo, d] = m;
@@ -33,7 +34,32 @@ function parseExcelDate(val) {
 
 function sanitizeValue(val) {
   if (typeof val === 'string') {
-    return val.replace(/[\\/"']/g, '');
+    return val.replace(/[\\/"'\[\]]/g, '');
+  }
+  return val;
+}
+
+const excelErrorRegex = /^#(?:N\/A|VALUE!?|DIV\/0!?|REF!?|NUM!?|NAME\??|NULL!?)/i;
+
+function normalizeExcelError(val, type) {
+  if (typeof val === 'string' && excelErrorRegex.test(val.trim())) {
+    return defaultValForType(type);
+  }
+  return val;
+}
+
+function normalizeNumeric(val, type) {
+  if (!type) return val;
+  const t = String(type).toUpperCase();
+  if (/INT|DECIMAL|NUMERIC|DOUBLE|FLOAT|LONG|BIGINT|NUMBER/.test(t)) {
+    if (typeof val === 'string' && val.includes(',')) {
+      const replaced = val.replace(/,/g, '.');
+      const num = Number(replaced);
+      if (!Number.isNaN(num)) {
+        return num;
+      }
+      return replaced;
+    }
   }
   return val;
 }
@@ -43,10 +69,11 @@ export function detectType(name, vals) {
   if (lower.includes('_per')) return 'DECIMAL(5,2)';
   if (lower.includes('date')) return 'DATE';
   for (const v of vals) {
-    if (v === undefined || v === '') continue;
-    const n = Number(v);
+    const cleanV = normalizeExcelError(v);
+    if (cleanV === undefined || cleanV === '') continue;
+    const n = Number(cleanV);
     if (!Number.isNaN(n)) {
-      const str = String(v);
+      const str = String(cleanV);
       const digits = str.replace(/[-.]/g, '');
       if (digits.length > 8) break;
       if (str.includes('.')) return 'DECIMAL(10,2)';
@@ -322,15 +349,22 @@ export async function uploadCodingTable(req, res, next) {
       let hasData = false;
       if (cleanNameCol) {
         const nameVal = r[cleanNameCol];
-        if (nameVal === undefined || nameVal === null || nameVal === '') continue;
+        if (
+          nameVal === undefined ||
+          nameVal === null ||
+          nameVal === '' ||
+          (typeof nameVal === 'string' && nameVal.trim() === '')
+        )
+          continue;
         cols.push(`\`${dbNameCol}\``);
         placeholders.push('?');
         updates.push(`\`${dbNameCol}\` = VALUES(\`${dbNameCol}\`)`);
-        let val = nameVal;
+        let val = normalizeExcelError(nameVal, columnTypes[cleanNameCol]);
         if (columnTypes[cleanNameCol] === 'DATE') {
           const d = parseExcelDate(val);
           val = d || null;
         }
+        val = normalizeNumeric(val, columnTypes[cleanNameCol]);
         val = sanitizeValue(val);
         values.push(val);
         hasData = true;
@@ -338,9 +372,13 @@ export async function uploadCodingTable(req, res, next) {
       for (const c of cleanUniqueOnly) {
         cols.push(`\`${c}\``);
         placeholders.push('?');
-        let val = r[c];
+        let val = normalizeExcelError(r[c], columnTypes[c]);
         const blank =
-          val === undefined || val === null || val === '' || val === 0;
+          val === undefined ||
+          val === null ||
+          val === '' ||
+          (typeof val === 'string' && val.trim() === '') ||
+          val === 0;
         if (blank) {
           val =
             defaultValues[c] !== undefined && defaultValues[c] !== ''
@@ -350,6 +388,7 @@ export async function uploadCodingTable(req, res, next) {
           const d = parseExcelDate(val);
           val = d || null;
         }
+        val = normalizeNumeric(val, columnTypes[c]);
         val = sanitizeValue(val);
         values.push(val);
         updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
@@ -358,9 +397,13 @@ export async function uploadCodingTable(req, res, next) {
       for (const c of cleanExtraFiltered) {
         cols.push(`\`${c}\``);
         placeholders.push('?');
-        let val = r[c];
+        let val = normalizeExcelError(r[c], columnTypes[c]);
         const blank =
-          val === undefined || val === null || val === '' || val === 0;
+          val === undefined ||
+          val === null ||
+          val === '' ||
+          (typeof val === 'string' && val.trim() === '') ||
+          val === 0;
         if (blank) {
           if (defaultValues[c] !== undefined && defaultValues[c] !== '') {
             val = defaultValues[c];
@@ -375,6 +418,7 @@ export async function uploadCodingTable(req, res, next) {
         }
         if (val !== undefined && val !== null && val !== '' && val !== 0)
           hasData = true;
+        val = normalizeNumeric(val, columnTypes[c]);
         val = sanitizeValue(val);
         values.push(val);
         updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
@@ -382,9 +426,13 @@ export async function uploadCodingTable(req, res, next) {
       for (const c of cleanExtraFieldsFiltered) {
         cols.push(`\`${c}\``);
         placeholders.push('?');
-        let val = r[c];
+        let val = normalizeExcelError(r[c], columnTypes[c]);
         const blank =
-          val === undefined || val === null || val === '' || val === 0;
+          val === undefined ||
+          val === null ||
+          val === '' ||
+          (typeof val === 'string' && val.trim() === '') ||
+          val === 0;
         if (blank) {
           if (defaultValues[c] !== undefined && defaultValues[c] !== '') {
             val = defaultValues[c];
@@ -399,6 +447,7 @@ export async function uploadCodingTable(req, res, next) {
         }
         if (val !== undefined && val !== null && val !== '' && val !== 0)
           hasData = true;
+        val = normalizeNumeric(val, columnTypes[c]);
         val = sanitizeValue(val);
         values.push(val);
         updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
