@@ -39,7 +39,7 @@ export default function CodingTablesPage() {
   const [insertedCount, setInsertedCount] = useState(0);
   const [groupMessage, setGroupMessage] = useState('');
   const [groupByField, setGroupByField] = useState('');
-  const [groupSize, setGroupSize] = useState(5000);
+  const [groupSize, setGroupSize] = useState(100);
   const [columnTypes, setColumnTypes] = useState({});
   const [notNullMap, setNotNullMap] = useState({});
   const [allowZeroMap, setAllowZeroMap] = useState({});
@@ -889,7 +889,7 @@ export default function CodingTablesPage() {
       return `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};\n`;
     }
 
-    function buildInsert(rows, tableNameForSql, fields, chunkLimit = 5000) {
+    function buildInsert(rows, tableNameForSql, fields, chunkLimit = 100) {
       if (!rows.length || !fields.length) return '';
       const cols = fields.map((f) => `\`${dbCols[f] || cleanIdentifier(renameMap[f] || f)}\``);
       const idxMap = fields.map((f) => allHdrs.indexOf(f));
@@ -945,7 +945,7 @@ export default function CodingTablesPage() {
       tableNameForSql,
       fields,
       groupByFn,
-      chunkLimit = 5000
+      chunkLimit = 100
     ) {
       if (typeof groupByFn !== 'function') {
         return buildInsert(allRows, tableNameForSql, fields, chunkLimit);
@@ -988,7 +988,7 @@ export default function CodingTablesPage() {
       tbl,
       fields,
       groupFn,
-      parseInt(groupSize, 10) || 5000
+      parseInt(groupSize, 10) || 100
     );
     const otherCombined = [...otherRows, ...dupRows];
     const structOtherStr = buildStructure(`${tbl}_other`, false);
@@ -998,7 +998,7 @@ export default function CodingTablesPage() {
       `${tbl}_other`,
       fieldsWithoutId,
       groupFn,
-      parseInt(groupSize, 10) || 5000
+      parseInt(groupSize, 10) || 100
     );
     if (structure) {
       const sqlStr = structMainStr + insertMainStr;
@@ -1501,7 +1501,7 @@ export default function CodingTablesPage() {
   }, [allFields, idFilterMode, notNullMap, renameMap]);
 
   useEffect(() => {
-    if (!tableName) return;
+    if (!tableName || !configNames.includes(tableName)) return;
     fetch(`/api/coding_table_configs?table=${encodeURIComponent(tableName)}`, {
       credentials: 'include',
     })
@@ -1579,7 +1579,7 @@ export default function CodingTablesPage() {
         setAutoIncStart(cfg.autoIncStart ?? '1');
       })
       .catch(() => {});
-  }, [tableName]);
+  }, [tableName, configNames]);
 
   return (
     <div>
