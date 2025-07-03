@@ -241,10 +241,9 @@ const RowFormModal = function RowFormModal({
       }
       const rows = tableRef.current.getRows();
       const cleanedRows = [];
-      const rowIndices = [];
       let hasMissing = false;
       let hasInvalid = false;
-      rows.forEach((r, idx) => {
+      rows.forEach((r) => {
         const hasValue = Object.values(r).some((v) => {
           if (v === null || v === undefined || v === '') return false;
           if (typeof v === 'object' && 'value' in v) return v.value !== '';
@@ -277,7 +276,6 @@ const RowFormModal = function RowFormModal({
           if (ph && !isValidDate(normalized[f], ph)) hasInvalid = true;
         });
         cleanedRows.push(normalized);
-        rowIndices.push(idx);
       });
 
       if (hasMissing) {
@@ -297,21 +295,18 @@ const RowFormModal = function RowFormModal({
       }
 
       {
-        const failedRows = [];
-        for (let i = 0; i < cleanedRows.length; i++) {
-          const r = cleanedRows[i];
+        let allOk = true;
+        for (const r of cleanedRows) {
           try {
             const res = await Promise.resolve(onSubmit(r));
-            if (res === false) failedRows.push(rows[rowIndices[i]]);
+            if (res === false) allOk = false;
           } catch (err) {
             console.error('Submit failed', err);
-            failedRows.push(rows[rowIndices[i]]);
+            allOk = false;
           }
         }
-        if (failedRows.length === 0) {
+        if (allOk) {
           tableRef.current.clearRows();
-        } else if (tableRef.current.replaceRows) {
-          tableRef.current.replaceRows(failedRows);
         }
       }
       setSubmitLocked(false);

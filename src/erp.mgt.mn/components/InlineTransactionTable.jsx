@@ -138,62 +138,31 @@ export default forwardRef(function InlineTransactionTable({
         onRowsChange(next);
         return next;
       }),
-    replaceRows: (newRows) =>
-      setRows(() => {
-        const next = Array.isArray(newRows) ? newRows : [];
-        onRowsChange(next);
-        return next;
-      }),
     hasInvalid: () => invalidCell !== null,
   }));
 
   function addRow() {
     if (requiredFields.length > 0 && rows.length > 0) {
       const prev = rows[rows.length - 1];
-      for (const f of fields) {
+      for (const f of requiredFields) {
         let val = prev[f];
         if (placeholders[f]) {
           val = normalizeDateInput(val, placeholders[f]);
         }
-        if (totalCurrencySet.has(f) || totalAmountSet.has(f)) {
+        if (totalCurrencySet.has(f)) {
           val = normalizeNumberInput(val);
         }
-        if (requiredFields.includes(f)) {
-          if (val === '' || val === null || val === undefined) {
-            setErrorMsg(
-              `Шинэ мөр нэмэхийн өмнө ${labels[f] || f} талбарыг бөглөнө үү.`,
-            );
-            setInvalidCell({ row: rows.length - 1, field: f });
-            const el = inputRefs.current[`${rows.length - 1}-${fields.indexOf(f)}`];
-            if (el) {
-              el.focus();
-              if (el.select) el.select();
-            }
-            return;
+        if (val === '' || val === null || val === undefined) {
+          setErrorMsg(
+            `Шинэ мөр нэмэхийн өмнө ${labels[f] || f} талбарыг бөглөнө үү.`,
+          );
+          setInvalidCell({ row: rows.length - 1, field: f });
+          const el = inputRefs.current[`${rows.length - 1}-${fields.indexOf(f)}`];
+          if (el) {
+            el.focus();
+            if (el.select) el.select();
           }
-        }
-        if (val !== '' && val !== null && val !== undefined) {
-          if ((totalCurrencySet.has(f) || totalAmountSet.has(f)) && isNaN(Number(val))) {
-            setErrorMsg((labels[f] || f) + ' талбарт буруу тоо байна');
-            setInvalidCell({ row: rows.length - 1, field: f });
-            const el = inputRefs.current[`${rows.length - 1}-${fields.indexOf(f)}`];
-            if (el) {
-              el.focus();
-              if (el.select) el.select();
-            }
-            return;
-          }
-          const ph = placeholders[f];
-          if (ph && !isValidDate(val, ph)) {
-            setErrorMsg((labels[f] || f) + ' талбарт буруу огноо байна');
-            setInvalidCell({ row: rows.length - 1, field: f });
-            const el = inputRefs.current[`${rows.length - 1}-${fields.indexOf(f)}`];
-            if (el) {
-              el.focus();
-              if (el.select) el.select();
-            }
-            return;
-          }
+          return;
         }
       }
     }
