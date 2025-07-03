@@ -370,6 +370,15 @@ export default function CodingTablesPage() {
     return `'${String(sanitized).replace(/'/g, "''")}'`;
   }
 
+  const excelErrorRegex = /^#(?:N\/A|VALUE!?|DIV\/0!?|REF!?|NUM!?|NAME\??|NULL!?)/i;
+
+  function normalizeExcelError(val, type) {
+    if (typeof val === 'string' && excelErrorRegex.test(val.trim())) {
+      return defaultValForType(type);
+    }
+    return val;
+  }
+
   function normalizeNumeric(val, type) {
     if (!type) return val;
     const t = String(type).toUpperCase();
@@ -389,10 +398,11 @@ export default function CodingTablesPage() {
     if (lower.includes('_per')) return 'DECIMAL(5,2)';
     if (lower.includes('date')) return 'DATE';
     for (const v of vals) {
-      if (v === undefined || v === '') continue;
-      const n = Number(v);
+      const cleanV = normalizeExcelError(v);
+      if (cleanV === undefined || cleanV === '') continue;
+      const n = Number(cleanV);
       if (!Number.isNaN(n)) {
-        const str = String(v);
+        const str = String(cleanV);
         const digits = str.replace(/[-.]/g, '');
         if (digits.length > 8) break;
         if (str.includes('.')) return 'DECIMAL(10,2)';
@@ -450,6 +460,7 @@ export default function CodingTablesPage() {
   }
 
   function formatVal(val, type) {
+    val = normalizeExcelError(val, type);
     if (typeof val === 'string' && val.trim() === '') {
       val = defaultValForType(type);
     }
@@ -787,6 +798,7 @@ export default function CodingTablesPage() {
 
     function resolvedValue(row, idx, field) {
       let v = idx === -1 ? undefined : row[idx];
+      v = normalizeExcelError(v, colTypes[field]);
       if (typeof v === 'string' && v.trim() === '') {
         v = defaultValForType(colTypes[field]);
       }
@@ -940,6 +952,7 @@ export default function CodingTablesPage() {
           } else {
             v = r[idx];
           }
+          v = normalizeExcelError(v, colTypes[f]);
           if (typeof v === 'string' && v.trim() === '') {
             v = defaultValForType(colTypes[f]);
           }

@@ -39,6 +39,15 @@ function sanitizeValue(val) {
   return val;
 }
 
+const excelErrorRegex = /^#(?:N\/A|VALUE!?|DIV\/0!?|REF!?|NUM!?|NAME\??|NULL!?)/i;
+
+function normalizeExcelError(val, type) {
+  if (typeof val === 'string' && excelErrorRegex.test(val.trim())) {
+    return defaultValForType(type);
+  }
+  return val;
+}
+
 function normalizeNumeric(val, type) {
   if (!type) return val;
   const t = String(type).toUpperCase();
@@ -60,10 +69,11 @@ export function detectType(name, vals) {
   if (lower.includes('_per')) return 'DECIMAL(5,2)';
   if (lower.includes('date')) return 'DATE';
   for (const v of vals) {
-    if (v === undefined || v === '') continue;
-    const n = Number(v);
+    const cleanV = normalizeExcelError(v);
+    if (cleanV === undefined || cleanV === '') continue;
+    const n = Number(cleanV);
     if (!Number.isNaN(n)) {
-      const str = String(v);
+      const str = String(cleanV);
       const digits = str.replace(/[-.]/g, '');
       if (digits.length > 8) break;
       if (str.includes('.')) return 'DECIMAL(10,2)';
@@ -349,7 +359,7 @@ export async function uploadCodingTable(req, res, next) {
         cols.push(`\`${dbNameCol}\``);
         placeholders.push('?');
         updates.push(`\`${dbNameCol}\` = VALUES(\`${dbNameCol}\`)`);
-        let val = nameVal;
+        let val = normalizeExcelError(nameVal, columnTypes[cleanNameCol]);
         if (columnTypes[cleanNameCol] === 'DATE') {
           const d = parseExcelDate(val);
           val = d || null;
@@ -362,7 +372,7 @@ export async function uploadCodingTable(req, res, next) {
       for (const c of cleanUniqueOnly) {
         cols.push(`\`${c}\``);
         placeholders.push('?');
-        let val = r[c];
+        let val = normalizeExcelError(r[c], columnTypes[c]);
         const blank =
           val === undefined ||
           val === null ||
@@ -387,7 +397,7 @@ export async function uploadCodingTable(req, res, next) {
       for (const c of cleanExtraFiltered) {
         cols.push(`\`${c}\``);
         placeholders.push('?');
-        let val = r[c];
+        let val = normalizeExcelError(r[c], columnTypes[c]);
         const blank =
           val === undefined ||
           val === null ||
@@ -416,7 +426,7 @@ export async function uploadCodingTable(req, res, next) {
       for (const c of cleanExtraFieldsFiltered) {
         cols.push(`\`${c}\``);
         placeholders.push('?');
-        let val = r[c];
+        let val = normalizeExcelError(r[c], columnTypes[c]);
         const blank =
           val === undefined ||
           val === null ||
