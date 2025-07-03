@@ -37,6 +37,7 @@ export default function CodingTablesPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
   const [insertedCount, setInsertedCount] = useState(0);
+  const [groupMessage, setGroupMessage] = useState('');
   const [columnTypes, setColumnTypes] = useState({});
   const [notNullMap, setNotNullMap] = useState({});
   const [allowZeroMap, setAllowZeroMap] = useState({});
@@ -999,12 +1000,25 @@ export default function CodingTablesPage() {
   async function runStatements(statements) {
     setUploadProgress({ done: 0, total: statements.length });
     setInsertedCount(0);
+    setGroupMessage(
+      statements.length > 0 ? `Statement 1/${statements.length}` : ''
+    );
     let totalInserted = 0;
     const failedAll = [];
     interruptRef.current = false;
     for (let i = 0; i < statements.length; i++) {
       if (interruptRef.current) break;
       const stmt = statements[i];
+      const valMatch = stmt.match(/VALUES\s+(.+?)(?:ON DUPLICATE|;)/is);
+      let rowCount = 0;
+      if (valMatch) {
+        rowCount = valMatch[1].split(/\),\s*\(/).length;
+      }
+      setGroupMessage(
+        rowCount > 0
+          ? `Group ${i + 1}/${statements.length} (${rowCount} records)`
+          : `Statement ${i + 1}/${statements.length}`
+      );
       const res = await fetch('/api/generated_sql/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1030,6 +1044,7 @@ export default function CodingTablesPage() {
       addToast(`Inserted ${totalInserted} records`, 'info');
       setUploadProgress({ done: i + 1, total: statements.length });
     }
+    setGroupMessage('');
     return { inserted: totalInserted, failed: failedAll, aborted: interruptRef.current };
   }
 
@@ -1956,7 +1971,11 @@ export default function CodingTablesPage() {
               )}
               {uploading && (
                 <div style={{ marginTop: '1rem' }}>
-                  <progress value={uploadProgress.done} max={uploadProgress.total || 1} /> Creating table...
+                  <progress
+                    value={uploadProgress.done}
+                    max={uploadProgress.total || 1}
+                  />{' '}
+                  {groupMessage || 'Creating table...'}
                 </div>
               )}
             </>
