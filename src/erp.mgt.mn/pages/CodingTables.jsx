@@ -687,10 +687,12 @@ export default function CodingTablesPage() {
       .slice(idx + 1)
       .map((r) => [...keepIdx.map((ci) => r[ci]), ...Array(extra.length).fill(undefined)]);
     const allHdrs = [...hdrs, ...extra];
+    const errorDescIdx = allHdrs.length;
     const dbCols = {};
     allHdrs.forEach((h) => {
       dbCols[h] = cleanIdentifier(renameMap[h] || h);
     });
+    dbCols.error_description = 'error_description';
 
     const valuesByHeader = {};
     hdrs.forEach((h, i) => {
@@ -709,6 +711,8 @@ export default function CodingTablesPage() {
       localNotNull[h] =
         notNullMap[h] !== undefined ? notNullMap[h] : defNN;
     });
+    colTypes.error_description = 'VARCHAR(255)';
+    localNotNull.error_description = false;
 
     const cleanUnique = uniqueFields.map(cleanIdentifier);
     const cleanOther = otherColumns.map(cleanIdentifier);
@@ -808,7 +812,9 @@ export default function CodingTablesPage() {
       const isDup = key && seenKeys.has(key);
       if (key) seenKeys.add(key);
       if (isDup) {
-        dupRows.push(r);
+        const copy = [...r];
+        copy[errorDescIdx] = 'duplicate';
+        dupRows.push(copy);
         dupList.push(key);
         return;
       }
@@ -824,8 +830,16 @@ export default function CodingTablesPage() {
         return false;
       });
       const stateVal = stateIdx === -1 ? '1' : String(r[stateIdx]);
-      if (!zeroInvalid && stateVal === '1') mainRows.push(r);
-      else otherRows.push(r);
+      const reasons = [];
+      if (zeroInvalid) reasons.push('invalid value');
+      if (stateVal !== '1') reasons.push('inactive state');
+      if (reasons.length === 0) {
+        mainRows.push(r);
+      } else {
+        const copy = [...r];
+        copy[errorDescIdx] = reasons.join('; ');
+        otherRows.push(copy);
+      }
     });
     setDuplicateInfo(dupList.join('\n'));
     setDuplicateRecords(dupRows.map((r) => r.join(',')).join('\n'));
@@ -884,8 +898,13 @@ export default function CodingTablesPage() {
     }
     const defsNoUnique = defs.filter((d) => !d.trim().startsWith('UNIQUE KEY'));
 
-    function buildStructure(tableNameForSql, useUnique = true) {
-      const defArr = useUnique ? defs : defsNoUnique;
+    function buildStructure(
+      tableNameForSql,
+      useUnique = true,
+      includeError = false
+    ) {
+      const defArr = [...(useUnique ? defs : defsNoUnique)];
+      if (includeError) defArr.push('`error_description` VARCHAR(255)');
       return `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};\n`;
     }
 
@@ -900,7 +919,12 @@ export default function CodingTablesPage() {
         let hasData = false;
         const vals = idxMap.map((idx, i) => {
           const f = fields[i];
-          let v = idx === -1 ? undefined : r[idx];
+          let v;
+          if (idx === -1) {
+            v = f === 'error_description' ? r[errorDescIdx] : undefined;
+          } else {
+            v = r[idx];
+          }
           if (v === undefined || v === null || v === '') {
             const from = defaultFrom[f];
             if (from) {
@@ -991,12 +1015,13 @@ export default function CodingTablesPage() {
       parseInt(groupSize, 10) || 100
     );
     const otherCombined = [...otherRows, ...dupRows];
-    const structOtherStr = buildStructure(`${tbl}_other`, false);
+    const structOtherStr = buildStructure(`${tbl}_other`, false, true);
     const fieldsWithoutId = fields.filter((f) => f !== idCol);
+    const fieldsOther = [...fieldsWithoutId, 'error_description'];
     const insertOtherStr = buildGroupedInsertSQL(
       otherCombined,
       `${tbl}_other`,
-      fieldsWithoutId,
+      fieldsOther,
       groupFn,
       parseInt(groupSize, 10) || 100
     );
