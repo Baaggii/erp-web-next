@@ -38,6 +38,7 @@ export default function CodingTablesPage() {
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
   const [insertedCount, setInsertedCount] = useState(0);
   const [groupMessage, setGroupMessage] = useState('');
+  const [groupByField, setGroupByField] = useState('');
   const [columnTypes, setColumnTypes] = useState({});
   const [notNullMap, setNotNullMap] = useState({});
   const [allowZeroMap, setAllowZeroMap] = useState({});
@@ -918,6 +919,26 @@ export default function CodingTablesPage() {
       return parts.join('\n');
     }
 
+    function buildGroupedInsertSQL(allRows, tableNameForSql, fields, groupByFn) {
+      if (typeof groupByFn !== 'function') {
+        return buildInsert(allRows, tableNameForSql, fields);
+      }
+      const grouped = {};
+      for (const row of allRows) {
+        const key = String(groupByFn(row) ?? '');
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(row);
+      }
+      const keys = Object.keys(grouped);
+      const parts = [];
+      for (let i = 0; i < keys.length; i++) {
+        const key = keys[i];
+        parts.push(`-- Progress: Group ${i + 1} of ${keys.length} (${key})`);
+        parts.push(buildInsert(grouped[key], tableNameForSql, fields));
+      }
+      return parts.filter(Boolean).join('\n');
+    }
+
     let fields = [
       ...(nmCol ? [nmCol] : []),
       ...uniqueOnly,
@@ -933,14 +954,22 @@ export default function CodingTablesPage() {
     });
 
     const structMainStr = buildStructure(tbl, true);
-    const insertMainStr = buildInsert(mainRows, tbl, fields);
+    const groupIdx = allHdrs.indexOf(groupByField);
+    const groupFn = groupIdx === -1 ? null : (row) => row[groupIdx];
+    const insertMainStr = buildGroupedInsertSQL(
+      mainRows,
+      tbl,
+      fields,
+      groupFn
+    );
     const otherCombined = [...otherRows, ...dupRows];
     const structOtherStr = buildStructure(`${tbl}_other`, false);
     const fieldsWithoutId = fields.filter((f) => f !== idCol);
-    const insertOtherStr = buildInsert(
+    const insertOtherStr = buildGroupedInsertSQL(
       otherCombined,
       `${tbl}_other`,
-      fieldsWithoutId
+      fieldsWithoutId,
+      groupFn
     );
     if (structure) {
       const sqlStr = structMainStr + insertMainStr;
@@ -1008,17 +1037,28 @@ export default function CodingTablesPage() {
     interruptRef.current = false;
     for (let i = 0; i < statements.length; i++) {
       if (interruptRef.current) break;
-      const stmt = statements[i];
+      let stmt = statements[i];
+      const progressMatch = stmt.match(/^--\s*Progress:\s*(.*)\n/);
+      if (progressMatch) {
+        setGroupMessage(progressMatch[1]);
+        stmt = stmt.slice(progressMatch[0].length).trim();
+        if (!stmt) {
+          setUploadProgress({ done: i + 1, total: statements.length });
+          continue;
+        }
+      }
       const valMatch = stmt.match(/VALUES\s+(.+?)(?:ON DUPLICATE|;)/is);
       let rowCount = 0;
       if (valMatch) {
         rowCount = valMatch[1].split(/\),\s*\(/).length;
       }
-      setGroupMessage(
-        rowCount > 0
-          ? `Group ${i + 1}/${statements.length} (${rowCount} records)`
-          : `Statement ${i + 1}/${statements.length}`
-      );
+      if (!progressMatch) {
+        setGroupMessage(
+          rowCount > 0
+            ? `Group ${i + 1}/${statements.length} (${rowCount} records)`
+            : `Statement ${i + 1}/${statements.length}`
+        );
+      }
       const res = await fetch('/api/generated_sql/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1043,6 +1083,9 @@ export default function CodingTablesPage() {
       setInsertedCount(totalInserted);
       addToast(`Inserted ${totalInserted} records`, 'info');
       setUploadProgress({ done: i + 1, total: statements.length });
+      if (i < statements.length - 1) {
+        await new Promise((r) => setTimeout(r, 250));
+      }
     }
     setGroupMessage('');
     return { inserted: totalInserted, failed: failedAll, aborted: interruptRef.current };
@@ -1785,6 +1828,17 @@ export default function CodingTablesPage() {
                     </label>
                   ))}
                 </div>
+              </div>
+              <div>
+                Group By Column:
+                <select value={groupByField} onChange={(e) => setGroupByField(e.target.value)}>
+                  <option value="">--none--</option>
+                  {allFields.map((h) => (
+                    <option key={h} value={h}>
+                      {renameMap[h] || h}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 Column Types:
