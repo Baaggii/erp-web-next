@@ -52,12 +52,12 @@ export default function FormsManagement() {
 
     fetch('/api/tables/code_branches?perPage=500', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : { rows: [] }))
-      .then((data) => setBranches(data.rows || []))
+      .then((data) => setBranches((data.rows || data || []).filter(Boolean)))
       .catch(() => setBranches([]));
 
     fetch('/api/tables/code_department?perPage=500', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : { rows: [] }))
-      .then((data) => setDepartments(data.rows || []))
+      .then((data) => setDepartments((data.rows || data || []).filter(Boolean)))
       .catch(() => setDepartments([]));
 
     fetch('/api/tables/code_transaction?perPage=500', { credentials: 'include' })
@@ -701,13 +701,25 @@ export default function FormsManagement() {
                   }))
                 }
               >
-                {branches.map((b) => (
+                {branches.filter(Boolean).map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.code} - {b.name}
                   </option>
                 ))}
               </select>
-              <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedBranches: branches.map((b) => String(b.id)) }))}>All</button>
+              <button
+                type="button"
+                onClick={() =>
+                  setConfig((c) => ({
+                    ...c,
+                    allowedBranches: branches
+                      .filter(Boolean)
+                      .map((b) => String(b.id)),
+                  }))
+                }
+              >
+                All
+              </button>
               <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedBranches: [] }))}>None</button>
             </label>
             <label style={{ marginLeft: '1rem' }}>
@@ -723,13 +735,25 @@ export default function FormsManagement() {
                   }))
                 }
               >
-                {departments.map((d) => (
+                {departments.filter(Boolean).map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.code} - {d.name}
                   </option>
                 ))}
               </select>
-              <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedDepartments: departments.map((d) => String(d.id)) }))}>All</button>
+              <button
+                type="button"
+                onClick={() =>
+                  setConfig((c) => ({
+                    ...c,
+                    allowedDepartments: departments
+                      .filter(Boolean)
+                      .map((d) => String(d.id)),
+                  }))
+                }
+              >
+                All
+              </button>
               <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedDepartments: [] }))}>None</button>
             </label>
           </div>
