@@ -52,12 +52,24 @@ export default function FormsManagement() {
 
     fetch('/api/tables/code_branches?perPage=500', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : { rows: [] }))
-      .then((data) => setBranches((data.rows || data || []).filter(Boolean)))
+      .then((data) =>
+        setBranches(
+          (data.rows || data || []).filter(
+            (row) => row && row.id != null,
+          ),
+        ),
+      )
       .catch(() => setBranches([]));
 
     fetch('/api/tables/code_department?perPage=500', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : { rows: [] }))
-      .then((data) => setDepartments((data.rows || data || []).filter(Boolean)))
+      .then((data) =>
+        setDepartments(
+          (data.rows || data || []).filter(
+            (row) => row && row.id != null,
+          ),
+        ),
+      )
       .catch(() => setDepartments([]));
 
     fetch('/api/tables/code_transaction?perPage=500', { credentials: 'include' })
@@ -701,7 +713,7 @@ export default function FormsManagement() {
                   }))
                 }
               >
-                {branches.filter(Boolean).map((b) => (
+                {branches.filter((b) => b && b.id != null).map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.code} - {b.name}
                   </option>
@@ -713,7 +725,7 @@ export default function FormsManagement() {
                   setConfig((c) => ({
                     ...c,
                     allowedBranches: branches
-                      .filter(Boolean)
+                      .filter((b) => b && b.id != null)
                       .map((b) => String(b.id)),
                   }))
                 }
@@ -735,7 +747,7 @@ export default function FormsManagement() {
                   }))
                 }
               >
-                {departments.filter(Boolean).map((d) => (
+                {departments.filter((d) => d && d.id != null).map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.code} - {d.name}
                   </option>
@@ -747,7 +759,7 @@ export default function FormsManagement() {
                   setConfig((c) => ({
                     ...c,
                     allowedDepartments: departments
-                      .filter(Boolean)
+                      .filter((d) => d && d.id != null)
                       .map((d) => String(d.id)),
                   }))
                 }
