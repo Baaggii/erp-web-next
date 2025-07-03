@@ -450,6 +450,9 @@ export default function CodingTablesPage() {
   }
 
   function formatVal(val, type) {
+    if (typeof val === 'string' && val.trim() === '') {
+      val = defaultValForType(type);
+    }
     if (val === undefined || val === null || val === '') return 'NULL';
     if (type === 'DATE') {
       const d = parseExcelDate(val);
@@ -784,6 +787,9 @@ export default function CodingTablesPage() {
 
     function resolvedValue(row, idx, field) {
       let v = idx === -1 ? undefined : row[idx];
+      if (typeof v === 'string' && v.trim() === '') {
+        v = defaultValForType(colTypes[field]);
+      }
       if (v === undefined || v === null || v === '') {
         const from = defaultFrom[field];
         if (from) {
@@ -933,6 +939,9 @@ export default function CodingTablesPage() {
             v = f === 'error_description' ? r[errorDescIdx] : undefined;
           } else {
             v = r[idx];
+          }
+          if (typeof v === 'string' && v.trim() === '') {
+            v = defaultValForType(colTypes[f]);
           }
           if (v === undefined || v === null || v === '') {
             const from = defaultFrom[f];

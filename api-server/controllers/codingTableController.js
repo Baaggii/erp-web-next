@@ -339,7 +339,13 @@ export async function uploadCodingTable(req, res, next) {
       let hasData = false;
       if (cleanNameCol) {
         const nameVal = r[cleanNameCol];
-        if (nameVal === undefined || nameVal === null || nameVal === '') continue;
+        if (
+          nameVal === undefined ||
+          nameVal === null ||
+          nameVal === '' ||
+          (typeof nameVal === 'string' && nameVal.trim() === '')
+        )
+          continue;
         cols.push(`\`${dbNameCol}\``);
         placeholders.push('?');
         updates.push(`\`${dbNameCol}\` = VALUES(\`${dbNameCol}\`)`);
@@ -358,7 +364,11 @@ export async function uploadCodingTable(req, res, next) {
         placeholders.push('?');
         let val = r[c];
         const blank =
-          val === undefined || val === null || val === '' || val === 0;
+          val === undefined ||
+          val === null ||
+          val === '' ||
+          (typeof val === 'string' && val.trim() === '') ||
+          val === 0;
         if (blank) {
           val =
             defaultValues[c] !== undefined && defaultValues[c] !== ''
@@ -379,7 +389,11 @@ export async function uploadCodingTable(req, res, next) {
         placeholders.push('?');
         let val = r[c];
         const blank =
-          val === undefined || val === null || val === '' || val === 0;
+          val === undefined ||
+          val === null ||
+          val === '' ||
+          (typeof val === 'string' && val.trim() === '') ||
+          val === 0;
         if (blank) {
           if (defaultValues[c] !== undefined && defaultValues[c] !== '') {
             val = defaultValues[c];
@@ -404,7 +418,11 @@ export async function uploadCodingTable(req, res, next) {
         placeholders.push('?');
         let val = r[c];
         const blank =
-          val === undefined || val === null || val === '' || val === 0;
+          val === undefined ||
+          val === null ||
+          val === '' ||
+          (typeof val === 'string' && val.trim() === '') ||
+          val === 0;
         if (blank) {
           if (defaultValues[c] !== undefined && defaultValues[c] !== '') {
             val = defaultValues[c];
