@@ -14,6 +14,7 @@ export default function FormsManagement() {
   const [departments, setDepartments] = useState([]);
   const [txnTypes, setTxnTypes] = useState([]);
   const [columns, setColumns] = useState([]);
+  const [views, setViews] = useState([]);
   const modules = useModules();
   useEffect(() => {
     debugLog('Component mounted: FormsManagement');
@@ -37,6 +38,7 @@ export default function FormsManagement() {
     headerFields: [],
     mainFields: [],
     footerFields: [],
+    viewSource: {},
     transactionTypeField: '',
     transactionTypeValue: '',
     allowedBranches: [],
@@ -48,6 +50,11 @@ export default function FormsManagement() {
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => setTables(data))
       .catch(() => setTables([]));
+
+    fetch('/api/views', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setViews(data))
+      .catch(() => setViews([]));
 
     fetch('/api/tables/code_branches?perPage=500', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : { rows: [] }))
@@ -103,6 +110,7 @@ export default function FormsManagement() {
             headerFields: filtered[name].headerFields || [],
             mainFields: filtered[name].mainFields || [],
             footerFields: filtered[name].footerFields || [],
+            viewSource: filtered[name].viewSource || {},
             transactionTypeField: filtered[name].transactionTypeField || '',
             transactionTypeValue: filtered[name].transactionTypeValue || '',
             allowedBranches: (filtered[name].allowedBranches || []).map(String),
@@ -129,6 +137,7 @@ export default function FormsManagement() {
             headerFields: [],
             mainFields: [],
             footerFields: [],
+            viewSource: {},
             transactionTypeField: '',
             transactionTypeValue: '',
             allowedBranches: [],
@@ -158,6 +167,7 @@ export default function FormsManagement() {
           headerFields: [],
           mainFields: [],
           footerFields: [],
+          viewSource: {},
           transactionTypeField: '',
           transactionTypeValue: '',
           allowedBranches: [],
@@ -192,6 +202,7 @@ export default function FormsManagement() {
           headerFields: cfg.headerFields || [],
           mainFields: cfg.mainFields || [],
           footerFields: cfg.footerFields || [],
+          viewSource: cfg.viewSource || {},
           transactionTypeField: cfg.transactionTypeField || '',
           transactionTypeValue: cfg.transactionTypeValue || '',
           allowedBranches: (cfg.allowedBranches || []).map(String),
@@ -218,6 +229,7 @@ export default function FormsManagement() {
           headerFields: [],
           mainFields: [],
           footerFields: [],
+          viewSource: {},
           transactionTypeField: '',
           transactionTypeValue: '',
           allowedBranches: [],
@@ -336,6 +348,7 @@ export default function FormsManagement() {
       headerFields: [],
       mainFields: [],
       footerFields: [],
+      viewSource: {},
       transactionTypeField: '',
       transactionTypeValue: '',
       allowedBranches: [],
@@ -366,6 +379,7 @@ export default function FormsManagement() {
       headerFields: cfg.headerFields || [],
       mainFields: cfg.mainFields || [],
       footerFields: cfg.footerFields || [],
+      viewSource: cfg.viewSource || {},
       transactionTypeField: cfg.transactionTypeField || '',
       transactionTypeValue: cfg.transactionTypeValue || '',
       allowedBranches: (cfg.allowedBranches || []).map(String),
@@ -502,6 +516,7 @@ export default function FormsManagement() {
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Header</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Main</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Footer</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>View</th>
               </tr>
             </thead>
             <tbody>
@@ -635,6 +650,24 @@ export default function FormsManagement() {
                       checked={config.footerFields.includes(col)}
                       onChange={() => toggleFieldList(col, 'footerFields')}
                     />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px' }}>
+                    <select
+                      value={config.viewSource[col] || ''}
+                      onChange={(e) =>
+                        setConfig((c) => ({
+                          ...c,
+                          viewSource: { ...c.viewSource, [col]: e.target.value },
+                        }))
+                      }
+                    >
+                      <option value="">-- none --</option>
+                      {views.map((v) => (
+                        <option key={v} value={v}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
                   </td>
                 </tr>
               ))}

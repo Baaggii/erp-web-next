@@ -54,6 +54,10 @@ function parseEntry(raw = {}) {
     headerFields: arrify(raw.headerFields),
     mainFields: arrify(raw.mainFields),
     footerFields: arrify(raw.footerFields),
+    viewSource:
+      raw && typeof raw.viewSource === 'object' && raw.viewSource !== null
+        ? raw.viewSource
+        : {},
     transactionTypeField:
       typeof raw.transactionTypeField === 'string'
         ? raw.transactionTypeField
@@ -135,6 +139,7 @@ export async function setFormConfig(table, name, config, options = {}) {
     headerFields = [],
     mainFields = [],
     footerFields = [],
+    viewSource = {},
     transactionTypeField = '',
     transactionTypeValue = '',
   } = config || {};
@@ -172,6 +177,7 @@ export async function setFormConfig(table, name, config, options = {}) {
     headerFields: arrify(headerFields),
     mainFields: arrify(mainFields),
     footerFields: arrify(footerFields),
+    viewSource: viewSource && typeof viewSource === 'object' ? viewSource : {},
     transactionTypeField: transactionTypeField || '',
     transactionTypeValue: transactionTypeValue || '',
     moduleKey: parentModuleKey,
