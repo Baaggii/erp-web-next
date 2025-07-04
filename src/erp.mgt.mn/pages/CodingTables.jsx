@@ -1053,12 +1053,14 @@ export default function CodingTablesPage() {
     const structMainStr = buildStructure(tbl, true);
     const groupIdx = allHdrs.indexOf(groupByField);
     const groupFn = groupIdx === -1 ? null : (row) => row[groupIdx];
+    let chunkLimit = parseInt(groupSize, 10);
+    if (!chunkLimit || chunkLimit < 1) chunkLimit = 100;
     const insertMainStr = buildGroupedInsertSQL(
       mainRows,
       tbl,
       fields,
       groupFn,
-      parseInt(groupSize, 10) || 100
+      chunkLimit
     );
     const otherCombined = [...otherRows, ...dupRows];
     const structOtherStr = buildStructure(`${tbl}_other`, false, true);
@@ -1069,7 +1071,7 @@ export default function CodingTablesPage() {
       `${tbl}_other`,
       fieldsOther,
       groupFn,
-      parseInt(groupSize, 10) || 100
+      chunkLimit
     );
     if (structure) {
       const sqlStr = structMainStr + insertMainStr;
@@ -1138,7 +1140,7 @@ export default function CodingTablesPage() {
     setUploadProgress({ done: 0, total: statements.length });
     setInsertedCount(0);
     setGroupMessage(
-      statements.length > 0 ? `Statement 1/${statements.length}` : ''
+      statements.length > 0 ? 'Executing statements...' : ''
     );
     let totalInserted = 0;
     const failedAll = [];
@@ -1149,24 +1151,11 @@ export default function CodingTablesPage() {
       let stmt = statements[i];
       const progressMatch = stmt.match(/^--\s*Progress:\s*(.*)\n/);
       if (progressMatch) {
-        setGroupMessage(progressMatch[1]);
         stmt = stmt.slice(progressMatch[0].length).trim();
         if (!stmt) {
           setUploadProgress({ done: i + 1, total: statements.length });
           continue;
         }
-      }
-      const valMatch = stmt.match(/VALUES\s+(.+?)(?:ON DUPLICATE|;)/is);
-      let rowCount = 0;
-      if (valMatch) {
-        rowCount = valMatch[1].split(/\),\s*\(/).length;
-      }
-      if (!progressMatch) {
-        setGroupMessage(
-          rowCount > 0
-            ? `Group ${i + 1}/${statements.length} (${rowCount} records)`
-            : `Statement ${i + 1}/${statements.length}`
-        );
       }
       let res;
       try {
@@ -1200,7 +1189,6 @@ export default function CodingTablesPage() {
       }
       totalInserted += inserted;
       setInsertedCount(totalInserted);
-      addToast(`Inserted ${totalInserted} records`, 'info');
       setUploadProgress({ done: i + 1, total: statements.length });
       if (i < statements.length - 1) {
         await new Promise((r) => setTimeout(r, 250));
