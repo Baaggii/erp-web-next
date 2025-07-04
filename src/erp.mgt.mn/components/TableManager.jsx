@@ -748,12 +748,6 @@ const TableManager = forwardRef(function TableManager({
         body: JSON.stringify(cleaned),
       });
       if (res.ok) {
-        let returned = null;
-        try {
-          returned = await res.json();
-        } catch {
-          // ignore missing body
-        }
         const params = new URLSearchParams({ page, perPage });
         if (sort.column) {
           params.set('sort', sort.column);
@@ -778,7 +772,7 @@ const TableManager = forwardRef(function TableManager({
         if (isAdding) {
           setTimeout(() => openAdd(), 0);
         }
-        return returned || true;
+        return true;
       } else {
         let message = 'Хадгалахад алдаа гарлаа';
         try {

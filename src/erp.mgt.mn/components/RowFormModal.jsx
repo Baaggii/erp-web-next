@@ -234,16 +234,6 @@ const RowFormModal = function RowFormModal({
   async function submitForm() {
     if (submitLocked) return;
     setSubmitLocked(true);
-    function applyReturnedFields(res) {
-      if (!res || typeof res !== 'object') return;
-      setFormVals((vals) => {
-        const next = { ...vals };
-        Object.entries(res).forEach(([k, v]) => {
-          if (k in next) next[k] = v;
-        });
-        return next;
-      });
-    }
     if (useGrid && tableRef.current) {
       if (tableRef.current.hasInvalid && tableRef.current.hasInvalid()) {
         alert('Тэмдэглэсэн талбаруудыг засна уу.');
@@ -313,16 +303,7 @@ const RowFormModal = function RowFormModal({
           const r = cleanedRows[i];
           try {
             const res = await Promise.resolve(onSubmit(r));
-            if (res === false) {
-              failedRows.push(rows[rowIndices[i]]);
-            } else {
-              applyReturnedFields(res);
-              if (res && typeof res === 'object') {
-                Object.entries(res).forEach(([k, v]) => {
-                  if (k in rows[rowIndices[i]]) rows[rowIndices[i]][k] = v;
-                });
-              }
-            }
+            if (res === false) failedRows.push(rows[rowIndices[i]]);
           } catch (err) {
             console.error('Submit failed', err);
             failedRows.push(rows[rowIndices[i]]);
@@ -362,7 +343,6 @@ const RowFormModal = function RowFormModal({
           setSubmitLocked(false);
           return;
         }
-        applyReturnedFields(res);
       } catch (err) {
         console.error('Submit failed', err);
         setSubmitLocked(false);
