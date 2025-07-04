@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { translateToMn } from '../utils/translateToMn.js';
 import { useToast } from '../context/ToastContext.jsx';
+import formatTimestamp from '../utils/formatTimestamp.js';
 
 function cleanIdentifier(name) {
   return String(name).replace(/[^A-Za-z0-9_]+/g, '');
@@ -480,7 +481,7 @@ export default function CodingTablesPage() {
     if (type === 'DATE') {
       const d = parseExcelDate(val);
       if (!d) return 'NULL';
-      return `'${d.toISOString().slice(0, 10)}'`;
+      return `'${formatTimestamp(d).slice(0, 10)}'`;
     }
     val = normalizeNumeric(val, type);
     if (/INT|DECIMAL|NUMERIC|DOUBLE|FLOAT|LONG|BIGINT|NUMBER/.test(String(type).toUpperCase())) {

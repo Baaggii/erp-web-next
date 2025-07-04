@@ -6,6 +6,7 @@ import React, {
   useEffect,
 } from 'react';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
+import formatTimestamp from '../utils/formatTimestamp.js';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -22,10 +23,10 @@ function normalizeDateInput(value, format) {
   let v = value.replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
   const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
   if (isoRe.test(v)) {
-    const d = new Date(v);
-    if (format === 'YYYY-MM-DD') return d.toISOString().slice(0, 10);
-    if (format === 'HH:MM:SS') return d.toISOString().slice(11, 19);
-    return d.toISOString().slice(0, 19).replace('T', ' ');
+    const local = formatTimestamp(new Date(v));
+    if (format === 'YYYY-MM-DD') return local.slice(0, 10);
+    if (format === 'HH:MM:SS') return local.slice(11, 19);
+    return local;
   }
   return v;
 }
@@ -90,9 +91,15 @@ export default forwardRef(function InlineTransactionTable({
     let v = normalizeDateInput(String(value), format);
     if (isoRe.test(v)) {
       const d = new Date(v);
-      if (format === 'YYYY-MM-DD') v = d.toISOString().slice(0, 10);
-      else if (format === 'HH:MM:SS') v = d.toISOString().slice(11, 19);
-      else v = d.toISOString().slice(0, 19).replace('T', ' ');
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mi = String(d.getMinutes()).padStart(2, '0');
+      const ss = String(d.getSeconds()).padStart(2, '0');
+      if (format === 'YYYY-MM-DD') v = `${yyyy}-${mm}-${dd}`;
+      else if (format === 'HH:MM:SS') v = `${hh}:${mi}:${ss}`;
+      else v = `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
     }
     const map = {
       'YYYY-MM-DD': /^\d{4}-\d{2}-\d{2}$/,
