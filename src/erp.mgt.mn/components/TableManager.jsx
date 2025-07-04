@@ -23,7 +23,7 @@ function logRowsMemory(rows) {
     if (process.env.NODE_ENV === 'production') return;
     try {
       const sizeMB = JSON.stringify(rows).length / 1024 / 1024;
-      const timestamp = new Date().toISOString();
+    const timestamp = formatTimestamp(new Date());
       const message = `Loaded ${rows.length} transactions (~${sizeMB.toFixed(2)} MB) at ${timestamp}`;
       if (!window.memoryLogs) window.memoryLogs = [];
       if (window.memoryLogs.length >= 20) {
@@ -55,11 +55,17 @@ function normalizeDateInput(value, format) {
   const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
   if (isoRe.test(v)) {
     const d = new Date(v);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
     if (format && format.includes('YYYY-MM-DD')) {
-      return d.toISOString().slice(0, 10);
+      return `${yyyy}-${mm}-${dd}`;
     }
-    if (format === 'HH:MM:SS') return d.toISOString().slice(11, 19);
-    return d.toISOString().slice(0, 19).replace('T', ' ');
+    if (format === 'HH:MM:SS') return `${hh}:${mi}:${ss}`;
+    return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
   }
   return v;
 }
@@ -234,7 +240,7 @@ const TableManager = forwardRef(function TableManager({
     if (!formConfig) return;
     const newFilters = {};
     if (formConfig.dateField && formConfig.dateField.length > 0) {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = formatTimestamp(new Date()).slice(0, 10);
       setDateFilter(today);
       setCustomStartDate('');
       setCustomEndDate('');
@@ -584,9 +590,9 @@ const TableManager = forwardRef(function TableManager({
         if (lower.includes('timestamp') || (lower.includes('date') && lower.includes('time'))) {
           defaults[c] = formatTimestamp(now);
         } else if (lower.includes('date')) {
-          defaults[c] = now.toISOString().slice(0, 10);
+          defaults[c] = formatTimestamp(now).slice(0, 10);
         } else if (lower.includes('time')) {
-          defaults[c] = now.toISOString().slice(11, 19);
+          defaults[c] = formatTimestamp(now).slice(11, 19);
         }
       }
     });
@@ -1188,9 +1194,7 @@ const TableManager = forwardRef(function TableManager({
                 const start = new Date(now.getFullYear(), q * 3, 1);
                 const end = new Date(now.getFullYear(), q * 3 + 3, 0);
                 setDateFilter(
-                  `${start.toISOString().slice(0, 10)}-${end
-                    .toISOString()
-                    .slice(0, 10)}`,
+                  `${formatTimestamp(start).slice(0, 10)}-${formatTimestamp(end).slice(0, 10)}`,
                 );
                 return;
               }
