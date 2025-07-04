@@ -348,14 +348,9 @@ export async function uploadCodingTable(req, res, next) {
     for (const [col, label] of Object.entries(headerMap)) {
       if (label) await setTableColumnLabel(cleanTable, cleanIdentifier(col), label);
     }
-    const groupSize = parseInt(req.body.groupSize || '100', 10) || 100;
     let count = 0;
     const errors = [];
     let rowIndex = 0;
-    let batch = [];
-    let baseCols = null;
-    let basePlaceholders = null;
-    let baseUpdates = null;
     for (const r of finalRows) {
       rowIndex++;
       const cols = [];
@@ -475,39 +470,14 @@ export async function uploadCodingTable(req, res, next) {
       if (!hasData) continue;
       if (req.body.populateRange === 'true' && values.some((v) => v === 0 || v === null))
         continue;
-
-      if (!baseCols) {
-        baseCols = cols;
-        basePlaceholders = placeholders;
-        baseUpdates = updates;
-      }
-      batch.push(values);
-      if (batch.length >= groupSize) {
-        const ph = batch.map(() => `(${basePlaceholders.join(', ')})`).join(', ');
-        const flat = batch.flat();
-        try {
-          await pool.query(
-            `INSERT INTO \`${cleanTable}\` (${baseCols.join(', ')}) VALUES ${ph} ON DUPLICATE KEY UPDATE ${baseUpdates.join(', ')}`,
-            flat
-          );
-          count += batch.length;
-        } catch (err) {
-          errors.push({ row: rowIndex, data: r, message: err.message });
-        }
-        batch = [];
-      }
-    }
-    if (batch.length > 0) {
-      const ph = batch.map(() => `(${basePlaceholders.join(', ')})`).join(', ');
-      const flat = batch.flat();
       try {
         await pool.query(
-          `INSERT INTO \`${cleanTable}\` (${baseCols.join(', ')}) VALUES ${ph} ON DUPLICATE KEY UPDATE ${baseUpdates.join(', ')}`,
-          flat
+          `INSERT INTO \`${cleanTable}\` (${cols.join(', ')}) VALUES (${placeholders.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')}`,
+          values
         );
-        count += batch.length;
+        count++;
       } catch (err) {
-        errors.push({ row: rowIndex, message: err.message });
+        errors.push({ row: rowIndex, data: r, message: err.message });
       }
     }
     fs.unlinkSync(req.file.path);
