@@ -1200,6 +1200,7 @@ export default function CodingTablesPage() {
       }
       totalInserted += inserted;
       setInsertedCount(totalInserted);
+      addToast(`Inserted ${totalInserted} records`, 'info');
       setUploadProgress({ done: i + 1, total: statements.length });
       if (i < statements.length - 1) {
         await new Promise((r) => setTimeout(r, 250));
