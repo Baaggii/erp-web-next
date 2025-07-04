@@ -13,6 +13,7 @@ const RowFormModal = function RowFormModal({
   row,
   relations = {},
   relationConfigs = {},
+  relationData = {},
   disabledFields = [],
   labels = {},
   requiredFields = [],
@@ -449,6 +450,7 @@ const RowFormModal = function RowFormModal({
             fields={cols}
             relations={relations}
             relationConfigs={relationConfigs}
+            relationData={relationData}
             labels={labels}
             totalAmountFields={totalAmountFields}
             totalCurrencyFields={totalCurrencyFields}

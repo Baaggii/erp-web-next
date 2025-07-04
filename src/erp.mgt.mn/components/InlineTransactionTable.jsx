@@ -35,6 +35,7 @@ export default forwardRef(function InlineTransactionTable({
   fields = [],
   relations = {},
   relationConfigs = {},
+  relationData = {},
   labels = {},
   totalAmountFields = [],
   totalCurrencyFields = [],
@@ -222,7 +223,24 @@ export default forwardRef(function InlineTransactionTable({
 
   function handleChange(rowIdx, field, value) {
     setRows((r) => {
-      const next = r.map((row, i) => (i === rowIdx ? { ...row, [field]: value } : row));
+      const next = r.map((row, i) => {
+        if (i !== rowIdx) return row;
+        const updated = { ...row, [field]: value };
+        const conf = relationConfigs[field];
+        let val = value;
+        if (val && typeof val === 'object' && 'value' in val) {
+          val = val.value;
+        }
+        if (conf && conf.displayFields && relationData[field]?.[val]) {
+          const ref = relationData[field][val];
+          conf.displayFields.forEach((df) => {
+            if (ref[df] !== undefined) {
+              updated[df] = ref[df];
+            }
+          });
+        }
+        return updated;
+      });
       onRowsChange(next);
       return next;
     });
