@@ -474,9 +474,9 @@ export default function CodingTablesPage() {
   function formatVal(val, type) {
     val = normalizeExcelError(val, type);
     val = normalizeSpecialChars(val, type);
-    if (typeof val === 'string' && val.trim() === '') {
-      val = defaultValForType(type);
-    }
+    // Only convert obviously placeholder characters to 0 via
+    // normalizeSpecialChars.  Blank values should remain blank so that
+    // missing data can be detected correctly.
     if (val === undefined || val === null || val === '') return 'NULL';
     if (type === 'DATE') {
       const d = parseExcelDate(val);
@@ -813,9 +813,6 @@ export default function CodingTablesPage() {
       let v = idx === -1 ? undefined : row[idx];
       v = normalizeExcelError(v, colTypes[field]);
       v = normalizeSpecialChars(v, colTypes[field]);
-      if (typeof v === 'string' && v.trim() === '') {
-        v = defaultValForType(colTypes[field]);
-      }
       if (v === undefined || v === null || v === '') {
         const from = defaultFrom[field];
         if (from) {
@@ -824,9 +821,6 @@ export default function CodingTablesPage() {
         }
         if (v === undefined || v === null || v === '') {
           v = defaultValues[field];
-        }
-        if ((v === undefined || v === null || v === '') && localNotNull[field]) {
-          v = defaultValForType(colTypes[field]);
         }
       }
       return v;
@@ -968,9 +962,6 @@ export default function CodingTablesPage() {
           }
           v = normalizeExcelError(v, colTypes[f]);
           v = normalizeSpecialChars(v, colTypes[f]);
-          if (typeof v === 'string' && v.trim() === '') {
-            v = defaultValForType(colTypes[f]);
-          }
           if (v === undefined || v === null || v === '') {
             const from = defaultFrom[f];
             if (from) {
@@ -979,9 +970,6 @@ export default function CodingTablesPage() {
             }
             if (v === undefined || v === null || v === '') {
               v = defaultValues[f];
-            }
-            if ((v === undefined || v === null || v === '') && localNotNull[f]) {
-              v = defaultValForType(colTypes[f]);
             }
           }
           if (
