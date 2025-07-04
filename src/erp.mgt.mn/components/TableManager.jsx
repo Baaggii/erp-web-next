@@ -54,18 +54,12 @@ function normalizeDateInput(value, format) {
   let v = value.replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
   const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
   if (isoRe.test(v)) {
-    const d = new Date(v);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    const hh = String(d.getHours()).padStart(2, '0');
-    const mi = String(d.getMinutes()).padStart(2, '0');
-    const ss = String(d.getSeconds()).padStart(2, '0');
+    const local = formatTimestamp(new Date(v));
     if (format && format.includes('YYYY-MM-DD')) {
-      return `${yyyy}-${mm}-${dd}`;
+      return local.slice(0, 10);
     }
-    if (format === 'HH:MM:SS') return `${hh}:${mi}:${ss}`;
-    return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
+    if (format === 'HH:MM:SS') return local.slice(11, 19);
+    return local;
   }
   return v;
 }
