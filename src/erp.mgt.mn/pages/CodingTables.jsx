@@ -474,9 +474,9 @@ export default function CodingTablesPage() {
   function formatVal(val, type) {
     val = normalizeExcelError(val, type);
     val = normalizeSpecialChars(val, type);
-    if (typeof val === 'string' && val.trim() === '') {
-      val = defaultValForType(type);
-    }
+    // Only convert obviously placeholder characters to 0 via
+    // normalizeSpecialChars.  Blank values should remain blank so that
+    // missing data can be detected correctly.
     if (val === undefined || val === null || val === '') return 'NULL';
     if (type === 'DATE') {
       const d = parseExcelDate(val);
@@ -813,9 +813,6 @@ export default function CodingTablesPage() {
       let v = idx === -1 ? undefined : row[idx];
       v = normalizeExcelError(v, colTypes[field]);
       v = normalizeSpecialChars(v, colTypes[field]);
-      if (typeof v === 'string' && v.trim() === '') {
-        v = defaultValForType(colTypes[field]);
-      }
       if (v === undefined || v === null || v === '') {
         const from = defaultFrom[field];
         if (from) {
@@ -824,9 +821,6 @@ export default function CodingTablesPage() {
         }
         if (v === undefined || v === null || v === '') {
           v = defaultValues[field];
-        }
-        if ((v === undefined || v === null || v === '') && localNotNull[field]) {
-          v = defaultValForType(colTypes[field]);
         }
       }
       return v;
@@ -968,9 +962,6 @@ export default function CodingTablesPage() {
           }
           v = normalizeExcelError(v, colTypes[f]);
           v = normalizeSpecialChars(v, colTypes[f]);
-          if (typeof v === 'string' && v.trim() === '') {
-            v = defaultValForType(colTypes[f]);
-          }
           if (v === undefined || v === null || v === '') {
             const from = defaultFrom[f];
             if (from) {
@@ -979,9 +970,6 @@ export default function CodingTablesPage() {
             }
             if (v === undefined || v === null || v === '') {
               v = defaultValues[f];
-            }
-            if ((v === undefined || v === null || v === '') && localNotNull[f]) {
-              v = defaultValForType(colTypes[f]);
             }
           }
           if (
@@ -1017,21 +1005,36 @@ export default function CodingTablesPage() {
       groupByFn,
       chunkLimit = 100
     ) {
-      if (typeof groupByFn !== 'function') {
-        return buildInsert(allRows, tableNameForSql, fields, chunkLimit);
+      let groups = [];
+      if (typeof groupByFn === 'function') {
+        const grouped = {};
+        for (const row of allRows) {
+          const key = String(groupByFn(row) ?? '');
+          if (!grouped[key]) grouped[key] = [];
+          grouped[key].push(row);
+        }
+        groups = Object.entries(grouped).map(([k, v]) => ({ key: k, rows: v }));
+      } else {
+        groups = [{ key: '', rows: allRows }];
       }
-      const grouped = {};
-      for (const row of allRows) {
-        const key = String(groupByFn(row) ?? '');
-        if (!grouped[key]) grouped[key] = [];
-        grouped[key].push(row);
-      }
-      const keys = Object.keys(grouped);
+
+      const totalChunks = groups.reduce(
+        (sum, g) => sum + Math.ceil(g.rows.length / chunkLimit),
+        0
+      );
+
       const parts = [];
-      for (let i = 0; i < keys.length; i++) {
-        const key = keys[i];
-        parts.push(`-- Progress: Group ${i + 1} of ${keys.length} (${key})`);
-        parts.push(buildInsert(grouped[key], tableNameForSql, fields, chunkLimit));
+      let chunkIndex = 0;
+      for (const { key, rows } of groups) {
+        for (let i = 0; i < rows.length; i += chunkLimit) {
+          const chunkRows = rows.slice(i, i + chunkLimit);
+          chunkIndex++;
+          const keySuffix = key ? ` (${key})` : '';
+          parts.push(
+            `-- Progress: Group ${chunkIndex} of ${totalChunks}${keySuffix}`
+          );
+          parts.push(buildInsert(chunkRows, tableNameForSql, fields, chunkLimit));
+        }
       }
       return parts.filter(Boolean).join('\n');
     }
@@ -1051,13 +1054,11 @@ export default function CodingTablesPage() {
     });
 
     const structMainStr = buildStructure(tbl, true);
-    const groupIdx = allHdrs.indexOf(groupByField);
-    const groupFn = groupIdx === -1 ? null : (row) => row[groupIdx];
     const insertMainStr = buildGroupedInsertSQL(
       mainRows,
       tbl,
       fields,
-      groupFn,
+      null,
       parseInt(groupSize, 10) || 100
     );
     const otherCombined = [...otherRows, ...dupRows];
@@ -1068,7 +1069,7 @@ export default function CodingTablesPage() {
       otherCombined,
       `${tbl}_other`,
       fieldsOther,
-      groupFn,
+      null,
       parseInt(groupSize, 10) || 100
     );
     if (structure) {
@@ -1357,11 +1358,16 @@ export default function CodingTablesPage() {
 
   async function saveMappings() {
     try {
+      const finalMap = {};
+      Object.entries(headerMap).forEach(([orig, val]) => {
+        const key = cleanIdentifier(renameMap[orig] || orig);
+        if (val) finalMap[key] = val;
+      });
       await fetch('/api/header_mappings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ mappings: headerMap }),
+        body: JSON.stringify({ mappings: finalMap }),
       });
       alert('Mappings saved');
     } catch {
