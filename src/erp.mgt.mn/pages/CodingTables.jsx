@@ -1017,21 +1017,36 @@ export default function CodingTablesPage() {
       groupByFn,
       chunkLimit = 100
     ) {
-      if (typeof groupByFn !== 'function') {
-        return buildInsert(allRows, tableNameForSql, fields, chunkLimit);
+      let groups = [];
+      if (typeof groupByFn === 'function') {
+        const grouped = {};
+        for (const row of allRows) {
+          const key = String(groupByFn(row) ?? '');
+          if (!grouped[key]) grouped[key] = [];
+          grouped[key].push(row);
+        }
+        groups = Object.entries(grouped).map(([k, v]) => ({ key: k, rows: v }));
+      } else {
+        groups = [{ key: '', rows: allRows }];
       }
-      const grouped = {};
-      for (const row of allRows) {
-        const key = String(groupByFn(row) ?? '');
-        if (!grouped[key]) grouped[key] = [];
-        grouped[key].push(row);
-      }
-      const keys = Object.keys(grouped);
+
+      const totalChunks = groups.reduce(
+        (sum, g) => sum + Math.ceil(g.rows.length / chunkLimit),
+        0
+      );
+
       const parts = [];
-      for (let i = 0; i < keys.length; i++) {
-        const key = keys[i];
-        parts.push(`-- Progress: Group ${i + 1} of ${keys.length} (${key})`);
-        parts.push(buildInsert(grouped[key], tableNameForSql, fields, chunkLimit));
+      let chunkIndex = 0;
+      for (const { key, rows } of groups) {
+        for (let i = 0; i < rows.length; i += chunkLimit) {
+          const chunkRows = rows.slice(i, i + chunkLimit);
+          chunkIndex++;
+          const keySuffix = key ? ` (${key})` : '';
+          parts.push(
+            `-- Progress: Group ${chunkIndex} of ${totalChunks}${keySuffix}`
+          );
+          parts.push(buildInsert(chunkRows, tableNameForSql, fields, chunkLimit));
+        }
       }
       return parts.filter(Boolean).join('\n');
     }
@@ -1051,13 +1066,11 @@ export default function CodingTablesPage() {
     });
 
     const structMainStr = buildStructure(tbl, true);
-    const groupIdx = allHdrs.indexOf(groupByField);
-    const groupFn = groupIdx === -1 ? null : (row) => row[groupIdx];
     const insertMainStr = buildGroupedInsertSQL(
       mainRows,
       tbl,
       fields,
-      groupFn,
+      null,
       parseInt(groupSize, 10) || 100
     );
     const otherCombined = [...otherRows, ...dupRows];
@@ -1068,7 +1081,7 @@ export default function CodingTablesPage() {
       otherCombined,
       `${tbl}_other`,
       fieldsOther,
-      groupFn,
+      null,
       parseInt(groupSize, 10) || 100
     );
     if (structure) {
