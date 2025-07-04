@@ -234,7 +234,7 @@ export default forwardRef(function InlineTransactionTable({
         if (conf && conf.displayFields && relationData[field]?.[val]) {
           const ref = relationData[field][val];
           conf.displayFields.forEach((df) => {
-            if (fields.includes(df) && ref[df] !== undefined) {
+            if (ref[df] !== undefined) {
               updated[df] = ref[df];
             }
           });
