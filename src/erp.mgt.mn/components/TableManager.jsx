@@ -122,6 +122,7 @@ const TableManager = forwardRef(function TableManager({
   const [sort, setSort] = useState({ column: '', dir: 'asc' });
   const [relations, setRelations] = useState({});
   const [refData, setRefData] = useState({});
+  const [refRows, setRefRows] = useState({});
   const [relationConfigs, setRelationConfigs] = useState({});
   const [columnMeta, setColumnMeta] = useState([]);
   const [autoInc, setAutoInc] = useState(new Set());
@@ -371,6 +372,7 @@ const TableManager = forwardRef(function TableManager({
         setRelations(map);
         const dataMap = {};
         const cfgMap = {};
+        const rowMap = {};
         for (const [col, rel] of Object.entries(map)) {
           try {
             let page = 1;
@@ -421,6 +423,7 @@ const TableManager = forwardRef(function TableManager({
               displayFields: cfg?.displayFields || [],
             };
             if (rows.length > 0) {
+              rowMap[col] = {};
               dataMap[col] = rows.map((row) => {
                 const parts = [];
                 if (row[rel.column] !== undefined) parts.push(row[rel.column]);
@@ -449,8 +452,10 @@ const TableManager = forwardRef(function TableManager({
                     ? parts.join(' - ')
                     : Object.values(row).slice(0, 2).join(' - ');
 
+                const val = row[rel.column];
+                rowMap[col][val] = row;
                 return {
-                  value: row[rel.column],
+                  value: val,
                   label,
                 };
               });
@@ -461,6 +466,7 @@ const TableManager = forwardRef(function TableManager({
         }
         if (!canceled) {
           setRefData(dataMap);
+          setRefRows(rowMap);
           setRelationConfigs(cfgMap);
         }
       } catch (err) {
@@ -666,7 +672,26 @@ const TableManager = forwardRef(function TableManager({
 
   function handleFieldChange(changes) {
     if (!editing) return;
-    setEditing((e) => ({ ...e, ...changes }));
+    setEditing((e) => {
+      const next = { ...e, ...changes };
+      const colSet = new Set(columnMeta.map((c) => c.name));
+      Object.entries(changes).forEach(([field, val]) => {
+        const conf = relationConfigs[field];
+        let value = val;
+        if (value && typeof value === 'object' && 'value' in value) {
+          value = value.value;
+        }
+        if (conf && conf.displayFields && refRows[field]?.[value]) {
+          const row = refRows[field][value];
+          conf.displayFields.forEach((df) => {
+            if (colSet.has(df) && row[df] !== undefined) {
+              next[df] = row[df];
+            }
+          });
+        }
+      });
+      return next;
+    });
   }
 
   function handleSort(col) {
@@ -1693,6 +1718,7 @@ const TableManager = forwardRef(function TableManager({
         row={editing}
         relations={relationOpts}
         relationConfigs={relationConfigs}
+        relationData={refRows}
         disabledFields={disabledFields}
         labels={labels}
         requiredFields={formConfig?.requiredFields || []}
