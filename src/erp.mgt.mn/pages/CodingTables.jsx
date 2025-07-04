@@ -1370,11 +1370,16 @@ export default function CodingTablesPage() {
 
   async function saveMappings() {
     try {
+      const finalMap = {};
+      Object.entries(headerMap).forEach(([orig, val]) => {
+        const key = cleanIdentifier(renameMap[orig] || orig);
+        if (val) finalMap[key] = val;
+      });
       await fetch('/api/header_mappings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ mappings: headerMap }),
+        body: JSON.stringify({ mappings: finalMap }),
       });
       alert('Mappings saved');
     } catch {
