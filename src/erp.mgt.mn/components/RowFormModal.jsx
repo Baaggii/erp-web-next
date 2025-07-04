@@ -3,6 +3,7 @@ import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import Modal from './Modal.jsx';
 import InlineTransactionTable from './InlineTransactionTable.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
+import formatTimestamp from '../utils/formatTimestamp.js';
 
 const RowFormModal = function RowFormModal({
   visible,
@@ -65,9 +66,9 @@ const RowFormModal = function RowFormModal({
       const raw = row ? String(row[c] ?? '') : String(defaultValues[c] ?? '');
       let val = placeholder ? normalizeDateInput(raw, placeholder) : raw;
       if (!row && !val && dateField.includes(c)) {
-        if (placeholder === 'YYYY-MM-DD') val = now.toISOString().slice(0, 10);
-        else if (placeholder === 'HH:MM:SS') val = now.toISOString().slice(11, 19);
-        else val = now.toISOString().slice(0, 19).replace('T', ' ');
+        if (placeholder === 'YYYY-MM-DD') val = formatTimestamp(now).slice(0, 10);
+        else if (placeholder === 'HH:MM:SS') val = formatTimestamp(now).slice(11, 19);
+        else val = formatTimestamp(now);
       }
       if (!row && !val && headerSet.has(c)) {
         if (
@@ -111,9 +112,15 @@ const RowFormModal = function RowFormModal({
     const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
     if (isoRe.test(v)) {
       const d = new Date(v);
-      if (format === 'YYYY-MM-DD') return d.toISOString().slice(0, 10);
-      if (format === 'HH:MM:SS') return d.toISOString().slice(11, 19);
-      return d.toISOString().slice(0, 19).replace('T', ' ');
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mi = String(d.getMinutes()).padStart(2, '0');
+      const ss = String(d.getSeconds()).padStart(2, '0');
+      if (format === 'YYYY-MM-DD') return `${yyyy}-${mm}-${dd}`;
+      if (format === 'HH:MM:SS') return `${hh}:${mi}:${ss}`;
+      return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
     }
     return v;
   }
@@ -147,12 +154,12 @@ const RowFormModal = function RowFormModal({
     columns.forEach((c) => {
       const raw = row ? String(row[c] ?? '') : String(defaultValues[c] ?? '');
       let v = placeholders[c] ? normalizeDateInput(raw, placeholders[c]) : raw;
-      if (!row && !v && dateField.includes(c)) {
-        const now = new Date();
-        if (placeholders[c] === 'YYYY-MM-DD') v = now.toISOString().slice(0, 10);
-        else if (placeholders[c] === 'HH:MM:SS') v = now.toISOString().slice(11, 19);
-        else v = now.toISOString().slice(0, 19).replace('T', ' ');
-      }
+        if (!row && !v && dateField.includes(c)) {
+          const now = new Date();
+          if (placeholders[c] === 'YYYY-MM-DD') v = formatTimestamp(now).slice(0, 10);
+          else if (placeholders[c] === 'HH:MM:SS') v = formatTimestamp(now).slice(11, 19);
+          else v = formatTimestamp(now);
+        }
       if (!row && !v && headerSet.has(c)) {
         if (
           ['created_by', 'employee_id', 'emp_id', 'empid', 'user_id'].includes(c) &&
