@@ -1239,16 +1239,32 @@ export default function CodingTablesPage() {
     const statements = [];
     let current = [];
     let inTrigger = false;
+    let depth = 0;
+    const beginRe = /\bBEGIN\b/i;
+    const endRe = /\bEND\b\s*;?\s*$/i;
+    const endBlockRe = /\bEND\s+(IF|WHILE|LOOP|REPEAT|CASE)\b/i;
     for (const line of lines) {
       current.push(line);
       if (inTrigger) {
-        if (/END;?\s*$/.test(line)) {
-          statements.push(current.join('\n').trim());
-          current = [];
-          inTrigger = false;
+        if (beginRe.test(line)) depth++;
+        if (endRe.test(line) && !endBlockRe.test(line)) {
+          if (depth === 0) {
+            statements.push(current.join('\n').trim());
+            current = [];
+            inTrigger = false;
+            continue;
+          }
+          depth--;
+          if (depth === 0) {
+            statements.push(current.join('\n').trim());
+            current = [];
+            inTrigger = false;
+          }
         }
       } else if (/^CREATE\s+TRIGGER/i.test(line)) {
         inTrigger = true;
+        if (beginRe.test(line)) depth = 1;
+        else depth = 0;
       } else if (/;\s*$/.test(line)) {
         statements.push(current.join('\n').trim());
         current = [];
