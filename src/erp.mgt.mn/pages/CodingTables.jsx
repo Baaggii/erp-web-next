@@ -966,31 +966,28 @@ export default function CodingTablesPage() {
     function buildTriggerScripts(text, tbl) {
       const trimmed = text.trim();
       if (!trimmed) return '';
-      const results = [];
       const pattern = /(CREATE\s+TRIGGER[\s\S]*?END;?|BEGIN[\s\S]*?END;?)/gi;
-      const matches = trimmed.match(pattern) || [];
-      if (matches.length === 0) {
-        matches.push(trimmed);
-      }
-      matches.forEach((m, idx) => {
+      const matches = trimmed.match(pattern) || [trimmed];
+      const counts = {};
+      const results = matches.map((m, idx) => {
         const piece = m.trim();
         if (/^CREATE\s+TRIGGER/i.test(piece)) {
-          results.push(piece.endsWith(';') ? piece : piece + ';');
-          return;
+          return piece.endsWith(';') ? piece : piece + ';';
         }
         const colMatch = piece.match(/SET\s+NEW\.\`?([A-Za-z0-9_]+)\`?\s*=/i);
         const col = colMatch ? cleanIdentifier(colMatch[1]) : `col${idx + 1}`;
-        const trgName = `${tbl}_${col}_bi`;
-        let body = piece;
-        if (!/^BEGIN/i.test(body)) body = `BEGIN\n${body}`;
-        if (!/END;?$/i.test(body)) {
-          body = body.replace(/;?\s*$/, ';');
-          body += '\nEND';
+        counts[col] = (counts[col] || 0) + 1;
+        const suffix = counts[col] > 1 ? `_bi${counts[col]}` : '_bi';
+        const trgName = `${tbl}_${col}${suffix}`;
+
+        let inner = piece;
+        if (/^BEGIN/i.test(inner)) {
+          inner = inner.replace(/^BEGIN/i, '').replace(/END;?$/i, '');
         }
-        body = body.endsWith(';') ? body : body + ';';
-        results.push(
-          `DROP TRIGGER IF EXISTS \`${trgName}\`;\nCREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${tbl}\` FOR EACH ROW\n${body}`
-        );
+        inner = inner.trim().replace(/;?\s*$/, ';');
+        const body = `BEGIN\n  IF NEW.${col} IS NULL OR NEW.${col} = '' THEN\n    ${inner}\n  END IF;\nEND;`;
+
+        return `DROP TRIGGER IF EXISTS \`${trgName}\`;\nCREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${tbl}\` FOR EACH ROW\n${body}`;
       });
       return results.join('\n');
     }
