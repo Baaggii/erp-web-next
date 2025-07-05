@@ -940,7 +940,20 @@ export default function CodingTablesPage() {
     ) {
       const defArr = [...(useUnique ? defs : defsNoUnique)];
       if (includeError) defArr.push('`error_description` VARCHAR(255)');
-      return `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};\n`;
+      const base = `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};`;
+
+      const trgParts = [];
+      Object.values(dbCols).forEach((col) => {
+        if (col.includes('num')) {
+          const trgName = `${tableNameForSql}_${col}_bi`;
+          trgParts.push(`DROP TRIGGER IF EXISTS \`${trgName}\`;`);
+          trgParts.push(
+            `CREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${tableNameForSql}\` FOR EACH ROW\nBEGIN\n  SET NEW.\`${col}\` = CONCAT(\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    )),\n    '-',\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    )),\n    '-',\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    )),\n    '-',\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    ))\n  );\nEND;`
+          );
+        }
+      });
+      const trgSql = trgParts.length ? `\n${trgParts.join('\n')}` : '';
+      return `${base}\n${trgSql}\n`;
     }
 
     function buildInsert(rows, tableNameForSql, fields, chunkLimit = 100) {
@@ -1128,11 +1141,30 @@ export default function CodingTablesPage() {
   }
 
   function splitSqlStatements(sqlText) {
-    return sqlText
-      .split(/;\s*\n/)
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map((s) => (s.endsWith(';') ? s.slice(0, -1) : s) + ';');
+    const lines = sqlText.split(/\r?\n/);
+    const statements = [];
+    let current = [];
+    let inTrigger = false;
+    for (const line of lines) {
+      current.push(line);
+      if (inTrigger) {
+        if (/END;\s*$/.test(line)) {
+          statements.push(current.join('\n').trim());
+          current = [];
+          inTrigger = false;
+        }
+      } else if (/^CREATE\s+TRIGGER/i.test(line)) {
+        inTrigger = true;
+      } else if (/;\s*$/.test(line)) {
+        statements.push(current.join('\n').trim());
+        current = [];
+      }
+    }
+    if (current.length) {
+      const stmt = current.join('\n').trim();
+      if (stmt) statements.push(stmt.endsWith(';') ? stmt : stmt + ';');
+    }
+    return statements;
   }
 
   async function runStatements(statements) {
