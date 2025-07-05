@@ -940,7 +940,20 @@ export default function CodingTablesPage() {
     ) {
       const defArr = [...(useUnique ? defs : defsNoUnique)];
       if (includeError) defArr.push('`error_description` VARCHAR(255)');
-      return `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};\n`;
+      const base = `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};`;
+
+      const trgParts = [];
+      Object.values(dbCols).forEach((col) => {
+        if (col.includes('num')) {
+          const trgName = `${tableNameForSql}_${col}_bi`;
+          trgParts.push(`DROP TRIGGER IF EXISTS \`${trgName}\`;`);
+          trgParts.push(
+            `CREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${tableNameForSql}\` FOR EACH ROW\nBEGIN\n  SET NEW.\`${col}\` = CONCAT(\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    )),\n    '-',\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    )),\n    '-',\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    )),\n    '-',\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    ))\n  );\nEND;`
+          );
+        }
+      });
+      const trgSql = trgParts.length ? `\n${trgParts.join('\n')}` : '';
+      return `${base}\n${trgSql}\n`;
     }
 
     function buildInsert(rows, tableNameForSql, fields, chunkLimit = 100) {
