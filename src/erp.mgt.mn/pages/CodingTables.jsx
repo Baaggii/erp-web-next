@@ -982,9 +982,16 @@ export default function CodingTablesPage() {
 
         let inner = piece;
         if (/^BEGIN/i.test(inner)) {
-          inner = inner.replace(/^BEGIN/i, '').replace(/END;?$/i, '');
+          inner = inner.replace(/^BEGIN/i, '').replace(/END;?$/i, '').trim();
         }
-        inner = inner.trim().replace(/;?\s*$/, ';');
+
+        const startsWithCheck = new RegExp(`^IF\\s+NEW\\.${col}\\b`, 'i').test(inner);
+        if (startsWithCheck) {
+          const body = `BEGIN\n  ${inner.replace(/;?\s*$/, ';')}\nEND;`;
+          return `DROP TRIGGER IF EXISTS \`${trgName}\`;\nCREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${tbl}\` FOR EACH ROW\n${body}`;
+        }
+
+        inner = inner.replace(/;?\s*$/, ';');
         const body = `BEGIN\n  IF NEW.${col} IS NULL OR NEW.${col} = '' THEN\n    ${inner}\n  END IF;\nEND;`;
 
         return `DROP TRIGGER IF EXISTS \`${trgName}\`;\nCREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${tbl}\` FOR EACH ROW\n${body}`;
