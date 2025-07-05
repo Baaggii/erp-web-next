@@ -58,6 +58,13 @@ export default function CodingTablesPage() {
   const [duplicateInfo, setDuplicateInfo] = useState('');
   const [duplicateRecords, setDuplicateRecords] = useState('');
   const [summaryInfo, setSummaryInfo] = useState('');
+  const [mainCount, setMainCount] = useState(0);
+  const [otherCount, setOtherCount] = useState(0);
+  const [dupCount, setDupCount] = useState(0);
+  const [errorGroups, setErrorGroups] = useState({});
+  const [insertedMain, setInsertedMain] = useState(0);
+  const [insertedOther, setInsertedOther] = useState(0);
+  const [unsuccessfulGroups, setUnsuccessfulGroups] = useState({});
   const fileInputRef = useRef(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [configNames, setConfigNames] = useState([]);
@@ -933,6 +940,14 @@ export default function CodingTablesPage() {
     }
     const defsNoUnique = defs.filter((d) => !d.trim().startsWith('UNIQUE KEY'));
 
+    function buildOtherStructure(tableNameForSql) {
+      const defArr = defsNoUnique.map((d) =>
+        /AUTO_INCREMENT/i.test(d) ? d : d.replace(/\s+NOT NULL\b/gi, '')
+      );
+      defArr.push('`error_description` VARCHAR(255)');
+      return `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n);`;
+    }
+
     function buildStructure(
       tableNameForSql,
       useUnique = true,
@@ -956,7 +971,7 @@ export default function CodingTablesPage() {
       return `${base}\n${trgSql}\n`;
     }
 
-    function buildInsert(rows, tableNameForSql, fields, chunkLimit = 100) {
+    function buildInsert(rows, tableNameForSql, fields, chunkLimit = 100, relaxed = false) {
       if (!rows.length || !fields.length) return '';
       const cols = fields.map((f) => `\`${dbCols[f] || cleanIdentifier(renameMap[f] || f)}\``);
       const idxMap = fields.map((f) => allHdrs.indexOf(f));
@@ -964,7 +979,7 @@ export default function CodingTablesPage() {
       const parts = [];
       let chunkValues = [];
       for (const r of rows) {
-        let hasData = false;
+        let hasData = relaxed;
         const vals = idxMap.map((idx, i) => {
           const f = fields[i];
           let v;
@@ -985,16 +1000,18 @@ export default function CodingTablesPage() {
               v = defaultValues[f];
             }
           }
-          if (
-            v !== undefined &&
-            v !== null &&
-            v !== '' &&
-            (allowZeroMap[f] ? true : v !== 0)
-          ) {
-            hasData = true;
-          }
-          if (localNotNull[f]) {
-            hasData = true;
+          if (!relaxed) {
+            if (
+              v !== undefined &&
+              v !== null &&
+              v !== '' &&
+              (allowZeroMap[f] ? true : v !== 0)
+            ) {
+              hasData = true;
+            }
+            if (localNotNull[f]) {
+              hasData = true;
+            }
           }
           return formatVal(v, colTypes[f]);
         });
@@ -1016,7 +1033,8 @@ export default function CodingTablesPage() {
       tableNameForSql,
       fields,
       groupByFn,
-      chunkLimit = 100
+      chunkLimit = 100,
+      relaxed = false
     ) {
       let groups = [];
       if (typeof groupByFn === 'function') {
@@ -1046,7 +1064,9 @@ export default function CodingTablesPage() {
           parts.push(
             `-- Progress: Group ${chunkIndex} of ${totalChunks}${keySuffix}`
           );
-          parts.push(buildInsert(chunkRows, tableNameForSql, fields, chunkLimit));
+          parts.push(
+            buildInsert(chunkRows, tableNameForSql, fields, chunkLimit, relaxed)
+          );
         }
       }
       return parts.filter(Boolean).join('\n');
@@ -1072,10 +1092,11 @@ export default function CodingTablesPage() {
       tbl,
       fields,
       null,
-      parseInt(groupSize, 10) || 100
+      parseInt(groupSize, 10) || 100,
+      false
     );
     const otherCombined = [...otherRows, ...dupRows];
-    const structOtherStr = buildStructure(`${tbl}_other`, false, true);
+    const structOtherStr = buildOtherStructure(`${tbl}_other`);
     const fieldsWithoutId = fields.filter((f) => f !== idCol);
     const fieldsOther = [...fieldsWithoutId, 'error_description'];
     const insertOtherStr = buildGroupedInsertSQL(
@@ -1083,7 +1104,8 @@ export default function CodingTablesPage() {
       `${tbl}_other`,
       fieldsOther,
       null,
-      parseInt(groupSize, 10) || 100
+      parseInt(groupSize, 10) || 100,
+      true
     );
     if (structure) {
       const sqlStr = structMainStr + insertMainStr;
@@ -1113,8 +1135,20 @@ export default function CodingTablesPage() {
       setRecordsSql(insertMainStr);
       setRecordsSqlOther(insertOtherStr);
     }
+    const errCounts = {};
+    otherRows.forEach((r) => {
+      const desc = r[errorDescIdx] || 'unknown';
+      errCounts[desc] = (errCounts[desc] || 0) + 1;
+    });
+    const errSummary = Object.entries(errCounts)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join('; ');
+    setMainCount(mainRows.length);
+    setOtherCount(otherRows.length);
+    setDupCount(dupRows.length);
+    setErrorGroups(errCounts);
     setSummaryInfo(
-      `Prepared ${finalRows.length} rows, duplicates: ${dupList.length}`
+      `Processed ${finalRows.length} records. Main: ${mainRows.length}. Duplicates: ${dupRows.length}. Other: ${otherRows.length}. ${errSummary}`
     );
   }
 
@@ -1127,6 +1161,9 @@ export default function CodingTablesPage() {
     setStructSqlOther('');
     setRecordsSql('');
     setRecordsSqlOther('');
+    setInsertedMain(0);
+    setInsertedOther(0);
+    setUnsuccessfulGroups({});
     generateFromWorkbook({ structure: true, records: true });
   }
 
@@ -1137,6 +1174,9 @@ export default function CodingTablesPage() {
     }
     setRecordsSql('');
     setRecordsSqlOther('');
+    setInsertedMain(0);
+    setInsertedOther(0);
+    setUnsuccessfulGroups({});
     generateFromWorkbook({ structure: false, records: true });
   }
 
@@ -1167,6 +1207,18 @@ export default function CodingTablesPage() {
     return statements;
   }
 
+  function countSqlRows(sqlText) {
+    const statements = splitSqlStatements(sqlText);
+    let total = 0;
+    for (const stmt of statements) {
+      const valMatch = stmt.match(/VALUES\s+(.+?)(?:ON DUPLICATE|;)/is);
+      if (valMatch) {
+        total += valMatch[1].split(/\),\s*\(/).length;
+      }
+    }
+    return total;
+  }
+
   async function runStatements(statements) {
     setUploadProgress({ done: 0, total: statements.length });
     setInsertedCount(0);
@@ -1174,6 +1226,9 @@ export default function CodingTablesPage() {
       statements.length > 0 ? `Statement 1/${statements.length}` : ''
     );
     let totalInserted = 0;
+    let mainInserted = 0;
+    let otherInserted = 0;
+    const errGroups = {};
     const failedAll = [];
     interruptRef.current = false;
     abortCtrlRef.current = new AbortController();
@@ -1194,6 +1249,9 @@ export default function CodingTablesPage() {
       if (valMatch) {
         rowCount = valMatch[1].split(/\),\s*\(/).length;
       }
+      const tblMatch = stmt.match(/INSERT\s+INTO\s+`([^`]+)`/i);
+      const targetTable = tblMatch ? tblMatch[1] : '';
+      const isOtherTable = /_other$/i.test(targetTable);
       if (!progressMatch) {
         setGroupMessage(
           rowCount > 0
@@ -1225,11 +1283,21 @@ export default function CodingTablesPage() {
       const data = await res.json().catch(() => ({}));
       const inserted = data.inserted || 0;
       if (Array.isArray(data.failed) && data.failed.length > 0) {
+        const errMsg = data.failed
+          .map((f) => (typeof f === 'string' ? f : f.error))
+          .join('; ');
+        errGroups[errMsg] = (errGroups[errMsg] || 0) + rowCount;
         failedAll.push(
           ...data.failed.map((f) =>
             typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
           )
         );
+      } else {
+        if (isOtherTable) {
+          otherInserted += inserted;
+        } else {
+          mainInserted += inserted;
+        }
       }
       totalInserted += inserted;
       setInsertedCount(totalInserted);
@@ -1241,7 +1309,14 @@ export default function CodingTablesPage() {
     }
     setGroupMessage('');
     abortCtrlRef.current = null;
-    return { inserted: totalInserted, failed: failedAll, aborted: interruptRef.current };
+    return {
+      inserted: totalInserted,
+      failed: failedAll,
+      aborted: interruptRef.current,
+      insertedMain: mainInserted,
+      insertedOther: otherInserted,
+      errorGroups: errGroups,
+    };
   }
 
 
@@ -1254,18 +1329,29 @@ export default function CodingTablesPage() {
     setUploading(true);
     try {
       const statements = splitSqlStatements(combined);
-      const { inserted, failed, aborted } = await runStatements(statements);
+      let {
+        inserted,
+        failed,
+        aborted,
+        insertedMain: mInserted,
+        insertedOther: oInserted,
+        errorGroups: runErr,
+      } = await runStatements(statements);
       if (aborted) {
         addToast('Insert interrupted', 'warning');
       } else {
-        setSummaryInfo(
-          `Inserted ${inserted} rows. Duplicates: ${
-            duplicateInfo ? duplicateInfo.split('\n').length : 0
-          }`
-        );
         if (failed.length > 0) {
           setSqlMove(failed.join('\n'));
         }
+        setInsertedMain(mInserted);
+        setInsertedOther(oInserted);
+        setUnsuccessfulGroups(runErr);
+        const errSummary = Object.entries(runErr)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join('; ');
+        setSummaryInfo(
+          `Inserted to main: ${mInserted}. _other: ${oInserted}. Duplicates: ${dupCount}. ${errSummary}`
+        );
         addToast(`Table created with ${inserted} rows`, 'success');
       }
     } catch (err) {
@@ -1288,18 +1374,29 @@ export default function CodingTablesPage() {
     setUploading(true);
     try {
       const statements = splitSqlStatements(combined);
-      const { inserted, failed, aborted } = await runStatements(statements);
+      let {
+        inserted,
+        failed,
+        aborted,
+        insertedMain: mInserted,
+        insertedOther: oInserted,
+        errorGroups: runErr,
+      } = await runStatements(statements);
       if (aborted) {
         addToast('Insert interrupted', 'warning');
       } else {
-        setSummaryInfo(
-          `Inserted ${inserted} rows. Duplicates: ${
-            duplicateInfo ? duplicateInfo.split('\n').length : 0
-          }`
-        );
         if (failed.length > 0) {
           setSqlMove(failed.join('\n'));
         }
+        setInsertedMain(mInserted);
+        setInsertedOther(oInserted);
+        setUnsuccessfulGroups(runErr);
+        const errSummary = Object.entries(runErr)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join('; ');
+        setSummaryInfo(
+          `Inserted to main: ${mInserted}. _other: ${oInserted}. Duplicates: ${dupCount}. ${errSummary}`
+        );
         addToast(`Table created with ${inserted} rows`, 'success');
       }
     } catch (err) {
@@ -1318,9 +1415,23 @@ export default function CodingTablesPage() {
     }
     setUploading(true);
     try {
-      const { inserted } = await runStatements([structSqlOther]);
+      const {
+        inserted,
+        insertedMain: mInserted,
+        insertedOther: oInserted,
+        errorGroups: runErr,
+      } = await runStatements([structSqlOther]);
       if (!interruptRef.current) {
         addToast(`Other table inserted ${inserted} rows`, 'success');
+        setInsertedMain(mInserted);
+        setInsertedOther(oInserted);
+        setUnsuccessfulGroups(runErr);
+        const errSummary = Object.entries(runErr)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join('; ');
+        setSummaryInfo(
+          `Inserted to main: ${mInserted}. _other: ${oInserted}. Duplicates: ${dupCount}. ${errSummary}`
+        );
       } else {
         addToast('Insert interrupted', 'warning');
       }
@@ -1342,7 +1453,14 @@ export default function CodingTablesPage() {
       const statements = [recordsSql, recordsSqlOther]
         .filter(Boolean)
         .flatMap((s) => splitSqlStatements(s));
-      const { inserted, failed, aborted } = await runStatements(statements);
+      let {
+        inserted,
+        failed,
+        aborted,
+        insertedMain: mInserted,
+        insertedOther: oInserted,
+        errorGroups: runErr,
+      } = await runStatements(statements);
       if (failed.length > 0) {
         const tbl = cleanIdentifier(tableName);
         const moveSql = failed
@@ -1364,6 +1482,9 @@ export default function CodingTablesPage() {
           setSqlMove(moveSql);
         } else {
           const dataMove = await resMove.json().catch(() => ({}));
+          if (typeof dataMove.inserted === 'number') {
+            oInserted += dataMove.inserted;
+          }
           if (Array.isArray(dataMove.failed) && dataMove.failed.length > 0) {
             setSqlMove(
               dataMove.failed
@@ -1379,6 +1500,15 @@ export default function CodingTablesPage() {
         addToast('Insert interrupted', 'warning');
       } else {
         addToast('Records inserted', 'success');
+        setInsertedMain(mInserted);
+        setInsertedOther(oInserted);
+        setUnsuccessfulGroups(runErr);
+        const errSummary = Object.entries(runErr)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join('; ');
+        setSummaryInfo(
+          `Inserted to main: ${mInserted}. _other: ${oInserted}. Duplicates: ${dupCount}. ${errSummary}`
+        );
       }
     } catch (err) {
       console.error('SQL execution failed', err);
@@ -2109,24 +2239,24 @@ export default function CodingTablesPage() {
               {(structSql || recordsSql) && (
                 <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
                   <div>
-                    <div>Main table structure:</div>
-                    <textarea
-                      value={structSql}
-                      onChange={(e) => setStructSql(e.target.value)}
-                      rows={10}
-                      cols={40}
-                    />
-                  </div>
-                  <div>
-                    <div>Main table records:</div>
-                    <textarea
-                      value={recordsSql}
-                      onChange={(e) => setRecordsSql(e.target.value)}
-                      rows={10}
-                      cols={40}
-                      placeholder="No records generated"
-                    />
-                  </div>
+                  <div>Main table structure:</div>
+                  <textarea
+                    value={structSql}
+                    onChange={(e) => setStructSql(e.target.value)}
+                    rows={10}
+                    cols={40}
+                  />
+                </div>
+                <div>
+                  <div>Main table records: {mainCount}</div>
+                  <textarea
+                    value={recordsSql}
+                    onChange={(e) => setRecordsSql(e.target.value)}
+                    rows={10}
+                    cols={40}
+                    placeholder="No records generated"
+                  />
+                </div>
                 </div>
               )}
               {(structSqlOther || recordsSqlOther) && (
@@ -2141,7 +2271,7 @@ export default function CodingTablesPage() {
                   />
                 </div>
                 <div>
-                  <div>_other table records:</div>
+                  <div>_other table records: {otherCount + dupCount}</div>
                   <textarea
                     value={recordsSqlOther}
                     onChange={(e) => setRecordsSqlOther(e.target.value)}
@@ -2154,7 +2284,7 @@ export default function CodingTablesPage() {
               )}
               {sqlMove && (
                 <div style={{ marginTop: '0.5rem' }}>
-                  <div>SQL to move unsuccessful rows:</div>
+                  <div>SQL to move unsuccessful rows: {countSqlRows(sqlMove)}</div>
                   <textarea
                     value={sqlMove}
                     onChange={(e) => setSqlMove(e.target.value)}
@@ -2165,18 +2295,26 @@ export default function CodingTablesPage() {
               )}
               {duplicateInfo && (
                 <div style={{ marginTop: '0.5rem' }}>
-                  <div>Duplicate keys:</div>
+                  <div>Duplicate keys: {duplicateInfo.split('\n').length}</div>
                   <textarea value={duplicateInfo} readOnly rows={3} cols={80} />
                 </div>
               )}
               {duplicateRecords && (
                 <div style={{ marginTop: '0.5rem' }}>
-                  <div>Duplicate records:</div>
+                  <div>Duplicate records: {duplicateRecords.split('\n').length}</div>
                   <textarea value={duplicateRecords} readOnly rows={3} cols={80} />
                 </div>
               )}
               {summaryInfo && (
                 <div style={{ marginTop: '0.5rem' }}>{summaryInfo}</div>
+              )}
+              {Object.keys(unsuccessfulGroups).length > 0 && (
+                <div style={{ marginTop: '0.5rem' }}>
+                  Unsuccessful groups:{' '}
+                  {Object.entries(unsuccessfulGroups)
+                    .map(([k, v]) => `${k}: ${v}`)
+                    .join('; ')}
+                </div>
               )}
               {uploading && (
                 <div style={{ marginTop: '1rem' }}>
