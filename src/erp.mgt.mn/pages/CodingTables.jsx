@@ -966,16 +966,17 @@ export default function CodingTablesPage() {
     function buildTriggerScripts(text, tbl) {
       const trimmed = text.trim();
       if (!trimmed) return '';
-      const pattern = /(CREATE\s+TRIGGER[\s\S]*?END;?|BEGIN[\s\S]*?END;?)/gi;
-      const matches = trimmed.match(pattern) || [trimmed];
+      const statements = splitSqlStatements(trimmed);
       const counts = {};
-      const results = matches.map((m, idx) => {
-        const piece = m.trim();
-        if (/^CREATE\s+TRIGGER/i.test(piece)) {
-          return piece.endsWith(';') ? piece : piece + ';';
+      const results = [];
+      for (let i = 0; i < statements.length; i++) {
+        const piece = statements[i].trim();
+        if (/^(CREATE|DROP)\s+TRIGGER/i.test(piece)) {
+          results.push(piece.endsWith(';') ? piece : piece + ';');
+          continue;
         }
         const colMatch = piece.match(/SET\s+NEW\.\`?([A-Za-z0-9_]+)\`?\s*=/i);
-        const col = colMatch ? cleanIdentifier(colMatch[1]) : `col${idx + 1}`;
+        const col = colMatch ? cleanIdentifier(colMatch[1]) : `col${i + 1}`;
         counts[col] = (counts[col] || 0) + 1;
         const suffix = counts[col] > 1 ? `_bi${counts[col]}` : '_bi';
         const trgName = `${tbl}_${col}${suffix}`;
@@ -988,14 +989,17 @@ export default function CodingTablesPage() {
         const startsWithCheck = new RegExp(`^IF\\s+NEW\\.${col}\\b`, 'i').test(inner);
         if (startsWithCheck) {
           const body = `BEGIN\n  ${inner.replace(/;?\s*$/, ';')}\nEND;`;
-          return `DROP TRIGGER IF EXISTS \`${trgName}\`;\nCREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${tbl}\` FOR EACH ROW\n${body}`;
+          results.push(
+            `DROP TRIGGER IF EXISTS \`${trgName}\`;\nCREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${tbl}\` FOR EACH ROW\n${body}`
+          );
+        } else {
+          inner = inner.replace(/;?\s*$/, ';');
+          const body = `BEGIN\n  IF NEW.${col} IS NULL OR NEW.${col} = '' THEN\n    ${inner}\n  END IF;\nEND;`;
+          results.push(
+            `DROP TRIGGER IF EXISTS \`${trgName}\`;\nCREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${tbl}\` FOR EACH ROW\n${body}`
+          );
         }
-
-        inner = inner.replace(/;?\s*$/, ';');
-        const body = `BEGIN\n  IF NEW.${col} IS NULL OR NEW.${col} = '' THEN\n    ${inner}\n  END IF;\nEND;`;
-
-        return `DROP TRIGGER IF EXISTS \`${trgName}\`;\nCREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${tbl}\` FOR EACH ROW\n${body}`;
-      });
+      }
       return results.join('\n');
     }
 
