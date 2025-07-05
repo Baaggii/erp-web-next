@@ -32,11 +32,20 @@ export async function saveSql(table, sql) {
   await writeFiles(map);
 }
 
-export async function runSql(sql) {
-  const statements = sql
-    .split(/;\s*\n/)
+export function splitSqlStatements(sqlText) {
+  return sqlText
+    .split(/;\s*(?:\r?\n|$)/)
     .map((s) => s.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((stmt) => {
+      const m = stmt.match(/^--\s*Progress:.*\r?\n/);
+      if (m) stmt = stmt.slice(m[0].length).trim();
+      return stmt.endsWith(';') ? stmt : stmt + ';';
+    });
+}
+
+export async function runSql(sql) {
+  const statements = splitSqlStatements(sql);
   let inserted = 0;
   const failed = [];
   for (const stmt of statements) {
