@@ -1,0 +1,87 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+function cleanIdentifier(name) {
+  return String(name).replace(/[^A-Za-z0-9_]+/g, '');
+}
+
+function splitSqlStatements(sqlText) {
+  const lines = sqlText.split(/\r?\n/);
+  const statements = [];
+  let current = [];
+  let inTrigger = false;
+  for (const line of lines) {
+    current.push(line);
+    if (inTrigger) {
+      if (/END;?\s*$/.test(line)) {
+        statements.push(current.join('\n').trim());
+        current = [];
+        inTrigger = false;
+      }
+    } else if (/^CREATE\s+TRIGGER/i.test(line)) {
+      inTrigger = true;
+    } else if (/;\s*$/.test(line)) {
+      statements.push(current.join('\n').trim());
+      current = [];
+    }
+  }
+  if (current.length) {
+    const stmt = current.join('\n').trim();
+    if (stmt) statements.push(stmt.endsWith(';') ? stmt : stmt + ';');
+  }
+  return statements;
+}
+
+function buildTriggerScripts(text, tbl) {
+  const trimmed = text.trim();
+  if (!trimmed) return '';
+  const statements = splitSqlStatements(trimmed);
+  const counts = {};
+  const results = [];
+  for (let i = 0; i < statements.length; i++) {
+    const piece = statements[i].trim();
+    if (/^(CREATE|DROP)\s+TRIGGER/i.test(piece)) {
+      results.push(piece.endsWith(';') ? piece : piece + ';');
+      continue;
+    }
+    const colMatch = piece.match(/SET\s+NEW\.\`?([A-Za-z0-9_]+)\`?\s*=/i);
+    const col = colMatch ? cleanIdentifier(colMatch[1]) : `col${i + 1}`;
+    counts[col] = (counts[col] || 0) + 1;
+    const suffix = counts[col] > 1 ? `_bi${counts[col]}` : '_bi';
+    const trgName = `${tbl}_${col}${suffix}`;
+
+    let inner = piece;
+    if (/^BEGIN/i.test(inner)) {
+      inner = inner.replace(/^BEGIN/i, '').replace(/END;?$/i, '').trim();
+    }
+
+    const startsWithCheck = new RegExp(`^IF\\s+NEW\\.${col}\\b`, 'i').test(inner);
+    if (startsWithCheck) {
+      const body = `BEGIN\n  ${inner.replace(/;?\s*$/, ';')}\nEND;`;
+      results.push(
+        `DROP TRIGGER IF EXISTS \`${trgName}\`;\nCREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${tbl}\` FOR EACH ROW\n${body}`
+      );
+    } else {
+      inner = inner.replace(/;?\s*$/, ';');
+      const body = `BEGIN\n  IF NEW.${col} IS NULL OR NEW.${col} = '' THEN\n    ${inner}\n  END IF;\nEND;`;
+      results.push(
+        `DROP TRIGGER IF EXISTS \`${trgName}\`;\nCREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${tbl}\` FOR EACH ROW\n${body}`
+      );
+    }
+  }
+  return results.join('\n');
+}
+
+test('buildTriggerScripts avoids duplicate IF clause', () => {
+  const snippet = `BEGIN\n  IF NEW.pid IS NULL OR NEW.pid = '' THEN\n    SET NEW.pid = 'x';\n  END IF;\nEND`;
+  const sql = buildTriggerScripts(snippet, 't');
+  const occurrences = sql.match(/IF NEW\.pid/gi) || [];
+  assert.equal(occurrences.length, 1);
+});
+
+test('buildTriggerScripts keeps full CREATE TRIGGER intact', () => {
+  const snippet = `CREATE TRIGGER t_pid_bi BEFORE INSERT ON t FOR EACH ROW\nBEGIN\n  IF NEW.pid IS NULL OR NEW.pid = '' THEN\n    IF NEW.branch = 1 THEN\n      SET NEW.pid = 'A';\n    ELSE\n      SET NEW.pid = 'B';\n    END IF;\n  END IF;\nEND;`;
+  const sql = buildTriggerScripts(snippet, 't');
+  assert.ok(sql.trim().endsWith('END;'));
+  assert.ok(/CREATE TRIGGER/.test(sql));
+});
