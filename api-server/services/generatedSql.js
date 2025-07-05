@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { pool } from '../../db/index.js';
+import splitSql from '../utils/splitSql.js';
 
 const jsonPath = path.join(process.cwd(), 'config', 'generatedSql.json');
 const sqlPath = path.join(process.cwd(), 'config', 'generated.sql');
@@ -33,10 +34,7 @@ export async function saveSql(table, sql) {
 }
 
 export async function runSql(sql) {
-  const statements = sql
-    .split(/;\s*\n/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const statements = splitSql(sql);
   let inserted = 0;
   const failed = [];
   for (const stmt of statements) {

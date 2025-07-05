@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { translateToMn } from '../utils/translateToMn.js';
 import { useToast } from '../context/ToastContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
+import splitSql from '../../utils/splitSql.js';
 
 function cleanIdentifier(name) {
   return String(name).replace(/[^A-Za-z0-9_]+/g, '');
@@ -1128,11 +1129,7 @@ export default function CodingTablesPage() {
   }
 
   function splitSqlStatements(sqlText) {
-    return sqlText
-      .split(/;\s*\n/)
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map((s) => (s.endsWith(';') ? s.slice(0, -1) : s) + ';');
+    return splitSql(sqlText);
   }
 
   async function runStatements(statements) {
