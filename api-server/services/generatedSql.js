@@ -40,7 +40,7 @@ export function splitSqlStatements(sqlText) {
   for (const line of lines) {
     current.push(line);
     if (inTrigger) {
-      if (/END;\s*$/.test(line)) {
+      if (/END;?\s*$/.test(line)) {
         statements.push(current.join('\n').trim());
         current = [];
         inTrigger = false;
