@@ -9,3 +9,10 @@ test('splitSqlStatements keeps CREATE TRIGGER intact', () => {
   assert.equal(stmts.length, 2);
   assert.ok(stmts[0].startsWith('CREATE TRIGGER'));
 });
+
+test('splitSqlStatements handles trigger without ending semicolon', () => {
+  const noSemi = triggerSQL.replace('END;', 'END');
+  const stmts = splitSqlStatements(noSemi);
+  assert.equal(stmts.length, 2);
+  assert.ok(stmts[0].startsWith('CREATE TRIGGER'));
+});
