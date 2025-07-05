@@ -963,10 +963,22 @@ export default function CodingTablesPage() {
     }
     const defsNoUnique = defs.filter((d) => !d.trim().startsWith('UNIQUE KEY'));
 
+    const TRIGGER_SEP_RE = /^---+$/m;
     function buildTriggerScripts(text, tbl) {
       const trimmed = text.trim();
       if (!trimmed) return '';
-      const statements = splitSqlStatements(trimmed);
+      const chunks = trimmed
+        .split(TRIGGER_SEP_RE)
+        .map((c) => c.trim())
+        .filter(Boolean);
+      const statements = [];
+      for (const chunk of chunks) {
+        if (/^(CREATE|DROP)\s+TRIGGER/i.test(chunk)) {
+          statements.push(...splitSqlStatements(chunk));
+        } else {
+          statements.push(chunk);
+        }
+      }
       const counts = {};
       const results = [];
       for (let i = 0; i < statements.length; i++) {
@@ -2363,7 +2375,7 @@ export default function CodingTablesPage() {
                 />
               </div>
               <div>
-                Triggers:
+                Triggers (use <code>---</code> line to separate):
                 <textarea
                   rows={5}
                   cols={80}

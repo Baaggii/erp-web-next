@@ -48,10 +48,22 @@ function splitSqlStatements(sqlText) {
   return statements;
 }
 
+const TRIGGER_SEP_RE = /^---+$/m;
 function buildTriggerScripts(text, tbl) {
   const trimmed = text.trim();
   if (!trimmed) return '';
-  const statements = splitSqlStatements(trimmed);
+  const chunks = trimmed
+    .split(TRIGGER_SEP_RE)
+    .map((c) => c.trim())
+    .filter(Boolean);
+  const statements = [];
+  for (const chunk of chunks) {
+    if (/^(CREATE|DROP)\s+TRIGGER/i.test(chunk)) {
+      statements.push(...splitSqlStatements(chunk));
+    } else {
+      statements.push(chunk);
+    }
+  }
   const counts = {};
   const results = [];
   for (let i = 0; i < statements.length; i++) {
@@ -100,4 +112,11 @@ test('buildTriggerScripts keeps full CREATE TRIGGER intact', () => {
   const sql = buildTriggerScripts(snippet, 't');
   assert.ok(sql.trim().endsWith('END;'));
   assert.ok(/CREATE TRIGGER/.test(sql));
+});
+
+test('buildTriggerScripts splits snippets on separator line', () => {
+  const snippet = `BEGIN\n  SET NEW.x = 1;\nEND\n---\nBEGIN\n  SET NEW.y = 2;\nEND`;
+  const sql = buildTriggerScripts(snippet, 't');
+  const occurrences = sql.match(/CREATE TRIGGER/gi) || [];
+  assert.equal(occurrences.length, 2);
 });
