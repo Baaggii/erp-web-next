@@ -963,6 +963,38 @@ export default function CodingTablesPage() {
     }
     const defsNoUnique = defs.filter((d) => !d.trim().startsWith('UNIQUE KEY'));
 
+    function buildTriggerScripts(text, tbl) {
+      const trimmed = text.trim();
+      if (!trimmed) return '';
+      const results = [];
+      const pattern = /(CREATE\s+TRIGGER[\s\S]*?END;?|BEGIN[\s\S]*?END;?)/gi;
+      const matches = trimmed.match(pattern) || [];
+      if (matches.length === 0) {
+        matches.push(trimmed);
+      }
+      matches.forEach((m, idx) => {
+        const piece = m.trim();
+        if (/^CREATE\s+TRIGGER/i.test(piece)) {
+          results.push(piece.endsWith(';') ? piece : piece + ';');
+          return;
+        }
+        const colMatch = piece.match(/SET\s+NEW\.\`?([A-Za-z0-9_]+)\`?\s*=/i);
+        const col = colMatch ? cleanIdentifier(colMatch[1]) : `col${idx + 1}`;
+        const trgName = `${tbl}_${col}_bi`;
+        let body = piece;
+        if (!/^BEGIN/i.test(body)) body = `BEGIN\n${body}`;
+        if (!/END;?$/i.test(body)) {
+          body = body.replace(/;?\s*$/, ';');
+          body += '\nEND';
+        }
+        body = body.endsWith(';') ? body : body + ';';
+        results.push(
+          `DROP TRIGGER IF EXISTS \`${trgName}\`;\nCREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${tbl}\` FOR EACH ROW\n${body}`
+        );
+      });
+      return results.join('\n');
+    }
+
     function buildOtherStructure(tableNameForSql) {
       const defArr = defsNoUnique.map((d) =>
         /AUTO_INCREMENT/i.test(d) ? d : d.replace(/\s+NOT NULL\b/gi, '')
@@ -980,7 +1012,7 @@ export default function CodingTablesPage() {
       if (includeError) defArr.push('`error_description` VARCHAR(255)');
       const base = `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};`;
 
-      const trgSql = triggerSql.trim();
+      const trgSql = buildTriggerScripts(triggerSql, tableNameForSql);
       const trgPart = trgSql ? `\n${trgSql}` : '';
       return `${base}${trgPart}\n`;
     }
@@ -1836,6 +1868,8 @@ export default function CodingTablesPage() {
           if (workbook && headers.length > 0) {
             extractHeaders(workbook, sheet, headerRow, mnHeaderRow);
           }
+          setForeignKeySql('');
+          setTriggerSql('');
           return;
         }
         setSheet(cfg.sheet ?? '');
@@ -1902,6 +1936,8 @@ export default function CodingTablesPage() {
         setStartYear(cfg.startYear ?? '');
         setEndYear(cfg.endYear ?? '');
         setAutoIncStart(cfg.autoIncStart ?? '1');
+        setForeignKeySql(cfg.foreignKeys ?? '');
+        setTriggerSql(cfg.triggers ?? '');
       })
       .catch(() => {});
   }, [tableName, configNames]);
