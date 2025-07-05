@@ -1219,6 +1219,63 @@ export default function CodingTablesPage() {
     return total;
   }
 
+  async function retryInsertRows(stmt, isOtherTable) {
+    const m = stmt.match(/^(.*?VALUES\s*)(.+?)(\s*ON DUPLICATE[^;]*|;)/is);
+    if (!m) {
+      return { inserted: 0, failed: [stmt], main: 0, other: 0, groups: { 'parse error': 1 } };
+    }
+    const prefix = m[1];
+    const rowsPart = m[2];
+    let suffix = m[3];
+    if (!/;\s*$/.test(suffix)) suffix = suffix.trim() + ';';
+    const rows = rowsPart
+      .split(/\)\s*,\s*\(/)
+      .map((r) => r.replace(/^\(/, '').replace(/\)$/,'') );
+    const failed = [];
+    const groups = {};
+    let inserted = 0;
+    let mainInserted = 0;
+    let otherInserted = 0;
+    for (const r of rows) {
+      const single = `${prefix}(${r})${suffix}`;
+      let res;
+      try {
+        res = await fetch('/api/generated_sql/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql: single }),
+          credentials: 'include',
+          signal: abortCtrlRef.current.signal,
+        });
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          return { inserted, failed, main: mainInserted, other: otherInserted, groups, aborted: true };
+        }
+        const msg = 'request failed';
+        failed.push(`${single} -- ${msg}`);
+        groups[msg] = (groups[msg] || 0) + 1;
+        continue;
+      }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const msg = data.message || res.statusText;
+        failed.push(`${single} -- ${msg}`);
+        groups[msg] = (groups[msg] || 0) + 1;
+        continue;
+      }
+      const data = await res.json().catch(() => ({}));
+      const ins = data.inserted || 0;
+      inserted += ins;
+      if (isOtherTable) otherInserted += ins; else mainInserted += ins;
+      if (Array.isArray(data.failed) && data.failed.length > 0) {
+        const msg = data.failed.map((f) => (typeof f === 'string' ? f : f.error)).join('; ');
+        groups[msg] = (groups[msg] || 0) + 1;
+        failed.push(...data.failed.map((f) => typeof f === 'string' ? f : `${f.sql} -- ${f.error}`));
+      }
+    }
+    return { inserted, failed, main: mainInserted, other: otherInserted, groups };
+  }
+
   async function runStatements(statements) {
     setUploadProgress({ done: 0, total: statements.length });
     setInsertedCount(0);
@@ -1281,17 +1338,16 @@ export default function CodingTablesPage() {
         return { inserted: totalInserted, failed: failedAll, aborted: true };
       }
       const data = await res.json().catch(() => ({}));
-      const inserted = data.inserted || 0;
+      let inserted = data.inserted || 0;
       if (Array.isArray(data.failed) && data.failed.length > 0) {
-        const errMsg = data.failed
-          .map((f) => (typeof f === 'string' ? f : f.error))
-          .join('; ');
-        errGroups[errMsg] = (errGroups[errMsg] || 0) + rowCount;
-        failedAll.push(
-          ...data.failed.map((f) =>
-            typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
-          )
-        );
+        const retry = await retryInsertRows(stmt, isOtherTable);
+        inserted = retry.inserted;
+        mainInserted += retry.main;
+        otherInserted += retry.other;
+        Object.entries(retry.groups).forEach(([k, v]) => {
+          errGroups[k] = (errGroups[k] || 0) + v;
+        });
+        failedAll.push(...retry.failed);
       } else {
         if (isOtherTable) {
           otherInserted += inserted;
