@@ -83,28 +83,22 @@ export async function getTableStructure(table) {
   const key = Object.keys(rows[0]).find((k) => /create table/i.test(k));
   let sql = rows[0][key] + ';';
   try {
-    const [cols] = await pool.query(`SHOW COLUMNS FROM \`${table}\``);
-    const numCols = cols.filter((c) => c.Field && c.Field.includes('num'));
-    for (const col of numCols) {
-      const trgName = `${table}_${col.Field}_bi`; // before insert
+    const [trgs] = await pool.query(`SHOW TRIGGERS WHERE \`Table\` = ?`, [table]);
+    for (const t of trgs) {
+      const trgName = t.Trigger;
       sql += `\nDROP TRIGGER IF EXISTS \`${trgName}\`;`;
-      let createSql;
       try {
-        const [trg] = await pool.query(`SHOW CREATE TRIGGER \`${trgName}\``);
-        if (trg && trg.length) {
-          const k = Object.keys(trg[0]).find((x) => /create trigger/i.test(x));
-          createSql = trg[0][k] + ';';
+        const [info] = await pool.query(`SHOW CREATE TRIGGER \`${trgName}\``);
+        if (info && info.length) {
+          const k = Object.keys(info[0]).find((x) => /create trigger/i.test(x));
+          sql += `\n${info[0][k]};`;
         }
       } catch {
-        createSql = '';
+        // ignore
       }
-      if (!createSql) {
-        createSql = `CREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${table}\` FOR EACH ROW\nBEGIN\n  SET NEW.\`${col.Field}\` = CONCAT(\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    )),\n    '-',\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    )),\n    '-',\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    )),\n    '-',\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    ))\n  );\nEND;`;
-      }
-      sql += `\n${createSql}`;
     }
   } catch {
-    // ignore trigger generation errors
+    // ignore trigger fetching errors
   }
   return sql;
 }
