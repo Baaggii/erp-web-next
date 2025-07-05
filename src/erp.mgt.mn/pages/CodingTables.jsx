@@ -1129,10 +1129,14 @@ export default function CodingTablesPage() {
 
   function splitSqlStatements(sqlText) {
     return sqlText
-      .split(/;\s*\n/)
+      .split(/;\s*(?:\r?\n|$)/)
       .map((s) => s.trim())
       .filter(Boolean)
-      .map((s) => (s.endsWith(';') ? s.slice(0, -1) : s) + ';');
+      .map((stmt) => {
+        const m = stmt.match(/^--\s*Progress:.*\r?\n/);
+        if (m) stmt = stmt.slice(m[0].length).trim();
+        return stmt.endsWith(';') ? stmt : stmt + ';';
+      });
   }
 
   async function runStatements(statements) {
