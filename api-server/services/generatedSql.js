@@ -32,11 +32,35 @@ export async function saveSql(table, sql) {
   await writeFiles(map);
 }
 
+export function splitSqlStatements(sqlText) {
+  const lines = sqlText.split(/\r?\n/);
+  const statements = [];
+  let current = [];
+  let inTrigger = false;
+  for (const line of lines) {
+    current.push(line);
+    if (inTrigger) {
+      if (/END;\s*$/.test(line)) {
+        statements.push(current.join('\n').trim());
+        current = [];
+        inTrigger = false;
+      }
+    } else if (/^CREATE\s+TRIGGER/i.test(line)) {
+      inTrigger = true;
+    } else if (/;\s*$/.test(line)) {
+      statements.push(current.join('\n').trim());
+      current = [];
+    }
+  }
+  if (current.length) {
+    const stmt = current.join('\n').trim();
+    if (stmt) statements.push(stmt.endsWith(';') ? stmt : stmt + ';');
+  }
+  return statements;
+}
+
 export async function runSql(sql) {
-  const statements = sql
-    .split(/;\s*\n/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const statements = splitSqlStatements(sql);
   let inserted = 0;
   const failed = [];
   for (const stmt of statements) {
@@ -64,7 +88,20 @@ export async function getTableStructure(table) {
     for (const col of numCols) {
       const trgName = `${table}_${col.Field}_bi`; // before insert
       sql += `\nDROP TRIGGER IF EXISTS \`${trgName}\`;`;
-      sql += `\nCREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${table}\` FOR EACH ROW\nBEGIN\n  SET NEW.\`${col.Field}\` = CONCAT(\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    )),\n    '-',\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    )),\n    '-',\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    )),\n    '-',\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    ))\n  );\nEND;`;
+      let createSql;
+      try {
+        const [trg] = await pool.query(`SHOW CREATE TRIGGER \`${trgName}\``);
+        if (trg && trg.length) {
+          const k = Object.keys(trg[0]).find((x) => /create trigger/i.test(x));
+          createSql = trg[0][k] + ';';
+        }
+      } catch {
+        createSql = '';
+      }
+      if (!createSql) {
+        createSql = `CREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${table}\` FOR EACH ROW\nBEGIN\n  SET NEW.\`${col.Field}\` = CONCAT(\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    )),\n    '-',\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    )),\n    '-',\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    )),\n    '-',\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    ))\n  );\nEND;`;
+      }
+      sql += `\n${createSql}`;
     }
   } catch {
     // ignore trigger generation errors
