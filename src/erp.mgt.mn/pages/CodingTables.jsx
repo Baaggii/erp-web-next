@@ -1141,11 +1141,30 @@ export default function CodingTablesPage() {
   }
 
   function splitSqlStatements(sqlText) {
-    return sqlText
-      .split(/;\s*\n/)
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map((s) => (s.endsWith(';') ? s.slice(0, -1) : s) + ';');
+    const lines = sqlText.split(/\r?\n/);
+    const statements = [];
+    let current = [];
+    let inTrigger = false;
+    for (const line of lines) {
+      current.push(line);
+      if (inTrigger) {
+        if (/END;\s*$/.test(line)) {
+          statements.push(current.join('\n').trim());
+          current = [];
+          inTrigger = false;
+        }
+      } else if (/^CREATE\s+TRIGGER/i.test(line)) {
+        inTrigger = true;
+      } else if (/;\s*$/.test(line)) {
+        statements.push(current.join('\n').trim());
+        current = [];
+      }
+    }
+    if (current.length) {
+      const stmt = current.join('\n').trim();
+      if (stmt) statements.push(stmt.endsWith(';') ? stmt : stmt + ';');
+    }
+    return statements;
   }
 
   async function runStatements(statements) {
