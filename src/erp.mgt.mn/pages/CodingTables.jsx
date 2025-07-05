@@ -34,6 +34,8 @@ export default function CodingTablesPage() {
   const [structSqlOther, setStructSqlOther] = useState('');
   const [recordsSql, setRecordsSql] = useState('');
   const [recordsSqlOther, setRecordsSqlOther] = useState('');
+  const [triggerSql, setTriggerSql] = useState('');
+  const [foreignKeySql, setForeignKeySql] = useState('');
   const [sqlMove, setSqlMove] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
@@ -604,6 +606,16 @@ export default function CodingTablesPage() {
           .forEach((c) => uniq.push(c));
       }
     }
+
+    const foreigns = lines.filter((l) => /^(KEY|CONSTRAINT|FOREIGN KEY)/i.test(l));
+
+    const trigMatches = [];
+    const trgRe = /CREATE\s+TRIGGER[\s\S]*?END;/gi;
+    let mTrg;
+    while ((mTrg = trgRe.exec(sqlText))) {
+      trigMatches.push(mTrg[0].trim());
+    }
+
     return {
       table,
       idColumn: idCol,
@@ -618,6 +630,8 @@ export default function CodingTablesPage() {
       ),
       defaultValues: defaults,
       autoIncStart: autoInc,
+      foreignKeys: foreigns.join('\n'),
+      triggers: trigMatches.join('\n'),
     };
   }
 
@@ -638,6 +652,8 @@ export default function CodingTablesPage() {
     setAllowZeroMap((prev) => ({ ...prev, ...cfg.allowZeroMap }));
     setDefaultValues((prev) => ({ ...prev, ...cfg.defaultValues }));
     setAutoIncStart(cfg.autoIncStart || '1');
+    setForeignKeySql(cfg.foreignKeys || '');
+    setTriggerSql(cfg.triggers || '');
   }
 
   async function loadTableStructure() {
@@ -670,6 +686,8 @@ export default function CodingTablesPage() {
           setAllowZeroMap((prev) => ({ ...prev, ...cfg.allowZeroMap }));
           setDefaultValues((prev) => ({ ...prev, ...cfg.defaultValues }));
           setAutoIncStart(cfg.autoIncStart || '1');
+          setForeignKeySql(cfg.foreignKeys || '');
+          setTriggerSql(cfg.triggers || '');
         }
       }
     } catch {
@@ -887,7 +905,12 @@ export default function CodingTablesPage() {
     setDuplicateRecords(dupRows.map((r) => r.join(',')).join('\n'));
 
     let extras = [];
-    if (sql) {
+    if (foreignKeySql) {
+      extras = foreignKeySql
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter((l) => l);
+    } else if (sql) {
       const m = sql.match(/CREATE TABLE[^\(]*\([^]*?\)/m);
       if (m) {
         const body = m[0].replace(/^[^\(]*\(|\)[^\)]*$/g, '');
@@ -957,18 +980,9 @@ export default function CodingTablesPage() {
       if (includeError) defArr.push('`error_description` VARCHAR(255)');
       const base = `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};`;
 
-      const trgParts = [];
-      Object.values(dbCols).forEach((col) => {
-        if (col.includes('num')) {
-          const trgName = `${tableNameForSql}_${col}_bi`;
-          trgParts.push(`DROP TRIGGER IF EXISTS \`${trgName}\`;`);
-          trgParts.push(
-            `CREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${tableNameForSql}\` FOR EACH ROW\nBEGIN\n  SET NEW.\`${col}\` = CONCAT(\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    )),\n    '-',\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    )),\n    '-',\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    )),\n    '-',\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    ))\n  );\nEND;`
-          );
-        }
-      });
-      const trgSql = trgParts.length ? `\n${trgParts.join('\n')}` : '';
-      return `${base}\n${trgSql}\n`;
+      const trgSql = triggerSql.trim();
+      const trgPart = trgSql ? `\n${trgSql}` : '';
+      return `${base}${trgPart}\n`;
     }
 
     function buildInsert(rows, tableNameForSql, fields, chunkLimit = 100, relaxed = false) {
@@ -1631,6 +1645,12 @@ export default function CodingTablesPage() {
         if (typeof v !== 'boolean') return `${k} allowZero must be true/false`;
       }
     }
+    if (cfg.triggers && typeof cfg.triggers !== 'string') {
+      return 'triggers must be a string';
+    }
+    if (cfg.foreignKeys && typeof cfg.foreignKeys !== 'string') {
+      return 'foreignKeys must be a string';
+    }
     return null;
   }
 
@@ -1668,6 +1688,8 @@ export default function CodingTablesPage() {
       startYear,
       endYear,
       autoIncStart,
+      triggers: triggerSql,
+      foreignKeys: foreignKeySql,
     };
     const validationError = validateConfig(config);
     if (validationError) {
@@ -2269,6 +2291,24 @@ export default function CodingTablesPage() {
                   onChange={(e) =>
                     setGroupSize(parseInt(e.target.value, 10) || 1)
                   }
+                />
+              </div>
+              <div>
+                Foreign Keys / Indexes:
+                <textarea
+                  rows={3}
+                  cols={40}
+                  value={foreignKeySql}
+                  onChange={(e) => setForeignKeySql(e.target.value)}
+                />
+              </div>
+              <div>
+                Triggers:
+                <textarea
+                  rows={5}
+                  cols={80}
+                  value={triggerSql}
+                  onChange={(e) => setTriggerSql(e.target.value)}
                 />
               </div>
             <div>
