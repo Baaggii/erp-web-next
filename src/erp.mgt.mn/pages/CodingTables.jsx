@@ -58,6 +58,10 @@ export default function CodingTablesPage() {
   const [duplicateInfo, setDuplicateInfo] = useState('');
   const [duplicateRecords, setDuplicateRecords] = useState('');
   const [summaryInfo, setSummaryInfo] = useState('');
+  const [mainCount, setMainCount] = useState(0);
+  const [otherCount, setOtherCount] = useState(0);
+  const [dupCount, setDupCount] = useState(0);
+  const [errorGroups, setErrorGroups] = useState({});
   const fileInputRef = useRef(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [configNames, setConfigNames] = useState([]);
@@ -933,6 +937,14 @@ export default function CodingTablesPage() {
     }
     const defsNoUnique = defs.filter((d) => !d.trim().startsWith('UNIQUE KEY'));
 
+    function buildOtherStructure(tableNameForSql) {
+      const defArr = defsNoUnique.map((d) =>
+        /AUTO_INCREMENT/i.test(d) ? d : d.replace(/\s+NOT NULL\b/gi, '')
+      );
+      defArr.push('`error_description` VARCHAR(255)');
+      return `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n);`;
+    }
+
     function buildStructure(
       tableNameForSql,
       useUnique = true,
@@ -956,7 +968,7 @@ export default function CodingTablesPage() {
       return `${base}\n${trgSql}\n`;
     }
 
-    function buildInsert(rows, tableNameForSql, fields, chunkLimit = 100) {
+    function buildInsert(rows, tableNameForSql, fields, chunkLimit = 100, relaxed = false) {
       if (!rows.length || !fields.length) return '';
       const cols = fields.map((f) => `\`${dbCols[f] || cleanIdentifier(renameMap[f] || f)}\``);
       const idxMap = fields.map((f) => allHdrs.indexOf(f));
@@ -964,7 +976,7 @@ export default function CodingTablesPage() {
       const parts = [];
       let chunkValues = [];
       for (const r of rows) {
-        let hasData = false;
+        let hasData = relaxed;
         const vals = idxMap.map((idx, i) => {
           const f = fields[i];
           let v;
@@ -985,16 +997,18 @@ export default function CodingTablesPage() {
               v = defaultValues[f];
             }
           }
-          if (
-            v !== undefined &&
-            v !== null &&
-            v !== '' &&
-            (allowZeroMap[f] ? true : v !== 0)
-          ) {
-            hasData = true;
-          }
-          if (localNotNull[f]) {
-            hasData = true;
+          if (!relaxed) {
+            if (
+              v !== undefined &&
+              v !== null &&
+              v !== '' &&
+              (allowZeroMap[f] ? true : v !== 0)
+            ) {
+              hasData = true;
+            }
+            if (localNotNull[f]) {
+              hasData = true;
+            }
           }
           return formatVal(v, colTypes[f]);
         });
@@ -1016,7 +1030,8 @@ export default function CodingTablesPage() {
       tableNameForSql,
       fields,
       groupByFn,
-      chunkLimit = 100
+      chunkLimit = 100,
+      relaxed = false
     ) {
       let groups = [];
       if (typeof groupByFn === 'function') {
@@ -1046,7 +1061,9 @@ export default function CodingTablesPage() {
           parts.push(
             `-- Progress: Group ${chunkIndex} of ${totalChunks}${keySuffix}`
           );
-          parts.push(buildInsert(chunkRows, tableNameForSql, fields, chunkLimit));
+          parts.push(
+            buildInsert(chunkRows, tableNameForSql, fields, chunkLimit, relaxed)
+          );
         }
       }
       return parts.filter(Boolean).join('\n');
@@ -1072,10 +1089,11 @@ export default function CodingTablesPage() {
       tbl,
       fields,
       null,
-      parseInt(groupSize, 10) || 100
+      parseInt(groupSize, 10) || 100,
+      false
     );
     const otherCombined = [...otherRows, ...dupRows];
-    const structOtherStr = buildStructure(`${tbl}_other`, false, true);
+    const structOtherStr = buildOtherStructure(`${tbl}_other`);
     const fieldsWithoutId = fields.filter((f) => f !== idCol);
     const fieldsOther = [...fieldsWithoutId, 'error_description'];
     const insertOtherStr = buildGroupedInsertSQL(
@@ -1083,7 +1101,8 @@ export default function CodingTablesPage() {
       `${tbl}_other`,
       fieldsOther,
       null,
-      parseInt(groupSize, 10) || 100
+      parseInt(groupSize, 10) || 100,
+      true
     );
     if (structure) {
       const sqlStr = structMainStr + insertMainStr;
@@ -1113,8 +1132,20 @@ export default function CodingTablesPage() {
       setRecordsSql(insertMainStr);
       setRecordsSqlOther(insertOtherStr);
     }
+    const errCounts = {};
+    otherRows.forEach((r) => {
+      const desc = r[errorDescIdx] || 'unknown';
+      errCounts[desc] = (errCounts[desc] || 0) + 1;
+    });
+    const errSummary = Object.entries(errCounts)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join('; ');
+    setMainCount(mainRows.length);
+    setOtherCount(otherRows.length);
+    setDupCount(dupRows.length);
+    setErrorGroups(errCounts);
     setSummaryInfo(
-      `Prepared ${finalRows.length} rows, duplicates: ${dupList.length}`
+      `Processed ${finalRows.length} records. Main: ${mainRows.length}. Duplicates: ${dupRows.length}. Other: ${otherRows.length}. ${errSummary}`
     );
   }
 
@@ -1258,14 +1289,12 @@ export default function CodingTablesPage() {
       if (aborted) {
         addToast('Insert interrupted', 'warning');
       } else {
-        setSummaryInfo(
-          `Inserted ${inserted} rows. Duplicates: ${
-            duplicateInfo ? duplicateInfo.split('\n').length : 0
-          }`
-        );
         if (failed.length > 0) {
           setSqlMove(failed.join('\n'));
         }
+        setSummaryInfo(
+          `Inserted to main: ${mainCount}. _other: ${otherCount}. Duplicates: ${dupCount}.`
+        );
         addToast(`Table created with ${inserted} rows`, 'success');
       }
     } catch (err) {
@@ -1292,14 +1321,12 @@ export default function CodingTablesPage() {
       if (aborted) {
         addToast('Insert interrupted', 'warning');
       } else {
-        setSummaryInfo(
-          `Inserted ${inserted} rows. Duplicates: ${
-            duplicateInfo ? duplicateInfo.split('\n').length : 0
-          }`
-        );
         if (failed.length > 0) {
           setSqlMove(failed.join('\n'));
         }
+        setSummaryInfo(
+          `Inserted to main: ${mainCount}. _other: ${otherCount}. Duplicates: ${dupCount}.`
+        );
         addToast(`Table created with ${inserted} rows`, 'success');
       }
     } catch (err) {
@@ -1321,6 +1348,9 @@ export default function CodingTablesPage() {
       const { inserted } = await runStatements([structSqlOther]);
       if (!interruptRef.current) {
         addToast(`Other table inserted ${inserted} rows`, 'success');
+        setSummaryInfo(
+          `Inserted to main: ${mainCount}. _other: ${otherCount}. Duplicates: ${dupCount}.`
+        );
       } else {
         addToast('Insert interrupted', 'warning');
       }
@@ -1379,6 +1409,9 @@ export default function CodingTablesPage() {
         addToast('Insert interrupted', 'warning');
       } else {
         addToast('Records inserted', 'success');
+        setSummaryInfo(
+          `Inserted to main: ${mainCount}. _other: ${otherCount}. Duplicates: ${dupCount}.`
+        );
       }
     } catch (err) {
       console.error('SQL execution failed', err);
