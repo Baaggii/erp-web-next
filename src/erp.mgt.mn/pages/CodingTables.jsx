@@ -944,7 +944,6 @@ export default function CodingTablesPage() {
     }
 
     function buildInsert(rows, tableNameForSql, fields, chunkLimit = 100) {
-      chunkLimit = Number(chunkLimit) || 100;
       if (!rows.length || !fields.length) return '';
       const cols = fields.map((f) => `\`${dbCols[f] || cleanIdentifier(renameMap[f] || f)}\``);
       const idxMap = fields.map((f) => allHdrs.indexOf(f));
@@ -1006,7 +1005,6 @@ export default function CodingTablesPage() {
       groupByFn,
       chunkLimit = 100
     ) {
-      chunkLimit = Number(chunkLimit) || 100;
       let groups = [];
       if (typeof groupByFn === 'function') {
         const grouped = {};
@@ -1038,7 +1036,7 @@ export default function CodingTablesPage() {
           parts.push(buildInsert(chunkRows, tableNameForSql, fields, chunkLimit));
         }
       }
-      return parts.filter(Boolean).join('\n') + '\n';
+      return parts.filter(Boolean).join('\n');
     }
 
     let fields = [
