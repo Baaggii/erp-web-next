@@ -73,6 +73,8 @@ function parseConfig(raw = {}) {
     startYear: raw.startYear ? String(raw.startYear) : '',
     endYear: raw.endYear ? String(raw.endYear) : '',
     autoIncStart: raw.autoIncStart ? String(raw.autoIncStart) : '1',
+    triggers: typeof raw.triggers === 'string' ? raw.triggers : '',
+    foreignKeys: typeof raw.foreignKeys === 'string' ? raw.foreignKeys : '',
   };
 }
 
