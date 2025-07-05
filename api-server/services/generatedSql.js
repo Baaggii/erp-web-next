@@ -37,16 +37,32 @@ export function splitSqlStatements(sqlText) {
   const statements = [];
   let current = [];
   let inTrigger = false;
+  let depth = 0;
+  const beginRe = /\bBEGIN\b/i;
+  const endRe = /\bEND\b\s*;?\s*$/i;
+  const endBlockRe = /\bEND\s+(IF|WHILE|LOOP|REPEAT|CASE)\b/i;
   for (const line of lines) {
     current.push(line);
     if (inTrigger) {
-      if (/END;\s*$/.test(line)) {
-        statements.push(current.join('\n').trim());
-        current = [];
-        inTrigger = false;
+      if (beginRe.test(line)) depth++;
+      if (endRe.test(line) && !endBlockRe.test(line)) {
+        if (depth === 0) {
+          statements.push(current.join('\n').trim());
+          current = [];
+          inTrigger = false;
+          continue;
+        }
+        depth--;
+        if (depth === 0) {
+          statements.push(current.join('\n').trim());
+          current = [];
+          inTrigger = false;
+        }
       }
     } else if (/^CREATE\s+TRIGGER/i.test(line)) {
       inTrigger = true;
+      if (beginRe.test(line)) depth = 1;
+      else depth = 0;
     } else if (/;\s*$/.test(line)) {
       statements.push(current.join('\n').trim());
       current = [];
@@ -83,28 +99,22 @@ export async function getTableStructure(table) {
   const key = Object.keys(rows[0]).find((k) => /create table/i.test(k));
   let sql = rows[0][key] + ';';
   try {
-    const [cols] = await pool.query(`SHOW COLUMNS FROM \`${table}\``);
-    const numCols = cols.filter((c) => c.Field && c.Field.includes('num'));
-    for (const col of numCols) {
-      const trgName = `${table}_${col.Field}_bi`; // before insert
+    const [trgs] = await pool.query(`SHOW TRIGGERS WHERE \`Table\` = ?`, [table]);
+    for (const t of trgs) {
+      const trgName = t.Trigger;
       sql += `\nDROP TRIGGER IF EXISTS \`${trgName}\`;`;
-      let createSql;
       try {
-        const [trg] = await pool.query(`SHOW CREATE TRIGGER \`${trgName}\``);
-        if (trg && trg.length) {
-          const k = Object.keys(trg[0]).find((x) => /create trigger/i.test(x));
-          createSql = trg[0][k] + ';';
+        const [info] = await pool.query(`SHOW CREATE TRIGGER \`${trgName}\``);
+        if (info && info.length) {
+          const k = Object.keys(info[0]).find((x) => /create trigger/i.test(x));
+          sql += `\n${info[0][k]};`;
         }
       } catch {
-        createSql = '';
+        // ignore
       }
-      if (!createSql) {
-        createSql = `CREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${table}\` FOR EACH ROW\nBEGIN\n  SET NEW.\`${col.Field}\` = CONCAT(\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    )),\n    '-',\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    )),\n    '-',\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    )),\n    '-',\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    ))\n  );\nEND;`;
-      }
-      sql += `\n${createSql}`;
     }
   } catch {
-    // ignore trigger generation errors
+    // ignore trigger fetching errors
   }
   return sql;
 }
