@@ -57,5 +57,17 @@ export async function getTableStructure(table) {
   const [rows] = await pool.query(`SHOW CREATE TABLE \`${table}\``);
   if (!rows || rows.length === 0) return '';
   const key = Object.keys(rows[0]).find((k) => /create table/i.test(k));
-  return rows[0][key] + ';';
+  let sql = rows[0][key] + ';';
+  try {
+    const [cols] = await pool.query(`SHOW COLUMNS FROM \`${table}\``);
+    const numCols = cols.filter((c) => c.Field && c.Field.includes('num'));
+    for (const col of numCols) {
+      const trgName = `${table}_${col.Field}_bi`; // before insert
+      sql += `\nDROP TRIGGER IF EXISTS \`${trgName}\`;`;
+      sql += `\nCREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${table}\` FOR EACH ROW\nBEGIN\n  SET NEW.\`${col.Field}\` = CONCAT(\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    )),\n    '-',\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    )),\n    '-',\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    )),\n    '-',\n    UPPER(CONCAT(\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26)),\n      CHAR(FLOOR(65 + RAND() * 26))\n    ))\n  );\nEND;`;
+    }
+  } catch {
+    // ignore trigger generation errors
+  }
+  return sql;
 }
