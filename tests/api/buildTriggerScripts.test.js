@@ -48,7 +48,7 @@ function splitSqlStatements(sqlText) {
   return statements;
 }
 
-const TRIGGER_SEP_RE = /^---+$/m;
+const TRIGGER_SEP_RE = /^\s*---+\s*$/m;
 function buildTriggerScripts(text, tbl) {
   const trimmed = text.trim();
   if (!trimmed) return '';
@@ -117,6 +117,21 @@ test('buildTriggerScripts keeps full CREATE TRIGGER intact', () => {
 test('buildTriggerScripts splits snippets on separator line', () => {
   const snippet = `BEGIN\n  SET NEW.x = 1;\nEND\n---\nBEGIN\n  SET NEW.y = 2;\nEND`;
   const sql = buildTriggerScripts(snippet, 't');
+  const occurrences = sql.match(/CREATE TRIGGER/gi) || [];
+  assert.equal(occurrences.length, 2);
+});
+
+test('buildTriggerScripts splits snippets with spaces around separator', () => {
+  const snippet = `BEGIN\n  SET NEW.x = 1;\nEND\n  ---  \nBEGIN\n  SET NEW.y = 2;\nEND`;
+  const sql = buildTriggerScripts(snippet, 't');
+  const occurrences = sql.match(/CREATE TRIGGER/gi) || [];
+  assert.equal(occurrences.length, 2);
+});
+
+test('buildTriggerScripts generates unique names for same column', () => {
+  const snippet = `BEGIN\n  SET NEW.pid = 1;\nEND\n---\nBEGIN\n  SET NEW.pid = 2;\nEND`;
+  const sql = buildTriggerScripts(snippet, 't');
+  assert.ok(sql.includes('t_pid_bi2'));
   const occurrences = sql.match(/CREATE TRIGGER/gi) || [];
   assert.equal(occurrences.length, 2);
 });

@@ -963,7 +963,7 @@ export default function CodingTablesPage() {
     }
     const defsNoUnique = defs.filter((d) => !d.trim().startsWith('UNIQUE KEY'));
 
-    const TRIGGER_SEP_RE = /^---+$/m;
+    const TRIGGER_SEP_RE = /^\s*---+\s*$/m;
     function buildTriggerScripts(text, tbl) {
       const trimmed = text.trim();
       if (!trimmed) return '';
