@@ -61,21 +61,29 @@ function buildTriggerScripts(text, tbl) {
     counts[col] = (counts[col] || 0) + 1;
     const suffix = counts[col] > 1 ? `_bi${counts[col]}` : '_bi';
     const trgName = `${tbl}_${col}${suffix}`;
-
     let inner = piece;
     if (/^BEGIN/i.test(inner)) {
       inner = inner.replace(/^BEGIN/i, '').replace(/END;?$/i, '').trim();
     }
 
+    const lines = inner.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const declareLines = [];
+    while (lines.length && /^DECLARE\b/i.test(lines[0])) {
+      declareLines.push(lines.shift().replace(/;?$/, ';'));
+    }
+    inner = lines.join('\n').trim();
+
     const startsWithCheck = new RegExp(`^IF\\s+NEW\\.${col}\\b`, 'i').test(inner);
+    const declBlock = declareLines.length ? `  ${declareLines.join('\n  ')}\n` : '';
+
     if (startsWithCheck) {
-      const body = `BEGIN\n  ${inner.replace(/;?\s*$/, ';')}\nEND;`;
+      const body = `BEGIN\n${declBlock}  ${inner.replace(/;?\\s*$/, ';')}\nEND;`;
       results.push(
         `DROP TRIGGER IF EXISTS \`${trgName}\`;\nCREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${tbl}\` FOR EACH ROW\n${body}`
       );
     } else {
-      inner = inner.replace(/;?\s*$/, ';');
-      const body = `BEGIN\n  IF NEW.${col} IS NULL OR NEW.${col} = '' THEN\n    ${inner}\n  END IF;\nEND;`;
+      inner = inner.replace(/;?\\s*$/, ';');
+      const body = `BEGIN\n${declBlock}  IF NEW.${col} IS NULL OR NEW.${col} = '' THEN\n    ${inner}\n  END IF;\nEND;`;
       results.push(
         `DROP TRIGGER IF EXISTS \`${trgName}\`;\nCREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${tbl}\` FOR EACH ROW\n${body}`
       );
@@ -118,4 +126,19 @@ test('buildTriggerScripts generates unique names for same column', () => {
   assert.ok(sql.includes('t_pid_bi2'));
   const occurrences = sql.match(/CREATE TRIGGER/gi) || [];
   assert.equal(occurrences.length, 2);
+});
+
+test('buildTriggerScripts handles DECLARE lines', () => {
+  const snippet = `DECLARE x INT;\nSET NEW.pid = x;`;
+  const sql = buildTriggerScripts(snippet, 't');
+  assert.ok(sql.includes('DECLARE x INT;'));
+  assert.ok(/IF NEW\.pid IS NULL/.test(sql));
+});
+
+test('buildTriggerScripts retains IF after DECLARE', () => {
+  const snippet = `DECLARE y INT;\nIF NEW.pid IS NULL THEN\n  SET NEW.pid = y;\nEND IF;`;
+  const sql = buildTriggerScripts(snippet, 't');
+  const occurrences = sql.match(/IF NEW\.pid/gi) || [];
+  assert.equal(occurrences.length, 1);
+  assert.ok(sql.includes('DECLARE y INT;'));
 });

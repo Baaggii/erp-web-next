@@ -998,15 +998,24 @@ export default function CodingTablesPage() {
           inner = inner.replace(/^BEGIN/i, '').replace(/END;?$/i, '').trim();
         }
 
+        const lines = inner.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        const declareLines = [];
+        while (lines.length && /^DECLARE\b/i.test(lines[0])) {
+          declareLines.push(lines.shift().replace(/;?$/, ';'));
+        }
+        inner = lines.join('\n').trim();
+
         const startsWithCheck = new RegExp(`^IF\\s+NEW\\.${col}\\b`, 'i').test(inner);
+        const declBlock = declareLines.length ? `  ${declareLines.join('\n  ')}\n` : '';
+
         if (startsWithCheck) {
-          const body = `BEGIN\n  ${inner.replace(/;?\s*$/, ';')}\nEND;`;
+          const body = `BEGIN\n${declBlock}  ${inner.replace(/;?\s*$/, ';')}\nEND;`;
           results.push(
             `DROP TRIGGER IF EXISTS \`${trgName}\`;\nCREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${tbl}\` FOR EACH ROW\n${body}`
           );
         } else {
           inner = inner.replace(/;?\s*$/, ';');
-          const body = `BEGIN\n  IF NEW.${col} IS NULL OR NEW.${col} = '' THEN\n    ${inner}\n  END IF;\nEND;`;
+          const body = `BEGIN\n${declBlock}  IF NEW.${col} IS NULL OR NEW.${col} = '' THEN\n    ${inner}\n  END IF;\nEND;`;
           results.push(
             `DROP TRIGGER IF EXISTS \`${trgName}\`;\nCREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${tbl}\` FOR EACH ROW\n${body}`
           );
