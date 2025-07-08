@@ -70,14 +70,21 @@ export default function CodingTablesPage() {
   const fileInputRef = useRef(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [configNames, setConfigNames] = useState([]);
+  const [configMap, setConfigMap] = useState({});
   const interruptRef = useRef(false);
   const abortCtrlRef = useRef(null);
 
   useEffect(() => {
     fetch('/api/coding_table_configs', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
-      .then((data) => setConfigNames(Object.keys(data)))
-      .catch(() => setConfigNames([]));
+      .then((data) => {
+        setConfigNames(Object.keys(data));
+        setConfigMap(data);
+      })
+      .catch(() => {
+        setConfigNames([]);
+        setConfigMap({});
+      });
   }, []);
 
   useEffect(() => {
@@ -241,8 +248,14 @@ export default function CodingTablesPage() {
     setStartYear('');
     setEndYear('');
     setAutoIncStart('1');
-    if (workbook) {
-      extractHeaders(workbook, s, headerRow, mnHeaderRow);
+    const entry = Object.entries(configMap).find(([, cfg]) => cfg.sheet === s);
+    if (entry) {
+      setTableName(entry[0]);
+    } else {
+      setTableName('');
+      if (workbook) {
+        extractHeaders(workbook, s, headerRow, mnHeaderRow);
+      }
     }
   }
 
@@ -638,7 +651,9 @@ export default function CodingTablesPage() {
   }
 
   function loadFromSql() {
-    const base = structSql || sql;
+    const base = [structSql, foreignKeySql, triggerSql]
+      .filter(Boolean)
+      .join('\n');
     const cfg = parseSqlConfig(base.trim());
     if (!cfg) return;
     const hdrs = Object.keys(cfg.columnTypes || {});
@@ -667,27 +682,18 @@ export default function CodingTablesPage() {
       );
       if (!res.ok) return;
       const data = await res.json();
-      setStructSql(data.sql || '');
+      const allSql = data.sql || '';
+      const statements = splitSqlStatements(allSql);
+      setStructSql(statements[0] || '');
       setStructSqlOther('');
       setRecordsSql('');
       setRecordsSqlOther('');
-      setSql(data.sql || '');
+      setSql(allSql);
       setSqlOther('');
       setSqlMove('');
-      if (data.sql) {
-        const cfg = parseSqlConfig(data.sql);
+      if (allSql) {
+        const cfg = parseSqlConfig(allSql);
         if (cfg) {
-          setHeaders(Object.keys(cfg.columnTypes || {}));
-          setIdColumn(cfg.idColumn);
-          setNameColumn(cfg.nameColumn);
-          setOtherColumns(cfg.otherColumns);
-          setUniqueFields(cfg.uniqueFields);
-          setCalcText(cfg.calcText);
-          setColumnTypes((prev) => ({ ...prev, ...cfg.columnTypes }));
-          setNotNullMap((prev) => ({ ...prev, ...cfg.notNullMap }));
-          setAllowZeroMap((prev) => ({ ...prev, ...cfg.allowZeroMap }));
-          setDefaultValues((prev) => ({ ...prev, ...cfg.defaultValues }));
-          setAutoIncStart(cfg.autoIncStart || '1');
           setForeignKeySql(cfg.foreignKeys || '');
           setTriggerSql(cfg.triggers || '');
         }
