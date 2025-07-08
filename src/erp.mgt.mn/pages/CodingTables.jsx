@@ -1012,13 +1012,15 @@ export default function CodingTablesPage() {
           );
         }
       }
-      return results.join('\n');
+      return results
+        .map((p) => (p.trim().endsWith(';') ? p.trim() : `${p.trim()};`))
+        .join('\n');
     }
 
     function buildOtherStructure(tableNameForSql) {
-      const defArr = defsNoUnique.map((d) =>
-        /AUTO_INCREMENT/i.test(d) ? d : d.replace(/\s+NOT NULL\b/gi, '')
-      );
+      const defArr = defsNoUnique
+        .filter((d) => !/^(KEY|CONSTRAINT|FOREIGN KEY)/i.test(d))
+        .map((d) => (/AUTO_INCREMENT/i.test(d) ? d : d.replace(/\s+NOT NULL\b/gi, '')));
       defArr.push('`error_description` VARCHAR(255)');
       return `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n);`;
     }
