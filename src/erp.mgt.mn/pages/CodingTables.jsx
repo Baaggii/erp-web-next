@@ -610,16 +610,10 @@ export default function CodingTablesPage() {
     const foreigns = lines.filter((l) => /^(KEY|CONSTRAINT|FOREIGN KEY)/i.test(l));
 
     const trigMatches = [];
-    const cleanedSql = sqlText
-      .split(/\r?\n/)
-      .filter((l) => !/^\s*DELIMITER\b/i.test(l))
-      .join('\n');
-    const trgRe = /CREATE\s+TRIGGER[\s\S]*?END(?:\s*\$\$|;)/gi;
+    const trgRe = /CREATE\s+TRIGGER[\s\S]*?END;/gi;
     let mTrg;
-    while ((mTrg = trgRe.exec(cleanedSql))) {
-      let stmt = mTrg[0].trim();
-      stmt = stmt.replace(/END\s*\$\$/i, 'END;');
-      trigMatches.push(stmt);
+    while ((mTrg = trgRe.exec(sqlText))) {
+      trigMatches.push(mTrg[0].trim());
     }
 
     return {
@@ -970,7 +964,7 @@ export default function CodingTablesPage() {
     const defsNoUnique = defs.filter((d) => !d.trim().startsWith('UNIQUE KEY'));
 
     const TRIGGER_SEP_RE = /^\s*---+\s*$/m;
-    function buildTriggerScripts(text, tbl, withDelimiter = false) {
+    function buildTriggerScripts(text, tbl) {
       const trimmed = text.trim();
       if (!trimmed) return '';
       const chunks = trimmed
@@ -990,16 +984,7 @@ export default function CodingTablesPage() {
       for (let i = 0; i < statements.length; i++) {
         const piece = statements[i].trim();
         if (/^(CREATE|DROP)\s+TRIGGER/i.test(piece)) {
-          const isCreate = /^CREATE\s+TRIGGER/i.test(piece);
-          if (withDelimiter && isCreate) {
-            let stmt = piece.endsWith(';') ? piece.slice(0, -1) : piece;
-            stmt = stmt.replace(/END;?$/i, 'END$$');
-            results.push('DELIMITER $$');
-            results.push(stmt);
-            results.push('DELIMITER ;');
-          } else {
-            results.push(piece.endsWith(';') ? piece : piece + ';');
-          }
+          results.push(piece.endsWith(';') ? piece : piece + ';');
           continue;
         }
         const colMatch = piece.match(/SET\s+NEW\.\`?([A-Za-z0-9_]+)\`?\s*=/i);
@@ -1014,18 +999,18 @@ export default function CodingTablesPage() {
         }
 
         const startsWithCheck = new RegExp(`^IF\\s+NEW\\.${col}\\b`, 'i').test(inner);
-        let body;
         if (startsWithCheck) {
-          body = `BEGIN\n  ${inner.replace(/;?\s*$/, ';')}\nEND;`;
+          const body = `BEGIN\n  ${inner.replace(/;?\s*$/, ';')}\nEND;`;
+          results.push(
+            `DROP TRIGGER IF EXISTS \`${trgName}\`;\nCREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${tbl}\` FOR EACH ROW\n${body}`
+          );
         } else {
           inner = inner.replace(/;?\s*$/, ';');
-          body = `BEGIN\n  IF NEW.${col} IS NULL OR NEW.${col} = '' THEN\n    ${inner}\n  END IF;\nEND;`;
+          const body = `BEGIN\n  IF NEW.${col} IS NULL OR NEW.${col} = '' THEN\n    ${inner}\n  END IF;\nEND;`;
+          results.push(
+            `DROP TRIGGER IF EXISTS \`${trgName}\`;\nCREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${tbl}\` FOR EACH ROW\n${body}`
+          );
         }
-        let stmt = `DROP TRIGGER IF EXISTS \`${trgName}\`;\nCREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${tbl}\` FOR EACH ROW\n${body}`;
-        if (withDelimiter) {
-          stmt = `DELIMITER $$\n${stmt.replace(/END;$/, 'END$$')}\nDELIMITER ;`;
-        }
-        results.push(stmt);
       }
       return results.join('\n');
     }
@@ -1041,14 +1026,13 @@ export default function CodingTablesPage() {
     function buildStructure(
       tableNameForSql,
       useUnique = true,
-      includeError = false,
-      withDelimiter = false
+      includeError = false
     ) {
       const defArr = [...(useUnique ? defs : defsNoUnique)];
       if (includeError) defArr.push('`error_description` VARCHAR(255)');
       const base = `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};`;
 
-      const trgSql = buildTriggerScripts(triggerSql, tableNameForSql, withDelimiter);
+      const trgSql = buildTriggerScripts(triggerSql, tableNameForSql);
       const trgPart = trgSql ? `\n${trgSql}` : '';
       return `${base}${trgPart}\n`;
     }
@@ -1168,8 +1152,7 @@ export default function CodingTablesPage() {
       return true;
     });
 
-    const structMainPlain = buildStructure(tbl, true, false, false);
-    const structMainStr = buildStructure(tbl, true, false, true);
+    const structMainStr = buildStructure(tbl, true);
     const insertMainStr = buildGroupedInsertSQL(
       mainRows,
       tbl,
@@ -1191,7 +1174,7 @@ export default function CodingTablesPage() {
       true
     );
     if (structure) {
-      const sqlStr = structMainPlain + insertMainStr;
+      const sqlStr = structMainStr + insertMainStr;
       const sqlOtherStr =
         otherCombined.length > 0 ? structOtherStr + insertOtherStr : '';
       setStructSql(structMainStr);
