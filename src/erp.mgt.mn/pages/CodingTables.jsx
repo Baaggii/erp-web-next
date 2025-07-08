@@ -1585,44 +1585,36 @@ export default function CodingTablesPage() {
       } = await runStatements(statements);
       if (failed.length > 0) {
         const tbl = cleanIdentifier(tableName);
-        const convertFailed = (s) => {
-          const msgMatch = s.match(/--\s*(.*)$/);
-          const errMsg = msgMatch ? msgMatch[1] : '';
-          const cleaned = s.replace(/--\s*.*$/, '').replace(/;+\s*$/, '');
-          const m = cleaned.match(/INSERT\s+INTO\s+`[^`]+`\s*\(([^)]+)\)\s*VALUES\s*\((.*)\)/i);
-          if (!m) return null;
-          const cols = m[1].trim();
-          const vals = m[2].replace(/\)\s*$/, '').trim();
-          const errVal = errMsg ? escapeSqlValue(errMsg) : 'NULL';
-          return `INSERT INTO \`${tbl}_other\` (${cols}, \`error_description\`) VALUES (${vals}, ${errVal});`;
-        };
         const moveSql = failed
-          .map((stmt) => convertFailed(stmt))
-          .filter(Boolean)
+          .map((stmt) => {
+            const re = new RegExp(`INSERT INTO\\s+\`${tbl}\``, 'i');
+            if (re.test(stmt) && !/\_other`/i.test(stmt)) {
+              return stmt.replace(re, `INSERT INTO \`${tbl}_other\``);
+            }
+            return stmt;
+          })
           .join('\n');
-        if (moveSql) {
-          const resMove = await fetch('/api/generated_sql/execute', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sql: moveSql }),
-            credentials: 'include',
-          });
-          if (!resMove.ok) {
-            setSqlMove(moveSql);
-          } else {
-            const dataMove = await resMove.json().catch(() => ({}));
-            if (typeof dataMove.inserted === 'number') {
-              oInserted += dataMove.inserted;
-            }
-            if (Array.isArray(dataMove.failed) && dataMove.failed.length > 0) {
-              setSqlMove(
-                dataMove.failed
-                  .map((f) =>
-                    typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
-                  )
-                  .join('\n')
-              );
-            }
+        const resMove = await fetch('/api/generated_sql/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql: moveSql }),
+          credentials: 'include',
+        });
+        if (!resMove.ok) {
+          setSqlMove(moveSql);
+        } else {
+          const dataMove = await resMove.json().catch(() => ({}));
+          if (typeof dataMove.inserted === 'number') {
+            oInserted += dataMove.inserted;
+          }
+          if (Array.isArray(dataMove.failed) && dataMove.failed.length > 0) {
+            setSqlMove(
+              dataMove.failed
+                .map((f) =>
+                  typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
+                )
+                .join('\n')
+            );
           }
         }
       }
