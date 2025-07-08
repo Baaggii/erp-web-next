@@ -1016,11 +1016,9 @@ export default function CodingTablesPage() {
     }
 
     function buildOtherStructure(tableNameForSql) {
-      const defArr = defsNoUnique
-        .filter((d) => !/\bFOREIGN KEY\b/i.test(d))
-        .map((d) =>
-          /AUTO_INCREMENT/i.test(d) ? d : d.replace(/\s+NOT NULL\b/gi, '')
-        );
+      const defArr = defsNoUnique.map((d) =>
+        /AUTO_INCREMENT/i.test(d) ? d : d.replace(/\s+NOT NULL\b/gi, '')
+      );
       defArr.push('`error_description` VARCHAR(255)');
       return `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n);`;
     }
