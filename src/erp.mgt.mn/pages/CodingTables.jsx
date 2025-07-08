@@ -42,7 +42,7 @@ export default function CodingTablesPage() {
   const [insertedCount, setInsertedCount] = useState(0);
   const [groupMessage, setGroupMessage] = useState('');
   const [groupByField, setGroupByField] = useState('');
-  const [groupSize, setGroupSize] = useState(100);
+  const [groupSize, setGroupSize] = useState(300);
   const [columnTypes, setColumnTypes] = useState({});
   const [notNullMap, setNotNullMap] = useState({});
   const [allowZeroMap, setAllowZeroMap] = useState({});
@@ -70,14 +70,21 @@ export default function CodingTablesPage() {
   const fileInputRef = useRef(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [configNames, setConfigNames] = useState([]);
+  const [configMap, setConfigMap] = useState({});
   const interruptRef = useRef(false);
   const abortCtrlRef = useRef(null);
 
   useEffect(() => {
     fetch('/api/coding_table_configs', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
-      .then((data) => setConfigNames(Object.keys(data)))
-      .catch(() => setConfigNames([]));
+      .then((data) => {
+        setConfigNames(Object.keys(data));
+        setConfigMap(data);
+      })
+      .catch(() => {
+        setConfigNames([]);
+        setConfigMap({});
+      });
   }, []);
 
   useEffect(() => {
@@ -241,6 +248,15 @@ export default function CodingTablesPage() {
     setStartYear('');
     setEndYear('');
     setAutoIncStart('1');
+    const entry = Object.entries(configMap).find(([, cfg]) => cfg.sheet === s);
+    if (entry) {
+      setTableName(entry[0]);
+    } else {
+      setTableName('');
+      if (workbook) {
+        extractHeaders(workbook, s, headerRow, mnHeaderRow);
+      }
+    }
   }
 
   function handleHeaderRowChange(e) {
@@ -348,14 +364,12 @@ export default function CodingTablesPage() {
     setColumnTypes(types);
     const nn = {};
     hdrs.forEach((h) => {
-      nn[h] = valsByHeader[h].every(
-        (v) => v !== undefined && v !== null && v !== ''
-      );
+      nn[h] = false;
     });
     setNotNullMap(nn);
     const az = {};
     hdrs.forEach((h) => {
-      az[h] = !nn[h];
+      az[h] = true;
     });
     setAllowZeroMap(az);
     setDuplicateHeaders(dup);
@@ -637,7 +651,9 @@ export default function CodingTablesPage() {
   }
 
   function loadFromSql() {
-    const base = structSql || sql;
+    const base = [structSql, foreignKeySql, triggerSql]
+      .filter(Boolean)
+      .join('\n');
     const cfg = parseSqlConfig(base.trim());
     if (!cfg) return;
     const hdrs = Object.keys(cfg.columnTypes || {});
@@ -666,27 +682,18 @@ export default function CodingTablesPage() {
       );
       if (!res.ok) return;
       const data = await res.json();
-      setStructSql(data.sql || '');
+      const allSql = data.sql || '';
+      const statements = splitSqlStatements(allSql);
+      setStructSql(statements[0] || '');
       setStructSqlOther('');
       setRecordsSql('');
       setRecordsSqlOther('');
-      setSql(data.sql || '');
+      setSql(allSql);
       setSqlOther('');
       setSqlMove('');
-      if (data.sql) {
-        const cfg = parseSqlConfig(data.sql);
+      if (allSql) {
+        const cfg = parseSqlConfig(allSql);
         if (cfg) {
-          setHeaders(Object.keys(cfg.columnTypes || {}));
-          setIdColumn(cfg.idColumn);
-          setNameColumn(cfg.nameColumn);
-          setOtherColumns(cfg.otherColumns);
-          setUniqueFields(cfg.uniqueFields);
-          setCalcText(cfg.calcText);
-          setColumnTypes((prev) => ({ ...prev, ...cfg.columnTypes }));
-          setNotNullMap((prev) => ({ ...prev, ...cfg.notNullMap }));
-          setAllowZeroMap((prev) => ({ ...prev, ...cfg.allowZeroMap }));
-          setDefaultValues((prev) => ({ ...prev, ...cfg.defaultValues }));
-          setAutoIncStart(cfg.autoIncStart || '1');
           setForeignKeySql(cfg.foreignKeys || '');
           setTriggerSql(cfg.triggers || '');
         }
@@ -1170,7 +1177,7 @@ export default function CodingTablesPage() {
       tbl,
       fields,
       null,
-      parseInt(groupSize, 10) || 100,
+      parseInt(groupSize, 10) || 300,
       false
     );
     const otherCombined = [...otherRows, ...dupRows];
@@ -1182,7 +1189,7 @@ export default function CodingTablesPage() {
       `${tbl}_other`,
       fieldsOther,
       null,
-      parseInt(groupSize, 10) || 100,
+      parseInt(groupSize, 10) || 300,
       true
     );
     if (structure) {
@@ -1826,7 +1833,15 @@ export default function CodingTablesPage() {
   }, [allFields, idFilterMode, notNullMap, renameMap]);
 
   useEffect(() => {
-    if (!tableName || !configNames.includes(tableName)) return;
+    if (!tableName) return;
+    if (!configNames.includes(tableName)) {
+      if (workbook && sheet) {
+        extractHeaders(workbook, sheet, headerRow, mnHeaderRow);
+      }
+      setForeignKeySql('');
+      setTriggerSql('');
+      return;
+    }
     fetch(`/api/coding_table_configs?table=${encodeURIComponent(tableName)}`, {
       credentials: 'include',
     })
