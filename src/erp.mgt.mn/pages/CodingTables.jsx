@@ -448,6 +448,7 @@ export default function CodingTablesPage() {
       return base;
     }
     if (typeof val === 'string') {
+      val = val.trim();
       if (val.includes(',')) val = val.replace(/,/g, '-');
       const m = val.match(/^(\d{4})[.-](\d{1,2})[.-](\d{1,2})$/);
       if (m) {
