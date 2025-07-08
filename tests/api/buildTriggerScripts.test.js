@@ -49,7 +49,7 @@ function splitSqlStatements(sqlText) {
 }
 
 const TRIGGER_SEP_RE = /^\s*---+\s*$/m;
-function buildTriggerScripts(text, tbl) {
+function buildTriggerScripts(text, tbl, withDelimiter = false) {
   const trimmed = text.trim();
   if (!trimmed) return '';
   const chunks = trimmed
@@ -69,7 +69,16 @@ function buildTriggerScripts(text, tbl) {
   for (let i = 0; i < statements.length; i++) {
     const piece = statements[i].trim();
     if (/^(CREATE|DROP)\s+TRIGGER/i.test(piece)) {
-      results.push(piece.endsWith(';') ? piece : piece + ';');
+      const isCreate = /^CREATE\s+TRIGGER/i.test(piece);
+      if (withDelimiter && isCreate) {
+        let stmt = piece.endsWith(';') ? piece.slice(0, -1) : piece;
+        stmt = stmt.replace(/END;?$/i, 'END$$');
+        results.push('DELIMITER $$');
+        results.push(stmt);
+        results.push('DELIMITER ;');
+      } else {
+        results.push(piece.endsWith(';') ? piece : piece + ';');
+      }
       continue;
     }
     const colMatch = piece.match(/SET\s+NEW\.\`?([A-Za-z0-9_]+)\`?\s*=/i);
@@ -84,18 +93,18 @@ function buildTriggerScripts(text, tbl) {
     }
 
     const startsWithCheck = new RegExp(`^IF\\s+NEW\\.${col}\\b`, 'i').test(inner);
+    let body;
     if (startsWithCheck) {
-      const body = `BEGIN\n  ${inner.replace(/;?\s*$/, ';')}\nEND;`;
-      results.push(
-        `DROP TRIGGER IF EXISTS \`${trgName}\`;\nCREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${tbl}\` FOR EACH ROW\n${body}`
-      );
+      body = `BEGIN\n  ${inner.replace(/;?\\s*$/, ';')}\nEND;`;
     } else {
-      inner = inner.replace(/;?\s*$/, ';');
-      const body = `BEGIN\n  IF NEW.${col} IS NULL OR NEW.${col} = '' THEN\n    ${inner}\n  END IF;\nEND;`;
-      results.push(
-        `DROP TRIGGER IF EXISTS \`${trgName}\`;\nCREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${tbl}\` FOR EACH ROW\n${body}`
-      );
+      inner = inner.replace(/;?\\s*$/, ';');
+      body = `BEGIN\n  IF NEW.${col} IS NULL OR NEW.${col} = '' THEN\n    ${inner}\n  END IF;\nEND;`;
     }
+    let stmt = `DROP TRIGGER IF EXISTS \`${trgName}\`;\nCREATE TRIGGER \`${trgName}\` BEFORE INSERT ON \`${tbl}\` FOR EACH ROW\n${body}`;
+    if (withDelimiter) {
+      stmt = `DELIMITER $$\n${stmt.replace(/END;$/, 'END$$')}\nDELIMITER ;`;
+    }
+    results.push(stmt);
   }
   return results.join('\n');
 }
@@ -134,4 +143,10 @@ test('buildTriggerScripts generates unique names for same column', () => {
   assert.ok(sql.includes('t_pid_bi2'));
   const occurrences = sql.match(/CREATE TRIGGER/gi) || [];
   assert.equal(occurrences.length, 2);
+});
+
+test('buildTriggerScripts outputs delimiters when requested', () => {
+  const snippet = `BEGIN\n  SET NEW.x = 1;\nEND`;
+  const sql = buildTriggerScripts(snippet, 't', true);
+  assert.ok(/DELIMITER \$\$/i.test(sql));
 });

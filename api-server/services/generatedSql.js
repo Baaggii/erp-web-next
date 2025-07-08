@@ -76,7 +76,11 @@ export function splitSqlStatements(sqlText) {
 }
 
 export async function runSql(sql) {
-  const statements = splitSqlStatements(sql);
+  const cleaned = sql
+    .split(/\r?\n/)
+    .filter((l) => !/^\s*DELIMITER\b/i.test(l))
+    .join('\n');
+  const statements = splitSqlStatements(cleaned);
   let inserted = 0;
   const failed = [];
   for (const stmt of statements) {
