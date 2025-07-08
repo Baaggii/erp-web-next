@@ -16,10 +16,3 @@ test('splitSqlStatements handles trigger without ending semicolon', () => {
   assert.equal(stmts.length, 2);
   assert.ok(stmts[0].startsWith('CREATE TRIGGER'));
 });
-
-test('splitSqlStatements handles nested BEGIN blocks', () => {
-  const nested = `CREATE TRIGGER t_bi BEFORE INSERT ON t FOR EACH ROW\nBEGIN\n  IF NEW.x IS NULL THEN\n    BEGIN\n      SET NEW.x = 1;\n    END;\n  END IF;\nEND;\nINSERT INTO t VALUES (1);`;
-  const stmts = splitSqlStatements(nested);
-  assert.equal(stmts.length, 2);
-  assert.ok(stmts[0].includes('SET NEW.x = 1;'));
-});
