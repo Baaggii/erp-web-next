@@ -42,7 +42,7 @@ export default function CodingTablesPage() {
   const [insertedCount, setInsertedCount] = useState(0);
   const [groupMessage, setGroupMessage] = useState('');
   const [groupByField, setGroupByField] = useState('');
-  const [groupSize, setGroupSize] = useState(100);
+  const [groupSize, setGroupSize] = useState(300);
   const [columnTypes, setColumnTypes] = useState({});
   const [notNullMap, setNotNullMap] = useState({});
   const [allowZeroMap, setAllowZeroMap] = useState({});
@@ -241,6 +241,9 @@ export default function CodingTablesPage() {
     setStartYear('');
     setEndYear('');
     setAutoIncStart('1');
+    if (workbook) {
+      extractHeaders(workbook, s, headerRow, mnHeaderRow);
+    }
   }
 
   function handleHeaderRowChange(e) {
@@ -348,14 +351,12 @@ export default function CodingTablesPage() {
     setColumnTypes(types);
     const nn = {};
     hdrs.forEach((h) => {
-      nn[h] = valsByHeader[h].every(
-        (v) => v !== undefined && v !== null && v !== ''
-      );
+      nn[h] = false;
     });
     setNotNullMap(nn);
     const az = {};
     hdrs.forEach((h) => {
-      az[h] = !nn[h];
+      az[h] = true;
     });
     setAllowZeroMap(az);
     setDuplicateHeaders(dup);
@@ -1170,7 +1171,7 @@ export default function CodingTablesPage() {
       tbl,
       fields,
       null,
-      parseInt(groupSize, 10) || 100,
+      parseInt(groupSize, 10) || 300,
       false
     );
     const otherCombined = [...otherRows, ...dupRows];
@@ -1182,7 +1183,7 @@ export default function CodingTablesPage() {
       `${tbl}_other`,
       fieldsOther,
       null,
-      parseInt(groupSize, 10) || 100,
+      parseInt(groupSize, 10) || 300,
       true
     );
     if (structure) {
@@ -1826,7 +1827,15 @@ export default function CodingTablesPage() {
   }, [allFields, idFilterMode, notNullMap, renameMap]);
 
   useEffect(() => {
-    if (!tableName || !configNames.includes(tableName)) return;
+    if (!tableName) return;
+    if (!configNames.includes(tableName)) {
+      if (workbook && sheet) {
+        extractHeaders(workbook, sheet, headerRow, mnHeaderRow);
+      }
+      setForeignKeySql('');
+      setTriggerSql('');
+      return;
+    }
     fetch(`/api/coding_table_configs?table=${encodeURIComponent(tableName)}`, {
       credentials: 'include',
     })
