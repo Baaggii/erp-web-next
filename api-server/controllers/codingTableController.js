@@ -52,7 +52,7 @@ function normalizeExcelError(val, type) {
 function normalizeSpecialChars(val, type) {
   if (typeof val === 'string') {
     const t = val.trim();
-    if (t && /^[^\p{L}\p{N}]+$/u.test(t)) {
+    if (t && /^[-\s]+$/.test(t)) {
       return defaultValForType(type);
     }
   }
