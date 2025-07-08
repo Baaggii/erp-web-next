@@ -405,8 +405,8 @@ export default function CodingTablesPage() {
 
   function normalizeSpecialChars(val, type) {
     if (typeof val === 'string') {
-      const t = val.trim();
-      if (t && /^[-\s]+$/.test(t)) {
+      const trimmed = val.trim();
+      if ((trimmed === '' && /\s+/.test(val)) || /^-+$/.test(trimmed)) {
         return defaultValForType(type);
       }
     }
@@ -516,9 +516,12 @@ export default function CodingTablesPage() {
 
   function defaultValForType(type) {
     if (!type) return 0;
-    if (type === 'DATE') return 0;
-    if (type === 'INT' || type.startsWith('DECIMAL')) return 0;
-    return 0;
+    const t = String(type).toUpperCase();
+    if (t === 'DATE') return 0;
+    if (/INT|DECIMAL|NUMERIC|DOUBLE|FLOAT|LONG|BIGINT|NUMBER/.test(t)) {
+      return 0;
+    }
+    return '0';
   }
 
   function makeUniqueKeyName(fields) {
