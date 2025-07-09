@@ -45,7 +45,6 @@ export default forwardRef(function InlineTransactionTable({
   onRowsChange = () => {},
   requiredFields = [],
   defaultValues = {},
-  hideAddButton = false,
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -402,7 +401,7 @@ export default forwardRef(function InlineTransactionTable({
       }
       return;
     }
-    addRow();
+    addBtnRef.current?.focus();
   }
 
   function renderCell(idx, f, colIdx) {
@@ -556,15 +555,13 @@ export default forwardRef(function InlineTransactionTable({
       {errorMsg && (
         <div className="text-red-600 text-sm mt-1">{errorMsg}</div>
       )}
-      {!hideAddButton && (
-        <button
-          onClick={addRow}
-          ref={addBtnRef}
-          className="mt-2 px-2 py-1 bg-gray-200 rounded"
-        >
-          + Мөр нэмэх
-        </button>
-      )}
+      <button
+        onClick={addRow}
+        ref={addBtnRef}
+        className="mt-2 px-2 py-1 bg-gray-200 rounded"
+      >
+        + Мөр нэмэх
+      </button>
     </div>
   );
 });
