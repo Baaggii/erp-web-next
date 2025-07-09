@@ -75,10 +75,15 @@ export default function PosTransactionsPage() {
       )}
       {config && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
-          {[{ table: config.masterTable, type: config.masterType }, ...config.tables].map((t, idx) => {
+          {[
+            { table: config.masterTable, type: config.masterType, position: config.masterPosition },
+            ...config.tables,
+          ]
+            .filter((t) => t.position !== 'hidden')
+            .map((t, idx) => {
             const fc = formConfigs[t.table];
             if (!fc) return <div key={idx}>Loading...</div>;
-            const visible = fc.visibleFields || [];
+            const visible = Array.isArray(fc.visibleFields) ? fc.visibleFields : [];
             return (
               <div key={idx} style={{ border: '1px solid #ccc' }}>
                 <h3 style={{ margin: '0.5rem' }}>{t.table}</h3>
