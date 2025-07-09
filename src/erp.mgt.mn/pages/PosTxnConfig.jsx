@@ -116,6 +116,13 @@ export default function PosTxnConfig() {
       });
       const cfg = res.ok ? await res.json() : emptyConfig;
       const loaded = { ...emptyConfig, ...(cfg || {}) };
+      if (Array.isArray(loaded.tables) && loaded.tables.length > 0) {
+        const [master, ...rest] = loaded.tables;
+        loaded.masterTable = master.table || '';
+        loaded.masterType = master.type || 'single';
+        loaded.masterPosition = master.position || 'upper_left';
+        loaded.tables = rest;
+      }
       if (Array.isArray(loaded.calcFields)) {
         loaded.calcFields = loaded.calcFields.map((row, rIdx) => {
           const cells = Array.isArray(row.cells)
@@ -223,11 +230,18 @@ export default function PosTxnConfig() {
       addToast('Name required', 'error');
       return;
     }
+    const saveCfg = {
+      ...config,
+      tables: [
+        { table: config.masterTable, form: '', type: config.masterType, position: config.masterPosition },
+        ...config.tables,
+      ],
+    };
     await fetch('/api/pos_txn_config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ name, config }),
+      body: JSON.stringify({ name, config: saveCfg }),
     });
     addToast('Saved', 'success');
     fetch('/api/pos_txn_config', { credentials: 'include' })
