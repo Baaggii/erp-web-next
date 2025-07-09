@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import RowFormModal from '../components/RowFormModal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 
@@ -9,6 +9,8 @@ export default function PosTransactionsPage() {
   const [config, setConfig] = useState(null);
   const [formConfigs, setFormConfigs] = useState({});
   const [values, setValues] = useState({});
+  const [layout, setLayout] = useState({});
+  const refs = useRef({});
 
   useEffect(() => {
     fetch('/api/pos_txn_config', { credentials: 'include' })
@@ -18,17 +20,29 @@ export default function PosTransactionsPage() {
   }, []);
 
   useEffect(() => {
-    if (!name) { setConfig(null); return; }
+    if (!name) { setConfig(null); setLayout({}); return; }
     fetch(`/api/pos_txn_config?name=${encodeURIComponent(name)}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : null))
-      .then((cfg) => { setConfig(cfg); setFormConfigs({}); setValues({}); })
+      .then((cfg) => {
+        if (cfg && Array.isArray(cfg.tables) && cfg.tables.length > 0 && !cfg.masterTable) {
+          const [master, ...rest] = cfg.tables;
+          cfg = { ...cfg, masterTable: master.table || '', masterType: master.type || 'single', masterPosition: master.position || 'upper_left', tables: rest };
+        }
+        setConfig(cfg);
+        setFormConfigs({});
+        setValues({});
+      })
       .catch(() => { setConfig(null); });
+    fetch(`/api/pos_txn_layout?name=${encodeURIComponent(name)}`, { credentials: 'include' })
+      .then(res => res.ok ? res.json() : {})
+      .then(data => setLayout(data || {}))
+      .catch(() => setLayout({}));
   }, [name]);
 
   useEffect(() => {
     if (!config) return;
     const tables = [config.masterTable, ...config.tables.map(t => t.table)];
-    const forms = [config.masterForm, ...config.tables.map(t => t.form)];
+    const forms = ['', ...config.tables.map(t => t.form)];
     tables.forEach((tbl, idx) => {
       const form = forms[idx];
       if (!tbl || !form) return;
@@ -58,6 +72,31 @@ export default function PosTransactionsPage() {
     }
   }
 
+  async function handleSaveLayout() {
+    if (!name) return;
+    const info = {};
+    const list = [
+      { table: config.masterTable },
+      ...config.tables,
+    ];
+    list.forEach((t) => {
+      const el = refs.current[t.table];
+      if (el) {
+        info[t.table] = {
+          width: el.offsetWidth,
+          height: el.offsetHeight,
+        };
+      }
+    });
+    await fetch('/api/pos_txn_layout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ name, layout: info }),
+    });
+    addToast('Layout saved', 'success');
+  }
+
   const configNames = Object.keys(configs);
 
   return (
@@ -74,32 +113,63 @@ export default function PosTransactionsPage() {
         </div>
       )}
       {config && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
-          {[
-            { table: config.masterTable, type: config.masterType, position: config.masterPosition },
-            ...config.tables,
-          ]
-            .filter((t) => t.position !== 'hidden')
-            .map((t, idx) => {
-            const fc = formConfigs[t.table];
-            if (!fc) return <div key={idx}>Loading...</div>;
-            const visible = Array.isArray(fc.visibleFields) ? fc.visibleFields : [];
-            return (
-              <div key={idx} style={{ border: '1px solid #ccc' }}>
-                <h3 style={{ margin: '0.5rem' }}>{t.table}</h3>
-                <RowFormModal
-                  inline
-                  visible
-                  columns={visible}
-                  requiredFields={fc.requiredFields || []}
-                  onChange={changes => handleChange(t.table, changes)}
-                  onSubmit={row => handleSubmit(t.table, row)}
-                  useGrid={t.type === 'multi'}
-                />
-              </div>
-            );
-          })}
-        </div>
+        <>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <button onClick={handleSaveLayout}>Save Layout</button>
+          </div>
+          <div
+            style={{
+              display: 'grid',
+              gap: '1rem',
+              gridTemplateColumns: '1fr 1fr 1fr',
+              gridTemplateRows: 'auto auto auto auto auto',
+            }}
+          >
+            {[{ table: config.masterTable, type: config.masterType, position: config.masterPosition }, ...config.tables]
+              .filter((t) => t.position !== 'hidden')
+              .map((t, idx) => {
+                const fc = formConfigs[t.table];
+                if (!fc) return <div key={idx}>Loading...</div>;
+                const visible = Array.isArray(fc.visibleFields) ? fc.visibleFields : [];
+                const posStyle = {
+                  top_row: { gridColumn: '1 / span 3', gridRow: '1' },
+                  upper_left: { gridColumn: '1', gridRow: '2' },
+                  upper_right: { gridColumn: '3', gridRow: '2' },
+                  left: { gridColumn: '1', gridRow: '3' },
+                  right: { gridColumn: '3', gridRow: '3' },
+                  lower_left: { gridColumn: '1', gridRow: '4' },
+                  lower_right: { gridColumn: '3', gridRow: '4' },
+                  bottom_row: { gridColumn: '1 / span 3', gridRow: '5' },
+                }[t.position] || { gridColumn: '2', gridRow: '3' };
+                const saved = layout[t.table] || {};
+                return (
+                  <div
+                    key={idx}
+                    ref={(el) => (refs.current[t.table] = el)}
+                    style={{
+                      border: '1px solid #ccc',
+                      resize: 'both',
+                      overflow: 'auto',
+                      width: saved.width || 'auto',
+                      height: saved.height || 'auto',
+                      ...posStyle,
+                    }}
+                  >
+                    <h3 style={{ margin: '0.5rem' }}>{t.table}</h3>
+                    <RowFormModal
+                      inline
+                      visible
+                      columns={visible}
+                      requiredFields={fc.requiredFields || []}
+                      onChange={(changes) => handleChange(t.table, changes)}
+                      onSubmit={(row) => handleSubmit(t.table, row)}
+                      useGrid={t.type === 'multi'}
+                    />
+                  </div>
+                );
+              })}
+          </div>
+        </>
       )}
     </div>
   );
