@@ -12,7 +12,9 @@ export default function PosTxnConfig() {
   const { addToast } = useToast();
   const [configs, setConfigs] = useState({});
   const [name, setName] = useState('');
-  const [tableOptions, setTableOptions] = useState([]);
+  const [formOptions, setFormOptions] = useState({});
+  const [formNames, setFormNames] = useState([]);
+  const [formToTable, setFormToTable] = useState({});
   const [config, setConfig] = useState(emptyConfig);
 
   useEffect(() => {
@@ -21,16 +23,28 @@ export default function PosTxnConfig() {
       .then((data) => setConfigs(data))
       .catch(() => setConfigs({}));
 
-    fetch('/api/tables', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) =>
-        setTableOptions(
-          data.filter(
-            (t) => t.startsWith('transactions_') && t !== 'transactions_pos',
-          ),
-        ),
-      )
-      .catch(() => setTableOptions([]));
+    fetch('/api/transaction_forms', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((data) => {
+        const byTable = {};
+        const names = [];
+        const mapping = {};
+        for (const [name, info] of Object.entries(data)) {
+          const tbl = info.table;
+          mapping[name] = tbl;
+          names.push(name);
+          if (!byTable[tbl]) byTable[tbl] = [];
+          byTable[tbl].push(name);
+        }
+        setFormOptions(byTable);
+        setFormNames(names);
+        setFormToTable(mapping);
+      })
+      .catch(() => {
+        setFormOptions({});
+        setFormNames([]);
+        setFormToTable({});
+      });
   }, []);
 
   async function loadConfig(n) {
@@ -52,24 +66,31 @@ export default function PosTxnConfig() {
     }
   }
 
-  function addTable() {
+  function addColumn() {
     setConfig((c) => ({
       ...c,
       tables: [
         ...c.tables,
-        { table: '', transaction: '', type: 'single', position: 'upper_left' },
+        { table: '', form: '', type: 'single', position: 'upper_left' },
       ],
     }));
   }
 
-  function updateTable(idx, key, value) {
+  function updateColumn(idx, key, value) {
     setConfig((c) => ({
       ...c,
-      tables: c.tables.map((t, i) => (i === idx ? { ...t, [key]: value } : t)),
+      tables: c.tables.map((t, i) => {
+        if (i !== idx) return t;
+        if (key === 'form') {
+          const tbl = formToTable[value] || '';
+          return { ...t, form: value, table: tbl };
+        }
+        return { ...t, [key]: value };
+      }),
     }));
   }
 
-  function removeTable(idx) {
+  function removeColumn(idx) {
     setConfig((c) => ({
       ...c,
       tables: c.tables.filter((_, i) => i !== idx),
@@ -178,54 +199,76 @@ export default function PosTxnConfig() {
         )}
       </div>
       <div>
-        <h3>Linked Tables</h3>
-        {config.tables.map((t, idx) => (
-          <div key={idx} style={{ marginBottom: '0.5rem' }}>
-            <select
-              value={t.table}
-              onChange={(e) => updateTable(idx, 'table', e.target.value)}
-            >
-              <option value="">-- table --</option>
-              {tableOptions.map((tbl) => (
-                <option key={tbl} value={tbl}>
-                  {tbl}
-                </option>
+        <h3>Form Configuration</h3>
+        <table className="pos-config-grid" style={{ borderCollapse: 'collapse' }}>
+          <thead>
+            <tr>
+              <th></th>
+              {config.tables.map((t, idx) => (
+                <th key={idx} style={{ borderBottom: '1px solid #ccc', padding: '4px' }}>
+                  {t.form || 'New'}{' '}
+                  <button onClick={() => removeColumn(idx)}>x</button>
+                </th>
               ))}
-            </select>
-            <input
-              type="text"
-              placeholder="Transaction name"
-              value={t.transaction}
-              onChange={(e) => updateTable(idx, 'transaction', e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
-            />
-            <select
-              value={t.type}
-              onChange={(e) => updateTable(idx, 'type', e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              <option value="single">Single</option>
-              <option value="multi">Multi</option>
-            </select>
-            <select
-              value={t.position}
-              onChange={(e) => updateTable(idx, 'position', e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              <option value="top_row">top_row</option>
-              <option value="upper_left">upper_left</option>
-              <option value="upper_right">upper_right</option>
-              <option value="lower_left">lower_left</option>
-              <option value="lower_right">lower_right</option>
-              <option value="bottom_row">bottom_row</option>
-              <option value="hidden">hidden</option>
-            </select>
-            <button onClick={() => removeTable(idx)} style={{ marginLeft: '0.5rem' }}>
-              Remove
-            </button>
-          </div>
-        ))}
-        <button onClick={addTable}>Add Table</button>
+              <th>
+                <button onClick={addColumn}>Add</button>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Transaction Form</td>
+              {config.tables.map((t, idx) => (
+                <td key={idx} style={{ padding: '4px' }}>
+                  <select
+                    value={t.form}
+                    onChange={(e) => updateColumn(idx, 'form', e.target.value)}
+                  >
+                    <option value="">-- select --</option>
+                    {formNames.map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+              ))}
+            </tr>
+            <tr>
+              <td>Type</td>
+              {config.tables.map((t, idx) => (
+                <td key={idx} style={{ padding: '4px' }}>
+                  <select
+                    value={t.type}
+                    onChange={(e) => updateColumn(idx, 'type', e.target.value)}
+                  >
+                    <option value="single">Single</option>
+                    <option value="multi">Multi</option>
+                  </select>
+                </td>
+              ))}
+            </tr>
+            <tr>
+              <td>Position</td>
+              {config.tables.map((t, idx) => (
+                <td key={idx} style={{ padding: '4px' }}>
+                  <select
+                    value={t.position}
+                    onChange={(e) => updateColumn(idx, 'position', e.target.value)}
+                  >
+                    <option value="top_row">top_row</option>
+                    <option value="upper_left">upper_left</option>
+                    <option value="upper_right">upper_right</option>
+                    <option value="lower_left">lower_left</option>
+                    <option value="lower_right">lower_right</option>
+                    <option value="bottom_row">bottom_row</option>
+                    <option value="hidden">hidden</option>
+                  </select>
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
       </div>
       <div style={{ marginTop: '1rem' }}>
         <h3>Calculated Fields</h3>
@@ -237,13 +280,18 @@ export default function PosTxnConfig() {
               value={f.field}
               onChange={(e) => updateCalc(idx, 'field', e.target.value)}
             />
-            <input
-              type="text"
-              placeholder="Table"
+            <select
               value={f.table}
               onChange={(e) => updateCalc(idx, 'table', e.target.value)}
               style={{ marginLeft: '0.5rem' }}
-            />
+            >
+              <option value="">-- table --</option>
+              {config.tables.map((t, i) => (
+                <option key={i} value={t.table}>
+                  {t.form || t.table}
+                </option>
+              ))}
+            </select>
             <input
               type="text"
               placeholder="Column"
