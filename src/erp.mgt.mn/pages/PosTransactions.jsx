@@ -10,7 +10,6 @@ export default function PosTransactionsPage() {
   const [formConfigs, setFormConfigs] = useState({});
   const [values, setValues] = useState({});
   const [layout, setLayout] = useState({});
-  const [labels, setLabels] = useState({});
   const refs = useRef({});
 
   useEffect(() => {
@@ -50,14 +49,6 @@ export default function PosTransactionsPage() {
       fetch(`/api/transaction_forms?table=${encodeURIComponent(tbl)}&name=${encodeURIComponent(form)}`, { credentials: 'include' })
         .then(res => res.ok ? res.json() : null)
         .then(cfg => setFormConfigs(f => ({ ...f, [tbl]: cfg || {} })))
-        .catch(() => {});
-      fetch(`/api/tables/${encodeURIComponent(tbl)}/columns`, { credentials: 'include' })
-        .then(res => res.ok ? res.json() : [])
-        .then(cols => {
-          const map = {};
-          cols.forEach(c => { map[c.name || c.COLUMN_NAME || c] = c.label || c.name || c; });
-          setLabels(l => ({ ...l, [tbl]: map }));
-        })
         .catch(() => {});
     });
   }, [config]);
@@ -169,12 +160,10 @@ export default function PosTransactionsPage() {
                       inline
                       visible
                       columns={visible}
-                      labels={labels[t.table] || {}}
                       requiredFields={fc.requiredFields || []}
                       onChange={(changes) => handleChange(t.table, changes)}
                       onSubmit={(row) => handleSubmit(t.table, row)}
                       useGrid={t.type === 'multi'}
-                      hideAddButton
                     />
                   </div>
                 );

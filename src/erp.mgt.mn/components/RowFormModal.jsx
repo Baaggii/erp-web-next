@@ -29,7 +29,6 @@ const RowFormModal = function RowFormModal({
   dateField = [],
   inline = false,
   useGrid = false,
-  hideAddButton = false,
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -454,15 +453,14 @@ const RowFormModal = function RowFormModal({
             relationData={relationData}
             labels={labels}
             totalAmountFields={totalAmountFields}
-          totalCurrencyFields={totalCurrencyFields}
-          collectRows={useGrid}
-          minRows={1}
-          onRowSubmit={onSubmit}
-          onRowsChange={setGridRows}
-          requiredFields={requiredFields}
-          defaultValues={defaultValues}
-          hideAddButton={inline}
-        />
+            totalCurrencyFields={totalCurrencyFields}
+            collectRows={useGrid}
+            minRows={1}
+            onRowSubmit={onSubmit}
+            onRowsChange={setGridRows}
+            requiredFields={requiredFields}
+            defaultValues={defaultValues}
+          />
         </div>
       );
     }
