@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
 const emptyConfig = {
+  masterTable: '',
   tables: [],
   calcFields: [],
   posFields: [],
@@ -16,6 +17,9 @@ export default function PosTxnConfig() {
   const [formNames, setFormNames] = useState([]);
   const [formToTable, setFormToTable] = useState({});
   const [formFields, setFormFields] = useState({});
+  const [tables, setTables] = useState([]);
+  const [masterCols, setMasterCols] = useState([]);
+  const [statusOptions, setStatusOptions] = useState([]);
   const [config, setConfig] = useState(emptyConfig);
 
   useEffect(() => {
@@ -50,7 +54,36 @@ export default function PosTxnConfig() {
         setFormToTable({});
         setFormFields({});
       });
+
+    fetch('/api/tables', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setTables(data))
+      .catch(() => setTables([]));
+
+    fetch('/api/tables/code_status?perPage=500', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { rows: [] }))
+      .then((data) => {
+        const opts = (data.rows || []).map((r) => {
+          const vals = Object.values(r).filter((v) => v !== undefined);
+          return { value: vals[0], label: vals.slice(0, 2).join(' - ') };
+        });
+        setStatusOptions(opts);
+      })
+      .catch(() => setStatusOptions([]));
   }, []);
+
+  useEffect(() => {
+    if (!config.masterTable) {
+      setMasterCols([]);
+      return;
+    }
+    fetch(`/api/tables/${encodeURIComponent(config.masterTable)}/columns`, {
+      credentials: 'include',
+    })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((cols) => setMasterCols(cols.map((c) => c.name || c)))
+      .catch(() => setMasterCols([]));
+  }, [config.masterTable]);
 
   async function loadConfig(n) {
     if (!n) {
@@ -66,10 +99,31 @@ export default function PosTxnConfig() {
       const loaded = { ...emptyConfig, ...(cfg || {}) };
       if (Array.isArray(loaded.calcFields)) {
         loaded.calcFields = loaded.calcFields.map((row) =>
-          Array.isArray(row) ? row : []
+          Array.isArray(row)
+            ? row.map((c) => ({ field: c.field || '', agg: c.agg || '' }))
+            : []
         );
       } else {
         loaded.calcFields = [];
+      }
+      if (Array.isArray(loaded.posFields)) {
+        loaded.posFields = loaded.posFields.map((p) => {
+          const base = { field: '', parts: [{ agg: '=', field: '' }] };
+          if (!p || typeof p !== 'object') return base;
+          if (Array.isArray(p.parts)) {
+            const parts = p.parts.map((pt, idx) => ({
+              agg: pt.agg || (idx === 0 ? '=' : '+'),
+              field: pt.field || '',
+            }));
+            return { field: p.field || '', parts };
+          }
+          if (p.expr) {
+            return { field: p.field || '', parts: [{ agg: '=', field: p.expr }] };
+          }
+          return { field: p.field || '', parts: [{ agg: '=', field: '' }] };
+        });
+      } else {
+        loaded.posFields = [];
       }
       setName(n);
       setConfig(loaded);
@@ -88,7 +142,7 @@ export default function PosTxnConfig() {
       ],
       calcFields: c.calcFields.map((row) => [
         ...row,
-        { field: '', agg: 'SUM' },
+        { field: '', agg: '' },
       ]),
     }));
   }
@@ -156,7 +210,7 @@ export default function PosTxnConfig() {
       ...c,
       calcFields: [
         ...c.calcFields,
-        Array.from({ length: c.tables.length }, () => ({ field: '', agg: 'SUM' })),
+        Array.from({ length: c.tables.length }, () => ({ field: '', agg: '' })),
       ],
     }));
   }
@@ -184,14 +238,30 @@ export default function PosTxnConfig() {
   function handleAddPos() {
     setConfig((c) => ({
       ...c,
-      posFields: [...c.posFields, { field: '', expr: '' }],
+      posFields: [...c.posFields, { field: '', parts: [{ agg: '=', field: '' }] }],
     }));
   }
 
-  function updatePos(idx, key, value) {
+  function addPosPart(idx) {
     setConfig((c) => ({
       ...c,
-      posFields: c.posFields.map((f, i) => (i === idx ? { ...f, [key]: value } : f)),
+      posFields: c.posFields.map((f, i) =>
+        i === idx ? { ...f, parts: [...f.parts, { agg: '+', field: '' }] } : f,
+      ),
+    }));
+  }
+
+  function updatePos(idx, partIdx, key, value) {
+    setConfig((c) => ({
+      ...c,
+      posFields: c.posFields.map((f, i) => {
+        if (i !== idx) return f;
+        if (partIdx === null) return { ...f, [key]: value };
+        return {
+          ...f,
+          parts: f.parts.map((p, j) => (j === partIdx ? { ...p, [key]: value } : p)),
+        };
+      }),
     }));
   }
 
@@ -199,6 +269,15 @@ export default function PosTxnConfig() {
     setConfig((c) => ({
       ...c,
       posFields: c.posFields.filter((_, i) => i !== idx),
+    }));
+  }
+
+  function removePosPart(idx, partIdx) {
+    setConfig((c) => ({
+      ...c,
+      posFields: c.posFields.map((f, i) =>
+        i === idx ? { ...f, parts: f.parts.filter((_, j) => j !== partIdx) } : f,
+      ),
     }));
   }
 
@@ -226,6 +305,24 @@ export default function PosTxnConfig() {
             Delete
           </button>
         )}
+      </div>
+      <div style={{ marginBottom: '1rem' }}>
+        <label>
+          Master Table:{' '}
+          <select
+            value={config.masterTable}
+            onChange={(e) =>
+              setConfig((c) => ({ ...c, masterTable: e.target.value }))
+            }
+          >
+            <option value="">-- select table --</option>
+            {tables.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
       <div>
         <h3>Form Configuration</h3>
@@ -299,7 +396,7 @@ export default function PosTxnConfig() {
             {config.calcFields.map((row, rIdx) => (
               <tr key={`calc-${rIdx}`}>
                 <td>
-                  Calc {rIdx + 1}{' '}
+                  Map {rIdx + 1}{' '}
                   <button onClick={() => removeCalc(rIdx)}>x</button>
                 </td>
                 {row.map((cell, cIdx) => (
@@ -308,6 +405,7 @@ export default function PosTxnConfig() {
                       value={cell.agg}
                       onChange={(e) => updateCalc(rIdx, cIdx, 'agg', e.target.value)}
                     >
+                      <option value="">-- none --</option>
                       <option value="SUM">SUM</option>
                       <option value="AVG">AVG</option>
                     </select>
@@ -329,7 +427,7 @@ export default function PosTxnConfig() {
             ))}
             <tr>
               <td>
-                <button onClick={handleAddCalc}>Add Calculated</button>
+                <button onClick={handleAddCalc}>Add Mapping</button>
               </td>
             </tr>
           </tbody>
@@ -343,15 +441,42 @@ export default function PosTxnConfig() {
               type="text"
               placeholder="Field"
               value={f.field}
-              onChange={(e) => updatePos(idx, 'field', e.target.value)}
+              onChange={(e) => updatePos(idx, null, 'field', e.target.value)}
             />
-            <input
-              type="text"
-              placeholder="Expression"
-              value={f.expr}
-              onChange={(e) => updatePos(idx, 'expr', e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
-            />
+            {f.parts.map((p, pIdx) => (
+              <span key={pIdx} style={{ marginLeft: '0.5rem' }}>
+                {pIdx > 0 && (
+                  <select
+                    value={p.agg}
+                    onChange={(e) => updatePos(idx, pIdx, 'agg', e.target.value)}
+                    style={{ marginRight: '0.25rem' }}
+                  >
+                    <option value="=">=</option>
+                    <option value="+">+</option>
+                    <option value="-">-</option>
+                    <option value="*">*</option>
+                    <option value="/">/</option>
+                    <option value="SUM">SUM</option>
+                    <option value="AVG">AVG</option>
+                  </select>
+                )}
+                <select
+                  value={p.field}
+                  onChange={(e) => updatePos(idx, pIdx, 'field', e.target.value)}
+                >
+                  <option value="">-- field --</option>
+                  {masterCols.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+                <button onClick={() => removePosPart(idx, pIdx)}>x</button>
+              </span>
+            ))}
+            <button onClick={() => addPosPart(idx)} style={{ marginLeft: '0.5rem' }}>
+              Add field
+            </button>
             <button onClick={() => removePos(idx)} style={{ marginLeft: '0.5rem' }}>
               Remove
             </button>
@@ -361,9 +486,7 @@ export default function PosTxnConfig() {
       </div>
       <div style={{ marginTop: '1rem' }}>
         <h3>Status Mapping</h3>
-        <input
-          type="text"
-          placeholder="Status Field"
+        <select
           value={config.statusField.field}
           onChange={(e) =>
             setConfig((c) => ({
@@ -371,10 +494,15 @@ export default function PosTxnConfig() {
               statusField: { ...c.statusField, field: e.target.value },
             }))
           }
-        />
-        <input
-          type="text"
-          placeholder="Created"
+        >
+          <option value="">-- status field --</option>
+          {masterCols.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        <select
           value={config.statusField.created}
           onChange={(e) =>
             setConfig((c) => ({
@@ -383,10 +511,15 @@ export default function PosTxnConfig() {
             }))
           }
           style={{ marginLeft: '0.5rem' }}
-        />
-        <input
-          type="text"
-          placeholder="Before Post"
+        >
+          <option value="">-- Created --</option>
+          {statusOptions.map((s) => (
+            <option key={s.value} value={s.value}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+        <select
           value={config.statusField.beforePost}
           onChange={(e) =>
             setConfig((c) => ({
@@ -395,10 +528,15 @@ export default function PosTxnConfig() {
             }))
           }
           style={{ marginLeft: '0.5rem' }}
-        />
-        <input
-          type="text"
-          placeholder="Posted"
+        >
+          <option value="">-- Before Post --</option>
+          {statusOptions.map((s) => (
+            <option key={s.value} value={s.value}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+        <select
           value={config.statusField.posted}
           onChange={(e) =>
             setConfig((c) => ({
@@ -407,7 +545,14 @@ export default function PosTxnConfig() {
             }))
           }
           style={{ marginLeft: '0.5rem' }}
-        />
+        >
+          <option value="">-- Posted --</option>
+          {statusOptions.map((s) => (
+            <option key={s.value} value={s.value}>
+              {s.label}
+            </option>
+          ))}
+        </select>
       </div>
       <div style={{ marginTop: '1rem' }}>
         <button onClick={handleSave}>Save</button>
