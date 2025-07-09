@@ -22,6 +22,7 @@ import FormsManagementPage from './pages/FormsManagement.jsx';
 import ReportManagementPage from './pages/ReportManagement.jsx';
 import RelationsConfigPage from './pages/RelationsConfig.jsx';
 import PosTxnConfigPage from './pages/PosTxnConfig.jsx';
+import PosTransactionsPage from './pages/PosTransactions.jsx';
 import ModulesPage from './pages/Modules.jsx';
 import SettingsPage, { GeneralSettings } from './pages/Settings.jsx';
 import ChangePasswordPage from './pages/ChangePassword.jsx';
@@ -65,6 +66,7 @@ export default function App() {
     report_management: <ReportManagementPage />,
     relations_config: <RelationsConfigPage />,
     pos_transaction_management: <PosTxnConfigPage />,
+    pos_transactions: <PosTransactionsPage />,
     change_password: <ChangePasswordPage />,
   };
 
