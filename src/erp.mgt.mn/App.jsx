@@ -27,7 +27,6 @@ import ChangePasswordPage from './pages/ChangePassword.jsx';
 import BlueLinkPage from './pages/BlueLinkPage.jsx';
 import InventoryPage from './pages/InventoryPage.jsx';
 import FinanceTransactionsPage from './pages/FinanceTransactions.jsx';
-import PosTransConfigPage from './pages/PosTransConfig.jsx';
 import { useModules } from './hooks/useModules.js';
 import { useTxnModules } from './hooks/useTxnModules.js';
 
@@ -64,7 +63,6 @@ export default function App() {
     forms_management: <FormsManagementPage />,
     report_management: <ReportManagementPage />,
     relations_config: <RelationsConfigPage />,
-    pos_transaction_management: <PosTransConfigPage />,
     change_password: <ChangePasswordPage />,
   };
 
