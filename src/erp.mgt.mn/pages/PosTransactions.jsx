@@ -26,7 +26,7 @@ export default function PosTransactionsPage() {
       .then((cfg) => {
         if (cfg && Array.isArray(cfg.tables) && cfg.tables.length > 0 && !cfg.masterTable) {
           const [master, ...rest] = cfg.tables;
-          cfg = { ...cfg, masterTable: master.table || '', masterType: master.type || 'single', masterPosition: master.position || 'upper_left', tables: rest };
+          cfg = { ...cfg, masterTable: master.table || '', masterForm: master.form || '', masterType: master.type || 'single', masterPosition: master.position || 'upper_left', tables: rest };
         }
         setConfig(cfg);
         setFormConfigs({});
@@ -42,7 +42,7 @@ export default function PosTransactionsPage() {
   useEffect(() => {
     if (!config) return;
     const tables = [config.masterTable, ...config.tables.map(t => t.table)];
-    const forms = ['', ...config.tables.map(t => t.form)];
+    const forms = [config.masterForm || '', ...config.tables.map(t => t.form)];
     tables.forEach((tbl, idx) => {
       const form = forms[idx];
       if (!tbl || !form) return;

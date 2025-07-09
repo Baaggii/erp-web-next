@@ -3,6 +3,7 @@ import { useToast } from '../context/ToastContext.jsx';
 
 const emptyConfig = {
   masterTable: '',
+  masterForm: '',
   masterType: 'single',
   masterPosition: 'upper_left',
   tables: [],
@@ -119,6 +120,7 @@ export default function PosTxnConfig() {
       if (Array.isArray(loaded.tables) && loaded.tables.length > 0) {
         const [master, ...rest] = loaded.tables;
         loaded.masterTable = master.table || '';
+        loaded.masterForm = master.form || '';
         loaded.masterType = master.type || 'single';
         loaded.masterPosition = master.position || 'upper_left';
         loaded.tables = rest;
@@ -215,14 +217,19 @@ export default function PosTxnConfig() {
   }
 
   function removeColumn(idx) {
-    setConfig((c) => ({
-      ...c,
-      tables: c.tables.filter((_, i) => i !== idx),
-      calcFields: c.calcFields.map((row) => ({
-        ...row,
-        cells: row.cells.filter((_, i) => i !== idx + 1),
-      })),
-    }));
+    setConfig((c) => {
+      const tbl = c.tables[idx]?.table;
+      return {
+        ...c,
+        masterTable: c.masterTable === tbl ? '' : c.masterTable,
+        masterForm: c.masterTable === tbl ? '' : c.masterForm,
+        tables: c.tables.filter((_, i) => i !== idx),
+        calcFields: c.calcFields.map((row) => ({
+          ...row,
+          cells: row.cells.filter((_, i) => i !== idx + 1),
+        })),
+      };
+    });
   }
 
   async function handleSave() {
@@ -233,7 +240,7 @@ export default function PosTxnConfig() {
     const saveCfg = {
       ...config,
       tables: [
-        { table: config.masterTable, form: '', type: config.masterType, position: config.masterPosition },
+        { table: config.masterTable, form: config.masterForm, type: config.masterType, position: config.masterPosition },
         ...config.tables,
       ],
     };
@@ -389,6 +396,7 @@ export default function PosTxnConfig() {
               setConfig((c) => ({
                 ...c,
                 masterTable: tbl,
+                masterForm: '',
                 calcFields: c.calcFields.map((row) => ({
                   ...row,
                   cells: row.cells.map((cell, i) =>
@@ -403,9 +411,9 @@ export default function PosTxnConfig() {
             }}
           >
             <option value="">-- select table --</option>
-            {tables.map((t) => (
-              <option key={t} value={t}>
-                {t}
+            {config.tables.map((t, i) => (
+              <option key={i} value={t.table}>
+                {t.table}
               </option>
             ))}
           </select>
@@ -432,7 +440,37 @@ export default function PosTxnConfig() {
           <tbody>
             <tr>
               <td>Transaction Form</td>
-              <td></td>
+              <td style={{ padding: '4px' }}>
+                <select
+                  value={config.masterForm}
+                  onChange={(e) => {
+                    const form = e.target.value;
+                    const tbl = formToTable[form] || config.masterTable;
+                    setConfig((c) => ({
+                      ...c,
+                      masterForm: form,
+                      masterTable: tbl,
+                      calcFields: c.calcFields.map((row) => ({
+                        ...row,
+                        cells: row.cells.map((cell, i) =>
+                          i === 0 ? { ...cell, table: tbl } : cell,
+                        ),
+                      })),
+                      posFields: c.posFields.map((p) => ({
+                        ...p,
+                        parts: p.parts.map((pt) => ({ ...pt, table: tbl })),
+                      })),
+                    }));
+                  }}
+                >
+                  <option value="">-- select --</option>
+                  {(formOptions[config.masterTable] || formNames).map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </td>
               {config.tables.map((t, idx) => (
                 <td key={idx} style={{ padding: '4px' }}>
                   <select
