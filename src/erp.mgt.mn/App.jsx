@@ -21,6 +21,7 @@ import CodingTablesPage from './pages/CodingTables.jsx';
 import FormsManagementPage from './pages/FormsManagement.jsx';
 import ReportManagementPage from './pages/ReportManagement.jsx';
 import RelationsConfigPage from './pages/RelationsConfig.jsx';
+import PosTxnConfigPage from './pages/PosTxnConfig.jsx';
 import ModulesPage from './pages/Modules.jsx';
 import SettingsPage, { GeneralSettings } from './pages/Settings.jsx';
 import ChangePasswordPage from './pages/ChangePassword.jsx';
@@ -63,6 +64,7 @@ export default function App() {
     forms_management: <FormsManagementPage />,
     report_management: <ReportManagementPage />,
     relations_config: <RelationsConfigPage />,
+    pos_transaction_management: <PosTxnConfigPage />,
     change_password: <ChangePasswordPage />,
   };
 
@@ -89,6 +91,7 @@ export default function App() {
     'forms_management',
     'report_management',
     'relations_config',
+    'pos_transaction_management',
   ]);
 
   function renderRoute(mod) {
