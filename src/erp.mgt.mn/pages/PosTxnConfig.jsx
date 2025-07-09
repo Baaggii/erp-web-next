@@ -118,6 +118,7 @@ export default function PosTxnConfig() {
             form: loaded.masterForm,
             type: loaded.masterType || 'single',
             position: loaded.masterPosition || 'upper_left',
+            view: loaded.masterView || 'cells',
           },
           ...(loaded.tables || []),
         ];
@@ -125,7 +126,15 @@ export default function PosTxnConfig() {
         delete loaded.masterForm;
         delete loaded.masterType;
         delete loaded.masterPosition;
+        delete loaded.masterView;
       }
+      loaded.tables = (loaded.tables || []).map((t) => ({
+        table: t.table || '',
+        form: t.form || '',
+        type: t.type || 'single',
+        position: t.position || 'upper_left',
+        view: t.view || 'cells',
+      }));
       if (Array.isArray(loaded.calcFields)) {
         loaded.calcFields = loaded.calcFields.map((row, rIdx) => {
           const cells = Array.isArray(row.cells)
@@ -173,7 +182,7 @@ export default function PosTxnConfig() {
       ...c,
       tables: [
         ...c.tables,
-        { table: '', form: '', type: 'single', position: 'upper_left' },
+        { table: '', form: '', type: 'single', position: 'upper_left', view: 'cells' },
       ],
       calcFields: c.calcFields.map((row) => ({
         ...row,
@@ -192,6 +201,9 @@ export default function PosTxnConfig() {
         }
         if (key === 'table') {
           return { ...t, table: value };
+        }
+        if (key === 'view') {
+          return { ...t, view: value };
         }
         return { ...t, [key]: value };
       });
@@ -232,7 +244,17 @@ export default function PosTxnConfig() {
       addToast('Name required', 'error');
       return;
     }
-    const saveCfg = { ...config };
+    const { tables = [], ...rest } = config;
+    const [master, ...others] = tables;
+    const saveCfg = {
+      ...rest,
+      masterTable: master?.table || '',
+      masterForm: master?.form || '',
+      masterType: master?.type || 'single',
+      masterPosition: master?.position || 'upper_left',
+      masterView: master?.view || 'cells',
+      tables: others,
+    };
     await fetch('/api/pos_txn_config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -439,6 +461,22 @@ export default function PosTxnConfig() {
                     <option value="lower_right">lower_right</option>
                     <option value="bottom_row">bottom_row</option>
                     <option value="hidden">hidden</option>
+                  </select>
+                </td>
+              ))}
+            </tr>
+            <tr>
+              <td>View</td>
+              {config.tables.map((t, idx) => (
+                <td key={idx} style={{ padding: '4px' }}>
+                  <select
+                    value={t.view}
+                    onChange={(e) => updateColumn(idx, 'view', e.target.value)}
+                  >
+                    <option value="cells">Cells</option>
+                    <option value="row">Row</option>
+                    <option value="column">Column</option>
+                    <option value="table">Table</option>
                   </select>
                 </td>
               ))}
