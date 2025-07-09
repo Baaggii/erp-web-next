@@ -34,22 +34,6 @@ entry in `tables` chooses a transaction form from `forms_management` and assigns
 it to a window position. The `multiRow` flag indicates whether the table will
 hold multiple rows per POS transaction.
 
-To display the module in the application sidebar you need two pieces:
-1. A transaction form entry with `moduleKey` set to `pos_transaction_management` in `config/transactionForms.json`.
-2. A corresponding module row in the database. The repository seeds this via `db/defaultModules.js`.
-
-A minimal form configuration is:
-
-```json
-{
-  "transactions_pos": {
-    "Simple POS": {
-      "moduleKey": "pos_transaction_management"
-    }
-  }
-}
-```
-
 `calculatedFields` define expressions that sync fields across the selected
 tables. The `status` block specifies the value of `transactions_pos.status`
 before and after posting the transaction.

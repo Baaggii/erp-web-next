@@ -64,19 +64,4 @@
       "moduleKey": "finance_transactions"
     }
   }
-  ,
-  "transactions_pos": {
-    "Simple POS": {
-      "visibleFields": [],
-      "requiredFields": [],
-      "defaultValues": {},
-      "editableDefaultFields": [],
-      "userIdFields": [],
-      "branchIdFields": [],
-      "companyIdFields": [],
-      "allowedBranches": [],
-      "allowedDepartments": [],
-      "moduleKey": "pos_transaction_management"
-    }
-  }
 }
