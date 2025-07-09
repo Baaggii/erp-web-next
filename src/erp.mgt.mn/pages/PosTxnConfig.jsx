@@ -98,11 +98,17 @@ export default function PosTxnConfig() {
       const cfg = res.ok ? await res.json() : emptyConfig;
       const loaded = { ...emptyConfig, ...(cfg || {}) };
       if (Array.isArray(loaded.calcFields)) {
-        loaded.calcFields = loaded.calcFields.map((row) =>
-          Array.isArray(row)
+        loaded.calcFields = loaded.calcFields.map((row) => {
+          const arr = Array.isArray(row)
             ? row.map((c) => ({ field: c.field || '', agg: c.agg || '' }))
-            : []
-        );
+            : [];
+          if (arr.length === loaded.tables.length) {
+            arr.unshift({ field: '', agg: '' });
+          } else if (arr.length < loaded.tables.length + 1) {
+            while (arr.length < loaded.tables.length + 1) arr.push({ field: '', agg: '' });
+          }
+          return arr;
+        });
       } else {
         loaded.calcFields = [];
       }
@@ -166,7 +172,7 @@ export default function PosTxnConfig() {
       ...c,
       tables: c.tables.filter((_, i) => i !== idx),
       calcFields: c.calcFields.map((row) =>
-        row.filter((_, i) => i !== idx)
+        row.filter((_, i) => i !== idx + 1)
       ),
     }));
   }
@@ -210,7 +216,7 @@ export default function PosTxnConfig() {
       ...c,
       calcFields: [
         ...c.calcFields,
-        Array.from({ length: c.tables.length }, () => ({ field: '', agg: '' })),
+        Array.from({ length: c.tables.length + 1 }, () => ({ field: '', agg: '' })),
       ],
     }));
   }
@@ -330,6 +336,7 @@ export default function PosTxnConfig() {
           <thead>
             <tr>
               <th></th>
+              <th>{config.masterTable || 'Master'}</th>
               {config.tables.map((t, idx) => (
                 <th key={idx} style={{ borderBottom: '1px solid #ccc', padding: '4px' }}>
                   {t.form || 'New'}{' '}
@@ -344,6 +351,7 @@ export default function PosTxnConfig() {
           <tbody>
             <tr>
               <td>Transaction Form</td>
+              <td></td>
               {config.tables.map((t, idx) => (
                 <td key={idx} style={{ padding: '4px' }}>
                   <select
@@ -362,6 +370,7 @@ export default function PosTxnConfig() {
             </tr>
             <tr>
               <td>Type</td>
+              <td></td>
               {config.tables.map((t, idx) => (
                 <td key={idx} style={{ padding: '4px' }}>
                   <select
@@ -376,6 +385,7 @@ export default function PosTxnConfig() {
             </tr>
             <tr>
               <td>Position</td>
+              <td></td>
               {config.tables.map((t, idx) => (
                 <td key={idx} style={{ padding: '4px' }}>
                   <select
@@ -415,11 +425,17 @@ export default function PosTxnConfig() {
                       style={{ marginLeft: '0.5rem' }}
                     >
                       <option value="">-- field --</option>
-                      {(formFields[config.tables[cIdx]?.form] || []).map((f) => (
-                        <option key={f} value={f}>
-                          {f}
-                        </option>
-                      ))}
+                      {cIdx === 0
+                        ? masterCols.map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))
+                        : (formFields[config.tables[cIdx - 1]?.form] || []).map((f) => (
+                            <option key={f} value={f}>
+                              {f}
+                            </option>
+                          ))}
                     </select>
                   </td>
                 ))}
