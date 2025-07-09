@@ -472,6 +472,8 @@ export default function PosTxnConfig() {
                   <option value="top_row">top_row</option>
                   <option value="upper_left">upper_left</option>
                   <option value="upper_right">upper_right</option>
+                  <option value="left">left</option>
+                  <option value="right">right</option>
                   <option value="lower_left">lower_left</option>
                   <option value="lower_right">lower_right</option>
                   <option value="bottom_row">bottom_row</option>
@@ -487,11 +489,13 @@ export default function PosTxnConfig() {
                     <option value="top_row">top_row</option>
                     <option value="upper_left">upper_left</option>
                     <option value="upper_right">upper_right</option>
+                    <option value="left">left</option>
+                    <option value="right">right</option>
                     <option value="lower_left">lower_left</option>
                     <option value="lower_right">lower_right</option>
                     <option value="bottom_row">bottom_row</option>
                     <option value="hidden">hidden</option>
-                  </select>
+                 </select>
                 </td>
               ))}
             </tr>
