@@ -27,6 +27,7 @@ import ChangePasswordPage from './pages/ChangePassword.jsx';
 import BlueLinkPage from './pages/BlueLinkPage.jsx';
 import InventoryPage from './pages/InventoryPage.jsx';
 import FinanceTransactionsPage from './pages/FinanceTransactions.jsx';
+import PosTransactionConfigPage from './pages/PosTransactionConfig.jsx';
 import { useModules } from './hooks/useModules.js';
 import { useTxnModules } from './hooks/useTxnModules.js';
 
@@ -64,6 +65,7 @@ export default function App() {
     report_management: <ReportManagementPage />,
     relations_config: <RelationsConfigPage />,
     change_password: <ChangePasswordPage />,
+    pos_transaction_management: <PosTransactionConfigPage />,
   };
 
   modules.forEach((m) => {
@@ -89,6 +91,7 @@ export default function App() {
     'forms_management',
     'report_management',
     'relations_config',
+    'pos_transaction_management',
   ]);
 
   function renderRoute(mod) {
