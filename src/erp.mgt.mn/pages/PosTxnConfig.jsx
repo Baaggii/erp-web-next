@@ -15,6 +15,7 @@ export default function PosTxnConfig() {
   const [formOptions, setFormOptions] = useState({});
   const [formNames, setFormNames] = useState([]);
   const [formToTable, setFormToTable] = useState({});
+  const [formFields, setFormFields] = useState({});
   const [config, setConfig] = useState(emptyConfig);
 
   useEffect(() => {
@@ -29,21 +30,25 @@ export default function PosTxnConfig() {
         const byTable = {};
         const names = [];
         const mapping = {};
+        const fields = {};
         for (const [name, info] of Object.entries(data)) {
           const tbl = info.table;
           mapping[name] = tbl;
           names.push(name);
+          fields[name] = Array.isArray(info.visibleFields) ? info.visibleFields : [];
           if (!byTable[tbl]) byTable[tbl] = [];
           byTable[tbl].push(name);
         }
         setFormOptions(byTable);
         setFormNames(names);
         setFormToTable(mapping);
+        setFormFields(fields);
       })
       .catch(() => {
         setFormOptions({});
         setFormNames([]);
         setFormToTable({});
+        setFormFields({});
       });
   }, []);
 
@@ -58,8 +63,16 @@ export default function PosTxnConfig() {
         credentials: 'include',
       });
       const cfg = res.ok ? await res.json() : emptyConfig;
+      const loaded = { ...emptyConfig, ...(cfg || {}) };
+      if (Array.isArray(loaded.calcFields)) {
+        loaded.calcFields = loaded.calcFields.map((row) =>
+          Array.isArray(row) ? row : []
+        );
+      } else {
+        loaded.calcFields = [];
+      }
       setName(n);
-      setConfig({ ...emptyConfig, ...(cfg || {}) });
+      setConfig(loaded);
     } catch {
       setName(n);
       setConfig({ ...emptyConfig });
@@ -73,6 +86,10 @@ export default function PosTxnConfig() {
         ...c.tables,
         { table: '', form: '', type: 'single', position: 'upper_left' },
       ],
+      calcFields: c.calcFields.map((row) => [
+        ...row,
+        { field: '', agg: 'SUM' },
+      ]),
     }));
   }
 
@@ -94,6 +111,9 @@ export default function PosTxnConfig() {
     setConfig((c) => ({
       ...c,
       tables: c.tables.filter((_, i) => i !== idx),
+      calcFields: c.calcFields.map((row) =>
+        row.filter((_, i) => i !== idx)
+      ),
     }));
   }
 
@@ -134,14 +154,23 @@ export default function PosTxnConfig() {
   function handleAddCalc() {
     setConfig((c) => ({
       ...c,
-      calcFields: [...c.calcFields, { field: '', table: '', column: '', agg: 'SUM' }],
+      calcFields: [
+        ...c.calcFields,
+        Array.from({ length: c.tables.length }, () => ({ field: '', agg: 'SUM' })),
+      ],
     }));
   }
 
-  function updateCalc(idx, key, value) {
+  function updateCalc(rowIdx, colIdx, key, value) {
     setConfig((c) => ({
       ...c,
-      calcFields: c.calcFields.map((f, i) => (i === idx ? { ...f, [key]: value } : f)),
+      calcFields: c.calcFields.map((row, r) =>
+        r === rowIdx
+          ? row.map((cell, cIdx) =>
+              cIdx === colIdx ? { ...cell, [key]: value } : cell,
+            )
+          : row,
+      ),
     }));
   }
 
@@ -267,52 +296,44 @@ export default function PosTxnConfig() {
                 </td>
               ))}
             </tr>
+            {config.calcFields.map((row, rIdx) => (
+              <tr key={`calc-${rIdx}`}>
+                <td>
+                  Calc {rIdx + 1}{' '}
+                  <button onClick={() => removeCalc(rIdx)}>x</button>
+                </td>
+                {row.map((cell, cIdx) => (
+                  <td key={cIdx} style={{ padding: '4px' }}>
+                    <select
+                      value={cell.agg}
+                      onChange={(e) => updateCalc(rIdx, cIdx, 'agg', e.target.value)}
+                    >
+                      <option value="SUM">SUM</option>
+                      <option value="AVG">AVG</option>
+                    </select>
+                    <select
+                      value={cell.field}
+                      onChange={(e) => updateCalc(rIdx, cIdx, 'field', e.target.value)}
+                      style={{ marginLeft: '0.5rem' }}
+                    >
+                      <option value="">-- field --</option>
+                      {(formFields[config.tables[cIdx]?.form] || []).map((f) => (
+                        <option key={f} value={f}>
+                          {f}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                ))}
+              </tr>
+            ))}
+            <tr>
+              <td>
+                <button onClick={handleAddCalc}>Add Calculated</button>
+              </td>
+            </tr>
           </tbody>
         </table>
-      </div>
-      <div style={{ marginTop: '1rem' }}>
-        <h3>Calculated Fields</h3>
-        {config.calcFields.map((f, idx) => (
-          <div key={idx} style={{ marginBottom: '0.5rem' }}>
-            <input
-              type="text"
-              placeholder="Field"
-              value={f.field}
-              onChange={(e) => updateCalc(idx, 'field', e.target.value)}
-            />
-            <select
-              value={f.table}
-              onChange={(e) => updateCalc(idx, 'table', e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              <option value="">-- table --</option>
-              {config.tables.map((t, i) => (
-                <option key={i} value={t.table}>
-                  {t.form || t.table}
-                </option>
-              ))}
-            </select>
-            <input
-              type="text"
-              placeholder="Column"
-              value={f.column}
-              onChange={(e) => updateCalc(idx, 'column', e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
-            />
-            <select
-              value={f.agg}
-              onChange={(e) => updateCalc(idx, 'agg', e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              <option value="SUM">SUM</option>
-              <option value="AVG">AVG</option>
-            </select>
-            <button onClick={() => removeCalc(idx)} style={{ marginLeft: '0.5rem' }}>
-              Remove
-            </button>
-          </div>
-        ))}
-        <button onClick={handleAddCalc}>Add Calculated</button>
       </div>
       <div style={{ marginTop: '1rem' }}>
         <h3>POS-only Fields</h3>
