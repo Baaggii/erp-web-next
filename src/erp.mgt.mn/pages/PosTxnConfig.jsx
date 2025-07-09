@@ -232,6 +232,22 @@ export default function PosTxnConfig() {
     });
   }
 
+  function removeMaster() {
+    setConfig((c) => ({
+      ...c,
+      masterTable: '',
+      masterForm: '',
+      calcFields: c.calcFields.map((row) => ({
+        ...row,
+        cells: row.cells.map((cell, i) => (i === 0 ? { ...cell, table: '' } : cell)),
+      })),
+      posFields: c.posFields.map((p) => ({
+        ...p,
+        parts: p.parts.map((pt) => ({ ...pt, table: '' })),
+      })),
+    }));
+  }
+
   async function handleSave() {
     if (!name) {
       addToast('Name required', 'error');
@@ -393,21 +409,31 @@ export default function PosTxnConfig() {
             value={config.masterTable}
             onChange={(e) => {
               const tbl = e.target.value;
-              setConfig((c) => ({
-                ...c,
-                masterTable: tbl,
-                masterForm: '',
-                calcFields: c.calcFields.map((row) => ({
-                  ...row,
-                  cells: row.cells.map((cell, i) =>
-                    i === 0 ? { ...cell, table: tbl } : cell,
-                  ),
-                })),
-                posFields: c.posFields.map((p) => ({
-                  ...p,
-                  parts: p.parts.map((pt) => ({ ...pt, table: tbl })),
-                })),
-              }));
+              setConfig((c) => {
+                const idx = c.tables.findIndex((t) => t.table === tbl);
+                let tables = c.tables;
+                let masterForm = '';
+                if (idx !== -1) {
+                  masterForm = c.tables[idx].form || '';
+                  tables = c.tables.filter((_, i) => i !== idx);
+                }
+                return {
+                  ...c,
+                  masterTable: tbl,
+                  masterForm,
+                  tables,
+                  calcFields: c.calcFields.map((row) => ({
+                    ...row,
+                    cells: row.cells.map((cell, i) =>
+                      i === 0 ? { ...cell, table: tbl } : cell,
+                    ),
+                  })),
+                  posFields: c.posFields.map((p) => ({
+                    ...p,
+                    parts: p.parts.map((pt) => ({ ...pt, table: tbl })),
+                  })),
+                };
+              });
             }}
           >
             <option value="">-- select table --</option>
@@ -425,7 +451,12 @@ export default function PosTxnConfig() {
           <thead>
             <tr>
               <th></th>
-              <th>{config.masterTable || 'Master'}</th>
+              <th>
+                {config.masterTable || 'Master'}{' '}
+                {config.masterTable && (
+                  <button onClick={() => removeMaster()}>x</button>
+                )}
+              </th>
               {config.tables.map((t, idx) => (
                 <th key={idx} style={{ borderBottom: '1px solid #ccc', padding: '4px' }}>
                   {t.form || 'New'}{' '}
