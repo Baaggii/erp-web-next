@@ -30,7 +30,6 @@ const RowFormModal = function RowFormModal({
   inline = false,
   useGrid = false,
   hideAddButton = false,
-  formView = 'cells',
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -190,11 +189,7 @@ const RowFormModal = function RowFormModal({
       ? columns.filter((c) => mainSet.has(c))
       : columns.filter((c) => !headerSet.has(c) && !footerSet.has(c));
 
-  const formGrid = React.useMemo(() => {
-    if (formView === 'row') return 'flex flex-row flex-wrap items-end gap-2';
-    if (formView === 'column') return 'flex flex-col gap-2';
-    return 'grid grid-cols-1 md:grid-cols-2 gap-0';
-  }, [formView]);
+  const formGrid = 'grid grid-cols-1 md:grid-cols-2 gap-0';
 
   function handleKeyDown(e, col) {
     if (e.key !== 'Enter') return;

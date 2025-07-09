@@ -27,15 +27,7 @@ export default function PosTransactionsPage() {
       .then((cfg) => {
         if (cfg && Array.isArray(cfg.tables) && cfg.tables.length > 0 && !cfg.masterTable) {
           const [master, ...rest] = cfg.tables;
-          cfg = {
-            ...cfg,
-            masterTable: master.table || '',
-            masterForm: master.form || '',
-            masterType: master.type || 'single',
-            masterPosition: master.position || 'upper_left',
-            masterView: master.view || 'cells',
-            tables: rest,
-          };
+          cfg = { ...cfg, masterTable: master.table || '', masterForm: master.form || '', masterType: master.type || 'single', masterPosition: master.position || 'upper_left', tables: rest };
         }
         setConfig(cfg);
         setFormConfigs({});
@@ -142,15 +134,7 @@ export default function PosTransactionsPage() {
               gridTemplateRows: 'auto auto auto auto auto',
             }}
           >
-            {[
-              {
-                table: config.masterTable,
-                type: config.masterType,
-                position: config.masterPosition,
-                view: config.masterView,
-              },
-              ...config.tables,
-            ]
+            {[{ table: config.masterTable, type: config.masterType, position: config.masterPosition }, ...config.tables]
               .filter((t) => t.position !== 'hidden')
               .map((t, idx) => {
                 const fc = formConfigs[t.table];
@@ -191,7 +175,6 @@ export default function PosTransactionsPage() {
                       onSubmit={(row) => handleSubmit(t.table, row)}
                       useGrid={t.type === 'multi'}
                       hideAddButton
-                      formView={t.view || 'cells'}
                     />
                   </div>
                 );
