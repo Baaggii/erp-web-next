@@ -71,6 +71,7 @@ export default function App() {
   };
 
   modules.forEach((m) => {
+    if (m.module_key === 'pos_transactions') return;
     if (txnModules.has(m.module_key)) {
       componentMap[m.module_key] = (
         <FinanceTransactionsPage moduleKey={m.module_key} />
