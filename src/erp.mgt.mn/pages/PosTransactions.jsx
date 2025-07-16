@@ -1,6 +1,114 @@
 import React, { useEffect, useState, useRef } from 'react';
 import RowFormModal from '../components/RowFormModal.jsx';
+import Modal from '../components/Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
+
+function parseErrorField(msg) {
+  if (!msg) return null;
+  let m = msg.match(/FOREIGN KEY \(`([^`]*)`\)/i);
+  if (m) return m[1];
+  m = msg.match(/column '([^']+)'/i);
+  if (m) return m[1];
+  m = msg.match(/for key '([^']+)'/i);
+  if (m) return m[1];
+  return null;
+}
+
+function PendingSelectModal({ visible, list = [], onSelect, onClose }) {
+  const [idx, setIdx] = useState(0);
+
+  useEffect(() => {
+    if (!visible) return;
+    function handleKey(e) {
+      if (e.key === 'ArrowDown') {
+        setIdx((v) => Math.min(v + 1, list.length - 1));
+      } else if (e.key === 'ArrowUp') {
+        setIdx((v) => Math.max(v - 1, 0));
+      } else if (e.key === 'Enter') {
+        onSelect(list[idx]?.id);
+      }
+    }
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [visible, list, idx, onSelect]);
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} title="Select Pending" onClose={onClose}>
+      <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+        {list.map((rec, i) => (
+          <li
+            key={rec.id}
+            style={{
+              padding: '0.25rem 0.5rem',
+              background: i === idx ? '#e0e0ff' : 'transparent',
+              cursor: 'pointer',
+            }}
+            onMouseEnter={() => setIdx(i)}
+            onClick={() => onSelect(rec.id)}
+          >
+            {rec.id} {rec.savedAt ? `(${rec.savedAt.slice(0, 19)})` : ''}
+          </li>
+        ))}
+      </ul>
+    </Modal>
+  );
+}
+
+async function postRow(addToast, table, row) {
+  try {
+    const res = await fetch(`/api/tables/${encodeURIComponent(table)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(row),
+    });
+    if (!res.ok) {
+      const js = await res.json().catch(() => ({}));
+      const msg = js.message || res.statusText;
+      const field = parseErrorField(msg);
+      const val = field && row ? row[field] : undefined;
+      addToast(
+        `Request failed: ${msg}${
+          field ? ` (field ${field}=${val})` : ''
+        }`,
+        'error',
+      );
+      return null;
+    }
+    return await res.json().catch(() => null);
+  } catch (err) {
+    addToast(`Request failed: ${err.message}`, 'error');
+    return null;
+  }
+}
+
+async function putRow(addToast, table, id, row) {
+  try {
+    const res = await fetch(`/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(row),
+    });
+    if (!res.ok) {
+      const js = await res.json().catch(() => ({}));
+      const msg = js.message || res.statusText;
+      const field = parseErrorField(msg);
+      const val = field && row ? row[field] : undefined;
+      addToast(
+        `Request failed: ${msg}${field ? ` (field ${field}=${val})` : ''}`,
+        'error',
+      );
+      return false;
+    }
+    return true;
+  } catch (err) {
+    addToast(`Request failed: ${err.message}`, 'error');
+    return false;
+  }
+}
 
 export default function PosTransactionsPage() {
   const { addToast } = useToast();
@@ -13,8 +121,16 @@ export default function PosTransactionsPage() {
   const [layout, setLayout] = useState({});
   const [pendingId, setPendingId] = useState(null);
   const [sessionFields, setSessionFields] = useState([]);
+  const [masterId, setMasterId] = useState(null);
+  const [pendingList, setPendingList] = useState([]);
+  const [showLoadModal, setShowLoadModal] = useState(false);
+  const masterIdRef = useRef(null);
   const refs = useRef({});
   const dragInfo = useRef(null);
+
+  useEffect(() => {
+    masterIdRef.current = masterId;
+  }, [masterId]);
 
   function focusFirst(table) {
     const wrap = refs.current[table];
@@ -87,23 +203,51 @@ export default function PosTransactionsPage() {
     setSessionFields(fields);
   }, [config]);
 
+  const masterSessionValue = React.useMemo(() => {
+    if (!config) return undefined;
+    const masterSf = sessionFields.find((f) => f.table === config.masterTable);
+    if (!masterSf) return undefined;
+    return values[config.masterTable]?.[masterSf.field];
+  }, [values, config, sessionFields]);
+
+  useEffect(() => {
+    if (!config) return;
+    if (masterSessionValue === undefined) return;
+    sessionFields.forEach((sf) => {
+      if (sf.table === config.masterTable) return;
+      setValues((v) => {
+        const tblVal = v[sf.table];
+        if (Array.isArray(tblVal)) {
+          let changed = false;
+          const updated = tblVal.map((r) => {
+            if (r[sf.field] === masterSessionValue) return r;
+            changed = true;
+            return { ...r, [sf.field]: masterSessionValue };
+          });
+          if (changed) return { ...v, [sf.table]: updated };
+          return v;
+        }
+        const cur = tblVal?.[sf.field];
+        if (cur === masterSessionValue) return v;
+        return {
+          ...v,
+          [sf.table]: { ...(tblVal || {}), [sf.field]: masterSessionValue },
+        };
+      });
+    });
+  }, [masterSessionValue, config, sessionFields]);
+
   function handleChange(tbl, changes) {
     setValues(v => ({ ...v, [tbl]: { ...v[tbl], ...changes } }));
   }
 
+  function handleRowsChange(tbl, rows) {
+    setValues(v => ({ ...v, [tbl]: Array.isArray(rows) ? rows : [] }));
+  }
+
   async function handleSubmit(tbl, row) {
-    try {
-      const res = await fetch(`/api/tables/${encodeURIComponent(tbl)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(row),
-      });
-      if (res.ok) addToast('Saved', 'success');
-      else addToast('Save failed', 'error');
-    } catch {
-      addToast('Save failed', 'error');
-    }
+    const js = await postRow(addToast, tbl, row);
+    if (js) addToast('Saved', 'success');
   }
 
   async function handleSaveLayout() {
@@ -133,59 +277,158 @@ export default function PosTransactionsPage() {
     addToast('Layout saved', 'success');
   }
 
-  function handleNew() {
+  async function handleNew() {
     if (!config) return;
+    const hasData = Object.values(values).some(
+      (v) => v && Object.keys(v).length > 0,
+    );
+    if ((pendingId || masterId) && hasData) {
+      const save = window.confirm(
+        'Save current transaction before starting new?',
+      );
+      if (save) await handleSavePending();
+    }
     const sid = 'sess_' + Date.now().toString(36);
     const next = {};
-    sessionFields.forEach(sf => {
-      if (!next[sf.table]) next[sf.table] = {};
+    const allTables = [
+      { table: config.masterTable, type: config.masterType },
+      ...config.tables,
+    ];
+    allTables.forEach((t) => {
+      next[t.table] = t.type === 'multi' ? [] : {};
+    });
+    sessionFields.forEach((sf) => {
+      if (Array.isArray(next[sf.table])) return;
       next[sf.table][sf.field] = sid;
     });
-    if (config.statusField?.table && config.statusField.field && config.statusField.created) {
+    if (
+      config.statusField?.table &&
+      config.statusField.field &&
+      config.statusField.created
+    ) {
       const tbl = config.statusField.table;
       if (!next[tbl]) next[tbl] = {};
       next[tbl][config.statusField.field] = config.statusField.created;
     }
+    Object.entries(formConfigs).forEach(([tbl, fc]) => {
+      const defs = fc.defaultValues || {};
+      if (!next[tbl]) next[tbl] = {};
+      Object.entries(defs).forEach(([k, v]) => {
+        if (next[tbl][k] === undefined) next[tbl][k] = v;
+      });
+    });
+    const js = await postRow(
+      addToast,
+      config.masterTable,
+      next[config.masterTable] || {},
+    );
+    if (js && js.id) {
+        const pk =
+          (columnMeta[config.masterTable] || []).find((c) => c.key === 'PRI')?.name ||
+          'id';
+        next[config.masterTable][pk] = js.id;
+        setMasterId(js.id);
+        masterIdRef.current = js.id;
+    } else {
+      setMasterId(null);
+      masterIdRef.current = null;
+    }
     setValues(next);
     setPendingId(null);
+    addToast('New transaction started', 'success');
   }
 
   async function handleSavePending() {
     if (!name) return;
+    const next = { ...values };
+    if (
+      config?.statusField?.table &&
+      config.statusField.field &&
+      config.statusField.beforePost
+    ) {
+      const tbl = config.statusField.table;
+      if (!next[tbl]) next[tbl] = {};
+      next[tbl][config.statusField.field] = config.statusField.beforePost;
+    }
+    // fill defaults when missing
+    Object.entries(formConfigs).forEach(([tbl, fc]) => {
+      const defs = fc.defaultValues || {};
+      if (!next[tbl]) next[tbl] = {};
+      Object.entries(defs).forEach(([k, v]) => {
+        if (next[tbl][k] === undefined) next[tbl][k] = v;
+      });
+    });
+
+    let mid = masterIdRef.current;
+    if (!mid) {
+      const js = await postRow(addToast, config.masterTable, next[config.masterTable] || {});
+      if (js && js.id) {
+        const pk =
+          (columnMeta[config.masterTable] || []).find((c) => c.key === 'PRI')?.name ||
+          'id';
+        next[config.masterTable][pk] = js.id;
+        mid = js.id;
+        setMasterId(js.id);
+        masterIdRef.current = js.id;
+      }
+    } else {
+      await putRow(addToast, config.masterTable, mid, next[config.masterTable] || {});
+    }
+
+    const masterSf = sessionFields.find((f) => f.table === config.masterTable);
+    const sid = masterSf ? next[config.masterTable]?.[masterSf.field] : pendingId;
+
     try {
       const res = await fetch('/api/pos_txn_pending', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ id: pendingId, name, data: values }),
+        body: JSON.stringify({ id: sid, name, data: next, masterId: mid }),
       });
       const js = await res.json().catch(() => ({}));
       if (js.id) {
-        setPendingId(js.id);
+        setPendingId(sid);
+        setValues(next);
         addToast('Saved', 'success');
       } else {
-        addToast('Save failed', 'error');
+        const msg = js.message || res.statusText;
+        const field = parseErrorField(msg);
+        addToast(`Save failed: ${msg}${field ? ` (field ${field})` : ''}`, 'error');
       }
-    } catch {
-      addToast('Save failed', 'error');
+    } catch (err) {
+      addToast(`Save failed: ${err.message}`, 'error');
     }
   }
 
   async function handleLoadPending() {
     if (!name) return;
-    const list = await fetch(`/api/pos_txn_pending?name=${encodeURIComponent(name)}`, { credentials: 'include' })
-      .then(res => res.ok ? res.json() : {})
+    const list = await fetch(
+      `/api/pos_txn_pending?name=${encodeURIComponent(name)}`,
+      { credentials: 'include' },
+    )
+      .then((res) => (res.ok ? res.json() : {}))
       .catch(() => ({}));
-    const ids = Object.keys(list);
-    if (ids.length === 0) { addToast('No pending', 'info'); return; }
-    const sel = window.prompt('Select ID:\n' + ids.join('\n'));
-    if (!sel) return;
-    const rec = await fetch(`/api/pos_txn_pending?id=${encodeURIComponent(sel)}`, { credentials: 'include' })
-      .then(res => res.ok ? res.json() : null)
+    const arr = Object.entries(list).map(([id, rec]) => ({ id, ...rec }));
+    if (arr.length === 0) { addToast('No pending', 'info'); return; }
+    setPendingList(arr);
+    setShowLoadModal(true);
+  }
+
+  async function selectPending(id) {
+    setShowLoadModal(false);
+    if (!id) return;
+    const rec = await fetch(
+      `/api/pos_txn_pending?id=${encodeURIComponent(id)}`,
+      { credentials: 'include' },
+    )
+      .then((res) => (res.ok ? res.json() : null))
       .catch(() => null);
     if (rec && rec.data) {
       setValues(rec.data);
-      setPendingId(sel);
+      setPendingId(String(id).trim());
+      setMasterId(rec.masterId || null);
+      masterIdRef.current = rec.masterId || null;
+      addToast('Loaded', 'success');
     }
   }
 
@@ -197,6 +440,9 @@ export default function PosTransactionsPage() {
     });
     setPendingId(null);
     setValues({});
+    setMasterId(null);
+    masterIdRef.current = null;
+    addToast('Deleted', 'success');
   }
 
   async function handlePostAll() {
@@ -214,14 +460,46 @@ export default function PosTransactionsPage() {
         }
       }
     }
+    const payload = { ...values };
+    Object.entries(formConfigs).forEach(([tbl, fc]) => {
+      const defs = fc.defaultValues || {};
+      if (!payload[tbl]) payload[tbl] = {};
+      Object.entries(defs).forEach(([k, v]) => {
+        if (payload[tbl][k] === undefined) payload[tbl][k] = v;
+      });
+    });
+    for (const map of config.calcFields || []) {
+      if (!Array.isArray(map.cells) || map.cells.length < 2) continue;
+      const [first, ...rest] = map.cells;
+      const base = payload[first.table]?.[first.field];
+      for (const c of rest) {
+        if (payload[c.table]?.[c.field] !== base) {
+          addToast('Mapping mismatch', 'error');
+          return;
+        }
+      }
+    }
+    const single = {};
+    const multi = {};
+    formList.forEach((t) => {
+      if (t.type === 'multi') multi[t.table] = payload[t.table];
+      else single[t.table] = payload[t.table];
+    });
+    const postData = { masterId: masterIdRef.current, single, multi };
     try {
       const res = await fetch('/api/pos_txn_post', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ name, data: values }),
+        body: JSON.stringify({ name, data: postData }),
       });
       if (res.ok) {
+        if (pendingId) {
+          await fetch(`/api/pos_txn_pending?id=${encodeURIComponent(pendingId)}`, {
+            method: 'DELETE',
+            credentials: 'include',
+          });
+        }
         setPendingId(null);
         if (config.statusField?.table && config.statusField.field && config.statusField.posted) {
           setValues(v => ({
@@ -234,10 +512,13 @@ export default function PosTransactionsPage() {
         }
         addToast('Posted', 'success');
       } else {
-        addToast('Post failed', 'error');
+        const js = await res.json().catch(() => ({}));
+        const msg = js.message || res.statusText;
+        const field = parseErrorField(msg);
+        addToast(`Post failed: ${msg}${field ? ` (field ${field})` : ''}`, 'error');
       }
-    } catch {
-      addToast('Post failed', 'error');
+    } catch (err) {
+      addToast(`Post failed: ${err.message}`, 'error');
     }
   }
 
@@ -269,14 +550,31 @@ export default function PosTransactionsPage() {
 
   const formList = React.useMemo(() => {
     if (!config) return [];
-    const arr = [{ table: config.masterTable, type: config.masterType, position: config.masterPosition, view: config.masterView }, ...config.tables];
+    const arr = [
+      { table: config.masterTable, type: config.masterType, position: config.masterPosition, view: config.masterView },
+      ...config.tables,
+    ];
     const seen = new Set();
-    return arr.filter(t => {
+    const filtered = arr.filter((t) => {
       if (!t.table) return false;
       if (seen.has(t.table)) return false;
       seen.add(t.table);
       return true;
     });
+    const order = [
+      'top_row',
+      'upper_left',
+      'upper_right',
+      'left',
+      'right',
+      'lower_left',
+      'lower_right',
+      'bottom_row',
+      'hidden',
+    ];
+    return filtered.sort(
+      (a, b) => order.indexOf(a.position) - order.indexOf(b.position),
+    );
   }, [config]);
 
   return (
@@ -301,8 +599,8 @@ export default function PosTransactionsPage() {
             <button onClick={handleNew} style={{ marginRight: '0.5rem' }}>New</button>
             <button onClick={handleSavePending} style={{ marginRight: '0.5rem' }}>Save</button>
             <button onClick={handleLoadPending} style={{ marginRight: '0.5rem' }}>Load</button>
-            <button onClick={handleDeletePending} style={{ marginRight: '0.5rem' }}>Delete</button>
-            <button onClick={handlePostAll}>POST</button>
+            <button onClick={handleDeletePending} style={{ marginRight: '0.5rem' }} disabled={!pendingId}>Delete</button>
+            <button onClick={handlePostAll} disabled={!pendingId}>POST</button>
           </div>
           <div
             style={{
@@ -322,7 +620,16 @@ export default function PosTransactionsPage() {
                 meta.forEach((c) => {
                   labels[c.name || c] = c.label || c.name || c;
                 });
-                const visible = Array.isArray(fc.visibleFields) ? fc.visibleFields : [];
+                const sessionCols = sessionFields
+                  .filter((sf) => sf.table === t.table)
+                  .map((sf) => sf.field);
+                const visible = Array.isArray(fc.visibleFields)
+                  ? Array.from(new Set([...fc.visibleFields, ...sessionCols]))
+                  : sessionCols;
+                const headerFields =
+                  fc.headerFields && fc.headerFields.length > 0
+                    ? fc.headerFields
+                    : sessionCols;
                 const posStyle = {
                   top_row: { gridColumn: '1 / span 3', gridRow: '1' },
                   upper_left: { gridColumn: '1', gridRow: '2' },
@@ -362,7 +669,12 @@ export default function PosTransactionsPage() {
                       columns={visible}
                       requiredFields={fc.requiredFields || []}
                       labels={labels}
+                      row={values[t.table]}
+                      rows={t.type === 'multi' ? values[t.table] : undefined}
+                      headerFields={headerFields}
+                      defaultValues={fc.defaultValues || {}}
                       onChange={(changes) => handleChange(t.table, changes)}
+                      onRowsChange={(rows) => handleRowsChange(t.table, rows)}
                       onSubmit={(row) => handleSubmit(t.table, row)}
                       useGrid={t.view === 'table' || t.type === 'multi'}
                       fitted={t.view === 'fitted'}
@@ -372,6 +684,12 @@ export default function PosTransactionsPage() {
                 );
               })}
           </div>
+          <PendingSelectModal
+            visible={showLoadModal}
+            list={pendingList}
+            onSelect={selectPending}
+            onClose={() => setShowLoadModal(false)}
+          />
         </>
       )}
     </div>
