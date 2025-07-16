@@ -21,9 +21,9 @@ router.get('/', requireAuth, async (req, res, next) => {
 
 router.post('/', requireAuth, async (req, res, next) => {
   try {
-    const { id, name, data } = req.body;
+    const { id, name, data, masterId } = req.body;
     if (!name) return res.status(400).json({ message: 'name is required' });
-    const result = await savePending(id, { name, data });
+    const result = await savePending(id, { name, data, masterId });
     res.json({ id: result.id });
   } catch (err) {
     next(err);

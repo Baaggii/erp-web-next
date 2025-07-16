@@ -41,6 +41,32 @@ async function postRow(addToast, table, row) {
   }
 }
 
+async function putRow(addToast, table, id, row) {
+  try {
+    const res = await fetch(`/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(row),
+    });
+    if (!res.ok) {
+      const js = await res.json().catch(() => ({}));
+      const msg = js.message || res.statusText;
+      const field = parseErrorField(msg);
+      const val = field && row ? row[field] : undefined;
+      addToast(
+        `Request failed: ${msg}${field ? ` (field ${field}=${val})` : ''}`,
+        'error',
+      );
+      return false;
+    }
+    return true;
+  } catch (err) {
+    addToast(`Request failed: ${err.message}`, 'error');
+    return false;
+  }
+}
+
 export default function PosTransactionsPage() {
   const { addToast } = useToast();
   const [configs, setConfigs] = useState({});
@@ -257,6 +283,8 @@ export default function PosTransactionsPage() {
         mid = js.id;
         setMasterId(js.id);
       }
+    } else {
+      await putRow(addToast, config.masterTable, mid, next[config.masterTable] || {});
     }
 
     try {
@@ -526,6 +554,8 @@ export default function PosTransactionsPage() {
                       columns={visible}
                       requiredFields={fc.requiredFields || []}
                       labels={labels}
+                      row={values[t.table]}
+                      defaultValues={fc.defaultValues || {}}
                       onChange={(changes) => handleChange(t.table, changes)}
                       onSubmit={(row) => handleSubmit(t.table, row)}
                       useGrid={t.view === 'table' || t.type === 'multi'}
