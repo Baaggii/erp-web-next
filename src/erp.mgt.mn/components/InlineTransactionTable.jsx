@@ -45,6 +45,7 @@ export default forwardRef(function InlineTransactionTable({
   onRowsChange = () => {},
   requiredFields = [],
   defaultValues = {},
+  onLastCell,
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -403,7 +404,8 @@ export default forwardRef(function InlineTransactionTable({
     if (collectRows) {
       addRow();
     } else {
-      addBtnRef.current?.focus();
+      if (onLastCell) onLastCell();
+      else addBtnRef.current?.focus();
     }
   }
 
