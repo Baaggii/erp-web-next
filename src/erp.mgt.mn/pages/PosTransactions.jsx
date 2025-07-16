@@ -13,6 +13,7 @@ export default function PosTransactionsPage() {
   const [layout, setLayout] = useState({});
   const [pendingId, setPendingId] = useState(null);
   const [sessionFields, setSessionFields] = useState([]);
+  const [masterId, setMasterId] = useState(null);
   const refs = useRef({});
   const dragInfo = useRef(null);
 
@@ -87,6 +88,25 @@ export default function PosTransactionsPage() {
     setSessionFields(fields);
   }, [config]);
 
+  useEffect(() => {
+    if (!config) return;
+    const masterSf = sessionFields.find((f) => f.table === config.masterTable);
+    if (!masterSf) return;
+    const sid = values[config.masterTable]?.[masterSf.field];
+    if (sid === undefined) return;
+    sessionFields.forEach((sf) => {
+      if (sf.table === config.masterTable) return;
+      setValues((v) => {
+        const cur = v[sf.table]?.[sf.field];
+        if (cur === sid || sid === undefined) return v;
+        return {
+          ...v,
+          [sf.table]: { ...(v[sf.table] || {}), [sf.field]: sid },
+        };
+      });
+    });
+  }, [values, config, sessionFields]);
+
   function handleChange(tbl, changes) {
     setValues(v => ({ ...v, [tbl]: { ...v[tbl], ...changes } }));
   }
@@ -137,31 +157,57 @@ export default function PosTransactionsPage() {
     if (!config) return;
     const sid = 'sess_' + Date.now().toString(36);
     const next = {};
-    sessionFields.forEach(sf => {
+    sessionFields.forEach((sf) => {
       if (!next[sf.table]) next[sf.table] = {};
       next[sf.table][sf.field] = sid;
     });
-    if (config.statusField?.table && config.statusField.field && config.statusField.created) {
+    if (
+      config.statusField?.table &&
+      config.statusField.field &&
+      config.statusField.created
+    ) {
       const tbl = config.statusField.table;
       if (!next[tbl]) next[tbl] = {};
       next[tbl][config.statusField.field] = config.statusField.created;
     }
+    const masterDefaults = formConfigs[config.masterTable]?.defaultValues || {};
+    next[config.masterTable] = { ...(next[config.masterTable] || {}), ...masterDefaults };
     setValues(next);
+    setMasterId(null);
     setPendingId(null);
   }
 
   async function handleSavePending() {
     if (!name) return;
+    const next = { ...values };
+    if (
+      config?.statusField?.table &&
+      config.statusField.field &&
+      config.statusField.beforePost
+    ) {
+      const tbl = config.statusField.table;
+      if (!next[tbl]) next[tbl] = {};
+      next[tbl][config.statusField.field] = config.statusField.beforePost;
+    }
+    // fill defaults when missing
+    Object.entries(formConfigs).forEach(([tbl, fc]) => {
+      const defs = fc.defaultValues || {};
+      if (!next[tbl]) next[tbl] = {};
+      Object.entries(defs).forEach(([k, v]) => {
+        if (next[tbl][k] === undefined) next[tbl][k] = v;
+      });
+    });
     try {
       const res = await fetch('/api/pos_txn_pending', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ id: pendingId, name, data: values }),
+        body: JSON.stringify({ id: pendingId, name, data: next }),
       });
       const js = await res.json().catch(() => ({}));
       if (js.id) {
         setPendingId(js.id);
+        setValues(next);
         addToast('Saved', 'success');
       } else {
         addToast('Save failed', 'error');
@@ -197,6 +243,7 @@ export default function PosTransactionsPage() {
     });
     setPendingId(null);
     setValues({});
+    setMasterId(null);
   }
 
   async function handlePostAll() {
@@ -214,12 +261,31 @@ export default function PosTransactionsPage() {
         }
       }
     }
+    const payload = { ...values };
+    Object.entries(formConfigs).forEach(([tbl, fc]) => {
+      const defs = fc.defaultValues || {};
+      if (!payload[tbl]) payload[tbl] = {};
+      Object.entries(defs).forEach(([k, v]) => {
+        if (payload[tbl][k] === undefined) payload[tbl][k] = v;
+      });
+    });
+    for (const map of config.calcFields || []) {
+      if (!Array.isArray(map.cells) || map.cells.length < 2) continue;
+      const [first, ...rest] = map.cells;
+      const base = payload[first.table]?.[first.field];
+      for (const c of rest) {
+        if (payload[c.table]?.[c.field] !== base) {
+          addToast('Mapping mismatch', 'error');
+          return;
+        }
+      }
+    }
     try {
       const res = await fetch('/api/pos_txn_post', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ name, data: values }),
+        body: JSON.stringify({ name, data: payload }),
       });
       if (res.ok) {
         setPendingId(null);
@@ -269,14 +335,31 @@ export default function PosTransactionsPage() {
 
   const formList = React.useMemo(() => {
     if (!config) return [];
-    const arr = [{ table: config.masterTable, type: config.masterType, position: config.masterPosition, view: config.masterView }, ...config.tables];
+    const arr = [
+      { table: config.masterTable, type: config.masterType, position: config.masterPosition, view: config.masterView },
+      ...config.tables,
+    ];
     const seen = new Set();
-    return arr.filter(t => {
+    const filtered = arr.filter((t) => {
       if (!t.table) return false;
       if (seen.has(t.table)) return false;
       seen.add(t.table);
       return true;
     });
+    const order = [
+      'top_row',
+      'upper_left',
+      'upper_right',
+      'left',
+      'right',
+      'lower_left',
+      'lower_right',
+      'bottom_row',
+      'hidden',
+    ];
+    return filtered.sort(
+      (a, b) => order.indexOf(a.position) - order.indexOf(b.position),
+    );
   }, [config]);
 
   return (
@@ -300,9 +383,9 @@ export default function PosTransactionsPage() {
           <div style={{ marginBottom: '0.5rem' }}>
             <button onClick={handleNew} style={{ marginRight: '0.5rem' }}>New</button>
             <button onClick={handleSavePending} style={{ marginRight: '0.5rem' }}>Save</button>
-            <button onClick={handleLoadPending} style={{ marginRight: '0.5rem' }}>Load</button>
-            <button onClick={handleDeletePending} style={{ marginRight: '0.5rem' }}>Delete</button>
-            <button onClick={handlePostAll}>POST</button>
+            <button onClick={handleLoadPending} style={{ marginRight: '0.5rem' }} disabled={!pendingId}>Load</button>
+            <button onClick={handleDeletePending} style={{ marginRight: '0.5rem' }} disabled={!pendingId}>Delete</button>
+            <button onClick={handlePostAll} disabled={!pendingId}>POST</button>
           </div>
           <div
             style={{
