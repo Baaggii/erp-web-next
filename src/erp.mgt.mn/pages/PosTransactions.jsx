@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import RowFormModal from '../components/RowFormModal.jsx';
+import Modal from '../components/Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 
 function parseErrorField(msg) {
@@ -11,6 +12,48 @@ function parseErrorField(msg) {
   m = msg.match(/for key '([^']+)'/i);
   if (m) return m[1];
   return null;
+}
+
+function PendingSelectModal({ visible, list = [], onSelect, onClose }) {
+  const [idx, setIdx] = useState(0);
+
+  useEffect(() => {
+    if (!visible) return;
+    function handleKey(e) {
+      if (e.key === 'ArrowDown') {
+        setIdx((v) => Math.min(v + 1, list.length - 1));
+      } else if (e.key === 'ArrowUp') {
+        setIdx((v) => Math.max(v - 1, 0));
+      } else if (e.key === 'Enter') {
+        onSelect(list[idx]?.id);
+      }
+    }
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [visible, list, idx, onSelect]);
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} title="Select Pending" onClose={onClose}>
+      <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+        {list.map((rec, i) => (
+          <li
+            key={rec.id}
+            style={{
+              padding: '0.25rem 0.5rem',
+              background: i === idx ? '#e0e0ff' : 'transparent',
+              cursor: 'pointer',
+            }}
+            onMouseEnter={() => setIdx(i)}
+            onClick={() => onSelect(rec.id)}
+          >
+            {rec.id} {rec.savedAt ? `(${rec.savedAt.slice(0, 19)})` : ''}
+          </li>
+        ))}
+      </ul>
+    </Modal>
+  );
 }
 
 async function postRow(addToast, table, row) {
@@ -79,8 +122,15 @@ export default function PosTransactionsPage() {
   const [pendingId, setPendingId] = useState(null);
   const [sessionFields, setSessionFields] = useState([]);
   const [masterId, setMasterId] = useState(null);
+  const [pendingList, setPendingList] = useState([]);
+  const [showLoadModal, setShowLoadModal] = useState(false);
+  const masterIdRef = useRef(null);
   const refs = useRef({});
   const dragInfo = useRef(null);
+
+  useEffect(() => {
+    masterIdRef.current = masterId;
+  }, [masterId]);
 
   function focusFirst(table) {
     const wrap = refs.current[table];
@@ -210,6 +260,15 @@ export default function PosTransactionsPage() {
 
   async function handleNew() {
     if (!config) return;
+    const hasData = Object.values(values).some(
+      (v) => v && Object.keys(v).length > 0,
+    );
+    if ((pendingId || masterId) && hasData) {
+      const save = window.confirm(
+        'Save current transaction before starting new?',
+      );
+      if (save) await handleSavePending();
+    }
     const sid = 'sess_' + Date.now().toString(36);
     const next = {};
     const allTables = [
@@ -249,8 +308,10 @@ export default function PosTransactionsPage() {
           'id';
         next[config.masterTable][pk] = js.id;
         setMasterId(js.id);
+        masterIdRef.current = js.id;
     } else {
       setMasterId(null);
+      masterIdRef.current = null;
     }
     setValues(next);
     setMasterId(null);
@@ -279,7 +340,7 @@ export default function PosTransactionsPage() {
       });
     });
 
-    let mid = masterId;
+    let mid = masterIdRef.current;
     if (!mid) {
       const js = await postRow(addToast, config.masterTable, next[config.masterTable] || {});
       if (js && js.id) {
@@ -289,6 +350,7 @@ export default function PosTransactionsPage() {
         next[config.masterTable][pk] = js.id;
         mid = js.id;
         setMasterId(js.id);
+        masterIdRef.current = js.id;
       }
     } else {
       await putRow(addToast, config.masterTable, mid, next[config.masterTable] || {});
@@ -321,20 +383,32 @@ export default function PosTransactionsPage() {
 
   async function handleLoadPending() {
     if (!name) return;
-    const list = await fetch(`/api/pos_txn_pending?name=${encodeURIComponent(name)}`, { credentials: 'include' })
-      .then(res => res.ok ? res.json() : {})
+    const list = await fetch(
+      `/api/pos_txn_pending?name=${encodeURIComponent(name)}`,
+      { credentials: 'include' },
+    )
+      .then((res) => (res.ok ? res.json() : {}))
       .catch(() => ({}));
-    const ids = Object.keys(list);
-    if (ids.length === 0) { addToast('No pending', 'info'); return; }
-    const sel = window.prompt('Select ID:\n' + ids.join('\n'));
-    if (!sel) return;
-    const rec = await fetch(`/api/pos_txn_pending?id=${encodeURIComponent(sel)}`, { credentials: 'include' })
-      .then(res => res.ok ? res.json() : null)
+    const arr = Object.entries(list).map(([id, rec]) => ({ id, ...rec }));
+    if (arr.length === 0) { addToast('No pending', 'info'); return; }
+    setPendingList(arr);
+    setShowLoadModal(true);
+  }
+
+  async function selectPending(id) {
+    setShowLoadModal(false);
+    if (!id) return;
+    const rec = await fetch(
+      `/api/pos_txn_pending?id=${encodeURIComponent(id)}`,
+      { credentials: 'include' },
+    )
+      .then((res) => (res.ok ? res.json() : null))
       .catch(() => null);
     if (rec && rec.data) {
       setValues(rec.data);
-      setPendingId(sel.trim());
+      setPendingId(String(id).trim());
       setMasterId(rec.masterId || null);
+      masterIdRef.current = rec.masterId || null;
       addToast('Loaded', 'success');
     }
   }
@@ -348,6 +422,7 @@ export default function PosTransactionsPage() {
     setPendingId(null);
     setValues({});
     setMasterId(null);
+    masterIdRef.current = null;
     addToast('Deleted', 'success');
   }
 
@@ -391,7 +466,7 @@ export default function PosTransactionsPage() {
       if (t.type === 'multi') multi[t.table] = payload[t.table];
       else single[t.table] = payload[t.table];
     });
-    const postData = { masterId, single, multi };
+    const postData = { masterId: masterIdRef.current, single, multi };
     try {
       const res = await fetch('/api/pos_txn_post', {
         method: 'POST',
@@ -578,6 +653,12 @@ export default function PosTransactionsPage() {
                 );
               })}
           </div>
+          <PendingSelectModal
+            visible={showLoadModal}
+            list={pendingList}
+            onSelect={selectPending}
+            onClose={() => setShowLoadModal(false)}
+          />
         </>
       )}
     </div>
