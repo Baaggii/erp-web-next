@@ -33,3 +33,4 @@ This module includes a single set of buttons used by every POS transaction confi
 - Splits the payload into `single` and `multi` collections before sending to `/api/pos_txn_post`.
 - On success, deletes the pending entry, updates the `statusField` to `posted`, and leaves the master record intact.
 - Hidden forms are included in the submission automatically.
+- Error messages report the problematic field and value whenever possible.

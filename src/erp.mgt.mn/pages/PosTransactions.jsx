@@ -2,6 +2,45 @@ import React, { useEffect, useState, useRef } from 'react';
 import RowFormModal from '../components/RowFormModal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 
+function parseErrorField(msg) {
+  if (!msg) return null;
+  let m = msg.match(/FOREIGN KEY \(`([^`]*)`\)/i);
+  if (m) return m[1];
+  m = msg.match(/column '([^']+)'/i);
+  if (m) return m[1];
+  m = msg.match(/for key '([^']+)'/i);
+  if (m) return m[1];
+  return null;
+}
+
+async function postRow(addToast, table, row) {
+  try {
+    const res = await fetch(`/api/tables/${encodeURIComponent(table)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(row),
+    });
+    if (!res.ok) {
+      const js = await res.json().catch(() => ({}));
+      const msg = js.message || res.statusText;
+      const field = parseErrorField(msg);
+      const val = field && row ? row[field] : undefined;
+      addToast(
+        `Request failed: ${msg}${
+          field ? ` (field ${field}=${val})` : ''
+        }`,
+        'error',
+      );
+      return null;
+    }
+    return await res.json().catch(() => null);
+  } catch (err) {
+    addToast(`Request failed: ${err.message}`, 'error');
+    return null;
+  }
+}
+
 export default function PosTransactionsPage() {
   const { addToast } = useToast();
   const [configs, setConfigs] = useState({});
@@ -112,18 +151,8 @@ export default function PosTransactionsPage() {
   }
 
   async function handleSubmit(tbl, row) {
-    try {
-      const res = await fetch(`/api/tables/${encodeURIComponent(tbl)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(row),
-      });
-      if (res.ok) addToast('Saved', 'success');
-      else addToast('Save failed', 'error');
-    } catch {
-      addToast('Save failed', 'error');
-    }
+    const js = await postRow(addToast, tbl, row);
+    if (js) addToast('Saved', 'success');
   }
 
   async function handleSaveLayout() {
@@ -177,27 +206,18 @@ export default function PosTransactionsPage() {
         if (next[tbl][k] === undefined) next[tbl][k] = v;
       });
     });
-    try {
-      const res = await fetch(
-        `/api/tables/${encodeURIComponent(config.masterTable)}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(next[config.masterTable] || {}),
-        },
-      );
-      const js = await res.json().catch(() => null);
-      if (js && js.id) {
+    const js = await postRow(
+      addToast,
+      config.masterTable,
+      next[config.masterTable] || {},
+    );
+    if (js && js.id) {
         const pk =
           (columnMeta[config.masterTable] || []).find((c) => c.key === 'PRI')?.name ||
           'id';
         next[config.masterTable][pk] = js.id;
         setMasterId(js.id);
-      } else {
-        setMasterId(null);
-      }
-    } catch {
+    } else {
       setMasterId(null);
     }
     setValues(next);
@@ -228,26 +248,15 @@ export default function PosTransactionsPage() {
 
     let mid = masterId;
     if (!mid) {
-      try {
-        const res = await fetch(
-          `/api/tables/${encodeURIComponent(config.masterTable)}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify(next[config.masterTable] || {}),
-          },
-        );
-        const js = await res.json().catch(() => null);
-        if (js && js.id) {
-          const pk =
-            (columnMeta[config.masterTable] || []).find((c) => c.key === 'PRI')?.name ||
-            'id';
-          next[config.masterTable][pk] = js.id;
-          mid = js.id;
-          setMasterId(js.id);
-        }
-      } catch {}
+      const js = await postRow(addToast, config.masterTable, next[config.masterTable] || {});
+      if (js && js.id) {
+        const pk =
+          (columnMeta[config.masterTable] || []).find((c) => c.key === 'PRI')?.name ||
+          'id';
+        next[config.masterTable][pk] = js.id;
+        mid = js.id;
+        setMasterId(js.id);
+      }
     }
 
     try {
@@ -263,10 +272,12 @@ export default function PosTransactionsPage() {
         setValues(next);
         addToast('Saved', 'success');
       } else {
-        addToast('Save failed', 'error');
+        const msg = js.message || res.statusText;
+        const field = parseErrorField(msg);
+        addToast(`Save failed: ${msg}${field ? ` (field ${field})` : ''}`, 'error');
       }
-    } catch {
-      addToast('Save failed', 'error');
+    } catch (err) {
+      addToast(`Save failed: ${err.message}`, 'error');
     }
   }
 
@@ -367,10 +378,13 @@ export default function PosTransactionsPage() {
         }
         addToast('Posted', 'success');
       } else {
-        addToast('Post failed', 'error');
+        const js = await res.json().catch(() => ({}));
+        const msg = js.message || res.statusText;
+        const field = parseErrorField(msg);
+        addToast(`Post failed: ${msg}${field ? ` (field ${field})` : ''}`, 'error');
       }
-    } catch {
-      addToast('Post failed', 'error');
+    } catch (err) {
+      addToast(`Post failed: ${err.message}`, 'error');
     }
   }
 
