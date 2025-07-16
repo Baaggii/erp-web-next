@@ -11,20 +11,8 @@ export default function PosTransactionsPage() {
   const [columnMeta, setColumnMeta] = useState({});
   const [values, setValues] = useState({});
   const [layout, setLayout] = useState({});
-  const [pendingId, setPendingId] = useState(null);
-  const [sessionFields, setSessionFields] = useState([]);
   const refs = useRef({});
   const dragInfo = useRef(null);
-
-  function focusFirst(table) {
-    const wrap = refs.current[table];
-    if (!wrap) return;
-    const el = wrap.querySelector('input, textarea, select, button');
-    if (el) {
-      el.focus();
-      if (el.select) el.select();
-    }
-  }
 
   useEffect(() => {
     fetch('/api/pos_txn_config', { credentials: 'include' })
@@ -69,22 +57,6 @@ export default function PosTransactionsPage() {
         .then(cols => setColumnMeta(m => ({ ...m, [tbl]: cols || [] })))
         .catch(() => {});
     });
-  }, [config]);
-
-  useEffect(() => {
-    if (!config) { setSessionFields([]); return; }
-    const fields = [];
-    const check = (tbl, field) => {
-      if (!tbl || !field) return;
-      if (field.toLowerCase().includes('session')) fields.push({ table: tbl, field });
-    };
-    (config.calcFields || []).forEach(row => {
-      row.cells.forEach(c => check(c.table, c.field));
-    });
-    (config.posFields || []).forEach(p => {
-      (p.parts || []).forEach(pt => check(pt.table, pt.field));
-    });
-    setSessionFields(fields);
   }, [config]);
 
   function handleChange(tbl, changes) {
@@ -133,114 +105,6 @@ export default function PosTransactionsPage() {
     addToast('Layout saved', 'success');
   }
 
-  function handleNew() {
-    if (!config) return;
-    const sid = 'sess_' + Date.now().toString(36);
-    const next = {};
-    sessionFields.forEach(sf => {
-      if (!next[sf.table]) next[sf.table] = {};
-      next[sf.table][sf.field] = sid;
-    });
-    if (config.statusField?.table && config.statusField.field && config.statusField.created) {
-      const tbl = config.statusField.table;
-      if (!next[tbl]) next[tbl] = {};
-      next[tbl][config.statusField.field] = config.statusField.created;
-    }
-    setValues(next);
-    setPendingId(null);
-  }
-
-  async function handleSavePending() {
-    if (!name) return;
-    try {
-      const res = await fetch('/api/pos_txn_pending', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ id: pendingId, name, data: values }),
-      });
-      const js = await res.json().catch(() => ({}));
-      if (js.id) {
-        setPendingId(js.id);
-        addToast('Saved', 'success');
-      } else {
-        addToast('Save failed', 'error');
-      }
-    } catch {
-      addToast('Save failed', 'error');
-    }
-  }
-
-  async function handleLoadPending() {
-    if (!name) return;
-    const list = await fetch(`/api/pos_txn_pending?name=${encodeURIComponent(name)}`, { credentials: 'include' })
-      .then(res => res.ok ? res.json() : {})
-      .catch(() => ({}));
-    const ids = Object.keys(list);
-    if (ids.length === 0) { addToast('No pending', 'info'); return; }
-    const sel = window.prompt('Select ID:\n' + ids.join('\n'));
-    if (!sel) return;
-    const rec = await fetch(`/api/pos_txn_pending?id=${encodeURIComponent(sel)}`, { credentials: 'include' })
-      .then(res => res.ok ? res.json() : null)
-      .catch(() => null);
-    if (rec && rec.data) {
-      setValues(rec.data);
-      setPendingId(sel);
-    }
-  }
-
-  async function handleDeletePending() {
-    if (!pendingId) return;
-    await fetch(`/api/pos_txn_pending?id=${encodeURIComponent(pendingId)}`, {
-      method: 'DELETE',
-      credentials: 'include',
-    });
-    setPendingId(null);
-    setValues({});
-  }
-
-  async function handlePostAll() {
-    if (!name) return;
-    // basic required field check
-    for (const t of [{ table: config.masterTable }, ...config.tables]) {
-      const fc = formConfigs[t.table];
-      if (!fc) continue;
-      const req = fc.requiredFields || [];
-      const row = values[t.table] || {};
-      for (const f of req) {
-        if (row[f] === undefined || row[f] === '') {
-          addToast('Missing required fields', 'error');
-          return;
-        }
-      }
-    }
-    try {
-      const res = await fetch('/api/pos_txn_post', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ name, data: values }),
-      });
-      if (res.ok) {
-        setPendingId(null);
-        if (config.statusField?.table && config.statusField.field && config.statusField.posted) {
-          setValues(v => ({
-            ...v,
-            [config.statusField.table]: {
-              ...(v[config.statusField.table] || {}),
-              [config.statusField.field]: config.statusField.posted,
-            },
-          }));
-        }
-        addToast('Posted', 'success');
-      } else {
-        addToast('Post failed', 'error');
-      }
-    } catch {
-      addToast('Post failed', 'error');
-    }
-  }
-
   function startDrag(table, e) {
     const startX = e.clientX;
     const startY = e.clientY;
@@ -267,18 +131,6 @@ export default function PosTransactionsPage() {
 
   const configNames = Object.keys(configs);
 
-  const formList = React.useMemo(() => {
-    if (!config) return [];
-    const arr = [{ table: config.masterTable, type: config.masterType, position: config.masterPosition, view: config.masterView }, ...config.tables];
-    const seen = new Set();
-    return arr.filter(t => {
-      if (!t.table) return false;
-      if (seen.has(t.table)) return false;
-      seen.add(t.table);
-      return true;
-    });
-  }, [config]);
-
   return (
     <div>
       <h2>POS Transactions</h2>
@@ -297,13 +149,6 @@ export default function PosTransactionsPage() {
           <div style={{ marginBottom: '0.5rem' }}>
             <button onClick={handleSaveLayout}>Save Layout</button>
           </div>
-          <div style={{ marginBottom: '0.5rem' }}>
-            <button onClick={handleNew} style={{ marginRight: '0.5rem' }}>New</button>
-            <button onClick={handleSavePending} style={{ marginRight: '0.5rem' }}>Save</button>
-            <button onClick={handleLoadPending} style={{ marginRight: '0.5rem' }}>Load</button>
-            <button onClick={handleDeletePending} style={{ marginRight: '0.5rem' }}>Delete</button>
-            <button onClick={handlePostAll}>POST</button>
-          </div>
           <div
             style={{
               display: 'grid',
@@ -312,8 +157,8 @@ export default function PosTransactionsPage() {
               gridTemplateRows: 'auto auto auto auto auto',
             }}
           >
-            {formList
-              .filter(t => t.position !== 'hidden')
+            {[{ table: config.masterTable, type: config.masterType, position: config.masterPosition, view: config.masterView }, ...config.tables]
+              .filter((t) => t.position !== 'hidden')
               .map((t, idx) => {
                 const fc = formConfigs[t.table];
                 if (!fc) return <div key={idx}>Loading...</div>;
@@ -366,11 +211,10 @@ export default function PosTransactionsPage() {
                       onSubmit={(row) => handleSubmit(t.table, row)}
                       useGrid={t.view === 'table' || t.type === 'multi'}
                       fitted={t.view === 'fitted'}
-                      onNextForm={() => focusFirst(formList[idx + 1]?.table)}
                     />
                   </div>
                 );
-              })
+              })}
           </div>
         </>
       )}
