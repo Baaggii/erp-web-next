@@ -203,29 +203,39 @@ export default function PosTransactionsPage() {
     setSessionFields(fields);
   }, [config]);
 
+  const masterSessionValue = React.useMemo(() => {
+    if (!config) return undefined;
+    const masterSf = sessionFields.find((f) => f.table === config.masterTable);
+    if (!masterSf) return undefined;
+    return values[config.masterTable]?.[masterSf.field];
+  }, [values, config, sessionFields]);
+
   useEffect(() => {
     if (!config) return;
-    const masterSf = sessionFields.find((f) => f.table === config.masterTable);
-    if (!masterSf) return;
-    const sid = values[config.masterTable]?.[masterSf.field];
-    if (sid === undefined) return;
+    if (masterSessionValue === undefined) return;
     sessionFields.forEach((sf) => {
       if (sf.table === config.masterTable) return;
       setValues((v) => {
         const tblVal = v[sf.table];
         if (Array.isArray(tblVal)) {
-          const updated = tblVal.map((r) => ({ ...r, [sf.field]: sid }));
-          return { ...v, [sf.table]: updated };
+          let changed = false;
+          const updated = tblVal.map((r) => {
+            if (r[sf.field] === masterSessionValue) return r;
+            changed = true;
+            return { ...r, [sf.field]: masterSessionValue };
+          });
+          if (changed) return { ...v, [sf.table]: updated };
+          return v;
         }
         const cur = tblVal?.[sf.field];
-        if (cur === sid || sid === undefined) return v;
+        if (cur === masterSessionValue) return v;
         return {
           ...v,
-          [sf.table]: { ...(tblVal || {}), [sf.field]: sid },
+          [sf.table]: { ...(tblVal || {}), [sf.field]: masterSessionValue },
         };
       });
     });
-  }, [values, config, sessionFields]);
+  }, [masterSessionValue, config, sessionFields]);
 
   function handleChange(tbl, changes) {
     setValues(v => ({ ...v, [tbl]: { ...v[tbl], ...changes } }));
@@ -611,7 +621,16 @@ export default function PosTransactionsPage() {
                 meta.forEach((c) => {
                   labels[c.name || c] = c.label || c.name || c;
                 });
-                const visible = Array.isArray(fc.visibleFields) ? fc.visibleFields : [];
+                const sessionCols = sessionFields
+                  .filter((sf) => sf.table === t.table)
+                  .map((sf) => sf.field);
+                const visible = Array.isArray(fc.visibleFields)
+                  ? Array.from(new Set([...fc.visibleFields, ...sessionCols]))
+                  : sessionCols;
+                const headerFields =
+                  fc.headerFields && fc.headerFields.length > 0
+                    ? fc.headerFields
+                    : sessionCols;
                 const posStyle = {
                   top_row: { gridColumn: '1 / span 3', gridRow: '1' },
                   upper_left: { gridColumn: '1', gridRow: '2' },
@@ -652,6 +671,8 @@ export default function PosTransactionsPage() {
                       requiredFields={fc.requiredFields || []}
                       labels={labels}
                       row={values[t.table]}
+                      rows={t.type === 'multi' ? values[t.table] : undefined}
+                      headerFields={headerFields}
                       defaultValues={fc.defaultValues || {}}
                       onChange={(changes) => handleChange(t.table, changes)}
                       onRowsChange={(rows) => handleRowsChange(t.table, rows)}

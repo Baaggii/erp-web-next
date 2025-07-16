@@ -11,6 +11,7 @@ const RowFormModal = function RowFormModal({
   onSubmit,
   columns,
   row,
+  rows = [],
   relations = {},
   relationConfigs = {},
   relationData = {},
@@ -94,7 +95,13 @@ const RowFormModal = function RowFormModal({
   const [errors, setErrors] = useState({});
   const [submitLocked, setSubmitLocked] = useState(false);
   const tableRef = useRef(null);
-  const [gridRows, setGridRows] = useState([]);
+  const [gridRows, setGridRows] = useState(() => (Array.isArray(rows) ? rows : []));
+
+  useEffect(() => {
+    if (useGrid) {
+      setGridRows(Array.isArray(rows) ? rows : []);
+    }
+  }, [rows, useGrid]);
   const placeholders = React.useMemo(() => {
     const map = {};
     columns.forEach((c) => {
@@ -475,6 +482,7 @@ const RowFormModal = function RowFormModal({
             }}
             requiredFields={requiredFields}
             defaultValues={defaultValues}
+            rows={rows}
             onNextForm={onNextForm}
           />
         </div>
