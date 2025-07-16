@@ -340,9 +340,7 @@ export default forwardRef(function InlineTransactionTable({
   }, [rows, fields, totalAmountSet, totalCurrencySet, totalAmountFields]);
 
   function handleKeyDown(e, rowIdx, colIdx) {
-    const isEnter = e.key === 'Enter';
-    const isForwardTab = e.key === 'Tab' && !e.shiftKey;
-    if (!isEnter && !isForwardTab) return;
+    if (e.key !== 'Enter') return;
     e.preventDefault();
     const field = fields[colIdx];
     let val = e.target.value;

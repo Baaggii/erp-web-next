@@ -300,7 +300,7 @@ export default function PosTransactionsPage() {
           <div
             style={{
               display: 'grid',
-              gap: '0',
+              gap: '1rem',
               gridTemplateColumns: '1fr 1fr 1fr',
               gridTemplateRows: 'auto auto auto auto auto',
             }}
