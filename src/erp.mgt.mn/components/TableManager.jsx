@@ -129,6 +129,7 @@ const TableManager = forwardRef(function TableManager({
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [rowDefaults, setRowDefaults] = useState({});
+  const [gridRows, setGridRows] = useState([]);
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [localRefresh, setLocalRefresh] = useState(0);
   const [deleteInfo, setDeleteInfo] = useState(null); // { id, refs }
@@ -602,6 +603,7 @@ const TableManager = forwardRef(function TableManager({
     }
     setRowDefaults(defaults);
     setEditing(vals);
+    setGridRows([vals]);
     setIsAdding(true);
     setShowForm(true);
   }
@@ -613,6 +615,7 @@ const TableManager = forwardRef(function TableManager({
     }
     await ensureColumnMeta();
     setEditing(row);
+    setGridRows([row]);
     setIsAdding(false);
     setShowForm(true);
   }
@@ -792,6 +795,7 @@ const TableManager = forwardRef(function TableManager({
         setShowForm(false);
         setEditing(null);
         setIsAdding(false);
+        setGridRows([]);
         const msg = isAdding ? 'Шинэ гүйлгээ хадгалагдлаа' : 'Хадгалагдлаа';
         addToast(msg, 'success');
         if (isAdding) {
@@ -1711,11 +1715,13 @@ const TableManager = forwardRef(function TableManager({
           setShowForm(false);
           setEditing(null);
           setIsAdding(false);
+          setGridRows([]);
         }}
         onSubmit={handleSubmit}
         onChange={handleFieldChange}
         columns={formColumns}
         row={editing}
+        rows={gridRows}
         relations={relationOpts}
         relationConfigs={relationConfigs}
         relationData={refRows}
@@ -1731,6 +1737,7 @@ const TableManager = forwardRef(function TableManager({
         printCustField={formConfig?.printCustField || []}
         totalAmountFields={formConfig?.totalAmountFields || []}
         totalCurrencyFields={formConfig?.totalCurrencyFields || []}
+        onRowsChange={setGridRows}
       />
       <CascadeDeleteModal
         visible={showCascade}

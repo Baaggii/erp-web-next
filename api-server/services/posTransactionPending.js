@@ -36,9 +36,10 @@ export async function savePending(id, record) {
   if (!id) {
     id = 'txn_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   }
-  all[id] = { ...record, savedAt: new Date().toISOString() };
+  const key = String(id);
+  all[key] = { ...record, savedAt: new Date().toISOString() };
   await writeData(all);
-  return { id, record: all[id] };
+  return { id: key, record: all[key] };
 }
 
 export async function deletePending(id) {

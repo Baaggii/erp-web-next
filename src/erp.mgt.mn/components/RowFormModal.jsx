@@ -11,6 +11,7 @@ const RowFormModal = function RowFormModal({
   onSubmit,
   columns,
   row,
+  rows = [],
   relations = {},
   relationConfigs = {},
   relationData = {},
@@ -18,6 +19,7 @@ const RowFormModal = function RowFormModal({
   labels = {},
   requiredFields = [],
   onChange = () => {},
+  onRowsChange = () => {},
   headerFields = [],
   footerFields = [],
   mainFields = [],
@@ -93,7 +95,28 @@ const RowFormModal = function RowFormModal({
   const [errors, setErrors] = useState({});
   const [submitLocked, setSubmitLocked] = useState(false);
   const tableRef = useRef(null);
-  const [gridRows, setGridRows] = useState([]);
+  const [gridRows, setGridRows] = useState(() => (Array.isArray(rows) ? rows : []));
+  const wrapRef = useRef(null);
+  const [zoom, setZoom] = useState(1);
+
+  useEffect(() => {
+    if (useGrid) {
+      setGridRows(Array.isArray(rows) ? rows : []);
+    }
+  }, [rows, useGrid]);
+
+  useEffect(() => {
+    if (!fitted) return;
+    function updateZoom() {
+      if (!wrapRef.current) return;
+      const w = wrapRef.current.scrollWidth;
+      const s = w > 0 ? Math.min(1, window.innerWidth / w) : 1;
+      setZoom(s);
+    }
+    updateZoom();
+    window.addEventListener('resize', updateZoom);
+    return () => window.removeEventListener('resize', updateZoom);
+  }, [fitted, visible]);
   const placeholders = React.useMemo(() => {
     const map = {};
     columns.forEach((c) => {
@@ -190,7 +213,17 @@ const RowFormModal = function RowFormModal({
       ? columns.filter((c) => mainSet.has(c))
       : columns.filter((c) => !headerSet.has(c) && !footerSet.has(c));
 
-  const formGrid = 'grid grid-cols-1 md:grid-cols-2 gap-0';
+  const formGridClass = 'grid gap-2';
+  const formGridStyle = fitted
+    ? {
+        gridTemplateColumns: 'repeat(auto-fit, minmax(min(20rem, 40vw), 1fr))',
+        gridAutoRows: 'minmax(min(3rem, 8vh), auto)',
+        fontSize: 'calc(0.65rem + 0.35vw + 0.35vh)',
+      }
+    : { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' };
+  const inputStyle = fitted
+    ? { fontSize: 'inherit', padding: '0.25rem 0.5rem' }
+    : undefined;
 
   function handleKeyDown(e, col) {
     if (e.key !== 'Enter') return;
@@ -357,7 +390,7 @@ const RowFormModal = function RowFormModal({
   }
   function renderField(c, withLabel = true) {
     const err = errors[c];
-    const inputClass = `w-full p-2 border rounded ${err ? 'border-red-500' : 'border-gray-300'}`;
+    const inputClass = `w-full border rounded ${err ? 'border-red-500' : 'border-gray-300'}`;
 
     const control = relationConfigs[c] ? (
       <AsyncSearchSelect
@@ -375,6 +408,7 @@ const RowFormModal = function RowFormModal({
         onKeyDown={(e) => handleKeyDown(e, c)}
         onFocus={(e) => e.target.select()}
         inputRef={(el) => (inputRefs.current[c] = el)}
+        inputStyle={inputStyle}
       />
     ) : Array.isArray(relations[c]) ? (
       <select
@@ -394,6 +428,7 @@ const RowFormModal = function RowFormModal({
         onKeyDown={(e) => handleKeyDown(e, c)}
         disabled={row && disabledFields.includes(c)}
         className={inputClass}
+        style={inputStyle}
       >
         <option value="">-- select --</option>
         {relations[c].map((opt) => (
@@ -423,6 +458,7 @@ const RowFormModal = function RowFormModal({
         onFocus={(e) => e.target.select()}
         disabled={row && disabledFields.includes(c)}
         className={inputClass}
+        style={inputStyle}
       />
     );
 
@@ -448,7 +484,9 @@ const RowFormModal = function RowFormModal({
       return (
         <div className="mb-4">
           <h3 className="mt-0 mb-1 font-semibold">Main</h3>
-          <div className={formGrid}>{cols.map((c) => renderField(c))}</div>
+          <div className={formGridClass} style={formGridStyle}>
+            {cols.map((c) => renderField(c))}
+          </div>
         </div>
       );
     }
@@ -468,9 +506,13 @@ const RowFormModal = function RowFormModal({
             collectRows={useGrid}
             minRows={1}
             onRowSubmit={onSubmit}
-            onRowsChange={setGridRows}
+            onRowsChange={(rows) => {
+              setGridRows(rows);
+              onRowsChange(rows);
+            }}
             requiredFields={requiredFields}
             defaultValues={defaultValues}
+            rows={rows}
             onNextForm={onNextForm}
           />
         </div>
@@ -531,6 +573,45 @@ const RowFormModal = function RowFormModal({
 
   function renderHeaderTable(cols) {
     if (cols.length === 0) return null;
+    const grid = (
+      <div className={formGridClass} style={formGridStyle}>
+        {cols.map((c) => {
+          let val = formVals[c];
+          if ((val === '' || val === undefined) && headerSet.has(c)) {
+            if (
+              ['created_by', 'employee_id', 'emp_id', 'empid', 'user_id'].includes(c) &&
+              user?.empid
+            ) {
+              val = user.empid;
+            } else if (c === 'branch_id' && company?.branch_id !== undefined) {
+              val = company.branch_id;
+            } else if (c === 'company_id' && company?.company_id !== undefined) {
+              val = company.company_id;
+            }
+          }
+          return (
+            <div key={c} className="mb-3">
+              <label className="block mb-1 font-medium">{labels[c] || c}</label>
+              <input
+                type="text"
+                value={val}
+                disabled
+                className="w-full border rounded bg-gray-100"
+                style={inputStyle}
+              />
+            </div>
+          );
+        })}
+      </div>
+    );
+    if (fitted) {
+      return (
+        <div className="mb-4">
+          <h3 className="mt-0 mb-1 font-semibold">Header</h3>
+          {grid}
+        </div>
+      );
+    }
     return (
       <div className="mb-4">
         <h3 className="mt-0 mb-1 font-semibold">Header</h3>
@@ -568,7 +649,9 @@ const RowFormModal = function RowFormModal({
     return (
       <div className="mb-2">
         <h3 className="mt-0 mb-1 font-semibold">{title}</h3>
-        <div className={formGrid}>{cols.map((c) => renderField(c))}</div>
+        <div className={formGridClass} style={formGridStyle}>
+          {cols.map((c) => renderField(c))}
+        </div>
       </div>
     );
   }
@@ -639,7 +722,7 @@ const RowFormModal = function RowFormModal({
 
   if (inline) {
     return (
-      <div className="p-4 space-y-4">
+      <div className="p-4 space-y-4" ref={wrapRef} style={{ transform: `scale(${zoom})`, transformOrigin: '0 0' }}>
         {renderHeaderTable(headerCols)}
         {renderMainTable(mainCols)}
         {renderSection('Footer', footerCols)}
@@ -654,6 +737,8 @@ const RowFormModal = function RowFormModal({
       width="70vw"
     >
       <form
+        ref={wrapRef}
+        style={{ transform: `scale(${zoom})`, transformOrigin: '0 0' }}
         onSubmit={(e) => {
           e.preventDefault();
           submitForm();
