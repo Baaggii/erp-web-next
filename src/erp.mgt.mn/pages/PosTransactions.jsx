@@ -10,8 +10,15 @@ export default function PosTransactionsPage() {
   const [formConfigs, setFormConfigs] = useState({});
   const [columnMeta, setColumnMeta] = useState({});
   const [values, setValues] = useState({});
+  const [gridValues, setGridValues] = useState({});
+  const [pendingId, setPendingId] = useState('');
+  const [isSaved, setIsSaved] = useState(false);
+  const [pendingList, setPendingList] = useState([]);
+  const [sessionFields, setSessionFields] = useState([]);
+  const [sessionId, setSessionId] = useState('');
   const [layout, setLayout] = useState({});
   const refs = useRef({});
+  const formRefs = useRef({});
   const dragInfo = useRef(null);
 
   useEffect(() => {
@@ -59,24 +66,40 @@ export default function PosTransactionsPage() {
     });
   }, [config]);
 
+  useEffect(() => {
+    if (!name) { setPendingList([]); return; }
+    fetch(`/api/pos_txn_pending?name=${encodeURIComponent(name)}`, { credentials: 'include' })
+      .then(res => res.ok ? res.json() : {})
+      .then(data => setPendingList(Object.entries(data)))
+      .catch(() => setPendingList([]));
+  }, [name, isSaved]);
+
+  useEffect(() => {
+    if (!config) { setSessionFields([]); return; }
+    const tbls = [config.masterTable, ...config.tables.map(t => t.table)];
+    const fields = [];
+    if (Array.isArray(config.calcFields)) {
+      config.calcFields.forEach(row => {
+        if (!Array.isArray(row.cells)) return;
+        row.cells.forEach((cell, idx) => {
+          if (cell.field && /session/i.test(cell.field)) {
+            const tbl = cell.table || tbls[idx];
+            if (tbl) fields.push({ table: tbl, field: cell.field });
+          }
+        });
+      });
+    }
+    setSessionFields(fields);
+  }, [config]);
+
   function handleChange(tbl, changes) {
     setValues(v => ({ ...v, [tbl]: { ...v[tbl], ...changes } }));
   }
 
-  async function handleSubmit(tbl, row) {
-    try {
-      const res = await fetch(`/api/tables/${encodeURIComponent(tbl)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(row),
-      });
-      if (res.ok) addToast('Saved', 'success');
-      else addToast('Save failed', 'error');
-    } catch {
-      addToast('Save failed', 'error');
-    }
+  function handleRowsChange(tbl, rows) {
+    setGridValues(v => ({ ...v, [tbl]: rows }));
   }
+
 
   async function handleSaveLayout() {
     if (!name) return;
@@ -105,6 +128,96 @@ export default function PosTransactionsPage() {
     addToast('Layout saved', 'success');
   }
 
+  function applySession(id) {
+    setSessionId(id);
+    setValues(v => {
+      const next = { ...v };
+      sessionFields.forEach(sf => {
+        next[sf.table] = { ...(next[sf.table] || {}), [sf.field]: id };
+      });
+      return next;
+    });
+    setGridValues(g => {
+      const next = { ...g };
+      sessionFields.forEach(sf => {
+        if (Array.isArray(next[sf.table])) {
+          next[sf.table] = next[sf.table].map(r => ({ ...r, [sf.field]: id }));
+        }
+      });
+      return next;
+    });
+  }
+
+  function handleNew() {
+    const sid = 'sess_' + Date.now().toString(36);
+    setValues({ [config.masterTable]: { [config.statusField.field]: config.statusField.created } });
+    setGridValues({});
+    setPendingId('');
+    setIsSaved(false);
+    applySession(sid);
+  }
+
+  async function handleSave() {
+    if (!name) return;
+    const body = { name, data: { single: values, multi: gridValues } };
+    const res = await fetch('/api/pos_txn_pending', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ id: pendingId || undefined, ...body }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setPendingId(data.id);
+      setIsSaved(true);
+      addToast('Saved', 'success');
+    } else addToast('Save failed', 'error');
+  }
+
+  async function handleLoad() {
+    if (pendingList.length === 0) { addToast('No pending', 'info'); return; }
+    const choice = window.prompt('Enter ID to load:\n' + pendingList.map(([id]) => id).join('\n'));
+    if (!choice) return;
+    const res = await fetch(`/api/pos_txn_pending?id=${encodeURIComponent(choice)}`, { credentials: 'include' });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data) return;
+    setValues(data.data?.single || {});
+    setGridValues(data.data?.multi || {});
+    setPendingId(choice);
+    setIsSaved(true);
+    const sidField = sessionFields[0];
+    if (sidField) {
+      const val = (data.data?.single?.[sidField.table] || {})[sidField.field];
+      if (val) setSessionId(val);
+    }
+  }
+
+  async function handleDelete() {
+    if (!pendingId) return;
+    await fetch(`/api/pos_txn_pending?id=${encodeURIComponent(pendingId)}`, { method: 'DELETE', credentials: 'include' });
+    setValues({});
+    setGridValues({});
+    setPendingId('');
+    setIsSaved(false);
+    addToast('Deleted', 'success');
+  }
+
+  async function handlePost() {
+    if (!pendingId) return;
+    const res = await fetch('/api/pos_txn_post', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ name, data: { single: values, multi: gridValues } }),
+    });
+    if (res.ok) {
+      setValues(v => ({ ...v, [config.masterTable]: { ...(v[config.masterTable] || {}), [config.statusField.field]: config.statusField.posted } }));
+      await handleDelete();
+      addToast('Posted', 'success');
+    } else addToast('Post failed', 'error');
+  }
+
   function startDrag(table, e) {
     const startX = e.clientX;
     const startY = e.clientY;
@@ -129,6 +242,29 @@ export default function PosTransactionsPage() {
     window.removeEventListener('mouseup', endDrag);
   }
 
+  function focusNext(tbl) {
+    if (!config) return;
+    const all = [
+      { table: config.masterTable, type: config.masterType, position: config.masterPosition, view: config.masterView },
+      ...config.tables,
+    ];
+    const posOrder = {
+      top_row: 1,
+      upper_left: 2,
+      upper_right: 3,
+      left: 4,
+      right: 5,
+      lower_left: 6,
+      lower_right: 7,
+      bottom_row: 8,
+    };
+    const filtered = all.filter(t => t.position !== 'hidden');
+    filtered.sort((a,b) => (posOrder[a.position]||9) - (posOrder[b.position]||9));
+    const idx = filtered.findIndex(t => t.table === tbl);
+    const next = filtered[idx + 1];
+    if (next) formRefs.current[next.table]?.focusFirstField?.();
+  }
+
   const configNames = Object.keys(configs);
 
   return (
@@ -147,6 +283,13 @@ export default function PosTransactionsPage() {
       {config && (
         <>
           <div style={{ marginBottom: '0.5rem' }}>
+            <button onClick={handleNew}>New</button>{' '}
+            <button onClick={handleSave}>Save</button>{' '}
+            <button onClick={handleLoad} disabled={!isSaved}>Load</button>{' '}
+            <button onClick={handleDelete} disabled={!pendingId}>Delete</button>{' '}
+            <button onClick={handlePost} disabled={!pendingId}>POST</button>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
             <button onClick={handleSaveLayout}>Save Layout</button>
           </div>
           <div
@@ -157,9 +300,26 @@ export default function PosTransactionsPage() {
               gridTemplateRows: 'auto auto auto auto auto',
             }}
           >
-            {[{ table: config.masterTable, type: config.masterType, position: config.masterPosition, view: config.masterView }, ...config.tables]
-              .filter((t) => t.position !== 'hidden')
-              .map((t, idx) => {
+            {(() => {
+              const all = [{ table: config.masterTable, type: config.masterType, position: config.masterPosition, view: config.masterView }, ...config.tables];
+              const seen = new Set();
+              const posOrder = {
+                top_row: 1,
+                upper_left: 2,
+                upper_right: 3,
+                left: 4,
+                right: 5,
+                lower_left: 6,
+                lower_right: 7,
+                bottom_row: 8,
+              };
+              const filtered = [];
+              all.forEach(t => {
+                const key = `${t.table}|${t.form}`;
+                if (!seen.has(key)) { seen.add(key); filtered.push(t); }
+              });
+              filtered.sort((a,b) => (posOrder[a.position]||9)-(posOrder[b.position]||9));
+              return filtered.filter(t => t.position !== 'hidden').map((t, idx) => {
                 const fc = formConfigs[t.table];
                 if (!fc) return <div key={idx}>Loading...</div>;
                 const meta = columnMeta[t.table] || [];
@@ -202,19 +362,22 @@ export default function PosTransactionsPage() {
                       {t.table}
                     </h3>
                     <RowFormModal
+                      ref={el => (formRefs.current[t.table] = el)}
                       inline
                       visible
                       columns={visible}
                       requiredFields={fc.requiredFields || []}
                       labels={labels}
                       onChange={(changes) => handleChange(t.table, changes)}
-                      onSubmit={(row) => handleSubmit(t.table, row)}
+                      onRowsChange={(rows) => handleRowsChange(t.table, rows)}
                       useGrid={t.view === 'table' || t.type === 'multi'}
                       fitted={t.view === 'fitted'}
+                      onEnterLastField={() => focusNext(t.table)}
                     />
                   </div>
                 );
-              })}
+              })
+            )()}
           </div>
         </>
       )}
