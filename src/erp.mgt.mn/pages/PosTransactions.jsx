@@ -221,6 +221,7 @@ export default function PosTransactionsPage() {
       setMasterId(null);
     }
     setValues(next);
+    setMasterId(null);
     setPendingId(null);
   }
 
