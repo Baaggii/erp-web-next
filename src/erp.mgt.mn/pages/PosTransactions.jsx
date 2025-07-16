@@ -8,6 +8,7 @@ export default function PosTransactionsPage() {
   const [name, setName] = useState('');
   const [config, setConfig] = useState(null);
   const [formConfigs, setFormConfigs] = useState({});
+  const [columnMeta, setColumnMeta] = useState({});
   const [values, setValues] = useState({});
   const [layout, setLayout] = useState({});
   const refs = useRef({});
@@ -49,6 +50,10 @@ export default function PosTransactionsPage() {
       fetch(`/api/transaction_forms?table=${encodeURIComponent(tbl)}&name=${encodeURIComponent(form)}`, { credentials: 'include' })
         .then(res => res.ok ? res.json() : null)
         .then(cfg => setFormConfigs(f => ({ ...f, [tbl]: cfg || {} })))
+        .catch(() => {});
+      fetch(`/api/tables/${encodeURIComponent(tbl)}/columns`, { credentials: 'include' })
+        .then(res => res.ok ? res.json() : [])
+        .then(cols => setColumnMeta(m => ({ ...m, [tbl]: cols || [] })))
         .catch(() => {});
     });
   }, [config]);
@@ -125,11 +130,16 @@ export default function PosTransactionsPage() {
               gridTemplateRows: 'auto auto auto auto auto',
             }}
           >
-            {[{ table: config.masterTable, type: config.masterType, position: config.masterPosition }, ...config.tables]
+            {[{ table: config.masterTable, type: config.masterType, position: config.masterPosition, view: config.masterView }, ...config.tables]
               .filter((t) => t.position !== 'hidden')
               .map((t, idx) => {
                 const fc = formConfigs[t.table];
                 if (!fc) return <div key={idx}>Loading...</div>;
+                const meta = columnMeta[t.table] || [];
+                const labels = {};
+                meta.forEach((c) => {
+                  labels[c.name || c] = c.label || c.name || c;
+                });
                 const visible = Array.isArray(fc.visibleFields) ? fc.visibleFields : [];
                 const posStyle = {
                   top_row: { gridColumn: '1 / span 3', gridRow: '1' },
@@ -161,9 +171,10 @@ export default function PosTransactionsPage() {
                       visible
                       columns={visible}
                       requiredFields={fc.requiredFields || []}
+                      labels={labels}
                       onChange={(changes) => handleChange(t.table, changes)}
                       onSubmit={(row) => handleSubmit(t.table, row)}
-                      useGrid={t.type === 'multi'}
+                      useGrid={t.view === 'table' || t.type === 'multi'}
                     />
                   </div>
                 );

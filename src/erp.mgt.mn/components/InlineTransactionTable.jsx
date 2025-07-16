@@ -401,7 +401,11 @@ export default forwardRef(function InlineTransactionTable({
       }
       return;
     }
-    addBtnRef.current?.focus();
+    if (collectRows) {
+      addRow();
+    } else {
+      addBtnRef.current?.focus();
+    }
   }
 
   function renderCell(idx, f, colIdx) {
@@ -555,13 +559,15 @@ export default forwardRef(function InlineTransactionTable({
       {errorMsg && (
         <div className="text-red-600 text-sm mt-1">{errorMsg}</div>
       )}
-      <button
-        onClick={addRow}
-        ref={addBtnRef}
-        className="mt-2 px-2 py-1 bg-gray-200 rounded"
-      >
-        + Мөр нэмэх
-      </button>
+      {collectRows && (
+        <button
+          onClick={addRow}
+          ref={addBtnRef}
+          className="mt-2 px-2 py-1 bg-gray-200 rounded"
+        >
+          + Мөр нэмэх
+        </button>
+      )}
     </div>
   );
 });
