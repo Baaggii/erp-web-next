@@ -212,11 +212,16 @@ export default function PosTransactionsPage() {
     sessionFields.forEach((sf) => {
       if (sf.table === config.masterTable) return;
       setValues((v) => {
-        const cur = v[sf.table]?.[sf.field];
+        const tblVal = v[sf.table];
+        if (Array.isArray(tblVal)) {
+          const updated = tblVal.map((r) => ({ ...r, [sf.field]: sid }));
+          return { ...v, [sf.table]: updated };
+        }
+        const cur = tblVal?.[sf.field];
         if (cur === sid || sid === undefined) return v;
         return {
           ...v,
-          [sf.table]: { ...(v[sf.table] || {}), [sf.field]: sid },
+          [sf.table]: { ...(tblVal || {}), [sf.field]: sid },
         };
       });
     });
@@ -224,6 +229,10 @@ export default function PosTransactionsPage() {
 
   function handleChange(tbl, changes) {
     setValues(v => ({ ...v, [tbl]: { ...v[tbl], ...changes } }));
+  }
+
+  function handleRowsChange(tbl, rows) {
+    setValues(v => ({ ...v, [tbl]: Array.isArray(rows) ? rows : [] }));
   }
 
   async function handleSubmit(tbl, row) {
@@ -272,13 +281,14 @@ export default function PosTransactionsPage() {
     const sid = 'sess_' + Date.now().toString(36);
     const next = {};
     const allTables = [
-      config.masterTable,
-      ...config.tables.map((t) => t.table),
+      { table: config.masterTable, type: config.masterType },
+      ...config.tables,
     ];
-    allTables.forEach((tbl) => {
-      next[tbl] = {};
+    allTables.forEach((t) => {
+      next[t.table] = t.type === 'multi' ? [] : {};
     });
     sessionFields.forEach((sf) => {
+      if (Array.isArray(next[sf.table])) return;
       next[sf.table][sf.field] = sid;
     });
     if (
@@ -644,6 +654,7 @@ export default function PosTransactionsPage() {
                       row={values[t.table]}
                       defaultValues={fc.defaultValues || {}}
                       onChange={(changes) => handleChange(t.table, changes)}
+                      onRowsChange={(rows) => handleRowsChange(t.table, rows)}
                       onSubmit={(row) => handleSubmit(t.table, row)}
                       useGrid={t.view === 'table' || t.type === 'multi'}
                       fitted={t.view === 'fitted'}
