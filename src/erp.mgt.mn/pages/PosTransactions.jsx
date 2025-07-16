@@ -324,6 +324,7 @@ export default function PosTransactionsPage() {
       masterIdRef.current = null;
     }
     setValues(next);
+    setMasterId(null);
     setPendingId(null);
     addToast('New transaction started', 'success');
   }
