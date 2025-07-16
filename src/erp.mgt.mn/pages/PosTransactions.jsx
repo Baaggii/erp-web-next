@@ -33,7 +33,12 @@ export default function PosTransactionsPage() {
     fetch(`/api/pos_txn_config?name=${encodeURIComponent(name)}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : null))
       .then((cfg) => {
-        if (cfg && Array.isArray(cfg.tables) && cfg.tables.length > 0 && !cfg.masterTable) {
+        if (!cfg || !Array.isArray(cfg.tables)) {
+          addToast('Config not found', 'error');
+          setConfig(null);
+          return;
+        }
+        if (cfg.tables.length > 0 && !cfg.masterTable) {
           const [master, ...rest] = cfg.tables;
           cfg = { ...cfg, masterTable: master.table || '', masterForm: master.form || '', masterType: master.type || 'single', masterPosition: master.position || 'upper_left', tables: rest };
         }
@@ -50,8 +55,8 @@ export default function PosTransactionsPage() {
 
   useEffect(() => {
     if (!config) return;
-    const tables = [config.masterTable, ...config.tables.map(t => t.table)];
-    const forms = [config.masterForm || '', ...config.tables.map(t => t.form)];
+    const tables = [config.masterTable, ...(config.tables || []).map(t => t.table)];
+    const forms = [config.masterForm || '', ...(config.tables || []).map(t => t.form)];
     tables.forEach((tbl, idx) => {
       const form = forms[idx];
       if (!tbl || !form) return;
@@ -76,7 +81,7 @@ export default function PosTransactionsPage() {
 
   useEffect(() => {
     if (!config) { setSessionFields([]); return; }
-    const tbls = [config.masterTable, ...config.tables.map(t => t.table)];
+    const tbls = [config.masterTable, ...(config.tables || []).map(t => t.table)];
     const fields = [];
     if (Array.isArray(config.calcFields)) {
       config.calcFields.forEach(row => {
@@ -106,7 +111,7 @@ export default function PosTransactionsPage() {
     const info = {};
     const list = [
       { table: config.masterTable },
-      ...config.tables,
+      ...(config.tables || []),
     ];
     list.forEach((t) => {
       const el = refs.current[t.table];
@@ -246,7 +251,7 @@ export default function PosTransactionsPage() {
     if (!config) return;
     const all = [
       { table: config.masterTable, type: config.masterType, position: config.masterPosition, view: config.masterView },
-      ...config.tables,
+      ...(config.tables || []),
     ];
     const posOrder = {
       top_row: 1,
@@ -301,7 +306,10 @@ export default function PosTransactionsPage() {
             }}
           >
             {(() => {
-              const all = [{ table: config.masterTable, type: config.masterType, position: config.masterPosition, view: config.masterView }, ...config.tables];
+              const all = [
+                { table: config.masterTable, type: config.masterType, position: config.masterPosition, view: config.masterView },
+                ...(config.tables || []),
+              ];
               const seen = new Set();
               const posOrder = {
                 top_row: 1,
