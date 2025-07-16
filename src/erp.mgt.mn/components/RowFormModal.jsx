@@ -109,8 +109,10 @@ const RowFormModal = function RowFormModal({
     if (!fitted) return;
     function updateZoom() {
       if (!wrapRef.current) return;
-      const w = wrapRef.current.scrollWidth;
-      const s = w > 0 ? Math.min(1, window.innerWidth / w) : 1;
+      const { scrollWidth, scrollHeight } = wrapRef.current;
+      const wRatio = scrollWidth ? window.innerWidth / scrollWidth : 1;
+      const hRatio = scrollHeight ? window.innerHeight / scrollHeight : 1;
+      const s = Math.min(1, wRatio, hRatio);
       setZoom(s);
     }
     updateZoom();
