@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 export default function AsyncSearchSelect({
   table,
@@ -18,6 +19,7 @@ export default function AsyncSearchSelect({
   const [show, setShow] = useState(false);
   const [highlight, setHighlight] = useState(-1);
   const containerRef = useRef(null);
+  const [dropPos, setDropPos] = useState({ left: 0, top: 0, width: 0 });
   const match = options.find((o) => String(o.value) === String(input));
 
   useEffect(() => {
@@ -86,6 +88,69 @@ export default function AsyncSearchSelect({
     setTimeout(() => setShow(false), 100);
   }
 
+  useEffect(() => {
+    if (!show) return;
+    function update() {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (rect) {
+        setDropPos({
+          left: rect.left + window.scrollX,
+          top: rect.bottom + window.scrollY,
+          width: rect.width,
+        });
+      }
+    }
+    update();
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [show, options]);
+
+  const dropdown =
+    show && options.length > 0
+      ? createPortal(
+          <ul
+            style={{
+              position: 'absolute',
+              left: dropPos.left,
+              top: dropPos.top,
+              width: dropPos.width,
+              zIndex: 1100,
+              listStyle: 'none',
+              margin: 0,
+              padding: 0,
+              background: '#fff',
+              border: '1px solid #ccc',
+              maxHeight: '150px',
+              overflowY: 'auto',
+            }}
+          >
+            {options.map((opt, idx) => (
+              <li
+                key={opt.value}
+                onMouseDown={() => {
+                  onChange(opt.value, opt.label);
+                  setInput(String(opt.value));
+                  setShow(false);
+                }}
+                onMouseEnter={() => setHighlight(idx)}
+                style={{
+                  padding: '0.25rem',
+                  background: highlight === idx ? '#eee' : '#fff',
+                  cursor: 'pointer',
+                }}
+              >
+                {opt.label || opt.value}
+              </li>
+            ))}
+          </ul>,
+          document.body,
+        )
+      : null;
+
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>
       <input
@@ -110,44 +175,11 @@ export default function AsyncSearchSelect({
         style={{ width: '100%', padding: '0.5rem', ...inputStyle }}
         {...rest}
       />
-      {show && options.length > 0 && (
-        <ul
-          style={{
-            position: 'absolute',
-            zIndex: 1100,
-            listStyle: 'none',
-            margin: 0,
-            padding: 0,
-            background: '#fff',
-            border: '1px solid #ccc',
-            width: '100%',
-            maxHeight: '150px',
-            overflowY: 'auto',
-          }}
-        >
-          {options.map((opt, idx) => (
-            <li
-              key={opt.value}
-              onMouseDown={() => {
-                onChange(opt.value, opt.label);
-                setInput(String(opt.value));
-                setShow(false);
-              }}
-              onMouseEnter={() => setHighlight(idx)}
-              style={{
-                padding: '0.25rem',
-                background: highlight === idx ? '#eee' : '#fff',
-                cursor: 'pointer',
-              }}
-            >
-              {opt.label || opt.value}
-            </li>
-          ))}
-        </ul>
-      )}
+      {dropdown}
       {match && (
         <div style={{ fontSize: '0.8rem', color: '#555' }}>{match.label}</div>
       )}
     </div>
   );
 }
+
