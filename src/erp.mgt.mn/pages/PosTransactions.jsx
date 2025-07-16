@@ -376,8 +376,8 @@ export default function PosTransactionsPage() {
                     />
                   </div>
                 );
-              })
-            )()}
+              });
+            })()}
           </div>
         </>
       )}
