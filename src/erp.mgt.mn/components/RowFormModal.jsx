@@ -1,11 +1,19 @@
-import React, { useState, useEffect, useRef, useContext, memo } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useContext,
+  memo,
+  forwardRef,
+  useImperativeHandle,
+} from 'react';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import Modal from './Modal.jsx';
 import InlineTransactionTable from './InlineTransactionTable.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
-const RowFormModal = function RowFormModal({
+const RowFormModal = forwardRef(function RowFormModal({
   visible,
   onCancel,
   onSubmit,
@@ -30,6 +38,8 @@ const RowFormModal = function RowFormModal({
   inline = false,
   useGrid = false,
   fitted = false,
+  onRowsChange,
+  onEnterLastField,
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -93,6 +103,16 @@ const RowFormModal = function RowFormModal({
   const [submitLocked, setSubmitLocked] = useState(false);
   const tableRef = useRef(null);
   const [gridRows, setGridRows] = useState([]);
+
+  useImperativeHandle(ref, () => ({
+    focusFirstField: () => {
+      const first = Object.values(inputRefs.current)[0];
+      if (first) {
+        first.focus();
+        if (first.select) first.select();
+      }
+    },
+  }));
   const placeholders = React.useMemo(() => {
     const map = {};
     columns.forEach((c) => {
@@ -229,7 +249,8 @@ const RowFormModal = function RowFormModal({
       return;
     }
     if (!next) {
-      submitForm();
+      if (onEnterLastField) onEnterLastField();
+      else submitForm();
     }
   }
 
@@ -466,7 +487,11 @@ const RowFormModal = function RowFormModal({
             collectRows={useGrid}
             minRows={1}
             onRowSubmit={onSubmit}
-            onRowsChange={setGridRows}
+            onRowsChange={(rows) => {
+              setGridRows(rows);
+              if (onRowsChange) onRowsChange(rows);
+            }}
+            onLastCell={onEnterLastField}
             requiredFields={requiredFields}
             defaultValues={defaultValues}
           />
@@ -693,5 +718,7 @@ const RowFormModal = function RowFormModal({
     </Modal>
   );
 }
+
+);
 
 export default memo(RowFormModal);
