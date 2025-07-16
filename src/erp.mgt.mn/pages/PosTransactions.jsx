@@ -621,16 +621,13 @@ export default function PosTransactionsPage() {
                 meta.forEach((c) => {
                   labels[c.name || c] = c.label || c.name || c;
                 });
-                const sessionCols = sessionFields
-                  .filter((sf) => sf.table === t.table)
-                  .map((sf) => sf.field);
                 const visible = Array.isArray(fc.visibleFields)
-                  ? Array.from(new Set([...fc.visibleFields, ...sessionCols]))
-                  : sessionCols;
+                  ? fc.visibleFields
+                  : [];
                 const headerFields =
                   fc.headerFields && fc.headerFields.length > 0
                     ? fc.headerFields
-                    : sessionCols;
+                    : [];
                 const posStyle = {
                   top_row: { gridColumn: '1 / span 3', gridRow: '1' },
                   upper_left: { gridColumn: '1', gridRow: '2' },
