@@ -60,10 +60,10 @@ export default forwardRef(function InlineTransactionTable({
     }
   }, []);
   const [rows, setRows] = useState(() =>
-    collectRows ? Array.from({ length: minRows }, () => ({ ...defaultValues })) : [],
+    Array.from({ length: minRows }, () => ({ ...defaultValues })),
   );
   const inputRefs = useRef({});
-  const focusRow = useRef(collectRows ? 0 : null);
+  const focusRow = useRef(0);
   const addBtnRef = useRef(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [invalidCell, setInvalidCell] = useState(null);
@@ -118,7 +118,6 @@ export default forwardRef(function InlineTransactionTable({
   }
 
   useEffect(() => {
-    if (!collectRows) return;
     if (rows.length < minRows) {
       setRows((r) => {
         const next = [...r];
@@ -134,15 +133,13 @@ export default forwardRef(function InlineTransactionTable({
       if (el.select) el.select();
     }
     focusRow.current = null;
-  }, [rows, collectRows, minRows]);
+  }, [rows, minRows]);
 
   useImperativeHandle(ref, () => ({
     getRows: () => rows,
     clearRows: () =>
       setRows(() => {
-        const next = collectRows
-          ? Array.from({ length: minRows }, () => ({ ...defaultValues }))
-          : [];
+        const next = Array.from({ length: minRows }, () => ({ ...defaultValues }));
         onRowsChange(next);
         return next;
       }),
