@@ -46,6 +46,7 @@ export default forwardRef(function InlineTransactionTable({
   requiredFields = [],
   defaultValues = {},
   onNextForm = null,
+  rows: initRows = [],
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -60,9 +61,23 @@ export default forwardRef(function InlineTransactionTable({
       if (window.erpDebug) console.warn('Mounted: InlineTransactionTable');
     }
   }, []);
-  const [rows, setRows] = useState(() =>
-    Array.from({ length: minRows }, () => ({ ...defaultValues })),
-  );
+  const [rows, setRows] = useState(() => {
+    if (Array.isArray(initRows) && initRows.length > 0) {
+      return initRows;
+    }
+    return Array.from({ length: minRows }, () => ({ ...defaultValues }));
+  });
+
+  useEffect(() => {
+    if (!Array.isArray(initRows)) return;
+    setRows((r) => {
+      const base = Array.isArray(initRows) ? initRows : [];
+      const next = base.length >= minRows
+        ? base
+        : [...base, ...Array.from({ length: minRows - base.length }, () => ({ ...defaultValues }))];
+      return next;
+    });
+  }, [initRows, minRows, defaultValues]);
   const inputRefs = useRef({});
   const focusRow = useRef(0);
   const addBtnRef = useRef(null);
