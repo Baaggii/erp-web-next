@@ -212,8 +212,14 @@ export default function PosTransactionsPage() {
     if (!config) return;
     const sid = 'sess_' + Date.now().toString(36);
     const next = {};
+    const allTables = [
+      config.masterTable,
+      ...config.tables.map((t) => t.table),
+    ];
+    allTables.forEach((tbl) => {
+      next[tbl] = {};
+    });
     sessionFields.forEach((sf) => {
-      if (!next[sf.table]) next[sf.table] = {};
       next[sf.table][sf.field] = sid;
     });
     if (
@@ -249,6 +255,7 @@ export default function PosTransactionsPage() {
     setValues(next);
     setMasterId(null);
     setPendingId(null);
+    addToast('New transaction started', 'success');
   }
 
   async function handleSavePending() {
@@ -287,16 +294,19 @@ export default function PosTransactionsPage() {
       await putRow(addToast, config.masterTable, mid, next[config.masterTable] || {});
     }
 
+    const masterSf = sessionFields.find((f) => f.table === config.masterTable);
+    const sid = masterSf ? next[config.masterTable]?.[masterSf.field] : pendingId;
+
     try {
       const res = await fetch('/api/pos_txn_pending', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ id: pendingId, name, data: next, masterId: mid }),
+        body: JSON.stringify({ id: sid, name, data: next, masterId: mid }),
       });
       const js = await res.json().catch(() => ({}));
       if (js.id) {
-        setPendingId(js.id);
+        setPendingId(sid);
         setValues(next);
         addToast('Saved', 'success');
       } else {
@@ -323,8 +333,9 @@ export default function PosTransactionsPage() {
       .catch(() => null);
     if (rec && rec.data) {
       setValues(rec.data);
-      setPendingId(sel);
+      setPendingId(sel.trim());
       setMasterId(rec.masterId || null);
+      addToast('Loaded', 'success');
     }
   }
 
@@ -337,6 +348,7 @@ export default function PosTransactionsPage() {
     setPendingId(null);
     setValues({});
     setMasterId(null);
+    addToast('Deleted', 'success');
   }
 
   async function handlePostAll() {
