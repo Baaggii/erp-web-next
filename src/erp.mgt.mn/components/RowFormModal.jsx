@@ -18,6 +18,7 @@ const RowFormModal = function RowFormModal({
   labels = {},
   requiredFields = [],
   onChange = () => {},
+  onRowsChange = () => {},
   headerFields = [],
   footerFields = [],
   mainFields = [],
@@ -468,7 +469,10 @@ const RowFormModal = function RowFormModal({
             collectRows={useGrid}
             minRows={1}
             onRowSubmit={onSubmit}
-            onRowsChange={setGridRows}
+            onRowsChange={(rows) => {
+              setGridRows(rows);
+              onRowsChange(rows);
+            }}
             requiredFields={requiredFields}
             defaultValues={defaultValues}
             onNextForm={onNextForm}
@@ -531,6 +535,44 @@ const RowFormModal = function RowFormModal({
 
   function renderHeaderTable(cols) {
     if (cols.length === 0) return null;
+    const grid = (
+      <div className={formGrid}>
+        {cols.map((c) => {
+          let val = formVals[c];
+          if ((val === '' || val === undefined) && headerSet.has(c)) {
+            if (
+              ['created_by', 'employee_id', 'emp_id', 'empid', 'user_id'].includes(c) &&
+              user?.empid
+            ) {
+              val = user.empid;
+            } else if (c === 'branch_id' && company?.branch_id !== undefined) {
+              val = company.branch_id;
+            } else if (c === 'company_id' && company?.company_id !== undefined) {
+              val = company.company_id;
+            }
+          }
+          return (
+            <div key={c} className="mb-3">
+              <label className="block mb-1 font-medium">{labels[c] || c}</label>
+              <input
+                type="text"
+                value={val}
+                disabled
+                className="w-full p-2 border rounded bg-gray-100"
+              />
+            </div>
+          );
+        })}
+      </div>
+    );
+    if (fitted) {
+      return (
+        <div className="mb-4">
+          <h3 className="mt-0 mb-1 font-semibold">Header</h3>
+          {grid}
+        </div>
+      );
+    }
     return (
       <div className="mb-4">
         <h3 className="mt-0 mb-1 font-semibold">Header</h3>
