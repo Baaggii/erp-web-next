@@ -1,19 +1,11 @@
-import React, {
-  useState,
-  useEffect,
-  useRef,
-  useContext,
-  memo,
-  forwardRef,
-  useImperativeHandle,
-} from 'react';
+import React, { useState, useEffect, useRef, useContext, memo } from 'react';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import Modal from './Modal.jsx';
 import InlineTransactionTable from './InlineTransactionTable.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
-const RowFormModal = forwardRef(function RowFormModal({
+const RowFormModal = function RowFormModal({
   visible,
   onCancel,
   onSubmit,
@@ -38,8 +30,6 @@ const RowFormModal = forwardRef(function RowFormModal({
   inline = false,
   useGrid = false,
   fitted = false,
-  onRowsChange,
-  onEnterLastField,
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -103,16 +93,6 @@ const RowFormModal = forwardRef(function RowFormModal({
   const [submitLocked, setSubmitLocked] = useState(false);
   const tableRef = useRef(null);
   const [gridRows, setGridRows] = useState([]);
-
-  useImperativeHandle(ref, () => ({
-    focusFirstField: () => {
-      const first = Object.values(inputRefs.current)[0];
-      if (first) {
-        first.focus();
-        if (first.select) first.select();
-      }
-    },
-  }));
   const placeholders = React.useMemo(() => {
     const map = {};
     columns.forEach((c) => {
@@ -249,8 +229,7 @@ const RowFormModal = forwardRef(function RowFormModal({
       return;
     }
     if (!next) {
-      if (onEnterLastField) onEnterLastField();
-      else submitForm();
+      submitForm();
     }
   }
 
@@ -487,11 +466,7 @@ const RowFormModal = forwardRef(function RowFormModal({
             collectRows={useGrid}
             minRows={1}
             onRowSubmit={onSubmit}
-            onRowsChange={(rows) => {
-              setGridRows(rows);
-              onRowsChange?.(rows);
-            }}
-            onLastCell={onEnterLastField}
+            onRowsChange={setGridRows}
             requiredFields={requiredFields}
             defaultValues={defaultValues}
           />

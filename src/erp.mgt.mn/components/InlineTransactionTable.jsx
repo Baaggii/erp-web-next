@@ -45,7 +45,6 @@ export default forwardRef(function InlineTransactionTable({
   onRowsChange = () => {},
   requiredFields = [],
   defaultValues = {},
-  onLastCell,
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -340,7 +339,9 @@ export default forwardRef(function InlineTransactionTable({
   }, [rows, fields, totalAmountSet, totalCurrencySet, totalAmountFields]);
 
   function handleKeyDown(e, rowIdx, colIdx) {
-    if (e.key !== 'Enter') return;
+    const isEnter = e.key === 'Enter';
+    const isForwardTab = e.key === 'Tab' && !e.shiftKey;
+    if (!isEnter && !isForwardTab) return;
     e.preventDefault();
     const field = fields[colIdx];
     let val = e.target.value;
@@ -402,8 +403,7 @@ export default forwardRef(function InlineTransactionTable({
     if (collectRows) {
       addRow();
     } else {
-      if (onLastCell) onLastCell();
-      else addBtnRef.current?.focus();
+      addBtnRef.current?.focus();
     }
   }
 
