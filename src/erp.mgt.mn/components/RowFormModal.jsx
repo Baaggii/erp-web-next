@@ -30,7 +30,6 @@ const RowFormModal = function RowFormModal({
   inline = false,
   useGrid = false,
   fitted = false,
-  onNextForm = null,
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -231,7 +230,6 @@ const RowFormModal = function RowFormModal({
     }
     if (!next) {
       submitForm();
-      if (onNextForm) onNextForm();
     }
   }
 
@@ -471,7 +469,6 @@ const RowFormModal = function RowFormModal({
             onRowsChange={setGridRows}
             requiredFields={requiredFields}
             defaultValues={defaultValues}
-            onNextForm={onNextForm}
           />
         </div>
       );
