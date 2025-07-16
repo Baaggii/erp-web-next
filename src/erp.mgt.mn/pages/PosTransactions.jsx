@@ -153,7 +153,7 @@ export default function PosTransactionsPage() {
     addToast('Layout saved', 'success');
   }
 
-  function handleNew() {
+  async function handleNew() {
     if (!config) return;
     const sid = 'sess_' + Date.now().toString(36);
     const next = {};
@@ -170,8 +170,36 @@ export default function PosTransactionsPage() {
       if (!next[tbl]) next[tbl] = {};
       next[tbl][config.statusField.field] = config.statusField.created;
     }
-    const masterDefaults = formConfigs[config.masterTable]?.defaultValues || {};
-    next[config.masterTable] = { ...(next[config.masterTable] || {}), ...masterDefaults };
+    Object.entries(formConfigs).forEach(([tbl, fc]) => {
+      const defs = fc.defaultValues || {};
+      if (!next[tbl]) next[tbl] = {};
+      Object.entries(defs).forEach(([k, v]) => {
+        if (next[tbl][k] === undefined) next[tbl][k] = v;
+      });
+    });
+    try {
+      const res = await fetch(
+        `/api/tables/${encodeURIComponent(config.masterTable)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(next[config.masterTable] || {}),
+        },
+      );
+      const js = await res.json().catch(() => null);
+      if (js && js.id) {
+        const pk =
+          (columnMeta[config.masterTable] || []).find((c) => c.key === 'PRI')?.name ||
+          'id';
+        next[config.masterTable][pk] = js.id;
+        setMasterId(js.id);
+      } else {
+        setMasterId(null);
+      }
+    } catch {
+      setMasterId(null);
+    }
     setValues(next);
     setMasterId(null);
     setPendingId(null);
@@ -197,12 +225,37 @@ export default function PosTransactionsPage() {
         if (next[tbl][k] === undefined) next[tbl][k] = v;
       });
     });
+
+    let mid = masterId;
+    if (!mid) {
+      try {
+        const res = await fetch(
+          `/api/tables/${encodeURIComponent(config.masterTable)}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(next[config.masterTable] || {}),
+          },
+        );
+        const js = await res.json().catch(() => null);
+        if (js && js.id) {
+          const pk =
+            (columnMeta[config.masterTable] || []).find((c) => c.key === 'PRI')?.name ||
+            'id';
+          next[config.masterTable][pk] = js.id;
+          mid = js.id;
+          setMasterId(js.id);
+        }
+      } catch {}
+    }
+
     try {
       const res = await fetch('/api/pos_txn_pending', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ id: pendingId, name, data: next }),
+        body: JSON.stringify({ id: pendingId, name, data: next, masterId: mid }),
       });
       const js = await res.json().catch(() => ({}));
       if (js.id) {
@@ -232,6 +285,7 @@ export default function PosTransactionsPage() {
     if (rec && rec.data) {
       setValues(rec.data);
       setPendingId(sel);
+      setMasterId(rec.masterId || null);
     }
   }
 
@@ -280,14 +334,27 @@ export default function PosTransactionsPage() {
         }
       }
     }
+    const single = {};
+    const multi = {};
+    formList.forEach((t) => {
+      if (t.type === 'multi') multi[t.table] = payload[t.table];
+      else single[t.table] = payload[t.table];
+    });
+    const postData = { masterId, single, multi };
     try {
       const res = await fetch('/api/pos_txn_post', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ name, data: payload }),
+        body: JSON.stringify({ name, data: postData }),
       });
       if (res.ok) {
+        if (pendingId) {
+          await fetch(`/api/pos_txn_pending?id=${encodeURIComponent(pendingId)}`, {
+            method: 'DELETE',
+            credentials: 'include',
+          });
+        }
         setPendingId(null);
         if (config.statusField?.table && config.statusField.field && config.statusField.posted) {
           setValues(v => ({
@@ -383,7 +450,7 @@ export default function PosTransactionsPage() {
           <div style={{ marginBottom: '0.5rem' }}>
             <button onClick={handleNew} style={{ marginRight: '0.5rem' }}>New</button>
             <button onClick={handleSavePending} style={{ marginRight: '0.5rem' }}>Save</button>
-            <button onClick={handleLoadPending} style={{ marginRight: '0.5rem' }} disabled={!pendingId}>Load</button>
+            <button onClick={handleLoadPending} style={{ marginRight: '0.5rem' }}>Load</button>
             <button onClick={handleDeletePending} style={{ marginRight: '0.5rem' }} disabled={!pendingId}>Delete</button>
             <button onClick={handlePostAll} disabled={!pendingId}>POST</button>
           </div>
