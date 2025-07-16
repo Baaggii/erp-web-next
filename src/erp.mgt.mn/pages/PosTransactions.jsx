@@ -12,6 +12,7 @@ export default function PosTransactionsPage() {
   const [values, setValues] = useState({});
   const [layout, setLayout] = useState({});
   const refs = useRef({});
+  const dragInfo = useRef(null);
 
   useEffect(() => {
     fetch('/api/pos_txn_config', { credentials: 'include' })
@@ -90,6 +91,8 @@ export default function PosTransactionsPage() {
         info[t.table] = {
           width: el.offsetWidth,
           height: el.offsetHeight,
+          x: layout[t.table]?.x || 0,
+          y: layout[t.table]?.y || 0,
         };
       }
     });
@@ -100,6 +103,30 @@ export default function PosTransactionsPage() {
       body: JSON.stringify({ name, layout: info }),
     });
     addToast('Layout saved', 'success');
+  }
+
+  function startDrag(table, e) {
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const cur = layout[table] || {};
+    dragInfo.current = { table, startX, startY, x: cur.x || 0, y: cur.y || 0 };
+    window.addEventListener('mousemove', onDrag);
+    window.addEventListener('mouseup', endDrag);
+    e.preventDefault();
+  }
+
+  function onDrag(e) {
+    if (!dragInfo.current) return;
+    const { table, startX, startY, x, y } = dragInfo.current;
+    const nx = x + e.clientX - startX;
+    const ny = y + e.clientY - startY;
+    setLayout((l) => ({ ...l, [table]: { ...l[table], x: nx, y: ny } }));
+  }
+
+  function endDrag() {
+    dragInfo.current = null;
+    window.removeEventListener('mousemove', onDrag);
+    window.removeEventListener('mouseup', endDrag);
   }
 
   const configNames = Object.keys(configs);
@@ -125,7 +152,7 @@ export default function PosTransactionsPage() {
           <div
             style={{
               display: 'grid',
-              gap: '1rem',
+              gap: '0',
               gridTemplateColumns: '1fr 1fr 1fr',
               gridTemplateRows: 'auto auto auto auto auto',
             }}
@@ -162,10 +189,18 @@ export default function PosTransactionsPage() {
                       overflow: 'auto',
                       width: saved.width || 'auto',
                       height: saved.height || 'auto',
+                      margin: '-1px',
+                      transform: `translate(${saved.x || 0}px, ${saved.y || 0}px)`,
+                      position: 'relative',
                       ...posStyle,
                     }}
                   >
-                    <h3 style={{ margin: '0.5rem' }}>{t.table}</h3>
+                    <h3
+                      style={{ margin: '0.5rem', cursor: 'move' }}
+                      onMouseDown={(e) => startDrag(t.table, e)}
+                    >
+                      {t.table}
+                    </h3>
                     <RowFormModal
                       inline
                       visible
@@ -175,6 +210,7 @@ export default function PosTransactionsPage() {
                       onChange={(changes) => handleChange(t.table, changes)}
                       onSubmit={(row) => handleSubmit(t.table, row)}
                       useGrid={t.view === 'table' || t.type === 'multi'}
+                      fitted={t.view === 'fitted'}
                     />
                   </div>
                 );

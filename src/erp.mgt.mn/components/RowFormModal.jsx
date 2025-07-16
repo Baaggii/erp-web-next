@@ -29,6 +29,7 @@ const RowFormModal = function RowFormModal({
   dateField = [],
   inline = false,
   useGrid = false,
+  fitted = false,
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -441,6 +442,14 @@ const RowFormModal = function RowFormModal({
 
   function renderMainTable(cols) {
     if (cols.length === 0) return null;
+    if (fitted) {
+      return (
+        <div className="mb-4">
+          <h3 className="mt-0 mb-1 font-semibold">Main</h3>
+          <div className={formGrid}>{cols.map((c) => renderField(c))}</div>
+        </div>
+      );
+    }
     if (inline || useGrid) {
       return (
         <div className="mb-4">
