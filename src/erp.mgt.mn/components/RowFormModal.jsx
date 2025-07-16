@@ -215,8 +215,15 @@ const RowFormModal = function RowFormModal({
 
   const formGridClass = 'grid gap-2';
   const formGridStyle = fitted
-    ? { gridTemplateColumns: 'repeat(auto-fit, minmax(12rem, 1fr))' }
+    ? {
+        gridTemplateColumns: 'repeat(auto-fit, minmax(min(20rem, 40vw), 1fr))',
+        gridAutoRows: 'minmax(min(3rem, 8vh), auto)',
+        fontSize: 'calc(0.65rem + 0.35vw + 0.35vh)',
+      }
     : { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' };
+  const inputStyle = fitted
+    ? { fontSize: 'inherit', padding: '0.25rem 0.5rem' }
+    : undefined;
 
   function handleKeyDown(e, col) {
     if (e.key !== 'Enter') return;
@@ -383,7 +390,7 @@ const RowFormModal = function RowFormModal({
   }
   function renderField(c, withLabel = true) {
     const err = errors[c];
-    const inputClass = `w-full p-2 border rounded ${err ? 'border-red-500' : 'border-gray-300'}`;
+    const inputClass = `w-full border rounded ${err ? 'border-red-500' : 'border-gray-300'}`;
 
     const control = relationConfigs[c] ? (
       <AsyncSearchSelect
@@ -401,6 +408,7 @@ const RowFormModal = function RowFormModal({
         onKeyDown={(e) => handleKeyDown(e, c)}
         onFocus={(e) => e.target.select()}
         inputRef={(el) => (inputRefs.current[c] = el)}
+        inputStyle={inputStyle}
       />
     ) : Array.isArray(relations[c]) ? (
       <select
@@ -420,6 +428,7 @@ const RowFormModal = function RowFormModal({
         onKeyDown={(e) => handleKeyDown(e, c)}
         disabled={row && disabledFields.includes(c)}
         className={inputClass}
+        style={inputStyle}
       >
         <option value="">-- select --</option>
         {relations[c].map((opt) => (
@@ -449,6 +458,7 @@ const RowFormModal = function RowFormModal({
         onFocus={(e) => e.target.select()}
         disabled={row && disabledFields.includes(c)}
         className={inputClass}
+        style={inputStyle}
       />
     );
 
@@ -586,7 +596,8 @@ const RowFormModal = function RowFormModal({
                 type="text"
                 value={val}
                 disabled
-                className="w-full p-2 border rounded bg-gray-100"
+                className="w-full border rounded bg-gray-100"
+                style={inputStyle}
               />
             </div>
           );
