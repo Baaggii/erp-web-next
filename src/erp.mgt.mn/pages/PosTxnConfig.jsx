@@ -6,6 +6,7 @@ const emptyConfig = {
   masterForm: '',
   masterType: 'single',
   masterPosition: 'upper_left',
+  masterView: 'fitted',
   tables: [],
   calcFields: [],
   posFields: [],
@@ -123,8 +124,10 @@ export default function PosTxnConfig() {
         loaded.masterForm = master.form || '';
         loaded.masterType = master.type || 'single';
         loaded.masterPosition = master.position || 'upper_left';
-        loaded.tables = rest;
+        loaded.masterView = master.view || 'fitted';
+        loaded.tables = rest.map((t) => ({ view: 'fitted', ...t }));
       }
+      if (!loaded.masterView) loaded.masterView = 'fitted';
       if (Array.isArray(loaded.calcFields)) {
         loaded.calcFields = loaded.calcFields.map((row, rIdx) => {
           const cells = Array.isArray(row.cells)
@@ -175,7 +178,7 @@ export default function PosTxnConfig() {
       ...c,
       tables: [
         ...c.tables,
-        { table: '', form: '', type: 'single', position: 'upper_left' },
+        { table: '', form: '', type: 'single', position: 'upper_left', view: 'fitted' },
       ],
       calcFields: c.calcFields.map((row) => ({
         ...row,
@@ -237,6 +240,7 @@ export default function PosTxnConfig() {
       ...c,
       masterTable: '',
       masterForm: '',
+      masterView: 'fitted',
       calcFields: c.calcFields.map((row) => ({
         ...row,
         cells: row.cells.map((cell, i) => (i === 0 ? { ...cell, table: '' } : cell)),
@@ -256,7 +260,13 @@ export default function PosTxnConfig() {
     const saveCfg = {
       ...config,
       tables: [
-        { table: config.masterTable, form: config.masterForm, type: config.masterType, position: config.masterPosition },
+        {
+          table: config.masterTable,
+          form: config.masterForm,
+          type: config.masterType,
+          position: config.masterPosition,
+          view: config.masterView,
+        },
         ...config.tables,
       ],
     };
@@ -437,6 +447,10 @@ export default function PosTxnConfig() {
             }}
           >
             <option value="">-- select table --</option>
+            {config.masterTable &&
+              !config.tables.some((t) => t.table === config.masterTable) && (
+                <option value={config.masterTable}>{config.masterTable}</option>
+              )}
             {config.tables.map((t, i) => (
               <option key={i} value={t.table}>
                 {t.table}
@@ -579,6 +593,33 @@ export default function PosTxnConfig() {
                     <option value="bottom_row">bottom_row</option>
                     <option value="hidden">hidden</option>
                  </select>
+                </td>
+              ))}
+            </tr>
+            <tr>
+              <td>View</td>
+              <td style={{ padding: '4px' }}>
+                <select
+                  value={config.masterView}
+                  onChange={(e) =>
+                    setConfig((c) => ({ ...c, masterView: e.target.value }))
+                  }
+                >
+                  <option value="fitted">Fitted</option>
+                  <option value="row">Row</option>
+                  <option value="table">Table</option>
+                </select>
+              </td>
+              {config.tables.map((t, idx) => (
+                <td key={idx} style={{ padding: '4px' }}>
+                  <select
+                    value={t.view || 'fitted'}
+                    onChange={(e) => updateColumn(idx, 'view', e.target.value)}
+                  >
+                    <option value="fitted">Fitted</option>
+                    <option value="row">Row</option>
+                    <option value="table">Table</option>
+                  </select>
                 </td>
               ))}
             </tr>
