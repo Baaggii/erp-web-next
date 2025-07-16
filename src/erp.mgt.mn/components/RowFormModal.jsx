@@ -489,7 +489,7 @@ const RowFormModal = forwardRef(function RowFormModal({
             onRowSubmit={onSubmit}
             onRowsChange={(rows) => {
               setGridRows(rows);
-              onRowsChange?.(rows);
+              if (onRowsChange) onRowsChange(rows);
             }}
             onLastCell={onEnterLastField}
             requiredFields={requiredFields}

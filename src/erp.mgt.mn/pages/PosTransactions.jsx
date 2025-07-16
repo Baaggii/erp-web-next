@@ -267,7 +267,9 @@ export default function PosTransactionsPage() {
     filtered.sort((a,b) => (posOrder[a.position]||9) - (posOrder[b.position]||9));
     const idx = filtered.findIndex(t => t.table === tbl);
     const next = filtered[idx + 1];
-    if (next) formRefs.current[next.table]?.focusFirstField?.();
+    if (next && formRefs.current[next.table] && formRefs.current[next.table].focusFirstField) {
+      formRefs.current[next.table].focusFirstField();
+    }
   }
 
   const configNames = Object.keys(configs);
