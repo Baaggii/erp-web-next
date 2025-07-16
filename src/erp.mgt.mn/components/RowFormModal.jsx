@@ -719,6 +719,4 @@ const RowFormModal = forwardRef(function RowFormModal({
   );
 }
 
-);
-
 export default memo(RowFormModal);
