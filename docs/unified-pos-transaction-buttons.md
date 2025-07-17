@@ -32,3 +32,6 @@ This module includes a single set of buttons used by every POS transaction confi
 - On success, deletes the pending entry, updates the `statusField` to `posted`, and leaves the master record intact.
 - Hidden forms are included in the submission automatically.
 - Error messages report the problematic field and value whenever possible.
+
+Posted transactions are recorded in `config/posTransactions.json` together with
+the company, branch and employee that created them and the posting date.
