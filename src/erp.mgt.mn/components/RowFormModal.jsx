@@ -228,20 +228,19 @@ const RowFormModal = function RowFormModal({
       ? columns.filter((c) => mainSet.has(c))
       : columns.filter((c) => !headerSet.has(c) && !footerSet.has(c));
 
-  const formGridClass = fitted ? 'grid gap-1' : 'grid gap-2';
+  const formGridClass = fitted ? 'grid' : 'grid gap-2';
+  const inputFontSize = Math.max(10, Math.round(boxHeight * 0.6));
   const formGridStyle = fitted
     ? {
-        gridTemplateColumns: 'repeat(auto-fit, minmax(min(20rem, 40vw), 1fr))',
-        gridAutoRows: 'minmax(min(3rem, 8vh), auto)',
-        fontSize: 'calc(0.65rem + 0.35vw + 0.35vh)',
+        gap: '2px',
+        gridTemplateColumns: `repeat(auto-fill, minmax(${boxWidth}px, 1fr))`,
+        fontSize: `${inputFontSize}px`,
       }
     : { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' };
-  const labelStyle = fitted
-    ? { fontSize: `${labelFontSize}px` }
-    : undefined;
+  const labelStyle = fitted ? { fontSize: `${labelFontSize}px` } : undefined;
   const inputStyle = fitted
     ? {
-        fontSize: 'inherit',
+        fontSize: `${inputFontSize}px`,
         padding: '0.25rem 0.5rem',
         width: `${boxWidth}px`,
         height: `${boxHeight}px`,
