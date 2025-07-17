@@ -765,7 +765,7 @@ const RowFormModal = function RowFormModal({
     >
       <form
         ref={wrapRef}
-        style={{ transform: `scale(${zoom})`, transformOrigin: '0 0' }}
+        style={{ transform: `scale(${zoom})`, transformOrigin: '0 0', padding: fitted ? 0 : undefined }}
         onSubmit={(e) => {
           e.preventDefault();
           submitForm();
