@@ -1002,6 +1002,21 @@ const TableManager = forwardRef(function TableManager({
   const ordered = formConfig?.visibleFields?.length
     ? allColumns.filter((c) => formConfig.visibleFields.includes(c))
     : allColumns;
+
+  const selectedForForm = new Set([
+    ...(formConfig?.headerFields || []),
+    ...(formConfig?.mainFields || []),
+    ...(formConfig?.footerFields || []),
+  ]);
+
+  let formColumns = [];
+  if (selectedForForm.size > 0) {
+    formColumns = allColumns.filter((c) => selectedForForm.has(c));
+  } else if (formConfig?.visibleFields?.length) {
+    formColumns = ordered.slice();
+  } else {
+    formColumns = allColumns.slice();
+  }
   const labels = {};
   columnMeta.forEach((c) => {
     labels[c.name] = c.label || c.name;
@@ -1079,10 +1094,14 @@ const TableManager = forwardRef(function TableManager({
     )
     .map(([k]) => k);
 
+  const editableSet = new Set(formConfig?.editableDefaultFields || []);
+  const nonEditable = formColumns.filter((c) => !editableSet.has(c));
+
   const disabledFields = editing
-    ? [...getKeyFields(), ...lockedDefaults]
-    : lockedDefaults;
-  let formColumns = ordered.filter(
+    ? [...getKeyFields(), ...lockedDefaults, ...nonEditable]
+    : [...lockedDefaults, ...nonEditable];
+
+  formColumns = formColumns.filter(
     (c) => !autoCols.has(c) && c !== 'created_at' && c !== 'created_by'
   );
 

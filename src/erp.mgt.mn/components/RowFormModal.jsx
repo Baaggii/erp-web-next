@@ -33,7 +33,7 @@ const RowFormModal = function RowFormModal({
   useGrid = false,
   fitted = false,
   labelFontSize = 14,
-  boxWidth = 180,
+  boxWidth = 60,
   boxHeight = 30,
   onNextForm = null,
 }) {
@@ -223,17 +223,17 @@ const RowFormModal = function RowFormModal({
   const totalCurrencySet = new Set(totalCurrencyFields);
   const headerCols = columns.filter((c) => headerSet.has(c));
   const footerCols = columns.filter((c) => footerSet.has(c));
-  const mainCols =
-    mainFields.length > 0
-      ? columns.filter((c) => mainSet.has(c))
-      : columns.filter((c) => !headerSet.has(c) && !footerSet.has(c));
+  const mainCols = mainFields.length > 0
+    ? columns.filter((c) => mainSet.has(c))
+    : [];
 
   const formGridClass = fitted ? 'grid' : 'grid gap-2';
   const inputFontSize = Math.max(10, Math.round(boxHeight * 0.6));
+  const maxWidth = 150;
   const formGridStyle = fitted
     ? {
         gap: '2px',
-        gridTemplateColumns: `repeat(auto-fill, minmax(${boxWidth}px, 1fr))`,
+        gridTemplateColumns: `repeat(auto-fill, minmax(${boxWidth}px, ${maxWidth}px))`,
         fontSize: `${inputFontSize}px`,
       }
     : { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' };
@@ -242,9 +242,10 @@ const RowFormModal = function RowFormModal({
     ? {
         fontSize: `${inputFontSize}px`,
         padding: '0.25rem 0.5rem',
-        width: `${boxWidth}px`,
+        width: '100%',
+        minWidth: `${boxWidth}px`,
+        maxWidth: `${maxWidth}px`,
         height: `${boxHeight}px`,
-        maxWidth: '100%',
       }
     : undefined;
 
