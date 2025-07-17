@@ -33,7 +33,7 @@ const RowFormModal = function RowFormModal({
   useGrid = false,
   fitted = false,
   labelFontSize = 14,
-  boxWidth = 180,
+  boxWidth = 60,
   boxHeight = 30,
   onNextForm = null,
 }) {
@@ -86,6 +86,8 @@ const RowFormModal = function RowFormModal({
           val = user.empid;
         } else if (c === 'branch_id' && company?.branch_id !== undefined) {
           val = company.branch_id;
+        } else if (c === 'department_id' && company?.department_id !== undefined) {
+          val = company.department_id;
         } else if (c === 'company_id' && company?.company_id !== undefined) {
           val = company.company_id;
         }
@@ -203,6 +205,8 @@ const RowFormModal = function RowFormModal({
           v = user.empid;
         } else if (c === 'branch_id' && company?.branch_id !== undefined) {
           v = company.branch_id;
+        } else if (c === 'department_id' && company?.department_id !== undefined) {
+          v = company.department_id;
         } else if (c === 'company_id' && company?.company_id !== undefined) {
           v = company.company_id;
         }
@@ -233,7 +237,7 @@ const RowFormModal = function RowFormModal({
   const formGridStyle = fitted
     ? {
         gap: '2px',
-        gridTemplateColumns: `repeat(auto-fill, minmax(${boxWidth}px, 1fr))`,
+        gridTemplateColumns: `repeat(auto-fill, minmax(${boxWidth}px, 150px))`,
         fontSize: `${inputFontSize}px`,
       }
     : { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' };
@@ -242,9 +246,10 @@ const RowFormModal = function RowFormModal({
     ? {
         fontSize: `${inputFontSize}px`,
         padding: '0.25rem 0.5rem',
-        width: `${boxWidth}px`,
+        minWidth: `${boxWidth}px`,
+        maxWidth: '150px',
+        width: '100%',
         height: `${boxHeight}px`,
-        maxWidth: '100%',
       }
     : undefined;
 
@@ -414,6 +419,28 @@ const RowFormModal = function RowFormModal({
   function renderField(c, withLabel = true) {
     const err = errors[c];
     const inputClass = `w-full border rounded ${err ? 'border-red-500' : 'border-gray-300'}`;
+    const disabled = disabledFields.includes(c);
+
+    if (disabled) {
+      const val = formVals[c];
+      if (!withLabel) {
+        return (
+          <div className="w-full border rounded bg-gray-100 px-2 py-1" style={inputStyle}>
+            {val}
+          </div>
+        );
+      }
+      return (
+        <div key={c} className={fitted ? 'mb-1' : 'mb-3'}>
+          <label className="block mb-1 font-medium" style={labelStyle}>
+            {labels[c] || c}
+          </label>
+          <div className="w-full border rounded bg-gray-100 px-2 py-1" style={inputStyle}>
+            {val}
+          </div>
+        </div>
+      );
+    }
 
     const control = relationConfigs[c] ? (
       <AsyncSearchSelect
@@ -427,7 +454,7 @@ const RowFormModal = function RowFormModal({
           setErrors((er) => ({ ...er, [c]: undefined }));
           onChange({ [c]: val });
         }}
-        disabled={row && disabledFields.includes(c)}
+        disabled={disabled}
         onKeyDown={(e) => handleKeyDown(e, c)}
         onFocus={(e) => e.target.select()}
         inputRef={(el) => (inputRefs.current[c] = el)}
@@ -449,7 +476,7 @@ const RowFormModal = function RowFormModal({
           onChange({ [c]: e.target.value });
         }}
         onKeyDown={(e) => handleKeyDown(e, c)}
-        disabled={row && disabledFields.includes(c)}
+        disabled={disabled}
         className={inputClass}
         style={inputStyle}
       >
@@ -479,7 +506,7 @@ const RowFormModal = function RowFormModal({
         }}
         onKeyDown={(e) => handleKeyDown(e, c)}
         onFocus={(e) => e.target.select()}
-        disabled={row && disabledFields.includes(c)}
+        disabled={disabled}
         className={inputClass}
         style={inputStyle}
       />
@@ -608,6 +635,8 @@ const RowFormModal = function RowFormModal({
               val = user.empid;
             } else if (c === 'branch_id' && company?.branch_id !== undefined) {
               val = company.branch_id;
+            } else if (c === 'department_id' && company?.department_id !== undefined) {
+              val = company.department_id;
             } else if (c === 'company_id' && company?.company_id !== undefined) {
               val = company.company_id;
             }
@@ -646,6 +675,8 @@ const RowFormModal = function RowFormModal({
                   val = user.empid;
                 } else if (c === 'branch_id' && company?.branch_id !== undefined) {
                   val = company.branch_id;
+                } else if (c === 'department_id' && company?.department_id !== undefined) {
+                  val = company.department_id;
                 } else if (c === 'company_id' && company?.company_id !== undefined) {
                   val = company.company_id;
                 }

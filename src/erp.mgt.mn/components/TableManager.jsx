@@ -157,6 +157,12 @@ const TableManager = forwardRef(function TableManager({
     return ['branch_id'].filter(f => validCols.has(f));
   }, [formConfig, validCols]);
 
+  const departmentIdFields = useMemo(() => {
+    if (formConfig?.departmentIdFields?.length)
+      return formConfig.departmentIdFields.filter(f => validCols.has(f));
+    return ['department_id'].filter(f => validCols.has(f));
+  }, [formConfig, validCols]);
+
   const userIdFields = useMemo(() => {
     if (formConfig?.userIdFields?.length)
       return formConfig.userIdFields.filter(f => validCols.has(f));
@@ -261,6 +267,11 @@ const TableManager = forwardRef(function TableManager({
     if (company?.branch_id !== undefined && branchIdFields.length > 0) {
       branchIdFields.forEach((f) => {
         if (validCols.has(f)) newFilters[f] = company.branch_id;
+      });
+    }
+    if (company?.department_id !== undefined && departmentIdFields.length > 0) {
+      departmentIdFields.forEach((f) => {
+        if (validCols.has(f)) newFilters[f] = company.department_id;
       });
     }
     if (user?.empid !== undefined && userIdFields.length > 0) {
@@ -582,6 +593,7 @@ const TableManager = forwardRef(function TableManager({
       let v = (formConfig?.defaultValues || {})[c] || '';
       if (userIdFields.includes(c) && user?.empid) v = user.empid;
       if (branchIdFields.includes(c) && company?.branch_id !== undefined) v = company.branch_id;
+      if (departmentIdFields.includes(c) && company?.department_id !== undefined) v = company.department_id;
       if (formConfig?.companyIdFields?.includes(c) && company?.company_id !== undefined) v = company.company_id;
       vals[c] = v;
       defaults[c] = v;
@@ -731,6 +743,10 @@ const TableManager = forwardRef(function TableManager({
       branchIdFields.forEach((f) => {
         if (columns.has(f) && company?.branch_id !== undefined)
           merged[f] = company.branch_id;
+      });
+      departmentIdFields.forEach((f) => {
+        if (columns.has(f) && company?.department_id !== undefined)
+          merged[f] = company.department_id;
       });
       formConfig?.companyIdFields?.forEach((f) => {
         if (columns.has(f) && company?.company_id !== undefined)
@@ -1071,6 +1087,10 @@ const TableManager = forwardRef(function TableManager({
   if (columnMeta.length === 0 && autoCols.size === 0 && allColumns.includes('id')) {
     autoCols.add('id');
   }
+  let formColumns = ordered.filter(
+    (c) => !autoCols.has(c) && c !== 'created_at' && c !== 'created_by'
+  );
+
   const lockedDefaults = Object.entries(formConfig?.defaultValues || {})
     .filter(
       ([k, v]) =>
@@ -1079,37 +1099,25 @@ const TableManager = forwardRef(function TableManager({
     )
     .map(([k]) => k);
 
-  const disabledFields = editing
-    ? [...getKeyFields(), ...lockedDefaults]
-    : lockedDefaults;
-  let formColumns = ordered.filter(
-    (c) => !autoCols.has(c) && c !== 'created_at' && c !== 'created_by'
-  );
-
-  let headerFields = [];
-  if (formConfig?.headerFields && formConfig.headerFields.length > 0) {
-    headerFields = [...formConfig.headerFields];
-  } else {
-    headerFields = [
-      ...userIdFields,
-      ...branchIdFields,
-      ...(formConfig?.companyIdFields || []),
-      ...(formConfig?.dateField || []),
-    ];
-    if (formConfig?.transactionTypeField)
-      headerFields.push(formConfig.transactionTypeField);
+  let disabledFields = [];
+  if (formConfig?.editableFields?.length) {
+    const set = new Set(formConfig.editableFields);
+    disabledFields = formColumns.filter((c) => !set.has(c));
   }
+  disabledFields = editing
+    ? Array.from(new Set([...disabledFields, ...getKeyFields(), ...lockedDefaults]))
+    : Array.from(new Set([...disabledFields, ...lockedDefaults]));
+
+  const headerFields = formConfig?.headerFields || [];
 
   const mainFields = formConfig?.mainFields || [];
 
-  let footerFields = [];
-  if (formConfig?.footerFields && formConfig.footerFields.length > 0) {
-    footerFields = [...formConfig.footerFields];
-  } else {
-    footerFields = Array.from(
-      new Set([...(formConfig?.printEmpField || []), ...(formConfig?.printCustField || [])])
-    );
-  }
+  const footerFields = formConfig?.footerFields || [];
+
+  const sectionFields = new Set([...headerFields, ...mainFields, ...footerFields]);
+  sectionFields.forEach((f) => {
+    if (!formColumns.includes(f) && allColumns.includes(f)) formColumns.push(f);
+  });
 
   const totalAmountSet = useMemo(
     () => new Set(formConfig?.totalAmountFields || []),
@@ -1293,6 +1301,17 @@ const TableManager = forwardRef(function TableManager({
               }
             >
               Clear Branch Filter
+            </button>
+          )}
+        </div>
+      )}
+      {departmentIdFields.length > 0 && company?.department_id !== undefined && (
+        <div style={{ backgroundColor: '#eefcff', padding: '0.25rem', textAlign: 'left' }}>
+          Department:{' '}
+          <span style={{ marginRight: '0.5rem' }}>{company.department_id}</span>
+          {user?.role === 'admin' && (
+            <button onClick={() => departmentIdFields.forEach((f) => handleFilterChange(f, ''))}>
+              Clear Department Filter
             </button>
           )}
         </div>

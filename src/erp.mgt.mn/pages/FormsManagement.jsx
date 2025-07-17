@@ -24,8 +24,10 @@ export default function FormsManagement() {
     requiredFields: [],
     defaultValues: {},
     editableDefaultFields: [],
+    editableFields: [],
     userIdFields: [],
     branchIdFields: [],
+    departmentIdFields: [],
     companyIdFields: [],
     dateField: [],
     emailField: [],
@@ -96,8 +98,10 @@ export default function FormsManagement() {
             requiredFields: filtered[name].requiredFields || [],
             defaultValues: filtered[name].defaultValues || {},
             editableDefaultFields: filtered[name].editableDefaultFields || [],
+            editableFields: filtered[name].editableFields || [],
             userIdFields: filtered[name].userIdFields || [],
             branchIdFields: filtered[name].branchIdFields || [],
+            departmentIdFields: filtered[name].departmentIdFields || [],
             companyIdFields: filtered[name].companyIdFields || [],
             dateField: filtered[name].dateField || [],
             emailField: filtered[name].emailField || [],
@@ -123,8 +127,10 @@ export default function FormsManagement() {
             requiredFields: [],
             defaultValues: {},
             editableDefaultFields: [],
+            editableFields: [],
             userIdFields: [],
             branchIdFields: [],
+            departmentIdFields: [],
             companyIdFields: [],
             dateField: [],
             emailField: [],
@@ -153,8 +159,10 @@ export default function FormsManagement() {
           requiredFields: [],
           defaultValues: {},
           editableDefaultFields: [],
+          editableFields: [],
           userIdFields: [],
           branchIdFields: [],
+          departmentIdFields: [],
           companyIdFields: [],
           dateField: [],
           emailField: [],
@@ -188,8 +196,10 @@ export default function FormsManagement() {
           requiredFields: cfg.requiredFields || [],
           defaultValues: cfg.defaultValues || {},
           editableDefaultFields: cfg.editableDefaultFields || [],
+          editableFields: cfg.editableFields || [],
           userIdFields: cfg.userIdFields || [],
           branchIdFields: cfg.branchIdFields || [],
+          departmentIdFields: cfg.departmentIdFields || [],
           companyIdFields: cfg.companyIdFields || [],
           dateField: cfg.dateField || [],
           emailField: cfg.emailField || [],
@@ -215,8 +225,10 @@ export default function FormsManagement() {
           requiredFields: [],
           defaultValues: {},
           editableDefaultFields: [],
+          editableFields: [],
           userIdFields: [],
           branchIdFields: [],
+          departmentIdFields: [],
           companyIdFields: [],
           dateField: [],
           emailField: [],
@@ -272,7 +284,9 @@ export default function FormsManagement() {
     setConfig((c) => {
       const set = new Set(c.editableDefaultFields);
       set.has(field) ? set.delete(field) : set.add(field);
-      return { ...c, editableDefaultFields: Array.from(set) };
+      const set2 = new Set(c.editableFields);
+      set2.has(field) ? set2.delete(field) : set2.add(field);
+      return { ...c, editableDefaultFields: Array.from(set), editableFields: Array.from(set2) };
     });
   }
 
@@ -504,6 +518,7 @@ export default function FormsManagement() {
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Editable</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>UserID</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>BranchID</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>DepartmentID</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>CompanyID</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Date</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Email</th>
@@ -565,6 +580,13 @@ export default function FormsManagement() {
                       type="checkbox"
                       checked={config.branchIdFields.includes(col)}
                       onChange={() => toggleFieldList(col, 'branchIdFields')}
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.departmentIdFields.includes(col)}
+                      onChange={() => toggleFieldList(col, 'departmentIdFields')}
                     />
                   </td>
                   <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
