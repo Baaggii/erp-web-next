@@ -213,6 +213,8 @@ export default function PosTransactionsPage() {
       .catch(() => setConfigs({}));
   }, []);
 
+  const initRef = useRef('');
+
   useEffect(() => {
     if (!name) { setConfig(null); setLayout({}); return; }
     fetch(`/api/pos_txn_config?name=${encodeURIComponent(name)}`, { credentials: 'include' })
@@ -279,6 +281,14 @@ export default function PosTransactionsPage() {
     if (!masterSf) return undefined;
     return values[config.masterTable]?.[masterSf.field];
   }, [values, config, sessionFields]);
+
+  useEffect(() => {
+    if (!config) return;
+    if (!formConfigs[config.masterTable]) return;
+    if (initRef.current === name) return;
+    initRef.current = name;
+    handleNew(true);
+  }, [config, formConfigs, name]);
 
   useEffect(() => {
     if (!config) return;
@@ -358,7 +368,7 @@ export default function PosTransactionsPage() {
       );
       if (save) await handleSavePending();
     }
-    const sid = 'sess_' + Date.now().toString(36);
+    const sid = 'pos_' + Date.now().toString(36);
     const next = {};
     const allTables = [
       { table: config.masterTable, type: config.masterType },
@@ -387,24 +397,9 @@ export default function PosTransactionsPage() {
         if (next[tbl][k] === undefined) next[tbl][k] = v;
       });
     });
-    const js = await postRow(
-      addToast,
-      config.masterTable,
-      next[config.masterTable] || {},
-    );
-    if (js && js.id) {
-        const pk =
-          (columnMeta[config.masterTable] || []).find((c) => c.key === 'PRI')?.name ||
-          'id';
-        next[config.masterTable][pk] = js.id;
-        setMasterId(js.id);
-        masterIdRef.current = js.id;
-    } else {
-      setMasterId(null);
-      masterIdRef.current = null;
-    }
     setValues(next);
     setMasterId(null);
+    masterIdRef.current = null;
     setPendingId(null);
     addToast('New transaction started', 'success');
   }
@@ -430,24 +425,9 @@ export default function PosTransactionsPage() {
       });
     });
 
-    let mid = masterIdRef.current;
-    if (!mid) {
-      const js = await postRow(addToast, config.masterTable, next[config.masterTable] || {});
-      if (js && js.id) {
-        const pk =
-          (columnMeta[config.masterTable] || []).find((c) => c.key === 'PRI')?.name ||
-          'id';
-        next[config.masterTable][pk] = js.id;
-        mid = js.id;
-        setMasterId(js.id);
-        masterIdRef.current = js.id;
-      }
-    } else {
-      await putRow(addToast, config.masterTable, mid, next[config.masterTable] || {});
-    }
-
+    const mid = masterIdRef.current;
     const masterSf = sessionFields.find((f) => f.table === config.masterTable);
-    const sid = masterSf ? next[config.masterTable]?.[masterSf.field] : pendingId;
+    const sid = masterSf ? next[config.masterTable]?.[masterSf.field] : pendingId || 'pos_' + Date.now().toString(36);
 
     try {
       const res = await fetch('/api/pos_txn_pending', {
@@ -746,7 +726,7 @@ export default function PosTransactionsPage() {
                       relationData={relationData[t.table] || {}}
                       onChange={(changes) => handleChange(t.table, changes)}
                       onRowsChange={(rows) => handleRowsChange(t.table, rows)}
-                      onSubmit={(row) => handleSubmit(t.table, row)}
+                      onSubmit={() => true}
                       useGrid={t.view === 'table' || t.type === 'multi'}
                       fitted={t.view === 'fitted'}
                       labelFontSize={config.labelFontSize}

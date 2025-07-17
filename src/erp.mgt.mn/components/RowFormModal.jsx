@@ -615,13 +615,9 @@ const RowFormModal = function RowFormModal({
           return (
             <div key={c} className={fitted ? 'mb-1' : 'mb-3'}>
               <label className="block mb-1 font-medium" style={labelStyle}>{labels[c] || c}</label>
-              <input
-                type="text"
-                value={val}
-                disabled
-                className="w-full border rounded bg-gray-100"
-                style={inputStyle}
-              />
+              <div className="w-full border rounded bg-gray-100 px-2 py-1" style={inputStyle}>
+                {val}
+              </div>
             </div>
           );
         })}

@@ -3,15 +3,13 @@
 This module includes a single set of buttons used by every POS transaction configuration. Each button drives multiple tables using the mapping rules from `posTransactionConfig.json`.
 
 ## New
-- Creates a fresh master record in the configured master table and stores its returned ID.
-- Generates a session ID (also saved on the server) and applies it to every field mapped via `calcFields` or `posFields`.
+- Generates a session ID prefixed with `pos_` and applies it to every field mapped via `calcFields` or `posFields`.
 - Fills default values for **all** forms including hidden ones so every table is ready for input.
 - Sets the configured `statusField` to the `created` value if defined.
 - Clears any previously loaded or pending transaction IDs.
 
 ## Save
-- Creates the master record if it does not yet exist and ensures child tables reference the master ID.
-- Writes the current values to the pending transactions store together with the master ID.
+- Writes the current values to the pending transactions store.
 - Auto-fills any missing default values for each form before saving.
 - Updates the `statusField` to the `beforePost` value so the transaction can be resumed later.
 - Returns an ID for the pending transaction which is required for Delete or POST.
