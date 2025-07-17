@@ -7,10 +7,11 @@ This module includes a single set of buttons used by every POS transaction confi
 - Fills default values for **all** forms including hidden ones so every table is ready for input.
 - Sets the configured `statusField` to the `created` value if defined.
 - Clears any previously loaded or pending transaction IDs.
+- Selecting a configuration from the dropdown behaves like clicking **New**, starting a fresh session automatically.
 
 ## Save
 - Writes the current values to the pending transactions store.
-- Auto-fills any missing default values for each form before saving.
+- Auto-fills any missing default values and system fields (employee, branch, company, transaction type) for every table and row before saving.
 - Updates the `statusField` to the `beforePost` value so the transaction can be resumed later.
 - Returns an ID for the pending transaction which is required for Delete or POST.
 - The saved entry includes the employee, company and branch used when saving.

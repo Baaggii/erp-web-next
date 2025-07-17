@@ -286,10 +286,11 @@ export default function PosTransactionsPage() {
 
   useEffect(() => {
     if (!config) return;
-    if (!formConfigs[config.masterTable]) return;
+    const tables = [config.masterTable, ...config.tables.map((t) => t.table)];
+    if (!tables.every((tbl) => formConfigs[tbl])) return;
     if (initRef.current === name) return;
     initRef.current = name;
-    handleNew(true);
+    handleNew();
   }, [config, formConfigs, name]);
 
   useEffect(() => {
@@ -418,13 +419,42 @@ export default function PosTransactionsPage() {
       if (!next[tbl]) next[tbl] = {};
       next[tbl][config.statusField.field] = config.statusField.beforePost;
     }
-    // fill defaults when missing
+    // fill defaults and system fields when missing
     Object.entries(formConfigs).forEach(([tbl, fc]) => {
       const defs = fc.defaultValues || {};
-      if (!next[tbl]) next[tbl] = {};
-      Object.entries(defs).forEach(([k, v]) => {
-        if (next[tbl][k] === undefined) next[tbl][k] = v;
-      });
+      if (!next[tbl]) next[tbl] = Array.isArray(values[tbl]) ? [] : {};
+      const applyDefaults = (row) => {
+        const updated = { ...row };
+        Object.entries(defs).forEach(([k, v]) => {
+          if (updated[k] === undefined) updated[k] = v;
+        });
+        if (fc.userIdFields && user?.empid !== undefined) {
+          fc.userIdFields.forEach((f) => {
+            if (updated[f] === undefined) updated[f] = user.empid;
+          });
+        }
+        if (fc.branchIdFields && company?.branch_id !== undefined) {
+          fc.branchIdFields.forEach((f) => {
+            if (updated[f] === undefined) updated[f] = company.branch_id;
+          });
+        }
+        if (fc.companyIdFields && company?.company_id !== undefined) {
+          fc.companyIdFields.forEach((f) => {
+            if (updated[f] === undefined) updated[f] = company.company_id;
+          });
+        }
+        if (fc.transactionTypeField && fc.transactionTypeValue) {
+          if (updated[fc.transactionTypeField] === undefined) {
+            updated[fc.transactionTypeField] = fc.transactionTypeValue;
+          }
+        }
+        return updated;
+      };
+      if (Array.isArray(next[tbl])) {
+        next[tbl] = next[tbl].map((row) => applyDefaults(row));
+      } else {
+        next[tbl] = applyDefaults(next[tbl]);
+      }
     });
 
     const mid = masterIdRef.current;
@@ -651,12 +681,8 @@ export default function PosTransactionsPage() {
             value={name}
             onChange={e => {
               const newName = e.target.value;
-              if (newName === name) {
-                handleNew();
-              } else {
-                setName(newName);
-                initRef.current = '';
-              }
+              setName(newName);
+              initRef.current = '';
             }}
           >
             <option value="">-- select config --</option>
