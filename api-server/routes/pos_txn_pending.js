@@ -9,12 +9,9 @@ router.get('/', requireAuth, async (req, res, next) => {
     const { id, name } = req.query;
     if (id) {
       const rec = await getPending(id);
-      if (!rec || (rec.userId && rec.userId !== req.user.id)) {
-        return res.status(404).json({ message: 'Not found' });
-      }
       res.json(rec || {});
     } else {
-      const list = await listPending(name, req.user.id);
+      const list = await listPending(name);
       res.json(list);
     }
   } catch (err) {
@@ -26,7 +23,7 @@ router.post('/', requireAuth, async (req, res, next) => {
   try {
     const { id, name, data, masterId } = req.body;
     if (!name) return res.status(400).json({ message: 'name is required' });
-    const result = await savePending(id, { name, data, masterId }, req.user.id);
+    const result = await savePending(id, { name, data, masterId });
     res.json({ id: result.id });
   } catch (err) {
     next(err);

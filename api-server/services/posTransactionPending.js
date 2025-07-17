@@ -16,13 +16,12 @@ async function writeData(data) {
   await fs.writeFile(filePath, JSON.stringify(data, null, 2));
 }
 
-export async function listPending(name, userId) {
+export async function listPending(name) {
   const all = await readData();
+  if (!name) return all;
   const filtered = {};
   for (const [id, rec] of Object.entries(all)) {
-    if (name && rec.name !== name) continue;
-    if (userId && rec.userId !== userId) continue;
-    filtered[id] = rec;
+    if (rec.name === name) filtered[id] = rec;
   }
   return filtered;
 }
@@ -32,13 +31,13 @@ export async function getPending(id) {
   return all[id] || null;
 }
 
-export async function savePending(id, record, userId) {
+export async function savePending(id, record) {
   const all = await readData();
   if (!id) {
     id = 'txn_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   }
   const key = String(id);
-  all[key] = { ...record, userId, savedAt: new Date().toISOString() };
+  all[key] = { ...record, savedAt: new Date().toISOString() };
   await writeData(all);
   return { id: key, record: all[key] };
 }
