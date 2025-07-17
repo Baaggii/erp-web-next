@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useContext } from 'react';
 import RowFormModal from '../components/RowFormModal.jsx';
 import Modal from '../components/Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
+import { AuthContext } from '../context/AuthContext.jsx';
 
 function parseErrorField(msg) {
   if (!msg) return null;
@@ -112,6 +113,7 @@ async function putRow(addToast, table, id, row) {
 
 export default function PosTransactionsPage() {
   const { addToast } = useToast();
+  const { user, company } = useContext(AuthContext);
   const [configs, setConfigs] = useState({});
   const [name, setName] = useState('');
   const [config, setConfig] = useState(null);
@@ -284,10 +286,11 @@ export default function PosTransactionsPage() {
 
   useEffect(() => {
     if (!config) return;
-    if (!formConfigs[config.masterTable]) return;
+    const tables = [config.masterTable, ...config.tables.map((t) => t.table)];
+    if (!tables.every((tbl) => formConfigs[tbl])) return;
     if (initRef.current === name) return;
     initRef.current = name;
-    handleNew(true);
+    handleNew();
   }, [config, formConfigs, name]);
 
   useEffect(() => {
@@ -416,25 +419,60 @@ export default function PosTransactionsPage() {
       if (!next[tbl]) next[tbl] = {};
       next[tbl][config.statusField.field] = config.statusField.beforePost;
     }
-    // fill defaults when missing
+    // fill defaults and system fields when missing
     Object.entries(formConfigs).forEach(([tbl, fc]) => {
       const defs = fc.defaultValues || {};
-      if (!next[tbl]) next[tbl] = {};
-      Object.entries(defs).forEach(([k, v]) => {
-        if (next[tbl][k] === undefined) next[tbl][k] = v;
-      });
+      if (!next[tbl]) next[tbl] = Array.isArray(values[tbl]) ? [] : {};
+      const applyDefaults = (row) => {
+        const updated = { ...row };
+        Object.entries(defs).forEach(([k, v]) => {
+          if (updated[k] === undefined) updated[k] = v;
+        });
+        if (fc.userIdFields && user?.empid !== undefined) {
+          fc.userIdFields.forEach((f) => {
+            if (updated[f] === undefined) updated[f] = user.empid;
+          });
+        }
+        if (fc.branchIdFields && company?.branch_id !== undefined) {
+          fc.branchIdFields.forEach((f) => {
+            if (updated[f] === undefined) updated[f] = company.branch_id;
+          });
+        }
+        if (fc.companyIdFields && company?.company_id !== undefined) {
+          fc.companyIdFields.forEach((f) => {
+            if (updated[f] === undefined) updated[f] = company.company_id;
+          });
+        }
+        if (fc.transactionTypeField && fc.transactionTypeValue) {
+          if (updated[fc.transactionTypeField] === undefined) {
+            updated[fc.transactionTypeField] = fc.transactionTypeValue;
+          }
+        }
+        return updated;
+      };
+      if (Array.isArray(next[tbl])) {
+        next[tbl] = next[tbl].map((row) => applyDefaults(row));
+      } else {
+        next[tbl] = applyDefaults(next[tbl]);
+      }
     });
 
     const mid = masterIdRef.current;
     const masterSf = sessionFields.find((f) => f.table === config.masterTable);
     const sid = masterSf ? next[config.masterTable]?.[masterSf.field] : pendingId || 'pos_' + Date.now().toString(36);
 
+    const session = {
+      employeeId: user?.empid,
+      companyId: company?.company_id,
+      branchId: company?.branch_id,
+      date: new Date().toISOString(),
+    };
     try {
       const res = await fetch('/api/pos_txn_pending', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ id: sid, name, data: next, masterId: mid }),
+        body: JSON.stringify({ id: sid, name, data: next, masterId: mid, session }),
       });
       const js = await res.json().catch(() => ({}));
       if (js.id) {
@@ -537,12 +575,18 @@ export default function PosTransactionsPage() {
       else single[t.table] = payload[t.table];
     });
     const postData = { masterId: masterIdRef.current, single, multi };
+    const session = {
+      employeeId: user?.empid,
+      companyId: company?.company_id,
+      branchId: company?.branch_id,
+      date: new Date().toISOString(),
+    };
     try {
       const res = await fetch('/api/pos_txn_post', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ name, data: postData }),
+        body: JSON.stringify({ name, data: postData, session }),
       });
       if (res.ok) {
         if (pendingId) {
@@ -633,7 +677,14 @@ export default function PosTransactionsPage() {
       <h2>{config?.label || 'POS Transactions'}</h2>
       {configNames.length > 0 && (
         <div style={{ marginBottom: '0.5rem' }}>
-          <select value={name} onChange={e => setName(e.target.value)}>
+          <select
+            value={name}
+            onChange={e => {
+              const newName = e.target.value;
+              setName(newName);
+              initRef.current = '';
+            }}
+          >
             <option value="">-- select config --</option>
             {configNames.map(n => (
               <option key={n} value={n}>{n}</option>
