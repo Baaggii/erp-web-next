@@ -32,8 +32,9 @@ const RowFormModal = function RowFormModal({
   inline = false,
   useGrid = false,
   fitted = false,
-  labelSize = 100,
-  boxSize = 180,
+  labelFontSize = 14,
+  boxWidth = 180,
+  boxHeight = 30,
   onNextForm = null,
 }) {
   const mounted = useRef(false);
@@ -236,10 +237,16 @@ const RowFormModal = function RowFormModal({
       }
     : { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' };
   const labelStyle = fitted
-    ? { display: 'inline-block', width: `${labelSize}px`, minWidth: `${labelSize}px` }
+    ? { fontSize: `${labelFontSize}px` }
     : undefined;
   const inputStyle = fitted
-    ? { fontSize: 'inherit', padding: '0.25rem 0.5rem', width: `${boxSize}px`, minWidth: `${boxSize}px` }
+    ? {
+        fontSize: 'inherit',
+        padding: '0.25rem 0.5rem',
+        width: `${boxWidth}px`,
+        height: `${boxHeight}px`,
+        maxWidth: '100%',
+      }
     : undefined;
 
   function handleKeyDown(e, col) {
@@ -740,9 +747,9 @@ const RowFormModal = function RowFormModal({
   if (inline) {
     return (
       <div
-        className={fitted ? 'space-y-2' : 'p-4 space-y-4'}
+        className={fitted ? 'p-4 space-y-2' : 'p-4 space-y-4'}
         ref={wrapRef}
-        style={{ transform: `scale(${zoom})`, transformOrigin: '0 0', padding: fitted ? 0 : undefined }}
+        style={{ transform: `scale(${zoom})`, transformOrigin: '0 0' }}
       >
         {renderHeaderTable(headerCols)}
         {renderMainTable(mainCols)}
@@ -764,7 +771,7 @@ const RowFormModal = function RowFormModal({
           e.preventDefault();
           submitForm();
         }}
-        className={fitted ? 'space-y-2' : 'p-4 space-y-4'}
+        className={fitted ? 'p-4 space-y-2' : 'p-4 space-y-4'}
       >
         {renderHeaderTable(headerCols)}
         {renderMainTable(mainCols)}

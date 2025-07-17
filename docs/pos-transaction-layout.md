@@ -4,20 +4,22 @@ Forms used by POS transactions support a special **fitted** view. In this mode a
 
 ```json
 {
-  "labelSize": 100,
-  "boxSize": 180
+  "labelFontSize": 14,
+  "boxWidth": 180,
+  "boxHeight": 30
 }
 ```
 
-`labelSize` controls the pixel width of each label while `boxSize` defines the width of the input element. When omitted, the defaults are `100` and `180` respectively. Only fitted forms apply these settings.
+`labelFontSize` sets the label text size while `boxWidth` and `boxHeight` limit the input width and height. When omitted, the defaults are `14`, `180` and `30` respectively. Only fitted forms apply these settings.
 
 Example configuration snippet:
 
 ```json
 {
   "sales": {
-    "labelSize": 120,
-    "boxSize": 200,
+    "labelFontSize": 16,
+    "boxWidth": 200,
+    "boxHeight": 32,
     "tables": []
   }
 }

@@ -3,8 +3,9 @@ import { useToast } from '../context/ToastContext.jsx';
 
 const emptyConfig = {
   label: '',
-  labelSize: 100,
-  boxSize: 180,
+  labelFontSize: 14,
+  boxWidth: 180,
+  boxHeight: 30,
   masterTable: '',
   masterForm: '',
   masterType: 'single',
@@ -131,8 +132,9 @@ export default function PosTxnConfig() {
         loaded.tables = rest.map((t) => ({ view: 'fitted', ...t }));
       }
       if (!loaded.masterView) loaded.masterView = 'fitted';
-      if (loaded.labelSize === undefined) loaded.labelSize = 100;
-      if (loaded.boxSize === undefined) loaded.boxSize = 180;
+      if (loaded.labelFontSize === undefined) loaded.labelFontSize = 14;
+      if (loaded.boxWidth === undefined) loaded.boxWidth = 180;
+      if (loaded.boxHeight === undefined) loaded.boxHeight = 30;
       if (loaded.label === undefined) loaded.label = '';
       if (Array.isArray(loaded.calcFields)) {
         loaded.calcFields = loaded.calcFields.map((row, rIdx) => {
@@ -429,20 +431,29 @@ export default function PosTxnConfig() {
           />
         </label>
         <label style={{ marginRight: '0.5rem' }}>
-          Label Size:
+          Label Font Size:
           <input
             type="number"
-            value={config.labelSize}
-            onChange={(e) => setConfig((c) => ({ ...c, labelSize: Number(e.target.value) }))}
+            value={config.labelFontSize}
+            onChange={(e) => setConfig((c) => ({ ...c, labelFontSize: Number(e.target.value) }))}
+            style={{ marginLeft: '0.25rem', width: '6rem' }}
+          />
+        </label>
+        <label style={{ marginRight: '0.5rem' }}>
+          Box Width:
+          <input
+            type="number"
+            value={config.boxWidth}
+            onChange={(e) => setConfig((c) => ({ ...c, boxWidth: Number(e.target.value) }))}
             style={{ marginLeft: '0.25rem', width: '6rem' }}
           />
         </label>
         <label>
-          Box Size:
+          Box Height:
           <input
             type="number"
-            value={config.boxSize}
-            onChange={(e) => setConfig((c) => ({ ...c, boxSize: Number(e.target.value) }))}
+            value={config.boxHeight}
+            onChange={(e) => setConfig((c) => ({ ...c, boxHeight: Number(e.target.value) }))}
             style={{ marginLeft: '0.25rem', width: '6rem' }}
           />
         </label>
