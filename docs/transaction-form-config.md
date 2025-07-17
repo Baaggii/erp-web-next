@@ -9,8 +9,10 @@ Each **transaction** entry allows you to specify:
 - **requiredFields** – columns that cannot be left empty
 - **defaultValues** – map of column default values
 - **editableDefaultFields** – list of columns where users may change the prefilled default
+- **editableFields** – list of columns that remain editable in the form
 - **userIdFields** – fields automatically filled with the creating user ID
 - **branchIdFields** – fields automatically filled with the branch ID
+- **departmentIdFields** – fields automatically filled with the department ID
 - **companyIdFields** – fields automatically filled with the company ID
 - **dateField** – list of columns treated as date for default filtering
 - **emailField** – list of columns that store email addresses
