@@ -1,1 +1,7 @@
-{}
+{
+  "example": {
+    "labelSize": 100,
+    "boxSize": 180,
+    "tables": []
+  }
+}

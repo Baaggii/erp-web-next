@@ -676,6 +676,8 @@ export default function PosTransactionsPage() {
                       onSubmit={(row) => handleSubmit(t.table, row)}
                       useGrid={t.view === 'table' || t.type === 'multi'}
                       fitted={t.view === 'fitted'}
+                      labelSize={config.labelSize}
+                      boxSize={config.boxSize}
                       onNextForm={() => focusFirst(formList[idx + 1]?.table)}
                     />
                   </div>
