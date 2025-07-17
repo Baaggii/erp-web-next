@@ -107,17 +107,27 @@ const RowFormModal = function RowFormModal({
 
   useEffect(() => {
     if (!fitted) return;
+    const wrap = wrapRef.current;
+    const parent = wrap?.parentElement || null;
+
     function updateZoom() {
-      if (!wrapRef.current) return;
-      const { scrollWidth, scrollHeight } = wrapRef.current;
-      const wRatio = scrollWidth ? window.innerWidth / scrollWidth : 1;
-      const hRatio = scrollHeight ? window.innerHeight / scrollHeight : 1;
+      if (!wrap || !parent) return;
+      const { scrollWidth, scrollHeight } = wrap;
+      const wRatio = scrollWidth ? parent.clientWidth / scrollWidth : 1;
+      const hRatio = scrollHeight ? parent.clientHeight / scrollHeight : 1;
       const s = Math.min(1, wRatio, hRatio);
       setZoom(s);
     }
+
     updateZoom();
+    const ro = parent ? new ResizeObserver(updateZoom) : null;
+    if (ro && parent) ro.observe(parent);
     window.addEventListener('resize', updateZoom);
-    return () => window.removeEventListener('resize', updateZoom);
+
+    return () => {
+      if (ro && parent) ro.disconnect();
+      window.removeEventListener('resize', updateZoom);
+    };
   }, [fitted, visible]);
   const placeholders = React.useMemo(() => {
     const map = {};
