@@ -9,12 +9,12 @@ router.get('/', requireAuth, async (req, res, next) => {
     const { id, name } = req.query;
     if (id) {
       const rec = await getPending(id);
-      if (!rec || (rec.userId && rec.userId !== req.user.id)) {
+      if (!rec || (rec.session?.employeeId && rec.session.employeeId !== req.user.empid)) {
         return res.status(404).json({ message: 'Not found' });
       }
       res.json(rec || {});
     } else {
-      const list = await listPending(name, req.user.id);
+      const list = await listPending(name, req.user.empid);
       res.json(list);
     }
   } catch (err) {
@@ -24,9 +24,10 @@ router.get('/', requireAuth, async (req, res, next) => {
 
 router.post('/', requireAuth, async (req, res, next) => {
   try {
-    const { id, name, data, masterId } = req.body;
+    const { id, name, data, masterId, session } = req.body;
     if (!name) return res.status(400).json({ message: 'name is required' });
-    const result = await savePending(id, { name, data, masterId }, req.user.id);
+    const info = { ...(session || {}), employeeId: req.user.empid };
+    const result = await savePending(id, { name, data, masterId, session: info }, req.user.empid);
     res.json({ id: result.id });
   } catch (err) {
     next(err);

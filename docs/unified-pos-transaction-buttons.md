@@ -13,9 +13,13 @@ This module includes a single set of buttons used by every POS transaction confi
 - Auto-fills any missing default values for each form before saving.
 - Updates the `statusField` to the `beforePost` value so the transaction can be resumed later.
 - Returns an ID for the pending transaction which is required for Delete or POST.
+- The saved entry includes the employee, company and branch used when saving.
+- Pending records are stored in `config/posPendingTransactions.json` together
+  with the save date so each employee can resume their own work later.
 
 ## Load
 - Lists pending transaction IDs saved for the chosen configuration.
+- Only transactions created by the logged in employee are listed.
 - Loads the master and all child tables for the selected ID with session-based field mapping and restores the master ID.
 - The Load button is enabled whenever a configuration is selected.
 

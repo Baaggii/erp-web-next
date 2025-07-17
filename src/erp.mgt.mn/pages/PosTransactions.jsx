@@ -431,12 +431,18 @@ export default function PosTransactionsPage() {
     const masterSf = sessionFields.find((f) => f.table === config.masterTable);
     const sid = masterSf ? next[config.masterTable]?.[masterSf.field] : pendingId || 'pos_' + Date.now().toString(36);
 
+    const session = {
+      employeeId: user?.empid,
+      companyId: company?.company_id,
+      branchId: company?.branch_id,
+      date: new Date().toISOString(),
+    };
     try {
       const res = await fetch('/api/pos_txn_pending', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ id: sid, name, data: next, masterId: mid }),
+        body: JSON.stringify({ id: sid, name, data: next, masterId: mid, session }),
       });
       const js = await res.json().catch(() => ({}));
       if (js.id) {
