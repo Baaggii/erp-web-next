@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 
 export default function Modal({ visible, title, onClose, children, width = 'auto' }) {
   const [closing, setClosing] = useState(false);
@@ -77,25 +76,15 @@ export default function Modal({ visible, title, onClose, children, width = 'auto
     alignItems: 'center',
   };
 
-  const content = (
-    <div
-      style={overlayStyle}
-      onClick={(e) => e.target === e.currentTarget && handleClose()}
-    >
+  return (
+    <div style={overlayStyle} onClick={(e) => e.target === e.currentTarget && handleClose()}>
       <div ref={modalRef} style={modalStyle}>
         <div style={headerStyle} onMouseDown={startDrag}>
           <span>{title}</span>
-          <button
-            onClick={handleClose}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem' }}
-          >
-            ×
-          </button>
+          <button onClick={handleClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem' }}>×</button>
         </div>
         <div style={{ padding: '1rem' }}>{children}</div>
       </div>
     </div>
   );
-  return createPortal(content, document.body);
 }
-
