@@ -119,6 +119,9 @@ export default function PosTransactionsPage() {
   const [columnMeta, setColumnMeta] = useState({});
   const [values, setValues] = useState({});
   const [layout, setLayout] = useState({});
+  const [relationsMap, setRelationsMap] = useState({});
+  const [relationConfigs, setRelationConfigs] = useState({});
+  const [relationData, setRelationData] = useState({});
   const [pendingId, setPendingId] = useState(null);
   const [sessionFields, setSessionFields] = useState([]);
   const [masterId, setMasterId] = useState(null);
@@ -127,6 +130,67 @@ export default function PosTransactionsPage() {
   const masterIdRef = useRef(null);
   const refs = useRef({});
   const dragInfo = useRef(null);
+
+  async function loadRelations(tbl) {
+    try {
+      const res = await fetch(`/api/tables/${encodeURIComponent(tbl)}/relations`, { credentials: 'include' });
+      if (!res.ok) return;
+      const rels = await res.json().catch(() => []);
+      const dataMap = {};
+      const cfgMap = {};
+      const rowMap = {};
+      for (const r of rels) {
+        const refTbl = r.REFERENCED_TABLE_NAME;
+        const refCol = r.REFERENCED_COLUMN_NAME;
+        let cfg = null;
+        try {
+          const cRes = await fetch(`/api/display_fields?table=${encodeURIComponent(refTbl)}`, { credentials: 'include' });
+          if (cRes.ok) cfg = await cRes.json().catch(() => null);
+        } catch {
+          cfg = null;
+        }
+        let page = 1;
+        const perPage = 500;
+        let rows = [];
+        while (true) {
+          const params = new URLSearchParams({ page, perPage });
+          const refRes = await fetch(`/api/tables/${encodeURIComponent(refTbl)}?${params.toString()}`, { credentials: 'include' });
+          if (!refRes.ok) break;
+          const js = await refRes.json().catch(() => ({}));
+          if (Array.isArray(js.rows)) {
+            rows = rows.concat(js.rows);
+            if (rows.length >= (js.count || rows.length) || js.rows.length < perPage) break;
+          } else break;
+          page += 1;
+        }
+        const opts = [];
+        const rMap = {};
+        rows.forEach((row) => {
+          const val = row[refCol];
+          const parts = [];
+          if (val !== undefined) parts.push(val);
+          let displayFields = [];
+          if (cfg && Array.isArray(cfg.displayFields) && cfg.displayFields.length > 0) {
+            displayFields = cfg.displayFields;
+          } else {
+            displayFields = Object.keys(row).filter((f) => f !== refCol).slice(0, 1);
+          }
+          parts.push(...displayFields.map((f) => row[f]).filter((v) => v !== undefined));
+          const label = parts.join(' - ');
+          opts.push({ value: val, label });
+          rMap[val] = row;
+        });
+        if (opts.length > 0) dataMap[r.COLUMN_NAME] = opts;
+        if (Object.keys(rMap).length > 0) rowMap[r.COLUMN_NAME] = rMap;
+        cfgMap[r.COLUMN_NAME] = { table: refTbl, column: refCol, displayFields: cfg?.displayFields || [] };
+      }
+      setRelationsMap((m) => ({ ...m, [tbl]: dataMap }));
+      setRelationConfigs((m) => ({ ...m, [tbl]: cfgMap }));
+      setRelationData((m) => ({ ...m, [tbl]: rowMap }));
+    } catch {
+      /* ignore */
+    }
+  }
 
   useEffect(() => {
     masterIdRef.current = masterId;
@@ -161,6 +225,9 @@ export default function PosTransactionsPage() {
         setConfig(cfg);
         setFormConfigs({});
         setValues({});
+        setRelationsMap({});
+        setRelationConfigs({});
+        setRelationData({});
       })
       .catch(() => { setConfig(null); });
     fetch(`/api/pos_txn_layout?name=${encodeURIComponent(name)}`, { credentials: 'include' })
@@ -182,7 +249,10 @@ export default function PosTransactionsPage() {
         .catch(() => {});
       fetch(`/api/tables/${encodeURIComponent(tbl)}/columns`, { credentials: 'include' })
         .then(res => res.ok ? res.json() : [])
-        .then(cols => setColumnMeta(m => ({ ...m, [tbl]: cols || [] })))
+        .then(cols => {
+          setColumnMeta(m => ({ ...m, [tbl]: cols || [] }));
+          loadRelations(tbl);
+        })
         .catch(() => {});
     });
   }, [config]);
@@ -580,7 +650,7 @@ export default function PosTransactionsPage() {
 
   return (
     <div>
-      <h2>POS Transactions</h2>
+      <h2>{config?.label || 'POS Transactions'}</h2>
       {configNames.length > 0 && (
         <div style={{ marginBottom: '0.5rem' }}>
           <select value={name} onChange={e => setName(e.target.value)}>
@@ -671,11 +741,16 @@ export default function PosTransactionsPage() {
                       rows={t.type === 'multi' ? values[t.table] : undefined}
                       headerFields={headerFields}
                       defaultValues={fc.defaultValues || {}}
+                      relations={relationsMap[t.table] || {}}
+                      relationConfigs={relationConfigs[t.table] || {}}
+                      relationData={relationData[t.table] || {}}
                       onChange={(changes) => handleChange(t.table, changes)}
                       onRowsChange={(rows) => handleRowsChange(t.table, rows)}
                       onSubmit={(row) => handleSubmit(t.table, row)}
                       useGrid={t.view === 'table' || t.type === 'multi'}
                       fitted={t.view === 'fitted'}
+                      labelSize={config.labelSize}
+                      boxSize={config.boxSize}
                       onNextForm={() => focusFirst(formList[idx + 1]?.table)}
                     />
                   </div>
