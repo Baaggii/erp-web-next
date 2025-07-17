@@ -284,10 +284,11 @@ export default function PosTransactionsPage() {
 
   useEffect(() => {
     if (!config) return;
-    if (!formConfigs[config.masterTable]) return;
+    const tables = [config.masterTable, ...config.tables.map(t => t.table)];
+    if (!tables.every(tbl => formConfigs[tbl])) return;
     if (initRef.current === name) return;
     initRef.current = name;
-    handleNew(true);
+    handleNew();
   }, [config, formConfigs, name]);
 
   useEffect(() => {

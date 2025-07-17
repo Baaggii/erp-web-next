@@ -2,6 +2,8 @@
 
 This module includes a single set of buttons used by every POS transaction configuration. Each button drives multiple tables using the mapping rules from `posTransactionConfig.json`.
 
+When a configuration is selected the page automatically performs the **New** action so every form starts with a fresh `pos_` session.
+
 ## New
 - Generates a session ID prefixed with `pos_` and applies it to every field mapped via `calcFields` or `posFields`.
 - Fills default values for **all** forms including hidden ones so every table is ready for input.
@@ -16,6 +18,7 @@ This module includes a single set of buttons used by every POS transaction confi
 
 ## Load
 - Lists pending transaction IDs saved for the chosen configuration.
+- Only transactions created by the current user are listed.
 - Loads the master and all child tables for the selected ID with session-based field mapping and restores the master ID.
 - The Load button is enabled whenever a configuration is selected.
 
