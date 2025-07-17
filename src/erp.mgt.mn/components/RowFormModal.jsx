@@ -32,6 +32,8 @@ const RowFormModal = function RowFormModal({
   inline = false,
   useGrid = false,
   fitted = false,
+  labelSize = 100,
+  boxSize = 180,
   onNextForm = null,
 }) {
   const mounted = useRef(false);
@@ -225,7 +227,7 @@ const RowFormModal = function RowFormModal({
       ? columns.filter((c) => mainSet.has(c))
       : columns.filter((c) => !headerSet.has(c) && !footerSet.has(c));
 
-  const formGridClass = 'grid gap-2';
+  const formGridClass = fitted ? 'grid gap-1' : 'grid gap-2';
   const formGridStyle = fitted
     ? {
         gridTemplateColumns: 'repeat(auto-fit, minmax(min(20rem, 40vw), 1fr))',
@@ -233,8 +235,11 @@ const RowFormModal = function RowFormModal({
         fontSize: 'calc(0.65rem + 0.35vw + 0.35vh)',
       }
     : { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' };
+  const labelStyle = fitted
+    ? { display: 'inline-block', width: `${labelSize}px`, minWidth: `${labelSize}px` }
+    : undefined;
   const inputStyle = fitted
-    ? { fontSize: 'inherit', padding: '0.25rem 0.5rem' }
+    ? { fontSize: 'inherit', padding: '0.25rem 0.5rem', width: `${boxSize}px`, minWidth: `${boxSize}px` }
     : undefined;
 
   function handleKeyDown(e, col) {
@@ -477,8 +482,8 @@ const RowFormModal = function RowFormModal({
     if (!withLabel) return <>{control}</>;
 
     return (
-      <div key={c} className="mb-3">
-        <label className="block mb-1 font-medium">
+      <div key={c} className={fitted ? 'mb-1' : 'mb-3'}>
+        <label className="block mb-1 font-medium" style={labelStyle}>
           {labels[c] || c}
           {requiredFields.includes(c) && (
             <span className="text-red-500">*</span>
@@ -494,7 +499,7 @@ const RowFormModal = function RowFormModal({
     if (cols.length === 0) return null;
     if (fitted) {
       return (
-        <div className="mb-4">
+        <div className="mb-1">
           <h3 className="mt-0 mb-1 font-semibold">Main</h3>
           <div className={formGridClass} style={formGridStyle}>
             {cols.map((c) => renderField(c))}
@@ -602,8 +607,8 @@ const RowFormModal = function RowFormModal({
             }
           }
           return (
-            <div key={c} className="mb-3">
-              <label className="block mb-1 font-medium">{labels[c] || c}</label>
+            <div key={c} className={fitted ? 'mb-1' : 'mb-3'}>
+              <label className="block mb-1 font-medium" style={labelStyle}>{labels[c] || c}</label>
               <input
                 type="text"
                 value={val}
@@ -618,7 +623,7 @@ const RowFormModal = function RowFormModal({
     );
     if (fitted) {
       return (
-        <div className="mb-4">
+        <div className="mb-1">
           <h3 className="mt-0 mb-1 font-semibold">Header</h3>
           {grid}
         </div>
@@ -659,7 +664,7 @@ const RowFormModal = function RowFormModal({
   function renderSection(title, cols) {
     if (cols.length === 0) return null;
     return (
-      <div className="mb-2">
+      <div className={fitted ? 'mb-1' : 'mb-2'}>
         <h3 className="mt-0 mb-1 font-semibold">{title}</h3>
         <div className={formGridClass} style={formGridStyle}>
           {cols.map((c) => renderField(c))}
@@ -734,7 +739,11 @@ const RowFormModal = function RowFormModal({
 
   if (inline) {
     return (
-      <div className="p-4 space-y-4" ref={wrapRef} style={{ transform: `scale(${zoom})`, transformOrigin: '0 0' }}>
+      <div
+        className={fitted ? 'space-y-2' : 'p-4 space-y-4'}
+        ref={wrapRef}
+        style={{ transform: `scale(${zoom})`, transformOrigin: '0 0', padding: fitted ? 0 : undefined }}
+      >
         {renderHeaderTable(headerCols)}
         {renderMainTable(mainCols)}
         {renderSection('Footer', footerCols)}
@@ -750,12 +759,12 @@ const RowFormModal = function RowFormModal({
     >
       <form
         ref={wrapRef}
-        style={{ transform: `scale(${zoom})`, transformOrigin: '0 0' }}
+        style={{ transform: `scale(${zoom})`, transformOrigin: '0 0', padding: fitted ? 0 : undefined }}
         onSubmit={(e) => {
           e.preventDefault();
           submitForm();
         }}
-        className="p-4 space-y-4"
+        className={fitted ? 'space-y-2' : 'p-4 space-y-4'}
       >
         {renderHeaderTable(headerCols)}
         {renderMainTable(mainCols)}
