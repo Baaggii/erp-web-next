@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useContext } from 'react';
 import RowFormModal from '../components/RowFormModal.jsx';
 import Modal from '../components/Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
+import { AuthContext } from '../context/AuthContext.jsx';
 
 function parseErrorField(msg) {
   if (!msg) return null;
@@ -112,6 +113,7 @@ async function putRow(addToast, table, id, row) {
 
 export default function PosTransactionsPage() {
   const { addToast } = useToast();
+  const { user, company } = useContext(AuthContext);
   const [configs, setConfigs] = useState({});
   const [name, setName] = useState('');
   const [config, setConfig] = useState(null);
@@ -429,12 +431,18 @@ export default function PosTransactionsPage() {
     const masterSf = sessionFields.find((f) => f.table === config.masterTable);
     const sid = masterSf ? next[config.masterTable]?.[masterSf.field] : pendingId || 'pos_' + Date.now().toString(36);
 
+    const session = {
+      employeeId: user?.empid,
+      companyId: company?.company_id,
+      branchId: company?.branch_id,
+      date: new Date().toISOString(),
+    };
     try {
       const res = await fetch('/api/pos_txn_pending', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ id: sid, name, data: next, masterId: mid }),
+        body: JSON.stringify({ id: sid, name, data: next, masterId: mid, session }),
       });
       const js = await res.json().catch(() => ({}));
       if (js.id) {
@@ -537,12 +545,18 @@ export default function PosTransactionsPage() {
       else single[t.table] = payload[t.table];
     });
     const postData = { masterId: masterIdRef.current, single, multi };
+    const session = {
+      employeeId: user?.empid,
+      companyId: company?.company_id,
+      branchId: company?.branch_id,
+      date: new Date().toISOString(),
+    };
     try {
       const res = await fetch('/api/pos_txn_post', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ name, data: postData }),
+        body: JSON.stringify({ name, data: postData, session }),
       });
       if (res.ok) {
         if (pendingId) {
@@ -633,7 +647,18 @@ export default function PosTransactionsPage() {
       <h2>{config?.label || 'POS Transactions'}</h2>
       {configNames.length > 0 && (
         <div style={{ marginBottom: '0.5rem' }}>
-          <select value={name} onChange={e => setName(e.target.value)}>
+          <select
+            value={name}
+            onChange={e => {
+              const newName = e.target.value;
+              if (newName === name) {
+                handleNew();
+              } else {
+                setName(newName);
+                initRef.current = '';
+              }
+            }}
+          >
             <option value="">-- select config --</option>
             {configNames.map(n => (
               <option key={n} value={n}>{n}</option>
