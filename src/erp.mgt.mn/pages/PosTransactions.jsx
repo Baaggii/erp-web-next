@@ -646,7 +646,7 @@ export default function PosTransactionsPage() {
                     style={{
                       border: '1px solid #ccc',
                       resize: 'both',
-                      overflow: t.view === 'fitted' ? 'visible' : 'auto',
+                      overflow: 'auto',
                       width: saved.width || 'auto',
                       height: saved.height || 'auto',
                       margin: '-1px',
