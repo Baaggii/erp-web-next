@@ -6,11 +6,11 @@ import {
   setFormConfig,
   deleteFormConfig,
 } from '../services/transactionFormConfig.js';
-import { requireAuth, requireAdmin } from '../middlewares/auth.js';
+import { requireAuth, requireAdmin, requireRoles } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-router.get('/', requireAuth, requireAdmin, async (req, res, next) => {
+router.get('/', requireAuth, requireRoles(['admin', 'employee']), async (req, res, next) => {
   try {
     const { table, name, moduleKey, branchId, departmentId } = req.query;
     if (table && name) {
