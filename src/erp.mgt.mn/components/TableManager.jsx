@@ -150,6 +150,13 @@ const TableManager = forwardRef(function TableManager({
   const { addToast } = useToast();
 
   const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
+  const columnCaseMap = useMemo(() => {
+    const map = {};
+    columnMeta.forEach((c) => {
+      map[c.name.toLowerCase()] = c.name;
+    });
+    return map;
+  }, [columnMeta]);
 
   const branchIdFields = useMemo(() => {
     if (formConfig?.branchIdFields?.length)
@@ -689,7 +696,6 @@ const TableManager = forwardRef(function TableManager({
     if (!editing) return;
     setEditing((e) => {
       const next = { ...e, ...changes };
-      const colSet = new Set(columnMeta.map((c) => c.name));
       Object.entries(changes).forEach(([field, val]) => {
         const conf = relationConfigs[field];
         let value = val;
@@ -699,8 +705,9 @@ const TableManager = forwardRef(function TableManager({
         if (conf && conf.displayFields && refRows[field]?.[value]) {
           const row = refRows[field][value];
           conf.displayFields.forEach((df) => {
-            if (colSet.has(df) && row[df] !== undefined) {
-              next[df] = row[df];
+            const key = columnCaseMap[df.toLowerCase()];
+            if (key && row[df] !== undefined) {
+              next[key] = row[df];
             }
           });
         }

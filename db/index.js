@@ -40,8 +40,9 @@ async function getTableColumnsSafe(tableName) {
 }
 
 function ensureValidColumns(columns, names) {
+  const lower = new Set(columns.map((c) => c.toLowerCase()));
   for (const name of names) {
-    if (!columns.includes(name)) {
+    if (!lower.has(String(name).toLowerCase())) {
       throw new Error(`Invalid column name: ${name}`);
     }
   }
