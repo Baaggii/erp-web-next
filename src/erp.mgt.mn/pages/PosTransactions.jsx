@@ -129,9 +129,18 @@ export default function PosTransactionsPage() {
   const [masterId, setMasterId] = useState(null);
   const [pendingList, setPendingList] = useState([]);
   const [showLoadModal, setShowLoadModal] = useState(false);
+  const [postedId, setPostedId] = useState(null);
+  const [isNarrow, setIsNarrow] = useState(false);
   const masterIdRef = useRef(null);
   const refs = useRef({});
   const dragInfo = useRef(null);
+
+  useEffect(() => {
+    const check = () => setIsNarrow(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
 
   async function loadRelations(tbl) {
     try {
@@ -320,12 +329,48 @@ export default function PosTransactionsPage() {
     });
   }, [masterSessionValue, config, sessionFields]);
 
+  function recalcTotals(vals) {
+    if (!config || !config.masterTable) return vals;
+    const totals = { total_quantity: 0, total_amount: 0, total_discount: 0 };
+    for (const t of config.tables) {
+      if (t.type !== 'multi') continue;
+      const rows = Array.isArray(vals[t.table]) ? vals[t.table] : [];
+      rows.forEach((r) => {
+        Object.entries(r || {}).forEach(([k, v]) => {
+          const key = k.toLowerCase();
+          const num = Number(v) || 0;
+          if (key.includes('qty')) totals.total_quantity += num;
+          if (key.includes('amount') || key.includes('amt')) totals.total_amount += num;
+          if (key.includes('discount') || key.includes('disc')) totals.total_discount += num;
+        });
+      });
+    }
+    const masterTbl = config.masterTable;
+    return {
+      ...vals,
+      [masterTbl]: { ...(vals[masterTbl] || {}), ...totals },
+    };
+  }
+
+  const hasData = React.useMemo(() => {
+    return Object.values(values).some((v) => {
+      if (Array.isArray(v)) return v.length > 0;
+      return v && Object.keys(v).length > 0;
+    });
+  }, [values]);
+
   function handleChange(tbl, changes) {
-    setValues(v => ({ ...v, [tbl]: { ...v[tbl], ...changes } }));
+    setValues(v => {
+      const next = { ...v, [tbl]: { ...v[tbl], ...changes } };
+      return recalcTotals(next);
+    });
   }
 
   function handleRowsChange(tbl, rows) {
-    setValues(v => ({ ...v, [tbl]: Array.isArray(rows) ? rows : [] }));
+    setValues(v => {
+      const next = { ...v, [tbl]: Array.isArray(rows) ? rows : [] };
+      return recalcTotals(next);
+    });
   }
 
   async function handleSubmit(tbl, row) {
@@ -362,9 +407,6 @@ export default function PosTransactionsPage() {
 
   async function handleNew() {
     if (!config) return;
-    const hasData = Object.values(values).some(
-      (v) => v && Object.keys(v).length > 0,
-    );
     if ((pendingId || masterId) && hasData) {
       const save = window.confirm(
         'Save current transaction before starting new?',
@@ -518,20 +560,35 @@ export default function PosTransactionsPage() {
       setMasterId(rec.masterId || null);
       masterIdRef.current = rec.masterId || null;
       addToast('Loaded', 'success');
+    } else {
+      addToast('Load failed', 'error');
     }
   }
 
   async function handleDeletePending() {
     if (!pendingId) return;
-    await fetch(`/api/pos_txn_pending?id=${encodeURIComponent(pendingId)}`, {
-      method: 'DELETE',
-      credentials: 'include',
-    });
-    setPendingId(null);
-    setValues({});
-    setMasterId(null);
-    masterIdRef.current = null;
-    addToast('Deleted', 'success');
+    if (!window.confirm('Delete pending transaction?')) return;
+    try {
+      const res = await fetch(
+        `/api/pos_txn_pending?id=${encodeURIComponent(pendingId)}`,
+        {
+          method: 'DELETE',
+          credentials: 'include',
+        },
+      );
+      if (!res.ok) {
+        const js = await res.json().catch(() => ({}));
+        addToast(js.message || 'Delete failed', 'error');
+        return;
+      }
+      setPendingId(null);
+      setValues({});
+      setMasterId(null);
+      masterIdRef.current = null;
+      addToast('Deleted', 'success');
+    } catch (err) {
+      addToast(`Delete failed: ${err.message}`, 'error');
+    }
   }
 
   async function handlePostAll() {
@@ -596,6 +653,8 @@ export default function PosTransactionsPage() {
           });
         }
         setPendingId(null);
+        const js = await res.json().catch(() => ({}));
+        if (js.id) setPostedId(js.id);
         if (config.statusField?.table && config.statusField.field && config.statusField.posted) {
           setValues(v => ({
             ...v,
@@ -699,18 +758,28 @@ export default function PosTransactionsPage() {
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
             <button onClick={handleNew} style={{ marginRight: '0.5rem' }}>New</button>
-            <button onClick={handleSavePending} style={{ marginRight: '0.5rem' }}>Save</button>
-            <button onClick={handleLoadPending} style={{ marginRight: '0.5rem' }}>Load</button>
+            <button onClick={handleSavePending} style={{ marginRight: '0.5rem' }} disabled={!name || !hasData}>Save</button>
+            <button onClick={handleLoadPending} style={{ marginRight: '0.5rem' }} disabled={!name}>Load</button>
             <button onClick={handleDeletePending} style={{ marginRight: '0.5rem' }} disabled={!pendingId}>Delete</button>
             <button onClick={handlePostAll} disabled={!pendingId}>POST</button>
           </div>
+          {(pendingId || postedId) && (
+            <div style={{ marginBottom: '0.5rem' }}>
+              {pendingId && <span style={{ marginRight: '1rem' }}>Pending ID: {pendingId}</span>}
+              {postedId && <span>Posted ID: {postedId}</span>}
+            </div>
+          )}
           <div
-            style={{
-              display: 'grid',
-              gap: '0',
-              gridTemplateColumns: '1fr 1fr 1fr',
-              gridTemplateRows: 'auto auto auto auto auto',
-            }}
+            style={
+              isNarrow
+                ? { display: 'flex', flexDirection: 'column', gap: '0.5rem' }
+                : {
+                    display: 'grid',
+                    gap: '0',
+                    gridTemplateColumns: '1fr 1fr 1fr',
+                    gridTemplateRows: 'auto auto auto auto auto',
+                  }
+            }
           >
             {formList
               .filter(t => t.position !== 'hidden')
@@ -750,10 +819,12 @@ export default function PosTransactionsPage() {
                       overflow: 'auto',
                       width: saved.width || 'auto',
                       height: saved.height || 'auto',
-                      margin: '-1px',
-                      transform: `translate(${saved.x || 0}px, ${saved.y || 0}px)`,
+                      margin: isNarrow ? '0 0 0.5rem 0' : '-1px',
+                      transform: isNarrow
+                        ? undefined
+                        : `translate(${saved.x || 0}px, ${saved.y || 0}px)`,
                       position: 'relative',
-                      ...posStyle,
+                      ...(isNarrow ? {} : posStyle),
                     }}
                   >
                     <h3
