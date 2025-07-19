@@ -36,8 +36,8 @@ test('requireRole blocks non matching role', () => {
 });
 
 test('requireRoles allows any listed role', () => {
-  const middleware = requireRoles(['admin', 'employee']);
-  const req = mockReq('employee');
+  const middleware = requireRoles(['admin', 'user']);
+  const req = mockReq('user');
   const res = mockRes();
   let called = false;
   middleware(req, res, () => { called = true; });
@@ -46,7 +46,7 @@ test('requireRoles allows any listed role', () => {
 });
 
 test('requireRoles blocks missing role', () => {
-  const middleware = requireRoles(['admin', 'employee']);
+  const middleware = requireRoles(['admin', 'user']);
   const req = mockReq('guest');
   const res = mockRes();
   let called = false;
