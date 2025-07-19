@@ -10,7 +10,7 @@ import { requireAuth, requireAdmin, requireRoles } from '../middlewares/auth.js'
 
 const router = express.Router();
 
-router.get('/', requireAuth, requireRoles(['admin', 'user']), async (req, res, next) => {
+router.get('/', requireAuth, requireRoles(['admin', 'employee']), async (req, res, next) => {
   try {
     const { table, name, moduleKey, branchId, departmentId } = req.query;
     if (table && name) {
