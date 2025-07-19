@@ -7,7 +7,6 @@ import csurf from "csurf";
 import { testConnection } from "../db/index.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
 import { logger } from "./middlewares/logging.js";
-import { requireAuth } from "./middlewares/auth.js";
 import authRoutes from "./routes/auth.js";
 import userRoutes from "./routes/users.js";
 import companyRoutes from "./routes/companies.js";
@@ -20,12 +19,6 @@ import headerMappingRoutes from "./routes/header_mappings.js";
 import displayFieldRoutes from "./routes/display_fields.js";
 import codingTableConfigRoutes from "./routes/coding_table_configs.js";
 import generatedSqlRoutes from "./routes/generated_sql.js";
-
-['JWT_SECRET', 'JWT_REFRESH_SECRET', 'DB_PASS'].forEach((k) => {
-  if (process.env[k] === 'changeme') {
-    throw new Error(`Environment variable ${k} must be set`);
-  }
-});
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -43,7 +36,7 @@ app.use(csrfProtection);
 app.use(logger);
 
 // Health-check: also verify DB connection
-app.get("/api/auth/health", requireAuth, async (req, res, next) => {
+app.get("/api/auth/health", async (req, res, next) => {
   try {
     const dbResult = await testConnection();
     if (!dbResult.ok) throw dbResult.error;

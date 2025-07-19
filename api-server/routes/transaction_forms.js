@@ -6,11 +6,11 @@ import {
   setFormConfig,
   deleteFormConfig,
 } from '../services/transactionFormConfig.js';
-import { requireAuth, requireAdmin } from '../middlewares/auth.js';
+import { requireAuth } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-router.get('/', requireAuth, requireAdmin, async (req, res, next) => {
+router.get('/', requireAuth, async (req, res, next) => {
   try {
     const { table, name, moduleKey, branchId, departmentId } = req.query;
     if (table && name) {
@@ -28,7 +28,7 @@ router.get('/', requireAuth, requireAdmin, async (req, res, next) => {
   }
 });
 
-router.post('/', requireAuth, requireAdmin, async (req, res, next) => {
+router.post('/', requireAuth, async (req, res, next) => {
   try {
     const { table, name, config } = req.body;
     if (!table || !name)
@@ -40,7 +40,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res, next) => {
   }
 });
 
-router.delete('/', requireAuth, requireAdmin, async (req, res, next) => {
+router.delete('/', requireAuth, async (req, res, next) => {
   try {
     const { table, name } = req.query;
     if (!table || !name)
