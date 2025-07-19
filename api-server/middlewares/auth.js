@@ -50,14 +50,3 @@ export function requireAuth(req, res, next) {
     return res.status(401).json({ message: 'Invalid or expired token' });
   }
 }
-
-export function requireRole(role) {
-  return function (req, res, next) {
-    if (!req.user || req.user.role !== role) {
-      return res.status(403).json({ message: 'Forbidden' });
-    }
-    next();
-  };
-}
-
-export const requireAdmin = requireRole('admin');

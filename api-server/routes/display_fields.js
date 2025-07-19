@@ -5,11 +5,11 @@ import {
   setDisplayFields,
   removeDisplayFields,
 } from '../services/displayFieldConfig.js';
-import { requireAuth, requireAdmin } from '../middlewares/auth.js';
+import { requireAuth } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-router.get('/', requireAuth, requireAdmin, async (req, res, next) => {
+router.get('/', requireAuth, async (req, res, next) => {
   try {
     const table = req.query.table;
     if (table) {
@@ -24,7 +24,7 @@ router.get('/', requireAuth, requireAdmin, async (req, res, next) => {
   }
 });
 
-router.post('/', requireAuth, requireAdmin, async (req, res, next) => {
+router.post('/', requireAuth, async (req, res, next) => {
   try {
     const { table, idField, displayFields } = req.body;
     if (!table) return res.status(400).json({ message: 'table is required' });
@@ -35,7 +35,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res, next) => {
   }
 });
 
-router.delete('/', requireAuth, requireAdmin, async (req, res, next) => {
+router.delete('/', requireAuth, async (req, res, next) => {
   try {
     const table = req.query.table;
     if (!table) return res.status(400).json({ message: 'table is required' });
