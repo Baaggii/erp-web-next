@@ -47,7 +47,6 @@ export default forwardRef(function InlineTransactionTable({
   defaultValues = {},
   onNextForm = null,
   rows: initRows = [],
-  columnCaseMap = {},
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -248,9 +247,8 @@ export default forwardRef(function InlineTransactionTable({
         if (conf && conf.displayFields && relationData[field]?.[val]) {
           const ref = relationData[field][val];
           conf.displayFields.forEach((df) => {
-            const key = columnCaseMap[df.toLowerCase()];
-            if (key && ref[df] !== undefined) {
-              updated[key] = ref[df];
+            if (ref[df] !== undefined) {
+              updated[df] = ref[df];
             }
           });
         }
@@ -314,14 +312,12 @@ export default forwardRef(function InlineTransactionTable({
     const cleaned = {};
     Object.entries(row).forEach(([k, v]) => {
       if (k === '_saved') return;
-      const key = columnCaseMap[k.toLowerCase()];
-      if (!key) return;
       let val = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
-      if (placeholders[key]) val = normalizeDateInput(val, placeholders[key]);
-      if (totalAmountSet.has(key) || totalCurrencySet.has(key)) {
+      if (placeholders[k]) val = normalizeDateInput(val, placeholders[k]);
+      if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
         val = normalizeNumberInput(val);
       }
-      cleaned[key] = val;
+      cleaned[k] = val;
     });
     const ok = await Promise.resolve(onRowSubmit(cleaned));
     if (ok !== false) {

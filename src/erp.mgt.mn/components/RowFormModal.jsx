@@ -36,7 +36,6 @@ const RowFormModal = function RowFormModal({
   boxWidth = 60,
   boxHeight = 30,
   onNextForm = null,
-  columnCaseMap = {},
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -564,7 +563,6 @@ const RowFormModal = function RowFormModal({
             requiredFields={requiredFields}
             defaultValues={defaultValues}
             rows={rows}
-            columnCaseMap={columnCaseMap}
             onNextForm={onNextForm}
           />
         </div>

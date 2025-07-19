@@ -772,7 +772,7 @@ const TableManager = forwardRef(function TableManager({
     const cleaned = {};
     const skipFields = new Set([...autoCols, 'id']);
     Object.entries(merged).forEach(([k, v]) => {
-      if (skipFields.has(k) || !columns.has(k)) return;
+      if (skipFields.has(k)) return;
       if (v !== '') {
         cleaned[k] =
           typeof v === 'string' ? normalizeDateInput(v, placeholders[k]) : v;
@@ -1763,7 +1763,6 @@ const TableManager = forwardRef(function TableManager({
         printCustField={formConfig?.printCustField || []}
         totalAmountFields={formConfig?.totalAmountFields || []}
         totalCurrencyFields={formConfig?.totalCurrencyFields || []}
-        columnCaseMap={columnCaseMap}
         onRowsChange={setGridRows}
       />
       <CascadeDeleteModal
