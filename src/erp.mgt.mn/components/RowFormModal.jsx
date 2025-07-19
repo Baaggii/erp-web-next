@@ -36,6 +36,8 @@ const RowFormModal = function RowFormModal({
   boxWidth = 60,
   boxHeight = 30,
   onNextForm = null,
+  columnCaseMap = {},
+  viewSource = {},
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -553,6 +555,8 @@ const RowFormModal = function RowFormModal({
             labels={labels}
             totalAmountFields={totalAmountFields}
             totalCurrencyFields={totalCurrencyFields}
+            viewSource={viewSource}
+            columnCaseMap={columnCaseMap}
             collectRows={useGrid}
             minRows={1}
             onRowSubmit={onSubmit}
