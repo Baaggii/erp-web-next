@@ -158,6 +158,8 @@ const TableManager = forwardRef(function TableManager({
     return map;
   }, [columnMeta]);
 
+  const viewSourceMap = formConfig?.viewSource || {};
+
   const branchIdFields = useMemo(() => {
     if (formConfig?.branchIdFields?.length)
       return formConfig.branchIdFields.filter(f => validCols.has(f));
@@ -713,6 +715,35 @@ const TableManager = forwardRef(function TableManager({
         }
       });
       return next;
+    });
+    Object.entries(changes).forEach(([field, val]) => {
+      const view = viewSourceMap[field];
+      if (!view || val === '') return;
+      const params = new URLSearchParams({ perPage: 1 });
+      params.set(field, val);
+      fetch(`/api/tables/${encodeURIComponent(view)}?${params.toString()}`, {
+        credentials: 'include',
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (!data || !Array.isArray(data.rows) || data.rows.length === 0)
+            return;
+          const row = data.rows[0];
+          setEditing((e) => {
+            if (!e) return e;
+            const updated = { ...e };
+            Object.entries(row).forEach(([k, v]) => {
+              const key = columnCaseMap[k.toLowerCase()];
+              if (key && updated[key] === undefined) {
+                updated[key] = v;
+              }
+            });
+            return updated;
+          });
+        })
+        .catch(() => {
+          /* ignore */
+        });
     });
   }
 
@@ -1763,6 +1794,8 @@ const TableManager = forwardRef(function TableManager({
         printCustField={formConfig?.printCustField || []}
         totalAmountFields={formConfig?.totalAmountFields || []}
         totalCurrencyFields={formConfig?.totalCurrencyFields || []}
+        columnCaseMap={columnCaseMap}
+        viewSource={viewSourceMap}
         onRowsChange={setGridRows}
       />
       <CascadeDeleteModal
