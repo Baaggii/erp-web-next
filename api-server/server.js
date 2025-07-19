@@ -30,6 +30,12 @@ import viewsRoutes from "./routes/views.js";
 import transactionRoutes from "./routes/transactions.js";
 import { requireAuth } from "./middlewares/auth.js";
 
+['JWT_SECRET', 'JWT_REFRESH_SECRET', 'DB_PASS'].forEach((k) => {
+  if (process.env[k] === 'changeme') {
+    throw new Error(`Environment variable ${k} must be set`);
+  }
+});
+
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -41,7 +47,7 @@ app.use(cookieParser());
 app.use(logger);
 
 // Health-check: also verify DB connection
-app.get("/api/auth/health", async (req, res, next) => {
+app.get("/api/auth/health", requireAuth, async (req, res, next) => {
   try {
     const dbResult = await testConnection();
     if (!dbResult.ok) throw dbResult.error;

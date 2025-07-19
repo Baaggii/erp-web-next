@@ -14,7 +14,9 @@ export function errorHandler(err, req, res, next) {
   } catch (logErr) {
     console.error('Failed to write error log:', logErr);
   }
-  res
-    .status(err.status || 500)
-    .json({ message: err.message || 'Internal Server Error', stack: err.stack });
+  const body = { message: err.message || 'Internal Server Error' };
+  if (process.env.NODE_ENV === 'development') {
+    body.stack = err.stack;
+  }
+  res.status(err.status || 500).json(body);
 }
