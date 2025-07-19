@@ -21,7 +21,6 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
     console.warn('⚠️ Excessive renders: FinanceTransactions', renderCount.current);
   }
   const [configs, setConfigs] = useState({});
-  const [permError, setPermError] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const paramKey = useMemo(() => `name_${moduleKey}`, [moduleKey]);
   const [sessionState, setSessionState] = useTxnSession(moduleKey);
@@ -122,15 +121,10 @@ useEffect(() => {
       params.set('departmentId', company.department_id);
     fetch(`/api/transaction_forms?${params.toString()}`, { credentials: 'include' })
       .then((res) => {
-        if (res.status === 403) {
-          setPermError(true);
-          return {};
-        }
         if (!res.ok) {
           addToast('Failed to load transaction forms', 'error');
           return {};
         }
-        setPermError(false);
         return res.json().catch(() => {
           addToast('Failed to parse transaction forms', 'error');
           return {};
@@ -166,7 +160,7 @@ useEffect(() => {
         }
       })
       .catch(() => {
-        if (!permError) addToast('Failed to load transaction forms', 'error');
+        addToast('Failed to load transaction forms', 'error');
         setConfigs({});
       });
   }, [moduleKey, company, perms, licensed]);
@@ -212,10 +206,6 @@ useEffect(() => {
   )
     .then((res) => {
       if (canceled) return null;
-      if (res.status === 403) {
-        setPermError(true);
-        return null;
-      }
       if (!res.ok) {
         addToast('Failed to load transaction configuration', 'error');
         return null;
@@ -239,7 +229,7 @@ useEffect(() => {
       if (!canceled) {
         if (config !== null) setConfig(null);
         if (showTable) setShowTable(false);
-        if (!permError) addToast('Failed to load transaction configuration', 'error');
+        addToast('Failed to load transaction configuration', 'error');
       }
     });
   return () => {
@@ -251,8 +241,7 @@ useEffect(() => {
   const transactionNames = useMemo(() => Object.keys(configs), [configs]);
 
   if (!perms || !licensed) return <p>Ачааллаж байна...</p>;
-  if (permError || !perms[moduleKey] || !licensed[moduleKey])
-    return <p>Нэвтрэх эрхгүй.</p>;
+  if (!perms[moduleKey] || !licensed[moduleKey]) return <p>Нэвтрэх эрхгүй.</p>;
 
   const caption = 'Гүйлгээ сонгоно уу';
 
