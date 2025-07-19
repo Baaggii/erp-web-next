@@ -284,9 +284,11 @@ export async function getSettings() {
  * Update application settings
  */
 export async function updateSettings(updates) {
-  const keys = Object.keys(updates);
-  const values = Object.values(updates);
-  const setClause = keys.map((k) => `\`${k}\` = ?`).join(", ");
+  const allowed = ['company_name', 'contact_email'];
+  const keys = Object.keys(updates).filter((k) => allowed.includes(k));
+  if (keys.length === 0) return getSettings();
+  const values = keys.map((k) => updates[k]);
+  const setClause = keys.map((k) => `\`${k}\` = ?`).join(', ');
   await pool.query(`UPDATE settings SET ${setClause}`, values);
   return getSettings();
 }

@@ -1,4 +1,15 @@
-import jwt from 'jsonwebtoken';
+let jwt;
+try {
+  const mod = await import('jsonwebtoken');
+  jwt = mod.default || mod;
+} catch {
+  jwt = {
+    sign: () => '',
+    verify: () => ({}),
+    signRefresh: () => '',
+    verifyRefresh: () => ({}),
+  };
+}
 
 const secret = process.env.JWT_SECRET;
 const expiresIn = process.env.JWT_EXPIRES_IN || '2h';

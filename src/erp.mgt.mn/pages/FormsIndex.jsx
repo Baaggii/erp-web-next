@@ -8,6 +8,7 @@ import { useTxnModules } from '../hooks/useTxnModules.js';
 
 export default function FormsIndex() {
   const [transactions, setTransactions] = useState({});
+  const [permError, setPermError] = useState(false);
   const modules = useModules();
   const { company } = useContext(AuthContext);
   const perms = useRolePermissions();
@@ -40,7 +41,14 @@ export default function FormsIndex() {
       params.set('departmentId', company.department_id);
     const url = `/api/transaction_forms${params.toString() ? `?${params.toString()}` : ''}`;
     fetch(url, { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : {}))
+      .then((res) => {
+        if (res.status === 403) {
+          setPermError(true);
+          return {};
+        }
+        setPermError(false);
+        return res.ok ? res.json() : {};
+      })
       .then((data) => {
         const grouped = {};
         Object.entries(data).forEach(([name, info]) => {
@@ -75,7 +83,9 @@ export default function FormsIndex() {
   return (
     <div>
       <h2>Маягтууд</h2>
-      {groups.length === 0 ? (
+      {permError ? (
+        <p>Нэвтрэх эрхгүй.</p>
+      ) : groups.length === 0 ? (
         <p>Маягт олдсонгүй.</p>
       ) : (
         groups.map(([key]) => {
