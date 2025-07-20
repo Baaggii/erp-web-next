@@ -47,6 +47,8 @@ export default forwardRef(function InlineTransactionTable({
   defaultValues = {},
   onNextForm = null,
   rows: initRows = [],
+  columnCaseMap = {},
+  viewSource = {},
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -247,8 +249,9 @@ export default forwardRef(function InlineTransactionTable({
         if (conf && conf.displayFields && relationData[field]?.[val]) {
           const ref = relationData[field][val];
           conf.displayFields.forEach((df) => {
-            if (ref[df] !== undefined) {
-              updated[df] = ref[df];
+            const key = columnCaseMap[df.toLowerCase()];
+            if (key && ref[df] !== undefined) {
+              updated[key] = ref[df];
             }
           });
         }
@@ -260,6 +263,61 @@ export default forwardRef(function InlineTransactionTable({
     if (invalidCell && invalidCell.row === rowIdx && invalidCell.field === field) {
       setInvalidCell(null);
       setErrorMsg('');
+    }
+
+    const view = viewSource[field];
+    if (view && value !== '') {
+      const params = new URLSearchParams({ perPage: 1, debug: 1 });
+      Object.entries(viewSource).forEach(([f, v]) => {
+        if (v !== view) return;
+        let pv = f === field ? value : rows[rowIdx]?.[f];
+        if (pv === undefined || pv === '') return;
+        if (typeof pv === 'object' && 'value' in pv) pv = pv.value;
+        params.set(f, pv);
+      });
+      const url = `/api/tables/${encodeURIComponent(view)}?${params.toString()}`;
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message: `Lookup ${view}: ${params.toString()}`, type: 'info' },
+        }),
+      );
+      fetch(url, { credentials: 'include' })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (!data || !Array.isArray(data.rows) || data.rows.length === 0) {
+            window.dispatchEvent(
+              new CustomEvent('toast', { detail: { message: 'No view rows found', type: 'error' } }),
+            );
+            return;
+          }
+          window.dispatchEvent(new CustomEvent('toast', { detail: { message: `SQL: ${data.sql}`, type: 'info' } }));
+          const rowData = data.rows[0];
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message: `Result: ${JSON.stringify(rowData)}`, type: 'info' },
+            }),
+          );
+          setRows((r) => {
+            const next = r.map((row, i) => {
+              if (i !== rowIdx) return row;
+              const updated = { ...row };
+              Object.entries(rowData).forEach(([k, v]) => {
+                const key = columnCaseMap[k.toLowerCase()];
+                if (key) updated[key] = v;
+              });
+              return updated;
+            });
+            onRowsChange(next);
+            return next;
+          });
+        })
+        .catch((err) => {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message: `View lookup failed: ${err.message}`, type: 'error' },
+            }),
+          );
+        });
     }
   }
 
@@ -312,12 +370,14 @@ export default forwardRef(function InlineTransactionTable({
     const cleaned = {};
     Object.entries(row).forEach(([k, v]) => {
       if (k === '_saved') return;
+      const key = columnCaseMap[k.toLowerCase()];
+      if (!key) return;
       let val = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
-      if (placeholders[k]) val = normalizeDateInput(val, placeholders[k]);
-      if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
+      if (placeholders[key]) val = normalizeDateInput(val, placeholders[key]);
+      if (totalAmountSet.has(key) || totalCurrencySet.has(key)) {
         val = normalizeNumberInput(val);
       }
-      cleaned[k] = val;
+      cleaned[key] = val;
     });
     const ok = await Promise.resolve(onRowSubmit(cleaned));
     if (ok !== false) {

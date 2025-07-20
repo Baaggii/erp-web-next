@@ -28,5 +28,15 @@ test('listTableRows applies sorting and filters', async () => {
   const calls = restore();
   const main = calls.find((c) => c.sql.startsWith('SELECT *'));
   assert.ok(main.sql.includes('ORDER BY `id` DESC'));
-  assert.ok(main.params.includes('%Bob%'));
+  assert.ok(main.sql.includes('%Bob%'));
+});
+
+test('listTableRows returns SQL when debug enabled', async () => {
+  const restore = mockPool();
+  const result = await db.listTableRows('users', {
+    filters: { name: 'Alice' },
+    debug: true,
+  });
+  restore();
+  assert.ok(result.sql.includes('SELECT *'));
 });
