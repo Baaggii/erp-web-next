@@ -267,15 +267,36 @@ export default forwardRef(function InlineTransactionTable({
 
     const view = viewSource[field];
     if (view && value !== '') {
-      const params = new URLSearchParams({ perPage: 1 });
-      params.set(field, typeof value === 'object' && 'value' in value ? value.value : value);
-      fetch(`/api/tables/${encodeURIComponent(view)}?${params.toString()}`, {
-        credentials: 'include',
-      })
+      const params = new URLSearchParams({ perPage: 1, debug: 1 });
+      Object.entries(viewSource).forEach(([f, v]) => {
+        if (v !== view) return;
+        let pv = f === field ? value : rows[rowIdx]?.[f];
+        if (pv === undefined || pv === '') return;
+        if (typeof pv === 'object' && 'value' in pv) pv = pv.value;
+        params.set(f, pv);
+      });
+      const url = `/api/tables/${encodeURIComponent(view)}?${params.toString()}`;
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message: `Lookup ${view}: ${params.toString()}`, type: 'info' },
+        }),
+      );
+      fetch(url, { credentials: 'include' })
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
-          if (!data || !Array.isArray(data.rows) || data.rows.length === 0) return;
+          if (!data || !Array.isArray(data.rows) || data.rows.length === 0) {
+            window.dispatchEvent(
+              new CustomEvent('toast', { detail: { message: 'No view rows found', type: 'error' } }),
+            );
+            return;
+          }
+          window.dispatchEvent(new CustomEvent('toast', { detail: { message: `SQL: ${data.sql}`, type: 'info' } }));
           const rowData = data.rows[0];
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message: `Result: ${JSON.stringify(rowData)}`, type: 'info' },
+            }),
+          );
           setRows((r) => {
             const next = r.map((row, i) => {
               if (i !== rowIdx) return row;
@@ -290,7 +311,13 @@ export default forwardRef(function InlineTransactionTable({
             return next;
           });
         })
-        .catch(() => {});
+        .catch((err) => {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message: `View lookup failed: ${err.message}`, type: 'error' },
+            }),
+          );
+        });
     }
   }
 

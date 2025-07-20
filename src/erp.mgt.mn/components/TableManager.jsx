@@ -719,16 +719,27 @@ const TableManager = forwardRef(function TableManager({
     Object.entries(changes).forEach(([field, val]) => {
       const view = viewSourceMap[field];
       if (!view || val === '') return;
-      const params = new URLSearchParams({ perPage: 1 });
-      params.set(field, val);
-      fetch(`/api/tables/${encodeURIComponent(view)}?${params.toString()}`, {
-        credentials: 'include',
-      })
+      const params = new URLSearchParams({ perPage: 1, debug: 1 });
+      Object.entries(viewSourceMap).forEach(([f, v]) => {
+        if (v !== view) return;
+        let pv = changes[f];
+        if (pv === undefined) pv = editing?.[f];
+        if (pv === undefined || pv === '') return;
+        if (typeof pv === 'object' && 'value' in pv) pv = pv.value;
+        params.set(f, pv);
+      });
+      const url = `/api/tables/${encodeURIComponent(view)}?${params.toString()}`;
+      addToast(`Lookup ${view}: ${params.toString()}`, 'info');
+      fetch(url, { credentials: 'include' })
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
-          if (!data || !Array.isArray(data.rows) || data.rows.length === 0)
+          if (!data || !Array.isArray(data.rows) || data.rows.length === 0) {
+            addToast('No view rows found', 'error');
             return;
+          }
+          addToast(`SQL: ${data.sql}`, 'info');
           const row = data.rows[0];
+          addToast(`Result: ${JSON.stringify(row)}`, 'info');
           setEditing((e) => {
             if (!e) return e;
             const updated = { ...e };
@@ -741,8 +752,8 @@ const TableManager = forwardRef(function TableManager({
             return updated;
           });
         })
-        .catch(() => {
-          /* ignore */
+        .catch((err) => {
+          addToast(`View lookup failed: ${err.message}`, 'error');
         });
     });
   }

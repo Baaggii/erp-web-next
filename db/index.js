@@ -11,6 +11,14 @@ try {
         end: async () => {},
       };
     },
+    format(sql, params) {
+      if (!params) return sql;
+      let i = 0;
+      return sql.replace(/\?/g, () => {
+        const val = params[i++];
+        return typeof val === 'string' ? `'${val}'` : String(val);
+      });
+    },
   };
 }
 let dotenv;
@@ -655,7 +663,7 @@ export async function listTableRelationships(tableName) {
  */
 export async function listTableRows(
   tableName,
-  { page = 1, perPage = 50, filters = {}, sort = {} } = {},
+  { page = 1, perPage = 50, filters = {}, sort = {}, debug = false } = {},
 ) {
   const columns = await getTableColumnsSafe(tableName);
   logDb(
@@ -686,16 +694,19 @@ export async function listTableRows(
     order = `ORDER BY \`${sort.column}\` ${dir}`;
   }
   params.push(Number(perPage), offset);
-  const [rows] = await pool.query(
+  const sql = mysql.format(
     `SELECT * FROM ?? ${where} ${order} LIMIT ? OFFSET ?`,
     params,
   );
+  const [rows] = await pool.query(sql);
   const countParams = [tableName, ...params.slice(1, params.length - 2)];
   const [countRows] = await pool.query(
     `SELECT COUNT(*) AS count FROM ?? ${where}`,
     countParams,
   );
-  return { rows, count: countRows[0].count };
+  const result = { rows, count: countRows[0].count };
+  if (debug) result.sql = sql;
+  return result;
 }
 
 /**

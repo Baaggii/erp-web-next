@@ -31,6 +31,9 @@ Each **transaction** entry allows you to specify:
   columns that exist in the current table are automatically populated with the
   returned values. Display field mappings from `tableDisplayFields.json` are
   respected when assigning data.
+- When debugging is enabled (`window.erpDebug = true`), the lookup displays
+  temporary toast messages showing the generated SQL, parameters and returned
+  row so you can verify the view integration.
 - **transactionTypeField** – column used to store the transaction type code
 - **transactionTypeValue** – default transaction type code value
 - **moduleKey** – module slug used to group the form under a module. If omitted,
