@@ -47,11 +47,23 @@ async function getTableColumnsSafe(tableName) {
   return tableColumnsCache.get(tableName);
 }
 
-function ensureValidColumns(columns, names) {
-  const lower = new Set(columns.map((c) => c.toLowerCase()));
+async function ensureValidColumns(tableName, columns, names) {
+  let lower = new Set(columns.map((c) => c.toLowerCase()));
+  let refresh = false;
   for (const name of names) {
     if (!lower.has(String(name).toLowerCase())) {
-      throw new Error(`Invalid column name: ${name}`);
+      refresh = true;
+      break;
+    }
+  }
+  if (refresh) {
+    const fresh = await listTableColumns(tableName);
+    tableColumnsCache.set(tableName, fresh);
+    lower = new Set(fresh.map((c) => c.toLowerCase()));
+    for (const name of names) {
+      if (!lower.has(String(name).toLowerCase())) {
+        throw new Error(`Invalid column name: ${name}`);
+      }
     }
   }
 }
@@ -675,7 +687,7 @@ export async function listTableRows(
   const params = [tableName];
   for (const [field, value] of Object.entries(filters)) {
     if (value !== undefined && value !== '') {
-      ensureValidColumns(columns, [field]);
+      await ensureValidColumns(tableName, columns, [field]);
       const range = String(value).match(/^(\d{4}[-.]\d{2}[-.]\d{2})\s*-\s*(\d{4}[-.]\d{2}[-.]\d{2})$/);
       if (range) {
         filterClauses.push(`\`${field}\` BETWEEN ? AND ?`);
@@ -689,7 +701,7 @@ export async function listTableRows(
   const where = filterClauses.length > 0 ? `WHERE ${filterClauses.join(' AND ')}` : '';
   let order = '';
   if (sort.column) {
-    ensureValidColumns(columns, [sort.column]);
+    await ensureValidColumns(tableName, columns, [sort.column]);
     const dir = sort.dir && String(sort.dir).toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
     order = `ORDER BY \`${sort.column}\` ${dir}`;
   }
@@ -715,7 +727,7 @@ export async function listTableRows(
 export async function updateTableRow(tableName, id, updates) {
   const columns = await getTableColumnsSafe(tableName);
   const keys = Object.keys(updates);
-  ensureValidColumns(columns, keys);
+  await ensureValidColumns(tableName, columns, keys);
   if (keys.length === 0) return { id };
   const values = Object.values(updates);
   const setClause = keys.map((k) => `\`${k}\` = ?`).join(', ');
@@ -782,7 +794,7 @@ export async function insertTableRow(tableName, row) {
   const columns = await getTableColumnsSafe(tableName);
   const keys = Object.keys(row);
   logDb(`insertTableRow(${tableName}) columns=${keys.join(', ')}`);
-  ensureValidColumns(columns, keys);
+  await ensureValidColumns(tableName, columns, keys);
   if (keys.length === 0) return null;
   const values = Object.values(row);
   const cols = keys.map((k) => `\`${k}\``).join(', ');
