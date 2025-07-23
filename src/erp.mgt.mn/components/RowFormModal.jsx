@@ -311,11 +311,12 @@ const RowFormModal = function RowFormModal({
   }
 
   async function runProcTrigger(col) {
-    const trig = procTriggers[col];
-    const paramTrigs = Object.entries(procTriggers)
-      .filter(([, cfg]) => Array.isArray(cfg.params) && cfg.params.includes(col));
+    const direct = procTriggers[col];
+    const paramTrigs = Object.entries(procTriggers).filter(([, cfg]) =>
+      Array.isArray(cfg.params) && cfg.params.includes(col)
+    );
 
-    if (!trig && paramTrigs.length === 0) {
+    if (!direct && paramTrigs.length === 0) {
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: { message: `${col} талбар триггер ашигладаггүй`, type: 'info' },
@@ -336,11 +337,15 @@ const RowFormModal = function RowFormModal({
       );
     }
 
-    if (!trig || !trig.name) return;
-
-    const { name: procName, params = [] } = trig;
-    const getParam = (p) => {
-      if (p === '$current') return formVals[col];
+    const pending = [];
+    if (direct && direct.name) pending.push([col, direct]);
+    paramTrigs.forEach(([tCol, cfg]) => {
+      if (cfg && cfg.name) pending.push([tCol, cfg]);
+    });
+    for (const [tCol, cfg] of pending) {
+      const { name: procName, params = [] } = cfg;
+      const getParam = (p) => {
+      if (p === '$current') return formVals[tCol];
       if (p === '$branchId') return company?.branch_id;
       if (p === '$companyId') return company?.company_id;
       if (p === '$employeeId') return user?.empid;
@@ -351,7 +356,7 @@ const RowFormModal = function RowFormModal({
     window.dispatchEvent(
       new CustomEvent('toast', {
         detail: {
-          message: `${col} -> ${procName}(${paramValues.join(', ')})`,
+          message: `${tCol} -> ${procName}(${paramValues.join(', ')})`,
           type: 'info',
         },
       }),
@@ -388,6 +393,7 @@ const RowFormModal = function RowFormModal({
           detail: { message: `Procedure failed: ${err.message}`, type: 'error' },
         }),
       );
+    }
     }
   }
 
