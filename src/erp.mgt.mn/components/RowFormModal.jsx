@@ -439,6 +439,14 @@ const RowFormModal = function RowFormModal({
     showTriggerInfo(col);
   }
 
+  async function handleFocusField(col) {
+    showTriggerInfo(col);
+  }
+
+  async function handleFocusField(col) {
+    showTriggerInfo(col);
+  }
+
   async function submitForm() {
     if (submitLocked) return;
     setSubmitLocked(true);
