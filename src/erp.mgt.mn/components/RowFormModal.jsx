@@ -38,6 +38,7 @@ const RowFormModal = function RowFormModal({
   onNextForm = null,
   columnCaseMap = {},
   viewSource = {},
+  procTriggers = {},
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -97,6 +98,13 @@ const RowFormModal = function RowFormModal({
       init[c] = val;
     });
     return init;
+  });
+  const [extraVals, setExtraVals] = useState(() => {
+    const extras = {};
+    Object.entries(row || {}).forEach(([k, v]) => {
+      if (!columns.includes(k)) extras[k] = v;
+    });
+    return extras;
   });
   const inputRefs = useRef({});
   const [errors, setErrors] = useState({});
@@ -298,6 +306,44 @@ const RowFormModal = function RowFormModal({
     }
   }
 
+  async function handleFocusField(col) {
+    const cfg = procTriggers[col];
+    if (!cfg || !cfg.name) return;
+    const { name: procName, params = [] } = cfg;
+    const getParam = (p) => {
+      if (p === '$current') return formVals[col];
+      if (p === '$branchId') return company?.branch_id;
+      if (p === '$companyId') return company?.company_id;
+      if (p === '$employeeId') return user?.empid;
+      if (p === '$date') return new Date().toISOString().slice(0, 10);
+      return formVals[p] ?? extraVals[p];
+    };
+    const paramValues = params.map(getParam);
+    try {
+      const res = await fetch('/api/procedures', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name: procName, params: paramValues }),
+      });
+      const js = await res.json();
+      const row = Array.isArray(js.rows) && js.rows.length > 0 ? js.rows[0] : {};
+      if (row && typeof row === 'object') {
+        setExtraVals((v) => ({ ...v, ...row }));
+        setFormVals((vals) => {
+          const updated = { ...vals };
+          Object.entries(row).forEach(([k, v]) => {
+            if (updated[k] !== undefined) updated[k] = v;
+          });
+          return updated;
+        });
+        onChange(row);
+      }
+    } catch (err) {
+      console.error('Procedure call failed', err);
+    }
+  }
+
   async function submitForm() {
     if (submitLocked) return;
     setSubmitLocked(true);
@@ -396,7 +442,7 @@ const RowFormModal = function RowFormModal({
     });
     setErrors(errs);
     if (Object.keys(errs).length === 0) {
-      const normalized = {};
+      const normalized = { ...extraVals };
       Object.entries(formVals).forEach(([k, v]) => {
         let val = placeholders[k] ? normalizeDateInput(v, placeholders[k]) : v;
         if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
@@ -458,7 +504,10 @@ const RowFormModal = function RowFormModal({
         }}
         disabled={disabled}
         onKeyDown={(e) => handleKeyDown(e, c)}
-        onFocus={(e) => e.target.select()}
+        onFocus={(e) => {
+          e.target.select();
+          handleFocusField(c);
+        }}
         inputRef={(el) => (inputRefs.current[c] = el)}
         inputStyle={inputStyle}
       />
@@ -467,6 +516,7 @@ const RowFormModal = function RowFormModal({
         title={labels[c] || c}
         ref={(el) => (inputRefs.current[c] = el)}
         value={formVals[c]}
+        onFocus={() => handleFocusField(c)}
         onChange={(e) => {
           setFormVals((prev) => {
             if (prev[c] === e.target.value) return prev;
@@ -507,7 +557,10 @@ const RowFormModal = function RowFormModal({
           onChange({ [c]: e.target.value });
         }}
         onKeyDown={(e) => handleKeyDown(e, c)}
-        onFocus={(e) => e.target.select()}
+        onFocus={(e) => {
+          e.target.select();
+          handleFocusField(c);
+        }}
         disabled={disabled}
         className={inputClass}
         style={inputStyle}
