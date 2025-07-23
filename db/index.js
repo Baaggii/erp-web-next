@@ -972,3 +972,11 @@ export async function listInventoryTransactions({
   const [rows] = await pool.query(sql, qParams);
   return { rows, count };
 }
+
+export async function callStoredProcedure(name, params = []) {
+  const placeholders = params.map(() => '?').join(', ');
+  const sql = `CALL ${name}(${placeholders})`;
+  const [rows] = await pool.query(sql, params);
+  if (Array.isArray(rows)) return rows[0] || [];
+  return rows || [];
+}

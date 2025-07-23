@@ -49,6 +49,9 @@ export default forwardRef(function InlineTransactionTable({
   rows: initRows = [],
   columnCaseMap = {},
   viewSource = {},
+  procTriggers = {},
+  user = {},
+  company = {},
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -321,6 +324,43 @@ export default forwardRef(function InlineTransactionTable({
     }
   }
 
+  async function handleFocusCell(rowIdx, field) {
+    const cfg = procTriggers[field];
+    if (!cfg || !cfg.name) return;
+    const { name: procName, params = [] } = cfg;
+    const getParam = (p) => {
+      if (p === '$current') return rows[rowIdx]?.[field];
+      if (p === '$branchId') return company?.branch_id;
+      if (p === '$companyId') return company?.company_id;
+      if (p === '$employeeId') return user?.empid;
+      if (p === '$date') return new Date().toISOString().slice(0, 10);
+      return rows[rowIdx]?.[p];
+    };
+    const paramValues = params.map(getParam);
+    try {
+      const res = await fetch('/api/procedures', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name: procName, params: paramValues }),
+      });
+      const js = await res.json();
+      const rowData = Array.isArray(js.rows) && js.rows.length > 0 ? js.rows[0] : {};
+      if (rowData && typeof rowData === 'object') {
+        setRows((r) => {
+          const next = r.map((row, i) => {
+            if (i !== rowIdx) return row;
+            return { ...row, ...rowData };
+          });
+          onRowsChange(next);
+          return next;
+        });
+      }
+    } catch (err) {
+      console.error('Procedure call failed', err);
+    }
+  }
+
   async function saveRow(idx) {
     const row = rows[idx] || {};
     for (const f of requiredFields) {
@@ -506,6 +546,10 @@ export default forwardRef(function InlineTransactionTable({
             }
             inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
             onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
+            onFocus={(e) => {
+              handleFocusCell(idx, f);
+              if (e.target.select) e.target.select();
+            }}
             className={invalid ? 'border-red-500 bg-red-100' : ''}
           />
         );
@@ -519,6 +563,7 @@ export default forwardRef(function InlineTransactionTable({
             onChange={(e) => handleChange(idx, f, e.target.value)}
             ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
             onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
+            onFocus={() => handleFocusCell(idx, f)}
           >
             <option value="">-- select --</option>
             {relations[f].map((opt) => (
@@ -539,6 +584,10 @@ export default forwardRef(function InlineTransactionTable({
         onChange={(e) => handleChange(idx, f, e.target.value)}
         ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
         onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
+        onFocus={(e) => {
+          handleFocusCell(idx, f);
+          if (e.target.select) e.target.select();
+        }}
         onInput={(e) => {
           e.target.style.height = 'auto';
           e.target.style.height = `${e.target.scrollHeight}px`;
