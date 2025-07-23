@@ -49,6 +49,9 @@ export default forwardRef(function InlineTransactionTable({
   rows: initRows = [],
   columnCaseMap = {},
   viewSource = {},
+  procTriggers = {},
+  user = {},
+  company = {},
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -169,6 +172,122 @@ export default forwardRef(function InlineTransactionTable({
       }),
     hasInvalid: () => invalidCell !== null,
   }));
+
+  function getParamTriggers(col) {
+    return Object.entries(procTriggers).filter(([, cfg]) =>
+      Array.isArray(cfg.params) && cfg.params.includes(col)
+    );
+  }
+
+  function hasTrigger(col) {
+    return procTriggers[col] || getParamTriggers(col).length > 0;
+  }
+
+  function showTriggerInfo(col) {
+    const direct = procTriggers[col];
+    const paramTrigs = getParamTriggers(col);
+
+    if (!direct && paramTrigs.length === 0) {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message: `${col} талбар триггер ашигладаггүй`, type: 'info' },
+        }),
+      );
+      return;
+    }
+
+    if (direct && direct.name) {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message: `${col} -> ${direct.name}`, type: 'info' },
+        }),
+      );
+    }
+
+    if (paramTrigs.length > 0) {
+      const names = paramTrigs.map(([, cfg]) => cfg.name).join(', ');
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: `${col} талбар параметр болгож дараах процедуруудад ашиглана: ${names}`,
+            type: 'info',
+          },
+        }),
+      );
+    }
+  }
+
+  async function runProcTrigger(rowIdx, col) {
+    const direct = procTriggers[col];
+    const paramTrigs = getParamTriggers(col);
+
+    const pending = [];
+    if (direct && direct.name) pending.push([col, direct]);
+    paramTrigs.forEach(([tCol, cfg]) => {
+      if (cfg && cfg.name) pending.push([tCol, cfg]);
+    });
+    for (const [tCol, cfg] of pending) {
+      const { name: procName, params = [] } = cfg;
+      const getParam = (p) => {
+        if (p === '$current') return rows[rowIdx]?.[tCol];
+        if (p === '$branchId') return company?.branch_id;
+        if (p === '$companyId') return company?.company_id;
+        if (p === '$employeeId') return user?.empid;
+        if (p === '$date') return new Date().toISOString().slice(0, 10);
+        return rows[rowIdx]?.[p];
+      };
+      const paramValues = params.map(getParam);
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: `${tCol} -> ${procName}(${paramValues.join(', ')})`,
+            type: 'info',
+          },
+        }),
+      );
+      try {
+        const res = await fetch('/api/procedures', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ name: procName, params: paramValues }),
+        });
+        const js = await res.json();
+        const rowData = Array.isArray(js.rows) && js.rows.length > 0 ? js.rows[0] : {};
+        if (rowData && typeof rowData === 'object') {
+          setRows((r) => {
+            const next = r.map((row, i) => {
+              if (i !== rowIdx) return row;
+              const updated = { ...row };
+              Object.entries(rowData).forEach(([k, v]) => {
+                const key = columnCaseMap[k.toLowerCase()];
+                if (key) updated[key] = v;
+              });
+              return updated;
+            });
+            onRowsChange(next);
+            return next;
+          });
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message: `Returned: ${JSON.stringify(rowData)}`, type: 'info' },
+            }),
+          );
+        }
+      } catch (err) {
+        console.error('Procedure call failed', err);
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: { message: `Procedure failed: ${err.message}`, type: 'error' },
+          }),
+        );
+      }
+    }
+  }
+
+  function handleFocusField(col) {
+    showTriggerInfo(col);
+  }
 
   function addRow() {
     if (requiredFields.length > 0 && rows.length > 0) {
@@ -414,7 +533,7 @@ export default forwardRef(function InlineTransactionTable({
     return { sums, count };
   }, [rows, fields, totalAmountSet, totalCurrencySet, totalAmountFields]);
 
-  function handleKeyDown(e, rowIdx, colIdx) {
+  async function handleKeyDown(e, rowIdx, colIdx) {
     const isEnter = e.key === 'Enter';
     const isForwardTab = e.key === 'Tab' && !e.shiftKey;
     if (!isEnter && !isForwardTab) return;
@@ -458,6 +577,9 @@ export default forwardRef(function InlineTransactionTable({
       e.target.focus();
       if (e.target.select) e.target.select();
       return;
+    }
+    if (hasTrigger(field)) {
+      await runProcTrigger(rowIdx, field);
     }
     const nextCol = colIdx + 1;
     if (nextCol < fields.length) {
@@ -506,6 +628,7 @@ export default forwardRef(function InlineTransactionTable({
             }
             inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
             onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
+            onFocus={() => handleFocusField(f)}
             className={invalid ? 'border-red-500 bg-red-100' : ''}
           />
         );
@@ -519,6 +642,7 @@ export default forwardRef(function InlineTransactionTable({
             onChange={(e) => handleChange(idx, f, e.target.value)}
             ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
             onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
+            onFocus={() => handleFocusField(f)}
           >
             <option value="">-- select --</option>
             {relations[f].map((opt) => (
@@ -539,6 +663,7 @@ export default forwardRef(function InlineTransactionTable({
         onChange={(e) => handleChange(idx, f, e.target.value)}
         ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
         onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
+        onFocus={() => handleFocusField(f)}
         onInput={(e) => {
           e.target.style.height = 'auto';
           e.target.style.height = `${e.target.scrollHeight}px`;
