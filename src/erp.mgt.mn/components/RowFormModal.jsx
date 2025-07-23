@@ -380,7 +380,7 @@ const RowFormModal = function RowFormModal({
       if (cfg && cfg.name) pending.push([tCol, cfg]);
     });
     for (const [tCol, cfg] of pending) {
-      const { name: procName, params = [] } = cfg;
+      const { name: procName, params = [], outMap = {} } = cfg;
       const getParam = (p) => {
       if (p === '$current') return formVals[tCol];
       if (p === '$branchId') return company?.branch_id;
@@ -390,6 +390,7 @@ const RowFormModal = function RowFormModal({
       return formVals[p] ?? extraVals[p];
     };
     const paramValues = params.map(getParam);
+    const aliases = params.map((p) => outMap[p] || null);
     window.dispatchEvent(
       new CustomEvent('toast', {
         detail: {
@@ -403,7 +404,7 @@ const RowFormModal = function RowFormModal({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ name: procName, params: paramValues }),
+        body: JSON.stringify({ name: procName, params: paramValues, aliases }),
       });
       const js = await res.json();
       const row = Array.isArray(js.rows) && js.rows.length > 0 ? js.rows[0] : {};
@@ -432,6 +433,10 @@ const RowFormModal = function RowFormModal({
       );
     }
     }
+  }
+
+  async function handleFocusField(col) {
+    showTriggerInfo(col);
   }
 
   async function handleFocusField(col) {

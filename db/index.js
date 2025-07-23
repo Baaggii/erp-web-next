@@ -973,7 +973,7 @@ export async function listInventoryTransactions({
   return { rows, count };
 }
 
-export async function callStoredProcedure(name, params = []) {
+export async function callStoredProcedure(name, params = [], aliases = []) {
   const [meta] = await pool.query(
     `SELECT PARAMETER_MODE, PARAMETER_NAME
        FROM information_schema.PARAMETERS
@@ -1004,10 +1004,12 @@ export async function callStoredProcedure(name, params = []) {
     } else if (mode === 'INOUT') {
       await pool.query(`SET ${varName} = ?`, [params[idx++]]);
       callParts.push(varName);
-      outVars.push([namePart, varName]);
+      const alias = aliases[i] || namePart;
+      outVars.push([alias, varName]);
     } else if (mode === 'OUT') {
       callParts.push(varName);
-      outVars.push([namePart, varName]);
+      const alias = aliases[i] || namePart;
+      outVars.push([alias, varName]);
     } else {
       callParts.push('?');
       callArgs.push(params[idx++]);

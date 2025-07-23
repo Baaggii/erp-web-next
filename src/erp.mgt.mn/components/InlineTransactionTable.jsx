@@ -243,7 +243,7 @@ export default forwardRef(function InlineTransactionTable({
       if (cfg && cfg.name) pending.push([tCol, cfg]);
     });
     for (const [tCol, cfg] of pending) {
-      const { name: procName, params = [] } = cfg;
+      const { name: procName, params = [], outMap = {} } = cfg;
       const getParam = (p) => {
         if (p === '$current') return rows[rowIdx]?.[tCol];
         if (p === '$branchId') return company?.branch_id;
@@ -253,6 +253,7 @@ export default forwardRef(function InlineTransactionTable({
         return rows[rowIdx]?.[p];
       };
       const paramValues = params.map(getParam);
+      const aliases = params.map((p) => outMap[p] || null);
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: {
@@ -266,7 +267,7 @@ export default forwardRef(function InlineTransactionTable({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ name: procName, params: paramValues }),
+          body: JSON.stringify({ name: procName, params: paramValues, aliases }),
         });
         const js = await res.json();
         const rowData = Array.isArray(js.rows) && js.rows.length > 0 ? js.rows[0] : {};
