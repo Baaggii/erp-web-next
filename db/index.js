@@ -974,9 +974,58 @@ export async function listInventoryTransactions({
 }
 
 export async function callStoredProcedure(name, params = []) {
-  const placeholders = params.map(() => '?').join(', ');
-  const sql = `CALL ${name}(${placeholders})`;
-  const [rows] = await pool.query(sql, params);
-  if (Array.isArray(rows)) return rows[0] || [];
-  return rows || [];
+  const [meta] = await pool.query(
+    `SELECT PARAMETER_MODE, PARAMETER_NAME
+       FROM information_schema.PARAMETERS
+      WHERE SPECIFIC_SCHEMA = DATABASE() AND SPECIFIC_NAME = ?
+      ORDER BY ORDINAL_POSITION`,
+    [name],
+  );
+
+  if (!Array.isArray(meta) || meta.length === 0) {
+    const placeholders = params.map(() => '?').join(', ');
+    const sql = `CALL ${name}(${placeholders})`;
+    const [rows] = await pool.query(sql, params);
+    if (Array.isArray(rows)) return rows[0] || {};
+    return rows || {};
+  }
+
+  const callParts = [];
+  const callArgs = [];
+  const outVars = [];
+  let idx = 0;
+  for (let i = 0; i < meta.length; i++) {
+    const mode = (meta[i].PARAMETER_MODE || 'IN').toUpperCase();
+    const namePart = meta[i].PARAMETER_NAME || `p${i + 1}`;
+    const varName = `@_${name}_${namePart}`;
+    if (mode === 'IN') {
+      callParts.push('?');
+      callArgs.push(params[idx++]);
+    } else if (mode === 'INOUT') {
+      await pool.query(`SET ${varName} = ?`, [params[idx++]]);
+      callParts.push(varName);
+      outVars.push([namePart, varName]);
+    } else if (mode === 'OUT') {
+      callParts.push(varName);
+      outVars.push([namePart, varName]);
+    } else {
+      callParts.push('?');
+      callArgs.push(params[idx++]);
+    }
+  }
+
+  const sql = `CALL ${name}(${callParts.join(', ')})`;
+  const [rows] = await pool.query(sql, callArgs);
+  const first = Array.isArray(rows) ? rows[0] || {} : rows || {};
+
+  if (outVars.length > 0) {
+    const selectSql =
+      'SELECT ' + outVars.map(([n, v]) => `${v} AS \`${n}\``).join(', ');
+    const [outRows] = await pool.query(selectSql);
+    if (Array.isArray(outRows) && outRows[0]) {
+      return { ...first, ...outRows[0] };
+    }
+  }
+
+  return first;
 }

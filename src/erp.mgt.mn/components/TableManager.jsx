@@ -132,6 +132,7 @@ const TableManager = forwardRef(function TableManager({
   const [gridRows, setGridRows] = useState([]);
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [localRefresh, setLocalRefresh] = useState(0);
+  const [procTriggers, setProcTriggers] = useState({});
   const [deleteInfo, setDeleteInfo] = useState(null); // { id, refs }
   const [showCascade, setShowCascade] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
@@ -237,6 +238,24 @@ const TableManager = forwardRef(function TableManager({
       })
       .catch(() => {
         addToast('Failed to load table columns', 'error');
+      });
+    return () => {
+      canceled = true;
+    };
+  }, [table]);
+
+  useEffect(() => {
+    if (!table) return;
+    let canceled = false;
+    fetch(`/api/proc_triggers?table=${encodeURIComponent(table)}`, {
+      credentials: 'include',
+    })
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((data) => {
+        if (!canceled) setProcTriggers(data || {});
+      })
+      .catch(() => {
+        if (!canceled) setProcTriggers({});
       });
     return () => {
       canceled = true;
@@ -1805,6 +1824,7 @@ const TableManager = forwardRef(function TableManager({
         printCustField={formConfig?.printCustField || []}
         totalAmountFields={formConfig?.totalAmountFields || []}
         totalCurrencyFields={formConfig?.totalCurrencyFields || []}
+        procTriggers={procTriggers}
         columnCaseMap={columnCaseMap}
         viewSource={viewSourceMap}
         onRowsChange={setGridRows}
