@@ -173,21 +173,34 @@ export default forwardRef(function InlineTransactionTable({
     hasInvalid: () => invalidCell !== null,
   }));
 
+  function getDirectTriggers(col) {
+    const val = procTriggers[col];
+    if (!val) return [];
+    return Array.isArray(val) ? val : [val];
+  }
+
   function getParamTriggers(col) {
-    return Object.entries(procTriggers).filter(([, cfg]) =>
-      Array.isArray(cfg.params) && cfg.params.includes(col)
-    );
+    const res = [];
+    Object.entries(procTriggers).forEach(([tCol, cfgList]) => {
+      const list = Array.isArray(cfgList) ? cfgList : [cfgList];
+      list.forEach((cfg) => {
+        if (Array.isArray(cfg.params) && cfg.params.includes(col)) {
+          res.push([tCol, cfg]);
+        }
+      });
+    });
+    return res;
   }
 
   function hasTrigger(col) {
-    return procTriggers[col] || getParamTriggers(col).length > 0;
+    return getDirectTriggers(col).length > 0 || getParamTriggers(col).length > 0;
   }
 
   function showTriggerInfo(col) {
-    const direct = procTriggers[col];
+    const direct = getDirectTriggers(col);
     const paramTrigs = getParamTriggers(col);
 
-    if (!direct && paramTrigs.length === 0) {
+    if (direct.length === 0 && paramTrigs.length === 0) {
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: { message: `${col} талбар триггер ашигладаггүй`, type: 'info' },
@@ -196,16 +209,17 @@ export default forwardRef(function InlineTransactionTable({
       return;
     }
 
-    if (direct && direct.name) {
+    const directNames = [...new Set(direct.map((d) => d.name))];
+    directNames.forEach((name) => {
       window.dispatchEvent(
         new CustomEvent('toast', {
-          detail: { message: `${col} -> ${direct.name}`, type: 'info' },
+          detail: { message: `${col} -> ${name}`, type: 'info' },
         }),
       );
-    }
+    });
 
     if (paramTrigs.length > 0) {
-      const names = paramTrigs.map(([, cfg]) => cfg.name).join(', ');
+      const names = [...new Set(paramTrigs.map(([, cfg]) => cfg.name))].join(', ');
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: {
@@ -218,11 +232,13 @@ export default forwardRef(function InlineTransactionTable({
   }
 
   async function runProcTrigger(rowIdx, col) {
-    const direct = procTriggers[col];
+    const direct = getDirectTriggers(col);
     const paramTrigs = getParamTriggers(col);
 
     const pending = [];
-    if (direct && direct.name) pending.push([col, direct]);
+    direct.forEach((cfg) => {
+      if (cfg && cfg.name) pending.push([col, cfg]);
+    });
     paramTrigs.forEach(([tCol, cfg]) => {
       if (cfg && cfg.name) pending.push([tCol, cfg]);
     });

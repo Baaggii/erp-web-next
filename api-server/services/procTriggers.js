@@ -18,7 +18,11 @@ export async function getProcTriggers(table) {
       });
     params.forEach((p) => {
       if (!p) return;
-      if (!result[p]) result[p] = { name: proc, params };
+      if (!result[p]) result[p] = [];
+      const exists = result[p].some(
+        (cfg) => cfg.name === proc && JSON.stringify(cfg.params) === JSON.stringify(params),
+      );
+      if (!exists) result[p].push({ name: proc, params });
     });
   }
   return result;
