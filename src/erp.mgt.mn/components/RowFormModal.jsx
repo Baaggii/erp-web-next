@@ -291,7 +291,7 @@ const RowFormModal = function RowFormModal({
       setErrors((er) => ({ ...er, [col]: 'Буруу тоон утга' }));
       return;
     }
-    if (procTriggers[col]) {
+    if (hasTrigger(col)) {
       await runProcTrigger(col);
     }
 
@@ -310,11 +310,19 @@ const RowFormModal = function RowFormModal({
     }
   }
 
-  async function runProcTrigger(col) {
-    const direct = procTriggers[col];
-    const paramTrigs = Object.entries(procTriggers).filter(([, cfg]) =>
+  function getParamTriggers(col) {
+    return Object.entries(procTriggers).filter(([, cfg]) =>
       Array.isArray(cfg.params) && cfg.params.includes(col)
     );
+  }
+
+  function hasTrigger(col) {
+    return procTriggers[col] || getParamTriggers(col).length > 0;
+  }
+
+  function showTriggerInfo(col) {
+    const direct = procTriggers[col];
+    const paramTrigs = getParamTriggers(col);
 
     if (!direct && paramTrigs.length === 0) {
       window.dispatchEvent(
@@ -323,6 +331,14 @@ const RowFormModal = function RowFormModal({
         }),
       );
       return;
+    }
+
+    if (direct && direct.name) {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message: `${col} -> ${direct.name}`, type: 'info' },
+        }),
+      );
     }
 
     if (paramTrigs.length > 0) {
@@ -336,6 +352,11 @@ const RowFormModal = function RowFormModal({
         }),
       );
     }
+  }
+
+  async function runProcTrigger(col) {
+    const direct = procTriggers[col];
+    const paramTrigs = getParamTriggers(col);
 
     const pending = [];
     if (direct && direct.name) pending.push([col, direct]);
@@ -398,7 +419,7 @@ const RowFormModal = function RowFormModal({
   }
 
   async function handleFocusField(col) {
-    await runProcTrigger(col);
+    showTriggerInfo(col);
   }
 
   async function submitForm() {
