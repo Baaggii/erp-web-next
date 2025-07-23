@@ -311,8 +311,11 @@ const RowFormModal = function RowFormModal({
   }
 
   async function runProcTrigger(col) {
-    const cfg = procTriggers[col];
-    if (!cfg || !cfg.name) {
+    const trig = procTriggers[col];
+    const paramTrigs = Object.entries(procTriggers)
+      .filter(([, cfg]) => Array.isArray(cfg.params) && cfg.params.includes(col));
+
+    if (!trig && paramTrigs.length === 0) {
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: { message: `${col} талбар триггер ашигладаггүй`, type: 'info' },
@@ -320,7 +323,22 @@ const RowFormModal = function RowFormModal({
       );
       return;
     }
-    const { name: procName, params = [] } = cfg;
+
+    if (paramTrigs.length > 0) {
+      const names = paramTrigs.map(([, cfg]) => cfg.name).join(', ');
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: `${col} талбар параметр болгож дараах процедуруудад ашиглана: ${names}`,
+            type: 'info',
+          },
+        }),
+      );
+    }
+
+    if (!trig || !trig.name) return;
+
+    const { name: procName, params = [] } = trig;
     const getParam = (p) => {
       if (p === '$current') return formVals[col];
       if (p === '$branchId') return company?.branch_id;
