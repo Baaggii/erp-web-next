@@ -1,5 +1,6 @@
 import React from 'react';
 import Modal from './Modal.jsx';
+import formatTimestamp from '../utils/formatTimestamp.js';
 
 export default function RowDetailModal({ visible, onClose, row = {}, columns = [], relations = {}, references = [], labels = {} }) {
   if (!visible) return null;
@@ -13,6 +14,28 @@ export default function RowDetailModal({ visible, onClose, row = {}, columns = [
   });
 
   const cols = columns.length > 0 ? columns : Object.keys(row);
+  const placeholders = React.useMemo(() => {
+    const map = {};
+    cols.forEach((c) => {
+      const lower = c.toLowerCase();
+      if (lower.includes('time') && !lower.includes('date')) {
+        map[c] = 'HH:MM:SS';
+      } else if (lower.includes('timestamp') || lower.includes('date')) {
+        map[c] = 'YYYY-MM-DD';
+      }
+    });
+    return map;
+  }, [cols]);
+
+  function normalizeDateInput(value, format) {
+    if (typeof value !== 'string') return value;
+    let v = value.trim().replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
+    if (/^\d{4}-\d{2}-\d{2}T/.test(v) && !isNaN(Date.parse(v))) {
+      const local = formatTimestamp(new Date(v));
+      return format === 'HH:MM:SS' ? local.slice(11, 19) : local.slice(0, 10);
+    }
+    return v;
+  }
 
   return (
     <Modal visible={visible} title="Row Details" onClose={onClose}>
@@ -38,7 +61,12 @@ export default function RowDetailModal({ visible, onClose, row = {}, columns = [
                     wordBreak: 'break-word',
                   }}
                 >
-                  {relations[c] ? labelMap[c][row[c]] || String(row[c]) : String(row[c])}
+                  {(() => {
+                    const raw = relations[c] ? labelMap[c][row[c]] || row[c] : row[c];
+                    const str = String(raw ?? '');
+                    const display = placeholders[c] ? normalizeDateInput(str, placeholders[c]) : str;
+                    return display;
+                  })()}
                 </td>
               </tr>
             ))}

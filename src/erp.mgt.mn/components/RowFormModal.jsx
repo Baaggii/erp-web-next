@@ -69,12 +69,10 @@ const RowFormModal = function RowFormModal({
     columns.forEach((c) => {
       const lower = c.toLowerCase();
       let placeholder = '';
-      if (lower.includes('timestamp') || (lower.includes('date') && lower.includes('time'))) {
-        placeholder = 'YYYY-MM-DD HH:MM:SS';
-      } else if (lower.includes('date')) {
-        placeholder = 'YYYY-MM-DD';
-      } else if (lower.includes('time')) {
+      if (lower.includes('time') && !lower.includes('date')) {
         placeholder = 'HH:MM:SS';
+      } else if (lower.includes('timestamp') || lower.includes('date')) {
+        placeholder = 'YYYY-MM-DD';
       }
       const raw = row ? String(row[c] ?? '') : String(defaultValues[c] ?? '');
       let val = placeholder ? normalizeDateInput(raw, placeholder) : raw;
@@ -150,12 +148,10 @@ const RowFormModal = function RowFormModal({
     const map = {};
     columns.forEach((c) => {
       const lower = c.toLowerCase();
-      if (lower.includes('timestamp') || (lower.includes('date') && lower.includes('time'))) {
-        map[c] = 'YYYY-MM-DD HH:MM:SS';
-      } else if (lower.includes('date')) {
-        map[c] = 'YYYY-MM-DD';
-      } else if (lower.includes('time')) {
+      if (lower.includes('time') && !lower.includes('date')) {
         map[c] = 'HH:MM:SS';
+      } else if (lower.includes('timestamp') || lower.includes('date')) {
+        map[c] = 'YYYY-MM-DD';
       }
     });
     return map;
@@ -163,16 +159,13 @@ const RowFormModal = function RowFormModal({
 
   function normalizeDateInput(value, format) {
     if (typeof value !== 'string') return value;
-    let v = value.replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
-    const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
-  if (isoRe.test(v)) {
+    let v = value.trim().replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
+    if (/^\d{4}-\d{2}-\d{2}T/.test(v) && !isNaN(Date.parse(v))) {
       const local = formatTimestamp(new Date(v));
-      if (format === 'YYYY-MM-DD') return local.slice(0, 10);
-      if (format === 'HH:MM:SS') return local.slice(11, 19);
-      return local;
+      return format === 'HH:MM:SS' ? local.slice(11, 19) : local.slice(0, 10);
+    }
+    return v;
   }
-  return v;
-}
 
   function normalizeNumberInput(value) {
     if (typeof value !== 'string') return value;
@@ -185,7 +178,6 @@ const RowFormModal = function RowFormModal({
     const map = {
       'YYYY-MM-DD': /^\d{4}-\d{2}-\d{2}$/,
       'HH:MM:SS': /^\d{2}:\d{2}:\d{2}$/,
-      'YYYY-MM-DD HH:MM:SS': /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/,
     };
     const re = map[format];
     if (!re) return true;
@@ -417,7 +409,7 @@ const RowFormModal = function RowFormModal({
         if (p === '$branchId') return company?.branch_id;
         if (p === '$companyId') return company?.company_id;
         if (p === '$employeeId') return user?.empid;
-        if (p === '$date') return new Date().toISOString().slice(0, 10);
+        if (p === '$date') return formatTimestamp(new Date()).slice(0, 10);
         return getVal(p);
       };
       const paramValues = params.map(getParam);
