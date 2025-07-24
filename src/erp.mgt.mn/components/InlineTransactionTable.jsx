@@ -88,6 +88,7 @@ export default forwardRef(function InlineTransactionTable({
   const addBtnRef = useRef(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [invalidCell, setInvalidCell] = useState(null);
+  const procCache = useRef({});
 
   const totalAmountSet = new Set(totalAmountFields);
   const totalCurrencySet = new Set(totalCurrencyFields);
@@ -245,6 +246,11 @@ export default forwardRef(function InlineTransactionTable({
     });
     for (const [tCol, cfg] of pending) {
       const { name: procName, params = [], outMap = {} } = cfg;
+      const targetCols = Object.values(outMap || {}).map((c) =>
+        columnCaseMap[c.toLowerCase()] || c,
+      );
+      const hasTarget = targetCols.some((c) => fields.includes(c));
+      if (!hasTarget) continue;
       const getVal = (name) => {
         const key = columnCaseMap[name.toLowerCase()] || name;
         return rows[rowIdx]?.[key];
@@ -259,6 +265,29 @@ export default forwardRef(function InlineTransactionTable({
       };
       const paramValues = params.map(getParam);
       const aliases = params.map((p) => outMap[p] || null);
+      const cacheKey = `${procName}|${JSON.stringify(paramValues)}`;
+      if (procCache.current[cacheKey]) {
+        const rowData = procCache.current[cacheKey];
+        setRows((r) => {
+          const next = r.map((row, i) => {
+            if (i !== rowIdx) return row;
+            const updated = { ...row };
+            Object.entries(rowData).forEach(([k, v]) => {
+              const key = columnCaseMap[k.toLowerCase()];
+              if (key) updated[key] = v;
+            });
+            return updated;
+          });
+          onRowsChange(next);
+          return next;
+        });
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: { message: `Returned: ${JSON.stringify(rowData)}`, type: 'info' },
+          }),
+        );
+        continue;
+      }
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: {
@@ -274,13 +303,14 @@ export default forwardRef(function InlineTransactionTable({
           credentials: 'include',
           body: JSON.stringify({ name: procName, params: paramValues, aliases }),
         });
-        const js = await res.json();
-        const rowData = js.row || {};
-        if (rowData && typeof rowData === 'object') {
-          setRows((r) => {
-            const next = r.map((row, i) => {
-              if (i !== rowIdx) return row;
-              const updated = { ...row };
+      const js = await res.json();
+      const rowData = js.row || {};
+      if (rowData && typeof rowData === 'object') {
+        procCache.current[cacheKey] = rowData;
+        setRows((r) => {
+          const next = r.map((row, i) => {
+            if (i !== rowIdx) return row;
+            const updated = { ...row };
               Object.entries(rowData).forEach(([k, v]) => {
                 const key = columnCaseMap[k.toLowerCase()];
                 if (key) updated[key] = v;

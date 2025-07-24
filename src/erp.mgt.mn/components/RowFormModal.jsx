@@ -43,6 +43,7 @@ const RowFormModal = function RowFormModal({
   const mounted = useRef(false);
   const renderCount = useRef(0);
   const warned = useRef(false);
+  const procCache = useRef({});
 
   renderCount.current++;
   if (renderCount.current > 10 && !warned.current) {
@@ -382,6 +383,11 @@ const RowFormModal = function RowFormModal({
     });
     for (const [tCol, cfg] of pending) {
       const { name: procName, params = [], outMap = {} } = cfg;
+      const targetCols = Object.values(outMap || {}).map((c) =>
+        columnCaseMap[c.toLowerCase()] || c,
+      );
+      const hasTarget = targetCols.some((c) => columns.includes(c));
+      if (!hasTarget) continue;
       const getVal = (name) => {
         const key = columnCaseMap[name.toLowerCase()] || name;
         return formVals[key] ?? extraVals[key];
@@ -394,13 +400,32 @@ const RowFormModal = function RowFormModal({
         if (p === '$date') return new Date().toISOString().slice(0, 10);
         return getVal(p);
       };
-    const paramValues = params.map(getParam);
-    const aliases = params.map((p) => outMap[p] || null);
-    window.dispatchEvent(
-      new CustomEvent('toast', {
-        detail: {
-          message: `${tCol} -> ${procName}(${paramValues.join(', ')})`,
-          type: 'info',
+      const paramValues = params.map(getParam);
+      const aliases = params.map((p) => outMap[p] || null);
+      const cacheKey = `${procName}|${JSON.stringify(paramValues)}`;
+      if (procCache.current[cacheKey]) {
+        const row = procCache.current[cacheKey];
+        setExtraVals((v) => ({ ...v, ...row }));
+        setFormVals((vals) => {
+          const updated = { ...vals };
+          Object.entries(row).forEach(([k, v]) => {
+            if (updated[k] !== undefined) updated[k] = v;
+          });
+          return updated;
+        });
+        onChange(row);
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: { message: `Returned: ${JSON.stringify(row)}`, type: 'info' },
+          }),
+        );
+        continue;
+      }
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: `${tCol} -> ${procName}(${paramValues.join(', ')})`,
+            type: 'info',
         },
       }),
     );
@@ -414,6 +439,7 @@ const RowFormModal = function RowFormModal({
       const js = await res.json();
       const row = js.row || {};
       if (row && typeof row === 'object') {
+        procCache.current[cacheKey] = row;
         setExtraVals((v) => ({ ...v, ...row }));
         setFormVals((vals) => {
           const updated = { ...vals };
@@ -438,6 +464,11 @@ const RowFormModal = function RowFormModal({
       );
     }
     }
+    }
+  }
+
+  async function handleFocusField(col) {
+    showTriggerInfo(col);
   }
 
   async function handleFocusField(col) {
