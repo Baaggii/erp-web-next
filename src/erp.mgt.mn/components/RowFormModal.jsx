@@ -43,6 +43,7 @@ const RowFormModal = function RowFormModal({
   const mounted = useRef(false);
   const renderCount = useRef(0);
   const warned = useRef(false);
+  const procCache = useRef({});
 
   renderCount.current++;
   if (renderCount.current > 10 && !warned.current) {
@@ -263,7 +264,7 @@ const RowFormModal = function RowFormModal({
       }
     : undefined;
 
-  function handleKeyDown(e, col) {
+  async function handleKeyDown(e, col) {
     if (e.key !== 'Enter') return;
     e.preventDefault();
     let val = normalizeDateInput(e.target.value, placeholders[col]);
@@ -291,6 +292,10 @@ const RowFormModal = function RowFormModal({
       setErrors((er) => ({ ...er, [col]: 'Буруу тоон утга' }));
       return;
     }
+    if (hasTrigger(col)) {
+      await runProcTrigger(col);
+    }
+
     const enabled = columns.filter((c) => !disabledFields.includes(c));
     const idx = enabled.indexOf(col);
     const next = enabled[idx + 1];
@@ -306,29 +311,100 @@ const RowFormModal = function RowFormModal({
     }
   }
 
-  async function handleFocusField(col) {
-    const cfg = procTriggers[col];
-    if (!cfg || !cfg.name) return;
-    const { name: procName, params = [] } = cfg;
-    const getParam = (p) => {
-      if (p === '$current') return formVals[col];
-      if (p === '$branchId') return company?.branch_id;
-      if (p === '$companyId') return company?.company_id;
-      if (p === '$employeeId') return user?.empid;
-      if (p === '$date') return new Date().toISOString().slice(0, 10);
-      return formVals[p] ?? extraVals[p];
-    };
-    const paramValues = params.map(getParam);
-    try {
-      const res = await fetch('/api/procedures', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ name: procName, params: paramValues }),
+  function getDirectTriggers(col) {
+    const val = procTriggers[col.toLowerCase()];
+    if (!val) return [];
+    return Array.isArray(val) ? val : [val];
+  }
+
+  function getParamTriggers(col) {
+    const res = [];
+    const colLower = col.toLowerCase();
+    Object.entries(procTriggers).forEach(([tCol, cfgList]) => {
+      const list = Array.isArray(cfgList) ? cfgList : [cfgList];
+      list.forEach((cfg) => {
+        if (Array.isArray(cfg.params) && cfg.params.includes(colLower)) {
+          res.push([tCol, cfg]);
+        }
       });
-      const js = await res.json();
-      const row = Array.isArray(js.rows) && js.rows.length > 0 ? js.rows[0] : {};
-      if (row && typeof row === 'object') {
+    });
+    return res;
+  }
+
+  function hasTrigger(col) {
+    return getDirectTriggers(col).length > 0 || getParamTriggers(col).length > 0;
+  }
+
+  function showTriggerInfo(col) {
+    const direct = getDirectTriggers(col);
+    const paramTrigs = getParamTriggers(col);
+
+    if (direct.length === 0 && paramTrigs.length === 0) {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message: `${col} талбар триггер ашигладаггүй`, type: 'info' },
+        }),
+      );
+      return;
+    }
+
+    const directNames = [...new Set(direct.map((d) => d.name))];
+    directNames.forEach((name) => {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message: `${col} -> ${name}`, type: 'info' },
+        }),
+      );
+    });
+
+    if (paramTrigs.length > 0) {
+      const names = [...new Set(paramTrigs.map(([, cfg]) => cfg.name))].join(', ');
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: `${col} талбар параметр болгож дараах процедуруудад ашиглана: ${names}`,
+            type: 'info',
+          },
+        }),
+      );
+    }
+  }
+
+  async function runProcTrigger(col) {
+    const direct = getDirectTriggers(col);
+    const paramTrigs = getParamTriggers(col);
+
+    const pending = [];
+    direct.forEach((cfg) => {
+      if (cfg && cfg.name) pending.push([col.toLowerCase(), cfg]);
+    });
+    paramTrigs.forEach(([tCol, cfg]) => {
+      if (cfg && cfg.name) pending.push([tCol.toLowerCase(), cfg]);
+    });
+    for (const [tCol, cfg] of pending) {
+      const { name: procName, params = [], outMap = {} } = cfg;
+      const targetCols = Object.values(outMap || {}).map((c) =>
+        columnCaseMap[c.toLowerCase()] || c,
+      );
+      const hasTarget = targetCols.some((c) => columns.includes(c));
+      if (!hasTarget) continue;
+      const getVal = (name) => {
+        const key = columnCaseMap[name.toLowerCase()] || name;
+        return formVals[key] ?? extraVals[key];
+      };
+      const getParam = (p) => {
+        if (p === '$current') return getVal(tCol);
+        if (p === '$branchId') return company?.branch_id;
+        if (p === '$companyId') return company?.company_id;
+        if (p === '$employeeId') return user?.empid;
+        if (p === '$date') return new Date().toISOString().slice(0, 10);
+        return getVal(p);
+      };
+      const paramValues = params.map(getParam);
+      const aliases = params.map((p) => outMap[p] || null);
+      const cacheKey = `${procName}|${JSON.stringify(paramValues)}`;
+      if (procCache.current[cacheKey]) {
+        const row = procCache.current[cacheKey];
         setExtraVals((v) => ({ ...v, ...row }));
         setFormVals((vals) => {
           const updated = { ...vals };
@@ -338,10 +414,60 @@ const RowFormModal = function RowFormModal({
           return updated;
         });
         onChange(row);
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: { message: `Returned: ${JSON.stringify(row)}`, type: 'info' },
+          }),
+        );
+        continue;
+      }
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: `${tCol} -> ${procName}(${paramValues.join(', ')})`,
+            type: 'info',
+        },
+      }),
+    );
+    try {
+      const res = await fetch('/api/procedures', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name: procName, params: paramValues, aliases }),
+      });
+      const js = await res.json();
+      const row = js.row || {};
+      if (row && typeof row === 'object') {
+        procCache.current[cacheKey] = row;
+        setExtraVals((v) => ({ ...v, ...row }));
+        setFormVals((vals) => {
+          const updated = { ...vals };
+          Object.entries(row).forEach(([k, v]) => {
+            if (updated[k] !== undefined) updated[k] = v;
+          });
+          return updated;
+        });
+        onChange(row);
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: { message: `Returned: ${JSON.stringify(row)}`, type: 'info' },
+          }),
+        );
       }
     } catch (err) {
       console.error('Procedure call failed', err);
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message: `Procedure failed: ${err.message}`, type: 'error' },
+        }),
+      );
     }
+    }
+  }
+
+  async function handleFocusField(col) {
+    showTriggerInfo(col);
   }
 
   async function submitForm() {
@@ -609,6 +735,9 @@ const RowFormModal = function RowFormModal({
             totalAmountFields={totalAmountFields}
             totalCurrencyFields={totalCurrencyFields}
             viewSource={viewSource}
+            procTriggers={procTriggers}
+            user={user}
+            company={company}
             columnCaseMap={columnCaseMap}
             collectRows={useGrid}
             minRows={1}
