@@ -7,7 +7,7 @@ export async function getProcTriggers(table) {
     const stmt = row.Statement || '';
     const varToCol = {};
     stmt.replace(/SET\s+NEW\.([A-Za-z0-9_]+)\s*=\s*([A-Za-z0-9_]+)/gi, (_, col, v) => {
-      varToCol[v] = col;
+      varToCol[v.toLowerCase()] = col;
       return '';
     });
     const calls = [...stmt.matchAll(/CALL\s+([A-Za-z0-9_]+)\s*\(([^)]*)\)/gi)];
@@ -20,7 +20,8 @@ export async function getProcTriggers(table) {
           if (/^NEW\./i.test(p)) return p.replace(/^NEW\./i, '');
           if (/CURDATE\(\)/i.test(p)) return '$date';
           return p.replace(/['`]/g, '');
-        });
+        })
+        .map((p) => p.toLowerCase());
       const outMap = {};
       params.forEach((p) => {
         if (varToCol[p]) outMap[p] = varToCol[p];

@@ -311,17 +311,18 @@ const RowFormModal = function RowFormModal({
   }
 
   function getDirectTriggers(col) {
-    const val = procTriggers[col];
+    const val = procTriggers[col.toLowerCase()];
     if (!val) return [];
     return Array.isArray(val) ? val : [val];
   }
 
   function getParamTriggers(col) {
     const res = [];
+    const colLower = col.toLowerCase();
     Object.entries(procTriggers).forEach(([tCol, cfgList]) => {
       const list = Array.isArray(cfgList) ? cfgList : [cfgList];
       list.forEach((cfg) => {
-        if (Array.isArray(cfg.params) && cfg.params.includes(col)) {
+        if (Array.isArray(cfg.params) && cfg.params.includes(colLower)) {
           res.push([tCol, cfg]);
         }
       });
@@ -374,21 +375,25 @@ const RowFormModal = function RowFormModal({
 
     const pending = [];
     direct.forEach((cfg) => {
-      if (cfg && cfg.name) pending.push([col, cfg]);
+      if (cfg && cfg.name) pending.push([col.toLowerCase(), cfg]);
     });
     paramTrigs.forEach(([tCol, cfg]) => {
-      if (cfg && cfg.name) pending.push([tCol, cfg]);
+      if (cfg && cfg.name) pending.push([tCol.toLowerCase(), cfg]);
     });
     for (const [tCol, cfg] of pending) {
       const { name: procName, params = [], outMap = {} } = cfg;
+      const getVal = (name) => {
+        const key = columnCaseMap[name.toLowerCase()] || name;
+        return formVals[key] ?? extraVals[key];
+      };
       const getParam = (p) => {
-      if (p === '$current') return formVals[tCol];
-      if (p === '$branchId') return company?.branch_id;
-      if (p === '$companyId') return company?.company_id;
-      if (p === '$employeeId') return user?.empid;
-      if (p === '$date') return new Date().toISOString().slice(0, 10);
-      return formVals[p] ?? extraVals[p];
-    };
+        if (p === '$current') return getVal(tCol);
+        if (p === '$branchId') return company?.branch_id;
+        if (p === '$companyId') return company?.company_id;
+        if (p === '$employeeId') return user?.empid;
+        if (p === '$date') return new Date().toISOString().slice(0, 10);
+        return getVal(p);
+      };
     const paramValues = params.map(getParam);
     const aliases = params.map((p) => outMap[p] || null);
     window.dispatchEvent(
