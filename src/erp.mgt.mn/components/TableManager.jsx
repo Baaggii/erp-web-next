@@ -54,9 +54,7 @@ function normalizeDateInput(value, format) {
   let v = value.trim().replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
   if (/^\d{4}-\d{2}-\d{2}T/.test(v) && !isNaN(Date.parse(v))) {
     const local = formatTimestamp(new Date(v));
-    if (format === 'HH:MM:SS') return local.slice(11, 19);
-    if (format === 'YYYY-MM-DD HH:MM:SS') return local;
-    return local.slice(0, 10);
+    return format === 'HH:MM:SS' ? local.slice(11, 19) : local.slice(0, 10);
   }
   return v;
 }
@@ -1091,18 +1089,17 @@ const TableManager = forwardRef(function TableManager({
   let columns = ordered.filter((c) => !hiddenColumns.includes(c));
   const placeholders = useMemo(() => {
     const map = {};
-    columns.forEach((c) => {
+    const cols = new Set(allColumns);
+    cols.forEach((c) => {
       const lower = c.toLowerCase();
-      if (lower.includes('timestamp') || (lower.includes('date') && lower.includes('time'))) {
-        map[c] = 'YYYY-MM-DD HH:MM:SS';
-      } else if (lower.includes('date')) {
-        map[c] = 'YYYY-MM-DD';
-      } else if (lower.includes('time')) {
+      if (lower.includes('time') && !lower.includes('date')) {
         map[c] = 'HH:MM:SS';
+      } else if (lower.includes('timestamp') || lower.includes('date')) {
+        map[c] = 'YYYY-MM-DD';
       }
     });
     return map;
-  }, [columns]);
+  }, [allColumns]);
 
   const relationOpts = {};
   ordered.forEach((c) => {

@@ -18,12 +18,10 @@ export default function RowDetailModal({ visible, onClose, row = {}, columns = [
     const map = {};
     cols.forEach((c) => {
       const lower = c.toLowerCase();
-      if (lower.includes('timestamp') || (lower.includes('date') && lower.includes('time'))) {
-        map[c] = 'YYYY-MM-DD HH:MM:SS';
-      } else if (lower.includes('date')) {
-        map[c] = 'YYYY-MM-DD';
-      } else if (lower.includes('time')) {
+      if (lower.includes('time') && !lower.includes('date')) {
         map[c] = 'HH:MM:SS';
+      } else if (lower.includes('timestamp') || lower.includes('date')) {
+        map[c] = 'YYYY-MM-DD';
       }
     });
     return map;
@@ -34,10 +32,7 @@ export default function RowDetailModal({ visible, onClose, row = {}, columns = [
     let v = value.trim().replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
     if (/^\d{4}-\d{2}-\d{2}T/.test(v) && !isNaN(Date.parse(v))) {
       const local = formatTimestamp(new Date(v));
-      if (format === 'YYYY-MM-DD') return local.slice(0, 10);
-      if (format === 'HH:MM:SS') return local.slice(11, 19);
-      if (format === 'YYYY-MM-DD HH:MM:SS') return local;
-      return local.slice(0, 10);
+      return format === 'HH:MM:SS' ? local.slice(11, 19) : local.slice(0, 10);
     }
     return v;
   }

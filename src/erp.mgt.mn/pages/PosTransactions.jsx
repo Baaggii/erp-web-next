@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef, useContext } from 'react';
+import formatTimestamp from '../utils/formatTimestamp.js';
 import RowFormModal from '../components/RowFormModal.jsx';
 import Modal from '../components/Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
@@ -512,7 +513,7 @@ export default function PosTransactionsPage() {
       employeeId: user?.empid,
       companyId: company?.company_id,
       branchId: company?.branch_id,
-      date: new Date().toISOString(),
+      date: formatTimestamp(new Date()),
     };
     try {
       const res = await fetch('/api/pos_txn_pending', {
@@ -641,7 +642,7 @@ export default function PosTransactionsPage() {
       employeeId: user?.empid,
       companyId: company?.company_id,
       branchId: company?.branch_id,
-      date: new Date().toISOString(),
+      date: formatTimestamp(new Date()),
     };
     try {
       const res = await fetch('/api/pos_txn_post', {
