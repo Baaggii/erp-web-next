@@ -49,6 +49,9 @@ export default forwardRef(function InlineTransactionTable({
   rows: initRows = [],
   columnCaseMap = {},
   viewSource = {},
+  procTriggers = {},
+  user = {},
+  company = {},
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -85,6 +88,7 @@ export default forwardRef(function InlineTransactionTable({
   const addBtnRef = useRef(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [invalidCell, setInvalidCell] = useState(null);
+  const procCache = useRef({});
 
   const totalAmountSet = new Set(totalAmountFields);
   const totalCurrencySet = new Set(totalCurrencyFields);
@@ -169,6 +173,191 @@ export default forwardRef(function InlineTransactionTable({
       }),
     hasInvalid: () => invalidCell !== null,
   }));
+
+  function getDirectTriggers(col) {
+    const val = procTriggers[col.toLowerCase()];
+    if (!val) return [];
+    return Array.isArray(val) ? val : [val];
+  }
+
+  function getParamTriggers(col) {
+    const res = [];
+    const colLower = col.toLowerCase();
+    Object.entries(procTriggers).forEach(([tCol, cfgList]) => {
+      const list = Array.isArray(cfgList) ? cfgList : [cfgList];
+      list.forEach((cfg) => {
+        if (Array.isArray(cfg.params) && cfg.params.includes(colLower)) {
+          res.push([tCol, cfg]);
+        }
+      });
+    });
+    return res;
+  }
+
+  function hasTrigger(col) {
+    return getDirectTriggers(col).length > 0 || getParamTriggers(col).length > 0;
+  }
+
+  function showTriggerInfo(col) {
+    const direct = getDirectTriggers(col);
+    const paramTrigs = getParamTriggers(col);
+
+    if (direct.length === 0 && paramTrigs.length === 0) {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message: `${col} талбар триггер ашигладаггүй`, type: 'info' },
+        }),
+      );
+      return;
+    }
+
+    const directNames = [...new Set(direct.map((d) => d.name))];
+    directNames.forEach((name) => {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message: `${col} -> ${name}`, type: 'info' },
+        }),
+      );
+    });
+
+    if (paramTrigs.length > 0) {
+      const names = [...new Set(paramTrigs.map(([, cfg]) => cfg.name))].join(', ');
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: `${col} талбар параметр болгож дараах процедуруудад ашиглана: ${names}`,
+            type: 'info',
+          },
+        }),
+      );
+    }
+  }
+
+  async function runProcTrigger(rowIdx, col) {
+    const direct = getDirectTriggers(col);
+    const paramTrigs = getParamTriggers(col);
+
+    const map = new Map();
+    const keyFor = (cfg) => {
+      const out = Object.keys(cfg.outMap || {})
+        .sort()
+        .reduce((m, k) => {
+          m[k] = cfg.outMap[k];
+          return m;
+        }, {});
+      return JSON.stringify([cfg.name, cfg.params, out]);
+    };
+    direct.forEach((cfg) => {
+      if (!cfg || !cfg.name) return;
+      const key = keyFor(cfg);
+      const rec = map.get(key) || { cfg, cols: new Set() };
+      rec.cols.add(col.toLowerCase());
+      map.set(key, rec);
+    });
+    paramTrigs.forEach(([tCol, cfg]) => {
+      if (!cfg || !cfg.name) return;
+      const key = keyFor(cfg);
+      const rec = map.get(key) || { cfg, cols: new Set() };
+      rec.cols.add(tCol.toLowerCase());
+      map.set(key, rec);
+    });
+    for (const { cfg, cols } of map.values()) {
+      const tCol = [...cols][0];
+      const { name: procName, params = [], outMap = {} } = cfg;
+      const targetCols = Object.values(outMap || {}).map((c) =>
+        columnCaseMap[c.toLowerCase()] || c,
+      );
+      const hasTarget = targetCols.some((c) => fields.includes(c));
+      if (!hasTarget) continue;
+      const getVal = (name) => {
+        const key = columnCaseMap[name.toLowerCase()] || name;
+        return rows[rowIdx]?.[key];
+      };
+      const getParam = (p) => {
+        if (p === '$current') return getVal(tCol);
+        if (p === '$branchId') return company?.branch_id;
+        if (p === '$companyId') return company?.company_id;
+        if (p === '$employeeId') return user?.empid;
+        if (p === '$date') return new Date().toISOString().slice(0, 10);
+        return getVal(p);
+      };
+      const paramValues = params.map(getParam);
+      const aliases = params.map((p) => outMap[p] || null);
+      const cacheKey = `${procName}|${JSON.stringify(paramValues)}`;
+      if (procCache.current[cacheKey]) {
+        const rowData = procCache.current[cacheKey];
+        setRows((r) => {
+          const next = r.map((row, i) => {
+            if (i !== rowIdx) return row;
+            const updated = { ...row };
+            Object.entries(rowData).forEach(([k, v]) => {
+              const key = columnCaseMap[k.toLowerCase()];
+              if (key) updated[key] = v;
+            });
+            return updated;
+          });
+          onRowsChange(next);
+          return next;
+        });
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: { message: `Returned: ${JSON.stringify(rowData)}`, type: 'info' },
+          }),
+        );
+        continue;
+      }
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: `${tCol} -> ${procName}(${paramValues.join(', ')})`,
+            type: 'info',
+          },
+        }),
+      );
+      try {
+        const res = await fetch('/api/procedures', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ name: procName, params: paramValues, aliases }),
+        });
+      const js = await res.json();
+      const rowData = js.row || {};
+      if (rowData && typeof rowData === 'object') {
+        procCache.current[cacheKey] = rowData;
+        setRows((r) => {
+          const next = r.map((row, i) => {
+            if (i !== rowIdx) return row;
+            const updated = { ...row };
+              Object.entries(rowData).forEach(([k, v]) => {
+                const key = columnCaseMap[k.toLowerCase()];
+                if (key) updated[key] = v;
+              });
+              return updated;
+            });
+            onRowsChange(next);
+            return next;
+          });
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message: `Returned: ${JSON.stringify(rowData)}`, type: 'info' },
+            }),
+          );
+        }
+      } catch (err) {
+        console.error('Procedure call failed', err);
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: { message: `Procedure failed: ${err.message}`, type: 'error' },
+          }),
+        );
+      }
+    }
+  }
+
+  function handleFocusField(col) {
+    showTriggerInfo(col);
+  }
 
   function addRow() {
     if (requiredFields.length > 0 && rows.length > 0) {
@@ -386,6 +575,7 @@ export default forwardRef(function InlineTransactionTable({
         onRowsChange(next);
         return next;
       });
+      procCache.current = {};
     }
   }
 
@@ -414,7 +604,7 @@ export default forwardRef(function InlineTransactionTable({
     return { sums, count };
   }, [rows, fields, totalAmountSet, totalCurrencySet, totalAmountFields]);
 
-  function handleKeyDown(e, rowIdx, colIdx) {
+  async function handleKeyDown(e, rowIdx, colIdx) {
     const isEnter = e.key === 'Enter';
     const isForwardTab = e.key === 'Tab' && !e.shiftKey;
     if (!isEnter && !isForwardTab) return;
@@ -458,6 +648,9 @@ export default forwardRef(function InlineTransactionTable({
       e.target.focus();
       if (e.target.select) e.target.select();
       return;
+    }
+    if (hasTrigger(field)) {
+      await runProcTrigger(rowIdx, field);
     }
     const nextCol = colIdx + 1;
     if (nextCol < fields.length) {
@@ -506,6 +699,7 @@ export default forwardRef(function InlineTransactionTable({
             }
             inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
             onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
+            onFocus={() => handleFocusField(f)}
             className={invalid ? 'border-red-500 bg-red-100' : ''}
           />
         );
@@ -519,6 +713,7 @@ export default forwardRef(function InlineTransactionTable({
             onChange={(e) => handleChange(idx, f, e.target.value)}
             ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
             onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
+            onFocus={() => handleFocusField(f)}
           >
             <option value="">-- select --</option>
             {relations[f].map((opt) => (
@@ -539,6 +734,7 @@ export default forwardRef(function InlineTransactionTable({
         onChange={(e) => handleChange(idx, f, e.target.value)}
         ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
         onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
+        onFocus={() => handleFocusField(f)}
         onInput={(e) => {
           e.target.style.height = 'auto';
           e.target.style.height = `${e.target.scrollHeight}px`;
