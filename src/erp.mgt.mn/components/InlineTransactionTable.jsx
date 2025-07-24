@@ -575,6 +575,7 @@ export default forwardRef(function InlineTransactionTable({
         onRowsChange(next);
         return next;
       });
+      procCache.current = {};
     }
   }
 

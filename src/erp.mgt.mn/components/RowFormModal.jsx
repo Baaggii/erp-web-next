@@ -573,6 +573,7 @@ const RowFormModal = function RowFormModal({
           tableRef.current.replaceRows(failedRows);
         }
       }
+      procCache.current = {};
       setSubmitLocked(false);
       return;
     }
@@ -601,6 +602,7 @@ const RowFormModal = function RowFormModal({
           setSubmitLocked(false);
           return;
         }
+        procCache.current = {};
       } catch (err) {
         console.error('Submit failed', err);
         setSubmitLocked(false);
