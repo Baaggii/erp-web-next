@@ -69,15 +69,13 @@ const RowFormModal = function RowFormModal({
     columns.forEach((c) => {
       const lower = c.toLowerCase();
       let placeholder = '';
-      if (lower.includes('timestamp') || (lower.includes('date') && lower.includes('time'))) {
-        placeholder = 'YYYY-MM-DD HH:MM:SS';
-      } else if (lower.includes('date')) {
-        placeholder = 'YYYY-MM-DD';
-      } else if (lower.includes('time')) {
+      if (lower.includes('time') && !lower.includes('date')) {
         placeholder = 'HH:MM:SS';
+      } else if (lower.includes('timestamp') || lower.includes('date')) {
+        placeholder = 'YYYY-MM-DD';
       }
       const raw = row ? String(row[c] ?? '') : String(defaultValues[c] ?? '');
-      let val = placeholder ? normalizeDateInput(raw, placeholder) : raw;
+      let val = normalizeDateInput(raw, placeholder);
       if (!row && !val && dateField.includes(c)) {
         if (placeholder === 'YYYY-MM-DD') val = formatTimestamp(now).slice(0, 10);
         else if (placeholder === 'HH:MM:SS') val = formatTimestamp(now).slice(11, 19);
@@ -148,31 +146,31 @@ const RowFormModal = function RowFormModal({
   }, [fitted, visible]);
   const placeholders = React.useMemo(() => {
     const map = {};
-    columns.forEach((c) => {
+    const cols = new Set([
+      ...columns,
+      ...Object.keys(row || {}),
+      ...Object.keys(defaultValues || {}),
+    ]);
+    cols.forEach((c) => {
       const lower = c.toLowerCase();
-      if (lower.includes('timestamp') || (lower.includes('date') && lower.includes('time'))) {
-        map[c] = 'YYYY-MM-DD HH:MM:SS';
-      } else if (lower.includes('date')) {
-        map[c] = 'YYYY-MM-DD';
-      } else if (lower.includes('time')) {
+      if (lower.includes('time') && !lower.includes('date')) {
         map[c] = 'HH:MM:SS';
+      } else if (lower.includes('timestamp') || lower.includes('date')) {
+        map[c] = 'YYYY-MM-DD';
       }
     });
     return map;
-  }, [columns]);
+  }, [columns, row, defaultValues]);
 
   function normalizeDateInput(value, format) {
     if (typeof value !== 'string') return value;
-    let v = value.replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
-    const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
-  if (isoRe.test(v)) {
+    let v = value.trim().replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
+    if (/^\d{4}-\d{2}-\d{2}T/.test(v) && !isNaN(Date.parse(v))) {
       const local = formatTimestamp(new Date(v));
-      if (format === 'YYYY-MM-DD') return local.slice(0, 10);
-      if (format === 'HH:MM:SS') return local.slice(11, 19);
-      return local;
+      return format === 'HH:MM:SS' ? local.slice(11, 19) : local.slice(0, 10);
+    }
+    return v;
   }
-  return v;
-}
 
   function normalizeNumberInput(value) {
     if (typeof value !== 'string') return value;
@@ -185,7 +183,6 @@ const RowFormModal = function RowFormModal({
     const map = {
       'YYYY-MM-DD': /^\d{4}-\d{2}-\d{2}$/,
       'HH:MM:SS': /^\d{2}:\d{2}:\d{2}$/,
-      'YYYY-MM-DD HH:MM:SS': /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/,
     };
     const re = map[format];
     if (!re) return true;
@@ -202,7 +199,7 @@ const RowFormModal = function RowFormModal({
     const vals = {};
     columns.forEach((c) => {
       const raw = row ? String(row[c] ?? '') : String(defaultValues[c] ?? '');
-      let v = placeholders[c] ? normalizeDateInput(raw, placeholders[c]) : raw;
+      let v = normalizeDateInput(raw, placeholders[c]);
         if (!row && !v && dateField.includes(c)) {
           const now = new Date();
           if (placeholders[c] === 'YYYY-MM-DD') v = formatTimestamp(now).slice(0, 10);
@@ -417,7 +414,7 @@ const RowFormModal = function RowFormModal({
         if (p === '$branchId') return company?.branch_id;
         if (p === '$companyId') return company?.company_id;
         if (p === '$employeeId') return user?.empid;
-        if (p === '$date') return new Date().toISOString().slice(0, 10);
+        if (p === '$date') return formatTimestamp(new Date()).slice(0, 10);
         return getVal(p);
       };
       const paramValues = params.map(getParam);
@@ -507,7 +504,7 @@ const RowFormModal = function RowFormModal({
         const normalized = {};
         Object.entries(r).forEach(([k, v]) => {
           const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
-          let val = placeholders[k] ? normalizeDateInput(raw, placeholders[k]) : raw;
+          let val = normalizeDateInput(raw, placeholders[k]);
           if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
             val = normalizeNumberInput(val);
           }
@@ -584,7 +581,7 @@ const RowFormModal = function RowFormModal({
     if (Object.keys(errs).length === 0) {
       const normalized = { ...extraVals };
       Object.entries(formVals).forEach(([k, v]) => {
-        let val = placeholders[k] ? normalizeDateInput(v, placeholders[k]) : v;
+        let val = normalizeDateInput(v, placeholders[k]);
         if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
           val = normalizeNumberInput(val);
         }
