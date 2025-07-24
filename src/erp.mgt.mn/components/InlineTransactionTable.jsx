@@ -71,26 +71,6 @@ export default forwardRef(function InlineTransactionTable({
     return Array.from({ length: minRows }, () => ({ ...defaultValues }));
   });
 
-  useEffect(() => {
-    if (!Array.isArray(initRows)) return;
-    setRows((r) => {
-      const base = Array.isArray(initRows) ? initRows : [];
-      const next = base.length >= minRows
-        ? base
-        : [...base, ...Array.from({ length: minRows - base.length }, () => ({ ...defaultValues }))];
-      return next;
-    });
-  }, [initRows, minRows, defaultValues]);
-  const inputRefs = useRef({});
-  const focusRow = useRef(0);
-  const addBtnRef = useRef(null);
-  const [errorMsg, setErrorMsg] = useState('');
-  const [invalidCell, setInvalidCell] = useState(null);
-  const procCache = useRef({});
-
-  const totalAmountSet = new Set(totalAmountFields);
-  const totalCurrencySet = new Set(totalCurrencyFields);
-
   const placeholders = React.useMemo(() => {
     const map = {};
     fields.forEach((f) => {
@@ -103,6 +83,38 @@ export default forwardRef(function InlineTransactionTable({
     });
     return map;
   }, [fields]);
+
+  useEffect(() => {
+    if (!Array.isArray(initRows)) return;
+    const base = Array.isArray(initRows) ? initRows : [];
+    const next =
+      base.length >= minRows
+        ? base
+        : [
+            ...base,
+            ...Array.from({ length: minRows - base.length }, () => ({ ...defaultValues })),
+          ];
+    const normalized = next.map((row) => {
+      if (!row || typeof row !== 'object') return row;
+      const updated = { ...row };
+      Object.entries(updated).forEach(([k, v]) => {
+        if (placeholders[k]) {
+          updated[k] = normalizeDateInput(String(v ?? ''), placeholders[k]);
+        }
+      });
+      return updated;
+    });
+    setRows(normalized);
+  }, [initRows, minRows, defaultValues, placeholders]);
+  const inputRefs = useRef({});
+  const focusRow = useRef(0);
+  const addBtnRef = useRef(null);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [invalidCell, setInvalidCell] = useState(null);
+  const procCache = useRef({});
+
+  const totalAmountSet = new Set(totalAmountFields);
+  const totalCurrencySet = new Set(totalCurrencyFields);
 
   function isValidDate(value, format) {
     if (!value) return true;
@@ -265,7 +277,14 @@ export default forwardRef(function InlineTransactionTable({
       if (!hasTarget) continue;
       const getVal = (name) => {
         const key = columnCaseMap[name.toLowerCase()] || name;
-        return rows[rowIdx]?.[key];
+        let val = rows[rowIdx]?.[key];
+        if (placeholders[key]) {
+          val = normalizeDateInput(val, placeholders[key]);
+        }
+        if (totalCurrencySet.has(key) || totalAmountSet.has(key)) {
+          val = normalizeNumberInput(val);
+        }
+        return val;
       };
       const getParam = (p) => {
         if (p === '$current') return getVal(tCol);
@@ -603,7 +622,7 @@ export default forwardRef(function InlineTransactionTable({
     const field = fields[colIdx];
     let val = e.target.value;
     if (placeholders[field]) {
-      val = val.replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
+      val = normalizeDateInput(val, placeholders[field]);
     }
     if (totalCurrencySet.has(field)) {
       val = normalizeNumberInput(val);
