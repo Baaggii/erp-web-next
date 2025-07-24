@@ -124,6 +124,7 @@ export default function PosTransactionsPage() {
   const [relationsMap, setRelationsMap] = useState({});
   const [relationConfigs, setRelationConfigs] = useState({});
   const [relationData, setRelationData] = useState({});
+  const [procTriggersMap, setProcTriggersMap] = useState({});
   const [pendingId, setPendingId] = useState(null);
   const [sessionFields, setSessionFields] = useState([]);
   const [masterId, setMasterId] = useState(null);
@@ -266,6 +267,10 @@ export default function PosTransactionsPage() {
           setColumnMeta(m => ({ ...m, [tbl]: cols || [] }));
           loadRelations(tbl);
         })
+        .catch(() => {});
+      fetch(`/api/proc_triggers?table=${encodeURIComponent(tbl)}`, { credentials: 'include' })
+        .then(res => res.ok ? res.json() : {})
+        .then(data => setProcTriggersMap(m => ({ ...m, [tbl]: data || {} })))
         .catch(() => {});
     });
   }, [config]);
@@ -843,11 +848,15 @@ export default function PosTransactionsPage() {
                       rows={t.type === 'multi' ? values[t.table] : undefined}
                       headerFields={headerFields}
                       defaultValues={fc.defaultValues || {}}
-                      relations={relationsMap[t.table] || {}}
-                      relationConfigs={relationConfigs[t.table] || {}}
-                      relationData={relationData[t.table] || {}}
-                      onChange={(changes) => handleChange(t.table, changes)}
-                      onRowsChange={(rows) => handleRowsChange(t.table, rows)}
+                    relations={relationsMap[t.table] || {}}
+                    relationConfigs={relationConfigs[t.table] || {}}
+                    relationData={relationData[t.table] || {}}
+                    procTriggers={procTriggersMap[t.table] || {}}
+                    user={user}
+                    company={company}
+                    columnCaseMap={(columnMeta[t.table] || []).reduce((m,c)=>{m[c.name.toLowerCase()] = c.name;return m;}, {})}
+                    onChange={(changes) => handleChange(t.table, changes)}
+                    onRowsChange={(rows) => handleRowsChange(t.table, rows)}
                       onSubmit={() => true}
                       useGrid={t.view === 'table' || t.type === 'multi'}
                       fitted={t.view === 'fitted'}
