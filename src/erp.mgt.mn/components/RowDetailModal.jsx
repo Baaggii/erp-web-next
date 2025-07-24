@@ -37,7 +37,8 @@ export default function RowDetailModal({ visible, onClose, row = {}, columns = [
       const local = formatTimestamp(new Date(v));
       if (format === 'YYYY-MM-DD') return local.slice(0, 10);
       if (format === 'HH:MM:SS') return local.slice(11, 19);
-      return local;
+      if (format === 'YYYY-MM-DD HH:MM:SS') return local;
+      return local.slice(0, 10);
     }
     return v;
   }
