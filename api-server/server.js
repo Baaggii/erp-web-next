@@ -29,6 +29,7 @@ import posTxnPostRoutes from "./routes/pos_txn_post.js";
 import viewsRoutes from "./routes/views.js";
 import transactionRoutes from "./routes/transactions.js";
 import procedureRoutes from "./routes/procedures.js";
+import procTriggerRoutes from "./routes/proc_triggers.js";
 import { requireAuth } from "./middlewares/auth.js";
 
 // Polyfill for __dirname in ES modules
@@ -74,6 +75,7 @@ app.use("/api/pos_txn_pending", posTxnPendingRoutes);
 app.use("/api/pos_txn_post", posTxnPostRoutes);
 app.use("/api/views", viewsRoutes);
 app.use("/api/procedures", requireAuth, procedureRoutes);
+app.use("/api/proc_triggers", requireAuth, procTriggerRoutes);
 app.use("/api/inventory_transactions", requireAuth, transactionRoutes);
 app.use("/api/tables", requireAuth, tableRoutes);
 
