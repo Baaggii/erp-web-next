@@ -238,16 +238,25 @@ export default forwardRef(function InlineTransactionTable({
     const paramTrigs = getParamTriggers(col);
 
     const map = new Map();
+    const keyFor = (cfg) => {
+      const out = Object.keys(cfg.outMap || {})
+        .sort()
+        .reduce((m, k) => {
+          m[k] = cfg.outMap[k];
+          return m;
+        }, {});
+      return JSON.stringify([cfg.name, cfg.params, out]);
+    };
     direct.forEach((cfg) => {
       if (!cfg || !cfg.name) return;
-      const key = JSON.stringify([cfg.name, cfg.params, cfg.outMap]);
+      const key = keyFor(cfg);
       const rec = map.get(key) || { cfg, cols: new Set() };
       rec.cols.add(col.toLowerCase());
       map.set(key, rec);
     });
     paramTrigs.forEach(([tCol, cfg]) => {
       if (!cfg || !cfg.name) return;
-      const key = JSON.stringify([cfg.name, cfg.params, cfg.outMap]);
+      const key = keyFor(cfg);
       const rec = map.get(key) || { cfg, cols: new Set() };
       rec.cols.add(tCol.toLowerCase());
       map.set(key, rec);
