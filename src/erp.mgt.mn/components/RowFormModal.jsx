@@ -102,7 +102,16 @@ const RowFormModal = function RowFormModal({
   const [extraVals, setExtraVals] = useState(() => {
     const extras = {};
     Object.entries(row || {}).forEach(([k, v]) => {
-      if (!columns.includes(k)) extras[k] = v;
+      if (!columns.includes(k)) {
+        const lower = k.toLowerCase();
+        let placeholder = '';
+        if (lower.includes('time') && !lower.includes('date')) {
+          placeholder = 'HH:MM:SS';
+        } else if (lower.includes('timestamp') || lower.includes('date')) {
+          placeholder = 'YYYY-MM-DD';
+        }
+        extras[k] = normalizeDateInput(String(v ?? ''), placeholder);
+      }
     });
     return extras;
   });
@@ -161,6 +170,16 @@ const RowFormModal = function RowFormModal({
     });
     return map;
   }, [columns, row, defaultValues]);
+
+  useEffect(() => {
+    const extras = {};
+    Object.entries(row || {}).forEach(([k, v]) => {
+      if (!columns.includes(k)) {
+        extras[k] = normalizeDateInput(String(v ?? ''), placeholders[k]);
+      }
+    });
+    setExtraVals(extras);
+  }, [row, columns, placeholders]);
 
   function normalizeDateInput(value, format) {
     if (typeof value !== 'string') return value;
@@ -422,15 +441,19 @@ const RowFormModal = function RowFormModal({
       const cacheKey = `${procName}|${JSON.stringify(paramValues)}`;
       if (procCache.current[cacheKey]) {
         const row = procCache.current[cacheKey];
-        setExtraVals((v) => ({ ...v, ...row }));
+        const norm = {};
+        Object.entries(row).forEach(([k, v]) => {
+          norm[k] = normalizeDateInput(v, placeholders[k]);
+        });
+        setExtraVals((v) => ({ ...v, ...norm }));
         setFormVals((vals) => {
           const updated = { ...vals };
-          Object.entries(row).forEach(([k, v]) => {
+          Object.entries(norm).forEach(([k, v]) => {
             if (updated[k] !== undefined) updated[k] = v;
           });
           return updated;
         });
-        onChange(row);
+        onChange(norm);
         window.dispatchEvent(
           new CustomEvent('toast', {
             detail: { message: `Returned: ${JSON.stringify(row)}`, type: 'info' },
@@ -450,15 +473,19 @@ const RowFormModal = function RowFormModal({
       const row = await callProcedure(procName, paramValues, aliases);
       if (row && typeof row === 'object') {
         procCache.current[cacheKey] = row;
-        setExtraVals((v) => ({ ...v, ...row }));
+        const norm = {};
+        Object.entries(row).forEach(([k, v]) => {
+          norm[k] = normalizeDateInput(v, placeholders[k]);
+        });
+        setExtraVals((v) => ({ ...v, ...norm }));
         setFormVals((vals) => {
           const updated = { ...vals };
-          Object.entries(row).forEach(([k, v]) => {
+          Object.entries(norm).forEach(([k, v]) => {
             if (updated[k] !== undefined) updated[k] = v;
           });
           return updated;
         });
-        onChange(row);
+        onChange(norm);
         window.dispatchEvent(
           new CustomEvent('toast', {
             detail: { message: `Returned: ${JSON.stringify(row)}`, type: 'info' },
@@ -579,8 +606,8 @@ const RowFormModal = function RowFormModal({
     });
     setErrors(errs);
     if (Object.keys(errs).length === 0) {
-      const normalized = { ...extraVals };
-      Object.entries(formVals).forEach(([k, v]) => {
+      const normalized = {};
+      Object.entries({ ...extraVals, ...formVals }).forEach(([k, v]) => {
         let val = normalizeDateInput(v, placeholders[k]);
         if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
           val = normalizeNumberInput(val);
