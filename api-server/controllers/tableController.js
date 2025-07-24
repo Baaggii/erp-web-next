@@ -75,9 +75,6 @@ export async function updateRow(req, res, next) {
     await updateTableRow(req.params.table, req.params.id, updates);
     res.sendStatus(204);
   } catch (err) {
-    if (/Can't update table .* in stored function\/trigger/i.test(err.message)) {
-      return res.status(400).json({ message: err.message });
-    }
     next(err);
   }
 }
@@ -96,9 +93,6 @@ export async function addRow(req, res, next) {
     const result = await insertTableRow(req.params.table, row);
     res.status(201).json(result);
   } catch (err) {
-    if (/Can't update table .* in stored function\/trigger/i.test(err.message)) {
-      return res.status(400).json({ message: err.message });
-    }
     next(err);
   }
 }
