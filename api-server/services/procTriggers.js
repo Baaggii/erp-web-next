@@ -28,14 +28,15 @@ export async function getProcTriggers(table) {
       });
       params.forEach((p) => {
         if (!p) return;
-        if (!result[p]) result[p] = [];
-        const exists = result[p].some(
+        const key = (varToCol[p] || p).toLowerCase();
+        if (!result[key]) result[key] = [];
+        const exists = result[key].some(
           (cfg) =>
             cfg.name === proc &&
             JSON.stringify(cfg.params) === JSON.stringify(params) &&
             JSON.stringify(cfg.outMap) === JSON.stringify(outMap),
         );
-        if (!exists) result[p].push({ name: proc, params, outMap });
+        if (!exists) result[key].push({ name: proc, params, outMap });
       });
     }
   }
