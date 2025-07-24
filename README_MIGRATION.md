@@ -35,6 +35,7 @@ Two SQL utilities assist with default module permissions:
 * `db/migrations/2025-06-12_role_default_modules.sql` – defines `role_default_modules` and seeds defaults.
 * `db/scripts/populate_role_module_permissions.sql` – copies those defaults into `role_module_permissions` for admin review.
 * `db/migrations/2025-06-14_role_module_permissions_company_id.sql` – adds a `company_id` column so permissions are scoped per company.
+* `db/migrations/2025-07-24_proc_fix.sql` – recreates `resolve_inventory_metadata` and `calculate_stock_per_branch` as read‑only procedures so triggers no longer attempt to update their source tables.
 
 Run the script after applying the migration to initialize permissions for all roles.
 
