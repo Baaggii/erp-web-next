@@ -464,6 +464,11 @@ const RowFormModal = function RowFormModal({
       );
     }
     }
+    }
+  }
+
+  async function handleFocusField(col) {
+    showTriggerInfo(col);
   }
 
   async function handleFocusField(col) {
