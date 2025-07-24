@@ -163,16 +163,16 @@ const RowFormModal = function RowFormModal({
 
   function normalizeDateInput(value, format) {
     if (typeof value !== 'string') return value;
-    let v = value.replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
-    const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
-  if (isoRe.test(v)) {
+    let v = value.trim().replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
+    if (/^\d{4}-\d{2}-\d{2}T/.test(v) && !isNaN(Date.parse(v))) {
       const local = formatTimestamp(new Date(v));
       if (format === 'YYYY-MM-DD') return local.slice(0, 10);
       if (format === 'HH:MM:SS') return local.slice(11, 19);
-      return local;
+      if (format === 'YYYY-MM-DD HH:MM:SS') return local;
+      return local.slice(0, 10);
+    }
+    return v;
   }
-  return v;
-}
 
   function normalizeNumberInput(value) {
     if (typeof value !== 'string') return value;
