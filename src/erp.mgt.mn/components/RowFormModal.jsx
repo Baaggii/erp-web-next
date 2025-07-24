@@ -4,6 +4,7 @@ import Modal from './Modal.jsx';
 import InlineTransactionTable from './InlineTransactionTable.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
+import callProcedure from '../utils/callProcedure.js';
 
 const RowFormModal = function RowFormModal({
   visible,
@@ -449,14 +450,7 @@ const RowFormModal = function RowFormModal({
       }),
     );
     try {
-      const res = await fetch('/api/procedures', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ name: procName, params: paramValues, aliases }),
-      });
-      const js = await res.json();
-      const row = js.row || {};
+      const row = await callProcedure(procName, paramValues, aliases);
       if (row && typeof row === 'object') {
         procCache.current[cacheKey] = row;
         setExtraVals((v) => ({ ...v, ...row }));
