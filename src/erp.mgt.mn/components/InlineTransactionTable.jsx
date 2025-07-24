@@ -7,6 +7,7 @@ import React, {
 } from 'react';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
+import callProcedure from '../utils/callProcedure.js';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -315,20 +316,17 @@ export default forwardRef(function InlineTransactionTable({
         }),
       );
       try {
-        const res = await fetch('/api/procedures', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ name: procName, params: paramValues, aliases }),
-        });
-      const js = await res.json();
-      const rowData = js.row || {};
-      if (rowData && typeof rowData === 'object') {
-        procCache.current[cacheKey] = rowData;
-        setRows((r) => {
-          const next = r.map((row, i) => {
-            if (i !== rowIdx) return row;
-            const updated = { ...row };
+        const rowData = await callProcedure(
+          procName,
+          paramValues,
+          aliases,
+        );
+        if (rowData && typeof rowData === 'object') {
+          procCache.current[cacheKey] = rowData;
+          setRows((r) => {
+            const next = r.map((row, i) => {
+              if (i !== rowIdx) return row;
+              const updated = { ...row };
               Object.entries(rowData).forEach(([k, v]) => {
                 const key = columnCaseMap[k.toLowerCase()];
                 if (key) updated[key] = v;
