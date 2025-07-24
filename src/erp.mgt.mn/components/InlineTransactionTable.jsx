@@ -237,14 +237,23 @@ export default forwardRef(function InlineTransactionTable({
     const direct = getDirectTriggers(col);
     const paramTrigs = getParamTriggers(col);
 
-    const pending = [];
+    const map = new Map();
     direct.forEach((cfg) => {
-      if (cfg && cfg.name) pending.push([col.toLowerCase(), cfg]);
+      if (!cfg || !cfg.name) return;
+      const key = JSON.stringify([cfg.name, cfg.params, cfg.outMap]);
+      const rec = map.get(key) || { cfg, cols: new Set() };
+      rec.cols.add(col.toLowerCase());
+      map.set(key, rec);
     });
     paramTrigs.forEach(([tCol, cfg]) => {
-      if (cfg && cfg.name) pending.push([tCol.toLowerCase(), cfg]);
+      if (!cfg || !cfg.name) return;
+      const key = JSON.stringify([cfg.name, cfg.params, cfg.outMap]);
+      const rec = map.get(key) || { cfg, cols: new Set() };
+      rec.cols.add(tCol.toLowerCase());
+      map.set(key, rec);
     });
-    for (const [tCol, cfg] of pending) {
+    for (const { cfg, cols } of map.values()) {
+      const tCol = [...cols][0];
       const { name: procName, params = [], outMap = {} } = cfg;
       const targetCols = Object.values(outMap || {}).map((c) =>
         columnCaseMap[c.toLowerCase()] || c,
