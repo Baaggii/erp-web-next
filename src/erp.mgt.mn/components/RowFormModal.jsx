@@ -412,7 +412,7 @@ const RowFormModal = function RowFormModal({
         body: JSON.stringify({ name: procName, params: paramValues, aliases }),
       });
       const js = await res.json();
-      const row = Array.isArray(js.rows) && js.rows.length > 0 ? js.rows[0] : {};
+      const row = js.row || {};
       if (row && typeof row === 'object') {
         setExtraVals((v) => ({ ...v, ...row }));
         setFormVals((vals) => {

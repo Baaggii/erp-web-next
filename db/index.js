@@ -982,14 +982,16 @@ export async function callStoredProcedure(name, params = [], aliases = []) {
 
     for (let i = 0; i < params.length; i++) {
       const alias = aliases[i];
+      const value = params[i];
+      const cleanVal = value === '' || value === undefined ? null : value;
       if (alias) {
         const varName = `@_${name}_${i}`;
-        await conn.query(`SET ${varName} = ?`, [params[i] ?? null]);
+        await conn.query(`SET ${varName} = ?`, [cleanVal]);
         callParts.push(varName);
         outVars.push([alias, varName]);
       } else {
         callParts.push('?');
-        callArgs.push(params[i]);
+        callArgs.push(cleanVal);
       }
     }
 
@@ -1005,6 +1007,10 @@ export async function callStoredProcedure(name, params = [], aliases = []) {
         first = { ...first, ...outRows[0] };
       }
     }
+
+    aliases.forEach((alias) => {
+      if (alias && !(alias in first)) first[alias] = null;
+    });
 
     return first;
   } finally {

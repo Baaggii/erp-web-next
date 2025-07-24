@@ -275,7 +275,7 @@ export default forwardRef(function InlineTransactionTable({
           body: JSON.stringify({ name: procName, params: paramValues, aliases }),
         });
         const js = await res.json();
-        const rowData = Array.isArray(js.rows) && js.rows.length > 0 ? js.rows[0] : {};
+        const rowData = js.row || {};
         if (rowData && typeof rowData === 'object') {
           setRows((r) => {
             const next = r.map((row, i) => {
