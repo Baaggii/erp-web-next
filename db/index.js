@@ -973,10 +973,41 @@ export async function listInventoryTransactions({
   return { rows, count };
 }
 
-export async function callStoredProcedure(name, params = []) {
-  const placeholders = params.map(() => '?').join(', ');
-  const sql = `CALL ${name}(${placeholders})`;
-  const [rows] = await pool.query(sql, params);
-  if (Array.isArray(rows)) return rows[0] || [];
-  return rows || [];
+export async function callStoredProcedure(name, params = [], aliases = []) {
+  const conn = await pool.getConnection();
+  try {
+    const callParts = [];
+    const callArgs = [];
+    const outVars = [];
+
+    for (let i = 0; i < params.length; i++) {
+      const alias = aliases[i];
+      if (alias) {
+        const varName = `@_${name}_${i}`;
+        await conn.query(`SET ${varName} = ?`, [params[i] ?? null]);
+        callParts.push(varName);
+        outVars.push([alias, varName]);
+      } else {
+        callParts.push('?');
+        callArgs.push(params[i]);
+      }
+    }
+
+    const sql = `CALL ${name}(${callParts.join(', ')})`;
+    const [rows] = await conn.query(sql, callArgs);
+    let first = Array.isArray(rows) ? rows[0] || {} : rows || {};
+
+    if (outVars.length > 0) {
+      const selectSql =
+        'SELECT ' + outVars.map(([n, v]) => `${v} AS \`${n}\``).join(', ');
+      const [outRows] = await conn.query(selectSql);
+      if (Array.isArray(outRows) && outRows[0]) {
+        first = { ...first, ...outRows[0] };
+      }
+    }
+
+    return first;
+  } finally {
+    conn.release();
+  }
 }
