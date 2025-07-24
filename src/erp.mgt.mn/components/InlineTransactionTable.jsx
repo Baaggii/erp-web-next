@@ -21,13 +21,10 @@ function normalizeNumberInput(value) {
 
 function normalizeDateInput(value, format) {
   if (typeof value !== 'string') return value;
-  let v = value.replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
-  const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
-  if (isoRe.test(v)) {
+  let v = value.trim().replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
+  if (/^\d{4}-\d{2}-\d{2}T/.test(v) && !isNaN(Date.parse(v))) {
     const local = formatTimestamp(new Date(v));
-    if (format === 'YYYY-MM-DD') return local.slice(0, 10);
-    if (format === 'HH:MM:SS') return local.slice(11, 19);
-    return local;
+    return format === 'HH:MM:SS' ? local.slice(11, 19) : local.slice(0, 10);
   }
   return v;
 }
@@ -74,16 +71,41 @@ export default forwardRef(function InlineTransactionTable({
     return Array.from({ length: minRows }, () => ({ ...defaultValues }));
   });
 
+  const placeholders = React.useMemo(() => {
+    const map = {};
+    fields.forEach((f) => {
+      const lower = f.toLowerCase();
+      if (lower.includes('time') && !lower.includes('date')) {
+        map[f] = 'HH:MM:SS';
+      } else if (lower.includes('timestamp') || lower.includes('date')) {
+        map[f] = 'YYYY-MM-DD';
+      }
+    });
+    return map;
+  }, [fields]);
+
   useEffect(() => {
     if (!Array.isArray(initRows)) return;
-    setRows((r) => {
-      const base = Array.isArray(initRows) ? initRows : [];
-      const next = base.length >= minRows
+    const base = Array.isArray(initRows) ? initRows : [];
+    const next =
+      base.length >= minRows
         ? base
-        : [...base, ...Array.from({ length: minRows - base.length }, () => ({ ...defaultValues }))];
-      return next;
+        : [
+            ...base,
+            ...Array.from({ length: minRows - base.length }, () => ({ ...defaultValues })),
+          ];
+    const normalized = next.map((row) => {
+      if (!row || typeof row !== 'object') return row;
+      const updated = { ...row };
+      Object.entries(updated).forEach(([k, v]) => {
+        if (placeholders[k]) {
+          updated[k] = normalizeDateInput(String(v ?? ''), placeholders[k]);
+        }
+      });
+      return updated;
     });
-  }, [initRows, minRows, defaultValues]);
+    setRows(normalized);
+  }, [initRows, minRows, defaultValues, placeholders]);
   const inputRefs = useRef({});
   const focusRow = useRef(0);
   const addBtnRef = useRef(null);
@@ -93,21 +115,6 @@ export default forwardRef(function InlineTransactionTable({
 
   const totalAmountSet = new Set(totalAmountFields);
   const totalCurrencySet = new Set(totalCurrencyFields);
-
-  const placeholders = React.useMemo(() => {
-    const map = {};
-    fields.forEach((f) => {
-      const lower = f.toLowerCase();
-      if (lower.includes('timestamp') || (lower.includes('date') && lower.includes('time'))) {
-        map[f] = 'YYYY-MM-DD HH:MM:SS';
-      } else if (lower.includes('date')) {
-        map[f] = 'YYYY-MM-DD';
-      } else if (lower.includes('time')) {
-        map[f] = 'HH:MM:SS';
-      }
-    });
-    return map;
-  }, [fields]);
 
   function isValidDate(value, format) {
     if (!value) return true;
@@ -123,12 +130,10 @@ export default forwardRef(function InlineTransactionTable({
       const ss = String(d.getSeconds()).padStart(2, '0');
       if (format === 'YYYY-MM-DD') v = `${yyyy}-${mm}-${dd}`;
       else if (format === 'HH:MM:SS') v = `${hh}:${mi}:${ss}`;
-      else v = `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
     }
     const map = {
       'YYYY-MM-DD': /^\d{4}-\d{2}-\d{2}$/,
       'HH:MM:SS': /^\d{2}:\d{2}:\d{2}$/,
-      'YYYY-MM-DD HH:MM:SS': /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/,
     };
     const re = map[format];
     if (!re) return true;
@@ -272,14 +277,21 @@ export default forwardRef(function InlineTransactionTable({
       if (!hasTarget) continue;
       const getVal = (name) => {
         const key = columnCaseMap[name.toLowerCase()] || name;
-        return rows[rowIdx]?.[key];
+        let val = rows[rowIdx]?.[key];
+        if (placeholders[key]) {
+          val = normalizeDateInput(val, placeholders[key]);
+        }
+        if (totalCurrencySet.has(key) || totalAmountSet.has(key)) {
+          val = normalizeNumberInput(val);
+        }
+        return val;
       };
       const getParam = (p) => {
         if (p === '$current') return getVal(tCol);
         if (p === '$branchId') return company?.branch_id;
         if (p === '$companyId') return company?.company_id;
         if (p === '$employeeId') return user?.empid;
-        if (p === '$date') return new Date().toISOString().slice(0, 10);
+        if (p === '$date') return formatTimestamp(new Date()).slice(0, 10);
         return getVal(p);
       };
       const paramValues = params.map(getParam);
@@ -610,7 +622,7 @@ export default forwardRef(function InlineTransactionTable({
     const field = fields[colIdx];
     let val = e.target.value;
     if (placeholders[field]) {
-      val = val.replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
+      val = normalizeDateInput(val, placeholders[field]);
     }
     if (totalCurrencySet.has(field)) {
       val = normalizeNumberInput(val);
