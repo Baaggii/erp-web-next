@@ -733,6 +733,26 @@ const RowFormModal = function RowFormModal({
         inputRef={(el) => (inputRefs.current[c] = el)}
         inputStyle={inputStyle}
       />
+    ) : viewSource[c] && !Array.isArray(relations[c]) ? (
+      <AsyncSearchSelect
+        title={labels[c] || c}
+        table={viewSource[c]}
+        searchColumn={c}
+        value={formVals[c]}
+        onChange={(val) => {
+          setFormVals((v) => ({ ...v, [c]: val }));
+          setErrors((er) => ({ ...er, [c]: undefined }));
+          onChange({ [c]: val });
+        }}
+        disabled={disabled}
+        onKeyDown={(e) => handleKeyDown(e, c)}
+        onFocus={(e) => {
+          e.target.select();
+          handleFocusField(c);
+        }}
+        inputRef={(el) => (inputRefs.current[c] = el)}
+        inputStyle={inputStyle}
+      />
     ) : Array.isArray(relations[c]) ? (
       <select
         title={formVals[c]}
