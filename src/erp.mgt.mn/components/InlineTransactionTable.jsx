@@ -333,6 +333,9 @@ export default forwardRef(function InlineTransactionTable({
       const getVal = (name) => {
         const key = columnCaseMap[name.toLowerCase()] || name;
         let val = rows[rowIdx]?.[key];
+        if (val && typeof val === 'object' && 'value' in val) {
+          val = val.value;
+        }
         if (placeholders[key]) {
           val = normalizeDateInput(val, placeholders[key]);
         }

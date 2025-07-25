@@ -74,7 +74,13 @@ export default function AsyncSearchSelect({
             }
             return { value: val, label: parts.join(' - ') };
           });
-          setOptions(opts);
+          const q = String(input || '').toLowerCase();
+          const filtered = opts.filter(
+            (o) =>
+              String(o.value).toLowerCase().includes(q) ||
+              String(o.label).toLowerCase().includes(q),
+          );
+          setOptions(filtered);
         } else {
           setOptions([]);
         }
@@ -141,7 +147,7 @@ export default function AsyncSearchSelect({
         <ul
           style={{
             position: 'absolute',
-            zIndex: 3000,
+            zIndex: 9999,
             listStyle: 'none',
             margin: 0,
             padding: 0,
