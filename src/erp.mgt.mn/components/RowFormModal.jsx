@@ -774,12 +774,11 @@ const RowFormModal = function RowFormModal({
             totalAmountFields={totalAmountFields}
             totalCurrencyFields={totalCurrencyFields}
             viewSource={viewSource}
-          procTriggers={procTriggers}
-          user={user}
-          company={company}
-          columnCaseMap={columnCaseMap}
-          disabledFields={disabledFields}
-          collectRows={useGrid}
+            procTriggers={procTriggers}
+            user={user}
+            company={company}
+            columnCaseMap={columnCaseMap}
+            collectRows={useGrid}
             minRows={1}
             onRowSubmit={onSubmit}
             onRowsChange={(rows) => {
