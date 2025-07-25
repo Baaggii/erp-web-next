@@ -870,6 +870,7 @@ export default function PosTransactionsPage() {
                       onSubmit={() => true}
                       useGrid={t.view === 'table' || t.type === 'multi'}
                       fitted={t.view === 'fitted'}
+                      scope="pos"
                       labelFontSize={generalConfig.pos.labelFontSize}
                       boxWidth={generalConfig.pos.boxWidth}
                       boxHeight={generalConfig.pos.boxHeight}
