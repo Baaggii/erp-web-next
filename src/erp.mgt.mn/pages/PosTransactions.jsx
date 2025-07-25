@@ -4,6 +4,7 @@ import RowFormModal from '../components/RowFormModal.jsx';
 import Modal from '../components/Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 function parseErrorField(msg) {
   if (!msg) return null;
@@ -115,6 +116,7 @@ async function putRow(addToast, table, id, row) {
 export default function PosTransactionsPage() {
   const { addToast } = useToast();
   const { user, company } = useContext(AuthContext);
+  const generalConfig = useGeneralConfig();
   const [configs, setConfigs] = useState({});
   const [name, setName] = useState('');
   const [config, setConfig] = useState(null);
@@ -804,6 +806,12 @@ export default function PosTransactionsPage() {
                   fc.headerFields && fc.headerFields.length > 0
                     ? fc.headerFields
                     : [];
+                const editable = Array.isArray(fc.editableFields)
+                  ? fc.editableFields
+                  : [];
+                const disabled = editable.length
+                  ? visible.filter((c) => !editable.includes(c))
+                  : [];
                 const posStyle = {
                   top_row: { gridColumn: '1 / span 3', gridRow: '1' },
                   upper_left: { gridColumn: '1', gridRow: '2' },
@@ -843,6 +851,7 @@ export default function PosTransactionsPage() {
                       inline
                       visible
                       columns={visible}
+                      disabledFields={disabled}
                       requiredFields={fc.requiredFields || []}
                       labels={labels}
                       row={values[t.table]}
@@ -861,10 +870,23 @@ export default function PosTransactionsPage() {
                       onSubmit={() => true}
                       useGrid={t.view === 'table' || t.type === 'multi'}
                       fitted={t.view === 'fitted'}
-                      labelFontSize={config.labelFontSize}
-                      boxWidth={config.boxWidth}
-                      boxHeight={config.boxHeight}
-                      onNextForm={() => focusFirst(formList[idx + 1]?.table)}
+                      labelFontSize={generalConfig.labelFontSize}
+                      boxWidth={generalConfig.boxWidth}
+                      boxHeight={generalConfig.boxHeight}
+                      boxMaxWidth={generalConfig.boxMaxWidth}
+                      dateField={fc.dateField || []}
+                      onNextForm={() => {
+                        let next = idx + 1;
+                        while (next < formList.length) {
+                          const nf = formConfigs[formList[next].table];
+                          const ed = Array.isArray(nf?.editableFields)
+                            ? nf.editableFields
+                            : [];
+                          if (ed.length > 0) break;
+                          next += 1;
+                        }
+                        if (next < formList.length) focusFirst(formList[next].table);
+                      }}
                     />
                   </div>
                 );
