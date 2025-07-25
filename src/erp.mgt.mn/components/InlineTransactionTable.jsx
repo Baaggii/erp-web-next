@@ -50,6 +50,9 @@ export default forwardRef(function InlineTransactionTable({
   procTriggers = {},
   user = {},
   company = {},
+  labelFontSize = 14,
+  boxWidth = 60,
+  boxHeight = 30,
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -115,6 +118,16 @@ export default forwardRef(function InlineTransactionTable({
 
   const totalAmountSet = new Set(totalAmountFields);
   const totalCurrencySet = new Set(totalCurrencyFields);
+
+  const inputFontSize = Math.max(10, Math.round(boxHeight * 0.6));
+  const labelStyle = { fontSize: `${labelFontSize}px` };
+  const inputStyle = {
+    fontSize: `${inputFontSize}px`,
+    padding: '0.25rem 0.5rem',
+    width: '100%',
+    height: `${boxHeight}px`,
+  };
+  const colStyle = { width: `${boxWidth}px` };
 
   function isValidDate(value, format) {
     if (!value) return true;
@@ -711,6 +724,7 @@ export default forwardRef(function InlineTransactionTable({
             onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
             onFocus={() => handleFocusField(f)}
             className={invalid ? 'border-red-500 bg-red-100' : ''}
+            inputStyle={inputStyle}
           />
         );
       }
@@ -719,6 +733,7 @@ export default forwardRef(function InlineTransactionTable({
         return (
           <select
             className={`w-full border px-1 ${invalid ? 'border-red-500 bg-red-100' : ''}`}
+            style={inputStyle}
             value={inputVal}
             onChange={(e) => handleChange(idx, f, e.target.value)}
             ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
@@ -739,7 +754,7 @@ export default forwardRef(function InlineTransactionTable({
       <textarea
         rows={1}
         className={`w-full border px-1 resize-none whitespace-pre-wrap ${invalid ? 'border-red-500 bg-red-100' : ''}`}
-        style={{ overflow: 'hidden' }}
+        style={{ overflow: 'hidden', ...inputStyle }}
         value={typeof val === 'object' ? val.value : val}
         onChange={(e) => handleChange(idx, f, e.target.value)}
         ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
@@ -755,7 +770,10 @@ export default forwardRef(function InlineTransactionTable({
 
   return (
     <div className="overflow-x-auto overflow-y-visible relative">
-      <table className="min-w-max border border-gray-300 text-xs">
+      <table
+        className="min-w-max border border-gray-300"
+        style={{ fontSize: `${inputFontSize}px` }}
+      >
         <thead className="bg-gray-50">
           <tr>
             {fields.map((f) => {
@@ -769,8 +787,9 @@ export default forwardRef(function InlineTransactionTable({
                     whiteSpace: 'normal',
                     wordBreak: 'break-word',
                     lineHeight: '1.1',
-                    fontSize: '0.75rem',
+                    fontSize: labelStyle.fontSize,
                     maxHeight: '3em',
+                    ...colStyle,
                     ...(vertical
                       ? { writingMode: 'vertical-rl', transform: 'rotate(180deg)' }
                       : {}),
@@ -787,7 +806,7 @@ export default forwardRef(function InlineTransactionTable({
           {rows.map((r, idx) => (
             <tr key={idx}>
               {fields.map((f, cIdx) => (
-                <td key={f} className="border px-1 py-1 align-top">
+                <td key={f} className="border px-1 py-1 align-top" style={colStyle}>
                   {renderCell(idx, f, cIdx)}
                 </td>
               ))}
@@ -818,7 +837,7 @@ export default forwardRef(function InlineTransactionTable({
                   val = totals.sums[f];
                 }
                 return (
-                  <td key={f} className="border px-1 py-1 font-semibold">
+                  <td key={f} className="border px-1 py-1 font-semibold" style={colStyle}>
                     {val}
                   </td>
                 );
@@ -827,7 +846,7 @@ export default forwardRef(function InlineTransactionTable({
             </tr>
             <tr>
               {fields.map((f, idx) => (
-                <td key={f} className="border px-1 py-1 font-semibold">
+                <td key={f} className="border px-1 py-1 font-semibold" style={colStyle}>
                   {idx === 0 ? totals.count : ''}
                 </td>
               ))}
