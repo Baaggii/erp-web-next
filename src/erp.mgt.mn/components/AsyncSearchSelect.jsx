@@ -42,7 +42,7 @@ export default function AsyncSearchSelect({
   }, [value]);
 
   useEffect(() => {
-    if (show && options.length > 0 && highlight < 0) setHighlight(0);
+    if (show && options.length > 0) setHighlight((h) => (h < 0 ? 0 : Math.min(h, options.length - 1)));
   }, [options, show]);
 
   useEffect(() => {
@@ -102,9 +102,11 @@ export default function AsyncSearchSelect({
   function handleSelectKeyDown(e) {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
+      if (!show) setShow(true);
       setHighlight((h) => Math.min(h + 1, options.length - 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
+      if (!show) setShow(true);
       setHighlight((h) => Math.max(h - 1, 0));
     } else if (e.key === 'Enter') {
       let idx = highlight;
@@ -165,7 +167,7 @@ export default function AsyncSearchSelect({
         <ul
           style={{
             position: 'absolute',
-            zIndex: 10000,
+            zIndex: 20000,
             listStyle: 'none',
             margin: 0,
             padding: 0,
