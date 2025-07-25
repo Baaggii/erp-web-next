@@ -21,12 +21,12 @@
 }
 ```
 
-The **Forms** section controls default sizing for all non‑POS transaction windows.
-`boxWidth` sets the initial grid box width for these forms. Cells expand
-up to `boxMaxWidth`/`boxMaxHeight` as text is entered and wrap when necessary.
+The **Forms** section controls default sizing for all non‑POS transaction forms.
+`boxWidth` sets the initial grid box width for these forms. Cells expand up to
+`boxMaxWidth`/`boxMaxHeight` as text is entered and wrap when necessary.
 
-The **POS** section provides the same options specifically for POS transactions.
-Here `boxWidth` defines the initial grid box width of a POS transaction.
+The **POS** section provides the same options specifically for POS transaction
+forms. Here `boxWidth` defines the initial grid box width of each POS form.
 
 The settings can be edited in the **General Configuration** screen
 (module key `general_configuration`) under the Settings menu.
