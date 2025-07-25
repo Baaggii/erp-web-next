@@ -127,13 +127,13 @@ export default forwardRef(function InlineTransactionTable({
   const inputStyle = {
     fontSize: `${inputFontSize}px`,
     padding: '0.25rem 0.5rem',
-    width: 'auto',
+    width: `${boxWidth}px`,
     minWidth: `${boxWidth}px`,
     maxWidth: `${boxMaxWidth}px`,
     height: `${boxHeight}px`,
   };
   const colStyle = {
-    width: 'auto',
+    width: `${boxWidth}px`,
     minWidth: `${boxWidth}px`,
     maxWidth: `${boxMaxWidth}px`,
     wordBreak: 'break-word',
@@ -635,14 +635,8 @@ export default forwardRef(function InlineTransactionTable({
         );
       }
     });
-    const targetCols =
-      totalAmountFields.length > 0
-        ? totalAmountFields
-        : fields.includes('TotalAmt')
-          ? ['TotalAmt']
-          : [];
     const count = rows.filter((r) =>
-      targetCols.some((col) => {
+      totalAmountFields.some((col) => {
         const v = r[col];
         return v !== undefined && v !== null && String(v).trim() !== '';
       }),
@@ -753,10 +747,6 @@ export default forwardRef(function InlineTransactionTable({
             onFocus={() => handleFocusField(f)}
             className={invalid ? 'border-red-500 bg-red-100' : ''}
             inputStyle={inputStyle}
-            onInput={(e) => {
-              e.target.style.width = 'auto';
-              e.target.style.width = `${Math.min(boxMaxWidth, e.target.scrollWidth)}px`;
-            }}
           />
         );
       }
@@ -771,10 +761,6 @@ export default forwardRef(function InlineTransactionTable({
             ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
             onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
             onFocus={() => handleFocusField(f)}
-            onInput={(e) => {
-              e.target.style.width = 'auto';
-              e.target.style.width = `${Math.min(boxMaxWidth, e.target.scrollWidth)}px`;
-            }}
           >
             <option value="">-- select --</option>
             {relations[f].map((opt) => (
@@ -799,8 +785,6 @@ export default forwardRef(function InlineTransactionTable({
         onInput={(e) => {
           e.target.style.height = 'auto';
           e.target.style.height = `${e.target.scrollHeight}px`;
-          e.target.style.width = 'auto';
-          e.target.style.width = `${Math.min(boxMaxWidth, e.target.scrollWidth)}px`;
         }}
       />
     );
@@ -862,10 +846,7 @@ export default forwardRef(function InlineTransactionTable({
             </tr>
           ))}
         </tbody>
-        {(totalAmountFields.length > 0 ||
-          totalCurrencyFields.length > 0 ||
-          fields.includes('TotalCur') ||
-          fields.includes('TotalAmt')) && (
+        {(totalAmountFields.length > 0 || totalCurrencyFields.length > 0) && (
           <tfoot>
             <tr>
               {fields.map((f) => {
