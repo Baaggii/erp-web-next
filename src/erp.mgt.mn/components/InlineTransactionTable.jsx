@@ -48,6 +48,8 @@ export default forwardRef(function InlineTransactionTable({
   rows: initRows = [],
   columnCaseMap = {},
   viewSource = {},
+  viewDisplays = {},
+  viewColumns = {},
   procTriggers = {},
   user = {},
   company = {},
@@ -292,7 +294,7 @@ export default forwardRef(function InlineTransactionTable({
     }
   }
 
-  async function runProcTrigger(rowIdx, col) {
+  async function runProcTrigger(rowIdx, col, rowOverride = null) {
     const direct = getDirectTriggers(col);
     const paramTrigs = getParamTriggers(col);
 
@@ -330,7 +332,10 @@ export default forwardRef(function InlineTransactionTable({
       if (!hasTarget) continue;
       const getVal = (name) => {
         const key = columnCaseMap[name.toLowerCase()] || name;
-        let val = rows[rowIdx]?.[key];
+        let val = (rowOverride || rows[rowIdx] || {})[key];
+        if (val && typeof val === 'object' && 'value' in val) {
+          val = val.value;
+        }
         if (placeholders[key]) {
           val = normalizeDateInput(val, placeholders[key]);
         }
@@ -525,8 +530,10 @@ export default forwardRef(function InlineTransactionTable({
     const view = viewSource[field];
     if (view && value !== '') {
       const params = new URLSearchParams({ perPage: 1, debug: 1 });
+      const cols = viewColumns[view] || [];
       Object.entries(viewSource).forEach(([f, v]) => {
         if (v !== view) return;
+        if (!cols.includes(f)) return;
         let pv = f === field ? value : rows[rowIdx]?.[f];
         if (pv === undefined || pv === '') return;
         if (typeof pv === 'object' && 'value' in pv) pv = pv.value;
@@ -678,15 +685,18 @@ export default forwardRef(function InlineTransactionTable({
     if (!isEnter && !isForwardTab) return;
     e.preventDefault();
     const field = fields[colIdx];
-    let val = e.target.value;
+    let label = undefined;
+    let val = e.selectedOption ? e.selectedOption.value : e.target.value;
+    if (e.selectedOption) label = e.selectedOption.label;
     if (placeholders[field]) {
       val = normalizeDateInput(val, placeholders[field]);
     }
     if (totalCurrencySet.has(field)) {
       val = normalizeNumberInput(val);
     }
-    if (rows[rowIdx]?.[field] !== val) {
-      handleChange(rowIdx, field, val);
+    const newValue = label ? { value: val, label } : val;
+    if (JSON.stringify(rows[rowIdx]?.[field]) !== JSON.stringify(newValue)) {
+      handleChange(rowIdx, field, newValue);
       if (val !== e.target.value) e.target.value = val;
     }
     if (
@@ -718,7 +728,8 @@ export default forwardRef(function InlineTransactionTable({
       return;
     }
     if (hasTrigger(field)) {
-      await runProcTrigger(rowIdx, field);
+      const override = { ...rows[rowIdx], [field]: newValue };
+      await runProcTrigger(rowIdx, field, override);
     }
     const enabledIdx = enabledFields.indexOf(field);
     const nextField = enabledFields[enabledIdx + 1];
@@ -804,6 +815,31 @@ export default forwardRef(function InlineTransactionTable({
           </select>
         );
       }
+    }
+    if (viewSource[f]) {
+      const view = viewSource[f];
+      const cfg = viewDisplays[view] || {};
+      const inputVal = typeof val === 'object' ? val.value : val;
+      const idField = cfg.idField || f;
+      const labelFields = cfg.displayFields || [];
+      return (
+        <AsyncSearchSelect
+          table={view}
+          searchColumn={idField}
+          searchColumns={[idField, ...labelFields]}
+          labelFields={labelFields}
+          idField={idField}
+          value={inputVal}
+          onChange={(v, label) =>
+            handleChange(idx, f, label ? { value: v, label } : v)
+          }
+          inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
+          onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
+          onFocus={() => handleFocusField(f)}
+          className={invalid ? 'border-red-500 bg-red-100' : ''}
+          inputStyle={inputStyle}
+        />
+      );
     }
     return (
       <textarea
