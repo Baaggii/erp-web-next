@@ -37,6 +37,7 @@ const RowFormModal = function RowFormModal({
   boxWidth = 60,
   boxHeight = 30,
   boxMaxWidth = 150,
+  boxMaxHeight = 150,
   onNextForm = null,
   columnCaseMap = {},
   viewSource = {},
@@ -274,10 +275,12 @@ const RowFormModal = function RowFormModal({
   const inputStyle = {
     fontSize: `${inputFontSize}px`,
     padding: '0.25rem 0.5rem',
-    width: `${boxWidth}px`,
+    width: 'auto',
     minWidth: `${boxWidth}px`,
     maxWidth: `${boxMaxWidth}px`,
     height: `${boxHeight}px`,
+    maxHeight: `${boxMaxHeight}px`,
+    overflow: 'hidden',
   };
 
   async function handleKeyDown(e, col) {
@@ -637,7 +640,7 @@ const RowFormModal = function RowFormModal({
       const val = formVals[c];
       if (!withLabel) {
         return (
-          <div className="w-full border rounded bg-gray-100 px-2 py-1" style={inputStyle}>
+          <div className="w-full border rounded bg-gray-100 px-2 py-1" style={inputStyle} title={val}>
             {val}
           </div>
         );
@@ -647,7 +650,7 @@ const RowFormModal = function RowFormModal({
           <label className="block mb-1 font-medium" style={labelStyle}>
             {labels[c] || c}
           </label>
-          <div className="w-full border rounded bg-gray-100 px-2 py-1" style={inputStyle}>
+          <div className="w-full border rounded bg-gray-100 px-2 py-1" style={inputStyle} title={val}>
             {val}
           </div>
         </div>
@@ -677,7 +680,7 @@ const RowFormModal = function RowFormModal({
       />
     ) : Array.isArray(relations[c]) ? (
       <select
-        title={labels[c] || c}
+        title={formVals[c]}
         ref={(el) => (inputRefs.current[c] = el)}
         value={formVals[c]}
         onFocus={() => handleFocusField(c)}
@@ -705,7 +708,7 @@ const RowFormModal = function RowFormModal({
       </select>
     ) : (
       <input
-        title={labels[c] || c}
+        title={formVals[c]}
         ref={(el) => (inputRefs.current[c] = el)}
         type="text"
         placeholder={placeholders[c] || ''}
@@ -728,6 +731,11 @@ const RowFormModal = function RowFormModal({
         disabled={disabled}
         className={inputClass}
         style={inputStyle}
+        onInput={(e) => {
+          e.target.style.width = 'auto';
+          const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
+          e.target.style.width = `${w}px`;
+        }}
       />
     );
 
@@ -893,7 +901,7 @@ const RowFormModal = function RowFormModal({
           return (
             <div key={c} className={fitted ? 'mb-1' : 'mb-3'}>
               <label className="block mb-1 font-medium" style={labelStyle}>{labels[c] || c}</label>
-              <div className="w-full border rounded bg-gray-100 px-2 py-1" style={inputStyle}>
+              <div className="w-full border rounded bg-gray-100 px-2 py-1" style={inputStyle} title={val}>
                 {val}
               </div>
             </div>

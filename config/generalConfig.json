@@ -1,6 +1,16 @@
 {
-  "labelFontSize": 14,
-  "boxWidth": 60,
-  "boxHeight": 30,
-  "boxMaxWidth": 150
+  "forms": {
+    "labelFontSize": 14,
+    "boxWidth": 60,
+    "boxHeight": 30,
+    "boxMaxWidth": 150,
+    "boxMaxHeight": 150
+  },
+  "pos": {
+    "labelFontSize": 14,
+    "boxWidth": 60,
+    "boxHeight": 30,
+    "boxMaxWidth": 150,
+    "boxMaxHeight": 150
+  }
 }
