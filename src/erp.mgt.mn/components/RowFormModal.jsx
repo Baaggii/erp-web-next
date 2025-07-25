@@ -261,26 +261,24 @@ const RowFormModal = function RowFormModal({
       ? columns.filter((c) => mainSet.has(c))
       : columns.filter((c) => !headerSet.has(c) && !footerSet.has(c));
 
-  const formGridClass = fitted ? 'grid' : 'grid gap-2';
   const inputFontSize = Math.max(10, Math.round(boxHeight * 0.6));
-  const formGridStyle = fitted
-    ? {
-        gap: '2px',
-        gridTemplateColumns: `repeat(auto-fill, minmax(${boxWidth}px, ${boxMaxWidth}px))`,
-        fontSize: `${inputFontSize}px`,
-      }
-    : { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' };
-  const labelStyle = fitted ? { fontSize: `${labelFontSize}px` } : undefined;
-  const inputStyle = fitted
-    ? {
-        fontSize: `${inputFontSize}px`,
-        padding: '0.25rem 0.5rem',
-        minWidth: `${boxWidth}px`,
-        maxWidth: `${boxMaxWidth}px`,
-        width: '100%',
-        height: `${boxHeight}px`,
-      }
-    : undefined;
+  const formGridClass = fitted ? 'grid' : 'grid gap-2';
+  const formGridStyle = {
+    gap: '2px',
+    gridTemplateColumns: fitted
+      ? `repeat(auto-fill, minmax(${boxWidth}px, ${boxMaxWidth}px))`
+      : `repeat(2, minmax(${boxWidth}px, ${boxMaxWidth}px))`,
+    fontSize: `${inputFontSize}px`,
+  };
+  const labelStyle = { fontSize: `${labelFontSize}px` };
+  const inputStyle = {
+    fontSize: `${inputFontSize}px`,
+    padding: '0.25rem 0.5rem',
+    minWidth: `${boxWidth}px`,
+    maxWidth: `${boxMaxWidth}px`,
+    width: '100%',
+    height: `${boxHeight}px`,
+  };
 
   async function handleKeyDown(e, col) {
     if (e.key !== 'Enter') return;
@@ -813,7 +811,16 @@ const RowFormModal = function RowFormModal({
           <thead className="bg-gray-50">
             <tr>
               {cols.map((c) => (
-                <th key={c} className="border px-2 py-1" style={{maxWidth:`${boxMaxWidth}px`,wordBreak:'break-word'}}>
+                <th
+                  key={c}
+                  className="border px-2 py-1"
+                  style={{
+                    maxWidth: `${boxMaxWidth}px`,
+                    wordBreak: 'break-word',
+                    fontSize: labelStyle.fontSize,
+                    minWidth: `${boxWidth}px`,
+                  }}
+                >
                   {labels[c] || c}
                 </th>
               ))}
@@ -822,7 +829,15 @@ const RowFormModal = function RowFormModal({
           <tbody>
             <tr>
               {cols.map((c) => (
-                <td key={c} className="border px-2 py-1" style={{maxWidth:`${boxMaxWidth}px`,wordBreak:'break-word'}}>
+                <td
+                  key={c}
+                  className="border px-2 py-1"
+                  style={{
+                    maxWidth: `${boxMaxWidth}px`,
+                    wordBreak: 'break-word',
+                    minWidth: `${boxWidth}px`,
+                  }}
+                >
                   {renderField(c, false)}
                 </td>
               ))}
@@ -915,8 +930,27 @@ const RowFormModal = function RowFormModal({
               }
               return (
                 <tr key={c}>
-                  <th className="border px-2 py-1 text-left" style={{maxWidth:`${boxMaxWidth}px`,wordBreak:'break-word'}}>{labels[c] || c}</th>
-                  <td className="border px-2 py-1" style={{maxWidth:`${boxMaxWidth}px`,wordBreak:'break-word'}}>{val}</td>
+                  <th
+                    className="border px-2 py-1 text-left"
+                    style={{
+                      maxWidth: `${boxMaxWidth}px`,
+                      wordBreak: 'break-word',
+                      fontSize: labelStyle.fontSize,
+                      minWidth: `${boxWidth}px`,
+                    }}
+                  >
+                    {labels[c] || c}
+                  </th>
+                  <td
+                    className="border px-2 py-1"
+                    style={{
+                      maxWidth: `${boxMaxWidth}px`,
+                      wordBreak: 'break-word',
+                      minWidth: `${boxWidth}px`,
+                    }}
+                  >
+                    {val}
+                  </td>
                 </tr>
               );
             })}

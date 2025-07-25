@@ -1,15 +1,18 @@
 import React, { useEffect, useState } from 'react';
+import useGeneralConfig, { updateCache } from '../hooks/useGeneralConfig.js';
 
 export default function GeneralConfiguration() {
+  const initial = useGeneralConfig();
   const [cfg, setCfg] = useState(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    if (initial && Object.keys(initial).length) setCfg(initial);
     fetch('/api/general_config', { credentials: 'include' })
       .then(res => (res.ok ? res.json() : {}))
       .then(setCfg)
       .catch(() => setCfg({}));
-  }, []);
+  }, [initial]);
 
   function handleChange(e) {
     const { name, value } = e.target;
@@ -27,6 +30,7 @@ export default function GeneralConfiguration() {
     if (res.ok) {
       const data = await res.json();
       setCfg(data);
+      updateCache(data);
       alert('Saved');
     } else {
       alert('Failed to save');
