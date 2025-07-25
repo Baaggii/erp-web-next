@@ -108,6 +108,7 @@ export default function AsyncSearchSelect({
         }}
         disabled={disabled}
         style={{ width: '100%', padding: '0.5rem', ...inputStyle }}
+        title={input}
         {...rest}
       />
       {show && options.length > 0 && (

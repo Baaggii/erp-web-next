@@ -870,10 +870,11 @@ export default function PosTransactionsPage() {
                       onSubmit={() => true}
                       useGrid={t.view === 'table' || t.type === 'multi'}
                       fitted={t.view === 'fitted'}
-                      labelFontSize={generalConfig.labelFontSize}
-                      boxWidth={generalConfig.boxWidth}
-                      boxHeight={generalConfig.boxHeight}
-                      boxMaxWidth={generalConfig.boxMaxWidth}
+                      labelFontSize={generalConfig.pos.labelFontSize}
+                      boxWidth={generalConfig.pos.boxWidth}
+                      boxHeight={generalConfig.pos.boxHeight}
+                      boxMaxWidth={generalConfig.pos.boxMaxWidth}
+                      boxMaxHeight={generalConfig.pos.boxMaxHeight}
                       dateField={fc.dateField || []}
                       onNextForm={() => {
                         let next = idx + 1;

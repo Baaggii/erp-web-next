@@ -1,20 +1,31 @@
 # General Configuration
 
-`config/generalConfig.json` holds global UI settings used by dynamic forms.
+`config/generalConfig.json` now groups settings under `forms` and `pos`.
 
 ```json
 {
-  "labelFontSize": 14,
-  "boxWidth": 60,
-  "boxHeight": 30,
-  "boxMaxWidth": 150
+  "forms": {
+    "labelFontSize": 14,
+    "boxWidth": 60,
+    "boxHeight": 30,
+    "boxMaxWidth": 150,
+    "boxMaxHeight": 150
+  },
+  "pos": {
+    "labelFontSize": 14,
+    "boxWidth": 60,
+    "boxHeight": 30,
+    "boxMaxWidth": 150,
+    "boxMaxHeight": 150
+  }
 }
 ```
 
-These values control label text size and input box dimensions across all forms.
-Transaction grids start with `boxWidth` for each cell but stretch up to
-`boxMaxWidth` when the content is longer. Changing `labelFontSize` automatically
-adjusts the label text and the grid's input font size.
+The **Forms** section controls default sizing for all transaction forms except POS.
+`boxWidth` is the starting width for each grid cell. Cells expand up to
+`boxMaxWidth`/`boxMaxHeight` as text is entered and wrap when necessary. The
+**POS** section provides the same options specifically for POS transaction
+windows.
 
 The settings can be edited in the **General Configuration** screen
 (module key `general_configuration`) under the Settings menu.

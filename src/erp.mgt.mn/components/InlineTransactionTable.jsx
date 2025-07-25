@@ -54,6 +54,7 @@ export default forwardRef(function InlineTransactionTable({
   boxWidth = 60,
   boxHeight = 30,
   boxMaxWidth = 150,
+  boxMaxHeight = 150,
   disabledFields = [],
   dateField = [],
 }, ref) {
@@ -131,6 +132,8 @@ export default forwardRef(function InlineTransactionTable({
     minWidth: `${boxWidth}px`,
     maxWidth: `${boxMaxWidth}px`,
     height: `${boxHeight}px`,
+    maxHeight: `${boxMaxHeight}px`,
+    overflow: 'hidden',
   };
   const colStyle = {
     width: `${boxWidth}px`,
@@ -187,6 +190,22 @@ export default forwardRef(function InlineTransactionTable({
     }
     focusRow.current = null;
   }, [rows, minRows]);
+
+  useEffect(() => {
+    Object.values(inputRefs.current).forEach((el) => {
+      if (!el) return;
+      if (el.tagName === 'INPUT') {
+        el.style.width = 'auto';
+        const w = Math.min(el.scrollWidth + 2, boxMaxWidth);
+        el.style.width = `${Math.max(boxWidth, w)}px`;
+      } else if (el.tagName === 'TEXTAREA') {
+        el.style.height = 'auto';
+        const h = Math.min(el.scrollHeight, boxMaxHeight);
+        el.style.height = `${h}px`;
+        el.style.overflowY = el.scrollHeight > h ? 'auto' : 'hidden';
+      }
+    });
+  }, [rows, boxWidth, boxMaxWidth, boxMaxHeight]);
 
   useImperativeHandle(ref, () => ({
     getRows: () => rows,
@@ -724,7 +743,11 @@ export default forwardRef(function InlineTransactionTable({
     const isRel = relationConfigs[f] || Array.isArray(relations[f]);
     const invalid = invalidCell && invalidCell.row === idx && invalidCell.field === f;
     if (disabledFields.includes(f)) {
-      return <div className="px-1" style={inputStyle}>{typeof val === 'object' ? val.label || val.value : val}</div>;
+      return (
+        <div className="px-1" style={inputStyle} title={typeof val === 'object' ? val.label || val.value : val}>
+          {typeof val === 'object' ? val.label || val.value : val}
+        </div>
+      );
     }
     if (rows[idx]?._saved && !collectRows) {
       return typeof val === 'object' ? val.label : val;
@@ -761,6 +784,7 @@ export default forwardRef(function InlineTransactionTable({
             ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
             onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
             onFocus={() => handleFocusField(f)}
+            title={typeof val === 'object' ? val.label || val.value : val}
           >
             <option value="">-- select --</option>
             {relations[f].map((opt) => (
@@ -778,13 +802,16 @@ export default forwardRef(function InlineTransactionTable({
         className={`w-full border px-1 resize-none whitespace-pre-wrap ${invalid ? 'border-red-500 bg-red-100' : ''}`}
         style={{ overflow: 'hidden', ...inputStyle }}
         value={typeof val === 'object' ? val.value : val}
+        title={typeof val === 'object' ? val.value : val}
         onChange={(e) => handleChange(idx, f, e.target.value)}
         ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
         onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
         onFocus={() => handleFocusField(f)}
         onInput={(e) => {
           e.target.style.height = 'auto';
-          e.target.style.height = `${e.target.scrollHeight}px`;
+          const h = Math.min(e.target.scrollHeight, boxMaxHeight);
+          e.target.style.height = `${h}px`;
+          e.target.style.overflowY = e.target.scrollHeight > h ? 'auto' : 'hidden';
         }}
       />
     );
