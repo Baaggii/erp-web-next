@@ -31,7 +31,6 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const [showTable, setShowTable] = useState(() =>
     sessionState.showTable || !!sessionState.config,
   );
-  const [loadingCfg, setLoadingCfg] = useState(false);
   const { company } = useContext(AuthContext);
   const perms = useRolePermissions();
   const licensed = useCompanyModules(company?.company_id);
@@ -200,10 +199,8 @@ useEffect(() => {
   console.log('FinanceTransactions fetch config effect');
   if (!table || !name) {
     if (config !== null) setConfig(null);
-    setLoadingCfg(false);
     return;
   }
-  setLoadingCfg(true);
   let canceled = false;
   fetch(
     `/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`,
@@ -225,11 +222,9 @@ useEffect(() => {
           prevConfigRef.current = cfg;
         }
         setShowTable(true);
-        setLoadingCfg(false);
       } else {
         if (config !== null) setConfig(null);
         setShowTable(false);
-        setLoadingCfg(false);
         addToast('Transaction configuration not found', 'error');
       }
     })
@@ -237,13 +232,11 @@ useEffect(() => {
       if (!canceled) {
         if (config !== null) setConfig(null);
         setShowTable(false);
-        setLoadingCfg(false);
         addToast('Failed to load transaction configuration', 'error');
       }
     });
   return () => {
     canceled = true;
-    setLoadingCfg(false);
   };
 }, [table, name, addToast]);
 
@@ -301,7 +294,6 @@ useEffect(() => {
           </button>
         </div>
       )}
-      {loadingCfg && !config && <p>Ачааллаж байна...</p>}
       {table && config && (
         <TableManager
           key={`${moduleKey}-${name}`}
