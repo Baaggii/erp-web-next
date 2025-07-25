@@ -71,17 +71,10 @@ export default forwardRef(function InlineTransactionTable({
     }
   }, []);
   const [rows, setRows] = useState(() => {
-    const now = formatTimestamp(new Date()).slice(0, 10);
-    const base = Array.isArray(initRows) && initRows.length > 0
-      ? initRows
-      : Array.from({ length: minRows }, () => ({ ...defaultValues }));
-    return base.map((r) => {
-      const row = { ...r };
-      dateField.forEach((f) => {
-        if (row[f] === undefined || row[f] === '') row[f] = now;
-      });
-      return row;
-    });
+    if (Array.isArray(initRows) && initRows.length > 0) {
+      return initRows;
+    }
+    return Array.from({ length: minRows }, () => ({ ...defaultValues }));
   });
 
   const placeholders = React.useMemo(() => {
@@ -107,13 +100,9 @@ export default forwardRef(function InlineTransactionTable({
             ...base,
             ...Array.from({ length: minRows - base.length }, () => ({ ...defaultValues })),
           ];
-    const now = formatTimestamp(new Date()).slice(0, 10);
     const normalized = next.map((row) => {
       if (!row || typeof row !== 'object') return row;
       const updated = { ...row };
-      dateField.forEach((f) => {
-        if (updated[f] === undefined || updated[f] === '') updated[f] = now;
-      });
       Object.entries(updated).forEach(([k, v]) => {
         if (placeholders[k]) {
           updated[k] = normalizeDateInput(String(v ?? ''), placeholders[k]);
@@ -138,26 +127,17 @@ export default forwardRef(function InlineTransactionTable({
   const inputStyle = {
     fontSize: `${inputFontSize}px`,
     padding: '0.25rem 0.5rem',
+    width: `${boxWidth}px`,
     minWidth: `${boxWidth}px`,
     maxWidth: `${boxMaxWidth}px`,
     height: `${boxHeight}px`,
   };
   const colStyle = {
+    width: `${boxWidth}px`,
     minWidth: `${boxWidth}px`,
     maxWidth: `${boxMaxWidth}px`,
     wordBreak: 'break-word',
   };
-
-  function adjustWidth(el) {
-    if (!el) return;
-    el.style.width = 'auto';
-    const w = Math.min(boxMaxWidth, Math.max(boxWidth, el.scrollWidth));
-    el.style.width = `${w}px`;
-  }
-
-  useEffect(() => {
-    Object.values(inputRefs.current).forEach(adjustWidth);
-  }, [rows]);
   const enabledFields = fields.filter((f) => !disabledFields.includes(f));
 
   function isValidDate(value, format) {
@@ -744,7 +724,7 @@ export default forwardRef(function InlineTransactionTable({
     const isRel = relationConfigs[f] || Array.isArray(relations[f]);
     const invalid = invalidCell && invalidCell.row === idx && invalidCell.field === f;
     if (disabledFields.includes(f)) {
-      return <div className="px-1" style={{...inputStyle, wordBreak:'break-word'}}>{typeof val === 'object' ? val.label || val.value : val}</div>;
+      return <div className="px-1" style={inputStyle}>{typeof val === 'object' ? val.label || val.value : val}</div>;
     }
     if (rows[idx]?._saved && !collectRows) {
       return typeof val === 'object' ? val.label : val;
@@ -762,11 +742,7 @@ export default forwardRef(function InlineTransactionTable({
             onChange={(v, label) =>
               handleChange(idx, f, label ? { value: v, label } : v)
             }
-            inputRef={(el) => {
-              inputRefs.current[`${idx}-${colIdx}`] = el;
-              adjustWidth(el);
-            }}
-            onInput={(e) => adjustWidth(e.target)}
+            inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
             onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
             onFocus={() => handleFocusField(f)}
             className={invalid ? 'border-red-500 bg-red-100' : ''}
@@ -780,13 +756,9 @@ export default forwardRef(function InlineTransactionTable({
           <select
             className={`w-full border px-1 ${invalid ? 'border-red-500 bg-red-100' : ''}`}
             style={inputStyle}
-            onInput={(e) => adjustWidth(e.target)}
             value={inputVal}
             onChange={(e) => handleChange(idx, f, e.target.value)}
-            ref={(el) => {
-              inputRefs.current[`${idx}-${colIdx}`] = el;
-              adjustWidth(el);
-            }}
+            ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
             onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
             onFocus={() => handleFocusField(f)}
           >
@@ -807,16 +779,12 @@ export default forwardRef(function InlineTransactionTable({
         style={{ overflow: 'hidden', ...inputStyle }}
         value={typeof val === 'object' ? val.value : val}
         onChange={(e) => handleChange(idx, f, e.target.value)}
-        ref={(el) => {
-          inputRefs.current[`${idx}-${colIdx}`] = el;
-          adjustWidth(el);
-        }}
+        ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
         onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
         onFocus={() => handleFocusField(f)}
         onInput={(e) => {
           e.target.style.height = 'auto';
           e.target.style.height = `${e.target.scrollHeight}px`;
-          adjustWidth(e.target);
         }}
       />
     );
