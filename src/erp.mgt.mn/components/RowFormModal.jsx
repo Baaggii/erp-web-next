@@ -789,6 +789,9 @@ const RowFormModal = function RowFormModal({
             defaultValues={defaultValues}
             rows={rows}
             onNextForm={onNextForm}
+            labelFontSize={labelFontSize}
+            boxWidth={boxWidth}
+            boxHeight={boxHeight}
           />
         </div>
       );
