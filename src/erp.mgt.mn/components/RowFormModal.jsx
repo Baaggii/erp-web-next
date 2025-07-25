@@ -274,7 +274,7 @@ const RowFormModal = function RowFormModal({
   const inputStyle = {
     fontSize: `${inputFontSize}px`,
     padding: '0.25rem 0.5rem',
-    width: 'auto',
+    width: `${boxWidth}px`,
     minWidth: `${boxWidth}px`,
     maxWidth: `${boxMaxWidth}px`,
     height: `${boxHeight}px`,
@@ -674,10 +674,6 @@ const RowFormModal = function RowFormModal({
         }}
         inputRef={(el) => (inputRefs.current[c] = el)}
         inputStyle={inputStyle}
-        onInput={(e) => {
-          e.target.style.width = 'auto';
-          e.target.style.width = `${Math.min(boxMaxWidth, e.target.scrollWidth)}px`;
-        }}
       />
     ) : Array.isArray(relations[c]) ? (
       <select
@@ -699,10 +695,6 @@ const RowFormModal = function RowFormModal({
         disabled={disabled}
         className={inputClass}
         style={inputStyle}
-        onInput={(e) => {
-          e.target.style.width = 'auto';
-          e.target.style.width = `${Math.min(boxMaxWidth, e.target.scrollWidth)}px`;
-        }}
       >
         <option value="">-- select --</option>
         {relations[c].map((opt) => (
@@ -736,10 +728,6 @@ const RowFormModal = function RowFormModal({
         disabled={disabled}
         className={inputClass}
         style={inputStyle}
-        onInput={(e) => {
-          e.target.style.width = 'auto';
-          e.target.style.width = `${Math.min(boxMaxWidth, e.target.scrollWidth)}px`;
-        }}
       />
     );
 
@@ -812,12 +800,7 @@ const RowFormModal = function RowFormModal({
     }
     const totals = {};
     cols.forEach((c) => {
-      if (
-        totalAmountSet.has(c) ||
-        totalCurrencySet.has(c) ||
-        c === 'TotalCur' ||
-        c === 'TotalAmt'
-      ) {
+      if (totalAmountSet.has(c) || totalCurrencySet.has(c)) {
         totals[c] = Number(formVals[c] || 0);
       }
     });
@@ -835,9 +818,8 @@ const RowFormModal = function RowFormModal({
                     maxWidth: `${boxMaxWidth}px`,
                     wordBreak: 'break-word',
                     fontSize: labelStyle.fontSize,
-                    width: 'auto',
+                    width: `${boxWidth}px`,
                     minWidth: `${boxWidth}px`,
-                    maxWidth: `${boxMaxWidth}px`,
                   }}
                 >
                   {labels[c] || c}
@@ -854,9 +836,8 @@ const RowFormModal = function RowFormModal({
                   style={{
                     maxWidth: `${boxMaxWidth}px`,
                     wordBreak: 'break-word',
-                    width: 'auto',
+                    width: `${boxWidth}px`,
                     minWidth: `${boxWidth}px`,
-                    maxWidth: `${boxMaxWidth}px`,
                   }}
                 >
                   {renderField(c, false)}
@@ -864,10 +845,7 @@ const RowFormModal = function RowFormModal({
               ))}
             </tr>
           </tbody>
-          {(totalAmountFields.length > 0 ||
-            totalCurrencyFields.length > 0 ||
-            cols.includes('TotalCur') ||
-            cols.includes('TotalAmt')) && (
+          {(totalAmountFields.length > 0 || totalCurrencyFields.length > 0) && (
             <tfoot>
               <tr>
                 {cols.map((c, idx) => {
@@ -960,9 +938,8 @@ const RowFormModal = function RowFormModal({
                     maxWidth: `${boxMaxWidth}px`,
                     wordBreak: 'break-word',
                     fontSize: labelStyle.fontSize,
-                    width: 'auto',
+                    width: `${boxWidth}px`,
                     minWidth: `${boxWidth}px`,
-                    maxWidth: `${boxMaxWidth}px`,
                   }}
                 >
                   {labels[c] || c}
@@ -972,9 +949,8 @@ const RowFormModal = function RowFormModal({
                   style={{
                     maxWidth: `${boxMaxWidth}px`,
                     wordBreak: 'break-word',
-                    width: 'auto',
+                    width: `${boxWidth}px`,
                     minWidth: `${boxWidth}px`,
-                    maxWidth: `${boxMaxWidth}px`,
                   }}
                 >
                   {val}
