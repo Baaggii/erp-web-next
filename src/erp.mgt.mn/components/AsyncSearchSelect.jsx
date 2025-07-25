@@ -10,6 +10,7 @@ export default function AsyncSearchSelect({
   onKeyDown,
   inputRef,
   onFocus,
+  onInput,
   inputStyle = {},
   ...rest
 }) {
@@ -107,7 +108,10 @@ export default function AsyncSearchSelect({
           if (onKeyDown) onKeyDown(e);
         }}
         disabled={disabled}
-        style={{ width: '100%', padding: '0.5rem', ...inputStyle }}
+        onInput={(e) => {
+          if (onInput) onInput(e);
+        }}
+        style={{ padding: '0.5rem', ...inputStyle }}
         {...rest}
       />
       {show && options.length > 0 && (
