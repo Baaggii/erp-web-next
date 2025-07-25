@@ -55,17 +55,33 @@ export default function AsyncSearchSelect({
     const controller = new AbortController();
     async function load() {
       try {
-        const params = new URLSearchParams({ perPage: 1000 });
-        if (input) {
-          cols.forEach((c) => params.set(c, input));
+        let page = 1;
+        const perPage = 500;
+        let rows = [];
+        while (true) {
+          const params = new URLSearchParams({ page, perPage });
+          if (input) {
+            cols.forEach((c) => params.set(c, input));
+          }
+          const res = await fetch(
+            `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
+            { credentials: 'include', signal: controller.signal },
+          );
+          const json = await res.json();
+          if (Array.isArray(json.rows)) {
+            rows = rows.concat(json.rows);
+            if (
+              rows.length >= (json.count || rows.length) ||
+              json.rows.length < perPage
+            )
+              break;
+          } else {
+            break;
+          }
+          page += 1;
         }
-        const res = await fetch(
-          `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
-          { credentials: 'include', signal: controller.signal },
-        );
-        const json = await res.json();
-        if (Array.isArray(json.rows)) {
-          const opts = json.rows.map((r) => {
+        if (rows.length > 0) {
+          const opts = rows.map((r) => {
             const val = r[idField || searchColumn];
             const parts = [];
             if (val !== undefined) parts.push(val);
@@ -132,7 +148,10 @@ export default function AsyncSearchSelect({
   }
 
   return (
-    <div ref={containerRef} style={{ position: 'relative' }}>
+    <div
+      ref={containerRef}
+      style={{ position: 'relative', zIndex: show ? 21000 : 'auto' }}
+    >
       <input
         ref={(el) => {
           internalRef.current = el;
@@ -167,7 +186,7 @@ export default function AsyncSearchSelect({
         <ul
           style={{
             position: 'absolute',
-            zIndex: 20000,
+            zIndex: 21000,
             listStyle: 'none',
             margin: 0,
             padding: 0,
