@@ -250,6 +250,22 @@ const RowFormModal = function RowFormModal({
     setErrors({});
   }, [row, visible, user, company]);
 
+  useEffect(() => {
+    Object.values(inputRefs.current).forEach((el) => {
+      if (!el) return;
+      if (el.tagName === 'INPUT') {
+        el.style.width = 'auto';
+        const w = Math.min(el.scrollWidth + 2, boxMaxWidth);
+        el.style.width = `${Math.max(boxWidth, w)}px`;
+      } else if (el.tagName === 'TEXTAREA') {
+        el.style.height = 'auto';
+        const h = Math.min(el.scrollHeight, boxMaxHeight);
+        el.style.height = `${h}px`;
+        el.style.overflowY = el.scrollHeight > h ? 'auto' : 'hidden';
+      }
+    });
+  }, [formVals, boxWidth, boxMaxWidth, boxMaxHeight]);
+
   if (!visible) return null;
 
   const mainSet = new Set(mainFields);
@@ -734,7 +750,7 @@ const RowFormModal = function RowFormModal({
         onInput={(e) => {
           e.target.style.width = 'auto';
           const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
-          e.target.style.width = `${w}px`;
+          e.target.style.width = `${Math.max(boxWidth, w)}px`;
         }}
       />
     );

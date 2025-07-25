@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import useGeneralConfig, { updateCache } from '../hooks/useGeneralConfig.js';
+import { useToast } from '../context/ToastContext.jsx';
 
 export default function GeneralConfiguration() {
   const initial = useGeneralConfig();
   const [cfg, setCfg] = useState(null);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState('forms');
+  const { addToast } = useToast();
 
   useEffect(() => {
     if (initial && Object.keys(initial).length) setCfg(initial);
@@ -35,9 +37,9 @@ export default function GeneralConfiguration() {
       const data = await res.json();
       setCfg(data);
       updateCache(data);
-      alert('Saved');
+      addToast('Saved', 'success');
     } else {
-      alert('Failed to save');
+      addToast('Failed to save', 'error');
     }
     setSaving(false);
   }
@@ -49,6 +51,20 @@ export default function GeneralConfiguration() {
   return (
     <div>
       <h2>General Configuration</h2>
+      <div className="tab-button-group" style={{ marginBottom: '0.5rem' }}>
+        <button
+          className={`tab-button ${tab === 'forms' ? 'active' : ''}`}
+          onClick={() => setTab('forms')}
+        >
+          Forms
+        </button>
+        <button
+          className={`tab-button ${tab === 'pos' ? 'active' : ''}`}
+          onClick={() => setTab('pos')}
+        >
+          POS
+        </button>
+      </div>
       <div style={{ marginBottom: '0.5rem' }}>
         <button onClick={() => setTab('forms')} disabled={tab === 'forms'}>
           Forms

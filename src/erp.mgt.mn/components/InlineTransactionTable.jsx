@@ -191,6 +191,22 @@ export default forwardRef(function InlineTransactionTable({
     focusRow.current = null;
   }, [rows, minRows]);
 
+  useEffect(() => {
+    Object.values(inputRefs.current).forEach((el) => {
+      if (!el) return;
+      if (el.tagName === 'INPUT') {
+        el.style.width = 'auto';
+        const w = Math.min(el.scrollWidth + 2, boxMaxWidth);
+        el.style.width = `${Math.max(boxWidth, w)}px`;
+      } else if (el.tagName === 'TEXTAREA') {
+        el.style.height = 'auto';
+        const h = Math.min(el.scrollHeight, boxMaxHeight);
+        el.style.height = `${h}px`;
+        el.style.overflowY = el.scrollHeight > h ? 'auto' : 'hidden';
+      }
+    });
+  }, [rows, boxWidth, boxMaxWidth, boxMaxHeight]);
+
   useImperativeHandle(ref, () => ({
     getRows: () => rows,
     clearRows: () =>
