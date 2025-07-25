@@ -50,6 +50,7 @@ export default forwardRef(function InlineTransactionTable({
   procTriggers = {},
   user = {},
   company = {},
+  disabledFields = [],
   labelFontSize = 14,
   boxWidth = 60,
   boxHeight = 30,
@@ -114,6 +115,7 @@ export default forwardRef(function InlineTransactionTable({
   const addBtnRef = useRef(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [invalidCell, setInvalidCell] = useState(null);
+  const disabledSet = React.useMemo(() => new Set(disabledFields), [disabledFields]);
   const procCache = useRef({});
 
   const totalAmountSet = new Set(totalAmountFields);
@@ -127,7 +129,13 @@ export default forwardRef(function InlineTransactionTable({
     width: '100%',
     height: `${boxHeight}px`,
   };
-  const colStyle = { width: `${boxWidth}px` };
+  const colStyle = {
+    minWidth: `${boxWidth}px`,
+    width: 'auto',
+    maxWidth: '150px',
+    wordBreak: 'break-word',
+    whiteSpace: 'pre-wrap',
+  };
 
   function isValidDate(value, format) {
     if (!value) return true;
@@ -633,6 +641,7 @@ export default forwardRef(function InlineTransactionTable({
     if (!isEnter && !isForwardTab) return;
     e.preventDefault();
     const field = fields[colIdx];
+    if (disabledSet.has(field)) return;
     let val = e.target.value;
     if (placeholders[field]) {
       val = normalizeDateInput(val, placeholders[field]);
@@ -704,8 +713,12 @@ export default forwardRef(function InlineTransactionTable({
     const val = rows[idx]?.[f] ?? '';
     const isRel = relationConfigs[f] || Array.isArray(relations[f]);
     const invalid = invalidCell && invalidCell.row === idx && invalidCell.field === f;
+    const disabled = disabledSet.has(f);
     if (rows[idx]?._saved && !collectRows) {
       return typeof val === 'object' ? val.label : val;
+    }
+    if (disabled) {
+      return <div className="whitespace-pre-wrap">{typeof val === 'object' ? val.label : val}</div>;
     }
     if (isRel) {
       if (relationConfigs[f]) {
@@ -824,7 +837,10 @@ export default forwardRef(function InlineTransactionTable({
             </tr>
           ))}
         </tbody>
-        {(totalAmountFields.length > 0 || totalCurrencyFields.length > 0) && (
+        {(totalAmountFields.length > 0 ||
+          totalCurrencyFields.length > 0 ||
+          fields.includes('TotalCur') ||
+          fields.includes('TotalAmt')) && (
           <tfoot>
             <tr>
               {fields.map((f) => {
