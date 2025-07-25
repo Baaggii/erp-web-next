@@ -24,6 +24,7 @@ import RelationsConfigPage from './pages/RelationsConfig.jsx';
 import PosTxnConfigPage from './pages/PosTxnConfig.jsx';
 import PosTransactionsPage from './pages/PosTransactions.jsx';
 import ModulesPage from './pages/Modules.jsx';
+import GeneralConfigurationPage from './pages/GeneralConfiguration.jsx';
 import SettingsPage, { GeneralSettings } from './pages/Settings.jsx';
 import ChangePasswordPage from './pages/ChangePassword.jsx';
 import BlueLinkPage from './pages/BlueLinkPage.jsx';
@@ -67,6 +68,7 @@ export default function App() {
     relations_config: <RelationsConfigPage />,
     pos_transaction_management: <PosTxnConfigPage />,
     pos_transactions: <PosTransactionsPage />,
+    general_configuration: <GeneralConfigurationPage />,
     change_password: <ChangePasswordPage />,
   };
 
@@ -95,6 +97,7 @@ export default function App() {
     'report_management',
     'relations_config',
     'pos_transaction_management',
+    'general_configuration',
   ]);
 
   function renderRoute(mod) {
