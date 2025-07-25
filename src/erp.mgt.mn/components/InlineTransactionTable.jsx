@@ -124,11 +124,10 @@ export default forwardRef(function InlineTransactionTable({
   const inputStyle = {
     fontSize: `${inputFontSize}px`,
     padding: '0.25rem 0.5rem',
-    minWidth: `${boxWidth}px`,
-    maxWidth: '150px',
     width: '100%',
     height: `${boxHeight}px`,
   };
+  const colStyle = { width: `${boxWidth}px` };
 
   function isValidDate(value, format) {
     if (!value) return true;
@@ -790,7 +789,7 @@ export default forwardRef(function InlineTransactionTable({
                     lineHeight: '1.1',
                     fontSize: labelStyle.fontSize,
                     maxHeight: '3em',
-                    minWidth: `${boxWidth}px`,
+                    ...colStyle,
                     ...(vertical
                       ? { writingMode: 'vertical-rl', transform: 'rotate(180deg)' }
                       : {}),
@@ -807,11 +806,7 @@ export default forwardRef(function InlineTransactionTable({
           {rows.map((r, idx) => (
             <tr key={idx}>
               {fields.map((f, cIdx) => (
-                <td
-                  key={f}
-                  className="border px-1 py-1 align-top"
-                  style={{ minWidth: `${boxWidth}px`, maxWidth: '150px' }}
-                >
+                <td key={f} className="border px-1 py-1 align-top" style={colStyle}>
                   {renderCell(idx, f, cIdx)}
                 </td>
               ))}
@@ -842,11 +837,7 @@ export default forwardRef(function InlineTransactionTable({
                   val = totals.sums[f];
                 }
                 return (
-                  <td
-                    key={f}
-                    className="border px-1 py-1 font-semibold"
-                    style={{ minWidth: `${boxWidth}px`, maxWidth: '150px' }}
-                  >
+                  <td key={f} className="border px-1 py-1 font-semibold" style={colStyle}>
                     {val}
                   </td>
                 );
@@ -855,11 +846,7 @@ export default forwardRef(function InlineTransactionTable({
             </tr>
             <tr>
               {fields.map((f, idx) => (
-                <td
-                  key={f}
-                  className="border px-1 py-1 font-semibold"
-                  style={{ minWidth: `${boxWidth}px`, maxWidth: '150px' }}
-                >
+                <td key={f} className="border px-1 py-1 font-semibold" style={colStyle}>
                   {idx === 0 ? totals.count : ''}
                 </td>
               ))}
