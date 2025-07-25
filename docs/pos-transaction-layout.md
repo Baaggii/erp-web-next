@@ -15,3 +15,10 @@ Forms used by POS transactions support a special **fitted** view. In this mode a
 `boxWidth` gives the default width for cells while `boxMaxWidth` is the maximum
 size a cell can stretch to when the content is wider. `boxHeight` controls input
 height.
+
+
+
+`labelFontSize` sets the text size used by both labels and values in the grid.
+`boxWidth` gives the default width for cells while `boxMaxWidth` is the maximum
+size a cell can stretch to when the content is wider. `boxHeight` controls input
+height.

@@ -127,12 +127,17 @@ export default forwardRef(function InlineTransactionTable({
   const inputStyle = {
     fontSize: `${inputFontSize}px`,
     padding: '0.25rem 0.5rem',
-    width: '100%',
+    width: `${boxWidth}px`,
     minWidth: `${boxWidth}px`,
     maxWidth: `${boxMaxWidth}px`,
     height: `${boxHeight}px`,
   };
-  const colStyle = { minWidth: `${boxWidth}px`, maxWidth: `${boxMaxWidth}px`, wordBreak: 'break-word' };
+  const colStyle = {
+    width: `${boxWidth}px`,
+    minWidth: `${boxWidth}px`,
+    maxWidth: `${boxMaxWidth}px`,
+    wordBreak: 'break-word',
+  };
   const enabledFields = fields.filter((f) => !disabledFields.includes(f));
 
   function isValidDate(value, format) {

@@ -274,9 +274,9 @@ const RowFormModal = function RowFormModal({
   const inputStyle = {
     fontSize: `${inputFontSize}px`,
     padding: '0.25rem 0.5rem',
+    width: `${boxWidth}px`,
     minWidth: `${boxWidth}px`,
     maxWidth: `${boxMaxWidth}px`,
-    width: '100%',
     height: `${boxHeight}px`,
   };
 
@@ -818,6 +818,7 @@ const RowFormModal = function RowFormModal({
                     maxWidth: `${boxMaxWidth}px`,
                     wordBreak: 'break-word',
                     fontSize: labelStyle.fontSize,
+                    width: `${boxWidth}px`,
                     minWidth: `${boxWidth}px`,
                   }}
                 >
@@ -835,6 +836,7 @@ const RowFormModal = function RowFormModal({
                   style={{
                     maxWidth: `${boxMaxWidth}px`,
                     wordBreak: 'break-word',
+                    width: `${boxWidth}px`,
                     minWidth: `${boxWidth}px`,
                   }}
                 >
@@ -932,24 +934,26 @@ const RowFormModal = function RowFormModal({
                 <tr key={c}>
                   <th
                     className="border px-2 py-1 text-left"
-                    style={{
-                      maxWidth: `${boxMaxWidth}px`,
-                      wordBreak: 'break-word',
-                      fontSize: labelStyle.fontSize,
-                      minWidth: `${boxWidth}px`,
-                    }}
-                  >
-                    {labels[c] || c}
-                  </th>
-                  <td
-                    className="border px-2 py-1"
-                    style={{
-                      maxWidth: `${boxMaxWidth}px`,
-                      wordBreak: 'break-word',
-                      minWidth: `${boxWidth}px`,
-                    }}
-                  >
-                    {val}
+                  style={{
+                    maxWidth: `${boxMaxWidth}px`,
+                    wordBreak: 'break-word',
+                    fontSize: labelStyle.fontSize,
+                    width: `${boxWidth}px`,
+                    minWidth: `${boxWidth}px`,
+                  }}
+                >
+                  {labels[c] || c}
+                </th>
+                <td
+                  className="border px-2 py-1"
+                  style={{
+                    maxWidth: `${boxMaxWidth}px`,
+                    wordBreak: 'break-word',
+                    width: `${boxWidth}px`,
+                    minWidth: `${boxWidth}px`,
+                  }}
+                >
+                  {val}
                   </td>
                 </tr>
               );
