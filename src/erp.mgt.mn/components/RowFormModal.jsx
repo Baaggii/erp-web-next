@@ -5,7 +5,6 @@ import InlineTransactionTable from './InlineTransactionTable.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
-import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 const RowFormModal = function RowFormModal({
   visible,
@@ -34,12 +33,11 @@ const RowFormModal = function RowFormModal({
   inline = false,
   useGrid = false,
   fitted = false,
-  scope = 'forms',
-  labelFontSize,
-  boxWidth,
-  boxHeight,
-  boxMaxWidth,
-  boxMaxHeight,
+  labelFontSize = 14,
+  boxWidth = 60,
+  boxHeight = 30,
+  boxMaxWidth = 150,
+  boxMaxHeight = 150,
   onNextForm = null,
   columnCaseMap = {},
   viewSource = {},
@@ -49,13 +47,6 @@ const RowFormModal = function RowFormModal({
   const renderCount = useRef(0);
   const warned = useRef(false);
   const procCache = useRef({});
-  const generalConfig = useGeneralConfig();
-  const cfg = generalConfig[scope] || {};
-  labelFontSize = labelFontSize ?? cfg.labelFontSize ?? 14;
-  boxWidth = boxWidth ?? cfg.boxWidth ?? 60;
-  boxHeight = boxHeight ?? cfg.boxHeight ?? 30;
-  boxMaxWidth = boxMaxWidth ?? cfg.boxMaxWidth ?? 150;
-  boxMaxHeight = boxMaxHeight ?? cfg.boxMaxHeight ?? 150;
 
   renderCount.current++;
   if (renderCount.current > 10 && !warned.current) {
@@ -827,7 +818,6 @@ const RowFormModal = function RowFormModal({
             boxWidth={boxWidth}
             boxHeight={boxHeight}
             boxMaxWidth={boxMaxWidth}
-            scope={scope}
           />
         </div>
       );
