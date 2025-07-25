@@ -122,7 +122,7 @@ export default forwardRef(function InlineTransactionTable({
   const totalAmountSet = new Set(totalAmountFields);
   const totalCurrencySet = new Set(totalCurrencyFields);
 
-  const inputFontSize = Math.max(10, Math.round(boxHeight * 0.6));
+  const inputFontSize = Math.max(10, labelFontSize);
   const labelStyle = { fontSize: `${labelFontSize}px` };
   const inputStyle = {
     fontSize: `${inputFontSize}px`,

@@ -261,7 +261,7 @@ const RowFormModal = function RowFormModal({
       ? columns.filter((c) => mainSet.has(c))
       : columns.filter((c) => !headerSet.has(c) && !footerSet.has(c));
 
-  const inputFontSize = Math.max(10, Math.round(boxHeight * 0.6));
+  const inputFontSize = Math.max(10, labelFontSize);
   const formGridClass = fitted ? 'grid' : 'grid gap-2';
   const formGridStyle = {
     gap: '2px',

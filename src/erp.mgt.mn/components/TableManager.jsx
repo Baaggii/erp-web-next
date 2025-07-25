@@ -1825,7 +1825,7 @@ const TableManager = forwardRef(function TableManager({
         viewSource={viewSourceMap}
         onRowsChange={setGridRows}
         labelFontSize={generalConfig.labelFontSize}
-        boxWidth={generalConfig.boxWidth}
+        boxWidth={generalConfig.boxMaxWidth}
         boxHeight={generalConfig.boxHeight}
         boxMaxWidth={generalConfig.boxMaxWidth}
       />

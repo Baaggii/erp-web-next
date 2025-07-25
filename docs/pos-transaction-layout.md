@@ -11,7 +11,9 @@ Forms used by POS transactions support a special **fitted** view. In this mode a
 }
 ```
 
-`labelFontSize` sets the label text size while `boxWidth` and `boxHeight` set the minimum width and height. `boxMaxWidth` caps the maximum width before wrapping.
+`labelFontSize` sets the text size used by both labels and grid values.
+`boxHeight` controls the input height while `boxMaxWidth` defines the default
+and maximum width of cells in fitted forms.
 
 
 
