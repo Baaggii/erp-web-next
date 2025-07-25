@@ -53,6 +53,9 @@ export default forwardRef(function InlineTransactionTable({
   labelFontSize = 14,
   boxWidth = 60,
   boxHeight = 30,
+  boxMaxWidth = 150,
+  disabledFields = [],
+  dateField = [],
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -119,15 +122,23 @@ export default forwardRef(function InlineTransactionTable({
   const totalAmountSet = new Set(totalAmountFields);
   const totalCurrencySet = new Set(totalCurrencyFields);
 
-  const inputFontSize = Math.max(10, Math.round(boxHeight * 0.6));
+  const inputFontSize = Math.max(10, labelFontSize);
   const labelStyle = { fontSize: `${labelFontSize}px` };
   const inputStyle = {
     fontSize: `${inputFontSize}px`,
     padding: '0.25rem 0.5rem',
-    width: '100%',
+    width: 'auto',
+    minWidth: `${boxWidth}px`,
+    maxWidth: `${boxMaxWidth}px`,
     height: `${boxHeight}px`,
   };
-  const colStyle = { width: `${boxWidth}px` };
+  const colStyle = {
+    width: 'auto',
+    minWidth: `${boxWidth}px`,
+    maxWidth: `${boxMaxWidth}px`,
+    wordBreak: 'break-word',
+  };
+  const enabledFields = fields.filter((f) => !disabledFields.includes(f));
 
   function isValidDate(value, format) {
     if (!value) return true;
@@ -168,7 +179,8 @@ export default forwardRef(function InlineTransactionTable({
     }
     if (focusRow.current === null) return;
     const idx = focusRow.current;
-    const el = inputRefs.current[`${idx}-0`];
+    const first = enabledFields[0] || fields[0];
+    const el = inputRefs.current[`${idx}-${fields.indexOf(first)}`];
     if (el) {
       el.focus();
       if (el.select) el.select();
@@ -433,7 +445,12 @@ export default forwardRef(function InlineTransactionTable({
       }
     }
     setRows((r) => {
-      const next = [...r, { ...defaultValues }];
+      const now = formatTimestamp(new Date()).slice(0, 10);
+      const row = { ...defaultValues };
+      dateField.forEach((f) => {
+        if (row[f] === undefined || row[f] === '') row[f] = now;
+      });
+      const next = [...r, row];
       focusRow.current = next.length - 1;
       onRowsChange(next);
       return next;
@@ -618,8 +635,14 @@ export default forwardRef(function InlineTransactionTable({
         );
       }
     });
+    const targetCols =
+      totalAmountFields.length > 0
+        ? totalAmountFields
+        : fields.includes('TotalAmt')
+          ? ['TotalAmt']
+          : [];
     const count = rows.filter((r) =>
-      totalAmountFields.some((col) => {
+      targetCols.some((col) => {
         const v = r[col];
         return v !== undefined && v !== null && String(v).trim() !== '';
       }),
@@ -675,9 +698,10 @@ export default forwardRef(function InlineTransactionTable({
     if (hasTrigger(field)) {
       await runProcTrigger(rowIdx, field);
     }
-    const nextCol = colIdx + 1;
-    if (nextCol < fields.length) {
-      const el = inputRefs.current[`${rowIdx}-${nextCol}`];
+    const enabledIdx = enabledFields.indexOf(field);
+    const nextField = enabledFields[enabledIdx + 1];
+    if (nextField) {
+      const el = inputRefs.current[`${rowIdx}-${fields.indexOf(nextField)}`];
       if (el) {
         el.focus();
         if (el.select) el.select();
@@ -685,7 +709,8 @@ export default forwardRef(function InlineTransactionTable({
       return;
     }
     if (rowIdx < rows.length - 1) {
-      const el = inputRefs.current[`${rowIdx + 1}-0`];
+      const first = enabledFields[0] || fields[0];
+      const el = inputRefs.current[`${rowIdx + 1}-${fields.indexOf(first)}`];
       if (el) {
         el.focus();
         if (el.select) el.select();
@@ -704,6 +729,9 @@ export default forwardRef(function InlineTransactionTable({
     const val = rows[idx]?.[f] ?? '';
     const isRel = relationConfigs[f] || Array.isArray(relations[f]);
     const invalid = invalidCell && invalidCell.row === idx && invalidCell.field === f;
+    if (disabledFields.includes(f)) {
+      return <div className="px-1" style={inputStyle}>{typeof val === 'object' ? val.label || val.value : val}</div>;
+    }
     if (rows[idx]?._saved && !collectRows) {
       return typeof val === 'object' ? val.label : val;
     }
@@ -725,6 +753,10 @@ export default forwardRef(function InlineTransactionTable({
             onFocus={() => handleFocusField(f)}
             className={invalid ? 'border-red-500 bg-red-100' : ''}
             inputStyle={inputStyle}
+            onInput={(e) => {
+              e.target.style.width = 'auto';
+              e.target.style.width = `${Math.min(boxMaxWidth, e.target.scrollWidth)}px`;
+            }}
           />
         );
       }
@@ -739,6 +771,10 @@ export default forwardRef(function InlineTransactionTable({
             ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
             onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
             onFocus={() => handleFocusField(f)}
+            onInput={(e) => {
+              e.target.style.width = 'auto';
+              e.target.style.width = `${Math.min(boxMaxWidth, e.target.scrollWidth)}px`;
+            }}
           >
             <option value="">-- select --</option>
             {relations[f].map((opt) => (
@@ -763,6 +799,8 @@ export default forwardRef(function InlineTransactionTable({
         onInput={(e) => {
           e.target.style.height = 'auto';
           e.target.style.height = `${e.target.scrollHeight}px`;
+          e.target.style.width = 'auto';
+          e.target.style.width = `${Math.min(boxMaxWidth, e.target.scrollWidth)}px`;
         }}
       />
     );
@@ -824,7 +862,10 @@ export default forwardRef(function InlineTransactionTable({
             </tr>
           ))}
         </tbody>
-        {(totalAmountFields.length > 0 || totalCurrencyFields.length > 0) && (
+        {(totalAmountFields.length > 0 ||
+          totalCurrencyFields.length > 0 ||
+          fields.includes('TotalCur') ||
+          fields.includes('TotalAmt')) && (
           <tfoot>
             <tr>
               {fields.map((f) => {
