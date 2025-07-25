@@ -805,6 +805,25 @@ export default forwardRef(function InlineTransactionTable({
         );
       }
     }
+    if (viewSource[f]) {
+      const view = viewSource[f];
+      const inputVal = typeof val === 'object' ? val.value : val;
+      return (
+        <AsyncSearchSelect
+          table={view}
+          searchColumn={f}
+          value={inputVal}
+          onChange={(v, label) =>
+            handleChange(idx, f, label ? { value: v, label } : v)
+          }
+          inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
+          onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
+          onFocus={() => handleFocusField(f)}
+          className={invalid ? 'border-red-500 bg-red-100' : ''}
+          inputStyle={inputStyle}
+        />
+      );
+    }
     return (
       <textarea
         rows={1}

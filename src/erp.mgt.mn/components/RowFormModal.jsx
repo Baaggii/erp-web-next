@@ -306,6 +306,8 @@ const RowFormModal = function RowFormModal({
     height: `${boxHeight}px`,
     maxHeight: `${boxMaxHeight}px`,
     overflow: 'hidden',
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
   };
 
   async function handleKeyDown(e, col) {
@@ -688,6 +690,26 @@ const RowFormModal = function RowFormModal({
         table={relationConfigs[c].table}
         searchColumn={relationConfigs[c].column}
         labelFields={relationConfigs[c].displayFields || []}
+        value={formVals[c]}
+        onChange={(val) => {
+          setFormVals((v) => ({ ...v, [c]: val }));
+          setErrors((er) => ({ ...er, [c]: undefined }));
+          onChange({ [c]: val });
+        }}
+        disabled={disabled}
+        onKeyDown={(e) => handleKeyDown(e, c)}
+        onFocus={(e) => {
+          e.target.select();
+          handleFocusField(c);
+        }}
+        inputRef={(el) => (inputRefs.current[c] = el)}
+        inputStyle={inputStyle}
+      />
+    ) : viewSource[c] && !Array.isArray(relations[c]) ? (
+      <AsyncSearchSelect
+        title={labels[c] || c}
+        table={viewSource[c]}
+        searchColumn={c}
         value={formVals[c]}
         onChange={(val) => {
           setFormVals((v) => ({ ...v, [c]: val }));
