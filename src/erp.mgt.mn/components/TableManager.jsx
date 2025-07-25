@@ -1201,7 +1201,7 @@ const TableManager = forwardRef(function TableManager({
     .map(([k]) => k);
 
   let disabledFields = [];
-  if (formConfig?.editableFields?.length) {
+  if (Array.isArray(formConfig?.editableFields)) {
     const set = new Set(formConfig.editableFields);
     disabledFields = formColumns.filter((c) => !set.has(c));
   }
