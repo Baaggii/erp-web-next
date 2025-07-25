@@ -848,6 +848,7 @@ export default function PosTransactionsPage() {
                       {t.table}
                     </h3>
                     <RowFormModal
+                      key={`rf-${t.table}-${generalConfig.pos.boxWidth}`}
                       inline
                       visible
                       columns={visible}
