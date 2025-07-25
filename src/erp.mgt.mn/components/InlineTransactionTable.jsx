@@ -86,14 +86,7 @@ export default forwardRef(function InlineTransactionTable({
     if (Array.isArray(initRows) && initRows.length > 0) {
       return initRows;
     }
-    const now = formatTimestamp(new Date()).slice(0, 10);
-    return Array.from({ length: minRows }, () => {
-      const row = { ...defaultValues };
-      dateField.forEach((f) => {
-        if (row[f] === undefined || row[f] === '') row[f] = now;
-      });
-      return row;
-    });
+    return Array.from({ length: minRows }, () => ({ ...defaultValues }));
   });
 
   const placeholders = React.useMemo(() => {
@@ -117,14 +110,7 @@ export default forwardRef(function InlineTransactionTable({
         ? base
         : [
             ...base,
-            ...Array.from({ length: minRows - base.length }, () => {
-              const row = { ...defaultValues };
-              const now = formatTimestamp(new Date()).slice(0, 10);
-              dateField.forEach((f) => {
-                if (row[f] === undefined || row[f] === '') row[f] = now;
-              });
-              return row;
-            }),
+            ...Array.from({ length: minRows - base.length }, () => ({ ...defaultValues })),
           ];
     const normalized = next.map((row) => {
       if (!row || typeof row !== 'object') return row;
@@ -137,7 +123,7 @@ export default forwardRef(function InlineTransactionTable({
       return updated;
     });
     setRows(normalized);
-  }, [initRows, minRows, defaultValues, placeholders, dateField]);
+  }, [initRows, minRows, defaultValues, placeholders]);
   const inputRefs = useRef({});
   const focusRow = useRef(0);
   const addBtnRef = useRef(null);
