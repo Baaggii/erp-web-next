@@ -36,6 +36,7 @@ const RowFormModal = function RowFormModal({
   labelFontSize = 14,
   boxWidth = 60,
   boxHeight = 30,
+  boxMaxWidth = 150,
   onNextForm = null,
   columnCaseMap = {},
   viewSource = {},
@@ -265,7 +266,7 @@ const RowFormModal = function RowFormModal({
   const formGridStyle = fitted
     ? {
         gap: '2px',
-        gridTemplateColumns: `repeat(auto-fill, minmax(${boxWidth}px, 150px))`,
+        gridTemplateColumns: `repeat(auto-fill, minmax(${boxWidth}px, ${boxMaxWidth}px))`,
         fontSize: `${inputFontSize}px`,
       }
     : { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' };
@@ -275,7 +276,7 @@ const RowFormModal = function RowFormModal({
         fontSize: `${inputFontSize}px`,
         padding: '0.25rem 0.5rem',
         minWidth: `${boxWidth}px`,
-        maxWidth: '150px',
+        maxWidth: `${boxMaxWidth}px`,
         width: '100%',
         height: `${boxHeight}px`,
       }
@@ -786,12 +787,15 @@ const RowFormModal = function RowFormModal({
               onRowsChange(rows);
             }}
             requiredFields={requiredFields}
+            disabledFields={disabledFields}
             defaultValues={defaultValues}
+            dateField={dateField}
             rows={rows}
             onNextForm={onNextForm}
             labelFontSize={labelFontSize}
             boxWidth={boxWidth}
             boxHeight={boxHeight}
+            boxMaxWidth={boxMaxWidth}
           />
         </div>
       );
@@ -805,11 +809,11 @@ const RowFormModal = function RowFormModal({
     return (
       <div className="mb-4">
         <h3 className="mt-0 mb-1 font-semibold">Main</h3>
-        <table className="min-w-full border border-gray-300 text-sm">
+        <table className="min-w-full border border-gray-300 text-sm" style={{tableLayout:'fixed', width:'100%'}}>
           <thead className="bg-gray-50">
             <tr>
               {cols.map((c) => (
-                <th key={c} className="border px-2 py-1">
+                <th key={c} className="border px-2 py-1" style={{maxWidth:`${boxMaxWidth}px`,wordBreak:'break-word'}}>
                   {labels[c] || c}
                 </th>
               ))}
@@ -818,7 +822,7 @@ const RowFormModal = function RowFormModal({
           <tbody>
             <tr>
               {cols.map((c) => (
-                <td key={c} className="border px-2 py-1">
+                <td key={c} className="border px-2 py-1" style={{maxWidth:`${boxMaxWidth}px`,wordBreak:'break-word'}}>
                   {renderField(c, false)}
                 </td>
               ))}
@@ -891,7 +895,7 @@ const RowFormModal = function RowFormModal({
     return (
       <div className="mb-4">
         <h3 className="mt-0 mb-1 font-semibold">Header</h3>
-        <table className="min-w-full border border-gray-300 text-sm">
+        <table className="min-w-full border border-gray-300 text-sm" style={{tableLayout:'fixed',width:'100%'}}>
           <tbody>
             {cols.map((c) => {
               let val = formVals[c];
@@ -911,8 +915,8 @@ const RowFormModal = function RowFormModal({
               }
               return (
                 <tr key={c}>
-                  <th className="border px-2 py-1 text-left">{labels[c] || c}</th>
-                  <td className="border px-2 py-1">{val}</td>
+                  <th className="border px-2 py-1 text-left" style={{maxWidth:`${boxMaxWidth}px`,wordBreak:'break-word'}}>{labels[c] || c}</th>
+                  <td className="border px-2 py-1" style={{maxWidth:`${boxMaxWidth}px`,wordBreak:'break-word'}}>{val}</td>
                 </tr>
               );
             })}

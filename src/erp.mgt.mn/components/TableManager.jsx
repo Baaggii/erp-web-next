@@ -13,6 +13,7 @@ import { useToast } from '../context/ToastContext.jsx';
 import RowFormModal from './RowFormModal.jsx';
 import CascadeDeleteModal from './CascadeDeleteModal.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
 function ch(n) {
@@ -117,6 +118,7 @@ const TableManager = forwardRef(function TableManager({
   const [sort, setSort] = useState({ column: '', dir: 'asc' });
   const [relations, setRelations] = useState({});
   const [refData, setRefData] = useState({});
+  const generalConfig = useGeneralConfig();
   const [refRows, setRefRows] = useState({});
   const [relationConfigs, setRelationConfigs] = useState({});
   const [columnMeta, setColumnMeta] = useState([]);
@@ -1822,6 +1824,10 @@ const TableManager = forwardRef(function TableManager({
         columnCaseMap={columnCaseMap}
         viewSource={viewSourceMap}
         onRowsChange={setGridRows}
+        labelFontSize={generalConfig.labelFontSize}
+        boxWidth={generalConfig.boxWidth}
+        boxHeight={generalConfig.boxHeight}
+        boxMaxWidth={generalConfig.boxMaxWidth}
       />
       <CascadeDeleteModal
         visible={showCascade}
