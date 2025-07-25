@@ -848,6 +848,7 @@ export default function PosTransactionsPage() {
                       {t.table}
                     </h3>
                     <RowFormModal
+                      key={`rf-${t.table}-${generalConfig.pos.boxWidth}`}
                       inline
                       visible
                       columns={visible}
@@ -871,11 +872,6 @@ export default function PosTransactionsPage() {
                       useGrid={t.view === 'table' || t.type === 'multi'}
                       fitted={t.view === 'fitted'}
                       scope="pos"
-                      labelFontSize={generalConfig.pos.labelFontSize}
-                      boxWidth={generalConfig.pos.boxWidth}
-                      boxHeight={generalConfig.pos.boxHeight}
-                      boxMaxWidth={generalConfig.pos.boxMaxWidth}
-                      boxMaxHeight={generalConfig.pos.boxMaxHeight}
                       dateField={fc.dateField || []}
                       onNextForm={() => {
                         let next = idx + 1;
