@@ -127,6 +127,8 @@ export default function PosTransactionsPage() {
   const [relationsMap, setRelationsMap] = useState({});
   const [relationConfigs, setRelationConfigs] = useState({});
   const [relationData, setRelationData] = useState({});
+  const [viewDisplaysMap, setViewDisplaysMap] = useState({});
+  const [viewColumnsMap, setViewColumnsMap] = useState({});
   const [procTriggersMap, setProcTriggersMap] = useState({});
   const [pendingId, setPendingId] = useState(null);
   const [sessionFields, setSessionFields] = useState([]);
@@ -309,6 +311,36 @@ export default function PosTransactionsPage() {
     initRef.current = name;
     handleNew();
   }, [config, formConfigs, name]);
+
+  useEffect(() => {
+    Object.entries(formConfigs).forEach(([tbl, fc]) => {
+      const views = Object.values(fc.viewSource || {});
+      views.forEach((v) => {
+        fetch(`/api/display_fields?table=${encodeURIComponent(v)}`, {
+          credentials: 'include',
+        })
+          .then((res) => (res.ok ? res.json() : null))
+          .then((cfg) => {
+            setViewDisplaysMap((m) => ({
+              ...m,
+              [tbl]: { ...(m[tbl] || {}), [v]: cfg || {} },
+            }));
+          })
+          .catch(() => {});
+        fetch(`/api/tables/${encodeURIComponent(v)}/columns`, {
+          credentials: 'include',
+        })
+          .then((res) => (res.ok ? res.json() : []))
+          .then((cols) => {
+            setViewColumnsMap((m) => ({
+              ...m,
+              [tbl]: { ...(m[tbl] || {}), [v]: cols.map((c) => c.name) },
+            }));
+          })
+          .catch(() => {});
+      });
+    });
+  }, [formConfigs]);
 
   useEffect(() => {
     if (!config) return;
@@ -863,6 +895,9 @@ export default function PosTransactionsPage() {
                     relationConfigs={relationConfigs[t.table] || {}}
                     relationData={relationData[t.table] || {}}
                     procTriggers={procTriggersMap[t.table] || {}}
+                    viewSource={fc.viewSource || {}}
+                    viewDisplays={viewDisplaysMap[t.table] || {}}
+                    viewColumns={viewColumnsMap[t.table] || {}}
                     user={user}
                     company={company}
                     columnCaseMap={(columnMeta[t.table] || []).reduce((m,c)=>{m[c.name.toLowerCase()] = c.name;return m;}, {})}

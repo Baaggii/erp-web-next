@@ -48,6 +48,8 @@ export default forwardRef(function InlineTransactionTable({
   rows: initRows = [],
   columnCaseMap = {},
   viewSource = {},
+  viewDisplays = {},
+  viewColumns = {},
   procTriggers = {},
   user = {},
   company = {},
@@ -525,8 +527,10 @@ export default forwardRef(function InlineTransactionTable({
     const view = viewSource[field];
     if (view && value !== '') {
       const params = new URLSearchParams({ perPage: 1, debug: 1 });
+      const cols = viewColumns[view] || [];
       Object.entries(viewSource).forEach(([f, v]) => {
         if (v !== view) return;
+        if (!cols.includes(f)) return;
         let pv = f === field ? value : rows[rowIdx]?.[f];
         if (pv === undefined || pv === '') return;
         if (typeof pv === 'object' && 'value' in pv) pv = pv.value;
@@ -807,11 +811,17 @@ export default forwardRef(function InlineTransactionTable({
     }
     if (viewSource[f]) {
       const view = viewSource[f];
+      const cfg = viewDisplays[view] || {};
       const inputVal = typeof val === 'object' ? val.value : val;
+      const idField = cfg.idField || f;
+      const labelFields = cfg.displayFields || [];
       return (
         <AsyncSearchSelect
           table={view}
-          searchColumn={f}
+          searchColumn={idField}
+          searchColumns={[idField, ...labelFields]}
+          labelFields={labelFields}
+          idField={idField}
           value={inputVal}
           onChange={(v, label) =>
             handleChange(idx, f, label ? { value: v, label } : v)
