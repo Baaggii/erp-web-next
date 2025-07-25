@@ -3,7 +3,9 @@ import React, { useState, useEffect, useRef } from 'react';
 export default function AsyncSearchSelect({
   table,
   searchColumn,
+  searchColumns,
   labelFields = [],
+  idField,
   value,
   onChange,
   disabled,
@@ -13,24 +15,43 @@ export default function AsyncSearchSelect({
   inputStyle = {},
   ...rest
 }) {
-  const [input, setInput] = useState(value || '');
+  const initialVal =
+    typeof value === 'object' && value !== null ? value.value : value || '';
+  const initialLabel =
+    typeof value === 'object' && value !== null ? value.label || '' : '';
+  const [input, setInput] = useState(initialVal);
+  const [label, setLabel] = useState(initialLabel);
   const [options, setOptions] = useState([]);
   const [show, setShow] = useState(false);
   const [highlight, setHighlight] = useState(-1);
   const containerRef = useRef(null);
   const match = options.find((o) => String(o.value) === String(input));
+  const displayLabel = match ? match.label : label;
 
   useEffect(() => {
-    setInput(value || '');
+    if (typeof value === 'object' && value !== null) {
+      setInput(value.value || '');
+      setLabel(value.label || '');
+    } else {
+      setInput(value || '');
+      if (!value) setLabel('');
+    }
   }, [value]);
 
   useEffect(() => {
-    if (!table || !searchColumn) return;
+    const cols = searchColumns && searchColumns.length > 0
+      ? searchColumns
+      : searchColumn
+      ? [searchColumn]
+      : [];
+    if (!table || cols.length === 0) return;
     const controller = new AbortController();
     async function load() {
       try {
         const params = new URLSearchParams({ perPage: 1000 });
-        if (input) params.set(searchColumn, input);
+        if (input) {
+          cols.forEach((c) => params.set(c, input));
+        }
         const res = await fetch(
           `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
           { credentials: 'include', signal: controller.signal },
@@ -38,19 +59,28 @@ export default function AsyncSearchSelect({
         const json = await res.json();
         if (Array.isArray(json.rows)) {
           const opts = json.rows.map((r) => {
+            const val = r[idField || searchColumn];
             const parts = [];
+            if (val !== undefined) parts.push(val);
             if (labelFields.length === 0) {
-              parts.push(
-                ...Object.values(r).filter((v) => v !== undefined).slice(0, 2),
-              );
+              Object.entries(r).forEach(([k, v]) => {
+                if (k === idField || k === searchColumn) return;
+                if (v !== undefined && parts.length < 3) parts.push(v);
+              });
             } else {
               labelFields.forEach((f) => {
                 if (r[f] !== undefined) parts.push(r[f]);
               });
             }
-            return { value: r[searchColumn], label: parts.join(' - ') };
+            return { value: val, label: parts.join(' - ') };
           });
-          setOptions(opts);
+          const q = String(input || '').toLowerCase();
+          const filtered = opts.filter(
+            (o) =>
+              String(o.value).toLowerCase().includes(q) ||
+              String(o.label).toLowerCase().includes(q),
+          );
+          setOptions(filtered);
         } else {
           setOptions([]);
         }
@@ -60,7 +90,7 @@ export default function AsyncSearchSelect({
     }
     load();
     return () => controller.abort();
-  }, [table, searchColumn, labelFields, input]);
+  }, [table, searchColumn, searchColumns, labelFields, idField, input]);
 
   function handleSelectKeyDown(e) {
     if (e.key === 'ArrowDown') {
@@ -77,6 +107,7 @@ export default function AsyncSearchSelect({
         const opt = options[idx];
         onChange(opt.value, opt.label);
         setInput(String(opt.value));
+        setLabel(opt.label || '');
         setShow(false);
       }
     }
@@ -93,6 +124,7 @@ export default function AsyncSearchSelect({
         value={input}
         onChange={(e) => {
           setInput(e.target.value);
+          setLabel('');
           onChange(e.target.value);
           setShow(true);
           setHighlight(-1);
@@ -115,7 +147,7 @@ export default function AsyncSearchSelect({
         <ul
           style={{
             position: 'absolute',
-            zIndex: 1100,
+            zIndex: 9999,
             listStyle: 'none',
             margin: 0,
             padding: 0,
@@ -132,6 +164,7 @@ export default function AsyncSearchSelect({
               onMouseDown={() => {
                 onChange(opt.value, opt.label);
                 setInput(String(opt.value));
+                setLabel(opt.label || '');
                 setShow(false);
               }}
               onMouseEnter={() => setHighlight(idx)}
@@ -146,8 +179,8 @@ export default function AsyncSearchSelect({
           ))}
         </ul>
       )}
-      {match && (
-        <div style={{ fontSize: '0.8rem', color: '#555' }}>{match.label}</div>
+      {displayLabel && (
+        <div style={{ fontSize: '0.8rem', color: '#555' }}>{displayLabel}</div>
       )}
     </div>
   );

@@ -48,6 +48,8 @@ export default forwardRef(function InlineTransactionTable({
   rows: initRows = [],
   columnCaseMap = {},
   viewSource = {},
+  viewDisplays = {},
+  viewColumns = {},
   procTriggers = {},
   user = {},
   company = {},
@@ -331,6 +333,9 @@ export default forwardRef(function InlineTransactionTable({
       const getVal = (name) => {
         const key = columnCaseMap[name.toLowerCase()] || name;
         let val = rows[rowIdx]?.[key];
+        if (val && typeof val === 'object' && 'value' in val) {
+          val = val.value;
+        }
         if (placeholders[key]) {
           val = normalizeDateInput(val, placeholders[key]);
         }
@@ -525,8 +530,10 @@ export default forwardRef(function InlineTransactionTable({
     const view = viewSource[field];
     if (view && value !== '') {
       const params = new URLSearchParams({ perPage: 1, debug: 1 });
+      const cols = viewColumns[view] || [];
       Object.entries(viewSource).forEach(([f, v]) => {
         if (v !== view) return;
+        if (!cols.includes(f)) return;
         let pv = f === field ? value : rows[rowIdx]?.[f];
         if (pv === undefined || pv === '') return;
         if (typeof pv === 'object' && 'value' in pv) pv = pv.value;
@@ -804,6 +811,31 @@ export default forwardRef(function InlineTransactionTable({
           </select>
         );
       }
+    }
+    if (viewSource[f]) {
+      const view = viewSource[f];
+      const cfg = viewDisplays[view] || {};
+      const inputVal = typeof val === 'object' ? val.value : val;
+      const idField = cfg.idField || f;
+      const labelFields = cfg.displayFields || [];
+      return (
+        <AsyncSearchSelect
+          table={view}
+          searchColumn={idField}
+          searchColumns={[idField, ...labelFields]}
+          labelFields={labelFields}
+          idField={idField}
+          value={inputVal}
+          onChange={(v, label) =>
+            handleChange(idx, f, label ? { value: v, label } : v)
+          }
+          inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
+          onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
+          onFocus={() => handleFocusField(f)}
+          className={invalid ? 'border-red-500 bg-red-100' : ''}
+          inputStyle={inputStyle}
+        />
+      );
     }
     return (
       <textarea

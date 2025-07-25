@@ -43,6 +43,8 @@ const RowFormModal = function RowFormModal({
   onNextForm = null,
   columnCaseMap = {},
   viewSource = {},
+  viewDisplays = {},
+  viewColumns = {},
   procTriggers = {},
 }) {
   const mounted = useRef(false);
@@ -306,6 +308,8 @@ const RowFormModal = function RowFormModal({
     height: `${boxHeight}px`,
     maxHeight: `${boxMaxHeight}px`,
     overflow: 'hidden',
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
   };
 
   async function handleKeyDown(e, col) {
@@ -453,7 +457,11 @@ const RowFormModal = function RowFormModal({
       if (!hasTarget) continue;
       const getVal = (name) => {
         const key = columnCaseMap[name.toLowerCase()] || name;
-        return formVals[key] ?? extraVals[key];
+        let val = formVals[key] ?? extraVals[key];
+        if (val && typeof val === 'object' && 'value' in val) {
+          val = val.value;
+        }
+        return val;
       };
       const getParam = (p) => {
         if (p === '$current') return getVal(tCol);
@@ -688,7 +696,33 @@ const RowFormModal = function RowFormModal({
         table={relationConfigs[c].table}
         searchColumn={relationConfigs[c].column}
         labelFields={relationConfigs[c].displayFields || []}
-        value={formVals[c]}
+        value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
+        onChange={(val) => {
+          setFormVals((v) => ({ ...v, [c]: val }));
+          setErrors((er) => ({ ...er, [c]: undefined }));
+          onChange({ [c]: val });
+        }}
+        disabled={disabled}
+        onKeyDown={(e) => handleKeyDown(e, c)}
+        onFocus={(e) => {
+          e.target.select();
+          handleFocusField(c);
+        }}
+        inputRef={(el) => (inputRefs.current[c] = el)}
+        inputStyle={inputStyle}
+      />
+    ) : viewSource[c] && !Array.isArray(relations[c]) ? (
+      <AsyncSearchSelect
+        title={labels[c] || c}
+        table={viewSource[c]}
+        searchColumn={viewDisplays[viewSource[c]]?.idField || c}
+        searchColumns={[
+          viewDisplays[viewSource[c]]?.idField || c,
+          ...(viewDisplays[viewSource[c]]?.displayFields || []),
+        ]}
+        labelFields={viewDisplays[viewSource[c]]?.displayFields || []}
+        idField={viewDisplays[viewSource[c]]?.idField || c}
+        value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
         onChange={(val) => {
           setFormVals((v) => ({ ...v, [c]: val }));
           setErrors((er) => ({ ...er, [c]: undefined }));
@@ -806,6 +840,8 @@ const RowFormModal = function RowFormModal({
             totalAmountFields={totalAmountFields}
             totalCurrencyFields={totalCurrencyFields}
             viewSource={viewSource}
+            viewDisplays={viewDisplays}
+            viewColumns={viewColumns}
             procTriggers={procTriggers}
             user={user}
             company={company}
