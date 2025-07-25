@@ -8,6 +8,7 @@ export default function AsyncSearchSelect({
   idField,
   value,
   onChange,
+  onSelect,
   disabled,
   onKeyDown,
   inputRef,
@@ -112,6 +113,7 @@ export default function AsyncSearchSelect({
         e.preventDefault();
         const opt = options[idx];
         onChange(opt.value, opt.label);
+        if (onSelect) onSelect(opt);
         setInput(String(opt.value));
         setLabel(opt.label || '');
         if (internalRef.current) internalRef.current.value = String(opt.value);
@@ -163,7 +165,7 @@ export default function AsyncSearchSelect({
         <ul
           style={{
             position: 'absolute',
-            zIndex: 9999,
+            zIndex: 10000,
             listStyle: 'none',
             margin: 0,
             padding: 0,
@@ -179,6 +181,7 @@ export default function AsyncSearchSelect({
               key={opt.value}
               onMouseDown={() => {
                 onChange(opt.value, opt.label);
+                if (onSelect) onSelect(opt);
                 setInput(String(opt.value));
                 setLabel(opt.label || '');
                 if (internalRef.current) internalRef.current.value = String(opt.value);

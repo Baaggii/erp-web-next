@@ -708,6 +708,13 @@ const RowFormModal = function RowFormModal({
           setErrors((er) => ({ ...er, [c]: undefined }));
           onChange({ [c]: val });
         }}
+        onSelect={(opt) => {
+          const el = inputRefs.current[c];
+          if (el) {
+            const fake = { key: 'Enter', preventDefault: () => {}, target: el, selectedOption: opt };
+            handleKeyDown(fake, c);
+          }
+        }}
         disabled={disabled}
         onKeyDown={(e) => handleKeyDown(e, c)}
         onFocus={(e) => {
@@ -733,6 +740,13 @@ const RowFormModal = function RowFormModal({
           setFormVals((v) => ({ ...v, [c]: val }));
           setErrors((er) => ({ ...er, [c]: undefined }));
           onChange({ [c]: val });
+        }}
+        onSelect={(opt) => {
+          const el = inputRefs.current[c];
+          if (el) {
+            const fake = { key: 'Enter', preventDefault: () => {}, target: el, selectedOption: opt };
+            handleKeyDown(fake, c);
+          }
         }}
         disabled={disabled}
         onKeyDown={(e) => handleKeyDown(e, c)}

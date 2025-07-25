@@ -679,6 +679,18 @@ export default forwardRef(function InlineTransactionTable({
     return { sums, count };
   }, [rows, fields, totalAmountSet, totalCurrencySet, totalAmountFields]);
 
+  function handleOptionSelect(rowIdx, colIdx, opt) {
+    const el = inputRefs.current[`${rowIdx}-${colIdx}`];
+    if (!el) return;
+    const fake = {
+      key: 'Enter',
+      preventDefault: () => {},
+      target: el,
+      selectedOption: opt,
+    };
+    handleKeyDown(fake, rowIdx, colIdx);
+  }
+
   async function handleKeyDown(e, rowIdx, colIdx) {
     const isEnter = e.key === 'Enter';
     const isForwardTab = e.key === 'Tab' && !e.shiftKey;
@@ -785,6 +797,7 @@ export default forwardRef(function InlineTransactionTable({
             onChange={(v, label) =>
               handleChange(idx, f, label ? { value: v, label } : v)
             }
+            onSelect={(opt) => handleOptionSelect(idx, colIdx, opt)}
             inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
             onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
             onFocus={() => handleFocusField(f)}
@@ -823,22 +836,23 @@ export default forwardRef(function InlineTransactionTable({
       const idField = cfg.idField || f;
       const labelFields = cfg.displayFields || [];
       return (
-        <AsyncSearchSelect
-          table={view}
-          searchColumn={idField}
-          searchColumns={[idField, ...labelFields]}
-          labelFields={labelFields}
-          idField={idField}
-          value={inputVal}
-          onChange={(v, label) =>
-            handleChange(idx, f, label ? { value: v, label } : v)
-          }
-          inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
-          onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
-          onFocus={() => handleFocusField(f)}
-          className={invalid ? 'border-red-500 bg-red-100' : ''}
-          inputStyle={inputStyle}
-        />
+          <AsyncSearchSelect
+            table={view}
+            searchColumn={idField}
+            searchColumns={[idField, ...labelFields]}
+            labelFields={labelFields}
+            idField={idField}
+            value={inputVal}
+            onChange={(v, label) =>
+              handleChange(idx, f, label ? { value: v, label } : v)
+            }
+            onSelect={(opt) => handleOptionSelect(idx, colIdx, opt)}
+            inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
+            onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
+            onFocus={() => handleFocusField(f)}
+            className={invalid ? 'border-red-500 bg-red-100' : ''}
+            inputStyle={inputStyle}
+          />
       );
     }
     return (
