@@ -4,16 +4,34 @@ import path from 'path';
 const filePath = path.join(process.cwd(), 'config', 'generalConfig.json');
 
 const defaults = {
-  labelFontSize: 14,
-  boxWidth: 60,
-  boxHeight: 30,
-  boxMaxWidth: 150,
+  forms: {
+    labelFontSize: 14,
+    boxWidth: 60,
+    boxHeight: 30,
+    boxMaxWidth: 150,
+    boxMaxHeight: 150,
+  },
+  pos: {
+    labelFontSize: 14,
+    boxWidth: 60,
+    boxHeight: 30,
+    boxMaxWidth: 150,
+    boxMaxHeight: 150,
+  },
 };
 
 async function readConfig() {
   try {
     const data = await fs.readFile(filePath, 'utf8');
-    return { ...defaults, ...JSON.parse(data) };
+    const parsed = JSON.parse(data);
+    if (parsed.forms || parsed.pos) {
+      return { ...defaults, ...parsed };
+    }
+    // migrate older flat structure to new nested layout
+    return {
+      forms: { ...defaults.forms, ...parsed },
+      pos: { ...defaults.pos },
+    };
   } catch {
     return { ...defaults };
   }
@@ -29,7 +47,8 @@ export async function getGeneralConfig() {
 
 export async function updateGeneralConfig(updates = {}) {
   const cfg = await readConfig();
-  Object.assign(cfg, updates);
+  if (updates.forms) Object.assign(cfg.forms, updates.forms);
+  if (updates.pos) Object.assign(cfg.pos, updates.pos);
   await writeConfig(cfg);
   return cfg;
 }

@@ -54,6 +54,7 @@ export default forwardRef(function InlineTransactionTable({
   boxWidth = 60,
   boxHeight = 30,
   boxMaxWidth = 150,
+  boxMaxHeight = 150,
   disabledFields = [],
   dateField = [],
 }, ref) {
@@ -127,13 +128,15 @@ export default forwardRef(function InlineTransactionTable({
   const inputStyle = {
     fontSize: `${inputFontSize}px`,
     padding: '0.25rem 0.5rem',
-    width: `${boxWidth}px`,
+    width: 'auto',
     minWidth: `${boxWidth}px`,
     maxWidth: `${boxMaxWidth}px`,
     height: `${boxHeight}px`,
+    maxHeight: `${boxMaxHeight}px`,
+    overflow: 'hidden',
   };
   const colStyle = {
-    width: `${boxWidth}px`,
+    width: 'auto',
     minWidth: `${boxWidth}px`,
     maxWidth: `${boxMaxWidth}px`,
     wordBreak: 'break-word',
@@ -724,7 +727,11 @@ export default forwardRef(function InlineTransactionTable({
     const isRel = relationConfigs[f] || Array.isArray(relations[f]);
     const invalid = invalidCell && invalidCell.row === idx && invalidCell.field === f;
     if (disabledFields.includes(f)) {
-      return <div className="px-1" style={inputStyle}>{typeof val === 'object' ? val.label || val.value : val}</div>;
+      return (
+        <div className="px-1" style={inputStyle} title={typeof val === 'object' ? val.label || val.value : val}>
+          {typeof val === 'object' ? val.label || val.value : val}
+        </div>
+      );
     }
     if (rows[idx]?._saved && !collectRows) {
       return typeof val === 'object' ? val.label : val;
@@ -761,6 +768,7 @@ export default forwardRef(function InlineTransactionTable({
             ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
             onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
             onFocus={() => handleFocusField(f)}
+            title={typeof val === 'object' ? val.label || val.value : val}
           >
             <option value="">-- select --</option>
             {relations[f].map((opt) => (
@@ -778,13 +786,16 @@ export default forwardRef(function InlineTransactionTable({
         className={`w-full border px-1 resize-none whitespace-pre-wrap ${invalid ? 'border-red-500 bg-red-100' : ''}`}
         style={{ overflow: 'hidden', ...inputStyle }}
         value={typeof val === 'object' ? val.value : val}
+        title={typeof val === 'object' ? val.value : val}
         onChange={(e) => handleChange(idx, f, e.target.value)}
         ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
         onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
         onFocus={() => handleFocusField(f)}
         onInput={(e) => {
           e.target.style.height = 'auto';
-          e.target.style.height = `${e.target.scrollHeight}px`;
+          const h = Math.min(e.target.scrollHeight, boxMaxHeight);
+          e.target.style.height = `${h}px`;
+          e.target.style.overflowY = e.target.scrollHeight > h ? 'auto' : 'hidden';
         }}
       />
     );
