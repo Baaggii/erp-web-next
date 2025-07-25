@@ -882,7 +882,10 @@ export default forwardRef(function InlineTransactionTable({
             </tr>
           ))}
         </tbody>
-        {(totalAmountFields.length > 0 || totalCurrencyFields.length > 0) && (
+        {(totalAmountFields.length > 0 ||
+          totalCurrencyFields.length > 0 ||
+          fields.includes('TotalCur') ||
+          fields.includes('TotalAmt')) && (
           <tfoot>
             <tr>
               {fields.map((f) => {
