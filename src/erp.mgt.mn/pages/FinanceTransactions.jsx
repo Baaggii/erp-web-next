@@ -28,7 +28,9 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const [table, setTable] = useState(() => sessionState.table || '');
   const [config, setConfig] = useState(() => sessionState.config || null);
   const [refreshId, setRefreshId] = useState(() => sessionState.refreshId || 0);
-  const [showTable, setShowTable] = useState(() => sessionState.showTable || false);
+  const [showTable, setShowTable] = useState(() =>
+    sessionState.showTable || !!sessionState.config,
+  );
   const { company } = useContext(AuthContext);
   const perms = useRolePermissions();
   const licensed = useCompanyModules(company?.company_id);
@@ -79,7 +81,7 @@ useEffect(() => {
     table: sessionState.table || '',
     config: sessionState.config || null,
     refreshId: sessionState.refreshId || 0,
-    showTable: sessionState.showTable || false,
+    showTable: sessionState.showTable || !!sessionState.config,
   };
 
   if (!isEqual(prevSessionRef.current, next)) {
@@ -219,16 +221,17 @@ useEffect(() => {
           setConfig(cfg);
           prevConfigRef.current = cfg;
         }
+        setShowTable(true);
       } else {
         if (config !== null) setConfig(null);
-        if (showTable) setShowTable(false);
+        setShowTable(false);
         addToast('Transaction configuration not found', 'error');
       }
     })
     .catch(() => {
       if (!canceled) {
         if (config !== null) setConfig(null);
-        if (showTable) setShowTable(false);
+        setShowTable(false);
         addToast('Failed to load transaction configuration', 'error');
       }
     });
@@ -257,7 +260,7 @@ useEffect(() => {
                 if (newName === name) return;
                 setName(newName);
                 setRefreshId((r) => r + 1);
-                setShowTable(false);
+                setShowTable(true);
                 if (!newName) {
                   if (table !== '') setTable('');
                   if (config !== null) setConfig(null);
