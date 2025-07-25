@@ -15,6 +15,6 @@ Forms used by POS transactions support a special **fitted** view. In this mode a
 ```
 
 `labelFontSize` sets the text size used by both labels and values in the grid.
-`boxWidth` defines the initial grid box width for POS transaction forms, while
+`boxWidth` defines the initial grid box width for POS transactions, while
 `boxMaxWidth` and `boxMaxHeight` limit how far a cell can stretch when the
 content is larger.
