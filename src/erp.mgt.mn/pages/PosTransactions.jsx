@@ -481,6 +481,34 @@ export default function PosTransactionsPage() {
       Object.entries(defs).forEach(([k, v]) => {
         if (next[tbl][k] === undefined) next[tbl][k] = v;
       });
+      if (fc.userIdFields && user?.empid !== undefined) {
+        fc.userIdFields.forEach((f) => {
+          if (next[tbl][f] === undefined) next[tbl][f] = user.empid;
+        });
+      }
+      if (fc.branchIdFields && company?.branch_id !== undefined) {
+        fc.branchIdFields.forEach((f) => {
+          if (next[tbl][f] === undefined) next[tbl][f] = company.branch_id;
+        });
+      }
+      if (fc.companyIdFields && company?.company_id !== undefined) {
+        fc.companyIdFields.forEach((f) => {
+          if (next[tbl][f] === undefined) next[tbl][f] = company.company_id;
+        });
+      }
+      if (fc.transactionTypeField && fc.transactionTypeValue) {
+        if (next[tbl][fc.transactionTypeField] === undefined) {
+          next[tbl][fc.transactionTypeField] = fc.transactionTypeValue;
+        }
+      }
+      if (fc.dateField && Array.isArray(fc.dateField)) {
+        const now = formatTimestamp(new Date()).slice(0, 10);
+        fc.dateField.forEach((f) => {
+          if (next[tbl][f] === undefined || next[tbl][f] === '') {
+            next[tbl][f] = now;
+          }
+        });
+      }
     });
     setValues(next);
     setMasterId(null);
