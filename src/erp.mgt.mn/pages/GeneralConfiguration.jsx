@@ -66,6 +66,14 @@ export default function GeneralConfiguration() {
         </button>
       </div>
       <div style={{ marginBottom: '0.5rem' }}>
+        <button onClick={() => setTab('forms')} disabled={tab === 'forms'}>
+          Forms
+        </button>
+        <button onClick={() => setTab('pos')} disabled={tab === 'pos'} style={{ marginLeft: '0.5rem' }}>
+          POS
+        </button>
+      </div>
+      <div style={{ marginBottom: '0.5rem' }}>
         <label>
           Label Font Size{' '}
           <input
