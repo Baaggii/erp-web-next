@@ -274,11 +274,21 @@ const RowFormModal = function RowFormModal({
   const inputStyle = {
     fontSize: `${inputFontSize}px`,
     padding: '0.25rem 0.5rem',
-    width: `${boxWidth}px`,
     minWidth: `${boxWidth}px`,
     maxWidth: `${boxMaxWidth}px`,
     height: `${boxHeight}px`,
   };
+
+  function adjustWidth(el) {
+    if (!el) return;
+    el.style.width = 'auto';
+    const w = Math.min(boxMaxWidth, Math.max(boxWidth, el.scrollWidth));
+    el.style.width = `${w}px`;
+  }
+
+  useEffect(() => {
+    Object.values(inputRefs.current).forEach(adjustWidth);
+  }, [formVals]);
 
   async function handleKeyDown(e, col) {
     if (e.key !== 'Enter') return;
@@ -637,7 +647,7 @@ const RowFormModal = function RowFormModal({
       const val = formVals[c];
       if (!withLabel) {
         return (
-          <div className="w-full border rounded bg-gray-100 px-2 py-1" style={inputStyle}>
+          <div className="w-full border rounded bg-gray-100 px-2 py-1" style={{...inputStyle, wordBreak:'break-word'}}>
             {val}
           </div>
         );
@@ -647,7 +657,7 @@ const RowFormModal = function RowFormModal({
           <label className="block mb-1 font-medium" style={labelStyle}>
             {labels[c] || c}
           </label>
-          <div className="w-full border rounded bg-gray-100 px-2 py-1" style={inputStyle}>
+          <div className="w-full border rounded bg-gray-100 px-2 py-1" style={{...inputStyle, wordBreak:'break-word'}}>
             {val}
           </div>
         </div>
@@ -672,13 +682,20 @@ const RowFormModal = function RowFormModal({
           e.target.select();
           handleFocusField(c);
         }}
-        inputRef={(el) => (inputRefs.current[c] = el)}
+        inputRef={(el) => {
+          inputRefs.current[c] = el;
+          adjustWidth(el);
+        }}
+        onInput={(e) => adjustWidth(e.target)}
         inputStyle={inputStyle}
       />
     ) : Array.isArray(relations[c]) ? (
       <select
         title={labels[c] || c}
-        ref={(el) => (inputRefs.current[c] = el)}
+        ref={(el) => {
+          inputRefs.current[c] = el;
+          adjustWidth(el);
+        }}
         value={formVals[c]}
         onFocus={() => handleFocusField(c)}
         onChange={(e) => {
@@ -695,6 +712,7 @@ const RowFormModal = function RowFormModal({
         disabled={disabled}
         className={inputClass}
         style={inputStyle}
+        onInput={(e) => adjustWidth(e.target)}
       >
         <option value="">-- select --</option>
         {relations[c].map((opt) => (
@@ -706,7 +724,10 @@ const RowFormModal = function RowFormModal({
     ) : (
       <input
         title={labels[c] || c}
-        ref={(el) => (inputRefs.current[c] = el)}
+        ref={(el) => {
+          inputRefs.current[c] = el;
+          adjustWidth(el);
+        }}
         type="text"
         placeholder={placeholders[c] || ''}
         value={formVals[c]}
@@ -721,6 +742,7 @@ const RowFormModal = function RowFormModal({
           onChange({ [c]: e.target.value });
         }}
         onKeyDown={(e) => handleKeyDown(e, c)}
+        onInput={(e) => adjustWidth(e.target)}
         onFocus={(e) => {
           e.target.select();
           handleFocusField(c);
@@ -893,7 +915,7 @@ const RowFormModal = function RowFormModal({
           return (
             <div key={c} className={fitted ? 'mb-1' : 'mb-3'}>
               <label className="block mb-1 font-medium" style={labelStyle}>{labels[c] || c}</label>
-              <div className="w-full border rounded bg-gray-100 px-2 py-1" style={inputStyle}>
+              <div className="w-full border rounded bg-gray-100 px-2 py-1" style={{...inputStyle, wordBreak:'break-word'}}>
                 {val}
               </div>
             </div>
