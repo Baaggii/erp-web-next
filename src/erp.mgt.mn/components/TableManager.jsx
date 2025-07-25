@@ -1824,11 +1824,7 @@ const TableManager = forwardRef(function TableManager({
         columnCaseMap={columnCaseMap}
         viewSource={viewSourceMap}
         onRowsChange={setGridRows}
-        labelFontSize={generalConfig.forms.labelFontSize}
-        boxWidth={generalConfig.forms.boxWidth}
-        boxHeight={generalConfig.forms.boxHeight}
-        boxMaxWidth={generalConfig.forms.boxMaxWidth}
-        boxMaxHeight={generalConfig.forms.boxMaxHeight}
+        scope="forms"
       />
       <CascadeDeleteModal
         visible={showCascade}
