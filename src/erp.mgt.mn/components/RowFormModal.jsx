@@ -831,7 +831,7 @@ const RowFormModal = function RowFormModal({
     return (
       <div className="mb-4">
         <h3 className="mt-0 mb-1 font-semibold">Main</h3>
-        <table className="min-w-full border border-gray-300 text-sm" style={{tableLayout:'fixed', width:'max-content'}}>
+        <table className="min-w-full border border-gray-300 text-sm" style={{tableLayout:'fixed', width:'100%'}}>
           <thead className="bg-gray-50">
             <tr>
               {cols.map((c) => (
@@ -936,7 +936,7 @@ const RowFormModal = function RowFormModal({
     return (
       <div className="mb-4">
         <h3 className="mt-0 mb-1 font-semibold">Header</h3>
-        <table className="min-w-full border border-gray-300 text-sm" style={{tableLayout:'fixed', width:'max-content'}}>
+        <table className="min-w-full border border-gray-300 text-sm" style={{tableLayout:'fixed',width:'100%'}}>
           <tbody>
             {cols.map((c) => {
               let val = formVals[c];
