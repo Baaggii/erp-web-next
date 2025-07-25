@@ -315,13 +315,17 @@ const RowFormModal = function RowFormModal({
   async function handleKeyDown(e, col) {
     if (e.key !== 'Enter') return;
     e.preventDefault();
-    let val = normalizeDateInput(e.target.value, placeholders[col]);
+    let label = undefined;
+    let val = e.selectedOption ? e.selectedOption.value : e.target.value;
+    if (e.selectedOption) label = e.selectedOption.label;
+    val = normalizeDateInput(val, placeholders[col]);
     if (totalAmountSet.has(col) || totalCurrencySet.has(col)) {
       val = normalizeNumberInput(val);
     }
-    if (formVals[col] !== val) {
-      setFormVals((v) => ({ ...v, [col]: val }));
-      onChange({ [col]: val });
+    const newVal = label ? { value: val, label } : val;
+    if (JSON.stringify(formVals[col]) !== JSON.stringify(newVal)) {
+      setFormVals((v) => ({ ...v, [col]: newVal }));
+      onChange({ [col]: newVal });
       if (val !== e.target.value) e.target.value = val;
     }
     if (placeholders[col] && !isValidDate(val, placeholders[col])) {
@@ -341,7 +345,8 @@ const RowFormModal = function RowFormModal({
       return;
     }
     if (hasTrigger(col)) {
-      await runProcTrigger(col);
+      const override = { ...formVals, [col]: newVal };
+      await runProcTrigger(col, override);
     }
 
     const enabled = columns.filter((c) => !disabledFields.includes(c));
@@ -418,7 +423,7 @@ const RowFormModal = function RowFormModal({
     }
   }
 
-  async function runProcTrigger(col) {
+  async function runProcTrigger(col, valsOverride = null) {
     const direct = getDirectTriggers(col);
     const paramTrigs = getParamTriggers(col);
 
@@ -457,7 +462,8 @@ const RowFormModal = function RowFormModal({
       if (!hasTarget) continue;
       const getVal = (name) => {
         const key = columnCaseMap[name.toLowerCase()] || name;
-        let val = formVals[key] ?? extraVals[key];
+        let val = (valsOverride || formVals)[key];
+        if (val === undefined) val = extraVals[key];
         if (val && typeof val === 'object' && 'value' in val) {
           val = val.value;
         }

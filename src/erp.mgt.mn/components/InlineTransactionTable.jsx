@@ -294,7 +294,7 @@ export default forwardRef(function InlineTransactionTable({
     }
   }
 
-  async function runProcTrigger(rowIdx, col) {
+  async function runProcTrigger(rowIdx, col, rowOverride = null) {
     const direct = getDirectTriggers(col);
     const paramTrigs = getParamTriggers(col);
 
@@ -332,7 +332,7 @@ export default forwardRef(function InlineTransactionTable({
       if (!hasTarget) continue;
       const getVal = (name) => {
         const key = columnCaseMap[name.toLowerCase()] || name;
-        let val = rows[rowIdx]?.[key];
+        let val = (rowOverride || rows[rowIdx] || {})[key];
         if (val && typeof val === 'object' && 'value' in val) {
           val = val.value;
         }
@@ -685,15 +685,18 @@ export default forwardRef(function InlineTransactionTable({
     if (!isEnter && !isForwardTab) return;
     e.preventDefault();
     const field = fields[colIdx];
-    let val = e.target.value;
+    let label = undefined;
+    let val = e.selectedOption ? e.selectedOption.value : e.target.value;
+    if (e.selectedOption) label = e.selectedOption.label;
     if (placeholders[field]) {
       val = normalizeDateInput(val, placeholders[field]);
     }
     if (totalCurrencySet.has(field)) {
       val = normalizeNumberInput(val);
     }
-    if (rows[rowIdx]?.[field] !== val) {
-      handleChange(rowIdx, field, val);
+    const newValue = label ? { value: val, label } : val;
+    if (JSON.stringify(rows[rowIdx]?.[field]) !== JSON.stringify(newValue)) {
+      handleChange(rowIdx, field, newValue);
       if (val !== e.target.value) e.target.value = val;
     }
     if (
@@ -725,7 +728,8 @@ export default forwardRef(function InlineTransactionTable({
       return;
     }
     if (hasTrigger(field)) {
-      await runProcTrigger(rowIdx, field);
+      const override = { ...rows[rowIdx], [field]: newValue };
+      await runProcTrigger(rowIdx, field, override);
     }
     const enabledIdx = enabledFields.indexOf(field);
     const nextField = enabledFields[enabledIdx + 1];

@@ -27,6 +27,8 @@ export default function AsyncSearchSelect({
   const containerRef = useRef(null);
   const match = options.find((o) => String(o.value) === String(input));
   const displayLabel = match ? match.label : label;
+  const internalRef = useRef(null);
+  const chosenRef = useRef(null);
 
   useEffect(() => {
     if (typeof value === 'object' && value !== null) {
@@ -37,6 +39,10 @@ export default function AsyncSearchSelect({
       if (!value) setLabel('');
     }
   }, [value]);
+
+  useEffect(() => {
+    if (show && options.length > 0 && highlight < 0) setHighlight(0);
+  }, [options, show]);
 
   useEffect(() => {
     const cols = searchColumns && searchColumns.length > 0
@@ -108,6 +114,10 @@ export default function AsyncSearchSelect({
         onChange(opt.value, opt.label);
         setInput(String(opt.value));
         setLabel(opt.label || '');
+        if (internalRef.current) internalRef.current.value = String(opt.value);
+        e.target.value = String(opt.value);
+        e.selectedOption = opt;
+        chosenRef.current = opt;
         setShow(false);
       }
     }
@@ -120,7 +130,11 @@ export default function AsyncSearchSelect({
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>
       <input
-        ref={inputRef}
+        ref={(el) => {
+          internalRef.current = el;
+          if (typeof inputRef === 'function') inputRef(el);
+          else if (inputRef) inputRef.current = el;
+        }}
         value={input}
         onChange={(e) => {
           setInput(e.target.value);
@@ -136,7 +150,9 @@ export default function AsyncSearchSelect({
         onBlur={handleBlur}
         onKeyDown={(e) => {
           handleSelectKeyDown(e);
+          if (chosenRef.current) e.selectedOption = chosenRef.current;
           if (onKeyDown) onKeyDown(e);
+          chosenRef.current = null;
         }}
         disabled={disabled}
         style={{ width: '100%', padding: '0.5rem', ...inputStyle }}
@@ -165,6 +181,8 @@ export default function AsyncSearchSelect({
                 onChange(opt.value, opt.label);
                 setInput(String(opt.value));
                 setLabel(opt.label || '');
+                if (internalRef.current) internalRef.current.value = String(opt.value);
+                chosenRef.current = opt;
                 setShow(false);
               }}
               onMouseEnter={() => setHighlight(idx)}
