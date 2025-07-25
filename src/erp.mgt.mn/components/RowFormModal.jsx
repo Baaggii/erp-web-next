@@ -89,12 +89,13 @@ const RowFormModal = function RowFormModal({
       }
       const raw = row ? String(row[c] ?? '') : String(defaultValues[c] ?? '');
       let val = normalizeDateInput(raw, placeholder);
-      if (!row && !val && dateField.includes(c)) {
+      const missing = !row || row[c] === undefined || row[c] === '';
+      if (missing && !val && dateField.includes(c)) {
         if (placeholder === 'YYYY-MM-DD') val = formatTimestamp(now).slice(0, 10);
         else if (placeholder === 'HH:MM:SS') val = formatTimestamp(now).slice(11, 19);
         else val = formatTimestamp(now);
       }
-      if (!row && !val && headerSet.has(c)) {
+      if (missing && !val && headerSet.has(c)) {
         if (
           ['created_by', 'employee_id', 'emp_id', 'empid', 'user_id'].includes(c) &&
           user?.empid
@@ -232,13 +233,14 @@ const RowFormModal = function RowFormModal({
     columns.forEach((c) => {
       const raw = row ? String(row[c] ?? '') : String(defaultValues[c] ?? '');
       let v = normalizeDateInput(raw, placeholders[c]);
-        if (!row && !v && dateField.includes(c)) {
-          const now = new Date();
-          if (placeholders[c] === 'YYYY-MM-DD') v = formatTimestamp(now).slice(0, 10);
-          else if (placeholders[c] === 'HH:MM:SS') v = formatTimestamp(now).slice(11, 19);
-          else v = formatTimestamp(now);
-        }
-      if (!row && !v && headerSet.has(c)) {
+      const missing = !row || row[c] === undefined || row[c] === '';
+      if (missing && !v && dateField.includes(c)) {
+        const now = new Date();
+        if (placeholders[c] === 'YYYY-MM-DD') v = formatTimestamp(now).slice(0, 10);
+        else if (placeholders[c] === 'HH:MM:SS') v = formatTimestamp(now).slice(11, 19);
+        else v = formatTimestamp(now);
+      }
+      if (missing && !v && headerSet.has(c)) {
         if (
           ['created_by', 'employee_id', 'emp_id', 'empid', 'user_id'].includes(c) &&
           user?.empid
@@ -969,7 +971,7 @@ const RowFormModal = function RowFormModal({
       <div className={formGridClass} style={formGridStyle}>
         {cols.map((c) => {
           let val = formVals[c];
-          if ((val === '' || val === undefined) && headerSet.has(c)) {
+          if (val === '' || val === undefined) {
             if (
               ['created_by', 'employee_id', 'emp_id', 'empid', 'user_id'].includes(c) &&
               user?.empid
@@ -1009,7 +1011,7 @@ const RowFormModal = function RowFormModal({
           <tbody>
             {cols.map((c) => {
               let val = formVals[c];
-              if ((val === '' || val === undefined) && headerSet.has(c)) {
+              if (val === '' || val === undefined) {
                 if (
                   ['created_by', 'employee_id', 'emp_id', 'empid', 'user_id'].includes(c) &&
                   user?.empid
