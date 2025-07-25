@@ -12,9 +12,9 @@
 ```
 
 These values control label text size and input box dimensions across all forms.
-Transaction grids now default to `boxMaxWidth` for both labels and inputs so cells
-expand up to that width. Changing `labelFontSize` automatically adjusts the text
-size in the grids as well.
+Transaction grids start with `boxWidth` for each cell but stretch up to
+`boxMaxWidth` when the content is longer. Changing `labelFontSize` automatically
+adjusts the label text and the grid's input font size.
 
 The settings can be edited in the **General Configuration** screen
 (module key `general_configuration`) under the Settings menu.

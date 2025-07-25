@@ -871,7 +871,7 @@ export default function PosTransactionsPage() {
                       useGrid={t.view === 'table' || t.type === 'multi'}
                       fitted={t.view === 'fitted'}
                       labelFontSize={generalConfig.labelFontSize}
-                      boxWidth={generalConfig.boxMaxWidth}
+                      boxWidth={generalConfig.boxWidth}
                       boxHeight={generalConfig.boxHeight}
                       boxMaxWidth={generalConfig.boxMaxWidth}
                       dateField={fc.dateField || []}
