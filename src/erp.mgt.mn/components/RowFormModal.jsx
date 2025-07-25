@@ -879,7 +879,10 @@ const RowFormModal = function RowFormModal({
               ))}
             </tr>
           </tbody>
-          {(totalAmountFields.length > 0 || totalCurrencyFields.length > 0) && (
+          {(totalAmountFields.length > 0 ||
+            totalCurrencyFields.length > 0 ||
+            cols.includes('TotalCur') ||
+            cols.includes('TotalAmt')) && (
             <tfoot>
               <tr>
                 {cols.map((c, idx) => {
