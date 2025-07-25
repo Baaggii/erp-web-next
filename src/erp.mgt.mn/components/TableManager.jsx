@@ -135,6 +135,8 @@ const TableManager = forwardRef(function TableManager({
   const [showDetail, setShowDetail] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
   const [detailRefs, setDetailRefs] = useState([]);
+  const [viewDisplayMap, setViewDisplayMap] = useState({});
+  const [viewColumns, setViewColumns] = useState({});
   const [editLabels, setEditLabels] = useState(false);
   const [labelEdits, setLabelEdits] = useState({});
   const [isAdding, setIsAdding] = useState(false);
@@ -240,6 +242,39 @@ const TableManager = forwardRef(function TableManager({
       canceled = true;
     };
   }, [table]);
+
+  useEffect(() => {
+    const views = Array.from(new Set(Object.values(viewSourceMap)));
+    if (views.length === 0) {
+      setViewDisplayMap({});
+      setViewColumns({});
+      return;
+    }
+    let canceled = false;
+    views.forEach((v) => {
+      fetch(`/api/display_fields?table=${encodeURIComponent(v)}`, {
+        credentials: 'include',
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((cfg) => {
+          if (canceled) return;
+          setViewDisplayMap((m) => ({ ...m, [v]: cfg || {} }));
+        })
+        .catch(() => {});
+      fetch(`/api/tables/${encodeURIComponent(v)}/columns`, {
+        credentials: 'include',
+      })
+        .then((res) => (res.ok ? res.json() : []))
+        .then((cols) => {
+          if (canceled) return;
+          setViewColumns((m) => ({ ...m, [v]: cols.map((c) => c.name) }));
+        })
+        .catch(() => {});
+    });
+    return () => {
+      canceled = true;
+    };
+  }, [viewSourceMap]);
 
   useEffect(() => {
     if (!table) return;
@@ -736,8 +771,10 @@ const TableManager = forwardRef(function TableManager({
       const view = viewSourceMap[field];
       if (!view || val === '') return;
       const params = new URLSearchParams({ perPage: 1, debug: 1 });
+      const cols = viewColumns[view] || [];
       Object.entries(viewSourceMap).forEach(([f, v]) => {
         if (v !== view) return;
+        if (!cols.includes(f)) return;
         let pv = changes[f];
         if (pv === undefined) pv = editing?.[f];
         if (pv === undefined || pv === '') return;
@@ -1823,6 +1860,8 @@ const TableManager = forwardRef(function TableManager({
         procTriggers={procTriggers}
         columnCaseMap={columnCaseMap}
         viewSource={viewSourceMap}
+        viewDisplays={viewDisplayMap}
+        viewColumns={viewColumns}
         onRowsChange={setGridRows}
         scope="forms"
       />
