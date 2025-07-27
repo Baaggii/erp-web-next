@@ -25,6 +25,10 @@ const RowFormModal = function RowFormModal({
   headerFields = [],
   footerFields = [],
   mainFields = [],
+  userIdFields = [],
+  branchIdFields = [],
+  departmentIdFields = [],
+  companyIdFields = [],
   printEmpField = [],
   printCustField = [],
   totalAmountFields = [],
@@ -75,6 +79,10 @@ const RowFormModal = function RowFormModal({
   }, []);
   const headerSet = new Set(headerFields);
   const footerSet = new Set(footerFields);
+  const userIdSet = new Set(userIdFields);
+  const branchIdSet = new Set(branchIdFields);
+  const departmentIdSet = new Set(departmentIdFields);
+  const companyIdSet = new Set(companyIdFields);
   const { user, company } = useContext(AuthContext);
   const [formVals, setFormVals] = useState(() => {
     const init = {};
@@ -95,19 +103,14 @@ const RowFormModal = function RowFormModal({
         else if (placeholder === 'HH:MM:SS') val = formatTimestamp(now).slice(11, 19);
         else val = formatTimestamp(now);
       }
-      if (missing && !val && headerSet.has(c)) {
-        if (
-          ['created_by', 'employee_id', 'emp_id', 'empid', 'user_id'].includes(c) &&
-          user?.empid
-        ) {
-          val = user.empid;
-        } else if (c === 'branch_id' && company?.branch_id !== undefined) {
+      if (missing && !val) {
+        if (userIdSet.has(c) && user?.empid) val = user.empid;
+        else if (branchIdSet.has(c) && company?.branch_id !== undefined)
           val = company.branch_id;
-        } else if (c === 'department_id' && company?.department_id !== undefined) {
+        else if (departmentIdSet.has(c) && company?.department_id !== undefined)
           val = company.department_id;
-        } else if (c === 'company_id' && company?.company_id !== undefined) {
+        else if (companyIdSet.has(c) && company?.company_id !== undefined)
           val = company.company_id;
-        }
       }
       init[c] = val;
     });
@@ -240,19 +243,14 @@ const RowFormModal = function RowFormModal({
         else if (placeholders[c] === 'HH:MM:SS') v = formatTimestamp(now).slice(11, 19);
         else v = formatTimestamp(now);
       }
-      if (missing && !v && headerSet.has(c)) {
-        if (
-          ['created_by', 'employee_id', 'emp_id', 'empid', 'user_id'].includes(c) &&
-          user?.empid
-        ) {
-          v = user.empid;
-        } else if (c === 'branch_id' && company?.branch_id !== undefined) {
+      if (missing && !v) {
+        if (userIdSet.has(c) && user?.empid) v = user.empid;
+        else if (branchIdSet.has(c) && company?.branch_id !== undefined)
           v = company.branch_id;
-        } else if (c === 'department_id' && company?.department_id !== undefined) {
+        else if (departmentIdSet.has(c) && company?.department_id !== undefined)
           v = company.department_id;
-        } else if (c === 'company_id' && company?.company_id !== undefined) {
+        else if (companyIdSet.has(c) && company?.company_id !== undefined)
           v = company.company_id;
-        }
       }
       vals[c] = v;
     });
@@ -868,6 +866,10 @@ const RowFormModal = function RowFormModal({
             user={user}
             company={company}
             columnCaseMap={columnCaseMap}
+            userIdFields={userIdFields}
+            branchIdFields={branchIdFields}
+            departmentIdFields={departmentIdFields}
+            companyIdFields={companyIdFields}
             collectRows={useGrid}
             minRows={1}
             onRowSubmit={onSubmit}
@@ -972,18 +974,13 @@ const RowFormModal = function RowFormModal({
         {cols.map((c) => {
           let val = formVals[c];
           if (val === '' || val === undefined) {
-            if (
-              ['created_by', 'employee_id', 'emp_id', 'empid', 'user_id'].includes(c) &&
-              user?.empid
-            ) {
-              val = user.empid;
-            } else if (c === 'branch_id' && company?.branch_id !== undefined) {
+            if (userIdSet.has(c) && user?.empid) val = user.empid;
+            else if (branchIdSet.has(c) && company?.branch_id !== undefined)
               val = company.branch_id;
-            } else if (c === 'department_id' && company?.department_id !== undefined) {
+            else if (departmentIdSet.has(c) && company?.department_id !== undefined)
               val = company.department_id;
-            } else if (c === 'company_id' && company?.company_id !== undefined) {
+            else if (companyIdSet.has(c) && company?.company_id !== undefined)
               val = company.company_id;
-            }
           }
           return (
             <div key={c} className={fitted ? 'mb-1' : 'mb-3'}>
@@ -1012,18 +1009,15 @@ const RowFormModal = function RowFormModal({
             {cols.map((c) => {
               let val = formVals[c];
               if (val === '' || val === undefined) {
-                if (
-                  ['created_by', 'employee_id', 'emp_id', 'empid', 'user_id'].includes(c) &&
-                  user?.empid
-                ) {
-                  val = user.empid;
-                } else if (c === 'branch_id' && company?.branch_id !== undefined) {
+                if (userIdSet.has(c) && user?.empid) val = user.empid;
+                else if (branchIdSet.has(c) && company?.branch_id !== undefined)
                   val = company.branch_id;
-                } else if (c === 'department_id' && company?.department_id !== undefined) {
+                else if (
+                  departmentIdSet.has(c) && company?.department_id !== undefined
+                )
                   val = company.department_id;
-                } else if (c === 'company_id' && company?.company_id !== undefined) {
+                else if (companyIdSet.has(c) && company?.company_id !== undefined)
                   val = company.company_id;
-                }
               }
               return (
                 <tr key={c}>

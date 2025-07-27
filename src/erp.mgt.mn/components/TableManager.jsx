@@ -172,6 +172,12 @@ const TableManager = forwardRef(function TableManager({
     return ['department_id'].filter(f => validCols.has(f));
   }, [formConfig, validCols]);
 
+  const companyIdFields = useMemo(() => {
+    if (formConfig?.companyIdFields?.length)
+      return formConfig.companyIdFields.filter(f => validCols.has(f));
+    return ['company_id'].filter(f => validCols.has(f));
+  }, [formConfig, validCols]);
+
   const userIdFields = useMemo(() => {
     if (formConfig?.userIdFields?.length)
       return formConfig.userIdFields.filter(f => validCols.has(f));
@@ -654,7 +660,7 @@ const TableManager = forwardRef(function TableManager({
       if (userIdFields.includes(c) && user?.empid) v = user.empid;
       if (branchIdFields.includes(c) && company?.branch_id !== undefined) v = company.branch_id;
       if (departmentIdFields.includes(c) && company?.department_id !== undefined) v = company.department_id;
-      if (formConfig?.companyIdFields?.includes(c) && company?.company_id !== undefined) v = company.company_id;
+      if (companyIdFields.includes(c) && company?.company_id !== undefined) v = company.company_id;
       vals[c] = v;
       defaults[c] = v;
       if (!v && formConfig?.dateField?.includes(c)) {
@@ -850,7 +856,7 @@ const TableManager = forwardRef(function TableManager({
         if (columns.has(f) && company?.department_id !== undefined)
           merged[f] = company.department_id;
       });
-      formConfig?.companyIdFields?.forEach((f) => {
+      companyIdFields.forEach((f) => {
         if (columns.has(f) && company?.company_id !== undefined)
           merged[f] = company.company_id;
       });
@@ -1853,6 +1859,10 @@ const TableManager = forwardRef(function TableManager({
         headerFields={headerFields}
         mainFields={mainFields}
         footerFields={footerFields}
+        userIdFields={userIdFields}
+        branchIdFields={branchIdFields}
+        departmentIdFields={departmentIdFields}
+        companyIdFields={companyIdFields}
         printEmpField={formConfig?.printEmpField || []}
         printCustField={formConfig?.printCustField || []}
         totalAmountFields={formConfig?.totalAmountFields || []}
