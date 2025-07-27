@@ -61,11 +61,48 @@ export default forwardRef(function InlineTransactionTable({
   boxMaxHeight,
   disabledFields = [],
   dateField = [],
+  userIdFields = [],
+  branchIdFields = [],
+  departmentIdFields = [],
+  companyIdFields = [],
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
   const generalConfig = useGeneralConfig();
   const cfg = generalConfig[scope] || {};
+  const userIdSet = new Set(userIdFields);
+  const branchIdSet = new Set(branchIdFields);
+  const departmentIdSet = new Set(departmentIdFields);
+  const companyIdSet = new Set(companyIdFields);
+
+  function fillSessionDefaults(obj) {
+    const row = { ...obj };
+    if (user?.empid !== undefined) {
+      userIdSet.forEach((f) => {
+        if (row[f] === undefined || row[f] === '') row[f] = user.empid;
+      });
+    }
+    if (company?.branch_id !== undefined) {
+      branchIdSet.forEach((f) => {
+        if (row[f] === undefined || row[f] === '') row[f] = company.branch_id;
+      });
+    }
+    if (company?.department_id !== undefined) {
+      departmentIdSet.forEach((f) => {
+        if (row[f] === undefined || row[f] === '') row[f] = company.department_id;
+      });
+    }
+    if (company?.company_id !== undefined) {
+      companyIdSet.forEach((f) => {
+        if (row[f] === undefined || row[f] === '') row[f] = company.company_id;
+      });
+    }
+    const now = formatTimestamp(new Date()).slice(0, 10);
+    dateField.forEach((f) => {
+      if (row[f] === undefined || row[f] === '') row[f] = now;
+    });
+    return row;
+  }
   labelFontSize = labelFontSize ?? cfg.labelFontSize ?? 14;
   boxWidth = boxWidth ?? cfg.boxWidth ?? 60;
   boxHeight = boxHeight ?? cfg.boxHeight ?? 30;
@@ -84,9 +121,9 @@ export default forwardRef(function InlineTransactionTable({
   }, []);
   const [rows, setRows] = useState(() => {
     if (Array.isArray(initRows) && initRows.length > 0) {
-      return initRows;
+      return initRows.map((r) => fillSessionDefaults(r));
     }
-    return Array.from({ length: minRows }, () => ({ ...defaultValues }));
+    return Array.from({ length: minRows }, () => fillSessionDefaults(defaultValues));
   });
 
   const placeholders = React.useMemo(() => {
@@ -110,11 +147,11 @@ export default forwardRef(function InlineTransactionTable({
         ? base
         : [
             ...base,
-            ...Array.from({ length: minRows - base.length }, () => ({ ...defaultValues })),
+            ...Array.from({ length: minRows - base.length }, () => fillSessionDefaults(defaultValues)),
           ];
     const normalized = next.map((row) => {
       if (!row || typeof row !== 'object') return row;
-      const updated = { ...row };
+      const updated = fillSessionDefaults(row);
       Object.entries(updated).forEach(([k, v]) => {
         if (placeholders[k]) {
           updated[k] = normalizeDateInput(String(v ?? ''), placeholders[k]);
@@ -123,7 +160,7 @@ export default forwardRef(function InlineTransactionTable({
       return updated;
     });
     setRows(normalized);
-  }, [initRows, minRows, defaultValues, placeholders]);
+  }, [initRows, minRows, defaultValues, placeholders, user, company]);
   const inputRefs = useRef({});
   const focusRow = useRef(0);
   const addBtnRef = useRef(null);
@@ -222,13 +259,14 @@ export default forwardRef(function InlineTransactionTable({
     getRows: () => rows,
     clearRows: () =>
       setRows(() => {
-        const next = Array.from({ length: minRows }, () => ({ ...defaultValues }));
+        const next = Array.from({ length: minRows }, () => fillSessionDefaults(defaultValues));
         onRowsChange(next);
         return next;
       }),
     replaceRows: (newRows) =>
       setRows(() => {
-        const next = Array.isArray(newRows) ? newRows : [];
+        const base = Array.isArray(newRows) ? newRows : [];
+        const next = base.map((r) => fillSessionDefaults(r));
         onRowsChange(next);
         return next;
       }),
@@ -478,11 +516,7 @@ export default forwardRef(function InlineTransactionTable({
       }
     }
     setRows((r) => {
-      const now = formatTimestamp(new Date()).slice(0, 10);
-      const row = { ...defaultValues };
-      dateField.forEach((f) => {
-        if (row[f] === undefined || row[f] === '') row[f] = now;
-      });
+      const row = fillSessionDefaults(defaultValues);
       const next = [...r, row];
       focusRow.current = next.length - 1;
       onRowsChange(next);
