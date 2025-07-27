@@ -170,6 +170,7 @@ export async function setFormConfig(table, name, config, options = {}) {
     requiredFields: arrify(requiredFields),
     defaultValues,
     editableDefaultFields: arrify(editableDefaultFields),
+    editableFields: arrify(editableFields),
     userIdFields: uid,
     branchIdFields: bid,
     companyIdFields: cid,
