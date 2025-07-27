@@ -869,8 +869,9 @@ export default function PosTransactionsPage() {
                 const editable = Array.isArray(fc.editableFields)
                   ? fc.editableFields
                   : [];
+                const editSet = new Set(editable.map((f) => f.toLowerCase()));
                 const disabled = editable.length
-                  ? visible.filter((c) => !editable.includes(c))
+                  ? visible.filter((c) => !editSet.has(c.toLowerCase()))
                   : [];
                 const posStyle = {
                   top_row: { gridColumn: '1 / span 3', gridRow: '1' },
