@@ -25,6 +25,7 @@ export default function AsyncSearchSelect({
   const [options, setOptions] = useState([]);
   const [show, setShow] = useState(false);
   const [highlight, setHighlight] = useState(-1);
+  const [loading, setLoading] = useState(false);
   const containerRef = useRef(null);
   const match = options.find((o) => String(o.value) === String(input));
   const displayLabel = match ? match.label : label;
@@ -51,69 +52,52 @@ export default function AsyncSearchSelect({
       : searchColumn
       ? [searchColumn]
       : [];
-    if (!table || cols.length === 0) return;
+    if (!table || cols.length === 0 || !show) return;
     const controller = new AbortController();
-    async function load() {
+    const q = String(input || '').trim();
+    const handler = setTimeout(async () => {
+      if (!q) {
+        setOptions([]);
+        return;
+      }
+      setLoading(true);
       try {
-        let page = 1;
-        const perPage = 500;
-        let rows = [];
-        while (true) {
-          const params = new URLSearchParams({ page, perPage });
-          if (input) {
-            cols.forEach((c) => params.set(c, input));
-          }
-          const res = await fetch(
-            `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
-            { credentials: 'include', signal: controller.signal },
-          );
-          const json = await res.json();
-          if (Array.isArray(json.rows)) {
-            rows = rows.concat(json.rows);
-            if (
-              rows.length >= (json.count || rows.length) ||
-              json.rows.length < perPage
-            )
-              break;
+        const params = new URLSearchParams({ page: 1, perPage: 100 });
+        cols.forEach((c) => params.set(c, q));
+        const res = await fetch(
+          `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
+          { credentials: 'include', signal: controller.signal },
+        );
+        const json = await res.json();
+        const rows = Array.isArray(json.rows) ? json.rows : [];
+        const opts = rows.map((r) => {
+          const val = r[idField || searchColumn];
+          const parts = [];
+          if (val !== undefined) parts.push(val);
+          if (labelFields.length === 0) {
+            Object.entries(r).forEach(([k, v]) => {
+              if (k === idField || k === searchColumn) return;
+              if (v !== undefined && parts.length < 3) parts.push(v);
+            });
           } else {
-            break;
+            labelFields.forEach((f) => {
+              if (r[f] !== undefined) parts.push(r[f]);
+            });
           }
-          page += 1;
-        }
-        if (rows.length > 0) {
-          const opts = rows.map((r) => {
-            const val = r[idField || searchColumn];
-            const parts = [];
-            if (val !== undefined) parts.push(val);
-            if (labelFields.length === 0) {
-              Object.entries(r).forEach(([k, v]) => {
-                if (k === idField || k === searchColumn) return;
-                if (v !== undefined && parts.length < 3) parts.push(v);
-              });
-            } else {
-              labelFields.forEach((f) => {
-                if (r[f] !== undefined) parts.push(r[f]);
-              });
-            }
-            return { value: val, label: parts.join(' - ') };
-          });
-          const q = String(input || '').toLowerCase();
-          const filtered = opts.filter(
-            (o) =>
-              String(o.value).toLowerCase().includes(q) ||
-              String(o.label).toLowerCase().includes(q),
-          );
-          setOptions(filtered);
-        } else {
-          setOptions([]);
-        }
+          return { value: val, label: parts.join(' - ') };
+        });
+        setOptions(opts);
       } catch (err) {
         if (err.name !== 'AbortError') setOptions([]);
+      } finally {
+        setLoading(false);
       }
-    }
-    load();
-    return () => controller.abort();
-  }, [table, searchColumn, searchColumns, labelFields, idField, input]);
+    }, 300);
+    return () => {
+      clearTimeout(handler);
+      controller.abort();
+    };
+  }, [table, searchColumn, searchColumns, labelFields, idField, input, show]);
 
   function handleSelectKeyDown(e) {
     if (e.key === 'ArrowDown') {
@@ -220,6 +204,21 @@ export default function AsyncSearchSelect({
             </li>
           ))}
         </ul>
+      )}
+      {show && loading && (
+        <div
+          style={{
+            position: 'absolute',
+            zIndex: 21000,
+            background: '#fff',
+            border: '1px solid #ccc',
+            width: '100%',
+            padding: '0.25rem',
+            textAlign: 'center',
+          }}
+        >
+          Loading...
+        </div>
       )}
       {displayLabel && (
         <div style={{ fontSize: '0.8rem', color: '#555' }}>{displayLabel}</div>
