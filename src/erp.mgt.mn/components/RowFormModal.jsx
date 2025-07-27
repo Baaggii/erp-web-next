@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useContext, memo } from 'react';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import Modal from './Modal.jsx';
 import InlineTransactionTable from './InlineTransactionTable.jsx';
+import RowDetailModal from './RowDetailModal.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
@@ -143,6 +144,8 @@ const RowFormModal = function RowFormModal({
   const [gridRows, setGridRows] = useState(() => (Array.isArray(rows) ? rows : []));
   const wrapRef = useRef(null);
   const [zoom, setZoom] = useState(1);
+  const [previewRow, setPreviewRow] = useState(null);
+  const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
     if (useGrid) {
@@ -552,6 +555,25 @@ const RowFormModal = function RowFormModal({
     showTriggerInfo(col);
   }
 
+  async function handlePreview(col) {
+    const val = formVals[col];
+    const id = val && typeof val === 'object' ? val.value : val;
+    if (!id) return;
+    const tableName = relationConfigs[col]?.table || viewSource[col];
+    if (!tableName) return;
+    try {
+      const res = await fetch(
+        `/api/tables/${encodeURIComponent(tableName)}/${encodeURIComponent(id)}`,
+        { credentials: 'include' },
+      );
+      if (res.ok) {
+        const rowData = await res.json();
+        setPreviewRow(rowData);
+        setShowPreview(true);
+      }
+    } catch {}
+  }
+
   async function submitForm() {
     if (submitLocked) return;
     setSubmitLocked(true);
@@ -681,10 +703,32 @@ const RowFormModal = function RowFormModal({
 
     if (disabled) {
       const val = formVals[c];
+      const previewable = relationConfigs[c] || viewSource[c];
+      const boxStyle = {
+        ...inputStyle,
+        width: 'fit-content',
+        maxWidth: `${boxMaxWidth}px`,
+      };
+      const content = (
+        <div className="flex items-center">
+          <div className="flex-1" title={val}>
+            {val}
+          </div>
+          {previewable && val !== '' && (
+            <button
+              type="button"
+              onClick={() => handlePreview(c)}
+              style={{ marginLeft: '0.25rem' }}
+            >
+              🔍
+            </button>
+          )}
+        </div>
+      );
       if (!withLabel) {
         return (
-          <div className="w-full border rounded bg-gray-100 px-2 py-1" style={inputStyle} title={val}>
-            {val}
+          <div className="w-full border rounded bg-gray-100 px-2 py-1" style={boxStyle}>
+            {content}
           </div>
         );
       }
@@ -693,8 +737,8 @@ const RowFormModal = function RowFormModal({
           <label className="block mb-1 font-medium" style={labelStyle}>
             {labels[c] || c}
           </label>
-          <div className="w-full border rounded bg-gray-100 px-2 py-1" style={inputStyle} title={val}>
-            {val}
+          <div className="w-full border rounded bg-gray-100 px-2 py-1" style={boxStyle}>
+            {content}
           </div>
         </div>
       );
@@ -705,6 +749,10 @@ const RowFormModal = function RowFormModal({
         title={labels[c] || c}
         table={relationConfigs[c].table}
         searchColumn={relationConfigs[c].column}
+        searchColumns={[
+          relationConfigs[c].column,
+          ...(relationConfigs[c].displayFields || []),
+        ]}
         labelFields={relationConfigs[c].displayFields || []}
         value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
         onChange={(val) => {
@@ -1114,7 +1162,14 @@ const RowFormModal = function RowFormModal({
           Press <strong>Enter</strong> to move to next field. The field will be automatically selected. Use arrow keys to navigate selections.
         </div>
       </form>
+      </form>
     </Modal>
+    <RowDetailModal
+      visible={showPreview}
+      onClose={() => setShowPreview(false)}
+      row={previewRow || {}}
+      columns={previewRow ? Object.keys(previewRow) : []}
+    />
   );
 }
 
