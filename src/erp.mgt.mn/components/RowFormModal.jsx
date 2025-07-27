@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useContext, memo } from 'react';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import Modal from './Modal.jsx';
 import InlineTransactionTable from './InlineTransactionTable.jsx';
-import RowDetailModal from './RowDetailModal.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
@@ -144,7 +143,6 @@ const RowFormModal = function RowFormModal({
   const [gridRows, setGridRows] = useState(() => (Array.isArray(rows) ? rows : []));
   const wrapRef = useRef(null);
   const [zoom, setZoom] = useState(1);
-  const [detailRow, setDetailRow] = useState(null);
 
   useEffect(() => {
     if (useGrid) {
@@ -367,17 +365,6 @@ const RowFormModal = function RowFormModal({
     if (!next) {
       submitForm();
       if (onNextForm) onNextForm();
-    }
-  }
-
-  function openDetail(field) {
-    const conf = relationConfigs[field];
-    let val = formVals[field];
-    if (val && typeof val === 'object' && 'value' in val) val = val.value;
-    const table = conf ? conf.table : viewSource[field];
-    const dataMap = conf ? relationData[field] : relationData[viewSource[field]];
-    if (table && dataMap && val !== undefined && dataMap[val]) {
-      setDetailRow(dataMap[val]);
     }
   }
 
@@ -694,31 +681,21 @@ const RowFormModal = function RowFormModal({
 
     if (disabled) {
       const val = formVals[c];
-      const divStyle = { ...inputStyle, width: 'fit-content', maxWidth: `${boxMaxWidth}px` };
-      const showBtn =
-        (relationConfigs[c] && relationData[c]?.[typeof val === 'object' ? val.value : val]) ||
-        (viewSource[c] && relationData[viewSource[c]]?.[typeof val === 'object' ? val.value : val]);
-      const content = (
-        <div className="flex items-center space-x-1">
-          <div className="border rounded bg-gray-100 px-2 py-1" style={divStyle} title={typeof val === 'object' ? val.label || val.value : val}>
-            {typeof val === 'object' ? val.label || val.value : val}
-          </div>
-          {showBtn && (
-            <button type="button" onClick={() => openDetail(c)} style={{ lineHeight: 1 }} title="View details">
-              🔍
-            </button>
-          )}
-        </div>
-      );
       if (!withLabel) {
-        return content;
+        return (
+          <div className="w-full border rounded bg-gray-100 px-2 py-1" style={inputStyle} title={val}>
+            {val}
+          </div>
+        );
       }
       return (
         <div key={c} className={fitted ? 'mb-1' : 'mb-3'}>
           <label className="block mb-1 font-medium" style={labelStyle}>
             {labels[c] || c}
           </label>
-          {content}
+          <div className="w-full border rounded bg-gray-100 px-2 py-1" style={inputStyle} title={val}>
+            {val}
+          </div>
         </div>
       );
     }
@@ -728,10 +705,6 @@ const RowFormModal = function RowFormModal({
         title={labels[c] || c}
         table={relationConfigs[c].table}
         searchColumn={relationConfigs[c].column}
-        searchColumns={[
-          relationConfigs[c].column,
-          ...(relationConfigs[c].displayFields || []),
-        ]}
         labelFields={relationConfigs[c].displayFields || []}
         value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
         onChange={(val) => {
@@ -1142,12 +1115,6 @@ const RowFormModal = function RowFormModal({
         </div>
       </form>
     </Modal>
-    <RowDetailModal
-      visible={!!detailRow}
-      onClose={() => setDetailRow(null)}
-      row={detailRow || {}}
-      columns={detailRow ? Object.keys(detailRow) : []}
-    />
   );
 }
 
