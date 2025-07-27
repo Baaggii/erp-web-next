@@ -1107,17 +1107,18 @@ const RowFormModal = function RowFormModal({
     );
   }
   return (
-    <Modal
-      visible={visible}
-      title={row ? 'Мөр засах' : 'Мөр нэмэх'}
-      onClose={onCancel}
-      width="70vw"
-    >
-      <form
-        ref={wrapRef}
-        style={{ transform: `scale(${zoom})`, transformOrigin: '0 0', padding: fitted ? 0 : undefined }}
-        onSubmit={(e) => {
-          e.preventDefault();
+    <>
+      <Modal
+        visible={visible}
+        title={row ? 'Мөр засах' : 'Мөр нэмэх'}
+        onClose={onCancel}
+        width="70vw"
+      >
+        <form
+          ref={wrapRef}
+          style={{ transform: `scale(${zoom})`, transformOrigin: '0 0', padding: fitted ? 0 : undefined }}
+          onSubmit={(e) => {
+            e.preventDefault();
           submitForm();
         }}
         className={fitted ? 'p-4 space-y-2' : 'p-4 space-y-4'}
@@ -1154,15 +1155,16 @@ const RowFormModal = function RowFormModal({
         <div className="text-sm text-gray-600">
           Press <strong>Enter</strong> to move to next field. The field will be automatically selected. Use arrow keys to navigate selections.
         </div>
-      </form>
-    </Modal>
-    <RowDetailModal
-      visible={!!previewRow}
-      onClose={() => setPreviewRow(null)}
-      row={previewRow || {}}
-      columns={previewRow ? Object.keys(previewRow) : []}
-      labels={labels}
-    />
+        </form>
+      </Modal>
+      <RowDetailModal
+        visible={!!previewRow}
+        onClose={() => setPreviewRow(null)}
+        row={previewRow || {}}
+        columns={previewRow ? Object.keys(previewRow) : []}
+        labels={labels}
+      />
+    </>
   );
 }
 
