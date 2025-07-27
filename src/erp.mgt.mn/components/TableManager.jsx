@@ -1217,10 +1217,16 @@ const TableManager = forwardRef(function TableManager({
     if (!formColumns.includes(f) && allColumns.includes(f)) formColumns.push(f);
   });
 
-  const editSet = new Set(
-    (formConfig?.editableFields || []).map((f) => f.toLowerCase()),
-  );
-  let disabledFields = formColumns.filter((c) => !editSet.has(c.toLowerCase()));
+  const editVals = Array.isArray(formConfig?.editableFields)
+    ? formConfig.editableFields
+    : [];
+  const editSet =
+    editVals.length > 0
+      ? new Set(editVals.map((f) => f.toLowerCase()))
+      : null;
+  let disabledFields = editSet
+    ? formColumns.filter((c) => !editSet.has(c.toLowerCase()))
+    : [];
   disabledFields = editing
     ? Array.from(new Set([...disabledFields, ...getKeyFields(), ...lockedDefaults]))
     : Array.from(new Set([...disabledFields, ...lockedDefaults]));
