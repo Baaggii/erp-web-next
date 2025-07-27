@@ -874,19 +874,16 @@ export default function PosTransactionsPage() {
                   fc.footerFields && fc.footerFields.length > 0
                     ? fc.footerFields
                     : [];
-                const editVals = Array.isArray(fc.editableFields)
+                const editable = Array.isArray(fc.editableFields)
                   ? fc.editableFields
                   : [];
-                const editSet =
-                  editVals.length > 0
-                    ? new Set(editVals.map((f) => f.toLowerCase()))
-                    : null;
+                const editSet = new Set(editable.map((f) => f.toLowerCase()));
                 const allFields = Array.from(
                   new Set([...visible, ...headerFields, ...mainFields, ...footerFields]),
                 );
-                const disabled = editSet
-                  ? allFields.filter((c) => !editSet.has(c.toLowerCase()))
-                  : [];
+                const disabled = allFields.filter(
+                  (c) => !editSet.has(c.toLowerCase()),
+                );
                 const posStyle = {
                   top_row: { gridColumn: '1 / span 3', gridRow: '1' },
                   upper_left: { gridColumn: '1', gridRow: '2' },
