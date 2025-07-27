@@ -853,6 +853,18 @@ export default forwardRef(function InlineTransactionTable({
           if (row[df] !== undefined) parts.push(row[df]);
         });
         display = parts.join(' - ');
+      } else if (
+        viewSource[f] &&
+        rawVal !== undefined &&
+        relationData[f]?.[rawVal]
+      ) {
+        const row = relationData[f][rawVal];
+        const cfg = viewDisplays[viewSource[f]] || {};
+        const parts = [rawVal];
+        (cfg.displayFields || []).forEach((df) => {
+          if (row[df] !== undefined) parts.push(row[df]);
+        });
+        display = parts.join(' - ');
       }
       const readonlyStyle = { ...inputStyle, width: 'fit-content', maxWidth: `${boxMaxWidth}px` };
       const btn = relationConfigs[f] || viewSource[f] || Array.isArray(relations[f]) ? (
@@ -1077,6 +1089,7 @@ export default forwardRef(function InlineTransactionTable({
         onClose={() => setPreviewRow(null)}
         row={previewRow || {}}
         columns={previewRow ? Object.keys(previewRow) : []}
+        relations={relations}
         labels={labels}
       />
     </div>

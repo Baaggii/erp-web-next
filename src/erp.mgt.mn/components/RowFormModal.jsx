@@ -723,6 +723,18 @@ const RowFormModal = function RowFormModal({
           if (row[df] !== undefined) parts.push(row[df]);
         });
         display = parts.join(' - ');
+      } else if (
+        viewSource[c] &&
+        val !== undefined &&
+        relationData[c]?.[val]
+      ) {
+        const row = relationData[c][val];
+        const cfg = viewDisplays[viewSource[c]] || {};
+        const parts = [val];
+        (cfg.displayFields || []).forEach((df) => {
+          if (row[df] !== undefined) parts.push(row[df]);
+        });
+        display = parts.join(' - ');
       }
       const readonlyStyle = { ...inputStyle, width: 'fit-content', maxWidth: `${boxMaxWidth}px` };
       const previewBtn = relationConfigs[c] || viewSource[c] || Array.isArray(relations[c]) ? (
@@ -1179,6 +1191,7 @@ const RowFormModal = function RowFormModal({
         onClose={() => setPreviewRow(null)}
         row={previewRow || {}}
         columns={previewRow ? Object.keys(previewRow) : []}
+        relations={relations}
         labels={labels}
       />
     </>
