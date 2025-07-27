@@ -866,12 +866,24 @@ export default function PosTransactionsPage() {
                   fc.headerFields && fc.headerFields.length > 0
                     ? fc.headerFields
                     : [];
+                const mainFields =
+                  fc.mainFields && fc.mainFields.length > 0
+                    ? fc.mainFields
+                    : [];
+                const footerFields =
+                  fc.footerFields && fc.footerFields.length > 0
+                    ? fc.footerFields
+                    : [];
                 const editable = Array.isArray(fc.editableFields)
                   ? fc.editableFields
                   : [];
-                const disabled = editable.length
-                  ? visible.filter((c) => !editable.includes(c))
-                  : [];
+                const editSet = new Set(editable.map((f) => f.toLowerCase()));
+                const allFields = Array.from(
+                  new Set([...visible, ...headerFields, ...mainFields, ...footerFields]),
+                );
+                const disabled = allFields.filter(
+                  (c) => !editSet.has(c.toLowerCase()),
+                );
                 const posStyle = {
                   top_row: { gridColumn: '1 / span 3', gridRow: '1' },
                   upper_left: { gridColumn: '1', gridRow: '2' },
@@ -911,13 +923,15 @@ export default function PosTransactionsPage() {
                       key={`rf-${t.table}-${generalConfig.pos.boxWidth}`}
                       inline
                       visible
-                      columns={visible}
+                      columns={allFields}
                       disabledFields={disabled}
                       requiredFields={fc.requiredFields || []}
                       labels={labels}
                       row={values[t.table]}
                       rows={t.type === 'multi' ? values[t.table] : undefined}
                       headerFields={headerFields}
+                      mainFields={mainFields}
+                      footerFields={footerFields}
                       defaultValues={fc.defaultValues || {}}
                     relations={relationsMap[t.table] || {}}
                     relationConfigs={relationConfigs[t.table] || {}}
