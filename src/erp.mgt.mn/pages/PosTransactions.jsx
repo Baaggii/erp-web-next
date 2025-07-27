@@ -866,11 +866,27 @@ export default function PosTransactionsPage() {
                   fc.headerFields && fc.headerFields.length > 0
                     ? fc.headerFields
                     : [];
-                const editable = Array.isArray(fc.editableFields)
+                const mainFields =
+                  fc.mainFields && fc.mainFields.length > 0
+                    ? fc.mainFields
+                    : [];
+                const footerFields =
+                  fc.footerFields && fc.footerFields.length > 0
+                    ? fc.footerFields
+                    : [];
+                const hasEdit =
+                  fc && Object.prototype.hasOwnProperty.call(fc, 'editableFields');
+                const editVals = Array.isArray(fc.editableFields)
                   ? fc.editableFields
                   : [];
-                const disabled = editable.length
-                  ? visible.filter((c) => !editable.includes(c))
+                const editSet = hasEdit
+                  ? new Set(editVals.map((f) => f.toLowerCase()))
+                  : null;
+                const allFields = Array.from(
+                  new Set([...visible, ...headerFields, ...mainFields, ...footerFields]),
+                );
+                const disabled = editSet
+                  ? allFields.filter((c) => !editSet.has(c.toLowerCase()))
                   : [];
                 const posStyle = {
                   top_row: { gridColumn: '1 / span 3', gridRow: '1' },
@@ -911,13 +927,15 @@ export default function PosTransactionsPage() {
                       key={`rf-${t.table}-${generalConfig.pos.boxWidth}`}
                       inline
                       visible
-                      columns={visible}
+                      columns={allFields}
                       disabledFields={disabled}
                       requiredFields={fc.requiredFields || []}
                       labels={labels}
                       row={values[t.table]}
                       rows={t.type === 'multi' ? values[t.table] : undefined}
                       headerFields={headerFields}
+                      mainFields={mainFields}
+                      footerFields={footerFields}
                       defaultValues={fc.defaultValues || {}}
                     relations={relationsMap[t.table] || {}}
                     relationConfigs={relationConfigs[t.table] || {}}
@@ -940,10 +958,12 @@ export default function PosTransactionsPage() {
                         let next = idx + 1;
                         while (next < formList.length) {
                           const nf = formConfigs[formList[next].table];
+                          const hasEd =
+                            nf && Object.prototype.hasOwnProperty.call(nf, 'editableFields');
                           const ed = Array.isArray(nf?.editableFields)
                             ? nf.editableFields
                             : [];
-                          if (ed.length > 0) break;
+                          if (hasEd && ed.length > 0) break;
                           next += 1;
                         }
                         if (next < formList.length) focusFirst(formList[next].table);

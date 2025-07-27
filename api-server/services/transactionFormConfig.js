@@ -34,6 +34,12 @@ function parseEntry(raw = {}) {
     editableDefaultFields: Array.isArray(raw.editableDefaultFields)
       ? raw.editableDefaultFields.map(String)
       : [],
+    editableFields:
+      raw.editableFields === undefined
+        ? undefined
+        : Array.isArray(raw.editableFields)
+          ? raw.editableFields.map(String)
+          : [],
     userIdFields: arrify(
       raw.userIdFields || (raw.userIdField ? [raw.userIdField] : []),
     ),
@@ -118,6 +124,7 @@ export async function setFormConfig(table, name, config, options = {}) {
     requiredFields = [],
     defaultValues = {},
     editableDefaultFields = [],
+    editableFields,
     userIdFields = [],
     branchIdFields = [],
     companyIdFields = [],
@@ -185,6 +192,9 @@ export async function setFormConfig(table, name, config, options = {}) {
     allowedBranches: ab,
     allowedDepartments: ad,
   };
+  if (editableFields !== undefined) {
+    cfg[table][name].editableFields = arrify(editableFields);
+  }
   await writeConfig(cfg);
   return cfg[table][name];
 }
