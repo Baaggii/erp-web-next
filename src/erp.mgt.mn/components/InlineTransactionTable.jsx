@@ -9,7 +9,6 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
-import RowDetailModal from './RowDetailModal.jsx';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -171,8 +170,6 @@ export default forwardRef(function InlineTransactionTable({
   const addBtnRef = useRef(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [invalidCell, setInvalidCell] = useState(null);
-  const [previewRow, setPreviewRow] = useState(null);
-  const [showPreview, setShowPreview] = useState(false);
   const procCache = useRef({});
 
   const totalAmountSet = new Set(totalAmountFields);
@@ -470,23 +467,6 @@ export default forwardRef(function InlineTransactionTable({
 
   function handleFocusField(col) {
     showTriggerInfo(col);
-  }
-
-  async function openPreview(field, val, rowIdx) {
-    const tableName = relationConfigs[field]?.table || viewSource[field];
-    const id = val && typeof val === 'object' ? val.value : val;
-    if (!tableName || !id) return;
-    try {
-      const res = await fetch(
-        `/api/tables/${encodeURIComponent(tableName)}/${encodeURIComponent(id)}`,
-        { credentials: 'include' },
-      );
-      if (res.ok) {
-        const rowData = await res.json();
-        setPreviewRow(rowData);
-        setShowPreview(true);
-      }
-    } catch {}
   }
 
   function addRow() {
@@ -833,25 +813,9 @@ export default forwardRef(function InlineTransactionTable({
     const isRel = relationConfigs[f] || Array.isArray(relations[f]);
     const invalid = invalidCell && invalidCell.row === idx && invalidCell.field === f;
     if (disabledSet.has(f.toLowerCase())) {
-      const previewable = relationConfigs[f] || viewSource[f];
       return (
-        <div
-          className="px-1 flex items-center"
-          style={{ ...inputStyle, width: 'fit-content', maxWidth: `${boxMaxWidth}px` }}
-          title={typeof val === 'object' ? val.label || val.value : val}
-        >
-          <div className="flex-1">
-            {typeof val === 'object' ? val.label || val.value : val}
-          </div>
-          {previewable && val !== '' && (
-            <button
-              type="button"
-              onClick={() => openPreview(f, val, idx)}
-              style={{ marginLeft: '0.25rem' }}
-            >
-              🔍
-            </button>
-          )}
+        <div className="px-1" style={inputStyle} title={typeof val === 'object' ? val.label || val.value : val}>
+          {typeof val === 'object' ? val.label || val.value : val}
         </div>
       );
     }
@@ -866,7 +830,6 @@ export default forwardRef(function InlineTransactionTable({
           <AsyncSearchSelect
             table={conf.table}
             searchColumn={conf.column}
-            searchColumns={[conf.column, ...(conf.displayFields || [])]}
             labelFields={conf.displayFields || []}
             value={inputVal}
             onChange={(v, label) =>
@@ -1055,12 +1018,6 @@ export default forwardRef(function InlineTransactionTable({
           + Мөр нэмэх
         </button>
       )}
-      <RowDetailModal
-        visible={showPreview}
-        onClose={() => setShowPreview(false)}
-        row={previewRow || {}}
-        columns={previewRow ? Object.keys(previewRow) : []}
-      />
     </div>
   );
 });
