@@ -1217,12 +1217,14 @@ const TableManager = forwardRef(function TableManager({
     if (!formColumns.includes(f) && allColumns.includes(f)) formColumns.push(f);
   });
 
-  const hasEdit =
-    formConfig && Object.prototype.hasOwnProperty.call(formConfig, 'editableFields');
-  const editVals = Array.isArray(formConfig?.editableFields)
+  const provided = Array.isArray(formConfig?.editableFields)
     ? formConfig.editableFields
     : [];
-  const editSet = hasEdit ? new Set(editVals.map((f) => f.toLowerCase())) : null;
+  const defaults = Array.isArray(formConfig?.editableDefaultFields)
+    ? formConfig.editableDefaultFields
+    : [];
+  const editVals = provided.length > 0 ? provided : defaults;
+  const editSet = editVals.length > 0 ? new Set(editVals.map((f) => f.toLowerCase())) : null;
   let disabledFields = editSet
     ? formColumns.filter((c) => !editSet.has(c.toLowerCase()))
     : [];

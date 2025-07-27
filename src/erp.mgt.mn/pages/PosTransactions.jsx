@@ -874,14 +874,17 @@ export default function PosTransactionsPage() {
                   fc.footerFields && fc.footerFields.length > 0
                     ? fc.footerFields
                     : [];
-                const hasEdit =
-                  fc && Object.prototype.hasOwnProperty.call(fc, 'editableFields');
-                const editVals = Array.isArray(fc.editableFields)
+                const provided = Array.isArray(fc.editableFields)
                   ? fc.editableFields
                   : [];
-                const editSet = hasEdit
-                  ? new Set(editVals.map((f) => f.toLowerCase()))
-                  : null;
+                const defaults = Array.isArray(fc.editableDefaultFields)
+                  ? fc.editableDefaultFields
+                  : [];
+                const editVals = provided.length > 0 ? provided : defaults;
+                const editSet =
+                  editVals.length > 0
+                    ? new Set(editVals.map((f) => f.toLowerCase()))
+                    : null;
                 const allFields = Array.from(
                   new Set([...visible, ...headerFields, ...mainFields, ...footerFields]),
                 );
@@ -958,12 +961,14 @@ export default function PosTransactionsPage() {
                         let next = idx + 1;
                         while (next < formList.length) {
                           const nf = formConfigs[formList[next].table];
-                          const hasEd =
-                            nf && Object.prototype.hasOwnProperty.call(nf, 'editableFields');
-                          const ed = Array.isArray(nf?.editableFields)
+                          const provided = Array.isArray(nf?.editableFields)
                             ? nf.editableFields
                             : [];
-                          if (hasEd && ed.length > 0) break;
+                          const defaults = Array.isArray(nf?.editableDefaultFields)
+                            ? nf.editableDefaultFields
+                            : [];
+                          const ed = provided.length > 0 ? provided : defaults;
+                          if (ed.length > 0) break;
                           next += 1;
                         }
                         if (next < formList.length) focusFirst(formList[next].table);
