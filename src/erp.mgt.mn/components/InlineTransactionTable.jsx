@@ -9,7 +9,6 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
-import RowDetailModal from './RowDetailModal.jsx';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -171,7 +170,6 @@ export default forwardRef(function InlineTransactionTable({
   const addBtnRef = useRef(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [invalidCell, setInvalidCell] = useState(null);
-  const [detailRow, setDetailRow] = useState(null);
   const procCache = useRef({});
 
   const totalAmountSet = new Set(totalAmountFields);
@@ -810,35 +808,14 @@ export default forwardRef(function InlineTransactionTable({
     }
   }
 
-  function openDetail(rowIdx, field) {
-    let val = rows[rowIdx]?.[field];
-    if (val && typeof val === 'object' && 'value' in val) val = val.value;
-    const conf = relationConfigs[field];
-    const dataMap = conf ? relationData[field] : relationData[viewSource[field]];
-    if (dataMap && val !== undefined && dataMap[val]) {
-      setDetailRow(dataMap[val]);
-    }
-  }
-
   function renderCell(idx, f, colIdx) {
     const val = rows[idx]?.[f] ?? '';
     const isRel = relationConfigs[f] || Array.isArray(relations[f]);
     const invalid = invalidCell && invalidCell.row === idx && invalidCell.field === f;
     if (disabledSet.has(f.toLowerCase())) {
-      const divStyle = { ...inputStyle, width: 'fit-content', maxWidth: `${boxMaxWidth}px` };
-      const showBtn =
-        (relationConfigs[f] && relationData[f]?.[typeof val === 'object' ? val.value : val]) ||
-        (viewSource[f] && relationData[viewSource[f]]?.[typeof val === 'object' ? val.value : val]);
       return (
-        <div className="flex items-center space-x-1">
-          <div className="px-1 border rounded bg-gray-100" style={divStyle} title={typeof val === 'object' ? val.label || val.value : val}>
-            {typeof val === 'object' ? val.label || val.value : val}
-          </div>
-          {showBtn && (
-            <button type="button" onClick={() => openDetail(idx, f)} style={{ lineHeight: 1 }} title="View details">
-              🔍
-            </button>
-          )}
+        <div className="px-1" style={inputStyle} title={typeof val === 'object' ? val.label || val.value : val}>
+          {typeof val === 'object' ? val.label || val.value : val}
         </div>
       );
     }
@@ -853,7 +830,6 @@ export default forwardRef(function InlineTransactionTable({
           <AsyncSearchSelect
             table={conf.table}
             searchColumn={conf.column}
-            searchColumns={[conf.column, ...(conf.displayFields || [])]}
             labelFields={conf.displayFields || []}
             value={inputVal}
             onChange={(v, label) =>
@@ -1042,12 +1018,6 @@ export default forwardRef(function InlineTransactionTable({
           + Мөр нэмэх
         </button>
       )}
-      <RowDetailModal
-        visible={!!detailRow}
-        onClose={() => setDetailRow(null)}
-        row={detailRow || {}}
-        columns={detailRow ? Object.keys(detailRow) : []}
-      />
     </div>
   );
 });

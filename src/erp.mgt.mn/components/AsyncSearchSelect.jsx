@@ -23,7 +23,6 @@ export default function AsyncSearchSelect({
   const [input, setInput] = useState(initialVal);
   const [label, setLabel] = useState(initialLabel);
   const [options, setOptions] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [show, setShow] = useState(false);
   const [highlight, setHighlight] = useState(-1);
   const containerRef = useRef(null);
@@ -53,43 +52,67 @@ export default function AsyncSearchSelect({
       ? [searchColumn]
       : [];
     if (!table || cols.length === 0) return;
-    const term = String(input || '').trim();
-    if (!term) { setOptions([]); return; }
     const controller = new AbortController();
-    const t = setTimeout(async () => {
-      setLoading(true);
+    async function load() {
       try {
-        const params = new URLSearchParams({ page: 1, perPage: 100 });
-        cols.forEach((c) => params.set(c, term));
-        const res = await fetch(
-          `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
-          { credentials: 'include', signal: controller.signal },
-        );
-        const json = await res.json();
-        const rows = Array.isArray(json.rows) ? json.rows : [];
-        const opts = rows.map((r) => {
-          const val = r[idField || searchColumn];
-          const parts = [];
-          if (val !== undefined) parts.push(val);
-          if (labelFields.length === 0) {
-            Object.entries(r).forEach(([k, v]) => {
-              if (k === idField || k === searchColumn) return;
-              if (v !== undefined && parts.length < 3) parts.push(v);
-            });
-          } else {
-            labelFields.forEach((f) => {
-              if (r[f] !== undefined) parts.push(r[f]);
-            });
+        let page = 1;
+        const perPage = 500;
+        let rows = [];
+        while (true) {
+          const params = new URLSearchParams({ page, perPage });
+          if (input) {
+            cols.forEach((c) => params.set(c, input));
           }
-          return { value: val, label: parts.join(' - ') };
-        });
-        setOptions(opts);
+          const res = await fetch(
+            `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
+            { credentials: 'include', signal: controller.signal },
+          );
+          const json = await res.json();
+          if (Array.isArray(json.rows)) {
+            rows = rows.concat(json.rows);
+            if (
+              rows.length >= (json.count || rows.length) ||
+              json.rows.length < perPage
+            )
+              break;
+          } else {
+            break;
+          }
+          page += 1;
+        }
+        if (rows.length > 0) {
+          const opts = rows.map((r) => {
+            const val = r[idField || searchColumn];
+            const parts = [];
+            if (val !== undefined) parts.push(val);
+            if (labelFields.length === 0) {
+              Object.entries(r).forEach(([k, v]) => {
+                if (k === idField || k === searchColumn) return;
+                if (v !== undefined && parts.length < 3) parts.push(v);
+              });
+            } else {
+              labelFields.forEach((f) => {
+                if (r[f] !== undefined) parts.push(r[f]);
+              });
+            }
+            return { value: val, label: parts.join(' - ') };
+          });
+          const q = String(input || '').toLowerCase();
+          const filtered = opts.filter(
+            (o) =>
+              String(o.value).toLowerCase().includes(q) ||
+              String(o.label).toLowerCase().includes(q),
+          );
+          setOptions(filtered);
+        } else {
+          setOptions([]);
+        }
       } catch (err) {
         if (err.name !== 'AbortError') setOptions([]);
       }
-      setLoading(false);
-    }, 300);
-    return () => { clearTimeout(t); controller.abort(); };
+    }
+    load();
+    return () => controller.abort();
   }, [table, searchColumn, searchColumns, labelFields, idField, input]);
 
   function handleSelectKeyDown(e) {
@@ -159,7 +182,7 @@ export default function AsyncSearchSelect({
         title={input}
         {...rest}
       />
-      {show && (options.length > 0 || loading) && (
+      {show && options.length > 0 && (
         <ul
           style={{
             position: 'absolute',
@@ -174,30 +197,28 @@ export default function AsyncSearchSelect({
             overflowY: 'auto',
           }}
         >
-          {loading && <li style={{ padding: '0.25rem' }}>Loading...</li>}
-          {!loading &&
-            options.map((opt, idx) => (
-              <li
-                key={opt.value}
-                onMouseDown={() => {
-                  onChange(opt.value, opt.label);
-                  if (onSelect) onSelect(opt);
-                  setInput(String(opt.value));
-                  setLabel(opt.label || '');
-                  if (internalRef.current) internalRef.current.value = String(opt.value);
-                  chosenRef.current = opt;
-                  setShow(false);
-                }}
-                onMouseEnter={() => setHighlight(idx)}
-                style={{
-                  padding: '0.25rem',
-                  background: highlight === idx ? '#eee' : '#fff',
-                  cursor: 'pointer',
-                }}
-              >
-                {opt.label || opt.value}
-              </li>
-            ))}
+          {options.map((opt, idx) => (
+            <li
+              key={opt.value}
+              onMouseDown={() => {
+                onChange(opt.value, opt.label);
+                if (onSelect) onSelect(opt);
+                setInput(String(opt.value));
+                setLabel(opt.label || '');
+                if (internalRef.current) internalRef.current.value = String(opt.value);
+                chosenRef.current = opt;
+                setShow(false);
+              }}
+              onMouseEnter={() => setHighlight(idx)}
+              style={{
+                padding: '0.25rem',
+                background: highlight === idx ? '#eee' : '#fff',
+                cursor: 'pointer',
+              }}
+            >
+              {opt.label || opt.value}
+            </li>
+          ))}
         </ul>
       )}
       {displayLabel && (
