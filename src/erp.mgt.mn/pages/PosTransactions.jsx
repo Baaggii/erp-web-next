@@ -881,9 +881,9 @@ export default function PosTransactionsPage() {
                 const allFields = Array.from(
                   new Set([...visible, ...headerFields, ...mainFields, ...footerFields]),
                 );
-                const disabled = editable.length
-                  ? allFields.filter((c) => !editSet.has(c.toLowerCase()))
-                  : [];
+                const disabled = allFields.filter(
+                  (c) => !editSet.has(c.toLowerCase()),
+                );
                 const posStyle = {
                   top_row: { gridColumn: '1 / span 3', gridRow: '1' },
                   upper_left: { gridColumn: '1', gridRow: '2' },
