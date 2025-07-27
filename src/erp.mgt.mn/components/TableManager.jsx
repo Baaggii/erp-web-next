@@ -1206,15 +1206,6 @@ const TableManager = forwardRef(function TableManager({
     )
     .map(([k]) => k);
 
-  let disabledFields = [];
-  if (formConfig?.editableFields?.length) {
-    const set = new Set(formConfig.editableFields);
-    disabledFields = formColumns.filter((c) => !set.has(c));
-  }
-  disabledFields = editing
-    ? Array.from(new Set([...disabledFields, ...getKeyFields(), ...lockedDefaults]))
-    : Array.from(new Set([...disabledFields, ...lockedDefaults]));
-
   const headerFields = formConfig?.headerFields || [];
 
   const mainFields = formConfig?.mainFields || [];
@@ -1225,6 +1216,15 @@ const TableManager = forwardRef(function TableManager({
   sectionFields.forEach((f) => {
     if (!formColumns.includes(f) && allColumns.includes(f)) formColumns.push(f);
   });
+
+  let disabledFields = [];
+  if (formConfig?.editableFields?.length) {
+    const set = new Set(formConfig.editableFields.map((f) => f.toLowerCase()));
+    disabledFields = formColumns.filter((c) => !set.has(c.toLowerCase()));
+  }
+  disabledFields = editing
+    ? Array.from(new Set([...disabledFields, ...getKeyFields(), ...lockedDefaults]))
+    : Array.from(new Set([...disabledFields, ...lockedDefaults]));
 
   const totalAmountSet = useMemo(
     () => new Set(formConfig?.totalAmountFields || []),

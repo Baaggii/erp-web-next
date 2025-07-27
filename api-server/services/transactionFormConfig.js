@@ -34,6 +34,9 @@ function parseEntry(raw = {}) {
     editableDefaultFields: Array.isArray(raw.editableDefaultFields)
       ? raw.editableDefaultFields.map(String)
       : [],
+    editableFields: Array.isArray(raw.editableFields)
+      ? raw.editableFields.map(String)
+      : [],
     userIdFields: arrify(
       raw.userIdFields || (raw.userIdField ? [raw.userIdField] : []),
     ),
@@ -118,6 +121,7 @@ export async function setFormConfig(table, name, config, options = {}) {
     requiredFields = [],
     defaultValues = {},
     editableDefaultFields = [],
+    editableFields = [],
     userIdFields = [],
     branchIdFields = [],
     companyIdFields = [],
@@ -163,6 +167,7 @@ export async function setFormConfig(table, name, config, options = {}) {
     requiredFields: arrify(requiredFields),
     defaultValues,
     editableDefaultFields: arrify(editableDefaultFields),
+    editableFields: arrify(editableFields),
     userIdFields: uid,
     branchIdFields: bid,
     companyIdFields: cid,
