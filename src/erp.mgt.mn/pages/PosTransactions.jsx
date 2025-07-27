@@ -880,7 +880,7 @@ export default function PosTransactionsPage() {
                 const defaults = Array.isArray(fc.editableDefaultFields)
                   ? fc.editableDefaultFields
                   : [];
-                const editVals = provided.length > 0 ? provided : defaults;
+                const editVals = Array.from(new Set([...defaults, ...provided]));
                 const editSet =
                   editVals.length > 0
                     ? new Set(editVals.map((f) => f.toLowerCase()))
@@ -967,7 +967,7 @@ export default function PosTransactionsPage() {
                           const defaults = Array.isArray(nf?.editableDefaultFields)
                             ? nf.editableDefaultFields
                             : [];
-                          const ed = provided.length > 0 ? provided : defaults;
+                          const ed = Array.from(new Set([...defaults, ...provided]));
                           if (ed.length > 0) break;
                           next += 1;
                         }

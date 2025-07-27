@@ -1223,7 +1223,7 @@ const TableManager = forwardRef(function TableManager({
   const defaults = Array.isArray(formConfig?.editableDefaultFields)
     ? formConfig.editableDefaultFields
     : [];
-  const editVals = provided.length > 0 ? provided : defaults;
+  const editVals = Array.from(new Set([...defaults, ...provided]));
   const editSet = editVals.length > 0 ? new Set(editVals.map((f) => f.toLowerCase())) : null;
   let disabledFields = editSet
     ? formColumns.filter((c) => !editSet.has(c.toLowerCase()))

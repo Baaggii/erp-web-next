@@ -47,6 +47,7 @@ export default function AsyncSearchSelect({
   }, [options, show]);
 
   useEffect(() => {
+    if (disabled) return;
     const cols = searchColumns && searchColumns.length > 0
       ? searchColumns
       : searchColumn
@@ -97,7 +98,7 @@ export default function AsyncSearchSelect({
       clearTimeout(handler);
       controller.abort();
     };
-  }, [table, searchColumn, searchColumns, labelFields, idField, input, show]);
+  }, [table, searchColumn, searchColumns, labelFields, idField, input, show, disabled]);
 
   function handleSelectKeyDown(e) {
     if (e.key === 'ArrowDown') {

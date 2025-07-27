@@ -746,6 +746,10 @@ const RowFormModal = function RowFormModal({
         title={labels[c] || c}
         table={relationConfigs[c].table}
         searchColumn={relationConfigs[c].column}
+        searchColumns={[
+          relationConfigs[c].column,
+          ...(relationConfigs[c].displayFields || []),
+        ]}
         labelFields={relationConfigs[c].displayFields || []}
         value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
         onChange={(val) => {

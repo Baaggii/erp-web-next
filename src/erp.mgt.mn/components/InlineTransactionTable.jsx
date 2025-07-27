@@ -870,6 +870,7 @@ export default forwardRef(function InlineTransactionTable({
           <AsyncSearchSelect
             table={conf.table}
             searchColumn={conf.column}
+            searchColumns={[conf.column, ...(conf.displayFields || [])]}
             labelFields={conf.displayFields || []}
             value={inputVal}
             onChange={(v, label) =>
