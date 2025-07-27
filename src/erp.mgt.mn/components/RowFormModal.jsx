@@ -1114,7 +1114,6 @@ const RowFormModal = function RowFormModal({
     );
   }
   return (
-    <>
     <Modal
       visible={visible}
       title={row ? 'Мөр засах' : 'Мөр нэмэх'}
@@ -1171,7 +1170,6 @@ const RowFormModal = function RowFormModal({
       row={previewRow || {}}
       columns={previewRow ? Object.keys(previewRow) : []}
     />
-    </>
   );
 }
 
