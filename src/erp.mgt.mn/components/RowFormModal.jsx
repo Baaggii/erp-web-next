@@ -83,6 +83,7 @@ const RowFormModal = function RowFormModal({
   const branchIdSet = new Set(branchIdFields);
   const departmentIdSet = new Set(departmentIdFields);
   const companyIdSet = new Set(companyIdFields);
+  const disabledSet = React.useMemo(() => new Set(disabledFields), [disabledFields]);
   const { user, company } = useContext(AuthContext);
   const [formVals, setFormVals] = useState(() => {
     const init = {};
@@ -349,7 +350,7 @@ const RowFormModal = function RowFormModal({
       await runProcTrigger(col, override);
     }
 
-    const enabled = columns.filter((c) => !disabledFields.includes(c));
+    const enabled = columns.filter((c) => !disabledSet.has(c));
     const idx = enabled.indexOf(col);
     const next = enabled[idx + 1];
     if (next && inputRefs.current[next]) {
@@ -673,7 +674,7 @@ const RowFormModal = function RowFormModal({
   function renderField(c, withLabel = true) {
     const err = errors[c];
     const inputClass = `w-full border rounded ${err ? 'border-red-500' : 'border-gray-300'}`;
-    const disabled = disabledFields.includes(c);
+    const disabled = disabledSet.has(c);
 
     if (disabled) {
       const val = formVals[c];
@@ -969,88 +970,7 @@ const RowFormModal = function RowFormModal({
 
   function renderHeaderTable(cols) {
     if (cols.length === 0) return null;
-    const grid = (
-      <div className={formGridClass} style={formGridStyle}>
-        {cols.map((c) => {
-          let val = formVals[c];
-          if (val === '' || val === undefined) {
-            if (userIdSet.has(c) && user?.empid) val = user.empid;
-            else if (branchIdSet.has(c) && company?.branch_id !== undefined)
-              val = company.branch_id;
-            else if (departmentIdSet.has(c) && company?.department_id !== undefined)
-              val = company.department_id;
-            else if (companyIdSet.has(c) && company?.company_id !== undefined)
-              val = company.company_id;
-          }
-          return (
-            <div key={c} className={fitted ? 'mb-1' : 'mb-3'}>
-              <label className="block mb-1 font-medium" style={labelStyle}>{labels[c] || c}</label>
-              <div className="w-full border rounded bg-gray-100 px-2 py-1" style={inputStyle} title={val}>
-                {val}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-    if (fitted) {
-      return (
-        <div className="mb-1">
-          <h3 className="mt-0 mb-1 font-semibold">Header</h3>
-          {grid}
-        </div>
-      );
-    }
-    return (
-      <div className="mb-4">
-        <h3 className="mt-0 mb-1 font-semibold">Header</h3>
-        <table className="min-w-full border border-gray-300 text-sm" style={{tableLayout:'fixed',width:'100%'}}>
-          <tbody>
-            {cols.map((c) => {
-              let val = formVals[c];
-              if (val === '' || val === undefined) {
-                if (userIdSet.has(c) && user?.empid) val = user.empid;
-                else if (branchIdSet.has(c) && company?.branch_id !== undefined)
-                  val = company.branch_id;
-                else if (
-                  departmentIdSet.has(c) && company?.department_id !== undefined
-                )
-                  val = company.department_id;
-                else if (companyIdSet.has(c) && company?.company_id !== undefined)
-                  val = company.company_id;
-              }
-              return (
-                <tr key={c}>
-                  <th
-                    className="border px-2 py-1 text-left"
-                  style={{
-                    maxWidth: `${boxMaxWidth}px`,
-                    wordBreak: 'break-word',
-                    fontSize: labelStyle.fontSize,
-                    width: `${boxWidth}px`,
-                    minWidth: `${boxWidth}px`,
-                  }}
-                >
-                  {labels[c] || c}
-                </th>
-                <td
-                  className="border px-2 py-1"
-                  style={{
-                    maxWidth: `${boxMaxWidth}px`,
-                    wordBreak: 'break-word',
-                    width: `${boxWidth}px`,
-                    minWidth: `${boxWidth}px`,
-                  }}
-                >
-                  {val}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    );
+    return renderSection('Header', cols);
   }
 
   function renderSection(title, cols) {

@@ -74,6 +74,7 @@ export default forwardRef(function InlineTransactionTable({
   const branchIdSet = new Set(branchIdFields);
   const departmentIdSet = new Set(departmentIdFields);
   const companyIdSet = new Set(companyIdFields);
+  const disabledSet = React.useMemo(() => new Set(disabledFields), [disabledFields]);
 
   function fillSessionDefaults(obj) {
     const row = { ...obj };
@@ -189,7 +190,7 @@ export default forwardRef(function InlineTransactionTable({
     maxWidth: `${boxMaxWidth}px`,
     wordBreak: 'break-word',
   };
-  const enabledFields = fields.filter((f) => !disabledFields.includes(f));
+  const enabledFields = fields.filter((f) => !disabledSet.has(f));
 
   function isValidDate(value, format) {
     if (!value) return true;
@@ -808,7 +809,7 @@ export default forwardRef(function InlineTransactionTable({
     const val = rows[idx]?.[f] ?? '';
     const isRel = relationConfigs[f] || Array.isArray(relations[f]);
     const invalid = invalidCell && invalidCell.row === idx && invalidCell.field === f;
-    if (disabledFields.includes(f)) {
+    if (disabledSet.has(f)) {
       return (
         <div className="px-1" style={inputStyle} title={typeof val === 'object' ? val.label || val.value : val}>
           {typeof val === 'object' ? val.label || val.value : val}
