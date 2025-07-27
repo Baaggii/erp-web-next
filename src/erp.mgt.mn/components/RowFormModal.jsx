@@ -83,6 +83,7 @@ const RowFormModal = function RowFormModal({
   const branchIdSet = new Set(branchIdFields);
   const departmentIdSet = new Set(departmentIdFields);
   const companyIdSet = new Set(companyIdFields);
+  const disabledSet = React.useMemo(() => new Set(disabledFields), [disabledFields]);
   const { user, company } = useContext(AuthContext);
   const [formVals, setFormVals] = useState(() => {
     const init = {};
@@ -349,7 +350,7 @@ const RowFormModal = function RowFormModal({
       await runProcTrigger(col, override);
     }
 
-    const enabled = columns.filter((c) => !disabledFields.includes(c));
+    const enabled = columns.filter((c) => !disabledSet.has(c));
     const idx = enabled.indexOf(col);
     const next = enabled[idx + 1];
     if (next && inputRefs.current[next]) {
@@ -673,7 +674,7 @@ const RowFormModal = function RowFormModal({
   function renderField(c, withLabel = true) {
     const err = errors[c];
     const inputClass = `w-full border rounded ${err ? 'border-red-500' : 'border-gray-300'}`;
-    const disabled = disabledFields.includes(c);
+    const disabled = disabledSet.has(c);
 
     if (disabled) {
       const val = formVals[c];
