@@ -1163,6 +1163,7 @@ const RowFormModal = function RowFormModal({
           Press <strong>Enter</strong> to move to next field. The field will be automatically selected. Use arrow keys to navigate selections.
         </div>
       </form>
+      </form>
     </Modal>
     <RowDetailModal
       visible={showPreview}
