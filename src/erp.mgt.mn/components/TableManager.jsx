@@ -1208,8 +1208,8 @@ const TableManager = forwardRef(function TableManager({
 
   let disabledFields = [];
   if (formConfig?.editableFields?.length) {
-    const set = new Set(formConfig.editableFields);
-    disabledFields = formColumns.filter((c) => !set.has(c));
+    const set = new Set(formConfig.editableFields.map((f) => f.toLowerCase()));
+    disabledFields = formColumns.filter((c) => !set.has(c.toLowerCase()));
   }
   disabledFields = editing
     ? Array.from(new Set([...disabledFields, ...getKeyFields(), ...lockedDefaults]))
