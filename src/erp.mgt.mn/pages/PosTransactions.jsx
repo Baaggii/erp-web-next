@@ -874,16 +874,20 @@ export default function PosTransactionsPage() {
                   fc.footerFields && fc.footerFields.length > 0
                     ? fc.footerFields
                     : [];
-                const editable = Array.isArray(fc.editableFields)
+                const hasEdit =
+                  fc && Object.prototype.hasOwnProperty.call(fc, 'editableFields');
+                const editVals = Array.isArray(fc.editableFields)
                   ? fc.editableFields
                   : [];
-                const editSet = new Set(editable.map((f) => f.toLowerCase()));
+                const editSet = hasEdit
+                  ? new Set(editVals.map((f) => f.toLowerCase()))
+                  : null;
                 const allFields = Array.from(
                   new Set([...visible, ...headerFields, ...mainFields, ...footerFields]),
                 );
-                const disabled = allFields.filter(
-                  (c) => !editSet.has(c.toLowerCase()),
-                );
+                const disabled = editSet
+                  ? allFields.filter((c) => !editSet.has(c.toLowerCase()))
+                  : [];
                 const posStyle = {
                   top_row: { gridColumn: '1 / span 3', gridRow: '1' },
                   upper_left: { gridColumn: '1', gridRow: '2' },
@@ -954,10 +958,12 @@ export default function PosTransactionsPage() {
                         let next = idx + 1;
                         while (next < formList.length) {
                           const nf = formConfigs[formList[next].table];
+                          const hasEd =
+                            nf && Object.prototype.hasOwnProperty.call(nf, 'editableFields');
                           const ed = Array.isArray(nf?.editableFields)
                             ? nf.editableFields
                             : [];
-                          if (ed.length > 0) break;
+                          if (hasEd && ed.length > 0) break;
                           next += 1;
                         }
                         if (next < formList.length) focusFirst(formList[next].table);
