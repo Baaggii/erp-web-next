@@ -199,7 +199,12 @@ export default function PosTransactionsPage() {
         });
         if (opts.length > 0) dataMap[r.COLUMN_NAME] = opts;
         if (Object.keys(rMap).length > 0) rowMap[r.COLUMN_NAME] = rMap;
-        cfgMap[r.COLUMN_NAME] = { table: refTbl, column: refCol, displayFields: cfg?.displayFields || [] };
+        cfgMap[r.COLUMN_NAME] = {
+          table: refTbl,
+          column: refCol,
+          idField: cfg?.idField || refCol,
+          displayFields: cfg?.displayFields || [],
+        };
       }
       setRelationsMap((m) => ({ ...m, [tbl]: dataMap }));
       setRelationConfigs((m) => ({ ...m, [tbl]: cfgMap }));

@@ -26,11 +26,57 @@ export default function AsyncSearchSelect({
   const [show, setShow] = useState(false);
   const [highlight, setHighlight] = useState(-1);
   const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
   const containerRef = useRef(null);
+  const listRef = useRef(null);
   const match = options.find((o) => String(o.value) === String(input));
   const displayLabel = match ? match.label : label;
   const internalRef = useRef(null);
   const chosenRef = useRef(null);
+
+  async function fetchPage(p = 1, q = '', append = false, signal) {
+    const cols =
+      searchColumns && searchColumns.length > 0
+        ? searchColumns
+        : searchColumn
+        ? [searchColumn]
+        : [];
+    if (!table || cols.length === 0) return;
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ page: p, perPage: 50 });
+      if (q) cols.forEach((c) => params.set(c, q));
+      const res = await fetch(
+        `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
+        { credentials: 'include', signal },
+      );
+      const json = await res.json();
+      const rows = Array.isArray(json.rows) ? json.rows : [];
+      const opts = rows.map((r) => {
+        const val = r[idField || searchColumn];
+        const parts = [];
+        if (val !== undefined) parts.push(val);
+        if (labelFields.length === 0) {
+          Object.entries(r).forEach(([k, v]) => {
+            if (k === idField || k === searchColumn) return;
+            if (v !== undefined && parts.length < 3) parts.push(v);
+          });
+        } else {
+          labelFields.forEach((f) => {
+            if (r[f] !== undefined) parts.push(r[f]);
+          });
+        }
+        return { value: val, label: parts.join(' - ') };
+      });
+      setHasMore(rows.length >= 50 && p * 50 < (json.count || Infinity));
+      setOptions((o) => (append ? [...o, ...opts] : opts));
+    } catch (err) {
+      if (err.name !== 'AbortError') setOptions(append ? [] : []);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (typeof value === 'object' && value !== null) {
@@ -48,57 +94,20 @@ export default function AsyncSearchSelect({
 
   useEffect(() => {
     if (disabled) return;
-    const cols = searchColumns && searchColumns.length > 0
-      ? searchColumns
-      : searchColumn
-      ? [searchColumn]
-      : [];
-    if (!table || cols.length === 0 || !show) return;
+    const controller = new AbortController();
+    fetchPage(1, '', false, controller.signal);
+    setPage(1);
+    return () => controller.abort();
+  }, [table]);
+
+  useEffect(() => {
+    if (disabled || !show) return;
     const controller = new AbortController();
     const q = String(input || '').trim();
-    const handler = setTimeout(async () => {
-      if (!q) {
-        setOptions([]);
-        return;
-      }
-      setLoading(true);
-      try {
-        const params = new URLSearchParams({ page: 1, perPage: 50 });
-        cols.forEach((c) => params.set(c, q));
-        const res = await fetch(
-          `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
-          { credentials: 'include', signal: controller.signal },
-        );
-        const json = await res.json();
-        const rows = Array.isArray(json.rows) ? json.rows : [];
-        const opts = rows.map((r) => {
-          const val = r[idField || searchColumn];
-          const parts = [];
-          if (val !== undefined) parts.push(val);
-          if (labelFields.length === 0) {
-            Object.entries(r).forEach(([k, v]) => {
-              if (k === idField || k === searchColumn) return;
-              if (v !== undefined && parts.length < 3) parts.push(v);
-            });
-          } else {
-            labelFields.forEach((f) => {
-              if (r[f] !== undefined) parts.push(r[f]);
-            });
-          }
-          return { value: val, label: parts.join(' - ') };
-        });
-        setOptions(opts);
-      } catch (err) {
-        if (err.name !== 'AbortError') setOptions([]);
-      } finally {
-        setLoading(false);
-      }
-    }, 300);
-    return () => {
-      clearTimeout(handler);
-      controller.abort();
-    };
-  }, [table, searchColumn, searchColumns, labelFields, idField, input, show, disabled]);
+    setPage(1);
+    fetchPage(1, q, false, controller.signal);
+    return () => controller.abort();
+  }, [show, input, disabled, table, searchColumn, searchColumns, labelFields, idField]);
 
   function handleSelectKeyDown(e) {
     if (e.key === 'ArrowDown') {
@@ -169,6 +178,21 @@ export default function AsyncSearchSelect({
       />
       {show && options.length > 0 && (
         <ul
+          ref={listRef}
+          onScroll={(e) => {
+            if (
+              e.target.scrollTop + e.target.clientHeight >=
+                e.target.scrollHeight - 5 &&
+              hasMore &&
+              !loading
+            ) {
+              const q = String(input || '').trim();
+              const next = page + 1;
+              setPage(next);
+              const controller = new AbortController();
+              fetchPage(next, q, true, controller.signal);
+            }
+          }}
           style={{
             position: 'absolute',
             zIndex: 21000,

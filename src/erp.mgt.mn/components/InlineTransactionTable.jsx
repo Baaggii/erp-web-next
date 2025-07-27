@@ -472,7 +472,7 @@ export default forwardRef(function InlineTransactionTable({
     const conf = relationConfigs[col];
     const viewTbl = viewSource[col];
     const table = conf ? conf.table : viewTbl;
-    const idField = conf ? conf.column : viewDisplays[viewTbl]?.idField || col;
+    const idField = conf ? conf.idField || conf.column : viewDisplays[viewTbl]?.idField || col;
     if (!table || val === undefined || val === '') return;
     let row = relationData[col]?.[val];
     if (!row) {
@@ -840,7 +840,32 @@ export default forwardRef(function InlineTransactionTable({
     const isRel = relationConfigs[f] || Array.isArray(relations[f]);
     const invalid = invalidCell && invalidCell.row === idx && invalidCell.field === f;
     if (disabledSet.has(f.toLowerCase())) {
-      const display = typeof val === 'object' ? val.label || val.value : val;
+      let display = typeof val === 'object' ? val.label || val.value : val;
+      const rawVal = typeof val === 'object' ? val.value : val;
+      if (
+        relationConfigs[f] &&
+        rawVal !== undefined &&
+        relationData[f]?.[rawVal]
+      ) {
+        const row = relationData[f][rawVal];
+        const parts = [rawVal];
+        (relationConfigs[f].displayFields || []).forEach((df) => {
+          if (row[df] !== undefined) parts.push(row[df]);
+        });
+        display = parts.join(' - ');
+      } else if (
+        viewSource[f] &&
+        rawVal !== undefined &&
+        relationData[f]?.[rawVal]
+      ) {
+        const row = relationData[f][rawVal];
+        const cfg = viewDisplays[viewSource[f]] || {};
+        const parts = [rawVal];
+        (cfg.displayFields || []).forEach((df) => {
+          if (row[df] !== undefined) parts.push(row[df]);
+        });
+        display = parts.join(' - ');
+      }
       const readonlyStyle = { ...inputStyle, width: 'fit-content', maxWidth: `${boxMaxWidth}px` };
       const btn = relationConfigs[f] || viewSource[f] || Array.isArray(relations[f]) ? (
         <button
@@ -869,8 +894,8 @@ export default forwardRef(function InlineTransactionTable({
         return (
           <AsyncSearchSelect
             table={conf.table}
-            searchColumn={conf.column}
-            searchColumns={[conf.column, ...(conf.displayFields || [])]}
+            searchColumn={conf.idField || conf.column}
+            searchColumns={[conf.idField || conf.column, ...(conf.displayFields || [])]}
             labelFields={conf.displayFields || []}
             value={inputVal}
             onChange={(v, label) =>
@@ -1064,6 +1089,7 @@ export default forwardRef(function InlineTransactionTable({
         onClose={() => setPreviewRow(null)}
         row={previewRow || {}}
         columns={previewRow ? Object.keys(previewRow) : []}
+        relations={relations}
         labels={labels}
       />
     </div>
