@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useContext, memo } from 'react';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import Modal from './Modal.jsx';
 import InlineTransactionTable from './InlineTransactionTable.jsx';
+import RowDetailModal from './RowDetailModal.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
@@ -143,6 +144,7 @@ const RowFormModal = function RowFormModal({
   const [gridRows, setGridRows] = useState(() => (Array.isArray(rows) ? rows : []));
   const wrapRef = useRef(null);
   const [zoom, setZoom] = useState(1);
+  const [previewRow, setPreviewRow] = useState(null);
 
   useEffect(() => {
     if (useGrid) {
@@ -548,6 +550,34 @@ const RowFormModal = function RowFormModal({
     }
   }
 
+  async function openRelationPreview(col) {
+    let val = formVals[col];
+    if (val && typeof val === 'object') val = val.value;
+    const conf = relationConfigs[col];
+    const viewTbl = viewSource[col];
+    const table = conf ? conf.table : viewTbl;
+    const idField = conf ? conf.column : viewDisplays[viewTbl]?.idField || col;
+    if (!table || val === undefined || val === '') return;
+    let row = relationData[col]?.[val];
+    if (!row) {
+      try {
+        const res = await fetch(
+          `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(val)}`,
+          { credentials: 'include' },
+        );
+        if (res.ok) {
+          const js = await res.json().catch(() => ({}));
+          row = js.row || js;
+        }
+      } catch {
+        row = null;
+      }
+    }
+    if (row && typeof row === 'object') {
+      setPreviewRow(row);
+    }
+  }
+
   async function handleFocusField(col) {
     showTriggerInfo(col);
   }
@@ -681,21 +711,32 @@ const RowFormModal = function RowFormModal({
 
     if (disabled) {
       const val = formVals[c];
-      if (!withLabel) {
-        return (
-          <div className="w-full border rounded bg-gray-100 px-2 py-1" style={inputStyle} title={val}>
+      const readonlyStyle = { ...inputStyle, width: 'fit-content', maxWidth: `${boxMaxWidth}px` };
+      const previewBtn = relationConfigs[c] || viewSource[c] || Array.isArray(relations[c]) ? (
+        <button
+          type="button"
+          onClick={() => openRelationPreview(c)}
+          className="ml-1 text-blue-600"
+          title="View"
+        >
+          🔍
+        </button>
+      ) : null;
+      const content = (
+        <div className="flex items-center">
+          <div className="border rounded bg-gray-100 px-2 py-1" style={readonlyStyle} title={val}>
             {val}
           </div>
-        );
-      }
+          {previewBtn}
+        </div>
+      );
+      if (!withLabel) return content;
       return (
         <div key={c} className={fitted ? 'mb-1' : 'mb-3'}>
           <label className="block mb-1 font-medium" style={labelStyle}>
             {labels[c] || c}
           </label>
-          <div className="w-full border rounded bg-gray-100 px-2 py-1" style={inputStyle} title={val}>
-            {val}
-          </div>
+          {content}
         </div>
       );
     }
@@ -1115,6 +1156,13 @@ const RowFormModal = function RowFormModal({
         </div>
       </form>
     </Modal>
+    <RowDetailModal
+      visible={!!previewRow}
+      onClose={() => setPreviewRow(null)}
+      row={previewRow || {}}
+      columns={previewRow ? Object.keys(previewRow) : []}
+      labels={labels}
+    />
   );
 }
 
