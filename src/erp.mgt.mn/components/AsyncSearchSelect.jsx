@@ -62,7 +62,7 @@ export default function AsyncSearchSelect({
       }
       setLoading(true);
       try {
-        const params = new URLSearchParams({ page: 1, perPage: 100 });
+        const params = new URLSearchParams({ page: 1, perPage: 50 });
         cols.forEach((c) => params.set(c, q));
         const res = await fetch(
           `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
