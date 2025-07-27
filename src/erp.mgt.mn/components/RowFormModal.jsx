@@ -306,7 +306,7 @@ const RowFormModal = function RowFormModal({
   const inputStyle = {
     fontSize: `${inputFontSize}px`,
     padding: '0.25rem 0.5rem',
-    width: 'auto',
+    width: `${boxWidth}px`,
     minWidth: `${boxWidth}px`,
     maxWidth: `${boxMaxWidth}px`,
     height: `${boxHeight}px`,

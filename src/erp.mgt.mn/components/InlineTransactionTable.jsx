@@ -180,7 +180,7 @@ export default forwardRef(function InlineTransactionTable({
   const inputStyle = {
     fontSize: `${inputFontSize}px`,
     padding: '0.25rem 0.5rem',
-    width: 'auto',
+    width: `${boxWidth}px`,
     minWidth: `${boxWidth}px`,
     maxWidth: `${boxMaxWidth}px`,
     height: `${boxHeight}px`,
@@ -188,7 +188,7 @@ export default forwardRef(function InlineTransactionTable({
     overflow: 'hidden',
   };
   const colStyle = {
-    width: 'auto',
+    width: `${boxWidth}px`,
     minWidth: `${boxWidth}px`,
     maxWidth: `${boxMaxWidth}px`,
     wordBreak: 'break-word',
