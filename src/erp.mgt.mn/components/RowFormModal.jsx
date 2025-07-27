@@ -556,7 +556,7 @@ const RowFormModal = function RowFormModal({
     const conf = relationConfigs[col];
     const viewTbl = viewSource[col];
     const table = conf ? conf.table : viewTbl;
-    const idField = conf ? conf.column : viewDisplays[viewTbl]?.idField || col;
+    const idField = conf ? conf.idField || conf.column : viewDisplays[viewTbl]?.idField || col;
     if (!table || val === undefined || val === '') return;
     let row = relationData[col]?.[val];
     if (!row) {
@@ -711,6 +711,19 @@ const RowFormModal = function RowFormModal({
 
     if (disabled) {
       const val = formVals[c];
+      let display = val;
+      if (
+        relationConfigs[c] &&
+        val !== undefined &&
+        relationData[c]?.[val]
+      ) {
+        const row = relationData[c][val];
+        const parts = [val];
+        (relationConfigs[c].displayFields || []).forEach((df) => {
+          if (row[df] !== undefined) parts.push(row[df]);
+        });
+        display = parts.join(' - ');
+      }
       const readonlyStyle = { ...inputStyle, width: 'fit-content', maxWidth: `${boxMaxWidth}px` };
       const previewBtn = relationConfigs[c] || viewSource[c] || Array.isArray(relations[c]) ? (
         <button
@@ -724,8 +737,8 @@ const RowFormModal = function RowFormModal({
       ) : null;
       const content = (
         <div className="flex items-center">
-          <div className="border rounded bg-gray-100 px-2 py-1" style={readonlyStyle} title={val}>
-            {val}
+          <div className="border rounded bg-gray-100 px-2 py-1" style={readonlyStyle} title={display}>
+            {display}
           </div>
           {previewBtn}
         </div>
@@ -745,9 +758,9 @@ const RowFormModal = function RowFormModal({
       <AsyncSearchSelect
         title={labels[c] || c}
         table={relationConfigs[c].table}
-        searchColumn={relationConfigs[c].column}
+        searchColumn={relationConfigs[c].idField || relationConfigs[c].column}
         searchColumns={[
-          relationConfigs[c].column,
+          relationConfigs[c].idField || relationConfigs[c].column,
           ...(relationConfigs[c].displayFields || []),
         ]}
         labelFields={relationConfigs[c].displayFields || []}
