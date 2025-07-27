@@ -7,6 +7,7 @@ import React, {
 } from 'react';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
+import RowDetailModal from './RowDetailModal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 
@@ -170,6 +171,7 @@ export default forwardRef(function InlineTransactionTable({
   const addBtnRef = useRef(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [invalidCell, setInvalidCell] = useState(null);
+  const [previewRow, setPreviewRow] = useState(null);
   const procCache = useRef({});
 
   const totalAmountSet = new Set(totalAmountFields);
@@ -463,6 +465,31 @@ export default forwardRef(function InlineTransactionTable({
         );
       }
     }
+  }
+
+  async function openRelationPreview(col, val) {
+    if (val && typeof val === 'object') val = val.value;
+    const conf = relationConfigs[col];
+    const viewTbl = viewSource[col];
+    const table = conf ? conf.table : viewTbl;
+    const idField = conf ? conf.column : viewDisplays[viewTbl]?.idField || col;
+    if (!table || val === undefined || val === '') return;
+    let row = relationData[col]?.[val];
+    if (!row) {
+      try {
+        const res = await fetch(
+          `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(val)}`,
+          { credentials: 'include' },
+        );
+        if (res.ok) {
+          const js = await res.json().catch(() => ({}));
+          row = js.row || js;
+        }
+      } catch {
+        row = null;
+      }
+    }
+    if (row && typeof row === 'object') setPreviewRow(row);
   }
 
   function handleFocusField(col) {
@@ -813,9 +840,22 @@ export default forwardRef(function InlineTransactionTable({
     const isRel = relationConfigs[f] || Array.isArray(relations[f]);
     const invalid = invalidCell && invalidCell.row === idx && invalidCell.field === f;
     if (disabledSet.has(f.toLowerCase())) {
+      const display = typeof val === 'object' ? val.label || val.value : val;
+      const readonlyStyle = { ...inputStyle, width: 'fit-content', maxWidth: `${boxMaxWidth}px` };
+      const btn = relationConfigs[f] || viewSource[f] || Array.isArray(relations[f]) ? (
+        <button
+          type="button"
+          onClick={() => openRelationPreview(f, val)}
+          className="ml-1 text-blue-600"
+          title="View"
+        >
+          🔍
+        </button>
+      ) : null;
       return (
-        <div className="px-1" style={inputStyle} title={typeof val === 'object' ? val.label || val.value : val}>
-          {typeof val === 'object' ? val.label || val.value : val}
+        <div className="flex items-center" title={display}>
+          <div className="px-1 border rounded bg-gray-100" style={readonlyStyle}>{display}</div>
+          {btn}
         </div>
       );
     }
@@ -1018,6 +1058,13 @@ export default forwardRef(function InlineTransactionTable({
           + Мөр нэмэх
         </button>
       )}
+      <RowDetailModal
+        visible={!!previewRow}
+        onClose={() => setPreviewRow(null)}
+        row={previewRow || {}}
+        columns={previewRow ? Object.keys(previewRow) : []}
+        labels={labels}
+      />
     </div>
   );
 });
