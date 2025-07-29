@@ -19,10 +19,9 @@ export default function GeneralConfiguration() {
 
   function handleChange(e) {
     const { name, value } = e.target;
-    const num = Number(value);
     setCfg(c => ({
       ...c,
-      [tab]: { ...(c?.[tab] || {}), [name]: isNaN(num) ? value : num },
+      [tab]: { ...(c?.[tab] || {}), [name]: Number(value) },
     }));
   }
 
@@ -49,53 +48,6 @@ export default function GeneralConfiguration() {
 
   const active = cfg?.[tab] || {};
 
-  let fields;
-  if (tab === 'general') {
-    fields = (
-      <div style={{ marginBottom: '0.5rem' }}>
-        <label>
-          Image Directory{' '}
-          <input name="imageDir" type="text" value={active.imageDir || ''} onChange={handleChange} />
-        </label>
-      </div>
-    );
-  } else {
-    fields = (
-      <>
-        <div style={{ marginBottom: '0.5rem' }}>
-          <label>
-            Label Font Size{' '}
-            <input name="labelFontSize" type="number" value={active.labelFontSize ?? ''} onChange={handleChange} />
-          </label>
-        </div>
-        <div style={{ marginBottom: '0.5rem' }}>
-          <label>
-            Box Width{' '}
-            <input name="boxWidth" type="number" value={active.boxWidth ?? ''} onChange={handleChange} />
-          </label>
-        </div>
-        <div style={{ marginBottom: '0.5rem' }}>
-          <label>
-            Box Height{' '}
-            <input name="boxHeight" type="number" value={active.boxHeight ?? ''} onChange={handleChange} />
-          </label>
-        </div>
-        <div style={{ marginBottom: '0.5rem' }}>
-          <label>
-            Box Max Width{' '}
-            <input name="boxMaxWidth" type="number" value={active.boxMaxWidth ?? ''} onChange={handleChange} />
-          </label>
-        </div>
-        <div style={{ marginBottom: '0.5rem' }}>
-          <label>
-            Box Max Height{' '}
-            <input name="boxMaxHeight" type="number" value={active.boxMaxHeight ?? ''} onChange={handleChange} />
-          </label>
-        </div>
-      </>
-    );
-  }
-
   return (
     <div>
       <h2>General Configuration</h2>
@@ -112,12 +64,6 @@ export default function GeneralConfiguration() {
         >
           POS
         </button>
-        <button
-          className={`tab-button ${tab === 'general' ? 'active' : ''}`}
-          onClick={() => setTab('general')}
-        >
-          General
-        </button>
       </div>
       <div style={{ marginBottom: '0.5rem' }}>
         <button onClick={() => setTab('forms')} disabled={tab === 'forms'}>
@@ -126,11 +72,62 @@ export default function GeneralConfiguration() {
         <button onClick={() => setTab('pos')} disabled={tab === 'pos'} style={{ marginLeft: '0.5rem' }}>
           POS
         </button>
-        <button onClick={() => setTab('general')} disabled={tab === 'general'} style={{ marginLeft: '0.5rem' }}>
-          General
-        </button>
       </div>
-      {fields}
+      <div style={{ marginBottom: '0.5rem' }}>
+        <label>
+          Label Font Size{' '}
+          <input
+            name="labelFontSize"
+            type="number"
+            value={active.labelFontSize ?? ''}
+            onChange={handleChange}
+          />
+        </label>
+      </div>
+      <div style={{ marginBottom: '0.5rem' }}>
+        <label>
+          Box Width{' '}
+          <input
+            name="boxWidth"
+            type="number"
+            value={active.boxWidth ?? ''}
+            onChange={handleChange}
+          />
+        </label>
+      </div>
+      <div style={{ marginBottom: '0.5rem' }}>
+        <label>
+          Box Height{' '}
+          <input
+            name="boxHeight"
+            type="number"
+            value={active.boxHeight ?? ''}
+            onChange={handleChange}
+          />
+        </label>
+      </div>
+      <div style={{ marginBottom: '0.5rem' }}>
+        <label>
+          Box Max Width{' '}
+          <input
+            name="boxMaxWidth"
+            type="number"
+            value={active.boxMaxWidth ?? ''}
+            onChange={handleChange}
+          />
+        </label>
+      </div>
+      <div style={{ marginBottom: '0.5rem' }}>
+        <label>
+          Box Max Height{' '}
+          <input
+            name="boxMaxHeight"
+            type="number"
+            value={active.boxMaxHeight ?? ''}
+            onChange={handleChange}
+          />
+        </label>
+      </div>
       <button onClick={handleSave} disabled={saving}>
         Save
       </button>

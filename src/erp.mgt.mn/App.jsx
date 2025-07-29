@@ -29,7 +29,6 @@ import SettingsPage, { GeneralSettings } from './pages/Settings.jsx';
 import ChangePasswordPage from './pages/ChangePassword.jsx';
 import BlueLinkPage from './pages/BlueLinkPage.jsx';
 import InventoryPage from './pages/InventoryPage.jsx';
-import AIInventoryDashboard from './pages/AIInventoryDashboard.jsx';
 import FinanceTransactionsPage from './pages/FinanceTransactions.jsx';
 import { useModules } from './hooks/useModules.js';
 import { useTxnModules } from './hooks/useTxnModules.js';
@@ -147,14 +146,6 @@ export default function App() {
                 element={
                   <AppLayout title="Inventory">
                     <InventoryPage />
-                  </AppLayout>
-                }
-              />
-              <Route
-                path="/ai-inventory"
-                element={
-                  <AppLayout title="AI Inventory">
-                    <AIInventoryDashboard />
                   </AppLayout>
                 }
               />

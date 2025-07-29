@@ -7,9 +7,7 @@ import React, {
 } from 'react';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
-import RowImageUploadModal from './RowImageUploadModal.jsx';
-import RowImageViewModal from './RowImageViewModal.jsx';
-import { useToast } from '../context/ToastContext.jsx';
+import RowDetailModal from './RowDetailModal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 
@@ -56,8 +54,6 @@ export default forwardRef(function InlineTransactionTable({
   procTriggers = {},
   user = {},
   company = {},
-  table = '',
-  imagenameFields = [],
   scope = 'forms',
   labelFontSize,
   boxWidth,
@@ -112,20 +108,6 @@ export default forwardRef(function InlineTransactionTable({
     });
     return row;
   }
-
-  function mapExistingRow(obj) {
-    const row = fillSessionDefaults(obj);
-    if (row && typeof row === 'object') {
-      row._saved = obj._saved ?? true;
-    }
-    return row;
-  }
-
-  function newRow() {
-    const row = fillSessionDefaults(defaultValues);
-    row._saved = false;
-    return row;
-  }
   labelFontSize = labelFontSize ?? cfg.labelFontSize ?? 14;
   boxWidth = boxWidth ?? cfg.boxWidth ?? 60;
   boxHeight = boxHeight ?? cfg.boxHeight ?? 30;
@@ -144,9 +126,9 @@ export default forwardRef(function InlineTransactionTable({
   }, []);
   const [rows, setRows] = useState(() => {
     if (Array.isArray(initRows) && initRows.length > 0) {
-      return initRows.map((r) => mapExistingRow(r));
+      return initRows.map((r) => fillSessionDefaults(r));
     }
-    return Array.from({ length: minRows }, () => newRow());
+    return Array.from({ length: minRows }, () => fillSessionDefaults(defaultValues));
   });
 
   const placeholders = React.useMemo(() => {
@@ -170,11 +152,11 @@ export default forwardRef(function InlineTransactionTable({
         ? base
         : [
             ...base,
-            ...Array.from({ length: minRows - base.length }, () => ({ }))
+            ...Array.from({ length: minRows - base.length }, () => fillSessionDefaults(defaultValues)),
           ];
-    const normalized = next.map((row, i) => {
-      if (!row || typeof row !== 'object') return newRow();
-      const updated = mapExistingRow(row);
+    const normalized = next.map((row) => {
+      if (!row || typeof row !== 'object') return row;
+      const updated = fillSessionDefaults(row);
       Object.entries(updated).forEach(([k, v]) => {
         if (placeholders[k]) {
           updated[k] = normalizeDateInput(String(v ?? ''), placeholders[k]);
@@ -189,10 +171,7 @@ export default forwardRef(function InlineTransactionTable({
   const addBtnRef = useRef(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [invalidCell, setInvalidCell] = useState(null);
-  const [uploadRowIdx, setUploadRowIdx] = useState(null);
-  const [viewRowIdx, setViewRowIdx] = useState(null);
-  const [viewImages, setViewImages] = useState([]);
-  const { addToast } = useToast();
+  const [previewRow, setPreviewRow] = useState(null);
   const procCache = useRef({});
 
   const totalAmountSet = new Set(totalAmountFields);
@@ -286,14 +265,14 @@ export default forwardRef(function InlineTransactionTable({
     getRows: () => rows,
     clearRows: () =>
       setRows(() => {
-        const next = Array.from({ length: minRows }, () => newRow());
+        const next = Array.from({ length: minRows }, () => fillSessionDefaults(defaultValues));
         onRowsChange(next);
         return next;
       }),
     replaceRows: (newRows) =>
       setRows(() => {
         const base = Array.isArray(newRows) ? newRows : [];
-        const next = base.map((r) => mapExistingRow(r));
+        const next = base.map((r) => fillSessionDefaults(r));
         onRowsChange(next);
         return next;
       }),
@@ -488,6 +467,30 @@ export default forwardRef(function InlineTransactionTable({
     }
   }
 
+  async function openRelationPreview(col, val) {
+    if (val && typeof val === 'object') val = val.value;
+    const conf = relationConfigs[col];
+    const viewTbl = viewSource[col];
+    const table = conf ? conf.table : viewTbl;
+    const idField = conf ? conf.idField || conf.column : viewDisplays[viewTbl]?.idField || col;
+    if (!table || val === undefined || val === '') return;
+    let row = relationData[col]?.[val];
+    if (!row) {
+      try {
+        const res = await fetch(
+          `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(val)}`,
+          { credentials: 'include' },
+        );
+        if (res.ok) {
+          const js = await res.json().catch(() => ({}));
+          row = js.row || js;
+        }
+      } catch {
+        row = null;
+      }
+    }
+    if (row && typeof row === 'object') setPreviewRow(row);
+  }
 
   function handleFocusField(col) {
     showTriggerInfo(col);
@@ -544,7 +547,7 @@ export default forwardRef(function InlineTransactionTable({
       }
     }
     setRows((r) => {
-      const row = newRow();
+      const row = fillSessionDefaults(defaultValues);
       const next = [...r, row];
       focusRow.current = next.length - 1;
       onRowsChange(next);
@@ -693,20 +696,9 @@ export default forwardRef(function InlineTransactionTable({
         return;
       }
     }
-
-    if (imagenameFields.length > 0) {
-      const missingName = imagenameFields.some((f) => {
-        const val = row[f] ?? row[columnCaseMap[f.toLowerCase()]];
-        return val === '' || val === null || val === undefined;
-      });
-      if (missingName) {
-        addToast('Fill image naming fields before saving', 'error');
-        return;
-      }
-    }
     const cleaned = {};
     Object.entries(row).forEach(([k, v]) => {
-      if (k === '_saved' || k === '_imageName') return;
+      if (k === '_saved') return;
       const key = columnCaseMap[k.toLowerCase()];
       if (!key) return;
       let val = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
@@ -725,54 +717,6 @@ export default forwardRef(function InlineTransactionTable({
       });
       procCache.current = {};
     }
-  }
-
-  function openUpload(idx) {
-    setUploadRowIdx(idx);
-  }
-
-  function handleUploaded(name) {
-    if (uploadRowIdx === null) return;
-    setRows((r) => {
-      const next = [...r];
-      if (next[uploadRowIdx]) next[uploadRowIdx]._imageName = name;
-      return next;
-    });
-  }
-
-  async function openView(idx) {
-    const row = rows[idx] || {};
-    const currentName = imagenameFields
-      .map((f) => row[f] ?? row[columnCaseMap[f.toLowerCase()]])
-      .filter((v) => v !== undefined && v !== null && v !== '')
-      .join('_');
-    const name = row._imageName || currentName;
-    if (!name || !table) {
-      addToast('Image name is missing', 'error');
-      return;
-    }
-    try {
-      const res = await fetch(`/api/transaction_images/${table}/${encodeURIComponent(name)}`, { credentials: 'include' });
-      const imgs = await res.json();
-      if (imgs.length === 0) {
-        addToast('No images found', 'info');
-      } else {
-        addToast(`Loaded ${imgs.length} images`, 'success');
-        setViewImages(imgs);
-        setViewRowIdx(idx);
-      }
-    } catch {
-      addToast('Failed to load images', 'error');
-    }
-  }
-
-  function closeUpload() {
-    setUploadRowIdx(null);
-  }
-
-  function closeView() {
-    setViewRowIdx(null);
-    setViewImages([]);
   }
 
 
@@ -923,9 +867,20 @@ export default forwardRef(function InlineTransactionTable({
         display = parts.join(' - ');
       }
       const readonlyStyle = { ...inputStyle, width: 'fit-content', maxWidth: `${boxMaxWidth}px` };
+      const btn = relationConfigs[f] || viewSource[f] || Array.isArray(relations[f]) ? (
+        <button
+          type="button"
+          onClick={() => openRelationPreview(f, val)}
+          className="ml-1 text-blue-600"
+          title="View"
+        >
+          🔍
+        </button>
+      ) : null;
       return (
         <div className="flex items-center" title={display}>
           <div className="px-1 border rounded bg-gray-100" style={readonlyStyle}>{display}</div>
+          {btn}
         </div>
       );
     }
@@ -1067,7 +1022,7 @@ export default forwardRef(function InlineTransactionTable({
                   {renderCell(idx, f, cIdx)}
                 </td>
               ))}
-              <td className="border px-1 py-1 text-right space-x-1">
+              <td className="border px-1 py-1 text-right">
                 {collectRows ? (
                   <button onClick={() => removeRow(idx)}>Delete</button>
                 ) : r._saved ? (
@@ -1077,8 +1032,6 @@ export default forwardRef(function InlineTransactionTable({
                 ) : (
                   <button onClick={() => saveRow(idx)}>Save</button>
                 )}
-                <button type="button" onClick={() => openUpload(idx)}>Add Image</button>
-                <button type="button" onClick={() => openView(idx)}>View Images</button>
               </td>
             </tr>
           ))}
@@ -1131,19 +1084,13 @@ export default forwardRef(function InlineTransactionTable({
           + Мөр нэмэх
         </button>
       )}
-      <RowImageUploadModal
-        visible={uploadRowIdx !== null}
-        onClose={closeUpload}
-        table={table}
-        row={rows[uploadRowIdx] || {}}
-        imagenameFields={imagenameFields}
-        columnCaseMap={columnCaseMap}
-        onUploaded={handleUploaded}
-      />
-      <RowImageViewModal
-        visible={viewRowIdx !== null}
-        onClose={closeView}
-        images={viewImages}
+      <RowDetailModal
+        visible={!!previewRow}
+        onClose={() => setPreviewRow(null)}
+        row={previewRow || {}}
+        columns={previewRow ? Object.keys(previewRow) : []}
+        relations={relations}
+        labels={labels}
       />
     </div>
   );
