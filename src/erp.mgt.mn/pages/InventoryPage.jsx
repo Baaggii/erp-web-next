@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import InventoryImageUpload from '../components/InventoryImageUpload.jsx';
 
 const data = [
   { id: 1, name: 'Бараа 1', qty: 10, price: 1000 },
@@ -12,6 +13,7 @@ export default function InventoryPage() {
   }, []);
   return (
     <div className="overflow-x-auto">
+      <InventoryImageUpload />
       <table className="min-w-full border text-sm bg-white max-h-[70vh] overflow-auto">
         <thead className="sticky top-0 bg-white z-10">
           <tr>

@@ -12,5 +12,8 @@
     "boxHeight": 30,
     "boxMaxWidth": 150,
     "boxMaxHeight": 150
+  },
+  "general": {
+    "imageDir": "txn_images"
   }
 }
