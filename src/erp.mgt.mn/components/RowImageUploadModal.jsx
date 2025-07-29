@@ -19,7 +19,6 @@ export default function RowImageUploadModal({
   function buildName() {
     return buildImageName(row, imagenameFields, columnCaseMap);
   }
-  const { name: previewName, missing: missingFields } = buildName();
 
   async function handleUpload() {
     const { name: safeName, missing } = buildName();
@@ -54,14 +53,6 @@ export default function RowImageUploadModal({
 
   return (
     <Modal visible={visible} title="Upload Images" onClose={onClose} width="auto">
-      {missingFields.length > 0 && (
-        <div style={{ color: 'red', marginBottom: '0.5rem' }}>
-          Missing fields: {missingFields.join(', ')}
-        </div>
-      )}
-      {previewName && (
-        <div style={{ marginBottom: '0.5rem' }}>Image name: {previewName}</div>
-      )}
       <input type="file" multiple onChange={(e) => setFiles(Array.from(e.target.files))} />
       <button onClick={handleUpload} disabled={!files.length || loading} style={{ marginLeft: '0.5rem' }}>
         {loading ? 'Uploading...' : 'Upload'}

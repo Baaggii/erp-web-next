@@ -742,15 +742,6 @@ export default forwardRef(function InlineTransactionTable({
   }
 
   function openUpload(idx) {
-    const row = rows[idx] || {};
-    const { name, missing } = buildImageName(row, imagenameFields, columnCaseMap);
-    if (!name) {
-      const msg = missing.length
-        ? `Please save the row first. Missing fields: ${missing.join(', ')}`
-        : 'Please save the row before uploading images';
-      addToast(msg, 'warning');
-      return;
-    }
     setUploadRowIdx(idx);
   }
 
@@ -758,12 +749,7 @@ export default forwardRef(function InlineTransactionTable({
     if (uploadRowIdx === null) return;
     setRows((r) => {
       const next = [...r];
-      if (next[uploadRowIdx]) {
-        next[uploadRowIdx]._imageName = name;
-        if (next[uploadRowIdx]._saved !== true && next[uploadRowIdx].id) {
-          next[uploadRowIdx]._saved = true;
-        }
-      }
+      if (next[uploadRowIdx]) next[uploadRowIdx]._imageName = name;
       return next;
     });
   }
@@ -773,9 +759,9 @@ export default forwardRef(function InlineTransactionTable({
     const { name, missing } = buildImageName(row, imagenameFields, columnCaseMap);
     if (!name || !table) {
       const msg = missing.length
-        ? `Please save the row first. Missing fields: ${missing.join(', ')}`
-        : 'Please save the row before viewing images';
-      addToast(msg, 'warning');
+        ? `Image name is missing fields: ${missing.join(', ')}`
+        : 'Image name is missing';
+      addToast(msg, 'error');
       return;
     }
     try {
@@ -1105,17 +1091,12 @@ export default forwardRef(function InlineTransactionTable({
               <td className="border px-1 py-1 text-right space-x-1">
                 {collectRows ? (
                   <button onClick={() => removeRow(idx)}>Delete</button>
-                ) : (r._saved ?? false) ? (
-                  <button
-                    onClick={() => handleChange(idx, '_saved', false)}
-                    title="Edit saved row"
-                  >
+                ) : r._saved ? (
+                  <button onClick={() => handleChange(idx, '_saved', false)}>
                     Edit
                   </button>
                 ) : (
-                  <button onClick={() => saveRow(idx)} title="Save row first">
-                    Save
-                  </button>
+                  <button onClick={() => saveRow(idx)}>Save</button>
                 )}
                 <button
                   type="button"
@@ -1123,7 +1104,6 @@ export default forwardRef(function InlineTransactionTable({
                     e.stopPropagation();
                     openUpload(idx);
                   }}
-                  title={r._saved ? 'Add image' : 'Save row first'}
                 >
                   Add Image
                 </button>
@@ -1133,7 +1113,6 @@ export default forwardRef(function InlineTransactionTable({
                     e.stopPropagation();
                     openView(idx);
                   }}
-                  title={r._saved ? 'View images' : 'Save row first'}
                 >
                   View Images
                 </button>
