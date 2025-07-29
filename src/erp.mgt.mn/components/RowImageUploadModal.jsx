@@ -54,7 +54,7 @@ export default function RowImageUploadModal({
   return (
     <Modal visible={visible} title="Upload Images" onClose={onClose} width="auto">
       <input type="file" multiple onChange={(e) => setFiles(Array.from(e.target.files))} />
-      <button type="button" onClick={handleUpload} disabled={!files.length || loading} style={{ marginLeft: '0.5rem' }}>
+      <button onClick={handleUpload} disabled={!files.length || loading} style={{ marginLeft: '0.5rem' }}>
         {loading ? 'Uploading...' : 'Upload'}
       </button>
       <div style={{ textAlign: 'right', marginTop: '1rem' }}>

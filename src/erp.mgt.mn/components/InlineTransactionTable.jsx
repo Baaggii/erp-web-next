@@ -742,19 +742,6 @@ export default forwardRef(function InlineTransactionTable({
   }
 
   function openUpload(idx) {
-    const row = rows[idx] || {};
-    const { name, missing } = buildImageName(
-      row,
-      imagenameFields,
-      columnCaseMap,
-    );
-    if (!name) {
-      const msg = missing.length
-        ? `Image name is missing fields: ${missing.join(', ')}`
-        : 'Image name is missing';
-      addToast(msg, 'error');
-      return;
-    }
     setUploadRowIdx(idx);
   }
 
