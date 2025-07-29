@@ -39,7 +39,14 @@ export default function RowImageUploadModal({
       })
       .filter((v) => v !== undefined && v !== null && v !== '')
       .join('_');
-    return sanitizeName(base);
+    const safe = sanitizeName(base);
+    if (safe) return safe;
+    const fallback =
+      row._imageName ||
+      row.ImageName ||
+      row.image_name ||
+      row[columnCaseMap['imagename']];
+    return sanitizeName(fallback || '');
   }
 
   async function handleUpload() {
