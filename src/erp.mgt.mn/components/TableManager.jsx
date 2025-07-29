@@ -17,6 +17,7 @@ import RowImageUploadModal from './RowImageUploadModal.jsx';
 import RowImageViewModal from './RowImageViewModal.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
+import buildImageName from '../utils/buildImageName.js';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -62,11 +63,6 @@ function normalizeDateInput(value, format) {
   return v;
 }
 
-function sanitizeName(name) {
-  return String(name)
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/gi, '_');
-}
 
 const actionCellStyle = {
   padding: '0.5rem',
@@ -758,23 +754,12 @@ const TableManager = forwardRef(function TableManager({
 
   async function openView(row, idx) {
     const cur = rows[idx] || row;
-    const currentName = (formConfig?.imagenameField || [])
-      .map((f) => {
-        let val = cur[f] ?? cur[columnCaseMap[f.toLowerCase()]];
-        if (val && typeof val === 'object') val = val.value ?? val.label;
-        return val;
-      })
-      .filter((v) => v !== undefined && v !== null && v !== '')
-      .join('_');
-    const safeName = sanitizeName(currentName);
-    let name =
-      cur._imageName ||
-      cur.ImageName ||
-      cur.image_name ||
-      cur[columnCaseMap['imagename']] ||
-      safeName;
+    const { name, missing } = buildImageName(cur, formConfig?.imagenameField || [], columnCaseMap);
     if (!name) {
-      addToast('Image name is missing', 'error');
+      const msg = missing.length
+        ? `Image name is missing fields: ${missing.join(', ')}`
+        : 'Image name is missing';
+      addToast(msg, 'error');
       return;
     }
     try {
@@ -1747,7 +1732,6 @@ const TableManager = forwardRef(function TableManager({
                       </button>
                       <button
                         onClick={() => openEdit(r)}
-                        disabled={rid === undefined}
                         style={actionBtnStyle}
                       >
                         🖉 Edit
@@ -1951,6 +1935,7 @@ const TableManager = forwardRef(function TableManager({
         scope="forms"
         table={table}
         imagenameField={formConfig?.imagenameField || []}
+        fillSession={!isAdding}
       />
       <CascadeDeleteModal
         visible={showCascade}

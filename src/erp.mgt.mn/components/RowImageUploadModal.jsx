@@ -1,12 +1,7 @@
 import React, { useState } from 'react';
 import Modal from './Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
-
-function sanitizeName(name) {
-  return String(name)
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/gi, '_');
-}
+import buildImageName from '../utils/buildImageName.js';
 
 export default function RowImageUploadModal({
   visible,
@@ -21,32 +16,18 @@ export default function RowImageUploadModal({
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   if (!visible) return null;
-  function getVal(obj, field) {
-    if (!obj) return undefined;
-    if (obj[field] !== undefined) return obj[field];
-    const lower = field.toLowerCase();
-    if (obj[columnCaseMap[lower]] !== undefined) return obj[columnCaseMap[lower]];
-    const key = Object.keys(obj).find((k) => k.toLowerCase() === lower);
-    return key ? obj[key] : undefined;
-  }
-
   function buildName() {
-    const base = imagenameFields
-      .map((f) => {
-        let val = getVal(row, f);
-        if (val && typeof val === 'object') val = val.value ?? val.label;
-        return val;
-      })
-      .filter((v) => v !== undefined && v !== null && v !== '')
-      .join('_');
-    return sanitizeName(base);
+    return buildImageName(row, imagenameFields, columnCaseMap);
   }
 
   async function handleUpload() {
-    const safeName = buildName();
+    const { name: safeName, missing } = buildName();
     const uploadUrl = safeName && table ? `/api/transaction_images/${table}/${encodeURIComponent(safeName)}` : '';
     if (!uploadUrl) {
-      addToast('Image name is missing', 'error');
+      const msg = missing.length
+        ? `Image name is missing fields: ${missing.join(', ')}`
+        : 'Image name is missing';
+      addToast(msg, 'error');
       return;
     }
     if (!files.length) return;
@@ -60,11 +41,12 @@ export default function RowImageUploadModal({
         setFiles([]);
         onUploaded(safeName);
       } else {
-        addToast('Failed to upload images', 'error');
+        const text = await res.text();
+        addToast(text || 'Failed to upload images', 'error');
       }
     } catch (err) {
       console.error(err);
-      addToast('Error uploading images', 'error');
+      addToast(err.message || 'Error uploading images', 'error');
     }
     setLoading(false);
   }

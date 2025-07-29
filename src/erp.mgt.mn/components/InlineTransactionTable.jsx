@@ -12,6 +12,7 @@ import RowImageViewModal from './RowImageViewModal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
+import buildImageName from '../utils/buildImageName.js';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -76,6 +77,7 @@ export default forwardRef(function InlineTransactionTable({
   branchIdFields = [],
   departmentIdFields = [],
   companyIdFields = [],
+  fillSession = true,
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -92,25 +94,28 @@ export default forwardRef(function InlineTransactionTable({
 
   function fillSessionDefaults(obj) {
     const row = { ...obj };
-    if (user?.empid !== undefined) {
-      userIdSet.forEach((f) => {
-        if (row[f] === undefined || row[f] === '') row[f] = user.empid;
-      });
-    }
-    if (company?.branch_id !== undefined) {
-      branchIdSet.forEach((f) => {
-        if (row[f] === undefined || row[f] === '') row[f] = company.branch_id;
-      });
-    }
-    if (company?.department_id !== undefined) {
-      departmentIdSet.forEach((f) => {
-        if (row[f] === undefined || row[f] === '') row[f] = company.department_id;
-      });
-    }
-    if (company?.company_id !== undefined) {
-      companyIdSet.forEach((f) => {
-        if (row[f] === undefined || row[f] === '') row[f] = company.company_id;
-      });
+    if (fillSession) {
+      if (user?.empid !== undefined) {
+        userIdSet.forEach((f) => {
+          if (row[f] === undefined || row[f] === '') row[f] = user.empid;
+        });
+      }
+      if (company?.branch_id !== undefined) {
+        branchIdSet.forEach((f) => {
+          if (row[f] === undefined || row[f] === '') row[f] = company.branch_id;
+        });
+      }
+      if (company?.department_id !== undefined) {
+        departmentIdSet.forEach((f) => {
+          if (row[f] === undefined || row[f] === '')
+            row[f] = company.department_id;
+        });
+      }
+      if (company?.company_id !== undefined) {
+        companyIdSet.forEach((f) => {
+          if (row[f] === undefined || row[f] === '') row[f] = company.company_id;
+        });
+      }
     }
     const now = formatTimestamp(new Date()).slice(0, 10);
     dateField.forEach((f) => {
@@ -748,23 +753,12 @@ export default forwardRef(function InlineTransactionTable({
 
   async function openView(idx) {
     const row = rows[idx] || {};
-    const currentName = imagenameFields
-      .map((f) => {
-        let val = row[f] ?? row[columnCaseMap[f.toLowerCase()]];
-        if (val && typeof val === 'object') val = val.value ?? val.label;
-        return val;
-      })
-      .filter((v) => v !== undefined && v !== null && v !== '')
-      .join('_');
-    const safeName = sanitizeName(currentName);
-    let name =
-      row._imageName ||
-      row.ImageName ||
-      row.image_name ||
-      row[columnCaseMap['imagename']] ||
-      safeName;
+    const { name, missing } = buildImageName(row, imagenameFields, columnCaseMap);
     if (!name || !table) {
-      addToast('Image name is missing', 'error');
+      const msg = missing.length
+        ? `Image name is missing fields: ${missing.join(', ')}`
+        : 'Image name is missing';
+      addToast(msg, 'error');
       return;
     }
     try {
