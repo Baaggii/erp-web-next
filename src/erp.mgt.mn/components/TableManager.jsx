@@ -735,6 +735,18 @@ const TableManager = forwardRef(function TableManager({
   }
 
   function openUpload(row, idx) {
+    const { name, missing } = buildImageName(
+      row,
+      formConfig?.imagenameField || [],
+      columnCaseMap,
+    );
+    if (!name) {
+      const msg = missing.length
+        ? `Image name is missing fields: ${missing.join(', ')}`
+        : 'Image name is missing';
+      addToast(msg, 'error');
+      return;
+    }
     setUploadRow({ row, idx });
   }
 
@@ -1733,15 +1745,17 @@ const TableManager = forwardRef(function TableManager({
                       >
                         👁 View
                       </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openEdit(r);
-                        }}
-                        style={actionBtnStyle}
-                      >
-                        🖉 Edit
-                      </button>
+                      {user?.role === 'admin' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEdit(r);
+                          }}
+                          style={actionBtnStyle}
+                        >
+                          🖉 Edit
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={(e) => {
