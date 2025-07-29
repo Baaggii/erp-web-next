@@ -926,7 +926,7 @@ const TableManager = forwardRef(function TableManager({
     }
 
     const cleaned = {};
-    const skipFields = new Set([...autoCols, 'id']);
+    const skipFields = new Set([...autoCols, 'id', '_imageName']);
     Object.entries(merged).forEach(([k, v]) => {
       if (skipFields.has(k)) return;
       if (v !== '') {

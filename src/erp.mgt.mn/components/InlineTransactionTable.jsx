@@ -7,7 +7,6 @@ import React, {
 } from 'react';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
-import RowDetailModal from './RowDetailModal.jsx';
 import RowImageUploadModal from './RowImageUploadModal.jsx';
 import RowImageViewModal from './RowImageViewModal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
@@ -190,7 +189,6 @@ export default forwardRef(function InlineTransactionTable({
   const addBtnRef = useRef(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [invalidCell, setInvalidCell] = useState(null);
-  const [previewRow, setPreviewRow] = useState(null);
   const [uploadRowIdx, setUploadRowIdx] = useState(null);
   const [viewRowIdx, setViewRowIdx] = useState(null);
   const [viewImages, setViewImages] = useState([]);
@@ -490,30 +488,6 @@ export default forwardRef(function InlineTransactionTable({
     }
   }
 
-  async function openRelationPreview(col, val) {
-    if (val && typeof val === 'object') val = val.value;
-    const conf = relationConfigs[col];
-    const viewTbl = viewSource[col];
-    const table = conf ? conf.table : viewTbl;
-    const idField = conf ? conf.idField || conf.column : viewDisplays[viewTbl]?.idField || col;
-    if (!table || val === undefined || val === '') return;
-    let row = relationData[col]?.[val];
-    if (!row) {
-      try {
-        const res = await fetch(
-          `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(val)}`,
-          { credentials: 'include' },
-        );
-        if (res.ok) {
-          const js = await res.json().catch(() => ({}));
-          row = js.row || js;
-        }
-      } catch {
-        row = null;
-      }
-    }
-    if (row && typeof row === 'object') setPreviewRow(row);
-  }
 
   function handleFocusField(col) {
     showTriggerInfo(col);
@@ -732,7 +706,7 @@ export default forwardRef(function InlineTransactionTable({
     }
     const cleaned = {};
     Object.entries(row).forEach(([k, v]) => {
-      if (k === '_saved') return;
+      if (k === '_saved' || k === '_imageName') return;
       const key = columnCaseMap[k.toLowerCase()];
       if (!key) return;
       let val = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
@@ -949,20 +923,9 @@ export default forwardRef(function InlineTransactionTable({
         display = parts.join(' - ');
       }
       const readonlyStyle = { ...inputStyle, width: 'fit-content', maxWidth: `${boxMaxWidth}px` };
-      const btn = relationConfigs[f] || viewSource[f] || Array.isArray(relations[f]) ? (
-        <button
-          type="button"
-          onClick={() => openRelationPreview(f, val)}
-          className="ml-1 text-blue-600"
-          title="View"
-        >
-          🔍
-        </button>
-      ) : null;
       return (
         <div className="flex items-center" title={display}>
           <div className="px-1 border rounded bg-gray-100" style={readonlyStyle}>{display}</div>
-          {btn}
         </div>
       );
     }
@@ -1168,13 +1131,19 @@ export default forwardRef(function InlineTransactionTable({
           + Мөр нэмэх
         </button>
       )}
-      <RowDetailModal
-        visible={!!previewRow}
-        onClose={() => setPreviewRow(null)}
-        row={previewRow || {}}
-        columns={previewRow ? Object.keys(previewRow) : []}
-        relations={relations}
-        labels={labels}
+      <RowImageUploadModal
+        visible={uploadRowIdx !== null}
+        onClose={closeUpload}
+        table={table}
+        row={rows[uploadRowIdx] || {}}
+        imagenameFields={imagenameFields}
+        columnCaseMap={columnCaseMap}
+        onUploaded={handleUploaded}
+      />
+      <RowImageViewModal
+        visible={viewRowIdx !== null}
+        onClose={closeView}
+        images={viewImages}
       />
       <RowImageUploadModal
         visible={uploadRowIdx !== null}
