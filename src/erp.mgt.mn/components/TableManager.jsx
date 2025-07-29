@@ -667,11 +667,7 @@ const TableManager = forwardRef(function TableManager({
     const defaults = {};
     const all = columnMeta.map((c) => c.name);
     all.forEach((c) => {
-      let v = (formConfig?.defaultValues || {})[c] || '';
-      if (userIdFields.includes(c) && user?.empid) v = user.empid;
-      if (branchIdFields.includes(c) && company?.branch_id !== undefined) v = company.branch_id;
-      if (departmentIdFields.includes(c) && company?.department_id !== undefined) v = company.department_id;
-      if (companyIdFields.includes(c) && company?.company_id !== undefined) v = company.company_id;
+      const v = (formConfig?.defaultValues || {})[c] || '';
       vals[c] = v;
       defaults[c] = v;
       if (!v && formConfig?.dateField?.includes(c)) {
@@ -771,7 +767,12 @@ const TableManager = forwardRef(function TableManager({
       .filter((v) => v !== undefined && v !== null && v !== '')
       .join('_');
     const safeName = sanitizeName(currentName);
-    const name = cur._imageName || safeName;
+    let name =
+      cur._imageName ||
+      cur.ImageName ||
+      cur.image_name ||
+      cur[columnCaseMap['imagename']] ||
+      safeName;
     if (!name) {
       addToast('Image name is missing', 'error');
       return;
@@ -911,21 +912,7 @@ const TableManager = forwardRef(function TableManager({
     });
 
     if (isAdding) {
-      userIdFields.forEach((f) => {
-        if (columns.has(f)) merged[f] = user?.empid;
-      });
-      branchIdFields.forEach((f) => {
-        if (columns.has(f) && company?.branch_id !== undefined)
-          merged[f] = company.branch_id;
-      });
-      departmentIdFields.forEach((f) => {
-        if (columns.has(f) && company?.department_id !== undefined)
-          merged[f] = company.department_id;
-      });
-      companyIdFields.forEach((f) => {
-        if (columns.has(f) && company?.company_id !== undefined)
-          merged[f] = company.company_id;
-      });
+      // no session defaults when adding
     }
 
     const required = formConfig?.requiredFields || [];

@@ -757,7 +757,12 @@ export default forwardRef(function InlineTransactionTable({
       .filter((v) => v !== undefined && v !== null && v !== '')
       .join('_');
     const safeName = sanitizeName(currentName);
-    const name = row._imageName || safeName;
+    let name =
+      row._imageName ||
+      row.ImageName ||
+      row.image_name ||
+      row[columnCaseMap['imagename']] ||
+      safeName;
     if (!name || !table) {
       addToast('Image name is missing', 'error');
       return;
