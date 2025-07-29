@@ -55,6 +55,7 @@ const RowFormModal = function RowFormModal({
   procTriggers = {},
   table = '',
   imagenameField = [],
+  fillSession = true,
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -113,7 +114,7 @@ const RowFormModal = function RowFormModal({
         else if (placeholder === 'HH:MM:SS') val = formatTimestamp(now).slice(11, 19);
         else val = formatTimestamp(now);
       }
-      if (missing && !val) {
+      if (fillSession && missing && !val) {
         if (userIdSet.has(c) && user?.empid) val = user.empid;
         else if (branchIdSet.has(c) && company?.branch_id !== undefined)
           val = company.branch_id;
@@ -262,7 +263,7 @@ const RowFormModal = function RowFormModal({
         else if (placeholders[c] === 'HH:MM:SS') v = formatTimestamp(now).slice(11, 19);
         else v = formatTimestamp(now);
       }
-      if (missing && !v) {
+      if (fillSession && missing && !v) {
         if (userIdSet.has(c) && user?.empid) v = user.empid;
         else if (branchIdSet.has(c) && company?.branch_id !== undefined)
           v = company.branch_id;
@@ -278,7 +279,7 @@ const RowFormModal = function RowFormModal({
     if (!same) setFormVals(vals);
     inputRefs.current = {};
     setErrors({});
-  }, [row, visible, user, company]);
+  }, [row, visible, user, company, fillSession]);
 
   useEffect(() => {
     Object.values(inputRefs.current).forEach((el) => {
@@ -955,6 +956,7 @@ const RowFormModal = function RowFormModal({
             boxMaxWidth={boxMaxWidth}
             table={table}
             imagenameFields={imagenameField}
+            fillSession={fillSession}
             scope={scope}
           />
         </div>

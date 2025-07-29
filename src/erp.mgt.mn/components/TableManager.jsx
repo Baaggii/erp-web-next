@@ -773,6 +773,8 @@ const TableManager = forwardRef(function TableManager({
       cur.image_name ||
       cur[columnCaseMap['imagename']] ||
       safeName;
+    if (!name) name = safeName;
+    name = sanitizeName(name);
     if (!name) {
       addToast('Image name is missing', 'error');
       return;
@@ -1747,7 +1749,6 @@ const TableManager = forwardRef(function TableManager({
                       </button>
                       <button
                         onClick={() => openEdit(r)}
-                        disabled={rid === undefined}
                         style={actionBtnStyle}
                       >
                         🖉 Edit
@@ -1951,6 +1952,7 @@ const TableManager = forwardRef(function TableManager({
         scope="forms"
         table={table}
         imagenameField={formConfig?.imagenameField || []}
+        fillSession={!isAdding}
       />
       <CascadeDeleteModal
         visible={showCascade}

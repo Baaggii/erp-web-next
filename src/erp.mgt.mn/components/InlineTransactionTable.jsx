@@ -76,6 +76,7 @@ export default forwardRef(function InlineTransactionTable({
   branchIdFields = [],
   departmentIdFields = [],
   companyIdFields = [],
+  fillSession = true,
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -92,25 +93,28 @@ export default forwardRef(function InlineTransactionTable({
 
   function fillSessionDefaults(obj) {
     const row = { ...obj };
-    if (user?.empid !== undefined) {
-      userIdSet.forEach((f) => {
-        if (row[f] === undefined || row[f] === '') row[f] = user.empid;
-      });
-    }
-    if (company?.branch_id !== undefined) {
-      branchIdSet.forEach((f) => {
-        if (row[f] === undefined || row[f] === '') row[f] = company.branch_id;
-      });
-    }
-    if (company?.department_id !== undefined) {
-      departmentIdSet.forEach((f) => {
-        if (row[f] === undefined || row[f] === '') row[f] = company.department_id;
-      });
-    }
-    if (company?.company_id !== undefined) {
-      companyIdSet.forEach((f) => {
-        if (row[f] === undefined || row[f] === '') row[f] = company.company_id;
-      });
+    if (fillSession) {
+      if (user?.empid !== undefined) {
+        userIdSet.forEach((f) => {
+          if (row[f] === undefined || row[f] === '') row[f] = user.empid;
+        });
+      }
+      if (company?.branch_id !== undefined) {
+        branchIdSet.forEach((f) => {
+          if (row[f] === undefined || row[f] === '') row[f] = company.branch_id;
+        });
+      }
+      if (company?.department_id !== undefined) {
+        departmentIdSet.forEach((f) => {
+          if (row[f] === undefined || row[f] === '')
+            row[f] = company.department_id;
+        });
+      }
+      if (company?.company_id !== undefined) {
+        companyIdSet.forEach((f) => {
+          if (row[f] === undefined || row[f] === '') row[f] = company.company_id;
+        });
+      }
     }
     const now = formatTimestamp(new Date()).slice(0, 10);
     dateField.forEach((f) => {
@@ -763,6 +767,8 @@ export default forwardRef(function InlineTransactionTable({
       row.image_name ||
       row[columnCaseMap['imagename']] ||
       safeName;
+    if (!name) name = safeName;
+    name = sanitizeName(name);
     if (!name || !table) {
       addToast('Image name is missing', 'error');
       return;
