@@ -1193,6 +1193,20 @@ const RowFormModal = function RowFormModal({
           </button>
           <button
             type="button"
+            onClick={openUploadModal}
+            className="px-3 py-1 bg-gray-200 rounded"
+          >
+            Add Image
+          </button>
+          <button
+            type="button"
+            onClick={openViewModal}
+            className="px-3 py-1 bg-gray-200 rounded"
+          >
+            View Images
+          </button>
+          <button
+            type="button"
             onClick={onCancel}
             className="px-3 py-1 bg-gray-200 rounded"
           >
