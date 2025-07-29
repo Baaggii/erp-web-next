@@ -1227,20 +1227,6 @@ const RowFormModal = function RowFormModal({
         onClose={() => setShowView(false)}
         images={viewImages}
       />
-      <RowImageUploadModal
-        visible={showUpload}
-        onClose={() => setShowUpload(false)}
-        table={table}
-        row={formVals}
-        imagenameFields={imagenameField}
-        columnCaseMap={columnCaseMap}
-        onUploaded={handleUploadComplete}
-      />
-      <RowImageViewModal
-        visible={showView}
-        onClose={() => setShowView(false)}
-        images={viewImages}
-      />
     </>
   );
 }

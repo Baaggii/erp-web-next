@@ -2,14 +2,18 @@ import React, { useEffect, useState } from 'react';
 
 export default function AIInventoryDashboard() {
   const [data, setData] = useState({});
+  const [error, setError] = useState('');
 
   async function fetchData() {
     try {
       const res = await fetch('/api/ai_inventory/results', { credentials: 'include' });
       const json = await res.json();
       setData(json);
+      setError('');
     } catch (err) {
       console.error(err);
+      setError('Failed to load results');
+      setData({});
     }
   }
 
@@ -30,6 +34,7 @@ export default function AIInventoryDashboard() {
     <div>
       <h2>AI Inventory Results</h2>
       <button onClick={fetchData}>Refresh</button>
+      {error && <p className="text-red-600 mt-1">{error}</p>}
       {entries.length === 0 ? (
         <p className="mt-2">No AI inventory results.</p>
       ) : (

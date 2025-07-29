@@ -1287,8 +1287,6 @@ const TableManager = forwardRef(function TableManager({
     disabledFields = Array.from(
       new Set([...disabledFields, ...getKeyFields(), ...lockedDefaults]),
     );
-  } else {
-    disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
   }
 
   const totalAmountSet = useMemo(

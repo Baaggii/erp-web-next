@@ -159,6 +159,7 @@ export default function AsyncSearchSelect({
           onChange(e.target.value);
           setShow(true);
           setHighlight(-1);
+          chosenRef.current = null;
         }}
         onFocus={(e) => {
           setShow(true);
