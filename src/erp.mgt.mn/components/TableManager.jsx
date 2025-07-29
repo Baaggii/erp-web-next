@@ -590,7 +590,7 @@ const TableManager = forwardRef(function TableManager({
       })
       .then((data) => {
         if (canceled) return;
-        const rows = data.rows || [];
+        const rows = (data.rows || []).map((r) => ({ ...r, _saved: true }));
         setRows(rows);
         setCount(data.count || 0);
         // clear selections when data changes
@@ -966,7 +966,7 @@ const TableManager = forwardRef(function TableManager({
         const data = await fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
           credentials: 'include',
         }).then((r) => r.json());
-        const rows = data.rows || [];
+        const rows = (data.rows || []).map((r) => ({ ...r, _saved: true }));
         setRows(rows);
         setCount(data.count || 0);
         logRowsMemory(rows);
@@ -1018,7 +1018,7 @@ const TableManager = forwardRef(function TableManager({
         `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
         { credentials: 'include' },
       ).then((r) => r.json());
-      const rows = data.rows || [];
+      const rows = (data.rows || []).map((r) => ({ ...r, _saved: true }));
       setRows(rows);
       setCount(data.count || 0);
       logRowsMemory(rows);
@@ -1157,7 +1157,7 @@ const TableManager = forwardRef(function TableManager({
     } else {
       addToast('Failed to load table data', 'error');
     }
-    const rows = data.rows || [];
+    const rows = (data.rows || []).map((r) => ({ ...r, _saved: true }));
     setRows(rows);
     setCount(data.count || 0);
     logRowsMemory(rows);

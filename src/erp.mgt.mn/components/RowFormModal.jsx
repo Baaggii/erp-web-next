@@ -723,22 +723,18 @@ const RowFormModal = function RowFormModal({
         display = parts.join(' - ');
       }
       const readonlyStyle = { ...inputStyle, width: 'fit-content', maxWidth: `${boxMaxWidth}px` };
-      const content = (
-        <div className="flex items-center">
+      const pair = (
+        <div className="flex items-center gap-2" key={c}>
+          <label className="font-medium" style={labelStyle}>
+            {labels[c] || c}
+          </label>
           <div className="border rounded bg-gray-100 px-2 py-1" style={readonlyStyle} title={display}>
             {display}
           </div>
         </div>
       );
-      if (!withLabel) return content;
-      return (
-        <div key={c} className={fitted ? 'mb-1' : 'mb-3'}>
-          <label className="block mb-1 font-medium" style={labelStyle}>
-            {labels[c] || c}
-          </label>
-          {content}
-        </div>
-      );
+      if (!withLabel) return pair;
+      return <div className={fitted ? 'mb-1' : 'mb-3'}>{pair}</div>;
     }
 
     const control = relationConfigs[c] ? (
@@ -775,39 +771,51 @@ const RowFormModal = function RowFormModal({
         inputStyle={inputStyle}
       />
     ) : viewSource[c] && !Array.isArray(relations[c]) ? (
-      <AsyncSearchSelect
-        title={labels[c] || c}
-        table={viewSource[c]}
-        searchColumn={viewDisplays[viewSource[c]]?.idField || c}
-        searchColumns={[
-          viewDisplays[viewSource[c]]?.idField || c,
-          ...(viewDisplays[viewSource[c]]?.displayFields || []),
-        ]}
-        labelFields={viewDisplays[viewSource[c]]?.displayFields || []}
-        idField={viewDisplays[viewSource[c]]?.idField || c}
-        value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
-        onChange={(val, lbl) => {
-          const v = lbl ? { value: val, label: lbl } : val;
-          setFormVals((st) => ({ ...st, [c]: v }));
-          setErrors((er) => ({ ...er, [c]: undefined }));
-          onChange({ [c]: v });
-        }}
-        onSelect={(opt) => {
-          const el = inputRefs.current[c];
-          if (el) {
-            const fake = { key: 'Enter', preventDefault: () => {}, target: el, selectedOption: opt };
-            handleKeyDown(fake, c);
-          }
-        }}
-        disabled={disabled}
-        onKeyDown={(e) => handleKeyDown(e, c)}
-        onFocus={(e) => {
-          e.target.select();
-          handleFocusField(c);
-        }}
-        inputRef={(el) => (inputRefs.current[c] = el)}
-        inputStyle={inputStyle}
-      />
+      (() => {
+        const view = viewSource[c];
+        const cfg = viewDisplays[view] || {};
+        const cols = viewColumns[view] || [];
+        let idField = cfg.idField || c;
+        const match = cols.find((x) => x.toLowerCase() === idField.toLowerCase());
+        if (!match && cols.length > 0) idField = cols[0];
+        else if (match) idField = match;
+        const lblFields = (cfg.displayFields || []).map((f) => {
+          const m = cols.find((x) => x.toLowerCase() === f.toLowerCase());
+          return m || f;
+        });
+        return (
+          <AsyncSearchSelect
+            title={labels[c] || c}
+            table={view}
+            searchColumn={idField}
+            searchColumns={[idField, ...lblFields]}
+            labelFields={lblFields}
+            idField={idField}
+            value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
+            onChange={(val, lbl) => {
+              const v = lbl ? { value: val, label: lbl } : val;
+              setFormVals((st) => ({ ...st, [c]: v }));
+              setErrors((er) => ({ ...er, [c]: undefined }));
+              onChange({ [c]: v });
+            }}
+            onSelect={(opt) => {
+              const el = inputRefs.current[c];
+              if (el) {
+                const fake = { key: 'Enter', preventDefault: () => {}, target: el, selectedOption: opt };
+                handleKeyDown(fake, c);
+              }
+            }}
+            disabled={disabled}
+            onKeyDown={(e) => handleKeyDown(e, c)}
+            onFocus={(e) => {
+              e.target.select();
+              handleFocusField(c);
+            }}
+            inputRef={(el) => (inputRefs.current[c] = el)}
+            inputStyle={inputStyle}
+          />
+        );
+      })()
     ) : Array.isArray(relations[c]) ? (
       <select
         title={formVals[c]}

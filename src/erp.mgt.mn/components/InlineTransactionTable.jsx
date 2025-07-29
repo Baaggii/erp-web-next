@@ -981,9 +981,16 @@ export default forwardRef(function InlineTransactionTable({
     if (viewSource[f]) {
       const view = viewSource[f];
       const cfg = viewDisplays[view] || {};
+      const cols = viewColumns[view] || [];
+      let idField = cfg.idField || f;
+      const match = cols.find((x) => x.toLowerCase() === idField.toLowerCase());
+      if (!match && cols.length > 0) idField = cols[0];
+      else if (match) idField = match;
+      const labelFields = (cfg.displayFields || []).map((lf) => {
+        const m = cols.find((x) => x.toLowerCase() === lf.toLowerCase());
+        return m || lf;
+      });
       const inputVal = typeof val === 'object' ? val.value : val;
-      const idField = cfg.idField || f;
-      const labelFields = cfg.displayFields || [];
       return (
           <AsyncSearchSelect
             table={view}

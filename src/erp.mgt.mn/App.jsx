@@ -70,6 +70,7 @@ export default function App() {
     pos_transaction_management: <PosTxnConfigPage />,
     pos_transactions: <PosTransactionsPage />,
     general_configuration: <GeneralConfigurationPage />,
+    ai_inventory: <AIInventoryDashboard />,
     change_password: <ChangePasswordPage />,
   };
 
