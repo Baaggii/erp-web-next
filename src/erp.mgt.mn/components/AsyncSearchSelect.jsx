@@ -159,8 +159,6 @@ export default function AsyncSearchSelect({
           onChange(e.target.value);
           setShow(true);
           setHighlight(-1);
-          setOptions([]);
-          setHasMore(false);
         }}
         onFocus={(e) => {
           setShow(true);
