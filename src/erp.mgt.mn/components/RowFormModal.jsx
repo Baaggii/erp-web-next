@@ -3,6 +3,8 @@ import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import Modal from './Modal.jsx';
 import InlineTransactionTable from './InlineTransactionTable.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
+import RowImageUploadModal from './RowImageUploadModal.jsx';
+import RowImageViewModal from './RowImageViewModal.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
@@ -51,6 +53,8 @@ const RowFormModal = function RowFormModal({
   viewDisplays = {},
   viewColumns = {},
   procTriggers = {},
+  table = '',
+  imagenameField = [],
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -145,6 +149,9 @@ const RowFormModal = function RowFormModal({
   const wrapRef = useRef(null);
   const [zoom, setZoom] = useState(1);
   const [previewRow, setPreviewRow] = useState(null);
+  const [showUpload, setShowUpload] = useState(false);
+  const [showView, setShowView] = useState(false);
+  const [viewImages, setViewImages] = useState([]);
 
   useEffect(() => {
     if (useGrid) {
@@ -1122,6 +1129,26 @@ const RowFormModal = function RowFormModal({
     w.print();
   }
 
+  function openUploadModal() {
+    setShowUpload(true);
+  }
+
+  async function openViewModal() {
+    const name = imagenameField
+      .map((f) => formVals[f])
+      .filter(Boolean)
+      .join('_');
+    if (!name || !table) return;
+    try {
+      const res = await fetch(`/api/transaction_images/${table}/${encodeURIComponent(name)}`, { credentials: 'include' });
+      const imgs = await res.json();
+      setViewImages(imgs);
+      setShowView(true);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
   if (inline) {
     return (
       <div
@@ -1172,6 +1199,20 @@ const RowFormModal = function RowFormModal({
           </button>
           <button
             type="button"
+            onClick={openUploadModal}
+            className="px-3 py-1 bg-gray-200 rounded"
+          >
+            Add Image
+          </button>
+          <button
+            type="button"
+            onClick={openViewModal}
+            className="px-3 py-1 bg-gray-200 rounded"
+          >
+            View Images
+          </button>
+          <button
+            type="button"
             onClick={onCancel}
             className="px-3 py-1 bg-gray-200 rounded"
           >
@@ -1193,6 +1234,18 @@ const RowFormModal = function RowFormModal({
         columns={previewRow ? Object.keys(previewRow) : []}
         relations={relations}
         labels={labels}
+      />
+      <RowImageUploadModal
+        visible={showUpload}
+        onClose={() => setShowUpload(false)}
+        table={table}
+        row={formVals}
+        imagenameFields={imagenameField}
+      />
+      <RowImageViewModal
+        visible={showView}
+        onClose={() => setShowView(false)}
+        images={viewImages}
       />
     </>
   );

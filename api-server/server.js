@@ -3,7 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import express from "express";
 import cookieParser from "cookie-parser";
-import { testConnection } from "../db/index.js";
+import { testConnection, populateDefaultModules } from "../db/index.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
 import { logger } from "./middlewares/logging.js";
 import authRoutes from "./routes/auth.js";
@@ -17,6 +17,8 @@ import companyModuleRoutes from "./routes/company_modules.js";
 import tableRoutes from "./routes/tables.js";
 import codingTableRoutes from "./routes/coding_tables.js";
 import openaiRoutes from "./routes/openai.js";
+import aiInventoryRoutes from "./routes/ai_inventory.js";
+import transactionImageRoutes from "./routes/transaction_images.js";
 import headerMappingRoutes from "./routes/header_mappings.js";
 import displayFieldRoutes from "./routes/display_fields.js";
 import codingTableConfigRoutes from "./routes/coding_table_configs.js";
@@ -66,6 +68,8 @@ app.use("/api/company_modules", requireAuth, companyModuleRoutes);
 app.use("/api/coding_tables", requireAuth, codingTableRoutes);
 app.use("/api/header_mappings", requireAuth, headerMappingRoutes);
 app.use("/api/openai", openaiRoutes);
+app.use("/api/ai_inventory", aiInventoryRoutes);
+app.use("/api/transaction_images", transactionImageRoutes);
 app.use("/api/display_fields", displayFieldRoutes);
 app.use("/api/coding_table_configs", codingTableConfigRoutes);
 app.use("/api/generated_sql", generatedSqlRoutes);
@@ -85,6 +89,7 @@ app.use("/api/general_config", requireAuth, generalConfigRoutes);
 // NOTE: adjust this path to where your SPA build actually lives.
 // If your build outputs to /home/mgtmn/erp.mgt.mn, update to:
 const buildDir = path.resolve(__dirname, "../../../erp.mgt.mn");
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 app.use(express.static(buildDir));
 app.get("*", (req, res) => res.sendFile(path.join(buildDir, "index.html")));
 
@@ -92,6 +97,10 @@ app.get("*", (req, res) => res.sendFile(path.join(buildDir, "index.html")));
 app.use(errorHandler);
 
 const port = process.env.PORT || 3002;
-app.listen(port, () =>
-  console.log(`✅ ERP API & SPA listening on port ${port}`),
-);
+populateDefaultModules()
+  .catch((err) => console.error('Failed to populate modules', err))
+  .finally(() => {
+    app.listen(port, () =>
+      console.log(`✅ ERP API & SPA listening on port ${port}`),
+    );
+  });
