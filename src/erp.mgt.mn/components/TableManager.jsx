@@ -778,14 +778,10 @@ const TableManager = forwardRef(function TableManager({
       columnCaseMap,
     );
     if (!name) {
-      if (missing.length) {
-        addToast(
-          `Please complete these fields before viewing images: ${missing.join(', ')}`,
-          'warning',
-        );
-      } else {
-        addToast('Cannot generate image name. Required data is missing.', 'warning');
-      }
+      const msg = missing.length
+        ? `Please save the row first. Missing fields: ${missing.join(', ')}`
+        : 'Please save the row before viewing images';
+      addToast(msg, 'warning');
       return;
     }
     try {
