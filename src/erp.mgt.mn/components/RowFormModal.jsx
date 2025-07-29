@@ -711,48 +711,38 @@ const RowFormModal = function RowFormModal({
 
     if (disabled) {
       const val = formVals[c];
-      let display = val;
+      const rawVal = typeof val === 'object' && val !== null ? val.value : val;
+      let display = typeof val === 'object' && val !== null ? val.label || rawVal : val;
       if (
         relationConfigs[c] &&
-        val !== undefined &&
-        relationData[c]?.[val]
+        rawVal !== undefined &&
+        relationData[c]?.[rawVal]
       ) {
-        const row = relationData[c][val];
-        const parts = [val];
+        const row = relationData[c][rawVal];
+        const parts = [rawVal];
         (relationConfigs[c].displayFields || []).forEach((df) => {
           if (row[df] !== undefined) parts.push(row[df]);
         });
         display = parts.join(' - ');
       } else if (
         viewSource[c] &&
-        val !== undefined &&
-        relationData[c]?.[val]
+        rawVal !== undefined &&
+        relationData[c]?.[rawVal]
       ) {
-        const row = relationData[c][val];
+        const row = relationData[c][rawVal];
         const cfg = viewDisplays[viewSource[c]] || {};
-        const parts = [val];
+        const parts = [rawVal];
         (cfg.displayFields || []).forEach((df) => {
           if (row[df] !== undefined) parts.push(row[df]);
         });
         display = parts.join(' - ');
       }
       const readonlyStyle = { ...inputStyle, width: 'fit-content', maxWidth: `${boxMaxWidth}px` };
-      const previewBtn = relationConfigs[c] || viewSource[c] || Array.isArray(relations[c]) ? (
-        <button
-          type="button"
-          onClick={() => openRelationPreview(c)}
-          className="ml-1 text-blue-600"
-          title="View"
-        >
-          🔍
-        </button>
-      ) : null;
       const content = (
         <div className="flex items-center">
           <div className="border rounded bg-gray-100 px-2 py-1" style={readonlyStyle} title={display}>
             {display}
           </div>
-          {previewBtn}
         </div>
       );
       if (!withLabel) return content;
