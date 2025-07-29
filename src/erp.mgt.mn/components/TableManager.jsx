@@ -1725,33 +1725,48 @@ const TableManager = forwardRef(function TableManager({
                   return (
                     <>
                       <button
-                        onClick={() => openDetail(r)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openDetail(r);
+                        }}
                         style={actionBtnStyle}
                       >
                         👁 View
                       </button>
                       <button
-                        onClick={() => openEdit(r)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEdit(r);
+                        }}
                         style={actionBtnStyle}
                       >
                         🖉 Edit
                       </button>
                       <button
                         type="button"
-                        onClick={() => openUpload(r, idx)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openUpload(r, idx);
+                        }}
                         style={actionBtnStyle}
                       >
                         📷 Add Image
                       </button>
                       <button
                         type="button"
-                        onClick={() => openView(r, idx)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openView(r, idx);
+                        }}
                         style={actionBtnStyle}
                       >
                         🖼 View Images
                       </button>
                       <button
-                        onClick={() => handleDelete(r)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(r);
+                        }}
                         disabled={rid === undefined}
                         style={deleteBtnStyle}
                       >
