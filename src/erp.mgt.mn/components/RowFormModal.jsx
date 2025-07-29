@@ -9,6 +9,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import { useToast } from '../context/ToastContext.jsx';
 
 const RowFormModal = function RowFormModal({
   visible,
@@ -93,6 +94,7 @@ const RowFormModal = function RowFormModal({
     [disabledFields],
   );
   const { user, company } = useContext(AuthContext);
+  const { addToast } = useToast();
   const [formVals, setFormVals] = useState(() => {
     const init = {};
     const now = new Date();
@@ -968,6 +970,8 @@ const RowFormModal = function RowFormModal({
             boxWidth={boxWidth}
             boxHeight={boxHeight}
             boxMaxWidth={boxMaxWidth}
+            table={table}
+            imagenameFields={imagenameField}
             scope={scope}
           />
         </div>
@@ -1138,14 +1142,23 @@ const RowFormModal = function RowFormModal({
       .map((f) => formVals[f])
       .filter(Boolean)
       .join('_');
-    if (!name || !table) return;
+    if (!name || !table) {
+      addToast('Image name is missing', 'error');
+      return;
+    }
     try {
       const res = await fetch(`/api/transaction_images/${table}/${encodeURIComponent(name)}`, { credentials: 'include' });
       const imgs = await res.json();
-      setViewImages(imgs);
-      setShowView(true);
+      if (imgs.length === 0) {
+        addToast('No images found', 'info');
+      } else {
+        addToast(`Loaded ${imgs.length} images`, 'success');
+        setViewImages(imgs);
+        setShowView(true);
+      }
     } catch (err) {
       console.error(err);
+      addToast('Failed to load images', 'error');
     }
   }
 

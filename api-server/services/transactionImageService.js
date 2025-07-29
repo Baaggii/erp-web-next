@@ -20,6 +20,7 @@ function ensureDir(dir) {
 
 export async function saveImages(table, name, files) {
   const { baseDir, urlBase } = await getDirs();
+  ensureDir(baseDir);
   const dir = path.join(baseDir, table);
   ensureDir(dir);
   const saved = [];
@@ -27,7 +28,26 @@ export async function saveImages(table, name, files) {
     const ext = path.extname(file.originalname) || `.${mime.extension(file.mimetype) || 'bin'}`;
     const fileName = `${name}_${Date.now()}${ext}`;
     const dest = path.join(dir, fileName);
-    await fs.rename(file.path, dest);
+    try {
+      if (file.size > 1500000) {
+        let sharpLib;
+        try {
+          sharpLib = (await import('sharp')).default;
+        } catch {}
+        if (sharpLib) {
+          await sharpLib(file.path)
+            .resize({ width: 1200, height: 1200, fit: 'inside' })
+            .toFile(dest);
+          await fs.unlink(file.path);
+        } else {
+          await fs.rename(file.path, dest);
+        }
+      } else {
+        await fs.rename(file.path, dest);
+      }
+    } catch {
+      await fs.rename(file.path, dest);
+    }
     saved.push(`${urlBase}/${table}/${fileName}`);
   }
   return saved;
@@ -35,7 +55,9 @@ export async function saveImages(table, name, files) {
 
 export async function listImages(table, name) {
   const { baseDir, urlBase } = await getDirs();
+  ensureDir(baseDir);
   const dir = path.join(baseDir, table);
+  ensureDir(dir);
   try {
     const files = await fs.readdir(dir);
     return files

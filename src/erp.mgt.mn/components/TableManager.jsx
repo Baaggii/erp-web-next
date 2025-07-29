@@ -749,14 +749,23 @@ const TableManager = forwardRef(function TableManager({
       .map((f) => row[f])
       .filter(Boolean)
       .join('_');
-    if (!name) return;
+    if (!name) {
+      addToast('Image name is missing', 'error');
+      return;
+    }
     try {
       const res = await fetch(`/api/transaction_images/${table}/${encodeURIComponent(name)}`, { credentials: 'include' });
       const imgs = await res.json();
-      setViewImages(imgs);
-      setViewRow(row);
+      if (imgs.length === 0) {
+        addToast('No images found', 'info');
+      } else {
+        addToast(`Loaded ${imgs.length} images`, 'success');
+        setViewImages(imgs);
+        setViewRow(row);
+      }
     } catch (err) {
       console.error(err);
+      addToast('Failed to load images', 'error');
     }
   }
 

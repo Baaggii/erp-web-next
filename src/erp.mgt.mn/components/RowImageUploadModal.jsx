@@ -1,14 +1,45 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Modal from './Modal.jsx';
-import InventoryImageUpload from './InventoryImageUpload.jsx';
+import { useToast } from '../context/ToastContext.jsx';
 
 export default function RowImageUploadModal({ visible, onClose, table, row = {}, imagenameFields = [] }) {
+  const { addToast } = useToast();
+  const [files, setFiles] = useState([]);
+  const [loading, setLoading] = useState(false);
   if (!visible) return null;
   const baseName = imagenameFields.map((f) => row[f]).filter(Boolean).join('_');
   const uploadUrl = baseName && table ? `/api/transaction_images/${table}/${encodeURIComponent(baseName)}` : '';
+
+  async function handleUpload() {
+    if (!uploadUrl) {
+      addToast('Image name is missing', 'error');
+      return;
+    }
+    if (!files.length) return;
+    setLoading(true);
+    const form = new FormData();
+    files.forEach((f) => form.append('images', f));
+    try {
+      const res = await fetch(uploadUrl, { method: 'POST', body: form, credentials: 'include' });
+      if (res.ok) {
+        addToast('Images uploaded successfully', 'success');
+        setFiles([]);
+      } else {
+        addToast('Failed to upload images', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      addToast('Error uploading images', 'error');
+    }
+    setLoading(false);
+  }
+
   return (
     <Modal visible={visible} title="Upload Images" onClose={onClose} width="auto">
-      <InventoryImageUpload multiple uploadUrl={uploadUrl || '/api/ai_inventory/identify'} />
+      <input type="file" multiple onChange={(e) => setFiles(Array.from(e.target.files))} />
+      <button onClick={handleUpload} disabled={!files.length || loading} style={{ marginLeft: '0.5rem' }}>
+        {loading ? 'Uploading...' : 'Upload'}
+      </button>
       <div style={{ textAlign: 'right', marginTop: '1rem' }}>
         <button type="button" onClick={onClose}>Close</button>
       </div>
