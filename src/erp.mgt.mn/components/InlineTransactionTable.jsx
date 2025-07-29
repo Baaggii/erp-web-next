@@ -8,6 +8,9 @@ import React, {
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
+import RowImageUploadModal from './RowImageUploadModal.jsx';
+import RowImageViewModal from './RowImageViewModal.jsx';
+import { useToast } from '../context/ToastContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 
@@ -54,6 +57,8 @@ export default forwardRef(function InlineTransactionTable({
   procTriggers = {},
   user = {},
   company = {},
+  table = '',
+  imagenameFields = [],
   scope = 'forms',
   labelFontSize,
   boxWidth,
@@ -172,6 +177,10 @@ export default forwardRef(function InlineTransactionTable({
   const [errorMsg, setErrorMsg] = useState('');
   const [invalidCell, setInvalidCell] = useState(null);
   const [previewRow, setPreviewRow] = useState(null);
+  const [uploadRowIdx, setUploadRowIdx] = useState(null);
+  const [viewRowIdx, setViewRowIdx] = useState(null);
+  const [viewImages, setViewImages] = useState([]);
+  const { addToast } = useToast();
   const procCache = useRef({});
 
   const totalAmountSet = new Set(totalAmountFields);
@@ -719,6 +728,44 @@ export default forwardRef(function InlineTransactionTable({
     }
   }
 
+  function openUpload(idx) {
+    setUploadRowIdx(idx);
+  }
+
+  async function openView(idx) {
+    const row = rows[idx] || {};
+    const name = imagenameFields
+      .map((f) => row[f] ?? row[columnCaseMap[f.toLowerCase()]])
+      .filter((v) => v !== undefined && v !== null && v !== '')
+      .join('_');
+    if (!name || !table) {
+      addToast('Image name is missing', 'error');
+      return;
+    }
+    try {
+      const res = await fetch(`/api/transaction_images/${table}/${encodeURIComponent(name)}`, { credentials: 'include' });
+      const imgs = await res.json();
+      if (imgs.length === 0) {
+        addToast('No images found', 'info');
+      } else {
+        addToast(`Loaded ${imgs.length} images`, 'success');
+        setViewImages(imgs);
+        setViewRowIdx(idx);
+      }
+    } catch {
+      addToast('Failed to load images', 'error');
+    }
+  }
+
+  function closeUpload() {
+    setUploadRowIdx(null);
+  }
+
+  function closeView() {
+    setViewRowIdx(null);
+    setViewImages([]);
+  }
+
 
   const totals = React.useMemo(() => {
     const sums = {};
@@ -1022,7 +1069,7 @@ export default forwardRef(function InlineTransactionTable({
                   {renderCell(idx, f, cIdx)}
                 </td>
               ))}
-              <td className="border px-1 py-1 text-right">
+              <td className="border px-1 py-1 text-right space-x-1">
                 {collectRows ? (
                   <button onClick={() => removeRow(idx)}>Delete</button>
                 ) : r._saved ? (
@@ -1032,6 +1079,8 @@ export default forwardRef(function InlineTransactionTable({
                 ) : (
                   <button onClick={() => saveRow(idx)}>Save</button>
                 )}
+                <button type="button" onClick={() => openUpload(idx)}>Add Image</button>
+                <button type="button" onClick={() => openView(idx)}>View Images</button>
               </td>
             </tr>
           ))}
@@ -1091,6 +1140,19 @@ export default forwardRef(function InlineTransactionTable({
         columns={previewRow ? Object.keys(previewRow) : []}
         relations={relations}
         labels={labels}
+      />
+      <RowImageUploadModal
+        visible={uploadRowIdx !== null}
+        onClose={closeUpload}
+        table={table}
+        row={rows[uploadRowIdx] || {}}
+        imagenameFields={imagenameFields}
+        columnCaseMap={columnCaseMap}
+      />
+      <RowImageViewModal
+        visible={viewRowIdx !== null}
+        onClose={closeView}
+        images={viewImages}
       />
     </div>
   );
