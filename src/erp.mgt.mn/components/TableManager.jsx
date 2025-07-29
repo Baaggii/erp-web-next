@@ -62,6 +62,12 @@ function normalizeDateInput(value, format) {
   return v;
 }
 
+function sanitizeName(name) {
+  return String(name)
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/gi, '_');
+}
+
 const actionCellStyle = {
   padding: '0.5rem',
   border: '1px solid #d1d5db',
@@ -764,7 +770,8 @@ const TableManager = forwardRef(function TableManager({
       })
       .filter((v) => v !== undefined && v !== null && v !== '')
       .join('_');
-    const name = cur._imageName || currentName;
+    const safeName = sanitizeName(currentName);
+    const name = cur._imageName || safeName;
     if (!name) {
       addToast('Image name is missing', 'error');
       return;
@@ -838,9 +845,8 @@ const TableManager = forwardRef(function TableManager({
       if (!view || val === '') return;
       const params = new URLSearchParams({ perPage: 1, debug: 1 });
       const cols = viewColumns[view] || [];
-      Object.entries(viewSourceMap).forEach(([f, v]) => {
-        if (v !== view) return;
-        if (!cols.includes(f)) return;
+      const keys = cols.length > 0 ? cols : Object.keys(viewSourceMap).filter((k) => viewSourceMap[k] === view);
+      keys.forEach((f) => {
         let pv = changes[f];
         if (pv === undefined) pv = editing?.[f];
         if (pv === undefined || pv === '') return;

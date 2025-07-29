@@ -226,6 +226,12 @@ const RowFormModal = function RowFormModal({
     return value.replace(',', '.');
   }
 
+  function sanitizeName(name) {
+    return String(name)
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/gi, '_');
+  }
+
   function isValidDate(value, format) {
     if (!value) return true;
     const normalized = normalizeDateInput(value, format);
@@ -1127,7 +1133,8 @@ const RowFormModal = function RowFormModal({
       })
       .filter((v) => v !== undefined && v !== null && v !== '')
       .join('_');
-    const name = formVals._imageName || currentName;
+    const safeName = sanitizeName(currentName);
+    const name = formVals._imageName || safeName;
     if (!name || !table) {
       addToast('Image name is missing', 'error');
       return;

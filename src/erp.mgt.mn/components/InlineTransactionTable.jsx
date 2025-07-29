@@ -33,6 +33,12 @@ function normalizeDateInput(value, format) {
   return v;
 }
 
+function sanitizeName(name) {
+  return String(name)
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/gi, '_');
+}
+
 export default forwardRef(function InlineTransactionTable({
   fields = [],
   relations = {},
@@ -750,7 +756,8 @@ export default forwardRef(function InlineTransactionTable({
       })
       .filter((v) => v !== undefined && v !== null && v !== '')
       .join('_');
-    const name = row._imageName || currentName;
+    const safeName = sanitizeName(currentName);
+    const name = row._imageName || safeName;
     if (!name || !table) {
       addToast('Image name is missing', 'error');
       return;

@@ -126,7 +126,11 @@ export default function AsyncSearchSelect({
   }, [table, value, options, idField, searchColumn, labelFields]);
 
   useEffect(() => {
-    if (show && options.length > 0) setHighlight((h) => (h < 0 ? 0 : Math.min(h, options.length - 1)));
+    if (!show) return;
+    setHighlight((h) => {
+      if (h >= options.length) return options.length - 1;
+      return h;
+    });
   }, [options, show]);
 
   useEffect(() => {
