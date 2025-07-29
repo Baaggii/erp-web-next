@@ -14,6 +14,7 @@ import RowFormModal from './RowFormModal.jsx';
 import CascadeDeleteModal from './CascadeDeleteModal.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
 import RowImageUploadModal from './RowImageUploadModal.jsx';
+import RowImageViewModal from './RowImageViewModal.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
@@ -137,6 +138,8 @@ const TableManager = forwardRef(function TableManager({
   const [detailRow, setDetailRow] = useState(null);
   const [detailRefs, setDetailRefs] = useState([]);
   const [uploadRow, setUploadRow] = useState(null);
+  const [viewRow, setViewRow] = useState(null);
+  const [viewImages, setViewImages] = useState([]);
   const [viewDisplayMap, setViewDisplayMap] = useState({});
   const [viewColumns, setViewColumns] = useState({});
   const [editLabels, setEditLabels] = useState(false);
@@ -739,6 +742,27 @@ const TableManager = forwardRef(function TableManager({
 
   function closeUpload() {
     setUploadRow(null);
+  }
+
+  async function openView(row) {
+    const name = (formConfig?.imagenameField || [])
+      .map((f) => row[f])
+      .filter(Boolean)
+      .join('_');
+    if (!name) return;
+    try {
+      const res = await fetch(`/api/transaction_images/${table}/${encodeURIComponent(name)}`, { credentials: 'include' });
+      const imgs = await res.json();
+      setViewImages(imgs);
+      setViewRow(row);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  function closeView() {
+    setViewRow(null);
+    setViewImages([]);
   }
 
   function toggleRow(id) {
@@ -1714,6 +1738,12 @@ const TableManager = forwardRef(function TableManager({
                         📷 Add Image
                       </button>
                       <button
+                        onClick={() => openView(r)}
+                        style={actionBtnStyle}
+                      >
+                        🖼 View Images
+                      </button>
+                      <button
                         onClick={() => handleDelete(r)}
                         disabled={rid === undefined}
                         style={deleteBtnStyle}
@@ -1896,6 +1926,8 @@ const TableManager = forwardRef(function TableManager({
         viewColumns={viewColumns}
         onRowsChange={setGridRows}
         scope="forms"
+        table={table}
+        imagenameField={formConfig?.imagenameField || []}
       />
       <CascadeDeleteModal
         visible={showCascade}
@@ -1915,7 +1947,18 @@ const TableManager = forwardRef(function TableManager({
         references={detailRefs}
         labels={labels}
       />
-      <RowImageUploadModal visible={!!uploadRow} onClose={closeUpload} />
+      <RowImageUploadModal
+        visible={!!uploadRow}
+        onClose={closeUpload}
+        table={table}
+        row={uploadRow || {}}
+        imagenameFields={formConfig?.imagenameField || []}
+      />
+      <RowImageViewModal
+        visible={!!viewRow}
+        onClose={closeView}
+        images={viewImages}
+      />
       {user?.role === 'admin' && (
         <button onClick={() => {
           const map = {};

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-export default function InventoryImageUpload({ onResult, multiple = false }) {
+export default function InventoryImageUpload({ onResult, multiple = false, uploadUrl = '/api/ai_inventory/identify' }) {
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState([]);
@@ -13,7 +13,7 @@ export default function InventoryImageUpload({ onResult, multiple = false }) {
       const form = new FormData();
       form.append('image', f);
       try {
-        const res = await fetch('/api/ai_inventory/identify', {
+        const res = await fetch(uploadUrl, {
           method: 'POST',
           body: form,
           credentials: 'include',
