@@ -1935,7 +1935,7 @@ const TableManager = forwardRef(function TableManager({
         scope="forms"
         table={table}
         imagenameField={formConfig?.imagenameField || []}
-        fillSession={!isAdding}
+        fillSession={isAdding}
       />
       <CascadeDeleteModal
         visible={showCascade}
