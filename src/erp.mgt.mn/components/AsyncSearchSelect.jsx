@@ -120,7 +120,7 @@ export default function AsyncSearchSelect({
       setHighlight((h) => Math.max(h - 1, 0));
     } else if (e.key === 'Enter') {
       let idx = highlight;
-      if (idx < 0 && options.length > 0) idx = 0;
+      if (idx < 0) return;
       if (idx >= 0 && idx < options.length) {
         e.preventDefault();
         const opt = options[idx];
@@ -159,6 +159,7 @@ export default function AsyncSearchSelect({
           onChange(e.target.value);
           setShow(true);
           setHighlight(-1);
+          chosenRef.current = null;
         }}
         onFocus={(e) => {
           setShow(true);
