@@ -2,12 +2,22 @@ import React, { useState } from 'react';
 import Modal from './Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 
-export default function RowImageUploadModal({ visible, onClose, table, row = {}, imagenameFields = [] }) {
+export default function RowImageUploadModal({
+  visible,
+  onClose,
+  table,
+  row = {},
+  imagenameFields = [],
+  columnCaseMap = {},
+}) {
   const { addToast } = useToast();
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   if (!visible) return null;
-  const baseName = imagenameFields.map((f) => row[f]).filter(Boolean).join('_');
+  const baseName = imagenameFields
+    .map((f) => row[f] ?? row[columnCaseMap[f.toLowerCase()]])
+    .filter((v) => v !== undefined && v !== null && v !== '')
+    .join('_');
   const uploadUrl = baseName && table ? `/api/transaction_images/${table}/${encodeURIComponent(baseName)}` : '';
 
   async function handleUpload() {

@@ -746,8 +746,8 @@ const TableManager = forwardRef(function TableManager({
 
   async function openView(row) {
     const name = (formConfig?.imagenameField || [])
-      .map((f) => row[f])
-      .filter(Boolean)
+      .map((f) => row[f] ?? row[columnCaseMap[f.toLowerCase()]])
+      .filter((v) => v !== undefined && v !== null && v !== '')
       .join('_');
     if (!name) {
       addToast('Image name is missing', 'error');
@@ -1741,12 +1741,14 @@ const TableManager = forwardRef(function TableManager({
                         🖉 Edit
                       </button>
                       <button
+                        type="button"
                         onClick={() => openUpload(r)}
                         style={actionBtnStyle}
                       >
                         📷 Add Image
                       </button>
                       <button
+                        type="button"
                         onClick={() => openView(r)}
                         style={actionBtnStyle}
                       >
@@ -1962,6 +1964,7 @@ const TableManager = forwardRef(function TableManager({
         table={table}
         row={uploadRow || {}}
         imagenameFields={formConfig?.imagenameField || []}
+        columnCaseMap={columnCaseMap}
       />
       <RowImageViewModal
         visible={!!viewRow}

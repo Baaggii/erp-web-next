@@ -1139,8 +1139,8 @@ const RowFormModal = function RowFormModal({
 
   async function openViewModal() {
     const name = imagenameField
-      .map((f) => formVals[f])
-      .filter(Boolean)
+      .map((f) => formVals[f] ?? formVals[columnCaseMap[f.toLowerCase()]])
+      .filter((v) => v !== undefined && v !== null && v !== '')
       .join('_');
     if (!name || !table) {
       addToast('Image name is missing', 'error');
@@ -1254,6 +1254,7 @@ const RowFormModal = function RowFormModal({
         table={table}
         row={formVals}
         imagenameFields={imagenameField}
+        columnCaseMap={columnCaseMap}
       />
       <RowImageViewModal
         visible={showView}

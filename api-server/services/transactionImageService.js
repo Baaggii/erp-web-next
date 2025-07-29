@@ -18,15 +18,22 @@ function ensureDir(dir) {
   }
 }
 
+function sanitizeName(name) {
+  return String(name)
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/gi, '_');
+}
+
 export async function saveImages(table, name, files) {
   const { baseDir, urlBase } = await getDirs();
   ensureDir(baseDir);
   const dir = path.join(baseDir, table);
   ensureDir(dir);
   const saved = [];
+  const prefix = sanitizeName(name);
   for (const file of files) {
     const ext = path.extname(file.originalname) || `.${mime.extension(file.mimetype) || 'bin'}`;
-    const fileName = `${name}_${Date.now()}${ext}`;
+    const fileName = `${prefix}_${Date.now()}${ext}`;
     const dest = path.join(dir, fileName);
     try {
       if (file.size > 1500000) {
@@ -58,10 +65,11 @@ export async function listImages(table, name) {
   ensureDir(baseDir);
   const dir = path.join(baseDir, table);
   ensureDir(dir);
+  const prefix = sanitizeName(name);
   try {
     const files = await fs.readdir(dir);
     return files
-      .filter((f) => f.startsWith(name + '_'))
+      .filter((f) => f.startsWith(prefix + '_'))
       .map((f) => `${urlBase}/${table}/${f}`);
   } catch {
     return [];

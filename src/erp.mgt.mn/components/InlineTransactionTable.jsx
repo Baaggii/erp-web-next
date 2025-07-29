@@ -734,7 +734,10 @@ export default forwardRef(function InlineTransactionTable({
 
   async function openView(idx) {
     const row = rows[idx] || {};
-    const name = imagenameFields.map((f) => row[f]).filter(Boolean).join('_');
+    const name = imagenameFields
+      .map((f) => row[f] ?? row[columnCaseMap[f.toLowerCase()]])
+      .filter((v) => v !== undefined && v !== null && v !== '')
+      .join('_');
     if (!name || !table) {
       addToast('Image name is missing', 'error');
       return;
@@ -1076,8 +1079,8 @@ export default forwardRef(function InlineTransactionTable({
                 ) : (
                   <button onClick={() => saveRow(idx)}>Save</button>
                 )}
-                <button onClick={() => openUpload(idx)}>Add Image</button>
-                <button onClick={() => openView(idx)}>View Images</button>
+                <button type="button" onClick={() => openUpload(idx)}>Add Image</button>
+                <button type="button" onClick={() => openView(idx)}>View Images</button>
               </td>
             </tr>
           ))}
@@ -1144,6 +1147,7 @@ export default forwardRef(function InlineTransactionTable({
         table={table}
         row={rows[uploadRowIdx] || {}}
         imagenameFields={imagenameFields}
+        columnCaseMap={columnCaseMap}
       />
       <RowImageViewModal
         visible={viewRowIdx !== null}
