@@ -735,7 +735,20 @@ const TableManager = forwardRef(function TableManager({
   }
 
   function openUpload(row, idx) {
-    setUploadRow({ row, idx });
+    const cur = rows[idx] || row;
+    const { name, missing } = buildImageName(
+      cur,
+      formConfig?.imagenameField || [],
+      columnCaseMap,
+    );
+    if (!name) {
+      const msg = missing.length
+        ? `Please save the row first. Missing fields: ${missing.join(', ')}`
+        : 'Please save the row before uploading images';
+      addToast(msg, 'warning');
+      return;
+    }
+    setUploadRow({ row: cur, idx });
   }
 
   function closeUpload() {
@@ -747,19 +760,28 @@ const TableManager = forwardRef(function TableManager({
     const { idx } = uploadRow;
     setRows((r) => {
       const next = [...r];
-      if (next[idx]) next[idx]._imageName = name;
+      if (next[idx]) {
+        next[idx]._imageName = name;
+        if (next[idx]._saved !== true && next[idx].id) {
+          next[idx]._saved = true;
+        }
+      }
       return next;
     });
   }
 
   async function openView(row, idx) {
     const cur = rows[idx] || row;
-    const { name, missing } = buildImageName(cur, formConfig?.imagenameField || [], columnCaseMap);
+    const { name, missing } = buildImageName(
+      cur,
+      formConfig?.imagenameField || [],
+      columnCaseMap,
+    );
     if (!name) {
       const msg = missing.length
-        ? `Image name is missing fields: ${missing.join(', ')}`
-        : 'Image name is missing';
-      addToast(msg, 'error');
+        ? `Please save the row first. Missing fields: ${missing.join(', ')}`
+        : 'Please save the row before viewing images';
+      addToast(msg, 'warning');
       return;
     }
     try {
@@ -1739,6 +1761,8 @@ const TableManager = forwardRef(function TableManager({
                           openEdit(r);
                         }}
                         style={actionBtnStyle}
+                        title={r._saved ? 'Edit' : 'Save row first'}
+                        disabled={r._saved !== true}
                       >
                         🖉 Edit
                       </button>
@@ -1749,6 +1773,7 @@ const TableManager = forwardRef(function TableManager({
                           openUpload(r, idx);
                         }}
                         style={actionBtnStyle}
+                        title={r._saved ? 'Add image' : 'Save row first'}
                       >
                         📷 Add Image
                       </button>
@@ -1759,6 +1784,7 @@ const TableManager = forwardRef(function TableManager({
                           openView(r, idx);
                         }}
                         style={actionBtnStyle}
+                        title={r._saved ? 'View images' : 'Save row first'}
                       >
                         🖼 View Images
                       </button>
