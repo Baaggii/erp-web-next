@@ -1137,11 +1137,16 @@ const RowFormModal = function RowFormModal({
     setShowUpload(true);
   }
 
+  function handleUploadComplete(name) {
+    setFormVals((v) => ({ ...v, _imageName: name }));
+  }
+
   async function openViewModal() {
-    const name = imagenameField
+    const currentName = imagenameField
       .map((f) => formVals[f] ?? formVals[columnCaseMap[f.toLowerCase()]])
       .filter((v) => v !== undefined && v !== null && v !== '')
       .join('_');
+    const name = formVals._imageName || currentName;
     if (!name || !table) {
       addToast('Image name is missing', 'error');
       return;
@@ -1255,6 +1260,7 @@ const RowFormModal = function RowFormModal({
         row={formVals}
         imagenameFields={imagenameField}
         columnCaseMap={columnCaseMap}
+        onUploaded={handleUploadComplete}
       />
       <RowImageViewModal
         visible={showView}

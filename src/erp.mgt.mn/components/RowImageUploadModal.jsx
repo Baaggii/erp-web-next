@@ -9,6 +9,7 @@ export default function RowImageUploadModal({
   row = {},
   imagenameFields = [],
   columnCaseMap = {},
+  onUploaded = () => {},
 }) {
   const { addToast } = useToast();
   const [files, setFiles] = useState([]);
@@ -34,6 +35,7 @@ export default function RowImageUploadModal({
       if (res.ok) {
         addToast('Images uploaded successfully', 'success');
         setFiles([]);
+        onUploaded(baseName);
       } else {
         addToast('Failed to upload images', 'error');
       }

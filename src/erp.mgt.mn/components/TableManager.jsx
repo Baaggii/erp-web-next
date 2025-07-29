@@ -736,19 +736,31 @@ const TableManager = forwardRef(function TableManager({
     setShowDetail(true);
   }
 
-  function openUpload(row) {
-    setUploadRow(row);
+  function openUpload(row, idx) {
+    setUploadRow({ row, idx });
   }
 
   function closeUpload() {
     setUploadRow(null);
   }
 
-  async function openView(row) {
-    const name = (formConfig?.imagenameField || [])
-      .map((f) => row[f] ?? row[columnCaseMap[f.toLowerCase()]])
+  function handleUploadComplete(name) {
+    if (!uploadRow) return;
+    const { idx } = uploadRow;
+    setRows((r) => {
+      const next = [...r];
+      if (next[idx]) next[idx]._imageName = name;
+      return next;
+    });
+  }
+
+  async function openView(row, idx) {
+    const cur = rows[idx] || row;
+    const currentName = (formConfig?.imagenameField || [])
+      .map((f) => cur[f] ?? cur[columnCaseMap[f.toLowerCase()]])
       .filter((v) => v !== undefined && v !== null && v !== '')
       .join('_');
+    const name = cur._imageName || currentName;
     if (!name) {
       addToast('Image name is missing', 'error');
       return;
@@ -761,7 +773,7 @@ const TableManager = forwardRef(function TableManager({
       } else {
         addToast(`Loaded ${imgs.length} images`, 'success');
         setViewImages(imgs);
-        setViewRow(row);
+        setViewRow(cur);
       }
     } catch (err) {
       console.error(err);
@@ -1742,14 +1754,14 @@ const TableManager = forwardRef(function TableManager({
                       </button>
                       <button
                         type="button"
-                        onClick={() => openUpload(r)}
+                        onClick={() => openUpload(r, idx)}
                         style={actionBtnStyle}
                       >
                         📷 Add Image
                       </button>
                       <button
                         type="button"
-                        onClick={() => openView(r)}
+                        onClick={() => openView(r, idx)}
                         style={actionBtnStyle}
                       >
                         🖼 View Images
@@ -1962,9 +1974,10 @@ const TableManager = forwardRef(function TableManager({
         visible={!!uploadRow}
         onClose={closeUpload}
         table={table}
-        row={uploadRow || {}}
+        row={uploadRow?.row || {}}
         imagenameFields={formConfig?.imagenameField || []}
         columnCaseMap={columnCaseMap}
+        onUploaded={handleUploadComplete}
       />
       <RowImageViewModal
         visible={!!viewRow}

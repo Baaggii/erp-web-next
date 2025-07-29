@@ -113,6 +113,20 @@ export default forwardRef(function InlineTransactionTable({
     });
     return row;
   }
+
+  function mapExistingRow(obj) {
+    const row = fillSessionDefaults(obj);
+    if (row && typeof row === 'object') {
+      row._saved = obj._saved ?? true;
+    }
+    return row;
+  }
+
+  function newRow() {
+    const row = fillSessionDefaults(defaultValues);
+    row._saved = false;
+    return row;
+  }
   labelFontSize = labelFontSize ?? cfg.labelFontSize ?? 14;
   boxWidth = boxWidth ?? cfg.boxWidth ?? 60;
   boxHeight = boxHeight ?? cfg.boxHeight ?? 30;
@@ -131,9 +145,9 @@ export default forwardRef(function InlineTransactionTable({
   }, []);
   const [rows, setRows] = useState(() => {
     if (Array.isArray(initRows) && initRows.length > 0) {
-      return initRows.map((r) => fillSessionDefaults(r));
+      return initRows.map((r) => mapExistingRow(r));
     }
-    return Array.from({ length: minRows }, () => fillSessionDefaults(defaultValues));
+    return Array.from({ length: minRows }, () => newRow());
   });
 
   const placeholders = React.useMemo(() => {
@@ -157,11 +171,11 @@ export default forwardRef(function InlineTransactionTable({
         ? base
         : [
             ...base,
-            ...Array.from({ length: minRows - base.length }, () => fillSessionDefaults(defaultValues)),
+            ...Array.from({ length: minRows - base.length }, () => ({ }))
           ];
-    const normalized = next.map((row) => {
-      if (!row || typeof row !== 'object') return row;
-      const updated = fillSessionDefaults(row);
+    const normalized = next.map((row, i) => {
+      if (!row || typeof row !== 'object') return newRow();
+      const updated = mapExistingRow(row);
       Object.entries(updated).forEach(([k, v]) => {
         if (placeholders[k]) {
           updated[k] = normalizeDateInput(String(v ?? ''), placeholders[k]);
@@ -274,14 +288,14 @@ export default forwardRef(function InlineTransactionTable({
     getRows: () => rows,
     clearRows: () =>
       setRows(() => {
-        const next = Array.from({ length: minRows }, () => fillSessionDefaults(defaultValues));
+        const next = Array.from({ length: minRows }, () => newRow());
         onRowsChange(next);
         return next;
       }),
     replaceRows: (newRows) =>
       setRows(() => {
         const base = Array.isArray(newRows) ? newRows : [];
-        const next = base.map((r) => fillSessionDefaults(r));
+        const next = base.map((r) => mapExistingRow(r));
         onRowsChange(next);
         return next;
       }),
@@ -556,7 +570,7 @@ export default forwardRef(function InlineTransactionTable({
       }
     }
     setRows((r) => {
-      const row = fillSessionDefaults(defaultValues);
+      const row = newRow();
       const next = [...r, row];
       focusRow.current = next.length - 1;
       onRowsChange(next);
@@ -705,6 +719,17 @@ export default forwardRef(function InlineTransactionTable({
         return;
       }
     }
+
+    if (imagenameFields.length > 0) {
+      const missingName = imagenameFields.some((f) => {
+        const val = row[f] ?? row[columnCaseMap[f.toLowerCase()]];
+        return val === '' || val === null || val === undefined;
+      });
+      if (missingName) {
+        addToast('Fill image naming fields before saving', 'error');
+        return;
+      }
+    }
     const cleaned = {};
     Object.entries(row).forEach(([k, v]) => {
       if (k === '_saved') return;
@@ -732,12 +757,22 @@ export default forwardRef(function InlineTransactionTable({
     setUploadRowIdx(idx);
   }
 
+  function handleUploaded(name) {
+    if (uploadRowIdx === null) return;
+    setRows((r) => {
+      const next = [...r];
+      if (next[uploadRowIdx]) next[uploadRowIdx]._imageName = name;
+      return next;
+    });
+  }
+
   async function openView(idx) {
     const row = rows[idx] || {};
-    const name = imagenameFields
+    const currentName = imagenameFields
       .map((f) => row[f] ?? row[columnCaseMap[f.toLowerCase()]])
       .filter((v) => v !== undefined && v !== null && v !== '')
       .join('_');
+    const name = row._imageName || currentName;
     if (!name || !table) {
       addToast('Image name is missing', 'error');
       return;
@@ -1148,6 +1183,7 @@ export default forwardRef(function InlineTransactionTable({
         row={rows[uploadRowIdx] || {}}
         imagenameFields={imagenameFields}
         columnCaseMap={columnCaseMap}
+        onUploaded={handleUploaded}
       />
       <RowImageViewModal
         visible={viewRowIdx !== null}
