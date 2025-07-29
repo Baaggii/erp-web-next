@@ -1119,7 +1119,11 @@ const RowFormModal = function RowFormModal({
 
   async function openViewModal() {
     const currentName = imagenameField
-      .map((f) => formVals[f] ?? formVals[columnCaseMap[f.toLowerCase()]])
+      .map((f) => {
+        let val = formVals[f] ?? formVals[columnCaseMap[f.toLowerCase()]];
+        if (val && typeof val === 'object') val = val.value ?? val.label;
+        return val;
+      })
       .filter((v) => v !== undefined && v !== null && v !== '')
       .join('_');
     const name = formVals._imageName || currentName;

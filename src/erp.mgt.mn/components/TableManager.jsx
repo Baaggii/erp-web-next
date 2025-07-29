@@ -686,7 +686,7 @@ const TableManager = forwardRef(function TableManager({
     }
     setRowDefaults(defaults);
     setEditing(vals);
-    setGridRows([vals]);
+    setGridRows([{ ...vals, _saved: false }]);
     setIsAdding(true);
     setShowForm(true);
   }
@@ -757,7 +757,11 @@ const TableManager = forwardRef(function TableManager({
   async function openView(row, idx) {
     const cur = rows[idx] || row;
     const currentName = (formConfig?.imagenameField || [])
-      .map((f) => cur[f] ?? cur[columnCaseMap[f.toLowerCase()]])
+      .map((f) => {
+        let val = cur[f] ?? cur[columnCaseMap[f.toLowerCase()]];
+        if (val && typeof val === 'object') val = val.value ?? val.label;
+        return val;
+      })
       .filter((v) => v !== undefined && v !== null && v !== '')
       .join('_');
     const name = cur._imageName || currentName;
@@ -1923,7 +1927,7 @@ const TableManager = forwardRef(function TableManager({
         onSubmit={handleSubmit}
         onChange={handleFieldChange}
         columns={formColumns}
-        row={editing}
+        row={isAdding ? null : editing}
         rows={gridRows}
         relations={relationOpts}
         relationConfigs={relationConfigs}

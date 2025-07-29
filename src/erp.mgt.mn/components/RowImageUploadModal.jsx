@@ -16,7 +16,11 @@ export default function RowImageUploadModal({
   const [loading, setLoading] = useState(false);
   if (!visible) return null;
   const baseName = imagenameFields
-    .map((f) => row[f] ?? row[columnCaseMap[f.toLowerCase()]])
+    .map((f) => {
+      let val = row[f] ?? row[columnCaseMap[f.toLowerCase()]];
+      if (val && typeof val === 'object') val = val.value ?? val.label;
+      return val;
+    })
     .filter((v) => v !== undefined && v !== null && v !== '')
     .join('_');
   const uploadUrl = baseName && table ? `/api/transaction_images/${table}/${encodeURIComponent(baseName)}` : '';

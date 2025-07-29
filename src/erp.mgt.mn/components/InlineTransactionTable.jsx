@@ -743,7 +743,11 @@ export default forwardRef(function InlineTransactionTable({
   async function openView(idx) {
     const row = rows[idx] || {};
     const currentName = imagenameFields
-      .map((f) => row[f] ?? row[columnCaseMap[f.toLowerCase()]])
+      .map((f) => {
+        let val = row[f] ?? row[columnCaseMap[f.toLowerCase()]];
+        if (val && typeof val === 'object') val = val.value ?? val.label;
+        return val;
+      })
       .filter((v) => v !== undefined && v !== null && v !== '')
       .join('_');
     const name = row._imageName || currentName;
