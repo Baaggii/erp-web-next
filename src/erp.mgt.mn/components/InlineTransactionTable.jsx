@@ -1145,6 +1145,20 @@ export default forwardRef(function InlineTransactionTable({
         onClose={closeView}
         images={viewImages}
       />
+      <RowImageUploadModal
+        visible={uploadRowIdx !== null}
+        onClose={closeUpload}
+        table={table}
+        row={rows[uploadRowIdx] || {}}
+        imagenameFields={imagenameFields}
+        columnCaseMap={columnCaseMap}
+        onUploaded={handleUploaded}
+      />
+      <RowImageViewModal
+        visible={viewRowIdx !== null}
+        onClose={closeView}
+        images={viewImages}
+      />
     </div>
   );
 });

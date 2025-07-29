@@ -1185,6 +1185,20 @@ const RowFormModal = function RowFormModal({
           </button>
           <button
             type="button"
+            onClick={openUploadModal}
+            className="px-3 py-1 bg-gray-200 rounded"
+          >
+            Add Image
+          </button>
+          <button
+            type="button"
+            onClick={openViewModal}
+            className="px-3 py-1 bg-gray-200 rounded"
+          >
+            View Images
+          </button>
+          <button
+            type="button"
             onClick={onCancel}
             className="px-3 py-1 bg-gray-200 rounded"
           >
@@ -1199,6 +1213,20 @@ const RowFormModal = function RowFormModal({
         </div>
         </form>
       </Modal>
+      <RowImageUploadModal
+        visible={showUpload}
+        onClose={() => setShowUpload(false)}
+        table={table}
+        row={formVals}
+        imagenameFields={imagenameField}
+        columnCaseMap={columnCaseMap}
+        onUploaded={handleUploadComplete}
+      />
+      <RowImageViewModal
+        visible={showView}
+        onClose={() => setShowView(false)}
+        images={viewImages}
+      />
       <RowImageUploadModal
         visible={showUpload}
         onClose={() => setShowUpload(false)}
