@@ -13,6 +13,8 @@ import { useToast } from '../context/ToastContext.jsx';
 import RowFormModal from './RowFormModal.jsx';
 import CascadeDeleteModal from './CascadeDeleteModal.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
+import RowImageUploadModal from './RowImageUploadModal.jsx';
+import RowImageViewModal from './RowImageViewModal.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
@@ -135,6 +137,9 @@ const TableManager = forwardRef(function TableManager({
   const [showDetail, setShowDetail] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
   const [detailRefs, setDetailRefs] = useState([]);
+  const [uploadRow, setUploadRow] = useState(null);
+  const [viewRow, setViewRow] = useState(null);
+  const [viewImages, setViewImages] = useState([]);
   const [viewDisplayMap, setViewDisplayMap] = useState({});
   const [viewColumns, setViewColumns] = useState({});
   const [editLabels, setEditLabels] = useState(false);
@@ -729,6 +734,56 @@ const TableManager = forwardRef(function TableManager({
       setDetailRefs([]);
     }
     setShowDetail(true);
+  }
+
+  function openUpload(row, idx) {
+    setUploadRow({ row, idx });
+  }
+
+  function closeUpload() {
+    setUploadRow(null);
+  }
+
+  function handleUploadComplete(name) {
+    if (!uploadRow) return;
+    const { idx } = uploadRow;
+    setRows((r) => {
+      const next = [...r];
+      if (next[idx]) next[idx]._imageName = name;
+      return next;
+    });
+  }
+
+  async function openView(row, idx) {
+    const cur = rows[idx] || row;
+    const currentName = (formConfig?.imagenameField || [])
+      .map((f) => cur[f] ?? cur[columnCaseMap[f.toLowerCase()]])
+      .filter((v) => v !== undefined && v !== null && v !== '')
+      .join('_');
+    const name = cur._imageName || currentName;
+    if (!name) {
+      addToast('Image name is missing', 'error');
+      return;
+    }
+    try {
+      const res = await fetch(`/api/transaction_images/${table}/${encodeURIComponent(name)}`, { credentials: 'include' });
+      const imgs = await res.json();
+      if (imgs.length === 0) {
+        addToast('No images found', 'info');
+      } else {
+        addToast(`Loaded ${imgs.length} images`, 'success');
+        setViewImages(imgs);
+        setViewRow(cur);
+      }
+    } catch (err) {
+      console.error(err);
+      addToast('Failed to load images', 'error');
+    }
+  }
+
+  function closeView() {
+    setViewRow(null);
+    setViewImages([]);
   }
 
   function toggleRow(id) {
@@ -1698,6 +1753,20 @@ const TableManager = forwardRef(function TableManager({
                         🖉 Edit
                       </button>
                       <button
+                        type="button"
+                        onClick={() => openUpload(r, idx)}
+                        style={actionBtnStyle}
+                      >
+                        📷 Add Image
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openView(r, idx)}
+                        style={actionBtnStyle}
+                      >
+                        🖼 View Images
+                      </button>
+                      <button
                         onClick={() => handleDelete(r)}
                         disabled={rid === undefined}
                         style={deleteBtnStyle}
@@ -1880,6 +1949,8 @@ const TableManager = forwardRef(function TableManager({
         viewColumns={viewColumns}
         onRowsChange={setGridRows}
         scope="forms"
+        table={table}
+        imagenameField={formConfig?.imagenameField || []}
       />
       <CascadeDeleteModal
         visible={showCascade}
@@ -1898,6 +1969,20 @@ const TableManager = forwardRef(function TableManager({
         relations={relationOpts}
         references={detailRefs}
         labels={labels}
+      />
+      <RowImageUploadModal
+        visible={!!uploadRow}
+        onClose={closeUpload}
+        table={table}
+        row={uploadRow?.row || {}}
+        imagenameFields={formConfig?.imagenameField || []}
+        columnCaseMap={columnCaseMap}
+        onUploaded={handleUploadComplete}
+      />
+      <RowImageViewModal
+        visible={!!viewRow}
+        onClose={closeView}
+        images={viewImages}
       />
       {user?.role === 'admin' && (
         <button onClick={() => {

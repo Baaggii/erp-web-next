@@ -3,10 +3,13 @@ import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import Modal from './Modal.jsx';
 import InlineTransactionTable from './InlineTransactionTable.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
+import RowImageUploadModal from './RowImageUploadModal.jsx';
+import RowImageViewModal from './RowImageViewModal.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import { useToast } from '../context/ToastContext.jsx';
 
 const RowFormModal = function RowFormModal({
   visible,
@@ -51,6 +54,8 @@ const RowFormModal = function RowFormModal({
   viewDisplays = {},
   viewColumns = {},
   procTriggers = {},
+  table = '',
+  imagenameField = [],
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -89,6 +94,7 @@ const RowFormModal = function RowFormModal({
     [disabledFields],
   );
   const { user, company } = useContext(AuthContext);
+  const { addToast } = useToast();
   const [formVals, setFormVals] = useState(() => {
     const init = {};
     const now = new Date();
@@ -145,6 +151,9 @@ const RowFormModal = function RowFormModal({
   const wrapRef = useRef(null);
   const [zoom, setZoom] = useState(1);
   const [previewRow, setPreviewRow] = useState(null);
+  const [showUpload, setShowUpload] = useState(false);
+  const [showView, setShowView] = useState(false);
+  const [viewImages, setViewImages] = useState([]);
 
   useEffect(() => {
     if (useGrid) {
@@ -961,6 +970,8 @@ const RowFormModal = function RowFormModal({
             boxWidth={boxWidth}
             boxHeight={boxHeight}
             boxMaxWidth={boxMaxWidth}
+            table={table}
+            imagenameFields={imagenameField}
             scope={scope}
           />
         </div>
@@ -1122,6 +1133,40 @@ const RowFormModal = function RowFormModal({
     w.print();
   }
 
+  function openUploadModal() {
+    setShowUpload(true);
+  }
+
+  function handleUploadComplete(name) {
+    setFormVals((v) => ({ ...v, _imageName: name }));
+  }
+
+  async function openViewModal() {
+    const currentName = imagenameField
+      .map((f) => formVals[f] ?? formVals[columnCaseMap[f.toLowerCase()]])
+      .filter((v) => v !== undefined && v !== null && v !== '')
+      .join('_');
+    const name = formVals._imageName || currentName;
+    if (!name || !table) {
+      addToast('Image name is missing', 'error');
+      return;
+    }
+    try {
+      const res = await fetch(`/api/transaction_images/${table}/${encodeURIComponent(name)}`, { credentials: 'include' });
+      const imgs = await res.json();
+      if (imgs.length === 0) {
+        addToast('No images found', 'info');
+      } else {
+        addToast(`Loaded ${imgs.length} images`, 'success');
+        setViewImages(imgs);
+        setShowView(true);
+      }
+    } catch (err) {
+      console.error(err);
+      addToast('Failed to load images', 'error');
+    }
+  }
+
   if (inline) {
     return (
       <div
@@ -1172,6 +1217,20 @@ const RowFormModal = function RowFormModal({
           </button>
           <button
             type="button"
+            onClick={openUploadModal}
+            className="px-3 py-1 bg-gray-200 rounded"
+          >
+            Add Image
+          </button>
+          <button
+            type="button"
+            onClick={openViewModal}
+            className="px-3 py-1 bg-gray-200 rounded"
+          >
+            View Images
+          </button>
+          <button
+            type="button"
             onClick={onCancel}
             className="px-3 py-1 bg-gray-200 rounded"
           >
@@ -1193,6 +1252,20 @@ const RowFormModal = function RowFormModal({
         columns={previewRow ? Object.keys(previewRow) : []}
         relations={relations}
         labels={labels}
+      />
+      <RowImageUploadModal
+        visible={showUpload}
+        onClose={() => setShowUpload(false)}
+        table={table}
+        row={formVals}
+        imagenameFields={imagenameField}
+        columnCaseMap={columnCaseMap}
+        onUploaded={handleUploadComplete}
+      />
+      <RowImageViewModal
+        visible={showView}
+        onClose={() => setShowView(false)}
+        images={viewImages}
       />
     </>
   );
