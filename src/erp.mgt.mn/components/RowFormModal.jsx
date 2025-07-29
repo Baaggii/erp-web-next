@@ -121,8 +121,10 @@ const RowFormModal = function RowFormModal({
           val = company.branch_id;
         else if (departmentIdSet.has(c) && company?.department_id !== undefined)
           val = company.department_id;
-        else if (companyIdSet.has(c) && company?.company_id !== undefined)
-          val = company.company_id;
+        else if (companyIdSet.has(c) && company?.company_id !== undefined) {
+          const id = Number(company.company_id);
+          if (!Number.isNaN(id)) val = id;
+        }
       }
       init[c] = val;
     });
@@ -265,8 +267,10 @@ const RowFormModal = function RowFormModal({
           v = company.branch_id;
         else if (departmentIdSet.has(c) && company?.department_id !== undefined)
           v = company.department_id;
-        else if (companyIdSet.has(c) && company?.company_id !== undefined)
-          v = company.company_id;
+        else if (companyIdSet.has(c) && company?.company_id !== undefined) {
+          const id = Number(company.company_id);
+          if (!Number.isNaN(id)) v = id;
+        }
       }
       vals[c] = v;
     });
@@ -1115,6 +1119,15 @@ const RowFormModal = function RowFormModal({
   }
 
   function openUploadModal() {
+    const { name, missing } = buildImageName(formVals, imagenameField, columnCaseMap);
+    const finalName = formVals._imageName || name;
+    if (!finalName) {
+      const msg = missing.length
+        ? `Image name is missing fields: ${missing.join(', ')}`
+        : 'Image name is missing';
+      addToast(msg, 'error');
+      return;
+    }
     setShowUpload(true);
   }
 

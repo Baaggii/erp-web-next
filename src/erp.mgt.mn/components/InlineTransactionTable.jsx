@@ -112,9 +112,12 @@ export default forwardRef(function InlineTransactionTable({
         });
       }
       if (company?.company_id !== undefined) {
-        companyIdSet.forEach((f) => {
-          if (row[f] === undefined || row[f] === '') row[f] = company.company_id;
-        });
+        const id = Number(company.company_id);
+        if (!Number.isNaN(id)) {
+          companyIdSet.forEach((f) => {
+            if (row[f] === undefined || row[f] === '') row[f] = id;
+          });
+        }
       }
     }
     const now = formatTimestamp(new Date()).slice(0, 10);
@@ -1095,8 +1098,24 @@ export default forwardRef(function InlineTransactionTable({
                 ) : (
                   <button onClick={() => saveRow(idx)}>Save</button>
                 )}
-                <button type="button" onClick={() => openUpload(idx)}>Add Image</button>
-                <button type="button" onClick={() => openView(idx)}>View Images</button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openUpload(idx);
+                  }}
+                >
+                  Add Image
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openView(idx);
+                  }}
+                >
+                  View Images
+                </button>
               </td>
             </tr>
           ))}
