@@ -1,35 +1,42 @@
 import React, { useState } from 'react';
 
-export default function InventoryImageUpload({ onResult }) {
-  const [file, setFile] = useState(null);
+export default function InventoryImageUpload({ onResult, multiple = false }) {
+  const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState([]);
 
   async function handleUpload() {
-    if (!file) return;
+    if (!files.length) return;
     setLoading(true);
-    const form = new FormData();
-    form.append('image', file);
-    try {
-      const res = await fetch('/api/ai_inventory/identify', {
-        method: 'POST',
-        body: form,
-        credentials: 'include',
-      });
-      const data = await res.json();
-      setItems(data.items || []);
-      if (onResult) onResult(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
+    const results = [];
+    for (const f of files) {
+      const form = new FormData();
+      form.append('image', f);
+      try {
+        const res = await fetch('/api/ai_inventory/identify', {
+          method: 'POST',
+          body: form,
+          credentials: 'include',
+        });
+        const data = await res.json();
+        results.push(...(data.items || []));
+      } catch (err) {
+        console.error(err);
+      }
     }
+    setItems(results);
+    if (onResult) onResult({ items: results });
+    setLoading(false);
   }
 
   return (
     <div>
-      <input type="file" onChange={(e) => setFile(e.target.files[0])} />
-      <button onClick={handleUpload} disabled={!file || loading}>
+      <input
+        type="file"
+        onChange={(e) => setFiles(Array.from(e.target.files))}
+        multiple={multiple}
+      />
+      <button onClick={handleUpload} disabled={!files.length || loading}>
         {loading ? 'Processing...' : 'Upload'}
       </button>
       {items.length > 0 && (

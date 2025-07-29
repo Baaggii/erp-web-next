@@ -13,6 +13,7 @@ import { useToast } from '../context/ToastContext.jsx';
 import RowFormModal from './RowFormModal.jsx';
 import CascadeDeleteModal from './CascadeDeleteModal.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
+import RowImageUploadModal from './RowImageUploadModal.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
@@ -135,6 +136,7 @@ const TableManager = forwardRef(function TableManager({
   const [showDetail, setShowDetail] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
   const [detailRefs, setDetailRefs] = useState([]);
+  const [uploadRow, setUploadRow] = useState(null);
   const [viewDisplayMap, setViewDisplayMap] = useState({});
   const [viewColumns, setViewColumns] = useState({});
   const [editLabels, setEditLabels] = useState(false);
@@ -729,6 +731,14 @@ const TableManager = forwardRef(function TableManager({
       setDetailRefs([]);
     }
     setShowDetail(true);
+  }
+
+  function openUpload(row) {
+    setUploadRow(row);
+  }
+
+  function closeUpload() {
+    setUploadRow(null);
   }
 
   function toggleRow(id) {
@@ -1698,6 +1708,12 @@ const TableManager = forwardRef(function TableManager({
                         🖉 Edit
                       </button>
                       <button
+                        onClick={() => openUpload(r)}
+                        style={actionBtnStyle}
+                      >
+                        📷 Add Image
+                      </button>
+                      <button
                         onClick={() => handleDelete(r)}
                         disabled={rid === undefined}
                         style={deleteBtnStyle}
@@ -1899,6 +1915,7 @@ const TableManager = forwardRef(function TableManager({
         references={detailRefs}
         labels={labels}
       />
+      <RowImageUploadModal visible={!!uploadRow} onClose={closeUpload} />
       {user?.role === 'admin' && (
         <button onClick={() => {
           const map = {};

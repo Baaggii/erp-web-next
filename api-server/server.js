@@ -3,7 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import express from "express";
 import cookieParser from "cookie-parser";
-import { testConnection } from "../db/index.js";
+import { testConnection, populateDefaultModules } from "../db/index.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
 import { logger } from "./middlewares/logging.js";
 import authRoutes from "./routes/auth.js";
@@ -94,6 +94,10 @@ app.get("*", (req, res) => res.sendFile(path.join(buildDir, "index.html")));
 app.use(errorHandler);
 
 const port = process.env.PORT || 3002;
-app.listen(port, () =>
-  console.log(`✅ ERP API & SPA listening on port ${port}`),
-);
+populateDefaultModules()
+  .catch((err) => console.error('Failed to populate modules', err))
+  .finally(() => {
+    app.listen(port, () =>
+      console.log(`✅ ERP API & SPA listening on port ${port}`),
+    );
+  });
