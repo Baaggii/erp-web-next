@@ -2,11 +2,13 @@ import React, { useState, useEffect, useRef, useContext, memo } from 'react';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import Modal from './Modal.jsx';
 import InlineTransactionTable from './InlineTransactionTable.jsx';
-import RowDetailModal from './RowDetailModal.jsx';
+import RowImageUploadModal from './RowImageUploadModal.jsx';
+import RowImageViewModal from './RowImageViewModal.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import { useToast } from '../context/ToastContext.jsx';
 
 const RowFormModal = function RowFormModal({
   visible,
@@ -51,6 +53,8 @@ const RowFormModal = function RowFormModal({
   viewDisplays = {},
   viewColumns = {},
   procTriggers = {},
+  table = '',
+  imagenameField = [],
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -89,6 +93,7 @@ const RowFormModal = function RowFormModal({
     [disabledFields],
   );
   const { user, company } = useContext(AuthContext);
+  const { addToast } = useToast();
   const [formVals, setFormVals] = useState(() => {
     const init = {};
     const now = new Date();
@@ -144,7 +149,9 @@ const RowFormModal = function RowFormModal({
   const [gridRows, setGridRows] = useState(() => (Array.isArray(rows) ? rows : []));
   const wrapRef = useRef(null);
   const [zoom, setZoom] = useState(1);
-  const [previewRow, setPreviewRow] = useState(null);
+  const [showUpload, setShowUpload] = useState(false);
+  const [showView, setShowView] = useState(false);
+  const [viewImages, setViewImages] = useState([]);
 
   useEffect(() => {
     if (useGrid) {
@@ -550,33 +557,6 @@ const RowFormModal = function RowFormModal({
     }
   }
 
-  async function openRelationPreview(col) {
-    let val = formVals[col];
-    if (val && typeof val === 'object') val = val.value;
-    const conf = relationConfigs[col];
-    const viewTbl = viewSource[col];
-    const table = conf ? conf.table : viewTbl;
-    const idField = conf ? conf.idField || conf.column : viewDisplays[viewTbl]?.idField || col;
-    if (!table || val === undefined || val === '') return;
-    let row = relationData[col]?.[val];
-    if (!row) {
-      try {
-        const res = await fetch(
-          `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(val)}`,
-          { credentials: 'include' },
-        );
-        if (res.ok) {
-          const js = await res.json().catch(() => ({}));
-          row = js.row || js;
-        }
-      } catch {
-        row = null;
-      }
-    }
-    if (row && typeof row === 'object') {
-      setPreviewRow(row);
-    }
-  }
 
   async function handleFocusField(col) {
     showTriggerInfo(col);
@@ -605,6 +585,7 @@ const RowFormModal = function RowFormModal({
         if (!hasValue) return;
         const normalized = {};
         Object.entries(r).forEach(([k, v]) => {
+          if (k === '_saved' || k === '_imageName') return;
           const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
           let val = normalizeDateInput(raw, placeholders[k]);
           if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
@@ -711,48 +692,42 @@ const RowFormModal = function RowFormModal({
 
     if (disabled) {
       const val = formVals[c];
-      let display = val;
+      const valObj = formVals[c];
+      const rawVal = typeof valObj === 'object' && valObj !== null ? valObj.value : valObj;
+      let display =
+        typeof valObj === 'object' && valObj !== null
+          ? valObj.label || valObj.value
+          : valObj;
       if (
         relationConfigs[c] &&
-        val !== undefined &&
-        relationData[c]?.[val]
+        rawVal !== undefined &&
+        relationData[c]?.[rawVal]
       ) {
-        const row = relationData[c][val];
-        const parts = [val];
+        const row = relationData[c][rawVal];
+        const parts = [rawVal];
         (relationConfigs[c].displayFields || []).forEach((df) => {
           if (row[df] !== undefined) parts.push(row[df]);
         });
         display = parts.join(' - ');
       } else if (
         viewSource[c] &&
-        val !== undefined &&
-        relationData[c]?.[val]
+        rawVal !== undefined &&
+        relationData[c]?.[rawVal]
       ) {
-        const row = relationData[c][val];
+        const row = relationData[c][rawVal];
         const cfg = viewDisplays[viewSource[c]] || {};
-        const parts = [val];
+        const parts = [rawVal];
         (cfg.displayFields || []).forEach((df) => {
           if (row[df] !== undefined) parts.push(row[df]);
         });
         display = parts.join(' - ');
       }
       const readonlyStyle = { ...inputStyle, width: 'fit-content', maxWidth: `${boxMaxWidth}px` };
-      const previewBtn = relationConfigs[c] || viewSource[c] || Array.isArray(relations[c]) ? (
-        <button
-          type="button"
-          onClick={() => openRelationPreview(c)}
-          className="ml-1 text-blue-600"
-          title="View"
-        >
-          🔍
-        </button>
-      ) : null;
       const content = (
         <div className="flex items-center">
           <div className="border rounded bg-gray-100 px-2 py-1" style={readonlyStyle} title={display}>
             {display}
           </div>
-          {previewBtn}
         </div>
       );
       if (!withLabel) return content;
@@ -777,10 +752,11 @@ const RowFormModal = function RowFormModal({
         ]}
         labelFields={relationConfigs[c].displayFields || []}
         value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
-        onChange={(val) => {
-          setFormVals((v) => ({ ...v, [c]: val }));
+        onChange={(val, lbl) => {
+          const v = lbl ? { value: val, label: lbl } : val;
+          setFormVals((st) => ({ ...st, [c]: v }));
           setErrors((er) => ({ ...er, [c]: undefined }));
-          onChange({ [c]: val });
+          onChange({ [c]: v });
         }}
         onSelect={(opt) => {
           const el = inputRefs.current[c];
@@ -810,10 +786,11 @@ const RowFormModal = function RowFormModal({
         labelFields={viewDisplays[viewSource[c]]?.displayFields || []}
         idField={viewDisplays[viewSource[c]]?.idField || c}
         value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
-        onChange={(val) => {
-          setFormVals((v) => ({ ...v, [c]: val }));
+        onChange={(val, lbl) => {
+          const v = lbl ? { value: val, label: lbl } : val;
+          setFormVals((st) => ({ ...st, [c]: v }));
           setErrors((er) => ({ ...er, [c]: undefined }));
-          onChange({ [c]: val });
+          onChange({ [c]: v });
         }}
         onSelect={(opt) => {
           const el = inputRefs.current[c];
@@ -961,6 +938,8 @@ const RowFormModal = function RowFormModal({
             boxWidth={boxWidth}
             boxHeight={boxHeight}
             boxMaxWidth={boxMaxWidth}
+            table={table}
+            imagenameFields={imagenameField}
             scope={scope}
           />
         </div>
@@ -1122,6 +1101,40 @@ const RowFormModal = function RowFormModal({
     w.print();
   }
 
+  function openUploadModal() {
+    setShowUpload(true);
+  }
+
+  function handleUploadComplete(name) {
+    setFormVals((v) => ({ ...v, _imageName: name }));
+  }
+
+  async function openViewModal() {
+    const currentName = imagenameField
+      .map((f) => formVals[f] ?? formVals[columnCaseMap[f.toLowerCase()]])
+      .filter((v) => v !== undefined && v !== null && v !== '')
+      .join('_');
+    const name = formVals._imageName || currentName;
+    if (!name || !table) {
+      addToast('Image name is missing', 'error');
+      return;
+    }
+    try {
+      const res = await fetch(`/api/transaction_images/${table}/${encodeURIComponent(name)}`, { credentials: 'include' });
+      const imgs = await res.json();
+      if (imgs.length === 0) {
+        addToast('No images found', 'info');
+      } else {
+        addToast(`Loaded ${imgs.length} images`, 'success');
+        setViewImages(imgs);
+        setShowView(true);
+      }
+    } catch (err) {
+      console.error(err);
+      addToast('Failed to load images', 'error');
+    }
+  }
+
   if (inline) {
     return (
       <div
@@ -1186,13 +1199,19 @@ const RowFormModal = function RowFormModal({
         </div>
         </form>
       </Modal>
-      <RowDetailModal
-        visible={!!previewRow}
-        onClose={() => setPreviewRow(null)}
-        row={previewRow || {}}
-        columns={previewRow ? Object.keys(previewRow) : []}
-        relations={relations}
-        labels={labels}
+      <RowImageUploadModal
+        visible={showUpload}
+        onClose={() => setShowUpload(false)}
+        table={table}
+        row={formVals}
+        imagenameFields={imagenameField}
+        columnCaseMap={columnCaseMap}
+        onUploaded={handleUploadComplete}
+      />
+      <RowImageViewModal
+        visible={showView}
+        onClose={() => setShowView(false)}
+        images={viewImages}
       />
     </>
   );
