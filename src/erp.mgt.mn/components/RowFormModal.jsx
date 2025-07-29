@@ -1139,14 +1139,10 @@ const RowFormModal = function RowFormModal({
     const { name, missing } = buildImageName(formVals, imagenameField, columnCaseMap);
     const finalName = formVals._imageName || name;
     if (!finalName || !table) {
-      if (missing.length) {
-        addToast(
-          `Please complete these fields before viewing images: ${missing.join(', ')}`,
-          'error',
-        );
-      } else {
-        addToast('Cannot generate image name. Required data is missing.', 'error');
-      }
+      const msg = missing.length
+        ? `Image name is missing fields: ${missing.join(', ')}`
+        : 'Image name is missing';
+      addToast(msg, 'error');
       return;
     }
     try {

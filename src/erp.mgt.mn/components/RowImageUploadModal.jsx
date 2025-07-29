@@ -25,14 +25,10 @@ export default function RowImageUploadModal({
     const { name: safeName, missing } = buildName();
     const uploadUrl = safeName && table ? `/api/transaction_images/${table}/${encodeURIComponent(safeName)}` : '';
     if (!uploadUrl) {
-      if (missing.length) {
-        addToast(
-          `Please complete these fields before uploading: ${missing.join(', ')}`,
-          'error',
-        );
-      } else {
-        addToast('Cannot generate image name. Required data is missing.', 'error');
-      }
+      const msg = missing.length
+        ? `Image name is missing fields: ${missing.join(', ')}`
+        : 'Image name is missing';
+      addToast(msg, 'error');
       return;
     }
     if (!files.length) return;
