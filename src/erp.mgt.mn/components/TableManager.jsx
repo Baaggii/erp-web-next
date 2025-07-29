@@ -13,6 +13,8 @@ import { useToast } from '../context/ToastContext.jsx';
 import RowFormModal from './RowFormModal.jsx';
 import CascadeDeleteModal from './CascadeDeleteModal.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
+import RowImageUploadModal from './RowImageUploadModal.jsx';
+import RowImageViewModal from './RowImageViewModal.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
@@ -135,6 +137,9 @@ const TableManager = forwardRef(function TableManager({
   const [showDetail, setShowDetail] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
   const [detailRefs, setDetailRefs] = useState([]);
+  const [uploadRow, setUploadRow] = useState(null);
+  const [viewRow, setViewRow] = useState(null);
+  const [viewImages, setViewImages] = useState([]);
   const [viewDisplayMap, setViewDisplayMap] = useState({});
   const [viewColumns, setViewColumns] = useState({});
   const [editLabels, setEditLabels] = useState(false);
@@ -585,7 +590,7 @@ const TableManager = forwardRef(function TableManager({
       })
       .then((data) => {
         if (canceled) return;
-        const rows = data.rows || [];
+        const rows = (data.rows || []).map((r) => ({ ...r, _saved: true }));
         setRows(rows);
         setCount(data.count || 0);
         // clear selections when data changes
@@ -681,7 +686,7 @@ const TableManager = forwardRef(function TableManager({
     }
     setRowDefaults(defaults);
     setEditing(vals);
-    setGridRows([vals]);
+    setGridRows([{ ...vals, _saved: false }]);
     setIsAdding(true);
     setShowForm(true);
   }
@@ -729,6 +734,60 @@ const TableManager = forwardRef(function TableManager({
       setDetailRefs([]);
     }
     setShowDetail(true);
+  }
+
+  function openUpload(row, idx) {
+    setUploadRow({ row, idx });
+  }
+
+  function closeUpload() {
+    setUploadRow(null);
+  }
+
+  function handleUploadComplete(name) {
+    if (!uploadRow) return;
+    const { idx } = uploadRow;
+    setRows((r) => {
+      const next = [...r];
+      if (next[idx]) next[idx]._imageName = name;
+      return next;
+    });
+  }
+
+  async function openView(row, idx) {
+    const cur = rows[idx] || row;
+    const currentName = (formConfig?.imagenameField || [])
+      .map((f) => {
+        let val = cur[f] ?? cur[columnCaseMap[f.toLowerCase()]];
+        if (val && typeof val === 'object') val = val.value ?? val.label;
+        return val;
+      })
+      .filter((v) => v !== undefined && v !== null && v !== '')
+      .join('_');
+    const name = cur._imageName || currentName;
+    if (!name) {
+      addToast('Image name is missing', 'error');
+      return;
+    }
+    try {
+      const res = await fetch(`/api/transaction_images/${table}/${encodeURIComponent(name)}`, { credentials: 'include' });
+      const imgs = await res.json();
+      if (imgs.length === 0) {
+        addToast('No images found', 'info');
+      } else {
+        addToast(`Loaded ${imgs.length} images`, 'success');
+        setViewImages(imgs);
+        setViewRow(cur);
+      }
+    } catch (err) {
+      console.error(err);
+      addToast('Failed to load images', 'error');
+    }
+  }
+
+  function closeView() {
+    setViewRow(null);
+    setViewImages([]);
   }
 
   function toggleRow(id) {
@@ -871,7 +930,7 @@ const TableManager = forwardRef(function TableManager({
     }
 
     const cleaned = {};
-    const skipFields = new Set([...autoCols, 'id']);
+    const skipFields = new Set([...autoCols, 'id', '_imageName']);
     Object.entries(merged).forEach(([k, v]) => {
       if (skipFields.has(k)) return;
       if (v !== '') {
@@ -911,7 +970,7 @@ const TableManager = forwardRef(function TableManager({
         const data = await fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
           credentials: 'include',
         }).then((r) => r.json());
-        const rows = data.rows || [];
+        const rows = (data.rows || []).map((r) => ({ ...r, _saved: true }));
         setRows(rows);
         setCount(data.count || 0);
         logRowsMemory(rows);
@@ -963,7 +1022,7 @@ const TableManager = forwardRef(function TableManager({
         `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
         { credentials: 'include' },
       ).then((r) => r.json());
-      const rows = data.rows || [];
+      const rows = (data.rows || []).map((r) => ({ ...r, _saved: true }));
       setRows(rows);
       setCount(data.count || 0);
       logRowsMemory(rows);
@@ -1102,7 +1161,7 @@ const TableManager = forwardRef(function TableManager({
     } else {
       addToast('Failed to load table data', 'error');
     }
-    const rows = data.rows || [];
+    const rows = (data.rows || []).map((r) => ({ ...r, _saved: true }));
     setRows(rows);
     setCount(data.count || 0);
     logRowsMemory(rows);
@@ -1228,9 +1287,11 @@ const TableManager = forwardRef(function TableManager({
   let disabledFields = editSet
     ? formColumns.filter((c) => !editSet.has(c.toLowerCase()))
     : [];
-  disabledFields = editing
-    ? Array.from(new Set([...disabledFields, ...getKeyFields(), ...lockedDefaults]))
-    : Array.from(new Set([...disabledFields, ...lockedDefaults]));
+  if (editing && !isAdding) {
+    disabledFields = Array.from(
+      new Set([...disabledFields, ...getKeyFields(), ...lockedDefaults]),
+    );
+  }
 
   const totalAmountSet = useMemo(
     () => new Set(formConfig?.totalAmountFields || []),
@@ -1698,6 +1759,20 @@ const TableManager = forwardRef(function TableManager({
                         🖉 Edit
                       </button>
                       <button
+                        type="button"
+                        onClick={() => openUpload(r, idx)}
+                        style={actionBtnStyle}
+                      >
+                        📷 Add Image
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openView(r, idx)}
+                        style={actionBtnStyle}
+                      >
+                        🖼 View Images
+                      </button>
+                      <button
                         onClick={() => handleDelete(r)}
                         disabled={rid === undefined}
                         style={deleteBtnStyle}
@@ -1852,7 +1927,7 @@ const TableManager = forwardRef(function TableManager({
         onSubmit={handleSubmit}
         onChange={handleFieldChange}
         columns={formColumns}
-        row={editing}
+        row={isAdding ? null : editing}
         rows={gridRows}
         relations={relationOpts}
         relationConfigs={relationConfigs}
@@ -1880,6 +1955,8 @@ const TableManager = forwardRef(function TableManager({
         viewColumns={viewColumns}
         onRowsChange={setGridRows}
         scope="forms"
+        table={table}
+        imagenameField={formConfig?.imagenameField || []}
       />
       <CascadeDeleteModal
         visible={showCascade}
@@ -1898,6 +1975,20 @@ const TableManager = forwardRef(function TableManager({
         relations={relationOpts}
         references={detailRefs}
         labels={labels}
+      />
+      <RowImageUploadModal
+        visible={!!uploadRow}
+        onClose={closeUpload}
+        table={table}
+        row={uploadRow?.row || {}}
+        imagenameFields={formConfig?.imagenameField || []}
+        columnCaseMap={columnCaseMap}
+        onUploaded={handleUploadComplete}
+      />
+      <RowImageViewModal
+        visible={!!viewRow}
+        onClose={closeView}
+        images={viewImages}
       />
       {user?.role === 'admin' && (
         <button onClick={() => {

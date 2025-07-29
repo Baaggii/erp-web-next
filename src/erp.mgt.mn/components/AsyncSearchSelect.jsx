@@ -88,6 +88,43 @@ export default function AsyncSearchSelect({
     }
   }, [value]);
 
+  // fetch label for current value if not in loaded options
+  useEffect(() => {
+    const val =
+      typeof value === 'object' && value !== null ? value.value : value;
+    if (!table || val === undefined || val === '' || options.find((o) => String(o.value) === String(val)))
+      return;
+    const controller = new AbortController();
+    const params = new URLSearchParams({ page: 1, perPage: 1 });
+    params.set(idField || searchColumn, val);
+    fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
+      credentials: 'include',
+      signal: controller.signal,
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const row = data && Array.isArray(data.rows) ? data.rows[0] : null;
+        if (row) {
+          const parts = [];
+          if (row[idField || searchColumn] !== undefined)
+            parts.push(row[idField || searchColumn]);
+          if (labelFields.length === 0) {
+            Object.entries(row).forEach(([k, v]) => {
+              if (k === idField || k === searchColumn) return;
+              if (v !== undefined && parts.length < 3) parts.push(v);
+            });
+          } else {
+            labelFields.forEach((f) => {
+              if (row[f] !== undefined) parts.push(row[f]);
+            });
+          }
+          setLabel(parts.join(' - '));
+        }
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [table, value, options, idField, searchColumn, labelFields]);
+
   useEffect(() => {
     if (show && options.length > 0) setHighlight((h) => (h < 0 ? 0 : Math.min(h, options.length - 1)));
   }, [options, show]);
@@ -120,7 +157,7 @@ export default function AsyncSearchSelect({
       setHighlight((h) => Math.max(h - 1, 0));
     } else if (e.key === 'Enter') {
       let idx = highlight;
-      if (idx < 0 && options.length > 0) idx = 0;
+      if (idx < 0) return;
       if (idx >= 0 && idx < options.length) {
         e.preventDefault();
         const opt = options[idx];
@@ -159,6 +196,7 @@ export default function AsyncSearchSelect({
           onChange(e.target.value);
           setShow(true);
           setHighlight(-1);
+          chosenRef.current = null;
         }}
         onFocus={(e) => {
           setShow(true);
