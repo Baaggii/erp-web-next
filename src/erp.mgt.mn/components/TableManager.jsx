@@ -657,10 +657,6 @@ const TableManager = forwardRef(function TableManager({
     const all = columnMeta.map((c) => c.name);
     all.forEach((c) => {
       let v = (formConfig?.defaultValues || {})[c] || '';
-      if (userIdFields.includes(c) && user?.empid) v = user.empid;
-      if (branchIdFields.includes(c) && company?.branch_id !== undefined) v = company.branch_id;
-      if (departmentIdFields.includes(c) && company?.department_id !== undefined) v = company.department_id;
-      if (companyIdFields.includes(c) && company?.company_id !== undefined) v = company.company_id;
       vals[c] = v;
       defaults[c] = v;
       if (!v && formConfig?.dateField?.includes(c)) {
@@ -844,23 +840,7 @@ const TableManager = forwardRef(function TableManager({
       if (merged[k] === undefined || merged[k] === '') merged[k] = v;
     });
 
-    if (isAdding) {
-      userIdFields.forEach((f) => {
-        if (columns.has(f)) merged[f] = user?.empid;
-      });
-      branchIdFields.forEach((f) => {
-        if (columns.has(f) && company?.branch_id !== undefined)
-          merged[f] = company.branch_id;
-      });
-      departmentIdFields.forEach((f) => {
-        if (columns.has(f) && company?.department_id !== undefined)
-          merged[f] = company.department_id;
-      });
-      companyIdFields.forEach((f) => {
-        if (columns.has(f) && company?.company_id !== undefined)
-          merged[f] = company.company_id;
-      });
-    }
+
 
     const required = formConfig?.requiredFields || [];
     for (const f of required) {
@@ -1229,7 +1209,13 @@ const TableManager = forwardRef(function TableManager({
     ? formColumns.filter((c) => !editSet.has(c.toLowerCase()))
     : [];
   disabledFields = editing
-    ? Array.from(new Set([...disabledFields, ...getKeyFields(), ...lockedDefaults]))
+    ? Array.from(
+        new Set([
+          ...disabledFields,
+          ...getKeyFields(),
+          ...(isAdding ? [] : lockedDefaults),
+        ]),
+      )
     : Array.from(new Set([...disabledFields, ...lockedDefaults]));
 
   const totalAmountSet = useMemo(
