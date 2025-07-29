@@ -614,6 +614,7 @@ const RowFormModal = function RowFormModal({
         if (!hasValue) return;
         const normalized = {};
         Object.entries(r).forEach(([k, v]) => {
+          if (k === '_saved') return;
           const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
           let val = normalizeDateInput(raw, placeholders[k]);
           if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {

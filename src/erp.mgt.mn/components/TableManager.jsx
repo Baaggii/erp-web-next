@@ -1283,9 +1283,13 @@ const TableManager = forwardRef(function TableManager({
   let disabledFields = editSet
     ? formColumns.filter((c) => !editSet.has(c.toLowerCase()))
     : [];
-  disabledFields = editing
-    ? Array.from(new Set([...disabledFields, ...getKeyFields(), ...lockedDefaults]))
-    : Array.from(new Set([...disabledFields, ...lockedDefaults]));
+  if (editing && !isAdding) {
+    disabledFields = Array.from(
+      new Set([...disabledFields, ...getKeyFields(), ...lockedDefaults]),
+    );
+  } else {
+    disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
+  }
 
   const totalAmountSet = useMemo(
     () => new Set(formConfig?.totalAmountFields || []),
