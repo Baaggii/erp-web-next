@@ -19,6 +19,5 @@ export default [
   { moduleKey: 'pos_transactions', label: 'POS POS', parentKey: null, showInSidebar: true, showInHeader: false },
   { moduleKey: 'gl', label: 'Ерөнхий журнал', parentKey: null, showInSidebar: false, showInHeader: true },
   { moduleKey: 'po', label: 'Худалдан авалтын захиалга', parentKey: null, showInSidebar: false, showInHeader: true },
-  { moduleKey: 'sales', label: 'Борлуулалтын самбар', parentKey: null, showInSidebar: false, showInHeader: true },
-  { moduleKey: 'ai_inventory', label: 'AI Inventory Review', parentKey: null, showInSidebar: true, showInHeader: false }
+  { moduleKey: 'sales', label: 'Борлуулалтын самбар', parentKey: null, showInSidebar: false, showInHeader: true }
 ];

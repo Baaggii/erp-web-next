@@ -15,8 +15,6 @@ import userCompanyRoutes from "./routes/user_companies.js";
 import rolePermissionRoutes from "./routes/role_permissions.js";
 import moduleRoutes from "./routes/modules.js";
 import openaiRoutes from "./routes/openai.js";
-import aiInventoryRoutes from "./routes/ai_inventory.js";
-import transactionImageRoutes from "./routes/transaction_images.js";
 import headerMappingRoutes from "./routes/header_mappings.js";
 import displayFieldRoutes from "./routes/display_fields.js";
 import codingTableConfigRoutes from "./routes/coding_table_configs.js";
@@ -64,8 +62,6 @@ app.use("/api/role_permissions", rolePermissionRoutes);
 app.use("/api/modules", moduleRoutes);
 app.use("/api/header_mappings", headerMappingRoutes);
 app.use("/api/openai", openaiRoutes);
-app.use("/api/ai_inventory", aiInventoryRoutes);
-app.use("/api/transaction_images", transactionImageRoutes);
 app.use("/api/display_fields", displayFieldRoutes);
 app.use("/api/coding_table_configs", codingTableConfigRoutes);
 app.use("/api/generated_sql", generatedSqlRoutes);
@@ -74,7 +70,6 @@ app.use("/api/general_config", generalConfigRoutes);
 // Serve static React build and fallback to index.html
 // NOTE: adjust this path to where your SPA build actually lives.
 const buildDir = path.resolve(__dirname, "../../../erp.mgt.mn");
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 app.use(express.static(buildDir));
 app.get("*", (req, res) => res.sendFile(path.join(buildDir, "index.html")));
 

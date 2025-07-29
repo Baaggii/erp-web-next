@@ -2,14 +2,11 @@ import React, { useState, useEffect, useRef, useContext, memo } from 'react';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import Modal from './Modal.jsx';
 import InlineTransactionTable from './InlineTransactionTable.jsx';
-import RowImageUploadModal from './RowImageUploadModal.jsx';
-import RowImageViewModal from './RowImageViewModal.jsx';
+import RowDetailModal from './RowDetailModal.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
-import buildImageName from '../utils/buildImageName.js';
-import { useToast } from '../context/ToastContext.jsx';
 
 const RowFormModal = function RowFormModal({
   visible,
@@ -54,9 +51,6 @@ const RowFormModal = function RowFormModal({
   viewDisplays = {},
   viewColumns = {},
   procTriggers = {},
-  table = '',
-  imagenameField = [],
-  fillSession = true,
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -95,7 +89,6 @@ const RowFormModal = function RowFormModal({
     [disabledFields],
   );
   const { user, company } = useContext(AuthContext);
-  const { addToast } = useToast();
   const [formVals, setFormVals] = useState(() => {
     const init = {};
     const now = new Date();
@@ -115,16 +108,14 @@ const RowFormModal = function RowFormModal({
         else if (placeholder === 'HH:MM:SS') val = formatTimestamp(now).slice(11, 19);
         else val = formatTimestamp(now);
       }
-      if (fillSession && missing && !val) {
+      if (missing && !val) {
         if (userIdSet.has(c) && user?.empid) val = user.empid;
         else if (branchIdSet.has(c) && company?.branch_id !== undefined)
           val = company.branch_id;
         else if (departmentIdSet.has(c) && company?.department_id !== undefined)
           val = company.department_id;
-        else if (companyIdSet.has(c) && company?.company_id !== undefined) {
-          const id = Number(company.company_id);
-          if (!Number.isNaN(id)) val = id;
-        }
+        else if (companyIdSet.has(c) && company?.company_id !== undefined)
+          val = company.company_id;
       }
       init[c] = val;
     });
@@ -153,9 +144,7 @@ const RowFormModal = function RowFormModal({
   const [gridRows, setGridRows] = useState(() => (Array.isArray(rows) ? rows : []));
   const wrapRef = useRef(null);
   const [zoom, setZoom] = useState(1);
-  const [showUpload, setShowUpload] = useState(false);
-  const [showView, setShowView] = useState(false);
-  const [viewImages, setViewImages] = useState([]);
+  const [previewRow, setPreviewRow] = useState(null);
 
   useEffect(() => {
     if (useGrid) {
@@ -230,7 +219,6 @@ const RowFormModal = function RowFormModal({
     return value.replace(',', '.');
   }
 
-
   function isValidDate(value, format) {
     if (!value) return true;
     const normalized = normalizeDateInput(value, format);
@@ -261,16 +249,14 @@ const RowFormModal = function RowFormModal({
         else if (placeholders[c] === 'HH:MM:SS') v = formatTimestamp(now).slice(11, 19);
         else v = formatTimestamp(now);
       }
-      if (fillSession && missing && !v) {
+      if (missing && !v) {
         if (userIdSet.has(c) && user?.empid) v = user.empid;
         else if (branchIdSet.has(c) && company?.branch_id !== undefined)
           v = company.branch_id;
         else if (departmentIdSet.has(c) && company?.department_id !== undefined)
           v = company.department_id;
-        else if (companyIdSet.has(c) && company?.company_id !== undefined) {
-          const id = Number(company.company_id);
-          if (!Number.isNaN(id)) v = id;
-        }
+        else if (companyIdSet.has(c) && company?.company_id !== undefined)
+          v = company.company_id;
       }
       vals[c] = v;
     });
@@ -279,7 +265,7 @@ const RowFormModal = function RowFormModal({
     if (!same) setFormVals(vals);
     inputRefs.current = {};
     setErrors({});
-  }, [row, visible, user, company, fillSession]);
+  }, [row, visible, user, company]);
 
   useEffect(() => {
     Object.values(inputRefs.current).forEach((el) => {
@@ -564,6 +550,33 @@ const RowFormModal = function RowFormModal({
     }
   }
 
+  async function openRelationPreview(col) {
+    let val = formVals[col];
+    if (val && typeof val === 'object') val = val.value;
+    const conf = relationConfigs[col];
+    const viewTbl = viewSource[col];
+    const table = conf ? conf.table : viewTbl;
+    const idField = conf ? conf.idField || conf.column : viewDisplays[viewTbl]?.idField || col;
+    if (!table || val === undefined || val === '') return;
+    let row = relationData[col]?.[val];
+    if (!row) {
+      try {
+        const res = await fetch(
+          `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(val)}`,
+          { credentials: 'include' },
+        );
+        if (res.ok) {
+          const js = await res.json().catch(() => ({}));
+          row = js.row || js;
+        }
+      } catch {
+        row = null;
+      }
+    }
+    if (row && typeof row === 'object') {
+      setPreviewRow(row);
+    }
+  }
 
   async function handleFocusField(col) {
     showTriggerInfo(col);
@@ -592,7 +605,6 @@ const RowFormModal = function RowFormModal({
         if (!hasValue) return;
         const normalized = {};
         Object.entries(r).forEach(([k, v]) => {
-          if (k === '_saved' || k === '_imageName') return;
           const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
           let val = normalizeDateInput(raw, placeholders[k]);
           if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
@@ -699,49 +711,59 @@ const RowFormModal = function RowFormModal({
 
     if (disabled) {
       const val = formVals[c];
-      const valObj = formVals[c];
-      const rawVal = typeof valObj === 'object' && valObj !== null ? valObj.value : valObj;
-      let display =
-        typeof valObj === 'object' && valObj !== null
-          ? valObj.label || valObj.value
-          : valObj;
+      let display = val;
       if (
         relationConfigs[c] &&
-        rawVal !== undefined &&
-        relationData[c]?.[rawVal]
+        val !== undefined &&
+        relationData[c]?.[val]
       ) {
-        const row = relationData[c][rawVal];
-        const parts = [rawVal];
+        const row = relationData[c][val];
+        const parts = [val];
         (relationConfigs[c].displayFields || []).forEach((df) => {
           if (row[df] !== undefined) parts.push(row[df]);
         });
         display = parts.join(' - ');
       } else if (
         viewSource[c] &&
-        rawVal !== undefined &&
-        relationData[c]?.[rawVal]
+        val !== undefined &&
+        relationData[c]?.[val]
       ) {
-        const row = relationData[c][rawVal];
+        const row = relationData[c][val];
         const cfg = viewDisplays[viewSource[c]] || {};
-        const parts = [rawVal];
+        const parts = [val];
         (cfg.displayFields || []).forEach((df) => {
           if (row[df] !== undefined) parts.push(row[df]);
         });
         display = parts.join(' - ');
       }
       const readonlyStyle = { ...inputStyle, width: 'fit-content', maxWidth: `${boxMaxWidth}px` };
-      const pair = (
-        <div className="flex items-center gap-2" key={c}>
-          <label className="font-medium" style={labelStyle}>
-            {labels[c] || c}
-          </label>
+      const previewBtn = relationConfigs[c] || viewSource[c] || Array.isArray(relations[c]) ? (
+        <button
+          type="button"
+          onClick={() => openRelationPreview(c)}
+          className="ml-1 text-blue-600"
+          title="View"
+        >
+          🔍
+        </button>
+      ) : null;
+      const content = (
+        <div className="flex items-center">
           <div className="border rounded bg-gray-100 px-2 py-1" style={readonlyStyle} title={display}>
             {display}
           </div>
+          {previewBtn}
         </div>
       );
-      if (!withLabel) return pair;
-      return <div className={fitted ? 'mb-1' : 'mb-3'}>{pair}</div>;
+      if (!withLabel) return content;
+      return (
+        <div key={c} className={fitted ? 'mb-1' : 'mb-3'}>
+          <label className="block mb-1 font-medium" style={labelStyle}>
+            {labels[c] || c}
+          </label>
+          {content}
+        </div>
+      );
     }
 
     const control = relationConfigs[c] ? (
@@ -755,11 +777,10 @@ const RowFormModal = function RowFormModal({
         ]}
         labelFields={relationConfigs[c].displayFields || []}
         value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
-        onChange={(val, lbl) => {
-          const v = lbl ? { value: val, label: lbl } : val;
-          setFormVals((st) => ({ ...st, [c]: v }));
+        onChange={(val) => {
+          setFormVals((v) => ({ ...v, [c]: val }));
           setErrors((er) => ({ ...er, [c]: undefined }));
-          onChange({ [c]: v });
+          onChange({ [c]: val });
         }}
         onSelect={(opt) => {
           const el = inputRefs.current[c];
@@ -778,52 +799,38 @@ const RowFormModal = function RowFormModal({
         inputStyle={inputStyle}
       />
     ) : viewSource[c] && !Array.isArray(relations[c]) ? (
-      (() => {
-        const view = viewSource[c];
-        const cfg = viewDisplays[view] || {};
-        const cols = viewColumns[view] || [];
-        if (cols.length === 0) return <span>Loading...</span>;
-        let idField = cfg.idField || c;
-        const match = cols.find((x) => x.toLowerCase() === idField.toLowerCase());
-        if (!match && cols.length > 0) idField = cols[0];
-        else if (match) idField = match;
-        const lblFields = (cfg.displayFields || []).map((f) => {
-          const m = cols.find((x) => x.toLowerCase() === f.toLowerCase());
-          return m || f;
-        });
-        return (
-          <AsyncSearchSelect
-            title={labels[c] || c}
-            table={view}
-            searchColumn={idField}
-            searchColumns={[idField, ...lblFields]}
-            labelFields={lblFields}
-            idField={idField}
-            value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
-            onChange={(val, lbl) => {
-              const v = lbl ? { value: val, label: lbl } : val;
-              setFormVals((st) => ({ ...st, [c]: v }));
-              setErrors((er) => ({ ...er, [c]: undefined }));
-              onChange({ [c]: v });
-            }}
-            onSelect={(opt) => {
-              const el = inputRefs.current[c];
-              if (el) {
-                const fake = { key: 'Enter', preventDefault: () => {}, target: el, selectedOption: opt };
-                handleKeyDown(fake, c);
-              }
-            }}
-            disabled={disabled}
-            onKeyDown={(e) => handleKeyDown(e, c)}
-            onFocus={(e) => {
-              e.target.select();
-              handleFocusField(c);
-            }}
-            inputRef={(el) => (inputRefs.current[c] = el)}
-            inputStyle={inputStyle}
-          />
-        );
-      })()
+      <AsyncSearchSelect
+        title={labels[c] || c}
+        table={viewSource[c]}
+        searchColumn={viewDisplays[viewSource[c]]?.idField || c}
+        searchColumns={[
+          viewDisplays[viewSource[c]]?.idField || c,
+          ...(viewDisplays[viewSource[c]]?.displayFields || []),
+        ]}
+        labelFields={viewDisplays[viewSource[c]]?.displayFields || []}
+        idField={viewDisplays[viewSource[c]]?.idField || c}
+        value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
+        onChange={(val) => {
+          setFormVals((v) => ({ ...v, [c]: val }));
+          setErrors((er) => ({ ...er, [c]: undefined }));
+          onChange({ [c]: val });
+        }}
+        onSelect={(opt) => {
+          const el = inputRefs.current[c];
+          if (el) {
+            const fake = { key: 'Enter', preventDefault: () => {}, target: el, selectedOption: opt };
+            handleKeyDown(fake, c);
+          }
+        }}
+        disabled={disabled}
+        onKeyDown={(e) => handleKeyDown(e, c)}
+        onFocus={(e) => {
+          e.target.select();
+          handleFocusField(c);
+        }}
+        inputRef={(el) => (inputRefs.current[c] = el)}
+        inputStyle={inputStyle}
+      />
     ) : Array.isArray(relations[c]) ? (
       <select
         title={formVals[c]}
@@ -954,9 +961,6 @@ const RowFormModal = function RowFormModal({
             boxWidth={boxWidth}
             boxHeight={boxHeight}
             boxMaxWidth={boxMaxWidth}
-            table={table}
-            imagenameFields={imagenameField}
-            fillSession={fillSession}
             scope={scope}
           />
         </div>
@@ -1118,49 +1122,6 @@ const RowFormModal = function RowFormModal({
     w.print();
   }
 
-  function openUploadModal() {
-    const { name, missing } = buildImageName(formVals, imagenameField, columnCaseMap);
-    const finalName = formVals._imageName || name;
-    if (!finalName) {
-      const msg = missing.length
-        ? `Image name is missing fields: ${missing.join(', ')}`
-        : 'Image name is missing';
-      addToast(msg, 'error');
-      return;
-    }
-    setShowUpload(true);
-  }
-
-  function handleUploadComplete(name) {
-    setFormVals((v) => ({ ...v, _imageName: name }));
-  }
-
-  async function openViewModal() {
-    const { name, missing } = buildImageName(formVals, imagenameField, columnCaseMap);
-    const finalName = formVals._imageName || name;
-    if (!finalName || !table) {
-      const msg = missing.length
-        ? `Image name is missing fields: ${missing.join(', ')}`
-        : 'Image name is missing';
-      addToast(msg, 'error');
-      return;
-    }
-    try {
-      const res = await fetch(`/api/transaction_images/${table}/${encodeURIComponent(finalName)}`, { credentials: 'include' });
-      const imgs = await res.json();
-      if (imgs.length === 0) {
-        addToast('No images found', 'info');
-      } else {
-        addToast(`Loaded ${imgs.length} images`, 'success');
-        setViewImages(imgs);
-        setShowView(true);
-      }
-    } catch (err) {
-      console.error(err);
-      addToast('Failed to load images', 'error');
-    }
-  }
-
   if (inline) {
     return (
       <div
@@ -1211,20 +1172,6 @@ const RowFormModal = function RowFormModal({
           </button>
           <button
             type="button"
-            onClick={openUploadModal}
-            className="px-3 py-1 bg-gray-200 rounded"
-          >
-            Add Image
-          </button>
-          <button
-            type="button"
-            onClick={openViewModal}
-            className="px-3 py-1 bg-gray-200 rounded"
-          >
-            View Images
-          </button>
-          <button
-            type="button"
             onClick={onCancel}
             className="px-3 py-1 bg-gray-200 rounded"
           >
@@ -1239,19 +1186,13 @@ const RowFormModal = function RowFormModal({
         </div>
         </form>
       </Modal>
-      <RowImageUploadModal
-        visible={showUpload}
-        onClose={() => setShowUpload(false)}
-        table={table}
-        row={formVals}
-        imagenameFields={imagenameField}
-        columnCaseMap={columnCaseMap}
-        onUploaded={handleUploadComplete}
-      />
-      <RowImageViewModal
-        visible={showView}
-        onClose={() => setShowView(false)}
-        images={viewImages}
+      <RowDetailModal
+        visible={!!previewRow}
+        onClose={() => setPreviewRow(null)}
+        row={previewRow || {}}
+        columns={previewRow ? Object.keys(previewRow) : []}
+        relations={relations}
+        labels={labels}
       />
     </>
   );
