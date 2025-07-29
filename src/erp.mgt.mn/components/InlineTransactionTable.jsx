@@ -12,6 +12,7 @@ import RowImageViewModal from './RowImageViewModal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
+import buildImageName from '../utils/buildImageName.js';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -752,25 +753,12 @@ export default forwardRef(function InlineTransactionTable({
 
   async function openView(idx) {
     const row = rows[idx] || {};
-    const currentName = imagenameFields
-      .map((f) => {
-        let val = row[f] ?? row[columnCaseMap[f.toLowerCase()]];
-        if (val && typeof val === 'object') val = val.value ?? val.label;
-        return val;
-      })
-      .filter((v) => v !== undefined && v !== null && v !== '')
-      .join('_');
-    const safeName = sanitizeName(currentName);
-    let name =
-      row._imageName ||
-      row.ImageName ||
-      row.image_name ||
-      row[columnCaseMap['imagename']] ||
-      safeName;
-    if (!name) name = safeName;
-    name = sanitizeName(name);
+    const { name, missing } = buildImageName(row, imagenameFields, columnCaseMap);
     if (!name || !table) {
-      addToast('Image name is missing', 'error');
+      const msg = missing.length
+        ? `Image name is missing fields: ${missing.join(', ')}`
+        : 'Image name is missing';
+      addToast(msg, 'error');
       return;
     }
     try {

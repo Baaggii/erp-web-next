@@ -8,6 +8,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import buildImageName from '../utils/buildImageName.js';
 import { useToast } from '../context/ToastContext.jsx';
 
 const RowFormModal = function RowFormModal({
@@ -227,11 +228,6 @@ const RowFormModal = function RowFormModal({
     return value.replace(',', '.');
   }
 
-  function sanitizeName(name) {
-    return String(name)
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]+/gi, '_');
-  }
 
   function isValidDate(value, format) {
     if (!value) return true;
@@ -1127,22 +1123,17 @@ const RowFormModal = function RowFormModal({
   }
 
   async function openViewModal() {
-    const currentName = imagenameField
-      .map((f) => {
-        let val = formVals[f] ?? formVals[columnCaseMap[f.toLowerCase()]];
-        if (val && typeof val === 'object') val = val.value ?? val.label;
-        return val;
-      })
-      .filter((v) => v !== undefined && v !== null && v !== '')
-      .join('_');
-    const safeName = sanitizeName(currentName);
-    const name = formVals._imageName || safeName;
-    if (!name || !table) {
-      addToast('Image name is missing', 'error');
+    const { name, missing } = buildImageName(formVals, imagenameField, columnCaseMap);
+    const finalName = formVals._imageName || name;
+    if (!finalName || !table) {
+      const msg = missing.length
+        ? `Image name is missing fields: ${missing.join(', ')}`
+        : 'Image name is missing';
+      addToast(msg, 'error');
       return;
     }
     try {
-      const res = await fetch(`/api/transaction_images/${table}/${encodeURIComponent(name)}`, { credentials: 'include' });
+      const res = await fetch(`/api/transaction_images/${table}/${encodeURIComponent(finalName)}`, { credentials: 'include' });
       const imgs = await res.json();
       if (imgs.length === 0) {
         addToast('No images found', 'info');
