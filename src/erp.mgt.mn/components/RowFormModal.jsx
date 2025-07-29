@@ -775,6 +775,7 @@ const RowFormModal = function RowFormModal({
         const view = viewSource[c];
         const cfg = viewDisplays[view] || {};
         const cols = viewColumns[view] || [];
+        if (cols.length === 0) return <span>Loading...</span>;
         let idField = cfg.idField || c;
         const match = cols.find((x) => x.toLowerCase() === idField.toLowerCase());
         if (!match && cols.length > 0) idField = cols[0];

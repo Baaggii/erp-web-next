@@ -757,6 +757,7 @@ export default forwardRef(function InlineTransactionTable({
     }
     try {
       const res = await fetch(`/api/transaction_images/${table}/${encodeURIComponent(name)}`, { credentials: 'include' });
+      if (!res.ok) throw new Error('request failed');
       const imgs = await res.json();
       if (imgs.length === 0) {
         addToast('No images found', 'info');
