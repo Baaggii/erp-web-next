@@ -66,8 +66,8 @@ function normalizeDateInput(value, format) {
 const actionCellStyle = {
   padding: '0.5rem',
   border: '1px solid #d1d5db',
-  width: 150,
-  minWidth: 150,
+  width: 180,
+  minWidth: 180,
   whiteSpace: 'nowrap',
   display: 'flex',
   justifyContent: 'flex-end',
@@ -898,7 +898,7 @@ const TableManager = forwardRef(function TableManager({
       });
     }
 
-    const baseRowForName = isAdding ? gridRows[0] : editing;
+    const baseRowForName = isAdding ? values : editing;
     const { name: oldImageName } = buildImageName(
       baseRowForName || merged,
       formConfig?.imagenameField || [],
@@ -1628,7 +1628,7 @@ const TableManager = forwardRef(function TableManager({
                 {sort.column === c ? (sort.dir === 'asc' ? ' \u2191' : ' \u2193') : ''}
               </th>
             ))}
-            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', width: 120 }}>Action</th>
+            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', width: 180 }}>Action</th>
           </tr>
           <tr>
             <th style={{ padding: '0.25rem', border: '1px solid #d1d5db', width: 60 }}></th>
