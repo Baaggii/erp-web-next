@@ -6,6 +6,7 @@ import buildImageName from '../utils/buildImageName.js';
 export default function RowImageUploadModal({
   visible,
   onClose,
+  table,
   folder,
   row = {},
   imagenameFields = [],
@@ -27,14 +28,16 @@ export default function RowImageUploadModal({
       setUploaded([]);
       return;
     }
-    const safeFolder = encodeURIComponent(folder);
-    fetch(`/api/transaction_images/${safeFolder}/${encodeURIComponent(name)}`, {
+    const safeTable = encodeURIComponent(table);
+    const params = new URLSearchParams();
+    if (folder) params.set('folder', folder);
+    fetch(`/api/transaction_images/${safeTable}/${encodeURIComponent(name)}?${params.toString()}`, {
       credentials: 'include',
     })
       .then((r) => (r.ok ? r.json() : []))
       .then((imgs) => setUploaded(Array.isArray(imgs) ? imgs : []))
       .catch(() => setUploaded([]));
-  }, [visible, folder, row]);
+  }, [visible, folder, row, table]);
 
   async function handleUpload(selectedFiles) {
     const { name: safeName, missing } = buildName();
@@ -49,8 +52,10 @@ export default function RowImageUploadModal({
         'warn',
       );
     }
-    const safeFolder = encodeURIComponent(folder);
-    const uploadUrl = `/api/transaction_images/${safeFolder}/${encodeURIComponent(finalName)}`;
+    const safeTable = encodeURIComponent(table);
+    const params = new URLSearchParams();
+    if (folder) params.set('folder', folder);
+    const uploadUrl = `/api/transaction_images/${safeTable}/${encodeURIComponent(finalName)}?${params.toString()}`;
     const filesToUpload = Array.from(selectedFiles || files);
     if (!filesToUpload.length) return;
     setLoading(true);
@@ -79,9 +84,11 @@ export default function RowImageUploadModal({
     const { name } = buildName();
     if (!folder || !name) return;
     try {
-      const safeFolder = encodeURIComponent(folder);
+      const safeTable = encodeURIComponent(table);
+      const params = new URLSearchParams();
+      if (folder) params.set('folder', folder);
       await fetch(
-        `/api/transaction_images/${safeFolder}/${encodeURIComponent(name)}/${encodeURIComponent(file)}`,
+        `/api/transaction_images/${safeTable}/${encodeURIComponent(name)}/${encodeURIComponent(file)}?${params.toString()}`,
         { method: 'DELETE', credentials: 'include' },
       );
       setUploaded((u) => u.filter((f) => !f.endsWith(`/${file}`)));
@@ -92,8 +99,10 @@ export default function RowImageUploadModal({
     const { name } = buildName();
     if (!folder || !name) return;
     try {
-      const safeFolder = encodeURIComponent(folder);
-      await fetch(`/api/transaction_images/${safeFolder}/${encodeURIComponent(name)}`, {
+      const safeTable = encodeURIComponent(table);
+      const params = new URLSearchParams();
+      if (folder) params.set('folder', folder);
+      await fetch(`/api/transaction_images/${safeTable}/${encodeURIComponent(name)}?${params.toString()}`, {
         method: 'DELETE',
         credentials: 'include',
       });

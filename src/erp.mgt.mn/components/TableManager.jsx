@@ -1978,6 +1978,7 @@ const TableManager = forwardRef(function TableManager({
       <RowImageViewModal
         visible={imagesRow !== null}
         onClose={() => setImagesRow(null)}
+        table={table}
         folder={getImageFolder(imagesRow)}
         row={imagesRow || {}}
         imagenameFields={getConfigForRow(imagesRow).imagenameField || []}

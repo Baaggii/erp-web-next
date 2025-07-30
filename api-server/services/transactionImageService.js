@@ -25,10 +25,10 @@ function sanitizeName(name) {
     .replace(/[^a-z0-9_-]+/gi, '_');
 }
 
-export async function saveImages(table, name, files) {
+export async function saveImages(table, name, files, folder = null) {
   const { baseDir, urlBase } = await getDirs();
   ensureDir(baseDir);
-  const dir = path.join(baseDir, table);
+  const dir = path.join(baseDir, folder || table);
   ensureDir(dir);
   const saved = [];
   const prefix = sanitizeName(name);
@@ -58,22 +58,22 @@ export async function saveImages(table, name, files) {
     } catch {
       await fs.rename(file.path, dest);
     }
-    saved.push(`${urlBase}/${table}/${fileName}`);
+    saved.push(`${urlBase}/${folder || table}/${fileName}`);
   }
   return saved;
 }
 
-export async function listImages(table, name) {
+export async function listImages(table, name, folder = null) {
   const { baseDir, urlBase } = await getDirs();
   ensureDir(baseDir);
-  const dir = path.join(baseDir, table);
+  const dir = path.join(baseDir, folder || table);
   ensureDir(dir);
   const prefix = sanitizeName(name);
   try {
     const files = await fs.readdir(dir);
     return files
       .filter((f) => f.startsWith(prefix + '_'))
-      .map((f) => `${urlBase}/${table}/${f}`);
+      .map((f) => `${urlBase}/${folder || table}/${f}`);
   } catch {
     return [];
   }
@@ -106,9 +106,9 @@ export async function renameImages(table, oldName, newName, folder = null) {
   }
 }
 
-export async function deleteImage(table, file) {
+export async function deleteImage(table, file, folder = null) {
   const { baseDir } = await getDirs();
-  const dir = path.join(baseDir, table);
+  const dir = path.join(baseDir, folder || table);
   try {
     await fs.unlink(path.join(dir, path.basename(file)));
     return true;
@@ -117,10 +117,10 @@ export async function deleteImage(table, file) {
   }
 }
 
-export async function deleteAllImages(table, name) {
+export async function deleteAllImages(table, name, folder = null) {
   const { baseDir } = await getDirs();
   ensureDir(baseDir);
-  const dir = path.join(baseDir, table);
+  const dir = path.join(baseDir, folder || table);
   ensureDir(dir);
   const prefix = sanitizeName(name);
   try {

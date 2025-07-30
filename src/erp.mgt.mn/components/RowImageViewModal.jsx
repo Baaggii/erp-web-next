@@ -6,6 +6,7 @@ import { useToast } from '../context/ToastContext.jsx';
 export default function RowImageViewModal({
   visible,
   onClose,
+  table,
   folder,
   row = {},
   imagenameFields = [],
@@ -21,9 +22,11 @@ export default function RowImageViewModal({
       setFiles([]);
       return;
     }
-    const safeFolder = encodeURIComponent(folder);
-    addToast(`Search: ${safeFolder}/${name}`, 'info');
-    fetch(`/api/transaction_images/${safeFolder}/${encodeURIComponent(name)}`, {
+    const safeTable = encodeURIComponent(table);
+    const params = new URLSearchParams();
+    if (folder) params.set('folder', folder);
+    addToast(`Search: ${params.get('folder') || table}/${name}`, 'info');
+    fetch(`/api/transaction_images/${safeTable}/${encodeURIComponent(name)}?${params.toString()}`, {
       credentials: 'include',
     })
       .then((r) => (r.ok ? r.json() : []))
@@ -33,7 +36,7 @@ export default function RowImageViewModal({
         setFiles(list);
       })
       .catch(() => setFiles([]));
-  }, [visible, folder, row]);
+  }, [visible, folder, row, table]);
 
   if (!visible) return null;
 
