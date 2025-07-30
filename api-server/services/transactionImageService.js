@@ -100,3 +100,35 @@ export async function renameImages(table, oldName, newName) {
     return [];
   }
 }
+
+export async function deleteImage(table, file) {
+  const { baseDir } = await getDirs();
+  const dir = path.join(baseDir, table);
+  try {
+    await fs.unlink(path.join(dir, path.basename(file)));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function deleteAllImages(table, name) {
+  const { baseDir } = await getDirs();
+  ensureDir(baseDir);
+  const dir = path.join(baseDir, table);
+  ensureDir(dir);
+  const prefix = sanitizeName(name);
+  try {
+    const files = await fs.readdir(dir);
+    const deleted = [];
+    for (const f of files) {
+      if (f.startsWith(prefix + '_')) {
+        await fs.unlink(path.join(dir, f));
+        deleted.push(f);
+      }
+    }
+    return deleted.length;
+  } catch {
+    return 0;
+  }
+}

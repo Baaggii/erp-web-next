@@ -17,7 +17,7 @@ Each **transaction** entry allows you to specify:
 - **dateField** – list of columns treated as date for default filtering
 - **emailField** – list of columns that store email addresses
 - **imagenameField** – list of columns containing image file names
-- **imageIdField** – column containing the unique identifier used to name images
+- **imageIdField** – column containing the unique identifier used to name images. Selecting this field automatically adds it to `imagenameField`.
 - **imageFolder** – subfolder name for storing images of this transaction type
 - **printEmpField** – columns printed as employee info
 - **printCustField** – columns printed as customer info
