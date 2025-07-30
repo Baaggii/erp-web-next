@@ -876,8 +876,9 @@ const TableManager = forwardRef(function TableManager({
       });
     }
 
+    const baseRowForName = isAdding ? gridRows[0] : editing;
     const { name: oldImageName } = buildImageName(
-      merged,
+      baseRowForName || merged,
       formConfig?.imagenameField || [],
       columnCaseMap,
     );

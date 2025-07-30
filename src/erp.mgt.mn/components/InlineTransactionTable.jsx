@@ -578,6 +578,14 @@ export default forwardRef(function InlineTransactionTable({
     setUploadRow(idx);
   }
 
+  function handleUploaded(idx, name) {
+    setRows((r) => {
+      const next = r.map((row, i) => (i === idx ? { ...row, _imageName: name } : row));
+      onRowsChange(next);
+      return next;
+    });
+  }
+
   function getImageFolder(row) {
     if (!row || !row._saved) return tableName;
     const lowerMap = {};
@@ -1136,6 +1144,7 @@ export default forwardRef(function InlineTransactionTable({
         row={rows[uploadRow] || {}}
         imagenameFields={imagenameFields}
         columnCaseMap={columnCaseMap}
+        onUploaded={(name) => handleUploaded(uploadRow, name)}
       />
     </div>
   );

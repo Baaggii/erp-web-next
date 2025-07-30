@@ -37,14 +37,18 @@ export default function RowImageUploadModal({
 
   async function handleUpload(selectedFiles) {
     const { name: safeName, missing } = buildName();
-    const uploadUrl = safeName && folder ? `/api/transaction_images/${folder}/${encodeURIComponent(safeName)}` : '';
-    if (!uploadUrl) {
-      const msg = missing.length
-        ? `Image name is missing fields: ${missing.join(', ')}`
-        : 'Image name is missing';
-      addToast(msg, 'error');
+    const finalName = safeName || `tmp_${Date.now()}`;
+    if (!folder) {
+      addToast('Image folder is missing', 'error');
       return;
     }
+    if (missing.length) {
+      addToast(
+        `Image name is missing fields: ${missing.join(', ')}. Temporary name will be used`,
+        'warn',
+      );
+    }
+    const uploadUrl = `/api/transaction_images/${folder}/${encodeURIComponent(finalName)}`;
     const filesToUpload = Array.from(selectedFiles || files);
     if (!filesToUpload.length) return;
     setLoading(true);
@@ -53,11 +57,11 @@ export default function RowImageUploadModal({
     try {
       const res = await fetch(uploadUrl, { method: 'POST', body: form, credentials: 'include' });
       if (res.ok) {
-        addToast(`Images uploaded as ${safeName}`, 'success');
+        addToast(`Images uploaded as ${finalName}`, 'success');
         const imgs = await res.json().catch(() => []);
         setFiles([]);
         setUploaded((u) => [...u, ...imgs]);
-        onUploaded(safeName);
+        onUploaded(finalName);
       } else {
         const text = await res.text();
         addToast(text || 'Failed to upload images', 'error');
