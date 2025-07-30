@@ -8,7 +8,7 @@ Forms used by POS transactions support a special **fitted** view. In this mode a
     "labelFontSize": 14,
     "boxWidth": 60,
     "boxHeight": 30,
-    "boxMaxWidth": 150,
+    "boxMaxWidth": 200,
     "boxMaxHeight": 150
   }
 }
