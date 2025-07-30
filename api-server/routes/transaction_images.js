@@ -5,7 +5,6 @@ import {
   saveImages,
   listImages,
   renameImages,
-  deleteImages,
 } from '../services/transactionImageService.js';
 
 const router = express.Router();
@@ -34,19 +33,6 @@ router.get('/:table/:name', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/rename', requireAuth, async (req, res, next) => {
-  try {
-    const { table, oldName, newName, folderPath = '' } = req.body || {};
-    if (!table || !oldName || !newName) {
-      return res.status(400).json({ message: 'missing fields' });
-    }
-    const renamed = await renameImages(table, oldName, newName, folderPath);
-    res.json(renamed);
-  } catch (err) {
-    next(err);
-  }
-});
-
 router.post('/:table/:oldName/rename/:newName', requireAuth, async (req, res, next) => {
   try {
     const folder = req.query.folder || '';
@@ -57,31 +43,6 @@ router.post('/:table/:oldName/rename/:newName', requireAuth, async (req, res, ne
       folder,
     );
     res.json(renamed);
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.delete('/:table/:name/:file', requireAuth, async (req, res, next) => {
-  try {
-    const folder = req.query.folder || '';
-    const del = await deleteImages(
-      req.params.table,
-      req.params.name,
-      folder,
-      req.params.file,
-    );
-    res.json(del);
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.delete('/:table/:name', requireAuth, async (req, res, next) => {
-  try {
-    const folder = req.query.folder || '';
-    const del = await deleteImages(req.params.table, req.params.name, folder);
-    res.json(del);
   } catch (err) {
     next(err);
   }

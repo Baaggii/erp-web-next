@@ -18,11 +18,6 @@ const defaults = {
     boxMaxWidth: 150,
     boxMaxHeight: 150,
   },
-  imageStorage: {
-    basePath: 'uploaded_images/',
-    defaultFolder: 'transactions/',
-    posFolder: 'transactions_pos/',
-  },
 };
 
 async function readConfig() {
@@ -54,7 +49,6 @@ export async function updateGeneralConfig(updates = {}) {
   const cfg = await readConfig();
   if (updates.forms) Object.assign(cfg.forms, updates.forms);
   if (updates.pos) Object.assign(cfg.pos, updates.pos);
-  if (updates.imageStorage) Object.assign(cfg.imageStorage, updates.imageStorage);
   await writeConfig(cfg);
   return cfg;
 }

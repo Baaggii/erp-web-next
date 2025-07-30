@@ -12,10 +12,5 @@
     "boxHeight": 30,
     "boxMaxWidth": 200,
     "boxMaxHeight": 150
-  },
-  "imageStorage": {
-    "basePath": "uploaded_images/",
-    "defaultFolder": "transactions/",
-    "posFolder": "transactions_pos/"
   }
 }
