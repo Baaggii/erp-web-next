@@ -1101,22 +1101,20 @@ export default forwardRef(function InlineTransactionTable({
                   );
                   const canUpload = !!safe && missing.length === 0;
                   return (
-                    <>
-                      <button
-                        type="button"
-                        disabled={!canUpload}
-                        title={!canUpload ? 'Please post first' : 'Upload image'}
-                        onClick={() => openUpload(idx)}
-                        style={{ marginRight: '0.25rem' }}
-                      >
-                        Add Image
+                    <button
+                      type="button"
+                      disabled={!canUpload}
+                      title={!canUpload ? 'Please post first' : 'Upload image'}
+                      onClick={() => openUpload(idx)}
+                      style={{ marginRight: '0.25rem' }}
+                    >
+                      Add Image
+                    </button>
+                    {imageIdField && (
+                      <button type="button" onClick={() => openView(idx)}>
+                        🖼 View Images
                       </button>
-                      {imageIdField && (
-                        <button type="button" onClick={() => openView(idx)}>
-                          🖼 View Images
-                        </button>
-                      )}
-                    </>
+                    )}
                   );
                 })()}
               </td>
