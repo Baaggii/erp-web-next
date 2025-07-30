@@ -15,7 +15,7 @@
     "labelFontSize": 14,
     "boxWidth": 60,
     "boxHeight": 30,
-    "boxMaxWidth": 150,
+    "boxMaxWidth": 200,
     "boxMaxHeight": 150
   }
 }

@@ -245,10 +245,10 @@ export default forwardRef(function InlineTransactionTable({
     focusRow.current = null;
   }, [rows, minRows]);
 
-  useEffect(() => {
+  function resizeInputs() {
     Object.values(inputRefs.current).forEach((el) => {
       if (!el) return;
-      if (el.tagName === 'INPUT') {
+      if (el.tagName === 'INPUT' || el.tagName === 'DIV') {
         el.style.width = 'auto';
         const w = Math.min(el.scrollWidth + 2, boxMaxWidth);
         el.style.width = `${Math.max(boxWidth, w)}px`;
@@ -259,7 +259,12 @@ export default forwardRef(function InlineTransactionTable({
         el.style.overflowY = el.scrollHeight > h ? 'auto' : 'hidden';
       }
     });
-  }, [rows, boxWidth, boxMaxWidth, boxMaxHeight]);
+  }
+
+  useEffect(resizeInputs, [rows, boxWidth, boxMaxWidth, boxMaxHeight]);
+  useEffect(() => {
+    resizeInputs();
+  }, []);
 
   useImperativeHandle(ref, () => ({
     getRows: () => rows,
@@ -866,10 +871,21 @@ export default forwardRef(function InlineTransactionTable({
         });
         display = parts.join(' - ');
       }
-      const readonlyStyle = { ...inputStyle, width: 'fit-content', maxWidth: `${boxMaxWidth}px` };
+      const readonlyStyle = {
+        ...inputStyle,
+        width: 'fit-content',
+        minWidth: `${boxWidth}px`,
+        maxWidth: `${boxMaxWidth}px`,
+      };
       return (
         <div className="flex items-center" title={display}>
-          <div className="px-1 border rounded bg-gray-100" style={readonlyStyle}>{display}</div>
+          <div
+            className="px-1 border rounded bg-gray-100"
+            style={readonlyStyle}
+            ref={(el) => (inputRefs.current[`ro-${idx}-${f}`] = el)}
+          >
+            {display}
+          </div>
         </div>
       );
     }
