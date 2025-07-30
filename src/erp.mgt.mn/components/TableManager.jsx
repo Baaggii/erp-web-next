@@ -15,6 +15,7 @@ import CascadeDeleteModal from './CascadeDeleteModal.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
+import buildImageName from '../utils/buildImageName.js';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -862,6 +863,12 @@ const TableManager = forwardRef(function TableManager({
       });
     }
 
+    const { name: oldImageName } = buildImageName(
+      merged,
+      formConfig?.imagenameField || [],
+      columnCaseMap,
+    );
+
     const required = formConfig?.requiredFields || [];
     for (const f of required) {
       if (merged[f] === undefined || merged[f] === '') {
@@ -899,6 +906,7 @@ const TableManager = forwardRef(function TableManager({
         credentials: 'include',
         body: JSON.stringify(cleaned),
       });
+      const savedRow = res.ok ? await res.json().catch(() => ({})) : {};
       if (res.ok) {
         const params = new URLSearchParams({ page, perPage });
         if (sort.column) {
@@ -921,6 +929,28 @@ const TableManager = forwardRef(function TableManager({
         setIsAdding(false);
         setGridRows([]);
         const msg = isAdding ? 'Шинэ гүйлгээ хадгалагдлаа' : 'Хадгалагдлаа';
+        if (isAdding && formConfig?.imageIdField) {
+          const inserted = rows.find(
+            (r) => String(getRowId(r)) === String(savedRow.id),
+          );
+          const rowForName =
+            inserted || {
+              ...merged,
+              [formConfig.imageIdField]:
+                savedRow[formConfig.imageIdField] ?? savedRow.id,
+            };
+          const { name: newImageName } = buildImageName(
+            rowForName,
+            formConfig?.imagenameField || [],
+            columnCaseMap,
+          );
+          if (oldImageName && newImageName && oldImageName !== newImageName) {
+            await fetch(
+              `/api/transaction_images/${table}/${encodeURIComponent(oldImageName)}/rename/${encodeURIComponent(newImageName)}`,
+              { method: 'POST', credentials: 'include' },
+            );
+          }
+        }
         addToast(msg, 'success');
         if (isAdding) {
           setTimeout(() => openAdd(), 0);
@@ -1875,6 +1905,8 @@ const TableManager = forwardRef(function TableManager({
         totalCurrencyFields={formConfig?.totalCurrencyFields || []}
         procTriggers={procTriggers}
         columnCaseMap={columnCaseMap}
+        table={table}
+        imagenameField={formConfig?.imagenameField || []}
         viewSource={viewSourceMap}
         viewDisplays={viewDisplayMap}
         viewColumns={viewColumns}

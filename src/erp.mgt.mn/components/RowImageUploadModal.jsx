@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Modal from './Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import buildImageName from '../utils/buildImageName.js';
@@ -15,12 +15,27 @@ export default function RowImageUploadModal({
   const { addToast } = useToast();
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
-  if (!visible) return null;
+  const [uploaded, setUploaded] = useState([]);
   function buildName() {
     return buildImageName(row, imagenameFields, columnCaseMap);
   }
 
-  async function handleUpload() {
+  useEffect(() => {
+    if (!visible) return;
+    const { name } = buildName();
+    if (!table || !name) {
+      setUploaded([]);
+      return;
+    }
+    fetch(`/api/transaction_images/${table}/${encodeURIComponent(name)}`, {
+      credentials: 'include',
+    })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((imgs) => setUploaded(Array.isArray(imgs) ? imgs : []))
+      .catch(() => setUploaded([]));
+  }, [visible, table, row]);
+
+  async function handleUpload(selectedFiles) {
     const { name: safeName, missing } = buildName();
     const uploadUrl = safeName && table ? `/api/transaction_images/${table}/${encodeURIComponent(safeName)}` : '';
     if (!uploadUrl) {
@@ -30,15 +45,18 @@ export default function RowImageUploadModal({
       addToast(msg, 'error');
       return;
     }
-    if (!files.length) return;
+    const filesToUpload = Array.from(selectedFiles || files);
+    if (!filesToUpload.length) return;
     setLoading(true);
     const form = new FormData();
-    files.forEach((f) => form.append('images', f));
+    filesToUpload.forEach((f) => form.append('images', f));
     try {
       const res = await fetch(uploadUrl, { method: 'POST', body: form, credentials: 'include' });
       if (res.ok) {
         addToast(`Images uploaded as ${safeName}`, 'success');
+        const imgs = await res.json().catch(() => []);
         setFiles([]);
+        setUploaded(imgs);
         onUploaded(safeName);
       } else {
         const text = await res.text();
@@ -51,12 +69,63 @@ export default function RowImageUploadModal({
     setLoading(false);
   }
 
+  async function deleteFile(file) {
+    const { name } = buildName();
+    if (!table || !name) return;
+    try {
+      await fetch(
+        `/api/transaction_images/${table}/${encodeURIComponent(name)}/${encodeURIComponent(file)}`,
+        { method: 'DELETE', credentials: 'include' },
+      );
+      setUploaded((u) => u.filter((f) => f !== file));
+    } catch {}
+  }
+
+  async function deleteAll() {
+    const { name } = buildName();
+    if (!table || !name) return;
+    try {
+      await fetch(`/api/transaction_images/${table}/${encodeURIComponent(name)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      setUploaded([]);
+    } catch {}
+  }
+
+  if (!visible) return null;
+
   return (
     <Modal visible={visible} title="Upload Images" onClose={onClose} width="auto">
-      <input type="file" multiple onChange={(e) => setFiles(Array.from(e.target.files))} />
-      <button onClick={handleUpload} disabled={!files.length || loading} style={{ marginLeft: '0.5rem' }}>
-        {loading ? 'Uploading...' : 'Upload'}
-      </button>
+      <div style={{ marginBottom: '0.5rem' }}>
+        <input
+          type="file"
+          multiple
+          onChange={(e) => {
+            const selected = Array.from(e.target.files);
+            setFiles(selected);
+            handleUpload(selected);
+          }}
+        />
+        {loading && <span style={{ marginLeft: '0.5rem' }}>Uploading...</span>}
+      </div>
+      {uploaded.length > 0 && (
+        <div style={{ maxHeight: '40vh', overflowY: 'auto' }}>
+          {uploaded.map((src) => {
+            const name = src.split('/').pop();
+            return (
+              <div key={src} style={{ marginBottom: '0.25rem' }}>
+                <img src={src} alt="" style={{ maxWidth: '100px', marginRight: '0.5rem' }} />
+                <span style={{ marginRight: '0.5rem' }}>{name}</span>
+                <button type="button" onClick={() => deleteFile(name)}>Delete</button>
+              </div>
+            );
+          })}
+          <button type="button" onClick={deleteAll} style={{ marginTop: '0.5rem' }}>
+            Delete All
+          </button>
+        </div>
+      )}
       <div style={{ textAlign: 'right', marginTop: '1rem' }}>
         <button type="button" onClick={onClose}>Close</button>
       </div>
