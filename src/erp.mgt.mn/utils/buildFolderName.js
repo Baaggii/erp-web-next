@@ -15,13 +15,13 @@ export default function buildFolderName(row = {}, fields = [], columnCaseMap = {
       if (!val) missing.push(f);
       return val;
     })
-    .filter((v) => v !== undefined && v !== null && v !== '')
-    .join('_');
+    .filter((v) => v !== undefined && v !== null && v !== '');
   const sanitize = (name) =>
     String(name)
       .toLowerCase()
       .replace(/[^a-z0-9_-]+/gi, '_');
-  let safe = sanitize(parts);
+  const safeParts = parts.map((p) => sanitize(p));
+  let safe = safeParts.join('/');
   if (!safe) {
     const fallback =
       row._folderName || row.folder_name || row[columnCaseMap['foldername']];
