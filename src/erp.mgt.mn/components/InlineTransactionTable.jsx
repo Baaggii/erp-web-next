@@ -1038,7 +1038,7 @@ export default forwardRef(function InlineTransactionTable({
                 </td>
               ))}
               <td className="border px-1 py-1 text-center">
-                <button onClick={() => openUpload(idx)}>Add Image</button>
+                <button type="button" onClick={() => openUpload(idx)}>Add Image</button>
               </td>
               <td className="border px-1 py-1 text-right">
                 {collectRows ? (
