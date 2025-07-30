@@ -894,7 +894,7 @@ const TableManager = forwardRef(function TableManager({
     const cleaned = {};
     const skipFields = new Set([...autoCols, 'id']);
     Object.entries(merged).forEach(([k, v]) => {
-      if (skipFields.has(k)) return;
+      if (skipFields.has(k) || k.startsWith('_')) return;
       if (v !== '') {
         cleaned[k] =
           typeof v === 'string' ? normalizeDateInput(v, placeholders[k]) : v;
