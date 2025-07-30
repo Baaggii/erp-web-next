@@ -26,6 +26,7 @@ export default function RowImageUploadModal({
   }
 
   async function handleUpload() {
+    const { name: folder } = buildFolder();
     const { name: safeName, missing } = buildName();
     if (!safeName || missing.length) {
       addToast('Please post the transaction before uploading images.', 'error');
