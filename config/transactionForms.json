@@ -59,6 +59,10 @@
       "companyIdFields": [
         "company_id"
       ],
+      "imagenameField": [
+        "or_g_id"
+      ],
+      "imageIdField": "or_g_id",
       "allowedBranches": [],
       "allowedDepartments": [],
       "moduleKey": "finance_transactions"

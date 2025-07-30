@@ -1,4 +1,8 @@
 {
+  "general": {
+    "imageDir": "txn_images",
+    "basePath": "uploads"
+  },
   "forms": {
     "labelFontSize": 14,
     "boxWidth": 60,

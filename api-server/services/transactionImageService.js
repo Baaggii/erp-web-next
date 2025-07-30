@@ -4,12 +4,15 @@ import path from 'path';
 import mime from 'mime-types';
 import { getGeneralConfig } from './generalConfig.js';
 
-async function getDirs() {
+async function getDirs(trtype, transType) {
   const cfg = await getGeneralConfig();
   const subdir = cfg.general?.imageDir || 'txn_images';
-  const baseDir = path.join(process.cwd(), 'uploads', subdir);
-  const urlBase = `/uploads/${subdir}`;
-  return { baseDir, urlBase };
+  const root = cfg.general?.basePath || 'uploads';
+  const baseDir = path.join(process.cwd(), root, subdir);
+  const parts = [sanitizeName(trtype), sanitizeName(transType)].filter(Boolean);
+  const dir = path.join(baseDir, ...parts);
+  const urlBase = `/${root}/${subdir}/${parts.join('/')}`;
+  return { dir, urlBase };
 }
 
 function ensureDir(dir) {
@@ -24,10 +27,8 @@ function sanitizeName(name) {
     .replace(/[^a-z0-9_-]+/gi, '_');
 }
 
-export async function saveImages(table, name, files) {
-  const { baseDir, urlBase } = await getDirs();
-  ensureDir(baseDir);
-  const dir = path.join(baseDir, table);
+export async function saveImages(trtype, transType, name, files) {
+  const { dir, urlBase } = await getDirs(trtype, transType);
   ensureDir(dir);
   const saved = [];
   const prefix = sanitizeName(name);
@@ -55,22 +56,20 @@ export async function saveImages(table, name, files) {
     } catch {
       await fs.rename(file.path, dest);
     }
-    saved.push(`${urlBase}/${table}/${fileName}`);
+    saved.push(`${urlBase}/${fileName}`);
   }
   return saved;
 }
 
-export async function listImages(table, name) {
-  const { baseDir, urlBase } = await getDirs();
-  ensureDir(baseDir);
-  const dir = path.join(baseDir, table);
+export async function listImages(trtype, transType, name) {
+  const { dir, urlBase } = await getDirs(trtype, transType);
   ensureDir(dir);
   const prefix = sanitizeName(name);
   try {
     const files = await fs.readdir(dir);
     return files
       .filter((f) => f.startsWith(prefix + '_'))
-      .map((f) => `${urlBase}/${table}/${f}`);
+      .map((f) => `${urlBase}/${f}`);
   } catch {
     return [];
   }
