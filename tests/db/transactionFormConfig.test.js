@@ -110,6 +110,20 @@ await test('setFormConfig stores additional field lists', async () => {
   await restore();
 });
 
+await test('setFormConfig stores image id and folder fields', async () => {
+  const { orig, restore } = await withTempFile();
+  await fs.writeFile(filePath, '{}');
+  await setFormConfig('tbl', 'ImgTest', {
+    moduleKey: 'parent_mod',
+    imageIdField: 'idfld',
+    imageFolderFields: ['d1', 'd2'],
+  });
+  const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
+  assert.equal(data.tbl.ImgTest.imageIdField, 'idfld');
+  assert.deepEqual(data.tbl.ImgTest.imageFolderFields, ['d1', 'd2']);
+  await restore();
+});
+
 await test('deleteFormConfig removes entry when unused', async () => {
   const { orig, restore } = await withTempFile();
   await fs.writeFile(
