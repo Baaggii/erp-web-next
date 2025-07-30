@@ -46,7 +46,10 @@ export default function AsyncSearchSelect({
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: p, perPage: 50 });
-      if (q) cols.forEach((c) => params.set(c, q));
+      if (q) {
+        params.set('search', q);
+        params.set('searchColumns', cols.join(','));
+      }
       const res = await fetch(
         `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
         { credentials: 'include', signal },
@@ -163,6 +166,18 @@ export default function AsyncSearchSelect({
         onFocus={(e) => {
           setShow(true);
           if (onFocus) onFocus(e);
+          e.target.style.width = 'auto';
+          const max = parseFloat(inputStyle.maxWidth) || 150;
+          const min = parseFloat(inputStyle.minWidth) || 60;
+          const w = Math.min(e.target.scrollWidth + 2, max);
+          e.target.style.width = `${Math.max(min, w)}px`;
+        }}
+        onInput={(e) => {
+          e.target.style.width = 'auto';
+          const max = parseFloat(inputStyle.maxWidth) || 150;
+          const min = parseFloat(inputStyle.minWidth) || 60;
+          const w = Math.min(e.target.scrollWidth + 2, max);
+          e.target.style.width = `${Math.max(min, w)}px`;
         }}
         onBlur={handleBlur}
         onKeyDown={(e) => {
@@ -172,7 +187,7 @@ export default function AsyncSearchSelect({
           chosenRef.current = null;
         }}
         disabled={disabled}
-        style={{ width: '100%', padding: '0.5rem', ...inputStyle }}
+        style={{ padding: '0.5rem', ...inputStyle }}
         title={input}
         {...rest}
       />
