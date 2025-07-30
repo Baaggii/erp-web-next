@@ -76,3 +76,27 @@ export async function listImages(table, name) {
     return [];
   }
 }
+
+export async function renameImages(table, oldName, newName) {
+  const { baseDir, urlBase } = await getDirs();
+  ensureDir(baseDir);
+  const dir = path.join(baseDir, table);
+  ensureDir(dir);
+  const oldPrefix = sanitizeName(oldName);
+  const newPrefix = sanitizeName(newName);
+  try {
+    const files = await fs.readdir(dir);
+    const renamed = [];
+    for (const f of files) {
+      if (f.startsWith(oldPrefix + '_')) {
+        const rest = f.slice(oldPrefix.length);
+        const dest = path.join(dir, newPrefix + rest);
+        await fs.rename(path.join(dir, f), dest);
+        renamed.push(`${urlBase}/${table}/${newPrefix + rest}`);
+      }
+    }
+    return renamed;
+  } catch {
+    return [];
+  }
+}

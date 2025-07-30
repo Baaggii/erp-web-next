@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import { requireAuth } from '../middlewares/auth.js';
-import { saveImages, listImages } from '../services/transactionImageService.js';
+import { saveImages, listImages, renameImages } from '../services/transactionImageService.js';
 
 const router = express.Router();
 const upload = multer({ dest: 'uploads/tmp' });
@@ -21,6 +21,19 @@ router.post('/:table/:name', requireAuth, upload.array('images'), async (req, re
 router.get('/:table/:name', requireAuth, async (req, res, next) => {
   try {
     const files = await listImages(req.params.table, req.params.name);
+    res.json(files);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:table/:oldName/rename/:newName', requireAuth, async (req, res, next) => {
+  try {
+    const files = await renameImages(
+      req.params.table,
+      req.params.oldName,
+      req.params.newName,
+    );
     res.json(files);
   } catch (err) {
     next(err);
