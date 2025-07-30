@@ -141,7 +141,6 @@ const RowFormModal = function RowFormModal({
     return extras;
   });
   const inputRefs = useRef({});
-  const readonlyRefs = useRef({});
   const [errors, setErrors] = useState({});
   const [submitLocked, setSubmitLocked] = useState(false);
   const tableRef = useRef(null);
@@ -271,10 +270,10 @@ const RowFormModal = function RowFormModal({
     setErrors({});
   }, [row, visible, user, company]);
 
-  function resizeInputs() {
-    Object.values({ ...inputRefs.current, ...readonlyRefs.current }).forEach((el) => {
+  useEffect(() => {
+    Object.values(inputRefs.current).forEach((el) => {
       if (!el) return;
-      if (el.tagName === 'INPUT' || el.tagName === 'DIV') {
+      if (el.tagName === 'INPUT') {
         el.style.width = 'auto';
         const w = Math.min(el.scrollWidth + 2, boxMaxWidth);
         el.style.width = `${Math.max(boxWidth, w)}px`;
@@ -285,32 +284,15 @@ const RowFormModal = function RowFormModal({
         el.style.overflowY = el.scrollHeight > h ? 'auto' : 'hidden';
       }
     });
-  }
-
-  useEffect(resizeInputs, [formVals, boxWidth, boxMaxWidth, boxMaxHeight]);
-  useEffect(() => {
-    if (visible) resizeInputs();
-  }, [visible]);
+  }, [formVals, boxWidth, boxMaxWidth, boxMaxHeight]);
 
   if (!visible) return null;
 
   const mainSet = new Set(mainFields);
   const totalAmountSet = new Set(totalAmountFields);
   const totalCurrencySet = new Set(totalCurrencyFields);
-  const headerCols =
-    headerFields.length > 0
-      ? headerFields
-      : columns.filter((c) => headerSet.has(c));
-  const footerCols =
-    footerFields.length > 0
-      ? footerFields
-      : columns.filter((c) => footerSet.has(c));
-  if (window.erpDebug) {
-    console.log('RowFormModal sections', {
-      missingHeader: headerFields.filter((c) => !headerCols.includes(c)),
-      missingFooter: footerFields.filter((c) => !footerCols.includes(c)),
-    });
-  }
+  const headerCols = columns.filter((c) => headerSet.has(c));
+  const footerCols = columns.filter((c) => footerSet.has(c));
   const mainCols =
     mainFields.length > 0
       ? columns.filter((c) => mainSet.has(c))
@@ -335,8 +317,8 @@ const RowFormModal = function RowFormModal({
     height: `${boxHeight}px`,
     maxHeight: `${boxMaxHeight}px`,
     overflow: 'hidden',
-    whiteSpace: 'nowrap',
-    textOverflow: 'ellipsis',
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
   };
 
   async function handleKeyDown(e, col) {
@@ -728,11 +710,10 @@ const RowFormModal = function RowFormModal({
   function renderField(c, withLabel = true) {
     const err = errors[c];
     const inputClass = `w-full border rounded ${err ? 'border-red-500' : 'border-gray-300'}`;
-    const isColumn = columns.includes(c);
-    const disabled = disabledSet.has(c.toLowerCase()) || !isColumn;
+    const disabled = disabledSet.has(c.toLowerCase());
 
     if (disabled) {
-      const raw = isColumn ? formVals[c] : extraVals[c];
+      const raw = formVals[c];
       const val = typeof raw === 'object' && raw !== null ? raw.value : raw;
       let display = typeof raw === 'object' && raw !== null ? raw.label || val : val;
       if (
@@ -762,16 +743,11 @@ const RowFormModal = function RowFormModal({
       const readonlyStyle = {
         ...inputStyle,
         width: 'fit-content',
-        minWidth: `${boxWidth}px`,
         maxWidth: `${boxMaxWidth}px`,
       };
       const content = (
         <div className="flex items-center space-x-1" title={display}>
-          <div
-            className="border rounded bg-gray-100 px-2 py-1"
-            style={readonlyStyle}
-            ref={(el) => (readonlyRefs.current[c] = el)}
-          >
+          <div className="border rounded bg-gray-100 px-2 py-1" style={readonlyStyle}>
             {display}
           </div>
         </div>
@@ -1074,26 +1050,12 @@ const RowFormModal = function RowFormModal({
   }
 
   function renderHeaderTable(cols) {
-    if (cols.length === 0) {
-      return window.erpDebug ? (
-        <div className={fitted ? 'mb-1' : 'mb-2'}>
-          <h3 className="mt-0 mb-1 font-semibold">Header</h3>
-          <div className="text-xs italic text-gray-500">No fields defined</div>
-        </div>
-      ) : null;
-    }
+    if (cols.length === 0) return null;
     return renderSection('Header', cols);
   }
 
   function renderSection(title, cols) {
-    if (cols.length === 0) {
-      return window.erpDebug ? (
-        <div className={fitted ? 'mb-1' : 'mb-2'}>
-          <h3 className="mt-0 mb-1 font-semibold">{title}</h3>
-          <div className="text-xs italic text-gray-500">No fields defined</div>
-        </div>
-      ) : null;
-    }
+    if (cols.length === 0) return null;
     return (
       <div className={fitted ? 'mb-1' : 'mb-2'}>
         <h3 className="mt-0 mb-1 font-semibold">{title}</h3>
