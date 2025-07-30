@@ -17,7 +17,6 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
-import RowImageViewModal from './RowImageViewModal.jsx';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -112,13 +111,6 @@ const TableManager = forwardRef(function TableManager({
       if (window.erpDebug) console.warn('✅ Mounted: TableManager');
     }
   }, []);
-
-  useEffect(() => {
-    fetch(`/api/transaction_forms?table=${encodeURIComponent(table)}`, { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : {}))
-      .then((cfg) => setAllConfigs(cfg || {}))
-      .catch(() => setAllConfigs({}));
-  }, [table]);
   
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
@@ -145,14 +137,11 @@ const TableManager = forwardRef(function TableManager({
   const [showDetail, setShowDetail] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
   const [detailRefs, setDetailRefs] = useState([]);
-  const [imageList, setImageList] = useState([]);
-  const [viewImagesRow, setViewImagesRow] = useState(null);
   const [viewDisplayMap, setViewDisplayMap] = useState({});
   const [viewColumns, setViewColumns] = useState({});
   const [editLabels, setEditLabels] = useState(false);
   const [labelEdits, setLabelEdits] = useState({});
   const [isAdding, setIsAdding] = useState(false);
-  const [allConfigs, setAllConfigs] = useState({});
   const [dateFilter, setDateFilter] = useState('');
   const [datePreset, setDatePreset] = useState('custom');
   const [customStartDate, setCustomStartDate] = useState('');
@@ -636,19 +625,6 @@ const TableManager = forwardRef(function TableManager({
     return `${slugify(t1)}/${slugify(String(t2))}`;
   }
 
-  function getConfigForRow(row) {
-    if (!row) return formConfig;
-    const val = row[formConfig?.transactionTypeField];
-    if (!val) return formConfig;
-    const cfg = Object.values(allConfigs).find(
-      (c) =>
-        c.transactionTypeField &&
-        c.transactionTypeValue &&
-        row[c.transactionTypeField] == c.transactionTypeValue,
-    );
-    return cfg || formConfig;
-  }
-
   function getKeyFields() {
     const keys = columnMeta
       .filter((c) => c.key === 'PRI')
@@ -767,21 +743,6 @@ const TableManager = forwardRef(function TableManager({
       setDetailRefs([]);
     }
     setShowDetail(true);
-  }
-
-  async function openImages(row) {
-    const cfg = getConfigForRow(row);
-    const { name } = buildImageName(row, cfg.imagenameField || [], columnCaseMap);
-    const folder = getImageFolder(row);
-    const params = folder ? `?folder=${encodeURIComponent(folder)}` : '';
-    const imgs = await fetch(
-      `/api/transaction_images/${table}/${encodeURIComponent(name)}${params}`,
-      { credentials: 'include' },
-    )
-      .then((r) => (r.ok ? r.json() : []))
-      .catch(() => []);
-    setImageList(Array.isArray(imgs) ? imgs : []);
-    setViewImagesRow(row);
   }
 
   function toggleRow(id) {
@@ -916,10 +877,9 @@ const TableManager = forwardRef(function TableManager({
     }
 
     const baseRowForName = isAdding ? gridRows[0] : editing;
-    const cfgForOld = getConfigForRow(baseRowForName || merged);
     const { name: oldImageName } = buildImageName(
       baseRowForName || merged,
-      cfgForOld.imagenameField || [],
+      formConfig?.imagenameField || [],
       columnCaseMap,
     );
 
@@ -983,20 +943,19 @@ const TableManager = forwardRef(function TableManager({
         setIsAdding(false);
         setGridRows([]);
         const msg = isAdding ? 'Шинэ гүйлгээ хадгалагдлаа' : 'Хадгалагдлаа';
-        if (isAdding) {
+        if (isAdding && formConfig?.imageIdField) {
           const inserted = rows.find(
             (r) => String(getRowId(r)) === String(savedRow.id),
           );
           const rowForName =
             inserted || {
               ...merged,
-              [cfgForOld.imageIdField]: savedRow[cfgForOld.imageIdField],
+              [formConfig.imageIdField]: savedRow[formConfig.imageIdField],
             };
-          const cfgForNew = getConfigForRow(rowForName);
-          if (rowForName[cfgForNew.imageIdField]) {
+          if (rowForName[formConfig.imageIdField]) {
             const { name: newImageName } = buildImageName(
               rowForName,
-              cfgForNew.imagenameField || [],
+              formConfig?.imagenameField || [],
               columnCaseMap,
             );
             const folder = getImageFolder(rowForName);
@@ -1778,12 +1737,6 @@ const TableManager = forwardRef(function TableManager({
                         👁 View
                       </button>
                       <button
-                        onClick={() => openImages(r)}
-                        style={actionBtnStyle}
-                      >
-                        🖼 View Images
-                      </button>
-                      <button
                         onClick={() => openEdit(r)}
                         disabled={rid === undefined}
                         style={actionBtnStyle}
@@ -1993,11 +1946,6 @@ const TableManager = forwardRef(function TableManager({
         relations={relationOpts}
         references={detailRefs}
         labels={labels}
-      />
-      <RowImageViewModal
-        visible={viewImagesRow !== null}
-        onClose={() => setViewImagesRow(null)}
-        images={imageList}
       />
       {user?.role === 'admin' && (
         <button onClick={() => {
