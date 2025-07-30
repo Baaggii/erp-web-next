@@ -36,8 +36,6 @@ Each **transaction** entry allows you to specify:
   row so you can verify the view integration.
 - **transactionTypeField** – column used to store the transaction type code
 - **transactionTypeValue** – default transaction type code value
-- **uniqueIdField** – column containing the generated unique identifier for the
-  transaction. Image files may be renamed using this value after posting.
 - **moduleKey** – module slug used to group the form under a module. If omitted,
   the transaction will not be associated with any module and is hidden from the
   Forms list.

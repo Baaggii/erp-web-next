@@ -1,7 +1,6 @@
 # General Configuration
 
-`config/generalConfig.json` now groups settings under `forms`, `pos` and
-`general`.
+`config/generalConfig.json` now groups settings under `forms` and `pos`.
 
 ```json
 {
@@ -18,9 +17,6 @@
     "boxHeight": 30,
     "boxMaxWidth": 200,
     "boxMaxHeight": 150
-  },
-  "general": {
-    "imageDir": "txn_images"
   }
 }
 ```
@@ -31,10 +27,6 @@ up to `boxMaxWidth`/`boxMaxHeight` as text is entered and wrap when necessary.
 
 The **POS** section provides the same options specifically for POS transactions.
 Here `boxWidth` defines the initial grid box width of a POS transaction.
-
-The **general** section contains image handling settings. `imageDir` is the
-folder where uploaded transaction images are stored relative to the project
-root.
 
 The settings can be edited in the **General Configuration** screen
 (module key `general_configuration`) under the Settings menu.

@@ -962,8 +962,6 @@ export default function PosTransactionsPage() {
                       fitted={t.view === 'fitted'}
                       scope="pos"
                       dateField={fc.dateField || []}
-                      imagenameField={fc.imagenameField || []}
-                      table={t.table}
                       onNextForm={() => {
                         let next = idx + 1;
                         while (next < formList.length) {

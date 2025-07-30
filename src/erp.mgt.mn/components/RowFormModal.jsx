@@ -3,7 +3,6 @@ import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import Modal from './Modal.jsx';
 import InlineTransactionTable from './InlineTransactionTable.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
-import RowImageUploadModal from './RowImageUploadModal.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
@@ -37,7 +36,6 @@ const RowFormModal = function RowFormModal({
   totalCurrencyFields = [],
   defaultValues = {},
   dateField = [],
-  imagenameField = [],
   inline = false,
   useGrid = false,
   fitted = false,
@@ -53,7 +51,6 @@ const RowFormModal = function RowFormModal({
   viewDisplays = {},
   viewColumns = {},
   procTriggers = {},
-  table = '',
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -149,7 +146,6 @@ const RowFormModal = function RowFormModal({
   const wrapRef = useRef(null);
   const [zoom, setZoom] = useState(1);
   const [previewRow, setPreviewRow] = useState(null);
-  const [showImageUpload, setShowImageUpload] = useState(false);
 
   useEffect(() => {
     if (useGrid) {
@@ -1221,13 +1217,6 @@ const RowFormModal = function RowFormModal({
           >
             Cancel
           </button>
-          <button
-            type="button"
-            onClick={() => setShowImageUpload(true)}
-            className="px-3 py-1 bg-gray-200 rounded"
-          >
-            Add Image
-          </button>
           <button type="submit" className="px-3 py-1 bg-blue-600 text-white rounded">
             Post
           </button>
@@ -1244,17 +1233,6 @@ const RowFormModal = function RowFormModal({
         columns={previewRow ? Object.keys(previewRow) : []}
         relations={relations}
         labels={labels}
-      />
-      <RowImageUploadModal
-        visible={showImageUpload}
-        onClose={() => setShowImageUpload(false)}
-        table={table}
-        row={formVals}
-        imagenameFields={imagenameField}
-        columnCaseMap={columnCaseMap}
-        onUploaded={(name) =>
-          setFormVals((v) => ({ ...v, _imageName: name }))
-        }
       />
     </>
   );
