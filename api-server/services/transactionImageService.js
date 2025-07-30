@@ -24,10 +24,10 @@ function sanitizeName(name) {
     .replace(/[^a-z0-9_-]+/gi, '_');
 }
 
-export async function saveImages(table, name, files) {
+export async function saveImages(table, name, files, folder = '') {
   const { baseDir, urlBase } = await getDirs();
   ensureDir(baseDir);
-  const dir = path.join(baseDir, table);
+  const dir = path.join(baseDir, table, sanitizeName(folder));
   ensureDir(dir);
   const saved = [];
   const prefix = sanitizeName(name);
@@ -55,22 +55,56 @@ export async function saveImages(table, name, files) {
     } catch {
       await fs.rename(file.path, dest);
     }
-    saved.push(`${urlBase}/${table}/${fileName}`);
+    const url = folder
+      ? `${urlBase}/${table}/${sanitizeName(folder)}/${fileName}`
+      : `${urlBase}/${table}/${fileName}`;
+    saved.push(url);
   }
   return saved;
 }
 
-export async function listImages(table, name) {
+export async function listImages(table, name, folder = '') {
   const { baseDir, urlBase } = await getDirs();
   ensureDir(baseDir);
-  const dir = path.join(baseDir, table);
+  const dir = path.join(baseDir, table, sanitizeName(folder));
   ensureDir(dir);
   const prefix = sanitizeName(name);
   try {
     const files = await fs.readdir(dir);
     return files
       .filter((f) => f.startsWith(prefix + '_'))
-      .map((f) => `${urlBase}/${table}/${f}`);
+      .map((f) =>
+        folder
+          ? `${urlBase}/${table}/${sanitizeName(folder)}/${f}`
+          : `${urlBase}/${table}/${f}`,
+      );
+  } catch {
+    return [];
+  }
+}
+
+export async function renameImages(table, oldName, newName, folder = '') {
+  const { baseDir, urlBase } = await getDirs();
+  ensureDir(baseDir);
+  const dir = path.join(baseDir, table, sanitizeName(folder));
+  ensureDir(dir);
+  const oldPrefix = sanitizeName(oldName);
+  const newPrefix = sanitizeName(newName);
+  try {
+    const files = await fs.readdir(dir);
+    const renamed = [];
+    for (const file of files) {
+      if (file.startsWith(oldPrefix + '_')) {
+        const rest = file.slice(oldPrefix.length);
+        const newFile = newPrefix + rest;
+        await fs.rename(path.join(dir, file), path.join(dir, newFile));
+        const url = folder
+          ? `${urlBase}/${table}/${sanitizeName(folder)}/${newFile}`
+          : `${urlBase}/${table}/${newFile}`;
+        renamed.push(url);
+      }
+    }
+    return renamed;
   } catch {
     return [];
   }
