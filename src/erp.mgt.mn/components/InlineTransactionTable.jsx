@@ -11,6 +11,7 @@ import RowDetailModal from './RowDetailModal.jsx';
 import RowImageUploadModal from './RowImageUploadModal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
+import buildImageName from '../utils/buildImageName.js';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -1038,7 +1039,24 @@ export default forwardRef(function InlineTransactionTable({
                 </td>
               ))}
               <td className="border px-1 py-1 text-center">
-                <button type="button" onClick={() => openUpload(idx)}>Add Image</button>
+                {(() => {
+                  const { name: safe, missing } = buildImageName(
+                    r,
+                    imagenameFields,
+                    columnCaseMap,
+                  );
+                  const canUpload = !!safe && missing.length === 0;
+                  return (
+                    <button
+                      type="button"
+                      disabled={!canUpload}
+                      title={!canUpload ? 'Please post first' : 'Upload image'}
+                      onClick={() => openUpload(idx)}
+                    >
+                      Add Image
+                    </button>
+                  );
+                })()}
               </td>
               <td className="border px-1 py-1 text-right">
                 {collectRows ? (

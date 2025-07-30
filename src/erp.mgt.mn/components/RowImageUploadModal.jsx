@@ -28,15 +28,16 @@ export default function RowImageUploadModal({
   async function handleUpload() {
     const { name: folder } = buildFolder();
     const { name: safeName, missing } = buildName();
-    const query = folder ? `?folder=${encodeURIComponent(folder)}` : '';
-    const uploadUrl = safeName && table ? `/api/transaction_images/${table}/${encodeURIComponent(safeName)}${query}` : '';
-    if (!uploadUrl) {
-      const msg = missing.length
-        ? `Image name is missing fields: ${missing.join(', ')}`
-        : 'Image name is missing';
-      addToast(msg, 'error');
+    if (!safeName || missing.length) {
+      addToast('Please post the transaction before uploading images.', 'error');
       return;
     }
+    const { name: folder } = buildFolder();
+    const query = folder ? `?folder=${encodeURIComponent(folder)}` : '';
+    const uploadUrl =
+      safeName && table
+        ? `/api/transaction_images/${table}/${encodeURIComponent(safeName)}${query}`
+        : '';
     if (!files.length) return;
     setLoading(true);
     const form = new FormData();
