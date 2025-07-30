@@ -1,4 +1,7 @@
 {
+  "general": {
+    "imageDir": "txn_images"
+  },
   "forms": {
     "labelFontSize": 14,
     "boxWidth": 60,

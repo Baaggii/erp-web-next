@@ -8,6 +8,9 @@ import React, {
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
+import RowImageUploadModal from './RowImageUploadModal.jsx';
+import RowImageViewModal from './RowImageViewModal.jsx';
+import buildImageName from '../utils/buildImageName.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 
@@ -66,6 +69,8 @@ export default forwardRef(function InlineTransactionTable({
   branchIdFields = [],
   departmentIdFields = [],
   companyIdFields = [],
+  tableName = '',
+  imageNameFields = [],
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -79,6 +84,10 @@ export default forwardRef(function InlineTransactionTable({
     () => new Set(disabledFields.map((f) => f.toLowerCase())),
     [disabledFields],
   );
+
+  const [uploadRowIdx, setUploadRowIdx] = useState(null);
+  const [viewRowIdx, setViewRowIdx] = useState(null);
+  const [viewImages, setViewImages] = useState([]);
 
   function fillSessionDefaults(obj) {
     const row = { ...obj };
@@ -499,6 +508,41 @@ export default forwardRef(function InlineTransactionTable({
 
   function handleFocusField(col) {
     showTriggerInfo(col);
+  }
+
+  function openUpload(idx) {
+    setUploadRowIdx(idx);
+  }
+
+  function closeUpload() {
+    setUploadRowIdx(null);
+  }
+
+  async function openView(idx) {
+    const row = rows[idx];
+    if (!row) return;
+    const { name } = buildImageName(row, imageNameFields, columnCaseMap);
+    if (!name || !tableName) {
+      setViewImages([]);
+      setViewRowIdx(idx);
+      return;
+    }
+    try {
+      const res = await fetch(
+        `/api/transaction_images/${tableName}/${encodeURIComponent(name)}`,
+        { credentials: 'include' },
+      );
+      const data = await res.json();
+      setViewImages(Array.isArray(data) ? data : []);
+    } catch {
+      setViewImages([]);
+    }
+    setViewRowIdx(idx);
+  }
+
+  function closeView() {
+    setViewRowIdx(null);
+    setViewImages([]);
   }
 
   function addRow() {
@@ -1027,7 +1071,13 @@ export default forwardRef(function InlineTransactionTable({
                   {renderCell(idx, f, cIdx)}
                 </td>
               ))}
-              <td className="border px-1 py-1 text-right">
+              <td className="border px-1 py-1 text-right space-x-1">
+                <button onClick={() => openView(idx)} title="View Images">
+                  🖼
+                </button>
+                <button onClick={() => openUpload(idx)} title="Upload Images">
+                  ⬆️
+                </button>
                 {collectRows ? (
                   <button onClick={() => removeRow(idx)}>Delete</button>
                 ) : r._saved ? (
@@ -1096,6 +1146,19 @@ export default forwardRef(function InlineTransactionTable({
         columns={previewRow ? Object.keys(previewRow) : []}
         relations={relations}
         labels={labels}
+      />
+      <RowImageUploadModal
+        visible={uploadRowIdx !== null}
+        onClose={closeUpload}
+        table={tableName}
+        row={rows[uploadRowIdx] || {}}
+        imagenameFields={imageNameFields}
+        columnCaseMap={columnCaseMap}
+      />
+      <RowImageViewModal
+        visible={viewRowIdx !== null}
+        onClose={closeView}
+        images={viewImages}
       />
     </div>
   );
