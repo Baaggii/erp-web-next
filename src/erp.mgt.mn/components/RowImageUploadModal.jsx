@@ -6,7 +6,6 @@ import buildImageName from '../utils/buildImageName.js';
 export default function RowImageUploadModal({
   visible,
   onClose,
-  table,
   folder,
   row = {},
   imagenameFields = [],
@@ -24,12 +23,11 @@ export default function RowImageUploadModal({
   useEffect(() => {
     if (!visible) return;
     const { name } = buildName();
-    if (!name) {
+    if (!folder || !name) {
       setUploaded([]);
       return;
     }
-    const q = folder ? `?folder=${encodeURIComponent(folder)}` : '';
-    fetch(`/api/transaction_images/${table}/${encodeURIComponent(name)}${q}`, {
+    fetch(`/api/transaction_images/${folder}/${encodeURIComponent(name)}`, {
       credentials: 'include',
     })
       .then((r) => (r.ok ? r.json() : []))
@@ -40,14 +38,17 @@ export default function RowImageUploadModal({
   async function handleUpload(selectedFiles) {
     const { name: safeName, missing } = buildName();
     const finalName = safeName || `tmp_${Date.now()}`;
+    if (!folder) {
+      addToast('Image folder is missing', 'error');
+      return;
+    }
     if (missing.length) {
       addToast(
         `Image name is missing fields: ${missing.join(', ')}. Temporary name will be used`,
         'warn',
       );
     }
-    const q = folder ? `?folder=${encodeURIComponent(folder)}` : '';
-    const uploadUrl = `/api/transaction_images/${table}/${encodeURIComponent(finalName)}${q}`;
+    const uploadUrl = `/api/transaction_images/${folder}/${encodeURIComponent(finalName)}`;
     const filesToUpload = Array.from(selectedFiles || files);
     if (!filesToUpload.length) return;
     setLoading(true);
@@ -74,22 +75,28 @@ export default function RowImageUploadModal({
 
   async function deleteFile(file) {
     const { name } = buildName();
-    if (!name) return;
-    const q = folder ? `?folder=${encodeURIComponent(folder)}` : "";
+    if (!folder || !name) return;
     try {
-      await fetch(`/api/transaction_images/${table}/${encodeURIComponent(name)}/${encodeURIComponent(file)}${q}`, { method: "DELETE", credentials: "include" });
+      await fetch(
+        `/api/transaction_images/${folder}/${encodeURIComponent(name)}/${encodeURIComponent(file)}`,
+        { method: 'DELETE', credentials: 'include' },
+      );
       setUploaded((u) => u.filter((f) => !f.endsWith(`/${file}`)));
     } catch {}
   }
+
   async function deleteAll() {
     const { name } = buildName();
-    if (!name) return;
-    const q = folder ? `?folder=${encodeURIComponent(folder)}` : "";
+    if (!folder || !name) return;
     try {
-      await fetch(`/api/transaction_images/${table}/${encodeURIComponent(name)}${q}`, { method: "DELETE", credentials: "include" });
+      await fetch(`/api/transaction_images/${folder}/${encodeURIComponent(name)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
       setUploaded([]);
     } catch {}
   }
+
   if (!visible) return null;
 
   return (

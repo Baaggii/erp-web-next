@@ -17,12 +17,7 @@ router.post('/:table/:name', requireAuth, upload.array('images'), async (req, re
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ message: 'no files' });
     }
-    const files = await saveImages(
-      req.params.table,
-      req.params.name,
-      req.files,
-      req.query.folder,
-    );
+    const files = await saveImages(req.params.table, req.params.name, req.files);
     res.json(files);
   } catch (err) {
     next(err);
@@ -31,11 +26,7 @@ router.post('/:table/:name', requireAuth, upload.array('images'), async (req, re
 
 router.get('/:table/:name', requireAuth, async (req, res, next) => {
   try {
-    const files = await listImages(
-      req.params.table,
-      req.params.name,
-      req.query.folder,
-    );
+    const files = await listImages(req.params.table, req.params.name);
     res.json(files);
   } catch (err) {
     next(err);
@@ -61,7 +52,6 @@ router.delete('/:table/:name/:file', requireAuth, async (req, res, next) => {
     const ok = await deleteImage(
       req.params.table,
       req.params.file,
-      req.query.folder,
     );
     res.json({ ok });
   } catch (err) {
@@ -71,11 +61,7 @@ router.delete('/:table/:name/:file', requireAuth, async (req, res, next) => {
 
 router.delete('/:table/:name', requireAuth, async (req, res, next) => {
   try {
-    const count = await deleteAllImages(
-      req.params.table,
-      req.params.name,
-      req.query.folder,
-    );
+    const count = await deleteAllImages(req.params.table, req.params.name);
     res.json({ deleted: count });
   } catch (err) {
     next(err);
