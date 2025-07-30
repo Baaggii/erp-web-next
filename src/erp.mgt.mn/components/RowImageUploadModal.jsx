@@ -6,6 +6,7 @@ import buildImageName from '../utils/buildImageName.js';
 export default function RowImageUploadModal({
   visible,
   onClose,
+  table,
   row = {},
   imagenameFields = [],
   columnCaseMap = {},
@@ -21,16 +22,7 @@ export default function RowImageUploadModal({
 
   async function handleUpload() {
     const { name: safeName, missing } = buildName();
-    const trtype = row.trtype || row[columnCaseMap['trtype']];
-    const transType =
-      row.TransType ||
-      row[columnCaseMap['transtype']] ||
-      row.UITransType ||
-      row[columnCaseMap['uitranstype']];
-    const params = new URLSearchParams();
-    if (trtype) params.set('trtype', trtype);
-    if (transType) params.set('transType', transType);
-    const uploadUrl = safeName ? `/api/transaction_images/${encodeURIComponent(safeName)}?${params.toString()}` : '';
+    const uploadUrl = safeName && table ? `/api/transaction_images/${table}/${encodeURIComponent(safeName)}` : '';
     if (!uploadUrl) {
       const msg = missing.length
         ? `Image name is missing fields: ${missing.join(', ')}`
