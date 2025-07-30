@@ -31,6 +31,7 @@ import transactionRoutes from "./routes/transactions.js";
 import procedureRoutes from "./routes/procedures.js";
 import procTriggerRoutes from "./routes/proc_triggers.js";
 import generalConfigRoutes from "./routes/general_config.js";
+import transactionImageRoutes from "./routes/transaction_images.js";
 import { requireAuth } from "./middlewares/auth.js";
 
 // Polyfill for __dirname in ES modules
@@ -80,6 +81,7 @@ app.use("/api/proc_triggers", requireAuth, procTriggerRoutes);
 app.use("/api/inventory_transactions", requireAuth, transactionRoutes);
 app.use("/api/tables", requireAuth, tableRoutes);
 app.use("/api/general_config", requireAuth, generalConfigRoutes);
+app.use("/api/transaction_images", transactionImageRoutes);
 
 // Serve static React build and fallback to index.html
 // NOTE: adjust this path to where your SPA build actually lives.

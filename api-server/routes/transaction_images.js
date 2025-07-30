@@ -5,6 +5,7 @@ import {
   saveImages,
   listImages,
   renameImages,
+  deleteImages,
 } from '../services/transactionImageService.js';
 
 const router = express.Router();
@@ -33,16 +34,25 @@ router.get('/:table/:name', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/:table/:oldName/rename/:newName', requireAuth, async (req, res, next) => {
+router.post('/rename', requireAuth, async (req, res, next) => {
+  try {
+    const { table, oldName, newName, folderPath = '' } = req.body || {};
+    if (!table || !oldName || !newName) {
+      return res.status(400).json({ message: 'invalid data' });
+    }
+    const renamed = await renameImages(table, oldName, newName, folderPath);
+    res.json(renamed);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/:table/:name', requireAuth, async (req, res, next) => {
   try {
     const folder = req.query.folder || '';
-    const renamed = await renameImages(
-      req.params.table,
-      req.params.oldName,
-      req.params.newName,
-      folder,
-    );
-    res.json(renamed);
+    const file = req.query.file || '';
+    await deleteImages(req.params.table, req.params.name, folder, file);
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }
