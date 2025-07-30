@@ -7,8 +7,9 @@ import { getGeneralConfig } from './generalConfig.js';
 async function getDirs() {
   const cfg = await getGeneralConfig();
   const subdir = cfg.general?.imageDir || 'txn_images';
-  const baseDir = path.join(process.cwd(), 'uploads', subdir);
-  const urlBase = `/uploads/${subdir}`;
+  const basePath = cfg.general?.imageStorage?.basePath || 'uploads';
+  const baseDir = path.join(process.cwd(), basePath, subdir);
+  const urlBase = `/${basePath}/${subdir}`;
   return { baseDir, urlBase };
 }
 
