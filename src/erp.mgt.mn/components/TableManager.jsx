@@ -13,6 +13,7 @@ import { useToast } from '../context/ToastContext.jsx';
 import RowFormModal from './RowFormModal.jsx';
 import CascadeDeleteModal from './CascadeDeleteModal.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
+import RowImageViewModal from './RowImageViewModal.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import buildImageName from '../utils/buildImageName.js';
@@ -65,8 +66,8 @@ function normalizeDateInput(value, format) {
 const actionCellStyle = {
   padding: '0.5rem',
   border: '1px solid #d1d5db',
-  width: 150,
-  minWidth: 150,
+  width: 180,
+  minWidth: 180,
   whiteSpace: 'nowrap',
   display: 'flex',
   justifyContent: 'flex-end',
@@ -91,9 +92,10 @@ const TableManager = forwardRef(function TableManager({
   table,
   refreshId = 0,
   formConfig = null,
+  allConfigs = {},
   initialPerPage = 10,
   addLabel = 'Мөр нэмэх',
-  showTable = true
+  showTable = true,
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -137,6 +139,7 @@ const TableManager = forwardRef(function TableManager({
   const [showDetail, setShowDetail] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
   const [detailRefs, setDetailRefs] = useState([]);
+  const [imagesRow, setImagesRow] = useState(null);
   const [viewDisplayMap, setViewDisplayMap] = useState({});
   const [viewColumns, setViewColumns] = useState({});
   const [editLabels, setEditLabels] = useState(false);
@@ -625,6 +628,21 @@ const TableManager = forwardRef(function TableManager({
     return `${slugify(t1)}/${slugify(String(t2))}`;
   }
 
+  function getConfigForRow(row) {
+    if (!row) return formConfig || {};
+    const configs = Object.values(allConfigs || {});
+    for (const cfg of configs) {
+      if (cfg.table !== table) continue;
+      if (!cfg.transactionTypeField) continue;
+      const key = columnCaseMap[cfg.transactionTypeField.toLowerCase()] || cfg.transactionTypeField;
+      const val = row[key];
+      if (val !== undefined && String(val) === String(cfg.transactionTypeValue)) {
+        return cfg;
+      }
+    }
+    return formConfig || {};
+  }
+
   function getKeyFields() {
     const keys = columnMeta
       .filter((c) => c.key === 'PRI')
@@ -743,6 +761,10 @@ const TableManager = forwardRef(function TableManager({
       setDetailRefs([]);
     }
     setShowDetail(true);
+  }
+
+  function openImages(row) {
+    setImagesRow(row);
   }
 
   function toggleRow(id) {
@@ -876,7 +898,7 @@ const TableManager = forwardRef(function TableManager({
       });
     }
 
-    const baseRowForName = isAdding ? gridRows[0] : editing;
+    const baseRowForName = isAdding ? values : editing;
     const { name: oldImageName } = buildImageName(
       baseRowForName || merged,
       formConfig?.imagenameField || [],
@@ -1606,7 +1628,7 @@ const TableManager = forwardRef(function TableManager({
                 {sort.column === c ? (sort.dir === 'asc' ? ' \u2191' : ' \u2193') : ''}
               </th>
             ))}
-            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', width: 120 }}>Action</th>
+            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', width: 180 }}>Action</th>
           </tr>
           <tr>
             <th style={{ padding: '0.25rem', border: '1px solid #d1d5db', width: 60 }}></th>
@@ -1735,6 +1757,12 @@ const TableManager = forwardRef(function TableManager({
                         style={actionBtnStyle}
                       >
                         👁 View
+                      </button>
+                      <button
+                        onClick={() => openImages(r)}
+                        style={actionBtnStyle}
+                      >
+                        🖼 Images
                       </button>
                       <button
                         onClick={() => openEdit(r)}
@@ -1947,6 +1975,15 @@ const TableManager = forwardRef(function TableManager({
         references={detailRefs}
         labels={labels}
       />
+      <RowImageViewModal
+        visible={imagesRow !== null}
+        onClose={() => setImagesRow(null)}
+        table={table}
+        folder={getImageFolder(imagesRow)}
+        row={imagesRow || {}}
+        imagenameFields={getConfigForRow(imagesRow).imagenameField || []}
+        columnCaseMap={columnCaseMap}
+      />
       {user?.role === 'admin' && (
         <button onClick={() => {
           const map = {};
@@ -2006,6 +2043,7 @@ function propsEqual(prev, next) {
     prev.table === next.table &&
     prev.refreshId === next.refreshId &&
     prev.formConfig === next.formConfig &&
+    prev.allConfigs === next.allConfigs &&
     prev.showTable === next.showTable
   );
 }
