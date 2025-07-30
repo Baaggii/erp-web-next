@@ -1140,6 +1140,7 @@ export default forwardRef(function InlineTransactionTable({
       <RowImageUploadModal
         visible={uploadRow !== null}
         onClose={() => setUploadRow(null)}
+        table={tableName}
         folder={getImageFolder(rows[uploadRow])}
         row={rows[uploadRow] || {}}
         imagenameFields={imagenameFields}
