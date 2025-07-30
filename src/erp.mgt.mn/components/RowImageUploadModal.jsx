@@ -19,16 +19,8 @@ export default function RowImageUploadModal({
   const [loading, setLoading] = useState(false);
   const [images, setImages] = useState([]);
   const tempNameRef = useRef(row._tmpImageName || null);
-
-  function genTempName() {
-    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-      return crypto.randomUUID();
-    }
-    return Math.random().toString(36).slice(2);
-  }
-
   if (!tempNameRef.current) {
-    tempNameRef.current = genTempName();
+    tempNameRef.current = crypto.randomUUID();
   }
   if (!visible) return null;
   function buildName() {
@@ -45,7 +37,6 @@ export default function RowImageUploadModal({
   async function handleUpload() {
     const { name: folder } = buildFolder();
     const { name: safeName } = buildName();
-    if (!table || !safeName) return;
     const query = folder ? `?folder=${encodeURIComponent(folder)}` : '';
     const uploadUrl =
       safeName && table
@@ -76,10 +67,6 @@ export default function RowImageUploadModal({
   async function fetchImages() {
     const { name: folder } = buildFolder();
     const { name: safeName } = buildName();
-    if (!table || !safeName) {
-      setImages([]);
-      return;
-    }
     const query = folder ? `?folder=${encodeURIComponent(folder)}` : '';
     const res = await fetch(
       `/api/transaction_images/${table}/${encodeURIComponent(safeName)}${query}`,
