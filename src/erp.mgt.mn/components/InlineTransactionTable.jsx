@@ -533,7 +533,11 @@ export default forwardRef(function InlineTransactionTable({
           }
         }
         if (val !== '' && val !== null && val !== undefined) {
-          if ((totalCurrencySet.has(f) || totalAmountSet.has(f)) && isNaN(Number(val))) {
+          if (
+            (totalCurrencySet.has(f) || totalAmountSet.has(f)) &&
+            !/code/i.test(f) &&
+            isNaN(Number(val))
+          ) {
             setErrorMsg((labels[f] || f) + ' талбарт буруу тоо байна');
             setInvalidCell({ row: rows.length - 1, field: f });
             const el = inputRefs.current[`${rows.length - 1}-${fields.indexOf(f)}`];
@@ -828,6 +832,7 @@ export default forwardRef(function InlineTransactionTable({
     if (
       totalCurrencySet.has(field) &&
       val !== '' &&
+      !/code/i.test(field) &&
       isNaN(Number(normalizeNumberInput(val)))
     ) {
       setErrorMsg((labels[field] || field) + ' талбарт буруу тоо байна');
