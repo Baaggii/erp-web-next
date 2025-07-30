@@ -1099,13 +1099,10 @@ export default forwardRef(function InlineTransactionTable({
                     imagenameFields,
                     columnCaseMap,
                   );
-                  const canUpload = !!safe && missing.length === 0;
                   return (
                     <>
                       <button
                         type="button"
-                        disabled={!canUpload}
-                        title={!canUpload ? 'Please post first' : 'Upload image'}
                         onClick={() => openUpload(idx)}
                         style={{ marginRight: '0.25rem' }}
                       >
