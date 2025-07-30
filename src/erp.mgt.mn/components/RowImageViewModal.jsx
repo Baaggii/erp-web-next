@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import Modal from './Modal.jsx';
 import buildImageName from '../utils/buildImageName.js';
 import { useToast } from '../context/ToastContext.jsx';
@@ -107,26 +108,31 @@ export default function RowImageViewModal({
       <div style={{ textAlign: 'right', marginTop: '1rem' }}>
         <button type="button" onClick={onClose}>Close</button>
       </div>
-      {fullscreen && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0,0,0,0.8)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            // use a larger z-index so the image appears above the modal itself
-            zIndex: 1100,
-          }}
-          onClick={() => setFullscreen(null)}
-        >
-          <img src={fullscreen} alt="" style={{ maxWidth: '90%', maxHeight: '90%' }} />
-        </div>
-      )}
+      {fullscreen &&
+        createPortal(
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0,0,0,0.8)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1100,
+            }}
+            onClick={() => setFullscreen(null)}
+          >
+            <img
+              src={fullscreen}
+              alt=""
+              style={{ maxWidth: '90%', maxHeight: '90%' }}
+            />
+          </div>,
+          document.body,
+        )}
     </Modal>
   );
 }
