@@ -8,6 +8,7 @@ import React, {
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
+import RowImageUploadModal from './RowImageUploadModal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 
@@ -66,6 +67,9 @@ export default forwardRef(function InlineTransactionTable({
   branchIdFields = [],
   departmentIdFields = [],
   companyIdFields = [],
+  table = '',
+  imagenameFields = [],
+  imageFolderFields = [],
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -79,6 +83,7 @@ export default forwardRef(function InlineTransactionTable({
     () => new Set(disabledFields.map((f) => f.toLowerCase())),
     [disabledFields],
   );
+  const [uploadIdx, setUploadIdx] = useState(-1);
 
   function fillSessionDefaults(obj) {
     const row = { ...obj };
@@ -568,6 +573,10 @@ export default forwardRef(function InlineTransactionTable({
     });
   }
 
+  function openUpload(idx) {
+    setUploadIdx(idx);
+  }
+
   function handleChange(rowIdx, field, value) {
     setRows((r) => {
       const next = r.map((row, i) => {
@@ -1016,6 +1025,7 @@ export default forwardRef(function InlineTransactionTable({
                 </th>
               );
             })}
+            <th className="border px-1 py-1">Image</th>
             <th className="border px-1 py-1" />
           </tr>
         </thead>
@@ -1027,6 +1037,9 @@ export default forwardRef(function InlineTransactionTable({
                   {renderCell(idx, f, cIdx)}
                 </td>
               ))}
+              <td className="border px-1 py-1 text-center">
+                <button onClick={() => openUpload(idx)}>Add Image</button>
+              </td>
               <td className="border px-1 py-1 text-right">
                 {collectRows ? (
                   <button onClick={() => removeRow(idx)}>Delete</button>
@@ -1062,6 +1075,7 @@ export default forwardRef(function InlineTransactionTable({
                   </td>
                 );
               })}
+              <td className="border px-1 py-1" />
               <td className="border px-1 py-1 font-semibold text-center">НИЙТ</td>
             </tr>
             <tr>
@@ -1070,6 +1084,7 @@ export default forwardRef(function InlineTransactionTable({
                   {idx === 0 ? totals.count : ''}
                 </td>
               ))}
+              <td className="border px-1 py-1" />
               <td className="border px-1 py-1 font-semibold text-center">
                 мөрийн тоо
               </td>
@@ -1096,6 +1111,16 @@ export default forwardRef(function InlineTransactionTable({
         columns={previewRow ? Object.keys(previewRow) : []}
         relations={relations}
         labels={labels}
+      />
+      <RowImageUploadModal
+        visible={uploadIdx >= 0}
+        onClose={() => setUploadIdx(-1)}
+        table={table}
+        row={rows[uploadIdx] || {}}
+        imagenameFields={imagenameFields}
+        imageFolderFields={imageFolderFields}
+        columnCaseMap={columnCaseMap}
+        onUploaded={() => setUploadIdx(-1)}
       />
     </div>
   );
