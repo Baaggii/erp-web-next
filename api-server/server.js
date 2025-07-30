@@ -29,6 +29,7 @@ import posTxnPostRoutes from "./routes/pos_txn_post.js";
 import viewsRoutes from "./routes/views.js";
 import transactionRoutes from "./routes/transactions.js";
 import transactionImageRoutes from "./routes/transaction_images.js";
+import { getGeneralConfig } from "./services/generalConfig.js";
 import procedureRoutes from "./routes/procedures.js";
 import procTriggerRoutes from "./routes/proc_triggers.js";
 import generalConfigRoutes from "./routes/general_config.js";
@@ -43,6 +44,11 @@ app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 app.use(cookieParser());
 app.use(logger);
+
+// Serve uploaded images statically
+const imgCfg = await getGeneralConfig();
+const imgBase = imgCfg.general?.imageStorage?.basePath || 'uploads';
+app.use(`/${imgBase}`, express.static(path.join(process.cwd(), imgBase)));
 
 // Health-check: also verify DB connection
 app.get("/api/auth/health", async (req, res, next) => {
