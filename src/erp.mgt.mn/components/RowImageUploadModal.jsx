@@ -35,7 +35,7 @@ export default function RowImageUploadModal({
       .catch(() => setUploaded([]));
   }, [visible, table, row]);
 
-  async function handleUpload() {
+  async function handleUpload(selectedFiles) {
     const { name: safeName, missing } = buildName();
     const uploadUrl = safeName && table ? `/api/transaction_images/${table}/${encodeURIComponent(safeName)}` : '';
     if (!uploadUrl) {
@@ -45,10 +45,11 @@ export default function RowImageUploadModal({
       addToast(msg, 'error');
       return;
     }
-    if (!files.length) return;
+    const filesToUpload = Array.from(selectedFiles || files);
+    if (!filesToUpload.length) return;
     setLoading(true);
     const form = new FormData();
-    files.forEach((f) => form.append('images', f));
+    filesToUpload.forEach((f) => form.append('images', f));
     try {
       const res = await fetch(uploadUrl, { method: 'POST', body: form, credentials: 'include' });
       if (res.ok) {
@@ -100,22 +101,14 @@ export default function RowImageUploadModal({
         <input
           type="file"
           multiple
-          onChange={(e) => setFiles(Array.from(e.target.files))}
+          onChange={(e) => {
+            const selected = Array.from(e.target.files);
+            setFiles(selected);
+            handleUpload(selected);
+          }}
         />
-        <button
-          onClick={handleUpload}
-          disabled={!files.length || loading}
-          style={{ marginLeft: '0.5rem' }}
-        >
-          {loading ? 'Uploading...' : 'Upload'}
-        </button>
+        {loading && <span style={{ marginLeft: '0.5rem' }}>Uploading...</span>}
       </div>
-      {files.length > 0 && (
-        <div style={{ marginBottom: '0.5rem' }}>
-          Selected files:{' '}
-          {files.map((f) => f.name).join(', ')}
-        </div>
-      )}
       {uploaded.length > 0 && (
         <div style={{ maxHeight: '40vh', overflowY: 'auto' }}>
           {uploaded.map((src) => {
@@ -123,6 +116,7 @@ export default function RowImageUploadModal({
             return (
               <div key={src} style={{ marginBottom: '0.25rem' }}>
                 <img src={src} alt="" style={{ maxWidth: '100px', marginRight: '0.5rem' }} />
+                <span style={{ marginRight: '0.5rem' }}>{name}</span>
                 <button type="button" onClick={() => deleteFile(name)}>Delete</button>
               </div>
             );
