@@ -17,7 +17,7 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
-import RowImageViewModal from './RowImageViewModal';
+import RowImageViewModal from './RowImageViewModal.jsx';
 
 function ch(n) {
   return Math.round(n * 8);
