@@ -18,19 +18,29 @@ const defaults = {
     boxMaxWidth: 150,
     boxMaxHeight: 150,
   },
+  general: {
+    imageStorage: {
+      basePath: 'uploads',
+    },
+  },
 };
 
 async function readConfig() {
   try {
     const data = await fs.readFile(filePath, 'utf8');
     const parsed = JSON.parse(data);
-    if (parsed.forms || parsed.pos) {
-      return { ...defaults, ...parsed };
+    if (parsed.forms || parsed.pos || parsed.general) {
+      return {
+        ...defaults,
+        ...parsed,
+        general: { ...defaults.general, ...(parsed.general || {}) },
+      };
     }
     // migrate older flat structure to new nested layout
     return {
       forms: { ...defaults.forms, ...parsed },
       pos: { ...defaults.pos },
+      general: { ...defaults.general },
     };
   } catch {
     return { ...defaults };
@@ -49,6 +59,7 @@ export async function updateGeneralConfig(updates = {}) {
   const cfg = await readConfig();
   if (updates.forms) Object.assign(cfg.forms, updates.forms);
   if (updates.pos) Object.assign(cfg.pos, updates.pos);
+  if (updates.general) Object.assign(cfg.general, updates.general);
   await writeConfig(cfg);
   return cfg;
 }

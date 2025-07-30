@@ -12,5 +12,10 @@
     "boxHeight": 30,
     "boxMaxWidth": 200,
     "boxMaxHeight": 150
+  },
+  "general": {
+    "imageStorage": {
+      "basePath": "uploads"
+    }
   }
 }
