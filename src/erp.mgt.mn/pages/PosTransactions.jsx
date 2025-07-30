@@ -955,8 +955,6 @@ export default function PosTransactionsPage() {
                     user={user}
                     company={company}
                     columnCaseMap={(columnMeta[t.table] || []).reduce((m,c)=>{m[c.name.toLowerCase()] = c.name;return m;}, {})}
-                    table={t.table}
-                    imagenameFields={fc.imagenameField || []}
                     onChange={(changes) => handleChange(t.table, changes)}
                     onRowsChange={(rows) => handleRowsChange(t.table, rows)}
                       onSubmit={() => true}

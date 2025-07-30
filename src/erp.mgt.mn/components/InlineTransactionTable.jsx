@@ -8,13 +8,6 @@ import React, {
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
-import RowImageUploadModal from './RowImageUploadModal.jsx';
-import RowImageViewModal from './RowImageViewModal.jsx';
-import { useToast } from '../context/ToastContext.jsx';
-import buildImageName from '../utils/buildImageName.js';
-import RowImageUploadModal from './RowImageUploadModal.jsx';
-import RowImageViewModal from './RowImageViewModal.jsx';
-import buildImageName from '../utils/buildImageName.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 
@@ -73,17 +66,11 @@ export default forwardRef(function InlineTransactionTable({
   branchIdFields = [],
   departmentIdFields = [],
   companyIdFields = [],
-  table = '',
-  imagenameFields = [],
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
   const generalConfig = useGeneralConfig();
   const cfg = generalConfig[scope] || {};
-  const { addToast } = useToast();
-  const [uploadRow, setUploadRow] = useState(null);
-  const [viewImages, setViewImages] = useState([]);
-  const [showView, setShowView] = useState(false);
   const userIdSet = new Set(userIdFields);
   const branchIdSet = new Set(branchIdFields);
   const departmentIdSet = new Set(departmentIdFields);
@@ -512,29 +499,6 @@ export default forwardRef(function InlineTransactionTable({
 
   function handleFocusField(col) {
     showTriggerInfo(col);
-  }
-
-  async function openViewImages(row) {
-    if (!table || imagenameFields.length === 0) return;
-    const { name, missing } = buildImageName(row, imagenameFields, columnCaseMap);
-    if (!name) {
-      const msg = missing.length
-        ? `Image name is missing fields: ${missing.join(', ')}`
-        : 'Image name is missing';
-      addToast(msg, 'error');
-      return;
-    }
-    try {
-      const res = await fetch(
-        `/api/transaction_images/${table}/${encodeURIComponent(name)}`,
-        { credentials: 'include' },
-      );
-      const imgs = await res.json();
-      setViewImages(imgs);
-      setShowView(true);
-    } catch {
-      addToast('Failed to load images', 'error');
-    }
   }
 
   function addRow() {
@@ -1053,9 +1017,6 @@ export default forwardRef(function InlineTransactionTable({
               );
             })}
             <th className="border px-1 py-1" />
-            {table && imagenameFields.length > 0 && (
-              <th className="border px-1 py-1">Images</th>
-            )}
           </tr>
         </thead>
         <tbody>
@@ -1077,12 +1038,6 @@ export default forwardRef(function InlineTransactionTable({
                   <button onClick={() => saveRow(idx)}>Save</button>
                 )}
               </td>
-              {table && imagenameFields.length > 0 && (
-                <td className="border px-1 py-1 text-center whitespace-nowrap">
-                  <button onClick={() => setUploadRow(r)}>Upload</button>{' '}
-                  <button onClick={() => openViewImages(r)}>View</button>
-                </td>
-              )}
             </tr>
           ))}
         </tbody>
@@ -1142,24 +1097,6 @@ export default forwardRef(function InlineTransactionTable({
         relations={relations}
         labels={labels}
       />
-      {uploadRow && (
-        <RowImageUploadModal
-          visible={!!uploadRow}
-          onClose={() => setUploadRow(null)}
-          table={table}
-          row={uploadRow}
-          imagenameFields={imagenameFields}
-          columnCaseMap={columnCaseMap}
-          onUploaded={() => setUploadRow(null)}
-        />
-      )}
-      {showView && (
-        <RowImageViewModal
-          visible={showView}
-          onClose={() => setShowView(false)}
-          images={viewImages}
-        />
-      )}
     </div>
   );
 });
