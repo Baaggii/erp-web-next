@@ -25,16 +25,18 @@ function sanitizeName(name) {
     .replace(/[^a-z0-9_-]+/gi, '_');
 }
 
-export async function saveImages(table, name, files) {
+export async function saveImages(table, name, files, folder = null) {
   const { baseDir, urlBase } = await getDirs();
   ensureDir(baseDir);
-  const dir = path.join(baseDir, table);
+  const dir = path.join(baseDir, folder || table);
   ensureDir(dir);
   const saved = [];
   const prefix = sanitizeName(name);
   for (const file of files) {
-    const ext = path.extname(file.originalname) || `.${mime.extension(file.mimetype) || 'bin'}`;
-    const fileName = `${prefix}_${Date.now()}${ext}`;
+    const ext =
+      path.extname(file.originalname) || `.${mime.extension(file.mimetype) || 'bin'}`;
+    const unique = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const fileName = `${prefix}_${unique}${ext}`;
     const dest = path.join(dir, fileName);
     try {
       if (file.size > 1500000) {
@@ -56,23 +58,83 @@ export async function saveImages(table, name, files) {
     } catch {
       await fs.rename(file.path, dest);
     }
-    saved.push(`${urlBase}/${table}/${fileName}`);
+    const folderPart = folder || table;
+    saved.push(`${urlBase}/${folderPart}/${fileName}`);
   }
   return saved;
 }
 
-export async function listImages(table, name) {
+export async function listImages(table, name, folder = null) {
   const { baseDir, urlBase } = await getDirs();
   ensureDir(baseDir);
-  const dir = path.join(baseDir, table);
+  const dir = path.join(baseDir, folder || table);
   ensureDir(dir);
   const prefix = sanitizeName(name);
   try {
     const files = await fs.readdir(dir);
     return files
       .filter((f) => f.startsWith(prefix + '_'))
-      .map((f) => `${urlBase}/${table}/${f}`);
+      .map((f) => `${urlBase}/${folder || table}/${f}`);
   } catch {
     return [];
+  }
+}
+
+export async function renameImages(table, oldName, newName, folder = null) {
+  const { baseDir, urlBase } = await getDirs();
+  ensureDir(baseDir);
+  const dir = path.join(baseDir, table);
+  ensureDir(dir);
+  const targetDir = folder ? path.join(baseDir, folder) : dir;
+  ensureDir(targetDir);
+  const oldPrefix = sanitizeName(oldName);
+  const newPrefix = sanitizeName(newName);
+  try {
+    const files = await fs.readdir(dir);
+    const renamed = [];
+    for (const f of files) {
+      if (f.startsWith(oldPrefix + '_')) {
+        const rest = f.slice(oldPrefix.length);
+        const dest = path.join(targetDir, newPrefix + rest);
+        await fs.rename(path.join(dir, f), dest);
+        const folderPart = folder || table;
+        renamed.push(`${urlBase}/${folderPart}/${newPrefix + rest}`);
+      }
+    }
+    return renamed;
+  } catch {
+    return [];
+  }
+}
+
+export async function deleteImage(table, file, folder = null) {
+  const { baseDir } = await getDirs();
+  const dir = path.join(baseDir, folder || table);
+  try {
+    await fs.unlink(path.join(dir, path.basename(file)));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function deleteAllImages(table, name, folder = null) {
+  const { baseDir } = await getDirs();
+  ensureDir(baseDir);
+  const dir = path.join(baseDir, folder || table);
+  ensureDir(dir);
+  const prefix = sanitizeName(name);
+  try {
+    const files = await fs.readdir(dir);
+    const deleted = [];
+    for (const f of files) {
+      if (f.startsWith(prefix + '_')) {
+        await fs.unlink(path.join(dir, f));
+        deleted.push(f);
+      }
+    }
+    return deleted.length;
+  } catch {
+    return 0;
   }
 }

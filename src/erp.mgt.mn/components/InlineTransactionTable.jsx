@@ -8,6 +8,9 @@ import React, {
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
+import RowImageUploadModal from './RowImageUploadModal.jsx';
+import buildImageName from '../utils/buildImageName.js';
+import slugify from '../utils/slugify.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 
@@ -66,6 +69,8 @@ export default forwardRef(function InlineTransactionTable({
   branchIdFields = [],
   departmentIdFields = [],
   companyIdFields = [],
+  tableName = '',
+  imagenameFields = [],
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -172,6 +177,7 @@ export default forwardRef(function InlineTransactionTable({
   const [errorMsg, setErrorMsg] = useState('');
   const [invalidCell, setInvalidCell] = useState(null);
   const [previewRow, setPreviewRow] = useState(null);
+  const [uploadRow, setUploadRow] = useState(null);
   const procCache = useRef({});
 
   const totalAmountSet = new Set(totalAmountFields);
@@ -567,6 +573,34 @@ export default forwardRef(function InlineTransactionTable({
       return next;
     });
   }
+
+  function openUpload(idx) {
+    setUploadRow(idx);
+  }
+
+  function handleUploaded(idx, name) {
+    setRows((r) => {
+      const next = r.map((row, i) => (i === idx ? { ...row, _imageName: name } : row));
+      onRowsChange(next);
+      return next;
+    });
+  }
+
+  function getImageFolder(row) {
+    if (!row || !row._saved) return tableName;
+    const lowerMap = {};
+    Object.keys(row).forEach((k) => {
+      lowerMap[k.toLowerCase()] = row[k];
+    });
+    const t1 = lowerMap['trtype'];
+    const t2 =
+      lowerMap['uitranstypename'] ||
+      lowerMap['transtype'] ||
+      lowerMap['transtypename'];
+    if (!t1 || !t2) return tableName;
+    return `${slugify(t1)}/${slugify(String(t2))}`;
+  }
+
 
   function handleChange(rowIdx, field, value) {
     setRows((r) => {
@@ -1016,6 +1050,7 @@ export default forwardRef(function InlineTransactionTable({
                 </th>
               );
             })}
+            <th className="border px-1 py-1">Images</th>
             <th className="border px-1 py-1" />
           </tr>
         </thead>
@@ -1027,6 +1062,9 @@ export default forwardRef(function InlineTransactionTable({
                   {renderCell(idx, f, cIdx)}
                 </td>
               ))}
+              <td className="border px-1 py-1 text-right" style={{ whiteSpace: 'nowrap' }}>
+                <button type="button" onClick={() => openUpload(idx)}>Add/View Image</button>
+              </td>
               <td className="border px-1 py-1 text-right">
                 {collectRows ? (
                   <button onClick={() => removeRow(idx)}>Delete</button>
@@ -1062,6 +1100,7 @@ export default forwardRef(function InlineTransactionTable({
                   </td>
                 );
               })}
+              <td className="border px-1 py-1" />
               <td className="border px-1 py-1 font-semibold text-center">НИЙТ</td>
             </tr>
             <tr>
@@ -1070,6 +1109,7 @@ export default forwardRef(function InlineTransactionTable({
                   {idx === 0 ? totals.count : ''}
                 </td>
               ))}
+              <td className="border px-1 py-1" />
               <td className="border px-1 py-1 font-semibold text-center">
                 мөрийн тоо
               </td>
@@ -1096,6 +1136,16 @@ export default forwardRef(function InlineTransactionTable({
         columns={previewRow ? Object.keys(previewRow) : []}
         relations={relations}
         labels={labels}
+      />
+      <RowImageUploadModal
+        visible={uploadRow !== null}
+        onClose={() => setUploadRow(null)}
+        table={tableName}
+        folder={getImageFolder(rows[uploadRow])}
+        row={rows[uploadRow] || {}}
+        imagenameFields={imagenameFields}
+        columnCaseMap={columnCaseMap}
+        onUploaded={(name) => handleUploaded(uploadRow, name)}
       />
     </div>
   );
