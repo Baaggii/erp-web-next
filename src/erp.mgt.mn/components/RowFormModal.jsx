@@ -39,6 +39,8 @@ const RowFormModal = function RowFormModal({
   inline = false,
   useGrid = false,
   fitted = false,
+  table = '',
+  imagenameField = [],
   scope = 'forms',
   labelFontSize,
   boxWidth,
@@ -966,6 +968,8 @@ const RowFormModal = function RowFormModal({
             user={user}
             company={company}
             columnCaseMap={columnCaseMap}
+            tableName={table}
+            imagenameFields={imagenameField}
             userIdFields={userIdFields}
             branchIdFields={branchIdFields}
             departmentIdFields={departmentIdFields}
