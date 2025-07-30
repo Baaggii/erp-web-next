@@ -32,7 +32,6 @@ export default function RowImageUploadModal({
       addToast('Please post the transaction before uploading images.', 'error');
       return;
     }
-    const { name: folder } = buildFolder();
     const query = folder ? `?folder=${encodeURIComponent(folder)}` : '';
     const uploadUrl =
       safeName && table
