@@ -40,3 +40,16 @@ test('listTableRows returns SQL when debug enabled', async () => {
   restore();
   assert.ok(result.sql.includes('SELECT *'));
 });
+
+test('listTableRows allows search across multiple columns', async () => {
+  const restore = mockPool();
+  await db.listTableRows('users', {
+    search: 'Bob',
+    searchColumns: ['id', 'name'],
+  });
+  const calls = restore();
+  const main = calls.find((c) => c.sql.startsWith('SELECT *'));
+  assert.ok(main.sql.includes('OR'));
+  assert.ok(main.sql.includes('id'));
+  assert.ok(main.sql.includes('name'));
+});

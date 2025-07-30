@@ -867,20 +867,9 @@ export default forwardRef(function InlineTransactionTable({
         display = parts.join(' - ');
       }
       const readonlyStyle = { ...inputStyle, width: 'fit-content', maxWidth: `${boxMaxWidth}px` };
-      const btn = relationConfigs[f] || viewSource[f] || Array.isArray(relations[f]) ? (
-        <button
-          type="button"
-          onClick={() => openRelationPreview(f, val)}
-          className="ml-1 text-blue-600"
-          title="View"
-        >
-          🔍
-        </button>
-      ) : null;
       return (
         <div className="flex items-center" title={display}>
           <div className="px-1 border rounded bg-gray-100" style={readonlyStyle}>{display}</div>
-          {btn}
         </div>
       );
     }

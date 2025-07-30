@@ -710,8 +710,9 @@ const RowFormModal = function RowFormModal({
     const disabled = disabledSet.has(c.toLowerCase());
 
     if (disabled) {
-      const val = formVals[c];
-      let display = val;
+      const raw = formVals[c];
+      const val = typeof raw === 'object' && raw !== null ? raw.value : raw;
+      let display = typeof raw === 'object' && raw !== null ? raw.label || val : val;
       if (
         relationConfigs[c] &&
         val !== undefined &&
@@ -736,32 +737,27 @@ const RowFormModal = function RowFormModal({
         });
         display = parts.join(' - ');
       }
-      const readonlyStyle = { ...inputStyle, width: 'fit-content', maxWidth: `${boxMaxWidth}px` };
-      const previewBtn = relationConfigs[c] || viewSource[c] || Array.isArray(relations[c]) ? (
-        <button
-          type="button"
-          onClick={() => openRelationPreview(c)}
-          className="ml-1 text-blue-600"
-          title="View"
-        >
-          🔍
-        </button>
-      ) : null;
+      const readonlyStyle = {
+        ...inputStyle,
+        width: 'fit-content',
+        maxWidth: `${boxMaxWidth}px`,
+      };
       const content = (
-        <div className="flex items-center">
-          <div className="border rounded bg-gray-100 px-2 py-1" style={readonlyStyle} title={display}>
+        <div className="flex items-center space-x-1" title={display}>
+          <div className="border rounded bg-gray-100 px-2 py-1" style={readonlyStyle}>
             {display}
           </div>
-          {previewBtn}
         </div>
       );
       if (!withLabel) return content;
       return (
         <div key={c} className={fitted ? 'mb-1' : 'mb-3'}>
-          <label className="block mb-1 font-medium" style={labelStyle}>
-            {labels[c] || c}
-          </label>
-          {content}
+          <div className="flex items-center space-x-1">
+            <label className="font-medium" style={labelStyle}>
+              {labels[c] || c}
+            </label>
+            {content}
+          </div>
         </div>
       );
     }
@@ -794,6 +790,9 @@ const RowFormModal = function RowFormModal({
         onFocus={(e) => {
           e.target.select();
           handleFocusField(c);
+          e.target.style.width = 'auto';
+          const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
+          e.target.style.width = `${Math.max(boxWidth, w)}px`;
         }}
         inputRef={(el) => (inputRefs.current[c] = el)}
         inputStyle={inputStyle}
@@ -827,6 +826,9 @@ const RowFormModal = function RowFormModal({
         onFocus={(e) => {
           e.target.select();
           handleFocusField(c);
+          e.target.style.width = 'auto';
+          const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
+          e.target.style.width = `${Math.max(boxWidth, w)}px`;
         }}
         inputRef={(el) => (inputRefs.current[c] = el)}
         inputStyle={inputStyle}

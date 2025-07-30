@@ -675,12 +675,21 @@ export async function listTableRelationships(tableName) {
  */
 export async function listTableRows(
   tableName,
-  { page = 1, perPage = 50, filters = {}, sort = {}, debug = false } = {},
+  {
+    page = 1,
+    perPage = 50,
+    filters = {},
+    sort = {},
+    search = '',
+    searchColumns = [],
+    debug = false,
+  } = {},
 ) {
   const columns = await getTableColumnsSafe(tableName);
   logDb(
     `listTableRows(${tableName}) page=${page} perPage=${perPage} ` +
-      `filters=${JSON.stringify(filters)} sort=${sort.column || ''}:${sort.dir || ''}`,
+      `filters=${JSON.stringify(filters)} search=${search} columns=${searchColumns} ` +
+      `sort=${sort.column || ''}:${sort.dir || ''}`,
   );
   const offset = (Number(page) - 1) * Number(perPage);
   const filterClauses = [];
@@ -697,6 +706,15 @@ export async function listTableRows(
         params.push(`%${value}%`);
       }
     }
+  }
+  if (search && Array.isArray(searchColumns) && searchColumns.length > 0) {
+    await ensureValidColumns(tableName, columns, searchColumns);
+    const clause =
+      '(' +
+      searchColumns.map((c) => `\`${c}\` LIKE ?`).join(' OR ') +
+      ')';
+    filterClauses.push(clause);
+    searchColumns.forEach(() => params.push(`%${search}%`));
   }
   const where = filterClauses.length > 0 ? `WHERE ${filterClauses.join(' AND ')}` : '';
   let order = '';
