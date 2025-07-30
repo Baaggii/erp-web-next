@@ -716,6 +716,7 @@ export default forwardRef(function InlineTransactionTable({
       if (
         totalCurrencySet.has(f) &&
         val !== '' &&
+        !/code/i.test(f) &&
         isNaN(Number(normalizeNumberInput(val)))
       ) {
         setErrorMsg((labels[f] || f) + ' талбарт буруу тоо байна');

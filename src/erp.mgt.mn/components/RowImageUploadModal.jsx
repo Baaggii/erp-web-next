@@ -27,7 +27,8 @@ export default function RowImageUploadModal({
       setUploaded([]);
       return;
     }
-    fetch(`/api/transaction_images/${folder}/${encodeURIComponent(name)}`, {
+    const safeFolder = encodeURIComponent(folder);
+    fetch(`/api/transaction_images/${safeFolder}/${encodeURIComponent(name)}`, {
       credentials: 'include',
     })
       .then((r) => (r.ok ? r.json() : []))
@@ -48,7 +49,8 @@ export default function RowImageUploadModal({
         'warn',
       );
     }
-    const uploadUrl = `/api/transaction_images/${folder}/${encodeURIComponent(finalName)}`;
+    const safeFolder = encodeURIComponent(folder);
+    const uploadUrl = `/api/transaction_images/${safeFolder}/${encodeURIComponent(finalName)}`;
     const filesToUpload = Array.from(selectedFiles || files);
     if (!filesToUpload.length) return;
     setLoading(true);
@@ -77,8 +79,9 @@ export default function RowImageUploadModal({
     const { name } = buildName();
     if (!folder || !name) return;
     try {
+      const safeFolder = encodeURIComponent(folder);
       await fetch(
-        `/api/transaction_images/${folder}/${encodeURIComponent(name)}/${encodeURIComponent(file)}`,
+        `/api/transaction_images/${safeFolder}/${encodeURIComponent(name)}/${encodeURIComponent(file)}`,
         { method: 'DELETE', credentials: 'include' },
       );
       setUploaded((u) => u.filter((f) => !f.endsWith(`/${file}`)));
@@ -89,7 +92,8 @@ export default function RowImageUploadModal({
     const { name } = buildName();
     if (!folder || !name) return;
     try {
-      await fetch(`/api/transaction_images/${folder}/${encodeURIComponent(name)}`, {
+      const safeFolder = encodeURIComponent(folder);
+      await fetch(`/api/transaction_images/${safeFolder}/${encodeURIComponent(name)}`, {
         method: 'DELETE',
         credentials: 'include',
       });

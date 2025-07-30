@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Modal from './Modal.jsx';
 import buildImageName from '../utils/buildImageName.js';
+import { useToast } from '../context/ToastContext.jsx';
 
 export default function RowImageViewModal({
   visible,
@@ -11,6 +12,7 @@ export default function RowImageViewModal({
   columnCaseMap = {},
 }) {
   const [files, setFiles] = useState([]);
+  const { addToast } = useToast();
 
   useEffect(() => {
     if (!visible) return;
@@ -19,11 +21,17 @@ export default function RowImageViewModal({
       setFiles([]);
       return;
     }
-    fetch(`/api/transaction_images/${folder}/${encodeURIComponent(name)}`, {
+    const safeFolder = encodeURIComponent(folder);
+    addToast(`Search: ${safeFolder}/${name}`, 'info');
+    fetch(`/api/transaction_images/${safeFolder}/${encodeURIComponent(name)}`, {
       credentials: 'include',
     })
       .then((r) => (r.ok ? r.json() : []))
-      .then((imgs) => setFiles(Array.isArray(imgs) ? imgs : []))
+      .then((imgs) => {
+        const list = Array.isArray(imgs) ? imgs : [];
+        addToast(`Found ${list.length} image(s)`, 'info');
+        setFiles(list);
+      })
       .catch(() => setFiles([]));
   }, [visible, folder, row]);
 
