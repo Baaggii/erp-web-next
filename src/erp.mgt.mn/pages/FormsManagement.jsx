@@ -32,6 +32,8 @@ export default function FormsManagement() {
     dateField: [],
     emailField: [],
     imagenameField: [],
+    imageFolderFields: [],
+    imageIdField: '',
     printEmpField: [],
     printCustField: [],
     totalCurrencyFields: [],
@@ -106,6 +108,8 @@ export default function FormsManagement() {
             dateField: filtered[name].dateField || [],
             emailField: filtered[name].emailField || [],
             imagenameField: filtered[name].imagenameField || [],
+            imageFolderFields: filtered[name].imageFolderFields || [],
+            imageIdField: filtered[name].imageIdField || '',
             printEmpField: filtered[name].printEmpField || [],
             printCustField: filtered[name].printCustField || [],
             totalCurrencyFields: filtered[name].totalCurrencyFields || [],
@@ -135,6 +139,8 @@ export default function FormsManagement() {
             dateField: [],
             emailField: [],
             imagenameField: [],
+            imageFolderFields: [],
+            imageIdField: '',
             printEmpField: [],
             printCustField: [],
             totalCurrencyFields: [],
@@ -166,7 +172,9 @@ export default function FormsManagement() {
           companyIdFields: [],
           dateField: [],
           emailField: [],
-          imagenameField: [],
+            imagenameField: [],
+            imageFolderFields: [],
+            imageIdField: '',
           printEmpField: [],
           printCustField: [],
           totalCurrencyFields: [],
@@ -204,6 +212,8 @@ export default function FormsManagement() {
           dateField: cfg.dateField || [],
           emailField: cfg.emailField || [],
           imagenameField: cfg.imagenameField || [],
+          imageFolderFields: cfg.imageFolderFields || [],
+          imageIdField: cfg.imageIdField || '',
           printEmpField: cfg.printEmpField || [],
           printCustField: cfg.printCustField || [],
           totalCurrencyFields: cfg.totalCurrencyFields || [],
@@ -233,6 +243,8 @@ export default function FormsManagement() {
           dateField: [],
           emailField: [],
           imagenameField: [],
+          imageFolderFields: [],
+          imageIdField: '',
           printEmpField: [],
           printCustField: [],
           totalCurrencyFields: [],
@@ -354,6 +366,8 @@ export default function FormsManagement() {
       dateField: [],
       emailField: [],
       imagenameField: [],
+      imageFolderFields: [],
+      imageIdField: '',
       printEmpField: [],
       printCustField: [],
       totalCurrencyFields: [],
@@ -385,6 +399,8 @@ export default function FormsManagement() {
       dateField: cfg.dateField || [],
       emailField: cfg.emailField || [],
       imagenameField: cfg.imagenameField || [],
+      imageFolderFields: cfg.imageFolderFields || [],
+      imageIdField: cfg.imageIdField || '',
       printEmpField: cfg.printEmpField || [],
       printCustField: cfg.printCustField || [],
       totalCurrencyFields: cfg.totalCurrencyFields || [],
@@ -523,6 +539,8 @@ export default function FormsManagement() {
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Date</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Email</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>ImageName</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>ImageFolder</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>ImageID</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>PrintEmp</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>PrintCust</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>TotalCur</th>
@@ -615,6 +633,22 @@ export default function FormsManagement() {
                       type="checkbox"
                       checked={config.imagenameField.includes(col)}
                       onChange={() => toggleFieldList(col, 'imagenameField')}
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.imageFolderFields.includes(col)}
+                      onChange={() => toggleFieldList(col, 'imageFolderFields')}
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
+                    <input
+                      type="radio"
+                      name="imageIdField"
+                      value={col}
+                      checked={config.imageIdField === col}
+                      onChange={() => setConfig((c) => ({ ...c, imageIdField: col }))}
                     />
                   </td>
                   <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>

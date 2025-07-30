@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Modal from './Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import buildImageName from '../utils/buildImageName.js';
+import buildFolderName from '../utils/buildFolderName.js';
 
 export default function RowImageUploadModal({
   visible,
@@ -9,6 +10,7 @@ export default function RowImageUploadModal({
   table,
   row = {},
   imagenameFields = [],
+  imageFolderFields = [],
   columnCaseMap = {},
   onUploaded = () => {},
 }) {
@@ -19,10 +21,15 @@ export default function RowImageUploadModal({
   function buildName() {
     return buildImageName(row, imagenameFields, columnCaseMap);
   }
+  function buildFolder() {
+    return buildFolderName(row, imageFolderFields, columnCaseMap);
+  }
 
   async function handleUpload() {
+    const { name: folder } = buildFolder();
     const { name: safeName, missing } = buildName();
-    const uploadUrl = safeName && table ? `/api/transaction_images/${table}/${encodeURIComponent(safeName)}` : '';
+    const query = folder ? `?folder=${encodeURIComponent(folder)}` : '';
+    const uploadUrl = safeName && table ? `/api/transaction_images/${table}/${encodeURIComponent(safeName)}${query}` : '';
     if (!uploadUrl) {
       const msg = missing.length
         ? `Image name is missing fields: ${missing.join(', ')}`
@@ -37,9 +44,10 @@ export default function RowImageUploadModal({
     try {
       const res = await fetch(uploadUrl, { method: 'POST', body: form, credentials: 'include' });
       if (res.ok) {
-        addToast(`Images uploaded as ${safeName}`, 'success');
+        const info = folder ? `${folder}/${safeName}` : safeName;
+        addToast(`Images uploaded as ${info}`, 'success');
         setFiles([]);
-        onUploaded(safeName);
+        onUploaded(safeName, folder);
       } else {
         const text = await res.text();
         addToast(text || 'Failed to upload images', 'error');
