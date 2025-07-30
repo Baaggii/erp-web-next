@@ -30,21 +30,3 @@ Here `boxWidth` defines the initial grid box width of a POS transaction.
 
 The settings can be edited in the **General Configuration** screen
 (module key `general_configuration`) under the Settings menu.
-
-## Image Storage
-
-The optional `imageStorage` section configures where uploaded images are saved.
-
-```json
-{
-  "imageStorage": {
-    "basePath": "uploaded_images/",
-    "defaultFolder": "transactions/",
-    "posFolder": "transactions_pos/"
-  }
-}
-```
-
-`basePath` determines the root folder under the project directory for all
-transaction images. `defaultFolder` and `posFolder` define subfolders used when
-building image paths for regular and POS transactions respectively.
