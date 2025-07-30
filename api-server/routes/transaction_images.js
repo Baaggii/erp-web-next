@@ -39,6 +39,7 @@ router.post('/:table/:oldName/rename/:newName', requireAuth, async (req, res, ne
       req.params.table,
       req.params.oldName,
       req.params.newName,
+      req.query.folder,
     );
     res.json(files);
   } catch (err) {

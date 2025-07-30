@@ -10,6 +10,7 @@ import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
 import RowImageUploadModal from './RowImageUploadModal.jsx';
 import buildImageName from '../utils/buildImageName.js';
+import slugify from '../utils/slugify.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 
@@ -577,6 +578,21 @@ export default forwardRef(function InlineTransactionTable({
     setUploadRow(idx);
   }
 
+  function getImageFolder(row) {
+    if (!row || !row._saved) return tableName;
+    const lowerMap = {};
+    Object.keys(row).forEach((k) => {
+      lowerMap[k.toLowerCase()] = row[k];
+    });
+    const t1 = lowerMap['trtype'];
+    const t2 =
+      lowerMap['uitranstypename'] ||
+      lowerMap['transtype'] ||
+      lowerMap['transtypename'];
+    if (!t1 || !t2) return tableName;
+    return `${slugify(t1)}/${slugify(String(t2))}`;
+  }
+
 
   function handleChange(rowIdx, field, value) {
     setRows((r) => {
@@ -1116,7 +1132,7 @@ export default forwardRef(function InlineTransactionTable({
       <RowImageUploadModal
         visible={uploadRow !== null}
         onClose={() => setUploadRow(null)}
-        table={tableName}
+        folder={getImageFolder(rows[uploadRow])}
         row={rows[uploadRow] || {}}
         imagenameFields={imagenameFields}
         columnCaseMap={columnCaseMap}

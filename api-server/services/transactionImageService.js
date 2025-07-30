@@ -79,11 +79,13 @@ export async function listImages(table, name) {
   }
 }
 
-export async function renameImages(table, oldName, newName) {
+export async function renameImages(table, oldName, newName, folder = null) {
   const { baseDir, urlBase } = await getDirs();
   ensureDir(baseDir);
   const dir = path.join(baseDir, table);
   ensureDir(dir);
+  const targetDir = folder ? path.join(baseDir, folder) : dir;
+  ensureDir(targetDir);
   const oldPrefix = sanitizeName(oldName);
   const newPrefix = sanitizeName(newName);
   try {
@@ -92,9 +94,10 @@ export async function renameImages(table, oldName, newName) {
     for (const f of files) {
       if (f.startsWith(oldPrefix + '_')) {
         const rest = f.slice(oldPrefix.length);
-        const dest = path.join(dir, newPrefix + rest);
+        const dest = path.join(targetDir, newPrefix + rest);
         await fs.rename(path.join(dir, f), dest);
-        renamed.push(`${urlBase}/${table}/${newPrefix + rest}`);
+        const folderPart = folder || table;
+        renamed.push(`${urlBase}/${folderPart}/${newPrefix + rest}`);
       }
     }
     return renamed;

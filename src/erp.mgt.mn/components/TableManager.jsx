@@ -16,6 +16,7 @@ import RowDetailModal from './RowDetailModal.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import buildImageName from '../utils/buildImageName.js';
+import slugify from '../utils/slugify.js';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -612,6 +613,18 @@ const TableManager = forwardRef(function TableManager({
     return idVal;
   }
 
+  function getImageFolder(row) {
+    const lower = {};
+    Object.keys(row || {}).forEach((k) => {
+      lower[k.toLowerCase()] = row[k];
+    });
+    const t1 = lower['trtype'];
+    const t2 =
+      lower['uitranstypename'] || lower['transtype'] || lower['transtypename'];
+    if (!t1 || !t2) return table;
+    return `${slugify(t1)}/${slugify(String(t2))}`;
+  }
+
   function getKeyFields() {
     const keys = columnMeta
       .filter((c) => c.key === 'PRI')
@@ -936,19 +949,21 @@ const TableManager = forwardRef(function TableManager({
           const rowForName =
             inserted || {
               ...merged,
-              [formConfig.imageIdField]:
-                savedRow[formConfig.imageIdField] ?? savedRow.id,
+              [formConfig.imageIdField]: savedRow[formConfig.imageIdField],
             };
-          const { name: newImageName } = buildImageName(
-            rowForName,
-            formConfig?.imagenameField || [],
-            columnCaseMap,
-          );
-          if (oldImageName && newImageName && oldImageName !== newImageName) {
-            await fetch(
-              `/api/transaction_images/${table}/${encodeURIComponent(oldImageName)}/rename/${encodeURIComponent(newImageName)}`,
-              { method: 'POST', credentials: 'include' },
+          if (rowForName[formConfig.imageIdField]) {
+            const { name: newImageName } = buildImageName(
+              rowForName,
+              formConfig?.imagenameField || [],
+              columnCaseMap,
             );
+            const folder = getImageFolder(rowForName);
+            if (oldImageName && newImageName && oldImageName !== newImageName) {
+              await fetch(
+                `/api/transaction_images/${table}/${encodeURIComponent(oldImageName)}/rename/${encodeURIComponent(newImageName)}?folder=${encodeURIComponent(folder)}`,
+                { method: 'POST', credentials: 'include' },
+              );
+            }
           }
         }
         addToast(msg, 'success');

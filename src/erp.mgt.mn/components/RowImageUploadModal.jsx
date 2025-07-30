@@ -6,7 +6,7 @@ import buildImageName from '../utils/buildImageName.js';
 export default function RowImageUploadModal({
   visible,
   onClose,
-  table,
+  folder,
   row = {},
   imagenameFields = [],
   columnCaseMap = {},
@@ -23,21 +23,21 @@ export default function RowImageUploadModal({
   useEffect(() => {
     if (!visible) return;
     const { name } = buildName();
-    if (!table || !name) {
+    if (!folder || !name) {
       setUploaded([]);
       return;
     }
-    fetch(`/api/transaction_images/${table}/${encodeURIComponent(name)}`, {
+    fetch(`/api/transaction_images/${folder}/${encodeURIComponent(name)}`, {
       credentials: 'include',
     })
       .then((r) => (r.ok ? r.json() : []))
       .then((imgs) => setUploaded(Array.isArray(imgs) ? imgs : []))
       .catch(() => setUploaded([]));
-  }, [visible, table, row]);
+  }, [visible, folder, row]);
 
   async function handleUpload(selectedFiles) {
     const { name: safeName, missing } = buildName();
-    const uploadUrl = safeName && table ? `/api/transaction_images/${table}/${encodeURIComponent(safeName)}` : '';
+    const uploadUrl = safeName && folder ? `/api/transaction_images/${folder}/${encodeURIComponent(safeName)}` : '';
     if (!uploadUrl) {
       const msg = missing.length
         ? `Image name is missing fields: ${missing.join(', ')}`
@@ -56,7 +56,7 @@ export default function RowImageUploadModal({
         addToast(`Images uploaded as ${safeName}`, 'success');
         const imgs = await res.json().catch(() => []);
         setFiles([]);
-        setUploaded(imgs);
+        setUploaded((u) => [...u, ...imgs]);
         onUploaded(safeName);
       } else {
         const text = await res.text();
@@ -71,21 +71,21 @@ export default function RowImageUploadModal({
 
   async function deleteFile(file) {
     const { name } = buildName();
-    if (!table || !name) return;
+    if (!folder || !name) return;
     try {
       await fetch(
-        `/api/transaction_images/${table}/${encodeURIComponent(name)}/${encodeURIComponent(file)}`,
+        `/api/transaction_images/${folder}/${encodeURIComponent(name)}/${encodeURIComponent(file)}`,
         { method: 'DELETE', credentials: 'include' },
       );
-      setUploaded((u) => u.filter((f) => f !== file));
+      setUploaded((u) => u.filter((f) => !f.endsWith(`/${file}`)));
     } catch {}
   }
 
   async function deleteAll() {
     const { name } = buildName();
-    if (!table || !name) return;
+    if (!folder || !name) return;
     try {
-      await fetch(`/api/transaction_images/${table}/${encodeURIComponent(name)}`, {
+      await fetch(`/api/transaction_images/${folder}/${encodeURIComponent(name)}`, {
         method: 'DELETE',
         credentials: 'include',
       });
