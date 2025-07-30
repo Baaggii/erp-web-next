@@ -24,10 +24,18 @@ function sanitizeName(name) {
     .replace(/[^a-z0-9_-]+/gi, '_');
 }
 
+function sanitizeFolder(folder = '') {
+  return folder
+    .split(/[/\\]+/)
+    .filter(Boolean)
+    .map(sanitizeName)
+    .join(path.sep);
+}
+
 export async function saveImages(table, name, files, folder = '') {
   const { baseDir, urlBase } = await getDirs();
   ensureDir(baseDir);
-  const dir = path.join(baseDir, table, sanitizeName(folder));
+  const dir = path.join(baseDir, table, sanitizeFolder(folder));
   ensureDir(dir);
   const saved = [];
   const prefix = sanitizeName(name);
@@ -55,8 +63,9 @@ export async function saveImages(table, name, files, folder = '') {
     } catch {
       await fs.rename(file.path, dest);
     }
-    const url = folder
-      ? `${urlBase}/${table}/${sanitizeName(folder)}/${fileName}`
+    const sanitized = sanitizeFolder(folder);
+    const url = sanitized
+      ? `${urlBase}/${table}/${sanitized.replace(/\\/g, '/')}/${fileName}`
       : `${urlBase}/${table}/${fileName}`;
     saved.push(url);
   }
@@ -66,18 +75,19 @@ export async function saveImages(table, name, files, folder = '') {
 export async function listImages(table, name, folder = '') {
   const { baseDir, urlBase } = await getDirs();
   ensureDir(baseDir);
-  const dir = path.join(baseDir, table, sanitizeName(folder));
+  const dir = path.join(baseDir, table, sanitizeFolder(folder));
   ensureDir(dir);
   const prefix = sanitizeName(name);
   try {
     const files = await fs.readdir(dir);
     return files
       .filter((f) => f.startsWith(prefix + '_'))
-      .map((f) =>
-        folder
-          ? `${urlBase}/${table}/${sanitizeName(folder)}/${f}`
-          : `${urlBase}/${table}/${f}`,
-      );
+      .map((f) => {
+        const sanitized = sanitizeFolder(folder);
+        return sanitized
+          ? `${urlBase}/${table}/${sanitized.replace(/\\/g, '/')}/${f}`
+          : `${urlBase}/${table}/${f}`;
+      });
   } catch {
     return [];
   }
@@ -86,20 +96,23 @@ export async function listImages(table, name, folder = '') {
 export async function renameImages(table, oldName, newName, folder = '') {
   const { baseDir, urlBase } = await getDirs();
   ensureDir(baseDir);
-  const dir = path.join(baseDir, table, sanitizeName(folder));
-  ensureDir(dir);
+  const tmpDir = path.join(baseDir, table, 'tmp');
+  const destDir = path.join(baseDir, table, sanitizeFolder(folder));
+  ensureDir(tmpDir);
+  ensureDir(destDir);
   const oldPrefix = sanitizeName(oldName);
   const newPrefix = sanitizeName(newName);
   try {
-    const files = await fs.readdir(dir);
+    const files = await fs.readdir(tmpDir);
     const renamed = [];
     for (const file of files) {
       if (file.startsWith(oldPrefix + '_')) {
         const rest = file.slice(oldPrefix.length);
         const newFile = newPrefix + rest;
-        await fs.rename(path.join(dir, file), path.join(dir, newFile));
-        const url = folder
-          ? `${urlBase}/${table}/${sanitizeName(folder)}/${newFile}`
+        await fs.rename(path.join(tmpDir, file), path.join(destDir, newFile));
+        const sanitized = sanitizeFolder(folder);
+        const url = sanitized
+          ? `${urlBase}/${table}/${sanitized.replace(/\\/g, '/')}/${newFile}`
           : `${urlBase}/${table}/${newFile}`;
         renamed.push(url);
       }
@@ -108,4 +121,24 @@ export async function renameImages(table, oldName, newName, folder = '') {
   } catch {
     return [];
   }
+}
+
+export async function deleteImages(table, name, folder = '', file = '') {
+  const { baseDir } = await getDirs();
+  ensureDir(baseDir);
+  const dir = path.join(baseDir, table, sanitizeFolder(folder));
+  ensureDir(dir);
+  const prefix = sanitizeName(name);
+  if (file) {
+    try {
+      await fs.unlink(path.join(dir, path.basename(file)));
+    } catch {}
+    return;
+  }
+  try {
+    const files = await fs.readdir(dir);
+    for (const f of files) {
+      if (f.startsWith(prefix + '_')) await fs.unlink(path.join(dir, f));
+    }
+  } catch {}
 }

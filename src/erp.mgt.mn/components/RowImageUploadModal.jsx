@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Modal from './Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import buildImageName from '../utils/buildImageName.js';
@@ -17,9 +17,18 @@ export default function RowImageUploadModal({
   const { addToast } = useToast();
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [images, setImages] = useState([]);
+  const tempNameRef = useRef(row._tmpImageName || null);
+  if (!tempNameRef.current) {
+    tempNameRef.current = crypto.randomUUID();
+  }
   if (!visible) return null;
   function buildName() {
-    return buildImageName(row, imagenameFields, columnCaseMap);
+    const res = buildImageName(row, imagenameFields, columnCaseMap);
+    if (!res.name || res.missing.length) {
+      return { name: tempNameRef.current, missing: [], temp: true };
+    }
+    return res;
   }
   function buildFolder() {
     return buildFolderName(row, imageFolderFields, columnCaseMap);
@@ -27,11 +36,7 @@ export default function RowImageUploadModal({
 
   async function handleUpload() {
     const { name: folder } = buildFolder();
-    const { name: safeName, missing } = buildName();
-    if (!safeName || missing.length) {
-      addToast('Please post the transaction before uploading images.', 'error');
-      return;
-    }
+    const { name: safeName } = buildName();
     const query = folder ? `?folder=${encodeURIComponent(folder)}` : '';
     const uploadUrl =
       safeName && table
@@ -44,9 +49,9 @@ export default function RowImageUploadModal({
     try {
       const res = await fetch(uploadUrl, { method: 'POST', body: form, credentials: 'include' });
       if (res.ok) {
-        const info = folder ? `${folder}/${safeName}` : safeName;
-        addToast(`Images uploaded as ${info}`, 'success');
+        addToast('Images uploaded', 'success');
         setFiles([]);
+        fetchImages();
         onUploaded(safeName, folder);
       } else {
         const text = await res.text();
@@ -59,12 +64,55 @@ export default function RowImageUploadModal({
     setLoading(false);
   }
 
+  async function fetchImages() {
+    const { name: folder } = buildFolder();
+    const { name: safeName } = buildName();
+    const query = folder ? `?folder=${encodeURIComponent(folder)}` : '';
+    const res = await fetch(
+      `/api/transaction_images/${table}/${encodeURIComponent(safeName)}${query}`,
+      { credentials: 'include' },
+    );
+    const data = await res.json().catch(() => []);
+    setImages(Array.isArray(data) ? data : []);
+  }
+
+  async function handleDelete(url) {
+    const { name: folder } = buildFolder();
+    const { name: safeName } = buildName();
+    const params = new URLSearchParams();
+    if (folder) params.set('folder', folder);
+    if (url) params.set('file', url);
+    await fetch(
+      `/api/transaction_images/${table}/${encodeURIComponent(safeName)}?${params.toString()}`,
+      { method: 'DELETE', credentials: 'include' },
+    );
+    fetchImages();
+  }
+
+  useEffect(() => {
+    if (visible) fetchImages();
+  }, [visible]);
+
   return (
     <Modal visible={visible} title="Upload Images" onClose={onClose} width="auto">
       <input type="file" multiple onChange={(e) => setFiles(Array.from(e.target.files))} />
       <button type="button" onClick={handleUpload} disabled={!files.length || loading} style={{ marginLeft: '0.5rem' }}>
         {loading ? 'Uploading...' : 'Upload'}
       </button>
+      {images.length > 0 && (
+        <div style={{ marginTop: '0.5rem' }}>
+          <h4>Uploaded Images</h4>
+          {images.map((src, idx) => (
+            <div key={idx} style={{ marginBottom: '0.5rem' }}>
+              <img src={src} alt="" style={{ maxWidth: '100%' }} />
+              <button type="button" onClick={() => handleDelete(src)} style={{ marginLeft: '0.5rem' }}>
+                Delete
+              </button>
+            </div>
+          ))}
+          <button type="button" onClick={() => handleDelete()}>Delete All</button>
+        </div>
+      )}
       <div style={{ textAlign: 'right', marginTop: '1rem' }}>
         <button type="button" onClick={onClose}>Close</button>
       </div>
