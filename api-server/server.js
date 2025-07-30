@@ -43,6 +43,10 @@ app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 app.use(cookieParser());
 app.use(logger);
 
+// Serve uploaded images
+const uploadsDir = path.join(process.cwd(), 'uploads');
+app.use('/uploads', express.static(uploadsDir));
+
 // Health-check: also verify DB connection
 app.get("/api/auth/health", async (req, res, next) => {
   try {
