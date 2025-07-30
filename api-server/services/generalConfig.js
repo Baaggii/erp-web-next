@@ -4,6 +4,9 @@ import path from 'path';
 const filePath = path.join(process.cwd(), 'config', 'generalConfig.json');
 
 const defaults = {
+  general: {
+    imageDir: 'txn_images',
+  },
   forms: {
     labelFontSize: 14,
     boxWidth: 60,
@@ -24,11 +27,12 @@ async function readConfig() {
   try {
     const data = await fs.readFile(filePath, 'utf8');
     const parsed = JSON.parse(data);
-    if (parsed.forms || parsed.pos) {
+    if (parsed.forms || parsed.pos || parsed.general) {
       return { ...defaults, ...parsed };
     }
     // migrate older flat structure to new nested layout
     return {
+      general: { ...defaults.general },
       forms: { ...defaults.forms, ...parsed },
       pos: { ...defaults.pos },
     };
@@ -47,6 +51,7 @@ export async function getGeneralConfig() {
 
 export async function updateGeneralConfig(updates = {}) {
   const cfg = await readConfig();
+  if (updates.general) Object.assign(cfg.general, updates.general);
   if (updates.forms) Object.assign(cfg.forms, updates.forms);
   if (updates.pos) Object.assign(cfg.pos, updates.pos);
   await writeConfig(cfg);
