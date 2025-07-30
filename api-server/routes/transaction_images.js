@@ -6,21 +6,23 @@ import { saveImages, listImages } from '../services/transactionImageService.js';
 const router = express.Router();
 const upload = multer({ dest: 'uploads/tmp' });
 
-router.post('/:table/:name', requireAuth, upload.array('images'), async (req, res, next) => {
+router.post('/:name', requireAuth, upload.array('images'), async (req, res, next) => {
   try {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ message: 'no files' });
     }
-    const files = await saveImages(req.params.table, req.params.name, req.files);
+    const { trtype = '', transType = '' } = req.query;
+    const files = await saveImages(trtype, transType, req.params.name, req.files);
     res.json(files);
   } catch (err) {
     next(err);
   }
 });
 
-router.get('/:table/:name', requireAuth, async (req, res, next) => {
+router.get('/:name', requireAuth, async (req, res, next) => {
   try {
-    const files = await listImages(req.params.table, req.params.name);
+    const { trtype = '', transType = '' } = req.query;
+    const files = await listImages(trtype, transType, req.params.name);
     res.json(files);
   } catch (err) {
     next(err);

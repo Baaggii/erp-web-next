@@ -8,6 +8,9 @@ import React, {
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
+import RowImageUploadModal from './RowImageUploadModal.jsx';
+import RowImageViewModal from './RowImageViewModal.jsx';
+import buildImageName from '../utils/buildImageName.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 
@@ -66,6 +69,8 @@ export default forwardRef(function InlineTransactionTable({
   branchIdFields = [],
   departmentIdFields = [],
   companyIdFields = [],
+  imagenameField = [],
+  imageIdField = '',
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -172,6 +177,9 @@ export default forwardRef(function InlineTransactionTable({
   const [errorMsg, setErrorMsg] = useState('');
   const [invalidCell, setInvalidCell] = useState(null);
   const [previewRow, setPreviewRow] = useState(null);
+  const [uploadIdx, setUploadIdx] = useState(null);
+  const [viewIdx, setViewIdx] = useState(null);
+  const [viewImages, setViewImages] = useState([]);
   const procCache = useRef({});
 
   const totalAmountSet = new Set(totalAmountFields);
@@ -224,6 +232,35 @@ export default forwardRef(function InlineTransactionTable({
       return !isNaN(d.getTime());
     }
     return true;
+  }
+
+  function buildName(row) {
+    if (row._saved && imageIdField && row[imageIdField]) {
+      return { name: String(row[imageIdField]) };
+    }
+    return buildImageName(row, imagenameField, columnCaseMap);
+  }
+
+  async function loadImages(idx) {
+    const row = rows[idx];
+    if (!row) return;
+    const { name } = buildName(row);
+    const trtype = row.trtype || row[columnCaseMap['trtype']];
+    const transType =
+      row.TransType ||
+      row[columnCaseMap['transtype']] ||
+      row.UITransType ||
+      row[columnCaseMap['uitranstype']];
+    const params = new URLSearchParams();
+    if (trtype) params.set('trtype', trtype);
+    if (transType) params.set('transType', transType);
+    const res = await fetch(
+      `/api/transaction_images/${encodeURIComponent(name)}?${params.toString()}`,
+      { credentials: 'include' },
+    );
+    const data = await res.json().catch(() => []);
+    setViewImages(Array.isArray(data) ? data : []);
+    setViewIdx(idx);
   }
 
   useEffect(() => {
@@ -724,6 +761,10 @@ export default forwardRef(function InlineTransactionTable({
     }
   }
 
+  function openUpload(idx) {
+    setUploadIdx(idx);
+  }
+
 
   const totals = React.useMemo(() => {
     const sums = {};
@@ -1027,7 +1068,9 @@ export default forwardRef(function InlineTransactionTable({
                   {renderCell(idx, f, cIdx)}
                 </td>
               ))}
-              <td className="border px-1 py-1 text-right">
+              <td className="border px-1 py-1 text-right" style={{whiteSpace:'nowrap'}}>
+                <button onClick={() => openUpload(idx)} style={{marginRight:'0.25rem'}}>Add Image</button>
+                <button onClick={() => loadImages(idx)} style={{marginRight:'0.25rem'}}>🖼</button>
                 {collectRows ? (
                   <button onClick={() => removeRow(idx)}>Delete</button>
                 ) : r._saved ? (
@@ -1096,6 +1139,18 @@ export default forwardRef(function InlineTransactionTable({
         columns={previewRow ? Object.keys(previewRow) : []}
         relations={relations}
         labels={labels}
+      />
+      <RowImageUploadModal
+        visible={uploadIdx !== null}
+        onClose={() => setUploadIdx(null)}
+        row={rows[uploadIdx] || {}}
+        imagenameFields={imagenameField}
+        columnCaseMap={columnCaseMap}
+      />
+      <RowImageViewModal
+        visible={viewIdx !== null}
+        onClose={() => setViewIdx(null)}
+        images={viewImages}
       />
     </div>
   );
