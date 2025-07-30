@@ -362,9 +362,11 @@ const RowFormModal = function RowFormModal({
       setErrors((er) => ({ ...er, [col]: 'Утга оруулна уу' }));
       return;
     }
+    const skipNum = /code/i.test(col) || /код/i.test(labels[col] || '');
     if (
       (totalAmountSet.has(col) || totalCurrencySet.has(col)) &&
       val !== '' &&
+      !skipNum &&
       isNaN(Number(normalizeNumberInput(val)))
     ) {
       setErrors((er) => ({ ...er, [col]: 'Буруу тоон утга' }));
@@ -642,6 +644,7 @@ const RowFormModal = function RowFormModal({
           if (
             (totalAmountSet.has(f) || totalCurrencySet.has(f)) &&
             normalized[f] !== '' &&
+            !/code/i.test(f) &&
             isNaN(Number(normalizeNumberInput(normalized[f])))
           )
             hasInvalid = true;
