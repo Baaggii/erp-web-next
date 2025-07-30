@@ -533,7 +533,12 @@ export default forwardRef(function InlineTransactionTable({
           }
         }
         if (val !== '' && val !== null && val !== undefined) {
-          if ((totalCurrencySet.has(f) || totalAmountSet.has(f)) && isNaN(Number(val))) {
+          const skipNum = /code/i.test(f) || /код/i.test(labels[f] || '');
+          if (
+            (totalCurrencySet.has(f) || totalAmountSet.has(f)) &&
+            !skipNum &&
+            isNaN(Number(val))
+          ) {
             setErrorMsg((labels[f] || f) + ' талбарт буруу тоо байна');
             setInvalidCell({ row: rows.length - 1, field: f });
             const el = inputRefs.current[`${rows.length - 1}-${fields.indexOf(f)}`];
@@ -709,9 +714,11 @@ export default forwardRef(function InlineTransactionTable({
         }
         return;
       }
+      const skipNum = /code/i.test(f) || /код/i.test(labels[f] || '');
       if (
         totalCurrencySet.has(f) &&
         val !== '' &&
+        !skipNum &&
         isNaN(Number(normalizeNumberInput(val)))
       ) {
         setErrorMsg((labels[f] || f) + ' талбарт буруу тоо байна');
@@ -825,9 +832,11 @@ export default forwardRef(function InlineTransactionTable({
       if (e.target.select) e.target.select();
       return;
     }
+    const skipNum = /code/i.test(field) || /код/i.test(labels[field] || '');
     if (
       totalCurrencySet.has(field) &&
       val !== '' &&
+      !skipNum &&
       isNaN(Number(normalizeNumberInput(val)))
     ) {
       setErrorMsg((labels[field] || field) + ' талбарт буруу тоо байна');
@@ -1140,6 +1149,7 @@ export default forwardRef(function InlineTransactionTable({
       <RowImageUploadModal
         visible={uploadRow !== null}
         onClose={() => setUploadRow(null)}
+        table={tableName}
         folder={getImageFolder(rows[uploadRow])}
         row={rows[uploadRow] || {}}
         imagenameFields={imagenameFields}
