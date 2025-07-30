@@ -33,8 +33,10 @@ export async function saveImages(table, name, files) {
   const saved = [];
   const prefix = sanitizeName(name);
   for (const file of files) {
-    const ext = path.extname(file.originalname) || `.${mime.extension(file.mimetype) || 'bin'}`;
-    const fileName = `${prefix}_${Date.now()}${ext}`;
+    const ext =
+      path.extname(file.originalname) || `.${mime.extension(file.mimetype) || 'bin'}`;
+    const unique = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const fileName = `${prefix}_${unique}${ext}`;
     const dest = path.join(dir, fileName);
     try {
       if (file.size > 1500000) {

@@ -930,8 +930,15 @@ const TableManager = forwardRef(function TableManager({
         setGridRows([]);
         const msg = isAdding ? 'Шинэ гүйлгээ хадгалагдлаа' : 'Хадгалагдлаа';
         if (isAdding && formConfig?.imageIdField) {
-          const inserted = rows.find((r) => String(getRowId(r)) === String(savedRow.id));
-          const rowForName = inserted || { ...merged, [formConfig.imageIdField]: savedRow.id };
+          const inserted = rows.find(
+            (r) => String(getRowId(r)) === String(savedRow.id),
+          );
+          const rowForName =
+            inserted || {
+              ...merged,
+              [formConfig.imageIdField]:
+                savedRow[formConfig.imageIdField] ?? savedRow.id,
+            };
           const { name: newImageName } = buildImageName(
             rowForName,
             formConfig?.imagenameField || [],

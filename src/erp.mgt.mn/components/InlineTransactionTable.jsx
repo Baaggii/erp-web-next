@@ -9,7 +9,6 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
 import RowImageUploadModal from './RowImageUploadModal.jsx';
-import RowImageViewModal from './RowImageViewModal.jsx';
 import buildImageName from '../utils/buildImageName.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
@@ -178,8 +177,6 @@ export default forwardRef(function InlineTransactionTable({
   const [invalidCell, setInvalidCell] = useState(null);
   const [previewRow, setPreviewRow] = useState(null);
   const [uploadRow, setUploadRow] = useState(null);
-  const [viewRow, setViewRow] = useState(null);
-  const [viewImages, setViewImages] = useState([]);
   const procCache = useRef({});
 
   const totalAmountSet = new Set(totalAmountFields);
@@ -580,25 +577,6 @@ export default forwardRef(function InlineTransactionTable({
     setUploadRow(idx);
   }
 
-  async function openView(idx) {
-    const row = rows[idx] || {};
-    const { name } = buildImageName(row, imagenameFields, columnCaseMap);
-    if (!tableName || !name) {
-      setViewImages([]);
-      setViewRow(idx);
-      return;
-    }
-    try {
-      const res = await fetch(`/api/transaction_images/${tableName}/${encodeURIComponent(name)}`, {
-        credentials: 'include',
-      });
-      const files = await res.json();
-      setViewImages(Array.isArray(files) ? files : []);
-    } catch {
-      setViewImages([]);
-    }
-    setViewRow(idx);
-  }
 
   function handleChange(rowIdx, field, value) {
     setRows((r) => {
@@ -1061,10 +1039,7 @@ export default forwardRef(function InlineTransactionTable({
                 </td>
               ))}
               <td className="border px-1 py-1 text-right" style={{ whiteSpace: 'nowrap' }}>
-                <button type="button" onClick={() => openUpload(idx)}>Add Image</button>
-                <button type="button" onClick={() => openView(idx)} style={{ marginLeft: '0.25rem' }}>
-                  🖼 View Images
-                </button>
+                <button type="button" onClick={() => openUpload(idx)}>Add/View Image</button>
               </td>
               <td className="border px-1 py-1 text-right">
                 {collectRows ? (
@@ -1145,11 +1120,6 @@ export default forwardRef(function InlineTransactionTable({
         row={rows[uploadRow] || {}}
         imagenameFields={imagenameFields}
         columnCaseMap={columnCaseMap}
-      />
-      <RowImageViewModal
-        visible={viewRow !== null}
-        onClose={() => setViewRow(null)}
-        images={viewImages}
       />
     </div>
   );
