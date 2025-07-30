@@ -8,10 +8,8 @@ import React, {
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
-import RowImageUploadModal from './RowImageUploadModal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
-import buildImageName from '../utils/buildImageName.js';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -68,9 +66,6 @@ export default forwardRef(function InlineTransactionTable({
   branchIdFields = [],
   departmentIdFields = [],
   companyIdFields = [],
-  table = '',
-  imagenameFields = [],
-  imageFolderFields = [],
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -84,7 +79,6 @@ export default forwardRef(function InlineTransactionTable({
     () => new Set(disabledFields.map((f) => f.toLowerCase())),
     [disabledFields],
   );
-  const [uploadIdx, setUploadIdx] = useState(-1);
 
   function fillSessionDefaults(obj) {
     const row = { ...obj };
@@ -251,10 +245,10 @@ export default forwardRef(function InlineTransactionTable({
     focusRow.current = null;
   }, [rows, minRows]);
 
-  useEffect(() => {
+  function resizeInputs() {
     Object.values(inputRefs.current).forEach((el) => {
       if (!el) return;
-      if (el.tagName === 'INPUT') {
+      if (el.tagName === 'INPUT' || el.tagName === 'DIV') {
         el.style.width = 'auto';
         const w = Math.min(el.scrollWidth + 2, boxMaxWidth);
         el.style.width = `${Math.max(boxWidth, w)}px`;
@@ -265,7 +259,12 @@ export default forwardRef(function InlineTransactionTable({
         el.style.overflowY = el.scrollHeight > h ? 'auto' : 'hidden';
       }
     });
-  }, [rows, boxWidth, boxMaxWidth, boxMaxHeight]);
+  }
+
+  useEffect(resizeInputs, [rows, boxWidth, boxMaxWidth, boxMaxHeight]);
+  useEffect(() => {
+    resizeInputs();
+  }, []);
 
   useImperativeHandle(ref, () => ({
     getRows: () => rows,
@@ -567,10 +566,6 @@ export default forwardRef(function InlineTransactionTable({
       onRowsChange(next);
       return next;
     });
-  }
-
-  function openUpload(idx) {
-    setUploadIdx(idx);
   }
 
   function handleChange(rowIdx, field, value) {
@@ -876,10 +871,21 @@ export default forwardRef(function InlineTransactionTable({
         });
         display = parts.join(' - ');
       }
-      const readonlyStyle = { ...inputStyle, width: 'fit-content', maxWidth: `${boxMaxWidth}px` };
+      const readonlyStyle = {
+        ...inputStyle,
+        width: 'fit-content',
+        minWidth: `${boxWidth}px`,
+        maxWidth: `${boxMaxWidth}px`,
+      };
       return (
         <div className="flex items-center" title={display}>
-          <div className="px-1 border rounded bg-gray-100" style={readonlyStyle}>{display}</div>
+          <div
+            className="px-1 border rounded bg-gray-100"
+            style={readonlyStyle}
+            ref={(el) => (inputRefs.current[`ro-${idx}-${f}`] = el)}
+          >
+            {display}
+          </div>
         </div>
       );
     }
@@ -1010,7 +1016,6 @@ export default forwardRef(function InlineTransactionTable({
                 </th>
               );
             })}
-            <th className="border px-1 py-1">Image</th>
             <th className="border px-1 py-1" />
           </tr>
         </thead>
@@ -1022,26 +1027,6 @@ export default forwardRef(function InlineTransactionTable({
                   {renderCell(idx, f, cIdx)}
                 </td>
               ))}
-              <td className="border px-1 py-1 text-center">
-                {(() => {
-                  const { name: safe, missing } = buildImageName(
-                    r,
-                    imagenameFields,
-                    columnCaseMap,
-                  );
-                  const canUpload = !!safe && missing.length === 0;
-                  return (
-                    <button
-                      type="button"
-                      disabled={!canUpload}
-                      title={!canUpload ? 'Please post first' : 'Upload image'}
-                      onClick={() => openUpload(idx)}
-                    >
-                      Add Image
-                    </button>
-                  );
-                })()}
-              </td>
               <td className="border px-1 py-1 text-right">
                 {collectRows ? (
                   <button onClick={() => removeRow(idx)}>Delete</button>
@@ -1077,7 +1062,6 @@ export default forwardRef(function InlineTransactionTable({
                   </td>
                 );
               })}
-              <td className="border px-1 py-1" />
               <td className="border px-1 py-1 font-semibold text-center">НИЙТ</td>
             </tr>
             <tr>
@@ -1086,7 +1070,6 @@ export default forwardRef(function InlineTransactionTable({
                   {idx === 0 ? totals.count : ''}
                 </td>
               ))}
-              <td className="border px-1 py-1" />
               <td className="border px-1 py-1 font-semibold text-center">
                 мөрийн тоо
               </td>
@@ -1113,16 +1096,6 @@ export default forwardRef(function InlineTransactionTable({
         columns={previewRow ? Object.keys(previewRow) : []}
         relations={relations}
         labels={labels}
-      />
-      <RowImageUploadModal
-        visible={uploadIdx >= 0}
-        onClose={() => setUploadIdx(-1)}
-        table={table}
-        row={rows[uploadIdx] || {}}
-        imagenameFields={imagenameFields}
-        imageFolderFields={imageFolderFields}
-        columnCaseMap={columnCaseMap}
-        onUploaded={() => setUploadIdx(-1)}
       />
     </div>
   );
