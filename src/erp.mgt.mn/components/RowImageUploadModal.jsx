@@ -21,10 +21,16 @@ export default function RowImageUploadModal({
   const tempNameRef = useRef(row._tmpImageName || null);
 
   function genTempName() {
-    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-      return crypto.randomUUID();
+    const rand = Math.random().toString(36).slice(2);
+    try {
+      if (typeof globalThis !== 'undefined') {
+        const c = globalThis.crypto;
+        if (c && c.randomUUID) return c.randomUUID();
+      }
+    } catch {
+      /* ignore */
     }
-    return Math.random().toString(36).slice(2);
+    return Date.now().toString(36) + rand;
   }
 
   if (!tempNameRef.current) {
