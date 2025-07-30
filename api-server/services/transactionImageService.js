@@ -1,7 +1,6 @@
 import fs from 'fs/promises';
 import fssync from 'fs';
 import path from 'path';
-import mime from 'mime-types';
 import { getGeneralConfig } from './generalConfig.js';
 
 async function getDirs() {
@@ -32,9 +31,13 @@ export async function saveImages(table, name, files, folder = null) {
   ensureDir(dir);
   const saved = [];
   const prefix = sanitizeName(name);
+  let mimeLib;
+  try {
+    mimeLib = (await import('mime-types')).default;
+  } catch {}
   for (const file of files) {
     const ext =
-      path.extname(file.originalname) || `.${mime.extension(file.mimetype) || 'bin'}`;
+      path.extname(file.originalname) || `.${mimeLib?.extension(file.mimetype) || 'bin'}`;
     const unique = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const fileName = `${prefix}_${unique}${ext}`;
     const dest = path.join(dir, fileName);
@@ -136,4 +139,38 @@ export async function deleteAllImages(table, name, folder = null) {
   } catch {
     return 0;
   }
+}
+
+export async function cleanupOldImages(days = 30) {
+  const { baseDir } = await getDirs();
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  let removed = 0;
+
+  async function walk(dir) {
+    let entries;
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(full);
+      } else if (entry.isFile()) {
+        try {
+          const stat = await fs.stat(full);
+          if (stat.mtimeMs < cutoff) {
+            await fs.unlink(full);
+            removed += 1;
+          }
+        } catch {}
+      }
+    }
+  }
+
+  await walk(baseDir);
+  await walk(path.join(process.cwd(), 'uploads', 'tmp'));
+
+  return removed;
 }
