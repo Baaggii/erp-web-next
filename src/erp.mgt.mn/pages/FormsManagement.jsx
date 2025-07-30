@@ -43,7 +43,6 @@ export default function FormsManagement() {
     viewSource: {},
     transactionTypeField: '',
     transactionTypeValue: '',
-    uniqueIdField: '',
     allowedBranches: [],
     allowedDepartments: [],
   });
@@ -118,7 +117,6 @@ export default function FormsManagement() {
             viewSource: filtered[name].viewSource || {},
             transactionTypeField: filtered[name].transactionTypeField || '',
             transactionTypeValue: filtered[name].transactionTypeValue || '',
-            uniqueIdField: filtered[name].uniqueIdField || '',
             allowedBranches: (filtered[name].allowedBranches || []).map(String),
             allowedDepartments: (filtered[name].allowedDepartments || []).map(String),
           });
@@ -148,7 +146,6 @@ export default function FormsManagement() {
             viewSource: {},
             transactionTypeField: '',
             transactionTypeValue: '',
-            uniqueIdField: '',
             allowedBranches: [],
             allowedDepartments: [],
           });
@@ -181,7 +178,6 @@ export default function FormsManagement() {
           viewSource: {},
           transactionTypeField: '',
           transactionTypeValue: '',
-          uniqueIdField: '',
           allowedBranches: [],
           allowedDepartments: [],
         });
@@ -219,7 +215,6 @@ export default function FormsManagement() {
           viewSource: cfg.viewSource || {},
           transactionTypeField: cfg.transactionTypeField || '',
           transactionTypeValue: cfg.transactionTypeValue || '',
-          uniqueIdField: cfg.uniqueIdField || '',
           allowedBranches: (cfg.allowedBranches || []).map(String),
           allowedDepartments: (cfg.allowedDepartments || []).map(String),
         });
@@ -249,7 +244,6 @@ export default function FormsManagement() {
           viewSource: {},
           transactionTypeField: '',
           transactionTypeValue: '',
-          uniqueIdField: '',
           allowedBranches: [],
           allowedDepartments: [],
         });
@@ -371,7 +365,6 @@ export default function FormsManagement() {
       viewSource: {},
       transactionTypeField: '',
       transactionTypeValue: '',
-      uniqueIdField: '',
       allowedBranches: [],
       allowedDepartments: [],
     });
@@ -403,7 +396,6 @@ export default function FormsManagement() {
       viewSource: cfg.viewSource || {},
       transactionTypeField: cfg.transactionTypeField || '',
       transactionTypeValue: cfg.transactionTypeValue || '',
-      uniqueIdField: cfg.uniqueIdField || '',
       allowedBranches: (cfg.allowedBranches || []).map(String),
       allowedDepartments: (cfg.allowedDepartments || []).map(String),
     });
@@ -481,23 +473,6 @@ export default function FormsManagement() {
                 style={{ marginLeft: '0.5rem' }}
               >
                 <option value="">-- transaction type field --</option>
-                {columns.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            {columns.length > 0 && (
-              <select
-                value={config.uniqueIdField}
-                onChange={(e) =>
-                  setConfig((c) => ({ ...c, uniqueIdField: e.target.value }))
-                }
-                style={{ marginLeft: '0.5rem' }}
-              >
-                <option value="">-- unique id field --</option>
                 {columns.map((c) => (
                   <option key={c} value={c}>
                     {c}
