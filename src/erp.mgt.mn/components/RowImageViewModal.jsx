@@ -119,7 +119,8 @@ export default function RowImageViewModal({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 1000,
+            // use a larger z-index so the image appears above the modal itself
+            zIndex: 1100,
           }}
           onClick={() => setFullscreen(null)}
         >
