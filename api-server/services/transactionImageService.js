@@ -76,3 +76,59 @@ export async function listImages(table, name) {
     return [];
   }
 }
+
+export async function renameImages(table, oldName, newName) {
+  const { baseDir, urlBase } = await getDirs();
+  ensureDir(baseDir);
+  const dir = path.join(baseDir, table);
+  ensureDir(dir);
+  const oldPrefix = sanitizeName(oldName);
+  const newPrefix = sanitizeName(newName);
+  try {
+    const files = await fs.readdir(dir);
+    const renamed = [];
+    for (const f of files) {
+      if (f.startsWith(oldPrefix + '_')) {
+        const rest = f.slice(oldPrefix.length);
+        const dest = path.join(dir, newPrefix + rest);
+        await fs.rename(path.join(dir, f), dest);
+        renamed.push(`${urlBase}/${table}/${newPrefix + rest}`);
+      }
+    }
+    return renamed;
+  } catch {
+    return [];
+  }
+}
+
+export async function deleteImage(table, file) {
+  const { baseDir } = await getDirs();
+  const dir = path.join(baseDir, table);
+  try {
+    await fs.unlink(path.join(dir, path.basename(file)));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function deleteAllImages(table, name) {
+  const { baseDir } = await getDirs();
+  ensureDir(baseDir);
+  const dir = path.join(baseDir, table);
+  ensureDir(dir);
+  const prefix = sanitizeName(name);
+  try {
+    const files = await fs.readdir(dir);
+    const deleted = [];
+    for (const f of files) {
+      if (f.startsWith(prefix + '_')) {
+        await fs.unlink(path.join(dir, f));
+        deleted.push(f);
+      }
+    }
+    return deleted.length;
+  } catch {
+    return 0;
+  }
+}

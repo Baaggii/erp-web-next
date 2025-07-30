@@ -28,6 +28,7 @@ import posTxnPendingRoutes from "./routes/pos_txn_pending.js";
 import posTxnPostRoutes from "./routes/pos_txn_post.js";
 import viewsRoutes from "./routes/views.js";
 import transactionRoutes from "./routes/transactions.js";
+import transactionImageRoutes from "./routes/transaction_images.js";
 import procedureRoutes from "./routes/procedures.js";
 import procTriggerRoutes from "./routes/proc_triggers.js";
 import generalConfigRoutes from "./routes/general_config.js";
@@ -78,6 +79,7 @@ app.use("/api/views", viewsRoutes);
 app.use("/api/procedures", requireAuth, procedureRoutes);
 app.use("/api/proc_triggers", requireAuth, procTriggerRoutes);
 app.use("/api/inventory_transactions", requireAuth, transactionRoutes);
+app.use("/api/transaction_images", transactionImageRoutes);
 app.use("/api/tables", requireAuth, tableRoutes);
 app.use("/api/general_config", requireAuth, generalConfigRoutes);
 
