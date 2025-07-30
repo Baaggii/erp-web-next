@@ -9,9 +9,11 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
 import RowImageUploadModal from './RowImageUploadModal.jsx';
+import RowImageViewModal from './RowImageViewModal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 import buildImageName from '../utils/buildImageName.js';
+import buildFolderName from '../utils/buildFolderName.js';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -578,6 +580,26 @@ export default forwardRef(function InlineTransactionTable({
     setUploadIdx(idx);
   }
 
+  function openView(idx) {
+    const row = rows[idx] || {};
+    const { name: folder } = buildFolderName(row, imageFolderFields, columnCaseMap);
+    const { name: safe } = buildImageName(row, imagenameFields, columnCaseMap);
+    const temp = row._imageName || safe;
+    const query = folder ? `?folder=${encodeURIComponent(folder)}` : '';
+    fetch(`/api/transaction_images/${table}/${encodeURIComponent(temp)}${query}`, {
+      credentials: 'include',
+    })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((imgs) => {
+        setViewImages(imgs);
+        setViewIdx(idx);
+      })
+      .catch(() => {
+        setViewImages([]);
+        setViewIdx(idx);
+      });
+  }
+
   function handleChange(rowIdx, field, value) {
     setRows((r) => {
       const next = r.map((row, i) => {
@@ -731,6 +753,19 @@ export default forwardRef(function InlineTransactionTable({
         return next;
       });
       procCache.current = {};
+      const { name: finalName, missing } = buildImageName(row, imagenameFields, columnCaseMap);
+      const { name: folder } = buildFolderName(row, imageFolderFields, columnCaseMap);
+      const tempName = row._imageName;
+      if (tempName && finalName && missing.length === 0 && tempName !== finalName) {
+        fetch('/api/transaction_images/rename', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ table, oldName: tempName, newName: finalName, folderPath: folder }),
+        }).then(() => {
+          handleChange(idx, '_imageName', finalName);
+        });
+      }
     }
   }
 
@@ -1047,14 +1082,23 @@ export default forwardRef(function InlineTransactionTable({
                   );
                   const canUpload = !!safe && missing.length === 0;
                   return (
-                    <button
-                      type="button"
-                      disabled={!canUpload}
-                      title={!canUpload ? 'Please post first' : 'Upload image'}
-                      onClick={() => openUpload(idx)}
-                    >
-                      Add Image
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        disabled={!canUpload}
+                        title={!canUpload ? 'Please post first' : 'Upload image'}
+                        onClick={() => openUpload(idx)}
+                      >
+                        Add Image
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openView(idx)}
+                        style={{ marginLeft: '0.25rem' }}
+                      >
+                        🖼 View Images
+                      </button>
+                    </>
                   );
                 })()}
               </td>
@@ -1139,6 +1183,21 @@ export default forwardRef(function InlineTransactionTable({
         imageFolderFields={imageFolderFields}
         columnCaseMap={columnCaseMap}
         onUploaded={() => setUploadIdx(-1)}
+        setField={(field, val) => handleChange(uploadIdx, field, val)}
+      />
+      <RowImageViewModal
+        visible={viewIdx >= 0}
+        onClose={() => setViewIdx(-1)}
+        images={viewImages}
+        onDelete={async (src) => {
+          const file = src.split('/').pop();
+          const row = rows[viewIdx] || {};
+          const { name: folder } = buildFolderName(row, imageFolderFields, columnCaseMap);
+          const name = row._imageName || buildImageName(row, imagenameFields, columnCaseMap).name;
+          const query = folder ? `?folder=${encodeURIComponent(folder)}` : '';
+          await fetch(`/api/transaction_images/${table}/${encodeURIComponent(name)}/${file}${query}`, { method: 'DELETE', credentials: 'include' });
+          setViewImages((imgs) => imgs.filter((i) => i !== src));
+        }}
       />
     </div>
   );
