@@ -16,7 +16,6 @@ export default function RowImageUploadModal({
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [uploaded, setUploaded] = useState([]);
-  if (!visible) return null;
   function buildName() {
     return buildImageName(row, imagenameFields, columnCaseMap);
   }
@@ -92,6 +91,8 @@ export default function RowImageUploadModal({
       setUploaded([]);
     } catch {}
   }
+
+  if (!visible) return null;
 
   return (
     <Modal visible={visible} title="Upload Images" onClose={onClose} width="auto">
