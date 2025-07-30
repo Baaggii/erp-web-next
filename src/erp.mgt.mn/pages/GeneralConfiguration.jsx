@@ -21,10 +21,7 @@ export default function GeneralConfiguration() {
     const { name, value } = e.target;
     setCfg(c => ({
       ...c,
-      [tab]: {
-        ...(c?.[tab] || {}),
-        [name]: tab === 'general' ? value : Number(value),
-      },
+      [tab]: { ...(c?.[tab] || {}), [name]: Number(value) },
     }));
   }
 
@@ -67,12 +64,6 @@ export default function GeneralConfiguration() {
         >
           POS
         </button>
-        <button
-          className={`tab-button ${tab === 'general' ? 'active' : ''}`}
-          onClick={() => setTab('general')}
-        >
-          General
-        </button>
       </div>
       <div style={{ marginBottom: '0.5rem' }}>
         <button onClick={() => setTab('forms')} disabled={tab === 'forms'}>
@@ -80,9 +71,6 @@ export default function GeneralConfiguration() {
         </button>
         <button onClick={() => setTab('pos')} disabled={tab === 'pos'} style={{ marginLeft: '0.5rem' }}>
           POS
-        </button>
-        <button onClick={() => setTab('general')} disabled={tab === 'general'} style={{ marginLeft: '0.5rem' }}>
-          General
         </button>
       </div>
       <div style={{ marginBottom: '0.5rem' }}>
@@ -140,19 +128,6 @@ export default function GeneralConfiguration() {
           />
         </label>
       </div>
-      {tab === 'general' && (
-        <div style={{ marginBottom: '0.5rem' }}>
-          <label>
-            Image Directory{' '}
-            <input
-              name="imageDir"
-              type="text"
-              value={active.imageDir ?? ''}
-              onChange={handleChange}
-            />
-          </label>
-        </div>
-      )}
       <button onClick={handleSave} disabled={saving}>
         Save
       </button>
