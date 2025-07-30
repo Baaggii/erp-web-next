@@ -9,11 +9,9 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
 import RowImageUploadModal from './RowImageUploadModal.jsx';
-import RowImageViewModal from './RowImageViewModal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 import buildImageName from '../utils/buildImageName.js';
-import buildFolderName from '../utils/buildFolderName.js';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -73,7 +71,6 @@ export default forwardRef(function InlineTransactionTable({
   table = '',
   imagenameFields = [],
   imageFolderFields = [],
-  imageIdField = '',
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -88,8 +85,6 @@ export default forwardRef(function InlineTransactionTable({
     [disabledFields],
   );
   const [uploadIdx, setUploadIdx] = useState(-1);
-  const [viewIdx, setViewIdx] = useState(-1);
-  const [viewImages, setViewImages] = useState([]);
 
   function fillSessionDefaults(obj) {
     const row = { ...obj };
@@ -583,38 +578,6 @@ export default forwardRef(function InlineTransactionTable({
     setUploadIdx(idx);
   }
 
-  async function openView(idx) {
-    const row = rows[idx] || {};
-    const key = imageIdField && columnCaseMap[imageIdField.toLowerCase()];
-    const idVal = key ? row[key] : null;
-    if (!idVal) return;
-    const { name: folder } = buildFolderName(row, imageFolderFields, columnCaseMap);
-    const params = folder ? `?folder=${encodeURIComponent(folder)}` : '';
-    const res = await fetch(
-      `/api/transaction_images/${table}/${encodeURIComponent(idVal)}${params}`,
-      { credentials: 'include' },
-    );
-    const data = await res.json().catch(() => []);
-    setViewImages(Array.isArray(data) ? data : []);
-    setViewIdx(idx);
-  }
-
-  async function deleteViewed(src) {
-    const row = rows[viewIdx] || {};
-    const key = imageIdField && columnCaseMap[imageIdField.toLowerCase()];
-    const idVal = key ? row[key] : null;
-    if (!idVal) return;
-    const { name: folder } = buildFolderName(row, imageFolderFields, columnCaseMap);
-    const params = new URLSearchParams();
-    if (folder) params.set('folder', folder);
-    if (src) params.set('file', src);
-    await fetch(
-      `/api/transaction_images/${table}/${encodeURIComponent(idVal)}?${params.toString()}`,
-      { method: 'DELETE', credentials: 'include' },
-    );
-    openView(viewIdx);
-  }
-
   function handleChange(rowIdx, field, value) {
     setRows((r) => {
       const next = r.map((row, i) => {
@@ -762,25 +725,8 @@ export default forwardRef(function InlineTransactionTable({
     });
     const ok = await Promise.resolve(onRowSubmit(cleaned));
     if (ok !== false) {
-      if (row._tmpImageName) {
-        const { name: folder } = buildFolderName(row, imageFolderFields, columnCaseMap);
-        const { name: finalName, missing } = buildImageName(row, imagenameFields, columnCaseMap);
-        if (finalName && missing.length === 0) {
-          await fetch('/api/transaction_images/rename', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ table, oldName: row._tmpImageName, newName: finalName, folderPath: folder }),
-          });
-        }
-      }
       setRows((r) => {
-        const next = r.map((row, i) => {
-          if (i !== idx) return row;
-          const n = { ...row, _saved: true };
-          delete n._tmpImageName;
-          return n;
-        });
+        const next = r.map((row, i) => (i === idx ? { ...row, _saved: true } : row));
         onRowsChange(next);
         return next;
       });
@@ -1106,15 +1052,9 @@ export default forwardRef(function InlineTransactionTable({
                       disabled={!canUpload}
                       title={!canUpload ? 'Please post first' : 'Upload image'}
                       onClick={() => openUpload(idx)}
-                      style={{ marginRight: '0.25rem' }}
                     >
                       Add Image
                     </button>
-                    {imageIdField && (
-                      <button type="button" onClick={() => openView(idx)}>
-                        🖼 View Images
-                      </button>
-                    )}
                   );
                 })()}
               </td>
@@ -1198,18 +1138,7 @@ export default forwardRef(function InlineTransactionTable({
         imagenameFields={imagenameFields}
         imageFolderFields={imageFolderFields}
         columnCaseMap={columnCaseMap}
-        onUploaded={(name) => {
-          setRows((r) =>
-            r.map((row, i) => (i === uploadIdx ? { ...row, _tmpImageName: name } : row)),
-          );
-          setUploadIdx(-1);
-        }}
-      />
-      <RowImageViewModal
-        visible={viewIdx >= 0}
-        onClose={() => setViewIdx(-1)}
-        images={viewImages}
-        onDelete={deleteViewed}
+        onUploaded={() => setUploadIdx(-1)}
       />
     </div>
   );
