@@ -1094,16 +1094,18 @@ export default forwardRef(function InlineTransactionTable({
               ))}
               <td className="border px-1 py-1 text-center">
                 {(() => {
-                  const { name: safe } = buildImageName(
+                  const { name: safe, missing } = buildImageName(
                     r,
                     imagenameFields,
                     columnCaseMap,
                   );
+                  const canUpload = !!safe && missing.length === 0;
                   return (
                     <>
                       <button
                         type="button"
-                        title={!safe ? 'Please post first' : 'Upload image'}
+                        disabled={!canUpload}
+                        title={!canUpload ? 'Please post first' : 'Upload image'}
                         onClick={() => openUpload(idx)}
                         style={{ marginRight: '0.25rem' }}
                       >
