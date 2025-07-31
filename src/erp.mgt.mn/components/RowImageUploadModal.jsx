@@ -64,8 +64,8 @@ export default function RowImageUploadModal({
     try {
       const res = await fetch(uploadUrl, { method: 'POST', body: form, credentials: 'include' });
       if (res.ok) {
-        addToast(`Images uploaded as ${finalName}`, 'success');
         const imgs = await res.json().catch(() => []);
+        addToast(`Uploaded ${imgs.length} image(s) as ${finalName}`, 'success');
         setFiles([]);
         setUploaded((u) => [...u, ...imgs]);
         onUploaded(finalName);

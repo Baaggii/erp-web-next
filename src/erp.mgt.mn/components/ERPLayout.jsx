@@ -36,6 +36,14 @@ export default function ERPLayout() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+
   const modules = useModules();
   const titleMap = {
     "/": "Blue Link демо",
@@ -97,9 +105,26 @@ export default function ERPLayout() {
 
   return (
     <div style={styles.container}>
-      <Header user={user} onLogout={handleLogout} onHome={handleHome} />
-      <div style={styles.body}>
-        <Sidebar onOpen={handleOpen} />
+      <Header
+        user={user}
+        onLogout={handleLogout}
+        onHome={handleHome}
+        isMobile={isMobile}
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen((o) => !o)}
+      />
+      <div style={styles.body(isMobile, sidebarOpen)}>
+        {isMobile && sidebarOpen && (
+          <div
+            className="sidebar-overlay"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+        <Sidebar
+          open={isMobile ? sidebarOpen : true}
+          onOpen={handleOpen}
+          isMobile={isMobile}
+        />
         <MainWindow title={windowTitle} />
       </div>
       <AskAIFloat />
@@ -108,14 +133,23 @@ export default function ERPLayout() {
 }
 
 /** Top header bar **/
-function Header({ user, onLogout, onHome }) {
+function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, sidebarOpen }) {
   const { company } = useContext(AuthContext);
   function handleOpen(id) {
     console.log("open module", id);
   }
 
   return (
-    <header className="sticky-header" style={styles.header}>
+    <header className="sticky-header" style={styles.header(isMobile, sidebarOpen)}>
+      {isMobile && (
+        <button
+          onClick={onToggleSidebar}
+          style={{ ...styles.iconBtn, marginRight: '0.5rem' }}
+          className="sm:hidden"
+        >
+          ☰
+        </button>
+      )}
       <div style={styles.logoSection}>
         <img
           src="/assets/logo‐small.png"
@@ -147,7 +181,7 @@ function Header({ user, onLogout, onHome }) {
 }
 
 /** Left sidebar with “menu groups” and “pinned items” **/
-function Sidebar({ onOpen }) {
+function Sidebar({ onOpen, open, isMobile }) {
   const { company } = useContext(AuthContext);
   const location = useLocation();
   const perms = useRolePermissions();
@@ -213,7 +247,11 @@ function Sidebar({ onOpen }) {
   }
 
   return (
-    <aside id="sidebar" className="sidebar" style={styles.sidebar}>
+    <aside
+      id="sidebar"
+      className={`sidebar ${open ? 'open' : ''}`}
+      style={styles.sidebar(isMobile, open)}
+    >
       <nav className="menu-container">
         {roots.map((m) =>
           m.children.length > 0 ? (
@@ -349,7 +387,7 @@ const styles = {
     fontFamily: "Arial, sans-serif",
     overflowX: "hidden",
   },
-  header: {
+  header: (mobile, open) => ({
     display: "flex",
     alignItems: "center",
     backgroundColor: "#1f2937",
@@ -360,7 +398,9 @@ const styles = {
     position: "sticky",
     top: 0,
     zIndex: 20,
-  },
+    marginLeft: mobile ? (open ? "240px" : 0) : "240px",
+    transition: "margin-left 0.3s",
+  }),
   logoSection: {
     display: "flex",
     alignItems: "center",
@@ -384,6 +424,9 @@ const styles = {
     marginLeft: "2rem",
     display: "flex",
     gap: "0.75rem",
+    overflowX: "auto",
+    whiteSpace: "nowrap",
+    flexGrow: 1,
   },
   iconBtn: {
     background: "transparent",
@@ -413,14 +456,15 @@ const styles = {
     cursor: "pointer",
     fontSize: "0.9rem",
   },
-  body: {
+  body: (mobile, open) => ({
     display: "flex",
     flexGrow: 1,
     backgroundColor: "#f3f4f6",
     overflow: "auto",
-    marginLeft: "240px",
-  },
-  sidebar: {
+    marginLeft: mobile ? (open ? "240px" : 0) : "240px",
+    transition: "margin-left 0.3s",
+  }),
+  sidebar: (mobile, open) => ({
     width: "240px",
     backgroundColor: "#374151",
     color: "#e5e7eb",
@@ -433,8 +477,14 @@ const styles = {
     top: "48px",
     left: 0,
     height: "calc(100vh - 48px)",
-    zIndex: 10,
-  },
+    zIndex: 30,
+    ...(mobile
+      ? {
+          transform: open ? "translateX(0)" : "translateX(-100%)",
+          transition: "transform 0.3s",
+        }
+      : {}),
+  }),
   menuGroup: {
     marginBottom: "1rem",
   },
