@@ -22,7 +22,9 @@ export async function identifyItems(buffer, mimeType) {
     'Identify inventory items and quantities from this image. Respond with JSON like [{"code":"ITEM1","qty":1}].';
   try {
     const text = await getResponseWithFile(prompt, buffer, mimeType);
-    return JSON.parse(text);
+    const match = text.match(/\[[\s\S]*\]/);
+    const json = match ? match[0] : text;
+    return JSON.parse(json);
   } catch {
     return [];
   }
