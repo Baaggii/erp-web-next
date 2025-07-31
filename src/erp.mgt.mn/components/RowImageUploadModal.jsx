@@ -110,9 +110,18 @@ export default function RowImageUploadModal({
             );
             if (codeRes.ok) {
               const data = await codeRes.json().catch(() => ({}));
-              if (data.code) addToast(`Benchmark code: ${data.code}`, 'info');
+              if (data.code) {
+                addToast(`Benchmark code found: ${data.code}`, 'success');
+              } else {
+                addToast('Benchmark code not found', 'warn');
+              }
+            } else {
+              const text = await codeRes.text().catch(() => '');
+              addToast(text || 'Benchmark lookup failed', 'error');
             }
-          } catch {}
+          } catch {
+            addToast('Benchmark lookup failed', 'error');
+          }
           const detForm = new FormData();
           detForm.append('image', file);
           try {
@@ -123,12 +132,17 @@ export default function RowImageUploadModal({
             });
             if (detRes.ok) {
               const data = await detRes.json();
-              const count = (data.items || []).length;
-              addToast(
-                count ? `AI found ${count} suggestion(s)` : 'No AI suggestions',
-                count ? 'success' : 'warn',
-              );
-              if (count) detected.push(...data.items);
+              const items = Array.isArray(data.items) ? data.items : [];
+              const count = items.length;
+              if (count) {
+                const list = items
+                  .map((it) => `${it.code}${it.qty ? ` x${it.qty}` : ''}`)
+                  .join(', ');
+                addToast(`AI found ${count} item(s): ${list}`, 'success');
+                detected.push(...items);
+              } else {
+                addToast('No AI suggestions', 'warn');
+              }
             } else {
               const text = await detRes.text();
               addToast(text || 'AI detection failed', 'error');
