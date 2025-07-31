@@ -139,7 +139,7 @@ function Header({ user, onLogout, onHome, isMobile, onToggleSidebar }) {
   }
 
   return (
-    <header className="sticky-header" style={styles.header}>
+    <header className="sticky-header" style={styles.header(isMobile)}>
       {isMobile && (
         <button
           onClick={onToggleSidebar}
@@ -386,7 +386,7 @@ const styles = {
     fontFamily: "Arial, sans-serif",
     overflowX: "hidden",
   },
-  header: {
+  header: (mobile) => ({
     display: "flex",
     alignItems: "center",
     backgroundColor: "#1f2937",
@@ -397,7 +397,8 @@ const styles = {
     position: "sticky",
     top: 0,
     zIndex: 20,
-  },
+    marginLeft: mobile ? 0 : "240px",
+  }),
   logoSection: {
     display: "flex",
     alignItems: "center",
