@@ -23,6 +23,8 @@ export default function RowImageUploadModal({
 
   useEffect(() => {
     if (!visible) return;
+    setFiles([]);
+    setUploaded([]);
     const { name } = buildName();
     if (!folder || !name) {
       setUploaded([]);
@@ -38,6 +40,19 @@ export default function RowImageUploadModal({
       .then((imgs) => setUploaded(Array.isArray(imgs) ? imgs : []))
       .catch(() => setUploaded([]));
   }, [visible, folder, row, table]);
+
+  // Reset whenever the transaction row context changes
+  useEffect(() => {
+    setFiles([]);
+    setUploaded([]);
+  }, [row, table, folder]);
+
+  useEffect(() => {
+    if (!visible) {
+      setFiles([]);
+      setUploaded([]);
+    }
+  }, [visible]);
 
   async function handleUpload(selectedFiles) {
     const { name: safeName, missing } = buildName();
@@ -64,11 +79,36 @@ export default function RowImageUploadModal({
     try {
       const res = await fetch(uploadUrl, { method: 'POST', body: form, credentials: 'include' });
       if (res.ok) {
-        addToast(`Images uploaded as ${finalName}`, 'success');
         const imgs = await res.json().catch(() => []);
+        addToast(`Uploaded ${imgs.length} image(s) as ${finalName}`, 'success');
         setFiles([]);
         setUploaded((u) => [...u, ...imgs]);
         onUploaded(finalName);
+        for (const file of filesToUpload) {
+          const detForm = new FormData();
+          detForm.append('image', file);
+          try {
+            const detRes = await fetch('/api/ai_inventory/identify', {
+              method: 'POST',
+              body: detForm,
+              credentials: 'include',
+            });
+            if (detRes.ok) {
+              const data = await detRes.json();
+              const count = (data.items || []).length;
+              addToast(
+                count ? `AI found ${count} suggestion(s)` : 'No AI suggestions',
+                count ? 'success' : 'warn',
+              );
+            } else {
+              const text = await detRes.text();
+              addToast(text || 'AI detection failed', 'error');
+            }
+          } catch (err) {
+            console.error(err);
+            addToast('AI detection error: ' + err.message, 'error');
+          }
+        }
       } else {
         const text = await res.text();
         addToast(text || 'Failed to upload images', 'error');
