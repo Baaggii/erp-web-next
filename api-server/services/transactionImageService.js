@@ -422,6 +422,49 @@ async function findTxnByUniqueId(idPart) {
   return null;
 }
 
+export async function resolveImageRename(name = '', index = undefined) {
+  const ext = path.extname(name);
+  const base = path.basename(name, ext);
+  const { unique, suffix } = parseFileUnique(base);
+  if (!unique) return null;
+  const checkBase = sanitizeName(base.replace(new RegExp(unique, 'i'), ''));
+  if (/\b\d{4}\b/.test(checkBase) || /\b[a-z]{4}\b/i.test(checkBase)) {
+    return null;
+  }
+  const found = await findTxnByUniqueId(unique);
+  if (!found) return null;
+  const { row, configs, numField } = found;
+  const cfg = pickConfig(configs, row);
+  let newBase = buildNameFromRow(row, cfg?.imagenameField || []);
+  const transDigit = getFieldCase(row, 'trtype');
+  const transType = getFieldCase(row, 'TransType');
+  if (!newBase && !(cfg?.imagenameField || []).length && !transType) {
+    newBase = buildOptionalName(row);
+  }
+  newBase = appendOptionalParts(row, newBase);
+  if (!newBase && numField) {
+    newBase = sanitizeName(String(row[numField]));
+  }
+  if (!newBase) return null;
+  if (transDigit && !containsToken(sanitizeName(newBase), sanitizeName(transDigit))) {
+    newBase = sanitizeName(`${transDigit}_${newBase}`);
+  }
+  if (transType && !containsToken(sanitizeName(newBase), sanitizeName(transType))) {
+    newBase = sanitizeName(`${newBase}_${transType}`);
+  }
+  const folderRaw = buildFolderName(row, cfg?.imageFolder || found.table);
+  const folderDisplay = '/' + String(folderRaw).replace(/^\/+/, '');
+  const sanitizedUnique = sanitizeName(unique);
+  let finalBase = newBase;
+  if (sanitizeName(newBase).includes(sanitizedUnique)) {
+    finalBase = `${newBase}${suffix}`;
+  } else {
+    finalBase = `${newBase}_${unique}${suffix}`;
+  }
+  const newName = `${finalBase}${ext}`;
+  return { index, originalName: name, newName, folder: folderRaw, folderDisplay };
+}
+
 export async function fixIncompleteImages(list = []) {
   const { baseDir } = await getDirs();
   let count = 0;
@@ -509,3 +552,4 @@ export async function uploadSelectedImages(files = [], meta = []) {
   }
   return count;
 }
+
