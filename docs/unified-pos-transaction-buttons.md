@@ -13,7 +13,9 @@ This module includes a single set of buttons used by every POS transaction confi
 - Writes the current values to the pending transactions store.
 - Auto-fills any missing default values and system fields (employee, branch, company, transaction type) for every table and row before saving.
 - Updates the `statusField` to the `beforePost` value so the transaction can be resumed later.
-- Returns an ID for the pending transaction which is required for Delete or POST.
+- Returns an ID for the pending transaction which is required for Delete and
+  used to remove the pending copy after POST. Posting can still run without
+  saving first.
 - The saved entry includes the employee, company and branch used when saving.
 - Pending records are stored in `config/posPendingTransactions.json` together
   with the save date so each employee can resume their own work later.
