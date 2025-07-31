@@ -27,12 +27,6 @@ function sanitizeName(name) {
     .replace(/[^a-z0-9_~\-]+/gi, '_');
 }
 
-function containsToken(str = '', token = '') {
-  if (!token) return false;
-  const re = new RegExp(`(?:^|[~_-])${token}(?:[~_-]|$)`, 'i');
-  return re.test(str);
-}
-
 function getFieldCase(row, field) {
   if (!row) return undefined;
   if (row[field] !== undefined) return row[field];
@@ -93,8 +87,7 @@ function buildFolderName(row, fallback = '') {
   return fallback;
 }
 
-function buildOptionalTokens(row) {
-  const tokens = [];
+function buildOptionalName(row) {
   const groupA = [
     'z_mat_code',
     'or_bcode',
@@ -102,22 +95,22 @@ function buildOptionalTokens(row) {
     'pmid',
     'sp_primary_code',
     'pid',
-  ];
-  groupA
+  ]
     .map((f) => getFieldCase(row, f))
     .filter(Boolean)
-    .forEach((v) => tokens.push(sanitizeName(v)));
+    .join('_');
 
+  const partsB = [];
   const o1 = [getFieldCase(row, 'bmtr_orderid'), getFieldCase(row, 'bmtr_orderdid')]
     .filter(Boolean)
-    .map((v) => sanitizeName(v));
-  if (o1.length) tokens.push(o1.join('~'));
+    .join('~');
+  if (o1) partsB.push(o1);
   const o2 = [getFieldCase(row, 'ordrid'), getFieldCase(row, 'ordrdid')]
     .filter(Boolean)
-    .map((v) => sanitizeName(v));
-  if (o2.length) tokens.push(o2.join('~'));
+    .join('~');
+  if (o2) partsB.push(o2);
 
-  const groupB = [
+  [
     'TransType',
     'trtype',
     'bmtr_num',
@@ -125,27 +118,23 @@ function buildOptionalTokens(row) {
     'z_num',
     'ordrnum',
     'num',
-  ];
-  groupB
+  ]
     .map((f) => getFieldCase(row, f))
     .filter(Boolean)
-    .forEach((v) => tokens.push(sanitizeName(v)));
+    .forEach((v) => partsB.push(v));
 
-  return tokens.filter(Boolean);
-}
+  const groupB = partsB.join('~');
 
-function buildOptionalName(row) {
-  const tokens = buildOptionalTokens(row);
-  return sanitizeName(tokens.join('_'));
+  const combined = [groupA, groupB].filter(Boolean).join('_');
+  return sanitizeName(combined);
 }
 
 function appendOptionalParts(row, base) {
-  const tokens = buildOptionalTokens(row);
-  if (tokens.length === 0) return sanitizeName(base);
-  let baseSan = sanitizeName(base);
-  const missing = tokens.filter((t) => !containsToken(baseSan, t));
-  if (missing.length === 0) return baseSan;
-  const combined = baseSan ? `${baseSan}_${missing.join('_')}` : missing.join('_');
+  const optional = buildOptionalName(row);
+  if (!optional) return base;
+  const baseSan = sanitizeName(base);
+  if (baseSan.includes(optional)) return baseSan;
+  const combined = base ? `${baseSan}_${optional}` : optional;
   return sanitizeName(combined);
 }
 
@@ -311,45 +300,88 @@ export async function cleanupOldImages(days = 30) {
 export async function detectIncompleteImages(page = 1, perPage = 100) {
   const { baseDir } = await getDirs();
   let results = [];
+  let dirs;
   const offset = (page - 1) * perPage;
   let count = 0;
   let hasMore = false;
-
-  async function walk(dir, insideTxn = false) {
-    let items;
-    try {
-      items = await fs.readdir(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const it of items) {
-      if (hasMore) return;
-      const full = path.join(dir, it.name);
-      if (it.isDirectory()) {
-        const nextInside = insideTxn || it.name.startsWith('transactions_');
-        await walk(full, nextInside);
-      } else if (insideTxn && it.isFile()) {
-        const check = await checkFolderNames([{ name: it.name }]);
-        if (check.length === 0) continue;
-        const item = check[0];
-        count += 1;
-        if (count > offset && results.length < perPage) {
-          results.push({
-            folder: item.folder,
-            folderDisplay: item.folderDisplay,
-            currentName: it.name,
-            newName: item.newName,
-            currentPath: full,
-          });
-        } else if (results.length >= perPage) {
-          hasMore = true;
-          return;
-        }
-      }
-    }
+  try {
+    dirs = await fs.readdir(baseDir, { withFileTypes: true });
+  } catch {
+    return { list: results, hasMore };
   }
 
-  await walk(baseDir, false);
+  for (const entry of dirs) {
+    if (!entry.isDirectory() || !entry.name.startsWith('transactions_')) continue;
+    const dirPath = path.join(baseDir, entry.name);
+    let files;
+    try {
+      files = await fs.readdir(dirPath);
+    } catch {
+      continue;
+    }
+    for (const f of files) {
+      const ext = path.extname(f);
+      const base = path.basename(f, ext);
+      const { unique, suffix } = parseFileUnique(base);
+      if (!unique || unique.length < 8) continue;
+      const found = await findTxnByUniqueId(unique);
+      if (!found) continue;
+      const { row, configs, numField } = found;
+
+      const curSan = sanitizeName(base);
+      const trans4d = sanitizeName(String(getFieldCase(row, 'trtype') || ''));
+      const trans4l = sanitizeName(String(getFieldCase(row, 'TransType') || ''));
+      const hasCodes =
+        (trans4d ? curSan.includes(trans4d) : true) &&
+        (trans4l ? curSan.includes(trans4l) : true);
+      if (hasCodes) continue;
+
+      const cfg = pickConfig(configs, row);
+      const fields = cfg?.imagenameField || [];
+      let newBase = buildNameFromRow(row, fields);
+
+      const transDigit = getFieldCase(row, 'trtype');
+      const transType = getFieldCase(row, 'TransType');
+      if (!newBase && !fields.length && !transType) {
+        newBase = buildOptionalName(row);
+      }
+      newBase = appendOptionalParts(row, newBase);
+      if (!newBase && numField) {
+        newBase = sanitizeName(String(row[numField]));
+      }
+      if (!newBase) continue;
+      if (transDigit && !sanitizeName(newBase).includes(sanitizeName(transDigit))) {
+        newBase = sanitizeName(`${transDigit}_${newBase}`);
+      }
+      if (transType && !sanitizeName(newBase).includes(sanitizeName(transType))) {
+        newBase = sanitizeName(`${newBase}_${transType}`);
+      }
+      const folderRaw = buildFolderName(row, cfg?.imageFolder || entry.name);
+      const folderDisplay = '/' + String(folderRaw).replace(/^\/+/, '');
+      const sanitizedUnique = sanitizeName(unique);
+      let finalBase = newBase;
+      if (sanitizeName(newBase).includes(sanitizedUnique)) {
+        finalBase = `${newBase}${suffix}`;
+      } else {
+        finalBase = `${newBase}_${unique}${suffix}`;
+      }
+      const newName = `${finalBase}${ext}`;
+      count += 1;
+      if (count > offset && results.length < perPage) {
+        results.push({
+          folder: folderRaw,
+          folderDisplay,
+          currentName: f,
+          newName,
+          currentPath: path.join(dirPath, f),
+        });
+      } else if (results.length >= perPage) {
+        hasMore = true;
+        break;
+      }
+    }
+    if (hasMore) break;
+  }
   return { list: results, hasMore };
 }
 
@@ -429,10 +461,10 @@ export async function checkFolderNames(list = []) {
       newBase = sanitizeName(String(row[numField]));
     }
     if (!newBase) continue;
-    if (transDigit && !containsToken(sanitizeName(newBase), sanitizeName(transDigit))) {
+    if (transDigit && !sanitizeName(newBase).includes(sanitizeName(transDigit))) {
       newBase = sanitizeName(`${transDigit}_${newBase}`);
     }
-    if (transType && !containsToken(sanitizeName(newBase), sanitizeName(transType))) {
+    if (transType && !sanitizeName(newBase).includes(sanitizeName(transType))) {
       newBase = sanitizeName(`${newBase}_${transType}`);
     }
     const folderRaw = buildFolderName(row, cfg?.imageFolder || found.table);
@@ -477,7 +509,6 @@ export async function uploadSelectedImages(files = [], meta = []) {
   }
   return count;
 }
-
 export async function findBenchmarkCode(fileName) {
   const base = path.basename(fileName).toLowerCase();
   const name = base.replace(/\.[^.]+$/, '');
@@ -505,3 +536,4 @@ export async function findBenchmarkCode(fileName) {
 
   return null;
 }
+
