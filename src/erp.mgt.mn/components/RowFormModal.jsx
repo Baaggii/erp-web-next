@@ -909,7 +909,12 @@ const RowFormModal = function RowFormModal({
           if (lower.includes('email')) return 'email';
           if (lower.includes('phone')) return 'tel';
           const sample = row?.[c] ?? defaultValues[c];
-          if (typeof sample === 'number' || /^-?\d+(\.\d+)?$/.test(String(sample)))
+          if (
+            typeof sample === 'number' ||
+            /^-?\d+(\.\d+)?$/.test(String(sample)) ||
+            totalAmountSet.has(c) ||
+            totalCurrencySet.has(c)
+          )
             return 'number';
           return 'text';
         })()}
@@ -918,7 +923,12 @@ const RowFormModal = function RowFormModal({
           if (lower.includes('email')) return 'email';
           if (lower.includes('phone')) return 'tel';
           const sample = row?.[c] ?? defaultValues[c];
-          if (typeof sample === 'number' || /^-?\d+(\.\d+)?$/.test(String(sample)))
+          if (
+            typeof sample === 'number' ||
+            /^-?\d+(\.\d+)?$/.test(String(sample)) ||
+            totalAmountSet.has(c) ||
+            totalCurrencySet.has(c)
+          )
             return 'decimal';
           return undefined;
         })()}

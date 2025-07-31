@@ -398,8 +398,8 @@ const styles = {
     position: "sticky",
     top: 0,
     zIndex: 20,
-    marginLeft: mobile ? (open ? "240px" : 0) : "240px",
-    transition: "margin-left 0.3s",
+    marginLeft: mobile ? 0 : "240px",
+    transition: mobile ? undefined : "margin-left 0.3s",
   }),
   logoSection: {
     display: "flex",
@@ -461,8 +461,8 @@ const styles = {
     flexGrow: 1,
     backgroundColor: "#f3f4f6",
     overflow: "auto",
-    marginLeft: mobile ? (open ? "240px" : 0) : "240px",
-    transition: "margin-left 0.3s",
+    marginLeft: mobile ? 0 : "240px",
+    transition: mobile ? undefined : "margin-left 0.3s",
   }),
   sidebar: (mobile, open) => ({
     width: "240px",
