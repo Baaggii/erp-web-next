@@ -332,7 +332,6 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
         const check = await checkFolderNames([{ name: it.name }]);
         if (check.length === 0) continue;
         const item = check[0];
-        if (sanitizeName(it.name) === sanitizeName(item.newName)) continue;
         count += 1;
         if (count > offset && results.length < perPage) {
           results.push({
