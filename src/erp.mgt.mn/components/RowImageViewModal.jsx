@@ -21,11 +21,13 @@ export default function RowImageViewModal({
   const placeholder =
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMBAZLr5z0AAAAASUVORK5CYII=';
 
+  const apiOrigin = window.API_ORIGIN || '';
+
   function getImageUrl(p) {
     if (!p) return '';
-    if (/^https?:\/\//i.test(p)) return p;
-    if (p.startsWith('/')) return `${window.location.origin}${p}`;
-    return p;
+    if (/^https?:\/\//i.test(p) || p.startsWith('data:')) return p;
+    if (p.startsWith('/')) return `${apiOrigin || window.location.origin}${p}`;
+    return `${apiOrigin || window.location.origin}/${p.replace(/^\//, '')}`;
   }
 
   useEffect(() => {
