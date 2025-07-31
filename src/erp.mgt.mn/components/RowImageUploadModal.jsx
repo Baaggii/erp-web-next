@@ -9,6 +9,7 @@ export default function RowImageUploadModal({
   table,
   folder,
   row = {},
+  rowKey = 0,
   imagenameFields = [],
   columnCaseMap = {},
   onUploaded = () => {},
@@ -41,7 +42,16 @@ export default function RowImageUploadModal({
       .then((r) => (r.ok ? r.json() : []))
       .then((imgs) => setUploaded(Array.isArray(imgs) ? imgs : []))
       .catch(() => setUploaded([]));
-  }, [visible, folder, row, table]);
+  }, [visible, folder, rowKey, table]);
+
+
+  useEffect(() => {
+    if (!visible) {
+      setFiles([]);
+      setUploaded([]);
+      setSuggestions([]);
+    }
+  }, [visible]);
 
   // Reset whenever the transaction row context changes
   useEffect(() => {
