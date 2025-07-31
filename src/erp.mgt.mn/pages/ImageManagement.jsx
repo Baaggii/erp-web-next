@@ -21,6 +21,8 @@ export default function ImageManagement() {
   const [folderSel, setFolderSel] = useState([]);
   const [folderListed, setFolderListed] = useState(false);
   const fileRef = useRef();
+  const [listLoading, setListLoading] = useState(false);
+  const [checkLoading, setCheckLoading] = useState(false);
 
   const startIdx = (folderPage - 1) * PER_PAGE;
   const pageFiles = folderFiles.slice(startIdx, startIdx + PER_PAGE);
@@ -129,6 +131,8 @@ export default function ImageManagement() {
         setPending(Array.isArray(data.list) ? data.list : []);
         setHasMore(!!data.hasMore);
         setSelected([]);
+        setUploads([]);
+        setUploadSel([]);
       } else {
         setPending([]);
         setHasMore(false);
@@ -199,6 +203,7 @@ export default function ImageManagement() {
   }
 
   async function listNames() {
+    setListLoading(true);
     let arr = folderFiles;
     if (folderHandle) {
       arr = [];
@@ -219,9 +224,13 @@ export default function ImageManagement() {
       }
       setFolderFiles(arr);
     }
-    if (arr.length === 0) return;
+    if (arr.length === 0) {
+      setListLoading(false);
+      return;
+    }
     setFolderListed(true);
     setFolderPage(1);
+    setListLoading(false);
   }
 
   async function checkNames() {
@@ -229,6 +238,7 @@ export default function ImageManagement() {
       addToast('List image names and select files first', 'info');
       return;
     }
+    setCheckLoading(true);
     const indices = folderSel;
     const names = indices.map((i) => ({ name: folderFiles[i].name, index: i }));
     try {
@@ -248,6 +258,7 @@ export default function ImageManagement() {
     } catch {
       addToast('Check failed', 'error');
     }
+    setCheckLoading(false);
   }
 
   async function commitUploads() {
@@ -329,13 +340,23 @@ export default function ImageManagement() {
               placeholder="No folder"
               style={{ marginRight: '0.5rem', width: '12rem' }}
             />
-            <button type="button" onClick={listNames} style={{ marginRight: '0.5rem' }} disabled={!folderHandle && folderFiles.length === 0}>
-              List Image Names
+            <button
+              type="button"
+              onClick={listNames}
+              style={{ marginRight: '0.5rem' }}
+              disabled={listLoading || (!folderHandle && folderFiles.length === 0)}
+            >
+              {listLoading ? 'Listing...' : 'List Image Names'}
             </button>
             {folderListed && (
               <>
-                <button type="button" onClick={checkNames} style={{ marginRight: '0.5rem' }} disabled={folderSel.length === 0}>
-                  Check Names
+                <button
+                  type="button"
+                  onClick={checkNames}
+                  style={{ marginRight: '0.5rem' }}
+                  disabled={checkLoading || folderSel.length === 0}
+                >
+                  {checkLoading ? 'Checking...' : 'Check Names'}
                 </button>
                 <button type="button" onClick={deleteSelected} style={{ marginRight: '0.5rem' }} disabled={folderSel.length === 0}>
                   Delete Selected
