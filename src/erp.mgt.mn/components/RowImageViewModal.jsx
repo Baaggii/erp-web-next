@@ -51,7 +51,7 @@ export default function RowImageViewModal({
         addToast(`Search: ${params.get('folder') || table}/${name}`, 'info');
         try {
           const res = await fetch(
-            `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(name)}?${params.toString()}`,
+            `/api/transaction_images/${safeTable}/${encodeURIComponent(name)}?${params.toString()}`,
             { credentials: 'include' },
           );
           const imgs = res.ok ? await res.json().catch(() => []) : [];

@@ -12,7 +12,6 @@ import {
   fixIncompleteImages,
   checkFolderNames,
   uploadSelectedImages,
-  findBenchmarkCode,
 } from '../services/transactionImageService.js';
 import { getGeneralConfig } from '../services/generalConfig.js';
 
@@ -69,17 +68,6 @@ router.post('/folder_commit', requireAuth, upload.array('images'), async (req, r
     const meta = JSON.parse(req.body.meta || '[]');
     const uploaded = await uploadSelectedImages(req.files || [], meta);
     res.json({ uploaded });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.get('/benchmark_code', requireAuth, async (req, res, next) => {
-  try {
-    const { name } = req.query;
-    if (!name) return res.status(400).json({ message: 'missing name' });
-    const code = await findBenchmarkCode(name);
-    res.json({ code: code || null });
   } catch (err) {
     next(err);
   }

@@ -907,30 +907,16 @@ const RowFormModal = function RowFormModal({
           if (placeholders[c] === 'HH:MM:SS') return 'time';
           const lower = c.toLowerCase();
           if (lower.includes('email')) return 'email';
-          if (lower.includes('phone')) return 'tel';
-          const sample = row?.[c] ?? defaultValues[c];
-          if (
-            typeof sample === 'number' ||
-            /^-?\d+(\.\d+)?$/.test(String(sample)) ||
-            totalAmountSet.has(c) ||
-            totalCurrencySet.has(c)
-          )
+          if (/(amount|qty|count|price|total|number|qty|quantity)/i.test(lower))
             return 'number';
+          if (lower.includes('phone')) return 'tel';
           return 'text';
         })()}
         inputMode={(() => {
           const lower = c.toLowerCase();
-          if (lower.includes('email')) return 'email';
-          if (lower.includes('phone')) return 'tel';
-          const sample = row?.[c] ?? defaultValues[c];
-          if (
-            typeof sample === 'number' ||
-            /^-?\d+(\.\d+)?$/.test(String(sample)) ||
-            totalAmountSet.has(c) ||
-            totalCurrencySet.has(c)
-          )
-            return 'decimal';
-          return undefined;
+          return /(amount|qty|count|price|total|number|qty|quantity)/i.test(lower)
+            ? 'decimal'
+            : undefined;
         })()}
         placeholder={placeholders[c] || ''}
         value={formVals[c]}

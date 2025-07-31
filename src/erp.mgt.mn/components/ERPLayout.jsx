@@ -110,10 +110,9 @@ export default function ERPLayout() {
         onLogout={handleLogout}
         onHome={handleHome}
         isMobile={isMobile}
-        sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen((o) => !o)}
       />
-      <div style={styles.body(isMobile, sidebarOpen)}>
+      <div style={styles.body(isMobile)}>
         {isMobile && sidebarOpen && (
           <div
             className="sidebar-overlay"
@@ -133,14 +132,14 @@ export default function ERPLayout() {
 }
 
 /** Top header bar **/
-function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, sidebarOpen }) {
+function Header({ user, onLogout, onHome, isMobile, onToggleSidebar }) {
   const { company } = useContext(AuthContext);
   function handleOpen(id) {
     console.log("open module", id);
   }
 
   return (
-    <header className="sticky-header" style={styles.header(isMobile, sidebarOpen)}>
+    <header className="sticky-header" style={styles.header(isMobile)}>
       {isMobile && (
         <button
           onClick={onToggleSidebar}
@@ -387,7 +386,7 @@ const styles = {
     fontFamily: "Arial, sans-serif",
     overflowX: "hidden",
   },
-  header: (mobile, open) => ({
+  header: (mobile) => ({
     display: "flex",
     alignItems: "center",
     backgroundColor: "#1f2937",
@@ -399,7 +398,6 @@ const styles = {
     top: 0,
     zIndex: 20,
     marginLeft: mobile ? 0 : "240px",
-    transition: mobile ? undefined : "margin-left 0.3s",
   }),
   logoSection: {
     display: "flex",
@@ -456,13 +454,12 @@ const styles = {
     cursor: "pointer",
     fontSize: "0.9rem",
   },
-  body: (mobile, open) => ({
+  body: (mobile) => ({
     display: "flex",
     flexGrow: 1,
     backgroundColor: "#f3f4f6",
     overflow: "auto",
     marginLeft: mobile ? 0 : "240px",
-    transition: mobile ? undefined : "margin-left 0.3s",
   }),
   sidebar: (mobile, open) => ({
     width: "240px",
