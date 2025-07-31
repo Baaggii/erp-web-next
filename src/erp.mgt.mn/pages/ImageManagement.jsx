@@ -375,7 +375,7 @@ export default function ImageManagement() {
                   style={{ marginRight: '0.5rem' }}
                   disabled={checkLoading || pageFiles.length === 0}
                 >
-                  {checkLoading ? 'Checking...' : 'Check Names'}
+                  {checkLoading ? 'Renaming...' : 'Rename'}
                 </button>
                 <button type="button" onClick={deleteSelected} style={{ marginRight: '0.5rem' }} disabled={folderSel.length === 0}>
                   Delete Selected
