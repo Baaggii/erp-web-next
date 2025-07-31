@@ -527,3 +527,42 @@ export async function uploadSelectedImages(files = [], meta = []) {
   }
   return count;
 }
+
+export async function findBenchmarkCode(name = '') {
+  const sanitized = String(name).toLowerCase();
+  const base = sanitized.split('/').pop().replace(/\.[^.]+$/, '');
+  const parts = base.split('_');
+  const numbers = parts.filter((p) => /^\d+$/.test(p));
+  const candidate = numbers.length > 1 ? numbers[1] : numbers[0];
+  const qty = numbers.length > 2 ? parseInt(numbers[2], 10) : numbers.length === 1 ? parseInt(numbers[0], 10) : NaN;
+
+  async function verify(code) {
+    try {
+      const [rows] = await pool.query(
+        'SELECT UITransType FROM code_transaction WHERE image_benchmark = 1 AND UITransType = ? LIMIT 1',
+        [code],
+      );
+      return rows.length ? String(rows[0].UITransType) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  if (candidate) {
+    const found = await verify(candidate);
+    if (found) return { code: found, qty: Number.isNaN(qty) ? undefined : qty };
+  }
+
+  try {
+    const [rows] = await pool.query(
+      'SELECT UITransType, UITrtype FROM code_transaction WHERE image_benchmark = 1',
+    );
+    for (const row of rows || []) {
+      const val = String(row.UITrtype || '').toLowerCase();
+      if (val && sanitized.includes(val)) {
+        return { code: String(row.UITransType || row.UITrtype), qty: Number.isNaN(qty) ? undefined : qty };
+      }
+    }
+  } catch {}
+  return null;
+}
