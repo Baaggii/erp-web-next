@@ -26,19 +26,35 @@ export default function RowImageViewModal({
       return;
     }
     const safeTable = encodeURIComponent(table);
-    const params = new URLSearchParams();
-    if (folder) params.set('folder', folder);
-    addToast(`Search: ${params.get('folder') || table}/${name}`, 'info');
-    fetch(`/api/transaction_images/${safeTable}/${encodeURIComponent(name)}?${params.toString()}`, {
-      credentials: 'include',
-    })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((imgs) => {
-        const list = Array.isArray(imgs) ? imgs : [];
-        addToast(`Found ${list.length} image(s)`, 'info');
-        setFiles(list);
-      })
-      .catch(() => setFiles([]));
+    const folders = [folder];
+    if (folder !== table && table.startsWith('transactions_')) {
+      folders.push(table);
+    }
+    (async () => {
+      for (const fld of folders) {
+        const params = new URLSearchParams();
+        if (fld) params.set('folder', fld);
+        addToast(`Search: ${params.get('folder') || table}/${name}`, 'info');
+        try {
+          const res = await fetch(
+            `/api/transaction_images/${safeTable}/${encodeURIComponent(name)}?${params.toString()}`,
+            { credentials: 'include' },
+          );
+          const imgs = res.ok ? await res.json().catch(() => []) : [];
+          const list = Array.isArray(imgs) ? imgs : [];
+          if (list.length > 0) {
+            addToast(`Found ${list.length} image(s)`, 'info');
+            setFiles(list);
+            return;
+          }
+          if (fld === folders[folders.length - 1]) {
+            setFiles([]);
+          }
+        } catch {
+          if (fld === folders[folders.length - 1]) setFiles([]);
+        }
+      }
+    })();
   }, [visible, folder, row, table]);
 
   useEffect(() => {
