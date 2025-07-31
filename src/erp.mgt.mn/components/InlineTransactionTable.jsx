@@ -1007,6 +1007,38 @@ export default forwardRef(function InlineTransactionTable({
           />
       );
     }
+    const lower = f.toLowerCase();
+    const sample = rows[0]?.[f] ?? defaultValues[f];
+    const isNumber =
+      typeof sample === 'number' ||
+      /^-?\d+(\.\d+)?$/.test(String(sample)) ||
+      totalAmountSet.has(f) ||
+      totalCurrencySet.has(f);
+    const commonProps = {
+      className: `w-full border px-1 ${invalid ? 'border-red-500 bg-red-100' : ''}`,
+      style: { ...inputStyle },
+      value: typeof val === 'object' ? val.value : val,
+      title: typeof val === 'object' ? val.value : val,
+      onChange: (e) => handleChange(idx, f, e.target.value),
+      ref: (el) => (inputRefs.current[`${idx}-${colIdx}`] = el),
+      onKeyDown: (e) => handleKeyDown(e, idx, colIdx),
+      onFocus: () => handleFocusField(f),
+    };
+    if (placeholders[f] === 'YYYY-MM-DD') {
+      return <input type="date" {...commonProps} />;
+    }
+    if (placeholders[f] === 'HH:MM:SS') {
+      return <input type="time" {...commonProps} />;
+    }
+    if (lower.includes('email')) {
+      return <input type="email" inputMode="email" {...commonProps} />;
+    }
+    if (lower.includes('phone')) {
+      return <input type="tel" inputMode="tel" {...commonProps} />;
+    }
+    if (isNumber) {
+      return <input type="number" inputMode="decimal" {...commonProps} />;
+    }
     return (
       <textarea
         rows={1}

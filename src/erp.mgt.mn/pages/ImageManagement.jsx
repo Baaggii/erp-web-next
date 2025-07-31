@@ -5,6 +5,44 @@ export default function ImageManagement() {
   const { addToast } = useToast();
   const [days, setDays] = useState('');
   const [result, setResult] = useState(null);
+  const [tab, setTab] = useState('cleanup');
+  const [pending, setPending] = useState([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [selected, setSelected] = useState([]);
+  const [uploads, setUploads] = useState([]);
+  const [uploadSel, setUploadSel] = useState([]);
+  const [folderFiles, setFolderFiles] = useState([]);
+  const [folderName, setFolderName] = useState('');
+  const fileRef = useRef();
+
+  function toggle(id) {
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
+    );
+  }
+
+  function toggleAll() {
+    if (selected.length === pending.length) {
+      setSelected([]);
+    } else {
+      setSelected(pending.map((p) => p.currentName));
+    }
+  }
+
+  function toggleUpload(id) {
+    setUploadSel((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
+    );
+  }
+
+  function toggleUploadAll() {
+    if (uploadSel.length === uploads.length) {
+      setUploadSel([]);
+    } else {
+      setUploadSel(uploads.map((u) => u.index));
+    }
+  }
 
   const PER_PAGE = 100;
   const [tab, setTab] = useState('cleanup');
