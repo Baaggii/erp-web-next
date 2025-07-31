@@ -2,6 +2,8 @@ import fs from 'fs/promises';
 import fssync from 'fs';
 import path from 'path';
 import { getGeneralConfig } from './generalConfig.js';
+import { pool } from '../../db/index.js';
+import { getConfigsByTable } from './transactionFormConfig.js';
 
 async function getDirs() {
   const cfg = await getGeneralConfig();
@@ -22,6 +24,47 @@ function sanitizeName(name) {
   return String(name)
     .toLowerCase()
     .replace(/[^a-z0-9_-]+/gi, '_');
+}
+
+function getCase(row, field) {
+  if (!row) return undefined;
+  if (row[field] !== undefined) return row[field];
+  const lower = field.toLowerCase();
+  const key = Object.keys(row).find((k) => k.toLowerCase() === lower);
+  return key ? row[key] : undefined;
+}
+
+function buildNameFromRow(row, fields = []) {
+  const vals = fields.map((f) => getCase(row, f)).filter((v) => v);
+  return sanitizeName(vals.join('_'));
+}
+
+function pickConfig(configs = {}, row = {}) {
+  for (const cfg of Object.values(configs)) {
+    if (!cfg.transactionTypeField || !cfg.transactionTypeValue) continue;
+    const val = getCase(row, cfg.transactionTypeField);
+    if (val !== undefined && String(val) === String(cfg.transactionTypeValue)) {
+      return cfg;
+    }
+  }
+  return Object.values(configs)[0] || {};
+}
+
+function extractUnique(str) {
+  const uuid = str.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  if (uuid) return uuid[0];
+  const alt = str.match(/[A-Z0-9]{4}(?:-[A-Z0-9]{4}){3}/);
+  if (alt) return alt[0];
+  const long = str.match(/[A-Za-z0-9-]{8,}/);
+  return long ? long[0] : '';
+}
+
+function parseFileUnique(base) {
+  const unique = extractUnique(base);
+  if (!unique) return { unique: '', suffix: '' };
+  const idx = base.toLowerCase().indexOf(unique.toLowerCase());
+  const suffix = idx >= 0 ? base.slice(idx + unique.length) : '';
+  return { unique, suffix };
 }
 
 export async function saveImages(table, name, files, folder = null) {
@@ -181,4 +224,155 @@ export async function cleanupOldImages(days = 30) {
   await walk(path.join(process.cwd(), 'uploads', 'tmp'));
 
   return removed;
+}
+
+export async function detectIncompleteImages(page = 1, perPage = 100) {
+  const { baseDir } = await getDirs();
+  let results = [];
+  let dirs;
+  const offset = (page - 1) * perPage;
+  let count = 0;
+  let hasMore = false;
+  try {
+    dirs = await fs.readdir(baseDir, { withFileTypes: true });
+  } catch {
+    return { list: results, hasMore };
+  }
+
+  for (const entry of dirs) {
+    if (!entry.isDirectory() || !entry.name.startsWith('transactions_')) continue;
+    const dirPath = path.join(baseDir, entry.name);
+    let files;
+    try {
+      files = await fs.readdir(dirPath);
+    } catch {
+      continue;
+    }
+    for (const f of files) {
+      const ext = path.extname(f);
+      const base = path.basename(f, ext);
+      const parts = base.split('_');
+      if (parts.length >= 5) continue;
+      const { unique, suffix } = parseFileUnique(base);
+      if (!unique || unique.length < 8) continue;
+      const found = await findTxnByUniqueId(unique);
+      if (!found) continue;
+      const { row, configs, numField } = found;
+
+      const cfg = pickConfig(configs, row);
+      const fields = cfg?.imagenameField || [];
+      let newBase = buildNameFromRow(row, fields);
+
+      const transType = getCase(row, 'TransType');
+      if (!newBase && !fields.length && !transType) {
+        const fallback = [
+          'z_mat_code',
+          'or_bcode',
+          'bmtr_pmid',
+          'pmid',
+          'sp_primary_code',
+          'TransType',
+          'trtype',
+          'bmtr_num',
+          'or_num',
+          'z_num',
+          'ordrnum',
+          'num',
+          'pid',
+        ];
+        const extra = [];
+        const o1 = [getCase(row, 'bmtr_orderid'), getCase(row, 'bmtr_orderdid')]
+          .filter(Boolean)
+          .join('~');
+        if (o1) extra.push(o1);
+        const o2 = [getCase(row, 'ordrid'), getCase(row, 'ordrdid')]
+          .filter(Boolean)
+          .join('~');
+        if (o2) extra.push(o2);
+        newBase = buildNameFromRow(row, fallback);
+        if (extra.length) newBase = sanitizeName([newBase, ...extra].join('_'));
+      }
+
+      if (!newBase && numField) {
+        newBase = sanitizeName(String(row[numField]));
+      }
+      if (!newBase) continue;
+      const folderRaw = cfg?.imageFolder || entry.name;
+      const folderDisplay = '/' + String(folderRaw).replace(/^\/+/, '');
+      const sanitizedUnique = sanitizeName(unique);
+      let finalBase = newBase;
+      if (sanitizeName(newBase).includes(sanitizedUnique)) {
+        finalBase = `${newBase}${suffix}`;
+      } else {
+        finalBase = `${newBase}_${unique}${suffix}`;
+      }
+      const newName = `${finalBase}${ext}`;
+      count += 1;
+      if (count > offset && results.length < perPage) {
+        results.push({
+          folder: folderRaw,
+          folderDisplay,
+          currentName: f,
+          newName,
+          currentPath: path.join(dirPath, f),
+        });
+      } else if (results.length >= perPage) {
+        hasMore = true;
+        break;
+      }
+    }
+    if (hasMore) break;
+  }
+  return { list: results, hasMore };
+}
+
+async function findTxnByUniqueId(idPart) {
+  let tables;
+  try {
+    [tables] = await pool.query("SHOW TABLES LIKE 'transactions_%'");
+  } catch {
+    return null;
+  }
+  for (const row of tables || []) {
+    const tbl = Object.values(row)[0];
+    let cols;
+    try {
+      [cols] = await pool.query(`SHOW COLUMNS FROM \`${tbl}\``);
+    } catch {
+      continue;
+    }
+    const numCol = cols.find((c) => c.Field.toLowerCase().includes('num'));
+    if (!numCol) continue;
+    let rows;
+    try {
+      [rows] = await pool.query(
+        `SELECT * FROM \`${tbl}\` WHERE \`${numCol.Field}\` LIKE ? LIMIT 1`,
+        [`%${idPart}%`],
+      );
+    } catch {
+      continue;
+    }
+    if (rows.length) {
+      let cfgs = {};
+      try {
+        cfgs = await getConfigsByTable(tbl);
+      } catch {}
+      return { table: tbl, row: rows[0], configs: cfgs, numField: numCol.Field };
+    }
+  }
+  return null;
+}
+
+export async function fixIncompleteImages(list = []) {
+  const { baseDir } = await getDirs();
+  let count = 0;
+  for (const item of list) {
+    const dir = path.join(baseDir, item.folder || '');
+    ensureDir(dir);
+    try {
+      await fs.rename(item.currentPath, path.join(dir, item.newName));
+      count += 1;
+    } catch {}
+  }
+  return count;
 }
