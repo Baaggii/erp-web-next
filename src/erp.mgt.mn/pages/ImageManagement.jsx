@@ -212,7 +212,13 @@ export default function ImageManagement() {
               style={{ display: 'none' }}
               onChange={(e) => handleFolderChange(e.target.files)}
             />
-            {folderName && <span style={{ marginRight: '0.5rem' }}>{folderName}</span>}
+            <input
+              type="text"
+              value={folderName}
+              readOnly
+              placeholder="No folder"
+              style={{ marginRight: '0.5rem', width: '12rem' }}
+            />
             <button type="button" onClick={checkFolder} style={{ marginRight: '0.5rem' }}>
               Check Folder
             </button>
