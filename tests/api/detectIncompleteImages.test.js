@@ -91,6 +91,48 @@ await test('detectIncompleteImages finds and fixes files', async () => {
   await fs.rm(path.join(process.cwd(), 'uploads', 'tmp'), { recursive: true, force: true });
 });
 
+await test('detectIncompleteImages handles long-uid names', async () => {
+  await fs.rm(path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test'), { recursive: true, force: true });
+  await fs.mkdir(baseDir, { recursive: true });
+  const file = path.join(baseDir, 'fc22c6c0-738c-4dea-8493-d0d1185057ec-19.jpg');
+  await fs.writeFile(file, 'x');
+
+  const row = {
+    id: 1,
+    test_num: 'fc22c6c0-738c-4dea-8493-d0d1185057ec-19',
+    label_field: 'num003',
+    trtype: '4001',
+    TransType: 'tool'
+  };
+  const restoreDb = mockPool(async (sql) => {
+    if (/SHOW TABLES LIKE/.test(sql)) return [[{ t: 'transactions_test' }]];
+    if (/SHOW COLUMNS FROM/.test(sql)) return [[{ Field: 'test_num' }, { Field: 'label_field' }, { Field: 'trtype' }, { Field: 'TransType' }]];
+    if (/FROM `transactions_test`/.test(sql)) return [[row]];
+    return [[]];
+  });
+
+  const origCfg = await fs.readFile(cfgPath, 'utf8').catch(() => '{}');
+  await fs.writeFile(cfgPath, JSON.stringify({
+    transactions_test: {
+      default: { imagenameField: ['label_field'], imageFolder: 'transactions_test' }
+    }
+  }));
+
+  const { list } = await detectIncompleteImages(1);
+  assert.equal(list.length, 1);
+  assert.ok(list[0].newName.includes('num003'));
+  assert.equal(list[0].folder, 'tool/4001');
+
+  await fixIncompleteImages(list);
+  const movedDir = path.join(process.cwd(), 'uploads', 'txn_images', 'tool', '4001');
+  const moved = await fs.readdir(movedDir);
+  assert.ok(moved.some((f) => f.includes('num003')));
+
+  restoreDb();
+  await fs.writeFile(cfgPath, origCfg);
+  await fs.rm(path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test'), { recursive: true, force: true });
+});
+
 await test('uploadSelectedImages renames on upload', async () => {
   await fs.rm(path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test'), { recursive: true, force: true });
   await fs.rm(path.join(process.cwd(), 'uploads', 'tmp'), { recursive: true, force: true });

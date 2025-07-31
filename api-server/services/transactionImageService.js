@@ -314,14 +314,8 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
   const offset = (page - 1) * perPage;
   let count = 0;
   let hasMore = false;
-  let entries;
-  try {
-    entries = await fs.readdir(baseDir, { withFileTypes: true });
-  } catch {
-    return { list: results, hasMore };
-  }
 
-  async function walk(dir) {
+  async function walk(dir, insideTxn = false) {
     let items;
     try {
       items = await fs.readdir(dir, { withFileTypes: true });
@@ -332,8 +326,9 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
       if (hasMore) return;
       const full = path.join(dir, it.name);
       if (it.isDirectory()) {
-        await walk(full);
-      } else if (it.isFile()) {
+        const nextInside = insideTxn || it.name.startsWith('transactions_');
+        await walk(full, nextInside);
+      } else if (insideTxn && it.isFile()) {
         const check = await checkFolderNames([{ name: it.name }]);
         if (check.length === 0) continue;
         const item = check[0];
@@ -355,11 +350,7 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
     }
   }
 
-  for (const entry of entries) {
-    if (!entry.isDirectory() || !entry.name.startsWith('transactions_')) continue;
-    await walk(path.join(baseDir, entry.name));
-    if (hasMore) break;
-  }
+  await walk(baseDir, false);
   return { list: results, hasMore };
 }
 
