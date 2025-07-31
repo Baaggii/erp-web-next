@@ -13,6 +13,7 @@ export default function ImageManagement() {
   const [uploads, setUploads] = useState([]);
   const [uploadSel, setUploadSel] = useState([]);
   const [folderFiles, setFolderFiles] = useState([]);
+  const [folderName, setFolderName] = useState('');
   const fileRef = useRef();
 
   function toggle(id) {
@@ -39,7 +40,7 @@ export default function ImageManagement() {
     if (uploadSel.length === uploads.length) {
       setUploadSel([]);
     } else {
-      setUploadSel(uploads.map((u) => u.tmpPath));
+      setUploadSel(uploads.map((u) => u.index));
     }
   }
 
@@ -109,18 +110,26 @@ export default function ImageManagement() {
   }
 
   function handleFolderChange(files) {
-    setFolderFiles(Array.from(files || []));
+    const arr = Array.from(files || []);
+    setFolderFiles(arr);
+    if (arr.length > 0) {
+      const path = arr[0].webkitRelativePath || arr[0].name;
+      const dir = path.split('/')[0];
+      setFolderName(dir);
+    } else {
+      setFolderName('');
+    }
   }
 
   async function checkFolder() {
     if (folderFiles.length === 0) return;
-    const form = new FormData();
-    folderFiles.forEach((f) => form.append('images', f));
+    const names = folderFiles.slice(0, 1000).map((f, i) => ({ name: f.name, index: i }));
     try {
-      const res = await fetch('/api/transaction_images/upload_check', {
+      const res = await fetch('/api/transaction_images/folder_check', {
         method: 'POST',
-        body: form,
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        body: JSON.stringify({ list: names }),
       });
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -135,13 +144,19 @@ export default function ImageManagement() {
   }
 
   async function commitUploads() {
-    const items = uploads.filter((u) => uploadSel.includes(u.tmpPath));
+    const items = uploads.filter((u) => uploadSel.includes(u.index));
     if (items.length === 0) return;
-    const res = await fetch('/api/transaction_images/upload_commit', {
+    const form = new FormData();
+    const meta = [];
+    items.forEach((it) => {
+      form.append('images', folderFiles[it.index]);
+      meta.push({ name: folderFiles[it.index].name, newName: it.newName, folder: it.folder });
+    });
+    form.append('meta', JSON.stringify(meta));
+    const res = await fetch('/api/transaction_images/folder_commit', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      body: form,
       credentials: 'include',
-      body: JSON.stringify({ list: items }),
     });
     if (res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -197,6 +212,7 @@ export default function ImageManagement() {
               style={{ display: 'none' }}
               onChange={(e) => handleFolderChange(e.target.files)}
             />
+            {folderName && <span style={{ marginRight: '0.5rem' }}>{folderName}</span>}
             <button type="button" onClick={checkFolder} style={{ marginRight: '0.5rem' }}>
               Check Folder
             </button>
@@ -226,9 +242,9 @@ export default function ImageManagement() {
                 </thead>
                 <tbody>
                   {uploads.map((u) => (
-                    <tr key={u.tmpPath} className={uploadSel.includes(u.tmpPath) ? 'bg-blue-50' : ''}>
+                    <tr key={u.index} className={uploadSel.includes(u.index) ? 'bg-blue-50' : ''}>
                       <td className="border px-2 py-1 text-center">
-                        <input type="checkbox" checked={uploadSel.includes(u.tmpPath)} onChange={() => toggleUpload(u.tmpPath)} />
+                        <input type="checkbox" checked={uploadSel.includes(u.index)} onChange={() => toggleUpload(u.index)} />
                       </td>
                       <td className="border px-2 py-1">{u.originalName}</td>
                       <td className="border px-2 py-1">{u.newName}</td>

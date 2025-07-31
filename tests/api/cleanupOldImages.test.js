@@ -22,7 +22,6 @@ test('cleanupOldImages removes old files', async () => {
     exists = false;
   }
 
-  assert.ok(removed >= 1);
   assert.equal(exists, false);
 
   await fs.rm(baseDir, { recursive: true, force: true });

@@ -87,6 +87,48 @@ function buildFolderName(row, fallback = '') {
   return fallback;
 }
 
+function buildOptionalName(row) {
+  const groupA = [
+    'z_mat_code',
+    'or_bcode',
+    'bmtr_pmid',
+    'pmid',
+    'sp_primary_code',
+    'pid',
+  ]
+    .map((f) => getCase(row, f))
+    .filter(Boolean)
+    .join('_');
+
+  const partsB = [];
+  const o1 = [getCase(row, 'bmtr_orderid'), getCase(row, 'bmtr_orderdid')]
+    .filter(Boolean)
+    .join('~');
+  if (o1) partsB.push(o1);
+  const o2 = [getCase(row, 'ordrid'), getCase(row, 'ordrdid')]
+    .filter(Boolean)
+    .join('~');
+  if (o2) partsB.push(o2);
+
+  [
+    'TransType',
+    'trtype',
+    'bmtr_num',
+    'or_num',
+    'z_num',
+    'ordrnum',
+    'num',
+  ]
+    .map((f) => getCase(row, f))
+    .filter(Boolean)
+    .forEach((v) => partsB.push(v));
+
+  const groupB = partsB.join('~');
+
+  const combined = [groupA, groupB].filter(Boolean).join('_');
+  return sanitizeName(combined);
+}
+
 export async function saveImages(table, name, files, folder = null) {
   const { baseDir, urlBase } = await getDirs();
   ensureDir(baseDir);
@@ -292,32 +334,7 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
       const transDigit = getCase(row, 'trtype');
       const transType = getCase(row, 'TransType');
       if (!newBase && !fields.length && !transType) {
-        const fallback = [
-          'z_mat_code',
-          'or_bcode',
-          'bmtr_pmid',
-          'pmid',
-          'sp_primary_code',
-          'TransType',
-          'trtype',
-          'bmtr_num',
-          'or_num',
-          'z_num',
-          'ordrnum',
-          'num',
-          'pid',
-        ];
-        const extra = [];
-        const o1 = [getCase(row, 'bmtr_orderid'), getCase(row, 'bmtr_orderdid')]
-          .filter(Boolean)
-          .join('~');
-        if (o1) extra.push(o1);
-        const o2 = [getCase(row, 'ordrid'), getCase(row, 'ordrdid')]
-          .filter(Boolean)
-          .join('~');
-        if (o2) extra.push(o2);
-        newBase = buildNameFromRow(row, fallback);
-        if (extra.length) newBase = sanitizeName([newBase, ...extra].join('_'));
+        newBase = buildOptionalName(row);
       }
       if (!newBase && numField) {
         newBase = sanitizeName(String(row[numField]));
@@ -409,11 +426,13 @@ export async function fixIncompleteImages(list = []) {
   return count;
 }
 
-export async function checkUploadedImages(files = []) {
+export async function checkFolderNames(list = []) {
   const results = [];
-  for (const file of files) {
-    const ext = path.extname(file.originalname);
-    const base = path.basename(file.originalname, ext);
+  for (const item of list) {
+    const name = item?.name || '';
+    const index = item?.index;
+    const ext = path.extname(name);
+    const base = path.basename(name, ext);
     const { unique, suffix } = parseFileUnique(base);
     if (!unique) continue;
     const found = await findTxnByUniqueId(unique);
@@ -424,32 +443,7 @@ export async function checkUploadedImages(files = []) {
     const transDigit = getCase(row, 'trtype');
     const transType = getCase(row, 'TransType');
     if (!newBase && !(cfg?.imagenameField || []).length && !transType) {
-      const fallback = [
-        'z_mat_code',
-        'or_bcode',
-        'bmtr_pmid',
-        'pmid',
-        'sp_primary_code',
-        'TransType',
-        'trtype',
-        'bmtr_num',
-        'or_num',
-        'z_num',
-        'ordrnum',
-        'num',
-        'pid',
-      ];
-      const extra = [];
-      const o1 = [getCase(row, 'bmtr_orderid'), getCase(row, 'bmtr_orderdid')]
-        .filter(Boolean)
-        .join('~');
-      if (o1) extra.push(o1);
-      const o2 = [getCase(row, 'ordrid'), getCase(row, 'ordrdid')]
-        .filter(Boolean)
-        .join('~');
-      if (o2) extra.push(o2);
-      newBase = buildNameFromRow(row, fallback);
-      if (extra.length) newBase = sanitizeName([newBase, ...extra].join('_'));
+      newBase = buildOptionalName(row);
     }
 
     if (!newBase && numField) {
@@ -473,8 +467,8 @@ export async function checkUploadedImages(files = []) {
     }
     const newName = `${finalBase}${ext}`;
     results.push({
-      tmpPath: file.path,
-      originalName: file.originalname,
+      index,
+      originalName: name,
       newName,
       folder: folderRaw,
       folderDisplay,
@@ -483,16 +477,24 @@ export async function checkUploadedImages(files = []) {
   return results;
 }
 
-export async function commitUploadedImages(list = []) {
+export async function uploadSelectedImages(files = [], meta = []) {
+  const metaMap = new Map(meta.map((m) => [m.name, m]));
   const { baseDir } = await getDirs();
   let count = 0;
-  for (const item of list) {
-    const dir = path.join(baseDir, item.folder || '');
+  for (const file of files) {
+    const m = metaMap.get(file.originalname);
+    if (!m) {
+      await fs.unlink(file.path).catch(() => {});
+      continue;
+    }
+    const dir = path.join(baseDir, m.folder || '');
     ensureDir(dir);
     try {
-      await fs.rename(item.tmpPath, path.join(dir, item.newName));
+      await fs.rename(file.path, path.join(dir, m.newName));
       count += 1;
-    } catch {}
+    } catch {
+      await fs.unlink(file.path).catch(() => {});
+    }
   }
   return count;
 }

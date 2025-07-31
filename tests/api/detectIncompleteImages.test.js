@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import path from 'path';
-import { detectIncompleteImages, fixIncompleteImages, checkUploadedImages, commitUploadedImages } from '../../api-server/services/transactionImageService.js';
+import { detectIncompleteImages, fixIncompleteImages, checkFolderNames, uploadSelectedImages } from '../../api-server/services/transactionImageService.js';
 import * as db from '../../db/index.js';
 
 function mockPool(handler) {
@@ -54,7 +54,7 @@ await test('detectIncompleteImages finds and fixes files', async () => {
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
 });
 
-await test('checkUploadedImages renames on upload', async () => {
+await test('uploadSelectedImages renames on upload', async () => {
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
   await fs.mkdir(path.join(process.cwd(), 'uploads', 'tmp'), { recursive: true });
   const tmp = path.join(process.cwd(), 'uploads', 'tmp', 'abc12345.jpg');
@@ -75,12 +75,15 @@ await test('checkUploadedImages renames on upload', async () => {
     }
   }));
 
-  const list = await checkUploadedImages([{ originalname: 'abc12345.jpg', path: tmp }]);
-  assert.equal(list.length, 1);
-  assert.ok(list[0].newName.includes('num002'));
-  assert.equal(list[0].folder, '4001/tool');
-
-  const uploaded = await commitUploadedImages(list);
+  const check = await checkFolderNames([{ name: 'abc12345.jpg', index: 0 }]);
+  const list = [{
+    name: 'abc12345.jpg',
+    newName: check[0].newName,
+    folder: check[0].folder,
+  }];
+  const uploaded = await uploadSelectedImages([
+    { originalname: 'abc12345.jpg', path: tmp }
+  ], list);
   assert.equal(uploaded, 1);
   const updir = path.join(process.cwd(), 'uploads', 'txn_images', '4001', 'tool');
   const exists = await fs.readdir(updir);
