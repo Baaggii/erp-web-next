@@ -35,10 +35,6 @@ export default function RowImageUploadModal({
       setUploaded([]);
       return;
     }
-    if (!row._saved && !row._imageName) {
-      setUploaded([]);
-      return;
-    }
     const { name } = buildName();
     if (!name) {
       setUploaded([]);
