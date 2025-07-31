@@ -12,6 +12,7 @@ export default function ImageManagement() {
   const [selected, setSelected] = useState([]);
   const [uploads, setUploads] = useState([]);
   const [uploadSel, setUploadSel] = useState([]);
+  const [folderFiles, setFolderFiles] = useState([]);
   const fileRef = useRef();
 
   function toggle(id) {
@@ -60,13 +61,18 @@ export default function ImageManagement() {
   }
 
   useEffect(() => {
-    if (tab !== 'fix') return;
-    refreshList();
-  }, [tab, page]);
+    if (tab !== 'fix') {
+      setPending([]);
+      setUploads([]);
+      setUploadSel([]);
+      setSelected([]);
+      setPage(1);
+    }
+  }, [tab]);
 
-  async function refreshList() {
+  async function refreshList(p = page) {
     try {
-      const res = await fetch(`/api/transaction_images/detect_incomplete?page=${page}`, {
+      const res = await fetch(`/api/transaction_images/detect_incomplete?page=${p}`, {
         credentials: 'include',
       });
       if (res.ok) {
@@ -102,10 +108,14 @@ export default function ImageManagement() {
     }
   }
 
-  async function handleSelectFiles(files) {
-    if (!files?.length) return;
+  function handleFolderChange(files) {
+    setFolderFiles(Array.from(files || []));
+  }
+
+  async function checkFolder() {
+    if (folderFiles.length === 0) return;
     const form = new FormData();
-    Array.from(files).forEach((f) => form.append('images', f));
+    folderFiles.forEach((f) => form.append('images', f));
     try {
       const res = await fetch('/api/transaction_images/upload_check', {
         method: 'POST',
@@ -176,22 +186,27 @@ export default function ImageManagement() {
         <div>
           <div style={{ marginBottom: '0.5rem' }}>
             <button type="button" onClick={() => fileRef.current?.click()} style={{ marginRight: '0.5rem' }}>
-              Select Images
+              Select Folder
             </button>
             <input
               type="file"
               multiple
+              webkitdirectory="true"
+              directory="true"
               ref={fileRef}
               style={{ display: 'none' }}
-              onChange={(e) => handleSelectFiles(e.target.files)}
+              onChange={(e) => handleFolderChange(e.target.files)}
             />
+            <button type="button" onClick={checkFolder} style={{ marginRight: '0.5rem' }}>
+              Check Folder
+            </button>
             <button type="button" onClick={refreshList} style={{ marginRight: '0.5rem' }}>
               Refresh
             </button>
-            <button type="button" disabled={page === 1} onClick={() => setPage(page - 1)} style={{ marginRight: '0.5rem' }}>
+            <button type="button" disabled={page === 1} onClick={() => { const p = page - 1; setPage(p); refreshList(p); }} style={{ marginRight: '0.5rem' }}>
               Prev
             </button>
-            <button type="button" disabled={!hasMore} onClick={() => setPage(page + 1)}>
+            <button type="button" disabled={!hasMore} onClick={() => { const p = page + 1; setPage(p); refreshList(p); }}>
               Next
             </button>
           </div>

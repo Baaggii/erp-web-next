@@ -70,12 +70,13 @@ function parseFileUnique(base) {
 
 function buildFolderName(row, fallback = '') {
   const part1 =
+    getCase(row, 'trtype') ||
+    getCase(row, 'TRTYPE') ||
+    getCase(row, 'trtypenum');
+  const part2 =
     getCase(row, 'TransType') ||
     getCase(row, 'UITransType') ||
     getCase(row, 'UITransTypeName') ||
-    getCase(row, 'trtype');
-  const part2 =
-    getCase(row, 'trtype') ||
     getCase(row, 'TRTYPENAME') ||
     getCase(row, 'trtypename') ||
     getCase(row, 'uitranstypename') ||
@@ -270,18 +271,25 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
     for (const f of files) {
       const ext = path.extname(f);
       const base = path.basename(f, ext);
-      const parts = base.split('_');
-      if (parts.length >= 5) continue;
       const { unique, suffix } = parseFileUnique(base);
       if (!unique || unique.length < 8) continue;
       const found = await findTxnByUniqueId(unique);
       if (!found) continue;
       const { row, configs, numField } = found;
 
+      const curSan = sanitizeName(base);
+      const trans4d = sanitizeName(String(getCase(row, 'trtype') || ''));
+      const trans4l = sanitizeName(String(getCase(row, 'TransType') || ''));
+      const hasCodes =
+        (trans4d ? curSan.includes(trans4d) : true) &&
+        (trans4l ? curSan.includes(trans4l) : true);
+      if (hasCodes) continue;
+
       const cfg = pickConfig(configs, row);
       const fields = cfg?.imagenameField || [];
       let newBase = buildNameFromRow(row, fields);
 
+      const transDigit = getCase(row, 'trtype');
       const transType = getCase(row, 'TransType');
       if (!newBase && !fields.length && !transType) {
         const fallback = [
@@ -311,11 +319,16 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
         newBase = buildNameFromRow(row, fallback);
         if (extra.length) newBase = sanitizeName([newBase, ...extra].join('_'));
       }
-
       if (!newBase && numField) {
         newBase = sanitizeName(String(row[numField]));
       }
       if (!newBase) continue;
+      if (transDigit && !sanitizeName(newBase).includes(sanitizeName(transDigit))) {
+        newBase = sanitizeName(`${transDigit}_${newBase}`);
+      }
+      if (transType && !sanitizeName(newBase).includes(sanitizeName(transType))) {
+        newBase = sanitizeName(`${newBase}_${transType}`);
+      }
       const folderRaw = buildFolderName(row, cfg?.imageFolder || entry.name);
       const folderDisplay = '/' + String(folderRaw).replace(/^\/+/, '');
       const sanitizedUnique = sanitizeName(unique);
@@ -408,6 +421,7 @@ export async function checkUploadedImages(files = []) {
     const { row, configs, numField } = found;
     const cfg = pickConfig(configs, row);
     let newBase = buildNameFromRow(row, cfg?.imagenameField || []);
+    const transDigit = getCase(row, 'trtype');
     const transType = getCase(row, 'TransType');
     if (!newBase && !(cfg?.imagenameField || []).length && !transType) {
       const fallback = [
@@ -442,6 +456,12 @@ export async function checkUploadedImages(files = []) {
       newBase = sanitizeName(String(row[numField]));
     }
     if (!newBase) continue;
+    if (transDigit && !sanitizeName(newBase).includes(sanitizeName(transDigit))) {
+      newBase = sanitizeName(`${transDigit}_${newBase}`);
+    }
+    if (transType && !sanitizeName(newBase).includes(sanitizeName(transType))) {
+      newBase = sanitizeName(`${newBase}_${transType}`);
+    }
     const folderRaw = buildFolderName(row, cfg?.imageFolder || found.table);
     const folderDisplay = '/' + String(folderRaw).replace(/^\/+/, '');
     const sanitizedUnique = sanitizeName(unique);
