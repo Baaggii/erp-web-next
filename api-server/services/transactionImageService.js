@@ -527,3 +527,27 @@ export async function uploadSelectedImages(files = [], meta = []) {
   }
   return count;
 }
+
+export async function findBenchmarkCode(name = '') {
+  const sanitized = String(name).toLowerCase();
+  const match = sanitized.match(/\d{4}/);
+  if (match) {
+    try {
+      const [rows] = await pool.query(
+        'SELECT UITransType FROM code_transaction WHERE UITransType = ? AND image_benchmark = 1 LIMIT 1',
+        [match[0]],
+      );
+      if (rows.length) return String(rows[0].UITransType);
+    } catch {}
+  }
+  try {
+    const [rows] = await pool.query(
+      'SELECT UITransType, UITrtype FROM code_transaction WHERE image_benchmark = 1',
+    );
+    for (const row of rows || []) {
+      const val = String(row.UITrtype || '').toLowerCase();
+      if (val && sanitized.includes(val)) return String(row.UITransType || row.UITrtype);
+    }
+  } catch {}
+  return null;
+}
