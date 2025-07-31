@@ -38,5 +38,10 @@ The **General** tab now contains `imageStorage.basePath` which sets the root
 directory for any uploaded transaction images. The default value `"uploads"`
 creates files under `<repo>/uploads/<table>/`.
 
+`imageStorage.cleanupDays` defines the age threshold used when manually
+triggering the `/api/transaction_images/cleanup` endpoint. The application does
+not run this cleanup automatically so administrators can control when old images
+are removed.
+
 The settings can be edited in the **General Configuration** screen
 (module key `general_configuration`) under the Settings menu.

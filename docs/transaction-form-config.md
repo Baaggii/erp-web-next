@@ -19,6 +19,10 @@ Each **transaction** entry allows you to specify:
 - **imagenameField** – list of columns containing image file names
 - **imageIdField** – column containing the unique identifier used to name images. Selecting this field automatically adds it to `imagenameField`.
 - **imageFolder** – subfolder name for storing images of this transaction type
+
+Uploaded images are resized and compressed on the server using the Sharp
+library. Only the optimized versions are kept to minimize storage space and
+speed up loading when the images are viewed.
 - **printEmpField** – columns printed as employee info
 - **printCustField** – columns printed as customer info
 - **totalCurrencyFields** – fields summed to display total currency amount
