@@ -234,12 +234,15 @@ export default function ImageManagement() {
   }
 
   async function checkNames() {
-    if (!folderListed || folderFiles.length === 0 || folderSel.length === 0) {
-      addToast('List image names and select files first', 'info');
+    if (!folderListed || folderFiles.length === 0) {
+      addToast('List image names first', 'info');
       return;
     }
     setCheckLoading(true);
-    const indices = folderSel;
+    const indices =
+      folderSel.length > 0
+        ? folderSel
+        : folderFiles.map((_, i) => i);
     const names = indices.map((i) => ({ name: folderFiles[i].name, index: i }));
     try {
       const res = await fetch('/api/transaction_images/folder_check', {
@@ -354,7 +357,7 @@ export default function ImageManagement() {
                   type="button"
                   onClick={checkNames}
                   style={{ marginRight: '0.5rem' }}
-                  disabled={checkLoading || folderSel.length === 0}
+                  disabled={checkLoading || pageFiles.length === 0}
                 >
                   {checkLoading ? 'Checking...' : 'Check Names'}
                 </button>

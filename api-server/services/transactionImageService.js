@@ -337,9 +337,21 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
       const curSan = sanitizeName(base);
       const trans4d = sanitizeName(String(getFieldCase(row, 'trtype') || ''));
       const trans4l = sanitizeName(String(getFieldCase(row, 'TransType') || ''));
+      const optionalVals = [
+        'z_mat_code',
+        'or_bcode',
+        'bmtr_pmid',
+        'pmid',
+        'sp_primary_code',
+        'pid',
+      ]
+        .map((f) => sanitizeName(String(getFieldCase(row, f) || '')))
+        .filter((v) => v);
+
       const hasCodes =
         (!trans4d || containsToken(curSan, trans4d)) &&
-        (!trans4l || containsToken(curSan, trans4l));
+        (!trans4l || containsToken(curSan, trans4l)) &&
+        optionalVals.every((v) => containsToken(curSan, v));
       if (hasCodes) continue;
 
       const cfg = pickConfig(configs, row);
