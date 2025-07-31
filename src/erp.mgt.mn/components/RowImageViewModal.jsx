@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import Modal from './Modal.jsx';
 import buildImageName from '../utils/buildImageName.js';
+import { API_BASE } from '../utils/apiBase.js';
 import { useToast } from '../context/ToastContext.jsx';
 
 export default function RowImageViewModal({
@@ -21,13 +22,14 @@ export default function RowImageViewModal({
   const placeholder =
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMBAZLr5z0AAAAASUVORK5CYII=';
 
-  const apiOrigin = window.API_ORIGIN || '';
+  const apiOrigin = window.API_ORIGIN || window.location.origin;
+  const baseUrl = (import.meta.env.BASE_URL || '').replace(/\/$/, '');
 
   function getImageUrl(p) {
     if (!p) return '';
     if (/^https?:\/\//i.test(p) || p.startsWith('data:')) return p;
-    if (p.startsWith('/')) return `${apiOrigin || window.location.origin}${p}`;
-    return `${apiOrigin || window.location.origin}/${p.replace(/^\//, '')}`;
+    if (p.startsWith('/')) return `${apiOrigin}${baseUrl}${p}`;
+    return `${apiOrigin}${baseUrl}/${p.replace(/^\//, '')}`;
   }
 
   useEffect(() => {
@@ -49,7 +51,7 @@ export default function RowImageViewModal({
         addToast(`Search: ${params.get('folder') || table}/${name}`, 'info');
         try {
           const res = await fetch(
-            `/api/transaction_images/${safeTable}/${encodeURIComponent(name)}?${params.toString()}`,
+            `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(name)}?${params.toString()}`,
             { credentials: 'include' },
           );
           const imgs = res.ok ? await res.json().catch(() => []) : [];
