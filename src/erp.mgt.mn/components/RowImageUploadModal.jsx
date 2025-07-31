@@ -41,6 +41,12 @@ export default function RowImageUploadModal({
       .catch(() => setUploaded([]));
   }, [visible, folder, row, table]);
 
+  // Reset whenever the transaction row context changes
+  useEffect(() => {
+    setFiles([]);
+    setUploaded([]);
+  }, [row, table, folder]);
+
   useEffect(() => {
     if (!visible) {
       setFiles([]);
