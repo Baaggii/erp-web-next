@@ -8,6 +8,10 @@ import {
   deleteImage,
   deleteAllImages,
   cleanupOldImages,
+  detectIncompleteImages,
+  fixIncompleteImages,
+  checkUploadedImages,
+  commitUploadedImages,
 } from '../services/transactionImageService.js';
 import { getGeneralConfig } from '../services/generalConfig.js';
 
@@ -24,6 +28,45 @@ router.delete('/cleanup/:days?', requireAuth, async (req, res, next) => {
     }
     const removed = await cleanupOldImages(days);
     res.json({ removed });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/detect_incomplete', requireAuth, async (req, res, next) => {
+  try {
+    const page = parseInt(req.query.page, 10) || 1;
+    const data = await detectIncompleteImages(page);
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/fix_incomplete', requireAuth, async (req, res, next) => {
+  try {
+    const arr = Array.isArray(req.body?.list) ? req.body.list : [];
+    const fixed = await fixIncompleteImages(arr);
+    res.json({ fixed });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/upload_check', requireAuth, upload.array('images'), async (req, res, next) => {
+  try {
+    const list = await checkUploadedImages(req.files || []);
+    res.json({ list });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/upload_commit', requireAuth, async (req, res, next) => {
+  try {
+    const arr = Array.isArray(req.body?.list) ? req.body.list : [];
+    const uploaded = await commitUploadedImages(arr);
+    res.json({ uploaded });
   } catch (err) {
     next(err);
   }
