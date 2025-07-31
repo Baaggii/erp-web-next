@@ -26,6 +26,15 @@ function sanitizeName(name) {
     .replace(/[^a-z0-9_-]+/gi, '_');
 }
 
+function extractUnique(str) {
+  const uuid = str.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  if (uuid) return uuid[0];
+  const alt = str.match(/[A-Z0-9]{4}(?:-[A-Z0-9]{4}){3}/);
+  if (alt) return alt[0];
+  const long = str.match(/[A-Za-z0-9-]{8,}/);
+  return long ? long[0] : '';
+}
+
 export async function saveImages(table, name, files, folder = null) {
   const { baseDir, urlBase } = await getDirs();
   ensureDir(baseDir);
@@ -208,9 +217,9 @@ export async function detectIncompleteImages() {
       const ext = path.extname(f);
       const base = path.basename(f, ext);
       const parts = base.split('_');
-      if (parts.length >= 4) continue;
-      const unique = parts.pop();
-      if (!unique || unique.length < 4) continue;
+      if (parts.length >= 5) continue;
+      const unique = extractUnique(base);
+      if (!unique || unique.length < 8) continue;
       const found = await findTxnByUniqueId(unique);
       if (!found) continue;
       const { row, config, numField } = found;

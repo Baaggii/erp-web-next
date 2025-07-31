@@ -19,11 +19,11 @@ await test('detectIncompleteImages finds and fixes files', async () => {
   const file = path.join(baseDir, 'abc12345.jpg');
   await fs.writeFile(file, 'x');
 
-  const row = { id: 1, test_num: 'num001' };
+  const row = { id: 1, test_num: 'abc12345', label_field: 'num001' };
 
   const restoreDb = mockPool(async (sql) => {
     if (/SHOW TABLES LIKE/.test(sql)) return [[{ t: 'transactions_test' }]];
-    if (/SHOW COLUMNS FROM/.test(sql)) return [[{ Field: 'test_num' }]];
+    if (/SHOW COLUMNS FROM/.test(sql)) return [[{ Field: 'test_num' }, { Field: 'label_field' }]];
     if (/FROM `transactions_test`/.test(sql)) return [[row]];
     return [[]];
   });
@@ -31,7 +31,7 @@ await test('detectIncompleteImages finds and fixes files', async () => {
   const origCfg = await fs.readFile(cfgPath, 'utf8').catch(() => '{}');
   await fs.writeFile(cfgPath, JSON.stringify({
     transactions_test: {
-      default: { imagenameField: ['test_num'], imageFolder: 'transactions_test' }
+      default: { imagenameField: ['label_field'], imageFolder: 'transactions_test' }
     }
   }));
 
