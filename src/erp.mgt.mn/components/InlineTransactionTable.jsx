@@ -1152,6 +1152,7 @@ export default forwardRef(function InlineTransactionTable({
         table={tableName}
         folder={getImageFolder(rows[uploadRow])}
         row={rows[uploadRow] || {}}
+        rowKey={uploadRow}
         imagenameFields={imagenameFields}
         columnCaseMap={columnCaseMap}
         onUploaded={(name) => handleUploaded(uploadRow, name)}
