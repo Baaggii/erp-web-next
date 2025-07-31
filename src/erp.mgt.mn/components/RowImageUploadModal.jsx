@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Modal from './Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import buildImageName from '../utils/buildImageName.js';
+import AISuggestionModal from './AISuggestionModal.jsx';
 
 export default function RowImageUploadModal({
   visible,
@@ -13,12 +14,14 @@ export default function RowImageUploadModal({
   imagenameFields = [],
   columnCaseMap = {},
   onUploaded = () => {},
+  onSuggestion = () => {},
 }) {
   const { addToast } = useToast();
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [uploaded, setUploaded] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestModal, setShowSuggestModal] = useState(false);
   function buildName() {
     return buildImageName(row, imagenameFields, columnCaseMap);
   }
@@ -28,8 +31,16 @@ export default function RowImageUploadModal({
     setFiles([]);
     setUploaded([]);
     setSuggestions([]);
+    if (!folder) {
+      setUploaded([]);
+      return;
+    }
+    if (!row._saved && !row._imageName) {
+      setUploaded([]);
+      return;
+    }
     const { name } = buildName();
-    if (!folder || !name) {
+    if (!name) {
       setUploaded([]);
       return;
     }
@@ -42,7 +53,7 @@ export default function RowImageUploadModal({
       .then((r) => (r.ok ? r.json() : []))
       .then((imgs) => setUploaded(Array.isArray(imgs) ? imgs : []))
       .catch(() => setUploaded([]));
-  }, [visible, folder, rowKey, table]);
+  }, [visible, folder, rowKey, table, row._imageName, row._saved]);
 
 
   useEffect(() => {
@@ -50,23 +61,15 @@ export default function RowImageUploadModal({
       setFiles([]);
       setUploaded([]);
       setSuggestions([]);
+      setShowSuggestModal(false);
     }
   }, [visible]);
 
-  // Reset whenever the transaction row context changes
   useEffect(() => {
-    setFiles([]);
-    setUploaded([]);
-    setSuggestions([]);
-  }, [row, table, folder]);
-
-  useEffect(() => {
-    if (!visible) {
-      setFiles([]);
-      setUploaded([]);
-      setSuggestions([]);
+    if (suggestions.length > 0) {
+      setShowSuggestModal(true);
     }
-  }, [visible]);
+  }, [suggestions]);
 
   async function handleUpload(selectedFiles) {
     const { name: safeName, missing } = buildName();
@@ -125,7 +128,10 @@ export default function RowImageUploadModal({
             addToast('AI detection error: ' + err.message, 'error');
           }
         }
-        if (detected.length) setSuggestions((s) => [...s, ...detected]);
+        if (detected.length) {
+          setSuggestions((s) => [...s, ...detected]);
+          setShowSuggestModal(true);
+        }
       } else {
         const text = await res.text();
         addToast(text || 'Failed to upload images', 'error');
@@ -201,18 +207,24 @@ export default function RowImageUploadModal({
         </div>
       )}
       {suggestions.length > 0 && (
-        <div style={{ maxHeight: '20vh', overflowY: 'auto', marginTop: '0.5rem' }}>
-          <h4>AI Suggestions</h4>
-          <ul>
-            {suggestions.map((it, idx) => (
-              <li key={idx}>{`${it.code} - ${it.qty}`}</li>
-            ))}
-          </ul>
+        <div style={{ marginTop: '0.5rem' }}>
+          <button type="button" onClick={() => setShowSuggestModal(true)}>
+            View AI Suggestions ({suggestions.length})
+          </button>
         </div>
       )}
       <div style={{ textAlign: 'right', marginTop: '1rem' }}>
         <button type="button" onClick={onClose}>Close</button>
       </div>
+      <AISuggestionModal
+        visible={showSuggestModal}
+        items={suggestions}
+        onSelect={(it) => {
+          onSuggestion(it);
+          setShowSuggestModal(false);
+        }}
+        onClose={() => setShowSuggestModal(false)}
+      />
     </Modal>
   );
 }

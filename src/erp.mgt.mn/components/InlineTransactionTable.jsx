@@ -591,6 +591,23 @@ export default forwardRef(function InlineTransactionTable({
     });
   }
 
+  function applyAISuggestion(idx, item) {
+    if (!item) return;
+    setRows((r) => {
+      const codeField = fields.find((f) => /code|name|item/i.test(f));
+      const qtyField = fields.find((f) => /(qty|quantity|count)/i.test(f));
+      const next = r.map((row, i) => {
+        if (i !== idx) return row;
+        const updated = { ...row };
+        if (codeField && item.code !== undefined) updated[codeField] = item.code;
+        if (qtyField && item.qty !== undefined) updated[qtyField] = item.qty;
+        return updated;
+      });
+      onRowsChange(next);
+      return next;
+    });
+  }
+
   function getImageFolder(row) {
     if (!row || !row._saved) return tableName;
     const lowerMap = {};
@@ -1188,6 +1205,7 @@ export default forwardRef(function InlineTransactionTable({
         imagenameFields={imagenameFields}
         columnCaseMap={columnCaseMap}
         onUploaded={(name) => handleUploaded(uploadRow, name)}
+        onSuggestion={(it) => applyAISuggestion(uploadRow, it)}
       />
     </div>
   );
