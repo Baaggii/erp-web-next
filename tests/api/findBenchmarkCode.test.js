@@ -11,18 +11,18 @@ function mockPool(handler) {
 
 await test('findBenchmarkCode matches codes', async () => {
   const restore = mockPool(async (sql, params) => {
-    if (/FROM code_transaction WHERE UITransType =/.test(sql)) {
-      if (params[0] === '1234') return [[{ UITransType: '1234' }]];
+    if (/image_benchmark = 1 AND UITransType =/.test(sql)) {
+      if (params[0] === '3001') return [[{ UITransType: '3001' }]];
       return [[]];
     }
     if (/FROM code_transaction WHERE image_benchmark = 1/.test(sql)) {
-      return [[{ UITransType: '5678', UITrtype: 'ABCD' }]];
+      return [[{ UITransType: '4000', UITrtype: 'ABCD' }]];
     }
     return [[]];
   });
 
-  assert.equal(await findBenchmarkCode('img_1234_test.jpg'), '1234');
-  assert.equal(await findBenchmarkCode('foo_abcd.jpg'), '5678');
+  assert.deepEqual(await findBenchmarkCode('1111_3001_5.png'), { code: '3001', qty: 5 });
+  assert.deepEqual(await findBenchmarkCode('foo_abcd_20.jpg'), { code: '4000', qty: 20 });
   assert.equal(await findBenchmarkCode('none.jpg'), null);
 
   restore();
