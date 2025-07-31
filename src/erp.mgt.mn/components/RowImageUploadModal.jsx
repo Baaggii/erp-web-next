@@ -17,12 +17,16 @@ export default function RowImageUploadModal({
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [uploaded, setUploaded] = useState([]);
+  const [suggestions, setSuggestions] = useState([]);
   function buildName() {
     return buildImageName(row, imagenameFields, columnCaseMap);
   }
 
   useEffect(() => {
     if (!visible) return;
+    setFiles([]);
+    setUploaded([]);
+    setSuggestions([]);
     const { name } = buildName();
     if (!folder || !name) {
       setUploaded([]);
@@ -38,6 +42,21 @@ export default function RowImageUploadModal({
       .then((imgs) => setUploaded(Array.isArray(imgs) ? imgs : []))
       .catch(() => setUploaded([]));
   }, [visible, folder, row, table]);
+
+  // Reset whenever the transaction row context changes
+  useEffect(() => {
+    setFiles([]);
+    setUploaded([]);
+    setSuggestions([]);
+  }, [row, table, folder]);
+
+  useEffect(() => {
+    if (!visible) {
+      setFiles([]);
+      setUploaded([]);
+      setSuggestions([]);
+    }
+  }, [visible]);
 
   async function handleUpload(selectedFiles) {
     const { name: safeName, missing } = buildName();
@@ -61,14 +80,42 @@ export default function RowImageUploadModal({
     setLoading(true);
     const form = new FormData();
     filesToUpload.forEach((f) => form.append('images', f));
+    let detected = [];
     try {
       const res = await fetch(uploadUrl, { method: 'POST', body: form, credentials: 'include' });
       if (res.ok) {
-        addToast(`Images uploaded as ${finalName}`, 'success');
         const imgs = await res.json().catch(() => []);
+        addToast(`Uploaded ${imgs.length} image(s) as ${finalName}`, 'success');
         setFiles([]);
         setUploaded((u) => [...u, ...imgs]);
         onUploaded(finalName);
+        for (const file of filesToUpload) {
+          const detForm = new FormData();
+          detForm.append('image', file);
+          try {
+            const detRes = await fetch('/api/ai_inventory/identify', {
+              method: 'POST',
+              body: detForm,
+              credentials: 'include',
+            });
+            if (detRes.ok) {
+              const data = await detRes.json();
+              const count = (data.items || []).length;
+              addToast(
+                count ? `AI found ${count} suggestion(s)` : 'No AI suggestions',
+                count ? 'success' : 'warn',
+              );
+              if (count) detected.push(...data.items);
+            } else {
+              const text = await detRes.text();
+              addToast(text || 'AI detection failed', 'error');
+            }
+          } catch (err) {
+            console.error(err);
+            addToast('AI detection error: ' + err.message, 'error');
+          }
+        }
+        if (detected.length) setSuggestions((s) => [...s, ...detected]);
       } else {
         const text = await res.text();
         addToast(text || 'Failed to upload images', 'error');
@@ -141,6 +188,16 @@ export default function RowImageUploadModal({
           <button type="button" onClick={deleteAll} style={{ marginTop: '0.5rem' }}>
             Delete All
           </button>
+        </div>
+      )}
+      {suggestions.length > 0 && (
+        <div style={{ maxHeight: '20vh', overflowY: 'auto', marginTop: '0.5rem' }}>
+          <h4>AI Suggestions</h4>
+          <ul>
+            {suggestions.map((it, idx) => (
+              <li key={idx}>{`${it.code} - ${it.qty}`}</li>
+            ))}
+          </ul>
         </div>
       )}
       <div style={{ textAlign: 'right', marginTop: '1rem' }}>

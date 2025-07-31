@@ -873,7 +873,7 @@ export default function PosTransactionsPage() {
             <button onClick={handleSavePending} style={{ marginRight: '0.5rem' }} disabled={!name || !hasData}>Save</button>
             <button onClick={handleLoadPending} style={{ marginRight: '0.5rem' }} disabled={!name}>Load</button>
             <button onClick={handleDeletePending} style={{ marginRight: '0.5rem' }} disabled={!pendingId}>Delete</button>
-            <button onClick={handlePostAll} disabled={!name || !hasData}>POST</button>
+            <button onClick={handlePostAll} disabled={!name}>POST</button>
           </div>
           {(pendingId || postedId) && (
             <div style={{ marginBottom: '0.5rem' }}>
