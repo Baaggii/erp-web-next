@@ -15,6 +15,7 @@ const cfgPath = path.join(process.cwd(), 'config', 'transactionForms.json');
 const baseDir = path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test');
 
 await test('detectIncompleteImages finds and fixes files', async () => {
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
   await fs.mkdir(baseDir, { recursive: true });
   const file = path.join(baseDir, 'abc12345.jpg');
   await fs.writeFile(file, 'x');
@@ -35,7 +36,8 @@ await test('detectIncompleteImages finds and fixes files', async () => {
     }
   }));
 
-  const list = await detectIncompleteImages();
+  const { list, hasMore } = await detectIncompleteImages(1);
+  assert.equal(hasMore, false);
   assert.equal(list.length, 1);
   assert.ok(list[0].newName.includes('num001'));
 

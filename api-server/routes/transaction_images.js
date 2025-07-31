@@ -33,8 +33,9 @@ router.delete('/cleanup/:days?', requireAuth, async (req, res, next) => {
 
 router.get('/detect_incomplete', requireAuth, async (req, res, next) => {
   try {
-    const list = await detectIncompleteImages();
-    res.json(list);
+    const page = parseInt(req.query.page, 10) || 1;
+    const data = await detectIncompleteImages(page);
+    res.json(data);
   } catch (err) {
     next(err);
   }

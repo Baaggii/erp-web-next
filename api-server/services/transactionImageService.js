@@ -59,6 +59,14 @@ function extractUnique(str) {
   return long ? long[0] : '';
 }
 
+function parseFileUnique(base) {
+  const unique = extractUnique(base);
+  if (!unique) return { unique: '', suffix: '' };
+  const idx = base.toLowerCase().indexOf(unique.toLowerCase());
+  const suffix = idx >= 0 ? base.slice(idx + unique.length) : '';
+  return { unique, suffix };
+}
+
 export async function saveImages(table, name, files, folder = null) {
   const { baseDir, urlBase } = await getDirs();
   ensureDir(baseDir);
@@ -218,14 +226,17 @@ export async function cleanupOldImages(days = 30) {
   return removed;
 }
 
-export async function detectIncompleteImages() {
+export async function detectIncompleteImages(page = 1, perPage = 100) {
   const { baseDir } = await getDirs();
   let results = [];
   let dirs;
+  const offset = (page - 1) * perPage;
+  let count = 0;
+  let hasMore = false;
   try {
     dirs = await fs.readdir(baseDir, { withFileTypes: true });
   } catch {
-    return results;
+    return { list: results, hasMore };
   }
 
   for (const entry of dirs) {
@@ -242,7 +253,7 @@ export async function detectIncompleteImages() {
       const base = path.basename(f, ext);
       const parts = base.split('_');
       if (parts.length >= 5) continue;
-      const unique = extractUnique(base);
+      const { unique, suffix } = parseFileUnique(base);
       if (!unique || unique.length < 8) continue;
       const found = await findTxnByUniqueId(unique);
       if (!found) continue;
@@ -286,17 +297,33 @@ export async function detectIncompleteImages() {
         newBase = sanitizeName(String(row[numField]));
       }
       if (!newBase) continue;
-      const folder = cfg?.imageFolder || entry.name;
-      const newName = `${newBase}_${unique}${ext}`;
-      results.push({
-        folder,
-        currentName: f,
-        newName,
-        currentPath: path.join(dirPath, f),
-      });
+      const folderRaw = cfg?.imageFolder || entry.name;
+      const folderDisplay = '/' + String(folderRaw).replace(/^\/+/, '');
+      const sanitizedUnique = sanitizeName(unique);
+      let finalBase = newBase;
+      if (sanitizeName(newBase).includes(sanitizedUnique)) {
+        finalBase = `${newBase}${suffix}`;
+      } else {
+        finalBase = `${newBase}_${unique}${suffix}`;
+      }
+      const newName = `${finalBase}${ext}`;
+      count += 1;
+      if (count > offset && results.length < perPage) {
+        results.push({
+          folder: folderRaw,
+          folderDisplay,
+          currentName: f,
+          newName,
+          currentPath: path.join(dirPath, f),
+        });
+      } else if (results.length >= perPage) {
+        hasMore = true;
+        break;
+      }
     }
+    if (hasMore) break;
   }
-  return results;
+  return { list: results, hasMore };
 }
 
 async function findTxnByUniqueId(idPart) {
