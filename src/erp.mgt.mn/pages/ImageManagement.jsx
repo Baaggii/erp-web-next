@@ -5,6 +5,8 @@ export default function ImageManagement() {
   const { addToast } = useToast();
   const [days, setDays] = useState('');
   const [result, setResult] = useState(null);
+
+  const PER_PAGE = 100;
   const [tab, setTab] = useState('cleanup');
   const [pending, setPending] = useState([]);
   const [page, setPage] = useState(1);
@@ -13,8 +15,18 @@ export default function ImageManagement() {
   const [uploads, setUploads] = useState([]);
   const [uploadSel, setUploadSel] = useState([]);
   const [folderFiles, setFolderFiles] = useState([]);
+  const [folderHandle, setFolderHandle] = useState(null);
   const [folderName, setFolderName] = useState('');
+  const [folderPage, setFolderPage] = useState(1);
+  const [folderSel, setFolderSel] = useState([]);
+  const [folderListed, setFolderListed] = useState(false);
   const fileRef = useRef();
+  const [listLoading, setListLoading] = useState(false);
+  const [checkLoading, setCheckLoading] = useState(false);
+
+  const startIdx = (folderPage - 1) * PER_PAGE;
+  const pageFiles = folderFiles.slice(startIdx, startIdx + PER_PAGE);
+  const folderHasMore = startIdx + PER_PAGE < folderFiles.length;
 
   function toggle(id) {
     setSelected((prev) =>
@@ -44,6 +56,34 @@ export default function ImageManagement() {
     }
   }
 
+  function toggleFolder(idx) {
+    setFolderSel((prev) =>
+      prev.includes(idx) ? prev.filter((p) => p !== idx) : [...prev, idx],
+    );
+  }
+
+  function toggleFolderAll(pageFiles) {
+    const ids = pageFiles.map((_, i) => i + (folderPage - 1) * PER_PAGE);
+    if (ids.every((id) => folderSel.includes(id))) {
+      setFolderSel((prev) => prev.filter((id) => !ids.includes(id)));
+    } else {
+      setFolderSel((prev) => Array.from(new Set([...prev, ...ids])));
+    }
+  }
+
+  function deleteSelected() {
+    if (folderSel.length === 0) return;
+    const remaining = folderFiles.filter((_, i) => !folderSel.includes(i));
+    setFolderFiles(remaining);
+    setFolderSel([]);
+    setUploads([]);
+    setUploadSel([]);
+  }
+
+  function clearFolderSelection() {
+    setFolderSel([]);
+  }
+
   async function handleCleanup() {
     const path = days ? `/api/transaction_images/cleanup/${days}` : '/api/transaction_images/cleanup';
     try {
@@ -68,8 +108,18 @@ export default function ImageManagement() {
       setUploadSel([]);
       setSelected([]);
       setPage(1);
+      setFolderFiles([]);
+      setFolderHandle(null);
+      setFolderSel([]);
+      setFolderPage(1);
+      setFolderName('');
+      setFolderListed(false);
     }
   }, [tab]);
+
+  useEffect(() => {
+    clearFolderSelection();
+  }, [folderPage, folderFiles]);
 
   async function refreshList(p = page) {
     try {
@@ -81,6 +131,8 @@ export default function ImageManagement() {
         setPending(Array.isArray(data.list) ? data.list : []);
         setHasMore(!!data.hasMore);
         setSelected([]);
+        setUploads([]);
+        setUploadSel([]);
       } else {
         setPending([]);
         setHasMore(false);
@@ -109,21 +161,86 @@ export default function ImageManagement() {
     }
   }
 
-  function handleFolderChange(files) {
+  async function selectFolder() {
+    if (window.showDirectoryPicker) {
+      try {
+        const dir = await window.showDirectoryPicker();
+        setFolderHandle(dir);
+        setFolderFiles([]);
+        setFolderSel([]);
+        setFolderPage(1);
+        setFolderListed(false);
+        setFolderName(dir.name);
+        return;
+      } catch {
+        // cancelled or not allowed
+      }
+    }
+    if (fileRef.current) {
+      fileRef.current.value = '';
+      fileRef.current.click();
+    }
+  }
+
+  function handleFolderChange(files, root) {
     const arr = Array.from(files || []);
     setFolderFiles(arr);
+    setFolderPage(1);
+    setFolderSel([]);
+    setFolderListed(false);
     if (arr.length > 0) {
-      const path = arr[0].webkitRelativePath || arr[0].name;
-      const dir = path.split('/')[0];
+      setFolderHandle(null);
+    }
+    if (root) {
+      setFolderName(root);
+    } else if (arr.length > 0) {
+      const rel = arr[0].webkitRelativePath || arr[0].name;
+      const dir = rel.split('/').slice(0, -1).join('/') || rel.split('/')[0];
       setFolderName(dir);
     } else {
       setFolderName('');
     }
   }
 
-  async function checkFolder() {
-    if (folderFiles.length === 0) return;
-    const names = folderFiles.slice(0, 1000).map((f, i) => ({ name: f.name, index: i }));
+  async function listNames() {
+    setListLoading(true);
+    let arr = folderFiles;
+    if (folderHandle) {
+      arr = [];
+      async function readDir(handle) {
+        for await (const entry of handle.values()) {
+          if (entry.kind === 'file') {
+            const file = await entry.getFile();
+            arr.push(file);
+          } else if (entry.kind === 'directory') {
+            await readDir(entry);
+          }
+        }
+      }
+      try {
+        await readDir(folderHandle);
+      } catch {
+        arr = [];
+      }
+      setFolderFiles(arr);
+    }
+    if (arr.length === 0) {
+      setListLoading(false);
+      return;
+    }
+    setFolderListed(true);
+    setFolderPage(1);
+    setListLoading(false);
+  }
+
+  async function checkNames() {
+    if (!folderListed || folderFiles.length === 0 || folderSel.length === 0) {
+      addToast('List image names and select files first', 'info');
+      return;
+    }
+    setCheckLoading(true);
+    const indices = folderSel;
+    const names = indices.map((i) => ({ name: folderFiles[i].name, index: i }));
     try {
       const res = await fetch('/api/transaction_images/folder_check', {
         method: 'POST',
@@ -141,6 +258,7 @@ export default function ImageManagement() {
     } catch {
       addToast('Check failed', 'error');
     }
+    setCheckLoading(false);
   }
 
   async function commitUploads() {
@@ -161,8 +279,11 @@ export default function ImageManagement() {
     if (res.ok) {
       const data = await res.json().catch(() => ({}));
       addToast(`Uploaded ${data.uploaded || 0} file(s)`, 'success');
+      const remaining = folderFiles.filter((_, i) => !uploadSel.includes(i));
+      setFolderFiles(remaining);
       setUploads([]);
       setUploadSel([]);
+      setFolderSel((sel) => sel.filter((i) => !uploadSel.includes(i)));
     } else {
       addToast('Upload failed', 'error');
     }
@@ -200,7 +321,7 @@ export default function ImageManagement() {
       ) : (
         <div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <button type="button" onClick={() => fileRef.current?.click()} style={{ marginRight: '0.5rem' }}>
+            <button type="button" onClick={selectFolder} style={{ marginRight: '0.5rem' }}>
               Select Folder
             </button>
             <input
@@ -212,12 +333,44 @@ export default function ImageManagement() {
               style={{ display: 'none' }}
               onChange={(e) => handleFolderChange(e.target.files)}
             />
-            {folderName && <span style={{ marginRight: '0.5rem' }}>{folderName}</span>}
-            <button type="button" onClick={checkFolder} style={{ marginRight: '0.5rem' }}>
-              Check Folder
+            <input
+              type="text"
+              value={folderName}
+              readOnly
+              placeholder="No folder"
+              style={{ marginRight: '0.5rem', width: '12rem' }}
+            />
+            <button
+              type="button"
+              onClick={listNames}
+              style={{ marginRight: '0.5rem' }}
+              disabled={listLoading || (!folderHandle && folderFiles.length === 0)}
+            >
+              {listLoading ? 'Listing...' : 'List Image Names'}
             </button>
+            {folderListed && (
+              <>
+                <button
+                  type="button"
+                  onClick={checkNames}
+                  style={{ marginRight: '0.5rem' }}
+                  disabled={checkLoading || folderSel.length === 0}
+                >
+                  {checkLoading ? 'Checking...' : 'Check Names'}
+                </button>
+                <button type="button" onClick={deleteSelected} style={{ marginRight: '0.5rem' }} disabled={folderSel.length === 0}>
+                  Delete Selected
+                </button>
+                <button type="button" disabled={folderPage === 1} onClick={() => setFolderPage(folderPage - 1)} style={{ marginRight: '0.5rem' }}>
+                  Prev Page
+                </button>
+                <button type="button" disabled={!folderHasMore} onClick={() => setFolderPage(folderPage + 1)} style={{ marginRight: '0.5rem' }}>
+                  Next Page
+                </button>
+              </>
+            )}
             <button type="button" onClick={refreshList} style={{ marginRight: '0.5rem' }}>
-              Refresh
+              Refresh from host
             </button>
             <button type="button" disabled={page === 1} onClick={() => { const p = page - 1; setPage(p); refreshList(p); }} style={{ marginRight: '0.5rem' }}>
               Prev
@@ -226,6 +379,31 @@ export default function ImageManagement() {
               Next
             </button>
           </div>
+          {folderListed && pageFiles.length > 0 && (
+            <div style={{ marginBottom: '1rem' }}>
+              <h4>Local Files</h4>
+              <table className="min-w-full border border-gray-300 text-sm" style={{ tableLayout: 'fixed' }}>
+                <thead>
+                  <tr>
+                    <th className="border px-2 py-1">
+                      <input type="checkbox" checked={pageFiles.every((_, i) => folderSel.includes(startIdx + i))} onChange={() => toggleFolderAll(pageFiles)} />
+                    </th>
+                    <th className="border px-2 py-1">Name</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageFiles.map((f, idx) => (
+                    <tr key={startIdx + idx} className={folderSel.includes(startIdx + idx) ? 'bg-blue-50' : ''}>
+                      <td className="border px-2 py-1 text-center">
+                        <input type="checkbox" checked={folderSel.includes(startIdx + idx)} onChange={() => toggleFolder(startIdx + idx)} />
+                      </td>
+                      <td className="border px-2 py-1">{f.name}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           {uploads.length > 0 && (
             <div style={{ marginBottom: '1rem' }}>
               <h4>Uploads</h4>
