@@ -18,6 +18,16 @@ export default function RowImageViewModal({
   const [fullscreen, setFullscreen] = useState(null);
   const { addToast } = useToast();
 
+  const placeholder =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMBAZLr5z0AAAAASUVORK5CYII=';
+
+  function getImageUrl(p) {
+    if (!p) return '';
+    if (/^https?:\/\//i.test(p)) return p;
+    if (p.startsWith('/')) return `${window.location.origin}${p}`;
+    return p;
+  }
+
   useEffect(() => {
     if (!visible) return;
     const { name } = buildImageName(row, imagenameFields, columnCaseMap);
@@ -26,19 +36,35 @@ export default function RowImageViewModal({
       return;
     }
     const safeTable = encodeURIComponent(table);
-    const params = new URLSearchParams();
-    if (folder) params.set('folder', folder);
-    addToast(`Search: ${params.get('folder') || table}/${name}`, 'info');
-    fetch(`/api/transaction_images/${safeTable}/${encodeURIComponent(name)}?${params.toString()}`, {
-      credentials: 'include',
-    })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((imgs) => {
-        const list = Array.isArray(imgs) ? imgs : [];
-        addToast(`Found ${list.length} image(s)`, 'info');
-        setFiles(list);
-      })
-      .catch(() => setFiles([]));
+    const folders = [folder];
+    if (folder !== table && table.startsWith('transactions_')) {
+      folders.push(table);
+    }
+    (async () => {
+      for (const fld of folders) {
+        const params = new URLSearchParams();
+        if (fld) params.set('folder', fld);
+        addToast(`Search: ${params.get('folder') || table}/${name}`, 'info');
+        try {
+          const res = await fetch(
+            `/api/transaction_images/${safeTable}/${encodeURIComponent(name)}?${params.toString()}`,
+            { credentials: 'include' },
+          );
+          const imgs = res.ok ? await res.json().catch(() => []) : [];
+          const list = Array.isArray(imgs) ? imgs : [];
+          if (list.length > 0) {
+            addToast(`Found ${list.length} image(s)`, 'info');
+            setFiles(list);
+            return;
+          }
+          if (fld === folders[folders.length - 1]) {
+            setFiles([]);
+          }
+        } catch {
+          if (fld === folders[folders.length - 1]) setFiles([]);
+        }
+      }
+    })();
   }, [visible, folder, row, table]);
 
   useEffect(() => {
@@ -60,7 +86,15 @@ export default function RowImageViewModal({
         const name = src.split('/').pop();
         return (
           <div key={src} style={{ marginBottom: '0.25rem' }}>
-            <img src={src} alt="" style={{ maxWidth: '100px', marginRight: '0.5rem' }} />
+            <img
+              src={getImageUrl(src)}
+              alt=""
+              onError={(e) => {
+                e.currentTarget.onerror = null;
+                e.currentTarget.src = placeholder;
+              }}
+              style={{ maxWidth: '100px', marginRight: '0.5rem' }}
+            />
             <span
               style={{ cursor: 'pointer', color: '#2563eb' }}
               onClick={() => handleView(src)}
@@ -86,8 +120,12 @@ export default function RowImageViewModal({
       {files.map((src) => (
         <img
           key={src}
-          src={src}
+          src={getImageUrl(src)}
           alt=""
+          onError={(e) => {
+            e.currentTarget.onerror = null;
+            e.currentTarget.src = placeholder;
+          }}
           style={{ cursor: 'pointer', width: '150px', height: '150px', objectFit: 'cover' }}
           onClick={() => handleView(src)}
         />
@@ -126,8 +164,12 @@ export default function RowImageViewModal({
             onClick={() => setFullscreen(null)}
           >
             <img
-              src={fullscreen}
+              src={getImageUrl(fullscreen)}
               alt=""
+              onError={(e) => {
+                e.currentTarget.onerror = null;
+                e.currentTarget.src = placeholder;
+              }}
               style={{ maxWidth: '90%', maxHeight: '90%' }}
             />
           </div>,

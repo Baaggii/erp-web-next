@@ -1951,6 +1951,7 @@ export default function CodingTablesPage() {
             Field Name Row:
             <input
               type="number"
+              inputMode="decimal"
               min="1"
               value={headerRow}
               onChange={handleHeaderRowChange}
@@ -1958,6 +1959,7 @@ export default function CodingTablesPage() {
             Mongolian Field Name Row:
             <input
               type="number"
+              inputMode="decimal"
               min="1"
               value={mnHeaderRow}
               onChange={(e) => setMnHeaderRow(e.target.value)}
@@ -2120,6 +2122,7 @@ export default function CodingTablesPage() {
                       Start Year:{' '}
                       <input
                         type="number"
+                        inputMode="decimal"
                         value={startYear}
                         onChange={(e) => setStartYear(e.target.value)}
                         style={{ marginRight: '0.5rem' }}
@@ -2127,6 +2130,7 @@ export default function CodingTablesPage() {
                       End Year:{' '}
                       <input
                         type="number"
+                        inputMode="decimal"
                         value={endYear}
                         onChange={(e) => setEndYear(e.target.value)}
                       />
@@ -2149,6 +2153,7 @@ export default function CodingTablesPage() {
                     Start Value:{' '}
                     <input
                       type="number"
+                      inputMode="decimal"
                       value={autoIncStart}
                       onChange={(e) => setAutoIncStart(e.target.value)}
                       style={{ width: '6rem' }}
@@ -2308,6 +2313,7 @@ export default function CodingTablesPage() {
                 Group Size:
                 <input
                   type="number"
+                  inputMode="decimal"
                   min="1"
                   value={groupSize}
                   onChange={(e) =>
