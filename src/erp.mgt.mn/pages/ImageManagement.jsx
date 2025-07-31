@@ -115,34 +115,35 @@ export default function ImageManagement() {
         const dir = await window.showDirectoryPicker();
         const files = [];
         const root = dir.name;
-        async function readDir(handle, prefix = '') {
+        async function readDir(handle) {
           for await (const entry of handle.values()) {
             if (entry.kind === 'file') {
               const file = await entry.getFile();
-              Object.defineProperty(file, 'webkitRelativePath', {
-                value: `${prefix}${entry.name}`,
-              });
               files.push(file);
             } else if (entry.kind === 'directory') {
-              await readDir(entry, `${prefix}${entry.name}/`);
+              await readDir(entry);
             }
           }
         }
-        await readDir(dir, `${root}/`);
-        handleFolderChange(files);
-        setFolderName(root);
+        await readDir(dir);
+        handleFolderChange(files, root);
         return;
       } catch {
         // cancelled or not allowed
       }
     }
-    fileRef.current?.click();
+    if (fileRef.current) {
+      fileRef.current.value = '';
+      fileRef.current.click();
+    }
   }
 
-  function handleFolderChange(files) {
+  function handleFolderChange(files, root) {
     const arr = Array.from(files || []);
     setFolderFiles(arr);
-    if (arr.length > 0) {
+    if (root) {
+      setFolderName(root);
+    } else if (arr.length > 0) {
       const path = arr[0].webkitRelativePath || arr[0].name;
       const dir = path.split('/')[0];
       setFolderName(dir);
