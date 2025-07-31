@@ -27,6 +27,12 @@ function sanitizeName(name) {
     .replace(/[^a-z0-9_~\-]+/gi, '_');
 }
 
+function containsToken(str = '', token = '') {
+  if (!token) return false;
+  const re = new RegExp(`(?:^|[_-])${token}(?:[_-]|$)`, 'i');
+  return re.test(str);
+}
+
 function getFieldCase(row, field) {
   if (!row) return undefined;
   if (row[field] !== undefined) return row[field];
@@ -332,8 +338,8 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
       const trans4d = sanitizeName(String(getFieldCase(row, 'trtype') || ''));
       const trans4l = sanitizeName(String(getFieldCase(row, 'TransType') || ''));
       const hasCodes =
-        (trans4d ? curSan.includes(trans4d) : true) &&
-        (trans4l ? curSan.includes(trans4l) : true);
+        (!trans4d || containsToken(curSan, trans4d)) &&
+        (!trans4l || containsToken(curSan, trans4l));
       if (hasCodes) continue;
 
       const cfg = pickConfig(configs, row);
@@ -350,10 +356,10 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
         newBase = sanitizeName(String(row[numField]));
       }
       if (!newBase) continue;
-      if (transDigit && !sanitizeName(newBase).includes(sanitizeName(transDigit))) {
+      if (transDigit && !containsToken(sanitizeName(newBase), sanitizeName(transDigit))) {
         newBase = sanitizeName(`${transDigit}_${newBase}`);
       }
-      if (transType && !sanitizeName(newBase).includes(sanitizeName(transType))) {
+      if (transType && !containsToken(sanitizeName(newBase), sanitizeName(transType))) {
         newBase = sanitizeName(`${newBase}_${transType}`);
       }
       const folderRaw = buildFolderName(row, cfg?.imageFolder || entry.name);
@@ -461,10 +467,10 @@ export async function checkFolderNames(list = []) {
       newBase = sanitizeName(String(row[numField]));
     }
     if (!newBase) continue;
-    if (transDigit && !sanitizeName(newBase).includes(sanitizeName(transDigit))) {
+    if (transDigit && !containsToken(sanitizeName(newBase), sanitizeName(transDigit))) {
       newBase = sanitizeName(`${transDigit}_${newBase}`);
     }
-    if (transType && !sanitizeName(newBase).includes(sanitizeName(transType))) {
+    if (transType && !containsToken(sanitizeName(newBase), sanitizeName(transType))) {
       newBase = sanitizeName(`${newBase}_${transType}`);
     }
     const folderRaw = buildFolderName(row, cfg?.imageFolder || found.table);
