@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import Modal from './Modal.jsx';
 import buildImageName from '../utils/buildImageName.js';
+import { API_BASE } from '../utils/apiBase.js';
 import { useToast } from '../context/ToastContext.jsx';
 
 export default function RowImageViewModal({
@@ -17,6 +18,19 @@ export default function RowImageViewModal({
   const [showGallery, setShowGallery] = useState(false);
   const [fullscreen, setFullscreen] = useState(null);
   const { addToast } = useToast();
+
+  const placeholder =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMBAZLr5z0AAAAASUVORK5CYII=';
+
+  function getImageUrl(p) {
+    if (!p) return '';
+    // If API returns a full URL, use it directly
+    if (p.startsWith('http')) return p;
+    // Preserve paths that already start with '/'
+    if (p.startsWith('/')) return p;
+    // Fallback: prepend API base
+    return `${window.API_BASE || window.location.origin}/${p.replace(/^\//, '')}`;
+  }
 
   useEffect(() => {
     if (!visible) return;
@@ -76,7 +90,15 @@ export default function RowImageViewModal({
         const name = src.split('/').pop();
         return (
           <div key={src} style={{ marginBottom: '0.25rem' }}>
-            <img src={src} alt="" style={{ maxWidth: '100px', marginRight: '0.5rem' }} />
+            <img
+              src={getImageUrl(src)}
+              alt=""
+              onError={(e) => {
+                e.currentTarget.onerror = null;
+                e.currentTarget.src = placeholder;
+              }}
+              style={{ maxWidth: '100px', marginRight: '0.5rem' }}
+            />
             <span
               style={{ cursor: 'pointer', color: '#2563eb' }}
               onClick={() => handleView(src)}
@@ -102,8 +124,12 @@ export default function RowImageViewModal({
       {files.map((src) => (
         <img
           key={src}
-          src={src}
+          src={getImageUrl(src)}
           alt=""
+          onError={(e) => {
+            e.currentTarget.onerror = null;
+            e.currentTarget.src = placeholder;
+          }}
           style={{ cursor: 'pointer', width: '150px', height: '150px', objectFit: 'cover' }}
           onClick={() => handleView(src)}
         />
@@ -142,8 +168,12 @@ export default function RowImageViewModal({
             onClick={() => setFullscreen(null)}
           >
             <img
-              src={fullscreen}
+              src={getImageUrl(fullscreen)}
               alt=""
+              onError={(e) => {
+                e.currentTarget.onerror = null;
+                e.currentTarget.src = placeholder;
+              }}
               style={{ maxWidth: '90%', maxHeight: '90%' }}
             />
           </div>,

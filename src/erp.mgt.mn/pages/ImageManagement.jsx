@@ -43,7 +43,6 @@ export default function ImageManagement() {
       setUploadSel(uploads.map((u) => u.index));
     }
   }
-
   async function handleCleanup() {
     const path = days ? `/api/transaction_images/cleanup/${days}` : '/api/transaction_images/cleanup';
     try {
