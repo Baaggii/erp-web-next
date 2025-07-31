@@ -22,14 +22,19 @@ export default function InventoryImageUpload({ onResult, multiple = false, uploa
         });
         if (res.ok) {
           const data = await res.json();
+          const count = (data.items || []).length;
+          addToast(
+            count ? `${f.name}: ${count} suggestion(s)` : `${f.name}: no suggestions`,
+            count ? 'success' : 'warn',
+          );
           results.push(...(data.items || []));
         } else {
           const text = await res.text();
-          addToast(text || 'AI detection failed', 'error');
+          addToast(`${f.name}: ${text || 'AI detection failed'}`, 'error');
         }
       } catch (err) {
         console.error(err);
-        addToast('AI detection error: ' + err.message, 'error');
+        addToast(`${f.name}: AI detection error: ${err.message}`, 'error');
       }
     }
     setItems(results);
