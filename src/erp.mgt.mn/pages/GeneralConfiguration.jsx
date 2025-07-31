@@ -93,6 +93,7 @@ export default function GeneralConfiguration() {
               <input
                 name="labelFontSize"
                 type="number"
+                inputMode="decimal"
                 value={active.labelFontSize ?? ''}
                 onChange={handleChange}
               />
@@ -104,6 +105,7 @@ export default function GeneralConfiguration() {
               <input
                 name="boxWidth"
                 type="number"
+                inputMode="decimal"
                 value={active.boxWidth ?? ''}
                 onChange={handleChange}
               />
@@ -115,6 +117,7 @@ export default function GeneralConfiguration() {
               <input
                 name="boxHeight"
                 type="number"
+                inputMode="decimal"
                 value={active.boxHeight ?? ''}
                 onChange={handleChange}
               />
@@ -126,6 +129,7 @@ export default function GeneralConfiguration() {
               <input
                 name="boxMaxWidth"
                 type="number"
+                inputMode="decimal"
                 value={active.boxMaxWidth ?? ''}
                 onChange={handleChange}
               />
@@ -137,6 +141,7 @@ export default function GeneralConfiguration() {
               <input
                 name="boxMaxHeight"
                 type="number"
+                inputMode="decimal"
                 value={active.boxMaxHeight ?? ''}
                 onChange={handleChange}
               />
@@ -171,6 +176,7 @@ export default function GeneralConfiguration() {
               <input
                 name="imageStorage.cleanupDays"
                 type="number"
+                inputMode="decimal"
                 value={active.imageStorage?.cleanupDays ?? ''}
                 onChange={(e) => {
                   const val = Number(e.target.value);
