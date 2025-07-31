@@ -162,7 +162,11 @@ export default function ImageManagement() {
       try {
         const dir = await window.showDirectoryPicker();
         setFolderHandle(dir);
-        handleFolderChange([], dir.name);
+        setFolderFiles([]);
+        setFolderSel([]);
+        setFolderPage(1);
+        setFolderListed(false);
+        setFolderName(dir.name);
         return;
       } catch {
         // cancelled or not allowed
@@ -221,8 +225,8 @@ export default function ImageManagement() {
   }
 
   async function checkNames() {
-    if (folderFiles.length === 0 || folderSel.length === 0) {
-      addToast('Select file names first', 'info');
+    if (!folderListed || folderFiles.length === 0 || folderSel.length === 0) {
+      addToast('List image names and select files first', 'info');
       return;
     }
     const indices = folderSel;
@@ -325,7 +329,7 @@ export default function ImageManagement() {
               placeholder="No folder"
               style={{ marginRight: '0.5rem', width: '12rem' }}
             />
-            <button type="button" onClick={listNames} style={{ marginRight: '0.5rem' }}>
+            <button type="button" onClick={listNames} style={{ marginRight: '0.5rem' }} disabled={!folderHandle && folderFiles.length === 0}>
               List Image Names
             </button>
             {folderListed && (
@@ -345,7 +349,7 @@ export default function ImageManagement() {
               </>
             )}
             <button type="button" onClick={refreshList} style={{ marginRight: '0.5rem' }}>
-              Refresh
+              Refresh from host
             </button>
             <button type="button" disabled={page === 1} onClick={() => { const p = page - 1; setPage(p); refreshList(p); }} style={{ marginRight: '0.5rem' }}>
               Prev
