@@ -144,47 +144,52 @@ export default function GeneralConfiguration() {
           </div>
         </>
       ) : (
-        <div style={{ marginBottom: '0.5rem' }}>
-          <label>
-            Base Path{' '}
-            <input
-              name="imageStorage.basePath"
-              type="text"
-              value={active.imageStorage?.basePath ?? ''}
-              onChange={(e) => {
-                const val = e.target.value;
-                setCfg((c) => ({
-                  ...c,
-                  general: {
-                    ...(c.general || {}),
-                    imageStorage: { ...(c.general?.imageStorage || {}), basePath: val },
-                  },
-                }));
-              }}
-            />
-          </label>
-        </div>
-        <div style={{ marginBottom: '0.5rem' }}>
-          <label>
-            Cleanup Days{' '}
-            <input
-              name="imageStorage.cleanupDays"
-              type="number"
-              value={active.imageStorage?.cleanupDays ?? ''}
-              onChange={(e) => {
-                const val = Number(e.target.value);
-                setCfg((c) => ({
-                  ...c,
-                  general: {
-                    ...(c.general || {}),
-                    imageStorage: { ...(c.general?.imageStorage || {}), cleanupDays: val },
-                  },
-                }));
-              }}
-              style={{ width: '4rem' }}
-            />
-          </label>
-        </div>
+        <>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <label>
+              Base Path{' '}
+              <input
+                name="imageStorage.basePath"
+                type="text"
+                value={active.imageStorage?.basePath ?? ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCfg((c) => ({
+                    ...c,
+                    general: {
+                      ...(c.general || {}),
+                      imageStorage: { ...(c.general?.imageStorage || {}), basePath: val },
+                    },
+                  }));
+                }}
+              />
+            </label>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <label>
+              Cleanup Days{' '}
+              <input
+                name="imageStorage.cleanupDays"
+                type="number"
+                value={active.imageStorage?.cleanupDays ?? ''}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setCfg((c) => ({
+                    ...c,
+                    general: {
+                      ...(c.general || {}),
+                      imageStorage: {
+                        ...(c.general?.imageStorage || {}),
+                        cleanupDays: val,
+                      },
+                    },
+                  }));
+                }}
+                style={{ width: '4rem' }}
+              />
+            </label>
+          </div>
+        </>
       )}
       <button onClick={handleSave} disabled={saving}>
         Save
