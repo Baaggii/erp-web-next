@@ -44,6 +44,80 @@ export default function ImageManagement() {
     }
   }
 
+  const PER_PAGE = 100;
+  const [tab, setTab] = useState('cleanup');
+  const [pending, setPending] = useState([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [selected, setSelected] = useState([]);
+  const [uploads, setUploads] = useState([]);
+  const [uploadSel, setUploadSel] = useState([]);
+  const [folderFiles, setFolderFiles] = useState([]);
+  const [folderName, setFolderName] = useState('');
+  const [folderPage, setFolderPage] = useState(1);
+  const [folderSel, setFolderSel] = useState([]);
+  const fileRef = useRef();
+
+  const startIdx = (folderPage - 1) * PER_PAGE;
+  const pageFiles = folderFiles.slice(startIdx, startIdx + PER_PAGE);
+  const folderHasMore = startIdx + PER_PAGE < folderFiles.length;
+
+  function toggle(id) {
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
+    );
+  }
+
+  function toggleAll() {
+    if (selected.length === pending.length) {
+      setSelected([]);
+    } else {
+      setSelected(pending.map((p) => p.currentName));
+    }
+  }
+
+  function toggleUpload(id) {
+    setUploadSel((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
+    );
+  }
+
+  function toggleUploadAll() {
+    if (uploadSel.length === uploads.length) {
+      setUploadSel([]);
+    } else {
+      setUploadSel(uploads.map((u) => u.index));
+    }
+  }
+
+  function toggleFolder(idx) {
+    setFolderSel((prev) =>
+      prev.includes(idx) ? prev.filter((p) => p !== idx) : [...prev, idx],
+    );
+  }
+
+  function toggleFolderAll(pageFiles) {
+    const ids = pageFiles.map((_, i) => i + (folderPage - 1) * PER_PAGE);
+    if (ids.every((id) => folderSel.includes(id))) {
+      setFolderSel((prev) => prev.filter((id) => !ids.includes(id)));
+    } else {
+      setFolderSel((prev) => Array.from(new Set([...prev, ...ids])));
+    }
+  }
+
+  function deleteSelected() {
+    if (folderSel.length === 0) return;
+    const remaining = folderFiles.filter((_, i) => !folderSel.includes(i));
+    setFolderFiles(remaining);
+    setFolderSel([]);
+    setUploads([]);
+    setUploadSel([]);
+  }
+
+  function clearFolderSelection() {
+    setFolderSel([]);
+  }
+
   async function handleCleanup() {
     const path = days ? `/api/transaction_images/cleanup/${days}` : '/api/transaction_images/cleanup';
     try {
@@ -68,8 +142,16 @@ export default function ImageManagement() {
       setUploadSel([]);
       setSelected([]);
       setPage(1);
+      setFolderFiles([]);
+      setFolderSel([]);
+      setFolderPage(1);
+      setFolderName('');
     }
   }, [tab]);
+
+  useEffect(() => {
+    clearFolderSelection();
+  }, [folderPage, folderFiles]);
 
   async function refreshList(p = page) {
     try {
@@ -109,12 +191,45 @@ export default function ImageManagement() {
     }
   }
 
-  function handleFolderChange(files) {
+  async function selectFolder() {
+    if (window.showDirectoryPicker) {
+      try {
+        const dir = await window.showDirectoryPicker();
+        const files = [];
+        const root = dir.name;
+        async function readDir(handle) {
+          for await (const entry of handle.values()) {
+            if (entry.kind === 'file') {
+              const file = await entry.getFile();
+              files.push(file);
+            } else if (entry.kind === 'directory') {
+              await readDir(entry);
+            }
+          }
+        }
+        await readDir(dir);
+        handleFolderChange(files, root);
+        return;
+      } catch {
+        // cancelled or not allowed
+      }
+    }
+    if (fileRef.current) {
+      fileRef.current.value = '';
+      fileRef.current.click();
+    }
+  }
+
+  function handleFolderChange(files, root) {
     const arr = Array.from(files || []);
     setFolderFiles(arr);
-    if (arr.length > 0) {
-      const path = arr[0].webkitRelativePath || arr[0].name;
-      const dir = path.split('/')[0];
+    setFolderPage(1);
+    setFolderSel([]);
+    if (root) {
+      setFolderName(root);
+    } else if (arr.length > 0) {
+      const rel = arr[0].webkitRelativePath || arr[0].name;
+      const dir = rel.split('/').slice(0, -1).join('/') || rel.split('/')[0];
       setFolderName(dir);
     } else {
       setFolderName('');
@@ -123,7 +238,13 @@ export default function ImageManagement() {
 
   async function checkFolder() {
     if (folderFiles.length === 0) return;
-    const names = folderFiles.slice(0, 1000).map((f, i) => ({ name: f.name, index: i }));
+    let indices = folderSel;
+    if (indices.length === 0) {
+      const start = (folderPage - 1) * PER_PAGE;
+      const pageFiles = folderFiles.slice(start, start + PER_PAGE);
+      indices = pageFiles.map((_, i) => start + i);
+    }
+    const names = indices.map((i) => ({ name: folderFiles[i].name, index: i }));
     try {
       const res = await fetch('/api/transaction_images/folder_check', {
         method: 'POST',
@@ -161,8 +282,11 @@ export default function ImageManagement() {
     if (res.ok) {
       const data = await res.json().catch(() => ({}));
       addToast(`Uploaded ${data.uploaded || 0} file(s)`, 'success');
+      const remaining = folderFiles.filter((_, i) => !uploadSel.includes(i));
+      setFolderFiles(remaining);
       setUploads([]);
       setUploadSel([]);
+      setFolderSel((sel) => sel.filter((i) => !uploadSel.includes(i)));
     } else {
       addToast('Upload failed', 'error');
     }
@@ -200,7 +324,7 @@ export default function ImageManagement() {
       ) : (
         <div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <button type="button" onClick={() => fileRef.current?.click()} style={{ marginRight: '0.5rem' }}>
+            <button type="button" onClick={selectFolder} style={{ marginRight: '0.5rem' }}>
               Select Folder
             </button>
             <input
@@ -212,12 +336,27 @@ export default function ImageManagement() {
               style={{ display: 'none' }}
               onChange={(e) => handleFolderChange(e.target.files)}
             />
-            {folderName && <span style={{ marginRight: '0.5rem' }}>{folderName}</span>}
+            <input
+              type="text"
+              value={folderName}
+              readOnly
+              placeholder="No folder"
+              style={{ marginRight: '0.5rem', width: '12rem' }}
+            />
             <button type="button" onClick={checkFolder} style={{ marginRight: '0.5rem' }}>
               Check Folder
             </button>
             <button type="button" onClick={refreshList} style={{ marginRight: '0.5rem' }}>
               Refresh
+            </button>
+            <button type="button" onClick={deleteSelected} style={{ marginRight: '0.5rem' }} disabled={folderSel.length === 0}>
+              Delete Selected
+            </button>
+            <button type="button" disabled={folderPage === 1} onClick={() => setFolderPage(folderPage - 1)} style={{ marginRight: '0.5rem' }}>
+              Prev Page
+            </button>
+            <button type="button" disabled={!folderHasMore} onClick={() => setFolderPage(folderPage + 1)} style={{ marginRight: '0.5rem' }}>
+              Next Page
             </button>
             <button type="button" disabled={page === 1} onClick={() => { const p = page - 1; setPage(p); refreshList(p); }} style={{ marginRight: '0.5rem' }}>
               Prev
@@ -226,6 +365,31 @@ export default function ImageManagement() {
               Next
             </button>
           </div>
+          {pageFiles.length > 0 && (
+            <div style={{ marginBottom: '1rem' }}>
+              <h4>Local Files</h4>
+              <table className="min-w-full border border-gray-300 text-sm" style={{ tableLayout: 'fixed' }}>
+                <thead>
+                  <tr>
+                    <th className="border px-2 py-1">
+                      <input type="checkbox" checked={pageFiles.every((_, i) => folderSel.includes(startIdx + i))} onChange={() => toggleFolderAll(pageFiles)} />
+                    </th>
+                    <th className="border px-2 py-1">Name</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageFiles.map((f, idx) => (
+                    <tr key={startIdx + idx} className={folderSel.includes(startIdx + idx) ? 'bg-blue-50' : ''}>
+                      <td className="border px-2 py-1 text-center">
+                        <input type="checkbox" checked={folderSel.includes(startIdx + idx)} onChange={() => toggleFolder(startIdx + idx)} />
+                      </td>
+                      <td className="border px-2 py-1">{f.name}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           {uploads.length > 0 && (
             <div style={{ marginBottom: '1rem' }}>
               <h4>Uploads</h4>
