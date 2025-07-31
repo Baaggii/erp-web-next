@@ -15,7 +15,8 @@
   },
   "general": {
     "imageStorage": {
-      "basePath": "uploads"
+      "basePath": "uploads",
+      "cleanupDays": 30
     }
   }
 }
