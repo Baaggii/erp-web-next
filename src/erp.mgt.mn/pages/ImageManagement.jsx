@@ -193,6 +193,82 @@ export default function ImageManagement() {
     setFolderSel([]);
   }
 
+  const PER_PAGE = 100;
+  const [tab, setTab] = useState('cleanup');
+  const [pending, setPending] = useState([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [selected, setSelected] = useState([]);
+  const [uploads, setUploads] = useState([]);
+  const [uploadSel, setUploadSel] = useState([]);
+  const [folderFiles, setFolderFiles] = useState([]);
+  const [folderHandle, setFolderHandle] = useState(null);
+  const [folderName, setFolderName] = useState('');
+  const [folderPage, setFolderPage] = useState(1);
+  const [folderSel, setFolderSel] = useState([]);
+  const [folderListed, setFolderListed] = useState(false);
+  const fileRef = useRef();
+
+  const startIdx = (folderPage - 1) * PER_PAGE;
+  const pageFiles = folderFiles.slice(startIdx, startIdx + PER_PAGE);
+  const folderHasMore = startIdx + PER_PAGE < folderFiles.length;
+
+  function toggle(id) {
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
+    );
+  }
+
+  function toggleAll() {
+    if (selected.length === pending.length) {
+      setSelected([]);
+    } else {
+      setSelected(pending.map((p) => p.currentName));
+    }
+  }
+
+  function toggleUpload(id) {
+    setUploadSel((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
+    );
+  }
+
+  function toggleUploadAll() {
+    if (uploadSel.length === uploads.length) {
+      setUploadSel([]);
+    } else {
+      setUploadSel(uploads.map((u) => u.index));
+    }
+  }
+
+  function toggleFolder(idx) {
+    setFolderSel((prev) =>
+      prev.includes(idx) ? prev.filter((p) => p !== idx) : [...prev, idx],
+    );
+  }
+
+  function toggleFolderAll(pageFiles) {
+    const ids = pageFiles.map((_, i) => i + (folderPage - 1) * PER_PAGE);
+    if (ids.every((id) => folderSel.includes(id))) {
+      setFolderSel((prev) => prev.filter((id) => !ids.includes(id)));
+    } else {
+      setFolderSel((prev) => Array.from(new Set([...prev, ...ids])));
+    }
+  }
+
+  function deleteSelected() {
+    if (folderSel.length === 0) return;
+    const remaining = folderFiles.filter((_, i) => !folderSel.includes(i));
+    setFolderFiles(remaining);
+    setFolderSel([]);
+    setUploads([]);
+    setUploadSel([]);
+  }
+
+  function clearFolderSelection() {
+    setFolderSel([]);
+  }
+
   async function handleCleanup() {
     const path = days ? `/api/transaction_images/cleanup/${days}` : '/api/transaction_images/cleanup';
     try {
@@ -218,6 +294,7 @@ export default function ImageManagement() {
       setSelected([]);
       setPage(1);
       setFolderFiles([]);
+      setFolderHandle(null);
       setFolderSel([]);
       setFolderPage(1);
       setFolderName('');
@@ -271,20 +348,8 @@ export default function ImageManagement() {
     if (window.showDirectoryPicker) {
       try {
         const dir = await window.showDirectoryPicker();
-        const files = [];
-        const root = dir.name;
-        async function readDir(handle) {
-          for await (const entry of handle.values()) {
-            if (entry.kind === 'file') {
-              const file = await entry.getFile();
-              files.push(file);
-            } else if (entry.kind === 'directory') {
-              await readDir(entry);
-            }
-          }
-        }
-        await readDir(dir);
-        handleFolderChange(files, root);
+        setFolderHandle(dir);
+        handleFolderChange([], dir.name);
         return;
       } catch {
         // cancelled or not allowed
@@ -302,6 +367,9 @@ export default function ImageManagement() {
     setFolderPage(1);
     setFolderSel([]);
     setFolderListed(false);
+    if (arr.length > 0) {
+      setFolderHandle(null);
+    }
     if (root) {
       setFolderName(root);
     } else if (arr.length > 0) {
@@ -313,8 +381,28 @@ export default function ImageManagement() {
     }
   }
 
-  function listNames() {
-    if (folderFiles.length === 0) return;
+  async function listNames() {
+    let arr = folderFiles;
+    if (folderHandle) {
+      arr = [];
+      async function readDir(handle) {
+        for await (const entry of handle.values()) {
+          if (entry.kind === 'file') {
+            const file = await entry.getFile();
+            arr.push(file);
+          } else if (entry.kind === 'directory') {
+            await readDir(entry);
+          }
+        }
+      }
+      try {
+        await readDir(folderHandle);
+      } catch {
+        arr = [];
+      }
+      setFolderFiles(arr);
+    }
+    if (arr.length === 0) return;
     setFolderListed(true);
     setFolderPage(1);
   }
