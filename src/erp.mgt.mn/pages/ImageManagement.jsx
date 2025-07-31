@@ -186,6 +186,7 @@ export default function ImageManagement() {
               Cleanup files older than (days):{' '}
               <input
                 type="number"
+                inputMode="decimal"
                 value={days}
                 onChange={(e) => setDays(e.target.value)}
                 style={{ width: '4rem' }}

@@ -110,9 +110,10 @@ export default function ERPLayout() {
         onLogout={handleLogout}
         onHome={handleHome}
         isMobile={isMobile}
+        sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen((o) => !o)}
       />
-      <div style={styles.body(isMobile)}>
+      <div style={styles.body(isMobile, sidebarOpen)}>
         {isMobile && sidebarOpen && (
           <div
             className="sidebar-overlay"
@@ -132,14 +133,14 @@ export default function ERPLayout() {
 }
 
 /** Top header bar **/
-function Header({ user, onLogout, onHome, isMobile, onToggleSidebar }) {
+function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, sidebarOpen }) {
   const { company } = useContext(AuthContext);
   function handleOpen(id) {
     console.log("open module", id);
   }
 
   return (
-    <header className="sticky-header" style={styles.header(isMobile)}>
+    <header className="sticky-header" style={styles.header(isMobile, sidebarOpen)}>
       {isMobile && (
         <button
           onClick={onToggleSidebar}
@@ -386,7 +387,7 @@ const styles = {
     fontFamily: "Arial, sans-serif",
     overflowX: "hidden",
   },
-  header: (mobile) => ({
+  header: (mobile, open) => ({
     display: "flex",
     alignItems: "center",
     backgroundColor: "#1f2937",
@@ -397,7 +398,8 @@ const styles = {
     position: "sticky",
     top: 0,
     zIndex: 20,
-    marginLeft: mobile ? 0 : "240px",
+    marginLeft: mobile ? (open ? "240px" : 0) : "240px",
+    transition: "margin-left 0.3s",
   }),
   logoSection: {
     display: "flex",
@@ -422,6 +424,9 @@ const styles = {
     marginLeft: "2rem",
     display: "flex",
     gap: "0.75rem",
+    overflowX: "auto",
+    whiteSpace: "nowrap",
+    flexGrow: 1,
   },
   iconBtn: {
     background: "transparent",
@@ -451,12 +456,13 @@ const styles = {
     cursor: "pointer",
     fontSize: "0.9rem",
   },
-  body: (mobile) => ({
+  body: (mobile, open) => ({
     display: "flex",
     flexGrow: 1,
     backgroundColor: "#f3f4f6",
     overflow: "auto",
-    marginLeft: mobile ? 0 : "240px",
+    marginLeft: mobile ? (open ? "240px" : 0) : "240px",
+    transition: "margin-left 0.3s",
   }),
   sidebar: (mobile, open) => ({
     width: "240px",
