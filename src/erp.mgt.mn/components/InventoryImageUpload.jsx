@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
+import { useToast } from '../context/ToastContext.jsx';
 
 export default function InventoryImageUpload({ onResult, multiple = false, uploadUrl = '/api/ai_inventory/identify' }) {
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState([]);
+  const { addToast } = useToast();
 
   async function handleUpload() {
     if (!files.length) return;
@@ -18,14 +20,35 @@ export default function InventoryImageUpload({ onResult, multiple = false, uploa
           body: form,
           credentials: 'include',
         });
-        const data = await res.json();
-        results.push(...(data.items || []));
+        if (res.ok) {
+          const data = await res.json();
+          const items = Array.isArray(data.items) ? data.items : [];
+          const count = items.length;
+          if (count) {
+            const list = items
+              .map((it) => `${it.code}${it.qty ? ` x${it.qty}` : ''}`)
+              .join(', ');
+            addToast(`${f.name}: ${count} suggestion(s) - ${list}`, 'success');
+            results.push(...items);
+          } else {
+            addToast(`${f.name}: no suggestions`, 'warn');
+          }
+        } else {
+          const text = await res.text();
+          addToast(`${f.name}: ${text || 'AI detection failed'}`, 'error');
+        }
       } catch (err) {
         console.error(err);
+        addToast(`${f.name}: AI detection error: ${err.message}`, 'error');
       }
     }
     setItems(results);
     if (onResult) onResult({ items: results });
+    if (results.length === 0) {
+      addToast('No suggestions found', 'warn');
+    } else {
+      addToast(`Detected ${results.length} item(s)`, 'success');
+    }
     setLoading(false);
   }
 

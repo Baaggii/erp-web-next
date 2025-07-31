@@ -44,6 +44,84 @@ export default function ImageManagement() {
     }
   }
 
+  const PER_PAGE = 100;
+  const [tab, setTab] = useState('cleanup');
+  const [pending, setPending] = useState([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [selected, setSelected] = useState([]);
+  const [uploads, setUploads] = useState([]);
+  const [uploadSel, setUploadSel] = useState([]);
+  const [folderFiles, setFolderFiles] = useState([]);
+  const [folderHandle, setFolderHandle] = useState(null);
+  const [folderName, setFolderName] = useState('');
+  const [folderPage, setFolderPage] = useState(1);
+  const [folderSel, setFolderSel] = useState([]);
+  const [folderListed, setFolderListed] = useState(false);
+  const fileRef = useRef();
+  const [listLoading, setListLoading] = useState(false);
+  const [checkLoading, setCheckLoading] = useState(false);
+
+  const startIdx = (folderPage - 1) * PER_PAGE;
+  const pageFiles = folderFiles.slice(startIdx, startIdx + PER_PAGE);
+  const folderHasMore = startIdx + PER_PAGE < folderFiles.length;
+
+  function toggle(id) {
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
+    );
+  }
+
+  function toggleAll() {
+    if (selected.length === pending.length) {
+      setSelected([]);
+    } else {
+      setSelected(pending.map((p) => p.currentName));
+    }
+  }
+
+  function toggleUpload(id) {
+    setUploadSel((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
+    );
+  }
+
+  function toggleUploadAll() {
+    if (uploadSel.length === uploads.length) {
+      setUploadSel([]);
+    } else {
+      setUploadSel(uploads.map((u) => u.index));
+    }
+  }
+
+  function toggleFolder(idx) {
+    setFolderSel((prev) =>
+      prev.includes(idx) ? prev.filter((p) => p !== idx) : [...prev, idx],
+    );
+  }
+
+  function toggleFolderAll(pageFiles) {
+    const ids = pageFiles.map((_, i) => i + (folderPage - 1) * PER_PAGE);
+    if (ids.every((id) => folderSel.includes(id))) {
+      setFolderSel((prev) => prev.filter((id) => !ids.includes(id)));
+    } else {
+      setFolderSel((prev) => Array.from(new Set([...prev, ...ids])));
+    }
+  }
+
+  function deleteSelected() {
+    if (folderSel.length === 0) return;
+    const remaining = folderFiles.filter((_, i) => !folderSel.includes(i));
+    setFolderFiles(remaining);
+    setFolderSel([]);
+    setUploads([]);
+    setUploadSel([]);
+  }
+
+  function clearFolderSelection() {
+    setFolderSel([]);
+  }
+
   async function handleCleanup() {
     const path = days ? `/api/transaction_images/cleanup/${days}` : '/api/transaction_images/cleanup';
     try {

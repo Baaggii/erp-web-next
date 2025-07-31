@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Modal from './Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import buildImageName from '../utils/buildImageName.js';
+import AISuggestionModal from './AISuggestionModal.jsx';
 
 export default function RowImageUploadModal({
   visible,
@@ -9,22 +10,37 @@ export default function RowImageUploadModal({
   table,
   folder,
   row = {},
+  rowKey = 0,
   imagenameFields = [],
   columnCaseMap = {},
   onUploaded = () => {},
+  onSuggestion = () => {},
 }) {
   const { addToast } = useToast();
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [uploaded, setUploaded] = useState([]);
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestModal, setShowSuggestModal] = useState(false);
   function buildName() {
     return buildImageName(row, imagenameFields, columnCaseMap);
   }
 
   useEffect(() => {
     if (!visible) return;
+    setFiles([]);
+    setUploaded([]);
+    setSuggestions([]);
+    if (!folder) {
+      setUploaded([]);
+      return;
+    }
+    if (!row._saved && !row._imageName) {
+      setUploaded([]);
+      return;
+    }
     const { name } = buildName();
-    if (!folder || !name) {
+    if (!name) {
       setUploaded([]);
       return;
     }
@@ -37,7 +53,23 @@ export default function RowImageUploadModal({
       .then((r) => (r.ok ? r.json() : []))
       .then((imgs) => setUploaded(Array.isArray(imgs) ? imgs : []))
       .catch(() => setUploaded([]));
-  }, [visible, folder, row, table]);
+  }, [visible, folder, rowKey, table, row._imageName, row._saved]);
+
+
+  useEffect(() => {
+    if (!visible) {
+      setFiles([]);
+      setUploaded([]);
+      setSuggestions([]);
+      setShowSuggestModal(false);
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (suggestions.length > 0) {
+      setShowSuggestModal(true);
+    }
+  }, [suggestions]);
 
   async function handleUpload(selectedFiles) {
     const { name: safeName, missing } = buildName();
@@ -61,14 +93,69 @@ export default function RowImageUploadModal({
     setLoading(true);
     const form = new FormData();
     filesToUpload.forEach((f) => form.append('images', f));
+    let detected = [];
     try {
       const res = await fetch(uploadUrl, { method: 'POST', body: form, credentials: 'include' });
       if (res.ok) {
-        addToast(`Images uploaded as ${finalName}`, 'success');
         const imgs = await res.json().catch(() => []);
+        addToast(`Uploaded ${imgs.length} image(s) as ${finalName}`, 'success');
         setFiles([]);
         setUploaded((u) => [...u, ...imgs]);
         onUploaded(finalName);
+        for (const file of filesToUpload) {
+          try {
+            const codeRes = await fetch(
+              `/api/transaction_images/benchmark_code?name=${encodeURIComponent(file.name)}`,
+              { credentials: 'include' },
+            );
+            if (codeRes.ok) {
+              const data = await codeRes.json().catch(() => ({}));
+              if (data.code) {
+                addToast(`Benchmark code found: ${data.code}`, 'success');
+              } else {
+                addToast('Benchmark code not found', 'warn');
+              }
+            } else {
+              const text = await codeRes.text().catch(() => '');
+              addToast(text || 'Benchmark lookup failed', 'error');
+            }
+          } catch {
+            addToast('Benchmark lookup failed', 'error');
+          }
+          const detForm = new FormData();
+          detForm.append('image', file);
+          try {
+            const detRes = await fetch('/api/ai_inventory/identify', {
+              method: 'POST',
+              body: detForm,
+              credentials: 'include',
+            });
+            if (detRes.ok) {
+              const data = await detRes.json();
+              const items = Array.isArray(data.items) ? data.items : [];
+              const count = items.length;
+              if (count) {
+                const list = items
+                  .map((it) => `${it.code}${it.qty ? ` x${it.qty}` : ''}`)
+                  .join(', ');
+                addToast(`AI found ${count} item(s): ${list}`, 'success');
+                detected.push(...items);
+              } else {
+                addToast('No AI suggestions', 'warn');
+              }
+            } else {
+              const text = await detRes.text();
+              addToast(text || 'AI detection failed', 'error');
+            }
+          } catch (err) {
+            console.error(err);
+            addToast('AI detection error: ' + err.message, 'error');
+          }
+        }
+        if (detected.length) {
+          setSuggestions((s) => [...s, ...detected]);
+          setShowSuggestModal(true);
+        }
       } else {
         const text = await res.text();
         addToast(text || 'Failed to upload images', 'error');
@@ -143,9 +230,25 @@ export default function RowImageUploadModal({
           </button>
         </div>
       )}
+      {suggestions.length > 0 && (
+        <div style={{ marginTop: '0.5rem' }}>
+          <button type="button" onClick={() => setShowSuggestModal(true)}>
+            View AI Suggestions ({suggestions.length})
+          </button>
+        </div>
+      )}
       <div style={{ textAlign: 'right', marginTop: '1rem' }}>
         <button type="button" onClick={onClose}>Close</button>
       </div>
+      <AISuggestionModal
+        visible={showSuggestModal}
+        items={suggestions}
+        onSelect={(it) => {
+          onSuggestion(it);
+          setShowSuggestModal(false);
+        }}
+        onClose={() => setShowSuggestModal(false)}
+      />
     </Modal>
   );
 }

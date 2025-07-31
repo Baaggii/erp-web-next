@@ -422,6 +422,9 @@ const styles = {
     marginLeft: "2rem",
     display: "flex",
     gap: "0.75rem",
+    overflowX: "auto",
+    whiteSpace: "nowrap",
+    flexGrow: 1,
   },
   iconBtn: {
     background: "transparent",
