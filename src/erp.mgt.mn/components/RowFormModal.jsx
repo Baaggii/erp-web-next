@@ -65,6 +65,12 @@ const RowFormModal = function RowFormModal({
   boxHeight = boxHeight ?? cfg.boxHeight ?? 30;
   boxMaxWidth = boxMaxWidth ?? cfg.boxMaxWidth ?? 150;
   boxMaxHeight = boxMaxHeight ?? cfg.boxMaxHeight ?? 150;
+  const [isNarrow, setIsNarrow] = useState(() => window.innerWidth < 768);
+  useEffect(() => {
+    const h = () => setIsNarrow(window.innerWidth < 768);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
 
   renderCount.current++;
   if (renderCount.current > 10 && !warned.current) {
@@ -321,6 +327,8 @@ const RowFormModal = function RowFormModal({
     gap: '2px',
     gridTemplateColumns: fitted
       ? `repeat(auto-fill, minmax(${boxWidth}px, ${boxMaxWidth}px))`
+      : isNarrow
+      ? '1fr'
       : `repeat(2, minmax(${boxWidth}px, ${boxMaxWidth}px))`,
     fontSize: `${inputFontSize}px`,
   };
@@ -331,8 +339,8 @@ const RowFormModal = function RowFormModal({
     width: `${boxWidth}px`,
     minWidth: `${boxWidth}px`,
     maxWidth: `${boxMaxWidth}px`,
-    height: `${boxHeight}px`,
-    maxHeight: `${boxMaxHeight}px`,
+    height: isNarrow ? '44px' : `${boxHeight}px`,
+    maxHeight: isNarrow ? 'none' : `${boxMaxHeight}px`,
     overflow: 'hidden',
     whiteSpace: 'nowrap',
     textOverflow: 'ellipsis',
@@ -894,7 +902,26 @@ const RowFormModal = function RowFormModal({
       <input
         title={formVals[c]}
         ref={(el) => (inputRefs.current[c] = el)}
-        type="text"
+        type={(() => {
+          if (placeholders[c] === 'YYYY-MM-DD') return 'date';
+          if (placeholders[c] === 'HH:MM:SS') return 'time';
+          const lower = c.toLowerCase();
+          if (lower.includes('email')) return 'email';
+          if (lower.includes('phone')) return 'tel';
+          const sample = row?.[c] ?? defaultValues[c];
+          if (typeof sample === 'number' || /^-?\d+(\.\d+)?$/.test(String(sample)))
+            return 'number';
+          return 'text';
+        })()}
+        inputMode={(() => {
+          const lower = c.toLowerCase();
+          if (lower.includes('email')) return 'email';
+          if (lower.includes('phone')) return 'tel';
+          const sample = row?.[c] ?? defaultValues[c];
+          if (typeof sample === 'number' || /^-?\d+(\.\d+)?$/.test(String(sample)))
+            return 'decimal';
+          return undefined;
+        })()}
         placeholder={placeholders[c] || ''}
         value={formVals[c]}
         onChange={(e) => {
