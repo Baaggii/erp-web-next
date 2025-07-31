@@ -332,7 +332,6 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
         const check = await checkFolderNames([{ name: it.name }]);
         if (check.length === 0) continue;
         const item = check[0];
-        if (sanitizeName(it.name) === sanitizeName(item.newName)) continue;
         count += 1;
         if (count > offset && results.length < perPage) {
           results.push({
@@ -479,30 +478,28 @@ export async function uploadSelectedImages(files = [], meta = []) {
   return count;
 }
 
-export async function findBenchmarkCode(fileName) {
-  const base = path.basename(fileName).toLowerCase();
-  const name = base.replace(/\.[^.]+$/, '');
-  const tokens = name.split(/[_-]+/).filter(Boolean);
-
-  for (const t of tokens) {
+export async function findBenchmarkCode(name) {
+  const digit = name.match(/\d{4}/);
+  if (digit) {
     try {
       const [rows] = await pool.query(
-        'SELECT UITransType FROM code_transaction WHERE UITransType = ? LIMIT 1',
-        [t],
+        'SELECT UITransType FROM code_transaction WHERE UITransType = ?',
+        [digit[0]],
       );
-      if (rows.length) return String(rows[0].UITransType);
+      if (rows.length) return rows[0].UITransType;
     } catch {}
   }
-
-  try {
-    const [rows] = await pool.query(
-      'SELECT UITransType, UITrtype FROM code_transaction WHERE image_benchmark = 1',
-    );
-    for (const r of rows) {
-      const code = String(r.UITrtype || '').toLowerCase();
-      if (code && base.includes(code)) return String(r.UITransType);
-    }
-  } catch {}
-
+  const alpha = name.match(/[A-Za-z]{4}/);
+  if (alpha) {
+    try {
+      const [rows] = await pool.query(
+        'SELECT UITransType, UITrtype FROM code_transaction WHERE image_benchmark = 1',
+      );
+      const row = (rows || []).find(
+        (r) => String(r.UITrtype).toLowerCase() === alpha[0].toLowerCase(),
+      );
+      if (row) return row.UITransType;
+    } catch {}
+  }
   return null;
 }
