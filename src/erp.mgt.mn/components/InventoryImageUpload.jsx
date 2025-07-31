@@ -22,12 +22,17 @@ export default function InventoryImageUpload({ onResult, multiple = false, uploa
         });
         if (res.ok) {
           const data = await res.json();
-          const count = (data.items || []).length;
-          addToast(
-            count ? `${f.name}: ${count} suggestion(s)` : `${f.name}: no suggestions`,
-            count ? 'success' : 'warn',
-          );
-          results.push(...(data.items || []));
+          const items = Array.isArray(data.items) ? data.items : [];
+          const count = items.length;
+          if (count) {
+            const list = items
+              .map((it) => `${it.code}${it.qty ? ` x${it.qty}` : ''}`)
+              .join(', ');
+            addToast(`${f.name}: ${count} suggestion(s) - ${list}`, 'success');
+            results.push(...items);
+          } else {
+            addToast(`${f.name}: no suggestions`, 'warn');
+          }
         } else {
           const text = await res.text();
           addToast(`${f.name}: ${text || 'AI detection failed'}`, 'error');
