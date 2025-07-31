@@ -32,8 +32,8 @@ This module includes a single set of buttons used by every POS transaction confi
 - Disabled when no pending transaction is loaded.
 
 ## POST
-- Enabled once a configuration is chosen and the forms contain data. Image
-  attachments are optional.
+- Enabled once a configuration is chosen. Image attachments are optional and the
+  forms may be empty.
 - Validates required fields for all forms before submission.
 - Merges default values so each payload contains the latest defaults.
 - Verifies `calcFields` mapping rules to ensure all tables contain the same session ID or other linked values.
