@@ -329,9 +329,8 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
         const nextInside = insideTxn || it.name.startsWith('transactions_');
         await walk(full, nextInside);
       } else if (insideTxn && it.isFile()) {
-        const check = await checkFolderNames([{ name: it.name }]);
-        if (check.length === 0) continue;
-        const item = check[0];
+        const item = await resolveImageRename(it.name);
+        if (!item) continue;
         count += 1;
         if (count > offset && results.length < perPage) {
           results.push({
@@ -390,6 +389,49 @@ async function findTxnByUniqueId(idPart) {
   return null;
 }
 
+export async function resolveImageRename(name = '', index = undefined) {
+  const ext = path.extname(name);
+  const base = path.basename(name, ext);
+  const { unique, suffix } = parseFileUnique(base);
+  if (!unique) return null;
+  const checkBase = sanitizeName(base.replace(new RegExp(unique, 'i'), ''));
+  if (/\b\d{4}\b/.test(checkBase) || /\b[a-z]{4}\b/i.test(checkBase)) {
+    return null;
+  }
+  const found = await findTxnByUniqueId(unique);
+  if (!found) return null;
+  const { row, configs, numField } = found;
+  const cfg = pickConfig(configs, row);
+  let newBase = buildNameFromRow(row, cfg?.imagenameField || []);
+  const transDigit = getFieldCase(row, 'trtype');
+  const transType = getFieldCase(row, 'TransType');
+  if (!newBase && !(cfg?.imagenameField || []).length && !transType) {
+    newBase = buildOptionalName(row);
+  }
+  newBase = appendOptionalParts(row, newBase);
+  if (!newBase && numField) {
+    newBase = sanitizeName(String(row[numField]));
+  }
+  if (!newBase) return null;
+  if (transDigit && !containsToken(sanitizeName(newBase), sanitizeName(transDigit))) {
+    newBase = sanitizeName(`${transDigit}_${newBase}`);
+  }
+  if (transType && !containsToken(sanitizeName(newBase), sanitizeName(transType))) {
+    newBase = sanitizeName(`${newBase}_${transType}`);
+  }
+  const folderRaw = buildFolderName(row, cfg?.imageFolder || found.table);
+  const folderDisplay = '/' + String(folderRaw).replace(/^\/+/, '');
+  const sanitizedUnique = sanitizeName(unique);
+  let finalBase = newBase;
+  if (sanitizeName(newBase).includes(sanitizedUnique)) {
+    finalBase = `${newBase}${suffix}`;
+  } else {
+    finalBase = `${newBase}_${unique}${suffix}`;
+  }
+  const newName = `${finalBase}${ext}`;
+  return { index, originalName: name, newName, folder: folderRaw, folderDisplay };
+}
+
 export async function fixIncompleteImages(list = []) {
   const { baseDir } = await getDirs();
   let count = 0;
@@ -409,49 +451,8 @@ export async function checkFolderNames(list = []) {
   for (const item of list) {
     const name = item?.name || '';
     const index = item?.index;
-    const ext = path.extname(name);
-    const base = path.basename(name, ext);
-    const { unique, suffix } = parseFileUnique(base);
-    if (!unique) continue;
-    const found = await findTxnByUniqueId(unique);
-    if (!found) continue;
-    const { row, configs, numField } = found;
-    const cfg = pickConfig(configs, row);
-    let newBase = buildNameFromRow(row, cfg?.imagenameField || []);
-    const transDigit = getFieldCase(row, 'trtype');
-    const transType = getFieldCase(row, 'TransType');
-    if (!newBase && !(cfg?.imagenameField || []).length && !transType) {
-      newBase = buildOptionalName(row);
-    }
-    newBase = appendOptionalParts(row, newBase);
-
-    if (!newBase && numField) {
-      newBase = sanitizeName(String(row[numField]));
-    }
-    if (!newBase) continue;
-    if (transDigit && !containsToken(sanitizeName(newBase), sanitizeName(transDigit))) {
-      newBase = sanitizeName(`${transDigit}_${newBase}`);
-    }
-    if (transType && !containsToken(sanitizeName(newBase), sanitizeName(transType))) {
-      newBase = sanitizeName(`${newBase}_${transType}`);
-    }
-    const folderRaw = buildFolderName(row, cfg?.imageFolder || found.table);
-    const folderDisplay = '/' + String(folderRaw).replace(/^\/+/, '');
-    const sanitizedUnique = sanitizeName(unique);
-    let finalBase = newBase;
-    if (sanitizeName(newBase).includes(sanitizedUnique)) {
-      finalBase = `${newBase}${suffix}`;
-    } else {
-      finalBase = `${newBase}_${unique}${suffix}`;
-    }
-    const newName = `${finalBase}${ext}`;
-    results.push({
-      index,
-      originalName: name,
-      newName,
-      folder: folderRaw,
-      folderDisplay,
-    });
+    const res = await resolveImageRename(name, index);
+    if (res) results.push(res);
   }
   return results;
 }
