@@ -965,28 +965,29 @@ const TableManager = forwardRef(function TableManager({
         setIsAdding(false);
         setGridRows([]);
         const msg = isAdding ? 'Шинэ гүйлгээ хадгалагдлаа' : 'Хадгалагдлаа';
-        if (isAdding && formConfig?.imageIdField) {
+        if (isAdding && (formConfig?.imagenameField || []).length) {
           const inserted = rows.find(
             (r) => String(getRowId(r)) === String(savedRow.id),
           );
-          const rowForName =
-            inserted || {
-              ...merged,
-              [formConfig.imageIdField]: savedRow[formConfig.imageIdField],
-            };
-          if (rowForName[formConfig.imageIdField]) {
-            const { name: newImageName } = buildImageName(
-              rowForName,
-              formConfig?.imagenameField || [],
-              columnCaseMap,
+          const rowForName = inserted || {
+            ...merged,
+            [formConfig.imageIdField]: savedRow[formConfig.imageIdField],
+          };
+          const { name: newImageName } = buildImageName(
+            rowForName,
+            formConfig?.imagenameField || [],
+            columnCaseMap,
+          );
+          const folder = getImageFolder(rowForName);
+          if (
+            oldImageName &&
+            newImageName &&
+            (oldImageName !== newImageName || folder !== table)
+          ) {
+            await fetch(
+              `/api/transaction_images/${table}/${encodeURIComponent(oldImageName)}/rename/${encodeURIComponent(newImageName)}?folder=${encodeURIComponent(folder)}`,
+              { method: 'POST', credentials: 'include' },
             );
-            const folder = getImageFolder(rowForName);
-            if (oldImageName && newImageName && oldImageName !== newImageName) {
-              await fetch(
-                `/api/transaction_images/${table}/${encodeURIComponent(oldImageName)}/rename/${encodeURIComponent(newImageName)}?folder=${encodeURIComponent(folder)}`,
-                { method: 'POST', credentials: 'include' },
-              );
-            }
           }
         }
         addToast(msg, 'success');
