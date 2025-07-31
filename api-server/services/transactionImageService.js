@@ -26,6 +26,30 @@ function sanitizeName(name) {
     .replace(/[^a-z0-9_-]+/gi, '_');
 }
 
+function getCase(row, field) {
+  if (!row) return undefined;
+  if (row[field] !== undefined) return row[field];
+  const lower = field.toLowerCase();
+  const key = Object.keys(row).find((k) => k.toLowerCase() === lower);
+  return key ? row[key] : undefined;
+}
+
+function buildNameFromRow(row, fields = []) {
+  const vals = fields.map((f) => getCase(row, f)).filter((v) => v);
+  return sanitizeName(vals.join('_'));
+}
+
+function pickConfig(configs = {}, row = {}) {
+  for (const cfg of Object.values(configs)) {
+    if (!cfg.transactionTypeField || !cfg.transactionTypeValue) continue;
+    const val = getCase(row, cfg.transactionTypeField);
+    if (val !== undefined && String(val) === String(cfg.transactionTypeValue)) {
+      return cfg;
+    }
+  }
+  return Object.values(configs)[0] || {};
+}
+
 function extractUnique(str) {
   const uuid = str.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
   if (uuid) return uuid[0];
@@ -222,13 +246,47 @@ export async function detectIncompleteImages() {
       if (!unique || unique.length < 8) continue;
       const found = await findTxnByUniqueId(unique);
       if (!found) continue;
-      const { row, config, numField } = found;
-      const fields = config?.imagenameField || [];
-      const nameParts = fields.map((fld) => row[fld]).filter(Boolean);
-      if (!nameParts.length && numField) nameParts.push(row[numField]);
-      const newBase = sanitizeName(nameParts.join('_'));
+      const { row, configs, numField } = found;
+
+      const cfg = pickConfig(configs, row);
+      const fields = cfg?.imagenameField || [];
+      let newBase = buildNameFromRow(row, fields);
+
+      const transType = getCase(row, 'TransType');
+      if (!newBase && !fields.length && !transType) {
+        const fallback = [
+          'z_mat_code',
+          'or_bcode',
+          'bmtr_pmid',
+          'pmid',
+          'sp_primary_code',
+          'TransType',
+          'trtype',
+          'bmtr_num',
+          'or_num',
+          'z_num',
+          'ordrnum',
+          'num',
+          'pid',
+        ];
+        const extra = [];
+        const o1 = [getCase(row, 'bmtr_orderid'), getCase(row, 'bmtr_orderdid')]
+          .filter(Boolean)
+          .join('~');
+        if (o1) extra.push(o1);
+        const o2 = [getCase(row, 'ordrid'), getCase(row, 'ordrdid')]
+          .filter(Boolean)
+          .join('~');
+        if (o2) extra.push(o2);
+        newBase = buildNameFromRow(row, fallback);
+        if (extra.length) newBase = sanitizeName([newBase, ...extra].join('_'));
+      }
+
+      if (!newBase && numField) {
+        newBase = sanitizeName(String(row[numField]));
+      }
       if (!newBase) continue;
-      const folder = config?.imageFolder || entry.name;
+      const folder = cfg?.imageFolder || entry.name;
       const newName = `${newBase}_${unique}${ext}`;
       results.push({
         folder,
@@ -268,12 +326,11 @@ async function findTxnByUniqueId(idPart) {
       continue;
     }
     if (rows.length) {
-      let cfg = {};
+      let cfgs = {};
       try {
-        const all = await getConfigsByTable(tbl);
-        cfg = Object.values(all)[0] || {};
+        cfgs = await getConfigsByTable(tbl);
       } catch {}
-      return { table: tbl, row: rows[0], config: cfg, numField: numCol.Field };
+      return { table: tbl, row: rows[0], configs: cfgs, numField: numCol.Field };
     }
   }
   return null;
