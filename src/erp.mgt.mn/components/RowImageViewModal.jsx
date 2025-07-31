@@ -23,14 +23,12 @@ export default function RowImageViewModal({
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMBAZLr5z0AAAAASUVORK5CYII=';
 
   const apiOrigin = window.API_ORIGIN || window.location.origin;
-  const basePath = API_BASE.replace(/\/api$/, '');
 
   function getImageUrl(p) {
     if (!p) return '';
     if (/^https?:\/\//i.test(p) || p.startsWith('data:')) return p;
-    const prefix = `${apiOrigin}${basePath}`.replace(/\/$/, '');
-    if (p.startsWith('/')) return `${prefix}${p}`;
-    return `${prefix}/${p.replace(/^\//, '')}`;
+    if (p.startsWith('/')) return `${apiOrigin}${p}`;
+    return `${apiOrigin}/${p.replace(/^\//, '')}`;
   }
 
   useEffect(() => {
