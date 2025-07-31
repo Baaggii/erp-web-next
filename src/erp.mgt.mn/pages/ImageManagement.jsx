@@ -118,6 +118,81 @@ export default function ImageManagement() {
     setFolderSel([]);
   }
 
+  const PER_PAGE = 100;
+  const [tab, setTab] = useState('cleanup');
+  const [pending, setPending] = useState([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [selected, setSelected] = useState([]);
+  const [uploads, setUploads] = useState([]);
+  const [uploadSel, setUploadSel] = useState([]);
+  const [folderFiles, setFolderFiles] = useState([]);
+  const [folderName, setFolderName] = useState('');
+  const [folderPage, setFolderPage] = useState(1);
+  const [folderSel, setFolderSel] = useState([]);
+  const [folderListed, setFolderListed] = useState(false);
+  const fileRef = useRef();
+
+  const startIdx = (folderPage - 1) * PER_PAGE;
+  const pageFiles = folderFiles.slice(startIdx, startIdx + PER_PAGE);
+  const folderHasMore = startIdx + PER_PAGE < folderFiles.length;
+
+  function toggle(id) {
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
+    );
+  }
+
+  function toggleAll() {
+    if (selected.length === pending.length) {
+      setSelected([]);
+    } else {
+      setSelected(pending.map((p) => p.currentName));
+    }
+  }
+
+  function toggleUpload(id) {
+    setUploadSel((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
+    );
+  }
+
+  function toggleUploadAll() {
+    if (uploadSel.length === uploads.length) {
+      setUploadSel([]);
+    } else {
+      setUploadSel(uploads.map((u) => u.index));
+    }
+  }
+
+  function toggleFolder(idx) {
+    setFolderSel((prev) =>
+      prev.includes(idx) ? prev.filter((p) => p !== idx) : [...prev, idx],
+    );
+  }
+
+  function toggleFolderAll(pageFiles) {
+    const ids = pageFiles.map((_, i) => i + (folderPage - 1) * PER_PAGE);
+    if (ids.every((id) => folderSel.includes(id))) {
+      setFolderSel((prev) => prev.filter((id) => !ids.includes(id)));
+    } else {
+      setFolderSel((prev) => Array.from(new Set([...prev, ...ids])));
+    }
+  }
+
+  function deleteSelected() {
+    if (folderSel.length === 0) return;
+    const remaining = folderFiles.filter((_, i) => !folderSel.includes(i));
+    setFolderFiles(remaining);
+    setFolderSel([]);
+    setUploads([]);
+    setUploadSel([]);
+  }
+
+  function clearFolderSelection() {
+    setFolderSel([]);
+  }
+
   async function handleCleanup() {
     const path = days ? `/api/transaction_images/cleanup/${days}` : '/api/transaction_images/cleanup';
     try {
@@ -146,6 +221,7 @@ export default function ImageManagement() {
       setFolderSel([]);
       setFolderPage(1);
       setFolderName('');
+      setFolderListed(false);
     }
   }, [tab]);
 
@@ -225,6 +301,7 @@ export default function ImageManagement() {
     setFolderFiles(arr);
     setFolderPage(1);
     setFolderSel([]);
+    setFolderListed(false);
     if (root) {
       setFolderName(root);
     } else if (arr.length > 0) {
@@ -236,14 +313,18 @@ export default function ImageManagement() {
     }
   }
 
-  async function checkFolder() {
+  function listNames() {
     if (folderFiles.length === 0) return;
-    let indices = folderSel;
-    if (indices.length === 0) {
-      const start = (folderPage - 1) * PER_PAGE;
-      const pageFiles = folderFiles.slice(start, start + PER_PAGE);
-      indices = pageFiles.map((_, i) => start + i);
+    setFolderListed(true);
+    setFolderPage(1);
+  }
+
+  async function checkNames() {
+    if (folderFiles.length === 0 || folderSel.length === 0) {
+      addToast('Select file names first', 'info');
+      return;
     }
+    const indices = folderSel;
     const names = indices.map((i) => ({ name: folderFiles[i].name, index: i }));
     try {
       const res = await fetch('/api/transaction_images/folder_check', {
@@ -343,20 +424,27 @@ export default function ImageManagement() {
               placeholder="No folder"
               style={{ marginRight: '0.5rem', width: '12rem' }}
             />
-            <button type="button" onClick={checkFolder} style={{ marginRight: '0.5rem' }}>
-              Check Folder
+            <button type="button" onClick={listNames} style={{ marginRight: '0.5rem' }}>
+              List Image Names
             </button>
+            {folderListed && (
+              <>
+                <button type="button" onClick={checkNames} style={{ marginRight: '0.5rem' }} disabled={folderSel.length === 0}>
+                  Check Names
+                </button>
+                <button type="button" onClick={deleteSelected} style={{ marginRight: '0.5rem' }} disabled={folderSel.length === 0}>
+                  Delete Selected
+                </button>
+                <button type="button" disabled={folderPage === 1} onClick={() => setFolderPage(folderPage - 1)} style={{ marginRight: '0.5rem' }}>
+                  Prev Page
+                </button>
+                <button type="button" disabled={!folderHasMore} onClick={() => setFolderPage(folderPage + 1)} style={{ marginRight: '0.5rem' }}>
+                  Next Page
+                </button>
+              </>
+            )}
             <button type="button" onClick={refreshList} style={{ marginRight: '0.5rem' }}>
               Refresh
-            </button>
-            <button type="button" onClick={deleteSelected} style={{ marginRight: '0.5rem' }} disabled={folderSel.length === 0}>
-              Delete Selected
-            </button>
-            <button type="button" disabled={folderPage === 1} onClick={() => setFolderPage(folderPage - 1)} style={{ marginRight: '0.5rem' }}>
-              Prev Page
-            </button>
-            <button type="button" disabled={!folderHasMore} onClick={() => setFolderPage(folderPage + 1)} style={{ marginRight: '0.5rem' }}>
-              Next Page
             </button>
             <button type="button" disabled={page === 1} onClick={() => { const p = page - 1; setPage(p); refreshList(p); }} style={{ marginRight: '0.5rem' }}>
               Prev
@@ -365,7 +453,7 @@ export default function ImageManagement() {
               Next
             </button>
           </div>
-          {pageFiles.length > 0 && (
+          {folderListed && pageFiles.length > 0 && (
             <div style={{ marginBottom: '1rem' }}>
               <h4>Local Files</h4>
               <table className="min-w-full border border-gray-300 text-sm" style={{ tableLayout: 'fixed' }}>
