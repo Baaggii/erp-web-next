@@ -82,7 +82,7 @@ function buildFolderName(row, fallback = '') {
     getFieldCase(row, 'uitranstypename') ||
     getFieldCase(row, 'transtype');
   if (part1 && part2) {
-    return `${slugify(String(part2))}/${slugify(String(part1))}`;
+    return `${slugify(String(part1))}/${slugify(String(part2))}`;
   }
   return fallback;
 }
@@ -551,32 +551,5 @@ export async function uploadSelectedImages(files = [], meta = []) {
     }
   }
   return count;
-}
-export async function findBenchmarkCode(fileName) {
-  const base = path.basename(fileName).toLowerCase();
-  const name = base.replace(/\.[^.]+$/, '');
-  const tokens = name.split(/[_-]+/).filter(Boolean);
-
-  for (const t of tokens) {
-    try {
-      const [rows] = await pool.query(
-        'SELECT UITransType FROM code_transaction WHERE UITransType = ? LIMIT 1',
-        [t],
-      );
-      if (rows.length) return String(rows[0].UITransType);
-    } catch {}
-  }
-
-  try {
-    const [rows] = await pool.query(
-      'SELECT UITransType, UITrtype FROM code_transaction WHERE image_benchmark = 1',
-    );
-    for (const r of rows) {
-      const code = String(r.UITrtype || '').toLowerCase();
-      if (code && base.includes(code)) return String(r.UITransType);
-    }
-  } catch {}
-
-  return null;
 }
 
