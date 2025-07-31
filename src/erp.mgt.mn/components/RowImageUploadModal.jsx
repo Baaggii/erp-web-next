@@ -35,7 +35,7 @@ export default function RowImageUploadModal({
       setUploaded([]);
       return;
     }
-    if (!row._saved) {
+    if (!row._saved && !row._imageName) {
       setUploaded([]);
       return;
     }
@@ -73,8 +73,7 @@ export default function RowImageUploadModal({
 
   async function handleUpload(selectedFiles) {
     const { name: safeName, missing } = buildName();
-    let finalName = `tmp_${Date.now()}`;
-    if (row._saved && safeName) finalName = safeName;
+    const finalName = safeName || `tmp_${Date.now()}`;
     if (!folder) {
       addToast('Image folder is missing', 'error');
       return;
@@ -111,7 +110,7 @@ export default function RowImageUploadModal({
             );
             if (codeRes.ok) {
               const data = await codeRes.json().catch(() => ({}));
-              if (data.code) detected.push({ code: data.code, qty: data.qty });
+              if (data.code) addToast(`Benchmark code: ${data.code}`, 'info');
             }
           } catch {}
           const detForm = new FormData();
