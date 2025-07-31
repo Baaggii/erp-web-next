@@ -2,6 +2,8 @@ import fs from 'fs/promises';
 import fssync from 'fs';
 import path from 'path';
 import { getGeneralConfig } from './generalConfig.js';
+import { pool } from '../../db/index.js';
+import { getConfigsByTable } from './transactionFormConfig.js';
 
 async function getDirs() {
   const cfg = await getGeneralConfig();
@@ -22,6 +24,15 @@ function sanitizeName(name) {
   return String(name)
     .toLowerCase()
     .replace(/[^a-z0-9_-]+/gi, '_');
+}
+
+function extractUnique(str) {
+  const uuid = str.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  if (uuid) return uuid[0];
+  const alt = str.match(/[A-Z0-9]{4}(?:-[A-Z0-9]{4}){3}/);
+  if (alt) return alt[0];
+  const long = str.match(/[A-Za-z0-9-]{8,}/);
+  return long ? long[0] : '';
 }
 
 export async function saveImages(table, name, files, folder = null) {
@@ -181,4 +192,103 @@ export async function cleanupOldImages(days = 30) {
   await walk(path.join(process.cwd(), 'uploads', 'tmp'));
 
   return removed;
+}
+
+export async function detectIncompleteImages() {
+  const { baseDir } = await getDirs();
+  let results = [];
+  let dirs;
+  try {
+    dirs = await fs.readdir(baseDir, { withFileTypes: true });
+  } catch {
+    return results;
+  }
+
+  for (const entry of dirs) {
+    if (!entry.isDirectory() || !entry.name.startsWith('transactions_')) continue;
+    const dirPath = path.join(baseDir, entry.name);
+    let files;
+    try {
+      files = await fs.readdir(dirPath);
+    } catch {
+      continue;
+    }
+    for (const f of files) {
+      const ext = path.extname(f);
+      const base = path.basename(f, ext);
+      const parts = base.split('_');
+      if (parts.length >= 5) continue;
+      const unique = extractUnique(base);
+      if (!unique || unique.length < 8) continue;
+      const found = await findTxnByUniqueId(unique);
+      if (!found) continue;
+      const { row, config, numField } = found;
+      const fields = config?.imagenameField || [];
+      const nameParts = fields.map((fld) => row[fld]).filter(Boolean);
+      if (!nameParts.length && numField) nameParts.push(row[numField]);
+      const newBase = sanitizeName(nameParts.join('_'));
+      if (!newBase) continue;
+      const folder = config?.imageFolder || entry.name;
+      const newName = `${newBase}_${unique}${ext}`;
+      results.push({
+        folder,
+        currentName: f,
+        newName,
+        currentPath: path.join(dirPath, f),
+      });
+    }
+  }
+  return results;
+}
+
+async function findTxnByUniqueId(idPart) {
+  let tables;
+  try {
+    [tables] = await pool.query("SHOW TABLES LIKE 'transactions_%'");
+  } catch {
+    return null;
+  }
+  for (const row of tables || []) {
+    const tbl = Object.values(row)[0];
+    let cols;
+    try {
+      [cols] = await pool.query(`SHOW COLUMNS FROM \`${tbl}\``);
+    } catch {
+      continue;
+    }
+    const numCol = cols.find((c) => c.Field.toLowerCase().includes('num'));
+    if (!numCol) continue;
+    let rows;
+    try {
+      [rows] = await pool.query(
+        `SELECT * FROM \`${tbl}\` WHERE \`${numCol.Field}\` LIKE ? LIMIT 1`,
+        [`%${idPart}%`],
+      );
+    } catch {
+      continue;
+    }
+    if (rows.length) {
+      let cfg = {};
+      try {
+        const all = await getConfigsByTable(tbl);
+        cfg = Object.values(all)[0] || {};
+      } catch {}
+      return { table: tbl, row: rows[0], config: cfg, numField: numCol.Field };
+    }
+  }
+  return null;
+}
+
+export async function fixIncompleteImages(list = []) {
+  const { baseDir } = await getDirs();
+  let count = 0;
+  for (const item of list) {
+    const dir = path.join(baseDir, item.folder || '');
+    ensureDir(dir);
+    try {
+      await fs.rename(item.currentPath, path.join(dir, item.newName));
+      count += 1;
+    } catch {}
+  }
+  return count;
 }
