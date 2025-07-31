@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
 export default function ImageManagement() {
@@ -10,6 +10,9 @@ export default function ImageManagement() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [selected, setSelected] = useState([]);
+  const [uploads, setUploads] = useState([]);
+  const [uploadSel, setUploadSel] = useState([]);
+  const fileRef = useRef();
 
   function toggle(id) {
     setSelected((prev) =>
@@ -22,6 +25,20 @@ export default function ImageManagement() {
       setSelected([]);
     } else {
       setSelected(pending.map((p) => p.currentName));
+    }
+  }
+
+  function toggleUpload(id) {
+    setUploadSel((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
+    );
+  }
+
+  function toggleUploadAll() {
+    if (uploadSel.length === uploads.length) {
+      setUploadSel([]);
+    } else {
+      setUploadSel(uploads.map((u) => u.tmpPath));
     }
   }
 
@@ -85,6 +102,47 @@ export default function ImageManagement() {
     }
   }
 
+  async function handleSelectFiles(files) {
+    if (!files?.length) return;
+    const form = new FormData();
+    Array.from(files).forEach((f) => form.append('images', f));
+    try {
+      const res = await fetch('/api/transaction_images/upload_check', {
+        method: 'POST',
+        body: form,
+        credentials: 'include',
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setUploads(Array.isArray(data.list) ? data.list : []);
+        setUploadSel([]);
+      } else {
+        addToast('Check failed', 'error');
+      }
+    } catch {
+      addToast('Check failed', 'error');
+    }
+  }
+
+  async function commitUploads() {
+    const items = uploads.filter((u) => uploadSel.includes(u.tmpPath));
+    if (items.length === 0) return;
+    const res = await fetch('/api/transaction_images/upload_commit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ list: items }),
+    });
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      addToast(`Uploaded ${data.uploaded || 0} file(s)`, 'success');
+      setUploads([]);
+      setUploadSel([]);
+    } else {
+      addToast('Upload failed', 'error');
+    }
+  }
+
   return (
     <div>
       <h2>Image Management</h2>
@@ -116,21 +174,63 @@ export default function ImageManagement() {
         </div>
       ) : (
         <div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <button type="button" onClick={() => fileRef.current?.click()} style={{ marginRight: '0.5rem' }}>
+              Select Images
+            </button>
+            <input
+              type="file"
+              multiple
+              ref={fileRef}
+              style={{ display: 'none' }}
+              onChange={(e) => handleSelectFiles(e.target.files)}
+            />
+            <button type="button" onClick={refreshList} style={{ marginRight: '0.5rem' }}>
+              Refresh
+            </button>
+            <button type="button" disabled={page === 1} onClick={() => setPage(page - 1)} style={{ marginRight: '0.5rem' }}>
+              Prev
+            </button>
+            <button type="button" disabled={!hasMore} onClick={() => setPage(page + 1)}>
+              Next
+            </button>
+          </div>
+          {uploads.length > 0 && (
+            <div style={{ marginBottom: '1rem' }}>
+              <h4>Uploads</h4>
+              <table className="min-w-full border border-gray-300 text-sm" style={{ tableLayout: 'fixed' }}>
+                <thead>
+                  <tr>
+                    <th className="border px-2 py-1">
+                      <input type="checkbox" checked={uploadSel.length === uploads.length && uploads.length > 0} onChange={toggleUploadAll} />
+                    </th>
+                    <th className="border px-2 py-1">Original</th>
+                    <th className="border px-2 py-1">New Name</th>
+                    <th className="border px-2 py-1">Folder</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {uploads.map((u) => (
+                    <tr key={u.tmpPath} className={uploadSel.includes(u.tmpPath) ? 'bg-blue-50' : ''}>
+                      <td className="border px-2 py-1 text-center">
+                        <input type="checkbox" checked={uploadSel.includes(u.tmpPath)} onChange={() => toggleUpload(u.tmpPath)} />
+                      </td>
+                      <td className="border px-2 py-1">{u.originalName}</td>
+                      <td className="border px-2 py-1">{u.newName}</td>
+                      <td className="border px-2 py-1">{u.folderDisplay}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <button type="button" onClick={commitUploads} style={{ marginTop: '0.5rem' }} disabled={uploadSel.length === 0}>
+                Rename &amp; Upload Selected
+              </button>
+            </div>
+          )}
           {pending.length === 0 ? (
             <p>No incomplete names found.</p>
           ) : (
             <div>
-              <div style={{ marginBottom: '0.5rem' }}>
-                <button type="button" onClick={refreshList} style={{ marginRight: '0.5rem' }}>
-                  Refresh
-                </button>
-                <button type="button" disabled={page === 1} onClick={() => setPage(page - 1)} style={{ marginRight: '0.5rem' }}>
-                  Prev
-                </button>
-                <button type="button" disabled={!hasMore} onClick={() => setPage(page + 1)}>
-                  Next
-                </button>
-              </div>
               <table className="min-w-full border border-gray-300 text-sm" style={{ tableLayout: 'fixed' }}>
                 <thead>
                   <tr>

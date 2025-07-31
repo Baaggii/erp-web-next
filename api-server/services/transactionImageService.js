@@ -4,6 +4,7 @@ import path from 'path';
 import { getGeneralConfig } from './generalConfig.js';
 import { pool } from '../../db/index.js';
 import { getConfigsByTable } from './transactionFormConfig.js';
+import { slugify } from '../utils/slugify.js';
 
 async function getDirs() {
   const cfg = await getGeneralConfig();
@@ -65,6 +66,24 @@ function parseFileUnique(base) {
   const idx = base.toLowerCase().indexOf(unique.toLowerCase());
   const suffix = idx >= 0 ? base.slice(idx + unique.length) : '';
   return { unique, suffix };
+}
+
+function buildFolderName(row, fallback = '') {
+  const part1 =
+    getCase(row, 'TransType') ||
+    getCase(row, 'UITransType') ||
+    getCase(row, 'UITransTypeName') ||
+    getCase(row, 'trtype');
+  const part2 =
+    getCase(row, 'trtype') ||
+    getCase(row, 'TRTYPENAME') ||
+    getCase(row, 'trtypename') ||
+    getCase(row, 'uitranstypename') ||
+    getCase(row, 'transtype');
+  if (part1 && part2) {
+    return `${slugify(String(part1))}/${slugify(String(part2))}`;
+  }
+  return fallback;
 }
 
 export async function saveImages(table, name, files, folder = null) {
@@ -297,7 +316,7 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
         newBase = sanitizeName(String(row[numField]));
       }
       if (!newBase) continue;
-      const folderRaw = cfg?.imageFolder || entry.name;
+      const folderRaw = buildFolderName(row, cfg?.imageFolder || entry.name);
       const folderDisplay = '/' + String(folderRaw).replace(/^\/+/, '');
       const sanitizedUnique = sanitizeName(unique);
       let finalBase = newBase;
@@ -371,6 +390,87 @@ export async function fixIncompleteImages(list = []) {
     ensureDir(dir);
     try {
       await fs.rename(item.currentPath, path.join(dir, item.newName));
+      count += 1;
+    } catch {}
+  }
+  return count;
+}
+
+export async function checkUploadedImages(files = []) {
+  const results = [];
+  for (const file of files) {
+    const ext = path.extname(file.originalname);
+    const base = path.basename(file.originalname, ext);
+    const { unique, suffix } = parseFileUnique(base);
+    if (!unique) continue;
+    const found = await findTxnByUniqueId(unique);
+    if (!found) continue;
+    const { row, configs, numField } = found;
+    const cfg = pickConfig(configs, row);
+    let newBase = buildNameFromRow(row, cfg?.imagenameField || []);
+    const transType = getCase(row, 'TransType');
+    if (!newBase && !(cfg?.imagenameField || []).length && !transType) {
+      const fallback = [
+        'z_mat_code',
+        'or_bcode',
+        'bmtr_pmid',
+        'pmid',
+        'sp_primary_code',
+        'TransType',
+        'trtype',
+        'bmtr_num',
+        'or_num',
+        'z_num',
+        'ordrnum',
+        'num',
+        'pid',
+      ];
+      const extra = [];
+      const o1 = [getCase(row, 'bmtr_orderid'), getCase(row, 'bmtr_orderdid')]
+        .filter(Boolean)
+        .join('~');
+      if (o1) extra.push(o1);
+      const o2 = [getCase(row, 'ordrid'), getCase(row, 'ordrdid')]
+        .filter(Boolean)
+        .join('~');
+      if (o2) extra.push(o2);
+      newBase = buildNameFromRow(row, fallback);
+      if (extra.length) newBase = sanitizeName([newBase, ...extra].join('_'));
+    }
+
+    if (!newBase && numField) {
+      newBase = sanitizeName(String(row[numField]));
+    }
+    if (!newBase) continue;
+    const folderRaw = buildFolderName(row, cfg?.imageFolder || found.table);
+    const folderDisplay = '/' + String(folderRaw).replace(/^\/+/, '');
+    const sanitizedUnique = sanitizeName(unique);
+    let finalBase = newBase;
+    if (sanitizeName(newBase).includes(sanitizedUnique)) {
+      finalBase = `${newBase}${suffix}`;
+    } else {
+      finalBase = `${newBase}_${unique}${suffix}`;
+    }
+    const newName = `${finalBase}${ext}`;
+    results.push({
+      tmpPath: file.path,
+      originalName: file.originalname,
+      newName,
+      folder: folderRaw,
+      folderDisplay,
+    });
+  }
+  return results;
+}
+
+export async function commitUploadedImages(list = []) {
+  const { baseDir } = await getDirs();
+  let count = 0;
+  for (const item of list) {
+    const dir = path.join(baseDir, item.folder || '');
+    ensureDir(dir);
+    try {
+      await fs.rename(item.tmpPath, path.join(dir, item.newName));
       count += 1;
     } catch {}
   }
