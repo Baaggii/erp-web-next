@@ -9,6 +9,8 @@ import {
   deleteAllImages,
   cleanupOldImages,
 } from '../services/transactionImageService.js';
+import { getGeneralConfig } from '../services/generalConfig.js';
+} from '../services/transactionImageService.js';
 
 const router = express.Router();
 const upload = multer({ dest: 'uploads/tmp' });
@@ -85,7 +87,11 @@ router.delete('/:table/:name', requireAuth, async (req, res, next) => {
 
 router.delete('/cleanup/:days?', requireAuth, async (req, res, next) => {
   try {
-    const days = parseInt(req.params.days || req.query.days, 10) || 30;
+    let days = parseInt(req.params.days || req.query.days, 10);
+    if (!days || Number.isNaN(days)) {
+      const cfg = await getGeneralConfig();
+      days = cfg.general?.imageStorage?.cleanupDays || 30;
+    }
     const removed = await cleanupOldImages(days);
     res.json({ removed });
   } catch (err) {
