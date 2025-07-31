@@ -109,6 +109,36 @@ export default function ImageManagement() {
     }
   }
 
+  async function selectFolder() {
+    if (window.showDirectoryPicker) {
+      try {
+        const dir = await window.showDirectoryPicker();
+        const files = [];
+        const root = dir.name;
+        async function readDir(handle, prefix = '') {
+          for await (const entry of handle.values()) {
+            if (entry.kind === 'file') {
+              const file = await entry.getFile();
+              Object.defineProperty(file, 'webkitRelativePath', {
+                value: `${prefix}${entry.name}`,
+              });
+              files.push(file);
+            } else if (entry.kind === 'directory') {
+              await readDir(entry, `${prefix}${entry.name}/`);
+            }
+          }
+        }
+        await readDir(dir, `${root}/`);
+        handleFolderChange(files);
+        setFolderName(root);
+        return;
+      } catch {
+        // cancelled or not allowed
+      }
+    }
+    fileRef.current?.click();
+  }
+
   function handleFolderChange(files) {
     const arr = Array.from(files || []);
     setFolderFiles(arr);
@@ -186,7 +216,6 @@ export default function ImageManagement() {
               Cleanup files older than (days):{' '}
               <input
                 type="number"
-                inputMode="decimal"
                 value={days}
                 onChange={(e) => setDays(e.target.value)}
                 style={{ width: '4rem' }}
@@ -201,7 +230,7 @@ export default function ImageManagement() {
       ) : (
         <div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <button type="button" onClick={() => fileRef.current?.click()} style={{ marginRight: '0.5rem' }}>
+            <button type="button" onClick={selectFolder} style={{ marginRight: '0.5rem' }}>
               Select Folder
             </button>
             <input
