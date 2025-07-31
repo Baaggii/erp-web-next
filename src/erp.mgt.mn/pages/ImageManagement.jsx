@@ -12,6 +12,8 @@ export default function ImageManagement() {
   const [selected, setSelected] = useState([]);
   const [uploads, setUploads] = useState([]);
   const [uploadSel, setUploadSel] = useState([]);
+  const [folderFiles, setFolderFiles] = useState([]);
+  const [folderName, setFolderName] = useState('');
   const fileRef = useRef();
 
   function toggle(id) {
@@ -38,7 +40,7 @@ export default function ImageManagement() {
     if (uploadSel.length === uploads.length) {
       setUploadSel([]);
     } else {
-      setUploadSel(uploads.map((u) => u.tmpPath));
+      setUploadSel(uploads.map((u) => u.index));
     }
   }
 
@@ -60,13 +62,18 @@ export default function ImageManagement() {
   }
 
   useEffect(() => {
-    if (tab !== 'fix') return;
-    refreshList();
-  }, [tab, page]);
+    if (tab !== 'fix') {
+      setPending([]);
+      setUploads([]);
+      setUploadSel([]);
+      setSelected([]);
+      setPage(1);
+    }
+  }, [tab]);
 
-  async function refreshList() {
+  async function refreshList(p = page) {
     try {
-      const res = await fetch(`/api/transaction_images/detect_incomplete?page=${page}`, {
+      const res = await fetch(`/api/transaction_images/detect_incomplete?page=${p}`, {
         credentials: 'include',
       });
       if (res.ok) {
@@ -102,15 +109,58 @@ export default function ImageManagement() {
     }
   }
 
-  async function handleSelectFiles(files) {
-    if (!files?.length) return;
-    const form = new FormData();
-    Array.from(files).forEach((f) => form.append('images', f));
+  async function selectFolder() {
+    if (window.showDirectoryPicker) {
+      try {
+        const dir = await window.showDirectoryPicker();
+        const files = [];
+        const root = dir.name;
+        async function readDir(handle) {
+          for await (const entry of handle.values()) {
+            if (entry.kind === 'file') {
+              const file = await entry.getFile();
+              files.push(file);
+            } else if (entry.kind === 'directory') {
+              await readDir(entry);
+            }
+          }
+        }
+        await readDir(dir);
+        handleFolderChange(files, root);
+        return;
+      } catch {
+        // cancelled or not allowed
+      }
+    }
+    if (fileRef.current) {
+      fileRef.current.value = '';
+      fileRef.current.click();
+    }
+  }
+
+  function handleFolderChange(files, root) {
+    const arr = Array.from(files || []);
+    setFolderFiles(arr);
+    if (root) {
+      setFolderName(root);
+    } else if (arr.length > 0) {
+      const path = arr[0].webkitRelativePath || arr[0].name;
+      const dir = path.split('/')[0];
+      setFolderName(dir);
+    } else {
+      setFolderName('');
+    }
+  }
+
+  async function checkFolder() {
+    if (folderFiles.length === 0) return;
+    const names = folderFiles.slice(0, 1000).map((f, i) => ({ name: f.name, index: i }));
     try {
-      const res = await fetch('/api/transaction_images/upload_check', {
+      const res = await fetch('/api/transaction_images/folder_check', {
         method: 'POST',
-        body: form,
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        body: JSON.stringify({ list: names }),
       });
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -125,13 +175,19 @@ export default function ImageManagement() {
   }
 
   async function commitUploads() {
-    const items = uploads.filter((u) => uploadSel.includes(u.tmpPath));
+    const items = uploads.filter((u) => uploadSel.includes(u.index));
     if (items.length === 0) return;
-    const res = await fetch('/api/transaction_images/upload_commit', {
+    const form = new FormData();
+    const meta = [];
+    items.forEach((it) => {
+      form.append('images', folderFiles[it.index]);
+      meta.push({ name: folderFiles[it.index].name, newName: it.newName, folder: it.folder });
+    });
+    form.append('meta', JSON.stringify(meta));
+    const res = await fetch('/api/transaction_images/folder_commit', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      body: form,
       credentials: 'include',
-      body: JSON.stringify({ list: items }),
     });
     if (res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -176,23 +232,35 @@ export default function ImageManagement() {
       ) : (
         <div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <button type="button" onClick={() => fileRef.current?.click()} style={{ marginRight: '0.5rem' }}>
-              Select Images
+            <button type="button" onClick={selectFolder} style={{ marginRight: '0.5rem' }}>
+              Select Folder
             </button>
             <input
               type="file"
               multiple
+              webkitdirectory="true"
+              directory="true"
               ref={fileRef}
               style={{ display: 'none' }}
-              onChange={(e) => handleSelectFiles(e.target.files)}
+              onChange={(e) => handleFolderChange(e.target.files)}
             />
+            <input
+              type="text"
+              value={folderName}
+              readOnly
+              placeholder="No folder"
+              style={{ marginRight: '0.5rem', width: '12rem' }}
+            />
+            <button type="button" onClick={checkFolder} style={{ marginRight: '0.5rem' }}>
+              Check Folder
+            </button>
             <button type="button" onClick={refreshList} style={{ marginRight: '0.5rem' }}>
               Refresh
             </button>
-            <button type="button" disabled={page === 1} onClick={() => setPage(page - 1)} style={{ marginRight: '0.5rem' }}>
+            <button type="button" disabled={page === 1} onClick={() => { const p = page - 1; setPage(p); refreshList(p); }} style={{ marginRight: '0.5rem' }}>
               Prev
             </button>
-            <button type="button" disabled={!hasMore} onClick={() => setPage(page + 1)}>
+            <button type="button" disabled={!hasMore} onClick={() => { const p = page + 1; setPage(p); refreshList(p); }}>
               Next
             </button>
           </div>
@@ -212,9 +280,9 @@ export default function ImageManagement() {
                 </thead>
                 <tbody>
                   {uploads.map((u) => (
-                    <tr key={u.tmpPath} className={uploadSel.includes(u.tmpPath) ? 'bg-blue-50' : ''}>
+                    <tr key={u.index} className={uploadSel.includes(u.index) ? 'bg-blue-50' : ''}>
                       <td className="border px-2 py-1 text-center">
-                        <input type="checkbox" checked={uploadSel.includes(u.tmpPath)} onChange={() => toggleUpload(u.tmpPath)} />
+                        <input type="checkbox" checked={uploadSel.includes(u.index)} onChange={() => toggleUpload(u.index)} />
                       </td>
                       <td className="border px-2 py-1">{u.originalName}</td>
                       <td className="border px-2 py-1">{u.newName}</td>
