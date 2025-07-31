@@ -109,10 +109,41 @@ export default function ImageManagement() {
     }
   }
 
-  function handleFolderChange(files) {
+  async function selectFolder() {
+    if (window.showDirectoryPicker) {
+      try {
+        const dir = await window.showDirectoryPicker();
+        const files = [];
+        const root = dir.name;
+        async function readDir(handle) {
+          for await (const entry of handle.values()) {
+            if (entry.kind === 'file') {
+              const file = await entry.getFile();
+              files.push(file);
+            } else if (entry.kind === 'directory') {
+              await readDir(entry);
+            }
+          }
+        }
+        await readDir(dir);
+        handleFolderChange(files, root);
+        return;
+      } catch {
+        // cancelled or not allowed
+      }
+    }
+    if (fileRef.current) {
+      fileRef.current.value = '';
+      fileRef.current.click();
+    }
+  }
+
+  function handleFolderChange(files, root) {
     const arr = Array.from(files || []);
     setFolderFiles(arr);
-    if (arr.length > 0) {
+    if (root) {
+      setFolderName(root);
+    } else if (arr.length > 0) {
       const path = arr[0].webkitRelativePath || arr[0].name;
       const dir = path.split('/')[0];
       setFolderName(dir);
@@ -186,6 +217,7 @@ export default function ImageManagement() {
               Cleanup files older than (days):{' '}
               <input
                 type="number"
+                inputMode="decimal"
                 value={days}
                 onChange={(e) => setDays(e.target.value)}
                 style={{ width: '4rem' }}
@@ -200,7 +232,7 @@ export default function ImageManagement() {
       ) : (
         <div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <button type="button" onClick={() => fileRef.current?.click()} style={{ marginRight: '0.5rem' }}>
+            <button type="button" onClick={selectFolder} style={{ marginRight: '0.5rem' }}>
               Select Folder
             </button>
             <input
@@ -212,7 +244,13 @@ export default function ImageManagement() {
               style={{ display: 'none' }}
               onChange={(e) => handleFolderChange(e.target.files)}
             />
-            {folderName && <span style={{ marginRight: '0.5rem' }}>{folderName}</span>}
+            <input
+              type="text"
+              value={folderName}
+              readOnly
+              placeholder="No folder"
+              style={{ marginRight: '0.5rem', width: '12rem' }}
+            />
             <button type="button" onClick={checkFolder} style={{ marginRight: '0.5rem' }}>
               Check Folder
             </button>
