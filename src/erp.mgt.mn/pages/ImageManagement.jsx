@@ -234,12 +234,15 @@ export default function ImageManagement() {
   }
 
   async function checkNames() {
-    if (!folderListed || folderFiles.length === 0 || folderSel.length === 0) {
-      addToast('List image names and select files first', 'info');
+    if (!folderListed || folderFiles.length === 0) {
+      addToast('List image names first', 'info');
       return;
     }
     setCheckLoading(true);
-    const indices = folderSel;
+    const indices =
+      folderSel.length > 0
+        ? folderSel
+        : folderFiles.map((_, i) => i);
     const names = indices.map((i) => ({ name: folderFiles[i].name, index: i }));
     try {
       const res = await fetch('/api/transaction_images/folder_check', {
@@ -250,8 +253,24 @@ export default function ImageManagement() {
       });
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
-        setUploads(Array.isArray(data.list) ? data.list : []);
+        const list = Array.isArray(data.list) ? data.list : [];
+        setUploads(list);
         setUploadSel([]);
+        if (list.length > 0) {
+          setFolderFiles((files) => {
+            const next = files.slice();
+            list.forEach((it) => {
+              if (typeof it.index === 'number' && next[it.index]) {
+                next[it.index] = {
+                  ...next[it.index],
+                  newName: it.newName,
+                  folderDisplay: it.folderDisplay,
+                };
+              }
+            });
+            return next;
+          });
+        }
       } else {
         addToast('Check failed', 'error');
       }
@@ -354,7 +373,7 @@ export default function ImageManagement() {
                   type="button"
                   onClick={checkNames}
                   style={{ marginRight: '0.5rem' }}
-                  disabled={checkLoading || folderSel.length === 0}
+                  disabled={checkLoading || pageFiles.length === 0}
                 >
                   {checkLoading ? 'Checking...' : 'Check Names'}
                 </button>
@@ -389,6 +408,12 @@ export default function ImageManagement() {
                       <input type="checkbox" checked={pageFiles.every((_, i) => folderSel.includes(startIdx + i))} onChange={() => toggleFolderAll(pageFiles)} />
                     </th>
                     <th className="border px-2 py-1">Name</th>
+                    {pageFiles.some((f) => f.newName) && (
+                      <>
+                        <th className="border px-2 py-1">New Name</th>
+                        <th className="border px-2 py-1">Folder</th>
+                      </>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -398,6 +423,12 @@ export default function ImageManagement() {
                         <input type="checkbox" checked={folderSel.includes(startIdx + idx)} onChange={() => toggleFolder(startIdx + idx)} />
                       </td>
                       <td className="border px-2 py-1">{f.name}</td>
+                      {pageFiles.some((pf) => pf.newName) && (
+                        <>
+                          <td className="border px-2 py-1">{f.newName || ''}</td>
+                          <td className="border px-2 py-1">{f.folderDisplay || ''}</td>
+                        </>
+                      )}
                     </tr>
                   ))}
                 </tbody>
