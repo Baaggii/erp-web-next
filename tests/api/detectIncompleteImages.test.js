@@ -76,12 +76,12 @@ await test('detectIncompleteImages finds and fixes files', async () => {
   assert.ok(list[0].newName.includes('num001'));
   assert.ok(list[0].newName.includes('z1_b1_bp1'));
   assert.ok(list[0].newName.includes('oid~odid'));
-  assert.equal(list[0].folder, '4001/tool');
+  assert.equal(list[0].folder, 'tool/4001');
 
   const count = await fixIncompleteImages(list);
   assert.equal(count, 1);
 
-  const target = path.join(process.cwd(), 'uploads', 'txn_images', '4001', 'tool');
+  const target = path.join(process.cwd(), 'uploads', 'txn_images', 'tool', '4001');
   const exists = await fs.readdir(target);
   assert.ok(exists.some((f) => f.includes('num001')));
 
@@ -157,7 +157,7 @@ await test('uploadSelectedImages renames on upload', async () => {
     { originalname: 'abc12345.jpg', path: tmp }
   ], list);
   assert.equal(uploaded, 1);
-  const updir = path.join(process.cwd(), 'uploads', 'txn_images', '4001', 'tool');
+  const updir = path.join(process.cwd(), 'uploads', 'txn_images', 'tool', '4001');
   const exists = await fs.readdir(updir);
   assert.ok(exists.some((f) => f.includes('num002')));
 

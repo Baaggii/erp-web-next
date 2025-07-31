@@ -103,6 +103,16 @@ export default function RowImageUploadModal({
         setUploaded((u) => [...u, ...imgs]);
         onUploaded(finalName);
         for (const file of filesToUpload) {
+          try {
+            const codeRes = await fetch(
+              `/api/transaction_images/benchmark_code?name=${encodeURIComponent(file.name)}`,
+              { credentials: 'include' },
+            );
+            if (codeRes.ok) {
+              const data = await codeRes.json().catch(() => ({}));
+              if (data.code) addToast(`Benchmark code: ${data.code}`, 'info');
+            }
+          } catch {}
           const detForm = new FormData();
           detForm.append('image', file);
           try {
