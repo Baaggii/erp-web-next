@@ -353,8 +353,6 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
   const offset = (page - 1) * perPage;
   let count = 0;
   let hasMore = false;
-  let scannedFiles = 0;
-  const scannedDirs = new Set();
 
   async function walk(dir, rel) {
     if (rel) {
@@ -364,8 +362,6 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
       const baseName = path.basename(dir);
       if (dir !== baseDir && !baseName.startsWith('transactions_')) return;
     }
-
-    scannedDirs.add(rel || path.basename(dir));
 
     let entries;
     try {
@@ -379,7 +375,6 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
         await walk(full, path.join(rel, entry.name));
         if (hasMore) return;
       } else if (entry.isFile()) {
-        scannedFiles += 1;
         const ext = path.extname(entry.name);
         const base = path.basename(entry.name, ext);
         const { unique, suffix } = parseFileUnique(base);
@@ -435,17 +430,10 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
   }
 
   await walk(baseDir, '');
-  const dirList = Array.from(scannedDirs).join(', ');
-  const message = `scanned ${scannedFiles} file(s) in ${scannedDirs.size} folder(s)` +
-    (dirList ? ` [${dirList}]` : '') +
-    `, found ${results.length} incomplete image(s)`;
-  return {
-    list: results,
-    hasMore,
-    message,
-    folders: Array.from(scannedDirs),
-    scanned: scannedFiles,
-  };
+  const message = results.length
+    ? `found ${results.length} incomplete image(s)`
+    : 'no incomplete images found';
+  return { list: results, hasMore, message };
 }
 
 async function findTxnByUniqueId(idPart) {
@@ -501,7 +489,6 @@ export async function fixIncompleteImages(list = []) {
 
 export async function checkFolderNames(list = []) {
   const results = [];
-  let scanned = 0;
   for (const item of list) {
     const name = item?.name || '';
     const index = item?.index;
@@ -549,10 +536,11 @@ export async function checkFolderNames(list = []) {
       folder: folderRaw,
       folderDisplay,
     });
-    scanned += 1;
   }
-  const message = `checked ${scanned} file(s), found ${results.length} incomplete image(s)`;
-  return { list: results, message, scanned };
+  results.message = results.length
+    ? `found ${results.length} incomplete image(s)`
+    : 'no incomplete images found';
+  return results;
 }
 
 export async function uploadSelectedImages(files = [], meta = []) {
