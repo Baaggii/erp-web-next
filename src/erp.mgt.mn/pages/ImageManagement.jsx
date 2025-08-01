@@ -46,14 +46,9 @@ export default function ImageManagement() {
         setHasMore(!!data.hasMore);
         setPage(pg);
         setSelected([]);
-        const found = data.found || (data.list || []).length;
-        const scanned = data.scanned || 0;
-        const folder = data.folder || '';
-        setDetectResult({ found, scanned, folder });
-        addToast(
-          `Scanned ${scanned} file(s) in ${folder}. Found ${found} incomplete file(s)`,
-          'success',
-        );
+        const found = (data.list || []).length;
+        setDetectResult(found);
+        addToast(`Found ${found} incomplete file(s)`, 'success');
       } else {
         setDetectResult(null);
         addToast('Detect failed', 'error');
@@ -186,11 +181,8 @@ export default function ImageManagement() {
               </>
             )}
           </div>
-          {detectResult && (
-            <p style={{ marginTop: '0.5rem' }}>
-              Scanned {detectResult.scanned} file(s) in {detectResult.folder}. Found{' '}
-              {detectResult.found} incomplete file(s).
-            </p>
+          {detectResult !== null && (
+            <p style={{ marginTop: '0.5rem' }}>{detectResult} file(s) found.</p>
           )}
 
           {list.length > 0 && (
