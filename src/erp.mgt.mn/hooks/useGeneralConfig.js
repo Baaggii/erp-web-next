@@ -4,6 +4,9 @@ const cache = { data: null };
 
 export function updateCache(data) {
   cache.data = data;
+  if (data?.general) {
+    window.erpDebug = !!data.general.debugLoggingEnabled;
+  }
   window.dispatchEvent(new CustomEvent('generalConfigUpdated', { detail: data }));
 }
 
@@ -13,6 +16,9 @@ export default function useGeneralConfig() {
   useEffect(() => {
     if (cache.data !== null) {
       setCfg(cache.data);
+      if (cache.data.general) {
+        window.erpDebug = !!cache.data.general.debugLoggingEnabled;
+      }
       return;
     }
     fetch('/api/general_config', { credentials: 'include' })

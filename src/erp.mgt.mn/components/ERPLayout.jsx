@@ -11,6 +11,7 @@ import { useModules } from "../hooks/useModules.js";
 import { useTxnModules } from "../hooks/useTxnModules.js";
 import modulePath from "../utils/modulePath.js";
 import AskAIFloat from "./AskAIFloat.jsx";
+import useGeneralConfig from "../hooks/useGeneralConfig.js";
 import { useTabs } from "../context/TabContext.jsx";
 import { useIsLoading } from "../context/LoadingContext.jsx";
 import Spinner from "./Spinner.jsx";
@@ -23,6 +24,7 @@ import Spinner from "./Spinner.jsx";
  */
 export default function ERPLayout() {
   const { user, setUser, company } = useContext(AuthContext);
+  const generalConfig = useGeneralConfig();
   const renderCount = useRef(0);
   useEffect(() => {
   renderCount.current++;
@@ -126,7 +128,7 @@ export default function ERPLayout() {
         />
         <MainWindow title={windowTitle} />
       </div>
-      <AskAIFloat />
+      {generalConfig.general?.aiApiEnabled && <AskAIFloat />}
     </div>
   );
 }

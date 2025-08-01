@@ -60,6 +60,7 @@ const RowFormModal = function RowFormModal({
   const procCache = useRef({});
   const generalConfig = useGeneralConfig();
   const cfg = generalConfig[scope] || {};
+  const general = generalConfig.general || {};
   labelFontSize = labelFontSize ?? cfg.labelFontSize ?? 14;
   boxWidth = boxWidth ?? cfg.boxWidth ?? 60;
   boxHeight = boxHeight ?? cfg.boxHeight ?? 30;
@@ -425,6 +426,7 @@ const RowFormModal = function RowFormModal({
   }
 
   function showTriggerInfo(col) {
+    if (!general.triggerToastEnabled) return;
     const direct = getDirectTriggers(col);
     const paramTrigs = getParamTriggers(col);
 
@@ -531,21 +533,25 @@ const RowFormModal = function RowFormModal({
           return updated;
         });
         onChange(norm);
-        window.dispatchEvent(
-          new CustomEvent('toast', {
-            detail: { message: `Returned: ${JSON.stringify(row)}`, type: 'info' },
-          }),
-        );
+        if (general.procToastEnabled) {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message: `Returned: ${JSON.stringify(row)}`, type: 'info' },
+            }),
+          );
+        }
         continue;
       }
-      window.dispatchEvent(
-        new CustomEvent('toast', {
-          detail: {
-            message: `${tCol} -> ${procName}(${paramValues.join(', ')})`,
-            type: 'info',
-        },
-      }),
-    );
+      if (general.procToastEnabled) {
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: {
+              message: `${tCol} -> ${procName}(${paramValues.join(', ')})`,
+              type: 'info',
+            },
+          }),
+        );
+      }
     try {
       const row = await callProcedure(procName, paramValues, aliases);
       if (row && typeof row === 'object') {
@@ -563,19 +569,23 @@ const RowFormModal = function RowFormModal({
           return updated;
         });
         onChange(norm);
-        window.dispatchEvent(
-          new CustomEvent('toast', {
-            detail: { message: `Returned: ${JSON.stringify(row)}`, type: 'info' },
-          }),
-        );
+        if (general.procToastEnabled) {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message: `Returned: ${JSON.stringify(row)}`, type: 'info' },
+            }),
+          );
+        }
       }
     } catch (err) {
       console.error('Procedure call failed', err);
-      window.dispatchEvent(
-        new CustomEvent('toast', {
-          detail: { message: `Procedure failed: ${err.message}`, type: 'error' },
-        }),
-      );
+      if (general.procToastEnabled) {
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: { message: `Procedure failed: ${err.message}`, type: 'error' },
+          }),
+        );
+      }
     }
     }
   }

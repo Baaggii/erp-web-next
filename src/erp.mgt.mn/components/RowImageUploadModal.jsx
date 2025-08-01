@@ -3,6 +3,7 @@ import Modal from './Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import buildImageName from '../utils/buildImageName.js';
 import AISuggestionModal from './AISuggestionModal.jsx';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 export default function RowImageUploadModal({
   visible,
@@ -21,6 +22,7 @@ export default function RowImageUploadModal({
   const [loading, setLoading] = useState(false);
   const [uploaded, setUploaded] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
+  const generalConfig = useGeneralConfig();
   const [showSuggestModal, setShowSuggestModal] = useState(false);
   function buildName() {
     return buildImageName(row, imagenameFields, columnCaseMap);
@@ -102,12 +104,13 @@ export default function RowImageUploadModal({
         setFiles([]);
         setUploaded((u) => [...u, ...imgs]);
         onUploaded(finalName);
-        for (const file of filesToUpload) {
-          try {
-            const codeRes = await fetch(
-              `/api/transaction_images/benchmark_code?name=${encodeURIComponent(file.name)}`,
-              { credentials: 'include' },
-            );
+        if (generalConfig.general?.aiInventoryApiEnabled) {
+          for (const file of filesToUpload) {
+            try {
+              const codeRes = await fetch(
+                `/api/transaction_images/benchmark_code?name=${encodeURIComponent(file.name)}`,
+                { credentials: 'include' },
+              );
             if (codeRes.ok) {
               const data = await codeRes.json().catch(() => ({}));
               if (data.code) {
@@ -155,6 +158,9 @@ export default function RowImageUploadModal({
         if (detected.length) {
           setSuggestions((s) => [...s, ...detected]);
           setShowSuggestModal(true);
+        }
+        } else {
+          addToast('AI inventory API is disabled', 'warn');
         }
       } else {
         const text = await res.text();
