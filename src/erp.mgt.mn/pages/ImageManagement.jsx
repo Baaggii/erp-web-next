@@ -11,6 +11,7 @@ export default function ImageManagement() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [selected, setSelected] = useState([]);
+  const [detectResult, setDetectResult] = useState(null);
   async function handleCleanup() {
     const path = days
       ? `/api/transaction_images/cleanup/${days}`
@@ -45,10 +46,15 @@ export default function ImageManagement() {
         setHasMore(!!data.hasMore);
         setPage(pg);
         setSelected([]);
+        const found = (data.list || []).length;
+        setDetectResult(found);
+        addToast(`Found ${found} incomplete file(s)`, 'success');
       } else {
+        setDetectResult(null);
         addToast('Detect failed', 'error');
       }
     } catch {
+      setDetectResult(null);
       addToast('Detect failed', 'error');
     }
   }
@@ -175,6 +181,9 @@ export default function ImageManagement() {
               </>
             )}
           </div>
+          {detectResult !== null && (
+            <p style={{ marginTop: '0.5rem' }}>{detectResult} file(s) found.</p>
+          )}
 
           {list.length > 0 && (
             <table style={{ width: '100%', marginBottom: '0.5rem' }}>
