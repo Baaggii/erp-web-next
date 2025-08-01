@@ -343,12 +343,6 @@ export async function cleanupOldImages(days = 30) {
 
 export async function detectIncompleteImages(page = 1, perPage = 100) {
   const { baseDir } = await getDirs();
-  try {
-    await fs.access(baseDir);
-  } catch {
-    return { list: [], hasMore: false, message: `base dir not found: ${baseDir}` };
-  }
-
   const results = [];
   const offset = (page - 1) * perPage;
   let count = 0;
@@ -430,10 +424,7 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
   }
 
   await walk(baseDir, '');
-  const message = results.length
-    ? `found ${results.length} incomplete image(s)`
-    : 'no incomplete images found';
-  return { list: results, hasMore, message };
+  return { list: results, hasMore };
 }
 
 async function findTxnByUniqueId(idPart) {
@@ -537,9 +528,6 @@ export async function checkFolderNames(list = []) {
       folderDisplay,
     });
   }
-  results.message = results.length
-    ? `found ${results.length} incomplete image(s)`
-    : 'no incomplete images found';
   return results;
 }
 
