@@ -457,6 +457,20 @@ export async function fixIncompleteImages(list = []) {
   return count;
 }
 
+export async function deleteIncompleteImages(list = []) {
+  const { baseDir } = await getDirs();
+  let count = 0;
+  for (const item of list) {
+    const p = item?.currentPath || item?.path;
+    if (!p || !p.startsWith(baseDir)) continue;
+    try {
+      await fs.unlink(p);
+      count += 1;
+    } catch {}
+  }
+  return count;
+}
+
 export async function checkFolderNames(list = []) {
   const results = [];
   for (const item of list) {
