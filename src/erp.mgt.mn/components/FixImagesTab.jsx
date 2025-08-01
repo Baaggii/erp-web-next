@@ -73,9 +73,8 @@ export default function FixImagesTab() {
       });
       if (res.ok) {
         const data = await res.json();
-        const foundList = Array.isArray(data) ? data : data.list || [];
-        const msg = (Array.isArray(data) ? data.message : data.message) ||
-          `found ${foundList.length} file(s)`;
+        const foundList = data.list || [];
+        const msg = data.message || `found ${foundList.length} file(s)`;
         setList(foundList);
         setHasMore(arr.length > pageSize);
         addToast(msg, 'success');
