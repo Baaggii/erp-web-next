@@ -10,14 +10,8 @@ async function getDirs() {
   const cfg = await getGeneralConfig();
   const subdir = cfg.general?.imageDir || 'txn_images';
   const basePath = cfg.general?.imageStorage?.basePath || 'uploads';
-  let baseDir = basePath;
-  if (!path.isAbsolute(baseDir)) {
-    baseDir = path.join(process.cwd(), baseDir);
-  }
-  if (!baseDir.endsWith(subdir) && !baseDir.endsWith(path.sep + subdir)) {
-    baseDir = path.join(baseDir, subdir);
-  }
-  const urlBase = `/${path.basename(basePath)}/${subdir}`;
+  const baseDir = path.join(process.cwd(), basePath, subdir);
+  const urlBase = `/${basePath}/${subdir}`;
   return { baseDir, urlBase };
 }
 
@@ -442,8 +436,7 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
 
   await walk(baseDir, '');
   const dirList = Array.from(scannedDirs).join(', ');
-  const message =
-    `scanned ${scannedFiles} file(s) in ${scannedDirs.size} folder(s) under ${baseDir}` +
+  const message = `scanned ${scannedFiles} file(s) in ${scannedDirs.size} folder(s)` +
     (dirList ? ` [${dirList}]` : '') +
     `, found ${results.length} incomplete image(s)`;
   return {
