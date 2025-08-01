@@ -40,7 +40,11 @@ export default function ImageManagement() {
       setHasMore(Boolean(data.hasMore));
       setSelected(new Set());
       const folders = (data.scanned || []).join(', ') || 'none';
-      addToast(`Scanned ${folders}. Found ${data.total || 0} file(s)`, 'success');
+      const files = data.files || 0;
+      addToast(
+        `Scanned ${files} file(s) in ${folders}. Found ${data.total || 0} file(s)`,
+        'success',
+      );
     } catch {
       addToast('Detect failed', 'error');
     }

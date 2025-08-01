@@ -343,11 +343,13 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
   const results = [];
   const offset = (page - 1) * perPage;
   let totalFound = 0;
+  let totalScanned = 0;
   let hasMore = false;
-  const scanned = new Set();
+  const scannedDirs = new Set();
   const codes = await getTxnCodeSets();
 
   async function walk(dir, rel) {
+    scannedDirs.add(rel || '/');
     let entries;
     try {
       entries = await fs.readdir(dir, { withFileTypes: true });
@@ -361,6 +363,7 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
         await walk(full, path.join(rel, entry.name));
         if (hasMore) return;
       } else if (entry.isFile()) {
+        totalScanned += 1;
         const ext = path.extname(entry.name);
         const base = path.basename(entry.name, ext);
         const { unique, suffix } = parseFileUnique(base);
@@ -375,7 +378,6 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
           )
         )
           continue;
-        scanned.add(rel || '/');
         const found = await findTxnByUniqueId(unique);
         if (!found) continue;
         const { row, configs, numField } = found;
@@ -429,8 +431,9 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
   return {
     list: results,
     hasMore,
-    scanned: Array.from(scanned),
+    scanned: Array.from(scannedDirs),
     total: totalFound,
+    files: totalScanned,
   };
 }
 
