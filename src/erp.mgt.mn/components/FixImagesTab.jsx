@@ -46,16 +46,16 @@ export default function FixImagesTab() {
     }
   }
 
-  async function detectLocal(fileList, folderName = '') {
+  async function detectLocal(fileList) {
     const arr = Array.from(fileList || []);
     if (!arr.length) return;
     setMode('local');
     setPage(1);
     setFiles(arr);
     clearAll();
-    const root = folderName || (arr[0].webkitRelativePath
+    const root = arr[0].webkitRelativePath
       ? arr[0].webkitRelativePath.split('/')[0]
-      : '');
+      : '';
     setLocalFolder(root);
     const meta = arr.map((f, idx) => ({ name: f.name, index: idx }));
     try {
@@ -167,31 +167,7 @@ export default function FixImagesTab() {
         />
         <button
           type="button"
-          onClick={async () => {
-            if (window.showDirectoryPicker) {
-              try {
-                const dirHandle = await window.showDirectoryPicker();
-                const files = [];
-                async function collect(handle, pathParts = []) {
-                  for await (const [name, h] of handle.entries()) {
-                    if (h.kind === 'file') {
-                      const f = await h.getFile();
-                      f.webkitRelativePath = [...pathParts, name].join('/');
-                      files.push(f);
-                    } else if (h.kind === 'directory') {
-                      await collect(h, [...pathParts, name]);
-                    }
-                  }
-                }
-                await collect(dirHandle, [dirHandle.name]);
-                detectLocal(files, dirHandle.name);
-              } catch {
-                /* ignore */
-              }
-            } else {
-              inputRef.current?.click();
-            }
-          }}
+          onClick={() => inputRef.current?.click()}
           style={{ marginLeft: '0.5rem' }}
         >
           Detect from Local
