@@ -74,6 +74,7 @@ export default function CodingTablesPage() {
   const interruptRef = useRef(false);
   const abortCtrlRef = useRef(null);
   const [loadingWorkbook, setLoadingWorkbook] = useState(false);
+  const [loadProgress, setLoadProgress] = useState(0);
   const workerRef = useRef(null);
 
   useEffect(() => {
@@ -102,6 +103,7 @@ export default function CodingTablesPage() {
             if (workerRef.current) workerRef.current.terminate();
             workerRef.current = null;
             setLoadingWorkbook(false);
+            setLoadProgress(0);
           }
         }
       }
@@ -197,8 +199,20 @@ export default function CodingTablesPage() {
 
   async function loadWorkbook(file) {
     setLoadingWorkbook(true);
+    setLoadProgress(0);
     try {
-      const ab = await file.arrayBuffer();
+      const reader = new FileReader();
+      const ab = await new Promise((resolve, reject) => {
+        reader.onload = (ev) => resolve(ev.target.result);
+        reader.onerror = () => reject(reader.error);
+        reader.onprogress = (ev) => {
+          if (ev.lengthComputable) {
+            setLoadProgress(Math.floor((ev.loaded / ev.total) * 100));
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      });
+
       const worker = new Worker(
         new URL('../utils/workbookWorker.js', import.meta.url),
       );
@@ -208,6 +222,7 @@ export default function CodingTablesPage() {
           const { workbook: wb, error } = ev.data;
           workerRef.current = null;
           setLoadingWorkbook(false);
+          setLoadProgress(100);
           if (error || !wb) {
             console.error('Failed to load workbook', error);
             addToast(
@@ -225,7 +240,7 @@ export default function CodingTablesPage() {
           }
           resolve();
         };
-        worker.postMessage({ arrayBuffer: ab });
+        worker.postMessage({ arrayBuffer: ab }, [ab]);
       });
       setHeaderRow(1);
       setMnHeaderRow('');
@@ -256,6 +271,7 @@ export default function CodingTablesPage() {
       setSheets([]);
       setSelectedFile(null);
       setLoadingWorkbook(false);
+      setLoadProgress(0);
       if (workerRef.current) {
         workerRef.current.terminate();
         workerRef.current = null;
@@ -267,6 +283,7 @@ export default function CodingTablesPage() {
     const file = e.target.files[0];
     if (!file) return;
     setSelectedFile(file);
+    setLoadProgress(0);
     loadWorkbook(file);
   }
 
@@ -1977,13 +1994,13 @@ export default function CodingTablesPage() {
   return (
     <div>
       <h2>Coding Table Upload</h2>
-      <input type="file" accept=".xlsx,.xls" onChange={handleFile} ref={fileInputRef} />
+      <input type="file" accept=".xlsx,.xls,.xlsb" onChange={handleFile} ref={fileInputRef} />
       {selectedFile && (
         <button onClick={refreshFile} style={{ marginLeft: '0.5rem' }}>Refresh File</button>
       )}
       {loadingWorkbook && (
         <div style={{ marginTop: '0.5rem' }}>
-          <progress /> Loading workbook...
+          <progress value={loadProgress} max="100" /> Loading workbook...
         </div>
       )}
       {sheets.length > 0 && (

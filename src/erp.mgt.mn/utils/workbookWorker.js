@@ -5,7 +5,7 @@ self.onmessage = (e) => {
   let workbook = null;
   let error = null;
   try {
-    workbook = XLSX.read(arrayBuffer);
+    workbook = XLSX.read(arrayBuffer, { type: 'array' });
   } catch (err) {
     error = err.message || String(err);
   }
