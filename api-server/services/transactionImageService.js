@@ -330,8 +330,9 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
   const { baseDir } = await getDirs();
   const results = [];
   const offset = (page - 1) * perPage;
-  let count = 0;
+  let totalFound = 0;
   let hasMore = false;
+  const scanned = new Set();
 
   async function walk(dir, rel) {
     let entries;
@@ -351,8 +352,12 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
         const base = path.basename(entry.name, ext);
         const { unique, suffix } = parseFileUnique(base);
         if (!unique) continue;
-        const parts = sanitizeName(base).split(/[_-]+/);
+        const cleaned = base.replace(new RegExp(`[_-]*${unique}[_-]*`, 'i'), '');
+        const parts = sanitizeName(cleaned)
+          .split(/[_-]+/)
+          .filter(Boolean);
         if (parts.some((p) => /^\d{4}$/.test(p) || /^[a-z]{4}$/i.test(p))) continue;
+        scanned.add(rel || '/');
         const found = await findTxnByUniqueId(unique);
         if (!found) continue;
         const { row, configs, numField } = found;
@@ -385,8 +390,8 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
           finalBase = `${newBase}_${unique}${suffix}`;
         }
         const newName = `${finalBase}${ext}`;
-        count += 1;
-        if (count > offset && results.length < perPage) {
+        totalFound += 1;
+        if (totalFound > offset && results.length < perPage) {
           results.push({
             folder: folderRaw,
             folderDisplay,
@@ -403,7 +408,12 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
   }
 
   await walk(baseDir, '');
-  return { list: results, hasMore };
+  return {
+    list: results,
+    hasMore,
+    scanned: Array.from(scanned),
+    total: totalFound,
+  };
 }
 
 async function findTxnByUniqueId(idPart) {
