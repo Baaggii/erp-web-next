@@ -166,3 +166,24 @@ await test('uploadSelectedImages renames on upload', async () => {
   await fs.rm(path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test'), { recursive: true, force: true });
   await fs.rm(path.join(process.cwd(), 'uploads', 'tmp'), { recursive: true, force: true });
 });
+
+await test('checkFolderNames handles varied unique ids', async () => {
+  const samples = [
+    '1-ab593e82-abbd-4421-91f6-5b7e2687da33-18.jpg',
+    '120180002323_120180002323_4001_ydzfh-sdang-cxfxb-kajww_akihl-zukov-ulioe-fhnde_1753974108927_oge4m7.jpg',
+    '300048_300048_4001_1753984944999_cxkvuz.jpg',
+    '800688-2c589c0f-369a-4827-8b4c-fc5aeaf88a1c-26.jpg'
+  ];
+
+  const restoreDb = mockPool(async (sql) => {
+    if (/SHOW TABLES LIKE/.test(sql)) return [[{ t: 'transactions_test' }]];
+    if (/SHOW COLUMNS FROM/.test(sql)) return [[{ Field: 'test_num' }]];
+    if (/FROM `transactions_test`/.test(sql)) return [[{ test_num: 'dummy' }]];
+    return [[]];
+  });
+
+  const res = await checkFolderNames(samples.map((n, i) => ({ name: n, index: i })));
+  assert.equal(res.list.length, samples.length);
+
+  restoreDb();
+});

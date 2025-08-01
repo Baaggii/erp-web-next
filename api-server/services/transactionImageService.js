@@ -66,8 +66,12 @@ function extractUnique(str) {
     const u = hyphenless[0];
     return `${u.slice(0, 8)}-${u.slice(8, 12)}-${u.slice(12, 16)}-${u.slice(16, 20)}-${u.slice(20)}`.toUpperCase();
   }
-  const alt = str.match(/[A-Z0-9]{4}(?:-[A-Z0-9]{4}){3}/);
+  const alt = str.match(/[A-Z0-9]{4}(?:-[A-Z0-9]{4}){3}/i);
   if (alt) return alt[0];
+  const seq = str.match(/[A-Za-z]{2,}(?:[-_][A-Za-z0-9]{2,}){2,}(?=_[0-9]|$)/);
+  if (seq) return seq[0];
+  const digits = str.match(/[0-9]{8,}/);
+  if (digits) return digits[0];
   const long = str.match(/[A-Za-z0-9-]{8,}/);
   return long ? long[0] : '';
 }
