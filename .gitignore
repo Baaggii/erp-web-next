@@ -10,3 +10,6 @@ config/*.json
 config/generated.sql
 .ico
 uploads/
+uploads/*
+!uploads/.gitkeep
+!config/.gitkeep
