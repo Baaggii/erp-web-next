@@ -2,7 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import path from 'path';
-import { detectIncompleteImages, fixIncompleteImages, checkFolderNames, uploadSelectedImages } from '../../api-server/services/transactionImageService.js';
+import {
+  detectIncompleteImages,
+  fixIncompleteImages,
+  deleteIncompleteImages,
+  checkFolderNames,
+  uploadSelectedImages,
+} from '../../api-server/services/transactionImageService.js';
 import * as db from '../../db/index.js';
 
 function mockPool(handler) {
@@ -70,9 +76,12 @@ await test('detectIncompleteImages finds and fixes files', async () => {
     }
   }));
 
-  const { list, hasMore } = await detectIncompleteImages(1);
+  const { list, hasMore, scanned, found, folder } = await detectIncompleteImages(1);
   assert.equal(hasMore, false);
   assert.equal(list.length, 1);
+  assert.equal(found, 1);
+  assert.equal(scanned, 1);
+  assert.ok(folder.includes('txn_images'));
   assert.ok(list[0].newName.includes('num001'));
   assert.ok(list[0].newName.includes('z1_b1_bp1'));
   assert.ok(list[0].newName.includes('oid~odid'));
@@ -165,4 +174,18 @@ await test('uploadSelectedImages renames on upload', async () => {
   await fs.writeFile(cfgPath, origCfg);
   await fs.rm(path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test'), { recursive: true, force: true });
   await fs.rm(path.join(process.cwd(), 'uploads', 'tmp'), { recursive: true, force: true });
+});
+
+await test('deleteIncompleteImages removes files', async () => {
+  const dir = path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test');
+  await fs.rm(dir, { recursive: true, force: true });
+  await fs.mkdir(dir, { recursive: true });
+  const file = path.join(dir, 'abc12345.jpg');
+  await fs.writeFile(file, 'x');
+
+  const count = await deleteIncompleteImages([{ currentPath: file }]);
+  assert.equal(count, 1);
+  const remaining = await fs.readdir(dir);
+  assert.equal(remaining.length, 0);
+  await fs.rm(dir, { recursive: true, force: true });
 });

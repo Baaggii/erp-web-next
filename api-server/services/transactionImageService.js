@@ -331,6 +331,7 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
   const results = [];
   const offset = (page - 1) * perPage;
   let count = 0;
+  let scanned = 0;
   let hasMore = false;
 
   async function walk(dir, rel) {
@@ -347,12 +348,15 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
         await walk(full, path.join(rel, entry.name));
         if (hasMore) return;
       } else if (entry.isFile()) {
+        scanned += 1;
         const ext = path.extname(entry.name);
         const base = path.basename(entry.name, ext);
         const { unique, suffix } = parseFileUnique(base);
         if (!unique) continue;
         const parts = sanitizeName(base).split(/[_-]+/);
-        if (parts.some((p) => /^\d{4}$/.test(p) || /^[a-z]{4}$/i.test(p))) continue;
+        const hasDigit4 = parts.some((p) => /^\d{4}$/.test(p));
+        const hasAlpha4 = parts.some((p) => /^[a-z]{4}$/i.test(p));
+        if (hasDigit4 && hasAlpha4) continue;
         const found = await findTxnByUniqueId(unique);
         if (!found) continue;
         const { row, configs, numField } = found;
@@ -403,7 +407,7 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
   }
 
   await walk(baseDir, '');
-  return { list: results, hasMore };
+  return { list: results, hasMore, scanned, found: count, folder: baseDir };
 }
 
 async function findTxnByUniqueId(idPart) {
@@ -451,6 +455,20 @@ export async function fixIncompleteImages(list = []) {
     ensureDir(dir);
     try {
       await fs.rename(item.currentPath, path.join(dir, item.newName));
+      count += 1;
+    } catch {}
+  }
+  return count;
+}
+
+export async function deleteIncompleteImages(list = []) {
+  const { baseDir } = await getDirs();
+  let count = 0;
+  for (const item of list) {
+    const p = item?.currentPath || item?.path;
+    if (!p || !p.startsWith(baseDir)) continue;
+    try {
+      await fs.unlink(p);
       count += 1;
     } catch {}
   }
