@@ -2,7 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import path from 'path';
-import { detectIncompleteImages, fixIncompleteImages, checkFolderNames, uploadSelectedImages } from '../../api-server/services/transactionImageService.js';
+import {
+  detectIncompleteImages,
+  fixIncompleteImages,
+  deleteIncompleteImages,
+  checkFolderNames,
+  uploadSelectedImages,
+} from '../../api-server/services/transactionImageService.js';
 import * as db from '../../db/index.js';
 
 function mockPool(handler) {
@@ -70,9 +76,12 @@ await test('detectIncompleteImages finds and fixes files', async () => {
     }
   }));
 
-  const { list, hasMore } = await detectIncompleteImages(1);
+  const { list, hasMore, scanned, found, folder } = await detectIncompleteImages(1);
   assert.equal(hasMore, false);
   assert.equal(list.length, 1);
+  assert.equal(found, 1);
+  assert.equal(scanned, 1);
+  assert.ok(folder.includes('txn_images'));
   assert.ok(list[0].newName.includes('num001'));
   assert.ok(list[0].newName.includes('z1_b1_bp1'));
   assert.ok(list[0].newName.includes('oid~odid'));
@@ -164,5 +173,71 @@ await test('uploadSelectedImages renames on upload', async () => {
   restoreDb();
   await fs.writeFile(cfgPath, origCfg);
   await fs.rm(path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test'), { recursive: true, force: true });
+  await fs.rm(path.join(process.cwd(), 'uploads', 'tmp'), { recursive: true, force: true });
+});
+
+await test('deleteIncompleteImages removes files', async () => {
+  const dir = path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test');
+  await fs.rm(dir, { recursive: true, force: true });
+  await fs.mkdir(dir, { recursive: true });
+  const file = path.join(dir, 'abc12345.jpg');
+  await fs.writeFile(file, 'x');
+
+  const count = await deleteIncompleteImages([{ currentPath: file }]);
+  assert.equal(count, 1);
+  const remaining = await fs.readdir(dir);
+  assert.equal(remaining.length, 0);
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+await test('detectIncompleteImages detects uuids without codes', async () => {
+  const dir = path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test2');
+  await fs.rm(dir, { recursive: true, force: true });
+  await fs.rm(path.join(process.cwd(), 'uploads', 'tmp'), { recursive: true, force: true });
+  await fs.mkdir(dir, { recursive: true });
+  const file = path.join(dir, '-fc22c6c0-738c-4dea-8493-d0d1185057ec-19.jpg');
+  await fs.writeFile(file, 'x');
+
+  const row = {
+    id: 2,
+    test_num: 'fc22c6c0-738c-4dea-8493-d0d1185057ec',
+    label_field: 'num003',
+    trtype: '4002',
+    TransType: 'tool',
+  };
+
+  const restoreDb = mockPool(async (sql) => {
+    if (/SHOW TABLES LIKE/.test(sql)) return [[{ t: 'transactions_test2' }]];
+    if (/SHOW COLUMNS FROM/.test(sql)) {
+      return [[
+        { Field: 'test_num' },
+        { Field: 'label_field' },
+        { Field: 'trtype' },
+        { Field: 'TransType' },
+      ]];
+    }
+    if (/FROM `transactions_test2`/.test(sql)) return [[row]];
+    return [[]];
+  });
+
+  const origCfg = await fs.readFile(cfgPath, 'utf8').catch(() => '{}');
+  await fs.writeFile(
+    cfgPath,
+    JSON.stringify({
+      transactions_test2: {
+        default: { imagenameField: ['label_field'], imageFolder: 'transactions_test2' },
+      },
+    }),
+  );
+
+  const { list, found } = await detectIncompleteImages(1);
+  assert.equal(found, 1);
+  assert.equal(list.length, 1);
+  assert.ok(list[0].newName.includes('num003'));
+  assert.equal(list[0].folder, '4002/tool');
+
+  restoreDb();
+  await fs.writeFile(cfgPath, origCfg);
+  await fs.rm(dir, { recursive: true, force: true });
   await fs.rm(path.join(process.cwd(), 'uploads', 'tmp'), { recursive: true, force: true });
 });
