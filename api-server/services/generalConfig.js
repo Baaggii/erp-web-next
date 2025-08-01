@@ -19,6 +19,12 @@ const defaults = {
     boxMaxHeight: 150,
   },
   general: {
+    aiApiEnabled: false,
+    aiInventoryApiEnabled: false,
+    triggerToastEnabled: true,
+    procToastEnabled: true,
+    viewToastEnabled: true,
+    debugLoggingEnabled: false,
     imageStorage: {
       basePath: 'uploads',
       cleanupDays: 30,

@@ -1,14 +1,20 @@
 import React, { useState } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 export default function InventoryImageUpload({ onResult, multiple = false, uploadUrl = '/api/ai_inventory/identify' }) {
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState([]);
   const { addToast } = useToast();
+  const generalConfig = useGeneralConfig();
 
   async function handleUpload() {
     if (!files.length) return;
+    if (!generalConfig.general?.aiInventoryApiEnabled) {
+      addToast('AI inventory API is disabled', 'error');
+      return;
+    }
     setLoading(true);
     const results = [];
     for (const f of files) {
