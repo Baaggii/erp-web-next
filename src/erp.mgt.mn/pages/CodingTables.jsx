@@ -203,11 +203,15 @@ export default function CodingTablesPage() {
     try {
       const reader = new FileReader();
       const ab = await new Promise((resolve, reject) => {
-        reader.onload = (ev) => resolve(ev.target.result);
+        reader.onload = (ev) => {
+          setLoadProgress(90);
+          resolve(ev.target.result);
+        };
         reader.onerror = () => reject(reader.error);
         reader.onprogress = (ev) => {
-          if (ev.lengthComputable) {
-            setLoadProgress(Math.floor((ev.loaded / ev.total) * 100));
+          if (ev.lengthComputable && ev.total > 0) {
+            const pct = Math.floor((ev.loaded / ev.total) * 90);
+            setLoadProgress(pct);
           }
         };
         reader.readAsArrayBuffer(file);
@@ -222,21 +226,22 @@ export default function CodingTablesPage() {
           const { workbook: wb, error } = ev.data;
           workerRef.current = null;
           setLoadingWorkbook(false);
-          setLoadProgress(100);
           if (error || !wb) {
             console.error('Failed to load workbook', error);
             addToast(
-              'Unable to read file. Please select a valid Excel file.',
+              error || 'Unable to read file. Please select a valid Excel file.',
               'error',
             );
             setWorkbook(null);
             setSheets([]);
             setSelectedFile(null);
+            setLoadProgress(0);
           } else {
             setWorkbook(wb);
             setSheets(wb.SheetNames);
             const firstSheet = wb.SheetNames[0];
             setSheet(firstSheet);
+            setLoadProgress(100);
           }
           resolve();
         };
@@ -266,7 +271,7 @@ export default function CodingTablesPage() {
       setAutoIncStart('1');
     } catch (err) {
       console.error('Failed to load workbook', err);
-      addToast('Unable to read file. Please select a valid Excel file.', 'error');
+      addToast(err.message || 'Unable to read file.', 'error');
       setWorkbook(null);
       setSheets([]);
       setSelectedFile(null);
@@ -282,6 +287,10 @@ export default function CodingTablesPage() {
   function handleFile(e) {
     const file = e.target.files[0];
     if (!file) return;
+    if (!/\.xlsx$|\.xls$|\.xlsb$/i.test(file.name)) {
+      addToast('Unsupported file type. Please select an Excel file.', 'error');
+      return;
+    }
     setSelectedFile(file);
     setLoadProgress(0);
     loadWorkbook(file);
