@@ -73,6 +73,9 @@ export default function CodingTablesPage() {
   const [configMap, setConfigMap] = useState({});
   const interruptRef = useRef(false);
   const abortCtrlRef = useRef(null);
+  const [loadingWorkbook, setLoadingWorkbook] = useState(false);
+  const [loadProgress, setLoadProgress] = useState(0);
+  const workerRef = useRef(null);
 
   useEffect(() => {
     fetch('/api/coding_table_configs', { credentials: 'include' })
@@ -89,16 +92,25 @@ export default function CodingTablesPage() {
 
   useEffect(() => {
     function onKey(e) {
-      if (e.key === 'Escape' && uploading) {
-        if (window.confirm('Interrupt insert process?')) {
-          interruptRef.current = true;
-          if (abortCtrlRef.current) abortCtrlRef.current.abort();
+      if (e.key === 'Escape') {
+        if (uploading) {
+          if (window.confirm('Interrupt insert process?')) {
+            interruptRef.current = true;
+            if (abortCtrlRef.current) abortCtrlRef.current.abort();
+          }
+        } else if (loadingWorkbook) {
+          if (window.confirm('Cancel workbook load?')) {
+            if (workerRef.current) workerRef.current.terminate();
+            workerRef.current = null;
+            setLoadingWorkbook(false);
+            setLoadProgress(0);
+          }
         }
       }
     }
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [uploading]);
+  }, [uploading, loadingWorkbook]);
 
   const allFields = useMemo(() => {
     // keep duplicates so user can easily spot them and clean extras the same way
@@ -185,13 +197,56 @@ export default function CodingTablesPage() {
     setExtraFields((f) => f.filter((_, i) => i !== idx));
   }
 
-  function loadWorkbook(file) {
-    file.arrayBuffer().then((ab) => {
-      const wb = XLSX.read(ab);
-      setWorkbook(wb);
-      setSheets(wb.SheetNames);
-      const firstSheet = wb.SheetNames[0];
-      setSheet(firstSheet);
+  async function loadWorkbook(file) {
+    setLoadingWorkbook(true);
+    setLoadProgress(0);
+    try {
+      const reader = new FileReader();
+      const ab = await new Promise((resolve, reject) => {
+        reader.onload = (ev) => {
+          setLoadProgress(90);
+          resolve(ev.target.result);
+        };
+        reader.onerror = () => reject(reader.error);
+        reader.onprogress = (ev) => {
+          if (ev.lengthComputable && ev.total > 0) {
+            const pct = Math.floor((ev.loaded / ev.total) * 90);
+            setLoadProgress(pct);
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      });
+
+      const worker = new Worker(
+        new URL('../utils/workbookWorker.js', import.meta.url),
+      );
+      workerRef.current = worker;
+      await new Promise((resolve) => {
+        worker.onmessage = (ev) => {
+          const { workbook: wb, error } = ev.data;
+          workerRef.current = null;
+          setLoadingWorkbook(false);
+          if (error || !wb) {
+            console.error('Failed to load workbook', error);
+            addToast(
+              error || 'Unable to read file. Please select a valid Excel file.',
+              'error',
+            );
+            setWorkbook(null);
+            setSheets([]);
+            setSelectedFile(null);
+            setLoadProgress(0);
+          } else {
+            setWorkbook(wb);
+            setSheets(wb.SheetNames);
+            const firstSheet = wb.SheetNames[0];
+            setSheet(firstSheet);
+            setLoadProgress(100);
+          }
+          resolve();
+        };
+        worker.postMessage({ arrayBuffer: ab }, [ab]);
+      });
       setHeaderRow(1);
       setMnHeaderRow('');
       setHeaders([]);
@@ -214,13 +269,30 @@ export default function CodingTablesPage() {
       setStartYear('');
       setEndYear('');
       setAutoIncStart('1');
-    });
+    } catch (err) {
+      console.error('Failed to load workbook', err);
+      addToast(err.message || 'Unable to read file.', 'error');
+      setWorkbook(null);
+      setSheets([]);
+      setSelectedFile(null);
+      setLoadingWorkbook(false);
+      setLoadProgress(0);
+      if (workerRef.current) {
+        workerRef.current.terminate();
+        workerRef.current = null;
+      }
+    }
   }
 
   function handleFile(e) {
     const file = e.target.files[0];
     if (!file) return;
+    if (!/\.xlsx$|\.xls$|\.xlsb$/i.test(file.name)) {
+      addToast('Unsupported file type. Please select an Excel file.', 'error');
+      return;
+    }
     setSelectedFile(file);
+    setLoadProgress(0);
     loadWorkbook(file);
   }
 
@@ -1931,9 +2003,14 @@ export default function CodingTablesPage() {
   return (
     <div>
       <h2>Coding Table Upload</h2>
-      <input type="file" accept=".xlsx,.xls" onChange={handleFile} ref={fileInputRef} />
+      <input type="file" accept=".xlsx,.xls,.xlsb" onChange={handleFile} ref={fileInputRef} />
       {selectedFile && (
         <button onClick={refreshFile} style={{ marginLeft: '0.5rem' }}>Refresh File</button>
+      )}
+      {loadingWorkbook && (
+        <div style={{ marginTop: '0.5rem' }}>
+          <progress value={loadProgress} max="100" /> Loading workbook...
+        </div>
       )}
       {sheets.length > 0 && (
         <div>
