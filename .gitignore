@@ -8,5 +8,10 @@ build/               # ← production build-аа git-д хийхгүй
 Passengerfile.json
 .json
 .ico
-/config
-/uploads
+# Prevent committing uploaded files or generated configs
+uploads/*
+config/*.json
+
+# But allow folder structure
+!uploads/.gitkeep
+!config/.gitkeep
