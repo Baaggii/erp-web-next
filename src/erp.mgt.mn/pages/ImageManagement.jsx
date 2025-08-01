@@ -83,6 +83,29 @@ export default function ImageManagement() {
     }
   }
 
+  async function handleDeleteSelected() {
+    const items = selected.map((i) => list[i]);
+    if (items.length === 0) return;
+    try {
+      const res = await fetch('/api/transaction_images/delete_incomplete', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ list: items }),
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const deleted = data.deleted || 0;
+        addToast(`Deleted ${deleted} file(s)`, 'success');
+        handleDetect(page);
+      } else {
+        addToast('Delete failed', 'error');
+      }
+    } catch {
+      addToast('Delete failed', 'error');
+    }
+  }
+
   return (
     <div>
       <h2>Image Management</h2>
@@ -134,13 +157,22 @@ export default function ImageManagement() {
               Detect from host
             </button>
             {list.length > 0 && (
-              <button
-                type="button"
-                onClick={handleFixSelected}
-                style={{ marginLeft: '0.5rem' }}
-              >
-                Rename &amp; Move Selected
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={handleFixSelected}
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  Rename &amp; Move Selected
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteSelected}
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  Delete Selected
+                </button>
+              </>
             )}
           </div>
 
@@ -182,7 +214,7 @@ export default function ImageManagement() {
               >
                 Previous
               </button>
-              <span style={{ margin: '0 0.5rem' }}>Page {page}</span>
+              <span style={{ margin: '0 0.5rem' }}>Page {page} (100 per page)</span>
               <button
                 type="button"
                 onClick={() => handleDetect(page + 1)}
