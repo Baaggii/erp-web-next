@@ -74,6 +74,21 @@ function parseFileUnique(base) {
   return { unique, suffix };
 }
 
+function removeUnique(base, unique) {
+  if (!unique) return base;
+  const idx = base.toLowerCase().indexOf(unique.toLowerCase());
+  if (idx >= 0) return base.slice(0, idx) + base.slice(idx + unique.length);
+  return base;
+}
+
+function isIncompleteName(base, unique) {
+  const rest = removeUnique(base, unique);
+  const parts = sanitizeName(rest).split(/[_-]+/).filter(Boolean);
+  const hasTrCode = parts.some((p) => /^\d{4}$/.test(p));
+  const hasTrType = parts.some((p) => /^[a-z]{4}$/i.test(p));
+  return !(hasTrCode && hasTrType);
+}
+
 function buildFolderName(row, fallback = '') {
   const part1 =
     getFieldCase(row, 'trtype') ||
@@ -328,12 +343,26 @@ export async function cleanupOldImages(days = 30) {
 
 export async function detectIncompleteImages(page = 1, perPage = 100) {
   const { baseDir } = await getDirs();
+  try {
+    await fs.access(baseDir);
+  } catch {
+    return { list: [], hasMore: false, message: `base dir not found: ${baseDir}` };
+  }
+
   const results = [];
   const offset = (page - 1) * perPage;
   let count = 0;
   let hasMore = false;
 
   async function walk(dir, rel) {
+    if (rel) {
+      const first = rel.split(path.sep)[0];
+      if (!first.startsWith('transactions_')) return;
+    } else {
+      const baseName = path.basename(dir);
+      if (dir !== baseDir && !baseName.startsWith('transactions_')) return;
+    }
+
     let entries;
     try {
       entries = await fs.readdir(dir, { withFileTypes: true });
@@ -343,7 +372,6 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
     for (const entry of entries) {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) {
-        if (dir === baseDir && !entry.name.startsWith('transactions_')) continue;
         await walk(full, path.join(rel, entry.name));
         if (hasMore) return;
       } else if (entry.isFile()) {
@@ -351,8 +379,7 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
         const base = path.basename(entry.name, ext);
         const { unique, suffix } = parseFileUnique(base);
         if (!unique) continue;
-        const parts = sanitizeName(base).split(/[_-]+/);
-        if (parts.some((p) => /^\d{4}$/.test(p) || /^[a-z]{4}$/i.test(p))) continue;
+        if (!isIncompleteName(base, unique)) continue;
         const found = await findTxnByUniqueId(unique);
         if (!found) continue;
         const { row, configs, numField } = found;
@@ -403,7 +430,10 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
   }
 
   await walk(baseDir, '');
-  return { list: results, hasMore };
+  const message = results.length
+    ? `found ${results.length} incomplete image(s)`
+    : 'no incomplete images found';
+  return { list: results, hasMore, message };
 }
 
 async function findTxnByUniqueId(idPart) {
@@ -466,6 +496,7 @@ export async function checkFolderNames(list = []) {
     const base = path.basename(name, ext);
     const { unique, suffix } = parseFileUnique(base);
     if (!unique) continue;
+    if (!isIncompleteName(base, unique)) continue;
     const found = await findTxnByUniqueId(unique);
     if (!found) continue;
     const { row, configs, numField } = found;
@@ -506,6 +537,9 @@ export async function checkFolderNames(list = []) {
       folderDisplay,
     });
   }
+  results.message = results.length
+    ? `found ${results.length} incomplete image(s)`
+    : 'no incomplete images found';
   return results;
 }
 
