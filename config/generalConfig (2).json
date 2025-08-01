@@ -1,0 +1,29 @@
+{
+  "forms": {
+    "labelFontSize": 12,
+    "boxWidth": 60,
+    "boxHeight": 30,
+    "boxMaxWidth": 150,
+    "boxMaxHeight": 150
+  },
+  "pos": {
+    "labelFontSize": 12,
+    "boxWidth": 60,
+    "boxHeight": 30,
+    "boxMaxWidth": 150,
+    "boxMaxHeight": 150
+  },
+  "general": {
+    "aiApiEnabled": false,
+    "aiInventoryApiEnabled": false,
+    "triggerToastEnabled": false,
+    "procToastEnabled": false,
+    "viewToastEnabled": false,
+    "debugLoggingEnabled": false,
+    "imageStorage": {
+      "basePath": "uploads",
+      "cleanupDays": 30
+    },
+    "imageDir": "txn_images"
+  }
+}

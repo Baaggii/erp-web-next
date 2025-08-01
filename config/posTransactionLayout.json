@@ -1,0 +1,30 @@
+{
+  "POS_Modmarket": {
+    "transactions_pos": {
+      "width": 387,
+      "height": 616,
+      "x": -401,
+      "y": 0
+    },
+    "transactions_order": {
+      "width": 708,
+      "height": 617,
+      "x": -5,
+      "y": 2
+    }
+  },
+  "ONLINE_POS": {
+    "transactions_pos": {
+      "width": 376,
+      "height": 578,
+      "x": -427,
+      "y": 1
+    },
+    "transactions_order": {
+      "width": 645,
+      "height": 573,
+      "x": 0,
+      "y": 0
+    }
+  }
+}
