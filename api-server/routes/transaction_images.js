@@ -10,7 +10,6 @@ import {
   cleanupOldImages,
   detectIncompleteImages,
   fixIncompleteImages,
-  deleteIncompleteImages,
   checkFolderNames,
   uploadSelectedImages,
 } from '../services/transactionImageService.js';
@@ -46,19 +45,9 @@ router.get('/detect_incomplete', requireAuth, async (req, res, next) => {
 
 router.post('/fix_incomplete', requireAuth, async (req, res, next) => {
   try {
-  const arr = Array.isArray(req.body?.list) ? req.body.list : [];
-  const fixed = await fixIncompleteImages(arr);
-  res.json({ fixed });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.post('/delete_incomplete', requireAuth, async (req, res, next) => {
-  try {
     const arr = Array.isArray(req.body?.list) ? req.body.list : [];
-    const deleted = await deleteIncompleteImages(arr);
-    res.json({ deleted });
+    const fixed = await fixIncompleteImages(arr);
+    res.json({ fixed });
   } catch (err) {
     next(err);
   }
