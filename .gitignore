@@ -6,7 +6,7 @@ tmp/
 process.env
 build/               # ← production build-аа git-д хийхгүй
 Passengerfile.json
-.json
+config/*.json
+config/generated.sql
 .ico
-/config
-/uploads
+uploads/
