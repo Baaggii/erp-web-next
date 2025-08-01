@@ -144,6 +144,18 @@ function appendOptionalParts(row, base) {
   return sanitizeName(combined);
 }
 
+async function getTxnCodeSets() {
+  try {
+    const [rows] = await pool.query('SELECT UITransType, UITrtype FROM code_transaction');
+    return {
+      digits: new Set(rows.map((r) => String(r.UITransType)) || []),
+      letters: new Set(rows.map((r) => String(r.UITrtype).toUpperCase()) || []),
+    };
+  } catch {
+    return { digits: new Set(), letters: new Set() };
+  }
+}
+
 export async function findBenchmarkCode(name) {
   if (!name) return null;
   const base = path.basename(name, path.extname(name));
@@ -330,8 +342,10 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
   const { baseDir } = await getDirs();
   const results = [];
   const offset = (page - 1) * perPage;
-  let count = 0;
+  let totalFound = 0;
   let hasMore = false;
+  const scanned = new Set();
+  const codes = await getTxnCodeSets();
 
   async function walk(dir, rel) {
     let entries;
@@ -351,8 +365,17 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
         const base = path.basename(entry.name, ext);
         const { unique, suffix } = parseFileUnique(base);
         if (!unique) continue;
-        const parts = sanitizeName(base).split(/[_-]+/);
-        if (parts.some((p) => /^\d{4}$/.test(p) || /^[a-z]{4}$/i.test(p))) continue;
+        const cleaned = base.replace(new RegExp(`[_-]*${unique}[_-]*`, 'i'), '');
+        const parts = sanitizeName(cleaned)
+          .split(/[_-]+/)
+          .filter(Boolean);
+        if (
+          parts.some(
+            (p) => codes.digits.has(p) || codes.letters.has(p.toUpperCase()),
+          )
+        )
+          continue;
+        scanned.add(rel || '/');
         const found = await findTxnByUniqueId(unique);
         if (!found) continue;
         const { row, configs, numField } = found;
@@ -385,8 +408,8 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
           finalBase = `${newBase}_${unique}${suffix}`;
         }
         const newName = `${finalBase}${ext}`;
-        count += 1;
-        if (count > offset && results.length < perPage) {
+        totalFound += 1;
+        if (totalFound > offset && results.length < perPage) {
           results.push({
             folder: folderRaw,
             folderDisplay,
@@ -403,7 +426,12 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
   }
 
   await walk(baseDir, '');
-  return { list: results, hasMore };
+  return {
+    list: results,
+    hasMore,
+    scanned: Array.from(scanned),
+    total: totalFound,
+  };
 }
 
 async function findTxnByUniqueId(idPart) {
