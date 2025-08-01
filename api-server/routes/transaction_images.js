@@ -56,8 +56,8 @@ router.post('/fix_incomplete', requireAuth, async (req, res, next) => {
 router.post('/folder_check', requireAuth, async (req, res, next) => {
   try {
     const arr = Array.isArray(req.body?.list) ? req.body.list : [];
-    const data = await checkFolderNames(arr);
-    res.json(data);
+    const list = await checkFolderNames(arr);
+    res.json({ list });
   } catch (err) {
     next(err);
   }
