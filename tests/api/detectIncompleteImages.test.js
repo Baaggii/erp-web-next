@@ -76,9 +76,12 @@ await test('detectIncompleteImages finds and fixes files', async () => {
     }
   }));
 
-  const { list, hasMore } = await detectIncompleteImages(1);
+  const { list, hasMore, scanned, found, folder } = await detectIncompleteImages(1);
   assert.equal(hasMore, false);
   assert.equal(list.length, 1);
+  assert.equal(found, 1);
+  assert.equal(scanned, 1);
+  assert.ok(folder.includes('txn_images'));
   assert.ok(list[0].newName.includes('num001'));
   assert.ok(list[0].newName.includes('z1_b1_bp1'));
   assert.ok(list[0].newName.includes('oid~odid'));
