@@ -349,6 +349,14 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
   let hasMore = false;
 
   async function walk(dir, rel) {
+    if (rel) {
+      const first = rel.split(path.sep)[0];
+      if (!first.startsWith('transactions_')) return;
+    } else {
+      const baseName = path.basename(dir);
+      if (dir !== baseDir && !baseName.startsWith('transactions_')) return;
+    }
+
     let entries;
     try {
       entries = await fs.readdir(dir, { withFileTypes: true });
@@ -358,7 +366,6 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
     for (const entry of entries) {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) {
-        if (dir === baseDir && !entry.name.startsWith('transactions_')) continue;
         await walk(full, path.join(rel, entry.name));
         if (hasMore) return;
       } else if (entry.isFile()) {
