@@ -677,11 +677,13 @@ export default forwardRef(function InlineTransactionTable({
         params.set(f, pv);
       });
       const url = `/api/tables/${encodeURIComponent(view)}?${params.toString()}`;
-      window.dispatchEvent(
-        new CustomEvent('toast', {
-          detail: { message: `Lookup ${view}: ${params.toString()}`, type: 'info' },
-        }),
-      );
+      if (general.viewToastEnabled) {
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: { message: `Lookup ${view}: ${params.toString()}`, type: 'info' },
+          }),
+        );
+      }
       fetch(url, { credentials: 'include' })
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
@@ -691,13 +693,19 @@ export default forwardRef(function InlineTransactionTable({
             );
             return;
           }
-          window.dispatchEvent(new CustomEvent('toast', { detail: { message: `SQL: ${data.sql}`, type: 'info' } }));
+          if (general.viewToastEnabled) {
+            window.dispatchEvent(
+              new CustomEvent('toast', { detail: { message: `SQL: ${data.sql}`, type: 'info' } }),
+            );
+          }
           const rowData = data.rows[0];
-          window.dispatchEvent(
-            new CustomEvent('toast', {
-              detail: { message: `Result: ${JSON.stringify(rowData)}`, type: 'info' },
-            }),
-          );
+          if (general.viewToastEnabled) {
+            window.dispatchEvent(
+              new CustomEvent('toast', {
+                detail: { message: `Result: ${JSON.stringify(rowData)}`, type: 'info' },
+              }),
+            );
+          }
           setRows((r) => {
             const next = r.map((row, i) => {
               if (i !== rowIdx) return row;

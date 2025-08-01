@@ -241,6 +241,17 @@ export default function GeneralConfiguration() {
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
             <label>
+              Show View Lookup Toasts{' '}
+              <input
+                name="viewToastEnabled"
+                type="checkbox"
+                checked={active.viewToastEnabled ?? false}
+                onChange={handleChange}
+              />
+            </label>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <label>
               Enable Debug Logging{' '}
               <input
                 name="debugLoggingEnabled"

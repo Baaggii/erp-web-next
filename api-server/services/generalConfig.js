@@ -23,6 +23,7 @@ const defaults = {
     aiInventoryApiEnabled: false,
     triggerToastEnabled: true,
     procToastEnabled: true,
+    viewToastEnabled: true,
     debugLoggingEnabled: false,
     imageStorage: {
       basePath: 'uploads',

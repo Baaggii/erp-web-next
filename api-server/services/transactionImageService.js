@@ -138,6 +138,29 @@ function appendOptionalParts(row, base) {
   return sanitizeName(combined);
 }
 
+export async function findBenchmarkCode(name) {
+  if (!name) return null;
+  const base = path.basename(name, path.extname(name));
+  const parts = base.split(/[_-]/).filter(Boolean);
+  for (const p of parts) {
+    const [rows] = await pool.query(
+      'SELECT UITransType FROM code_transaction WHERE UITransType = ?',
+      [p],
+    );
+    if (rows?.length) return rows[0].UITransType;
+  }
+  const [rows] = await pool.query(
+    'SELECT UITransType, UITrtype FROM code_transaction WHERE image_benchmark = 1',
+  );
+  for (const row of rows || []) {
+    const mark = row.UITrtype;
+    if (mark && base.toLowerCase().includes(String(mark).toLowerCase())) {
+      return row.UITransType;
+    }
+  }
+  return null;
+}
+
 export async function saveImages(table, name, files, folder = null) {
   const { baseDir, urlBase } = await getDirs();
   ensureDir(baseDir);
