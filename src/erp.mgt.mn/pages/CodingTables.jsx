@@ -73,6 +73,8 @@ export default function CodingTablesPage() {
   const [configMap, setConfigMap] = useState({});
   const interruptRef = useRef(false);
   const abortCtrlRef = useRef(null);
+  const [loadingWorkbook, setLoadingWorkbook] = useState(false);
+  const workerRef = useRef(null);
 
   useEffect(() => {
     fetch('/api/coding_table_configs', { credentials: 'include' })
@@ -89,16 +91,24 @@ export default function CodingTablesPage() {
 
   useEffect(() => {
     function onKey(e) {
-      if (e.key === 'Escape' && uploading) {
-        if (window.confirm('Interrupt insert process?')) {
-          interruptRef.current = true;
-          if (abortCtrlRef.current) abortCtrlRef.current.abort();
+      if (e.key === 'Escape') {
+        if (uploading) {
+          if (window.confirm('Interrupt insert process?')) {
+            interruptRef.current = true;
+            if (abortCtrlRef.current) abortCtrlRef.current.abort();
+          }
+        } else if (loadingWorkbook) {
+          if (window.confirm('Cancel workbook load?')) {
+            if (workerRef.current) workerRef.current.terminate();
+            workerRef.current = null;
+            setLoadingWorkbook(false);
+          }
         }
       }
     }
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [uploading]);
+  }, [uploading, loadingWorkbook]);
 
   const allFields = useMemo(() => {
     // keep duplicates so user can easily spot them and clean extras the same way
@@ -186,13 +196,37 @@ export default function CodingTablesPage() {
   }
 
   async function loadWorkbook(file) {
+    setLoadingWorkbook(true);
     try {
       const ab = await file.arrayBuffer();
-      const wb = XLSX.read(ab);
-      setWorkbook(wb);
-      setSheets(wb.SheetNames);
-      const firstSheet = wb.SheetNames[0];
-      setSheet(firstSheet);
+      const worker = new Worker(
+        new URL('../utils/workbookWorker.js', import.meta.url),
+      );
+      workerRef.current = worker;
+      await new Promise((resolve) => {
+        worker.onmessage = (ev) => {
+          const { workbook: wb, error } = ev.data;
+          workerRef.current = null;
+          setLoadingWorkbook(false);
+          if (error || !wb) {
+            console.error('Failed to load workbook', error);
+            addToast(
+              'Unable to read file. Please select a valid Excel file.',
+              'error',
+            );
+            setWorkbook(null);
+            setSheets([]);
+            setSelectedFile(null);
+          } else {
+            setWorkbook(wb);
+            setSheets(wb.SheetNames);
+            const firstSheet = wb.SheetNames[0];
+            setSheet(firstSheet);
+          }
+          resolve();
+        };
+        worker.postMessage({ arrayBuffer: ab });
+      });
       setHeaderRow(1);
       setMnHeaderRow('');
       setHeaders([]);
@@ -221,6 +255,11 @@ export default function CodingTablesPage() {
       setWorkbook(null);
       setSheets([]);
       setSelectedFile(null);
+      setLoadingWorkbook(false);
+      if (workerRef.current) {
+        workerRef.current.terminate();
+        workerRef.current = null;
+      }
     }
   }
 
@@ -1941,6 +1980,11 @@ export default function CodingTablesPage() {
       <input type="file" accept=".xlsx,.xls" onChange={handleFile} ref={fileInputRef} />
       {selectedFile && (
         <button onClick={refreshFile} style={{ marginLeft: '0.5rem' }}>Refresh File</button>
+      )}
+      {loadingWorkbook && (
+        <div style={{ marginTop: '0.5rem' }}>
+          <progress /> Loading workbook...
+        </div>
       )}
       {sheets.length > 0 && (
         <div>
