@@ -10,7 +10,6 @@ export default function FixImagesTab() {
   const [files, setFiles] = useState([]);
   const [selected, setSelected] = useState(new Set());
   const [localFolder, setLocalFolder] = useState('');
-  const [status, setStatus] = useState('');
   const inputRef = useRef(null);
   const pageSize = 100;
 
@@ -25,7 +24,6 @@ export default function FixImagesTab() {
     setList([]);
     setHasMore(false);
     setSelected(new Set());
-    setStatus('');
   }
 
   async function detectHost(p = 1) {
@@ -33,7 +31,6 @@ export default function FixImagesTab() {
     setPage(p);
     clearAll();
     addToast('Scanning host folders...', 'info');
-    setStatus('');
     try {
       const res = await fetch(`/api/transaction_images/detect_incomplete?page=${p}`, {
         credentials: 'include',
@@ -42,7 +39,6 @@ export default function FixImagesTab() {
         const data = await res.json();
         setList(Array.isArray(data.list) ? data.list : []);
         setHasMore(!!data.hasMore);
-        setStatus(data.message || '');
         addToast(data.message || `found ${data.list.length} file(s)`, 'success');
       } else {
         addToast('Host detection failed', 'error');
@@ -67,7 +63,6 @@ export default function FixImagesTab() {
       : '');
     setLocalFolder(root);
     addToast(`Scanning folder ${root || ''}...`, 'info');
-    setStatus('');
     const meta = arr.map((f, idx) => ({ name: f.name, index: idx }));
     try {
       const res = await fetch('/api/transaction_images/folder_check', {
@@ -82,7 +77,6 @@ export default function FixImagesTab() {
         const msg = data.message || `found ${foundList.length} file(s)`;
         setList(foundList);
         setHasMore(arr.length > pageSize);
-        setStatus(msg);
         addToast(msg, 'success');
       } else {
         addToast('Local detection failed', 'error');
@@ -124,7 +118,6 @@ export default function FixImagesTab() {
         if (res.ok) {
           const data = await res.json();
           addToast(`Renamed ${data.fixed} file(s)`, 'success');
-          setStatus(`Renamed ${data.fixed} file(s)`);
           detectHost(page);
         } else {
           addToast('Rename failed', 'error');
@@ -151,7 +144,6 @@ export default function FixImagesTab() {
         if (res.ok) {
           const data = await res.json();
           addToast(`Uploaded ${data.uploaded} file(s)`, 'success');
-          setStatus(`Uploaded ${data.uploaded} file(s)`);
         } else {
           addToast('Upload failed', 'error');
         }
@@ -227,9 +219,6 @@ export default function FixImagesTab() {
           </button>
         )}
       </div>
-      {status && (
-        <p style={{ marginTop: '0.5rem' }}>{status}</p>
-      )}
       {display.length > 0 && (
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
           <thead>
