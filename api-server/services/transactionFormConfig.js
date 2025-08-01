@@ -13,6 +13,7 @@ async function readConfig() {
 }
 
 async function writeConfig(cfg) {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, JSON.stringify(cfg, null, 2));
 }
 
