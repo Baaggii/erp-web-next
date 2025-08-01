@@ -185,8 +185,9 @@ export default function CodingTablesPage() {
     setExtraFields((f) => f.filter((_, i) => i !== idx));
   }
 
-  function loadWorkbook(file) {
-    file.arrayBuffer().then((ab) => {
+  async function loadWorkbook(file) {
+    try {
+      const ab = await file.arrayBuffer();
       const wb = XLSX.read(ab);
       setWorkbook(wb);
       setSheets(wb.SheetNames);
@@ -214,7 +215,13 @@ export default function CodingTablesPage() {
       setStartYear('');
       setEndYear('');
       setAutoIncStart('1');
-    });
+    } catch (err) {
+      console.error('Failed to load workbook', err);
+      addToast('Unable to read file. Please select a valid Excel file.', 'error');
+      setWorkbook(null);
+      setSheets([]);
+      setSelectedFile(null);
+    }
   }
 
   function handleFile(e) {
