@@ -10,8 +10,14 @@ async function getDirs() {
   const cfg = await getGeneralConfig();
   const subdir = cfg.general?.imageDir || 'txn_images';
   const basePath = cfg.general?.imageStorage?.basePath || 'uploads';
-  const baseDir = path.join(process.cwd(), basePath, subdir);
-  const urlBase = `/${basePath}/${subdir}`;
+  let baseDir = basePath;
+  if (!path.isAbsolute(baseDir)) {
+    baseDir = path.join(process.cwd(), baseDir);
+  }
+  if (!baseDir.endsWith(subdir) && !baseDir.endsWith(path.sep + subdir)) {
+    baseDir = path.join(baseDir, subdir);
+  }
+  const urlBase = `/${path.basename(basePath)}/${subdir}`;
   return { baseDir, urlBase };
 }
 
@@ -60,8 +66,12 @@ function extractUnique(str) {
     const u = hyphenless[0];
     return `${u.slice(0, 8)}-${u.slice(8, 12)}-${u.slice(12, 16)}-${u.slice(16, 20)}-${u.slice(20)}`.toUpperCase();
   }
-  const alt = str.match(/[A-Z0-9]{4}(?:-[A-Z0-9]{4}){3}/);
+  const alt = str.match(/[A-Z0-9]{4}(?:-[A-Z0-9]{4}){3}/i);
   if (alt) return alt[0];
+  const seq = str.match(/[A-Za-z]{2,}(?:[-_][A-Za-z0-9]{2,}){2,}(?=_[0-9]|$)/);
+  if (seq) return seq[0];
+  const digits = str.match(/[0-9]{8,}/);
+  if (digits) return digits[0];
   const long = str.match(/[A-Za-z0-9-]{8,}/);
   return long ? long[0] : '';
 }
@@ -72,6 +82,21 @@ function parseFileUnique(base) {
   const idx = base.toLowerCase().indexOf(unique.toLowerCase());
   const suffix = idx >= 0 ? base.slice(idx + unique.length) : '';
   return { unique, suffix };
+}
+
+function removeUnique(base, unique) {
+  if (!unique) return base;
+  const idx = base.toLowerCase().indexOf(unique.toLowerCase());
+  if (idx >= 0) return base.slice(0, idx) + base.slice(idx + unique.length);
+  return base;
+}
+
+function isIncompleteName(base, unique) {
+  const rest = removeUnique(base, unique);
+  const parts = sanitizeName(rest).split(/[_-]+/).filter(Boolean);
+  const hasTrCode = parts.some((p) => /^\d{4}$/.test(p));
+  const hasTrType = parts.some((p) => /^[a-z]{4}$/i.test(p));
+  return !(hasTrCode && hasTrType);
 }
 
 function buildFolderName(row, fallback = '') {
@@ -328,12 +353,30 @@ export async function cleanupOldImages(days = 30) {
 
 export async function detectIncompleteImages(page = 1, perPage = 100) {
   const { baseDir } = await getDirs();
+  try {
+    await fs.access(baseDir);
+  } catch {
+    return { list: [], hasMore: false, message: `base dir not found: ${baseDir}` };
+  }
+
   const results = [];
   const offset = (page - 1) * perPage;
   let count = 0;
   let hasMore = false;
+  let scannedFiles = 0;
+  const scannedDirs = new Set();
 
   async function walk(dir, rel) {
+    if (rel) {
+      const first = rel.split(path.sep)[0];
+      if (!first.startsWith('transactions_')) return;
+    } else {
+      const baseName = path.basename(dir);
+      if (dir !== baseDir && !baseName.startsWith('transactions_')) return;
+    }
+
+    scannedDirs.add(rel || path.basename(dir));
+
     let entries;
     try {
       entries = await fs.readdir(dir, { withFileTypes: true });
@@ -343,16 +386,15 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
     for (const entry of entries) {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) {
-        if (dir === baseDir && !entry.name.startsWith('transactions_')) continue;
         await walk(full, path.join(rel, entry.name));
         if (hasMore) return;
       } else if (entry.isFile()) {
+        scannedFiles += 1;
         const ext = path.extname(entry.name);
         const base = path.basename(entry.name, ext);
         const { unique, suffix } = parseFileUnique(base);
         if (!unique) continue;
-        const parts = sanitizeName(base).split(/[_-]+/);
-        if (parts.some((p) => /^\d{4}$/.test(p) || /^[a-z]{4}$/i.test(p))) continue;
+        if (!isIncompleteName(base, unique)) continue;
         const found = await findTxnByUniqueId(unique);
         if (!found) continue;
         const { row, configs, numField } = found;
@@ -403,7 +445,18 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
   }
 
   await walk(baseDir, '');
-  return { list: results, hasMore };
+  const dirList = Array.from(scannedDirs).join(', ');
+  const message =
+    `scanned ${scannedFiles} file(s) in ${scannedDirs.size} folder(s) under ${baseDir}` +
+    (dirList ? ` [${dirList}]` : '') +
+    `, found ${results.length} incomplete image(s)`;
+  return {
+    list: results,
+    hasMore,
+    message,
+    folders: Array.from(scannedDirs),
+    scanned: scannedFiles,
+  };
 }
 
 async function findTxnByUniqueId(idPart) {
@@ -459,6 +512,7 @@ export async function fixIncompleteImages(list = []) {
 
 export async function checkFolderNames(list = []) {
   const results = [];
+  let scanned = 0;
   for (const item of list) {
     const name = item?.name || '';
     const index = item?.index;
@@ -466,6 +520,7 @@ export async function checkFolderNames(list = []) {
     const base = path.basename(name, ext);
     const { unique, suffix } = parseFileUnique(base);
     if (!unique) continue;
+    if (!isIncompleteName(base, unique)) continue;
     const found = await findTxnByUniqueId(unique);
     if (!found) continue;
     const { row, configs, numField } = found;
@@ -505,8 +560,10 @@ export async function checkFolderNames(list = []) {
       folder: folderRaw,
       folderDisplay,
     });
+    scanned += 1;
   }
-  return results;
+  const message = `checked ${scanned} file(s), found ${results.length} incomplete image(s)`;
+  return { list: results, message, scanned };
 }
 
 export async function uploadSelectedImages(files = [], meta = []) {
