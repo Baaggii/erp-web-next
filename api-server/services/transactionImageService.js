@@ -62,8 +62,9 @@ function extractUnique(str) {
   }
   const alt = str.match(/[A-Z0-9]{4}(?:-[A-Z0-9]{4}){3}/);
   if (alt) return alt[0];
-  const long = str.match(/[A-Za-z0-9-]{8,}/);
-  return long ? long[0] : '';
+  const matches = str.match(/[A-Za-z0-9-]{8,}/g);
+  if (!matches) return '';
+  return matches.reduce((a, b) => (b.length > a.length ? b : a), '');
 }
 
 function parseFileUnique(base) {
@@ -142,6 +143,18 @@ function appendOptionalParts(row, base) {
   if (baseSan.includes(optional)) return baseSan;
   const combined = base ? `${baseSan}_${optional}` : optional;
   return sanitizeName(combined);
+}
+
+async function getTxnCodeSets() {
+  try {
+    const [rows] = await pool.query('SELECT UITransType, UITrtype FROM code_transaction');
+    return {
+      digits: new Set(rows.map((r) => String(r.UITransType)) || []),
+      letters: new Set(rows.map((r) => String(r.UITrtype).toUpperCase()) || []),
+    };
+  } catch {
+    return { digits: new Set(), letters: new Set() };
+  }
 }
 
 export async function findBenchmarkCode(name) {
@@ -330,10 +343,14 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
   const { baseDir } = await getDirs();
   const results = [];
   const offset = (page - 1) * perPage;
-  let count = 0;
+  let totalFound = 0;
+  let totalScanned = 0;
   let hasMore = false;
+  const scannedDirs = new Set();
+  const codes = await getTxnCodeSets();
 
   async function walk(dir, rel) {
+    scannedDirs.add(rel || '/');
     let entries;
     try {
       entries = await fs.readdir(dir, { withFileTypes: true });
@@ -347,12 +364,18 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
         await walk(full, path.join(rel, entry.name));
         if (hasMore) return;
       } else if (entry.isFile()) {
+        totalScanned += 1;
         const ext = path.extname(entry.name);
         const base = path.basename(entry.name, ext);
         const { unique, suffix } = parseFileUnique(base);
         if (!unique) continue;
-        const parts = sanitizeName(base).split(/[_-]+/);
-        if (parts.some((p) => /^\d{4}$/.test(p) || /^[a-z]{4}$/i.test(p))) continue;
+        const cleaned = base.replace(new RegExp(`[_-]*${unique}[_-]*`, 'i'), '');
+        const parts = sanitizeName(cleaned)
+          .split(/[_-]+/)
+          .filter(Boolean);
+        const hasDigitCode = parts.some((p) => codes.digits.has(p));
+        const hasLetterCode = parts.some((p) => codes.letters.has(p.toUpperCase()));
+        if (hasDigitCode && hasLetterCode) continue;
         const found = await findTxnByUniqueId(unique);
         if (!found) continue;
         const { row, configs, numField } = found;
@@ -385,8 +408,8 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
           finalBase = `${newBase}_${unique}${suffix}`;
         }
         const newName = `${finalBase}${ext}`;
-        count += 1;
-        if (count > offset && results.length < perPage) {
+        totalFound += 1;
+        if (totalFound > offset && results.length < perPage) {
           results.push({
             folder: folderRaw,
             folderDisplay,
@@ -403,7 +426,13 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
   }
 
   await walk(baseDir, '');
-  return { list: results, hasMore };
+  return {
+    list: results,
+    hasMore,
+    scanned: Array.from(scannedDirs),
+    total: totalFound,
+    files: totalScanned,
+  };
 }
 
 async function findTxnByUniqueId(idPart) {
