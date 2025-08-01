@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
 export default function FixImagesTab() {
@@ -12,13 +12,6 @@ export default function FixImagesTab() {
   const [localFolder, setLocalFolder] = useState('');
   const inputRef = useRef(null);
   const pageSize = 100;
-
-  useEffect(() => {
-    if (inputRef.current) {
-      inputRef.current.setAttribute('webkitdirectory', '');
-      inputRef.current.setAttribute('directory', '');
-    }
-  }, []);
 
   function clearAll() {
     setList([]);

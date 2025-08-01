@@ -74,21 +74,6 @@ function parseFileUnique(base) {
   return { unique, suffix };
 }
 
-function removeUnique(base, unique) {
-  if (!unique) return base;
-  const idx = base.toLowerCase().indexOf(unique.toLowerCase());
-  if (idx >= 0) return base.slice(0, idx) + base.slice(idx + unique.length);
-  return base;
-}
-
-function isIncompleteName(base, unique) {
-  const rest = removeUnique(base, unique);
-  const parts = sanitizeName(rest).split(/[_-]+/).filter(Boolean);
-  const hasTrCode = parts.some((p) => /^\d{4}$/.test(p));
-  const hasTrType = parts.some((p) => /^[a-z]{4}$/i.test(p));
-  return !(hasTrCode && hasTrType);
-}
-
 function buildFolderName(row, fallback = '') {
   const part1 =
     getFieldCase(row, 'trtype') ||
@@ -366,7 +351,8 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
         const base = path.basename(entry.name, ext);
         const { unique, suffix } = parseFileUnique(base);
         if (!unique) continue;
-        if (!isIncompleteName(base, unique)) continue;
+        const parts = sanitizeName(base).split(/[_-]+/);
+        if (parts.some((p) => /^\d{4}$/.test(p) || /^[a-z]{4}$/i.test(p))) continue;
         const found = await findTxnByUniqueId(unique);
         if (!found) continue;
         const { row, configs, numField } = found;
@@ -480,7 +466,6 @@ export async function checkFolderNames(list = []) {
     const base = path.basename(name, ext);
     const { unique, suffix } = parseFileUnique(base);
     if (!unique) continue;
-    if (!isIncompleteName(base, unique)) continue;
     const found = await findTxnByUniqueId(unique);
     if (!found) continue;
     const { row, configs, numField } = found;
