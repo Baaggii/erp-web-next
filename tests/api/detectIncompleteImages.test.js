@@ -147,11 +147,11 @@ await test('uploadSelectedImages renames on upload', async () => {
   }));
 
   const check = await checkFolderNames([{ name: 'abc12345.jpg', index: 0 }]);
-  assert.ok(check.list[0].newName.includes('z1_b1_bp1'));
+  assert.ok(check[0].newName.includes('z1_b1_bp1'));
   const list = [{
     name: 'abc12345.jpg',
-    newName: check.list[0].newName,
-    folder: check.list[0].folder,
+    newName: check[0].newName,
+    folder: check[0].folder,
   }];
   const uploaded = await uploadSelectedImages([
     { originalname: 'abc12345.jpg', path: tmp }
