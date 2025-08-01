@@ -219,10 +219,10 @@ export default function ImageManagement() {
               style={{ marginRight: '0.5rem', width: '12rem' }}
             />
             <button type="button" onClick={checkFolder} style={{ marginRight: '0.5rem' }}>
-              Check Folder
+              Detect from Local
             </button>
             <button type="button" onClick={refreshList} style={{ marginRight: '0.5rem' }}>
-              Refresh
+              Detect from Host
             </button>
             <button type="button" disabled={page === 1} onClick={() => { const p = page - 1; setPage(p); refreshList(p); }} style={{ marginRight: '0.5rem' }}>
               Prev

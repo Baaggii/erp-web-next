@@ -52,8 +52,14 @@ function pickConfig(configs = {}, row = {}) {
 }
 
 function extractUnique(str) {
+  if (!str) return '';
   const uuid = str.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
   if (uuid) return uuid[0];
+  const hyphenless = str.match(/[0-9a-f]{32}/i);
+  if (hyphenless) {
+    const u = hyphenless[0];
+    return `${u.slice(0, 8)}-${u.slice(8, 12)}-${u.slice(12, 16)}-${u.slice(16, 20)}-${u.slice(20)}`.toUpperCase();
+  }
   const alt = str.match(/[A-Z0-9]{4}(?:-[A-Z0-9]{4}){3}/);
   if (alt) return alt[0];
   const long = str.match(/[A-Za-z0-9-]{8,}/);
@@ -322,89 +328,81 @@ export async function cleanupOldImages(days = 30) {
 
 export async function detectIncompleteImages(page = 1, perPage = 100) {
   const { baseDir } = await getDirs();
-  let results = [];
-  let dirs;
+  const results = [];
   const offset = (page - 1) * perPage;
   let count = 0;
   let hasMore = false;
-  try {
-    dirs = await fs.readdir(baseDir, { withFileTypes: true });
-  } catch {
-    return { list: results, hasMore };
-  }
 
-  for (const entry of dirs) {
-    if (!entry.isDirectory() || !entry.name.startsWith('transactions_')) continue;
-    const dirPath = path.join(baseDir, entry.name);
-    let files;
+  async function walk(dir, rel) {
+    let entries;
     try {
-      files = await fs.readdir(dirPath);
+      entries = await fs.readdir(dir, { withFileTypes: true });
     } catch {
-      continue;
+      return;
     }
-    for (const f of files) {
-      const ext = path.extname(f);
-      const base = path.basename(f, ext);
-      const { unique, suffix } = parseFileUnique(base);
-      if (!unique || unique.length < 8) continue;
-      const found = await findTxnByUniqueId(unique);
-      if (!found) continue;
-      const { row, configs, numField } = found;
-
-      const curSan = sanitizeName(base);
-      const trans4d = sanitizeName(String(getFieldCase(row, 'trtype') || ''));
-      const trans4l = sanitizeName(String(getFieldCase(row, 'TransType') || ''));
-      const hasCodes =
-        (trans4d ? curSan.includes(trans4d) : true) &&
-        (trans4l ? curSan.includes(trans4l) : true);
-      if (hasCodes) continue;
-
-      const cfg = pickConfig(configs, row);
-      const fields = cfg?.imagenameField || [];
-      let newBase = buildNameFromRow(row, fields);
-
-      const transDigit = getFieldCase(row, 'trtype');
-      const transType = getFieldCase(row, 'TransType');
-      if (!newBase && !fields.length && !transType) {
-        newBase = buildOptionalName(row);
-      }
-      newBase = appendOptionalParts(row, newBase);
-      if (!newBase && numField) {
-        newBase = sanitizeName(String(row[numField]));
-      }
-      if (!newBase) continue;
-      if (transDigit && !sanitizeName(newBase).includes(sanitizeName(transDigit))) {
-        newBase = sanitizeName(`${transDigit}_${newBase}`);
-      }
-      if (transType && !sanitizeName(newBase).includes(sanitizeName(transType))) {
-        newBase = sanitizeName(`${newBase}_${transType}`);
-      }
-      const folderRaw = buildFolderName(row, cfg?.imageFolder || entry.name);
-      const folderDisplay = '/' + String(folderRaw).replace(/^\/+/, '');
-      const sanitizedUnique = sanitizeName(unique);
-      let finalBase = newBase;
-      if (sanitizeName(newBase).includes(sanitizedUnique)) {
-        finalBase = `${newBase}${suffix}`;
-      } else {
-        finalBase = `${newBase}_${unique}${suffix}`;
-      }
-      const newName = `${finalBase}${ext}`;
-      count += 1;
-      if (count > offset && results.length < perPage) {
-        results.push({
-          folder: folderRaw,
-          folderDisplay,
-          currentName: f,
-          newName,
-          currentPath: path.join(dirPath, f),
-        });
-      } else if (results.length >= perPage) {
-        hasMore = true;
-        break;
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (dir === baseDir && !entry.name.startsWith('transactions_')) continue;
+        await walk(full, path.join(rel, entry.name));
+        if (hasMore) return;
+      } else if (entry.isFile()) {
+        const ext = path.extname(entry.name);
+        const base = path.basename(entry.name, ext);
+        const { unique, suffix } = parseFileUnique(base);
+        if (!unique) continue;
+        const parts = sanitizeName(base).split(/[_-]+/);
+        if (parts.some((p) => /^\d{4}$/.test(p) || /^[a-z]{4}$/i.test(p))) continue;
+        const found = await findTxnByUniqueId(unique);
+        if (!found) continue;
+        const { row, configs, numField } = found;
+        const cfg = pickConfig(configs, row);
+        const fields = cfg?.imagenameField || [];
+        let newBase = buildNameFromRow(row, fields);
+        const transDigit = getFieldCase(row, 'trtype');
+        const transType = getFieldCase(row, 'TransType');
+        if (!newBase && !fields.length && !transType) {
+          newBase = buildOptionalName(row);
+        }
+        newBase = appendOptionalParts(row, newBase);
+        if (!newBase && numField) {
+          newBase = sanitizeName(String(row[numField]));
+        }
+        if (!newBase) continue;
+        if (transDigit && !sanitizeName(newBase).includes(sanitizeName(transDigit))) {
+          newBase = sanitizeName(`${transDigit}_${newBase}`);
+        }
+        if (transType && !sanitizeName(newBase).includes(sanitizeName(transType))) {
+          newBase = sanitizeName(`${newBase}_${transType}`);
+        }
+        const folderRaw = buildFolderName(row, cfg?.imageFolder || rel);
+        const folderDisplay = '/' + String(folderRaw).replace(/^\/+/, '');
+        const sanitizedUnique = sanitizeName(unique);
+        let finalBase = newBase;
+        if (sanitizeName(newBase).includes(sanitizedUnique)) {
+          finalBase = `${newBase}${suffix}`;
+        } else {
+          finalBase = `${newBase}_${unique}${suffix}`;
+        }
+        const newName = `${finalBase}${ext}`;
+        count += 1;
+        if (count > offset && results.length < perPage) {
+          results.push({
+            folder: folderRaw,
+            folderDisplay,
+            currentName: entry.name,
+            newName,
+            currentPath: full,
+          });
+        } else if (results.length >= perPage) {
+          hasMore = true;
+          return;
+        }
       }
     }
-    if (hasMore) break;
   }
+
+  await walk(baseDir, '');
   return { list: results, hasMore };
 }
 

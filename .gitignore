@@ -7,6 +7,7 @@ process.env
 build/               # ← production build-аа git-д хийхгүй
 Passengerfile.json
 config/*.json
+!config/headerMappings.json
 config/generated.sql
 .ico
 uploads/
