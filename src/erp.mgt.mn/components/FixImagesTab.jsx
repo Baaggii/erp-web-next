@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
 export default function FixImagesTab() {
@@ -9,6 +9,8 @@ export default function FixImagesTab() {
   const [hasMore, setHasMore] = useState(false);
   const [files, setFiles] = useState([]);
   const [selected, setSelected] = useState(new Set());
+  const [localFolder, setLocalFolder] = useState('');
+  const inputRef = useRef(null);
   const pageSize = 100;
 
   function clearAll() {
@@ -44,6 +46,10 @@ export default function FixImagesTab() {
     setPage(1);
     setFiles(arr);
     clearAll();
+    const root = arr[0].webkitRelativePath
+      ? arr[0].webkitRelativePath.split('/')[0]
+      : '';
+    setLocalFolder(root);
     const meta = arr.map((f, idx) => ({ name: f.name, index: idx }));
     try {
       const res = await fetch('/api/transaction_images/folder_check', {
@@ -140,17 +146,28 @@ export default function FixImagesTab() {
     <div>
       <div style={{ marginBottom: '0.5rem' }}>
         <button onClick={() => detectHost(1)}>Detect from Host</button>
-        <label style={{ marginLeft: '0.5rem' }}>
-          <input
-            type="file"
-            style={{ display: 'none' }}
-            webkitdirectory="true"
-            directory="true"
-            multiple
-            onChange={(e) => detectLocal(e.target.files)}
-          />
-          <span style={{ border: '1px solid #d1d5db', padding: '0.25rem', cursor: 'pointer' }}>Detect from Local</span>
-        </label>
+        <input
+          ref={inputRef}
+          type="file"
+          style={{ display: 'none' }}
+          webkitdirectory="true"
+          directory="true"
+          multiple
+          onChange={(e) => {
+            detectLocal(e.target.files);
+            e.target.value = '';
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          style={{ marginLeft: '0.5rem' }}
+        >
+          Detect from Local
+        </button>
+        {localFolder && (
+          <span style={{ marginLeft: '0.5rem' }}>[{localFolder}]</span>
+        )}
         {mode === 'host' && (
           <button onClick={fixSelected} style={{ marginLeft: '0.5rem' }}>
             Rename &amp; Move Selected
