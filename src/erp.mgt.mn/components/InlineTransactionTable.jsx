@@ -76,6 +76,7 @@ export default forwardRef(function InlineTransactionTable({
   const renderCount = useRef(0);
   const generalConfig = useGeneralConfig();
   const cfg = generalConfig[scope] || {};
+  const general = generalConfig.general || {};
   const userIdSet = new Set(userIdFields);
   const branchIdSet = new Set(branchIdFields);
   const departmentIdSet = new Set(departmentIdFields);
@@ -315,6 +316,7 @@ export default forwardRef(function InlineTransactionTable({
   }
 
   function showTriggerInfo(col) {
+    if (!general.triggerToastEnabled) return;
     const direct = getDirectTriggers(col);
     const paramTrigs = getParamTriggers(col);
 
@@ -350,6 +352,7 @@ export default forwardRef(function InlineTransactionTable({
   }
 
   async function runProcTrigger(rowIdx, col, rowOverride = null) {
+    const showToast = general.procToastEnabled;
     const direct = getDirectTriggers(col);
     const paramTrigs = getParamTriggers(col);
 
@@ -425,21 +428,25 @@ export default forwardRef(function InlineTransactionTable({
           onRowsChange(next);
           return next;
         });
-        window.dispatchEvent(
-          new CustomEvent('toast', {
-            detail: { message: `Returned: ${JSON.stringify(rowData)}`, type: 'info' },
-          }),
-        );
+        if (showToast) {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message: `Returned: ${JSON.stringify(rowData)}`, type: 'info' },
+            }),
+          );
+        }
         continue;
       }
-      window.dispatchEvent(
-        new CustomEvent('toast', {
-          detail: {
-            message: `${tCol} -> ${procName}(${paramValues.join(', ')})`,
-            type: 'info',
-          },
-        }),
-      );
+      if (showToast) {
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: {
+              message: `${tCol} -> ${procName}(${paramValues.join(', ')})`,
+              type: 'info',
+            },
+          }),
+        );
+      }
       try {
         const rowData = await callProcedure(
           procName,
@@ -461,19 +468,23 @@ export default forwardRef(function InlineTransactionTable({
             onRowsChange(next);
             return next;
           });
-          window.dispatchEvent(
-            new CustomEvent('toast', {
-              detail: { message: `Returned: ${JSON.stringify(rowData)}`, type: 'info' },
-            }),
-          );
+          if (showToast) {
+            window.dispatchEvent(
+              new CustomEvent('toast', {
+                detail: { message: `Returned: ${JSON.stringify(rowData)}`, type: 'info' },
+              }),
+            );
+          }
         }
       } catch (err) {
         console.error('Procedure call failed', err);
-        window.dispatchEvent(
-          new CustomEvent('toast', {
-            detail: { message: `Procedure failed: ${err.message}`, type: 'error' },
-          }),
-        );
+        if (showToast) {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message: `Procedure failed: ${err.message}`, type: 'error' },
+            }),
+          );
+        }
       }
     }
   }

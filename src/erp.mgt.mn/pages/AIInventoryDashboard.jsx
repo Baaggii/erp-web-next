@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 export default function AIInventoryDashboard() {
   const [data, setData] = useState({});
   const [error, setError] = useState('');
+  const generalConfig = useGeneralConfig();
 
   async function fetchData() {
     try {
@@ -27,6 +29,10 @@ export default function AIInventoryDashboard() {
       credentials: 'include',
     });
     fetchData();
+  }
+
+  if (!generalConfig.general?.aiInventoryApiEnabled) {
+    return <p>AI Inventory API disabled.</p>;
   }
 
   const entries = Object.entries(data);
