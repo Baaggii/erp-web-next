@@ -30,6 +30,7 @@ export default function FixImagesTab() {
     setMode('host');
     setPage(p);
     clearAll();
+    addToast('Scanning host folders...', 'info');
     try {
       const res = await fetch(`/api/transaction_images/detect_incomplete?page=${p}`, {
         credentials: 'include',
@@ -38,6 +39,7 @@ export default function FixImagesTab() {
         const data = await res.json();
         setList(Array.isArray(data.list) ? data.list : []);
         setHasMore(!!data.hasMore);
+        addToast(data.message || `found ${data.list.length} file(s)`, 'success');
       } else {
         addToast('Host detection failed', 'error');
       }
@@ -48,7 +50,10 @@ export default function FixImagesTab() {
 
   async function detectLocal(fileList, folderName = '') {
     const arr = Array.from(fileList || []);
-    if (!arr.length) return;
+    if (!arr.length) {
+      addToast('No files selected', 'info');
+      return;
+    }
     setMode('local');
     setPage(1);
     setFiles(arr);
@@ -57,6 +62,7 @@ export default function FixImagesTab() {
       ? arr[0].webkitRelativePath.split('/')[0]
       : '');
     setLocalFolder(root);
+    addToast(`Scanning folder ${root || ''}...`, 'info');
     const meta = arr.map((f, idx) => ({ name: f.name, index: idx }));
     try {
       const res = await fetch('/api/transaction_images/folder_check', {
@@ -67,8 +73,12 @@ export default function FixImagesTab() {
       });
       if (res.ok) {
         const data = await res.json();
-        setList(Array.isArray(data.list) ? data.list : []);
+        const foundList = Array.isArray(data) ? data : data.list || [];
+        const msg = (Array.isArray(data) ? data.message : data.message) ||
+          `found ${foundList.length} file(s)`;
+        setList(foundList);
         setHasMore(arr.length > pageSize);
+        addToast(msg, 'success');
       } else {
         addToast('Local detection failed', 'error');
       }
@@ -196,7 +206,7 @@ export default function FixImagesTab() {
         >
           Detect from Local
         </button>
-        {localFolder && (
+        {mode === 'local' && localFolder && (
           <span style={{ marginLeft: '0.5rem' }}>[{localFolder}]</span>
         )}
         {mode === 'host' && (
