@@ -7,8 +7,13 @@ This zip contains minimal files to adapt *erp-web-next* for deployment under
 Apply as follows:
 
 1.  Extract the archive at repo root (overwrite existing files).
-2.  `npm install` (if deps changed) then `npm run build`.
-3.  Deploy `dist/` and ensure server.js route `/erp/*` is wired.
+2.  `npm install` (if deps changed).
+3.  Create your local configs using the app UI or API.
+4.  Run `npm run build`.
+5.  Deploy `dist/` and ensure server.js route `/erp/*` is wired.
+
+User settings stored in `/config` and any files uploaded to `/uploads` remain
+outside version control so your local data persists.
 
 ## Files included
 
