@@ -75,21 +75,40 @@ export default function ImageManagement() {
     scanCancelRef.current = false;
     try {
       const dirHandle = await window.showDirectoryPicker();
-      const all = [];
-      const filtered = [];
+      const handles = {};
+      const names = [];
       for await (const entry of dirHandle.values()) {
         if (scanCancelRef.current) break;
         if (entry.kind === 'file') {
-          all.push(entry.name);
-          if (/_\d{13}_[a-z0-9]{6}\.[^.]+$/i.test(entry.name)) {
-            filtered.push({ id: entry.name, originalName: entry.name, handle: entry });
-          }
+          names.push(entry.name);
+          handles[entry.name] = entry;
         }
       }
       if (scanCancelRef.current) return;
+      let data = null;
+      try {
+        const limit = 1000;
+        const res = await fetch('/api/transaction_images/upload_check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ names: names.slice(0, limit) }),
+        });
+        if (res.ok) {
+          data = await res.json().catch(() => ({}));
+        }
+      } catch {
+        // ignore
+      }
+      const list = Array.isArray(data?.list) ? data.list : [];
       setFolderName(dirHandle.name || '');
-      setUploads(filtered);
-      setUploadSummary({ totalFiles: all.length, processed: filtered.length });
+      setUploads(
+        list.map((u) => ({ ...u, id: u.id || u.originalName, handle: handles[u.originalName] }))
+      );
+      setUploadSummary({
+        totalFiles: names.length,
+        processed: data?.summary?.processed || 0,
+      });
       setUploadSel([]);
     } catch {
       // ignore
