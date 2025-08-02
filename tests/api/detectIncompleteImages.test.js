@@ -116,6 +116,65 @@ await test('detectIncompleteImages scans entire folder', async () => {
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
 });
 
+await test('detectIncompleteImages skips files with transaction codes', async () => {
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
+  const dir = path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test');
+  await fs.mkdir(dir, { recursive: true });
+  const ts = 1754112726584;
+  await fs.writeFile(path.join(dir, `uuid12345.jpg`), 'x');
+  await fs.writeFile(
+    path.join(dir, `t1_4001_uuid12345_${ts}_abcd12.jpg`),
+    'x',
+  );
+
+  const row = {
+    id: 1,
+    num_field: 'uuid12345',
+    label_field: 'img010',
+    UITrtype: 't1',
+    TransType: '4001',
+  };
+  const restoreDb = mockPool(async (sql, params) => {
+    if (/SELECT UITrtype, UITransType FROM code_transaction/.test(sql))
+      return [[{ UITrtype: 't1', UITransType: '4001' }]];
+    if (/SHOW TABLES LIKE/.test(sql)) return [[{ t: 'transactions_test' }]];
+    if (/SHOW COLUMNS FROM/.test(sql))
+      return [[
+        { Field: 'num_field' },
+        { Field: 'label_field' },
+        { Field: 'UITrtype' },
+        { Field: 'TransType' },
+      ]];
+    if (/FROM `transactions_test`/.test(sql)) {
+      if (params && params[0] && params[0].includes('uuid12345')) return [[row]];
+      return [[]];
+    }
+    return [[]];
+  });
+
+  const origCfg = await fs.readFile(cfgPath, 'utf8').catch(() => '{}');
+  await fs.writeFile(
+    cfgPath,
+    JSON.stringify({
+      transactions_test: {
+        default: {
+          imagenameField: ['label_field'],
+          transactionTypeField: 'TransType',
+          transactionTypeValue: '4001',
+        },
+      },
+    }),
+  );
+
+  const { list } = await detectIncompleteImages(1, 10);
+  assert.equal(list.length, 1);
+  assert.equal(list[0].currentName, 'uuid12345.jpg');
+
+  restoreDb();
+  await fs.writeFile(cfgPath, origCfg);
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
+});
+
 await test('checkUploadedImages handles object names', async () => {
   const restoreDb = mockPool(async () => [[]]);
   const { list, summary } = await checkUploadedImages([], [{ name: 'abc.jpg' }]);
@@ -165,6 +224,72 @@ await test('checkUploadedImages renames on upload', async () => {
     path.join(process.cwd(), 'uploads', 'txn_images', 't1', 'a'),
   );
   assert.ok(exists.some((f) => f.includes('num002')));
+
+  restoreDb();
+  await fs.writeFile(cfgPath, origCfg);
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
+});
+
+await test('checkUploadedImages skips files with transaction codes', async () => {
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
+  await fs.mkdir(path.join(process.cwd(), 'uploads', 'tmp'), { recursive: true });
+  const ts = 1754112726584;
+  const tmp1 = path.join(process.cwd(), 'uploads', 'tmp', 'uuid12345.jpg');
+  const tmp2 = path.join(
+    process.cwd(),
+    'uploads',
+    'tmp',
+    `t1_4001_uuid12345_${ts}_abcd12.jpg`,
+  );
+  await fs.writeFile(tmp1, 'x');
+  await fs.writeFile(tmp2, 'x');
+
+  const row = {
+    id: 1,
+    num_field: 'uuid12345',
+    label_field: 'img011',
+    UITrtype: 't1',
+    TransType: '4001',
+  };
+  const restoreDb = mockPool(async (sql, params) => {
+    if (/SELECT UITrtype, UITransType FROM code_transaction/.test(sql))
+      return [[{ UITrtype: 't1', UITransType: '4001' }]];
+    if (/SHOW TABLES LIKE/.test(sql)) return [[{ t: 'transactions_test' }]];
+    if (/SHOW COLUMNS FROM/.test(sql))
+      return [[
+        { Field: 'num_field' },
+        { Field: 'label_field' },
+        { Field: 'UITrtype' },
+        { Field: 'TransType' },
+      ]];
+    if (/FROM `transactions_test`/.test(sql)) {
+      if (params && params[0] && params[0].includes('uuid12345')) return [[row]];
+      return [[]];
+    }
+    return [[]];
+  });
+
+  const origCfg = await fs.readFile(cfgPath, 'utf8').catch(() => '{}');
+  await fs.writeFile(
+    cfgPath,
+    JSON.stringify({
+      transactions_test: {
+        default: {
+          imagenameField: ['label_field'],
+          transactionTypeField: 'TransType',
+          transactionTypeValue: '4001',
+        },
+      },
+    }),
+  );
+
+  const { list, summary } = await checkUploadedImages([
+    { originalname: 'uuid12345.jpg', path: tmp1 },
+    { originalname: `t1_4001_uuid12345_${ts}_abcd12.jpg`, path: tmp2 },
+  ]);
+  assert.equal(summary.processed, 1);
+  assert.equal(list.length, 1);
+  assert.equal(list[0].originalName, 'uuid12345.jpg');
 
   restoreDb();
   await fs.writeFile(cfgPath, origCfg);
@@ -327,6 +452,70 @@ await test('detectIncompleteImages ignores timestamp mismatch when searching', a
   const { list } = await detectIncompleteImages(1);
   assert.equal(list.length, 1);
   assert.equal(list[0].newName, 'img009.jpg');
+
+  restoreDb();
+  await fs.writeFile(cfgPath, origCfg);
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
+});
+
+await test('detectIncompleteImages finds bmtr_pmid files by trans type and date range', async () => {
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
+  const dir = path.join(
+    process.cwd(),
+    'uploads',
+    'txn_images',
+    'transactions_test',
+  );
+  await fs.mkdir(dir, { recursive: true });
+  const ts = 1754119571573;
+  const file = path.join(dir, `303204_303204_4001_${ts}_4rpenn.jpg`);
+  await fs.writeFile(file, 'x');
+
+  const row = {
+    id: 1,
+    bmtr_pmid: '303204',
+    sp_primary_code: '303204',
+    TransType: '4001',
+    UITrtype: 't9',
+    label_field: 'img011',
+    created_at: new Date(ts - 36 * 3600 * 1000),
+  };
+
+  const restoreDb = mockPool(async (sql) => {
+    if (/SELECT UITrtype, UITransType FROM code_transaction/.test(sql))
+      return [[{ UITrtype: 't9', UITransType: '4001' }]];
+    if (/SHOW TABLES LIKE/.test(sql)) return [[{ t: 'transactions_test' }]];
+    if (/SHOW COLUMNS FROM/.test(sql))
+      return [[
+        { Field: 'bmtr_pmid' },
+        { Field: 'sp_primary_code' },
+        { Field: 'TransType' },
+        { Field: 'UITrtype' },
+        { Field: 'created_at' },
+        { Field: 'label_field' },
+      ]];
+    if (/FROM `transactions_test`/.test(sql)) return [[row]];
+    return [[]];
+  });
+
+  const origCfg = await fs.readFile(cfgPath, 'utf8').catch(() => '{}');
+  await fs.writeFile(
+    cfgPath,
+    JSON.stringify({
+      transactions_test: {
+        default: {
+          imagenameField: ['label_field'],
+          transactionTypeField: 'TransType',
+          transactionTypeValue: '4001',
+          dateField: ['created_at'],
+        },
+      },
+    }),
+  );
+
+  const { list } = await detectIncompleteImages(1);
+  assert.equal(list.length, 1);
+  assert.equal(list[0].newName, 'img011.jpg');
 
   restoreDb();
   await fs.writeFile(cfgPath, origCfg);
