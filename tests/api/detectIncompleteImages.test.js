@@ -152,3 +152,131 @@ await test('detectIncompleteImages fallback naming', async () => {
   await fs.writeFile(cfgPath, origCfg);
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
 });
+
+await test('detectIncompleteImages handles timestamped names without trtype', async () => {
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
+  const dir = path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test');
+  await fs.mkdir(dir, { recursive: true });
+  const ts = 1754112726584;
+  const file = path.join(dir, `300021_300021_4001_${ts}_c2kene.jpg`);
+  await fs.writeFile(file, 'x');
+
+  const row = {
+    id: 1,
+    z_mat_code: '300021',
+    sp_primary_code: '300021',
+    TransType: '4001',
+    UITrtype: 't3',
+    label_field: 'img003',
+    created_at: new Date(ts),
+  };
+
+  const restoreDb = mockPool(async (sql) => {
+    if (/SHOW TABLES LIKE/.test(sql)) return [[{ t: 'transactions_test' }]];
+    if (/SHOW COLUMNS FROM/.test(sql))
+      return [[
+        { Field: 'z_mat_code' },
+        { Field: 'sp_primary_code' },
+        { Field: 'TransType' },
+        { Field: 'UITrtype' },
+        { Field: 'created_at' },
+        { Field: 'label_field' },
+      ]];
+    if (/FROM `transactions_test`/.test(sql)) return [[row]];
+    return [[]];
+  });
+
+  const origCfg = await fs.readFile(cfgPath, 'utf8').catch(() => '{}');
+  await fs.writeFile(
+    cfgPath,
+    JSON.stringify({
+      transactions_test: {
+        default: {
+          imagenameField: ['label_field'],
+          transactionTypeField: 'TransType',
+          transactionTypeValue: '4001',
+        },
+      },
+    }),
+  );
+
+  const { list } = await detectIncompleteImages(1);
+  assert.equal(list.length, 1);
+  assert.equal(list[0].newName, 'img003.jpg');
+
+  const moved = await fixIncompleteImages(list);
+  assert.equal(moved, 1);
+  const exists = await fs.readdir(
+    path.join(process.cwd(), 'uploads', 'txn_images', 't3', '4001'),
+  );
+  assert.ok(exists.includes('img003.jpg'));
+
+  restoreDb();
+  await fs.writeFile(cfgPath, origCfg);
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
+});
+
+await test('checkUploadedImages handles timestamped names', async () => {
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
+  await fs.mkdir(path.join(process.cwd(), 'uploads', 'tmp'), { recursive: true });
+  const ts = 1754112726584;
+  const tmp = path.join(process.cwd(), 'uploads', 'tmp', `300021_300021_4001_${ts}_c2kene.jpg`);
+  await fs.writeFile(tmp, 'x');
+
+  const row = {
+    id: 1,
+    z_mat_code: '300021',
+    sp_primary_code: '300021',
+    TransType: '4001',
+    UITrtype: 't3',
+    label_field: 'img004',
+    created_at: new Date(ts),
+  };
+
+  const restoreDb = mockPool(async (sql) => {
+    if (/SHOW TABLES LIKE/.test(sql)) return [[{ t: 'transactions_test' }]];
+    if (/SHOW COLUMNS FROM/.test(sql))
+      return [[
+        { Field: 'z_mat_code' },
+        { Field: 'sp_primary_code' },
+        { Field: 'TransType' },
+        { Field: 'UITrtype' },
+        { Field: 'created_at' },
+        { Field: 'label_field' },
+      ]];
+    if (/FROM `transactions_test`/.test(sql)) return [[row]];
+    return [[]];
+  });
+
+  const origCfg = await fs.readFile(cfgPath, 'utf8').catch(() => '{}');
+  await fs.writeFile(
+    cfgPath,
+    JSON.stringify({
+      transactions_test: {
+        default: {
+          imagenameField: ['label_field'],
+          transactionTypeField: 'TransType',
+          transactionTypeValue: '4001',
+        },
+      },
+    }),
+  );
+
+  const { list, summary } = await checkUploadedImages([
+    { originalname: path.basename(tmp), path: tmp },
+  ]);
+  assert.equal(summary.processed, 1);
+  assert.equal(list.length, 1);
+  assert.equal(list[0].newName, 'img004.jpg');
+
+  const uploaded = await commitUploadedImages(list);
+  assert.equal(uploaded, 1);
+  const exists = await fs.readdir(
+    path.join(process.cwd(), 'uploads', 'txn_images', 't3', '4001'),
+  );
+  assert.ok(exists.includes('img004.jpg'));
+
+  restoreDb();
+  await fs.writeFile(cfgPath, origCfg);
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
+});
