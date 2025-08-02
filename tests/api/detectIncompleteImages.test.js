@@ -388,14 +388,14 @@ await test('detectIncompleteImages handles timestamped names without trtype', as
 
   const { list } = await detectIncompleteImages(1);
   assert.equal(list.length, 1);
-  assert.equal(list[0].newName, 'img003.jpg');
+  assert.equal(list[0].newName, `img003__${ts}_c2kene.jpg`);
 
   const moved = await fixIncompleteImages(list);
   assert.equal(moved, 1);
   const exists = await fs.readdir(
     path.join(process.cwd(), 'uploads', 'txn_images', 't3', '4001'),
   );
-  assert.ok(exists.includes('img003.jpg'));
+  assert.ok(exists.includes(`img003__${ts}_c2kene.jpg`));
 
   restoreDb();
   await fs.writeFile(cfgPath, origCfg);
@@ -451,7 +451,71 @@ await test('detectIncompleteImages ignores timestamp mismatch when searching', a
 
   const { list } = await detectIncompleteImages(1);
   assert.equal(list.length, 1);
-  assert.equal(list[0].newName, 'img009.jpg');
+  assert.equal(list[0].newName, `img009__${ts}_c2kene.jpg`);
+
+  restoreDb();
+  await fs.writeFile(cfgPath, origCfg);
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
+});
+
+await test('detectIncompleteImages finds bmtr_pmid files by trans type and date range', async () => {
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
+  const dir = path.join(
+    process.cwd(),
+    'uploads',
+    'txn_images',
+    'transactions_test',
+  );
+  await fs.mkdir(dir, { recursive: true });
+  const ts = 1754119571573;
+  const file = path.join(dir, `303204_303204_4001_${ts}_4rpenn.jpg`);
+  await fs.writeFile(file, 'x');
+
+  const row = {
+    id: 1,
+    bmtr_pmid: '303204',
+    sp_primary_code: '303204',
+    TransType: '4001',
+    UITrtype: 't9',
+    label_field: 'img011',
+    created_at: new Date(ts - 36 * 3600 * 1000),
+  };
+
+  const restoreDb = mockPool(async (sql) => {
+    if (/SELECT UITrtype, UITransType FROM code_transaction/.test(sql))
+      return [[{ UITrtype: 't9', UITransType: '4001' }]];
+    if (/SHOW TABLES LIKE/.test(sql)) return [[{ t: 'transactions_test' }]];
+    if (/SHOW COLUMNS FROM/.test(sql))
+      return [[
+        { Field: 'bmtr_pmid' },
+        { Field: 'sp_primary_code' },
+        { Field: 'TransType' },
+        { Field: 'UITrtype' },
+        { Field: 'created_at' },
+        { Field: 'label_field' },
+      ]];
+    if (/FROM `transactions_test`/.test(sql)) return [[row]];
+    return [[]];
+  });
+
+  const origCfg = await fs.readFile(cfgPath, 'utf8').catch(() => '{}');
+  await fs.writeFile(
+    cfgPath,
+    JSON.stringify({
+      transactions_test: {
+        default: {
+          imagenameField: ['label_field'],
+          transactionTypeField: 'TransType',
+          transactionTypeValue: '4001',
+          dateField: ['created_at'],
+        },
+      },
+    }),
+  );
+
+  const { list } = await detectIncompleteImages(1);
+  assert.equal(list.length, 1);
+  assert.equal(list[0].newName, `img011__${ts}_4rpenn.jpg`);
 
   restoreDb();
   await fs.writeFile(cfgPath, origCfg);
@@ -573,14 +637,14 @@ await test('checkUploadedImages handles timestamped names', async () => {
   ]);
   assert.equal(summary.processed, 1);
   assert.equal(list.length, 1);
-  assert.equal(list[0].newName, 'img004.jpg');
+  assert.equal(list[0].newName, `img004__${ts}_c2kene.jpg`);
 
   const uploaded = await commitUploadedImages(list);
   assert.equal(uploaded, 1);
   const exists = await fs.readdir(
     path.join(process.cwd(), 'uploads', 'txn_images', 't3', '4001'),
   );
-  assert.ok(exists.includes('img004.jpg'));
+  assert.ok(exists.includes(`img004__${ts}_c2kene.jpg`));
 
   restoreDb();
   await fs.writeFile(cfgPath, origCfg);
@@ -772,7 +836,7 @@ await test('detectIncompleteImages handles extra unique before timestamp', async
   assert.equal(list.length, 1);
   assert.equal(
     list[0].newName,
-    'img007_ydzfh-sdang-cxfxb-kajww_akihl-zukov-ulioe-fhnde.jpg',
+    `img007_ydzfh-sdang-cxfxb-kajww_akihl-zukov-ulioe-fhnde__${ts}_oge4m7.jpg`,
   );
 
   const moved = await fixIncompleteImages(list);
@@ -781,7 +845,9 @@ await test('detectIncompleteImages handles extra unique before timestamp', async
     path.join(process.cwd(), 'uploads', 'txn_images', 't6', '4001'),
   );
   assert.ok(
-    exists.includes('img007_ydzfh-sdang-cxfxb-kajww_akihl-zukov-ulioe-fhnde.jpg'),
+    exists.includes(
+      `img007_ydzfh-sdang-cxfxb-kajww_akihl-zukov-ulioe-fhnde__${ts}_oge4m7.jpg`,
+    ),
   );
 
   restoreDb();

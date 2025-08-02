@@ -421,6 +421,7 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
         const sp = segs.shift();
         const transType = segs.shift();
         unique = segs.join('_');
+        suffix = `__${ts}_${rand}`;
         if (hasTxnCode(base, unique, codes)) continue;
         found = await findTxnByParts(inv, sp, transType, Number(ts));
       } else {
@@ -501,6 +502,8 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
         } else {
           finalBase = `${newBase}_${unique}${suffix}`;
         }
+      } else if (suffix) {
+        finalBase = `${newBase}${suffix}`;
       }
       const newName = `${finalBase}${ext}`;
       count += 1;
@@ -598,6 +601,7 @@ export async function checkUploadedImages(files = [], names = []) {
       const sp = segs.shift();
       const transType = segs.shift();
       unique = segs.join('_');
+      suffix = `__${ts}_${rand}`;
       if (hasTxnCode(base, unique, codes)) continue;
       found = await findTxnByParts(inv, sp, transType, Number(ts));
     } else {
@@ -677,6 +681,8 @@ export async function checkUploadedImages(files = [], names = []) {
       } else {
         finalBase = `${newBase}_${unique}${suffix}`;
       }
+    } else if (suffix) {
+      finalBase = `${newBase}${suffix}`;
     }
     const newName = `${finalBase}${ext}`;
     results.push({
