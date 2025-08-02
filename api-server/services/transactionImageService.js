@@ -144,18 +144,6 @@ function appendOptionalParts(row, base) {
   return sanitizeName(combined);
 }
 
-async function getTxnCodeSets() {
-  try {
-    const [rows] = await pool.query('SELECT UITransType, UITrtype FROM code_transaction');
-    return {
-      digits: new Set(rows.map((r) => String(r.UITransType)) || []),
-      letters: new Set(rows.map((r) => String(r.UITrtype).toUpperCase()) || []),
-    };
-  } catch {
-    return { digits: new Set(), letters: new Set() };
-  }
-}
-
 export async function findBenchmarkCode(name) {
   if (!name) return null;
   const base = path.basename(name, path.extname(name));
@@ -345,7 +333,6 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
   let totalFound = 0;
   let hasMore = false;
   const scanned = new Set();
-  const codes = await getTxnCodeSets();
 
   async function walk(dir, rel) {
     let entries;
@@ -369,12 +356,7 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
         const parts = sanitizeName(cleaned)
           .split(/[_-]+/)
           .filter(Boolean);
-        if (
-          parts.some(
-            (p) => codes.digits.has(p) || codes.letters.has(p.toUpperCase()),
-          )
-        )
-          continue;
+        if (parts.some((p) => /^\d{4}$/.test(p) || /^[a-z]{4}$/i.test(p))) continue;
         scanned.add(rel || '/');
         const found = await findTxnByUniqueId(unique);
         if (!found) continue;
