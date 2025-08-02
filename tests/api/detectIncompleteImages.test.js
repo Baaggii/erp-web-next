@@ -137,48 +137,6 @@ await test('detectIncompleteImages skips files with txn codes', async () => {
   await fs.rm(baseDir, { recursive: true, force: true });
 });
 
-await test('detectIncompleteImages detects file missing one code', async () => {
-  await fs.rm(baseDir, { recursive: true, force: true });
-  await fs.mkdir(baseDir, { recursive: true });
-  const file = path.join(baseDir, '4001_abc12345.jpg');
-  await fs.writeFile(file, 'x');
-
-  const row = {
-    id: 1,
-    test_num: 'abc12345',
-    label_field: 'num004',
-    trtype: '4001',
-    TransType: 'tool',
-  };
-
-  const restoreDb = mockPool(async (sql) => {
-    if (/code_transaction/.test(sql)) {
-      return [[{ UITransType: '4001', UITrtype: 'TOOL' }]];
-    }
-    if (/SHOW TABLES LIKE/.test(sql)) return [[{ t: 'transactions_test' }]];
-    if (/SHOW COLUMNS FROM/.test(sql)) {
-      return [[{ Field: 'test_num' }, { Field: 'label_field' }]];
-    }
-    if (/FROM `transactions_test`/.test(sql)) return [[row]];
-    return [[]];
-  });
-
-  const origCfg = await fs.readFile(cfgPath, 'utf8').catch(() => '{}');
-  await fs.writeFile(cfgPath, JSON.stringify({
-    transactions_test: {
-      default: { imagenameField: ['label_field'], imageFolder: 'transactions_test' }
-    }
-  }));
-
-  const { list, total } = await detectIncompleteImages(1);
-  assert.equal(total, 1);
-  assert.equal(list.length, 1);
-
-  restoreDb();
-  await fs.writeFile(cfgPath, origCfg);
-  await fs.rm(baseDir, { recursive: true, force: true });
-});
-
 await test('uploadSelectedImages renames on upload', async () => {
   await fs.rm(path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test'), { recursive: true, force: true });
   await fs.rm(path.join(process.cwd(), 'uploads', 'tmp'), { recursive: true, force: true });

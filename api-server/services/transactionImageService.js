@@ -62,9 +62,8 @@ function extractUnique(str) {
   }
   const alt = str.match(/[A-Z0-9]{4}(?:-[A-Z0-9]{4}){3}/);
   if (alt) return alt[0];
-  const matches = str.match(/[A-Za-z0-9-]{8,}/g);
-  if (!matches) return '';
-  return matches.reduce((a, b) => (b.length > a.length ? b : a), '');
+  const long = str.match(/[A-Za-z0-9-]{8,}/);
+  return long ? long[0] : '';
 }
 
 function parseFileUnique(base) {
@@ -373,9 +372,12 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
         const parts = sanitizeName(cleaned)
           .split(/[_-]+/)
           .filter(Boolean);
-        const hasDigitCode = parts.some((p) => codes.digits.has(p));
-        const hasLetterCode = parts.some((p) => codes.letters.has(p.toUpperCase()));
-        if (hasDigitCode && hasLetterCode) continue;
+        if (
+          parts.some(
+            (p) => codes.digits.has(p) || codes.letters.has(p.toUpperCase()),
+          )
+        )
+          continue;
         const found = await findTxnByUniqueId(unique);
         if (!found) continue;
         const { row, configs, numField } = found;
