@@ -99,24 +99,48 @@ function buildFolderName(row, fallback = '') {
   return fallback;
 }
 
+async function fetchTxnCodes() {
+  try {
+    const [rows] = await pool.query('SELECT UITrtype, UITransType FROM code_transaction');
+    const trtypes = (rows || [])
+      .map((r) => String(r.UITrtype || '').toLowerCase())
+      .filter(Boolean);
+    const transTypes = (rows || [])
+      .map((r) => String(r.UITransType || ''))
+      .filter(Boolean);
+    return { trtypes, transTypes };
+  } catch {
+    return { trtypes: [], transTypes: [] };
+  }
+}
+
+function hasTxnCode(base, unique, codes) {
+  const leftover = base.toLowerCase().replace(unique.toLowerCase(), '');
+  const tokens = leftover.split(/[_-]/).filter(Boolean);
+  return (
+    tokens.some((t) => codes.trtypes.includes(t)) ||
+    tokens.some((t) => codes.transTypes.includes(t))
+  );
+}
+
 export async function findBenchmarkCode(name) {
   if (!name) return null;
   const base = path.basename(name, path.extname(name));
   const parts = base.split(/[_-]/).filter(Boolean);
   for (const p of parts) {
-    const [rows] = await pool.query(
-      'SELECT UITransType FROM code_transaction WHERE UITransType = ?',
-      [p],
-    );
-    if (rows?.length) return rows[0].UITransType;
-  }
-  const [rows] = await pool.query(
-    'SELECT UITransType, UITrtype FROM code_transaction WHERE image_benchmark = 1',
-  );
-  for (const row of rows || []) {
-    const mark = row.UITrtype;
-    if (mark && base.toLowerCase().includes(String(mark).toLowerCase())) {
-      return row.UITransType;
+    if (/^\d{4}$/.test(p)) {
+      const [rows] = await pool.query(
+        'SELECT UITransType FROM code_transaction WHERE UITransType = ?',
+        [p],
+      );
+      if (rows?.length) return rows[0].UITransType;
+    }
+    if (/^[A-Za-z]{4}$/.test(p)) {
+      const [rows] = await pool.query(
+        'SELECT UITransType FROM code_transaction WHERE UITrtype = ?',
+        [p],
+      );
+      if (rows?.length) return rows[0].UITransType;
     }
   }
   return null;
@@ -333,6 +357,7 @@ export async function cleanupOldImages(days = 30) {
 
 export async function detectIncompleteImages(page = 1, perPage = 100) {
   const { baseDir } = await getDirs();
+  const codes = await fetchTxnCodes();
   let results = [];
   let dirs;
   const offset = (page - 1) * perPage;
@@ -368,16 +393,18 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
       let found;
       if (isSave) {
         const segs = parts.slice();
-        const rand = segs.pop();
+        segs.pop();
         const ts = segs.pop();
         const inv = segs.shift();
         const sp = segs.shift();
         const transType = segs.shift();
         unique = segs.join('_');
+        if (hasTxnCode(base, unique, codes)) continue;
         found = await findTxnByParts(inv, sp, transType, Number(ts));
       } else {
         ({ unique, suffix } = parseFileUnique(base));
-        if (!unique || unique.length < 4) continue;
+        if (!unique) continue;
+        if (hasTxnCode(base, unique, codes)) continue;
         found = await findTxnByUniqueId(unique);
       }
       if (!found) continue;
@@ -527,6 +554,7 @@ export async function fixIncompleteImages(list = []) {
 export async function checkUploadedImages(files = [], names = []) {
   const results = [];
   let processed = 0;
+  const codes = await fetchTxnCodes();
   const limit = 1000;
   let items = files.length
     ? files
@@ -542,16 +570,18 @@ export async function checkUploadedImages(files = [], names = []) {
     let found;
     if (isSave) {
       const segs = parts.slice();
-      const rand = segs.pop();
+      segs.pop();
       const ts = segs.pop();
       const inv = segs.shift();
       const sp = segs.shift();
       const transType = segs.shift();
       unique = segs.join('_');
+      if (hasTxnCode(base, unique, codes)) continue;
       found = await findTxnByParts(inv, sp, transType, Number(ts));
     } else {
       ({ unique, suffix } = parseFileUnique(base));
       if (!unique) continue;
+      if (hasTxnCode(base, unique, codes)) continue;
       found = await findTxnByUniqueId(unique);
     }
     if (!found) continue;

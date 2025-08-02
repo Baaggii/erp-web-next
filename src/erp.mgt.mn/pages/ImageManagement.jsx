@@ -15,9 +15,8 @@ export default function ImageManagement() {
   const [folderName, setFolderName] = useState('');
   const [uploadSummary, setUploadSummary] = useState(null);
   const [pendingSummary, setPendingSummary] = useState(null);
-  const [pageSize, setPageSize] = useState(100);
+  const [detectSize, setDetectSize] = useState(200);
   const detectAbortRef = useRef();
-  const folderAbortRef = useRef();
   const scanCancelRef = useRef(false);
   const [activeOp, setActiveOp] = useState(null);
 
@@ -58,7 +57,6 @@ export default function ImageManagement() {
             detectAbortRef.current?.abort();
           } else {
             scanCancelRef.current = true;
-            folderAbortRef.current?.abort();
           }
           setActiveOp(null);
         }
@@ -77,20 +75,53 @@ export default function ImageManagement() {
     scanCancelRef.current = false;
     try {
       const dirHandle = await window.showDirectoryPicker();
-      const arr = [];
+      const handles = {};
+      const names = [];
       for await (const entry of dirHandle.values()) {
         if (scanCancelRef.current) break;
         if (entry.kind === 'file') {
-          arr.push(entry.name);
+          names.push(entry.name);
+          handles[entry.name] = entry;
         }
       }
       if (scanCancelRef.current) return;
+      const limited = names.slice(0, detectSize);
+      const chunkSize = 200;
+      let all = [];
+      let processed = 0;
+      for (let i = 0; i < limited.length; i += chunkSize) {
+        if (scanCancelRef.current) return;
+        let res;
+        try {
+          res = await fetch('/api/transaction_images/upload_check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ names: limited.slice(i, i + chunkSize) }),
+          });
+        } catch {
+          addToast('Folder scan failed', 'error');
+          return;
+        }
+        if (!res.ok) {
+          addToast('Folder scan failed', 'error');
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        const list = Array.isArray(data.list) ? data.list : [];
+        processed += data?.summary?.processed || 0;
+        all = all.concat(list);
+      }
+      if (scanCancelRef.current) return;
       setFolderName(dirHandle.name || '');
-      await handleSelectFiles(arr);
+      setUploads(
+        all.map((u) => ({ ...u, id: u.id || u.originalName, handle: handles[u.originalName] }))
+      );
+      setUploadSummary({ totalFiles: limited.length, processed });
+      setUploadSel([]);
     } catch {
       // ignore
     } finally {
-      folderAbortRef.current = null;
       scanCancelRef.current = false;
       setActiveOp(null);
     }
@@ -113,12 +144,12 @@ export default function ImageManagement() {
     }
   }
 
-  async function detectFromHost(p = page, s = pageSize) {
+  async function detectFromHost(p = page) {
     const controller = new AbortController();
     detectAbortRef.current = controller;
     setActiveOp('detect');
     try {
-      const res = await fetch(`/api/transaction_images/detect_incomplete?page=${p}&pageSize=${s}`, {
+      const res = await fetch(`/api/transaction_images/detect_incomplete?page=${p}&pageSize=${detectSize}`, {
         credentials: 'include',
         signal: controller.signal,
       });
@@ -134,7 +165,6 @@ export default function ImageManagement() {
         setHasMore(false);
       }
       setPage(p);
-      setPageSize(s);
     } catch (e) {
       if (e.name !== 'AbortError') {
         setPending([]);
@@ -146,7 +176,6 @@ export default function ImageManagement() {
       setActiveOp(null);
     }
     setPage(p);
-    setPageSize(s);
   }
 
   async function applyFixes() {
@@ -167,49 +196,39 @@ export default function ImageManagement() {
     }
   }
 
-  async function handleSelectFiles(names) {
-    const normalized = (names || [])
-      .map((n) => (typeof n === 'string' ? n : n?.name))
-      .filter(Boolean);
-    if (!normalized.length) return;
-    const controller = new AbortController();
-    folderAbortRef.current = controller;
-    const chunkSize = 200;
-    const all = [];
-    let total = 0;
-    let processed = 0;
+  async function renameSelected() {
+    const items = uploads.filter((u) => uploadSel.includes(u.id) && u.handle && !u.tmpPath);
+    if (items.length === 0) return;
+    const formData = new FormData();
     try {
-      for (let i = 0; i < normalized.length; i += chunkSize) {
-        if (scanCancelRef.current) break;
-        const chunk = normalized.slice(i, i + chunkSize);
-        const res = await fetch('/api/transaction_images/upload_check', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ names: chunk }),
-          credentials: 'include',
-          signal: controller.signal,
-        });
-        if (!res.ok) {
-          addToast('Check failed', 'error');
-          return;
-        }
-        const data = await res.json().catch(() => ({}));
-        const list = Array.isArray(data.list) ? data.list : [];
-        all.push(...list);
-        total += data.summary?.totalFiles || chunk.length;
-        processed += data.summary?.processed || 0;
+      for (const u of items) {
+        const file = await u.handle.getFile();
+        formData.append('images', file, u.originalName);
       }
-      if (!scanCancelRef.current) {
-        setUploads(all);
-        setUploadSummary({ totalFiles: total, processed });
-        setUploadSel([]);
+    } catch {
+      addToast('Rename failed', 'error');
+      return;
+    }
+    try {
+      const res = await fetch('/api/transaction_images/upload_check', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        addToast('Rename failed', 'error');
+        return;
       }
-    } catch (e) {
-      if (e.name !== 'AbortError') {
-        addToast('Check failed', 'error');
-      }
-    } finally {
-      folderAbortRef.current = null;
+      const data = await res.json().catch(() => ({}));
+      const list = Array.isArray(data.list) ? data.list : [];
+      setUploads((prev) =>
+        prev.map((u) => {
+          const found = list.find((x) => x.originalName === u.originalName);
+          return found ? { ...u, ...found, id: u.id } : u;
+        }),
+      );
+    } catch {
+      addToast('Rename failed', 'error');
     }
   }
 
@@ -272,12 +291,20 @@ export default function ImageManagement() {
           </div>
           {uploadSummary && (
             <p style={{ marginBottom: '0.5rem' }}>
-              {`Scanned ${uploadSummary.totalFiles || 0} file(s), processed ${uploadSummary.processed || 0}.`}
+              {`Scanned ${uploadSummary.totalFiles || 0} file(s), found ${uploadSummary.processed || 0} incomplete name(s).`}
             </p>
           )}
           {uploads.length > 0 && (
             <div style={{ marginBottom: '1rem' }}>
               <h4>Uploads</h4>
+              <button
+                type="button"
+                onClick={renameSelected}
+                style={{ marginBottom: '0.5rem', marginRight: '0.5rem' }}
+                disabled={uploadSel.length === 0}
+              >
+                Rename Selected
+              </button>
               <button
                 type="button"
                 onClick={commitUploads}
@@ -287,7 +314,7 @@ export default function ImageManagement() {
                   !uploads.some((u) => uploadSel.includes(u.id) && u.tmpPath)
                 }
               >
-                Rename &amp; Upload Selected
+                Upload Selected
               </button>
               <button
                 type="button"
@@ -343,17 +370,13 @@ export default function ImageManagement() {
               Detect from host
             </button>
             <label style={{ marginRight: '0.5rem' }}>
-              Page Size:{' '}
-              <select
-                value={pageSize}
-                onChange={(e) => detectFromHost(1, Number(e.target.value))}
-              >
-                {[50, 100, 200].map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
+              Detect Size:{' '}
+              <input
+                type="number"
+                value={detectSize}
+                onChange={(e) => setDetectSize(Number(e.target.value))}
+                style={{ width: '4rem' }}
+              />
             </label>
             <button
               type="button"
