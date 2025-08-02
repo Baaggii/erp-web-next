@@ -204,7 +204,7 @@ async function findTxnByParts(inv, sp, transType, timestamp) {
     const params = [inv, sp, transType];
     if (dateCol) {
       sql +=
-        ` AND ABS(TIMESTAMPDIFF(SECOND, FROM_UNIXTIME(?/1000), \`${dateCol.Field}\`)) < 172800`;
+        ` AND ABS(TIMESTAMPDIFF(SECOND, FROM_UNIXTIME(?/1000), \`${dateCol.Field}\`)) < 604800`;
       params.push(timestamp);
     }
     sql += ' LIMIT 1';

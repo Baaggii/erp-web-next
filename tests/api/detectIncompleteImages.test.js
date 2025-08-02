@@ -467,7 +467,7 @@ await test('detectIncompleteImages ignores timestamp mismatch when searching', a
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
 });
 
-await test('detectIncompleteImages finds bmtr_pmid files by trans type and date range', async () => {
+await test('detectIncompleteImages finds bmtr_pmid files within 7-day range', async () => {
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
   const dir = path.join(
     process.cwd(),
@@ -487,7 +487,7 @@ await test('detectIncompleteImages finds bmtr_pmid files by trans type and date 
     TransType: '4001',
     UITrtype: 't9',
     label_field: 'img011',
-    created_at: new Date(ts - 36 * 3600 * 1000),
+    created_at: new Date(ts - 6 * 24 * 3600 * 1000),
   };
 
   const restoreDb = mockPool(async (sql) => {
