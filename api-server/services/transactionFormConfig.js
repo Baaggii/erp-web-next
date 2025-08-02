@@ -103,6 +103,23 @@ export async function getConfigsByTable(table) {
   return result;
 }
 
+export async function getConfigsByTransTypeValue(val) {
+  const cfg = await readConfig();
+  const result = [];
+  for (const [tbl, names] of Object.entries(cfg)) {
+    for (const [name, info] of Object.entries(names)) {
+      const parsed = parseEntry(info);
+      if (
+        parsed.transactionTypeValue &&
+        String(parsed.transactionTypeValue) === String(val)
+      ) {
+        result.push({ table: tbl, name, config: parsed });
+      }
+    }
+  }
+  return result;
+}
+
 export async function listTransactionNames({ moduleKey, branchId, departmentId } = {}) {
   const cfg = await readConfig();
   const result = {};
