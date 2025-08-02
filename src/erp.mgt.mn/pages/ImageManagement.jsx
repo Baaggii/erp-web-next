@@ -120,6 +120,33 @@ export default function ImageManagement() {
         all = all.concat(list);
       }
       if (scanCancelRef.current) return;
+      const chunkSize = 200;
+      let all = [];
+      let processed = 0;
+      for (let i = 0; i < names.length; i += chunkSize) {
+        if (scanCancelRef.current) return;
+        let res;
+        try {
+          res = await fetch('/api/transaction_images/upload_scan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ names: names.slice(i, i + chunkSize) }),
+          });
+        } catch {
+          addToast('Folder scan failed', 'error');
+          return;
+        }
+        if (!res.ok) {
+          addToast('Folder scan failed', 'error');
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        const list = Array.isArray(data.list) ? data.list : [];
+        processed += data?.summary?.processed || 0;
+        all = all.concat(list);
+      }
+      if (scanCancelRef.current) return;
       setFolderName(dirHandle.name || '');
       setUploads(
         all.map((u) => ({ originalName: u.originalName, id: u.originalName, handle: handles[u.originalName] }))
