@@ -42,22 +42,35 @@ function buildNameFromRow(row, fields = []) {
 
 function pickConfig(configs = {}, row = {}) {
   for (const cfg of Object.values(configs)) {
-    if (!cfg.transactionTypeField || !cfg.transactionTypeValue) continue;
-    const val = getCase(row, cfg.transactionTypeField);
-    if (val !== undefined && String(val) === String(cfg.transactionTypeValue)) {
-      return cfg;
+    if (!cfg.transactionTypeValue) continue;
+    if (cfg.transactionTypeField) {
+      const val = getCase(row, cfg.transactionTypeField);
+      if (val !== undefined && String(val) === String(cfg.transactionTypeValue)) {
+        return cfg;
+      }
+    } else {
+      const matchField = Object.keys(row).find(
+        (k) => String(getCase(row, k)) === String(cfg.transactionTypeValue),
+      );
+      if (matchField) {
+        return { ...cfg, transactionTypeField: matchField };
+      }
     }
   }
   return Object.values(configs)[0] || {};
 }
 
 function extractUnique(str) {
-  const uuid = str.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  // Strip saveImages timestamp/random suffix if present
+  const cleaned = str.replace(/_[0-9]{13}_[a-z0-9]{6}$/i, '');
+  const uuid = cleaned.match(
+    /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+  );
   if (uuid) return uuid[0];
-  const alt = str.match(/[A-Z0-9]{4}(?:-[A-Z0-9]{4}){3}/);
-  if (alt) return alt[0];
-  const long = str.match(/[A-Za-z0-9-]{8,}/);
-  return long ? long[0] : '';
+  const alt = cleaned.match(/[A-Za-z0-9]{4,}(?:[-_][A-Za-z0-9]{4,}){3,}/);
+  if (alt) return alt[0].replace(/[-_]\d+$/, '');
+  const long = cleaned.match(/[A-Za-z0-9_-]{8,}/);
+  return long ? long[0].replace(/[-_]\d+$/, '') : '';
 }
 
 function parseFileUnique(base) {
@@ -104,6 +117,50 @@ export async function findBenchmarkCode(name) {
     const mark = row.UITrtype;
     if (mark && base.toLowerCase().includes(String(mark).toLowerCase())) {
       return row.UITransType;
+    }
+  }
+  return null;
+}
+
+async function findTxnByParts(inv, sp, transType, timestamp) {
+  let tables;
+  try {
+    [tables] = await pool.query("SHOW TABLES LIKE 'transactions_%'");
+  } catch {
+    return null;
+  }
+  for (const row of tables || []) {
+    const tbl = Object.values(row)[0];
+    let cols;
+    try {
+      [cols] = await pool.query(`SHOW COLUMNS FROM \`${tbl}\``);
+    } catch {
+      continue;
+    }
+    const invCol = cols.find((c) => ['inventory_code', 'z_mat_code'].includes(c.Field.toLowerCase()));
+    const spCol = cols.find((c) => c.Field.toLowerCase() === 'sp_primary_code');
+    const transCol = cols.find((c) => ['transtype', 'uitranstype', 'ui_transtype'].includes(c.Field.toLowerCase()));
+    const dateCol = cols.find((c) => c.Field.toLowerCase().includes('date'));
+    if (!invCol || !spCol || !transCol) continue;
+    let sql = `SELECT * FROM \`${tbl}\` WHERE \`${invCol.Field}\` = ? AND \`${spCol.Field}\` = ? AND \`${transCol.Field}\` = ?`;
+    const params = [inv, sp, transType];
+    if (dateCol) {
+      sql += ` AND ABS(TIMESTAMPDIFF(SECOND, FROM_UNIXTIME(?/1000), \`${dateCol.Field}\`)) < 86400`;
+      params.push(timestamp);
+    }
+    sql += ' LIMIT 1';
+    let rows;
+    try {
+      [rows] = await pool.query(sql, params);
+    } catch {
+      continue;
+    }
+    if (rows.length) {
+      let cfgs = {};
+      try {
+        cfgs = await getConfigsByTable(tbl);
+      } catch {}
+      return { table: tbl, row: rows[0], configs: cfgs, numField: transCol.Field };
     }
   }
   return null;
@@ -295,35 +352,56 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
     }
     folders.add(entry.name);
     totalFiles += files.length;
-    files = files.slice(0, 1000);
     for (const f of files) {
       const ext = path.extname(f);
       const base = path.basename(f, ext);
       const parts = base.split('_');
-      if (parts.length >= 5) continue;
-      const { unique, suffix } = parseFileUnique(base);
-      if (!unique || unique.length < 8) continue;
-      const found = await findTxnByUniqueId(unique);
+      const isSave = /_\d{13}_[a-z0-9]{6}$/i.test(base);
+      let unique = '';
+      let suffix = '';
+      let found;
+      if (isSave) {
+        const segs = parts.slice();
+        const rand = segs.pop();
+        const ts = segs.pop();
+        const inv = segs.shift();
+        const sp = segs.shift();
+        const transType = segs.shift();
+        unique = segs.join('_');
+        found = await findTxnByParts(inv, sp, transType, Number(ts));
+      } else {
+        ({ unique, suffix } = parseFileUnique(base));
+        if (!unique || unique.length < 4) continue;
+        found = await findTxnByUniqueId(unique);
+      }
       if (!found) continue;
       const { row, configs, numField } = found;
 
       const cfg = pickConfig(configs, row);
       let newBase = '';
       let folderRaw = '';
-      const tType = getCase(row, 'trtype');
+      const tType =
+        getCase(row, 'trtype') ||
+        getCase(row, 'UITrtype') ||
+        getCase(row, 'TRTYPENAME') ||
+        getCase(row, 'trtypename') ||
+        getCase(row, 'uitranstypename') ||
+        getCase(row, 'transtype');
       const transTypeVal =
         getCase(row, 'TransType') ||
         getCase(row, 'UITransType') ||
         getCase(row, 'UITransTypeName') ||
         getCase(row, 'transtype');
-      if (cfg?.imagenameField?.length) {
+      if (
+        cfg?.imagenameField?.length &&
+        tType &&
+        cfg.transactionTypeValue &&
+        cfg.transactionTypeField &&
+        String(getCase(row, cfg.transactionTypeField)) === String(cfg.transactionTypeValue)
+      ) {
         newBase = buildNameFromRow(row, cfg.imagenameField);
         if (newBase) {
-          if (tType && cfg.transactionTypeValue) {
-            folderRaw = `${slugify(String(tType))}/${slugify(String(cfg.transactionTypeValue))}`;
-          } else {
-            folderRaw = buildFolderName(row, cfg.imageFolder || entry.name);
-          }
+          folderRaw = `${slugify(String(tType))}/${slugify(String(cfg.transactionTypeValue))}`;
         }
       }
       if (!newBase) {
@@ -335,7 +413,7 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
           'sp_primary_code',
           'pid',
         ];
-        let baseName = buildNameFromRow(row, fields);
+        const basePart = buildNameFromRow(row, fields);
         const o1 = [getCase(row, 'bmtr_orderid'), getCase(row, 'bmtr_orderdid')]
           .filter(Boolean)
           .join('~');
@@ -343,9 +421,11 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
           .filter(Boolean)
           .join('~');
         const ord = o1 || o2;
-        if (baseName && ord && tType && transTypeVal) {
-          baseName = sanitizeName([baseName, ord, transTypeVal, tType].join('_'));
-          newBase = baseName;
+        if (ord && tType && transTypeVal) {
+          const parts = [];
+          if (basePart) parts.push(basePart);
+          parts.push(ord, transTypeVal, tType);
+          newBase = sanitizeName(parts.join('_'));
           folderRaw = `${slugify(String(tType))}/${slugify(String(transTypeVal))}`;
         }
       }
@@ -358,10 +438,12 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
       const folderDisplay = '/' + String(folderRaw).replace(/^\/+/, '');
       const sanitizedUnique = sanitizeName(unique);
       let finalBase = newBase;
-      if (sanitizeName(newBase).includes(sanitizedUnique)) {
-        finalBase = `${newBase}${suffix}`;
-      } else {
-        finalBase = `${newBase}_${unique}${suffix}`;
+      if (unique) {
+        if (sanitizeName(newBase).includes(sanitizedUnique)) {
+          finalBase = `${newBase}${suffix}`;
+        } else {
+          finalBase = `${newBase}_${unique}${suffix}`;
+        }
       }
       const newName = `${finalBase}${ext}`;
       count += 1;
@@ -434,36 +516,63 @@ export async function fixIncompleteImages(list = []) {
   return count;
 }
 
-export async function checkUploadedImages(files = []) {
+export async function checkUploadedImages(files = [], names = []) {
   const results = [];
   let processed = 0;
   const limit = 1000;
-  files = files.slice(0, limit);
-  for (const file of files) {
-    const ext = path.extname(file.originalname);
-    const base = path.basename(file.originalname, ext);
-    const { unique, suffix } = parseFileUnique(base);
-    if (!unique) continue;
-    const found = await findTxnByUniqueId(unique);
+  let items = files.length
+    ? files
+    : names.map((n) => ({ originalname: typeof n === 'string' ? n : n?.name || String(n) }));
+  items = items.slice(0, limit);
+  for (const file of items) {
+    const ext = path.extname(file.originalname || '');
+    const base = path.basename(file.originalname || '', ext);
+    const parts = base.split('_');
+    const isSave = /_\d{13}_[a-z0-9]{6}$/i.test(base);
+    let unique = '';
+    let suffix = '';
+    let found;
+    if (isSave) {
+      const segs = parts.slice();
+      const rand = segs.pop();
+      const ts = segs.pop();
+      const inv = segs.shift();
+      const sp = segs.shift();
+      const transType = segs.shift();
+      unique = segs.join('_');
+      found = await findTxnByParts(inv, sp, transType, Number(ts));
+    } else {
+      ({ unique, suffix } = parseFileUnique(base));
+      if (!unique) continue;
+      found = await findTxnByUniqueId(unique);
+    }
     if (!found) continue;
     const { row, configs, numField } = found;
     const cfg = pickConfig(configs, row);
     let newBase = '';
     let folderRaw = '';
-    const tType = getCase(row, 'trtype');
+    const tType =
+      getCase(row, 'trtype') ||
+      getCase(row, 'UITrtype') ||
+      getCase(row, 'TRTYPENAME') ||
+      getCase(row, 'trtypename') ||
+      getCase(row, 'uitranstypename') ||
+      getCase(row, 'transtype');
     const transTypeVal =
       getCase(row, 'TransType') ||
       getCase(row, 'UITransType') ||
       getCase(row, 'UITransTypeName') ||
       getCase(row, 'transtype');
-    if (cfg?.imagenameField?.length) {
+    if (
+      cfg?.imagenameField?.length &&
+      tType &&
+      cfg.transactionTypeValue &&
+      cfg.transactionTypeField &&
+      String(getCase(row, cfg.transactionTypeField)) === String(cfg.transactionTypeValue)
+    ) {
       newBase = buildNameFromRow(row, cfg.imagenameField);
       if (newBase) {
-        if (tType && cfg.transactionTypeValue) {
-          folderRaw = `${slugify(String(tType))}/${slugify(String(cfg.transactionTypeValue))}`;
-        } else {
-          folderRaw = buildFolderName(row, cfg.imageFolder || found.table);
-        }
+        folderRaw = `${slugify(String(tType))}/${slugify(String(cfg.transactionTypeValue))}`;
       }
     }
     if (!newBase) {
@@ -475,7 +584,7 @@ export async function checkUploadedImages(files = []) {
         'sp_primary_code',
         'pid',
       ];
-      let baseName = buildNameFromRow(row, fields);
+      const basePart = buildNameFromRow(row, fields);
       const o1 = [getCase(row, 'bmtr_orderid'), getCase(row, 'bmtr_orderdid')]
         .filter(Boolean)
         .join('~');
@@ -483,9 +592,11 @@ export async function checkUploadedImages(files = []) {
         .filter(Boolean)
         .join('~');
       const ord = o1 || o2;
-      if (baseName && ord && tType && transTypeVal) {
-        baseName = sanitizeName([baseName, ord, transTypeVal, tType].join('_'));
-        newBase = baseName;
+      if (ord && tType && transTypeVal) {
+        const partsArr = [];
+        if (basePart) partsArr.push(basePart);
+        partsArr.push(ord, transTypeVal, tType);
+        newBase = sanitizeName(partsArr.join('_'));
         folderRaw = `${slugify(String(tType))}/${slugify(String(transTypeVal))}`;
       }
     }
@@ -498,10 +609,12 @@ export async function checkUploadedImages(files = []) {
     const folderDisplay = '/' + String(folderRaw).replace(/^\/+/, '');
     const sanitizedUnique = sanitizeName(unique);
     let finalBase = newBase;
-    if (sanitizeName(newBase).includes(sanitizedUnique)) {
-      finalBase = `${newBase}${suffix}`;
-    } else {
-      finalBase = `${newBase}_${unique}${suffix}`;
+    if (unique) {
+      if (sanitizeName(newBase).includes(sanitizedUnique)) {
+        finalBase = `${newBase}${suffix}`;
+      } else {
+        finalBase = `${newBase}_${unique}${suffix}`;
+      }
     }
     const newName = `${finalBase}${ext}`;
     results.push({
@@ -510,9 +623,10 @@ export async function checkUploadedImages(files = []) {
       newName,
       folder: folderRaw,
       folderDisplay,
+      id: file.path || file.originalname,
     });
   }
-  return { list: results, summary: { totalFiles: files.length, processed } };
+  return { list: results, summary: { totalFiles: items.length, processed } };
 }
 
 export async function commitUploadedImages(list = []) {
