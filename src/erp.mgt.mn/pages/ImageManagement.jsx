@@ -37,6 +37,14 @@ export default function ImageManagement() {
     ? Math.max(1, Math.ceil((pendingSummary.incompleteFound || 0) / pageSize))
     : 1;
 
+  const uploadStart = (uploadPage - 1) * uploadPageSize;
+  const pageUploads = uploads.slice(uploadStart, uploadStart + uploadPageSize);
+  const uploadHasMore = uploadStart + uploadPageSize < uploads.length;
+  const uploadLastPage = Math.max(1, Math.ceil(uploads.length / uploadPageSize));
+  const lastPage = pendingSummary
+    ? Math.max(1, Math.ceil((pendingSummary.incompleteFound || 0) / pageSize))
+    : 1;
+
   function toggle(id) {
     setSelected((prev) =>
       prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
