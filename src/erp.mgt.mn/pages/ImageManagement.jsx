@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
 export default function ImageManagement() {
@@ -16,7 +16,10 @@ export default function ImageManagement() {
   const [uploadSummary, setUploadSummary] = useState(null);
   const [pendingSummary, setPendingSummary] = useState(null);
   const [pageSize, setPageSize] = useState(100);
-  const fileRef = useRef();
+  const detectAbortRef = useRef();
+  const folderAbortRef = useRef();
+  const scanCancelRef = useRef(false);
+  const [activeOp, setActiveOp] = useState(null);
 
   function toggle(id) {
     setSelected((prev) =>
@@ -42,7 +45,54 @@ export default function ImageManagement() {
     if (uploadSel.length === uploads.length) {
       setUploadSel([]);
     } else {
-      setUploadSel(uploads.map((u) => u.tmpPath));
+      setUploadSel(uploads.map((u) => u.id));
+    }
+  }
+
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape' && activeOp) {
+        const action = activeOp === 'detect' ? 'detection' : 'folder selection';
+        if (window.confirm(`Cancel ${action}?`)) {
+          if (activeOp === 'detect') {
+            detectAbortRef.current?.abort();
+          } else {
+            scanCancelRef.current = true;
+            folderAbortRef.current?.abort();
+          }
+          setActiveOp(null);
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [activeOp]);
+
+  async function selectFolder() {
+    if (!window.showDirectoryPicker) {
+      addToast('Directory selection not supported', 'error');
+      return;
+    }
+    setActiveOp('folder');
+    scanCancelRef.current = false;
+    try {
+      const dirHandle = await window.showDirectoryPicker();
+      const arr = [];
+      for await (const entry of dirHandle.values()) {
+        if (scanCancelRef.current) break;
+        if (entry.kind === 'file') {
+          arr.push(entry.name);
+        }
+      }
+      if (scanCancelRef.current) return;
+      setFolderName(dirHandle.name || '');
+      await handleSelectFiles(arr);
+    } catch {
+      // ignore
+    } finally {
+      folderAbortRef.current = null;
+      scanCancelRef.current = false;
+      setActiveOp(null);
     }
   }
 
@@ -63,15 +113,14 @@ export default function ImageManagement() {
     }
   }
 
-  useEffect(() => {
-    if (tab !== 'fix') return;
-    refreshList();
-  }, [tab, page, pageSize]);
-
-  async function refreshList() {
+  async function detectFromHost(p = page, s = pageSize) {
+    const controller = new AbortController();
+    detectAbortRef.current = controller;
+    setActiveOp('detect');
     try {
-      const res = await fetch(`/api/transaction_images/detect_incomplete?page=${page}&pageSize=${pageSize}`, {
+      const res = await fetch(`/api/transaction_images/detect_incomplete?page=${p}&pageSize=${s}`, {
         credentials: 'include',
+        signal: controller.signal,
       });
       if (res.ok) {
         const data = await res.json();
@@ -84,10 +133,17 @@ export default function ImageManagement() {
         setPendingSummary(null);
         setHasMore(false);
       }
-    } catch {
-      setPending([]);
-      setPendingSummary(null);
-      setHasMore(false);
+      setPage(p);
+      setPageSize(s);
+    } catch (e) {
+      if (e.name !== 'AbortError') {
+        setPending([]);
+        setPendingSummary(null);
+        setHasMore(false);
+      }
+    } finally {
+      detectAbortRef.current = null;
+      setActiveOp(null);
     }
   }
 
@@ -103,43 +159,43 @@ export default function ImageManagement() {
     if (res.ok) {
       const data = await res.json().catch(() => ({}));
       addToast(`Renamed ${data.fixed || 0} file(s)`, 'success');
-      refreshList();
+      detectFromHost(page);
     } else {
       addToast('Rename failed', 'error');
     }
   }
 
-  async function handleSelectFiles(files) {
-    if (!files?.length) return;
-    const arr = Array.from(files);
-    const first = arr[0];
-    if (first?.webkitRelativePath) {
-      const parts = first.webkitRelativePath.split('/');
-      setFolderName(parts[0] || '');
-    }
-    const form = new FormData();
-    arr.slice(0, 1000).forEach((f) => form.append('images', f));
+  async function handleSelectFiles(names) {
+    if (!names?.length) return;
+    const payload = { names: names.slice(0, 1000) };
     try {
+      const controller = new AbortController();
+      folderAbortRef.current = controller;
       const res = await fetch('/api/transaction_images/upload_check', {
         method: 'POST',
-        body: form,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
         credentials: 'include',
+        signal: controller.signal,
       });
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
-        setUploads(Array.isArray(data.list) ? data.list : []);
+        const list = Array.isArray(data.list) ? data.list : [];
+        setUploads(list);
         setUploadSummary(data.summary || null);
         setUploadSel([]);
       } else {
         addToast('Check failed', 'error');
       }
-    } catch {
-      addToast('Check failed', 'error');
+    } catch (e) {
+      if (e.name !== 'AbortError') {
+        addToast('Check failed', 'error');
+      }
     }
   }
 
   async function commitUploads() {
-    const items = uploads.filter((u) => uploadSel.includes(u.tmpPath));
+    const items = uploads.filter((u) => uploadSel.includes(u.id) && u.tmpPath);
     if (items.length === 0) return;
     const res = await fetch('/api/transaction_images/upload_commit', {
       method: 'POST',
@@ -190,44 +246,10 @@ export default function ImageManagement() {
       ) : (
         <div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <button type="button" onClick={() => fileRef.current?.click()} style={{ marginRight: '0.5rem' }}>
+            <button type="button" onClick={selectFolder} style={{ marginRight: '0.5rem' }}>
               Select Folder
             </button>
             {folderName && <span style={{ marginRight: '0.5rem' }}>{folderName}</span>}
-            <input
-              type="file"
-              multiple
-              webkitdirectory=""
-              directory=""
-              ref={fileRef}
-              style={{ display: 'none' }}
-              onChange={(e) => handleSelectFiles(e.target.files)}
-            />
-            <button type="button" onClick={refreshList} style={{ marginRight: '0.5rem' }}>
-              Refresh
-            </button>
-            <label style={{ marginRight: '0.5rem' }}>
-              Page Size:{' '}
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value));
-                  setPage(1);
-                }}
-              >
-                {[50, 100, 200].map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button type="button" disabled={page === 1} onClick={() => setPage(page - 1)} style={{ marginRight: '0.5rem' }}>
-              Prev
-            </button>
-            <button type="button" disabled={!hasMore} onClick={() => setPage(page + 1)}>
-              Next
-            </button>
           </div>
           {uploadSummary && (
             <p style={{ marginBottom: '0.5rem' }}>
@@ -241,9 +263,23 @@ export default function ImageManagement() {
                 type="button"
                 onClick={commitUploads}
                 style={{ marginBottom: '0.5rem' }}
-                disabled={uploadSel.length === 0}
+                disabled={
+                  uploadSel.length === 0 ||
+                  !uploads.some((u) => uploadSel.includes(u.id) && u.tmpPath)
+                }
               >
                 Rename &amp; Upload Selected
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setUploads((prev) => prev.filter((u) => !uploadSel.includes(u.id)));
+                  setUploadSel([]);
+                }}
+                style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
+                disabled={uploadSel.length === 0}
+              >
+                Delete Selected
               </button>
               <table className="min-w-full border border-gray-300 text-sm" style={{ tableLayout: 'fixed' }}>
                 <thead>
@@ -259,9 +295,9 @@ export default function ImageManagement() {
                 </thead>
                 <tbody>
                   {uploads.map((u) => (
-                    <tr key={u.tmpPath} className={uploadSel.includes(u.tmpPath) ? 'bg-blue-50' : ''}>
+                    <tr key={u.id} className={uploadSel.includes(u.id) ? 'bg-blue-50' : ''}>
                       <td className="border px-2 py-1 text-center">
-                        <input type="checkbox" checked={uploadSel.includes(u.tmpPath)} onChange={() => toggleUpload(u.tmpPath)} />
+                        <input type="checkbox" checked={uploadSel.includes(u.id)} onChange={() => toggleUpload(u.id)} />
                       </td>
                       <td className="border px-2 py-1">{u.originalName}</td>
                       <td className="border px-2 py-1">{u.newName}</td>
@@ -270,8 +306,8 @@ export default function ImageManagement() {
                         <button
                           type="button"
                           onClick={() => {
-                            setUploads((prev) => prev.filter((x) => x.tmpPath !== u.tmpPath));
-                            setUploadSel((s) => s.filter((id) => id !== u.tmpPath));
+                            setUploads((prev) => prev.filter((x) => x.id !== u.id));
+                            setUploadSel((s) => s.filter((id) => id !== u.id));
                           }}
                         >
                           Delete
@@ -283,6 +319,35 @@ export default function ImageManagement() {
               </table>
             </div>
           )}
+          <div style={{ marginBottom: '0.5rem', marginTop: '1rem' }}>
+            <button type="button" onClick={() => detectFromHost(1)} style={{ marginRight: '0.5rem' }}>
+              Detect from host
+            </button>
+            <label style={{ marginRight: '0.5rem' }}>
+              Page Size:{' '}
+              <select
+                value={pageSize}
+                onChange={(e) => detectFromHost(1, Number(e.target.value))}
+              >
+                {[50, 100, 200].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              disabled={page === 1}
+              onClick={() => detectFromHost(page - 1)}
+              style={{ marginRight: '0.5rem' }}
+            >
+              Prev
+            </button>
+            <button type="button" disabled={!hasMore} onClick={() => detectFromHost(page + 1)}>
+              Next
+            </button>
+          </div>
           {pendingSummary && (
             <p style={{ marginBottom: '0.5rem' }}>
               {`Scanned ${pendingSummary.totalFiles || 0} file(s) in ${pendingSummary.folders?.length || 0} folder(s)`}
@@ -301,6 +366,17 @@ export default function ImageManagement() {
                 disabled={selected.length === 0}
               >
                 Rename &amp; Move Selected
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPending((prev) => prev.filter((p) => !selected.includes(p.currentName)));
+                  setSelected([]);
+                }}
+                style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
+                disabled={selected.length === 0}
+              >
+                Delete Selected
               </button>
               <table className="min-w-full border border-gray-300 text-sm" style={{ tableLayout: 'fixed' }}>
                 <thead>

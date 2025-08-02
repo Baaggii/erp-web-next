@@ -56,7 +56,8 @@ router.post('/fix_incomplete', requireAuth, async (req, res, next) => {
 
 router.post('/upload_check', requireAuth, upload.array('images'), async (req, res, next) => {
   try {
-    const { list, summary } = await checkUploadedImages(req.files || []);
+    const names = Array.isArray(req.body?.names) ? req.body.names : [];
+    const { list, summary } = await checkUploadedImages(req.files || [], names);
     res.json({ list, summary });
   } catch (err) {
     next(err);
