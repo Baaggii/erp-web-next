@@ -394,6 +394,7 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
   const { baseDir } = await getDirs();
   const codes = await fetchTxnCodes();
   let results = [];
+  const skipped = [];
   let dirs;
   const offset = (page - 1) * perPage;
   let count = 0;
@@ -421,6 +422,7 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
     for (const f of files) {
       const ext = path.extname(f);
       const base = path.basename(f, ext);
+      const filePath = path.join(dirPath, f);
       let unique = '';
       let suffix = '';
       let found;
@@ -428,15 +430,55 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
       if (save) {
         ({ unique } = save);
         suffix = `__${save.ts}_${save.rand}`;
-        if (hasTxnCode(base, unique, codes)) continue;
+        if (hasTxnCode(base, unique, codes)) {
+          skipped.push({
+            currentName: f,
+            newName: f,
+            folder: entry.name,
+            folderDisplay: '/' + entry.name,
+            currentPath: filePath,
+            reason: 'Contains transaction codes',
+          });
+          continue;
+        }
         found = await findTxnByParts(save.inv, save.sp, save.transType, Number(save.ts));
       } else {
         ({ unique, suffix } = parseFileUnique(base));
-        if (!unique) continue;
-        if (hasTxnCode(base, unique, codes)) continue;
+        if (!unique) {
+          skipped.push({
+            currentName: f,
+            newName: f,
+            folder: entry.name,
+            folderDisplay: '/' + entry.name,
+            currentPath: filePath,
+            reason: 'No unique identifier',
+          });
+          continue;
+        }
+        if (hasTxnCode(base, unique, codes)) {
+          skipped.push({
+            currentName: f,
+            newName: f,
+            folder: entry.name,
+            folderDisplay: '/' + entry.name,
+            currentPath: filePath,
+            reason: 'Contains transaction codes',
+          });
+          continue;
+        }
         found = await findTxnByUniqueId(unique);
       }
-      if (!found) continue;
+      if (!found) {
+        skipped.push({
+          currentName: f,
+          newName: f,
+          folder: entry.name,
+          folderDisplay: '/' + entry.name,
+          currentPath: filePath,
+          reason: 'No matching transaction',
+        });
+        continue;
+      }
       const { row, configs, numField } = found;
 
       const cfg = pickConfig(configs, row);
@@ -497,7 +539,17 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
         newBase = sanitizeName(String(row[numField]));
         folderRaw = buildFolderName(row, cfg?.imageFolder || entry.name);
       }
-      if (!newBase) continue;
+      if (!newBase) {
+        skipped.push({
+          currentName: f,
+          newName: f,
+          folder: entry.name,
+          folderDisplay: '/' + entry.name,
+          currentPath: filePath,
+          reason: 'No rename mapping',
+        });
+        continue;
+      }
       incompleteFound += 1;
       const folderDisplay = '/' + String(folderRaw).replace(/^\/+/, '');
       const sanitizedUnique = sanitizeName(unique);
@@ -528,7 +580,18 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
     }
     if (hasMore) break;
   }
-  return { list: results, hasMore, summary: { totalFiles, folders: Array.from(folders), incompleteFound, processed: results.length } };
+  return {
+    list: results,
+    skipped,
+    hasMore,
+    summary: {
+      totalFiles,
+      folders: Array.from(folders),
+      incompleteFound,
+      processed: results.length,
+      skipped: skipped.length,
+    },
+  };
 }
 
 async function findTxnByUniqueId(idPart) {

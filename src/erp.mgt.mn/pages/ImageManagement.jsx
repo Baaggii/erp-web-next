@@ -10,6 +10,9 @@ export default function ImageManagement() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [selected, setSelected] = useState([]);
+  const [hostIgnored, setHostIgnored] = useState([]);
+  const [hostIgnoredSel, setHostIgnoredSel] = useState([]);
+  const [hostIgnoredPage, setHostIgnoredPage] = useState(1);
   const [uploads, setUploads] = useState([]);
   const [uploadSel, setUploadSel] = useState([]);
   const [uploadPage, setUploadPage] = useState(1);
@@ -33,6 +36,10 @@ export default function ImageManagement() {
   const pageIgnored = ignored.slice(ignoredStart, ignoredStart + uploadPageSize);
   const ignoredHasMore = ignoredStart + uploadPageSize < ignored.length;
   const ignoredLastPage = Math.max(1, Math.ceil(ignored.length / uploadPageSize));
+  const hostIgnoredStart = (hostIgnoredPage - 1) * pageSize;
+  const pageHostIgnored = hostIgnored.slice(hostIgnoredStart, hostIgnoredStart + pageSize);
+  const hostIgnoredHasMore = hostIgnoredStart + pageSize < hostIgnored.length;
+  const hostIgnoredLastPage = Math.max(1, Math.ceil(hostIgnored.length / pageSize));
   const lastPage = pendingSummary
     ? Math.max(1, Math.ceil((pendingSummary.incompleteFound || 0) / pageSize))
     : 1;
@@ -48,6 +55,22 @@ export default function ImageManagement() {
       setSelected([]);
     } else {
       setSelected(pending.map((p) => p.currentName));
+    }
+  }
+
+  function toggleHostIgnored(id) {
+    setHostIgnoredSel((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
+    );
+  }
+
+  function toggleHostIgnoredAll(list) {
+    const ids = list.map((p) => p.currentName);
+    const allSelected = ids.every((id) => hostIgnoredSel.includes(id));
+    if (allSelected) {
+      setHostIgnoredSel((prev) => prev.filter((id) => !ids.includes(id)));
+    } else {
+      setHostIgnoredSel((prev) => [...prev, ...ids.filter((id) => !prev.includes(id))]);
     }
   }
 
@@ -102,6 +125,16 @@ export default function ImageManagement() {
           names.push(entry.name);
           handles[entry.name] = entry;
         }
+        if (!res.ok) {
+          addToast('Folder scan failed', 'error');
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        const list = Array.isArray(data.list) ? data.list : [];
+        const miss = Array.isArray(data.skipped) ? data.skipped : [];
+        processed += data?.summary?.processed || 0;
+        all = all.concat(list);
+        skipped = skipped.concat(miss);
       }
       if (scanCancelRef.current) return;
       const chunkSize = 200;
@@ -196,16 +229,24 @@ export default function ImageManagement() {
         const list = Array.isArray(data.list)
           ? data.list.slice().sort((a, b) => a.currentName.localeCompare(b.currentName))
           : [];
+        const miss = Array.isArray(data.skipped)
+          ? data.skipped.slice().sort((a, b) => a.currentName.localeCompare(b.currentName))
+          : [];
         setPending(list);
+        setHostIgnored(miss);
+        setHostIgnoredPage(1);
         setPendingSummary(data.summary || null);
         setHasMore(!!data.hasMore);
         setSelected([]);
+        setHostIgnoredSel([]);
         const sum = data.summary || {};
         setReport(
-          `Scanned ${sum.totalFiles || 0} file(s), found ${sum.incompleteFound || 0} incomplete name(s).`,
+          `Scanned ${sum.totalFiles || 0} file(s), found ${sum.incompleteFound || 0} incomplete name(s), ${sum.skipped || 0} not incomplete.`,
         );
       } else {
         setPending([]);
+        setHostIgnored([]);
+        setHostIgnoredPage(1);
         setPendingSummary(null);
         setHasMore(false);
       }
@@ -213,6 +254,8 @@ export default function ImageManagement() {
     } catch (e) {
       if (e.name !== 'AbortError') {
         setPending([]);
+        setHostIgnored([]);
+        setHostIgnoredPage(1);
         setPendingSummary(null);
         setHasMore(false);
       }
@@ -223,8 +266,8 @@ export default function ImageManagement() {
     setPage(p);
   }
 
-  async function applyFixes() {
-    const items = pending.filter((p) => selected.includes(p.currentName));
+  async function applyFixesSelection(list, sel) {
+    const items = list.filter((p) => sel.includes(p.currentName));
     if (items.length === 0) return;
     const res = await fetch('/api/transaction_images/fix_incomplete', {
       method: 'POST',
@@ -240,6 +283,14 @@ export default function ImageManagement() {
     } else {
       addToast('Rename failed', 'error');
     }
+  }
+
+  async function applyFixes() {
+    await applyFixesSelection(pending, selected);
+  }
+
+  async function applyFixesHostIgnored() {
+    await applyFixesSelection(hostIgnored, hostIgnoredSel);
   }
 
   async function renameSelected() {
@@ -486,7 +537,7 @@ export default function ImageManagement() {
               )}
               {ignored.length > 0 && (
                 <div>
-                  <h4>Unflagged</h4>
+                  <h4>Not Incomplete</h4>
                   <div style={{ marginBottom: '0.5rem' }}>
                     <button
                       type="button"
@@ -668,6 +719,112 @@ export default function ImageManagement() {
                           onClick={() => {
                             setPending((prev) => prev.filter((x) => x.currentName !== p.currentName));
                             setSelected((s) => s.filter((id) => id !== p.currentName));
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {hostIgnored.length > 0 && (
+            <div style={{ marginTop: '1rem' }}>
+              <h4>Not Incomplete</h4>
+              <button
+                type="button"
+                onClick={applyFixesHostIgnored}
+                style={{ marginBottom: '0.5rem' }}
+                disabled={hostIgnoredSel.length === 0}
+              >
+                Rename &amp; Move Selected
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setHostIgnored((prev) => prev.filter((p) => !hostIgnoredSel.includes(p.currentName)));
+                  setHostIgnoredSel([]);
+                }}
+                style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
+                disabled={hostIgnoredSel.length === 0}
+              >
+                Delete Selected
+              </button>
+              <div style={{ marginBottom: '0.5rem' }}>
+                <button
+                  type="button"
+                  disabled={hostIgnoredPage === 1}
+                  onClick={() => setHostIgnoredPage(1)}
+                  style={{ marginRight: '0.5rem' }}
+                >
+                  First
+                </button>
+                <button
+                  type="button"
+                  disabled={hostIgnoredPage === 1}
+                  onClick={() => setHostIgnoredPage(hostIgnoredPage - 1)}
+                  style={{ marginRight: '0.5rem' }}
+                >
+                  Prev
+                </button>
+                <button
+                  type="button"
+                  disabled={!hostIgnoredHasMore}
+                  onClick={() => setHostIgnoredPage(hostIgnoredPage + 1)}
+                  style={{ marginRight: '0.5rem' }}
+                >
+                  Next
+                </button>
+                <button
+                  type="button"
+                  disabled={hostIgnoredPage === hostIgnoredLastPage}
+                  onClick={() => setHostIgnoredPage(hostIgnoredLastPage)}
+                >
+                  Last
+                </button>
+              </div>
+              <table className="min-w-full border border-gray-300 text-sm" style={{ tableLayout: 'fixed' }}>
+                <thead>
+                  <tr>
+                    <th className="border px-2 py-1">
+                      <input
+                        type="checkbox"
+                        checked={
+                          pageHostIgnored.length > 0 &&
+                          pageHostIgnored.every((p) => hostIgnoredSel.includes(p.currentName))
+                        }
+                        onChange={() => toggleHostIgnoredAll(pageHostIgnored)}
+                      />
+                    </th>
+                    <th className="border px-2 py-1">Original</th>
+                    <th className="border px-2 py-1">New Name</th>
+                    <th className="border px-2 py-1">Folder</th>
+                    <th className="border px-2 py-1">Description</th>
+                    <th className="border px-2 py-1">Delete</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageHostIgnored.map((p) => (
+                    <tr key={p.currentName} className={hostIgnoredSel.includes(p.currentName) ? 'bg-blue-50' : ''}>
+                      <td className="border px-2 py-1 text-center">
+                        <input
+                          type="checkbox"
+                          checked={hostIgnoredSel.includes(p.currentName)}
+                          onChange={() => toggleHostIgnored(p.currentName)}
+                        />
+                      </td>
+                      <td className="border px-2 py-1">{p.currentName}</td>
+                      <td className="border px-2 py-1">{p.newName}</td>
+                      <td className="border px-2 py-1">{p.folderDisplay}</td>
+                      <td className="border px-2 py-1">{p.reason}</td>
+                      <td className="border px-2 py-1 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHostIgnored((prev) => prev.filter((x) => x.currentName !== p.currentName));
+                            setHostIgnoredSel((s) => s.filter((id) => id !== p.currentName));
                           }}
                         >
                           Delete

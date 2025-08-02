@@ -122,7 +122,7 @@ await test('detectIncompleteImages scans entire folder', async () => {
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
 });
 
-await test('detectIncompleteImages skips files with transaction codes', async () => {
+await test('detectIncompleteImages skips files with transaction codes', { concurrency: false }, async () => {
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
   const dir = path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test');
   await fs.mkdir(dir, { recursive: true });
@@ -172,9 +172,12 @@ await test('detectIncompleteImages skips files with transaction codes', async ()
     }),
   );
 
-  const { list } = await detectIncompleteImages(1, 10);
+  const { list, skipped } = await detectIncompleteImages(1, 10);
   assert.equal(list.length, 1);
   assert.equal(list[0].currentName, 'uuid12345.jpg');
+  assert.equal(skipped.length, 1);
+  assert.equal(skipped[0].currentName, `t1_4001_uuid12345_${ts}_abcd12.jpg`);
+  assert.equal(skipped[0].reason, 'Contains transaction codes');
 
   restoreDb();
   await fs.writeFile(cfgPath, origCfg);
