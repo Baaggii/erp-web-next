@@ -196,9 +196,7 @@ export default function ImageManagement() {
             {folderName && <span style={{ marginRight: '0.5rem' }}>{folderName}</span>}
             <input
               type="file"
-              multiple
               webkitdirectory=""
-              directory=""
               ref={fileRef}
               style={{ display: 'none' }}
               onChange={(e) => handleSelectFiles(e.target.files)}
@@ -244,6 +242,17 @@ export default function ImageManagement() {
                 disabled={uploadSel.length === 0}
               >
                 Rename &amp; Upload Selected
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setUploads((prev) => prev.filter((u) => !uploadSel.includes(u.tmpPath)));
+                  setUploadSel([]);
+                }}
+                style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
+                disabled={uploadSel.length === 0}
+              >
+                Delete Selected
               </button>
               <table className="min-w-full border border-gray-300 text-sm" style={{ tableLayout: 'fixed' }}>
                 <thead>
@@ -301,6 +310,17 @@ export default function ImageManagement() {
                 disabled={selected.length === 0}
               >
                 Rename &amp; Move Selected
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPending((prev) => prev.filter((p) => !selected.includes(p.currentName)));
+                  setSelected([]);
+                }}
+                style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
+                disabled={selected.length === 0}
+              >
+                Delete Selected
               </button>
               <table className="min-w-full border border-gray-300 text-sm" style={{ tableLayout: 'fixed' }}>
                 <thead>

@@ -20,7 +20,13 @@ await test('detectIncompleteImages finds and fixes files', async () => {
   const file = path.join(baseDir, 'abc12345.jpg');
   await fs.writeFile(file, 'x');
 
-  const row = { id: 1, test_num: 'abc12345', label_field: 'num001' };
+  const row = {
+    id: 1,
+    test_num: 'abc12345',
+    label_field: 'num001',
+    trtype: 't1',
+    TransType: 'A',
+  };
 
   const restoreDb = mockPool(async (sql) => {
     if (/SHOW TABLES LIKE/.test(sql)) return [[{ t: 'transactions_test' }]];
@@ -30,11 +36,14 @@ await test('detectIncompleteImages finds and fixes files', async () => {
   });
 
   const origCfg = await fs.readFile(cfgPath, 'utf8').catch(() => '{}');
-  await fs.writeFile(cfgPath, JSON.stringify({
-    transactions_test: {
-      default: { imagenameField: ['label_field'], imageFolder: 'transactions_test' }
-    }
-  }));
+  await fs.writeFile(
+    cfgPath,
+    JSON.stringify({
+      transactions_test: {
+        default: { imagenameField: ['label_field'], transactionTypeValue: 'A' },
+      },
+    }),
+  );
 
   const { list, hasMore } = await detectIncompleteImages(1);
   assert.equal(hasMore, false);
@@ -44,7 +53,9 @@ await test('detectIncompleteImages finds and fixes files', async () => {
   const count = await fixIncompleteImages(list);
   assert.equal(count, 1);
 
-  const exists = await fs.readdir(baseDir);
+  const exists = await fs.readdir(
+    path.join(process.cwd(), 'uploads', 'txn_images', 't1', 'a'),
+  );
   assert.ok(exists.some((f) => f.includes('num001')));
 
   restoreDb();
@@ -58,7 +69,13 @@ await test('checkUploadedImages renames on upload', async () => {
   const tmp = path.join(process.cwd(), 'uploads', 'tmp', 'abc12345.jpg');
   await fs.writeFile(tmp, 'x');
 
-  const row = { id: 1, test_num: 'abc12345', label_field: 'num002' };
+  const row = {
+    id: 1,
+    test_num: 'abc12345',
+    label_field: 'num002',
+    trtype: 't1',
+    TransType: 'A',
+  };
   const restoreDb = mockPool(async (sql) => {
     if (/SHOW TABLES LIKE/.test(sql)) return [[{ t: 'transactions_test' }]];
     if (/SHOW COLUMNS FROM/.test(sql)) return [[{ Field: 'test_num' }, { Field: 'label_field' }]];
@@ -67,11 +84,14 @@ await test('checkUploadedImages renames on upload', async () => {
   });
 
   const origCfg = await fs.readFile(cfgPath, 'utf8').catch(() => '{}');
-  await fs.writeFile(cfgPath, JSON.stringify({
-    transactions_test: {
-      default: { imagenameField: ['label_field'], imageFolder: 'transactions_test' }
-    }
-  }));
+  await fs.writeFile(
+    cfgPath,
+    JSON.stringify({
+      transactions_test: {
+        default: { imagenameField: ['label_field'], transactionTypeValue: 'A' },
+      },
+    }),
+  );
 
   const { list, summary } = await checkUploadedImages([{ originalname: 'abc12345.jpg', path: tmp }]);
   assert.equal(summary.processed, 1);
@@ -80,7 +100,9 @@ await test('checkUploadedImages renames on upload', async () => {
 
   const uploaded = await commitUploadedImages(list);
   assert.equal(uploaded, 1);
-  const exists = await fs.readdir(path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test'));
+  const exists = await fs.readdir(
+    path.join(process.cwd(), 'uploads', 'txn_images', 't1', 'a'),
+  );
   assert.ok(exists.some((f) => f.includes('num002')));
 
   restoreDb();
