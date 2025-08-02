@@ -152,6 +152,12 @@ async function findTxnByParts(inv, sp, transType, timestamp) {
     let rows;
     try {
       [rows] = await pool.query(sql, params);
+      if (!rows.length && dateCol) {
+        [rows] = await pool.query(
+          `SELECT * FROM \`${tbl}\` WHERE \`${invCol.Field}\` = ? AND \`${spCol.Field}\` = ? AND \`${transCol.Field}\` = ? LIMIT 1`,
+          [inv, sp, transType],
+        );
+      }
     } catch {
       continue;
     }
@@ -413,7 +419,9 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
           'sp_primary_code',
           'pid',
         ];
+        const partsArr = [];
         const basePart = buildNameFromRow(row, fields);
+        if (basePart) partsArr.push(basePart);
         const o1 = [getCase(row, 'bmtr_orderid'), getCase(row, 'bmtr_orderdid')]
           .filter(Boolean)
           .join('~');
@@ -421,12 +429,12 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
           .filter(Boolean)
           .join('~');
         const ord = o1 || o2;
-        if (ord && tType && transTypeVal) {
-          const parts = [];
-          if (basePart) parts.push(basePart);
-          parts.push(ord, transTypeVal, tType);
-          newBase = sanitizeName(parts.join('_'));
-          folderRaw = `${slugify(String(tType))}/${slugify(String(transTypeVal))}`;
+        if (ord) partsArr.push(ord);
+        if (transTypeVal) partsArr.push(transTypeVal);
+        if (tType) partsArr.push(tType);
+        if (partsArr.length) {
+          newBase = sanitizeName(partsArr.join('_'));
+          folderRaw = folderRaw || buildFolderName(row, cfg?.imageFolder || entry.name);
         }
       }
       if (!newBase && numField) {
@@ -584,7 +592,9 @@ export async function checkUploadedImages(files = [], names = []) {
         'sp_primary_code',
         'pid',
       ];
+      const partsArr = [];
       const basePart = buildNameFromRow(row, fields);
+      if (basePart) partsArr.push(basePart);
       const o1 = [getCase(row, 'bmtr_orderid'), getCase(row, 'bmtr_orderdid')]
         .filter(Boolean)
         .join('~');
@@ -592,12 +602,12 @@ export async function checkUploadedImages(files = [], names = []) {
         .filter(Boolean)
         .join('~');
       const ord = o1 || o2;
-      if (ord && tType && transTypeVal) {
-        const partsArr = [];
-        if (basePart) partsArr.push(basePart);
-        partsArr.push(ord, transTypeVal, tType);
+      if (ord) partsArr.push(ord);
+      if (transTypeVal) partsArr.push(transTypeVal);
+      if (tType) partsArr.push(tType);
+      if (partsArr.length) {
         newBase = sanitizeName(partsArr.join('_'));
-        folderRaw = `${slugify(String(tType))}/${slugify(String(transTypeVal))}`;
+        folderRaw = folderRaw || buildFolderName(row, cfg?.imageFolder || found.table);
       }
     }
     if (!newBase && numField) {
