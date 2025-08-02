@@ -81,6 +81,19 @@ function parseFileUnique(base) {
   return { unique, suffix };
 }
 
+function parseSaveName(base) {
+  const m = base.match(/^(.*?)_(\d{13})_([a-z0-9]{6})$/i);
+  if (!m) return null;
+  const segs = m[1].split('_');
+  const ts = m[2];
+  const rand = m[3];
+  const inv = segs.shift() || '';
+  const sp = segs.shift() || '';
+  const transType = segs.shift() || '';
+  const unique = segs.join('_');
+  return { inv, sp, transType, unique, ts, rand };
+}
+
 function buildFolderName(row, fallback = '') {
   const part1 =
     getCase(row, 'trtype') ||
@@ -408,22 +421,15 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
     for (const f of files) {
       const ext = path.extname(f);
       const base = path.basename(f, ext);
-      const parts = base.split('_');
-      const isSave = /_\d{13}_[a-z0-9]{6}$/i.test(base);
       let unique = '';
       let suffix = '';
       let found;
-      if (isSave) {
-        const segs = parts.slice();
-        segs.pop();
-        const ts = segs.pop();
-        const inv = segs.shift();
-        const sp = segs.shift();
-        const transType = segs.shift();
-        unique = segs.join('_');
-        suffix = `__${ts}_${rand}`;
+      const save = parseSaveName(base);
+      if (save) {
+        ({ unique } = save);
+        suffix = `__${save.ts}_${save.rand}`;
         if (hasTxnCode(base, unique, codes)) continue;
-        found = await findTxnByParts(inv, sp, transType, Number(ts));
+        found = await findTxnByParts(save.inv, save.sp, save.transType, Number(save.ts));
       } else {
         ({ unique, suffix } = parseFileUnique(base));
         if (!unique) continue;
@@ -585,32 +591,25 @@ export async function checkUploadedImages(files = [], names = []) {
     ? files
     : names.map((n) => ({ originalname: typeof n === 'string' ? n : n?.name || String(n) }));
   items = items.slice(0, limit);
-  for (const file of items) {
-    const ext = path.extname(file.originalname || '');
-    const base = path.basename(file.originalname || '', ext);
-    const parts = base.split('_');
-    const isSave = /_\d{13}_[a-z0-9]{6}$/i.test(base);
-    let unique = '';
-    let suffix = '';
-    let found;
-    if (isSave) {
-      const segs = parts.slice();
-      segs.pop();
-      const ts = segs.pop();
-      const inv = segs.shift();
-      const sp = segs.shift();
-      const transType = segs.shift();
-      unique = segs.join('_');
-      suffix = `__${ts}_${rand}`;
-      if (hasTxnCode(base, unique, codes)) continue;
-      found = await findTxnByParts(inv, sp, transType, Number(ts));
-    } else {
-      ({ unique, suffix } = parseFileUnique(base));
-      if (!unique) continue;
-      if (hasTxnCode(base, unique, codes)) continue;
-      found = await findTxnByUniqueId(unique);
-    }
-    if (!found) continue;
+    for (const file of items) {
+      const ext = path.extname(file.originalname || '');
+      const base = path.basename(file.originalname || '', ext);
+      let unique = '';
+      let suffix = '';
+      let found;
+      const save = parseSaveName(base);
+      if (save) {
+        ({ unique } = save);
+        suffix = `__${save.ts}_${save.rand}`;
+        if (hasTxnCode(base, unique, codes)) continue;
+        found = await findTxnByParts(save.inv, save.sp, save.transType, Number(save.ts));
+      } else {
+        ({ unique, suffix } = parseFileUnique(base));
+        if (!unique) continue;
+        if (hasTxnCode(base, unique, codes)) continue;
+        found = await findTxnByUniqueId(unique);
+      }
+      if (!found) continue;
     const { row, configs, numField } = found;
     const cfg = pickConfig(configs, row);
     let newBase = '';

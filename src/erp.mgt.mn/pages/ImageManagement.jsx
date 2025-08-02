@@ -25,6 +25,10 @@ export default function ImageManagement() {
   const uploadStart = (uploadPage - 1) * uploadPageSize;
   const pageUploads = uploads.slice(uploadStart, uploadStart + uploadPageSize);
   const uploadHasMore = uploadStart + uploadPageSize < uploads.length;
+  const uploadLastPage = Math.max(1, Math.ceil(uploads.length / uploadPageSize));
+  const lastPage = pendingSummary
+    ? Math.max(1, Math.ceil((pendingSummary.incompleteFound || 0) / pageSize))
+    : 1;
 
   function toggle(id) {
     setSelected((prev) =>
@@ -121,8 +125,9 @@ export default function ImageManagement() {
       }
       if (scanCancelRef.current) return;
       setFolderName(dirHandle.name || '');
+      const sorted = all.slice().sort((a, b) => a.originalName.localeCompare(b.originalName));
       setUploads(
-        all.map((u) => ({ originalName: u.originalName, id: u.originalName, handle: handles[u.originalName] }))
+        sorted.map((u) => ({ originalName: u.originalName, id: u.originalName, handle: handles[u.originalName] }))
       );
       setUploadSummary({ totalFiles: names.length, processed });
       setUploadSel([]);
@@ -163,7 +168,10 @@ export default function ImageManagement() {
       });
       if (res.ok) {
         const data = await res.json();
-        setPending(Array.isArray(data.list) ? data.list : []);
+        const list = Array.isArray(data.list)
+          ? data.list.slice().sort((a, b) => a.currentName.localeCompare(b.currentName))
+          : [];
+        setPending(list);
         setPendingSummary(data.summary || null);
         setHasMore(!!data.hasMore);
         setSelected([]);
@@ -229,12 +237,13 @@ export default function ImageManagement() {
       }
       const data = await res.json().catch(() => ({}));
       const list = Array.isArray(data.list) ? data.list : [];
-      setUploads((prev) =>
-        prev.map((u) => {
+      setUploads((prev) => {
+        const mapped = prev.map((u) => {
           const found = list.find((x) => x.originalName === u.originalName);
           return found ? { ...u, ...found, id: u.id } : u;
-        }),
-      );
+        });
+        return mapped.sort((a, b) => a.originalName.localeCompare(b.originalName));
+      });
     } catch {
       addToast('Rename failed', 'error');
     }
@@ -351,6 +360,14 @@ export default function ImageManagement() {
                 <button
                   type="button"
                   disabled={uploadPage === 1}
+                  onClick={() => setUploadPage(1)}
+                  style={{ marginRight: '0.5rem' }}
+                >
+                  First
+                </button>
+                <button
+                  type="button"
+                  disabled={uploadPage === 1}
                   onClick={() => setUploadPage(uploadPage - 1)}
                   style={{ marginRight: '0.5rem' }}
                 >
@@ -360,8 +377,16 @@ export default function ImageManagement() {
                   type="button"
                   disabled={!uploadHasMore}
                   onClick={() => setUploadPage(uploadPage + 1)}
+                  style={{ marginRight: '0.5rem' }}
                 >
                   Next
+                </button>
+                <button
+                  type="button"
+                  disabled={uploadPage === uploadLastPage}
+                  onClick={() => setUploadPage(uploadLastPage)}
+                >
+                  Last
                 </button>
               </div>
               <table className="min-w-full border border-gray-300 text-sm" style={{ tableLayout: 'fixed' }}>
@@ -422,13 +447,33 @@ export default function ImageManagement() {
             <button
               type="button"
               disabled={page === 1}
+              onClick={() => detectFromHost(1)}
+              style={{ marginRight: '0.5rem' }}
+            >
+              First
+            </button>
+            <button
+              type="button"
+              disabled={page === 1}
               onClick={() => detectFromHost(page - 1)}
               style={{ marginRight: '0.5rem' }}
             >
               Prev
             </button>
-            <button type="button" disabled={!hasMore} onClick={() => detectFromHost(page + 1)}>
+            <button
+              type="button"
+              disabled={!hasMore}
+              onClick={() => detectFromHost(page + 1)}
+              style={{ marginRight: '0.5rem' }}
+            >
               Next
+            </button>
+            <button
+              type="button"
+              disabled={page === lastPage}
+              onClick={() => detectFromHost(lastPage)}
+            >
+              Last
             </button>
           </div>
           {pendingSummary && (
