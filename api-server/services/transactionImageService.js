@@ -352,8 +352,6 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
     }
     folders.add(entry.name);
     totalFiles += files.length;
-    const limit = perPage * page;
-    files = files.slice(0, limit);
     for (const f of files) {
       const ext = path.extname(f);
       const base = path.basename(f, ext);
@@ -517,7 +515,9 @@ export async function checkUploadedImages(files = [], names = []) {
   const results = [];
   let processed = 0;
   const limit = 1000;
-  let items = files.length ? files : names.map((n) => ({ originalname: n }));
+  let items = files.length
+    ? files
+    : names.map((n) => ({ originalname: typeof n === 'string' ? n : n?.name || String(n) }));
   items = items.slice(0, limit);
   for (const file of items) {
     const ext = path.extname(file.originalname || '');

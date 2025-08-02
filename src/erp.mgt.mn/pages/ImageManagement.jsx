@@ -96,53 +96,6 @@ export default function ImageManagement() {
     }
   }
 
-  useEffect(() => {
-    function onKey(e) {
-      if (e.key === 'Escape' && activeOp) {
-        const action = activeOp === 'detect' ? 'detection' : 'folder selection';
-        if (window.confirm(`Cancel ${action}?`)) {
-          if (activeOp === 'detect') {
-            detectAbortRef.current?.abort();
-          } else {
-            scanCancelRef.current = true;
-            folderAbortRef.current?.abort();
-          }
-          setActiveOp(null);
-        }
-      }
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [activeOp]);
-
-  async function selectFolder() {
-    if (!window.showDirectoryPicker) {
-      addToast('Directory selection not supported', 'error');
-      return;
-    }
-    setActiveOp('folder');
-    scanCancelRef.current = false;
-    try {
-      const dirHandle = await window.showDirectoryPicker();
-      const arr = [];
-      for await (const entry of dirHandle.values()) {
-        if (scanCancelRef.current) break;
-        if (entry.kind === 'file') {
-          arr.push(await entry.getFile());
-        }
-      }
-      if (scanCancelRef.current) return;
-      setFolderName(dirHandle.name || '');
-      await handleSelectFiles(arr);
-    } catch {
-      // ignore
-    } finally {
-      folderAbortRef.current = null;
-      scanCancelRef.current = false;
-      setActiveOp(null);
-    }
-  }
-
   async function handleCleanup() {
     const path = days ? `/api/transaction_images/cleanup/${days}` : '/api/transaction_images/cleanup';
     try {
@@ -215,8 +168,11 @@ export default function ImageManagement() {
   }
 
   async function handleSelectFiles(names) {
-    if (!names?.length) return;
-    const payload = { names: names.slice(0, 1000) };
+    const normalized = (names || [])
+      .map((n) => (typeof n === 'string' ? n : n?.name))
+      .filter(Boolean);
+    if (!normalized.length) return;
+    const payload = { names: normalized.slice(0, 1000) };
     try {
       const controller = new AbortController();
       folderAbortRef.current = controller;
