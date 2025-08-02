@@ -713,15 +713,26 @@ export async function commitUploadedImages(list = []) {
 export async function detectIncompleteFromNames(names = []) {
   const codes = await fetchTxnCodes();
   const results = [];
+  const skipped = [];
   let processed = 0;
   for (const name of names) {
     const ext = path.extname(name || '');
     const base = path.basename(name || '', ext);
     const { unique } = parseFileUnique(base);
-    if (!unique) continue;
-    if (hasTxnCode(base, unique, codes)) continue;
+    if (!unique) {
+      skipped.push({ originalName: name, reason: 'No unique identifier' });
+      continue;
+    }
+    if (hasTxnCode(base, unique, codes)) {
+      skipped.push({ originalName: name, reason: 'Contains transaction codes' });
+      continue;
+    }
     results.push({ originalName: name });
     processed += 1;
   }
-  return { list: results, summary: { totalFiles: names.length, processed } };
+  return {
+    list: results,
+    skipped,
+    summary: { totalFiles: names.length, processed, skipped: skipped.length },
+  };
 }

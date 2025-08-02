@@ -2,7 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import path from 'path';
-import { detectIncompleteImages, fixIncompleteImages, checkUploadedImages, commitUploadedImages } from '../../api-server/services/transactionImageService.js';
+import {
+  detectIncompleteImages,
+  fixIncompleteImages,
+  checkUploadedImages,
+  commitUploadedImages,
+  detectIncompleteFromNames,
+} from '../../api-server/services/transactionImageService.js';
 import * as db from '../../db/index.js';
 
 function mockPool(handler) {
@@ -829,4 +835,21 @@ await test('checkUploadedImages handles names array', async () => {
 
   restoreDb();
   await fs.writeFile(cfgPath, origCfg);
+});
+
+await test('detectIncompleteFromNames reports unflagged reasons', async () => {
+  const restoreDb = mockPool(async (sql) => {
+    if (/SELECT UITrtype, UITransType FROM code_transaction/.test(sql)) {
+      return [[{ UITrtype: 't1', UITransType: '4001' }]];
+    }
+    return [[]];
+  });
+  const { list, skipped, summary } = await detectIncompleteFromNames([
+    'a.jpg',
+    '12345678-1234-1234-1234-123456789abc_t1_4001.jpg',
+  ]);
+  assert.equal(list.length, 0);
+  assert.equal(skipped.length, 2);
+  assert.equal(summary.skipped, 2);
+  restoreDb();
 });

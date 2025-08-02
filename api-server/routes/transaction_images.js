@@ -79,8 +79,8 @@ router.post(
 router.post('/upload_scan', requireAuth, async (req, res, next) => {
   try {
     const names = Array.isArray(req.body?.names) ? req.body.names : [];
-    const { list, summary } = await detectIncompleteFromNames(names);
-    res.json({ list, summary });
+    const { list, skipped, summary } = await detectIncompleteFromNames(names);
+    res.json({ list, skipped, summary });
   } catch (err) {
     next(err);
   }
