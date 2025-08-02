@@ -6,7 +6,7 @@ import { cleanupOldImages } from '../../api-server/services/transactionImageServ
 
 const baseDir = path.join(process.cwd(), 'uploads', 'txn_images', 'test_cleanup');
 
-test('cleanupOldImages removes old files', { concurrency: false }, async () => {
+test('cleanupOldImages removes old files', async () => {
   await fs.mkdir(baseDir, { recursive: true });
   const file = path.join(baseDir, 'old.txt');
   await fs.writeFile(file, 'temp');
