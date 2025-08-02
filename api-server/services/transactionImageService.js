@@ -3,7 +3,7 @@ import fssync from 'fs';
 import path from 'path';
 import { getGeneralConfig } from './generalConfig.js';
 import { pool } from '../../db/index.js';
-import { getConfigsByTable } from './transactionFormConfig.js';
+import { getConfigsByTable, getConfigsByTransTypeValue } from './transactionFormConfig.js';
 import { slugify } from '../utils/slugify.js';
 
 async function getDirs() {
@@ -152,23 +152,46 @@ async function findTxnByParts(inv, sp, transType, timestamp) {
   } catch {
     return null;
   }
+
+  const cfgMatches = await getConfigsByTransTypeValue(transType);
+  const cfgMap = new Map(
+    cfgMatches.map((m) => [m.table.toLowerCase(), m.config]),
+  );
+
   for (const row of tables || []) {
     const tbl = Object.values(row)[0];
+    if (cfgMap.size && !cfgMap.has(tbl.toLowerCase())) continue;
     let cols;
     try {
       [cols] = await pool.query(`SHOW COLUMNS FROM \`${tbl}\``);
     } catch {
       continue;
     }
-    const invCol = cols.find((c) => ['inventory_code', 'z_mat_code'].includes(c.Field.toLowerCase()));
+    const invCol = cols.find((c) =>
+      ['inventory_code', 'z_mat_code', 'bmtr_pmid'].includes(
+        c.Field.toLowerCase(),
+      ),
+    );
     const spCol = cols.find((c) => c.Field.toLowerCase() === 'sp_primary_code');
-    const transCol = cols.find((c) => ['transtype', 'uitranstype', 'ui_transtype'].includes(c.Field.toLowerCase()));
-    const dateCol = cols.find((c) => c.Field.toLowerCase().includes('date'));
+    const transCol = cols.find((c) =>
+      ['transtype', 'uitranstype', 'ui_transtype'].includes(
+        c.Field.toLowerCase(),
+      ),
+    );
     if (!invCol || !spCol || !transCol) continue;
+    const cfg = cfgMap.get(tbl.toLowerCase());
+    let dateCol;
+    if (cfg?.dateField?.length) {
+      const lowers = cfg.dateField.map((d) => String(d).toLowerCase());
+      dateCol = cols.find((c) => lowers.includes(c.Field.toLowerCase()));
+    } else {
+      dateCol = cols.find((c) => c.Field.toLowerCase().includes('date'));
+    }
     let sql = `SELECT * FROM \`${tbl}\` WHERE \`${invCol.Field}\` = ? AND \`${spCol.Field}\` = ? AND \`${transCol.Field}\` = ?`;
     const params = [inv, sp, transType];
     if (dateCol) {
-      sql += ` AND ABS(TIMESTAMPDIFF(SECOND, FROM_UNIXTIME(?/1000), \`${dateCol.Field}\`)) < 86400`;
+      sql +=
+        ` AND ABS(TIMESTAMPDIFF(SECOND, FROM_UNIXTIME(?/1000), \`${dateCol.Field}\`)) < 172800`;
       params.push(timestamp);
     }
     sql += ' LIMIT 1';
