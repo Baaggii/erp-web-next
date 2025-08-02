@@ -10,8 +10,8 @@ import {
   cleanupOldImages,
   detectIncompleteImages,
   fixIncompleteImages,
-  checkUploadedImages,
-  commitUploadedImages,
+  checkFolderNames,
+  uploadSelectedImages,
 } from '../services/transactionImageService.js';
 import { getGeneralConfig } from '../services/generalConfig.js';
 
@@ -53,19 +53,20 @@ router.post('/fix_incomplete', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/upload_check', requireAuth, upload.array('images'), async (req, res, next) => {
+router.post('/folder_check', requireAuth, async (req, res, next) => {
   try {
-    const list = await checkUploadedImages(req.files || []);
+    const arr = Array.isArray(req.body?.list) ? req.body.list : [];
+    const list = await checkFolderNames(arr);
     res.json({ list });
   } catch (err) {
     next(err);
   }
 });
 
-router.post('/upload_commit', requireAuth, async (req, res, next) => {
+router.post('/folder_commit', requireAuth, upload.array('images'), async (req, res, next) => {
   try {
-    const arr = Array.isArray(req.body?.list) ? req.body.list : [];
-    const uploaded = await commitUploadedImages(arr);
+    const meta = JSON.parse(req.body.meta || '[]');
+    const uploaded = await uploadSelectedImages(req.files || [], meta);
     res.json({ uploaded });
   } catch (err) {
     next(err);
