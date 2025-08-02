@@ -1,3 +1,4 @@
+<<<<<< codex/update-images-tab-functionality
 import React, { useState, useRef, useEffect } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
@@ -145,6 +146,8 @@ export default function ImageManagement() {
       detectAbortRef.current = null;
       setActiveOp(null);
     }
+    setPage(p);
+    setPageSize(s);
   }
 
   async function applyFixes() {
