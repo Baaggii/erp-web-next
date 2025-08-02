@@ -145,6 +145,8 @@ export default function ImageManagement() {
       detectAbortRef.current = null;
       setActiveOp(null);
     }
+    setPage(p);
+    setPageSize(s);
   }
 
   async function applyFixes() {
