@@ -15,7 +15,7 @@ export default function ImageManagement() {
   const [folderName, setFolderName] = useState('');
   const [uploadSummary, setUploadSummary] = useState(null);
   const [pendingSummary, setPendingSummary] = useState(null);
-  const [detectSize, setDetectSize] = useState(200);
+  const [pageSize, setPageSize] = useState(200);
   const detectAbortRef = useRef();
   const scanCancelRef = useRef(false);
   const [activeOp, setActiveOp] = useState(null);
@@ -85,19 +85,18 @@ export default function ImageManagement() {
         }
       }
       if (scanCancelRef.current) return;
-      const limited = names.slice(0, detectSize);
       const chunkSize = 200;
       let all = [];
       let processed = 0;
-      for (let i = 0; i < limited.length; i += chunkSize) {
+      for (let i = 0; i < names.length; i += chunkSize) {
         if (scanCancelRef.current) return;
         let res;
         try {
-          res = await fetch('/api/transaction_images/upload_check', {
+          res = await fetch('/api/transaction_images/upload_scan', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ names: limited.slice(i, i + chunkSize) }),
+            body: JSON.stringify({ names: names.slice(i, i + chunkSize) }),
           });
         } catch {
           addToast('Folder scan failed', 'error');
@@ -115,9 +114,9 @@ export default function ImageManagement() {
       if (scanCancelRef.current) return;
       setFolderName(dirHandle.name || '');
       setUploads(
-        all.map((u) => ({ ...u, id: u.id || u.originalName, handle: handles[u.originalName] }))
+        all.map((u) => ({ originalName: u.originalName, id: u.originalName, handle: handles[u.originalName] }))
       );
-      setUploadSummary({ totalFiles: limited.length, processed });
+      setUploadSummary({ totalFiles: names.length, processed });
       setUploadSel([]);
     } catch {
       // ignore
@@ -149,7 +148,7 @@ export default function ImageManagement() {
     detectAbortRef.current = controller;
     setActiveOp('detect');
     try {
-      const res = await fetch(`/api/transaction_images/detect_incomplete?page=${p}&pageSize=${detectSize}`, {
+      const res = await fetch(`/api/transaction_images/detect_incomplete?page=${p}&pageSize=${pageSize}`, {
         credentials: 'include',
         signal: controller.signal,
       });
@@ -370,11 +369,11 @@ export default function ImageManagement() {
               Detect from host
             </button>
             <label style={{ marginRight: '0.5rem' }}>
-              Detect Size:{' '}
+              Page Size:{' '}
               <input
                 type="number"
-                value={detectSize}
-                onChange={(e) => setDetectSize(Number(e.target.value))}
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
                 style={{ width: '4rem' }}
               />
             </label>

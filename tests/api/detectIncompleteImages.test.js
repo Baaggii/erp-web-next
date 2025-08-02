@@ -123,7 +123,7 @@ await test('detectIncompleteImages skips files with transaction codes', async ()
   const ts = 1754112726584;
   await fs.writeFile(path.join(dir, `uuid12345.jpg`), 'x');
   await fs.writeFile(
-    path.join(dir, `300021_300021_4001_uuid12345_${ts}_abcd12.jpg`),
+    path.join(dir, `t1_4001_uuid12345_${ts}_abcd12.jpg`),
     'x',
   );
 
@@ -239,7 +239,7 @@ await test('checkUploadedImages skips files with transaction codes', async () =>
     process.cwd(),
     'uploads',
     'tmp',
-    `300021_300021_4001_uuid12345_${ts}_abcd12.jpg`,
+    `t1_4001_uuid12345_${ts}_abcd12.jpg`,
   );
   await fs.writeFile(tmp1, 'x');
   await fs.writeFile(tmp2, 'x');
@@ -285,7 +285,7 @@ await test('checkUploadedImages skips files with transaction codes', async () =>
 
   const { list, summary } = await checkUploadedImages([
     { originalname: 'uuid12345.jpg', path: tmp1 },
-    { originalname: `300021_300021_4001_uuid12345_${ts}_abcd12.jpg`, path: tmp2 },
+    { originalname: `t1_4001_uuid12345_${ts}_abcd12.jpg`, path: tmp2 },
   ]);
   assert.equal(summary.processed, 1);
   assert.equal(list.length, 1);

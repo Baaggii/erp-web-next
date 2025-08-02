@@ -117,10 +117,9 @@ async function fetchTxnCodes() {
 function hasTxnCode(base, unique, codes) {
   const leftover = base.toLowerCase().replace(unique.toLowerCase(), '');
   const tokens = leftover.split(/[_-]/).filter(Boolean);
-  return (
-    tokens.some((t) => codes.trtypes.includes(t)) ||
-    tokens.some((t) => codes.transTypes.includes(t))
-  );
+  const hasTrtype = tokens.some((t) => codes.trtypes.includes(t));
+  const hasTransType = tokens.some((t) => codes.transTypes.includes(t));
+  return hasTrtype && hasTransType;
 }
 
 export async function findBenchmarkCode(name) {
@@ -681,4 +680,20 @@ export async function commitUploadedImages(list = []) {
     } catch {}
   }
   return count;
+}
+
+export async function detectIncompleteFromNames(names = []) {
+  const codes = await fetchTxnCodes();
+  const results = [];
+  let processed = 0;
+  for (const name of names) {
+    const ext = path.extname(name || '');
+    const base = path.basename(name || '', ext);
+    const { unique } = parseFileUnique(base);
+    if (!unique) continue;
+    if (hasTxnCode(base, unique, codes)) continue;
+    results.push({ originalName: name });
+    processed += 1;
+  }
+  return { list: results, summary: { totalFiles: names.length, processed } };
 }
