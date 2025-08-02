@@ -12,14 +12,23 @@ export default function ImageManagement() {
   const [selected, setSelected] = useState([]);
   const [uploads, setUploads] = useState([]);
   const [uploadSel, setUploadSel] = useState([]);
+  const [uploadPage, setUploadPage] = useState(1);
+  const [uploadPageSize, setUploadPageSize] = useState(200);
   const [folderName, setFolderName] = useState('');
   const [uploadSummary, setUploadSummary] = useState(null);
   const [pendingSummary, setPendingSummary] = useState(null);
-  const [pageSize, setPageSize] = useState(100);
+  const [pageSize, setPageSize] = useState(200);
   const detectAbortRef = useRef();
-  const folderAbortRef = useRef();
   const scanCancelRef = useRef(false);
   const [activeOp, setActiveOp] = useState(null);
+
+  const uploadStart = (uploadPage - 1) * uploadPageSize;
+  const pageUploads = uploads.slice(uploadStart, uploadStart + uploadPageSize);
+  const uploadHasMore = uploadStart + uploadPageSize < uploads.length;
+  const uploadLastPage = Math.max(1, Math.ceil(uploads.length / uploadPageSize));
+  const lastPage = pendingSummary
+    ? Math.max(1, Math.ceil((pendingSummary.incompleteFound || 0) / pageSize))
+    : 1;
 
   function toggle(id) {
     setSelected((prev) =>
@@ -41,11 +50,13 @@ export default function ImageManagement() {
     );
   }
 
-  function toggleUploadAll() {
-    if (uploadSel.length === uploads.length) {
-      setUploadSel([]);
+  function toggleUploadAll(list) {
+    const ids = list.map((u) => u.id);
+    const allSelected = ids.every((id) => uploadSel.includes(id));
+    if (allSelected) {
+      setUploadSel((prev) => prev.filter((id) => !ids.includes(id)));
     } else {
-      setUploadSel(uploads.map((u) => u.id));
+      setUploadSel((prev) => [...prev, ...ids.filter((id) => !prev.includes(id))]);
     }
   }
 
@@ -58,7 +69,6 @@ export default function ImageManagement() {
             detectAbortRef.current?.abort();
           } else {
             scanCancelRef.current = true;
-            folderAbortRef.current?.abort();
           }
           setActiveOp(null);
         }
@@ -77,20 +87,54 @@ export default function ImageManagement() {
     scanCancelRef.current = false;
     try {
       const dirHandle = await window.showDirectoryPicker();
-      const arr = [];
+      const handles = {};
+      const names = [];
       for await (const entry of dirHandle.values()) {
         if (scanCancelRef.current) break;
         if (entry.kind === 'file') {
-          arr.push(entry.name);
+          names.push(entry.name);
+          handles[entry.name] = entry;
         }
       }
       if (scanCancelRef.current) return;
+      const chunkSize = 200;
+      let all = [];
+      let processed = 0;
+      for (let i = 0; i < names.length; i += chunkSize) {
+        if (scanCancelRef.current) return;
+        let res;
+        try {
+          res = await fetch('/api/transaction_images/upload_scan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ names: names.slice(i, i + chunkSize) }),
+          });
+        } catch {
+          addToast('Folder scan failed', 'error');
+          return;
+        }
+        if (!res.ok) {
+          addToast('Folder scan failed', 'error');
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        const list = Array.isArray(data.list) ? data.list : [];
+        processed += data?.summary?.processed || 0;
+        all = all.concat(list);
+      }
+      if (scanCancelRef.current) return;
       setFolderName(dirHandle.name || '');
-      await handleSelectFiles(arr);
+      const sorted = all.slice().sort((a, b) => a.originalName.localeCompare(b.originalName));
+      setUploads(
+        sorted.map((u) => ({ originalName: u.originalName, id: u.originalName, handle: handles[u.originalName] }))
+      );
+      setUploadSummary({ totalFiles: names.length, processed });
+      setUploadSel([]);
+      setUploadPage(1);
     } catch {
       // ignore
     } finally {
-      folderAbortRef.current = null;
       scanCancelRef.current = false;
       setActiveOp(null);
     }
@@ -113,18 +157,21 @@ export default function ImageManagement() {
     }
   }
 
-  async function detectFromHost(p = page, s = pageSize) {
+  async function detectFromHost(p = page) {
     const controller = new AbortController();
     detectAbortRef.current = controller;
     setActiveOp('detect');
     try {
-      const res = await fetch(`/api/transaction_images/detect_incomplete?page=${p}&pageSize=${s}`, {
+      const res = await fetch(`/api/transaction_images/detect_incomplete?page=${p}&pageSize=${pageSize}`, {
         credentials: 'include',
         signal: controller.signal,
       });
       if (res.ok) {
         const data = await res.json();
-        setPending(Array.isArray(data.list) ? data.list : []);
+        const list = Array.isArray(data.list)
+          ? data.list.slice().sort((a, b) => a.currentName.localeCompare(b.currentName))
+          : [];
+        setPending(list);
         setPendingSummary(data.summary || null);
         setHasMore(!!data.hasMore);
         setSelected([]);
@@ -134,7 +181,6 @@ export default function ImageManagement() {
         setHasMore(false);
       }
       setPage(p);
-      setPageSize(s);
     } catch (e) {
       if (e.name !== 'AbortError') {
         setPending([]);
@@ -146,7 +192,6 @@ export default function ImageManagement() {
       setActiveOp(null);
     }
     setPage(p);
-    setPageSize(s);
   }
 
   async function applyFixes() {
@@ -167,49 +212,40 @@ export default function ImageManagement() {
     }
   }
 
-  async function handleSelectFiles(names) {
-    const normalized = (names || [])
-      .map((n) => (typeof n === 'string' ? n : n?.name))
-      .filter(Boolean);
-    if (!normalized.length) return;
-    const controller = new AbortController();
-    folderAbortRef.current = controller;
-    const chunkSize = 200;
-    const all = [];
-    let total = 0;
-    let processed = 0;
+  async function renameSelected() {
+    const items = uploads.filter((u) => uploadSel.includes(u.id) && u.handle && !u.tmpPath);
+    if (items.length === 0) return;
+    const formData = new FormData();
     try {
-      for (let i = 0; i < normalized.length; i += chunkSize) {
-        if (scanCancelRef.current) break;
-        const chunk = normalized.slice(i, i + chunkSize);
-        const res = await fetch('/api/transaction_images/upload_check', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ names: chunk }),
-          credentials: 'include',
-          signal: controller.signal,
+      for (const u of items) {
+        const file = await u.handle.getFile();
+        formData.append('images', file, u.originalName);
+      }
+    } catch {
+      addToast('Rename failed', 'error');
+      return;
+    }
+    try {
+      const res = await fetch('/api/transaction_images/upload_check', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        addToast('Rename failed', 'error');
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      const list = Array.isArray(data.list) ? data.list : [];
+      setUploads((prev) => {
+        const mapped = prev.map((u) => {
+          const found = list.find((x) => x.originalName === u.originalName);
+          return found ? { ...u, ...found, id: u.id } : u;
         });
-        if (!res.ok) {
-          addToast('Check failed', 'error');
-          return;
-        }
-        const data = await res.json().catch(() => ({}));
-        const list = Array.isArray(data.list) ? data.list : [];
-        all.push(...list);
-        total += data.summary?.totalFiles || chunk.length;
-        processed += data.summary?.processed || 0;
-      }
-      if (!scanCancelRef.current) {
-        setUploads(all);
-        setUploadSummary({ totalFiles: total, processed });
-        setUploadSel([]);
-      }
-    } catch (e) {
-      if (e.name !== 'AbortError') {
-        addToast('Check failed', 'error');
-      }
-    } finally {
-      folderAbortRef.current = null;
+        return mapped.sort((a, b) => a.originalName.localeCompare(b.originalName));
+      });
+    } catch {
+      addToast('Rename failed', 'error');
     }
   }
 
@@ -272,12 +308,20 @@ export default function ImageManagement() {
           </div>
           {uploadSummary && (
             <p style={{ marginBottom: '0.5rem' }}>
-              {`Scanned ${uploadSummary.totalFiles || 0} file(s), processed ${uploadSummary.processed || 0}.`}
+              {`Scanned ${uploadSummary.totalFiles || 0} file(s), found ${uploadSummary.processed || 0} incomplete name(s).`}
             </p>
           )}
           {uploads.length > 0 && (
             <div style={{ marginBottom: '1rem' }}>
               <h4>Uploads</h4>
+              <button
+                type="button"
+                onClick={renameSelected}
+                style={{ marginBottom: '0.5rem', marginRight: '0.5rem' }}
+                disabled={uploadSel.length === 0}
+              >
+                Rename Selected
+              </button>
               <button
                 type="button"
                 onClick={commitUploads}
@@ -287,7 +331,7 @@ export default function ImageManagement() {
                   !uploads.some((u) => uploadSel.includes(u.id) && u.tmpPath)
                 }
               >
-                Rename &amp; Upload Selected
+                Upload Selected
               </button>
               <button
                 type="button"
@@ -300,11 +344,60 @@ export default function ImageManagement() {
               >
                 Delete Selected
               </button>
+              <div style={{ marginBottom: '0.5rem' }}>
+                <label style={{ marginRight: '0.5rem' }}>
+                  Page Size:{' '}
+                  <input
+                    type="number"
+                    value={uploadPageSize}
+                    onChange={(e) => {
+                      setUploadPageSize(Number(e.target.value));
+                      setUploadPage(1);
+                    }}
+                    style={{ width: '4rem' }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={uploadPage === 1}
+                  onClick={() => setUploadPage(1)}
+                  style={{ marginRight: '0.5rem' }}
+                >
+                  First
+                </button>
+                <button
+                  type="button"
+                  disabled={uploadPage === 1}
+                  onClick={() => setUploadPage(uploadPage - 1)}
+                  style={{ marginRight: '0.5rem' }}
+                >
+                  Prev
+                </button>
+                <button
+                  type="button"
+                  disabled={!uploadHasMore}
+                  onClick={() => setUploadPage(uploadPage + 1)}
+                  style={{ marginRight: '0.5rem' }}
+                >
+                  Next
+                </button>
+                <button
+                  type="button"
+                  disabled={uploadPage === uploadLastPage}
+                  onClick={() => setUploadPage(uploadLastPage)}
+                >
+                  Last
+                </button>
+              </div>
               <table className="min-w-full border border-gray-300 text-sm" style={{ tableLayout: 'fixed' }}>
                 <thead>
                   <tr>
                     <th className="border px-2 py-1">
-                      <input type="checkbox" checked={uploadSel.length === uploads.length && uploads.length > 0} onChange={toggleUploadAll} />
+                      <input
+                        type="checkbox"
+                        checked={pageUploads.length > 0 && pageUploads.every((u) => uploadSel.includes(u.id))}
+                        onChange={() => toggleUploadAll(pageUploads)}
+                      />
                     </th>
                     <th className="border px-2 py-1">Original</th>
                     <th className="border px-2 py-1">New Name</th>
@@ -313,7 +406,7 @@ export default function ImageManagement() {
                   </tr>
                 </thead>
                 <tbody>
-                  {uploads.map((u) => (
+                  {pageUploads.map((u) => (
                     <tr key={u.id} className={uploadSel.includes(u.id) ? 'bg-blue-50' : ''}>
                       <td className="border px-2 py-1 text-center">
                         <input type="checkbox" checked={uploadSel.includes(u.id)} onChange={() => toggleUpload(u.id)} />
@@ -344,17 +437,21 @@ export default function ImageManagement() {
             </button>
             <label style={{ marginRight: '0.5rem' }}>
               Page Size:{' '}
-              <select
+              <input
+                type="number"
                 value={pageSize}
-                onChange={(e) => detectFromHost(1, Number(e.target.value))}
-              >
-                {[50, 100, 200].map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                style={{ width: '4rem' }}
+              />
             </label>
+            <button
+              type="button"
+              disabled={page === 1}
+              onClick={() => detectFromHost(1)}
+              style={{ marginRight: '0.5rem' }}
+            >
+              First
+            </button>
             <button
               type="button"
               disabled={page === 1}
@@ -363,8 +460,20 @@ export default function ImageManagement() {
             >
               Prev
             </button>
-            <button type="button" disabled={!hasMore} onClick={() => detectFromHost(page + 1)}>
+            <button
+              type="button"
+              disabled={!hasMore}
+              onClick={() => detectFromHost(page + 1)}
+              style={{ marginRight: '0.5rem' }}
+            >
               Next
+            </button>
+            <button
+              type="button"
+              disabled={page === lastPage}
+              onClick={() => detectFromHost(lastPage)}
+            >
+              Last
             </button>
           </div>
           {pendingSummary && (

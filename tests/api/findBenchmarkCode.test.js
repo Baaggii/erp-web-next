@@ -15,8 +15,9 @@ await test('findBenchmarkCode matches codes', async () => {
       if (params[0] === '1234') return [[{ UITransType: '1234' }]];
       return [[]];
     }
-    if (/FROM code_transaction WHERE image_benchmark = 1/.test(sql)) {
-      return [[{ UITransType: '5678', UITrtype: 'ABCD' }]];
+    if (/FROM code_transaction WHERE UITrtype =/.test(sql)) {
+      if (String(params[0]).toUpperCase() === 'ABCD') return [[{ UITransType: '5678' }]];
+      return [[]];
     }
     return [[]];
   });
