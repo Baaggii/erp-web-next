@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react';
+<<<<<< codex/update-images-tab-functionality
+import React, { useState, useRef, useEffect } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
 export default function ImageManagement() {
@@ -16,7 +17,10 @@ export default function ImageManagement() {
   const [uploadSummary, setUploadSummary] = useState(null);
   const [pendingSummary, setPendingSummary] = useState(null);
   const [pageSize, setPageSize] = useState(100);
-  const fileRef = useRef();
+  const detectAbortRef = useRef();
+  const folderAbortRef = useRef();
+  const scanCancelRef = useRef(false);
+  const [activeOp, setActiveOp] = useState(null);
 
   function toggle(id) {
     setSelected((prev) =>
@@ -46,23 +50,50 @@ export default function ImageManagement() {
     }
   }
 
-  async function selectFolder() {
-    if (window.showDirectoryPicker) {
-      try {
-        const dirHandle = await window.showDirectoryPicker();
-        const arr = [];
-        for await (const entry of dirHandle.values()) {
-          if (entry.kind === 'file') {
-            arr.push(await entry.getFile());
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape' && activeOp) {
+        const action = activeOp === 'detect' ? 'detection' : 'folder selection';
+        if (window.confirm(`Cancel ${action}?`)) {
+          if (activeOp === 'detect') {
+            detectAbortRef.current?.abort();
+          } else {
+            scanCancelRef.current = true;
+            folderAbortRef.current?.abort();
           }
+          setActiveOp(null);
         }
-        setFolderName(dirHandle.name || '');
-        await handleSelectFiles(arr);
-      } catch {
-        // ignore
       }
-    } else {
-      fileRef.current?.click();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [activeOp]);
+
+  async function selectFolder() {
+    if (!window.showDirectoryPicker) {
+      addToast('Directory selection not supported', 'error');
+      return;
+    }
+    setActiveOp('folder');
+    scanCancelRef.current = false;
+    try {
+      const dirHandle = await window.showDirectoryPicker();
+      const arr = [];
+      for await (const entry of dirHandle.values()) {
+        if (scanCancelRef.current) break;
+        if (entry.kind === 'file') {
+          arr.push(await entry.getFile());
+        }
+      }
+      if (scanCancelRef.current) return;
+      setFolderName(dirHandle.name || '');
+      await handleSelectFiles(arr);
+    } catch {
+      // ignore
+    } finally {
+      folderAbortRef.current = null;
+      scanCancelRef.current = false;
+      setActiveOp(null);
     }
   }
 
@@ -84,9 +115,13 @@ export default function ImageManagement() {
   }
 
   async function detectFromHost(p = page, s = pageSize) {
+    const controller = new AbortController();
+    detectAbortRef.current = controller;
+    setActiveOp('detect');
     try {
       const res = await fetch(`/api/transaction_images/detect_incomplete?page=${p}&pageSize=${s}`, {
         credentials: 'include',
+        signal: controller.signal,
       });
       if (res.ok) {
         const data = await res.json();
@@ -99,10 +134,17 @@ export default function ImageManagement() {
         setPendingSummary(null);
         setHasMore(false);
       }
-    } catch {
-      setPending([]);
-      setPendingSummary(null);
-      setHasMore(false);
+      setPage(p);
+      setPageSize(s);
+    } catch (e) {
+      if (e.name !== 'AbortError') {
+        setPending([]);
+        setPendingSummary(null);
+        setHasMore(false);
+      }
+    } finally {
+      detectAbortRef.current = null;
+      setActiveOp(null);
     }
     setPage(p);
     setPageSize(s);
@@ -137,10 +179,13 @@ export default function ImageManagement() {
     const form = new FormData();
     arr.slice(0, 1000).forEach((f) => form.append('images', f));
     try {
+      const controller = new AbortController();
+      folderAbortRef.current = controller;
       const res = await fetch('/api/transaction_images/upload_check', {
         method: 'POST',
         body: form,
         credentials: 'include',
+        signal: controller.signal,
       });
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -150,8 +195,10 @@ export default function ImageManagement() {
       } else {
         addToast('Check failed', 'error');
       }
-    } catch {
-      addToast('Check failed', 'error');
+    } catch (e) {
+      if (e.name !== 'AbortError') {
+        addToast('Check failed', 'error');
+      }
     }
   }
 
@@ -211,13 +258,6 @@ export default function ImageManagement() {
               Select Folder
             </button>
             {folderName && <span style={{ marginRight: '0.5rem' }}>{folderName}</span>}
-            <input
-              type="file"
-              webkitdirectory=""
-              ref={fileRef}
-              style={{ display: 'none' }}
-              onChange={(e) => handleSelectFiles(e.target.files)}
-            />
           </div>
           {uploadSummary && (
             <p style={{ marginBottom: '0.5rem' }}>
