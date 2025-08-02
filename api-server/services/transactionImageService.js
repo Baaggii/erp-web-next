@@ -415,7 +415,7 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
       let found;
       if (isSave) {
         const segs = parts.slice();
-        const rand = segs.pop();
+        segs.pop();
         const ts = segs.pop();
         const inv = segs.shift();
         const sp = segs.shift();
@@ -595,7 +595,7 @@ export async function checkUploadedImages(files = [], names = []) {
     let found;
     if (isSave) {
       const segs = parts.slice();
-      const rand = segs.pop();
+      segs.pop();
       const ts = segs.pop();
       const inv = segs.shift();
       const sp = segs.shift();
