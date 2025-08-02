@@ -15,7 +15,7 @@ export default function ImageManagement() {
   const [folderName, setFolderName] = useState('');
   const [uploadSummary, setUploadSummary] = useState(null);
   const [pendingSummary, setPendingSummary] = useState(null);
-  const [pageSize, setPageSize] = useState(100);
+  const [detectSize, setDetectSize] = useState(200);
   const detectAbortRef = useRef();
   const scanCancelRef = useRef(false);
   const [activeOp, setActiveOp] = useState(null);
@@ -85,30 +85,39 @@ export default function ImageManagement() {
         }
       }
       if (scanCancelRef.current) return;
-      let data = null;
-      try {
-        const limit = 1000;
-        const res = await fetch('/api/transaction_images/upload_check', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ names: names.slice(0, limit) }),
-        });
-        if (res.ok) {
-          data = await res.json().catch(() => ({}));
+      const limited = names.slice(0, detectSize);
+      const chunkSize = 200;
+      let all = [];
+      let processed = 0;
+      for (let i = 0; i < limited.length; i += chunkSize) {
+        if (scanCancelRef.current) return;
+        let res;
+        try {
+          res = await fetch('/api/transaction_images/upload_check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ names: limited.slice(i, i + chunkSize) }),
+          });
+        } catch {
+          addToast('Folder scan failed', 'error');
+          return;
         }
-      } catch {
-        // ignore
+        if (!res.ok) {
+          addToast('Folder scan failed', 'error');
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        const list = Array.isArray(data.list) ? data.list : [];
+        processed += data?.summary?.processed || 0;
+        all = all.concat(list);
       }
-      const list = Array.isArray(data?.list) ? data.list : [];
+      if (scanCancelRef.current) return;
       setFolderName(dirHandle.name || '');
       setUploads(
-        list.map((u) => ({ ...u, id: u.id || u.originalName, handle: handles[u.originalName] }))
+        all.map((u) => ({ ...u, id: u.id || u.originalName, handle: handles[u.originalName] }))
       );
-      setUploadSummary({
-        totalFiles: names.length,
-        processed: data?.summary?.processed || 0,
-      });
+      setUploadSummary({ totalFiles: limited.length, processed });
       setUploadSel([]);
     } catch {
       // ignore
@@ -135,12 +144,12 @@ export default function ImageManagement() {
     }
   }
 
-  async function detectFromHost(p = page, s = pageSize) {
+  async function detectFromHost(p = page) {
     const controller = new AbortController();
     detectAbortRef.current = controller;
     setActiveOp('detect');
     try {
-      const res = await fetch(`/api/transaction_images/detect_incomplete?page=${p}&pageSize=${s}`, {
+      const res = await fetch(`/api/transaction_images/detect_incomplete?page=${p}&pageSize=${detectSize}`, {
         credentials: 'include',
         signal: controller.signal,
       });
@@ -156,7 +165,6 @@ export default function ImageManagement() {
         setHasMore(false);
       }
       setPage(p);
-      setPageSize(s);
     } catch (e) {
       if (e.name !== 'AbortError') {
         setPending([]);
@@ -168,7 +176,6 @@ export default function ImageManagement() {
       setActiveOp(null);
     }
     setPage(p);
-    setPageSize(s);
   }
 
   async function applyFixes() {
@@ -363,17 +370,13 @@ export default function ImageManagement() {
               Detect from host
             </button>
             <label style={{ marginRight: '0.5rem' }}>
-              Page Size:{' '}
-              <select
-                value={pageSize}
-                onChange={(e) => detectFromHost(1, Number(e.target.value))}
-              >
-                {[50, 100, 200].map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
+              Detect Size:{' '}
+              <input
+                type="number"
+                value={detectSize}
+                onChange={(e) => setDetectSize(Number(e.target.value))}
+                style={{ width: '4rem' }}
+              />
             </label>
             <button
               type="button"
