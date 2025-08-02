@@ -31,7 +31,6 @@ export default function ImageManagement() {
 
   async function fetchList(pg = page, pp = perPage) {
     const params = new URLSearchParams({ page: pg, perPage: pp });
-    addToast('Detecting images...', 'info');
     try {
       const res = await fetch(`/api/transaction_images/detect_incomplete?${params}`, { credentials: 'include' });
       if (!res.ok) throw new Error('failed');
@@ -39,8 +38,6 @@ export default function ImageManagement() {
       setList(data.list || []);
       setHasMore(Boolean(data.hasMore));
       setSelected(new Set());
-      const folders = (data.scanned || []).join(', ') || 'none';
-      addToast(`Scanned ${folders}. Found ${data.total || 0} file(s)`, 'success');
     } catch {
       addToast('Detect failed', 'error');
     }
