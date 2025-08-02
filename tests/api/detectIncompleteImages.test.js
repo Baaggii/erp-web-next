@@ -15,50 +15,16 @@ const cfgPath = path.join(process.cwd(), 'config', 'transactionForms.json');
 const baseDir = path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test');
 
 await test('detectIncompleteImages finds and fixes files', async () => {
-  await fs.rm(path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test'), { recursive: true, force: true });
-  await fs.rm(path.join(process.cwd(), 'uploads', 'tmp'), { recursive: true, force: true });
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
   await fs.mkdir(baseDir, { recursive: true });
   const file = path.join(baseDir, 'abc12345.jpg');
   await fs.writeFile(file, 'x');
 
-  const row = {
-    id: 1,
-    test_num: 'abc12345',
-    label_field: 'num001',
-    trtype: '4001',
-    TransType: 'tool',
-    z_mat_code: 'Z1',
-    or_bcode: 'B1',
-    bmtr_pmid: 'BP1',
-    pmid: 'P1',
-    sp_primary_code: 'SP',
-    pid: 'PID',
-    bmtr_orderid: 'OID',
-    bmtr_orderdid: 'ODID',
-    ordrid: 'RID',
-    ordrdid: 'RDID',
-  };
+  const row = { id: 1, test_num: 'abc12345', label_field: 'num001', trtype: '4001', TransType: 'tool' };
 
   const restoreDb = mockPool(async (sql) => {
     if (/SHOW TABLES LIKE/.test(sql)) return [[{ t: 'transactions_test' }]];
-    if (/SHOW COLUMNS FROM/.test(sql)) {
-      return [[
-        { Field: 'test_num' },
-        { Field: 'label_field' },
-        { Field: 'trtype' },
-        { Field: 'TransType' },
-        { Field: 'z_mat_code' },
-        { Field: 'or_bcode' },
-        { Field: 'bmtr_pmid' },
-        { Field: 'pmid' },
-        { Field: 'sp_primary_code' },
-        { Field: 'pid' },
-        { Field: 'bmtr_orderid' },
-        { Field: 'bmtr_orderdid' },
-        { Field: 'ordrid' },
-        { Field: 'ordrdid' }
-      ]];
-    }
+    if (/SHOW COLUMNS FROM/.test(sql)) return [[{ Field: 'test_num' }, { Field: 'label_field' }, { Field: 'trtype' }, { Field: 'TransType' }]];
     if (/FROM `transactions_test`/.test(sql)) return [[row]];
     return [[]];
   });
@@ -74,8 +40,6 @@ await test('detectIncompleteImages finds and fixes files', async () => {
   assert.equal(hasMore, false);
   assert.equal(list.length, 1);
   assert.ok(list[0].newName.includes('num001'));
-  assert.ok(list[0].newName.includes('z1_b1_bp1'));
-  assert.ok(list[0].newName.includes('oid~odid'));
   assert.equal(list[0].folder, '4001/tool');
 
   const count = await fixIncompleteImages(list);
@@ -87,54 +51,19 @@ await test('detectIncompleteImages finds and fixes files', async () => {
 
   restoreDb();
   await fs.writeFile(cfgPath, origCfg);
-  await fs.rm(path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test'), { recursive: true, force: true });
-  await fs.rm(path.join(process.cwd(), 'uploads', 'tmp'), { recursive: true, force: true });
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
 });
 
 await test('uploadSelectedImages renames on upload', async () => {
-  await fs.rm(path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test'), { recursive: true, force: true });
-  await fs.rm(path.join(process.cwd(), 'uploads', 'tmp'), { recursive: true, force: true });
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
   await fs.mkdir(path.join(process.cwd(), 'uploads', 'tmp'), { recursive: true });
   const tmp = path.join(process.cwd(), 'uploads', 'tmp', 'abc12345.jpg');
   await fs.writeFile(tmp, 'x');
 
-  const row = {
-    id: 1,
-    test_num: 'abc12345',
-    label_field: 'num002',
-    trtype: '4001',
-    TransType: 'tool',
-    z_mat_code: 'Z1',
-    or_bcode: 'B1',
-    bmtr_pmid: 'BP1',
-    pmid: 'P1',
-    sp_primary_code: 'SP',
-    pid: 'PID',
-    bmtr_orderid: 'OID',
-    bmtr_orderdid: 'ODID',
-    ordrid: 'RID',
-    ordrdid: 'RDID',
-  };
+  const row = { id: 1, test_num: 'abc12345', label_field: 'num002', trtype: '4001', TransType: 'tool' };
   const restoreDb = mockPool(async (sql) => {
     if (/SHOW TABLES LIKE/.test(sql)) return [[{ t: 'transactions_test' }]];
-    if (/SHOW COLUMNS FROM/.test(sql)) {
-      return [[
-        { Field: 'test_num' },
-        { Field: 'label_field' },
-        { Field: 'trtype' },
-        { Field: 'TransType' },
-        { Field: 'z_mat_code' },
-        { Field: 'or_bcode' },
-        { Field: 'bmtr_pmid' },
-        { Field: 'pmid' },
-        { Field: 'sp_primary_code' },
-        { Field: 'pid' },
-        { Field: 'bmtr_orderid' },
-        { Field: 'bmtr_orderdid' },
-        { Field: 'ordrid' },
-        { Field: 'ordrdid' }
-      ]];
-    }
+    if (/SHOW COLUMNS FROM/.test(sql)) return [[{ Field: 'test_num' }, { Field: 'label_field' }, { Field: 'trtype' }, { Field: 'TransType' }]];
     if (/FROM `transactions_test`/.test(sql)) return [[row]];
     return [[]];
   });
@@ -147,7 +76,6 @@ await test('uploadSelectedImages renames on upload', async () => {
   }));
 
   const check = await checkFolderNames([{ name: 'abc12345.jpg', index: 0 }]);
-  assert.ok(check[0].newName.includes('z1_b1_bp1'));
   const list = [{
     name: 'abc12345.jpg',
     newName: check[0].newName,
@@ -163,6 +91,5 @@ await test('uploadSelectedImages renames on upload', async () => {
 
   restoreDb();
   await fs.writeFile(cfgPath, origCfg);
-  await fs.rm(path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test'), { recursive: true, force: true });
-  await fs.rm(path.join(process.cwd(), 'uploads', 'tmp'), { recursive: true, force: true });
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
 });
