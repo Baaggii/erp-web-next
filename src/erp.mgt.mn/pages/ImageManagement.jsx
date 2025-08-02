@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
 export default function ImageManagement() {
@@ -16,7 +16,10 @@ export default function ImageManagement() {
   const [uploadSummary, setUploadSummary] = useState(null);
   const [pendingSummary, setPendingSummary] = useState(null);
   const [pageSize, setPageSize] = useState(100);
-  const fileRef = useRef();
+  const detectAbortRef = useRef();
+  const folderAbortRef = useRef();
+  const scanCancelRef = useRef(false);
+  const [activeOp, setActiveOp] = useState(null);
 
   function toggle(id) {
     setSelected((prev) =>
@@ -46,6 +49,53 @@ export default function ImageManagement() {
     }
   }
 
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape' && activeOp) {
+        const action = activeOp === 'detect' ? 'detection' : 'folder selection';
+        if (window.confirm(`Cancel ${action}?`)) {
+          if (activeOp === 'detect') {
+            detectAbortRef.current?.abort();
+          } else {
+            scanCancelRef.current = true;
+            folderAbortRef.current?.abort();
+          }
+          setActiveOp(null);
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [activeOp]);
+
+  async function selectFolder() {
+    if (!window.showDirectoryPicker) {
+      addToast('Directory selection not supported', 'error');
+      return;
+    }
+    setActiveOp('folder');
+    scanCancelRef.current = false;
+    try {
+      const dirHandle = await window.showDirectoryPicker();
+      const arr = [];
+      for await (const entry of dirHandle.values()) {
+        if (scanCancelRef.current) break;
+        if (entry.kind === 'file') {
+          arr.push(await entry.getFile());
+        }
+      }
+      if (scanCancelRef.current) return;
+      setFolderName(dirHandle.name || '');
+      await handleSelectFiles(arr);
+    } catch {
+      // ignore
+    } finally {
+      folderAbortRef.current = null;
+      scanCancelRef.current = false;
+      setActiveOp(null);
+    }
+  }
+
   async function handleCleanup() {
     const path = days ? `/api/transaction_images/cleanup/${days}` : '/api/transaction_images/cleanup';
     try {
@@ -63,15 +113,14 @@ export default function ImageManagement() {
     }
   }
 
-  useEffect(() => {
-    if (tab !== 'fix') return;
-    refreshList();
-  }, [tab, page, pageSize]);
-
-  async function refreshList() {
+  async function detectFromHost(p = page, s = pageSize) {
+    const controller = new AbortController();
+    detectAbortRef.current = controller;
+    setActiveOp('detect');
     try {
-      const res = await fetch(`/api/transaction_images/detect_incomplete?page=${page}&pageSize=${pageSize}`, {
+      const res = await fetch(`/api/transaction_images/detect_incomplete?page=${p}&pageSize=${s}`, {
         credentials: 'include',
+        signal: controller.signal,
       });
       if (res.ok) {
         const data = await res.json();
@@ -84,10 +133,17 @@ export default function ImageManagement() {
         setPendingSummary(null);
         setHasMore(false);
       }
-    } catch {
-      setPending([]);
-      setPendingSummary(null);
-      setHasMore(false);
+      setPage(p);
+      setPageSize(s);
+    } catch (e) {
+      if (e.name !== 'AbortError') {
+        setPending([]);
+        setPendingSummary(null);
+        setHasMore(false);
+      }
+    } finally {
+      detectAbortRef.current = null;
+      setActiveOp(null);
     }
   }
 
@@ -103,7 +159,7 @@ export default function ImageManagement() {
     if (res.ok) {
       const data = await res.json().catch(() => ({}));
       addToast(`Renamed ${data.fixed || 0} file(s)`, 'success');
-      refreshList();
+      detectFromHost(page);
     } else {
       addToast('Rename failed', 'error');
     }
@@ -120,10 +176,13 @@ export default function ImageManagement() {
     const form = new FormData();
     arr.slice(0, 1000).forEach((f) => form.append('images', f));
     try {
+      const controller = new AbortController();
+      folderAbortRef.current = controller;
       const res = await fetch('/api/transaction_images/upload_check', {
         method: 'POST',
         body: form,
         credentials: 'include',
+        signal: controller.signal,
       });
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -133,8 +192,10 @@ export default function ImageManagement() {
       } else {
         addToast('Check failed', 'error');
       }
-    } catch {
-      addToast('Check failed', 'error');
+    } catch (e) {
+      if (e.name !== 'AbortError') {
+        addToast('Check failed', 'error');
+      }
     }
   }
 
@@ -190,44 +251,10 @@ export default function ImageManagement() {
       ) : (
         <div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <button type="button" onClick={() => fileRef.current?.click()} style={{ marginRight: '0.5rem' }}>
+            <button type="button" onClick={selectFolder} style={{ marginRight: '0.5rem' }}>
               Select Folder
             </button>
             {folderName && <span style={{ marginRight: '0.5rem' }}>{folderName}</span>}
-            <input
-              type="file"
-              multiple
-              webkitdirectory=""
-              directory=""
-              ref={fileRef}
-              style={{ display: 'none' }}
-              onChange={(e) => handleSelectFiles(e.target.files)}
-            />
-            <button type="button" onClick={refreshList} style={{ marginRight: '0.5rem' }}>
-              Refresh
-            </button>
-            <label style={{ marginRight: '0.5rem' }}>
-              Page Size:{' '}
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value));
-                  setPage(1);
-                }}
-              >
-                {[50, 100, 200].map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button type="button" disabled={page === 1} onClick={() => setPage(page - 1)} style={{ marginRight: '0.5rem' }}>
-              Prev
-            </button>
-            <button type="button" disabled={!hasMore} onClick={() => setPage(page + 1)}>
-              Next
-            </button>
           </div>
           {uploadSummary && (
             <p style={{ marginBottom: '0.5rem' }}>
@@ -244,6 +271,17 @@ export default function ImageManagement() {
                 disabled={uploadSel.length === 0}
               >
                 Rename &amp; Upload Selected
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setUploads((prev) => prev.filter((u) => !uploadSel.includes(u.tmpPath)));
+                  setUploadSel([]);
+                }}
+                style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
+                disabled={uploadSel.length === 0}
+              >
+                Delete Selected
               </button>
               <table className="min-w-full border border-gray-300 text-sm" style={{ tableLayout: 'fixed' }}>
                 <thead>
@@ -283,6 +321,35 @@ export default function ImageManagement() {
               </table>
             </div>
           )}
+          <div style={{ marginBottom: '0.5rem', marginTop: '1rem' }}>
+            <button type="button" onClick={() => detectFromHost(1)} style={{ marginRight: '0.5rem' }}>
+              Detect from host
+            </button>
+            <label style={{ marginRight: '0.5rem' }}>
+              Page Size:{' '}
+              <select
+                value={pageSize}
+                onChange={(e) => detectFromHost(1, Number(e.target.value))}
+              >
+                {[50, 100, 200].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              disabled={page === 1}
+              onClick={() => detectFromHost(page - 1)}
+              style={{ marginRight: '0.5rem' }}
+            >
+              Prev
+            </button>
+            <button type="button" disabled={!hasMore} onClick={() => detectFromHost(page + 1)}>
+              Next
+            </button>
+          </div>
           {pendingSummary && (
             <p style={{ marginBottom: '0.5rem' }}>
               {`Scanned ${pendingSummary.totalFiles || 0} file(s) in ${pendingSummary.folders?.length || 0} folder(s)`}
@@ -301,6 +368,17 @@ export default function ImageManagement() {
                 disabled={selected.length === 0}
               >
                 Rename &amp; Move Selected
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPending((prev) => prev.filter((p) => !selected.includes(p.currentName)));
+                  setSelected([]);
+                }}
+                style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
+                disabled={selected.length === 0}
+              >
+                Delete Selected
               </button>
               <table className="min-w-full border border-gray-300 text-sm" style={{ tableLayout: 'fixed' }}>
                 <thead>
