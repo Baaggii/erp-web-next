@@ -15,6 +15,10 @@ import useGeneralConfig from "../hooks/useGeneralConfig.js";
 import { useTabs } from "../context/TabContext.jsx";
 import { useIsLoading } from "../context/LoadingContext.jsx";
 import Spinner from "./Spinner.jsx";
+import GLInquiry from "../windows/GLInquiry.jsx";
+import PurchaseOrders from "../windows/PurchaseOrders.jsx";
+import TabbedWindows from "./TabbedWindows.jsx";
+import ImageManagementWindow from "../windows/ImageManagement.jsx";
 
 /**
  * A desktop‐style “ERPLayout” with:
@@ -105,6 +109,30 @@ export default function ERPLayout() {
     navigate('/');
   }
 
+  function handleModuleOpen(moduleKey) {
+    const map = {};
+    modules.forEach((m) => {
+      map[m.module_key] = { ...m };
+    });
+    const mod = map[moduleKey];
+    if (!mod) return;
+
+    const windowMap = {
+      gl: GLInquiry,
+      po: PurchaseOrders,
+      sales: TabbedWindows,
+      image_management: ImageManagementWindow,
+    };
+
+    const WindowComponent = windowMap[moduleKey];
+    if (WindowComponent) {
+      openTab({ key: moduleKey, label: mod.label, content: <WindowComponent /> });
+      switchTab(moduleKey);
+    } else {
+      handleOpen(modulePath(mod, map), mod.label, mod.module_key);
+    }
+  }
+
   return (
     <div style={styles.container}>
       <Header
@@ -113,6 +141,7 @@ export default function ERPLayout() {
         onHome={handleHome}
         isMobile={isMobile}
         onToggleSidebar={() => setSidebarOpen((o) => !o)}
+        onOpen={handleModuleOpen}
       />
       <div style={styles.body(isMobile)}>
         {isMobile && sidebarOpen && (
@@ -134,11 +163,8 @@ export default function ERPLayout() {
 }
 
 /** Top header bar **/
-function Header({ user, onLogout, onHome, isMobile, onToggleSidebar }) {
+function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, onOpen }) {
   const { company } = useContext(AuthContext);
-  function handleOpen(id) {
-    console.log("open module", id);
-  }
 
   return (
     <header className="sticky-header" style={styles.header(isMobile)}>
@@ -167,7 +193,7 @@ function Header({ user, onLogout, onHome, isMobile, onToggleSidebar }) {
         <button style={styles.iconBtn}>🗗 Цонхнууд</button>
         <button style={styles.iconBtn}>❔ Тусламж</button>
       </nav>
-      <HeaderMenu onOpen={handleOpen} />
+      <HeaderMenu onOpen={onOpen} />
       {company && (
         <span style={styles.locationInfo}>
           {company.branch_name && `📍 ${company.branch_name} | `}
