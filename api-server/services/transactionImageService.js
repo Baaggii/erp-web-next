@@ -346,7 +346,7 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
           'sp_primary_code',
           'pid',
         ];
-        let baseName = buildNameFromRow(row, fields);
+        const basePart = buildNameFromRow(row, fields);
         const o1 = [getCase(row, 'bmtr_orderid'), getCase(row, 'bmtr_orderdid')]
           .filter(Boolean)
           .join('~');
@@ -354,9 +354,11 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
           .filter(Boolean)
           .join('~');
         const ord = o1 || o2;
-        if (baseName && ord && tType && transTypeVal) {
-          baseName = sanitizeName([baseName, ord, transTypeVal, tType].join('_'));
-          newBase = baseName;
+        if (ord && tType && transTypeVal) {
+          const parts = [];
+          if (basePart) parts.push(basePart);
+          parts.push(ord, transTypeVal, tType);
+          newBase = sanitizeName(parts.join('_'));
           folderRaw = `${slugify(String(tType))}/${slugify(String(transTypeVal))}`;
         }
       }
@@ -488,7 +490,7 @@ export async function checkUploadedImages(files = []) {
         'sp_primary_code',
         'pid',
       ];
-      let baseName = buildNameFromRow(row, fields);
+      const basePart = buildNameFromRow(row, fields);
       const o1 = [getCase(row, 'bmtr_orderid'), getCase(row, 'bmtr_orderdid')]
         .filter(Boolean)
         .join('~');
@@ -496,9 +498,11 @@ export async function checkUploadedImages(files = []) {
         .filter(Boolean)
         .join('~');
       const ord = o1 || o2;
-      if (baseName && ord && tType && transTypeVal) {
-        baseName = sanitizeName([baseName, ord, transTypeVal, tType].join('_'));
-        newBase = baseName;
+      if (ord && tType && transTypeVal) {
+        const parts = [];
+        if (basePart) parts.push(basePart);
+        parts.push(ord, transTypeVal, tType);
+        newBase = sanitizeName(parts.join('_'));
         folderRaw = `${slugify(String(tType))}/${slugify(String(transTypeVal))}`;
       }
     }

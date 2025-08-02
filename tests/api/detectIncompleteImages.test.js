@@ -109,3 +109,46 @@ await test('checkUploadedImages renames on upload', async () => {
   await fs.writeFile(cfgPath, origCfg);
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
 });
+
+await test('detectIncompleteImages fallback naming', async () => {
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
+  const dir = path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test');
+  await fs.mkdir(dir, { recursive: true });
+  const file = path.join(dir, 'xyz98765.jpg');
+  await fs.writeFile(file, 'x');
+
+  const row = {
+    id: 1,
+    test_num: 'xyz98765',
+    bmtr_orderid: 'o100',
+    bmtr_orderdid: 'd200',
+    trtype: 't2',
+    TransType: 'B',
+  };
+
+  const restoreDb = mockPool(async (sql) => {
+    if (/SHOW TABLES LIKE/.test(sql)) return [[{ t: 'transactions_test' }]];
+    if (/SHOW COLUMNS FROM/.test(sql))
+      return [[{ Field: 'test_num' }, { Field: 'bmtr_orderid' }, { Field: 'bmtr_orderdid' }]];
+    if (/FROM `transactions_test`/.test(sql)) return [[row]];
+    return [[]];
+  });
+
+  const origCfg = await fs.readFile(cfgPath, 'utf8').catch(() => '{}');
+  await fs.writeFile(cfgPath, JSON.stringify({ transactions_test: { default: {} } }));
+
+  const { list } = await detectIncompleteImages(1);
+  assert.equal(list.length, 1);
+  assert.ok(list[0].newName.includes('o100_d200_b_t2'));
+
+  const moved = await fixIncompleteImages(list);
+  assert.equal(moved, 1);
+  const exists = await fs.readdir(
+    path.join(process.cwd(), 'uploads', 'txn_images', 't2', 'b'),
+  );
+  assert.ok(exists.some((f) => f.includes('o100_d200_b_t2')));
+
+  restoreDb();
+  await fs.writeFile(cfgPath, origCfg);
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
+});

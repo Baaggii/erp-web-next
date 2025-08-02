@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
 export default function ImageManagement() {
@@ -46,6 +46,26 @@ export default function ImageManagement() {
     }
   }
 
+  async function selectFolder() {
+    if (window.showDirectoryPicker) {
+      try {
+        const dirHandle = await window.showDirectoryPicker();
+        const arr = [];
+        for await (const entry of dirHandle.values()) {
+          if (entry.kind === 'file') {
+            arr.push(await entry.getFile());
+          }
+        }
+        setFolderName(dirHandle.name || '');
+        await handleSelectFiles(arr);
+      } catch {
+        // ignore
+      }
+    } else {
+      fileRef.current?.click();
+    }
+  }
+
   async function handleCleanup() {
     const path = days ? `/api/transaction_images/cleanup/${days}` : '/api/transaction_images/cleanup';
     try {
@@ -63,14 +83,9 @@ export default function ImageManagement() {
     }
   }
 
-  useEffect(() => {
-    if (tab !== 'fix') return;
-    refreshList();
-  }, [tab, page, pageSize]);
-
-  async function refreshList() {
+  async function detectFromHost(p = page, s = pageSize) {
     try {
-      const res = await fetch(`/api/transaction_images/detect_incomplete?page=${page}&pageSize=${pageSize}`, {
+      const res = await fetch(`/api/transaction_images/detect_incomplete?page=${p}&pageSize=${s}`, {
         credentials: 'include',
       });
       if (res.ok) {
@@ -89,6 +104,8 @@ export default function ImageManagement() {
       setPendingSummary(null);
       setHasMore(false);
     }
+    setPage(p);
+    setPageSize(s);
   }
 
   async function applyFixes() {
@@ -103,7 +120,7 @@ export default function ImageManagement() {
     if (res.ok) {
       const data = await res.json().catch(() => ({}));
       addToast(`Renamed ${data.fixed || 0} file(s)`, 'success');
-      refreshList();
+      detectFromHost(page);
     } else {
       addToast('Rename failed', 'error');
     }
@@ -190,7 +207,7 @@ export default function ImageManagement() {
       ) : (
         <div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <button type="button" onClick={() => fileRef.current?.click()} style={{ marginRight: '0.5rem' }}>
+            <button type="button" onClick={selectFolder} style={{ marginRight: '0.5rem' }}>
               Select Folder
             </button>
             {folderName && <span style={{ marginRight: '0.5rem' }}>{folderName}</span>}
@@ -201,31 +218,6 @@ export default function ImageManagement() {
               style={{ display: 'none' }}
               onChange={(e) => handleSelectFiles(e.target.files)}
             />
-            <button type="button" onClick={refreshList} style={{ marginRight: '0.5rem' }}>
-              Refresh
-            </button>
-            <label style={{ marginRight: '0.5rem' }}>
-              Page Size:{' '}
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value));
-                  setPage(1);
-                }}
-              >
-                {[50, 100, 200].map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button type="button" disabled={page === 1} onClick={() => setPage(page - 1)} style={{ marginRight: '0.5rem' }}>
-              Prev
-            </button>
-            <button type="button" disabled={!hasMore} onClick={() => setPage(page + 1)}>
-              Next
-            </button>
           </div>
           {uploadSummary && (
             <p style={{ marginBottom: '0.5rem' }}>
@@ -292,6 +284,35 @@ export default function ImageManagement() {
               </table>
             </div>
           )}
+          <div style={{ marginBottom: '0.5rem', marginTop: '1rem' }}>
+            <button type="button" onClick={() => detectFromHost(1)} style={{ marginRight: '0.5rem' }}>
+              Detect from host
+            </button>
+            <label style={{ marginRight: '0.5rem' }}>
+              Page Size:{' '}
+              <select
+                value={pageSize}
+                onChange={(e) => detectFromHost(1, Number(e.target.value))}
+              >
+                {[50, 100, 200].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              disabled={page === 1}
+              onClick={() => detectFromHost(page - 1)}
+              style={{ marginRight: '0.5rem' }}
+            >
+              Prev
+            </button>
+            <button type="button" disabled={!hasMore} onClick={() => detectFromHost(page + 1)}>
+              Next
+            </button>
+          </div>
           {pendingSummary && (
             <p style={{ marginBottom: '0.5rem' }}>
               {`Scanned ${pendingSummary.totalFiles || 0} file(s) in ${pendingSummary.folders?.length || 0} folder(s)`}
