@@ -125,6 +125,16 @@ export default function ImageManagement() {
           names.push(entry.name);
           handles[entry.name] = entry;
         }
+        if (!res.ok) {
+          addToast('Folder scan failed', 'error');
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        const list = Array.isArray(data.list) ? data.list : [];
+        const miss = Array.isArray(data.skipped) ? data.skipped : [];
+        processed += data?.summary?.processed || 0;
+        all = all.concat(list);
+        skipped = skipped.concat(miss);
       }
       if (scanCancelRef.current) return;
       const chunkSize = 200;
