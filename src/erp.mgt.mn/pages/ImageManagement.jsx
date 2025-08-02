@@ -172,30 +172,44 @@ export default function ImageManagement() {
       .map((n) => (typeof n === 'string' ? n : n?.name))
       .filter(Boolean);
     if (!normalized.length) return;
-    const payload = { names: normalized.slice(0, 1000) };
+    const controller = new AbortController();
+    folderAbortRef.current = controller;
+    const chunkSize = 200;
+    const all = [];
+    let total = 0;
+    let processed = 0;
     try {
-      const controller = new AbortController();
-      folderAbortRef.current = controller;
-      const res = await fetch('/api/transaction_images/upload_check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        credentials: 'include',
-        signal: controller.signal,
-      });
-      if (res.ok) {
+      for (let i = 0; i < normalized.length; i += chunkSize) {
+        if (scanCancelRef.current) break;
+        const chunk = normalized.slice(i, i + chunkSize);
+        const res = await fetch('/api/transaction_images/upload_check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ names: chunk }),
+          credentials: 'include',
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          addToast('Check failed', 'error');
+          return;
+        }
         const data = await res.json().catch(() => ({}));
         const list = Array.isArray(data.list) ? data.list : [];
-        setUploads(list);
-        setUploadSummary(data.summary || null);
+        all.push(...list);
+        total += data.summary?.totalFiles || chunk.length;
+        processed += data.summary?.processed || 0;
+      }
+      if (!scanCancelRef.current) {
+        setUploads(all);
+        setUploadSummary({ totalFiles: total, processed });
         setUploadSel([]);
-      } else {
-        addToast('Check failed', 'error');
       }
     } catch (e) {
       if (e.name !== 'AbortError') {
         addToast('Check failed', 'error');
       }
+    } finally {
+      folderAbortRef.current = null;
     }
   }
 
