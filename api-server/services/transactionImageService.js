@@ -357,16 +357,21 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
       const base = path.basename(f, ext);
       const parts = base.split('_');
       const isSave = /_\d{13}_[a-z0-9]{6}$/i.test(base);
-      if (parts.length >= 5 && !isSave) continue;
       let unique = '';
       let suffix = '';
       let found;
       if (isSave) {
-        const [inv, sp, transType, ts] = parts;
+        const segs = parts.slice();
+        const rand = segs.pop();
+        const ts = segs.pop();
+        const inv = segs.shift();
+        const sp = segs.shift();
+        const transType = segs.shift();
+        unique = segs.join('_');
         found = await findTxnByParts(inv, sp, transType, Number(ts));
       } else {
         ({ unique, suffix } = parseFileUnique(base));
-        if (!unique || unique.length < 8) continue;
+        if (!unique || unique.length < 4) continue;
         found = await findTxnByUniqueId(unique);
       }
       if (!found) continue;
@@ -528,7 +533,13 @@ export async function checkUploadedImages(files = [], names = []) {
     let suffix = '';
     let found;
     if (isSave) {
-      const [inv, sp, transType, ts] = parts;
+      const segs = parts.slice();
+      const rand = segs.pop();
+      const ts = segs.pop();
+      const inv = segs.shift();
+      const sp = segs.shift();
+      const transType = segs.shift();
+      unique = segs.join('_');
       found = await findTxnByParts(inv, sp, transType, Number(ts));
     } else {
       ({ unique, suffix } = parseFileUnique(base));

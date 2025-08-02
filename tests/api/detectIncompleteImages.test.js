@@ -77,7 +77,7 @@ await test('detectIncompleteImages scans entire folder', async () => {
     UITrtype: 't1',
     TransType: '4001',
   };
-  const restoreDb = mockPool(async (sql) => {
+  const restoreDb = mockPool(async (sql, params) => {
     if (/SHOW TABLES LIKE/.test(sql)) return [[{ t: 'transactions_test' }]];
     if (/SHOW COLUMNS FROM/.test(sql))
       return [[
@@ -86,7 +86,10 @@ await test('detectIncompleteImages scans entire folder', async () => {
         { Field: 'UITrtype' },
         { Field: 'TransType' },
       ]];
-    if (/FROM `transactions_test`/.test(sql)) return [[row]];
+    if (/FROM `transactions_test`/.test(sql)) {
+      if (params && params[0] && params[0].includes('unique123')) return [[row]];
+      return [[]];
+    }
     return [[]];
   });
 
@@ -382,4 +385,159 @@ await test('detectIncompleteImages handles UUID with numeric suffix', async () =
   restoreDb();
   await fs.writeFile(cfgPath, origCfg);
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
+});
+
+await test('detectIncompleteImages handles hyphenated ID with leading dash', async () => {
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
+  const dir = path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test');
+  await fs.mkdir(dir, { recursive: true });
+  const file = path.join(dir, '-CGRA-OXSB-PSBZ-FMEY-8.jpg');
+  await fs.writeFile(file, 'x');
+
+  const row = {
+    id: 1,
+    test_num: 'CGRA-OXSB-PSBZ-FMEY',
+    label_field: 'img006',
+    trtype: 't5',
+    TransType: 'D',
+  };
+
+  const restoreDb = mockPool(async (sql) => {
+    if (/SHOW TABLES LIKE/.test(sql)) return [[{ t: 'transactions_test' }]];
+    if (/SHOW COLUMNS FROM/.test(sql)) return [[{ Field: 'test_num' }, { Field: 'label_field' }]];
+    if (/FROM `transactions_test`/.test(sql)) return [[row]];
+    return [[]];
+  });
+
+  const origCfg = await fs.readFile(cfgPath, 'utf8').catch(() => '{}');
+  await fs.writeFile(
+    cfgPath,
+    JSON.stringify({
+      transactions_test: {
+        default: { imagenameField: ['label_field'], transactionTypeValue: 'D' },
+      },
+    }),
+  );
+
+  const { list } = await detectIncompleteImages(1);
+  assert.equal(list.length, 1);
+  assert.equal(
+    list[0].newName,
+    'img006_CGRA-OXSB-PSBZ-FMEY-8.jpg',
+  );
+
+  restoreDb();
+  await fs.writeFile(cfgPath, origCfg);
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
+});
+
+await test('detectIncompleteImages handles extra unique before timestamp', async () => {
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
+  const dir = path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test');
+  await fs.mkdir(dir, { recursive: true });
+  const ts = 1753974108927;
+  const file = path.join(
+    dir,
+    '120180002323_120180002323_4001_ydzfh-sdang-cxfxb-kajww_akihl-zukov-ulioe-fhnde_1753974108927_oge4m7.jpg',
+  );
+  await fs.writeFile(file, 'x');
+
+  const row = {
+    id: 1,
+    z_mat_code: '120180002323',
+    sp_primary_code: '120180002323',
+    TransType: '4001',
+    UITrtype: 't6',
+    label_field: 'img007',
+    created_at: new Date(ts),
+  };
+
+  const restoreDb = mockPool(async (sql) => {
+    if (/SHOW TABLES LIKE/.test(sql)) return [[{ t: 'transactions_test' }]];
+    if (/SHOW COLUMNS FROM/.test(sql))
+      return [[
+        { Field: 'z_mat_code' },
+        { Field: 'sp_primary_code' },
+        { Field: 'TransType' },
+        { Field: 'UITrtype' },
+        { Field: 'created_at' },
+        { Field: 'label_field' },
+      ]];
+    if (/FROM `transactions_test`/.test(sql)) return [[row]];
+    return [[]];
+  });
+
+  const origCfg = await fs.readFile(cfgPath, 'utf8').catch(() => '{}');
+  await fs.writeFile(
+    cfgPath,
+    JSON.stringify({
+      transactions_test: {
+        default: {
+          imagenameField: ['label_field'],
+          transactionTypeField: 'TransType',
+          transactionTypeValue: '4001',
+        },
+      },
+    }),
+  );
+
+  const { list } = await detectIncompleteImages(1);
+  assert.equal(list.length, 1);
+  assert.equal(
+    list[0].newName,
+    'img007_ydzfh-sdang-cxfxb-kajww_akihl-zukov-ulioe-fhnde.jpg',
+  );
+
+  const moved = await fixIncompleteImages(list);
+  assert.equal(moved, 1);
+  const exists = await fs.readdir(
+    path.join(process.cwd(), 'uploads', 'txn_images', 't6', '4001'),
+  );
+  assert.ok(
+    exists.includes('img007_ydzfh-sdang-cxfxb-kajww_akihl-zukov-ulioe-fhnde.jpg'),
+  );
+
+  restoreDb();
+  await fs.writeFile(cfgPath, origCfg);
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
+});
+
+await test('checkUploadedImages handles names array', async () => {
+  const row = {
+    id: 1,
+    test_num: '2c589c0f-369a-4827-8b4c-fc5aeaf88a1c',
+    label_field: 'img008',
+    trtype: 't7',
+    TransType: 'E',
+  };
+
+  const restoreDb = mockPool(async (sql) => {
+    if (/SHOW TABLES LIKE/.test(sql)) return [[{ t: 'transactions_test' }]];
+    if (/SHOW COLUMNS FROM/.test(sql)) return [[{ Field: 'test_num' }, { Field: 'label_field' }]];
+    if (/FROM `transactions_test`/.test(sql)) return [[row]];
+    return [[]];
+  });
+
+  const origCfg = await fs.readFile(cfgPath, 'utf8').catch(() => '{}');
+  await fs.writeFile(
+    cfgPath,
+    JSON.stringify({
+      transactions_test: {
+        default: { imagenameField: ['label_field'], transactionTypeValue: 'E' },
+      },
+    }),
+  );
+
+  const { list, summary } = await checkUploadedImages([], [
+    '800688-2c589c0f-369a-4827-8b4c-fc5aeaf88a1c-20.jpg',
+  ]);
+  assert.equal(summary.processed, 1);
+  assert.equal(list.length, 1);
+  assert.equal(
+    list[0].newName,
+    'img008_2c589c0f-369a-4827-8b4c-fc5aeaf88a1c-20.jpg',
+  );
+
+  restoreDb();
+  await fs.writeFile(cfgPath, origCfg);
 });
