@@ -36,7 +36,8 @@ router.delete('/cleanup/:days?', requireAuth, async (req, res, next) => {
 router.get('/detect_incomplete', requireAuth, async (req, res, next) => {
   try {
     const page = parseInt(req.query.page, 10) || 1;
-    const data = await detectIncompleteImages(page);
+    const perPage = parseInt(req.query.pageSize, 10) || 100;
+    const data = await detectIncompleteImages(page, perPage);
     res.json(data);
   } catch (err) {
     next(err);
@@ -55,8 +56,8 @@ router.post('/fix_incomplete', requireAuth, async (req, res, next) => {
 
 router.post('/upload_check', requireAuth, upload.array('images'), async (req, res, next) => {
   try {
-    const list = await checkUploadedImages(req.files || []);
-    res.json({ list });
+    const { list, summary } = await checkUploadedImages(req.files || []);
+    res.json({ list, summary });
   } catch (err) {
     next(err);
   }

@@ -73,7 +73,8 @@ await test('checkUploadedImages renames on upload', async () => {
     }
   }));
 
-  const list = await checkUploadedImages([{ originalname: 'abc12345.jpg', path: tmp }]);
+  const { list, summary } = await checkUploadedImages([{ originalname: 'abc12345.jpg', path: tmp }]);
+  assert.equal(summary.processed, 1);
   assert.equal(list.length, 1);
   assert.ok(list[0].newName.includes('num002'));
 
