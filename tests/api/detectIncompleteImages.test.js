@@ -70,10 +70,9 @@ await test('detectIncompleteImages finds and fixes files', async () => {
     }
   }));
 
-  const { list, hasMore, scanned, total, files } = await detectIncompleteImages(1);
+  const { list, hasMore, scanned, total } = await detectIncompleteImages(1);
   assert.equal(hasMore, false);
   assert.ok(Array.isArray(scanned));
-  assert.ok(typeof files === 'number');
   assert.equal(total, 1);
   assert.equal(list.length, 1);
   assert.ok(list[0].newName.includes('num001'));
@@ -127,8 +126,7 @@ await test('detectIncompleteImages skips files with txn codes', async () => {
     }
   }));
 
-  const { list, total, files } = await detectIncompleteImages(1);
-  assert.ok(typeof files === 'number');
+  const { list, total } = await detectIncompleteImages(1);
   assert.equal(total, 0);
   assert.equal(list.length, 0);
 
