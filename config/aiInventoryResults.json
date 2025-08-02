@@ -1,1 +1,1474 @@
-{}
+{
+  "ai_mdriwjh5ljg": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "TRAVELD",
+        "qty": 37125
+      },
+      {
+        "code": "D5H06",
+        "qty": 5120
+      },
+      {
+        "code": "T0F8006",
+        "qty": 4410
+      },
+      {
+        "code": "ATL666",
+        "qty": 3615
+      },
+      {
+        "code": "330410T",
+        "qty": 3500
+      },
+      {
+        "code": "C15H240",
+        "qty": 2310
+      },
+      {
+        "code": "3520MAP",
+        "qty": 1635
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T15:01:58.553Z"
+  },
+  "ai_mdrixdd3kgc": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "BUNK_BED",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T15:02:37.287Z"
+  },
+  "ai_mdrj72r3jl8": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "BIKE001",
+        "qty": 1
+      },
+      {
+        "code": "BIKE002",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T15:10:10.095Z"
+  },
+  "ai_mdrjawhqngx": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "ITEM1",
+        "qty": 3
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T15:13:08.606Z"
+  },
+  "ai_mdrjbe32f6c": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "STOOL",
+        "qty": 3
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T15:13:31.406Z"
+  },
+  "ai_mdrjd8t1fpc": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "ITEM1",
+        "qty": 3
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T15:14:57.877Z"
+  },
+  "ai_mdrjdjt2j9i": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "CHAIR1",
+        "qty": 2
+      },
+      {
+        "code": "TABLE1",
+        "qty": 1
+      },
+      {
+        "code": "PLANT1",
+        "qty": 1
+      },
+      {
+        "code": "MAGAZINES",
+        "qty": 4
+      },
+      {
+        "code": "BOOKS",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T15:15:12.134Z"
+  },
+  "ai_mdrji5n0t7t": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "BUNK_BED",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T15:18:47.053Z"
+  },
+  "ai_mdrjmotyh67": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "TABLE1",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T15:22:18.550Z"
+  },
+  "ai_mdrkga1j6bl": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "ITEM1",
+        "qty": 3
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T15:45:19.063Z"
+  },
+  "ai_mdrkh2cvy8y": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "CHAIR",
+        "qty": 2
+      },
+      {
+        "code": "TABLE",
+        "qty": 1
+      },
+      {
+        "code": "PLANT",
+        "qty": 1
+      },
+      {
+        "code": "BOOKS",
+        "qty": 3
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T15:45:55.759Z"
+  },
+  "ai_mdrli7zkxdb": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "ITEM1",
+        "qty": 3
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T16:14:49.328Z"
+  },
+  "ai_mdrliu8kikx": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "CHAIR",
+        "qty": 2
+      },
+      {
+        "code": "TABLE",
+        "qty": 1
+      },
+      {
+        "code": "PLANT",
+        "qty": 1
+      },
+      {
+        "code": "MAGAZINES",
+        "qty": 5
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T16:15:18.164Z"
+  },
+  "ai_mdrljobioay": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "WOODEN_TABLE",
+        "qty": 1
+      },
+      {
+        "code": "WOODEN_ARMCHAIR",
+        "qty": 2
+      },
+      {
+        "code": "CHAIR_CUSHION",
+        "qty": 4
+      },
+      {
+        "code": "WOODEN_BENCH",
+        "qty": 1
+      },
+      {
+        "code": "BENCH_CUSHION",
+        "qty": 2
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T16:15:57.150Z"
+  },
+  "ai_mdrlwa6hjgx": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "BED",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T16:25:45.353Z"
+  },
+  "ai_mdrlx3pqyqr": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "SOFA1",
+        "qty": 1
+      },
+      {
+        "code": "TABLE1",
+        "qty": 1
+      },
+      {
+        "code": "PLANT1",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T16:26:23.630Z"
+  },
+  "ai_mdrm0jkittr": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "CHAIR1",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T16:29:04.146Z"
+  },
+  "ai_mdrmwgida0z": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "TABLE1",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T16:53:53.174Z"
+  },
+  "ai_mdrmzjhxho0": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "BED1",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T16:56:17.013Z"
+  },
+  "ai_mdrmzttvulf": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "STOOL1",
+        "qty": 3
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T16:56:30.403Z"
+  },
+  "ai_mdrn0gszoyc": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "CHAIR1",
+        "qty": 1
+      },
+      {
+        "code": "CUSHION1",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T16:57:00.179Z"
+  },
+  "ai_mdrn8g5lqbf": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "STOOL1",
+        "qty": 4
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T17:03:12.585Z"
+  },
+  "ai_mdrntfogjta": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "CHAIR",
+        "qty": 2
+      },
+      {
+        "code": "TABLE",
+        "qty": 1
+      },
+      {
+        "code": "PLANT",
+        "qty": 1
+      },
+      {
+        "code": "MAGAZINE",
+        "qty": 3
+      },
+      {
+        "code": "BOOK",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T17:19:31.744Z"
+  },
+  "ai_mdrntsbg3ti": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "ITEM1",
+        "qty": 3
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T17:19:48.124Z"
+  },
+  "ai_mdro888sii7": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "ITEM1",
+        "qty": 3
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T17:31:01.948Z"
+  },
+  "ai_mdrpcozskpe": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "ITEM1",
+        "qty": 3
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T18:02:29.896Z"
+  },
+  "ai_mdrq2t3stw9": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "CHAIR1",
+        "qty": 1
+      },
+      {
+        "code": "CUSHION1",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T18:22:48.280Z"
+  },
+  "ai_mdrq45qfwvz": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "ITEM1",
+        "qty": 3
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T18:23:51.303Z"
+  },
+  "ai_mdrq4ye3gmh": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "TABLE1",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T18:24:28.443Z"
+  },
+  "ai_mdrqdzog7tp": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "CHAIR1",
+        "qty": 1
+      },
+      {
+        "code": "CUSHION1",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T18:31:30.016Z"
+  },
+  "ai_mdrqegr4t4q": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "SOFA1",
+        "qty": 1
+      },
+      {
+        "code": "TABLE1",
+        "qty": 1
+      },
+      {
+        "code": "PLANT1",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T18:31:52.144Z"
+  },
+  "ai_mdrrlqcu11r": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "CHAIR1",
+        "qty": 1
+      },
+      {
+        "code": "CUSHION1",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T19:05:30.798Z"
+  },
+  "ai_mdrrm24yzrs": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "ITEM1",
+        "qty": 4
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T19:05:46.066Z"
+  },
+  "ai_mdrrmz2u9ii": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "TABLE1",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T19:06:28.758Z"
+  },
+  "ai_mdrvtip6p3f": {
+    "empid": "J1",
+    "items": [
+      {
+        "code": "Gazebo",
+        "qty": 1
+      },
+      {
+        "code": "BenchSwing",
+        "qty": 1
+      },
+      {
+        "code": "ConcreteCylinder",
+        "qty": 2
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-07-31T21:03:32.586Z"
+  },
+  "ai_mdsdst5caut": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "31235562163844",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T05:26:52.560Z"
+  },
+  "ai_mdsdwd5li78": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "44-300",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T05:29:38.457Z"
+  },
+  "ai_mdsdzgwi474": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "STHT14103",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T05:32:03.282Z"
+  },
+  "ai_mdse1ue6bc1": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "STHT14440-8",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T05:33:54.078Z"
+  },
+  "ai_mdse4teqhgx": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "STHT077050",
+        "qty": 2
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T05:36:12.770Z"
+  },
+  "ai_mdse8rri5n2": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "STANLEY_S50",
+        "qty": 2
+      },
+      {
+        "code": "WELL_TAPE_MEASURE",
+        "qty": 3
+      },
+      {
+        "code": "BAG_OF_SCREWS",
+        "qty": 1
+      },
+      {
+        "code": "METAL_SPACERS",
+        "qty": 1
+      },
+      {
+        "code": "BOSCH_DRILL_BITS",
+        "qty": 2
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T05:39:17.262Z"
+  },
+  "ai_mdse9yb4c1r": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "STUDDETECT1",
+        "qty": 1
+      },
+      {
+        "code": "TAPEMEASURE1",
+        "qty": 2
+      },
+      {
+        "code": "SCREWS1",
+        "qty": 1
+      },
+      {
+        "code": "BOSCHDRILLBITS1",
+        "qty": 3
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T05:40:12.400Z"
+  },
+  "ai_mdsecavj40p": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "STANLEY_S50",
+        "qty": 2
+      },
+      {
+        "code": "WHEX_TAPE_MEASURE",
+        "qty": 3
+      },
+      {
+        "code": "TTG_HEX_BOLTS",
+        "qty": 1
+      },
+      {
+        "code": "BOSCH_DETACHABLE_HOOKS",
+        "qty": 3
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T05:42:01.999Z"
+  },
+  "ai_mdseeypwhyx": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "D-10-418",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T05:44:06.212Z"
+  },
+  "ai_mdsel3mx8br": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "STANLEY_180MM_PLIERS",
+        "qty": 1
+      },
+      {
+        "code": "STANLEY_FATMAX_TAPE",
+        "qty": 3
+      },
+      {
+        "code": "BOSCH_SCREW_ANCHORS",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T05:48:52.521Z"
+  },
+  "ai_mdseogw938o": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "BOSCH_SDS_MAX_CHISEL_280_MM",
+        "qty": 1
+      },
+      {
+        "code": "BOSCH_SDS_MAX_CHISEL_400_MM",
+        "qty": 1
+      },
+      {
+        "code": "BOSCH_SDS_MAX_12X340_MM",
+        "qty": 1
+      },
+      {
+        "code": "BOSCH_SDS_MAX_12X540_MM",
+        "qty": 1
+      },
+      {
+        "code": "BOSCH_SDS_PLUS_5_6X50X110_MM",
+        "qty": 1
+      },
+      {
+        "code": "BOSCH_SDS_PLUS_5_6X50X160_MM",
+        "qty": 1
+      },
+      {
+        "code": "SDS_DRILL_BIT_8X100X165_MM",
+        "qty": 1
+      },
+      {
+        "code": "SDS_DRILL_BIT_10X100X165_MM",
+        "qty": 1
+      },
+      {
+        "code": "SDS_DRILL_BIT_12X100X160_MM",
+        "qty": 1
+      },
+      {
+        "code": "TAPE_MEASURES",
+        "qty": 3
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T05:51:29.673Z"
+  },
+  "ai_mdsepw0xo42": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "BOSCH_2_608_586_660",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T05:52:35.937Z"
+  },
+  "ai_mdseqry56yj": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "DRILLBIT",
+        "qty": 1
+      },
+      {
+        "code": "SDSPLUSBIT8MM",
+        "qty": 2
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T05:53:17.309Z"
+  },
+  "ai_mdsf63opjwd": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "SDS Plus-5X",
+        "qty": 1
+      },
+      {
+        "code": "SDS Plus-5X",
+        "qty": 1
+      },
+      {
+        "code": "SDS Plus-5X",
+        "qty": 1
+      },
+      {
+        "code": "SDS Plus-5X",
+        "qty": 1
+      },
+      {
+        "code": "SDS Plus-5X",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T06:05:12.361Z"
+  },
+  "ai_mdsf85zq6nv": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "SDS-Plus 8x50/110",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T06:06:48.662Z"
+  },
+  "ai_mdshbxtkgiz": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "BOSCH_216MM_BLADE",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T07:05:43.928Z"
+  },
+  "ai_mdshdx19849": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "F230600A",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T07:07:16.221Z"
+  },
+  "ai_mdshh4zjnyz": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "K04-300D21",
+        "qty": 1
+      },
+      {
+        "code": "F230600A",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T07:09:46.495Z"
+  },
+  "ai_mdshikb23d8": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "300210",
+        "qty": 1
+      },
+      {
+        "code": "300211",
+        "qty": 1
+      },
+      {
+        "code": "300212",
+        "qty": 1
+      },
+      {
+        "code": "300215",
+        "qty": 1
+      },
+      {
+        "code": "300222",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T07:10:53.006Z"
+  },
+  "ai_mdshkyscw2b": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "300229",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T07:12:45.084Z"
+  },
+  "ai_mdshnjjnnbi": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "NO 28 900",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T07:14:45.299Z"
+  },
+  "ai_mdshy7uinhf": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "NO 28 900",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T07:23:03.354Z"
+  },
+  "ai_mdshzcjdx2i": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "ITEM1",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T07:23:56.089Z"
+  },
+  "ai_mdsi0lj0gee": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "2 608 596 330",
+        "qty": 2
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T07:24:54.396Z"
+  },
+  "ai_mdsi4nvt0iu": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "2 608 596 330",
+        "qty": 1
+      },
+      {
+        "code": "2 608 596 336",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T07:28:04.073Z"
+  },
+  "ai_mdsi6nq6xop": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "2608596393",
+        "qty": 5
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T07:29:37.182Z"
+  },
+  "ai_mdsiht9e2sx": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "2 608 596 209",
+        "qty": 3
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T07:38:17.570Z"
+  },
+  "ai_mdsiivhrha2": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "2608551060",
+        "qty": 3
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T07:39:07.119Z"
+  },
+  "ai_mdsikmsfiik": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "2608595400",
+        "qty": 5
+      },
+      {
+        "code": "2608595401",
+        "qty": 4
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T07:40:29.151Z"
+  },
+  "ai_mdsin4yd78t": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "2 608 596 409",
+        "qty": 3
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T07:42:26.005Z"
+  },
+  "ai_mdsiojdibzp": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "2608596406",
+        "qty": 3
+      },
+      {
+        "code": "2608594062",
+        "qty": 2
+      },
+      {
+        "code": "2608594063",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T07:43:31.350Z"
+  },
+  "ai_mdsipuxsl2c": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "2 608 596 400",
+        "qty": 4
+      },
+      {
+        "code": "2 608 596 400",
+        "qty": 5
+      },
+      {
+        "code": "2 608 596 400",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T07:44:32.992Z"
+  },
+  "ai_mdsirhf1rtw": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "2 608 596 401",
+        "qty": 1
+      },
+      {
+        "code": "2608596401",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T07:45:48.781Z"
+  },
+  "ai_mdsiwd5h6ol": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "2 608 596 401",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T07:49:36.533Z"
+  },
+  "ai_mdsixxa3spn": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "BOSCH-HSS-G-13MM",
+        "qty": 5
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T07:50:49.275Z"
+  },
+  "ai_mdsizh6vago": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "BOSCH HSS-G Ø 13mm",
+        "qty": 5
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T07:52:01.735Z"
+  },
+  "ai_mdsjar4hr1x": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "BOSCH_HSS-G_13mm",
+        "qty": 5
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T08:00:47.825Z"
+  },
+  "ai_mdsjc0wdnkp": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "KA5-302Z8",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T08:01:47.149Z"
+  },
+  "ai_mdsjexze7ew": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "2608603165",
+        "qty": 1
+      },
+      {
+        "code": "PEN",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T08:04:03.338Z"
+  },
+  "ai_mdsjgi0xn6f": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "65-000",
+        "qty": 3
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T08:05:15.969Z"
+  },
+  "ai_mdsjinlppu1": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "WOODEN_CART",
+        "qty": 1
+      },
+      {
+        "code": "HAMMER",
+        "qty": 1
+      },
+      {
+        "code": "WOODEN_CRATES",
+        "qty": 4
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T08:06:56.509Z"
+  },
+  "ai_mdsjk2zwop8": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "WOODSHELF",
+        "qty": 3
+      },
+      {
+        "code": "CABINET",
+        "qty": 4
+      },
+      {
+        "code": "STORAGEBOX",
+        "qty": 5
+      },
+      {
+        "code": "WOODCHAIR",
+        "qty": 6
+      },
+      {
+        "code": "DESK",
+        "qty": 2
+      },
+      {
+        "code": "MASSIVEARCH",
+        "qty": 1
+      },
+      {
+        "code": "CANVASCANOPY",
+        "qty": 3
+      },
+      {
+        "code": "REDSHELVES",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T08:08:03.116Z"
+  },
+  "ai_mdsjl0olkhj": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "CHAIR_WOODEN",
+        "qty": 12
+      },
+      {
+        "code": "TABLE_WOODEN",
+        "qty": 4
+      },
+      {
+        "code": "CUPBOARD_WOODEN",
+        "qty": 3
+      },
+      {
+        "code": "SHELF_WOODEN",
+        "qty": 5
+      },
+      {
+        "code": "BASKET_WIRE",
+        "qty": 50
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T08:08:46.773Z"
+  },
+  "ai_mdsjmaiq0ll": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "WOODEN_CRATES",
+        "qty": 7
+      },
+      {
+        "code": "PLASTIC_BINS",
+        "qty": 8
+      },
+      {
+        "code": "CHAIRS",
+        "qty": 8
+      },
+      {
+        "code": "WOODEN_CABINETS",
+        "qty": 2
+      },
+      {
+        "code": "HAMMOCKS",
+        "qty": 2
+      },
+      {
+        "code": "LARGE_TABLES",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T08:09:46.178Z"
+  },
+  "ai_mdsjodhnwrq": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "ARC01",
+        "qty": 1
+      },
+      {
+        "code": "DOORS01",
+        "qty": 1
+      },
+      {
+        "code": "SHELVES01",
+        "qty": 2
+      },
+      {
+        "code": "CHAIRS01",
+        "qty": 4
+      },
+      {
+        "code": "TABLES01",
+        "qty": 2
+      },
+      {
+        "code": "CRATES01",
+        "qty": 4
+      },
+      {
+        "code": "BINS01",
+        "qty": 4
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T08:11:23.339Z"
+  },
+  "ai_mdsjppb8awk": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "CHAIR01",
+        "qty": 6
+      },
+      {
+        "code": "TABLE01",
+        "qty": 1
+      },
+      {
+        "code": "STORAGEBOX01",
+        "qty": 6
+      },
+      {
+        "code": "SHELFUNIT01",
+        "qty": 2
+      },
+      {
+        "code": "LARGETABLE01",
+        "qty": 1
+      },
+      {
+        "code": "WOODENCRATE01",
+        "qty": 4
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T08:12:25.316Z"
+  },
+  "ai_mdsjrjtsm3m": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "WOODPALLETS",
+        "qty": 12
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T08:13:51.520Z"
+  },
+  "ai_mdsjt5hx3xo": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "CHAIR01",
+        "qty": 1
+      },
+      {
+        "code": "RACK01",
+        "qty": 1
+      },
+      {
+        "code": "DESK01",
+        "qty": 1
+      },
+      {
+        "code": "PLANT01",
+        "qty": 1
+      },
+      {
+        "code": "NOTICEBOARD01",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T08:15:06.261Z"
+  },
+  "ai_mdsju293hsi": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "STAINLESS_STEEL_POT",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T08:15:48.712Z"
+  },
+  "ai_mdsjvv4b7d0": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "FURN1",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T08:17:12.779Z"
+  },
+  "ai_mdsjygjjfav": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "DRILL1",
+        "qty": 1
+      },
+      {
+        "code": "CABLE1",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T08:19:13.855Z"
+  },
+  "ai_mdsjzsjg9gt": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "BEW220",
+        "qty": 2
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T08:20:16.060Z"
+  },
+  "ai_mdsk1ia02mp": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "FITTING",
+        "qty": 3
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T08:21:36.072Z"
+  },
+  "ai_mdsk4emv41u": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "SCREWDRIVER1",
+        "qty": 1
+      },
+      {
+        "code": "SCREWDRIVER2",
+        "qty": 1
+      },
+      {
+        "code": "SCREWDRIVER3",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T08:23:51.319Z"
+  },
+  "ai_mdsk5ils24m": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "SCREWDRIVER1",
+        "qty": 1
+      },
+      {
+        "code": "SCREWDRIVER2",
+        "qty": 1
+      },
+      {
+        "code": "SCREWDRIVER3",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T08:24:43.120Z"
+  },
+  "ai_mdsk6mtpcm9": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "RULER",
+        "qty": 1
+      },
+      {
+        "code": "SQUARE",
+        "qty": 1
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T08:25:35.245Z"
+  },
+  "ai_mdsk81davg9": {
+    "empid": "J2",
+    "items": [
+      {
+        "code": "SPRITE_BOTTLE",
+        "qty": 1
+      },
+      {
+        "code": "COFFEE_CUPS",
+        "qty": 2
+      },
+      {
+        "code": "CLAMP_TOOL",
+        "qty": 2
+      }
+    ],
+    "confirmed": false,
+    "created": "2025-08-01T08:26:40.750Z"
+  }
+}

@@ -1,11 +1,40 @@
 {
   "tbl_employee": {
     "idField": "emp_id",
-    "displayFields": ["emp_fname", "emp_lname"]
+    "displayFields": [
+      "emp_fname",
+      "emp_lname"
+    ]
   },
   "tbl_contracter": {
     "idField": "manuf_id",
-    "displayFields": ["manuf_fname", "manuf_lname", "manuf_orgname", "brandname"]
+    "displayFields": [
+      "manuf_fname",
+      "manuf_lname",
+      "manuf_orgname",
+      "brandname"
+    ]
+  },
+  "code_transaction": {
+    "idField": "UITransType",
+    "displayFields": [
+      "UITransTypeName"
+    ]
+  },
+  "InventoryTransactionView": {
+    "idField": "cost_code",
+    "displayFields": [
+      "avg_cost",
+      "item_cost_qty",
+      "item_cost_value"
+    ]
+  },
+  "UnifiedInventoryCode": {
+    "idField": "cost_code",
+    "displayFields": [
+      "pm_name",
+      "pm_unit_id",
+      "manufacturer_id"
+    ]
   }
 }
-

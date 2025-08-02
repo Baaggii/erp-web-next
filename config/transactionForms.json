@@ -1,6 +1,6 @@
 {
   "transactions_income": {
-    "Бараа бүтээгдэхүүн борлуулсан санхүүгийн орлого1": {
+    "Кассын орлого (Бэлэн)": {
       "visibleFields": [
         "or_g_id",
         "or_burtgel",
@@ -34,23 +34,43 @@
         "or_vallut_id",
         "or_valut_choice",
         "or_tailbar1",
-        "or_eb",
-        "TRTYPENAME",
-        "trtype",
-        "UITransTypeName"
+        "or_eb"
       ],
       "defaultValues": {
         "or_g_id": "-1",
         "or_av_now": "0",
         "or_vallut_id": "1",
         "or_valut_choice": "11",
-        "TRTYPENAME": "Бараа бүтээгдэхүүн борлуулсан орлого",
-        "trtype": "ssor",
-        "UITransTypeName": "1914"
+        "TRTYPENAME": "",
+        "trtype": "",
+        "TransType": "1111",
+        "or_o_barimt": "0",
+        "company_id": ""
       },
-      "editableDefaultFields": [],
+      "editableDefaultFields": [
+        "or_av_now",
+        "or_g_id",
+        "or_vallut_id",
+        "or_valut_choice",
+        "or_burtgel",
+        "or_chig",
+        "or_torol",
+        "or_type_id",
+        "or_date",
+        "orcash_or_id",
+        "or_or",
+        "or_bcode",
+        "or_orderid",
+        "or_tailbar1",
+        "or_eb",
+        "or_emp_receiver",
+        "or_tur_receiver",
+        "or_other_receiver",
+        "or_org_id"
+      ],
       "userIdFields": [
-        "ortr_confirm_emp"
+        "ortr_confirm_emp",
+        "emp_id"
       ],
       "branchIdFields": [
         "ortr_transbranch",
@@ -59,9 +79,1390 @@
       "companyIdFields": [
         "company_id"
       ],
-      "allowedBranches": [],
-      "allowedDepartments": [],
-      "moduleKey": "finance_transactions"
+      "dateField": [
+        "or_date"
+      ],
+      "emailField": [
+        "or_org_id"
+      ],
+      "imagenameField": [
+        "or_num"
+      ],
+      "printEmpField": [
+        "branch_id",
+        "company_id",
+        "id",
+        "or_av_now",
+        "or_bcode",
+        "or_burtgel",
+        "or_chig",
+        "or_date",
+        "or_eb",
+        "or_emp_receiver",
+        "or_g_id",
+        "or_or",
+        "or_orderid",
+        "or_org_id",
+        "or_other_receiver",
+        "or_tailbar1",
+        "or_torol",
+        "or_tur_receiver",
+        "or_type_id",
+        "or_vallut_id",
+        "or_valut_choice",
+        "orcash_or_id",
+        "ortr_confirm_emp",
+        "ortr_transbranch"
+      ],
+      "printCustField": [
+        "id",
+        "or_date",
+        "or_eb",
+        "or_or",
+        "or_orderid",
+        "or_org_id",
+        "or_other_receiver",
+        "or_tailbar1",
+        "or_tur_receiver",
+        "or_type_id",
+        "or_vallut_id"
+      ],
+      "totalCurrencyFields": [],
+      "totalAmountFields": [],
+      "signatureFields": [],
+      "headerFields": [],
+      "mainFields": [],
+      "footerFields": [],
+      "viewSource": {
+        "or_bcode": "UnifiedInventoryCode"
+      },
+      "transactionTypeField": "TransType",
+      "transactionTypeValue": "1111",
+      "moduleKey": "finance_transactions",
+      "allowedBranches": [
+        1,
+        3,
+        4,
+        11
+      ],
+      "allowedDepartments": [
+        100,
+        102,
+        110
+      ]
+    },
+    "Бараа материал ЭХ борлуулсан САНХҮҮГИЙН орлого": {
+      "visibleFields": [
+        "or_g_id",
+        "or_burtgel",
+        "or_chig",
+        "or_torol",
+        "or_type_id",
+        "or_av_now",
+        "or_date",
+        "orcash_or_id",
+        "or_or",
+        "or_vallut_id",
+        "or_valut_choice",
+        "or_bcode",
+        "or_orderid",
+        "or_tailbar1",
+        "or_eb",
+        "or_emp_receiver",
+        "or_tur_receiver",
+        "or_other_receiver",
+        "or_org_id",
+        "sp_primary_code",
+        "sp_selling_code",
+        "sp_pm_name",
+        "sp_pm_unit_id",
+        "sp_manufacturer_id",
+        "sp_cost"
+      ],
+      "requiredFields": [
+        "or_g_id",
+        "or_burtgel",
+        "or_chig",
+        "or_torol",
+        "or_type_id",
+        "or_av_now",
+        "or_date",
+        "or_or",
+        "or_vallut_id",
+        "or_valut_choice",
+        "or_tailbar1",
+        "or_eb",
+        "orcash_or_id"
+      ],
+      "defaultValues": {
+        "or_g_id": "-1",
+        "or_av_now": "0",
+        "or_vallut_id": "1",
+        "or_valut_choice": "11",
+        "TRTYPENAME": "",
+        "trtype": "",
+        "TransType": "1913",
+        "or_o_barimt": "0",
+        "or_burtgel": "11",
+        "or_chig": "1",
+        "or_torol": "",
+        "or_type_id": ""
+      },
+      "editableDefaultFields": [
+        "or_date",
+        "orcash_or_id",
+        "or_or",
+        "or_bcode",
+        "or_orderid",
+        "or_tailbar1",
+        "or_eb",
+        "or_emp_receiver",
+        "or_tur_receiver",
+        "or_other_receiver",
+        "or_org_id",
+        "or_torol",
+        "or_type_id"
+      ],
+      "editableFields": [
+        "or_g_id",
+        "or_burtgel",
+        "or_chig",
+        "or_av_now",
+        "or_vallut_id",
+        "or_valut_choice"
+      ],
+      "userIdFields": [
+        "ortr_confirm_emp",
+        "emp_id"
+      ],
+      "branchIdFields": [
+        "ortr_transbranch",
+        "branch_id"
+      ],
+      "companyIdFields": [
+        "company_id"
+      ],
+      "dateField": [
+        "o",
+        "r",
+        "_",
+        "d",
+        "a",
+        "t",
+        "e",
+        "or_date"
+      ],
+      "emailField": [],
+      "imagenameField": [
+        "o",
+        "r",
+        "_",
+        "n",
+        "u",
+        "m"
+      ],
+      "imageIdField": "",
+      "imageFolder": "",
+      "printEmpField": [],
+      "printCustField": [],
+      "totalCurrencyFields": [
+        "or_or"
+      ],
+      "totalAmountFields": [
+        "or_or"
+      ],
+      "signatureFields": [
+        "ortr_confirm_emp"
+      ],
+      "headerFields": [
+        "company_id",
+        "branch_id",
+        "ortr_confirm_emp"
+      ],
+      "mainFields": [
+        "or_date",
+        "orcash_or_id",
+        "or_or",
+        "or_vallut_id",
+        "or_valut_choice",
+        "or_bcode",
+        "or_orderid",
+        "or_tailbar1",
+        "or_eb",
+        "or_emp_receiver",
+        "or_tur_receiver",
+        "or_other_receiver",
+        "or_org_id",
+        "or_torol",
+        "sp_primary_code",
+        "sp_selling_code",
+        "sp_pm_name",
+        "sp_pm_unit_id",
+        "sp_manufacturer_id",
+        "sp_cost",
+        "or_g_id",
+        "or_burtgel",
+        "or_chig",
+        "or_type_id",
+        "or_av_now"
+      ],
+      "footerFields": [
+        "ortr_confirm_emp"
+      ],
+      "viewSource": {
+        "or_bcode": "UnifiedInventoryCode"
+      },
+      "transactionTypeField": "TransType",
+      "transactionTypeValue": "1913",
+      "moduleKey": "finance_transactions",
+      "allowedBranches": [
+        1,
+        3,
+        4,
+        11
+      ],
+      "allowedDepartments": [
+        100,
+        102,
+        110
+      ]
+    },
+    "Посын борлуулалтын орлого": {
+      "visibleFields": [
+        "or_or",
+        "orcash_or_id"
+      ],
+      "requiredFields": [
+        "or_or",
+        "orcash_or_id"
+      ],
+      "defaultValues": {
+        "TransType": "1901",
+        "or_type_id": "1",
+        "or_torol": "4"
+      },
+      "editableDefaultFields": [
+        "orcash_or_id",
+        "or_or"
+      ],
+      "userIdFields": [
+        "ortr_confirm_emp"
+      ],
+      "branchIdFields": [
+        "branch_id",
+        "ortr_transbranch",
+        "or_chig"
+      ],
+      "companyIdFields": [
+        "company_id"
+      ],
+      "dateField": [
+        "or_date"
+      ],
+      "emailField": [],
+      "imagenameField": [],
+      "printEmpField": [],
+      "printCustField": [],
+      "totalCurrencyFields": [],
+      "totalAmountFields": [],
+      "signatureFields": [
+        "ortr_confirm_emp"
+      ],
+      "headerFields": [],
+      "mainFields": [
+        "or_type_id",
+        "or_or"
+      ],
+      "footerFields": [],
+      "viewSource": {},
+      "transactionTypeField": "TransType",
+      "transactionTypeValue": "1901",
+      "moduleKey": "pos_transactions",
+      "allowedBranches": [
+        1,
+        3,
+        4
+      ],
+      "allowedDepartments": [
+        100,
+        102,
+        110
+      ]
+    }
+  },
+  "transactions_expense": {
+    "Кассын зарлага (Бэлэн": {
+      "visibleFields": [
+        "z",
+        "z_angilal",
+        "z_angilal_b",
+        "z_date",
+        "z_eb",
+        "z_emp_receiver",
+        "z_from",
+        "z_mat_code",
+        "z_noat_month",
+        "z_noat_oor_month",
+        "z_orderid",
+        "z_org_id",
+        "z_other_receiver",
+        "z_taibar",
+        "z_tailbar1",
+        "z_torol",
+        "z_tosov_code",
+        "z_tosov_zuil",
+        "z_tur_receiver",
+        "z_utga",
+        "z_valut_choice",
+        "z_valut_id",
+        "zar_uglug_eseh_code"
+      ],
+      "requiredFields": [
+        "z",
+        "z_angilal",
+        "z_angilal_b",
+        "z_date",
+        "z_eb",
+        "z_from",
+        "z_taibar",
+        "z_torol",
+        "z_utga",
+        "z_valut_choice",
+        "z_valut_id"
+      ],
+      "defaultValues": {
+        "z_valut_choice": "11",
+        "z_valut_id": "1",
+        "TransType": "2122",
+        "z_barimt": "0"
+      },
+      "editableDefaultFields": [
+        "z_valut_id",
+        "z_tosov_code",
+        "z_tosov_zuil",
+        "z_taibar",
+        "z_angilal_b",
+        "z_angilal",
+        "z_torol",
+        "z_utga",
+        "z_from",
+        "z_emp_receiver",
+        "z_tur_receiver",
+        "z_other_receiver",
+        "z_org_id",
+        "z_valut_choice",
+        "z_date",
+        "z_mat_code",
+        "z_tailbar1",
+        "z_eb",
+        "z_orderid",
+        "z_noat_oor_month",
+        "z_noat_month",
+        "zar_uglug_eseh_code"
+      ],
+      "userIdFields": [
+        "ztr_confirm_emp"
+      ],
+      "branchIdFields": [
+        "branch_id",
+        "ztr_transbranch"
+      ],
+      "companyIdFields": [
+        "comapny_id",
+        "company_id"
+      ],
+      "dateField": [
+        "z_date"
+      ],
+      "emailField": [
+        "z_org_id"
+      ],
+      "imagenameField": [
+        "z_num"
+      ],
+      "printEmpField": [
+        "branch_id",
+        "comapny_id",
+        "TransType",
+        "z",
+        "z_angilal",
+        "z_angilal_b",
+        "z_date",
+        "z_eb",
+        "z_emp_receiver",
+        "z_from",
+        "z_mat_code",
+        "z_noat_month",
+        "z_noat_oor_month",
+        "z_num",
+        "z_orderid",
+        "z_org_id",
+        "z_other_receiver",
+        "z_taibar",
+        "z_tailbar1",
+        "z_torol",
+        "z_tosov_code",
+        "z_tosov_zuil",
+        "z_tur_receiver",
+        "z_utga",
+        "z_valut_choice",
+        "z_valut_id",
+        "zar_uglug_eseh_code",
+        "ztr_confirm_emp"
+      ],
+      "printCustField": [
+        "comapny_id",
+        "TransType",
+        "z",
+        "z_date",
+        "z_eb",
+        "z_emp_receiver",
+        "z_from",
+        "id",
+        "z_orderid",
+        "z_org_id",
+        "z_other_receiver",
+        "z_taibar",
+        "z_tur_receiver",
+        "z_valut_id",
+        "ztr_confirm_emp"
+      ],
+      "totalCurrencyFields": [
+        "z"
+      ],
+      "totalAmountFields": [
+        "z"
+      ],
+      "signatureFields": [
+        "ztr_confirm_emp",
+        "z_emp_receiver",
+        "z_tur_receiver",
+        "z_other_receiver",
+        "z_org_id"
+      ],
+      "headerFields": [
+        "id",
+        "z_num",
+        "branch_id",
+        "comapny_id",
+        "TransType",
+        "z_date"
+      ],
+      "mainFields": [
+        "z_tosov_code",
+        "z_tosov_zuil",
+        "z_taibar",
+        "z_angilal_b",
+        "z_angilal",
+        "z_torol",
+        "z_utga",
+        "z_from",
+        "z_date",
+        "z_valut_id",
+        "z_valut_choice",
+        "z_mat_code",
+        "z_tailbar1",
+        "z_eb",
+        "z_orderid",
+        "z_noat_oor_month",
+        "z_noat_month",
+        "zar_uglug_eseh_code",
+        "z"
+      ],
+      "footerFields": [
+        "z_emp_receiver",
+        "z_tur_receiver",
+        "z_other_receiver",
+        "z_org_id",
+        "ztr_confirm_emp"
+      ],
+      "viewSource": {
+        "z_mat_code": "UnifiedInventoryCode",
+        "z_date": "",
+        "company_id": "",
+        "branch_id": "",
+        "ztr_transbranch": "",
+        "ztr_confirm_emp": ""
+      },
+      "transactionTypeField": "TransType",
+      "transactionTypeValue": "2122",
+      "moduleKey": "finance_transactions",
+      "allowedBranches": [
+        1
+      ],
+      "allowedDepartments": [
+        100,
+        102
+      ]
+    },
+    "Посын хямдралын санхүүгийн зардал": {
+      "visibleFields": [
+        "z"
+      ],
+      "requiredFields": [],
+      "defaultValues": {
+        "TransType": "2901",
+        "z_angilal": "1",
+        "z_torol": "1",
+        "z_utga": "1",
+        "z_from": "1"
+      },
+      "editableDefaultFields": [
+        "z"
+      ],
+      "userIdFields": [
+        "ztr_confirm_emp"
+      ],
+      "branchIdFields": [
+        "branch_id",
+        "ztr_transbranch",
+        "z_angilal_b"
+      ],
+      "companyIdFields": [
+        "company_id"
+      ],
+      "dateField": [
+        "z_date"
+      ],
+      "emailField": [],
+      "imagenameField": [],
+      "printEmpField": [],
+      "printCustField": [],
+      "totalCurrencyFields": [],
+      "totalAmountFields": [],
+      "signatureFields": [],
+      "headerFields": [],
+      "mainFields": [
+        "z"
+      ],
+      "footerFields": [],
+      "viewSource": {},
+      "transactionTypeField": "TransType",
+      "transactionTypeValue": "2901",
+      "moduleKey": "pos_transactions",
+      "allowedBranches": [
+        1,
+        4
+      ],
+      "allowedDepartments": [
+        100,
+        102,
+        110
+      ]
+    },
+    "Посын хариулт мөнгөний зардал": {
+      "visibleFields": [
+        "z"
+      ],
+      "requiredFields": [],
+      "defaultValues": {
+        "TransType": "2902"
+      },
+      "editableDefaultFields": [
+        "z"
+      ],
+      "userIdFields": [
+        "ztr_confirm_emp"
+      ],
+      "branchIdFields": [
+        "branch_id",
+        "ztr_transbranch"
+      ],
+      "companyIdFields": [
+        "company_id"
+      ],
+      "dateField": [
+        "z_date"
+      ],
+      "emailField": [],
+      "imagenameField": [],
+      "printEmpField": [],
+      "printCustField": [],
+      "totalCurrencyFields": [],
+      "totalAmountFields": [],
+      "signatureFields": [],
+      "headerFields": [],
+      "mainFields": [
+        "z"
+      ],
+      "footerFields": [],
+      "viewSource": {},
+      "transactionTypeField": "TransType",
+      "transactionTypeValue": "2902",
+      "moduleKey": "pos_transactions",
+      "allowedBranches": [
+        1,
+        4
+      ],
+      "allowedDepartments": [
+        100,
+        102,
+        110
+      ]
+    }
+  },
+  "transactions_plan": {
+    "Ажлын төлөвлөгөө, үүрэг даалгавар": {
+      "visibleFields": [
+        "annot"
+      ],
+      "requiredFields": [],
+      "defaultValues": {
+        "TransType": "6001"
+      },
+      "editableDefaultFields": [],
+      "userIdFields": [],
+      "branchIdFields": [],
+      "companyIdFields": [],
+      "dateField": [],
+      "emailField": [],
+      "imagenameField": [],
+      "printEmpField": [],
+      "printCustField": [],
+      "totalCurrencyFields": [],
+      "totalAmountFields": [],
+      "signatureFields": [],
+      "headerFields": [],
+      "mainFields": [],
+      "footerFields": [],
+      "viewSource": {},
+      "transactionTypeField": "TransType",
+      "transactionTypeValue": "6001",
+      "moduleKey": "pos_transactions",
+      "allowedBranches": [
+        1,
+        4
+      ],
+      "allowedDepartments": [
+        100,
+        102,
+        110
+      ]
+    },
+    "Посын гүйлгээний ажил": {
+      "visibleFields": [
+        "annot"
+      ],
+      "requiredFields": [],
+      "defaultValues": {
+        "TransType": "6901"
+      },
+      "editableDefaultFields": [
+        "annot"
+      ],
+      "userIdFields": [
+        "confirm_emp"
+      ],
+      "branchIdFields": [
+        "branch_id",
+        "transbranch"
+      ],
+      "companyIdFields": [
+        "company_id"
+      ],
+      "dateField": [
+        "date"
+      ],
+      "emailField": [],
+      "imagenameField": [],
+      "printEmpField": [],
+      "printCustField": [],
+      "totalCurrencyFields": [],
+      "totalAmountFields": [],
+      "signatureFields": [],
+      "headerFields": [],
+      "mainFields": [
+        "annot"
+      ],
+      "footerFields": [],
+      "viewSource": {},
+      "transactionTypeField": "TransType",
+      "transactionTypeValue": "6901",
+      "moduleKey": "pos_transactions",
+      "allowedBranches": [
+        1,
+        4
+      ],
+      "allowedDepartments": [
+        100,
+        102,
+        110
+      ]
+    }
+  },
+  "transactions_order": {
+    "Посын захиалга": {
+      "visibleFields": [
+        "ordrbkod",
+        "ordrsub",
+        "sp_pm_name",
+        "sp_pm_unit_id",
+        "sp_cost",
+        "ordrap",
+        "sp_current_stock"
+      ],
+      "requiredFields": [
+        "ordrsub",
+        "ordrbkod"
+      ],
+      "defaultValues": {
+        "ordrwholesalesel": "",
+        "ordrnoatyn": "0.1",
+        "TransType": "5901",
+        "ordrretailsel": "1"
+      },
+      "editableDefaultFields": [
+        "ordrsub",
+        "ordrbkod"
+      ],
+      "editableFields": [],
+      "userIdFields": [
+        "ordrtr_confirm_emp"
+      ],
+      "branchIdFields": [
+        "branch_id",
+        "ordrtr_transbranch"
+      ],
+      "companyIdFields": [
+        "company_id"
+      ],
+      "dateField": [
+        "ordrdate"
+      ],
+      "emailField": [
+        "ordrcustomerid"
+      ],
+      "imagenameField": [
+        "ordrid",
+        "ordrbkod",
+        "ordrnum",
+        "sp_primary_code",
+        "TransType",
+        "trtype"
+      ],
+      "imageIdField": "ordrnum",
+      "imageFolder": "",
+      "printEmpField": [
+        "id",
+        "company_id",
+        "branch_id",
+        "ordrid",
+        "ordrcustomerid",
+        "ordrdate",
+        "ordrbkod",
+        "ordrsub",
+        "ordrap",
+        "ordrnoatyn",
+        "ordrtr_confirm_emp"
+      ],
+      "printCustField": [
+        "company_id",
+        "branch_id",
+        "ordrid",
+        "ordrcustomerid",
+        "ordrdate",
+        "ordrsub",
+        "ordrbkod",
+        "ordrap",
+        "ordrnoatyn",
+        "ordrtr_confirm_emp"
+      ],
+      "totalCurrencyFields": [
+        "ordrap"
+      ],
+      "totalAmountFields": [
+        "ordrsub"
+      ],
+      "signatureFields": [
+        "ordrcustomerid",
+        "ordrtr_confirm_emp"
+      ],
+      "headerFields": [
+        "company_id",
+        "branch_id",
+        "ordrcustomerid"
+      ],
+      "mainFields": [
+        "ordrbkod",
+        "ordrsub",
+        "ordrap",
+        "sp_pm_name",
+        "sp_pm_unit_id",
+        "sp_cost",
+        "sp_current_stock"
+      ],
+      "footerFields": [
+        "ordrtr_confirm_emp"
+      ],
+      "viewSource": {
+        "ordrbkod": "UnifiedInventoryCode"
+      },
+      "transactionTypeField": "TransType",
+      "transactionTypeValue": "5901",
+      "moduleKey": "pos_transactions",
+      "allowedBranches": [
+        1,
+        4,
+        11
+      ],
+      "allowedDepartments": [
+        100,
+        102,
+        110
+      ]
+    }
+  },
+  "transactions_inventory": {
+    "Борлуулалт ЗАРЛАГА": {
+      "visibleFields": [
+        "bmtr_pmid",
+        "bmtr_sub",
+        "bmtr_acc",
+        "bmtr_up",
+        "bmtr_ap",
+        "bmtr_Saleap",
+        "bmtr_MM_sale",
+        "bmtr_BN_sale",
+        "bmtr_idname"
+      ],
+      "requiredFields": [],
+      "defaultValues": {
+        "TransType": "2001"
+      },
+      "editableDefaultFields": [],
+      "userIdFields": [
+        "bmtr_confirm_emp"
+      ],
+      "branchIdFields": [
+        "branch_id"
+      ],
+      "companyIdFields": [
+        "company_id",
+        "bmtr_transbranch"
+      ],
+      "dateField": [
+        "bmtr_date"
+      ],
+      "emailField": [],
+      "imagenameField": [],
+      "printEmpField": [],
+      "printCustField": [],
+      "totalCurrencyFields": [],
+      "totalAmountFields": [],
+      "signatureFields": [],
+      "headerFields": [],
+      "mainFields": [],
+      "footerFields": [],
+      "viewSource": {},
+      "transactionTypeField": "TransType",
+      "transactionTypeValue": "2001",
+      "moduleKey": "pos_transactions",
+      "allowedBranches": [
+        1,
+        4
+      ],
+      "allowedDepartments": [
+        100,
+        102,
+        110
+      ]
+    },
+    "Посын бараа материалын зарлага": {
+      "visibleFields": [
+        "bmtr_pmid",
+        "bmtr_sub",
+        "bmtr_acc",
+        "bmtr_up",
+        "bmtr_ap",
+        "bmtr_Saleap",
+        "bmtr_MM_sale",
+        "bmtr_BN_sale",
+        "bmtr_idname"
+      ],
+      "requiredFields": [],
+      "defaultValues": {
+        "TransType": "1911"
+      },
+      "editableDefaultFields": [
+        "bmtr_pmid",
+        "bmtr_acc",
+        "bmtr_sub"
+      ],
+      "userIdFields": [
+        "bmtr_confirm_emp"
+      ],
+      "branchIdFields": [
+        "branch_id"
+      ],
+      "companyIdFields": [
+        "company_id",
+        "bmtr_transbranch"
+      ],
+      "dateField": [
+        "bmtr_date"
+      ],
+      "emailField": [],
+      "imagenameField": [],
+      "printEmpField": [],
+      "printCustField": [],
+      "totalCurrencyFields": [],
+      "totalAmountFields": [],
+      "signatureFields": [],
+      "headerFields": [],
+      "mainFields": [],
+      "footerFields": [],
+      "viewSource": {},
+      "transactionTypeField": "TransType",
+      "transactionTypeValue": "1911",
+      "moduleKey": "pos_transactions",
+      "allowedBranches": [
+        1,
+        4
+      ],
+      "allowedDepartments": [
+        100,
+        102,
+        110
+      ]
+    },
+    "Өөр салбар руу шилжүүлэх ЗАРЛАГА": {
+      "visibleFields": [
+        "bmtr_pmid",
+        "sp_primary_code",
+        "sp_pm_name",
+        "sp_pm_unit_id",
+        "sp_cost",
+        "sp_current_stock",
+        "bmtr_acc",
+        "bmtr_sub",
+        "bmtr_annot",
+        "bmtr_date",
+        "bmtr_empid",
+        "bmtr_branchid",
+        "TRTYPENAME"
+      ],
+      "requiredFields": [
+        "bmtr_pmid",
+        "bmtr_sub",
+        "bmtr_annot",
+        "bmtr_date",
+        "bmtr_empid",
+        "bmtr_branchid"
+      ],
+      "defaultValues": {
+        "TransType": "2005"
+      },
+      "editableDefaultFields": [
+        "bmtr_pmid",
+        "bmtr_acc",
+        "bmtr_sub",
+        "bmtr_annot",
+        "bmtr_date",
+        "bmtr_empid",
+        "bmtr_branchid",
+        "bmtr_consumerid"
+      ],
+      "editableFields": [],
+      "userIdFields": [
+        "bmtr_confirm_emp",
+        "bmtr_sellerid"
+      ],
+      "branchIdFields": [
+        "branch_id",
+        "bmtr_transbranch",
+        "bmtr_frombranchid"
+      ],
+      "companyIdFields": [
+        "company_id"
+      ],
+      "dateField": [
+        "bmtr_date"
+      ],
+      "emailField": [],
+      "imagenameField": [
+        "bmtr_pmid",
+        "sp_primary_code",
+        "TransType",
+        "trtype",
+        "bmtr_num"
+      ],
+      "imageIdField": "bmtr_num",
+      "imageFolder": "",
+      "printEmpField": [],
+      "printCustField": [],
+      "totalCurrencyFields": [
+        "sp_company_discount",
+        "sp_supplier_discount",
+        "sp_coupon_discount",
+        "sp_total_discount",
+        "bmtr_ap",
+        "bmtr_sub"
+      ],
+      "totalAmountFields": [
+        "bmtr_pmid"
+      ],
+      "signatureFields": [
+        "bmtr_confirm_emp"
+      ],
+      "headerFields": [
+        "company_id",
+        "branch_id",
+        "bmtr_transbranch",
+        "bmtr_frombranchid"
+      ],
+      "mainFields": [
+        "bmtr_date",
+        "bmtr_pmid",
+        "sp_primary_code",
+        "sp_pm_name",
+        "sp_pm_unit_id",
+        "sp_cost",
+        "sp_current_stock",
+        "bmtr_acc",
+        "bmtr_sub",
+        "bmtr_annot",
+        "bmtr_empid",
+        "bmtr_branchid",
+        "bmtr_consumerid",
+        "TRTYPENAME"
+      ],
+      "footerFields": [
+        "bmtr_confirm_emp"
+      ],
+      "viewSource": {
+        "bmtr_pmid": "UnifiedInventoryCode"
+      },
+      "transactionTypeField": "TransType",
+      "transactionTypeValue": "2005",
+      "moduleKey": "inventory_transaction",
+      "allowedBranches": [
+        1,
+        3,
+        4
+      ],
+      "allowedDepartments": [
+        100,
+        102,
+        110
+      ]
+    },
+    "Худалдан авалт ОРЛОГО": {
+      "visibleFields": [
+        "bmtr_pmid",
+        "sp_primary_code",
+        "sp_pm_name",
+        "sp_pm_unit_id",
+        "sp_manufacturer_id",
+        "sp_cost",
+        "sp_current_stock",
+        "bmtr_sub",
+        "bmtr_annot",
+        "bmtr_date",
+        "bmtr_empid",
+        "bmtr_acc",
+        "bmtr_branchid"
+      ],
+      "requiredFields": [
+        "bmtr_pmid",
+        "bmtr_sub",
+        "bmtr_annot",
+        "bmtr_date",
+        "bmtr_empid",
+        "bmtr_branchid"
+      ],
+      "defaultValues": {
+        "TransType": "1001"
+      },
+      "editableDefaultFields": [
+        "bmtr_pmid",
+        "bmtr_acc",
+        "bmtr_sub",
+        "bmtr_annot",
+        "bmtr_date",
+        "bmtr_empid",
+        "bmtr_branchid"
+      ],
+      "editableFields": [],
+      "userIdFields": [
+        "bmtr_confirm_emp"
+      ],
+      "branchIdFields": [
+        "branch_id",
+        "bmtr_transbranch",
+        "bmtr_branchid"
+      ],
+      "companyIdFields": [
+        "company_id"
+      ],
+      "dateField": [
+        "bmtr_date"
+      ],
+      "emailField": [],
+      "imagenameField": [],
+      "printEmpField": [],
+      "printCustField": [],
+      "totalCurrencyFields": [],
+      "totalAmountFields": [],
+      "signatureFields": [
+        "bmtr_confirm_emp"
+      ],
+      "headerFields": [
+        "company_id",
+        "branch_id",
+        "bmtr_transbranch"
+      ],
+      "mainFields": [
+        "bmtr_pmid",
+        "bmtr_acc",
+        "bmtr_sub",
+        "bmtr_annot",
+        "bmtr_empid",
+        "sp_primary_code",
+        "sp_pm_name",
+        "sp_pm_unit_id",
+        "sp_manufacturer_id",
+        "sp_cost",
+        "sp_current_stock",
+        "bmtr_date",
+        "bmtr_branchid"
+      ],
+      "footerFields": [
+        "bmtr_confirm_emp"
+      ],
+      "viewSource": {
+        "bmtr_pmid": "UnifiedInventoryCode"
+      },
+      "transactionTypeField": "TransType",
+      "transactionTypeValue": "1001",
+      "moduleKey": "inventory_transaction",
+      "allowedBranches": [
+        1,
+        3,
+        4
+      ],
+      "allowedDepartments": [
+        100,
+        102,
+        110
+      ]
+    },
+    "Тооллого": {
+      "visibleFields": [
+        "bmtr_pmid",
+        "sp_primary_code",
+        "sp_pm_name",
+        "sp_pm_unit_id",
+        "sp_cost",
+        "sp_current_stock",
+        "bmtr_acc",
+        "bmtr_sub",
+        "bmtr_annot",
+        "bmtr_date",
+        "TRTYPENAME",
+        "sp_total_cost"
+      ],
+      "requiredFields": [
+        "bmtr_pmid",
+        "bmtr_sub",
+        "bmtr_annot",
+        "bmtr_date"
+      ],
+      "defaultValues": {
+        "TransType": "4001",
+        "bmtr_annot": "Тооллого"
+      },
+      "editableDefaultFields": [
+        "bmtr_pmid",
+        "bmtr_acc",
+        "bmtr_sub",
+        "bmtr_annot",
+        "bmtr_date"
+      ],
+      "editableFields": [
+        "bmtr_consumerid",
+        "bmtr_empid",
+        "bmtr_branchid"
+      ],
+      "userIdFields": [
+        "bmtr_confirm_emp",
+        "bmtr_sellerid"
+      ],
+      "branchIdFields": [
+        "branch_id",
+        "bmtr_transbranch",
+        "bmtr_branchid"
+      ],
+      "companyIdFields": [
+        "company_id"
+      ],
+      "dateField": [
+        "bmtr_date"
+      ],
+      "emailField": [],
+      "imagenameField": [
+        "bmtr_pmid",
+        "sp_primary_code",
+        "TransType",
+        "trtype",
+        "bmtr_num"
+      ],
+      "imageIdField": "bmtr_num",
+      "imageFolder": "",
+      "printEmpField": [],
+      "printCustField": [],
+      "totalCurrencyFields": [
+        "sp_total_cost",
+        "bmtr_sub"
+      ],
+      "totalAmountFields": [
+        "bmtr_sub"
+      ],
+      "signatureFields": [
+        "bmtr_confirm_emp"
+      ],
+      "headerFields": [
+        "company_id",
+        "branch_id",
+        "bmtr_transbranch"
+      ],
+      "mainFields": [
+        "bmtr_date",
+        "bmtr_pmid",
+        "sp_primary_code",
+        "sp_pm_name",
+        "sp_pm_unit_id",
+        "sp_cost",
+        "sp_current_stock",
+        "bmtr_acc",
+        "bmtr_sub",
+        "bmtr_annot",
+        "TRTYPENAME",
+        "sp_total_cost"
+      ],
+      "footerFields": [
+        "bmtr_confirm_emp"
+      ],
+      "viewSource": {
+        "bmtr_pmid": "UnifiedInventoryCode"
+      },
+      "transactionTypeField": "TransType",
+      "transactionTypeValue": "4001",
+      "moduleKey": "inventory_transaction",
+      "allowedBranches": [
+        1,
+        3,
+        4
+      ],
+      "allowedDepartments": [
+        100,
+        102,
+        110
+      ]
+    }
+  },
+  "transactions_pos": {
+    "Посын борлуулалтын гүйлгээ": {
+      "visibleFields": [
+        "session_id",
+        "company_id",
+        "branch_id",
+        "department_id",
+        "emp_id",
+        "pos_date",
+        "total_amount",
+        "total_discount",
+        "cashback",
+        "payable_amount",
+        "deposit_amount",
+        "payment_type",
+        "remarks",
+        "status",
+        "total_quantity",
+        "cashback_payment_type",
+        "transport_price",
+        "assembly_price"
+      ],
+      "requiredFields": [],
+      "defaultValues": {
+        "sub_transaction_ids": "",
+        "TransType": "10001"
+      },
+      "editableDefaultFields": [
+        "order_id",
+        "cashback",
+        "cashback_payment_type",
+        "deposit_amount",
+        "payment_type",
+        "remarks",
+        "transport_price",
+        "assembly_price"
+      ],
+      "editableFields": [],
+      "userIdFields": [
+        "emp_id"
+      ],
+      "branchIdFields": [
+        "branch_id"
+      ],
+      "companyIdFields": [
+        "company_id"
+      ],
+      "dateField": [
+        "pos_date"
+      ],
+      "emailField": [],
+      "imagenameField": [
+        "session_id",
+        "pos_date",
+        "order_id",
+        "TransType",
+        "trtype"
+      ],
+      "imageIdField": "session_id",
+      "imageFolder": "",
+      "printEmpField": [],
+      "printCustField": [],
+      "totalCurrencyFields": [],
+      "totalAmountFields": [],
+      "signatureFields": [
+        "emp_id"
+      ],
+      "headerFields": [
+        "session_id",
+        "company_id",
+        "branch_id",
+        "department_id",
+        "emp_id",
+        "pos_date",
+        "status",
+        "total_quantity",
+        "total_amount",
+        "total_discount",
+        "payable_amount"
+      ],
+      "mainFields": [
+        "cashback",
+        "deposit_amount",
+        "payment_type",
+        "remarks",
+        "cashback_payment_type",
+        "transport_price",
+        "assembly_price"
+      ],
+      "footerFields": [],
+      "viewSource": {},
+      "transactionTypeField": "TransType",
+      "transactionTypeValue": "10001",
+      "moduleKey": "pos_transactions",
+      "allowedBranches": [
+        1,
+        4
+      ],
+      "allowedDepartments": [
+        100,
+        102,
+        110
+      ]
     }
   }
 }

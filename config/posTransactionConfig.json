@@ -1,1 +1,980 @@
-{}
+{
+  "POS_Modmarket": {
+    "label": "",
+    "labelFontSize": 10,
+    "boxWidth": 80,
+    "boxHeight": 20,
+    "masterTable": "transactions_pos",
+    "masterForm": "Посын борлуулалтын гүйлгээ",
+    "masterType": "single",
+    "masterPosition": "right",
+    "masterView": "fitted",
+    "tables": [
+      {
+        "table": "transactions_pos",
+        "form": "Посын борлуулалтын гүйлгээ",
+        "type": "single",
+        "position": "right",
+        "view": "fitted"
+      },
+      {
+        "view": "row",
+        "table": "transactions_plan",
+        "form": "Посын гүйлгээний ажил",
+        "type": "single",
+        "position": "hidden"
+      },
+      {
+        "view": "row",
+        "table": "transactions_expense",
+        "form": "Посын хариулт мөнгөний зардал",
+        "type": "single",
+        "position": "hidden"
+      },
+      {
+        "view": "table",
+        "table": "transactions_order",
+        "form": "Посын захиалга",
+        "type": "multi",
+        "position": "left"
+      },
+      {
+        "view": "table",
+        "table": "transactions_inventory",
+        "form": "Посын бараа материалын зарлага",
+        "type": "multi",
+        "position": "hidden"
+      },
+      {
+        "view": "row",
+        "table": "transactions_income",
+        "form": "Посын борлуулалтын орлого",
+        "type": "single",
+        "position": "hidden"
+      },
+      {
+        "view": "row",
+        "table": "transactions_expense",
+        "form": "Посын хямдралын санхүүгийн зардал",
+        "type": "single",
+        "position": "hidden"
+      }
+    ],
+    "calcFields": [
+      {
+        "name": "Map1",
+        "cells": [
+          {
+            "table": "transactions_pos",
+            "field": "pos_date",
+            "agg": ""
+          },
+          {
+            "table": "transactions_plan",
+            "field": "date",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_order",
+            "field": "ordrdate",
+            "agg": ""
+          },
+          {
+            "table": "transactions_inventory",
+            "field": "bmtr_date",
+            "agg": ""
+          },
+          {
+            "table": "transactions_income",
+            "field": "or_date",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "z_date",
+            "agg": ""
+          },
+          {
+            "table": "",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "",
+            "field": "",
+            "agg": ""
+          }
+        ]
+      },
+      {
+        "name": "Map2",
+        "cells": [
+          {
+            "table": "transactions_pos",
+            "field": "total_quantity",
+            "agg": ""
+          },
+          {
+            "table": "transactions_plan",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_order",
+            "field": "ordrsub",
+            "agg": "SUM"
+          },
+          {
+            "table": "transactions_inventory",
+            "field": "bmtr_sub",
+            "agg": "SUM"
+          },
+          {
+            "table": "transactions_income",
+            "field": "total_quantity",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "",
+            "field": "",
+            "agg": ""
+          }
+        ]
+      },
+      {
+        "name": "Map3",
+        "cells": [
+          {
+            "table": "transactions_pos",
+            "field": "total_amount",
+            "agg": ""
+          },
+          {
+            "table": "transactions_plan",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_order",
+            "field": "ordrap",
+            "agg": "SUM"
+          },
+          {
+            "table": "transactions_inventory",
+            "field": "bmtr_ap",
+            "agg": "SUM"
+          },
+          {
+            "table": "transactions_income",
+            "field": "or_or",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "",
+            "field": "",
+            "agg": ""
+          }
+        ]
+      },
+      {
+        "name": "Map4",
+        "cells": [
+          {
+            "table": "transactions_pos",
+            "field": "total_discount",
+            "agg": ""
+          },
+          {
+            "table": "transactions_plan",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_order",
+            "field": "z",
+            "agg": ""
+          },
+          {
+            "table": "transactions_inventory",
+            "field": "bmtr_Saleap",
+            "agg": "SUM"
+          },
+          {
+            "table": "transactions_income",
+            "field": "total_discount",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "z",
+            "agg": ""
+          },
+          {
+            "table": "",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "",
+            "field": "",
+            "agg": ""
+          }
+        ]
+      },
+      {
+        "name": "Map5",
+        "cells": [
+          {
+            "table": "transactions_pos",
+            "field": "payment_type",
+            "agg": ""
+          },
+          {
+            "table": "transactions_plan",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_order",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_inventory",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_income",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "z_from",
+            "agg": ""
+          },
+          {
+            "table": "",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "",
+            "field": "",
+            "agg": ""
+          }
+        ]
+      },
+      {
+        "name": "Map6",
+        "cells": [
+          {
+            "table": "transactions_pos",
+            "field": "remarks",
+            "agg": ""
+          },
+          {
+            "table": "transactions_plan",
+            "field": "annot",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "z_tailbar1",
+            "agg": ""
+          },
+          {
+            "table": "transactions_order",
+            "field": "ordrcomments",
+            "agg": ""
+          },
+          {
+            "table": "transactions_inventory",
+            "field": "bmtr_annot",
+            "agg": ""
+          },
+          {
+            "table": "transactions_income",
+            "field": "or_tailbar1",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "z_tailbar1",
+            "agg": ""
+          },
+          {
+            "table": "",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "",
+            "field": "",
+            "agg": ""
+          }
+        ]
+      },
+      {
+        "name": "Map7",
+        "cells": [
+          {
+            "table": "transactions_pos",
+            "field": "cashback",
+            "agg": ""
+          },
+          {
+            "table": "transactions_plan",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "z",
+            "agg": ""
+          },
+          {
+            "table": "transactions_order",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_inventory",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_income",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "",
+            "field": "",
+            "agg": ""
+          }
+        ]
+      },
+      {
+        "name": "Map8",
+        "cells": [
+          {
+            "table": "transactions_pos",
+            "field": "session_id",
+            "agg": ""
+          },
+          {
+            "table": "transactions_plan",
+            "field": "pos_session_id",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "z_barimt",
+            "agg": ""
+          },
+          {
+            "table": "transactions_order",
+            "field": "pos_session_id",
+            "agg": ""
+          },
+          {
+            "table": "transactions_inventory",
+            "field": "bmtr_pid",
+            "agg": ""
+          },
+          {
+            "table": "transactions_income",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "z_barimt",
+            "agg": ""
+          }
+        ]
+      },
+      {
+        "name": "Map9",
+        "cells": [
+          {
+            "table": "transactions_pos",
+            "field": "cashback_payment_type",
+            "agg": ""
+          },
+          {
+            "table": "transactions_plan",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "z_from",
+            "agg": ""
+          },
+          {
+            "table": "transactions_order",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_inventory",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_income",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "",
+            "agg": ""
+          }
+        ]
+      }
+    ],
+    "posFields": [
+      {
+        "name": "PF1",
+        "parts": [
+          {
+            "agg": "=",
+            "field": "payable_amount",
+            "table": "transactions_pos"
+          },
+          {
+            "agg": "=",
+            "field": "total_amount",
+            "table": "transactions_pos"
+          },
+          {
+            "agg": "-",
+            "field": "total_discount",
+            "table": "transactions_pos"
+          }
+        ]
+      },
+      {
+        "name": "PF2",
+        "parts": [
+          {
+            "agg": "=",
+            "field": "cashback",
+            "table": "transactions_pos"
+          },
+          {
+            "agg": "=",
+            "field": "deposit_amount",
+            "table": "transactions_pos"
+          },
+          {
+            "agg": "-",
+            "field": "payable_amount",
+            "table": "transactions_pos"
+          }
+        ]
+      }
+    ],
+    "statusField": {
+      "field": "status",
+      "created": "1",
+      "beforePost": "1",
+      "posted": "2",
+      "table": "code_status"
+    },
+    "labelSize": 50,
+    "boxSize": 90
+  },
+  "ONLINE_POS": {
+    "label": "",
+    "labelFontSize": 14,
+    "boxWidth": 100,
+    "boxHeight": 15,
+    "masterTable": "transactions_pos",
+    "masterForm": "Посын борлуулалтын гүйлгээ",
+    "masterType": "single",
+    "masterPosition": "right",
+    "masterView": "fitted",
+    "tables": [
+      {
+        "table": "transactions_pos",
+        "form": "Посын борлуулалтын гүйлгээ",
+        "type": "single",
+        "position": "right",
+        "view": "fitted"
+      },
+      {
+        "view": "table",
+        "table": "transactions_order",
+        "form": "Посын захиалга",
+        "type": "multi",
+        "position": "left"
+      },
+      {
+        "view": "fitted",
+        "table": "transactions_income",
+        "form": "Посын борлуулалтын орлого",
+        "type": "single",
+        "position": "hidden"
+      },
+      {
+        "view": "fitted",
+        "table": "transactions_expense",
+        "form": "Посын хямдралын санхүүгийн зардал",
+        "type": "single",
+        "position": "hidden"
+      },
+      {
+        "view": "fitted",
+        "table": "transactions_expense",
+        "form": "Посын хариулт мөнгөний зардал",
+        "type": "single",
+        "position": "hidden"
+      },
+      {
+        "view": "fitted",
+        "table": "transactions_plan",
+        "form": "Посын гүйлгээний ажил",
+        "type": "single",
+        "position": "hidden"
+      },
+      {
+        "view": "table",
+        "table": "transactions_inventory",
+        "form": "Посын бараа материалын зарлага",
+        "type": "multi",
+        "position": "hidden"
+      }
+    ],
+    "calcFields": [
+      {
+        "name": "Map1",
+        "cells": [
+          {
+            "table": "transactions_pos",
+            "field": "pos_date",
+            "agg": ""
+          },
+          {
+            "table": "transactions_order",
+            "field": "ordrdate",
+            "agg": ""
+          },
+          {
+            "table": "transactions_income",
+            "field": "or_date",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "z_date",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "z_date",
+            "agg": ""
+          },
+          {
+            "table": "transactions_plan",
+            "field": "date",
+            "agg": ""
+          },
+          {
+            "table": "transactions_inventory",
+            "field": "bmtr_date",
+            "agg": ""
+          }
+        ]
+      },
+      {
+        "name": "Map2",
+        "cells": [
+          {
+            "table": "transactions_pos",
+            "field": "session_id",
+            "agg": ""
+          },
+          {
+            "table": "transactions_order",
+            "field": "pos_session_id",
+            "agg": ""
+          },
+          {
+            "table": "transactions_income",
+            "field": "or_o_barimt",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "z_barimt",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "z_barimt",
+            "agg": ""
+          },
+          {
+            "table": "transactions_plan",
+            "field": "pos_session_id",
+            "agg": ""
+          },
+          {
+            "table": "transactions_inventory",
+            "field": "bmtr_pid",
+            "agg": ""
+          }
+        ]
+      },
+      {
+        "name": "Map3",
+        "cells": [
+          {
+            "table": "transactions_pos",
+            "field": "total_quantity",
+            "agg": ""
+          },
+          {
+            "table": "transactions_order",
+            "field": "ordrsub",
+            "agg": "SUM"
+          },
+          {
+            "table": "transactions_income",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_plan",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_inventory",
+            "field": "bmtr_sub",
+            "agg": "SUM"
+          }
+        ]
+      },
+      {
+        "name": "Map4",
+        "cells": [
+          {
+            "table": "transactions_pos",
+            "field": "total_discount",
+            "agg": ""
+          },
+          {
+            "table": "transactions_order",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_income",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "z",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_plan",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_inventory",
+            "field": "bmtr_Saleap",
+            "agg": "SUM"
+          }
+        ]
+      },
+      {
+        "name": "Map5",
+        "cells": [
+          {
+            "table": "transactions_pos",
+            "field": "total_amount",
+            "agg": ""
+          },
+          {
+            "table": "transactions_order",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_income",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_plan",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_inventory",
+            "field": "bmtr_ap",
+            "agg": "SUM"
+          }
+        ]
+      },
+      {
+        "name": "Map6",
+        "cells": [
+          {
+            "table": "transactions_pos",
+            "field": "payment_type",
+            "agg": ""
+          },
+          {
+            "table": "transactions_order",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_income",
+            "field": "orcash_or_id",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_plan",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_inventory",
+            "field": "",
+            "agg": ""
+          }
+        ]
+      },
+      {
+        "name": "Map7",
+        "cells": [
+          {
+            "table": "transactions_pos",
+            "field": "cashback",
+            "agg": ""
+          },
+          {
+            "table": "transactions_order",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_income",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "z",
+            "agg": ""
+          },
+          {
+            "table": "transactions_plan",
+            "field": "",
+            "agg": ""
+          },
+          {
+            "table": "transactions_inventory",
+            "field": "",
+            "agg": ""
+          }
+        ]
+      },
+      {
+        "name": "Map8",
+        "cells": [
+          {
+            "table": "transactions_pos",
+            "field": "remarks",
+            "agg": ""
+          },
+          {
+            "table": "transactions_order",
+            "field": "ordrcomments",
+            "agg": ""
+          },
+          {
+            "table": "transactions_income",
+            "field": "or_tailbar1",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "z_tailbar1",
+            "agg": ""
+          },
+          {
+            "table": "transactions_expense",
+            "field": "z_tailbar1",
+            "agg": ""
+          },
+          {
+            "table": "transactions_plan",
+            "field": "annot",
+            "agg": ""
+          },
+          {
+            "table": "transactions_inventory",
+            "field": "bmtr_annot",
+            "agg": ""
+          }
+        ]
+      }
+    ],
+    "posFields": [
+      {
+        "name": "PF1",
+        "parts": [
+          {
+            "agg": "=",
+            "field": "payable_amount",
+            "table": "transactions_pos"
+          },
+          {
+            "agg": "=",
+            "field": "total_amount",
+            "table": "transactions_pos"
+          },
+          {
+            "agg": "-",
+            "field": "total_discount",
+            "table": "transactions_pos"
+          }
+        ]
+      },
+      {
+        "name": "PF2",
+        "parts": [
+          {
+            "agg": "=",
+            "field": "cashback",
+            "table": "transactions_pos"
+          },
+          {
+            "agg": "=",
+            "field": "deposit_amount",
+            "table": "transactions_pos"
+          },
+          {
+            "agg": "-",
+            "field": "payable_amount",
+            "table": "transactions_pos"
+          }
+        ]
+      }
+    ],
+    "statusField": {
+      "table": "code_status",
+      "field": "status",
+      "created": "1",
+      "beforePost": "1",
+      "posted": "2"
+    }
+  }
+}

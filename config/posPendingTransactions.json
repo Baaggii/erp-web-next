@@ -1,1 +1,444 @@
-{}
+{
+  "pos_md7en1kg": {
+    "name": "ONLINE_POS",
+    "data": {
+      "transactions_pos": {
+        "session_id": "pos_md7en1kg",
+        "sub_transaction_ids": "10001",
+        "deposit_amount": "217000",
+        "payment_type": 13,
+        "remarks": "test",
+        "emp_id": "J1",
+        "branch_id": 1,
+        "company_id": 1
+      },
+      "transactions_order": [
+        {
+          "ordrwholesalesel": "1",
+          "ordrnoatyn": "0.1",
+          "TransType": "5901",
+          "ordrbkod": "303035",
+          "ordrsub": "1",
+          "ordrap": "200000",
+          "pos_session_id": "pos_md7en1kg",
+          "ordrtr_confirm_emp": "J1",
+          "branch_id": 1,
+          "ordrtr_transbranch": 1,
+          "company_id": 1,
+          "ordrretailsel": "1"
+        },
+        {
+          "ordrwholesalesel": "1",
+          "ordrnoatyn": "0.1",
+          "TransType": "5901",
+          "ordrbkod": "300335",
+          "ordrsub": "2",
+          "ordrap": "15000",
+          "pos_session_id": "pos_md7en1kg",
+          "ordrtr_confirm_emp": "J1",
+          "branch_id": 1,
+          "ordrtr_transbranch": 1,
+          "company_id": 1,
+          "ordrretailsel": "1"
+        },
+        {
+          "ordrwholesalesel": "1",
+          "ordrnoatyn": "0.1",
+          "TransType": "5901",
+          "ordrbkod": "303031",
+          "ordrsub": "3",
+          "ordrap": "2000",
+          "pos_session_id": "pos_md7en1kg",
+          "ordrtr_confirm_emp": "J1",
+          "branch_id": 1,
+          "ordrtr_transbranch": 1,
+          "company_id": 1,
+          "ordrretailsel": "1"
+        }
+      ],
+      "transactions_income": {
+        "TransType": "1901",
+        "or_type_id": "1",
+        "or_torol": "4",
+        "ortr_confirm_emp": "J1",
+        "branch_id": 1,
+        "ortr_transbranch": 1,
+        "or_chig": 1,
+        "company_id": 1
+      },
+      "transactions_expense": {
+        "TransType": "2902",
+        "z_angilal": "1",
+        "z_torol": "1",
+        "z_utga": "1",
+        "z_from": "1",
+        "ztr_confirm_emp": "J1",
+        "branch_id": 1,
+        "ztr_transbranch": 1,
+        "z_angilal_b": 1,
+        "company_id": 1
+      },
+      "transactions_plan": {
+        "pos_session_id": "pos_md7en1kg",
+        "TransType": "6901",
+        "confirm_emp": "J1",
+        "branch_id": 1,
+        "transbranch": 1,
+        "company_id": 1
+      },
+      "transactions_inventory": [],
+      "code_status": {
+        "status": "1"
+      }
+    },
+    "masterId": null,
+    "session": {
+      "employeeId": "J1",
+      "companyId": 1,
+      "branchId": 1,
+      "date": "2025-07-17T15:46:59.738Z"
+    },
+    "savedAt": "2025-07-17T15:47:00.894Z"
+  },
+  "txn_md98ah00baa7": {
+    "name": "POS_Modmarket",
+    "data": {
+      "transactions_order": [
+        {
+          "ordrwholesalesel": "",
+          "ordrnoatyn": "0.1",
+          "TransType": "5901",
+          "ordrretailsel": "1",
+          "ordrbkod": "1001",
+          "ordrsub": "1",
+          "retail_up": "10",
+          "ordrtr_confirm_emp": "30",
+          "branch_id": 3,
+          "ordrtr_transbranch": 3,
+          "company_id": 2
+        }
+      ],
+      "code_status": {
+        "status": "1"
+      },
+      "transactions_pos": {
+        "sub_transaction_ids": "10001",
+        "emp_id": "30",
+        "branch_id": 3,
+        "company_id": 2
+      },
+      "transactions_expense": {
+        "TransType": "2901",
+        "z_angilal": "1",
+        "z_torol": "1",
+        "z_utga": "1",
+        "z_from": "1",
+        "ztr_confirm_emp": "30",
+        "branch_id": 3,
+        "ztr_transbranch": 3,
+        "z_angilal_b": 3,
+        "company_id": 2
+      },
+      "transactions_plan": {
+        "TransType": "6901",
+        "confirm_emp": "30",
+        "branch_id": 3,
+        "transbranch": 3,
+        "company_id": 2
+      },
+      "transactions_inventory": {
+        "TransType": "1911",
+        "bmtr_confirm_emp": "30",
+        "branch_id": 3,
+        "company_id": 2,
+        "bmtr_transbranch": 2
+      },
+      "transactions_income": {
+        "TransType": "1901",
+        "or_type_id": "1",
+        "or_torol": "4",
+        "ortr_confirm_emp": "30",
+        "branch_id": 3,
+        "ortr_transbranch": 3,
+        "or_chig": 3,
+        "company_id": 2
+      }
+    },
+    "masterId": null,
+    "session": {
+      "employeeId": "30",
+      "companyId": 2,
+      "branchId": 3,
+      "date": "2025-07-18T19:45:00.817Z"
+    },
+    "savedAt": "2025-07-18T19:45:01.584Z"
+  },
+  "pos_md9ubajx": {
+    "name": "ONLINE_POS",
+    "data": {
+      "transactions_pos": {
+        "session_id": "pos_md9ubajx",
+        "sub_transaction_ids": "10001",
+        "total_quantity": 0,
+        "total_amount": 0,
+        "total_discount": 0,
+        "cashback": "1000",
+        "deposit_amount": "10000",
+        "payment_type": 13,
+        "remarks": "test",
+        "cashback_payment_type": 15,
+        "emp_id": "J1",
+        "branch_id": 1,
+        "company_id": 1
+      },
+      "transactions_plan": {
+        "pos_session_id": "pos_md9ubajx",
+        "TransType": "6901",
+        "confirm_emp": "J1",
+        "branch_id": 1,
+        "transbranch": 1,
+        "company_id": 1
+      },
+      "transactions_expense": {
+        "TransType": "2901",
+        "z_angilal": "1",
+        "z_torol": "1",
+        "z_utga": "1",
+        "z_from": "1",
+        "ztr_confirm_emp": "J1",
+        "branch_id": 1,
+        "ztr_transbranch": 1,
+        "z_angilal_b": 1,
+        "company_id": 1
+      },
+      "transactions_order": [
+        {
+          "ordrwholesalesel": "",
+          "ordrnoatyn": "0.1",
+          "TransType": "5901",
+          "ordrretailsel": "1",
+          "ordrbkod": "303030",
+          "ordrsub": "1",
+          "retail_up": "2000",
+          "ordrap": "",
+          "ordrtr_confirm_emp": "J1",
+          "branch_id": 1,
+          "ordrtr_transbranch": 1,
+          "company_id": 1,
+          "pos_session_id": "pos_md9ubajx",
+          "sp_primary_code": "303030",
+          "sp_selling_code": "303030",
+          "sp_pm_name": "202203 Лого /мод маркет/_1300Х900Х17",
+          "sp_pm_unit_id": 2,
+          "sp_categories": 2,
+          "sp_manufacturer_id": 100,
+          "sp_cost": "240817.2400",
+          "sp_cost_date": "2022-03-31",
+          "sp_source_table": "product_cost"
+        },
+        {
+          "ordrwholesalesel": "",
+          "ordrnoatyn": "0.1",
+          "TransType": "5901",
+          "ordrretailsel": "1",
+          "ordrbkod": "300001",
+          "ordrsub": "2",
+          "retail_up": "3000",
+          "ordrap": "",
+          "ordrtr_confirm_emp": "J1",
+          "branch_id": 1,
+          "ordrtr_transbranch": 1,
+          "company_id": 1,
+          "pos_session_id": "pos_md9ubajx",
+          "sp_primary_code": "300001",
+          "sp_selling_code": "300001",
+          "sp_pm_name": "Гүнгэрваа /том/",
+          "sp_pm_unit_id": 1,
+          "sp_categories": 2,
+          "sp_manufacturer_id": 8,
+          "sp_cost": "130000.0000",
+          "sp_cost_date": "2018-02-04",
+          "sp_source_table": "product_cost"
+        },
+        {
+          "ordrwholesalesel": "",
+          "ordrnoatyn": "0.1",
+          "TransType": "5901",
+          "ordrretailsel": "1",
+          "ordrbkod": "300002",
+          "ordrsub": "3",
+          "retail_up": "4000",
+          "ordrtr_confirm_emp": "J1",
+          "branch_id": 1,
+          "ordrtr_transbranch": 1,
+          "company_id": 1,
+          "pos_session_id": "pos_md9ubajx",
+          "sp_primary_code": "300002",
+          "sp_selling_code": "300002",
+          "sp_pm_name": "Гүнгэрваа  /жижиг/",
+          "sp_pm_unit_id": 1,
+          "sp_categories": 2,
+          "sp_manufacturer_id": 8,
+          "sp_cost": "120000.0000",
+          "sp_cost_date": "2018-02-04",
+          "sp_source_table": "product_cost"
+        }
+      ],
+      "transactions_inventory": [],
+      "transactions_income": {
+        "TransType": "1901",
+        "or_type_id": "1",
+        "or_torol": "4",
+        "ortr_confirm_emp": "J1",
+        "branch_id": 1,
+        "ortr_transbranch": 1,
+        "or_chig": 1,
+        "company_id": 1
+      },
+      "code_status": {
+        "status": "1"
+      }
+    },
+    "masterId": null,
+    "session": {
+      "employeeId": "J1",
+      "companyId": 2,
+      "branchId": 1,
+      "date": "2025-07-25 18:38:13"
+    },
+    "savedAt": "2025-07-25T10:38:14.899Z"
+  },
+  "txn_mdiphm2kxu6n": {
+    "name": "POS_Modmarket",
+    "data": {
+      "transactions_order": [
+        {
+          "ordrwholesalesel": "",
+          "ordrnoatyn": "0.1",
+          "TransType": "5901",
+          "ordrretailsel": "1",
+          "ordrbkod": "300002",
+          "sp_primary_code": "300002",
+          "sp_selling_code": "300002",
+          "sp_pm_name": "Гүнгэрваа  /жижиг/",
+          "sp_pm_unit_id": 1,
+          "sp_categories": 2,
+          "sp_manufacturer_id": 8,
+          "sp_cost": "120000.0000",
+          "sp_cost_date": "2018-02-04",
+          "sp_source_table": "product_cost",
+          "ordrsub": "1",
+          "ordrap": "",
+          "sp_current_stock": "",
+          "ordrtr_confirm_emp": "J1",
+          "branch_id": 1,
+          "ordrtr_transbranch": 1,
+          "company_id": 2
+        },
+        {
+          "ordrwholesalesel": "",
+          "ordrnoatyn": "0.1",
+          "TransType": "5901",
+          "ordrretailsel": "1",
+          "ordrdate": "2025-07-25",
+          "ordrbkod": "300001",
+          "sp_primary_code": "300001",
+          "sp_selling_code": "300001",
+          "sp_pm_name": "Гүнгэрваа /том/",
+          "sp_pm_unit_id": 1,
+          "sp_categories": 2,
+          "sp_manufacturer_id": 8,
+          "sp_cost": "130000.0000",
+          "sp_cost_date": "2018-02-04",
+          "sp_source_table": "product_cost",
+          "ordrsub": "2",
+          "ordrap": "260000",
+          "sp_current_stock": "",
+          "ordrtr_confirm_emp": "J1",
+          "branch_id": 1,
+          "ordrtr_transbranch": 1,
+          "company_id": 2
+        },
+        {
+          "ordrwholesalesel": "",
+          "ordrnoatyn": "0.1",
+          "TransType": "5901",
+          "ordrretailsel": "1",
+          "ordrdate": "2025-07-25",
+          "ordrbkod": "600001",
+          "sp_primary_code": "600001",
+          "sp_selling_code": "200622",
+          "sp_pm_name": "5 см нарс банз Үйлдвэрийн хатаалга",
+          "sp_pm_unit_id": 6,
+          "sp_categories": 5,
+          "sp_manufacturer_id": 0,
+          "sp_cost": "500000.0000",
+          "sp_cost_date": "2018-10-31",
+          "sp_source_table": "material_cost",
+          "ordrsub": "1",
+          "ordrap": "500000",
+          "ordrtr_confirm_emp": "J1",
+          "branch_id": 1,
+          "ordrtr_transbranch": 1,
+          "company_id": 2
+        }
+      ],
+      "transactions_pos": {
+        "total_quantity": 0,
+        "total_amount": 0,
+        "total_discount": 0,
+        "sub_transaction_ids": "10001",
+        "emp_id": "J1",
+        "branch_id": 1,
+        "company_id": 2
+      },
+      "code_status": {
+        "status": "1"
+      },
+      "transactions_plan": {
+        "TransType": "6901",
+        "confirm_emp": "J1",
+        "branch_id": 1,
+        "transbranch": 1,
+        "company_id": 2
+      },
+      "transactions_expense": {
+        "TransType": "2901",
+        "z_angilal": "1",
+        "z_torol": "1",
+        "z_utga": "1",
+        "z_from": "1",
+        "ztr_confirm_emp": "J1",
+        "branch_id": 1,
+        "ztr_transbranch": 1,
+        "z_angilal_b": 1,
+        "company_id": 2
+      },
+      "transactions_inventory": {
+        "TransType": "1911",
+        "bmtr_confirm_emp": "J1",
+        "branch_id": 1,
+        "company_id": 2,
+        "bmtr_transbranch": 2
+      },
+      "transactions_income": {
+        "TransType": "1901",
+        "or_type_id": "1",
+        "or_torol": "4",
+        "ortr_confirm_emp": "J1",
+        "branch_id": 1,
+        "ortr_transbranch": 1,
+        "or_chig": 1,
+        "company_id": 2
+      }
+    },
+    "masterId": null,
+    "session": {
+      "employeeId": "J1",
+      "companyId": 2,
+      "branchId": 1,
+      "date": "2025-07-25 18:56:21"
+    },
+    "savedAt": "2025-07-25T10:56:23.805Z"
+  }
+}
