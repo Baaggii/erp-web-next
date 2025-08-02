@@ -54,14 +54,26 @@ router.post('/fix_incomplete', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/upload_check', requireAuth, upload.array('images'), async (req, res, next) => {
-  try {
-    const { list, summary } = await checkUploadedImages(req.files || []);
-    res.json({ list, summary });
-  } catch (err) {
-    next(err);
-  }
-});
+router.post(
+  '/upload_check',
+  requireAuth,
+  (req, res, next) => {
+    const ct = req.headers['content-type'] || '';
+    if (ct.includes('multipart/form-data')) {
+      return upload.array('images')(req, res, next);
+    }
+    return next();
+  },
+  async (req, res, next) => {
+    try {
+      const names = Array.isArray(req.body?.names) ? req.body.names : [];
+      const { list, summary } = await checkUploadedImages(req.files || [], names);
+      res.json({ list, summary });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 router.post('/upload_commit', requireAuth, async (req, res, next) => {
   try {
