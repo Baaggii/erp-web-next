@@ -45,7 +45,54 @@ export default function ImageManagement() {
     if (uploadSel.length === uploads.length) {
       setUploadSel([]);
     } else {
-      setUploadSel(uploads.map((u) => u.tmpPath));
+      setUploadSel(uploads.map((u) => u.id));
+    }
+  }
+
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape' && activeOp) {
+        const action = activeOp === 'detect' ? 'detection' : 'folder selection';
+        if (window.confirm(`Cancel ${action}?`)) {
+          if (activeOp === 'detect') {
+            detectAbortRef.current?.abort();
+          } else {
+            scanCancelRef.current = true;
+            folderAbortRef.current?.abort();
+          }
+          setActiveOp(null);
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [activeOp]);
+
+  async function selectFolder() {
+    if (!window.showDirectoryPicker) {
+      addToast('Directory selection not supported', 'error');
+      return;
+    }
+    setActiveOp('folder');
+    scanCancelRef.current = false;
+    try {
+      const dirHandle = await window.showDirectoryPicker();
+      const arr = [];
+      for await (const entry of dirHandle.values()) {
+        if (scanCancelRef.current) break;
+        if (entry.kind === 'file') {
+          arr.push(entry.name);
+        }
+      }
+      if (scanCancelRef.current) return;
+      setFolderName(dirHandle.name || '');
+      await handleSelectFiles(arr);
+    } catch {
+      // ignore
+    } finally {
+      folderAbortRef.current = null;
+      scanCancelRef.current = false;
+      setActiveOp(null);
     }
   }
 
@@ -167,28 +214,23 @@ export default function ImageManagement() {
     }
   }
 
-  async function handleSelectFiles(files) {
-    if (!files?.length) return;
-    const arr = Array.from(files);
-    const first = arr[0];
-    if (first?.webkitRelativePath) {
-      const parts = first.webkitRelativePath.split('/');
-      setFolderName(parts[0] || '');
-    }
-    const form = new FormData();
-    arr.slice(0, 1000).forEach((f) => form.append('images', f));
+  async function handleSelectFiles(names) {
+    if (!names?.length) return;
+    const payload = { names: names.slice(0, 1000) };
     try {
       const controller = new AbortController();
       folderAbortRef.current = controller;
       const res = await fetch('/api/transaction_images/upload_check', {
         method: 'POST',
-        body: form,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
         credentials: 'include',
         signal: controller.signal,
       });
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
-        setUploads(Array.isArray(data.list) ? data.list : []);
+        const list = Array.isArray(data.list) ? data.list : [];
+        setUploads(list);
         setUploadSummary(data.summary || null);
         setUploadSel([]);
       } else {
@@ -202,7 +244,7 @@ export default function ImageManagement() {
   }
 
   async function commitUploads() {
-    const items = uploads.filter((u) => uploadSel.includes(u.tmpPath));
+    const items = uploads.filter((u) => uploadSel.includes(u.id) && u.tmpPath);
     if (items.length === 0) return;
     const res = await fetch('/api/transaction_images/upload_commit', {
       method: 'POST',
@@ -270,14 +312,17 @@ export default function ImageManagement() {
                 type="button"
                 onClick={commitUploads}
                 style={{ marginBottom: '0.5rem' }}
-                disabled={uploadSel.length === 0}
+                disabled={
+                  uploadSel.length === 0 ||
+                  !uploads.some((u) => uploadSel.includes(u.id) && u.tmpPath)
+                }
               >
                 Rename &amp; Upload Selected
               </button>
               <button
                 type="button"
                 onClick={() => {
-                  setUploads((prev) => prev.filter((u) => !uploadSel.includes(u.tmpPath)));
+                  setUploads((prev) => prev.filter((u) => !uploadSel.includes(u.id)));
                   setUploadSel([]);
                 }}
                 style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
@@ -299,9 +344,9 @@ export default function ImageManagement() {
                 </thead>
                 <tbody>
                   {uploads.map((u) => (
-                    <tr key={u.tmpPath} className={uploadSel.includes(u.tmpPath) ? 'bg-blue-50' : ''}>
+                    <tr key={u.id} className={uploadSel.includes(u.id) ? 'bg-blue-50' : ''}>
                       <td className="border px-2 py-1 text-center">
-                        <input type="checkbox" checked={uploadSel.includes(u.tmpPath)} onChange={() => toggleUpload(u.tmpPath)} />
+                        <input type="checkbox" checked={uploadSel.includes(u.id)} onChange={() => toggleUpload(u.id)} />
                       </td>
                       <td className="border px-2 py-1">{u.originalName}</td>
                       <td className="border px-2 py-1">{u.newName}</td>
@@ -310,8 +355,8 @@ export default function ImageManagement() {
                         <button
                           type="button"
                           onClick={() => {
-                            setUploads((prev) => prev.filter((x) => x.tmpPath !== u.tmpPath));
-                            setUploadSel((s) => s.filter((id) => id !== u.tmpPath));
+                            setUploads((prev) => prev.filter((x) => x.id !== u.id));
+                            setUploadSel((s) => s.filter((id) => id !== u.id));
                           }}
                         >
                           Delete

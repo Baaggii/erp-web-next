@@ -61,12 +61,16 @@ function pickConfig(configs = {}, row = {}) {
 }
 
 function extractUnique(str) {
-  const uuid = str.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  // Strip saveImages timestamp/random suffix if present
+  const cleaned = str.replace(/_[0-9]{13}_[a-z0-9]{6}$/i, '');
+  const uuid = cleaned.match(
+    /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+  );
   if (uuid) return uuid[0];
-  const alt = str.match(/[A-Za-z0-9]{4,}(?:[-_][A-Za-z0-9]{4,}){3,}/);
-  if (alt) return alt[0];
-  const long = str.match(/[A-Za-z0-9_-]{8,}/);
-  return long ? long[0] : '';
+  const alt = cleaned.match(/[A-Za-z0-9]{4,}(?:[-_][A-Za-z0-9]{4,}){3,}/);
+  if (alt) return alt[0].replace(/[-_]\d+$/, '');
+  const long = cleaned.match(/[A-Za-z0-9_-]{8,}/);
+  return long ? long[0].replace(/[-_]\d+$/, '') : '';
 }
 
 function parseFileUnique(base) {
@@ -348,7 +352,8 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
     }
     folders.add(entry.name);
     totalFiles += files.length;
-    files = files.slice(0, 1000);
+    const limit = perPage * page;
+    files = files.slice(0, limit);
     for (const f of files) {
       const ext = path.extname(f);
       const base = path.basename(f, ext);
@@ -508,14 +513,15 @@ export async function fixIncompleteImages(list = []) {
   return count;
 }
 
-export async function checkUploadedImages(files = []) {
+export async function checkUploadedImages(files = [], names = []) {
   const results = [];
   let processed = 0;
   const limit = 1000;
-  files = files.slice(0, limit);
-  for (const file of files) {
-    const ext = path.extname(file.originalname);
-    const base = path.basename(file.originalname, ext);
+  let items = files.length ? files : names.map((n) => ({ originalname: n }));
+  items = items.slice(0, limit);
+  for (const file of items) {
+    const ext = path.extname(file.originalname || '');
+    const base = path.basename(file.originalname || '', ext);
     const parts = base.split('_');
     const isSave = /_\d{13}_[a-z0-9]{6}$/i.test(base);
     let unique = '';
@@ -606,9 +612,10 @@ export async function checkUploadedImages(files = []) {
       newName,
       folder: folderRaw,
       folderDisplay,
+      id: file.path || file.originalname,
     });
   }
-  return { list: results, summary: { totalFiles: files.length, processed } };
+  return { list: results, summary: { totalFiles: items.length, processed } };
 }
 
 export async function commitUploadedImages(list = []) {

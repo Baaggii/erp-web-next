@@ -280,3 +280,48 @@ await test('checkUploadedImages handles timestamped names', async () => {
   await fs.writeFile(cfgPath, origCfg);
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
 });
+
+await test('detectIncompleteImages handles UUID with numeric suffix', async () => {
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
+  const dir = path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test');
+  await fs.mkdir(dir, { recursive: true });
+  const file = path.join(dir, 'A5E68912-2218-41BD-BB11-E4810BB30C96-4.jpg');
+  await fs.writeFile(file, 'x');
+
+  const row = {
+    id: 1,
+    test_num: 'A5E68912-2218-41BD-BB11-E4810BB30C96',
+    label_field: 'img005',
+    trtype: 't4',
+    TransType: 'C',
+  };
+
+  const restoreDb = mockPool(async (sql) => {
+    if (/SHOW TABLES LIKE/.test(sql)) return [[{ t: 'transactions_test' }]];
+    if (/SHOW COLUMNS FROM/.test(sql))
+      return [[{ Field: 'test_num' }, { Field: 'label_field' }]];
+    if (/FROM `transactions_test`/.test(sql)) return [[row]];
+    return [[]];
+  });
+
+  const origCfg = await fs.readFile(cfgPath, 'utf8').catch(() => '{}');
+  await fs.writeFile(
+    cfgPath,
+    JSON.stringify({
+      transactions_test: {
+        default: { imagenameField: ['label_field'], transactionTypeValue: 'C' },
+      },
+    }),
+  );
+
+  const { list } = await detectIncompleteImages(1);
+  assert.equal(list.length, 1);
+  assert.equal(
+    list[0].newName,
+    'img005_A5E68912-2218-41BD-BB11-E4810BB30C96-4.jpg',
+  );
+
+  restoreDb();
+  await fs.writeFile(cfgPath, origCfg);
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
+});
