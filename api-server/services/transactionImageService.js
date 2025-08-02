@@ -42,10 +42,19 @@ function buildNameFromRow(row, fields = []) {
 
 function pickConfig(configs = {}, row = {}) {
   for (const cfg of Object.values(configs)) {
-    if (!cfg.transactionTypeField || !cfg.transactionTypeValue) continue;
-    const val = getCase(row, cfg.transactionTypeField);
-    if (val !== undefined && String(val) === String(cfg.transactionTypeValue)) {
-      return cfg;
+    if (!cfg.transactionTypeValue) continue;
+    if (cfg.transactionTypeField) {
+      const val = getCase(row, cfg.transactionTypeField);
+      if (val !== undefined && String(val) === String(cfg.transactionTypeValue)) {
+        return cfg;
+      }
+    } else {
+      const matchField = Object.keys(row).find(
+        (k) => String(getCase(row, k)) === String(cfg.transactionTypeValue),
+      );
+      if (matchField) {
+        return { ...cfg, transactionTypeField: matchField };
+      }
     }
   }
   return Object.values(configs)[0] || {};
@@ -316,14 +325,16 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
         getCase(row, 'UITransType') ||
         getCase(row, 'UITransTypeName') ||
         getCase(row, 'transtype');
-      if (cfg?.imagenameField?.length) {
+      if (
+        cfg?.imagenameField?.length &&
+        tType &&
+        cfg.transactionTypeValue &&
+        cfg.transactionTypeField &&
+        String(getCase(row, cfg.transactionTypeField)) === String(cfg.transactionTypeValue)
+      ) {
         newBase = buildNameFromRow(row, cfg.imagenameField);
         if (newBase) {
-          if (tType && cfg.transactionTypeValue) {
-            folderRaw = `${slugify(String(tType))}/${slugify(String(cfg.transactionTypeValue))}`;
-          } else {
-            folderRaw = buildFolderName(row, cfg.imageFolder || entry.name);
-          }
+          folderRaw = `${slugify(String(tType))}/${slugify(String(cfg.transactionTypeValue))}`;
         }
       }
       if (!newBase) {
@@ -456,14 +467,16 @@ export async function checkUploadedImages(files = []) {
       getCase(row, 'UITransType') ||
       getCase(row, 'UITransTypeName') ||
       getCase(row, 'transtype');
-    if (cfg?.imagenameField?.length) {
+    if (
+      cfg?.imagenameField?.length &&
+      tType &&
+      cfg.transactionTypeValue &&
+      cfg.transactionTypeField &&
+      String(getCase(row, cfg.transactionTypeField)) === String(cfg.transactionTypeValue)
+    ) {
       newBase = buildNameFromRow(row, cfg.imagenameField);
       if (newBase) {
-        if (tType && cfg.transactionTypeValue) {
-          folderRaw = `${slugify(String(tType))}/${slugify(String(cfg.transactionTypeValue))}`;
-        } else {
-          folderRaw = buildFolderName(row, cfg.imageFolder || found.table);
-        }
+        folderRaw = `${slugify(String(tType))}/${slugify(String(cfg.transactionTypeValue))}`;
       }
     }
     if (!newBase) {
