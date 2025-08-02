@@ -12,6 +12,10 @@ export default function ImageManagement() {
   const [selected, setSelected] = useState([]);
   const [uploads, setUploads] = useState([]);
   const [uploadSel, setUploadSel] = useState([]);
+  const [folderName, setFolderName] = useState('');
+  const [uploadSummary, setUploadSummary] = useState(null);
+  const [pendingSummary, setPendingSummary] = useState(null);
+  const [pageSize, setPageSize] = useState(100);
   const fileRef = useRef();
 
   function toggle(id) {
@@ -62,24 +66,27 @@ export default function ImageManagement() {
   useEffect(() => {
     if (tab !== 'fix') return;
     refreshList();
-  }, [tab, page]);
+  }, [tab, page, pageSize]);
 
   async function refreshList() {
     try {
-      const res = await fetch(`/api/transaction_images/detect_incomplete?page=${page}`, {
+      const res = await fetch(`/api/transaction_images/detect_incomplete?page=${page}&pageSize=${pageSize}`, {
         credentials: 'include',
       });
       if (res.ok) {
         const data = await res.json();
         setPending(Array.isArray(data.list) ? data.list : []);
+        setPendingSummary(data.summary || null);
         setHasMore(!!data.hasMore);
         setSelected([]);
       } else {
         setPending([]);
+        setPendingSummary(null);
         setHasMore(false);
       }
     } catch {
       setPending([]);
+      setPendingSummary(null);
       setHasMore(false);
     }
   }
@@ -104,8 +111,14 @@ export default function ImageManagement() {
 
   async function handleSelectFiles(files) {
     if (!files?.length) return;
+    const arr = Array.from(files);
+    const first = arr[0];
+    if (first?.webkitRelativePath) {
+      const parts = first.webkitRelativePath.split('/');
+      setFolderName(parts[0] || '');
+    }
     const form = new FormData();
-    Array.from(files).forEach((f) => form.append('images', f));
+    arr.slice(0, 1000).forEach((f) => form.append('images', f));
     try {
       const res = await fetch('/api/transaction_images/upload_check', {
         method: 'POST',
@@ -115,6 +128,7 @@ export default function ImageManagement() {
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
         setUploads(Array.isArray(data.list) ? data.list : []);
+        setUploadSummary(data.summary || null);
         setUploadSel([]);
       } else {
         addToast('Check failed', 'error');
@@ -138,6 +152,7 @@ export default function ImageManagement() {
       addToast(`Uploaded ${data.uploaded || 0} file(s)`, 'success');
       setUploads([]);
       setUploadSel([]);
+      setUploadSummary(null);
     } else {
       addToast('Upload failed', 'error');
     }
@@ -176,11 +191,14 @@ export default function ImageManagement() {
         <div>
           <div style={{ marginBottom: '0.5rem' }}>
             <button type="button" onClick={() => fileRef.current?.click()} style={{ marginRight: '0.5rem' }}>
-              Select Images
+              Select Folder
             </button>
+            {folderName && <span style={{ marginRight: '0.5rem' }}>{folderName}</span>}
             <input
               type="file"
               multiple
+              webkitdirectory=""
+              directory=""
               ref={fileRef}
               style={{ display: 'none' }}
               onChange={(e) => handleSelectFiles(e.target.files)}
@@ -188,6 +206,22 @@ export default function ImageManagement() {
             <button type="button" onClick={refreshList} style={{ marginRight: '0.5rem' }}>
               Refresh
             </button>
+            <label style={{ marginRight: '0.5rem' }}>
+              Page Size:{' '}
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setPage(1);
+                }}
+              >
+                {[50, 100, 200].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
             <button type="button" disabled={page === 1} onClick={() => setPage(page - 1)} style={{ marginRight: '0.5rem' }}>
               Prev
             </button>
@@ -195,9 +229,22 @@ export default function ImageManagement() {
               Next
             </button>
           </div>
+          {uploadSummary && (
+            <p style={{ marginBottom: '0.5rem' }}>
+              {`Scanned ${uploadSummary.totalFiles || 0} file(s), processed ${uploadSummary.processed || 0}.`}
+            </p>
+          )}
           {uploads.length > 0 && (
             <div style={{ marginBottom: '1rem' }}>
               <h4>Uploads</h4>
+              <button
+                type="button"
+                onClick={commitUploads}
+                style={{ marginBottom: '0.5rem' }}
+                disabled={uploadSel.length === 0}
+              >
+                Rename &amp; Upload Selected
+              </button>
               <table className="min-w-full border border-gray-300 text-sm" style={{ tableLayout: 'fixed' }}>
                 <thead>
                   <tr>
@@ -207,6 +254,7 @@ export default function ImageManagement() {
                     <th className="border px-2 py-1">Original</th>
                     <th className="border px-2 py-1">New Name</th>
                     <th className="border px-2 py-1">Folder</th>
+                    <th className="border px-2 py-1">Delete</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -218,19 +266,42 @@ export default function ImageManagement() {
                       <td className="border px-2 py-1">{u.originalName}</td>
                       <td className="border px-2 py-1">{u.newName}</td>
                       <td className="border px-2 py-1">{u.folderDisplay}</td>
+                      <td className="border px-2 py-1 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setUploads((prev) => prev.filter((x) => x.tmpPath !== u.tmpPath));
+                            setUploadSel((s) => s.filter((id) => id !== u.tmpPath));
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <button type="button" onClick={commitUploads} style={{ marginTop: '0.5rem' }} disabled={uploadSel.length === 0}>
-                Rename &amp; Upload Selected
-              </button>
             </div>
+          )}
+          {pendingSummary && (
+            <p style={{ marginBottom: '0.5rem' }}>
+              {`Scanned ${pendingSummary.totalFiles || 0} file(s) in ${pendingSummary.folders?.length || 0} folder(s)`}
+              {pendingSummary.folders?.length ? ` (${pendingSummary.folders.join(', ')})` : ''}
+              {`. Found ${pendingSummary.incompleteFound || 0} incomplete name(s), displaying ${pendingSummary.processed || 0}.`}
+            </p>
           )}
           {pending.length === 0 ? (
             <p>No incomplete names found.</p>
           ) : (
             <div>
+              <button
+                type="button"
+                onClick={applyFixes}
+                style={{ marginBottom: '0.5rem' }}
+                disabled={selected.length === 0}
+              >
+                Rename &amp; Move Selected
+              </button>
               <table className="min-w-full border border-gray-300 text-sm" style={{ tableLayout: 'fixed' }}>
                 <thead>
                   <tr>
@@ -240,6 +311,7 @@ export default function ImageManagement() {
                     <th className="border px-2 py-1">Current</th>
                     <th className="border px-2 py-1">New Name</th>
                     <th className="border px-2 py-1">Folder</th>
+                    <th className="border px-2 py-1">Delete</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -251,13 +323,21 @@ export default function ImageManagement() {
                       <td className="border px-2 py-1">{p.currentName}</td>
                       <td className="border px-2 py-1">{p.newName}</td>
                       <td className="border px-2 py-1">{p.folderDisplay}</td>
+                      <td className="border px-2 py-1 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPending((prev) => prev.filter((x) => x.currentName !== p.currentName));
+                            setSelected((s) => s.filter((id) => id !== p.currentName));
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <button type="button" onClick={applyFixes} style={{ marginTop: '0.5rem' }} disabled={selected.length === 0}>
-                Rename &amp; Move Selected
-              </button>
             </div>
           )}
         </div>
