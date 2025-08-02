@@ -29,7 +29,6 @@ import SettingsPage, { GeneralSettings } from './pages/Settings.jsx';
 import ChangePasswordPage from './pages/ChangePassword.jsx';
 import BlueLinkPage from './pages/BlueLinkPage.jsx';
 import InventoryPage from './pages/InventoryPage.jsx';
-import ImageManagementPage from './pages/ImageManagement.jsx';
 import FinanceTransactionsPage from './pages/FinanceTransactions.jsx';
 import { useModules } from './hooks/useModules.js';
 import { useTxnModules } from './hooks/useTxnModules.js';
@@ -70,7 +69,6 @@ export default function App() {
     pos_transaction_management: <PosTxnConfigPage />,
     pos_transactions: <PosTransactionsPage />,
     general_configuration: <GeneralConfigurationPage />,
-    image_management: <ImageManagementPage />,
     change_password: <ChangePasswordPage />,
   };
 
@@ -99,7 +97,6 @@ export default function App() {
     'report_management',
     'relations_config',
     'pos_transaction_management',
-    'image_management',
     'general_configuration',
   ]);
 
