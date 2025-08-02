@@ -12,6 +12,8 @@ export default function ImageManagement() {
   const [selected, setSelected] = useState([]);
   const [uploads, setUploads] = useState([]);
   const [uploadSel, setUploadSel] = useState([]);
+  const [uploadPage, setUploadPage] = useState(1);
+  const [uploadPageSize, setUploadPageSize] = useState(200);
   const [folderName, setFolderName] = useState('');
   const [uploadSummary, setUploadSummary] = useState(null);
   const [pendingSummary, setPendingSummary] = useState(null);
@@ -19,6 +21,10 @@ export default function ImageManagement() {
   const detectAbortRef = useRef();
   const scanCancelRef = useRef(false);
   const [activeOp, setActiveOp] = useState(null);
+
+  const uploadStart = (uploadPage - 1) * uploadPageSize;
+  const pageUploads = uploads.slice(uploadStart, uploadStart + uploadPageSize);
+  const uploadHasMore = uploadStart + uploadPageSize < uploads.length;
 
   function toggle(id) {
     setSelected((prev) =>
@@ -40,11 +46,13 @@ export default function ImageManagement() {
     );
   }
 
-  function toggleUploadAll() {
-    if (uploadSel.length === uploads.length) {
-      setUploadSel([]);
+  function toggleUploadAll(list) {
+    const ids = list.map((u) => u.id);
+    const allSelected = ids.every((id) => uploadSel.includes(id));
+    if (allSelected) {
+      setUploadSel((prev) => prev.filter((id) => !ids.includes(id)));
     } else {
-      setUploadSel(uploads.map((u) => u.id));
+      setUploadSel((prev) => [...prev, ...ids.filter((id) => !prev.includes(id))]);
     }
   }
 
@@ -112,12 +120,40 @@ export default function ImageManagement() {
         all = all.concat(list);
       }
       if (scanCancelRef.current) return;
+      const chunkSize = 200;
+      let all = [];
+      let processed = 0;
+      for (let i = 0; i < names.length; i += chunkSize) {
+        if (scanCancelRef.current) return;
+        let res;
+        try {
+          res = await fetch('/api/transaction_images/upload_scan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ names: names.slice(i, i + chunkSize) }),
+          });
+        } catch {
+          addToast('Folder scan failed', 'error');
+          return;
+        }
+        if (!res.ok) {
+          addToast('Folder scan failed', 'error');
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        const list = Array.isArray(data.list) ? data.list : [];
+        processed += data?.summary?.processed || 0;
+        all = all.concat(list);
+      }
+      if (scanCancelRef.current) return;
       setFolderName(dirHandle.name || '');
       setUploads(
         all.map((u) => ({ originalName: u.originalName, id: u.originalName, handle: handles[u.originalName] }))
       );
       setUploadSummary({ totalFiles: names.length, processed });
       setUploadSel([]);
+      setUploadPage(1);
     } catch {
       // ignore
     } finally {
@@ -326,11 +362,44 @@ export default function ImageManagement() {
               >
                 Delete Selected
               </button>
+              <div style={{ marginBottom: '0.5rem' }}>
+                <label style={{ marginRight: '0.5rem' }}>
+                  Page Size:{' '}
+                  <input
+                    type="number"
+                    value={uploadPageSize}
+                    onChange={(e) => {
+                      setUploadPageSize(Number(e.target.value));
+                      setUploadPage(1);
+                    }}
+                    style={{ width: '4rem' }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={uploadPage === 1}
+                  onClick={() => setUploadPage(uploadPage - 1)}
+                  style={{ marginRight: '0.5rem' }}
+                >
+                  Prev
+                </button>
+                <button
+                  type="button"
+                  disabled={!uploadHasMore}
+                  onClick={() => setUploadPage(uploadPage + 1)}
+                >
+                  Next
+                </button>
+              </div>
               <table className="min-w-full border border-gray-300 text-sm" style={{ tableLayout: 'fixed' }}>
                 <thead>
                   <tr>
                     <th className="border px-2 py-1">
-                      <input type="checkbox" checked={uploadSel.length === uploads.length && uploads.length > 0} onChange={toggleUploadAll} />
+                      <input
+                        type="checkbox"
+                        checked={pageUploads.length > 0 && pageUploads.every((u) => uploadSel.includes(u.id))}
+                        onChange={() => toggleUploadAll(pageUploads)}
+                      />
                     </th>
                     <th className="border px-2 py-1">Original</th>
                     <th className="border px-2 py-1">New Name</th>
@@ -339,7 +408,7 @@ export default function ImageManagement() {
                   </tr>
                 </thead>
                 <tbody>
-                  {uploads.map((u) => (
+                  {pageUploads.map((u) => (
                     <tr key={u.id} className={uploadSel.includes(u.id) ? 'bg-blue-50' : ''}>
                       <td className="border px-2 py-1 text-center">
                         <input type="checkbox" checked={uploadSel.includes(u.id)} onChange={() => toggleUpload(u.id)} />
