@@ -9,8 +9,8 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
 import RowImageUploadModal from './RowImageUploadModal.jsx';
-import RowImageViewModal from './RowImageViewModal.jsx';
 import buildImageName from '../utils/buildImageName.js';
+import slugify from '../utils/slugify.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 
@@ -76,6 +76,7 @@ export default forwardRef(function InlineTransactionTable({
   const renderCount = useRef(0);
   const generalConfig = useGeneralConfig();
   const cfg = generalConfig[scope] || {};
+  const general = generalConfig.general || {};
   const userIdSet = new Set(userIdFields);
   const branchIdSet = new Set(branchIdFields);
   const departmentIdSet = new Set(departmentIdFields);
@@ -178,8 +179,6 @@ export default forwardRef(function InlineTransactionTable({
   const [invalidCell, setInvalidCell] = useState(null);
   const [previewRow, setPreviewRow] = useState(null);
   const [uploadRow, setUploadRow] = useState(null);
-  const [viewRow, setViewRow] = useState(null);
-  const [viewImages, setViewImages] = useState([]);
   const procCache = useRef({});
 
   const totalAmountSet = new Set(totalAmountFields);
@@ -317,6 +316,7 @@ export default forwardRef(function InlineTransactionTable({
   }
 
   function showTriggerInfo(col) {
+    if (!general.triggerToastEnabled) return;
     const direct = getDirectTriggers(col);
     const paramTrigs = getParamTriggers(col);
 
@@ -352,6 +352,7 @@ export default forwardRef(function InlineTransactionTable({
   }
 
   async function runProcTrigger(rowIdx, col, rowOverride = null) {
+    const showToast = general.procToastEnabled;
     const direct = getDirectTriggers(col);
     const paramTrigs = getParamTriggers(col);
 
@@ -427,21 +428,25 @@ export default forwardRef(function InlineTransactionTable({
           onRowsChange(next);
           return next;
         });
-        window.dispatchEvent(
-          new CustomEvent('toast', {
-            detail: { message: `Returned: ${JSON.stringify(rowData)}`, type: 'info' },
-          }),
-        );
+        if (showToast) {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message: `Returned: ${JSON.stringify(rowData)}`, type: 'info' },
+            }),
+          );
+        }
         continue;
       }
-      window.dispatchEvent(
-        new CustomEvent('toast', {
-          detail: {
-            message: `${tCol} -> ${procName}(${paramValues.join(', ')})`,
-            type: 'info',
-          },
-        }),
-      );
+      if (showToast) {
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: {
+              message: `${tCol} -> ${procName}(${paramValues.join(', ')})`,
+              type: 'info',
+            },
+          }),
+        );
+      }
       try {
         const rowData = await callProcedure(
           procName,
@@ -463,19 +468,23 @@ export default forwardRef(function InlineTransactionTable({
             onRowsChange(next);
             return next;
           });
-          window.dispatchEvent(
-            new CustomEvent('toast', {
-              detail: { message: `Returned: ${JSON.stringify(rowData)}`, type: 'info' },
-            }),
-          );
+          if (showToast) {
+            window.dispatchEvent(
+              new CustomEvent('toast', {
+                detail: { message: `Returned: ${JSON.stringify(rowData)}`, type: 'info' },
+              }),
+            );
+          }
         }
       } catch (err) {
         console.error('Procedure call failed', err);
-        window.dispatchEvent(
-          new CustomEvent('toast', {
-            detail: { message: `Procedure failed: ${err.message}`, type: 'error' },
-          }),
-        );
+        if (showToast) {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message: `Procedure failed: ${err.message}`, type: 'error' },
+            }),
+          );
+        }
       }
     }
   }
@@ -535,7 +544,12 @@ export default forwardRef(function InlineTransactionTable({
           }
         }
         if (val !== '' && val !== null && val !== undefined) {
-          if ((totalCurrencySet.has(f) || totalAmountSet.has(f)) && isNaN(Number(val))) {
+          const skipNum = /code/i.test(f) || /код/i.test(labels[f] || '');
+          if (
+            (totalCurrencySet.has(f) || totalAmountSet.has(f)) &&
+            !skipNum &&
+            isNaN(Number(val))
+          ) {
             setErrorMsg((labels[f] || f) + ' талбарт буруу тоо байна');
             setInvalidCell({ row: rows.length - 1, field: f });
             const el = inputRefs.current[`${rows.length - 1}-${fields.indexOf(f)}`];
@@ -580,25 +594,46 @@ export default forwardRef(function InlineTransactionTable({
     setUploadRow(idx);
   }
 
-  async function openView(idx) {
-    const row = rows[idx] || {};
-    const { name } = buildImageName(row, imagenameFields, columnCaseMap);
-    if (!tableName || !name) {
-      setViewImages([]);
-      setViewRow(idx);
-      return;
-    }
-    try {
-      const res = await fetch(`/api/transaction_images/${tableName}/${encodeURIComponent(name)}`, {
-        credentials: 'include',
-      });
-      const files = await res.json();
-      setViewImages(Array.isArray(files) ? files : []);
-    } catch {
-      setViewImages([]);
-    }
-    setViewRow(idx);
+  function handleUploaded(idx, name) {
+    setRows((r) => {
+      const next = r.map((row, i) => (i === idx ? { ...row, _imageName: name } : row));
+      onRowsChange(next);
+      return next;
+    });
   }
+
+  function applyAISuggestion(idx, item) {
+    if (!item) return;
+    setRows((r) => {
+      const codeField = fields.find((f) => /code|name|item/i.test(f));
+      const qtyField = fields.find((f) => /(qty|quantity|count)/i.test(f));
+      const next = r.map((row, i) => {
+        if (i !== idx) return row;
+        const updated = { ...row };
+        if (codeField && item.code !== undefined) updated[codeField] = item.code;
+        if (qtyField && item.qty !== undefined) updated[qtyField] = item.qty;
+        return updated;
+      });
+      onRowsChange(next);
+      return next;
+    });
+  }
+
+  function getImageFolder(row) {
+    if (!row || !row._saved) return tableName;
+    const lowerMap = {};
+    Object.keys(row).forEach((k) => {
+      lowerMap[k.toLowerCase()] = row[k];
+    });
+    const t1 = lowerMap['trtype'];
+    const t2 =
+      lowerMap['uitranstypename'] ||
+      lowerMap['transtype'] ||
+      lowerMap['transtypename'];
+    if (!t1 || !t2) return tableName;
+    return `${slugify(t1)}/${slugify(String(t2))}`;
+  }
+
 
   function handleChange(rowIdx, field, value) {
     setRows((r) => {
@@ -642,11 +677,13 @@ export default forwardRef(function InlineTransactionTable({
         params.set(f, pv);
       });
       const url = `/api/tables/${encodeURIComponent(view)}?${params.toString()}`;
-      window.dispatchEvent(
-        new CustomEvent('toast', {
-          detail: { message: `Lookup ${view}: ${params.toString()}`, type: 'info' },
-        }),
-      );
+      if (general.viewToastEnabled) {
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: { message: `Lookup ${view}: ${params.toString()}`, type: 'info' },
+          }),
+        );
+      }
       fetch(url, { credentials: 'include' })
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
@@ -656,13 +693,19 @@ export default forwardRef(function InlineTransactionTable({
             );
             return;
           }
-          window.dispatchEvent(new CustomEvent('toast', { detail: { message: `SQL: ${data.sql}`, type: 'info' } }));
+          if (general.viewToastEnabled) {
+            window.dispatchEvent(
+              new CustomEvent('toast', { detail: { message: `SQL: ${data.sql}`, type: 'info' } }),
+            );
+          }
           const rowData = data.rows[0];
-          window.dispatchEvent(
-            new CustomEvent('toast', {
-              detail: { message: `Result: ${JSON.stringify(rowData)}`, type: 'info' },
-            }),
-          );
+          if (general.viewToastEnabled) {
+            window.dispatchEvent(
+              new CustomEvent('toast', {
+                detail: { message: `Result: ${JSON.stringify(rowData)}`, type: 'info' },
+              }),
+            );
+          }
           setRows((r) => {
             const next = r.map((row, i) => {
               if (i !== rowIdx) return row;
@@ -707,9 +750,11 @@ export default forwardRef(function InlineTransactionTable({
         }
         return;
       }
+      const skipNum = /code/i.test(f) || /код/i.test(labels[f] || '');
       if (
         totalCurrencySet.has(f) &&
         val !== '' &&
+        !skipNum &&
         isNaN(Number(normalizeNumberInput(val)))
       ) {
         setErrorMsg((labels[f] || f) + ' талбарт буруу тоо байна');
@@ -823,9 +868,11 @@ export default forwardRef(function InlineTransactionTable({
       if (e.target.select) e.target.select();
       return;
     }
+    const skipNum = /code/i.test(field) || /код/i.test(labels[field] || '');
     if (
       totalCurrencySet.has(field) &&
       val !== '' &&
+      !skipNum &&
       isNaN(Number(normalizeNumberInput(val)))
     ) {
       setErrorMsg((labels[field] || field) + ' талбарт буруу тоо байна');
@@ -996,6 +1043,38 @@ export default forwardRef(function InlineTransactionTable({
           />
       );
     }
+    const lower = f.toLowerCase();
+    const sample = rows[0]?.[f] ?? defaultValues[f];
+    const isNumber =
+      typeof sample === 'number' ||
+      /^-?\d+(\.\d+)?$/.test(String(sample)) ||
+      totalAmountSet.has(f) ||
+      totalCurrencySet.has(f);
+    const commonProps = {
+      className: `w-full border px-1 ${invalid ? 'border-red-500 bg-red-100' : ''}`,
+      style: { ...inputStyle },
+      value: typeof val === 'object' ? val.value : val,
+      title: typeof val === 'object' ? val.value : val,
+      onChange: (e) => handleChange(idx, f, e.target.value),
+      ref: (el) => (inputRefs.current[`${idx}-${colIdx}`] = el),
+      onKeyDown: (e) => handleKeyDown(e, idx, colIdx),
+      onFocus: () => handleFocusField(f),
+    };
+    if (placeholders[f] === 'YYYY-MM-DD') {
+      return <input type="date" {...commonProps} />;
+    }
+    if (placeholders[f] === 'HH:MM:SS') {
+      return <input type="time" {...commonProps} />;
+    }
+    if (lower.includes('email')) {
+      return <input type="email" inputMode="email" {...commonProps} />;
+    }
+    if (lower.includes('phone')) {
+      return <input type="tel" inputMode="tel" {...commonProps} />;
+    }
+    if (isNumber) {
+      return <input type="number" inputMode="decimal" {...commonProps} />;
+    }
     return (
       <textarea
         rows={1}
@@ -1061,10 +1140,7 @@ export default forwardRef(function InlineTransactionTable({
                 </td>
               ))}
               <td className="border px-1 py-1 text-right" style={{ whiteSpace: 'nowrap' }}>
-                <button type="button" onClick={() => openUpload(idx)}>Add Image</button>
-                <button type="button" onClick={() => openView(idx)} style={{ marginLeft: '0.25rem' }}>
-                  🖼 View Images
-                </button>
+                <button type="button" onClick={() => openUpload(idx)}>Add/View Image</button>
               </td>
               <td className="border px-1 py-1 text-right">
                 {collectRows ? (
@@ -1142,14 +1218,13 @@ export default forwardRef(function InlineTransactionTable({
         visible={uploadRow !== null}
         onClose={() => setUploadRow(null)}
         table={tableName}
+        folder={getImageFolder(rows[uploadRow])}
         row={rows[uploadRow] || {}}
+        rowKey={uploadRow}
         imagenameFields={imagenameFields}
         columnCaseMap={columnCaseMap}
-      />
-      <RowImageViewModal
-        visible={viewRow !== null}
-        onClose={() => setViewRow(null)}
-        images={viewImages}
+        onUploaded={(name) => handleUploaded(uploadRow, name)}
+        onSuggestion={(it) => applyAISuggestion(uploadRow, it)}
       />
     </div>
   );

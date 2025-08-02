@@ -2,62 +2,166 @@ import React, { useState, useEffect } from 'react';
 import Modal from './Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import buildImageName from '../utils/buildImageName.js';
+import AISuggestionModal from './AISuggestionModal.jsx';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 export default function RowImageUploadModal({
   visible,
   onClose,
   table,
+  folder,
   row = {},
+  rowKey = 0,
   imagenameFields = [],
   columnCaseMap = {},
   onUploaded = () => {},
+  onSuggestion = () => {},
 }) {
   const { addToast } = useToast();
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [uploaded, setUploaded] = useState([]);
+  const [suggestions, setSuggestions] = useState([]);
+  const generalConfig = useGeneralConfig();
+  const [showSuggestModal, setShowSuggestModal] = useState(false);
   function buildName() {
     return buildImageName(row, imagenameFields, columnCaseMap);
   }
 
   useEffect(() => {
     if (!visible) return;
-    const { name } = buildName();
-    if (!table || !name) {
+    setFiles([]);
+    setUploaded([]);
+    setSuggestions([]);
+    if (!folder) {
       setUploaded([]);
       return;
     }
-    fetch(`/api/transaction_images/${table}/${encodeURIComponent(name)}`, {
+    if (!row._saved && !row._imageName) {
+      setUploaded([]);
+      return;
+    }
+    const { name } = buildName();
+    if (!name) {
+      setUploaded([]);
+      return;
+    }
+    const safeTable = encodeURIComponent(table);
+    const params = new URLSearchParams();
+    if (folder) params.set('folder', folder);
+    fetch(`/api/transaction_images/${safeTable}/${encodeURIComponent(name)}?${params.toString()}`, {
       credentials: 'include',
     })
       .then((r) => (r.ok ? r.json() : []))
       .then((imgs) => setUploaded(Array.isArray(imgs) ? imgs : []))
       .catch(() => setUploaded([]));
-  }, [visible, table, row]);
+  }, [visible, folder, rowKey, table, row._imageName, row._saved]);
+
+
+  useEffect(() => {
+    if (!visible) {
+      setFiles([]);
+      setUploaded([]);
+      setSuggestions([]);
+      setShowSuggestModal(false);
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (suggestions.length > 0) {
+      setShowSuggestModal(true);
+    }
+  }, [suggestions]);
 
   async function handleUpload(selectedFiles) {
     const { name: safeName, missing } = buildName();
-    const uploadUrl = safeName && table ? `/api/transaction_images/${table}/${encodeURIComponent(safeName)}` : '';
-    if (!uploadUrl) {
-      const msg = missing.length
-        ? `Image name is missing fields: ${missing.join(', ')}`
-        : 'Image name is missing';
-      addToast(msg, 'error');
+    const finalName = safeName || `tmp_${Date.now()}`;
+    if (!folder) {
+      addToast('Image folder is missing', 'error');
       return;
     }
+    if (missing.length) {
+      addToast(
+        `Image name is missing fields: ${missing.join(', ')}. Temporary name will be used`,
+        'warn',
+      );
+    }
+    const safeTable = encodeURIComponent(table);
+    const params = new URLSearchParams();
+    if (folder) params.set('folder', folder);
+    const uploadUrl = `/api/transaction_images/${safeTable}/${encodeURIComponent(finalName)}?${params.toString()}`;
     const filesToUpload = Array.from(selectedFiles || files);
     if (!filesToUpload.length) return;
     setLoading(true);
     const form = new FormData();
     filesToUpload.forEach((f) => form.append('images', f));
+    let detected = [];
     try {
       const res = await fetch(uploadUrl, { method: 'POST', body: form, credentials: 'include' });
       if (res.ok) {
-        addToast(`Images uploaded as ${safeName}`, 'success');
         const imgs = await res.json().catch(() => []);
+        addToast(`Uploaded ${imgs.length} image(s) as ${finalName}`, 'success');
         setFiles([]);
-        setUploaded(imgs);
-        onUploaded(safeName);
+        setUploaded((u) => [...u, ...imgs]);
+        onUploaded(finalName);
+        if (generalConfig.general?.aiInventoryApiEnabled) {
+          for (const file of filesToUpload) {
+            try {
+              const codeRes = await fetch(
+                `/api/transaction_images/benchmark_code?name=${encodeURIComponent(file.name)}`,
+                { credentials: 'include' },
+              );
+            if (codeRes.ok) {
+              const data = await codeRes.json().catch(() => ({}));
+              if (data.code) {
+                addToast(`Benchmark code found: ${data.code}`, 'success');
+              } else {
+                addToast('Benchmark code not found', 'warn');
+              }
+            } else {
+              const text = await codeRes.text().catch(() => '');
+              addToast(text || 'Benchmark lookup failed', 'error');
+            }
+          } catch {
+            addToast('Benchmark lookup failed', 'error');
+          }
+          const detForm = new FormData();
+          detForm.append('image', file);
+          try {
+            const detRes = await fetch('/api/ai_inventory/identify', {
+              method: 'POST',
+              body: detForm,
+              credentials: 'include',
+            });
+            if (detRes.ok) {
+              const data = await detRes.json();
+              const items = Array.isArray(data.items) ? data.items : [];
+              const count = items.length;
+              if (count) {
+                const list = items
+                  .map((it) => `${it.code}${it.qty ? ` x${it.qty}` : ''}`)
+                  .join(', ');
+                addToast(`AI found ${count} item(s): ${list}`, 'success');
+                detected.push(...items);
+              } else {
+                addToast('No AI suggestions', 'warn');
+              }
+            } else {
+              const text = await detRes.text();
+              addToast(text || 'AI detection failed', 'error');
+            }
+          } catch (err) {
+            console.error(err);
+            addToast('AI detection error: ' + err.message, 'error');
+          }
+        }
+        if (detected.length) {
+          setSuggestions((s) => [...s, ...detected]);
+          setShowSuggestModal(true);
+        }
+        } else {
+          addToast('AI inventory API is disabled', 'warn');
+        }
       } else {
         const text = await res.text();
         addToast(text || 'Failed to upload images', 'error');
@@ -71,21 +175,27 @@ export default function RowImageUploadModal({
 
   async function deleteFile(file) {
     const { name } = buildName();
-    if (!table || !name) return;
+    if (!folder || !name) return;
     try {
+      const safeTable = encodeURIComponent(table);
+      const params = new URLSearchParams();
+      if (folder) params.set('folder', folder);
       await fetch(
-        `/api/transaction_images/${table}/${encodeURIComponent(name)}/${encodeURIComponent(file)}`,
+        `/api/transaction_images/${safeTable}/${encodeURIComponent(name)}/${encodeURIComponent(file)}?${params.toString()}`,
         { method: 'DELETE', credentials: 'include' },
       );
-      setUploaded((u) => u.filter((f) => f !== file));
+      setUploaded((u) => u.filter((f) => !f.endsWith(`/${file}`)));
     } catch {}
   }
 
   async function deleteAll() {
     const { name } = buildName();
-    if (!table || !name) return;
+    if (!folder || !name) return;
     try {
-      await fetch(`/api/transaction_images/${table}/${encodeURIComponent(name)}`, {
+      const safeTable = encodeURIComponent(table);
+      const params = new URLSearchParams();
+      if (folder) params.set('folder', folder);
+      await fetch(`/api/transaction_images/${safeTable}/${encodeURIComponent(name)}?${params.toString()}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -126,9 +236,25 @@ export default function RowImageUploadModal({
           </button>
         </div>
       )}
+      {suggestions.length > 0 && (
+        <div style={{ marginTop: '0.5rem' }}>
+          <button type="button" onClick={() => setShowSuggestModal(true)}>
+            View AI Suggestions ({suggestions.length})
+          </button>
+        </div>
+      )}
       <div style={{ textAlign: 'right', marginTop: '1rem' }}>
         <button type="button" onClick={onClose}>Close</button>
       </div>
+      <AISuggestionModal
+        visible={showSuggestModal}
+        items={suggestions}
+        onSelect={(it) => {
+          onSuggestion(it);
+          setShowSuggestModal(false);
+        }}
+        onClose={() => setShowSuggestModal(false)}
+      />
     </Modal>
   );
 }

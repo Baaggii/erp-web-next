@@ -60,11 +60,18 @@ const RowFormModal = function RowFormModal({
   const procCache = useRef({});
   const generalConfig = useGeneralConfig();
   const cfg = generalConfig[scope] || {};
+  const general = generalConfig.general || {};
   labelFontSize = labelFontSize ?? cfg.labelFontSize ?? 14;
   boxWidth = boxWidth ?? cfg.boxWidth ?? 60;
   boxHeight = boxHeight ?? cfg.boxHeight ?? 30;
   boxMaxWidth = boxMaxWidth ?? cfg.boxMaxWidth ?? 150;
   boxMaxHeight = boxMaxHeight ?? cfg.boxMaxHeight ?? 150;
+  const [isNarrow, setIsNarrow] = useState(() => window.innerWidth < 768);
+  useEffect(() => {
+    const h = () => setIsNarrow(window.innerWidth < 768);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
 
   renderCount.current++;
   if (renderCount.current > 10 && !warned.current) {
@@ -321,6 +328,8 @@ const RowFormModal = function RowFormModal({
     gap: '2px',
     gridTemplateColumns: fitted
       ? `repeat(auto-fill, minmax(${boxWidth}px, ${boxMaxWidth}px))`
+      : isNarrow
+      ? '1fr'
       : `repeat(2, minmax(${boxWidth}px, ${boxMaxWidth}px))`,
     fontSize: `${inputFontSize}px`,
   };
@@ -331,8 +340,8 @@ const RowFormModal = function RowFormModal({
     width: `${boxWidth}px`,
     minWidth: `${boxWidth}px`,
     maxWidth: `${boxMaxWidth}px`,
-    height: `${boxHeight}px`,
-    maxHeight: `${boxMaxHeight}px`,
+    height: isNarrow ? '44px' : `${boxHeight}px`,
+    maxHeight: isNarrow ? 'none' : `${boxMaxHeight}px`,
     overflow: 'hidden',
     whiteSpace: 'nowrap',
     textOverflow: 'ellipsis',
@@ -362,9 +371,11 @@ const RowFormModal = function RowFormModal({
       setErrors((er) => ({ ...er, [col]: 'Утга оруулна уу' }));
       return;
     }
+    const skipNum = /code/i.test(col) || /код/i.test(labels[col] || '');
     if (
       (totalAmountSet.has(col) || totalCurrencySet.has(col)) &&
       val !== '' &&
+      !skipNum &&
       isNaN(Number(normalizeNumberInput(val)))
     ) {
       setErrors((er) => ({ ...er, [col]: 'Буруу тоон утга' }));
@@ -415,6 +426,7 @@ const RowFormModal = function RowFormModal({
   }
 
   function showTriggerInfo(col) {
+    if (!general.triggerToastEnabled) return;
     const direct = getDirectTriggers(col);
     const paramTrigs = getParamTriggers(col);
 
@@ -521,21 +533,25 @@ const RowFormModal = function RowFormModal({
           return updated;
         });
         onChange(norm);
-        window.dispatchEvent(
-          new CustomEvent('toast', {
-            detail: { message: `Returned: ${JSON.stringify(row)}`, type: 'info' },
-          }),
-        );
+        if (general.procToastEnabled) {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message: `Returned: ${JSON.stringify(row)}`, type: 'info' },
+            }),
+          );
+        }
         continue;
       }
-      window.dispatchEvent(
-        new CustomEvent('toast', {
-          detail: {
-            message: `${tCol} -> ${procName}(${paramValues.join(', ')})`,
-            type: 'info',
-        },
-      }),
-    );
+      if (general.procToastEnabled) {
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: {
+              message: `${tCol} -> ${procName}(${paramValues.join(', ')})`,
+              type: 'info',
+            },
+          }),
+        );
+      }
     try {
       const row = await callProcedure(procName, paramValues, aliases);
       if (row && typeof row === 'object') {
@@ -553,19 +569,23 @@ const RowFormModal = function RowFormModal({
           return updated;
         });
         onChange(norm);
-        window.dispatchEvent(
-          new CustomEvent('toast', {
-            detail: { message: `Returned: ${JSON.stringify(row)}`, type: 'info' },
-          }),
-        );
+        if (general.procToastEnabled) {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message: `Returned: ${JSON.stringify(row)}`, type: 'info' },
+            }),
+          );
+        }
       }
     } catch (err) {
       console.error('Procedure call failed', err);
-      window.dispatchEvent(
-        new CustomEvent('toast', {
-          detail: { message: `Procedure failed: ${err.message}`, type: 'error' },
-        }),
-      );
+      if (general.procToastEnabled) {
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: { message: `Procedure failed: ${err.message}`, type: 'error' },
+          }),
+        );
+      }
     }
     }
   }
@@ -642,6 +662,7 @@ const RowFormModal = function RowFormModal({
           if (
             (totalAmountSet.has(f) || totalCurrencySet.has(f)) &&
             normalized[f] !== '' &&
+            !/code/i.test(f) &&
             isNaN(Number(normalizeNumberInput(normalized[f])))
           )
             hasInvalid = true;
@@ -891,7 +912,22 @@ const RowFormModal = function RowFormModal({
       <input
         title={formVals[c]}
         ref={(el) => (inputRefs.current[c] = el)}
-        type="text"
+        type={(() => {
+          if (placeholders[c] === 'YYYY-MM-DD') return 'date';
+          if (placeholders[c] === 'HH:MM:SS') return 'time';
+          const lower = c.toLowerCase();
+          if (lower.includes('email')) return 'email';
+          if (/(amount|qty|count|price|total|number|qty|quantity)/i.test(lower))
+            return 'number';
+          if (lower.includes('phone')) return 'tel';
+          return 'text';
+        })()}
+        inputMode={(() => {
+          const lower = c.toLowerCase();
+          return /(amount|qty|count|price|total|number|qty|quantity)/i.test(lower)
+            ? 'decimal'
+            : undefined;
+        })()}
         placeholder={placeholders[c] || ''}
         value={formVals[c]}
         onChange={(e) => {

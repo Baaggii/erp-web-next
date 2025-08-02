@@ -5,6 +5,8 @@ import Modal from '../components/Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import buildImageName from '../utils/buildImageName.js';
+import slugify from '../utils/slugify.js';
 
 function parseErrorField(msg) {
   if (!msg) return null;
@@ -737,6 +739,43 @@ export default function PosTransactionsPage() {
             },
           }));
         }
+        const imgCfg = formConfigs[config.masterTable] || {};
+        if (imgCfg.imageIdField) {
+          const columnMap = (columnMeta[config.masterTable] || []).reduce(
+            (m, c) => {
+              m[c.name.toLowerCase()] = c.name;
+              return m;
+            },
+            {},
+          );
+          const rowBefore = values[config.masterTable] || {};
+          const { name: oldImg } = buildImageName(
+            rowBefore,
+            imgCfg.imagenameField || [],
+            columnMap,
+          );
+          const rowAfter = {
+            ...rowBefore,
+            [imgCfg.imageIdField]: js[imgCfg.imageIdField],
+          };
+          const { name: newImg } = buildImageName(
+            rowAfter,
+            imgCfg.imagenameField || [],
+            columnMap,
+          );
+          const t1 = rowAfter.trtype;
+          const t2 =
+            rowAfter.uitranstypename || rowAfter.transtype || rowAfter.transtypename;
+          const folder = t1 && t2
+            ? `${slugify(t1)}/${slugify(String(t2))}`
+            : config.masterTable;
+          if (oldImg && newImg && oldImg !== newImg) {
+            await fetch(
+              `/api/transaction_images/${config.masterTable}/${encodeURIComponent(oldImg)}/rename/${encodeURIComponent(newImg)}?folder=${encodeURIComponent(folder)}`,
+              { method: 'POST', credentials: 'include' },
+            );
+          }
+        }
         addToast('Posted', 'success');
       } else {
         const js = await res.json().catch(() => ({}));
@@ -834,7 +873,7 @@ export default function PosTransactionsPage() {
             <button onClick={handleSavePending} style={{ marginRight: '0.5rem' }} disabled={!name || !hasData}>Save</button>
             <button onClick={handleLoadPending} style={{ marginRight: '0.5rem' }} disabled={!name}>Load</button>
             <button onClick={handleDeletePending} style={{ marginRight: '0.5rem' }} disabled={!pendingId}>Delete</button>
-            <button onClick={handlePostAll} disabled={!pendingId}>POST</button>
+            <button onClick={handlePostAll} disabled={!name}>POST</button>
           </div>
           {(pendingId || postedId) && (
             <div style={{ marginBottom: '0.5rem' }}>
@@ -945,9 +984,13 @@ export default function PosTransactionsPage() {
                       mainFields={mainFields}
                       footerFields={footerFields}
                       defaultValues={fc.defaultValues || {}}
-                    relations={relationsMap[t.table] || {}}
-                    relationConfigs={relationConfigs[t.table] || {}}
-                    relationData={relationData[t.table] || {}}
+                      table={config.masterTable}
+                      imagenameField={
+                        formConfigs[config.masterTable]?.imagenameField || []
+                      }
+                      relations={relationsMap[t.table] || {}}
+                      relationConfigs={relationConfigs[t.table] || {}}
+                      relationData={relationData[t.table] || {}}
                     procTriggers={procTriggersMap[t.table] || {}}
                     viewSource={fc.viewSource || {}}
                     viewDisplays={viewDisplaysMap[t.table] || {}}
