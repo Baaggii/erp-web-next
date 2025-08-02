@@ -8,6 +8,7 @@ import Inventory from '../windows/Inventory.jsx';
 import OrderEntry from '../windows/OrderEntry.jsx';
 import Accounting from '../windows/Accounting.jsx';
 import SalesDashboard from '../windows/SalesDashboard.jsx';
+import ImageManagement from '../windows/ImageManagement.jsx';
 
 export default function MosaicLayout({ initialLayout }) {
   const defaultLayout = {
@@ -60,6 +61,10 @@ export default function MosaicLayout({ initialLayout }) {
           case 'acct':
             title = 'Accounting';
             Component = Accounting;
+            break;
+          case 'images':
+            title = 'Image Management';
+            Component = ImageManagement;
             break;
           default:
             return null;

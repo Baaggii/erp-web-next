@@ -6,10 +6,21 @@ import { cleanupOldImages } from '../../api-server/services/transactionImageServ
 
 const baseDir = path.join(process.cwd(), 'uploads', 'txn_images', 'test_cleanup');
 
-test('cleanupOldImages removes old files', async () => {
+test('cleanupOldImages removes old files', { concurrency: false }, async () => {
   await fs.mkdir(baseDir, { recursive: true });
   const file = path.join(baseDir, 'old.txt');
-  await fs.writeFile(file, 'temp');
+  for (let i = 0; i < 5; i++) {
+    try {
+      await fs.writeFile(file, 'temp');
+      break;
+    } catch (err) {
+      if (err.code === 'ENOENT' && i < 4) {
+        await fs.mkdir(baseDir, { recursive: true });
+      } else {
+        throw err;
+      }
+    }
+  }
   const oldTime = Date.now() - 40 * 24 * 60 * 60 * 1000;
   await fs.utimes(file, oldTime / 1000, oldTime / 1000);
 
