@@ -23,16 +23,6 @@ export default function RowImageViewModal({
   const placeholder =
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMBAZLr5z0AAAAASUVORK5CYII=';
 
-  function getImageUrl(p) {
-    if (!p) return '';
-    // If API returns a full URL, use it directly
-    if (p.startsWith('http')) return p;
-    // Preserve paths that already start with '/'
-    if (p.startsWith('/')) return p;
-    // Fallback: prepend API base
-    return `${window.API_BASE || window.location.origin}/${p.replace(/^\//, '')}`;
-  }
-
   useEffect(() => {
     if (!visible) return;
     const primary = buildImageName(
@@ -70,7 +60,7 @@ export default function RowImageViewModal({
         addToast(`Search: ${params.get('folder') || table}/${primary}`, 'info');
         try {
           const res = await fetch(
-            `/api/transaction_images/${safeTable}/${encodeURIComponent(primary)}?${params.toString()}`,
+            `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(primary)}?${params.toString()}`,
             { credentials: 'include' },
           );
           const imgs = res.ok ? await res.json().catch(() => []) : [];
@@ -87,7 +77,7 @@ export default function RowImageViewModal({
           addToast(`Search: ${params.get('folder') || table}/${nm}`, 'info');
           try {
             const res = await fetch(
-              `/api/transaction_images/${safeTable}/${encodeURIComponent(nm)}?${params.toString()}`,
+              `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(nm)}?${params.toString()}`,
               { credentials: 'include' },
             );
             const imgs = res.ok ? await res.json().catch(() => []) : [];
@@ -98,11 +88,11 @@ export default function RowImageViewModal({
                   const renameParams = new URLSearchParams();
                   if (folder) renameParams.set('folder', folder);
                   await fetch(
-                    `/api/transaction_images/${safeTable}/${encodeURIComponent(idName)}/rename/${encodeURIComponent(primary)}?${renameParams.toString()}`,
+                    `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(idName)}/rename/${encodeURIComponent(primary)}?${renameParams.toString()}`,
                     { method: 'POST', credentials: 'include' },
                   );
                   const res2 = await fetch(
-                    `/api/transaction_images/${safeTable}/${encodeURIComponent(primary)}?${renameParams.toString()}`,
+                    `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(primary)}?${renameParams.toString()}`,
                     { credentials: 'include' },
                   );
                   const imgs2 = res2.ok ? await res2.json().catch(() => []) : [];
@@ -151,7 +141,7 @@ export default function RowImageViewModal({
         return (
           <div key={src} style={{ marginBottom: '0.25rem' }}>
             <img
-              src={getImageUrl(src)}
+              src={src}
               alt=""
               onError={(e) => {
                 e.currentTarget.onerror = null;
@@ -184,7 +174,7 @@ export default function RowImageViewModal({
       {files.map((src) => (
         <img
           key={src}
-          src={getImageUrl(src)}
+          src={src}
           alt=""
           onError={(e) => {
             e.currentTarget.onerror = null;
@@ -228,7 +218,7 @@ export default function RowImageViewModal({
             onClick={() => setFullscreen(null)}
           >
             <img
-              src={getImageUrl(fullscreen)}
+              src={fullscreen}
               alt=""
               onError={(e) => {
                 e.currentTarget.onerror = null;
