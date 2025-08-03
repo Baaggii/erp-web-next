@@ -27,10 +27,11 @@ export default function RowImageViewModal({
     if (!p) return '';
     // If API returns a full URL, use it directly
     if (p.startsWith('http')) return p;
-    // Preserve paths that already start with '/'
-    if (p.startsWith('/')) return p;
-    // Fallback: prepend API base
-    return `${window.API_BASE || window.location.origin}/${p.replace(/^\//, '')}`;
+    const base =
+      (window.API_BASE || API_BASE || '')
+        .replace(/\/$/, '')
+        .replace(/\/api$/, '') || window.location.origin;
+    return `${base}/${p.replace(/^\//, '')}`;
   }
 
   useEffect(() => {
@@ -70,7 +71,7 @@ export default function RowImageViewModal({
         addToast(`Search: ${params.get('folder') || table}/${primary}`, 'info');
         try {
           const res = await fetch(
-            `/api/transaction_images/${safeTable}/${encodeURIComponent(primary)}?${params.toString()}`,
+            `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(primary)}?${params.toString()}`,
             { credentials: 'include' },
           );
           const imgs = res.ok ? await res.json().catch(() => []) : [];
@@ -87,7 +88,7 @@ export default function RowImageViewModal({
           addToast(`Search: ${params.get('folder') || table}/${nm}`, 'info');
           try {
             const res = await fetch(
-              `/api/transaction_images/${safeTable}/${encodeURIComponent(nm)}?${params.toString()}`,
+              `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(nm)}?${params.toString()}`,
               { credentials: 'include' },
             );
             const imgs = res.ok ? await res.json().catch(() => []) : [];
@@ -98,11 +99,11 @@ export default function RowImageViewModal({
                   const renameParams = new URLSearchParams();
                   if (folder) renameParams.set('folder', folder);
                   await fetch(
-                    `/api/transaction_images/${safeTable}/${encodeURIComponent(idName)}/rename/${encodeURIComponent(primary)}?${renameParams.toString()}`,
+                    `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(idName)}/rename/${encodeURIComponent(primary)}?${renameParams.toString()}`,
                     { method: 'POST', credentials: 'include' },
                   );
                   const res2 = await fetch(
-                    `/api/transaction_images/${safeTable}/${encodeURIComponent(primary)}?${renameParams.toString()}`,
+                    `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(primary)}?${renameParams.toString()}`,
                     { credentials: 'include' },
                   );
                   const imgs2 = res2.ok ? await res2.json().catch(() => []) : [];
