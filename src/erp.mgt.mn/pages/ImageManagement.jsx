@@ -59,6 +59,22 @@ export default function ImageManagement() {
     }
   }, []);
 
+  function strip(item = {}) {
+    const out = {};
+    for (const [k, v] of Object.entries(item)) {
+      if (v === undefined || v === null) continue;
+      const t = typeof v;
+      if (t === 'string' || t === 'number' || t === 'boolean') out[k] = v;
+    }
+    return out;
+  }
+
+  function stateLabel(item = {}) {
+    if (item.processed) return 'Processed';
+    if (item.newName) return 'New';
+    return '';
+    }
+
   function buildState(
     up = uploads,
     ig = ignored,
@@ -68,10 +84,10 @@ export default function ImageManagement() {
   ) {
     return {
       folderName: folder,
-      uploads: up.map(({ handle, ...rest }) => rest),
-      ignored: ig.map(({ handle, ...rest }) => rest),
-      pending: pend,
-      hostIgnored: hostIg,
+      uploads: up.map(({ handle, ...rest }) => strip(rest)),
+      ignored: ig.map(({ handle, ...rest }) => strip(rest)),
+      pending: pend.map(strip),
+      hostIgnored: hostIg.map(strip),
     };
   }
 
@@ -175,15 +191,23 @@ export default function ImageManagement() {
   }
 
   function toggleAll() {
+    const withNew = pending
+      .filter((p) => p.newName && !p.processed)
+      .map((p) => p.currentName);
     const unprocessed = pending.filter((p) => !p.processed).map((p) => p.currentName);
     const all = pending.map((p) => p.currentName);
-    if (selected.length === all.length) {
-      setSelected([]);
-    } else if (selected.length === unprocessed.length && unprocessed.length !== all.length) {
-      setSelected(all);
-    } else {
-      setSelected(unprocessed);
+    const setEq = (arr) =>
+      arr.length === selected.length && arr.every((id) => selected.includes(id));
+    if (withNew.length === 0) {
+      if (setEq(all)) setSelected([]);
+      else if (setEq(unprocessed)) setSelected(all);
+      else setSelected(unprocessed);
+      return;
     }
+    if (setEq(withNew)) setSelected(unprocessed);
+    else if (setEq(unprocessed)) setSelected(all);
+    else if (setEq(all)) setSelected([]);
+    else setSelected(withNew);
   }
 
   function toggleHostIgnored(id) {
@@ -195,18 +219,26 @@ export default function ImageManagement() {
   function toggleHostIgnoredAll(list) {
     const allIds = list.map((p) => p.currentName);
     const unprocessedIds = list.filter((p) => !p.processed).map((p) => p.currentName);
-    const allSelected = allIds.every((id) => hostIgnoredSel.includes(id));
-    const unprocessedSelected =
-      unprocessedIds.length > 0 &&
-      unprocessedIds.every((id) => hostIgnoredSel.includes(id)) &&
-      !allSelected;
-    if (allSelected) {
-      setHostIgnoredSel((prev) => prev.filter((id) => !allIds.includes(id)));
-    } else if (unprocessedSelected || unprocessedIds.length === allIds.length) {
-      setHostIgnoredSel((prev) => [...prev, ...allIds.filter((id) => !prev.includes(id))]);
-    } else {
-      setHostIgnoredSel((prev) => [...prev, ...unprocessedIds.filter((id) => !prev.includes(id))]);
+    const newIds = list
+      .filter((p) => p.newName && !p.processed)
+      .map((p) => p.currentName);
+    const current = hostIgnoredSel.filter((id) => allIds.includes(id));
+    const setEq = (arr) => arr.length === current.length && arr.every((id) => current.includes(id));
+    const removePage = (prev) => prev.filter((id) => !allIds.includes(id));
+    if (newIds.length === 0) {
+      if (setEq(allIds)) setHostIgnoredSel(removePage);
+      else if (setEq(unprocessedIds))
+        setHostIgnoredSel((prev) => [...removePage(prev), ...allIds.filter((id) => !prev.includes(id))]);
+      else setHostIgnoredSel((prev) => [...removePage(prev), ...unprocessedIds.filter((id) => !prev.includes(id))]);
+      return;
     }
+    if (setEq(newIds))
+      setHostIgnoredSel((prev) => [...removePage(prev), ...unprocessedIds.filter((id) => !prev.includes(id))]);
+    else if (setEq(unprocessedIds))
+      setHostIgnoredSel((prev) => [...removePage(prev), ...allIds.filter((id) => !prev.includes(id))]);
+    else if (setEq(allIds)) setHostIgnoredSel(removePage);
+    else
+      setHostIgnoredSel((prev) => [...removePage(prev), ...newIds.filter((id) => !prev.includes(id))]);
   }
 
   function toggleUpload(id) {
@@ -218,18 +250,23 @@ export default function ImageManagement() {
   function toggleUploadAll(list) {
     const allIds = list.map((u) => u.id);
     const unprocessedIds = list.filter((u) => !u.processed).map((u) => u.id);
-    const allSelected = allIds.every((id) => uploadSel.includes(id));
-    const unprocessedSelected =
-      unprocessedIds.length > 0 &&
-      unprocessedIds.every((id) => uploadSel.includes(id)) &&
-      !allSelected;
-    if (allSelected) {
-      setUploadSel((prev) => prev.filter((id) => !allIds.includes(id)));
-    } else if (unprocessedSelected || unprocessedIds.length === allIds.length) {
-      setUploadSel((prev) => [...prev, ...allIds.filter((id) => !prev.includes(id))]);
-    } else {
-      setUploadSel((prev) => [...prev, ...unprocessedIds.filter((id) => !prev.includes(id))]);
+    const newIds = list.filter((u) => u.newName && !u.processed).map((u) => u.id);
+    const current = uploadSel.filter((id) => allIds.includes(id));
+    const setEq = (arr) => arr.length === current.length && arr.every((id) => current.includes(id));
+    const removePage = (prev) => prev.filter((id) => !allIds.includes(id));
+    if (newIds.length === 0) {
+      if (setEq(allIds)) setUploadSel(removePage);
+      else if (setEq(unprocessedIds))
+        setUploadSel((prev) => [...removePage(prev), ...allIds.filter((id) => !prev.includes(id))]);
+      else setUploadSel((prev) => [...removePage(prev), ...unprocessedIds.filter((id) => !prev.includes(id))]);
+      return;
     }
+    if (setEq(newIds))
+      setUploadSel((prev) => [...removePage(prev), ...unprocessedIds.filter((id) => !prev.includes(id))]);
+    else if (setEq(unprocessedIds))
+      setUploadSel((prev) => [...removePage(prev), ...allIds.filter((id) => !prev.includes(id))]);
+    else if (setEq(allIds)) setUploadSel(removePage);
+    else setUploadSel((prev) => [...removePage(prev), ...newIds.filter((id) => !prev.includes(id))]);
   }
 
   useEffect(() => {
@@ -703,6 +740,7 @@ export default function ImageManagement() {
                         <th className="border px-2 py-1">New Name</th>
                         <th className="border px-2 py-1">Folder</th>
                         <th className="border px-2 py-1">Description</th>
+                        <th className="border px-2 py-1">State</th>
                         <th className="border px-2 py-1">Delete</th>
                       </tr>
                     </thead>
@@ -716,6 +754,7 @@ export default function ImageManagement() {
                           <td className="border px-2 py-1">{u.newName}</td>
                           <td className="border px-2 py-1">{u.folderDisplay}</td>
                           <td className="border px-2 py-1">{u.description}</td>
+                          <td className="border px-2 py-1">{stateLabel(u)}</td>
                           <td className="border px-2 py-1 text-center">
                             <button
                               type="button"
@@ -785,6 +824,7 @@ export default function ImageManagement() {
                         <th className="border px-2 py-1">New Name</th>
                         <th className="border px-2 py-1">Folder</th>
                         <th className="border px-2 py-1">Description</th>
+                        <th className="border px-2 py-1">State</th>
                         <th className="border px-2 py-1">Delete</th>
                       </tr>
                     </thead>
@@ -798,6 +838,7 @@ export default function ImageManagement() {
                           <td className="border px-2 py-1">{u.newName}</td>
                           <td className="border px-2 py-1">{u.folderDisplay}</td>
                           <td className="border px-2 py-1">{u.reason}</td>
+                          <td className="border px-2 py-1">{stateLabel(u)}</td>
                           <td className="border px-2 py-1 text-center">
                             <button
                               type="button"
@@ -906,6 +947,7 @@ export default function ImageManagement() {
                     <th className="border px-2 py-1">New Name</th>
                     <th className="border px-2 py-1">Folder</th>
                     <th className="border px-2 py-1">Description</th>
+                    <th className="border px-2 py-1">State</th>
                     <th className="border px-2 py-1">Delete</th>
                   </tr>
                 </thead>
@@ -919,6 +961,7 @@ export default function ImageManagement() {
                       <td className="border px-2 py-1">{p.newName}</td>
                       <td className="border px-2 py-1">{p.folderDisplay}</td>
                       <td className="border px-2 py-1">{p.description}</td>
+                      <td className="border px-2 py-1">{stateLabel(p)}</td>
                       <td className="border px-2 py-1 text-center">
                         <button
                           type="button"
@@ -1012,6 +1055,7 @@ export default function ImageManagement() {
                     <th className="border px-2 py-1">New Name</th>
                     <th className="border px-2 py-1">Folder</th>
                     <th className="border px-2 py-1">Description</th>
+                    <th className="border px-2 py-1">State</th>
                     <th className="border px-2 py-1">Delete</th>
                   </tr>
                 </thead>
@@ -1033,6 +1077,7 @@ export default function ImageManagement() {
                         {p.description && p.reason ? ' - ' : ''}
                         {p.reason}
                       </td>
+                      <td className="border px-2 py-1">{stateLabel(p)}</td>
                       <td className="border px-2 py-1 text-center">
                         <button
                           type="button"
