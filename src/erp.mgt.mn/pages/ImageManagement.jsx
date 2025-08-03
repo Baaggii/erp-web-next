@@ -90,56 +90,62 @@ export default function ImageManagement() {
     return val !== undefined && val !== null ? String(val) : undefined;
   }
 
-  function serializeList(list, fields) {
-    return Array.isArray(list)
-      ? list.filter(Boolean).map((item) => {
-          const obj = {};
-          for (const f of fields) {
-            const v = item[f];
-            if (v !== undefined && v !== null) {
-              obj[f] =
-                typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
-                  ? v
-                  : String(v);
-            }
-          }
-          return obj;
-        })
-      : [];
-  }
+  function buildSessionData(partial = {}) {
+    const dataUploads = partial.uploads ?? uploads;
+    const dataIgnored = partial.ignored ?? ignored;
+    const dataPending = partial.pending ?? pending;
+    const dataHostIgnored = partial.hostIgnored ?? hostIgnored;
 
-  function serializeState(partial = {}) {
     return {
       folderName: safeString(partial.folderName ?? folderName) || '',
-      uploads: serializeList(partial.uploads ?? uploads, [
-        'originalName',
-        'newName',
-        'tmpPath',
-        'processed',
-      ]),
-      ignored: serializeList(partial.ignored ?? ignored, [
-        'originalName',
-        'newName',
-        'tmpPath',
-        'reason',
-        'processed',
-      ]),
-      pending: serializeList(partial.pending ?? pending, [
-        'currentName',
-        'newName',
-        'processed',
-      ]),
-      hostIgnored: serializeList(partial.hostIgnored ?? hostIgnored, [
-        'currentName',
-        'reason',
-        'processed',
-      ]),
+      uploads: Array.isArray(dataUploads)
+        ? dataUploads
+            .filter(Boolean)
+            .map(({ originalName, newName, tmpPath, processed }) => ({
+              originalName,
+              newName,
+              tmpPath,
+              processed,
+            }))
+        : [],
+      ignored: Array.isArray(dataIgnored)
+        ? dataIgnored
+            .filter(Boolean)
+            .map(({ originalName, newName, tmpPath, reason, processed }) => ({
+              originalName,
+              newName,
+              tmpPath,
+              reason,
+              processed,
+            }))
+        : [],
+      pending: Array.isArray(dataPending)
+        ? dataPending
+            .filter(Boolean)
+            .map(({ currentName, newName, processed }) => ({
+              currentName,
+              newName,
+              processed,
+            }))
+        : [],
+      hostIgnored: Array.isArray(dataHostIgnored)
+        ? dataHostIgnored
+            .filter(Boolean)
+            .map(({ currentName, reason, processed }) => ({
+              currentName,
+              reason,
+              processed,
+            }))
+        : [],
     };
   }
 
   function persistState(partial) {
     try {
-      localStorage.setItem(FOLDER_STATE_KEY, JSON.stringify(serializeState(partial)));
+      localStorage.setItem(
+        FOLDER_STATE_KEY,
+        JSON.stringify(buildSessionData(partial)),
+      );
     } catch {
       // ignore
     }
@@ -158,7 +164,7 @@ export default function ImageManagement() {
     const name = prompt('Session name?', folderName || new Date().toISOString());
     if (!name) return;
     try {
-      const data = serializeState();
+      const data = buildSessionData();
       localStorage.setItem(SESSION_PREFIX + name, JSON.stringify(data));
       const names = new Set(getSessionNames());
       names.add(name);
