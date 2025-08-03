@@ -1,6 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
+function extractDateFromName(name) {
+  const match = typeof name === 'string' ? name.match(/(?:__|_)(\d{13})_/) : null;
+  if (match) {
+    const d = new Date(Number(match[1]));
+    if (!isNaN(d.getTime())) {
+      return d.toISOString().split('T')[0];
+    }
+  }
+  return '';
+}
+
 export default function ImageManagement() {
   const { addToast } = useToast();
   const [days, setDays] = useState('');
@@ -125,76 +136,6 @@ export default function ImageManagement() {
           names.push(entry.name);
           handles[entry.name] = entry;
         }
-        if (!res.ok) {
-          addToast('Folder scan failed', 'error');
-          return;
-        }
-        const data = await res.json().catch(() => ({}));
-        const list = Array.isArray(data.list) ? data.list : [];
-        const miss = Array.isArray(data.skipped) ? data.skipped : [];
-        processed += data?.summary?.processed || 0;
-        all = all.concat(list);
-        skipped = skipped.concat(miss);
-      }
-      if (scanCancelRef.current) return;
-      const chunkSize = 200;
-      let all = [];
-      let skipped = [];
-      let processed = 0;
-      for (let i = 0; i < names.length; i += chunkSize) {
-        if (scanCancelRef.current) return;
-        let res;
-        try {
-          res = await fetch('/api/transaction_images/upload_scan', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ names: names.slice(i, i + chunkSize) }),
-          });
-        } catch {
-          addToast('Folder scan failed', 'error');
-          return;
-        }
-        if (!res.ok) {
-          addToast('Folder scan failed', 'error');
-          return;
-        }
-        const data = await res.json().catch(() => ({}));
-        const list = Array.isArray(data.list) ? data.list : [];
-        const miss = Array.isArray(data.skipped) ? data.skipped : [];
-        processed += data?.summary?.processed || 0;
-        all = all.concat(list);
-        skipped = skipped.concat(miss);
-      }
-      if (scanCancelRef.current) return;
-      const chunkSize = 200;
-      let all = [];
-      let skipped = [];
-      let processed = 0;
-      for (let i = 0; i < names.length; i += chunkSize) {
-        if (scanCancelRef.current) return;
-        let res;
-        try {
-          res = await fetch('/api/transaction_images/upload_scan', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ names: names.slice(i, i + chunkSize) }),
-          });
-        } catch {
-          addToast('Folder scan failed', 'error');
-          return;
-        }
-        if (!res.ok) {
-          addToast('Folder scan failed', 'error');
-          return;
-        }
-        const data = await res.json().catch(() => ({}));
-        const list = Array.isArray(data.list) ? data.list : [];
-        const miss = Array.isArray(data.skipped) ? data.skipped : [];
-        processed += data?.summary?.processed || 0;
-        all = all.concat(list);
-        skipped = skipped.concat(miss);
       }
       if (scanCancelRef.current) return;
       const chunkSize = 200;
@@ -230,7 +171,12 @@ export default function ImageManagement() {
       setFolderName(dirHandle.name || '');
       const sorted = all.slice().sort((a, b) => a.originalName.localeCompare(b.originalName));
       setUploads(
-        sorted.map((u) => ({ originalName: u.originalName, id: u.originalName, handle: handles[u.originalName] }))
+        sorted.map((u) => ({
+          originalName: u.originalName,
+          id: u.originalName,
+          handle: handles[u.originalName],
+          description: extractDateFromName(u.originalName),
+        }))
       );
       const skippedSorted = skipped
         .slice()
@@ -287,7 +233,10 @@ export default function ImageManagement() {
       if (res.ok) {
         const data = await res.json();
         const list = Array.isArray(data.list)
-          ? data.list.slice().sort((a, b) => a.currentName.localeCompare(b.currentName))
+          ? data.list
+              .slice()
+              .sort((a, b) => a.currentName.localeCompare(b.currentName))
+              .map((p) => ({ ...p, description: extractDateFromName(p.currentName) }))
           : [];
         const miss = Array.isArray(data.skipped)
           ? data.skipped.slice().sort((a, b) => a.currentName.localeCompare(b.currentName))
@@ -383,14 +332,16 @@ export default function ImageManagement() {
       setUploads((prev) => {
         const mapped = prev.map((u) => {
           const found = list.find((x) => x.originalName === u.originalName);
-          return found ? { ...u, ...found, id: u.id } : u;
+          const merged = found ? { ...u, ...found, id: u.id } : u;
+          return { ...merged, description: extractDateFromName(merged.originalName) };
         });
         return mapped.sort((a, b) => a.originalName.localeCompare(b.originalName));
       });
       setIgnored((prev) => {
         const mapped = prev.map((u) => {
           const found = list.find((x) => x.originalName === u.originalName);
-          return found ? { ...u, ...found, id: u.id } : u;
+          const merged = found ? { ...u, ...found, id: u.id } : u;
+          return { ...merged, description: extractDateFromName(merged.originalName) };
         });
         return mapped.sort((a, b) => a.originalName.localeCompare(b.originalName));
       });
@@ -566,6 +517,7 @@ export default function ImageManagement() {
                         <th className="border px-2 py-1">Original</th>
                         <th className="border px-2 py-1">New Name</th>
                         <th className="border px-2 py-1">Folder</th>
+                        <th className="border px-2 py-1">Description</th>
                         <th className="border px-2 py-1">Delete</th>
                       </tr>
                     </thead>
@@ -578,6 +530,7 @@ export default function ImageManagement() {
                           <td className="border px-2 py-1">{u.originalName}</td>
                           <td className="border px-2 py-1">{u.newName}</td>
                           <td className="border px-2 py-1">{u.folderDisplay}</td>
+                          <td className="border px-2 py-1">{u.description}</td>
                           <td className="border px-2 py-1 text-center">
                             <button
                               type="button"
@@ -761,6 +714,7 @@ export default function ImageManagement() {
                     <th className="border px-2 py-1">Current</th>
                     <th className="border px-2 py-1">New Name</th>
                     <th className="border px-2 py-1">Folder</th>
+                    <th className="border px-2 py-1">Description</th>
                     <th className="border px-2 py-1">Delete</th>
                   </tr>
                 </thead>
@@ -773,6 +727,7 @@ export default function ImageManagement() {
                       <td className="border px-2 py-1">{p.currentName}</td>
                       <td className="border px-2 py-1">{p.newName}</td>
                       <td className="border px-2 py-1">{p.folderDisplay}</td>
+                      <td className="border px-2 py-1">{p.description}</td>
                       <td className="border px-2 py-1 text-center">
                         <button
                           type="button"
