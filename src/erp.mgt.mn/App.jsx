@@ -35,45 +35,12 @@ import { useModules } from './hooks/useModules.js';
 import { useTxnModules } from './hooks/useTxnModules.js';
 
 export default function App() {
+  const modules = useModules();
+  const txnModules = useTxnModules();
+
   useEffect(() => {
     debugLog('Component mounted: App');
   }, []);
-
-  return (
-    <ToastProvider>
-      <AuthContextProvider>
-        <TxnSessionProvider>
-          <LoadingProvider>
-            <TabProvider>
-              <HashRouter>
-                <Routes>
-                  <Route path="/login" element={<LoginPage />} />
-                  <Route element={<RequireAuth />}>
-                    <Route path="/" element={<ERPLayout />}>
-                      <ModuleRoutes />
-                    </Route>
-                    <Route
-                      path="/inventory-demo"
-                      element={
-                        <AppLayout title="Inventory">
-                          <InventoryPage />
-                        </AppLayout>
-                      }
-                    />
-                  </Route>
-                </Routes>
-              </HashRouter>
-            </TabProvider>
-          </LoadingProvider>
-        </TxnSessionProvider>
-      </AuthContextProvider>
-    </ToastProvider>
-  );
-}
-
-function ModuleRoutes() {
-  const modules = useModules();
-  const txnModules = useTxnModules();
 
   const moduleMap = {};
   modules.forEach((m) => {
@@ -166,7 +133,34 @@ function ModuleRoutes() {
     .filter((m) => !m.parent_key)
     .map((m) => moduleMap[m.module_key]);
 
-  return <>{roots.map(renderRoute)}</>;
+  return (
+    <ToastProvider>
+      <AuthContextProvider>
+        <TxnSessionProvider>
+          <LoadingProvider>
+            <TabProvider>
+              <HashRouter>
+                <Routes>
+                  <Route path="/login" element={<LoginPage />} />
+                  <Route element={<RequireAuth />}>
+                    <Route path="/" element={<ERPLayout />}>{roots.map(renderRoute)}</Route>
+                    <Route
+                      path="inventory-demo"
+                      element={
+                        <AppLayout title="Inventory">
+                          <InventoryPage />
+                        </AppLayout>
+                      }
+                    />
+                  </Route>
+                </Routes>
+              </HashRouter>
+            </TabProvider>
+          </LoadingProvider>
+        </TxnSessionProvider>
+      </AuthContextProvider>
+    </ToastProvider>
+  );
 }
 
 function RequireAdminPage({ children }) {
