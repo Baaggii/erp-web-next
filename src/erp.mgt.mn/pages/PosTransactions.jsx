@@ -749,15 +749,22 @@ export default function PosTransactionsPage() {
             {},
           );
           const rowBefore = values[config.masterTable] || {};
-          const { name: oldImg } = buildImageName(
-            rowBefore,
-            imgCfg.imagenameField || [],
-            columnMap,
-          );
-          const rowAfter = {
-            ...rowBefore,
-            [imgCfg.imageIdField]: js[imgCfg.imageIdField],
-          };
+          const oldImg =
+            rowBefore._imageName ||
+            buildImageName(rowBefore, imgCfg.imagenameField || [], columnMap).name;
+          await new Promise((r) => setTimeout(r, 300));
+          let rowAfter = rowBefore;
+          try {
+            const r2 = await fetch(
+              `/api/tables/${encodeURIComponent(config.masterTable)}/${encodeURIComponent(js.id)}`,
+              { credentials: 'include' },
+            );
+            if (r2.ok) {
+              rowAfter = await r2.json().catch(() => rowBefore);
+            }
+          } catch {
+            rowAfter = rowBefore;
+          }
           const { name: newImg } = buildImageName(
             rowAfter,
             imgCfg.imagenameField || [],
@@ -770,10 +777,22 @@ export default function PosTransactionsPage() {
             ? `${slugify(t1)}/${slugify(String(t2))}`
             : config.masterTable;
           if (oldImg && newImg && oldImg !== newImg) {
-            await fetch(
-              `/api/transaction_images/${config.masterTable}/${encodeURIComponent(oldImg)}/rename/${encodeURIComponent(newImg)}?folder=${encodeURIComponent(folder)}`,
-              { method: 'POST', credentials: 'include' },
-            );
+            const renameUrl =
+              `/api/transaction_images/${config.masterTable}/${encodeURIComponent(oldImg)}/rename/${encodeURIComponent(newImg)}?folder=${encodeURIComponent(folder)}`;
+            try {
+              const rn = await fetch(renameUrl, {
+                method: 'POST',
+                credentials: 'include',
+              });
+              if (rn.ok) {
+                const imgs = await rn.json().catch(() => []);
+                (Array.isArray(imgs) ? imgs : []).forEach((p) =>
+                  addToast(`Image saved: ${p}`, 'success'),
+                );
+              }
+            } catch {
+              /* ignore */
+            }
           }
         }
         addToast('Posted', 'success');
@@ -987,6 +1006,9 @@ export default function PosTransactionsPage() {
                       table={config.masterTable}
                       imagenameField={
                         formConfigs[config.masterTable]?.imagenameField || []
+                      }
+                      imageIdField={
+                        formConfigs[config.masterTable]?.imageIdField || ''
                       }
                       relations={relationsMap[t.table] || {}}
                       relationConfigs={relationConfigs[t.table] || {}}

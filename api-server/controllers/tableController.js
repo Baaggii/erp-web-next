@@ -96,6 +96,9 @@ export async function addRow(req, res, next) {
     if (req.params.table === 'users' && row.password) {
       row.password = await bcrypt.hash(row.password, 10);
     }
+    if (columns.includes('g_burtgel_id') && row.g_burtgel_id == null) {
+      row.g_burtgel_id = row.g_id ?? 0;
+    }
     const result = await insertTableRow(req.params.table, row);
     res.status(201).json(result);
   } catch (err) {

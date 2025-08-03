@@ -52,3 +52,24 @@ test('addRow forwards db error when required id missing', async () => {
   assert.ok(err);
   assert.match(err.message, /ER_BAD_NULL_ERROR/);
 });
+
+test('addRow defaults g_burtgel_id from g_id when missing', async () => {
+  const restore = mockPool(async (sql, params) => {
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[
+        { COLUMN_NAME: 'g_id' },
+        { COLUMN_NAME: 'g_burtgel_id' },
+      ]];
+    }
+    if (sql.startsWith('INSERT INTO')) {
+      assert.ok(sql.includes('`g_id`') && sql.includes('`g_burtgel_id`'));
+      assert.deepEqual(params, ['SGereeJ', 7, 7]);
+      return [{ insertId: 1 }];
+    }
+    return [{}];
+  });
+  const req = { params: { table: 'SGereeJ' }, body: { g_id: 7 } };
+  const res = { status() { return this; }, json() {} };
+  await controller.addRow(req, res, (e) => { if (e) throw e; });
+  restore();
+});
