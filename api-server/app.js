@@ -26,15 +26,20 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+app.set('trust proxy', true);
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 app.use(cookieParser());
 
+app.use(logger);
+
+// Serve uploaded images statically before CSRF so image requests don't require tokens
+const uploadsDir = path.resolve(__dirname, "../uploads");
+app.use("/uploads", express.static(uploadsDir));
+
 // Setup CSRF protection using cookies
 const csrfProtection = csurf({ cookie: true });
 app.use(csrfProtection);
-
-app.use(logger);
 
 // Health-check: also verify DB connection
 app.get("/api/auth/health", async (req, res, next) => {
