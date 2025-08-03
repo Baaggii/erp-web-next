@@ -54,21 +54,12 @@ export default function RowImageViewModal({
     if (folder !== table && table.startsWith('transactions_')) {
       folders.push(table);
     }
-    async function loadFiles(list) {
-      const results = await Promise.all(
-        list.map(async (p) => {
-          const full = p.startsWith('http') ? p : `${apiRoot}${p}`;
-          try {
-            const resp = await fetch(full, { credentials: 'include' });
-            if (!resp.ok) throw new Error('bad');
-            const blob = await resp.blob();
-            return { path: p, name: p.split('/').pop(), src: URL.createObjectURL(blob) };
-          } catch {
-            return { path: p, name: p.split('/').pop(), src: placeholder };
-          }
-        }),
-      );
-      setFiles(results);
+    function buildFileList(list) {
+      return list.map((p) => ({
+        path: p,
+        name: p.split('/').pop(),
+        src: p.startsWith('http') ? p : `${apiRoot}${p}`,
+      }));
     }
 
     (async () => {
@@ -85,7 +76,7 @@ export default function RowImageViewModal({
           const list = Array.isArray(imgs) ? imgs : [];
           if (list.length > 0) {
             list.forEach((p) => addToast(`Found image: ${p}`, 'info'));
-            await loadFiles(list);
+            setFiles(buildFileList(list));
             return;
           }
         } catch {
@@ -117,7 +108,7 @@ export default function RowImageViewModal({
                   const list2 = Array.isArray(imgs2) ? imgs2 : [];
                   if (list2.length > 0) {
                     list2.forEach((p) => addToast(`Found image: ${p}`, 'info'));
-                    await loadFiles(list2);
+                    setFiles(buildFileList(list2));
                     return;
                   }
                 } catch {
@@ -125,7 +116,7 @@ export default function RowImageViewModal({
                 }
               } else {
                 list.forEach((p) => addToast(`Found image: ${p}`, 'info'));
-                await loadFiles(list);
+                setFiles(buildFileList(list));
                 return;
               }
             }
