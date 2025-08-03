@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Modal from './Modal.jsx';
 import buildImageName from '../utils/buildImageName.js';
-import { API_BASE } from '../utils/apiBase.js';
+import { API_BASE, API_ROOT } from '../utils/apiBase.js';
 import { useToast } from '../context/ToastContext.jsx';
 
 export default function RowImageViewModal({
@@ -11,49 +11,123 @@ export default function RowImageViewModal({
   table,
   folder,
   row = {},
-  imagenameFields = [],
   columnCaseMap = {},
-  imageIdField = '',
+  configs = {},
 }) {
   const [files, setFiles] = useState([]);
   const [showGallery, setShowGallery] = useState(false);
   const [fullscreen, setFullscreen] = useState(null);
   const { addToast } = useToast();
+  const loaded = useRef(false);
 
   const placeholder =
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMBAZLr5z0AAAAASUVORK5CYII=';
+  // Root URL for static assets like uploaded images
+  const apiRoot = API_ROOT;
+  function getCase(obj, field) {
+    if (!obj) return undefined;
+    if (obj[field] !== undefined) return obj[field];
+    const lower = field.toLowerCase();
+    if (obj[columnCaseMap[lower]] !== undefined) return obj[columnCaseMap[lower]];
+    const key = Object.keys(obj).find((k) => k.toLowerCase() === lower);
+    return key ? obj[key] : undefined;
+  }
 
-  function getImageUrl(p) {
-    if (!p) return '';
-    // If API returns a full URL, use it directly
-    if (p.startsWith('http')) return p;
-    const base =
-      (window.API_BASE || API_BASE || '')
-        .replace(/\/$/, '')
-        .replace(/\/api$/, '') || window.location.origin;
-    return `${base}/${p.replace(/^\//, '')}`;
+  const sanitize = (name) =>
+    String(name)
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/gi, '_');
+
+  function pickConfig(cfgs = {}, r = {}) {
+    const tVal =
+      getCase(r, 'transtype') ||
+      getCase(r, 'Transtype') ||
+      getCase(r, 'UITransType') ||
+      getCase(r, 'UITransTypeName');
+    for (const cfg of Object.values(cfgs)) {
+      if (!cfg.transactionTypeValue) continue;
+      if (
+        tVal !== undefined &&
+        String(tVal) === String(cfg.transactionTypeValue)
+      ) {
+        return cfg;
+      }
+      if (cfg.transactionTypeField) {
+        const val = getCase(r, cfg.transactionTypeField);
+        if (val !== undefined && String(val) === String(cfg.transactionTypeValue)) {
+          return cfg;
+        }
+      } else {
+        const matchField = Object.keys(r).find(
+          (k) => String(getCase(r, k)) === String(cfg.transactionTypeValue),
+        );
+        if (matchField) return { ...cfg, transactionTypeField: matchField };
+      }
+    }
+    return {};
+  }
+
+  function buildFallbackName(r = {}) {
+    const fields = [
+      'z_mat_code',
+      'or_bcode',
+      'bmtr_pmid',
+      'pmid',
+      'sp_primary_code',
+      'pid',
+    ];
+    const parts = [];
+    const base = fields.map((f) => getCase(r, f)).filter(Boolean).join('_');
+    if (base) parts.push(base);
+    const o1 = [getCase(r, 'bmtr_orderid'), getCase(r, 'bmtr_orderdid')]
+      .filter(Boolean)
+      .join('~');
+    const o2 = [getCase(r, 'ordrid'), getCase(r, 'ordrdid')]
+      .filter(Boolean)
+      .join('~');
+    const ord = o1 || o2;
+    if (ord) parts.push(ord);
+    const transTypeVal =
+      getCase(r, 'TransType') ||
+      getCase(r, 'UITransType') ||
+      getCase(r, 'UITransTypeName') ||
+      getCase(r, 'transtype');
+    const tType =
+      getCase(r, 'trtype') ||
+      getCase(r, 'UITrtype') ||
+      getCase(r, 'TRTYPENAME') ||
+      getCase(r, 'trtypename') ||
+      getCase(r, 'uitranstypename') ||
+      getCase(r, 'transtype');
+    if (transTypeVal) parts.push(transTypeVal);
+    if (tType) parts.push(tType);
+    return sanitize(parts.join('_'));
   }
 
   useEffect(() => {
-    if (!visible) return;
-    const primary = buildImageName(
-      row,
-      imagenameFields.length
-        ? Array.from(
-            new Set([...imagenameFields, imageIdField].filter(Boolean)),
-          )
-        : imageIdField
-        ? [imageIdField]
-        : [],
-      columnCaseMap,
-    ).name;
-    const { name: idName } = imageIdField
-      ? buildImageName(row, [imageIdField], columnCaseMap)
-      : { name: '' };
+    if (!visible || loaded.current) return;
+    loaded.current = true;
+
+    const cfg = pickConfig(configs, row);
+    let primary = '';
+    let idName = '';
+    if (cfg?.imagenameField?.length) {
+      primary = buildImageName(row, cfg.imagenameField, columnCaseMap).name;
+    }
+    if (!primary) {
+      primary = buildFallbackName(row);
+    }
+    if (cfg?.imageIdField) {
+      idName = buildImageName(row, [cfg.imageIdField], columnCaseMap).name;
+    }
     const altNames = [];
     if (idName && idName !== primary) altNames.push(idName);
-    if (row._imageName && row._imageName !== primary && !altNames.includes(row._imageName)) {
+    if (row._imageName && ![primary, ...altNames].includes(row._imageName)) {
       altNames.push(row._imageName);
+    }
+    addToast(`Primary image name: ${primary}`, 'info');
+    if (altNames.length) {
+      addToast(`Alt image names: ${altNames.join(', ')}`, 'info');
     }
     if (!folder || !primary) {
       setFiles([]);
@@ -64,33 +138,35 @@ export default function RowImageViewModal({
     if (folder !== table && table.startsWith('transactions_')) {
       folders.push(table);
     }
+    addToast(`Folders to search: ${folders.join(', ')}`, 'info');
     (async () => {
       for (const fld of folders) {
         const params = new URLSearchParams();
         if (fld) params.set('folder', fld);
-        addToast(`Search: ${params.get('folder') || table}/${primary}`, 'info');
+        const url = `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(primary)}?${params.toString()}`;
+        addToast(`Searching URL: ${url}`, 'info');
         try {
-          const res = await fetch(
-            `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(primary)}?${params.toString()}`,
-            { credentials: 'include' },
-          );
+          const res = await fetch(url, { credentials: 'include' });
           const imgs = res.ok ? await res.json().catch(() => []) : [];
           const list = Array.isArray(imgs) ? imgs : [];
           if (list.length > 0) {
             list.forEach((p) => addToast(`Found image: ${p}`, 'info'));
-            setFiles(list);
+            const entries = list.map((p) => ({
+              path: p,
+              name: p.split('/').pop(),
+              src: p.startsWith('http') ? p : `${apiRoot}${p}`,
+            }));
+            setFiles(entries);
             return;
           }
         } catch {
           /* ignore */
         }
         for (const nm of altNames) {
-          addToast(`Search: ${params.get('folder') || table}/${nm}`, 'info');
+          const altUrl = `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(nm)}?${params.toString()}`;
+          addToast(`Searching URL: ${altUrl}`, 'info');
           try {
-            const res = await fetch(
-              `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(nm)}?${params.toString()}`,
-              { credentials: 'include' },
-            );
+            const res = await fetch(altUrl, { credentials: 'include' });
             const imgs = res.ok ? await res.json().catch(() => []) : [];
             const list = Array.isArray(imgs) ? imgs : [];
             if (list.length > 0) {
@@ -98,10 +174,9 @@ export default function RowImageViewModal({
                 try {
                   const renameParams = new URLSearchParams();
                   if (folder) renameParams.set('folder', folder);
-                  await fetch(
-                    `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(idName)}/rename/${encodeURIComponent(primary)}?${renameParams.toString()}`,
-                    { method: 'POST', credentials: 'include' },
-                  );
+                  const renameUrl = `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(idName)}/rename/${encodeURIComponent(primary)}?${renameParams.toString()}`;
+                  addToast(`Renaming via: ${renameUrl}`, 'info');
+                  await fetch(renameUrl, { method: 'POST', credentials: 'include' });
                   const res2 = await fetch(
                     `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(primary)}?${renameParams.toString()}`,
                     { credentials: 'include' },
@@ -110,7 +185,12 @@ export default function RowImageViewModal({
                   const list2 = Array.isArray(imgs2) ? imgs2 : [];
                   if (list2.length > 0) {
                     list2.forEach((p) => addToast(`Found image: ${p}`, 'info'));
-                    setFiles(list2);
+                    const entries = list2.map((p) => ({
+                      path: p,
+                      name: p.split('/').pop(),
+                      src: p.startsWith('http') ? p : `${apiRoot}${p}`,
+                    }));
+                    setFiles(entries);
                     return;
                   }
                 } catch {
@@ -118,7 +198,12 @@ export default function RowImageViewModal({
                 }
               } else {
                 list.forEach((p) => addToast(`Found image: ${p}`, 'info'));
-                setFiles(list);
+                const entries = list.map((p) => ({
+                  path: p,
+                  name: p.split('/').pop(),
+                  src: p.startsWith('http') ? p : `${apiRoot}${p}`,
+                }));
+                setFiles(entries);
                 return;
               }
             }
@@ -127,14 +212,16 @@ export default function RowImageViewModal({
           }
         }
       }
+      addToast('No images found', 'info');
       setFiles([]);
     })();
-  }, [visible, folder, row, table, imageIdField, imagenameFields]);
+  }, [visible, folder, row, table, configs]);
 
   useEffect(() => {
     if (!visible) {
       setShowGallery(false);
       setFullscreen(null);
+      loaded.current = false;
     }
   }, [visible]);
 
@@ -147,70 +234,92 @@ export default function RowImageViewModal({
 
   const listView = (
     <div style={{ maxHeight: '40vh', overflowY: 'auto' }}>
-      {files.map((src) => {
-        const name = src.split('/').pop();
-        return (
-          <div key={src} style={{ marginBottom: '0.25rem' }}>
-            <img
-              src={getImageUrl(src)}
-              alt=""
-              onError={(e) => {
-                e.currentTarget.onerror = null;
-                e.currentTarget.src = placeholder;
-              }}
-              style={{ maxWidth: '100px', marginRight: '0.5rem' }}
-            />
-            <span
-              style={{ cursor: 'pointer', color: '#2563eb' }}
-              onClick={() => handleView(src)}
-            >
-              {name}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-
-  const gallery = (
-    <div
-      style={{
-        maxHeight: '70vh',
-        overflowY: 'auto',
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: '0.5rem',
-      }}
-    >
-      {files.map((src) => (
-        <img
-          key={src}
-          src={getImageUrl(src)}
-          alt=""
-          onError={(e) => {
-            e.currentTarget.onerror = null;
-            e.currentTarget.src = placeholder;
-          }}
-          style={{ cursor: 'pointer', width: '150px', height: '150px', objectFit: 'cover' }}
-          onClick={() => handleView(src)}
-        />
+      {files.map((f) => (
+        <div key={f.path} style={{ marginBottom: '0.25rem' }}>
+          <img
+            src={f.src}
+            alt=""
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = placeholder;
+            }}
+            style={{ maxWidth: '100px', marginRight: '0.5rem' }}
+          />
+          <span
+            style={{ cursor: 'pointer', color: '#2563eb' }}
+            onClick={() => handleView(f.src)}
+          >
+            {f.name}
+          </span>
+        </div>
       ))}
     </div>
   );
 
+  const gridCols = Math.ceil(Math.sqrt(files.length));
+  const gridRows = Math.ceil(files.length / gridCols);
+
   return (
-    <Modal visible={visible} title="Images" onClose={onClose} width="auto">
-      {files.length === 0 ? <p>No images</p> : showGallery ? gallery : listView}
-      {files.length > 0 && (
-        <div style={{ textAlign: 'right', marginTop: '0.5rem' }}>
-          <button type="button" onClick={() => setShowGallery((v) => !v)} style={{ marginRight: '0.5rem' }}>
-            {showGallery ? 'List view' : 'View all images'}
-          </button>
+    <>
+      <Modal visible={visible} title="Images" onClose={onClose} width="auto">
+        {files.length === 0 ? <p>No images</p> : listView}
+        {files.length > 0 && (
+          <div style={{ textAlign: 'right', marginTop: '0.5rem' }}>
+            <button type="button" onClick={() => setShowGallery(true)} style={{ marginRight: '0.5rem' }}>
+              View all images
+            </button>
+          </div>
+        )}
+        <div style={{ textAlign: 'right', marginTop: '1rem' }}>
+          <button type="button" onClick={onClose}>Close</button>
         </div>
-      )}
-      <div style={{ textAlign: 'right', marginTop: '1rem' }}>
-        <button type="button" onClick={onClose}>Close</button>
-      </div>
+      </Modal>
+      {showGallery &&
+        createPortal(
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0,0,0,0.85)',
+              zIndex: 1100,
+              padding: '1rem',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            <div style={{ textAlign: 'right' }}>
+              <button type="button" onClick={() => setShowGallery(false)}>Close</button>
+            </div>
+            <div
+              style={{
+                flex: 1,
+                display: 'grid',
+                gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
+                gridTemplateRows: `repeat(${gridRows}, 1fr)`,
+                gap: '0.5rem',
+                marginTop: '1rem',
+              }}
+            >
+              {files.map((f) => (
+                <img
+                  key={f.path}
+                  src={f.src}
+                  alt=""
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = placeholder;
+                  }}
+                  style={{ width: '100%', height: '100%', objectFit: 'contain', cursor: 'pointer' }}
+                  onClick={() => handleView(f.src)}
+                />
+              ))}
+            </div>
+          </div>,
+          document.body,
+        )}
       {fullscreen &&
         createPortal(
           <div
@@ -224,12 +333,12 @@ export default function RowImageViewModal({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              zIndex: 1100,
+              zIndex: 1200,
             }}
             onClick={() => setFullscreen(null)}
           >
             <img
-              src={getImageUrl(fullscreen)}
+              src={fullscreen}
               alt=""
               onError={(e) => {
                 e.currentTarget.onerror = null;
@@ -240,6 +349,6 @@ export default function RowImageViewModal({
           </div>,
           document.body,
         )}
-    </Modal>
+    </>
   );
 }
