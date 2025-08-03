@@ -155,12 +155,18 @@ export default function ImageManagement() {
     }
   }
 
+  function sanitizeName(n = '') {
+    return n.replace(/[^\w.-]/g, '_').slice(0, 100);
+  }
+
   function saveSession() {
-    const name = prompt('Session name?', folderName || new Date().toISOString());
+    const raw = prompt('Session name?', folderName || new Date().toISOString());
+    const name = raw ? sanitizeName(raw.trim()) : '';
     if (!name) return;
     try {
       const data = buildSession();
-      localStorage.setItem(SESSION_PREFIX + name, JSON.stringify(data));
+      const serialized = JSON.stringify(data);
+      localStorage.setItem(SESSION_PREFIX + name, serialized);
       const names = new Set(getSessionNames());
       names.add(name);
       localStorage.setItem(SESSIONS_KEY, JSON.stringify([...names]));
@@ -231,6 +237,10 @@ export default function ImageManagement() {
   const lastPage = pendingSummary
     ? Math.max(1, Math.ceil((pendingSummary.incompleteFound || 0) / pageSize))
     : 1;
+
+  const canRenameSelected = [...uploads, ...ignored].some(
+    (u) => uploadSel.includes(u.id) && u.handle && !u.tmpPath && !u.processed,
+  );
 
   function toggle(id) {
     setSelected((prev) =>
@@ -567,7 +577,10 @@ export default function ImageManagement() {
     const items = [...uploads, ...ignored].filter(
       (u) => uploadSel.includes(u.id) && u.handle && !u.tmpPath && !u.processed,
     );
-    if (items.length === 0) return;
+    if (items.length === 0) {
+      addToast('No local files to rename', 'error');
+      return;
+    }
     const formData = new FormData();
     try {
       for (const u of items) {
@@ -720,7 +733,7 @@ export default function ImageManagement() {
                 type="button"
                 onClick={renameSelected}
                 style={{ marginBottom: '0.5rem', marginRight: '0.5rem' }}
-                disabled={uploadSel.length === 0}
+                disabled={!canRenameSelected}
               >
                 Rename Selected
               </button>
