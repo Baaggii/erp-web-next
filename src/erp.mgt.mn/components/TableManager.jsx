@@ -973,9 +973,13 @@ const TableManager = forwardRef(function TableManager({
             ...merged,
             [formConfig.imageIdField]: savedRow[formConfig.imageIdField],
           };
-          const nameFields = (formConfig?.imagenameField || []).concat(
-            formConfig?.imageIdField || '',
-          ).filter(Boolean);
+          const nameFields = Array.from(
+            new Set(
+              (formConfig?.imagenameField || [])
+                .concat(formConfig?.imageIdField || '')
+                .filter(Boolean),
+            ),
+          );
           const { name: newImageName } = buildImageName(
             rowForName,
             nameFields,
@@ -987,10 +991,17 @@ const TableManager = forwardRef(function TableManager({
             newImageName &&
             (oldImageName !== newImageName || folder !== table)
           ) {
-            await fetch(
-              `/api/transaction_images/${table}/${encodeURIComponent(oldImageName)}/rename/${encodeURIComponent(newImageName)}?folder=${encodeURIComponent(folder)}`,
-              { method: 'POST', credentials: 'include' },
-            );
+            const renameUrl =
+              `/api/transaction_images/${table}/${encodeURIComponent(oldImageName)}` +
+              `/rename/${encodeURIComponent(newImageName)}?folder=${encodeURIComponent(folder)}`;
+            await fetch(renameUrl, { method: 'POST', credentials: 'include' });
+            const verifyUrl =
+              `/api/transaction_images/${table}/${encodeURIComponent(newImageName)}?folder=${encodeURIComponent(folder)}`;
+            const res2 = await fetch(verifyUrl, { credentials: 'include' });
+            const imgs = res2.ok ? await res2.json().catch(() => []) : [];
+            if (!Array.isArray(imgs) || imgs.length === 0) {
+              await fetch(renameUrl, { method: 'POST', credentials: 'include' });
+            }
           }
         }
         addToast(msg, 'success');

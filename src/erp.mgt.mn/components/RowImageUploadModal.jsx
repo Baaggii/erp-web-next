@@ -28,7 +28,9 @@ export default function RowImageUploadModal({
   function buildName(fields = imagenameFields) {
     let list = [];
     if (fields === imagenameFields) {
-      list = [...imagenameFields, imageIdField].filter(Boolean);
+      list = Array.from(
+        new Set([...imagenameFields, imageIdField].filter(Boolean)),
+      );
     } else if (fields.length) {
       list = fields;
     } else if (imageIdField) {
