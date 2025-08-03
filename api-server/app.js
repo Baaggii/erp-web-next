@@ -36,6 +36,10 @@ app.use(csrfProtection);
 
 app.use(logger);
 
+// Serve uploaded images statically
+const uploadsDir = path.resolve(__dirname, "../uploads");
+app.use("/uploads", express.static(uploadsDir));
+
 // Health-check: also verify DB connection
 app.get("/api/auth/health", async (req, res, next) => {
   try {

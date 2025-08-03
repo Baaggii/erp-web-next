@@ -49,8 +49,9 @@ app.use(logger);
 
 // Serve uploaded images statically
 const imgCfg = await getGeneralConfig();
-const imgBase = imgCfg.general?.imageStorage?.basePath || 'uploads';
-app.use(`/${imgBase}`, express.static(path.join(process.cwd(), imgBase)));
+const imgBase = imgCfg.general?.imageStorage?.basePath || "uploads";
+const uploadsDir = path.resolve(__dirname, "../", imgBase);
+app.use(`/${imgBase}`, express.static(uploadsDir));
 
 // Health-check: also verify DB connection
 app.get("/api/auth/health", async (req, res, next) => {
