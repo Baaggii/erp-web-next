@@ -396,8 +396,12 @@ export async function moveImagesToDeleted(table, row = {}) {
 export async function deleteImage(table, file, folder = null) {
   const { baseDir } = await getDirs();
   const dir = path.join(baseDir, folder || table);
+  const targetDir = path.join(baseDir, 'deleted_images');
+  ensureDir(targetDir);
   try {
-    await fs.unlink(path.join(dir, path.basename(file)));
+    const src = path.join(dir, path.basename(file));
+    const dest = path.join(targetDir, path.basename(file));
+    await fs.rename(src, dest);
     return true;
   } catch {
     return false;
