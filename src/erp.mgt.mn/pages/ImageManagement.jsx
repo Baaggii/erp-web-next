@@ -1,6 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
+const FOLDER_STATE_KEY = 'imgMgmtFolderState';
+
+function extractDateFromName(name) {
+  const match = typeof name === 'string' ? name.match(/(?:__|_)(\d{13})_/) : null;
+  if (match) {
+    const d = new Date(Number(match[1]));
+    if (!isNaN(d.getTime())) {
+      return d.toISOString().split('T')[0];
+    }
+  }
+  return '';
+}
+
 export default function ImageManagement() {
   const { addToast } = useToast();
   const [days, setDays] = useState('');
@@ -27,6 +40,33 @@ export default function ImageManagement() {
   const scanCancelRef = useRef(false);
   const [activeOp, setActiveOp] = useState(null);
   const [report, setReport] = useState('');
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(FOLDER_STATE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.folderName) setFolderName(parsed.folderName);
+        if (Array.isArray(parsed.uploads)) setUploads(parsed.uploads);
+        if (Array.isArray(parsed.ignored)) setIgnored(parsed.ignored);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  function persistState(up = uploads, ig = ignored, folder = folderName) {
+    try {
+      const data = {
+        folderName: folder,
+        uploads: up.map(({ handle, ...rest }) => rest),
+        ignored: ig.map(({ handle, ...rest }) => rest),
+      };
+      localStorage.setItem(FOLDER_STATE_KEY, JSON.stringify(data));
+    } catch {
+      // ignore
+    }
+  }
 
   const uploadStart = (uploadPage - 1) * uploadPageSize;
   const pageUploads = uploads.slice(uploadStart, uploadStart + uploadPageSize);
@@ -81,7 +121,7 @@ export default function ImageManagement() {
   }
 
   function toggleUploadAll(list) {
-    const ids = list.map((u) => u.id);
+    const ids = list.filter((u) => !u.processed).map((u) => u.id);
     const allSelected = ids.every((id) => uploadSel.includes(id));
     if (allSelected) {
       setUploadSel((prev) => prev.filter((id) => !ids.includes(id)));
@@ -109,14 +149,10 @@ export default function ImageManagement() {
   }, [activeOp]);
 
   async function selectFolder() {
-    if (!window.showDirectoryPicker) {
-      addToast('Directory selection not supported', 'error');
-      return;
-    }
     setActiveOp('folder');
     scanCancelRef.current = false;
+    let folder = '';
     try {
-      const dirHandle = await window.showDirectoryPicker();
       const handles = {};
       const names = [];
       for await (const entry of dirHandle.values()) {
@@ -157,22 +193,27 @@ export default function ImageManagement() {
         skipped = skipped.concat(miss);
       }
       if (scanCancelRef.current) return;
-      setFolderName(dirHandle.name || '');
+      setFolderName(folder);
       const sorted = all.slice().sort((a, b) => a.originalName.localeCompare(b.originalName));
-      setUploads(
-        sorted.map((u) => ({ originalName: u.originalName, id: u.originalName, handle: handles[u.originalName] }))
-      );
+      const uploadsList = sorted.map((u) => ({
+        originalName: u.originalName,
+        id: u.originalName,
+        handle: handles[u.originalName],
+        description: extractDateFromName(u.originalName),
+        processed: false,
+      }));
+      setUploads(uploadsList);
       const skippedSorted = skipped
         .slice()
         .sort((a, b) => a.originalName.localeCompare(b.originalName));
-      setIgnored(
-        skippedSorted.map((u) => ({
-          originalName: u.originalName,
-          id: u.originalName,
-          handle: handles[u.originalName],
-          reason: u.reason,
-        })),
-      );
+      const ignoredList = skippedSorted.map((u) => ({
+        originalName: u.originalName,
+        id: u.originalName,
+        handle: handles[u.originalName],
+        reason: u.reason,
+        processed: false,
+      }));
+      setIgnored(ignoredList);
       setUploadSummary({ totalFiles: names.length, processed, unflagged: skipped.length });
       setUploadSel([]);
       setUploadPage(1);
@@ -180,8 +221,9 @@ export default function ImageManagement() {
       setReport(
         `Scanned ${names.length} file(s), found ${processed} incomplete name(s), ${skipped.length} unflagged.`,
       );
+      persistState(uploadsList, ignoredList, folder);
     } catch {
-      // ignore
+      addToast('Directory selection not supported', 'error');
     } finally {
       scanCancelRef.current = false;
       setActiveOp(null);
@@ -217,10 +259,19 @@ export default function ImageManagement() {
       if (res.ok) {
         const data = await res.json();
         const list = Array.isArray(data.list)
-          ? data.list.slice().sort((a, b) => a.currentName.localeCompare(b.currentName))
+          ? data.list
+              .slice()
+              .sort((a, b) => a.currentName.localeCompare(b.currentName))
+              .map((p) => ({ ...p, description: extractDateFromName(p.currentName) }))
           : [];
         const miss = Array.isArray(data.skipped)
-          ? data.skipped.slice().sort((a, b) => a.currentName.localeCompare(b.currentName))
+          ? data.skipped
+              .slice()
+              .sort((a, b) => a.currentName.localeCompare(b.currentName))
+              .map((p) => ({
+                ...p,
+                description: extractDateFromName(p.currentName),
+              }))
           : [];
         setPending(list);
         setHostIgnored(miss);
@@ -285,13 +336,16 @@ export default function ImageManagement() {
 
   async function renameSelected() {
     const items = [...uploads, ...ignored].filter(
-      (u) => uploadSel.includes(u.id) && u.handle && !u.tmpPath,
+      (u) => uploadSel.includes(u.id) && u.handle && !u.tmpPath && !u.processed,
     );
     if (items.length === 0) return;
     const formData = new FormData();
     try {
       for (const u of items) {
-        const file = await u.handle.getFile();
+        const file = u.handle.getFile ? await u.handle.getFile() : u.handle;
+        if (!file) {
+          throw new Error('missing file');
+        }
         formData.append('images', file, u.originalName);
       }
     } catch {
@@ -310,20 +364,23 @@ export default function ImageManagement() {
       }
       const data = await res.json().catch(() => ({}));
       const list = Array.isArray(data.list) ? data.list : [];
-      setUploads((prev) => {
-        const mapped = prev.map((u) => {
+      const newUploads = uploads
+        .map((u) => {
           const found = list.find((x) => x.originalName === u.originalName);
-          return found ? { ...u, ...found, id: u.id } : u;
-        });
-        return mapped.sort((a, b) => a.originalName.localeCompare(b.originalName));
-      });
-      setIgnored((prev) => {
-        const mapped = prev.map((u) => {
+          const merged = found ? { ...u, ...found, id: u.id } : u;
+          return { ...merged, description: extractDateFromName(merged.originalName) };
+        })
+        .sort((a, b) => a.originalName.localeCompare(b.originalName));
+      const newIgnored = ignored
+        .map((u) => {
           const found = list.find((x) => x.originalName === u.originalName);
-          return found ? { ...u, ...found, id: u.id } : u;
-        });
-        return mapped.sort((a, b) => a.originalName.localeCompare(b.originalName));
-      });
+          const merged = found ? { ...u, ...found, id: u.id } : u;
+          return { ...merged, description: extractDateFromName(merged.originalName) };
+        })
+        .sort((a, b) => a.originalName.localeCompare(b.originalName));
+      setUploads(newUploads);
+      setIgnored(newIgnored);
+      persistState(newUploads, newIgnored);
       setReport(`Renamed ${list.length} file(s)`);
     } catch {
       addToast('Rename failed', 'error');
@@ -332,7 +389,7 @@ export default function ImageManagement() {
 
   async function commitUploads() {
     const items = [...uploads, ...ignored].filter(
-      (u) => uploadSel.includes(u.id) && u.tmpPath,
+      (u) => uploadSel.includes(u.id) && u.tmpPath && !u.processed,
     );
     if (items.length === 0) return;
     const res = await fetch('/api/transaction_images/upload_commit', {
@@ -344,9 +401,16 @@ export default function ImageManagement() {
     if (res.ok) {
       const data = await res.json().catch(() => ({}));
       addToast(`Uploaded ${data.uploaded || 0} file(s)`, 'success');
-      setUploads((prev) => prev.filter((u) => !uploadSel.includes(u.id)));
-      setIgnored((prev) => prev.filter((u) => !uploadSel.includes(u.id)));
+      const newUploads = uploads.map((u) =>
+        uploadSel.includes(u.id) && u.tmpPath ? { ...u, processed: true } : u,
+      );
+      const newIgnored = ignored.map((u) =>
+        uploadSel.includes(u.id) && u.tmpPath ? { ...u, processed: true } : u,
+      );
+      setUploads(newUploads);
+      setIgnored(newIgnored);
       setUploadSel([]);
+      persistState(newUploads, newIgnored);
       setReport(`Uploaded ${data.uploaded || 0} file(s)`);
     } else {
       addToast('Upload failed', 'error');
@@ -423,10 +487,13 @@ export default function ImageManagement() {
               <button
                 type="button"
                 onClick={() => {
-                  setUploads((prev) => prev.filter((u) => !uploadSel.includes(u.id)));
-                  setIgnored((prev) => prev.filter((u) => !uploadSel.includes(u.id)));
+                  const remainingUploads = uploads.filter((u) => !uploadSel.includes(u.id));
+                  const remainingIgnored = ignored.filter((u) => !uploadSel.includes(u.id));
+                  setUploads(remainingUploads);
+                  setIgnored(remainingIgnored);
                   setUploadSel([]);
                   setReport(`Deleted ${uploadSel.length} file(s)`);
+                  persistState(remainingUploads, remainingIgnored);
                 }}
                 style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
                 disabled={uploadSel.length === 0}
@@ -496,6 +563,7 @@ export default function ImageManagement() {
                         <th className="border px-2 py-1">Original</th>
                         <th className="border px-2 py-1">New Name</th>
                         <th className="border px-2 py-1">Folder</th>
+                        <th className="border px-2 py-1">Description</th>
                         <th className="border px-2 py-1">Delete</th>
                       </tr>
                     </thead>
@@ -508,12 +576,15 @@ export default function ImageManagement() {
                           <td className="border px-2 py-1">{u.originalName}</td>
                           <td className="border px-2 py-1">{u.newName}</td>
                           <td className="border px-2 py-1">{u.folderDisplay}</td>
+                          <td className="border px-2 py-1">{u.description}</td>
                           <td className="border px-2 py-1 text-center">
                             <button
                               type="button"
                               onClick={() => {
-                                setUploads((prev) => prev.filter((x) => x.id !== u.id));
+                                const remainingUploads = uploads.filter((x) => x.id !== u.id);
+                                setUploads(remainingUploads);
                                 setUploadSel((s) => s.filter((id) => id !== u.id));
+                                persistState(remainingUploads, ignored);
                               }}
                             >
                               Delete
@@ -592,8 +663,10 @@ export default function ImageManagement() {
                             <button
                               type="button"
                               onClick={() => {
-                                setIgnored((prev) => prev.filter((x) => x.id !== u.id));
+                                const remainingIgnored = ignored.filter((x) => x.id !== u.id);
+                                setIgnored(remainingIgnored);
                                 setUploadSel((s) => s.filter((id) => id !== u.id));
+                                persistState(uploads, remainingIgnored);
                               }}
                             >
                               Delete
@@ -691,6 +764,7 @@ export default function ImageManagement() {
                     <th className="border px-2 py-1">Current</th>
                     <th className="border px-2 py-1">New Name</th>
                     <th className="border px-2 py-1">Folder</th>
+                    <th className="border px-2 py-1">Description</th>
                     <th className="border px-2 py-1">Delete</th>
                   </tr>
                 </thead>
@@ -703,6 +777,7 @@ export default function ImageManagement() {
                       <td className="border px-2 py-1">{p.currentName}</td>
                       <td className="border px-2 py-1">{p.newName}</td>
                       <td className="border px-2 py-1">{p.folderDisplay}</td>
+                      <td className="border px-2 py-1">{p.description}</td>
                       <td className="border px-2 py-1 text-center">
                         <button
                           type="button"
@@ -808,7 +883,11 @@ export default function ImageManagement() {
                       <td className="border px-2 py-1">{p.currentName}</td>
                       <td className="border px-2 py-1">{p.newName}</td>
                       <td className="border px-2 py-1">{p.folderDisplay}</td>
-                      <td className="border px-2 py-1">{p.reason}</td>
+                      <td className="border px-2 py-1">
+                        {p.description}
+                        {p.description && p.reason ? ' - ' : ''}
+                        {p.reason}
+                      </td>
                       <td className="border px-2 py-1 text-center">
                         <button
                           type="button"
