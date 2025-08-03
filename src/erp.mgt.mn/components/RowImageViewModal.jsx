@@ -13,6 +13,7 @@ export default function RowImageViewModal({
   row = {},
   imagenameFields = [],
   columnCaseMap = {},
+  imageIdField = '',
 }) {
   const [files, setFiles] = useState([]);
   const [showGallery, setShowGallery] = useState(false);
@@ -34,8 +35,24 @@ export default function RowImageViewModal({
 
   useEffect(() => {
     if (!visible) return;
-    const { name } = buildImageName(row, imagenameFields, columnCaseMap);
-    if (!folder || !name) {
+    const primary = buildImageName(
+      row,
+      imagenameFields.length
+        ? [...imagenameFields, imageIdField].filter(Boolean)
+        : imageIdField
+        ? [imageIdField]
+        : [],
+      columnCaseMap,
+    ).name;
+    const { name: idName } = imageIdField
+      ? buildImageName(row, [imageIdField], columnCaseMap)
+      : { name: '' };
+    const altNames = [];
+    if (idName && idName !== primary) altNames.push(idName);
+    if (row._imageName && row._imageName !== primary && !altNames.includes(row._imageName)) {
+      altNames.push(row._imageName);
+    }
+    if (!folder || !primary) {
       setFiles([]);
       return;
     }
@@ -48,28 +65,68 @@ export default function RowImageViewModal({
       for (const fld of folders) {
         const params = new URLSearchParams();
         if (fld) params.set('folder', fld);
-        addToast(`Search: ${params.get('folder') || table}/${name}`, 'info');
+        addToast(`Search: ${params.get('folder') || table}/${primary}`, 'info');
         try {
           const res = await fetch(
-            `/api/transaction_images/${safeTable}/${encodeURIComponent(name)}?${params.toString()}`,
+            `/api/transaction_images/${safeTable}/${encodeURIComponent(primary)}?${params.toString()}`,
             { credentials: 'include' },
           );
           const imgs = res.ok ? await res.json().catch(() => []) : [];
           const list = Array.isArray(imgs) ? imgs : [];
           if (list.length > 0) {
-            addToast(`Found ${list.length} image(s)`, 'info');
+            list.forEach((p) => addToast(`Found image: ${p}`, 'info'));
             setFiles(list);
             return;
           }
-          if (fld === folders[folders.length - 1]) {
-            setFiles([]);
-          }
         } catch {
-          if (fld === folders[folders.length - 1]) setFiles([]);
+          /* ignore */
+        }
+        for (const nm of altNames) {
+          addToast(`Search: ${params.get('folder') || table}/${nm}`, 'info');
+          try {
+            const res = await fetch(
+              `/api/transaction_images/${safeTable}/${encodeURIComponent(nm)}?${params.toString()}`,
+              { credentials: 'include' },
+            );
+            const imgs = res.ok ? await res.json().catch(() => []) : [];
+            const list = Array.isArray(imgs) ? imgs : [];
+            if (list.length > 0) {
+              if (nm === idName && idName && idName !== primary) {
+                try {
+                  const renameParams = new URLSearchParams();
+                  if (folder) renameParams.set('folder', folder);
+                  await fetch(
+                    `/api/transaction_images/${safeTable}/${encodeURIComponent(idName)}/rename/${encodeURIComponent(primary)}?${renameParams.toString()}`,
+                    { method: 'POST', credentials: 'include' },
+                  );
+                  const res2 = await fetch(
+                    `/api/transaction_images/${safeTable}/${encodeURIComponent(primary)}?${renameParams.toString()}`,
+                    { credentials: 'include' },
+                  );
+                  const imgs2 = res2.ok ? await res2.json().catch(() => []) : [];
+                  const list2 = Array.isArray(imgs2) ? imgs2 : [];
+                  if (list2.length > 0) {
+                    list2.forEach((p) => addToast(`Found image: ${p}`, 'info'));
+                    setFiles(list2);
+                    return;
+                  }
+                } catch {
+                  /* ignore */
+                }
+              } else {
+                list.forEach((p) => addToast(`Found image: ${p}`, 'info'));
+                setFiles(list);
+                return;
+              }
+            }
+          } catch {
+            /* ignore */
+          }
         }
       }
+      setFiles([]);
     })();
-  }, [visible, folder, row, table]);
+  }, [visible, folder, row, table, imageIdField, imagenameFields]);
 
   useEffect(() => {
     if (!visible) {
@@ -81,6 +138,7 @@ export default function RowImageViewModal({
   if (!visible) return null;
 
   const handleView = (src) => {
+    addToast(`Showing image: ${src}`, 'info');
     setFullscreen(src);
   };
 
