@@ -3,6 +3,7 @@ import { useToast } from '../context/ToastContext.jsx';
 
 const FOLDER_STATE_KEY = 'imgMgmtFolderState';
 const SESSIONS_KEY = 'imgMgmtSessions';
+const SESSION_PREFIX = 'imgMgmtSession:';
 
 function extractDateFromName(name) {
   const match = typeof name === 'string' ? name.match(/(?:__|_)(\d{13})_/) : null;
@@ -76,7 +77,7 @@ export default function ImageManagement() {
     } catch {
       // ignore
     }
-    setSessionNames(Object.keys(getSessions()));
+    setSessionNames(getSessionNames());
   }, []);
 
   function stateLabel(item = {}) {
@@ -154,12 +155,12 @@ export default function ImageManagement() {
     }
   }
 
-  function getSessions() {
+  function getSessionNames() {
     try {
-      const parsed = JSON.parse(localStorage.getItem(SESSIONS_KEY) || '{}');
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+      const parsed = JSON.parse(localStorage.getItem(SESSIONS_KEY) || '[]');
+      return Array.isArray(parsed) ? parsed : [];
     } catch {
-      return {};
+      return [];
     }
   }
 
@@ -168,11 +169,12 @@ export default function ImageManagement() {
     if (!name) return;
     try {
       const data = buildState();
-      const sessions = getSessions();
-      sessions[name] = data;
-      localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+      localStorage.setItem(SESSION_PREFIX + name, JSON.stringify(data));
+      const names = new Set(getSessionNames());
+      names.add(name);
+      localStorage.setItem(SESSIONS_KEY, JSON.stringify([...names]));
       persistState(data.uploads, data.ignored, data.folderName, data.pending, data.hostIgnored);
-      setSessionNames(Object.keys(sessions));
+      setSessionNames([...names]);
       setSelectedSession(name);
       addToast('State saved', 'success');
     } catch {
@@ -186,12 +188,12 @@ export default function ImageManagement() {
       return;
     }
     try {
-      const sessions = getSessions();
-      const data = sessions[name];
-      if (!data) {
+      const raw = localStorage.getItem(SESSION_PREFIX + name);
+      if (!raw) {
         addToast('No saved sessions', 'error');
         return;
       }
+      const data = JSON.parse(raw);
       setFolderName(data.folderName || '');
       setUploads(
         Array.isArray(data.uploads)
@@ -246,11 +248,9 @@ export default function ImageManagement() {
   function deleteSession(name = selectedSession) {
     if (!name) return;
     try {
-      const sessions = getSessions();
-      if (!sessions[name]) return;
-      delete sessions[name];
-      localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
-      const names = Object.keys(sessions);
+      localStorage.removeItem(SESSION_PREFIX + name);
+      const names = getSessionNames().filter((n) => n !== name);
+      localStorage.setItem(SESSIONS_KEY, JSON.stringify(names));
       setSessionNames(names);
       if (selectedSession === name) setSelectedSession('');
       addToast('State deleted', 'success');
