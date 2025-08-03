@@ -18,8 +18,8 @@ export function useModules() {
       const rows = res.ok ? await res.json() : [];
       cache.data = rows;
       setModules(rows);
-    } catch (err) {
-      console.error('Failed to load modules', err);
+    } catch {
+      // Ignore module load errors on unauthenticated pages
       setModules([]);
     }
   }

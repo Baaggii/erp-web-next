@@ -4,7 +4,7 @@ import { debugLog } from './debug.js';
 export function setupDebugHooks() {
   if (typeof window === 'undefined' || !window.erpDebug) return;
   if (React.__erpDebugPatched) return;
-  React.__erpDebugPatched = true;
+  Object.defineProperty(React, '__erpDebugPatched', { value: true });
 
   function replaceHook(name, wrapper) {
     const desc = Object.getOwnPropertyDescriptor(React, name);

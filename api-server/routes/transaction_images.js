@@ -12,6 +12,7 @@ import {
   fixIncompleteImages,
   checkUploadedImages,
   commitUploadedImages,
+  detectIncompleteFromNames,
 } from '../services/transactionImageService.js';
 import { getGeneralConfig } from '../services/generalConfig.js';
 
@@ -74,6 +75,16 @@ router.post(
     }
   },
 );
+
+router.post('/upload_scan', requireAuth, async (req, res, next) => {
+  try {
+    const names = Array.isArray(req.body?.names) ? req.body.names : [];
+    const { list, skipped, summary } = await detectIncompleteFromNames(names);
+    res.json({ list, skipped, summary });
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.post('/upload_commit', requireAuth, async (req, res, next) => {
   try {

@@ -53,8 +53,8 @@ export default function AuthContextProvider({ children }) {
         } else {
           // Not logged in or token expired → ignore
         }
-      } catch (err) {
-        console.error('Unable to fetch profile:', err);
+      } catch {
+        // Ignore errors during initial profile load
       }
     }
 
