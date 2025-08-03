@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import Modal from './Modal.jsx';
 import buildImageName from '../utils/buildImageName.js';
-import { API_BASE } from '../utils/apiBase.js';
+import { API_BASE, API_ROOT } from '../utils/apiBase.js';
 import { useToast } from '../context/ToastContext.jsx';
 
 export default function RowImageViewModal({
@@ -22,7 +22,8 @@ export default function RowImageViewModal({
 
   const placeholder =
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMBAZLr5z0AAAAASUVORK5CYII=';
-  const apiRoot = API_BASE.replace(/\/api\/?$/, '');
+  // Root URL for static assets like uploaded images
+  const apiRoot = API_ROOT;
 
   useEffect(() => {
     if (!visible) return;
