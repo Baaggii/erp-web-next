@@ -20,7 +20,13 @@ const router = express.Router();
 const upload = multer({ dest: 'uploads/tmp' });
 
 function toAbsolute(req, list) {
-  const base = `${req.protocol}://${req.get('host')}`;
+  const host = req.get('x-forwarded-host') || req.get('host');
+  const proto = req.get('x-forwarded-proto') || req.protocol;
+  let base = `${proto}://${host}`;
+  const origin = req.get('origin');
+  if (origin && (host?.startsWith('127.') || host === 'localhost')) {
+    base = origin.replace(/\/$/, '');
+  }
   return list.map((p) => (p.startsWith('http') ? p : `${base}${p}`));
 }
 
