@@ -239,7 +239,7 @@ export default function ImageManagement() {
     : 1;
 
   const canRenameSelected = [...uploads, ...ignored].some(
-    (u) => uploadSel.includes(u.id) && u.handle && !u.tmpPath && !u.processed,
+    (u) => uploadSel.includes(u.id) && u.handle && !u.processed,
   );
 
   function toggle(id) {
@@ -575,7 +575,7 @@ export default function ImageManagement() {
 
   async function renameSelected() {
     const items = [...uploads, ...ignored].filter(
-      (u) => uploadSel.includes(u.id) && u.handle && !u.tmpPath && !u.processed,
+      (u) => uploadSel.includes(u.id) && u.handle && !u.processed,
     );
     if (items.length === 0) {
       addToast('No local files to rename', 'error');
