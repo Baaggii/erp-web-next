@@ -22,8 +22,8 @@ export function useTxnModules() {
       });
       cache.keys = set;
       setKeys(new Set(set));
-    } catch {
-      // Ignore transaction-module load errors on unauthenticated pages
+    } catch (err) {
+      console.error('Failed to load transaction modules', err);
       setKeys(new Set());
     }
   }

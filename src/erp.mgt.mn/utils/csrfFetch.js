@@ -66,8 +66,7 @@ window.fetch = async (url, options = {}, _retry) => {
         errorMsg = text.slice(0, 200);
       } catch {}
     }
-    // Avoid noisy console errors during outages; still surface 4xx issues in dev
-    if (import.meta.env.DEV && res.status < 500) {
+    if (import.meta.env.DEV) {
       console.error('API Error:', method, url, errorMsg);
     }
     window.dispatchEvent(

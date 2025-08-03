@@ -155,32 +155,11 @@ export default function ImageManagement() {
     try {
       const handles = {};
       const names = [];
-      if (window.showDirectoryPicker) {
-        const dirHandle = await window.showDirectoryPicker();
-        folder = dirHandle.name || '';
-        for await (const entry of dirHandle.values()) {
-          if (scanCancelRef.current) break;
-          if (entry.kind === 'file') {
-            names.push(entry.name);
-            handles[entry.name] = entry;
-          }
-        }
-      } else {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.multiple = true;
-        // @ts-ignore
-        input.webkitdirectory = true;
-        const files = await new Promise((resolve) => {
-          input.onchange = () => resolve(Array.from(input.files || []));
-          input.click();
-        });
-        if (scanCancelRef.current) return;
-        const fileList = Array.isArray(files) ? files : [];
-        folder = fileList[0]?.webkitRelativePath?.split('/')[0] || '';
-        for (const f of fileList) {
-          names.push(f.name);
-          handles[f.name] = f;
+      for await (const entry of dirHandle.values()) {
+        if (scanCancelRef.current) break;
+        if (entry.kind === 'file') {
+          names.push(entry.name);
+          handles[entry.name] = entry;
         }
       }
       if (scanCancelRef.current) return;
