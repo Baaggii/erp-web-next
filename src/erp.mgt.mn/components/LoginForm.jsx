@@ -54,7 +54,6 @@ export default function LoginForm() {
         navigate('/');
       }
     } catch (err) {
-      console.error('Login failed:', err);
       setError(err.message || 'Login error');
     }
   }
