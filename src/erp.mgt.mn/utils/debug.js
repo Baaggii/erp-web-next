@@ -1,5 +1,8 @@
 if (typeof window !== 'undefined') {
-  window.erpDebug = true;
+  // Disable verbose debug logging by default to avoid console noise in
+  // production environments. The flag can still be enabled later via
+  // configuration (`useGeneralConfig`) when needed.
+  window.erpDebug = Boolean(window.erpDebug);
   window.__stateCount = {};
 }
 
