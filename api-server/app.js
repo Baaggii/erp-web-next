@@ -43,7 +43,7 @@ const uploadsDir = path.isAbsolute(imgBase)
   ? imgBase
   : path.join(projectRoot, imgBase);
 if (fs.existsSync(uploadsDir)) {
-  app.use(`/${imgBase}`, express.static(uploadsDir));
+  app.use(`/api/${imgBase}`, express.static(uploadsDir));
 }
 
 // Setup CSRF protection using cookies

@@ -19,7 +19,7 @@ async function getDirs() {
     ? path.join(basePath, subdir)
     : path.join(projectRoot, basePath, subdir);
   const baseName = path.basename(basePath);
-  const urlBase = `/${baseName}/${subdir}`;
+  const urlBase = `/api/${baseName}/${subdir}`;
   return { baseDir, urlBase, basePath: baseName };
 }
 
