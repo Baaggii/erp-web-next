@@ -71,6 +71,7 @@ export default forwardRef(function InlineTransactionTable({
   companyIdFields = [],
   tableName = '',
   imagenameFields = [],
+  imageIdField = '',
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -792,8 +793,32 @@ export default forwardRef(function InlineTransactionTable({
     });
     const ok = await Promise.resolve(onRowSubmit(cleaned));
     if (ok !== false) {
+      const savedData = (ok && typeof ok === 'object') ? ok : {};
+      const updated = { ...row, ...savedData, _saved: true };
+      const imageFields = imagenameFields.length
+        ? [...imagenameFields, imageIdField].filter(Boolean)
+        : imageIdField
+        ? [imageIdField]
+        : [];
+      const { name: newImageName } = buildImageName(updated, imageFields, columnCaseMap);
+      const oldImageName = row._imageName;
+      if (oldImageName && newImageName && oldImageName !== newImageName) {
+        const safeTable = encodeURIComponent(tableName);
+        const params = new URLSearchParams();
+        const folder = getImageFolder(updated);
+        if (folder) params.set('folder', folder);
+        try {
+          await fetch(
+            `/api/transaction_images/${safeTable}/${encodeURIComponent(oldImageName)}/rename/${encodeURIComponent(newImageName)}?${params.toString()}`,
+            { method: 'POST', credentials: 'include' },
+          );
+        } catch {
+          /* ignore */
+        }
+        updated._imageName = newImageName;
+      }
       setRows((r) => {
-        const next = r.map((row, i) => (i === idx ? { ...row, _saved: true } : row));
+        const next = r.map((row, i) => (i === idx ? updated : row));
         onRowsChange(next);
         return next;
       });
@@ -1223,6 +1248,7 @@ export default forwardRef(function InlineTransactionTable({
         rowKey={uploadRow}
         imagenameFields={imagenameFields}
         columnCaseMap={columnCaseMap}
+        imageIdField={imageIdField}
         onUploaded={(name) => handleUploaded(uploadRow, name)}
         onSuggestion={(it) => applyAISuggestion(uploadRow, it)}
       />
