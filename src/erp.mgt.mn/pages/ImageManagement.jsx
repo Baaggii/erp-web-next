@@ -149,21 +149,38 @@ export default function ImageManagement() {
   }, [activeOp]);
 
   async function selectFolder() {
-    if (!window.showDirectoryPicker) {
-      addToast('Directory selection not supported', 'error');
-      return;
-    }
     setActiveOp('folder');
     scanCancelRef.current = false;
+    let folder = '';
     try {
-      const dirHandle = await window.showDirectoryPicker();
       const handles = {};
       const names = [];
-      for await (const entry of dirHandle.values()) {
-        if (scanCancelRef.current) break;
-        if (entry.kind === 'file') {
-          names.push(entry.name);
-          handles[entry.name] = entry;
+      if (window.showDirectoryPicker) {
+        const dirHandle = await window.showDirectoryPicker();
+        folder = dirHandle.name || '';
+        for await (const entry of dirHandle.values()) {
+          if (scanCancelRef.current) break;
+          if (entry.kind === 'file') {
+            names.push(entry.name);
+            handles[entry.name] = entry;
+          }
+        }
+      } else {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.multiple = true;
+        // @ts-ignore
+        input.webkitdirectory = true;
+        const files = await new Promise((resolve) => {
+          input.onchange = () => resolve(Array.from(input.files || []));
+          input.click();
+        });
+        if (scanCancelRef.current) return;
+        const fileList = Array.isArray(files) ? files : [];
+        folder = fileList[0]?.webkitRelativePath?.split('/')[0] || '';
+        for (const f of fileList) {
+          names.push(f.name);
+          handles[f.name] = f;
         }
       }
       if (scanCancelRef.current) return;
@@ -197,7 +214,7 @@ export default function ImageManagement() {
         skipped = skipped.concat(miss);
       }
       if (scanCancelRef.current) return;
-      setFolderName(dirHandle.name || '');
+      setFolderName(folder);
       const sorted = all.slice().sort((a, b) => a.originalName.localeCompare(b.originalName));
       const uploadsList = sorted.map((u) => ({
         originalName: u.originalName,
@@ -225,9 +242,9 @@ export default function ImageManagement() {
       setReport(
         `Scanned ${names.length} file(s), found ${processed} incomplete name(s), ${skipped.length} unflagged.`,
       );
-      persistState(uploadsList, ignoredList, dirHandle.name || '');
+      persistState(uploadsList, ignoredList, folder);
     } catch {
-      // ignore
+      addToast('Directory selection not supported', 'error');
     } finally {
       scanCancelRef.current = false;
       setActiveOp(null);
@@ -346,7 +363,10 @@ export default function ImageManagement() {
     const formData = new FormData();
     try {
       for (const u of items) {
-        const file = await u.handle.getFile();
+        const file = u.handle.getFile ? await u.handle.getFile() : u.handle;
+        if (!file) {
+          throw new Error('missing file');
+        }
         formData.append('images', file, u.originalName);
       }
     } catch {
