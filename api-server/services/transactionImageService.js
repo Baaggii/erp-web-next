@@ -342,6 +342,40 @@ export async function renameImages(table, oldName, newName, folder = null) {
   }
 }
 
+export async function moveImagesToDeleted(table, row = {}) {
+  const configs = await getConfigsByTable(table).catch(() => ({}));
+  const cfg = pickConfig(configs, row);
+  const names = new Set();
+  if (cfg?.imagenameField?.length) {
+    const primary = buildNameFromRow(row, cfg.imagenameField);
+    if (primary) names.add(primary);
+  }
+  if (cfg?.imageIdField) {
+    const idName = buildNameFromRow(row, [cfg.imageIdField]);
+    if (idName) names.add(idName);
+  }
+  const extra =
+    sanitizeName(
+      getCase(row, 'imagename') ||
+        getCase(row, 'image_name') ||
+        getCase(row, 'ImageName') ||
+        '',
+    ) || '';
+  if (extra) names.add(extra);
+
+  const folder = buildFolderName(row, cfg?.imageFolder || table);
+  const srcFolders = new Set([table]);
+  if (folder && folder !== table) srcFolders.add(folder);
+  let moved = 0;
+  for (const src of srcFolders) {
+    for (const name of names) {
+      const renamed = await renameImages(src, name, name, 'deleted_transactions');
+      moved += renamed.length;
+    }
+  }
+  return moved;
+}
+
 export async function deleteImage(table, file, folder = null) {
   const { baseDir } = await getDirs();
   const dir = path.join(baseDir, folder || table);
