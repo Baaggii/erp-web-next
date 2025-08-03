@@ -3,15 +3,12 @@ import { debugLog } from './debug.js';
 
 export function setupDebugHooks() {
   if (typeof window === 'undefined' || !window.erpDebug) return;
-  // Some React builds are frozen/non-extensible (e.g. production builds).
-  // Attempting to patch such objects throws a runtime error which breaks the
-  // application during startup. Skip installing debug hooks in that case.
+  if (window.__erpDebugPatched) return;
+  window.__erpDebugPatched = true;
   if (!Object.isExtensible(React)) {
-    console.warn('Unable to patch React hooks for debug; React object is not extensible');
+    console.warn('React is sealed; skipping debug hooks');
     return;
   }
-  if (React.__erpDebugPatched) return;
-  Object.defineProperty(React, '__erpDebugPatched', { value: true });
 
   function replaceHook(name, wrapper) {
     const desc = Object.getOwnPropertyDescriptor(React, name);
