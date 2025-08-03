@@ -46,6 +46,10 @@ export default function RowImageViewModal({
     if (row._imageName && row._imageName !== primary && !altNames.includes(row._imageName)) {
       altNames.push(row._imageName);
     }
+    addToast(`Primary image name: ${primary}`, 'info');
+    if (altNames.length) {
+      addToast(`Alt image names: ${altNames.join(', ')}`, 'info');
+    }
     if (!folder || !primary) {
       setFiles([]);
       return;
@@ -55,37 +59,15 @@ export default function RowImageViewModal({
     if (folder !== table && table.startsWith('transactions_')) {
       folders.push(table);
     }
-    async function buildFileList(list) {
-      const urls = [];
-      const entries = [];
-      for (const p of list) {
-        const name = p.split('/').pop();
-        const url = p.startsWith('http') ? p : `${apiRoot}${p}`;
-        try {
-          const res = await fetch(url, { credentials: 'include' });
-          if (!res.ok) throw new Error('bad status');
-          const blob = await res.blob();
-          const objectUrl = URL.createObjectURL(blob);
-          urls.push(objectUrl);
-          entries.push({ path: p, name, src: objectUrl });
-        } catch {
-          entries.push({ path: p, name, src: placeholder });
-        }
-      }
-      return { entries, urls };
-    }
-
-    const objectUrls = [];
+    addToast(`Folders to search: ${folders.join(', ')}`, 'info');
     (async () => {
       for (const fld of folders) {
         const params = new URLSearchParams();
         if (fld) params.set('folder', fld);
-        addToast(`Search: ${params.get('folder') || table}/${primary}`, 'info');
+        const url = `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(primary)}?${params.toString()}`;
+        addToast(`Searching URL: ${url}`, 'info');
         try {
-          const res = await fetch(
-            `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(primary)}?${params.toString()}`,
-            { credentials: 'include' },
-          );
+          const res = await fetch(url, { credentials: 'include' });
           const imgs = res.ok ? await res.json().catch(() => []) : [];
           const list = Array.isArray(imgs) ? imgs : [];
           if (list.length > 0) {
@@ -102,12 +84,10 @@ export default function RowImageViewModal({
           /* ignore */
         }
         for (const nm of altNames) {
-          addToast(`Search: ${params.get('folder') || table}/${nm}`, 'info');
+          const altUrl = `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(nm)}?${params.toString()}`;
+          addToast(`Searching URL: ${altUrl}`, 'info');
           try {
-            const res = await fetch(
-              `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(nm)}?${params.toString()}`,
-              { credentials: 'include' },
-            );
+            const res = await fetch(altUrl, { credentials: 'include' });
             const imgs = res.ok ? await res.json().catch(() => []) : [];
             const list = Array.isArray(imgs) ? imgs : [];
             if (list.length > 0) {
@@ -115,10 +95,9 @@ export default function RowImageViewModal({
                 try {
                   const renameParams = new URLSearchParams();
                   if (folder) renameParams.set('folder', folder);
-                  await fetch(
-                    `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(idName)}/rename/${encodeURIComponent(primary)}?${renameParams.toString()}`,
-                    { method: 'POST', credentials: 'include' },
-                  );
+                  const renameUrl = `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(idName)}/rename/${encodeURIComponent(primary)}?${renameParams.toString()}`;
+                  addToast(`Renaming via: ${renameUrl}`, 'info');
+                  await fetch(renameUrl, { method: 'POST', credentials: 'include' });
                   const res2 = await fetch(
                     `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(primary)}?${renameParams.toString()}`,
                     { credentials: 'include' },
@@ -154,11 +133,9 @@ export default function RowImageViewModal({
           }
         }
       }
+      addToast('No images found', 'info');
       setFiles([]);
     })();
-    return () => {
-      objectUrls.forEach((u) => URL.revokeObjectURL(u));
-    };
   }, [visible, folder, row, table, imageIdField, imagenameFields]);
 
   useEffect(() => {
@@ -167,14 +144,6 @@ export default function RowImageViewModal({
       setFullscreen(null);
     }
   }, [visible]);
-
-  useEffect(() => () => {
-    files.forEach((f) => {
-      if (typeof f?.src === 'string' && f.src.startsWith('blob:')) {
-        URL.revokeObjectURL(f.src);
-      }
-    });
-  }, [files]);
 
   if (!visible) return null;
 
