@@ -19,6 +19,11 @@ import { getGeneralConfig } from '../services/generalConfig.js';
 const router = express.Router();
 const upload = multer({ dest: 'uploads/tmp' });
 
+function toAbsolute(req, list) {
+  const base = `${req.protocol}://${req.get('host')}`;
+  return list.map((p) => (p.startsWith('http') ? p : `${base}${p}`));
+}
+
 // Cleanup old images before the dynamic routes so /cleanup isn't captured
 router.delete('/cleanup/:days?', requireAuth, async (req, res, next) => {
   try {
@@ -107,7 +112,7 @@ router.post('/:table/:name', requireAuth, upload.array('images'), async (req, re
       req.files,
       req.query.folder,
     );
-    res.json(files);
+    res.json(toAbsolute(req, files));
   } catch (err) {
     next(err);
   }
@@ -120,7 +125,7 @@ router.get('/:table/:name', requireAuth, async (req, res, next) => {
       req.params.name,
       req.query.folder,
     );
-    res.json(files);
+    res.json(toAbsolute(req, files));
   } catch (err) {
     next(err);
   }
@@ -134,7 +139,7 @@ router.post('/:table/:oldName/rename/:newName', requireAuth, async (req, res, ne
       req.params.newName,
       req.query.folder,
     );
-    res.json(files);
+    res.json(toAbsolute(req, files));
   } catch (err) {
     next(err);
   }
