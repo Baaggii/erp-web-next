@@ -1,18 +1,23 @@
 import fs from 'fs/promises';
 import fssync from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { getGeneralConfig } from './generalConfig.js';
 import { pool } from '../../db/index.js';
 import { getConfigsByTable, getConfigsByTransTypeValue } from './transactionFormConfig.js';
 import { slugify } from '../utils/slugify.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const projectRoot = path.resolve(__dirname, '../../');
+
 async function getDirs() {
   const cfg = await getGeneralConfig();
   const subdir = cfg.general?.imageDir || 'txn_images';
   const basePath = cfg.general?.imageStorage?.basePath || 'uploads';
-  const baseDir = path.join(process.cwd(), basePath, subdir);
+  const baseDir = path.join(projectRoot, basePath, subdir);
   const urlBase = `/${basePath}/${subdir}`;
-  return { baseDir, urlBase };
+  return { baseDir, urlBase, basePath };
 }
 
 function ensureDir(dir) {
@@ -375,7 +380,7 @@ export async function deleteAllImages(table, name, folder = null) {
 }
 
 export async function cleanupOldImages(days = 30) {
-  const { baseDir } = await getDirs();
+  const { baseDir, basePath } = await getDirs();
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
   let removed = 0;
 
@@ -403,7 +408,7 @@ export async function cleanupOldImages(days = 30) {
   }
 
   await walk(baseDir);
-  await walk(path.join(process.cwd(), 'uploads', 'tmp'));
+  await walk(path.join(projectRoot, basePath, 'tmp'));
 
   return removed;
 }

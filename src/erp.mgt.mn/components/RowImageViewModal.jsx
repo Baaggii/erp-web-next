@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import Modal from './Modal.jsx';
 import buildImageName from '../utils/buildImageName.js';
-import { API_BASE } from '../utils/apiBase.js';
+import { API_BASE, API_ROOT } from '../utils/apiBase.js';
 import { useToast } from '../context/ToastContext.jsx';
 
 export default function RowImageViewModal({
@@ -22,16 +22,8 @@ export default function RowImageViewModal({
 
   const placeholder =
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMBAZLr5z0AAAAASUVORK5CYII=';
-
-  function getImageUrl(p) {
-    if (!p) return '';
-    // If API returns a full URL, use it directly
-    if (p.startsWith('http')) return p;
-    // Preserve paths that already start with '/'
-    if (p.startsWith('/')) return p;
-    // Fallback: prepend API base
-    return `${window.API_BASE || window.location.origin}/${p.replace(/^\//, '')}`;
-  }
+  // Root URL for static assets like uploaded images
+  const apiRoot = API_ROOT;
 
   useEffect(() => {
     if (!visible) return;
@@ -70,14 +62,19 @@ export default function RowImageViewModal({
         addToast(`Search: ${params.get('folder') || table}/${primary}`, 'info');
         try {
           const res = await fetch(
-            `/api/transaction_images/${safeTable}/${encodeURIComponent(primary)}?${params.toString()}`,
+            `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(primary)}?${params.toString()}`,
             { credentials: 'include' },
           );
           const imgs = res.ok ? await res.json().catch(() => []) : [];
           const list = Array.isArray(imgs) ? imgs : [];
           if (list.length > 0) {
             list.forEach((p) => addToast(`Found image: ${p}`, 'info'));
-            setFiles(list);
+            const entries = list.map((p) => ({
+              path: p,
+              name: p.split('/').pop(),
+              src: p.startsWith('http') ? p : `${apiRoot}${p}`,
+            }));
+            setFiles(entries);
             return;
           }
         } catch {
@@ -87,7 +84,7 @@ export default function RowImageViewModal({
           addToast(`Search: ${params.get('folder') || table}/${nm}`, 'info');
           try {
             const res = await fetch(
-              `/api/transaction_images/${safeTable}/${encodeURIComponent(nm)}?${params.toString()}`,
+              `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(nm)}?${params.toString()}`,
               { credentials: 'include' },
             );
             const imgs = res.ok ? await res.json().catch(() => []) : [];
@@ -98,18 +95,23 @@ export default function RowImageViewModal({
                   const renameParams = new URLSearchParams();
                   if (folder) renameParams.set('folder', folder);
                   await fetch(
-                    `/api/transaction_images/${safeTable}/${encodeURIComponent(idName)}/rename/${encodeURIComponent(primary)}?${renameParams.toString()}`,
+                    `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(idName)}/rename/${encodeURIComponent(primary)}?${renameParams.toString()}`,
                     { method: 'POST', credentials: 'include' },
                   );
                   const res2 = await fetch(
-                    `/api/transaction_images/${safeTable}/${encodeURIComponent(primary)}?${renameParams.toString()}`,
+                    `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(primary)}?${renameParams.toString()}`,
                     { credentials: 'include' },
                   );
                   const imgs2 = res2.ok ? await res2.json().catch(() => []) : [];
                   const list2 = Array.isArray(imgs2) ? imgs2 : [];
                   if (list2.length > 0) {
                     list2.forEach((p) => addToast(`Found image: ${p}`, 'info'));
-                    setFiles(list2);
+                    const entries = list2.map((p) => ({
+                      path: p,
+                      name: p.split('/').pop(),
+                      src: p.startsWith('http') ? p : `${apiRoot}${p}`,
+                    }));
+                    setFiles(entries);
                     return;
                   }
                 } catch {
@@ -117,7 +119,12 @@ export default function RowImageViewModal({
                 }
               } else {
                 list.forEach((p) => addToast(`Found image: ${p}`, 'info'));
-                setFiles(list);
+                const entries = list.map((p) => ({
+                  path: p,
+                  name: p.split('/').pop(),
+                  src: p.startsWith('http') ? p : `${apiRoot}${p}`,
+                }));
+                setFiles(entries);
                 return;
               }
             }
@@ -146,28 +153,25 @@ export default function RowImageViewModal({
 
   const listView = (
     <div style={{ maxHeight: '40vh', overflowY: 'auto' }}>
-      {files.map((src) => {
-        const name = src.split('/').pop();
-        return (
-          <div key={src} style={{ marginBottom: '0.25rem' }}>
-            <img
-              src={getImageUrl(src)}
-              alt=""
-              onError={(e) => {
-                e.currentTarget.onerror = null;
-                e.currentTarget.src = placeholder;
-              }}
-              style={{ maxWidth: '100px', marginRight: '0.5rem' }}
-            />
-            <span
-              style={{ cursor: 'pointer', color: '#2563eb' }}
-              onClick={() => handleView(src)}
-            >
-              {name}
-            </span>
-          </div>
-        );
-      })}
+      {files.map((f) => (
+        <div key={f.path} style={{ marginBottom: '0.25rem' }}>
+          <img
+            src={f.src}
+            alt=""
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = placeholder;
+            }}
+            style={{ maxWidth: '100px', marginRight: '0.5rem' }}
+          />
+          <span
+            style={{ cursor: 'pointer', color: '#2563eb' }}
+            onClick={() => handleView(f.src)}
+          >
+            {f.name}
+          </span>
+        </div>
+      ))}
     </div>
   );
 
@@ -181,17 +185,17 @@ export default function RowImageViewModal({
         gap: '0.5rem',
       }}
     >
-      {files.map((src) => (
+      {files.map((f) => (
         <img
-          key={src}
-          src={getImageUrl(src)}
+          key={f.path}
+          src={f.src}
           alt=""
           onError={(e) => {
             e.currentTarget.onerror = null;
             e.currentTarget.src = placeholder;
           }}
           style={{ cursor: 'pointer', width: '150px', height: '150px', objectFit: 'cover' }}
-          onClick={() => handleView(src)}
+          onClick={() => handleView(f.src)}
         />
       ))}
     </div>
@@ -228,7 +232,7 @@ export default function RowImageViewModal({
             onClick={() => setFullscreen(null)}
           >
             <img
-              src={getImageUrl(fullscreen)}
+              src={fullscreen}
               alt=""
               onError={(e) => {
                 e.currentTarget.onerror = null;
