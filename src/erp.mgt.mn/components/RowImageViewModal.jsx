@@ -158,6 +158,14 @@ export default function RowImageViewModal({
     }
   }, [visible]);
 
+  useEffect(() => () => {
+    files.forEach((f) => {
+      if (typeof f?.src === 'string' && f.src.startsWith('blob:')) {
+        URL.revokeObjectURL(f.src);
+      }
+    });
+  }, [files]);
+
   if (!visible) return null;
 
   const handleView = (src) => {
