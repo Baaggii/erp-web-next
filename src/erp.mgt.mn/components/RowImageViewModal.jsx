@@ -23,14 +23,6 @@ export default function RowImageViewModal({
   const placeholder =
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMBAZLr5z0AAAAASUVORK5CYII=';
 
-  function getImageUrl(p) {
-    if (!p) return '';
-    if (p.startsWith('http')) return p;
-    const base =
-      (window.API_BASE || API_BASE || window.location.origin).replace(/\/$/, '');
-    return `${base}${p.startsWith('/') ? p : `/${p}`}`;
-  }
-
   useEffect(() => {
     if (!visible) return;
     const primary = buildImageName(
@@ -149,7 +141,7 @@ export default function RowImageViewModal({
         return (
           <div key={src} style={{ marginBottom: '0.25rem' }}>
             <img
-              src={getImageUrl(src)}
+              src={src}
               alt=""
               onError={(e) => {
                 e.currentTarget.onerror = null;
@@ -182,7 +174,7 @@ export default function RowImageViewModal({
       {files.map((src) => (
         <img
           key={src}
-          src={getImageUrl(src)}
+          src={src}
           alt=""
           onError={(e) => {
             e.currentTarget.onerror = null;
@@ -226,7 +218,7 @@ export default function RowImageViewModal({
             onClick={() => setFullscreen(null)}
           >
             <img
-              src={getImageUrl(fullscreen)}
+              src={fullscreen}
               alt=""
               onError={(e) => {
                 e.currentTarget.onerror = null;
