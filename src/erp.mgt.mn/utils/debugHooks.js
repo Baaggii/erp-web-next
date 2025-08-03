@@ -3,8 +3,12 @@ import { debugLog } from './debug.js';
 
 export function setupDebugHooks() {
   if (typeof window === 'undefined' || !window.erpDebug) return;
-  if (React.__erpDebugPatched) return;
-  Object.defineProperty(React, '__erpDebugPatched', { value: true });
+  if (window.__erpDebugPatched) return;
+  window.__erpDebugPatched = true;
+  if (!Object.isExtensible(React)) {
+    console.warn('React is sealed; skipping debug hooks');
+    return;
+  }
 
   function replaceHook(name, wrapper) {
     const desc = Object.getOwnPropertyDescriptor(React, name);
