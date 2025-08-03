@@ -8,11 +8,6 @@ export default function buildImageName(row = {}, fields = [], columnCaseMap = {}
     const key = Object.keys(obj).find((k) => k.toLowerCase() === lower);
     return key ? obj[key] : undefined;
   }
-  const sanitize = (name) =>
-    String(name)
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]+/gi, '_');
-
   const parts = fields
     .map((f) => {
       let val = getVal(row, f);
@@ -21,10 +16,12 @@ export default function buildImageName(row = {}, fields = [], columnCaseMap = {}
       return val;
     })
     .filter((v) => v !== undefined && v !== null && v !== '')
-    .map((v) => sanitize(v));
-
-  const unique = Array.from(new Set(parts));
-  let safe = unique.join('_');
+    .join('_');
+  const sanitize = (name) =>
+    String(name)
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/gi, '_');
+  let safe = sanitize(parts);
   if (!safe) {
     const fallback =
       row._imageName ||
