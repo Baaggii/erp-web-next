@@ -50,9 +50,26 @@ export default function ImageManagement() {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed.folderName) setFolderName(parsed.folderName);
-        if (Array.isArray(parsed.uploads)) setUploads(parsed.uploads.map((u) => ({ ...u, processed: !!u.processed })));
-        if (Array.isArray(parsed.ignored)) setIgnored(parsed.ignored.map((u) => ({ ...u, processed: !!u.processed })));
-        if (Array.isArray(parsed.pending)) setPending(parsed.pending.map((u) => ({ ...u, processed: !!u.processed })));
+        if (Array.isArray(parsed.uploads))
+          setUploads(
+            parsed.uploads.map((u) => ({
+              ...u,
+              id: u.originalName,
+              description: extractDateFromName(u.originalName),
+              processed: !!u.processed,
+            })),
+          );
+        if (Array.isArray(parsed.ignored))
+          setIgnored(
+            parsed.ignored.map((u) => ({
+              ...u,
+              id: u.originalName,
+              description: extractDateFromName(u.originalName),
+              processed: !!u.processed,
+            })),
+          );
+        if (Array.isArray(parsed.pending))
+          setPending(parsed.pending.map((u) => ({ ...u, processed: !!u.processed })));
         if (Array.isArray(parsed.hostIgnored))
           setHostIgnored(parsed.hostIgnored.map((u) => ({ ...u, processed: !!u.processed })));
       }
@@ -61,16 +78,6 @@ export default function ImageManagement() {
     }
     setSessionNames(Object.keys(getSessions()));
   }, []);
-
-  function strip(item = {}) {
-    const out = {};
-    for (const [k, v] of Object.entries(item)) {
-      if (v === undefined || v === null) continue;
-      const t = typeof v;
-      if (t === 'string' || t === 'number' || t === 'boolean') out[k] = v;
-    }
-    return out;
-  }
 
   function stateLabel(item = {}) {
     if (item.processed) return 'Processed';
@@ -87,10 +94,29 @@ export default function ImageManagement() {
   ) {
     return {
       folderName: folder,
-      uploads: up.map(({ handle, ...rest }) => strip(rest)),
-      ignored: ig.map(({ handle, ...rest }) => strip(rest)),
-      pending: pend.map(strip),
-      hostIgnored: hostIg.map(strip),
+      uploads: up.map(({ originalName, newName, tmpPath, processed }) => ({
+        originalName,
+        newName,
+        tmpPath,
+        processed,
+      })),
+      ignored: ig.map(({ originalName, newName, tmpPath, reason, processed }) => ({
+        originalName,
+        newName,
+        tmpPath,
+        reason,
+        processed,
+      })),
+      pending: pend.map(({ currentName, newName, processed }) => ({
+        currentName,
+        newName,
+        processed,
+      })),
+      hostIgnored: hostIg.map(({ currentName, reason, processed }) => ({
+        currentName,
+        reason,
+        processed,
+      })),
     };
   }
 
@@ -147,9 +173,31 @@ export default function ImageManagement() {
         return;
       }
       setFolderName(data.folderName || '');
-      setUploads(Array.isArray(data.uploads) ? data.uploads.map((u) => ({ ...u, processed: !!u.processed })) : []);
-      setIgnored(Array.isArray(data.ignored) ? data.ignored.map((u) => ({ ...u, processed: !!u.processed })) : []);
-      setPending(Array.isArray(data.pending) ? data.pending.map((u) => ({ ...u, processed: !!u.processed })) : []);
+      setUploads(
+        Array.isArray(data.uploads)
+          ? data.uploads.map((u) => ({
+              ...u,
+              id: u.originalName,
+              description: extractDateFromName(u.originalName),
+              processed: !!u.processed,
+            }))
+          : [],
+      );
+      setIgnored(
+        Array.isArray(data.ignored)
+          ? data.ignored.map((u) => ({
+              ...u,
+              id: u.originalName,
+              description: extractDateFromName(u.originalName),
+              processed: !!u.processed,
+            }))
+          : [],
+      );
+      setPending(
+        Array.isArray(data.pending)
+          ? data.pending.map((u) => ({ ...u, processed: !!u.processed }))
+          : [],
+      );
       setHostIgnored(
         Array.isArray(data.hostIgnored)
           ? data.hostIgnored.map((u) => ({ ...u, processed: !!u.processed }))
