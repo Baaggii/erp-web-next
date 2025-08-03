@@ -256,6 +256,9 @@ export default function RowImageViewModal({
     </div>
   );
 
+  const gridCols = Math.ceil(Math.sqrt(files.length));
+  const gridRows = Math.ceil(files.length / gridCols);
+
   return (
     <>
       <Modal visible={visible} title="Images" onClose={onClose} width="auto">
@@ -282,8 +285,9 @@ export default function RowImageViewModal({
               bottom: 0,
               background: 'rgba(0,0,0,0.85)',
               zIndex: 1100,
-              overflowY: 'auto',
               padding: '1rem',
+              display: 'flex',
+              flexDirection: 'column',
             }}
           >
             <div style={{ textAlign: 'right' }}>
@@ -291,8 +295,10 @@ export default function RowImageViewModal({
             </div>
             <div
               style={{
+                flex: 1,
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
+                gridTemplateRows: `repeat(${gridRows}, 1fr)`,
                 gap: '0.5rem',
                 marginTop: '1rem',
               }}
@@ -306,7 +312,7 @@ export default function RowImageViewModal({
                     e.currentTarget.onerror = null;
                     e.currentTarget.src = placeholder;
                   }}
-                  style={{ width: '100%', height: '200px', objectFit: 'contain', cursor: 'pointer' }}
+                  style={{ width: '100%', height: '100%', objectFit: 'contain', cursor: 'pointer' }}
                   onClick={() => handleView(f.src)}
                 />
               ))}
