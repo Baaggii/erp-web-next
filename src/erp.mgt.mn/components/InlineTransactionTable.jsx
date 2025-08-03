@@ -796,7 +796,9 @@ export default forwardRef(function InlineTransactionTable({
       const savedData = (ok && typeof ok === 'object') ? ok : {};
       const updated = { ...row, ...savedData, _saved: true };
       const imageFields = imagenameFields.length
-        ? [...imagenameFields, imageIdField].filter(Boolean)
+        ? Array.from(
+            new Set([...imagenameFields, imageIdField].filter(Boolean)),
+          )
         : imageIdField
         ? [imageIdField]
         : [];
@@ -807,11 +809,18 @@ export default forwardRef(function InlineTransactionTable({
         const params = new URLSearchParams();
         const folder = getImageFolder(updated);
         if (folder) params.set('folder', folder);
+        const renameUrl =
+          `/api/transaction_images/${safeTable}/${encodeURIComponent(oldImageName)}` +
+          `/rename/${encodeURIComponent(newImageName)}?${params.toString()}`;
         try {
-          await fetch(
-            `/api/transaction_images/${safeTable}/${encodeURIComponent(oldImageName)}/rename/${encodeURIComponent(newImageName)}?${params.toString()}`,
-            { method: 'POST', credentials: 'include' },
-          );
+          await fetch(renameUrl, { method: 'POST', credentials: 'include' });
+          const verifyUrl =
+            `/api/transaction_images/${safeTable}/${encodeURIComponent(newImageName)}?${params.toString()}`;
+          const res = await fetch(verifyUrl, { credentials: 'include' });
+          const imgs = res.ok ? await res.json().catch(() => []) : [];
+          if (!Array.isArray(imgs) || imgs.length === 0) {
+            await fetch(renameUrl, { method: 'POST', credentials: 'include' });
+          }
         } catch {
           /* ignore */
         }

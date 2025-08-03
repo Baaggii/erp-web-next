@@ -38,7 +38,9 @@ export default function RowImageViewModal({
     const primary = buildImageName(
       row,
       imagenameFields.length
-        ? [...imagenameFields, imageIdField].filter(Boolean)
+        ? Array.from(
+            new Set([...imagenameFields, imageIdField].filter(Boolean)),
+          )
         : imageIdField
         ? [imageIdField]
         : [],
