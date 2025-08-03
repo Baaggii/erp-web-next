@@ -15,9 +15,12 @@ async function getDirs() {
   const cfg = await getGeneralConfig();
   const subdir = cfg.general?.imageDir || 'txn_images';
   const basePath = cfg.general?.imageStorage?.basePath || 'uploads';
-  const baseDir = path.join(projectRoot, basePath, subdir);
-  const urlBase = `/${basePath}/${subdir}`;
-  return { baseDir, urlBase, basePath };
+  const baseDir = path.isAbsolute(basePath)
+    ? path.join(basePath, subdir)
+    : path.join(projectRoot, basePath, subdir);
+  const baseName = path.basename(basePath);
+  const urlBase = `/${baseName}/${subdir}`;
+  return { baseDir, urlBase, basePath: baseName };
 }
 
 function ensureDir(dir) {

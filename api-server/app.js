@@ -1,4 +1,5 @@
 import "dotenv/config";
+import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import express from "express";
@@ -37,8 +38,13 @@ app.use(logger);
 // Serve uploaded images statically before CSRF so image requests don't require tokens
 const imgCfg = await getGeneralConfig();
 const imgBase = imgCfg.general?.imageStorage?.basePath || "uploads";
-const uploadsDir = path.resolve(__dirname, "../", imgBase);
-app.use(`/${imgBase}`, express.static(uploadsDir));
+const projectRoot = path.resolve(__dirname, "../");
+const uploadsDir = path.isAbsolute(imgBase)
+  ? imgBase
+  : path.join(projectRoot, imgBase);
+if (fs.existsSync(uploadsDir)) {
+  app.use(`/${imgBase}`, express.static(uploadsDir));
+}
 
 // Setup CSRF protection using cookies
 const csrfProtection = csurf({ cookie: true });
