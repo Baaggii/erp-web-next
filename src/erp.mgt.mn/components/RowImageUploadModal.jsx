@@ -14,6 +14,7 @@ export default function RowImageUploadModal({
   rowKey = 0,
   imagenameFields = [],
   columnCaseMap = {},
+  imageIdField = '',
   onUploaded = () => {},
   onSuggestion = () => {},
 }) {
@@ -24,8 +25,18 @@ export default function RowImageUploadModal({
   const [suggestions, setSuggestions] = useState([]);
   const generalConfig = useGeneralConfig();
   const [showSuggestModal, setShowSuggestModal] = useState(false);
-  function buildName() {
-    return buildImageName(row, imagenameFields, columnCaseMap);
+  function buildName(fields = imagenameFields) {
+    let list = [];
+    if (fields === imagenameFields) {
+      list = Array.from(
+        new Set([...imagenameFields, imageIdField].filter(Boolean)),
+      );
+    } else if (fields.length) {
+      list = fields;
+    } else if (imageIdField) {
+      list = [imageIdField];
+    }
+    return buildImageName(row, list, columnCaseMap);
   }
 
   useEffect(() => {
@@ -41,21 +52,76 @@ export default function RowImageUploadModal({
       setUploaded([]);
       return;
     }
-    const { name } = buildName();
-    if (!name) {
-      setUploaded([]);
-      return;
+    const primary = buildName().name;
+    const { name: idName } = imageIdField ? buildName([imageIdField]) : { name: '' };
+    const altNames = [];
+    if (idName && idName !== primary) altNames.push(idName);
+    if (row._imageName && ![primary, ...altNames].includes(row._imageName)) {
+      altNames.push(row._imageName);
     }
     const safeTable = encodeURIComponent(table);
     const params = new URLSearchParams();
     if (folder) params.set('folder', folder);
-    fetch(`/api/transaction_images/${safeTable}/${encodeURIComponent(name)}?${params.toString()}`, {
-      credentials: 'include',
-    })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((imgs) => setUploaded(Array.isArray(imgs) ? imgs : []))
-      .catch(() => setUploaded([]));
-  }, [visible, folder, rowKey, table, row._imageName, row._saved]);
+    (async () => {
+      if (primary) {
+        try {
+          const res = await fetch(
+            `/api/transaction_images/${safeTable}/${encodeURIComponent(primary)}?${params.toString()}`,
+            { credentials: 'include' },
+          );
+          const imgs = res.ok ? await res.json().catch(() => []) : [];
+          const list = Array.isArray(imgs) ? imgs : [];
+          if (list.length > 0) {
+            setUploaded(list);
+            list.forEach((p) => addToast(`Found image: ${p}`, 'info'));
+            return;
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      for (const nm of altNames) {
+        try {
+          const res = await fetch(
+            `/api/transaction_images/${safeTable}/${encodeURIComponent(nm)}?${params.toString()}`,
+            { credentials: 'include' },
+          );
+          const imgs = res.ok ? await res.json().catch(() => []) : [];
+          const list = Array.isArray(imgs) ? imgs : [];
+          if (list.length > 0) {
+            if (nm === idName && primary) {
+              try {
+                await fetch(
+                  `/api/transaction_images/${safeTable}/${encodeURIComponent(idName)}/rename/${encodeURIComponent(primary)}?${params.toString()}`,
+                  { method: 'POST', credentials: 'include' },
+                );
+                const res2 = await fetch(
+                  `/api/transaction_images/${safeTable}/${encodeURIComponent(primary)}?${params.toString()}`,
+                  { credentials: 'include' },
+                );
+                const imgs2 = res2.ok ? await res2.json().catch(() => []) : [];
+                const list2 = Array.isArray(imgs2) ? imgs2 : [];
+                if (list2.length > 0) {
+                  setUploaded(list2);
+                  list2.forEach((p) => addToast(`Found image: ${p}`, 'info'));
+                  return;
+                }
+              } catch {
+                /* ignore */
+              }
+            } else {
+              setUploaded(list);
+              list.forEach((p) => addToast(`Found image: ${p}`, 'info'));
+              return;
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      setUploaded([]);
+    })();
+  }, [visible, folder, rowKey, table, row._imageName, row._saved, imageIdField]);
 
 
   useEffect(() => {
@@ -75,7 +141,11 @@ export default function RowImageUploadModal({
 
   async function handleUpload(selectedFiles) {
     const { name: safeName, missing } = buildName();
-    const finalName = safeName || `tmp_${Date.now()}`;
+    let finalName = safeName || `tmp_${Date.now()}`;
+    if (!safeName && imageIdField) {
+      const { name: idName } = buildName([imageIdField]);
+      if (idName) finalName = `${finalName}_${idName}`;
+    }
     if (!folder) {
       addToast('Image folder is missing', 'error');
       return;
