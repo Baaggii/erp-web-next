@@ -168,36 +168,6 @@ export default function ImageManagement() {
         skipped = skipped.concat(miss);
       }
       if (scanCancelRef.current) return;
-      const chunkSize = 200;
-      let all = [];
-      let skipped = [];
-      let processed = 0;
-      for (let i = 0; i < names.length; i += chunkSize) {
-        if (scanCancelRef.current) return;
-        let res;
-        try {
-          res = await fetch('/api/transaction_images/upload_scan', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ names: names.slice(i, i + chunkSize) }),
-          });
-        } catch {
-          addToast('Folder scan failed', 'error');
-          return;
-        }
-        if (!res.ok) {
-          addToast('Folder scan failed', 'error');
-          return;
-        }
-        const data = await res.json().catch(() => ({}));
-        const list = Array.isArray(data.list) ? data.list : [];
-        const miss = Array.isArray(data.skipped) ? data.skipped : [];
-        processed += data?.summary?.processed || 0;
-        all = all.concat(list);
-        skipped = skipped.concat(miss);
-      }
-      if (scanCancelRef.current) return;
       setFolderName(dirHandle.name || '');
       const sorted = all.slice().sort((a, b) => a.originalName.localeCompare(b.originalName));
       setUploads(
@@ -269,7 +239,13 @@ export default function ImageManagement() {
               .map((p) => ({ ...p, description: extractDateFromName(p.currentName) }))
           : [];
         const miss = Array.isArray(data.skipped)
-          ? data.skipped.slice().sort((a, b) => a.currentName.localeCompare(b.currentName))
+          ? data.skipped
+              .slice()
+              .sort((a, b) => a.currentName.localeCompare(b.currentName))
+              .map((p) => ({
+                ...p,
+                description: extractDateFromName(p.currentName),
+              }))
           : [];
         setPending(list);
         setHostIgnored(miss);
@@ -863,7 +839,11 @@ export default function ImageManagement() {
                       <td className="border px-2 py-1">{p.currentName}</td>
                       <td className="border px-2 py-1">{p.newName}</td>
                       <td className="border px-2 py-1">{p.folderDisplay}</td>
-                      <td className="border px-2 py-1">{p.reason}</td>
+                      <td className="border px-2 py-1">
+                        {p.description}
+                        {p.description && p.reason ? ' - ' : ''}
+                        {p.reason}
+                      </td>
                       <td className="border px-2 py-1 text-center">
                         <button
                           type="button"
