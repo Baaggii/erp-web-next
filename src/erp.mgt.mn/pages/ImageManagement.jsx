@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
 const FOLDER_STATE_KEY = 'imgMgmtFolderState';
+const SESSIONS_KEY = 'imgMgmtSessions';
 
 function extractDateFromName(name) {
   const match = typeof name === 'string' ? name.match(/(?:__|_)(\d{13})_/) : null;
@@ -47,24 +48,123 @@ export default function ImageManagement() {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed.folderName) setFolderName(parsed.folderName);
-        if (Array.isArray(parsed.uploads)) setUploads(parsed.uploads);
-        if (Array.isArray(parsed.ignored)) setIgnored(parsed.ignored);
+        if (Array.isArray(parsed.uploads)) setUploads(parsed.uploads.map((u) => ({ ...u, processed: !!u.processed })));
+        if (Array.isArray(parsed.ignored)) setIgnored(parsed.ignored.map((u) => ({ ...u, processed: !!u.processed })));
+        if (Array.isArray(parsed.pending)) setPending(parsed.pending.map((u) => ({ ...u, processed: !!u.processed })));
+        if (Array.isArray(parsed.hostIgnored))
+          setHostIgnored(parsed.hostIgnored.map((u) => ({ ...u, processed: !!u.processed })));
       }
     } catch {
       // ignore
     }
   }, []);
 
-  function persistState(up = uploads, ig = ignored, folder = folderName) {
+  function strip(item = {}) {
+    const out = {};
+    for (const [k, v] of Object.entries(item)) {
+      if (v === undefined || v === null) continue;
+      const t = typeof v;
+      if (t === 'string' || t === 'number' || t === 'boolean') out[k] = v;
+    }
+    return out;
+  }
+
+  function stateLabel(item = {}) {
+    if (item.processed) return 'Processed';
+    if (item.newName) return 'New';
+    return '';
+    }
+
+  function buildState(
+    up = uploads,
+    ig = ignored,
+    folder = folderName,
+    pend = pending,
+    hostIg = hostIgnored,
+  ) {
+    return {
+      folderName: folder,
+      uploads: up.map(({ handle, ...rest }) => strip(rest)),
+      ignored: ig.map(({ handle, ...rest }) => strip(rest)),
+      pending: pend.map(strip),
+      hostIgnored: hostIg.map(strip),
+    };
+  }
+
+  function persistState(
+    up = uploads,
+    ig = ignored,
+    folder = folderName,
+    pend = pending,
+    hostIg = hostIgnored,
+  ) {
     try {
-      const data = {
-        folderName: folder,
-        uploads: up.map(({ handle, ...rest }) => rest),
-        ignored: ig.map(({ handle, ...rest }) => rest),
-      };
-      localStorage.setItem(FOLDER_STATE_KEY, JSON.stringify(data));
+      localStorage.setItem(FOLDER_STATE_KEY, JSON.stringify(buildState(up, ig, folder, pend, hostIg)));
     } catch {
       // ignore
+    }
+  }
+
+  function getSessions() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(SESSIONS_KEY) || '{}');
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function saveSession() {
+    const name = prompt('Session name?', new Date().toISOString());
+    if (!name) return;
+    try {
+      const sessions = getSessions();
+      sessions[name] = buildState();
+      localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+      persistState();
+      addToast('State saved', 'success');
+    } catch {
+      addToast('Failed to save state', 'error');
+    }
+  }
+
+  function loadSession() {
+    try {
+      const sessions = getSessions();
+      const names = Object.keys(sessions);
+      if (names.length === 0) {
+        addToast('No saved sessions', 'error');
+        return;
+      }
+      const name = prompt(`Load which session?\n${names.join('\n')}`);
+      if (!name || !sessions[name]) return;
+      const data = sessions[name];
+      setFolderName(data.folderName || '');
+      setUploads(Array.isArray(data.uploads) ? data.uploads.map((u) => ({ ...u, processed: !!u.processed })) : []);
+      setIgnored(Array.isArray(data.ignored) ? data.ignored.map((u) => ({ ...u, processed: !!u.processed })) : []);
+      setPending(Array.isArray(data.pending) ? data.pending.map((u) => ({ ...u, processed: !!u.processed })) : []);
+      setHostIgnored(
+        Array.isArray(data.hostIgnored)
+          ? data.hostIgnored.map((u) => ({ ...u, processed: !!u.processed }))
+          : [],
+      );
+      setSelected([]);
+      setHostIgnoredSel([]);
+      setUploadSel([]);
+      setUploadPage(1);
+      setIgnoredPage(1);
+      setHostIgnoredPage(1);
+      setPage(1);
+      persistState(
+        data.uploads || [],
+        data.ignored || [],
+        data.folderName || '',
+        data.pending || [],
+        data.hostIgnored || [],
+      );
+      addToast('State loaded', 'success');
+    } catch {
+      addToast('Failed to load session', 'error');
     }
   }
 
@@ -91,11 +191,23 @@ export default function ImageManagement() {
   }
 
   function toggleAll() {
-    if (selected.length === pending.length) {
-      setSelected([]);
-    } else {
-      setSelected(pending.map((p) => p.currentName));
+    const withNew = pending
+      .filter((p) => p.newName && !p.processed)
+      .map((p) => p.currentName);
+    const unprocessed = pending.filter((p) => !p.processed).map((p) => p.currentName);
+    const all = pending.map((p) => p.currentName);
+    const setEq = (arr) =>
+      arr.length === selected.length && arr.every((id) => selected.includes(id));
+    if (withNew.length === 0) {
+      if (setEq(all)) setSelected([]);
+      else if (setEq(unprocessed)) setSelected(all);
+      else setSelected(unprocessed);
+      return;
     }
+    if (setEq(withNew)) setSelected(unprocessed);
+    else if (setEq(unprocessed)) setSelected(all);
+    else if (setEq(all)) setSelected([]);
+    else setSelected(withNew);
   }
 
   function toggleHostIgnored(id) {
@@ -105,13 +217,28 @@ export default function ImageManagement() {
   }
 
   function toggleHostIgnoredAll(list) {
-    const ids = list.map((p) => p.currentName);
-    const allSelected = ids.every((id) => hostIgnoredSel.includes(id));
-    if (allSelected) {
-      setHostIgnoredSel((prev) => prev.filter((id) => !ids.includes(id)));
-    } else {
-      setHostIgnoredSel((prev) => [...prev, ...ids.filter((id) => !prev.includes(id))]);
+    const allIds = list.map((p) => p.currentName);
+    const unprocessedIds = list.filter((p) => !p.processed).map((p) => p.currentName);
+    const newIds = list
+      .filter((p) => p.newName && !p.processed)
+      .map((p) => p.currentName);
+    const current = hostIgnoredSel.filter((id) => allIds.includes(id));
+    const setEq = (arr) => arr.length === current.length && arr.every((id) => current.includes(id));
+    const removePage = (prev) => prev.filter((id) => !allIds.includes(id));
+    if (newIds.length === 0) {
+      if (setEq(allIds)) setHostIgnoredSel(removePage);
+      else if (setEq(unprocessedIds))
+        setHostIgnoredSel((prev) => [...removePage(prev), ...allIds.filter((id) => !prev.includes(id))]);
+      else setHostIgnoredSel((prev) => [...removePage(prev), ...unprocessedIds.filter((id) => !prev.includes(id))]);
+      return;
     }
+    if (setEq(newIds))
+      setHostIgnoredSel((prev) => [...removePage(prev), ...unprocessedIds.filter((id) => !prev.includes(id))]);
+    else if (setEq(unprocessedIds))
+      setHostIgnoredSel((prev) => [...removePage(prev), ...allIds.filter((id) => !prev.includes(id))]);
+    else if (setEq(allIds)) setHostIgnoredSel(removePage);
+    else
+      setHostIgnoredSel((prev) => [...removePage(prev), ...newIds.filter((id) => !prev.includes(id))]);
   }
 
   function toggleUpload(id) {
@@ -121,13 +248,25 @@ export default function ImageManagement() {
   }
 
   function toggleUploadAll(list) {
-    const ids = list.filter((u) => !u.processed).map((u) => u.id);
-    const allSelected = ids.every((id) => uploadSel.includes(id));
-    if (allSelected) {
-      setUploadSel((prev) => prev.filter((id) => !ids.includes(id)));
-    } else {
-      setUploadSel((prev) => [...prev, ...ids.filter((id) => !prev.includes(id))]);
+    const allIds = list.map((u) => u.id);
+    const unprocessedIds = list.filter((u) => !u.processed).map((u) => u.id);
+    const newIds = list.filter((u) => u.newName && !u.processed).map((u) => u.id);
+    const current = uploadSel.filter((id) => allIds.includes(id));
+    const setEq = (arr) => arr.length === current.length && arr.every((id) => current.includes(id));
+    const removePage = (prev) => prev.filter((id) => !allIds.includes(id));
+    if (newIds.length === 0) {
+      if (setEq(allIds)) setUploadSel(removePage);
+      else if (setEq(unprocessedIds))
+        setUploadSel((prev) => [...removePage(prev), ...allIds.filter((id) => !prev.includes(id))]);
+      else setUploadSel((prev) => [...removePage(prev), ...unprocessedIds.filter((id) => !prev.includes(id))]);
+      return;
     }
+    if (setEq(newIds))
+      setUploadSel((prev) => [...removePage(prev), ...unprocessedIds.filter((id) => !prev.includes(id))]);
+    else if (setEq(unprocessedIds))
+      setUploadSel((prev) => [...removePage(prev), ...allIds.filter((id) => !prev.includes(id))]);
+    else if (setEq(allIds)) setUploadSel(removePage);
+    else setUploadSel((prev) => [...removePage(prev), ...newIds.filter((id) => !prev.includes(id))]);
   }
 
   useEffect(() => {
@@ -165,12 +304,6 @@ export default function ImageManagement() {
           names.push(entry.name);
           handles[entry.name] = entry;
         }
-        const data = await res.json().catch(() => ({}));
-        const list = Array.isArray(data.list) ? data.list : [];
-        const miss = Array.isArray(data.skipped) ? data.skipped : [];
-        processed += data?.summary?.processed || 0;
-        all = all.concat(list);
-        skipped = skipped.concat(miss);
       }
       if (scanCancelRef.current) return;
       const chunkSize = 200;
@@ -228,10 +361,14 @@ export default function ImageManagement() {
       setUploadSel([]);
       setUploadPage(1);
       setIgnoredPage(1);
+      setPending([]);
+      setHostIgnored([]);
+      setSelected([]);
+      setHostIgnoredSel([]);
       setReport(
         `Scanned ${names.length} file(s), found ${processed} incomplete name(s), ${skipped.length} unflagged.`,
       );
-      persistState(uploadsList, ignoredList, dirHandle.name || '');
+      persistState(uploadsList, ignoredList, dirHandle.name || '', [], []);
     } catch {
       // ignore
     } finally {
@@ -272,7 +409,11 @@ export default function ImageManagement() {
           ? data.list
               .slice()
               .sort((a, b) => a.currentName.localeCompare(b.currentName))
-              .map((p) => ({ ...p, description: extractDateFromName(p.currentName) }))
+              .map((p) => ({
+                ...p,
+                description: extractDateFromName(p.currentName),
+                processed: false,
+              }))
           : [];
         const miss = Array.isArray(data.skipped)
           ? data.skipped
@@ -281,6 +422,7 @@ export default function ImageManagement() {
               .map((p) => ({
                 ...p,
                 description: extractDateFromName(p.currentName),
+                processed: false,
               }))
           : [];
         setPending(list);
@@ -294,12 +436,14 @@ export default function ImageManagement() {
         setReport(
           `Scanned ${sum.totalFiles || 0} file(s), found ${sum.incompleteFound || 0} incomplete name(s), ${sum.skipped || 0} not incomplete.`,
         );
+        persistState(uploads, ignored, folderName, list, miss);
       } else {
         setPending([]);
         setHostIgnored([]);
         setHostIgnoredPage(1);
         setPendingSummary(null);
         setHasMore(false);
+        persistState(uploads, ignored, folderName, [], []);
       }
       setPage(p);
     } catch (e) {
@@ -309,6 +453,7 @@ export default function ImageManagement() {
         setHostIgnoredPage(1);
         setPendingSummary(null);
         setHasMore(false);
+        persistState(uploads, ignored, folderName, [], []);
       }
     } finally {
       detectAbortRef.current = null;
@@ -318,8 +463,8 @@ export default function ImageManagement() {
   }
 
   async function applyFixesSelection(list, sel) {
-    const items = list.filter((p) => sel.includes(p.currentName));
-    if (items.length === 0) return;
+    const items = list.filter((p) => sel.includes(p.currentName) && !p.processed);
+    if (items.length === 0) return null;
     const res = await fetch('/api/transaction_images/fix_incomplete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -330,18 +475,32 @@ export default function ImageManagement() {
       const data = await res.json().catch(() => ({}));
       addToast(`Renamed ${data.fixed || 0} file(s)`, 'success');
       setReport(`Renamed ${data.fixed || 0} file(s)`);
-      detectFromHost(page);
+      const newList = list.map((p) =>
+        sel.includes(p.currentName) ? { ...p, processed: true } : p,
+      );
+      return newList;
     } else {
       addToast('Rename failed', 'error');
+      return null;
     }
   }
 
   async function applyFixes() {
-    await applyFixesSelection(pending, selected);
+    const newPending = await applyFixesSelection(pending, selected);
+    if (newPending) {
+      setPending(newPending);
+      setSelected([]);
+      persistState(uploads, ignored, folderName, newPending, hostIgnored);
+    }
   }
 
   async function applyFixesHostIgnored() {
-    await applyFixesSelection(hostIgnored, hostIgnoredSel);
+    const newHostIgnored = await applyFixesSelection(hostIgnored, hostIgnoredSel);
+    if (newHostIgnored) {
+      setHostIgnored(newHostIgnored);
+      setHostIgnoredSel([]);
+      persistState(uploads, ignored, folderName, pending, newHostIgnored);
+    }
   }
 
   async function renameSelected() {
@@ -463,6 +622,16 @@ export default function ImageManagement() {
               Select Folder
             </button>
             {folderName && <span style={{ marginRight: '0.5rem' }}>{folderName}</span>}
+            <button
+              type="button"
+              onClick={saveSession}
+              style={{ marginRight: '0.5rem' }}
+            >
+              Save
+            </button>
+            <button type="button" onClick={loadSession}>
+              Load
+            </button>
           </div>
           {uploadSummary && (
             <p style={{ marginBottom: '0.5rem' }}>
@@ -571,6 +740,7 @@ export default function ImageManagement() {
                         <th className="border px-2 py-1">New Name</th>
                         <th className="border px-2 py-1">Folder</th>
                         <th className="border px-2 py-1">Description</th>
+                        <th className="border px-2 py-1">State</th>
                         <th className="border px-2 py-1">Delete</th>
                       </tr>
                     </thead>
@@ -584,6 +754,7 @@ export default function ImageManagement() {
                           <td className="border px-2 py-1">{u.newName}</td>
                           <td className="border px-2 py-1">{u.folderDisplay}</td>
                           <td className="border px-2 py-1">{u.description}</td>
+                          <td className="border px-2 py-1">{stateLabel(u)}</td>
                           <td className="border px-2 py-1 text-center">
                             <button
                               type="button"
@@ -653,6 +824,7 @@ export default function ImageManagement() {
                         <th className="border px-2 py-1">New Name</th>
                         <th className="border px-2 py-1">Folder</th>
                         <th className="border px-2 py-1">Description</th>
+                        <th className="border px-2 py-1">State</th>
                         <th className="border px-2 py-1">Delete</th>
                       </tr>
                     </thead>
@@ -666,6 +838,7 @@ export default function ImageManagement() {
                           <td className="border px-2 py-1">{u.newName}</td>
                           <td className="border px-2 py-1">{u.folderDisplay}</td>
                           <td className="border px-2 py-1">{u.reason}</td>
+                          <td className="border px-2 py-1">{stateLabel(u)}</td>
                           <td className="border px-2 py-1 text-center">
                             <button
                               type="button"
@@ -754,8 +927,10 @@ export default function ImageManagement() {
               <button
                 type="button"
                 onClick={() => {
-                  setPending((prev) => prev.filter((p) => !selected.includes(p.currentName)));
+                  const remaining = pending.filter((p) => !selected.includes(p.currentName));
+                  setPending(remaining);
                   setSelected([]);
+                  persistState(uploads, ignored, folderName, remaining, hostIgnored);
                 }}
                 style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
                 disabled={selected.length === 0}
@@ -772,6 +947,7 @@ export default function ImageManagement() {
                     <th className="border px-2 py-1">New Name</th>
                     <th className="border px-2 py-1">Folder</th>
                     <th className="border px-2 py-1">Description</th>
+                    <th className="border px-2 py-1">State</th>
                     <th className="border px-2 py-1">Delete</th>
                   </tr>
                 </thead>
@@ -785,6 +961,7 @@ export default function ImageManagement() {
                       <td className="border px-2 py-1">{p.newName}</td>
                       <td className="border px-2 py-1">{p.folderDisplay}</td>
                       <td className="border px-2 py-1">{p.description}</td>
+                      <td className="border px-2 py-1">{stateLabel(p)}</td>
                       <td className="border px-2 py-1 text-center">
                         <button
                           type="button"
@@ -816,8 +993,12 @@ export default function ImageManagement() {
               <button
                 type="button"
                 onClick={() => {
-                  setHostIgnored((prev) => prev.filter((p) => !hostIgnoredSel.includes(p.currentName)));
+                  const remaining = hostIgnored.filter(
+                    (p) => !hostIgnoredSel.includes(p.currentName),
+                  );
+                  setHostIgnored(remaining);
                   setHostIgnoredSel([]);
+                  persistState(uploads, ignored, folderName, pending, remaining);
                 }}
                 style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
                 disabled={hostIgnoredSel.length === 0}
@@ -874,6 +1055,7 @@ export default function ImageManagement() {
                     <th className="border px-2 py-1">New Name</th>
                     <th className="border px-2 py-1">Folder</th>
                     <th className="border px-2 py-1">Description</th>
+                    <th className="border px-2 py-1">State</th>
                     <th className="border px-2 py-1">Delete</th>
                   </tr>
                 </thead>
@@ -895,6 +1077,7 @@ export default function ImageManagement() {
                         {p.description && p.reason ? ' - ' : ''}
                         {p.reason}
                       </td>
+                      <td className="border px-2 py-1">{stateLabel(p)}</td>
                       <td className="border px-2 py-1 text-center">
                         <button
                           type="button"

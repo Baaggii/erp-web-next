@@ -330,21 +330,64 @@ export async function renameImages(table, oldName, newName, folder = null) {
   const oldPrefix = sanitizeName(oldName);
   const newPrefix = sanitizeName(newName);
   try {
-    const files = await fs.readdir(dir);
-    const renamed = [];
-    for (const f of files) {
-      if (f.startsWith(oldPrefix + '_')) {
-        const rest = f.slice(oldPrefix.length);
-        const dest = path.join(targetDir, newPrefix + rest);
-        await fs.rename(path.join(dir, f), dest);
-        const folderPart = folder || table;
-        renamed.push(`${urlBase}/${folderPart}/${newPrefix + rest}`);
+    const searchDirs = folder ? [dir, targetDir] : [dir];
+    const results = [];
+    const seen = new Set();
+    for (const d of searchDirs) {
+      const files = await fs.readdir(d).catch(() => []);
+      for (const f of files) {
+        if (f.startsWith(oldPrefix + '_')) {
+          const rest = f.slice(oldPrefix.length);
+          const destFile = newPrefix + rest;
+          const src = path.join(d, f);
+          const dest = path.join(targetDir, destFile);
+          await fs.rename(src, dest);
+          if (!seen.has(destFile)) {
+            const folderPart = folder || table;
+            results.push(`${urlBase}/${folderPart}/${destFile}`);
+            seen.add(destFile);
+          }
+        }
       }
     }
-    return renamed;
+    return results;
   } catch {
     return [];
   }
+}
+
+export async function moveImagesToDeleted(table, row = {}) {
+  const configs = await getConfigsByTable(table).catch(() => ({}));
+  const cfg = pickConfig(configs, row);
+  const names = new Set();
+  if (cfg?.imagenameField?.length) {
+    const primary = buildNameFromRow(row, cfg.imagenameField);
+    if (primary) names.add(primary);
+  }
+  if (cfg?.imageIdField) {
+    const idName = buildNameFromRow(row, [cfg.imageIdField]);
+    if (idName) names.add(idName);
+  }
+  const extra =
+    sanitizeName(
+      getCase(row, 'imagename') ||
+        getCase(row, 'image_name') ||
+        getCase(row, 'ImageName') ||
+        '',
+    ) || '';
+  if (extra) names.add(extra);
+
+  const folder = buildFolderName(row, cfg?.imageFolder || table);
+  const srcFolders = new Set([table]);
+  if (folder && folder !== table) srcFolders.add(folder);
+  let moved = 0;
+  for (const src of srcFolders) {
+    for (const name of names) {
+      const renamed = await renameImages(src, name, name, 'deleted_transactions');
+      moved += renamed.length;
+    }
+  }
+  return moved;
 }
 
 export async function deleteImage(table, file, folder = null) {

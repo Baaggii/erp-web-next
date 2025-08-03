@@ -54,6 +54,27 @@ export default function RowImageViewModal({
     if (folder !== table && table.startsWith('transactions_')) {
       folders.push(table);
     }
+    async function buildFileList(list) {
+      const urls = [];
+      const entries = [];
+      for (const p of list) {
+        const name = p.split('/').pop();
+        const url = p.startsWith('http') ? p : `${apiRoot}${p}`;
+        try {
+          const res = await fetch(url, { credentials: 'include' });
+          if (!res.ok) throw new Error('bad status');
+          const blob = await res.blob();
+          const objectUrl = URL.createObjectURL(blob);
+          urls.push(objectUrl);
+          entries.push({ path: p, name, src: objectUrl });
+        } catch {
+          entries.push({ path: p, name, src: placeholder });
+        }
+      }
+      return { entries, urls };
+    }
+
+    const objectUrls = [];
     (async () => {
       for (const fld of folders) {
         const params = new URLSearchParams();
@@ -134,6 +155,9 @@ export default function RowImageViewModal({
       }
       setFiles([]);
     })();
+    return () => {
+      objectUrls.forEach((u) => URL.revokeObjectURL(u));
+    };
   }, [visible, folder, row, table, imageIdField, imagenameFields]);
 
   useEffect(() => {
@@ -142,6 +166,14 @@ export default function RowImageViewModal({
       setFullscreen(null);
     }
   }, [visible]);
+
+  useEffect(() => () => {
+    files.forEach((f) => {
+      if (typeof f?.src === 'string' && f.src.startsWith('blob:')) {
+        URL.revokeObjectURL(f.src);
+      }
+    });
+  }, [files]);
 
   if (!visible) return null;
 
