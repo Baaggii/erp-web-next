@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
+const FOLDER_STATE_KEY = 'imgMgmtFolderState';
+
 function extractDateFromName(name) {
   const match = typeof name === 'string' ? name.match(/(?:__|_)(\d{13})_/) : null;
   if (match) {
@@ -38,6 +40,33 @@ export default function ImageManagement() {
   const scanCancelRef = useRef(false);
   const [activeOp, setActiveOp] = useState(null);
   const [report, setReport] = useState('');
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(FOLDER_STATE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.folderName) setFolderName(parsed.folderName);
+        if (Array.isArray(parsed.uploads)) setUploads(parsed.uploads);
+        if (Array.isArray(parsed.ignored)) setIgnored(parsed.ignored);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  function persistState(up = uploads, ig = ignored, folder = folderName) {
+    try {
+      const data = {
+        folderName: folder,
+        uploads: up.map(({ handle, ...rest }) => rest),
+        ignored: ig.map(({ handle, ...rest }) => rest),
+      };
+      localStorage.setItem(FOLDER_STATE_KEY, JSON.stringify(data));
+    } catch {
+      // ignore
+    }
+  }
 
   const uploadStart = (uploadPage - 1) * uploadPageSize;
   const pageUploads = uploads.slice(uploadStart, uploadStart + uploadPageSize);
@@ -92,7 +121,7 @@ export default function ImageManagement() {
   }
 
   function toggleUploadAll(list) {
-    const ids = list.map((u) => u.id);
+    const ids = list.filter((u) => !u.processed).map((u) => u.id);
     const allSelected = ids.every((id) => uploadSel.includes(id));
     if (allSelected) {
       setUploadSel((prev) => prev.filter((id) => !ids.includes(id)));
@@ -136,6 +165,12 @@ export default function ImageManagement() {
           names.push(entry.name);
           handles[entry.name] = entry;
         }
+        const data = await res.json().catch(() => ({}));
+        const list = Array.isArray(data.list) ? data.list : [];
+        const miss = Array.isArray(data.skipped) ? data.skipped : [];
+        processed += data?.summary?.processed || 0;
+        all = all.concat(list);
+        skipped = skipped.concat(miss);
       }
       if (scanCancelRef.current) return;
       const chunkSize = 200;
@@ -170,25 +205,25 @@ export default function ImageManagement() {
       if (scanCancelRef.current) return;
       setFolderName(dirHandle.name || '');
       const sorted = all.slice().sort((a, b) => a.originalName.localeCompare(b.originalName));
-      setUploads(
-        sorted.map((u) => ({
-          originalName: u.originalName,
-          id: u.originalName,
-          handle: handles[u.originalName],
-          description: extractDateFromName(u.originalName),
-        }))
-      );
+      const uploadsList = sorted.map((u) => ({
+        originalName: u.originalName,
+        id: u.originalName,
+        handle: handles[u.originalName],
+        description: extractDateFromName(u.originalName),
+        processed: false,
+      }));
+      setUploads(uploadsList);
       const skippedSorted = skipped
         .slice()
         .sort((a, b) => a.originalName.localeCompare(b.originalName));
-      setIgnored(
-        skippedSorted.map((u) => ({
-          originalName: u.originalName,
-          id: u.originalName,
-          handle: handles[u.originalName],
-          reason: u.reason,
-        })),
-      );
+      const ignoredList = skippedSorted.map((u) => ({
+        originalName: u.originalName,
+        id: u.originalName,
+        handle: handles[u.originalName],
+        reason: u.reason,
+        processed: false,
+      }));
+      setIgnored(ignoredList);
       setUploadSummary({ totalFiles: names.length, processed, unflagged: skipped.length });
       setUploadSel([]);
       setUploadPage(1);
@@ -196,6 +231,7 @@ export default function ImageManagement() {
       setReport(
         `Scanned ${names.length} file(s), found ${processed} incomplete name(s), ${skipped.length} unflagged.`,
       );
+      persistState(uploadsList, ignoredList, dirHandle.name || '');
     } catch {
       // ignore
     } finally {
@@ -310,7 +346,7 @@ export default function ImageManagement() {
 
   async function renameSelected() {
     const items = [...uploads, ...ignored].filter(
-      (u) => uploadSel.includes(u.id) && u.handle && !u.tmpPath,
+      (u) => uploadSel.includes(u.id) && u.handle && !u.tmpPath && !u.processed,
     );
     if (items.length === 0) return;
     const formData = new FormData();
@@ -335,22 +371,23 @@ export default function ImageManagement() {
       }
       const data = await res.json().catch(() => ({}));
       const list = Array.isArray(data.list) ? data.list : [];
-      setUploads((prev) => {
-        const mapped = prev.map((u) => {
+      const newUploads = uploads
+        .map((u) => {
           const found = list.find((x) => x.originalName === u.originalName);
           const merged = found ? { ...u, ...found, id: u.id } : u;
           return { ...merged, description: extractDateFromName(merged.originalName) };
-        });
-        return mapped.sort((a, b) => a.originalName.localeCompare(b.originalName));
-      });
-      setIgnored((prev) => {
-        const mapped = prev.map((u) => {
+        })
+        .sort((a, b) => a.originalName.localeCompare(b.originalName));
+      const newIgnored = ignored
+        .map((u) => {
           const found = list.find((x) => x.originalName === u.originalName);
           const merged = found ? { ...u, ...found, id: u.id } : u;
           return { ...merged, description: extractDateFromName(merged.originalName) };
-        });
-        return mapped.sort((a, b) => a.originalName.localeCompare(b.originalName));
-      });
+        })
+        .sort((a, b) => a.originalName.localeCompare(b.originalName));
+      setUploads(newUploads);
+      setIgnored(newIgnored);
+      persistState(newUploads, newIgnored);
       setReport(`Renamed ${list.length} file(s)`);
     } catch {
       addToast('Rename failed', 'error');
@@ -359,7 +396,7 @@ export default function ImageManagement() {
 
   async function commitUploads() {
     const items = [...uploads, ...ignored].filter(
-      (u) => uploadSel.includes(u.id) && u.tmpPath,
+      (u) => uploadSel.includes(u.id) && u.tmpPath && !u.processed,
     );
     if (items.length === 0) return;
     const res = await fetch('/api/transaction_images/upload_commit', {
@@ -371,9 +408,16 @@ export default function ImageManagement() {
     if (res.ok) {
       const data = await res.json().catch(() => ({}));
       addToast(`Uploaded ${data.uploaded || 0} file(s)`, 'success');
-      setUploads((prev) => prev.filter((u) => !uploadSel.includes(u.id)));
-      setIgnored((prev) => prev.filter((u) => !uploadSel.includes(u.id)));
+      const newUploads = uploads.map((u) =>
+        uploadSel.includes(u.id) && u.tmpPath ? { ...u, processed: true } : u,
+      );
+      const newIgnored = ignored.map((u) =>
+        uploadSel.includes(u.id) && u.tmpPath ? { ...u, processed: true } : u,
+      );
+      setUploads(newUploads);
+      setIgnored(newIgnored);
       setUploadSel([]);
+      persistState(newUploads, newIgnored);
       setReport(`Uploaded ${data.uploaded || 0} file(s)`);
     } else {
       addToast('Upload failed', 'error');
@@ -450,10 +494,13 @@ export default function ImageManagement() {
               <button
                 type="button"
                 onClick={() => {
-                  setUploads((prev) => prev.filter((u) => !uploadSel.includes(u.id)));
-                  setIgnored((prev) => prev.filter((u) => !uploadSel.includes(u.id)));
+                  const remainingUploads = uploads.filter((u) => !uploadSel.includes(u.id));
+                  const remainingIgnored = ignored.filter((u) => !uploadSel.includes(u.id));
+                  setUploads(remainingUploads);
+                  setIgnored(remainingIgnored);
                   setUploadSel([]);
                   setReport(`Deleted ${uploadSel.length} file(s)`);
+                  persistState(remainingUploads, remainingIgnored);
                 }}
                 style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
                 disabled={uploadSel.length === 0}
@@ -541,8 +588,10 @@ export default function ImageManagement() {
                             <button
                               type="button"
                               onClick={() => {
-                                setUploads((prev) => prev.filter((x) => x.id !== u.id));
+                                const remainingUploads = uploads.filter((x) => x.id !== u.id);
+                                setUploads(remainingUploads);
                                 setUploadSel((s) => s.filter((id) => id !== u.id));
+                                persistState(remainingUploads, ignored);
                               }}
                             >
                               Delete
@@ -621,8 +670,10 @@ export default function ImageManagement() {
                             <button
                               type="button"
                               onClick={() => {
-                                setIgnored((prev) => prev.filter((x) => x.id !== u.id));
+                                const remainingIgnored = ignored.filter((x) => x.id !== u.id);
+                                setIgnored(remainingIgnored);
                                 setUploadSel((s) => s.filter((id) => id !== u.id));
+                                persistState(uploads, remainingIgnored);
                               }}
                             >
                               Delete
