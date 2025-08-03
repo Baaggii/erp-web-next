@@ -256,45 +256,64 @@ export default function RowImageViewModal({
     </div>
   );
 
-  const gallery = (
-    <div
-      style={{
-        maxHeight: '70vh',
-        overflowY: 'auto',
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: '0.5rem',
-      }}
-    >
-      {files.map((f) => (
-        <img
-          key={f.path}
-          src={f.src}
-          alt=""
-          onError={(e) => {
-            e.currentTarget.onerror = null;
-            e.currentTarget.src = placeholder;
-          }}
-          style={{ cursor: 'pointer', width: '150px', height: '150px', objectFit: 'cover' }}
-          onClick={() => handleView(f.src)}
-        />
-      ))}
-    </div>
-  );
-
   return (
-    <Modal visible={visible} title="Images" onClose={onClose} width="auto">
-      {files.length === 0 ? <p>No images</p> : showGallery ? gallery : listView}
-      {files.length > 0 && (
-        <div style={{ textAlign: 'right', marginTop: '0.5rem' }}>
-          <button type="button" onClick={() => setShowGallery((v) => !v)} style={{ marginRight: '0.5rem' }}>
-            {showGallery ? 'List view' : 'View all images'}
-          </button>
+    <>
+      <Modal visible={visible} title="Images" onClose={onClose} width="auto">
+        {files.length === 0 ? <p>No images</p> : listView}
+        {files.length > 0 && (
+          <div style={{ textAlign: 'right', marginTop: '0.5rem' }}>
+            <button type="button" onClick={() => setShowGallery(true)} style={{ marginRight: '0.5rem' }}>
+              View all images
+            </button>
+          </div>
+        )}
+        <div style={{ textAlign: 'right', marginTop: '1rem' }}>
+          <button type="button" onClick={onClose}>Close</button>
         </div>
-      )}
-      <div style={{ textAlign: 'right', marginTop: '1rem' }}>
-        <button type="button" onClick={onClose}>Close</button>
-      </div>
+      </Modal>
+      {showGallery &&
+        createPortal(
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0,0,0,0.85)',
+              zIndex: 1100,
+              overflowY: 'auto',
+              padding: '1rem',
+            }}
+          >
+            <div style={{ textAlign: 'right' }}>
+              <button type="button" onClick={() => setShowGallery(false)}>Close</button>
+            </div>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                gap: '0.5rem',
+                marginTop: '1rem',
+              }}
+            >
+              {files.map((f) => (
+                <img
+                  key={f.path}
+                  src={f.src}
+                  alt=""
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = placeholder;
+                  }}
+                  style={{ width: '100%', height: '200px', objectFit: 'contain', cursor: 'pointer' }}
+                  onClick={() => handleView(f.src)}
+                />
+              ))}
+            </div>
+          </div>,
+          document.body,
+        )}
       {fullscreen &&
         createPortal(
           <div
@@ -308,7 +327,7 @@ export default function RowImageViewModal({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              zIndex: 1100,
+              zIndex: 1200,
             }}
             onClick={() => setFullscreen(null)}
           >
@@ -324,6 +343,6 @@ export default function RowImageViewModal({
           </div>,
           document.body,
         )}
-    </Modal>
+    </>
   );
 }
