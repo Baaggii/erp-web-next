@@ -1,4 +1,5 @@
 import "dotenv/config";
+import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import express from "express";
@@ -42,6 +43,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+app.set('trust proxy', true);
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 app.use(cookieParser());
@@ -49,8 +51,14 @@ app.use(logger);
 
 // Serve uploaded images statically
 const imgCfg = await getGeneralConfig();
-const imgBase = imgCfg.general?.imageStorage?.basePath || 'uploads';
-app.use(`/${imgBase}`, express.static(path.join(process.cwd(), imgBase)));
+const imgBase = imgCfg.general?.imageStorage?.basePath || "uploads";
+const projectRoot = path.resolve(__dirname, "../");
+const uploadsDir = path.isAbsolute(imgBase)
+  ? imgBase
+  : path.join(projectRoot, imgBase);
+if (fs.existsSync(uploadsDir)) {
+  app.use(`/${imgBase}`, express.static(uploadsDir));
+}
 
 // Health-check: also verify DB connection
 app.get("/api/auth/health", async (req, res, next) => {

@@ -1,4 +1,5 @@
 import "dotenv/config";
+import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import express from "express";
@@ -20,21 +21,34 @@ import displayFieldRoutes from "./routes/display_fields.js";
 import codingTableConfigRoutes from "./routes/coding_table_configs.js";
 import generatedSqlRoutes from "./routes/generated_sql.js";
 import generalConfigRoutes from "./routes/general_config.js";
+import { getGeneralConfig } from "./services/generalConfig.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+app.set('trust proxy', true);
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 app.use(cookieParser());
 
+app.use(logger);
+
+// Serve uploaded images statically before CSRF so image requests don't require tokens
+const imgCfg = await getGeneralConfig();
+const imgBase = imgCfg.general?.imageStorage?.basePath || "uploads";
+const projectRoot = path.resolve(__dirname, "../");
+const uploadsDir = path.isAbsolute(imgBase)
+  ? imgBase
+  : path.join(projectRoot, imgBase);
+if (fs.existsSync(uploadsDir)) {
+  app.use(`/${imgBase}`, express.static(uploadsDir));
+}
+
 // Setup CSRF protection using cookies
 const csrfProtection = csurf({ cookie: true });
 app.use(csrfProtection);
-
-app.use(logger);
 
 // Health-check: also verify DB connection
 app.get("/api/auth/health", async (req, res, next) => {
