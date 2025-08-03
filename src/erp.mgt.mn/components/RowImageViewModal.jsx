@@ -54,14 +54,27 @@ export default function RowImageViewModal({
     if (folder !== table && table.startsWith('transactions_')) {
       folders.push(table);
     }
-    function buildFileList(list) {
-      return list.map((p) => ({
-        path: p,
-        name: p.split('/').pop(),
-        src: p.startsWith('http') ? p : `${apiRoot}${p}`,
-      }));
+    async function buildFileList(list) {
+      const urls = [];
+      const entries = [];
+      for (const p of list) {
+        const name = p.split('/').pop();
+        const url = p.startsWith('http') ? p : `${apiRoot}${p}`;
+        try {
+          const res = await fetch(url, { credentials: 'include' });
+          if (!res.ok) throw new Error('bad status');
+          const blob = await res.blob();
+          const objectUrl = URL.createObjectURL(blob);
+          urls.push(objectUrl);
+          entries.push({ path: p, name, src: objectUrl });
+        } catch {
+          entries.push({ path: p, name, src: placeholder });
+        }
+      }
+      return { entries, urls };
     }
 
+    const objectUrls = [];
     (async () => {
       for (const fld of folders) {
         const params = new URLSearchParams();
@@ -76,7 +89,9 @@ export default function RowImageViewModal({
           const list = Array.isArray(imgs) ? imgs : [];
           if (list.length > 0) {
             list.forEach((p) => addToast(`Found image: ${p}`, 'info'));
-            setFiles(buildFileList(list));
+            const { entries, urls } = await buildFileList(list);
+            objectUrls.push(...urls);
+            setFiles(entries);
             return;
           }
         } catch {
@@ -108,7 +123,9 @@ export default function RowImageViewModal({
                   const list2 = Array.isArray(imgs2) ? imgs2 : [];
                   if (list2.length > 0) {
                     list2.forEach((p) => addToast(`Found image: ${p}`, 'info'));
-                    setFiles(buildFileList(list2));
+                    const { entries, urls } = await buildFileList(list2);
+                    objectUrls.push(...urls);
+                    setFiles(entries);
                     return;
                   }
                 } catch {
@@ -116,7 +133,9 @@ export default function RowImageViewModal({
                 }
               } else {
                 list.forEach((p) => addToast(`Found image: ${p}`, 'info'));
-                setFiles(buildFileList(list));
+                const { entries, urls } = await buildFileList(list);
+                objectUrls.push(...urls);
+                setFiles(entries);
                 return;
               }
             }
@@ -127,6 +146,9 @@ export default function RowImageViewModal({
       }
       setFiles([]);
     })();
+    return () => {
+      objectUrls.forEach((u) => URL.revokeObjectURL(u));
+    };
   }, [visible, folder, row, table, imageIdField, imagenameFields]);
 
   useEffect(() => {
