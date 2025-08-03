@@ -21,7 +21,7 @@ export default function ImageManagement() {
   const [result, setResult] = useState(null);
   const [tab, setTab] = useState('cleanup');
   const [pending, setPending] = useState([]);
-  const [page, setPage] = useState(1);
+  const [pendingPage, setPendingPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [selected, setSelected] = useState([]);
   const [hostIgnored, setHostIgnored] = useState([]);
@@ -41,6 +41,8 @@ export default function ImageManagement() {
   const scanCancelRef = useRef(false);
   const [activeOp, setActiveOp] = useState(null);
   const [report, setReport] = useState('');
+  const [sessionNames, setSessionNames] = useState([]);
+  const [selectedSession, setSelectedSession] = useState('');
 
   useEffect(() => {
     try {
@@ -57,6 +59,7 @@ export default function ImageManagement() {
     } catch {
       // ignore
     }
+    setSessionNames(Object.keys(getSessions()));
   }, []);
 
   function strip(item = {}) {
@@ -115,30 +118,34 @@ export default function ImageManagement() {
   }
 
   function saveSession() {
-    const name = prompt('Session name?', new Date().toISOString());
+    const name = prompt('Session name?', folderName || new Date().toISOString());
     if (!name) return;
     try {
+      const data = buildState();
       const sessions = getSessions();
-      sessions[name] = buildState();
+      sessions[name] = data;
       localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
-      persistState();
+      persistState(data.uploads, data.ignored, data.folderName, data.pending, data.hostIgnored);
+      setSessionNames(Object.keys(sessions));
+      setSelectedSession(name);
       addToast('State saved', 'success');
     } catch {
       addToast('Failed to save state', 'error');
     }
   }
 
-  function loadSession() {
+  function loadSession(name = selectedSession) {
+    if (!name) {
+      addToast('No session selected', 'error');
+      return;
+    }
     try {
       const sessions = getSessions();
-      const names = Object.keys(sessions);
-      if (names.length === 0) {
+      const data = sessions[name];
+      if (!data) {
         addToast('No saved sessions', 'error');
         return;
       }
-      const name = prompt(`Load which session?\n${names.join('\n')}`);
-      if (!name || !sessions[name]) return;
-      const data = sessions[name];
       setFolderName(data.folderName || '');
       setUploads(Array.isArray(data.uploads) ? data.uploads.map((u) => ({ ...u, processed: !!u.processed })) : []);
       setIgnored(Array.isArray(data.ignored) ? data.ignored.map((u) => ({ ...u, processed: !!u.processed })) : []);
@@ -154,7 +161,7 @@ export default function ImageManagement() {
       setUploadPage(1);
       setIgnoredPage(1);
       setHostIgnoredPage(1);
-      setPage(1);
+      setPendingPage(1);
       persistState(
         data.uploads || [],
         data.ignored || [],
@@ -165,6 +172,22 @@ export default function ImageManagement() {
       addToast('State loaded', 'success');
     } catch {
       addToast('Failed to load session', 'error');
+    }
+  }
+
+  function deleteSession(name = selectedSession) {
+    if (!name) return;
+    try {
+      const sessions = getSessions();
+      if (!sessions[name]) return;
+      delete sessions[name];
+      localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+      const names = Object.keys(sessions);
+      setSessionNames(names);
+      if (selectedSession === name) setSelectedSession('');
+      addToast('State deleted', 'success');
+    } catch {
+      addToast('Failed to delete session', 'error');
     }
   }
 
@@ -394,7 +417,7 @@ export default function ImageManagement() {
     }
   }
 
-  async function detectFromHost(p = page) {
+  async function detectFromHost(p = pendingPage) {
     const controller = new AbortController();
     detectAbortRef.current = controller;
     setActiveOp('detect');
@@ -445,7 +468,7 @@ export default function ImageManagement() {
         setHasMore(false);
         persistState(uploads, ignored, folderName, [], []);
       }
-      setPage(p);
+      setPendingPage(p);
     } catch (e) {
       if (e.name !== 'AbortError') {
         setPending([]);
@@ -459,7 +482,7 @@ export default function ImageManagement() {
       detectAbortRef.current = null;
       setActiveOp(null);
     }
-    setPage(p);
+      setPendingPage(p);
   }
 
   async function applyFixesSelection(list, sel) {
@@ -629,8 +652,23 @@ export default function ImageManagement() {
             >
               Save
             </button>
-            <button type="button" onClick={loadSession}>
+            <select
+              value={selectedSession}
+              onChange={(e) => setSelectedSession(e.target.value)}
+              style={{ marginRight: '0.5rem' }}
+            >
+              <option value="">Select session</option>
+              {sessionNames.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+            <button type="button" onClick={() => loadSession()} disabled={!selectedSession} style={{ marginRight: '0.5rem' }}>
               Load
+            </button>
+            <button type="button" onClick={() => deleteSession()} disabled={!selectedSession}>
+              Delete
             </button>
           </div>
           {uploadSummary && (
@@ -875,7 +913,7 @@ export default function ImageManagement() {
             </label>
             <button
               type="button"
-              disabled={page === 1}
+              disabled={pendingPage === 1}
               onClick={() => detectFromHost(1)}
               style={{ marginRight: '0.5rem' }}
             >
@@ -883,8 +921,8 @@ export default function ImageManagement() {
             </button>
             <button
               type="button"
-              disabled={page === 1}
-              onClick={() => detectFromHost(page - 1)}
+              disabled={pendingPage === 1}
+              onClick={() => detectFromHost(pendingPage - 1)}
               style={{ marginRight: '0.5rem' }}
             >
               Prev
@@ -892,14 +930,14 @@ export default function ImageManagement() {
             <button
               type="button"
               disabled={!hasMore}
-              onClick={() => detectFromHost(page + 1)}
+              onClick={() => detectFromHost(pendingPage + 1)}
               style={{ marginRight: '0.5rem' }}
             >
               Next
             </button>
             <button
               type="button"
-              disabled={page === lastPage}
+              disabled={pendingPage === lastPage}
               onClick={() => detectFromHost(lastPage)}
             >
               Last
