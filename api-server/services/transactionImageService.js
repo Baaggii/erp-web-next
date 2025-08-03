@@ -3,7 +3,7 @@ import fssync from 'fs';
 import path from 'path';
 import { getGeneralConfig } from './generalConfig.js';
 import { pool } from '../../db/index.js';
-import { getConfigsByTable } from './transactionFormConfig.js';
+import { getConfigsByTable, getConfigsByTransTypeValue } from './transactionFormConfig.js';
 import { slugify } from '../utils/slugify.js';
 
 async function getDirs() {
@@ -81,6 +81,28 @@ function parseFileUnique(base) {
   return { unique, suffix };
 }
 
+function parseSaveName(base) {
+  const m = base.match(
+    /^(.*?)(?:_(\d{13})_([a-z0-9]{6})|__([a-z0-9]{6}))$/i,
+  );
+  if (!m) return null;
+  const pre = m[1];
+  const ts = m[2] || '';
+  const rand = m[3] || m[4] || '';
+  const segs = pre.split('_');
+  const inv = segs.shift() || '';
+  let sp = '';
+  let transType = '';
+  if (segs.length >= 2) {
+    sp = segs.shift();
+    transType = segs.shift();
+  } else if (segs.length === 1) {
+    transType = segs.shift();
+  }
+  const unique = segs.join('_');
+  return { inv, sp, transType, unique, ts, rand, pre };
+}
+
 function buildFolderName(row, fallback = '') {
   const part1 =
     getCase(row, 'trtype') ||
@@ -99,24 +121,47 @@ function buildFolderName(row, fallback = '') {
   return fallback;
 }
 
+async function fetchTxnCodes() {
+  try {
+    const [rows] = await pool.query('SELECT UITrtype, UITransType FROM code_transaction');
+    const trtypes = (rows || [])
+      .map((r) => String(r.UITrtype || '').toLowerCase())
+      .filter(Boolean);
+    const transTypes = (rows || [])
+      .map((r) => String(r.UITransType || ''))
+      .filter(Boolean);
+    return { trtypes, transTypes };
+  } catch {
+    return { trtypes: [], transTypes: [] };
+  }
+}
+
+function hasTxnCode(base, unique, codes) {
+  const leftover = base.toLowerCase().replace(unique.toLowerCase(), '');
+  const tokens = leftover.split(/[_-]/).filter(Boolean);
+  const hasTrtype = tokens.some((t) => codes.trtypes.includes(t));
+  const hasTransType = tokens.some((t) => codes.transTypes.includes(t));
+  return hasTrtype && hasTransType;
+}
+
 export async function findBenchmarkCode(name) {
   if (!name) return null;
   const base = path.basename(name, path.extname(name));
   const parts = base.split(/[_-]/).filter(Boolean);
   for (const p of parts) {
-    const [rows] = await pool.query(
-      'SELECT UITransType FROM code_transaction WHERE UITransType = ?',
-      [p],
-    );
-    if (rows?.length) return rows[0].UITransType;
-  }
-  const [rows] = await pool.query(
-    'SELECT UITransType, UITrtype FROM code_transaction WHERE image_benchmark = 1',
-  );
-  for (const row of rows || []) {
-    const mark = row.UITrtype;
-    if (mark && base.toLowerCase().includes(String(mark).toLowerCase())) {
-      return row.UITransType;
+    if (/^\d{4}$/.test(p)) {
+      const [rows] = await pool.query(
+        'SELECT UITransType FROM code_transaction WHERE UITransType = ?',
+        [p],
+      );
+      if (rows?.length) return rows[0].UITransType;
+    }
+    if (/^[A-Za-z]{4}$/.test(p)) {
+      const [rows] = await pool.query(
+        'SELECT UITransType FROM code_transaction WHERE UITrtype = ?',
+        [p],
+      );
+      if (rows?.length) return rows[0].UITransType;
     }
   }
   return null;
@@ -129,23 +174,50 @@ async function findTxnByParts(inv, sp, transType, timestamp) {
   } catch {
     return null;
   }
+
+  const cfgMatches = await getConfigsByTransTypeValue(transType);
+  const cfgMap = new Map(
+    cfgMatches.map((m) => [m.table.toLowerCase(), m.config]),
+  );
+
   for (const row of tables || []) {
     const tbl = Object.values(row)[0];
+    if (cfgMap.size && !cfgMap.has(tbl.toLowerCase())) continue;
     let cols;
     try {
       [cols] = await pool.query(`SHOW COLUMNS FROM \`${tbl}\``);
     } catch {
       continue;
     }
-    const invCol = cols.find((c) => ['inventory_code', 'z_mat_code'].includes(c.Field.toLowerCase()));
+    const invCol = cols.find((c) =>
+      ['inventory_code', 'z_mat_code', 'bmtr_pmid'].includes(
+        c.Field.toLowerCase(),
+      ),
+    );
     const spCol = cols.find((c) => c.Field.toLowerCase() === 'sp_primary_code');
-    const transCol = cols.find((c) => ['transtype', 'uitranstype', 'ui_transtype'].includes(c.Field.toLowerCase()));
-    const dateCol = cols.find((c) => c.Field.toLowerCase().includes('date'));
-    if (!invCol || !spCol || !transCol) continue;
-    let sql = `SELECT * FROM \`${tbl}\` WHERE \`${invCol.Field}\` = ? AND \`${spCol.Field}\` = ? AND \`${transCol.Field}\` = ?`;
-    const params = [inv, sp, transType];
-    if (dateCol) {
-      sql += ` AND ABS(TIMESTAMPDIFF(SECOND, FROM_UNIXTIME(?/1000), \`${dateCol.Field}\`)) < 86400`;
+    const transCol = cols.find((c) =>
+      ['transtype', 'uitranstype', 'ui_transtype'].includes(
+        c.Field.toLowerCase(),
+      ),
+    );
+    if (!invCol || !transCol) continue;
+    const cfg = cfgMap.get(tbl.toLowerCase());
+    let dateCol;
+    if (cfg?.dateField?.length) {
+      const lowers = cfg.dateField.map((d) => String(d).toLowerCase());
+      dateCol = cols.find((c) => lowers.includes(c.Field.toLowerCase()));
+    } else {
+      dateCol = cols.find((c) => c.Field.toLowerCase().includes('date'));
+    }
+    let sql = `SELECT * FROM \`${tbl}\` WHERE \`${invCol.Field}\` = ? AND \`${transCol.Field}\` = ?`;
+    const params = [inv, transType];
+    if (sp && spCol) {
+      sql += ` AND \`${spCol.Field}\` = ?`;
+      params.push(sp);
+    }
+    if (dateCol && timestamp) {
+      sql +=
+        ` AND ABS(TIMESTAMPDIFF(SECOND, FROM_UNIXTIME(?/1000), \`${dateCol.Field}\`)) < 172800`;
       params.push(timestamp);
     }
     sql += ' LIMIT 1';
@@ -153,20 +225,25 @@ async function findTxnByParts(inv, sp, transType, timestamp) {
     try {
       [rows] = await pool.query(sql, params);
       if (!rows.length && dateCol) {
-        [rows] = await pool.query(
-          `SELECT * FROM \`${tbl}\` WHERE \`${invCol.Field}\` = ? AND \`${spCol.Field}\` = ? AND \`${transCol.Field}\` = ? LIMIT 1`,
-          [inv, sp, transType],
-        );
+        let sql2 = `SELECT * FROM \`${tbl}\` WHERE \`${invCol.Field}\` = ? AND \`${transCol.Field}\` = ?`;
+        const p2 = [inv, transType];
+        if (sp && spCol) {
+          sql2 += ` AND \`${spCol.Field}\` = ?`;
+          p2.push(sp);
+        }
+        sql2 += ' LIMIT 1';
+        [rows] = await pool.query(sql2, p2);
       }
     } catch {
       continue;
     }
     if (rows.length) {
+      const rowObj = rows[0];
       let cfgs = {};
       try {
         cfgs = await getConfigsByTable(tbl);
       } catch {}
-      return { table: tbl, row: rows[0], configs: cfgs, numField: transCol.Field };
+      return { table: tbl, row: rowObj, configs: cfgs, numField: transCol.Field };
     }
   }
   return null;
@@ -333,7 +410,9 @@ export async function cleanupOldImages(days = 30) {
 
 export async function detectIncompleteImages(page = 1, perPage = 100) {
   const { baseDir } = await getDirs();
+  const codes = await fetchTxnCodes();
   let results = [];
+  const skipped = [];
   let dirs;
   const offset = (page - 1) * perPage;
   let count = 0;
@@ -361,26 +440,68 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
     for (const f of files) {
       const ext = path.extname(f);
       const base = path.basename(f, ext);
-      const parts = base.split('_');
-      const isSave = /_\d{13}_[a-z0-9]{6}$/i.test(base);
+      const filePath = path.join(dirPath, f);
       let unique = '';
       let suffix = '';
       let found;
-      if (isSave) {
-        const segs = parts.slice();
-        const rand = segs.pop();
-        const ts = segs.pop();
-        const inv = segs.shift();
-        const sp = segs.shift();
-        const transType = segs.shift();
-        unique = segs.join('_');
-        found = await findTxnByParts(inv, sp, transType, Number(ts));
+      const save = parseSaveName(base);
+      if (save) {
+        ({ unique } = save);
+        suffix = `__${save.ts}_${save.rand}`;
+        if (hasTxnCode(base, unique, codes)) {
+          skipped.push({
+            currentName: f,
+            newName: f,
+            folder: entry.name,
+            folderDisplay: '/' + entry.name,
+            currentPath: filePath,
+            reason: 'Contains transaction codes',
+          });
+          continue;
+        }
+        found = await findTxnByParts(
+          save.inv,
+          save.sp,
+          save.transType,
+          Number(save.ts),
+        );
       } else {
         ({ unique, suffix } = parseFileUnique(base));
-        if (!unique || unique.length < 4) continue;
+        if (!unique) {
+          skipped.push({
+            currentName: f,
+            newName: f,
+            folder: entry.name,
+            folderDisplay: '/' + entry.name,
+            currentPath: filePath,
+            reason: 'No unique identifier',
+          });
+          continue;
+        }
+        if (hasTxnCode(base, unique, codes)) {
+          skipped.push({
+            currentName: f,
+            newName: f,
+            folder: entry.name,
+            folderDisplay: '/' + entry.name,
+            currentPath: filePath,
+            reason: 'Contains transaction codes',
+          });
+          continue;
+        }
         found = await findTxnByUniqueId(unique);
       }
-      if (!found) continue;
+      if (!found) {
+        skipped.push({
+          currentName: f,
+          newName: f,
+          folder: entry.name,
+          folderDisplay: '/' + entry.name,
+          currentPath: filePath,
+          reason: 'No matching transaction',
+        });
+        continue;
+      }
       const { row, configs, numField } = found;
 
       const cfg = pickConfig(configs, row);
@@ -441,7 +562,17 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
         newBase = sanitizeName(String(row[numField]));
         folderRaw = buildFolderName(row, cfg?.imageFolder || entry.name);
       }
-      if (!newBase) continue;
+      if (!newBase) {
+        skipped.push({
+          currentName: f,
+          newName: f,
+          folder: entry.name,
+          folderDisplay: '/' + entry.name,
+          currentPath: filePath,
+          reason: 'No rename mapping',
+        });
+        continue;
+      }
       incompleteFound += 1;
       const folderDisplay = '/' + String(folderRaw).replace(/^\/+/, '');
       const sanitizedUnique = sanitizeName(unique);
@@ -452,6 +583,8 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
         } else {
           finalBase = `${newBase}_${unique}${suffix}`;
         }
+      } else if (suffix) {
+        finalBase = `${newBase}${suffix}`;
       }
       const newName = `${finalBase}${ext}`;
       count += 1;
@@ -470,7 +603,18 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
     }
     if (hasMore) break;
   }
-  return { list: results, hasMore, summary: { totalFiles, folders: Array.from(folders), incompleteFound, processed: results.length } };
+  return {
+    list: results,
+    skipped,
+    hasMore,
+    summary: {
+      totalFiles,
+      folders: Array.from(folders),
+      incompleteFound,
+      processed: results.length,
+      skipped: skipped.length,
+    },
+  };
 }
 
 async function findTxnByUniqueId(idPart) {
@@ -527,34 +671,36 @@ export async function fixIncompleteImages(list = []) {
 export async function checkUploadedImages(files = [], names = []) {
   const results = [];
   let processed = 0;
+  const codes = await fetchTxnCodes();
   const limit = 1000;
   let items = files.length
     ? files
     : names.map((n) => ({ originalname: typeof n === 'string' ? n : n?.name || String(n) }));
   items = items.slice(0, limit);
-  for (const file of items) {
-    const ext = path.extname(file.originalname || '');
-    const base = path.basename(file.originalname || '', ext);
-    const parts = base.split('_');
-    const isSave = /_\d{13}_[a-z0-9]{6}$/i.test(base);
-    let unique = '';
-    let suffix = '';
-    let found;
-    if (isSave) {
-      const segs = parts.slice();
-      const rand = segs.pop();
-      const ts = segs.pop();
-      const inv = segs.shift();
-      const sp = segs.shift();
-      const transType = segs.shift();
-      unique = segs.join('_');
-      found = await findTxnByParts(inv, sp, transType, Number(ts));
-    } else {
-      ({ unique, suffix } = parseFileUnique(base));
-      if (!unique) continue;
-      found = await findTxnByUniqueId(unique);
-    }
-    if (!found) continue;
+    for (const file of items) {
+      const ext = path.extname(file.originalname || '');
+      const base = path.basename(file.originalname || '', ext);
+      let unique = '';
+      let suffix = '';
+      let found;
+      const save = parseSaveName(base);
+      if (save) {
+        ({ unique } = save);
+        suffix = `__${save.ts}_${save.rand}`;
+        if (hasTxnCode(base, unique, codes)) continue;
+        found = await findTxnByParts(
+          save.inv,
+          save.sp,
+          save.transType,
+          Number(save.ts),
+        );
+      } else {
+        ({ unique, suffix } = parseFileUnique(base));
+        if (!unique) continue;
+        if (hasTxnCode(base, unique, codes)) continue;
+        found = await findTxnByUniqueId(unique);
+      }
+      if (!found) continue;
     const { row, configs, numField } = found;
     const cfg = pickConfig(configs, row);
     let newBase = '';
@@ -625,6 +771,8 @@ export async function checkUploadedImages(files = [], names = []) {
       } else {
         finalBase = `${newBase}_${unique}${suffix}`;
       }
+    } else if (suffix) {
+      finalBase = `${newBase}${suffix}`;
     }
     const newName = `${finalBase}${ext}`;
     results.push({
@@ -651,4 +799,31 @@ export async function commitUploadedImages(list = []) {
     } catch {}
   }
   return count;
+}
+
+export async function detectIncompleteFromNames(names = []) {
+  const codes = await fetchTxnCodes();
+  const results = [];
+  const skipped = [];
+  let processed = 0;
+  for (const name of names) {
+    const ext = path.extname(name || '');
+    const base = path.basename(name || '', ext);
+    const { unique } = parseFileUnique(base);
+    if (!unique) {
+      skipped.push({ originalName: name, reason: 'No unique identifier' });
+      continue;
+    }
+    if (hasTxnCode(base, unique, codes)) {
+      skipped.push({ originalName: name, reason: 'Contains transaction codes' });
+      continue;
+    }
+    results.push({ originalName: name });
+    processed += 1;
+  }
+  return {
+    list: results,
+    skipped,
+    summary: { totalFiles: names.length, processed, skipped: skipped.length },
+  };
 }
