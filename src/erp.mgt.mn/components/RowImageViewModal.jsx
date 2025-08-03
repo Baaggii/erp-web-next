@@ -89,8 +89,11 @@ export default function RowImageViewModal({
           const list = Array.isArray(imgs) ? imgs : [];
           if (list.length > 0) {
             list.forEach((p) => addToast(`Found image: ${p}`, 'info'));
-            const { entries, urls } = await buildFileList(list);
-            objectUrls.push(...urls);
+            const entries = list.map((p) => ({
+              path: p,
+              name: p.split('/').pop(),
+              src: p.startsWith('http') ? p : `${apiRoot}${p}`,
+            }));
             setFiles(entries);
             return;
           }
@@ -123,8 +126,11 @@ export default function RowImageViewModal({
                   const list2 = Array.isArray(imgs2) ? imgs2 : [];
                   if (list2.length > 0) {
                     list2.forEach((p) => addToast(`Found image: ${p}`, 'info'));
-                    const { entries, urls } = await buildFileList(list2);
-                    objectUrls.push(...urls);
+                    const entries = list2.map((p) => ({
+                      path: p,
+                      name: p.split('/').pop(),
+                      src: p.startsWith('http') ? p : `${apiRoot}${p}`,
+                    }));
                     setFiles(entries);
                     return;
                   }
@@ -133,8 +139,11 @@ export default function RowImageViewModal({
                 }
               } else {
                 list.forEach((p) => addToast(`Found image: ${p}`, 'info'));
-                const { entries, urls } = await buildFileList(list);
-                objectUrls.push(...urls);
+                const entries = list.map((p) => ({
+                  path: p,
+                  name: p.split('/').pop(),
+                  src: p.startsWith('http') ? p : `${apiRoot}${p}`,
+                }));
                 setFiles(entries);
                 return;
               }
