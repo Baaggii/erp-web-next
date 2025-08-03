@@ -85,6 +85,10 @@ export default function ImageManagement() {
     return '';
     }
 
+  function safeString(val) {
+    return val !== undefined && val !== null ? String(val) : undefined;
+  }
+
   function buildState(
     up = uploads,
     ig = ignored,
@@ -93,38 +97,46 @@ export default function ImageManagement() {
     hostIg = hostIgnored,
   ) {
     return {
-      folderName: folder,
-      uploads: up
-        .filter(Boolean)
-        .map(({ originalName, newName, tmpPath, processed }) => ({
-          originalName,
-          newName,
-          tmpPath,
-          processed,
-        })),
-      ignored: ig
-        .filter(Boolean)
-        .map(({ originalName, newName, tmpPath, reason, processed }) => ({
-          originalName,
-          newName,
-          tmpPath,
-          reason,
-          processed,
-        })),
-      pending: pend
-        .filter(Boolean)
-        .map(({ currentName, newName, processed }) => ({
-          currentName,
-          newName,
-          processed,
-        })),
-      hostIgnored: hostIg
-        .filter(Boolean)
-        .map(({ currentName, reason, processed }) => ({
-          currentName,
-          reason,
-          processed,
-        })),
+      folderName: safeString(folder) || '',
+      uploads: Array.isArray(up)
+        ? up
+            .filter(Boolean)
+            .map((u) => ({
+              originalName: safeString(u.originalName),
+              newName: safeString(u.newName),
+              tmpPath: safeString(u.tmpPath),
+              processed: !!u.processed,
+            }))
+        : [],
+      ignored: Array.isArray(ig)
+        ? ig
+            .filter(Boolean)
+            .map((u) => ({
+              originalName: safeString(u.originalName),
+              newName: safeString(u.newName),
+              tmpPath: safeString(u.tmpPath),
+              reason: safeString(u.reason),
+              processed: !!u.processed,
+            }))
+        : [],
+      pending: Array.isArray(pend)
+        ? pend
+            .filter(Boolean)
+            .map((p) => ({
+              currentName: safeString(p.currentName),
+              newName: safeString(p.newName),
+              processed: !!p.processed,
+            }))
+        : [],
+      hostIgnored: Array.isArray(hostIg)
+        ? hostIg
+            .filter(Boolean)
+            .map((p) => ({
+              currentName: safeString(p.currentName),
+              reason: safeString(p.reason),
+              processed: !!p.processed,
+            }))
+        : [],
     };
   }
 
