@@ -49,30 +49,7 @@ export default function ImageManagement() {
     try {
       const raw = localStorage.getItem(FOLDER_STATE_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed.folderName) setFolderName(parsed.folderName);
-        if (Array.isArray(parsed.uploads))
-          setUploads(
-            parsed.uploads.map((u) => ({
-              ...u,
-              id: u.originalName,
-              description: extractDateFromName(u.originalName),
-              processed: !!u.processed,
-            })),
-          );
-        if (Array.isArray(parsed.ignored))
-          setIgnored(
-            parsed.ignored.map((u) => ({
-              ...u,
-              id: u.originalName,
-              description: extractDateFromName(u.originalName),
-              processed: !!u.processed,
-            })),
-          );
-        if (Array.isArray(parsed.pending))
-          setPending(parsed.pending.map((u) => ({ ...u, processed: !!u.processed })));
-        if (Array.isArray(parsed.hostIgnored))
-          setHostIgnored(parsed.hostIgnored.map((u) => ({ ...u, processed: !!u.processed })));
+        hydrateState(JSON.parse(raw));
       }
     } catch {
       // ignore
@@ -90,61 +67,87 @@ export default function ImageManagement() {
     return val !== undefined && val !== null ? String(val) : undefined;
   }
 
-  function buildSessionData(partial = {}) {
+  function serializeState(partial = {}) {
     const dataUploads = partial.uploads ?? uploads;
     const dataIgnored = partial.ignored ?? ignored;
     const dataPending = partial.pending ?? pending;
     const dataHostIgnored = partial.hostIgnored ?? hostIgnored;
 
+    const mapUploads = (list = []) =>
+      list
+        .filter(Boolean)
+        .map(({ originalName, newName, tmpPath, processed, reason }) => ({
+          originalName: safeString(originalName),
+          newName: safeString(newName),
+          tmpPath: safeString(tmpPath),
+          reason: safeString(reason),
+          processed: !!processed,
+        }));
+
     return {
       folderName: safeString(partial.folderName ?? folderName) || '',
-      uploads: Array.isArray(dataUploads)
-        ? dataUploads
-            .filter(Boolean)
-            .map(({ originalName, newName, tmpPath, processed }) => ({
-              originalName,
-              newName,
-              tmpPath,
-              processed,
-            }))
-        : [],
-      ignored: Array.isArray(dataIgnored)
-        ? dataIgnored
-            .filter(Boolean)
-            .map(({ originalName, newName, tmpPath, reason, processed }) => ({
-              originalName,
-              newName,
-              tmpPath,
-              reason,
-              processed,
-            }))
-        : [],
+      uploads: Array.isArray(dataUploads) ? mapUploads(dataUploads) : [],
+      ignored: Array.isArray(dataIgnored) ? mapUploads(dataIgnored) : [],
       pending: Array.isArray(dataPending)
         ? dataPending
             .filter(Boolean)
             .map(({ currentName, newName, processed }) => ({
-              currentName,
-              newName,
-              processed,
+              currentName: safeString(currentName),
+              newName: safeString(newName),
+              processed: !!processed,
             }))
         : [],
       hostIgnored: Array.isArray(dataHostIgnored)
         ? dataHostIgnored
             .filter(Boolean)
             .map(({ currentName, reason, processed }) => ({
-              currentName,
-              reason,
-              processed,
+              currentName: safeString(currentName),
+              reason: safeString(reason),
+              processed: !!processed,
             }))
         : [],
     };
+  }
+
+  function hydrateState(data = {}) {
+    setFolderName(data.folderName || '');
+    setUploads(
+      Array.isArray(data.uploads)
+        ? data.uploads.map((u) => ({
+            ...u,
+            id: u.originalName,
+            description: extractDateFromName(u.originalName),
+            processed: !!u.processed,
+          }))
+        : [],
+    );
+    setIgnored(
+      Array.isArray(data.ignored)
+        ? data.ignored.map((u) => ({
+            ...u,
+            id: u.originalName,
+            description: extractDateFromName(u.originalName),
+            processed: !!u.processed,
+          }))
+        : [],
+    );
+    setPending(
+      Array.isArray(data.pending)
+        ? data.pending.map((u) => ({ ...u, processed: !!u.processed }))
+        : [],
+    );
+    setHostIgnored(
+      Array.isArray(data.hostIgnored)
+        ? data.hostIgnored.map((u) => ({ ...u, processed: !!u.processed }))
+        : [],
+    );
   }
 
   function persistState(partial) {
     try {
       localStorage.setItem(
         FOLDER_STATE_KEY,
-        JSON.stringify(buildSessionData(partial)),
+        JSON.stringify(serializeState(partial)),
       );
     } catch {
       // ignore
@@ -164,7 +167,7 @@ export default function ImageManagement() {
     const name = prompt('Session name?', folderName || new Date().toISOString());
     if (!name) return;
     try {
-      const data = buildSessionData();
+      const data = serializeState();
       localStorage.setItem(SESSION_PREFIX + name, JSON.stringify(data));
       const names = new Set(getSessionNames());
       names.add(name);
@@ -190,37 +193,7 @@ export default function ImageManagement() {
         return;
       }
       const data = JSON.parse(raw);
-      setFolderName(data.folderName || '');
-      setUploads(
-        Array.isArray(data.uploads)
-          ? data.uploads.map((u) => ({
-              ...u,
-              id: u.originalName,
-              description: extractDateFromName(u.originalName),
-              processed: !!u.processed,
-            }))
-          : [],
-      );
-      setIgnored(
-        Array.isArray(data.ignored)
-          ? data.ignored.map((u) => ({
-              ...u,
-              id: u.originalName,
-              description: extractDateFromName(u.originalName),
-              processed: !!u.processed,
-            }))
-          : [],
-      );
-      setPending(
-        Array.isArray(data.pending)
-          ? data.pending.map((u) => ({ ...u, processed: !!u.processed }))
-          : [],
-      );
-      setHostIgnored(
-        Array.isArray(data.hostIgnored)
-          ? data.hostIgnored.map((u) => ({ ...u, processed: !!u.processed }))
-          : [],
-      );
+      hydrateState(data);
       setSelected([]);
       setHostIgnoredSel([]);
       setUploadSel([]);
