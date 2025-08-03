@@ -1,4 +1,3 @@
-import isEqual from 'lodash.isequal';
 import React, {
   useState,
   useEffect,
@@ -13,6 +12,14 @@ import { useRolePermissions } from '../hooks/useRolePermissions.js';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
 import { useTxnSession } from '../context/TxnSessionContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
+
+function isEqual(a, b) {
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
 
 export default function FinanceTransactions({ moduleKey = 'finance_transactions', moduleLabel = '' }) {
   const renderCount = useRef(0);
