@@ -145,7 +145,7 @@ export default function App() {
             <Route path="/*" element={<RequireAuth />}>
               <Route path="/" element={<ERPLayout />}>{roots.map(renderRoute)}</Route>
               <Route
-                path="/inventory-demo"
+                path="inventory-demo"
                 element={
                   <AppLayout title="Inventory">
                     <InventoryPage />
