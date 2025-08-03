@@ -142,10 +142,10 @@ export default function App() {
               <HashRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
-            <Route path="/*" element={<RequireAuth />}>
-              <Route path="/" element={<ERPLayout />}>{roots.map(renderRoute)}</Route>
+            <Route path="/" element={<RequireAuth />}>
+              <Route element={<ERPLayout />}>{roots.map(renderRoute)}</Route>
               <Route
-                path="/inventory-demo"
+                path="inventory-demo"
                 element={
                   <AppLayout title="Inventory">
                     <InventoryPage />
