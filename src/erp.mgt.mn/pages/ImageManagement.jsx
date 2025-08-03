@@ -94,29 +94,37 @@ export default function ImageManagement() {
   ) {
     return {
       folderName: folder,
-      uploads: up.map(({ originalName, newName, tmpPath, processed }) => ({
-        originalName,
-        newName,
-        tmpPath,
-        processed,
-      })),
-      ignored: ig.map(({ originalName, newName, tmpPath, reason, processed }) => ({
-        originalName,
-        newName,
-        tmpPath,
-        reason,
-        processed,
-      })),
-      pending: pend.map(({ currentName, newName, processed }) => ({
-        currentName,
-        newName,
-        processed,
-      })),
-      hostIgnored: hostIg.map(({ currentName, reason, processed }) => ({
-        currentName,
-        reason,
-        processed,
-      })),
+      uploads: up
+        .filter(Boolean)
+        .map(({ originalName, newName, tmpPath, processed }) => ({
+          originalName,
+          newName,
+          tmpPath,
+          processed,
+        })),
+      ignored: ig
+        .filter(Boolean)
+        .map(({ originalName, newName, tmpPath, reason, processed }) => ({
+          originalName,
+          newName,
+          tmpPath,
+          reason,
+          processed,
+        })),
+      pending: pend
+        .filter(Boolean)
+        .map(({ currentName, newName, processed }) => ({
+          currentName,
+          newName,
+          processed,
+        })),
+      hostIgnored: hostIg
+        .filter(Boolean)
+        .map(({ currentName, reason, processed }) => ({
+          currentName,
+          reason,
+          processed,
+        })),
     };
   }
 
