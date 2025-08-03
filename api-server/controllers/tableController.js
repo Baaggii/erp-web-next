@@ -10,7 +10,10 @@ import {
   listTableColumns,
   listTableColumnMeta,
   saveTableColumnLabels,
+  pool,
+  getPrimaryKeyColumns,
 } from '../../db/index.js';
+import { moveImagesToDeleted } from '../services/transactionImageService.js';
 let bcrypt;
 try {
   const mod = await import('bcryptjs');
@@ -96,6 +99,9 @@ export async function addRow(req, res, next) {
     if (req.params.table === 'users' && row.password) {
       row.password = await bcrypt.hash(row.password, 10);
     }
+    if (columns.includes('g_burtgel_id') && row.g_burtgel_id == null) {
+      row.g_burtgel_id = row.g_id ?? 0;
+    }
     const result = await insertTableRow(req.params.table, row);
     res.status(201).json(result);
   } catch (err) {
@@ -108,10 +114,30 @@ export async function addRow(req, res, next) {
 
 export async function deleteRow(req, res, next) {
   try {
+    const table = req.params.table;
+    const id = req.params.id;
+    let row;
+    try {
+      const pkCols = await getPrimaryKeyColumns(table);
+      if (pkCols.length > 0) {
+        const parts = String(id).split('-');
+        const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
+        const [rows] = await pool.query(
+          `SELECT * FROM \`${table}\` WHERE ${where} LIMIT 1`,
+          parts,
+        );
+        row = rows[0];
+      }
+    } catch {}
     if (req.query.cascade === 'true') {
-      await deleteTableRowCascade(req.params.table, req.params.id);
+      await deleteTableRowCascade(table, id);
     } else {
-      await deleteTableRow(req.params.table, req.params.id);
+      await deleteTableRow(table, id);
+    }
+    if (row) {
+      try {
+        await moveImagesToDeleted(table, row);
+      } catch {}
     }
     res.sendStatus(204);
   } catch (err) {

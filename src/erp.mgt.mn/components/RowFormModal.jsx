@@ -41,6 +41,7 @@ const RowFormModal = function RowFormModal({
   fitted = false,
   table = '',
   imagenameField = [],
+  imageIdField = '',
   scope = 'forms',
   labelFontSize,
   boxWidth,
@@ -988,32 +989,33 @@ const RowFormModal = function RowFormModal({
       return (
         <div className="mb-4">
           <h3 className="mt-0 mb-1 font-semibold">Main</h3>
-          <InlineTransactionTable
-            ref={useGrid ? tableRef : undefined}
-            fields={cols}
-            relations={relations}
-            relationConfigs={relationConfigs}
-            relationData={relationData}
-            labels={labels}
-            totalAmountFields={totalAmountFields}
-            totalCurrencyFields={totalCurrencyFields}
-            viewSource={viewSource}
-            viewDisplays={viewDisplays}
-            viewColumns={viewColumns}
-            procTriggers={procTriggers}
-            user={user}
-            company={company}
-            columnCaseMap={columnCaseMap}
-            tableName={table}
-            imagenameFields={imagenameField}
-            userIdFields={userIdFields}
-            branchIdFields={branchIdFields}
-            departmentIdFields={departmentIdFields}
-            companyIdFields={companyIdFields}
-            collectRows={useGrid}
-            minRows={1}
-            onRowSubmit={onSubmit}
-            onRowsChange={(rows) => {
+            <InlineTransactionTable
+              ref={useGrid ? tableRef : undefined}
+              fields={cols}
+              relations={relations}
+              relationConfigs={relationConfigs}
+              relationData={relationData}
+              labels={labels}
+              totalAmountFields={totalAmountFields}
+              totalCurrencyFields={totalCurrencyFields}
+              viewSource={viewSource}
+              viewDisplays={viewDisplays}
+              viewColumns={viewColumns}
+              procTriggers={procTriggers}
+              user={user}
+              company={company}
+              columnCaseMap={columnCaseMap}
+              tableName={table}
+              imagenameFields={imagenameField}
+              imageIdField={imageIdField}
+              userIdFields={userIdFields}
+              branchIdFields={branchIdFields}
+              departmentIdFields={departmentIdFields}
+              companyIdFields={companyIdFields}
+              collectRows={useGrid}
+              minRows={1}
+              onRowSubmit={onSubmit}
+              onRowsChange={(rows) => {
               setGridRows(rows);
               onRowsChange(rows);
             }}
