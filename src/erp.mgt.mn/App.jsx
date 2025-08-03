@@ -140,21 +140,21 @@ export default function App() {
           <LoadingProvider>
             <TabProvider>
               <HashRouter>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/*" element={<RequireAuth />}>
-              <Route path="/" element={<ERPLayout />}>{roots.map(renderRoute)}</Route>
-              <Route
-                path="inventory-demo"
-                element={
-                  <AppLayout title="Inventory">
-                    <InventoryPage />
-                  </AppLayout>
-                }
-              />
-            </Route>
-          </Routes>
-            </HashRouter>
+                <Routes>
+                  <Route path="/login" element={<LoginPage />} />
+                  <Route element={<RequireAuth />}>
+                    <Route path="/" element={<ERPLayout />}>{roots.map(renderRoute)}</Route>
+                    <Route
+                      path="inventory-demo"
+                      element={
+                        <AppLayout title="Inventory">
+                          <InventoryPage />
+                        </AppLayout>
+                      }
+                    />
+                  </Route>
+                </Routes>
+              </HashRouter>
             </TabProvider>
           </LoadingProvider>
         </TxnSessionProvider>
