@@ -27,7 +27,10 @@ export default function RowImageViewModal({
     if (!p) return '';
     // If API returns a full URL, use it directly
     if (p.startsWith('http')) return p;
-    const base = (window.API_BASE || API_BASE || '').replace(/\/$/, '') || window.location.origin;
+    const base =
+      (window.API_BASE || API_BASE || '')
+        .replace(/\/$/, '')
+        .replace(/\/api$/, '') || window.location.origin;
     return `${base}/${p.replace(/^\//, '')}`;
   }
 
