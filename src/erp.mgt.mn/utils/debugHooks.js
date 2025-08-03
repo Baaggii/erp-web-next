@@ -9,7 +9,6 @@ export function setupDebugHooks() {
     console.warn('React is sealed; skipping debug hooks');
     return;
   }
-
   function replaceHook(name, wrapper) {
     const desc = Object.getOwnPropertyDescriptor(React, name);
     if (!desc || typeof desc.value !== 'function') return;
