@@ -14,7 +14,7 @@ import RowFormModal from './RowFormModal.jsx';
 import CascadeDeleteModal from './CascadeDeleteModal.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
 import RowImageViewModal from './RowImageViewModal.jsx';
-import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import RowImageUploadModal from './RowImageUploadModal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
@@ -66,8 +66,6 @@ function normalizeDateInput(value, format) {
 const actionCellStyle = {
   padding: '0.5rem',
   border: '1px solid #d1d5db',
-  width: 180,
-  minWidth: 180,
   whiteSpace: 'nowrap',
   display: 'flex',
   justifyContent: 'flex-end',
@@ -122,7 +120,6 @@ const TableManager = forwardRef(function TableManager({
   const [sort, setSort] = useState({ column: '', dir: 'asc' });
   const [relations, setRelations] = useState({});
   const [refData, setRefData] = useState({});
-  const generalConfig = useGeneralConfig();
   const [refRows, setRefRows] = useState({});
   const [relationConfigs, setRelationConfigs] = useState({});
   const [columnMeta, setColumnMeta] = useState([]);
@@ -140,6 +137,7 @@ const TableManager = forwardRef(function TableManager({
   const [detailRow, setDetailRow] = useState(null);
   const [detailRefs, setDetailRefs] = useState([]);
   const [imagesRow, setImagesRow] = useState(null);
+  const [uploadRow, setUploadRow] = useState(null);
   const [viewDisplayMap, setViewDisplayMap] = useState({});
   const [viewColumns, setViewColumns] = useState({});
   const [editLabels, setEditLabels] = useState(false);
@@ -628,16 +626,37 @@ const TableManager = forwardRef(function TableManager({
     return `${slugify(t1)}/${slugify(String(t2))}`;
   }
 
+  function getCase(obj, field) {
+    if (!obj) return undefined;
+    if (obj[field] !== undefined) return obj[field];
+    const lower = field.toLowerCase();
+    if (obj[columnCaseMap[lower]] !== undefined) return obj[columnCaseMap[lower]];
+    const key = Object.keys(obj).find((k) => k.toLowerCase() === lower);
+    return key ? obj[key] : undefined;
+  }
+
   function getConfigForRow(row) {
     if (!row) return formConfig || {};
-    const configs = Object.values(allConfigs || {});
-    for (const cfg of configs) {
-      if (cfg.table !== table) continue;
-      if (!cfg.transactionTypeField) continue;
-      const key = columnCaseMap[cfg.transactionTypeField.toLowerCase()] || cfg.transactionTypeField;
-      const val = row[key];
-      if (val !== undefined && String(val) === String(cfg.transactionTypeValue)) {
+    const tVal =
+      getCase(row, 'transtype') ||
+      getCase(row, 'Transtype') ||
+      getCase(row, 'UITransType') ||
+      getCase(row, 'UITransTypeName');
+    for (const cfg of Object.values(allConfigs || {})) {
+      if (!cfg.transactionTypeValue) continue;
+      if (tVal !== undefined && String(tVal) === String(cfg.transactionTypeValue)) {
         return cfg;
+      }
+      if (cfg.transactionTypeField) {
+        const val = getCase(row, cfg.transactionTypeField);
+        if (val !== undefined && String(val) === String(cfg.transactionTypeValue)) {
+          return cfg;
+        }
+      } else {
+        const matchField = Object.keys(row).find(
+          (k) => String(getCase(row, k)) === String(cfg.transactionTypeValue),
+        );
+        if (matchField) return { ...cfg, transactionTypeField: matchField };
       }
     }
     return formConfig || {};
@@ -765,6 +784,10 @@ const TableManager = forwardRef(function TableManager({
 
   function openImages(row) {
     setImagesRow(row);
+  }
+
+  function openUpload(row) {
+    setUploadRow(row);
   }
 
   function toggleRow(id) {
@@ -1353,6 +1376,8 @@ const TableManager = forwardRef(function TableManager({
     [columns, totalAmountSet, totalCurrencySet],
   );
 
+  const uploadCfg = uploadRow ? getConfigForRow(uploadRow) : {};
+
   return (
     <div>
       <div
@@ -1780,6 +1805,12 @@ const TableManager = forwardRef(function TableManager({
                         🖼 Images
                       </button>
                       <button
+                        onClick={() => openUpload(r)}
+                        style={actionBtnStyle}
+                      >
+                        ➕ Add Img
+                      </button>
+                      <button
                         onClick={() => openEdit(r)}
                         disabled={rid === undefined}
                         style={actionBtnStyle}
@@ -1991,15 +2022,35 @@ const TableManager = forwardRef(function TableManager({
         references={detailRefs}
         labels={labels}
       />
+      <RowImageUploadModal
+        visible={uploadRow !== null}
+        onClose={() => setUploadRow(null)}
+        table={table}
+        folder={getImageFolder(uploadRow)}
+        row={uploadRow || {}}
+        rowKey={0}
+        imagenameFields={uploadCfg.imagenameField || []}
+        columnCaseMap={columnCaseMap}
+        imageIdField={uploadCfg.imageIdField || ''}
+        onUploaded={(name) => {
+          if (uploadRow) {
+            const id = getRowId(uploadRow);
+            setRows((rs) =>
+              rs.map((r) =>
+                getRowId(r) === id ? { ...r, _imageName: name } : r,
+              ),
+            );
+          }
+        }}
+      />
       <RowImageViewModal
         visible={imagesRow !== null}
         onClose={() => setImagesRow(null)}
         table={table}
         folder={getImageFolder(imagesRow)}
         row={imagesRow || {}}
-        imagenameFields={getConfigForRow(imagesRow).imagenameField || []}
         columnCaseMap={columnCaseMap}
-        imageIdField={getConfigForRow(imagesRow).imageIdField || ''}
+        configs={allConfigs}
       />
       {user?.role === 'admin' && (
         <button onClick={() => {

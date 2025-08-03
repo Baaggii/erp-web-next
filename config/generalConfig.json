@@ -19,6 +19,7 @@
     "triggerToastEnabled": false,
     "procToastEnabled": false,
     "viewToastEnabled": false,
+    "imageToastEnabled": false,
     "debugLoggingEnabled": false,
     "imageStorage": {
       "basePath": "uploads",

@@ -24,6 +24,10 @@ export default function RowImageUploadModal({
   const [uploaded, setUploaded] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
   const generalConfig = useGeneralConfig();
+  const toast = (msg, type = 'info') => {
+    if (type === 'info' && !generalConfig?.general?.imageToastEnabled) return;
+    addToast(msg, type);
+  };
   const [showSuggestModal, setShowSuggestModal] = useState(false);
   function buildName(fields = imagenameFields) {
     let list = [];
@@ -73,7 +77,7 @@ export default function RowImageUploadModal({
           const list = Array.isArray(imgs) ? imgs : [];
           if (list.length > 0) {
             setUploaded(list);
-            list.forEach((p) => addToast(`Found image: ${p}`, 'info'));
+            list.forEach((p) => toast(`Found image: ${p}`, 'info'));
             return;
           }
         } catch {
@@ -103,7 +107,7 @@ export default function RowImageUploadModal({
                 const list2 = Array.isArray(imgs2) ? imgs2 : [];
                 if (list2.length > 0) {
                   setUploaded(list2);
-                  list2.forEach((p) => addToast(`Found image: ${p}`, 'info'));
+                  list2.forEach((p) => toast(`Found image: ${p}`, 'info'));
                   return;
                 }
               } catch {
@@ -111,7 +115,7 @@ export default function RowImageUploadModal({
               }
             } else {
               setUploaded(list);
-              list.forEach((p) => addToast(`Found image: ${p}`, 'info'));
+              list.forEach((p) => toast(`Found image: ${p}`, 'info'));
               return;
             }
           }
@@ -147,11 +151,11 @@ export default function RowImageUploadModal({
       if (idName) finalName = `${finalName}_${idName}`;
     }
     if (!folder) {
-      addToast('Image folder is missing', 'error');
+      toast('Image folder is missing', 'error');
       return;
     }
     if (missing.length) {
-      addToast(
+      toast(
         `Image name is missing fields: ${missing.join(', ')}. Temporary name will be used`,
         'warn',
       );
@@ -170,7 +174,7 @@ export default function RowImageUploadModal({
       const res = await fetch(uploadUrl, { method: 'POST', body: form, credentials: 'include' });
       if (res.ok) {
         const imgs = await res.json().catch(() => []);
-        addToast(`Uploaded ${imgs.length} image(s) as ${finalName}`, 'success');
+        toast(`Uploaded ${imgs.length} image(s) as ${finalName}`, 'success');
         setFiles([]);
         setUploaded((u) => [...u, ...imgs]);
         onUploaded(finalName);
@@ -184,16 +188,16 @@ export default function RowImageUploadModal({
             if (codeRes.ok) {
               const data = await codeRes.json().catch(() => ({}));
               if (data.code) {
-                addToast(`Benchmark code found: ${data.code}`, 'success');
+                toast(`Benchmark code found: ${data.code}`, 'success');
               } else {
-                addToast('Benchmark code not found', 'warn');
+                toast('Benchmark code not found', 'warn');
               }
             } else {
               const text = await codeRes.text().catch(() => '');
-              addToast(text || 'Benchmark lookup failed', 'error');
+              toast(text || 'Benchmark lookup failed', 'error');
             }
           } catch {
-            addToast('Benchmark lookup failed', 'error');
+            toast('Benchmark lookup failed', 'error');
           }
           const detForm = new FormData();
           detForm.append('image', file);
@@ -211,18 +215,18 @@ export default function RowImageUploadModal({
                 const list = items
                   .map((it) => `${it.code}${it.qty ? ` x${it.qty}` : ''}`)
                   .join(', ');
-                addToast(`AI found ${count} item(s): ${list}`, 'success');
+                toast(`AI found ${count} item(s): ${list}`, 'success');
                 detected.push(...items);
               } else {
-                addToast('No AI suggestions', 'warn');
+                toast('No AI suggestions', 'warn');
               }
             } else {
               const text = await detRes.text();
-              addToast(text || 'AI detection failed', 'error');
+              toast(text || 'AI detection failed', 'error');
             }
           } catch (err) {
             console.error(err);
-            addToast('AI detection error: ' + err.message, 'error');
+            toast('AI detection error: ' + err.message, 'error');
           }
         }
         if (detected.length) {
@@ -230,15 +234,15 @@ export default function RowImageUploadModal({
           setShowSuggestModal(true);
         }
         } else {
-          addToast('AI inventory API is disabled', 'warn');
+          toast('AI inventory API is disabled', 'warn');
         }
       } else {
         const text = await res.text();
-        addToast(text || 'Failed to upload images', 'error');
+        toast(text || 'Failed to upload images', 'error');
       }
     } catch (err) {
       console.error(err);
-      addToast(err.message || 'Error uploading images', 'error');
+      toast(err.message || 'Error uploading images', 'error');
     }
     setLoading(false);
   }
