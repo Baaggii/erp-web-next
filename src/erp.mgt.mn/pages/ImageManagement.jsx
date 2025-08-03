@@ -81,7 +81,7 @@ export default function ImageManagement() {
         }));
 
     return {
-      folderName: partial.folderName ?? folderName || '',
+      folderName: partial.folderName ?? (folderName || ''),
       uploads: mapUploads(dataUploads),
       ignored: mapUploads(dataIgnored),
       pending: dataPending
