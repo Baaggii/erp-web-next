@@ -1997,9 +1997,8 @@ const TableManager = forwardRef(function TableManager({
         table={table}
         folder={getImageFolder(imagesRow)}
         row={imagesRow || {}}
-        imagenameFields={getConfigForRow(imagesRow).imagenameField || []}
         columnCaseMap={columnCaseMap}
-        imageIdField={getConfigForRow(imagesRow).imageIdField || ''}
+        configs={allConfigs}
       />
       {user?.role === 'admin' && (
         <button onClick={() => {
