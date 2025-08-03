@@ -82,16 +82,25 @@ function parseFileUnique(base) {
 }
 
 function parseSaveName(base) {
-  const m = base.match(/^(.*?)_(\d{13})_([a-z0-9]{6})$/i);
+  const m = base.match(
+    /^(.*?)(?:_(\d{13})_([a-z0-9]{6})|__([a-z0-9]{6}))$/i,
+  );
   if (!m) return null;
-  const segs = m[1].split('_');
-  const ts = m[2];
-  const rand = m[3];
+  const pre = m[1];
+  const ts = m[2] || '';
+  const rand = m[3] || m[4] || '';
+  const segs = pre.split('_');
   const inv = segs.shift() || '';
-  const sp = segs.shift() || '';
-  const transType = segs.shift() || '';
+  let sp = '';
+  let transType = '';
+  if (segs.length >= 2) {
+    sp = segs.shift();
+    transType = segs.shift();
+  } else if (segs.length === 1) {
+    transType = segs.shift();
+  }
   const unique = segs.join('_');
-  return { inv, sp, transType, unique, ts, rand };
+  return { inv, sp, transType, unique, ts, rand, pre };
 }
 
 function buildFolderName(row, fallback = '') {
@@ -191,7 +200,7 @@ async function findTxnByParts(inv, sp, transType, timestamp) {
         c.Field.toLowerCase(),
       ),
     );
-    if (!invCol || !spCol || !transCol) continue;
+    if (!invCol || !transCol) continue;
     const cfg = cfgMap.get(tbl.toLowerCase());
     let dateCol;
     if (cfg?.dateField?.length) {
@@ -200,11 +209,15 @@ async function findTxnByParts(inv, sp, transType, timestamp) {
     } else {
       dateCol = cols.find((c) => c.Field.toLowerCase().includes('date'));
     }
-    let sql = `SELECT * FROM \`${tbl}\` WHERE \`${invCol.Field}\` = ? AND \`${spCol.Field}\` = ? AND \`${transCol.Field}\` = ?`;
-    const params = [inv, sp, transType];
-    if (dateCol) {
+    let sql = `SELECT * FROM \`${tbl}\` WHERE \`${invCol.Field}\` = ? AND \`${transCol.Field}\` = ?`;
+    const params = [inv, transType];
+    if (sp && spCol) {
+      sql += ` AND \`${spCol.Field}\` = ?`;
+      params.push(sp);
+    }
+    if (dateCol && timestamp) {
       sql +=
-        ` AND ABS(TIMESTAMPDIFF(SECOND, FROM_UNIXTIME(?/1000), \`${dateCol.Field}\`)) < 604800`;
+        ` AND ABS(TIMESTAMPDIFF(SECOND, FROM_UNIXTIME(?/1000), \`${dateCol.Field}\`)) < 172800`;
       params.push(timestamp);
     }
     sql += ' LIMIT 1';
@@ -212,20 +225,25 @@ async function findTxnByParts(inv, sp, transType, timestamp) {
     try {
       [rows] = await pool.query(sql, params);
       if (!rows.length && dateCol) {
-        [rows] = await pool.query(
-          `SELECT * FROM \`${tbl}\` WHERE \`${invCol.Field}\` = ? AND \`${spCol.Field}\` = ? AND \`${transCol.Field}\` = ? LIMIT 1`,
-          [inv, sp, transType],
-        );
+        let sql2 = `SELECT * FROM \`${tbl}\` WHERE \`${invCol.Field}\` = ? AND \`${transCol.Field}\` = ?`;
+        const p2 = [inv, transType];
+        if (sp && spCol) {
+          sql2 += ` AND \`${spCol.Field}\` = ?`;
+          p2.push(sp);
+        }
+        sql2 += ' LIMIT 1';
+        [rows] = await pool.query(sql2, p2);
       }
     } catch {
       continue;
     }
     if (rows.length) {
+      const rowObj = rows[0];
       let cfgs = {};
       try {
         cfgs = await getConfigsByTable(tbl);
       } catch {}
-      return { table: tbl, row: rows[0], configs: cfgs, numField: transCol.Field };
+      return { table: tbl, row: rowObj, configs: cfgs, numField: transCol.Field };
     }
   }
   return null;
@@ -475,7 +493,12 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
           });
           continue;
         }
-        found = await findTxnByParts(save.inv, save.sp, save.transType, Number(save.ts));
+        found = await findTxnByParts(
+          save.inv,
+          save.sp,
+          save.transType,
+          Number(save.ts),
+        );
       } else {
         ({ unique, suffix } = parseFileUnique(base));
         if (!unique) {
@@ -699,7 +722,12 @@ export async function checkUploadedImages(files = [], names = []) {
         ({ unique } = save);
         suffix = `__${save.ts}_${save.rand}`;
         if (hasTxnCode(base, unique, codes)) continue;
-        found = await findTxnByParts(save.inv, save.sp, save.transType, Number(save.ts));
+        found = await findTxnByParts(
+          save.inv,
+          save.sp,
+          save.transType,
+          Number(save.ts),
+        );
       } else {
         ({ unique, suffix } = parseFileUnique(base));
         if (!unique) continue;
