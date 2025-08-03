@@ -238,6 +238,26 @@ export default function RowImageViewModal({
     setFullscreen(src);
   };
 
+  const handleDelete = async (file) => {
+    if (!window.confirm('Delete this image?')) return;
+    const safeTable = encodeURIComponent(table);
+    const params = new URLSearchParams();
+    if (folder) params.set('folder', folder);
+    const name = row._imageName || 'unused';
+    const url = `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(name)}/${encodeURIComponent(file.name)}?${params.toString()}`;
+    try {
+      const res = await fetch(url, { method: 'DELETE', credentials: 'include' });
+      if (res.ok) {
+        setFiles((prev) => prev.filter((f) => f.path !== file.path));
+        toast('Image deleted', 'info');
+      } else {
+        toast('Failed to delete image', 'error');
+      }
+    } catch {
+      toast('Failed to delete image', 'error');
+    }
+  };
+
   const listView = (
     <div style={{ maxHeight: '40vh', overflowY: 'auto' }}>
       {files.map((f) => (
@@ -310,17 +330,41 @@ export default function RowImageViewModal({
               }}
             >
               {files.map((f) => (
-                <img
-                  key={f.path}
-                  src={f.src}
-                  alt=""
-                  onError={(e) => {
-                    e.currentTarget.onerror = null;
-                    e.currentTarget.src = placeholder;
-                  }}
-                  style={{ width: '100%', height: '100%', objectFit: 'contain', cursor: 'pointer' }}
-                  onClick={() => handleView(f.src)}
-                />
+                <div key={f.path} style={{ position: 'relative' }}>
+                  <img
+                    src={f.src}
+                    alt=""
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = placeholder;
+                    }}
+                    style={{ width: '100%', height: '100%', objectFit: 'contain', cursor: 'pointer' }}
+                    onClick={() => handleView(f.src)}
+                  />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(f);
+                    }}
+                    style={{
+                      position: 'absolute',
+                      top: '0.25rem',
+                      right: '0.25rem',
+                      background: 'rgba(0,0,0,0.6)',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '9999px',
+                      width: '1.5rem',
+                      height: '1.5rem',
+                      cursor: 'pointer',
+                      lineHeight: '1.5rem',
+                      padding: 0,
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
               ))}
             </div>
           </div>,
