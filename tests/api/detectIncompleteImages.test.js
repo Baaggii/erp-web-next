@@ -467,7 +467,7 @@ await test('detectIncompleteImages ignores timestamp mismatch when searching', a
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
 });
 
-await test('detectIncompleteImages finds bmtr_pmid files within 7-day range', async () => {
+await test('detectIncompleteImages finds bmtr_pmid files within 2-day range', async () => {
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
   const dir = path.join(
     process.cwd(),
@@ -487,7 +487,7 @@ await test('detectIncompleteImages finds bmtr_pmid files within 7-day range', as
     TransType: '4001',
     UITrtype: 't9',
     label_field: 'img011',
-    created_at: new Date(ts - 6 * 24 * 3600 * 1000),
+    created_at: new Date(ts - 1 * 24 * 3600 * 1000),
   };
 
   const restoreDb = mockPool(async (sql) => {
@@ -525,6 +525,70 @@ await test('detectIncompleteImages finds bmtr_pmid files within 7-day range', as
   const { list } = await detectIncompleteImages(1);
   assert.equal(list.length, 1);
   assert.equal(list[0].newName, `img011__${ts}_4rpenn.jpg`);
+
+  restoreDb();
+  await fs.writeFile(cfgPath, origCfg);
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
+});
+
+await test('detectIncompleteImages handles files without sp_primary_code', async () => {
+  await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
+  const dir = path.join(
+    process.cwd(),
+    'uploads',
+    'txn_images',
+    'transactions_test',
+  );
+  await fs.mkdir(dir, { recursive: true });
+  const ts = 1754117891085;
+  const file = path.join(dir, `300531_4001_${ts}_wfrv5b.jpg`);
+  await fs.writeFile(file, 'x');
+
+  const row = {
+    id: 1,
+    bmtr_pmid: '300531',
+    TransType: '4001',
+    UITrtype: 't1',
+    label_field: 'img012',
+    created_at: new Date(ts - 1 * 24 * 3600 * 1000),
+  };
+
+  const restoreDb = mockPool(async (sql) => {
+    if (/SELECT UITrtype, UITransType FROM code_transaction/.test(sql))
+      return [[{ UITrtype: 't1', UITransType: '4001' }]];
+    if (/SHOW TABLES LIKE/.test(sql)) return [[{ t: 'transactions_test' }]];
+    if (/SHOW COLUMNS FROM/.test(sql))
+      return [[
+        { Field: 'bmtr_pmid' },
+        { Field: 'sp_primary_code' },
+        { Field: 'TransType' },
+        { Field: 'UITrtype' },
+        { Field: 'created_at' },
+        { Field: 'label_field' },
+      ]];
+    if (/FROM `transactions_test`/.test(sql)) return [[row]];
+    return [[]];
+  });
+
+  const origCfg = await fs.readFile(cfgPath, 'utf8').catch(() => '{}');
+  await fs.writeFile(
+    cfgPath,
+    JSON.stringify({
+      transactions_test: {
+        default: {
+          imagenameField: ['label_field'],
+          transactionTypeField: 'TransType',
+          transactionTypeValue: '4001',
+          dateField: ['created_at'],
+        },
+      },
+    }),
+  );
+
+  const { list, skipped } = await detectIncompleteImages(1);
+  assert.equal(list.length, 1);
+  assert.equal(skipped.length, 0);
+  assert.equal(list[0].newName, `img012__${ts}_wfrv5b.jpg`);
 
   restoreDb();
   await fs.writeFile(cfgPath, origCfg);
