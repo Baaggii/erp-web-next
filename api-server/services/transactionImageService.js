@@ -325,18 +325,27 @@ export async function renameImages(table, oldName, newName, folder = null) {
   const oldPrefix = sanitizeName(oldName);
   const newPrefix = sanitizeName(newName);
   try {
-    const files = await fs.readdir(dir);
-    const renamed = [];
-    for (const f of files) {
-      if (f.startsWith(oldPrefix + '_')) {
-        const rest = f.slice(oldPrefix.length);
-        const dest = path.join(targetDir, newPrefix + rest);
-        await fs.rename(path.join(dir, f), dest);
-        const folderPart = folder || table;
-        renamed.push(`${urlBase}/${folderPart}/${newPrefix + rest}`);
+    const searchDirs = folder ? [dir, targetDir] : [dir];
+    const results = [];
+    const seen = new Set();
+    for (const d of searchDirs) {
+      const files = await fs.readdir(d).catch(() => []);
+      for (const f of files) {
+        if (f.startsWith(oldPrefix + '_')) {
+          const rest = f.slice(oldPrefix.length);
+          const destFile = newPrefix + rest;
+          const src = path.join(d, f);
+          const dest = path.join(targetDir, destFile);
+          await fs.rename(src, dest);
+          if (!seen.has(destFile)) {
+            const folderPart = folder || table;
+            results.push(`${urlBase}/${folderPart}/${destFile}`);
+            seen.add(destFile);
+          }
+        }
       }
     }
-    return renamed;
+    return results;
   } catch {
     return [];
   }
