@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
 const FOLDER_STATE_KEY = 'imgMgmtFolderState';
+const SESSIONS_KEY = 'imgMgmtSessions';
 
 function extractDateFromName(name) {
   const match = typeof name === 'string' ? name.match(/(?:__|_)(\d{13})_/) : null;
@@ -58,6 +59,22 @@ export default function ImageManagement() {
     }
   }, []);
 
+  function buildState(
+    up = uploads,
+    ig = ignored,
+    folder = folderName,
+    pend = pending,
+    hostIg = hostIgnored,
+  ) {
+    return {
+      folderName: folder,
+      uploads: up.map(({ handle, ...rest }) => rest),
+      ignored: ig.map(({ handle, ...rest }) => rest),
+      pending: pend,
+      hostIgnored: hostIg,
+    };
+  }
+
   function persistState(
     up = uploads,
     ig = ignored,
@@ -66,16 +83,63 @@ export default function ImageManagement() {
     hostIg = hostIgnored,
   ) {
     try {
-      const data = {
-        folderName: folder,
-        uploads: up.map(({ handle, ...rest }) => rest),
-        ignored: ig.map(({ handle, ...rest }) => rest),
-        pending: pend,
-        hostIgnored: hostIg,
-      };
-      localStorage.setItem(FOLDER_STATE_KEY, JSON.stringify(data));
+      localStorage.setItem(FOLDER_STATE_KEY, JSON.stringify(buildState(up, ig, folder, pend, hostIg)));
     } catch {
       // ignore
+    }
+  }
+
+  function saveSession() {
+    const name = prompt('Session name?', new Date().toISOString());
+    if (!name) return;
+    try {
+      const sessions = JSON.parse(localStorage.getItem(SESSIONS_KEY) || '{}');
+      sessions[name] = buildState();
+      localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+      persistState();
+      addToast('State saved', 'success');
+    } catch {
+      addToast('Failed to save state', 'error');
+    }
+  }
+
+  function loadSession() {
+    try {
+      const sessions = JSON.parse(localStorage.getItem(SESSIONS_KEY) || '{}');
+      const names = Object.keys(sessions);
+      if (names.length === 0) {
+        addToast('No saved sessions', 'error');
+        return;
+      }
+      const name = prompt(`Load which session?\n${names.join('\n')}`);
+      if (!name || !sessions[name]) return;
+      const data = sessions[name];
+      setFolderName(data.folderName || '');
+      setUploads(Array.isArray(data.uploads) ? data.uploads.map((u) => ({ ...u, processed: !!u.processed })) : []);
+      setIgnored(Array.isArray(data.ignored) ? data.ignored.map((u) => ({ ...u, processed: !!u.processed })) : []);
+      setPending(Array.isArray(data.pending) ? data.pending.map((u) => ({ ...u, processed: !!u.processed })) : []);
+      setHostIgnored(
+        Array.isArray(data.hostIgnored)
+          ? data.hostIgnored.map((u) => ({ ...u, processed: !!u.processed }))
+          : [],
+      );
+      setSelected([]);
+      setHostIgnoredSel([]);
+      setUploadSel([]);
+      setUploadPage(1);
+      setIgnoredPage(1);
+      setHostIgnoredPage(1);
+      setPage(1);
+      persistState(
+        data.uploads || [],
+        data.ignored || [],
+        data.folderName || '',
+        data.pending || [],
+        data.hostIgnored || [],
+      );
+      addToast('State loaded', 'success');
+    } catch {
+      addToast('Failed to load session', 'error');
     }
   }
 
@@ -514,12 +578,13 @@ export default function ImageManagement() {
             {folderName && <span style={{ marginRight: '0.5rem' }}>{folderName}</span>}
             <button
               type="button"
-              onClick={() => {
-                persistState();
-                addToast('State saved', 'success');
-              }}
+              onClick={saveSession}
+              style={{ marginRight: '0.5rem' }}
             >
               Save
+            </button>
+            <button type="button" onClick={loadSession}>
+              Load
             </button>
           </div>
           {uploadSummary && (
