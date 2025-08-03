@@ -252,6 +252,17 @@ export default function GeneralConfiguration() {
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
             <label>
+              Show Image Toasts{' '}
+              <input
+                name="imageToastEnabled"
+                type="checkbox"
+                checked={active.imageToastEnabled ?? false}
+                onChange={handleChange}
+              />
+            </label>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <label>
               Enable Debug Logging{' '}
               <input
                 name="debugLoggingEnabled"
