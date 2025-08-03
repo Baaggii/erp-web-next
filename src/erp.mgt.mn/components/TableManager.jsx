@@ -973,9 +973,12 @@ const TableManager = forwardRef(function TableManager({
             ...merged,
             [formConfig.imageIdField]: savedRow[formConfig.imageIdField],
           };
+          const nameFields = (formConfig?.imagenameField || []).concat(
+            formConfig?.imageIdField || '',
+          ).filter(Boolean);
           const { name: newImageName } = buildImageName(
             rowForName,
-            formConfig?.imagenameField || [],
+            nameFields,
             columnCaseMap,
           );
           const folder = getImageFolder(rowForName);
@@ -1952,6 +1955,7 @@ const TableManager = forwardRef(function TableManager({
         columnCaseMap={columnCaseMap}
         table={table}
         imagenameField={formConfig?.imagenameField || []}
+        imageIdField={formConfig?.imageIdField || ''}
         viewSource={viewSourceMap}
         viewDisplays={viewDisplayMap}
         viewColumns={viewColumns}
@@ -1984,6 +1988,7 @@ const TableManager = forwardRef(function TableManager({
         row={imagesRow || {}}
         imagenameFields={getConfigForRow(imagesRow).imagenameField || []}
         columnCaseMap={columnCaseMap}
+        imageIdField={getConfigForRow(imagesRow).imageIdField || ''}
       />
       {user?.role === 'admin' && (
         <button onClick={() => {
