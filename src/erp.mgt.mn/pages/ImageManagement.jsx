@@ -89,11 +89,20 @@ export default function ImageManagement() {
     }
   }
 
+  function getSessions() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(SESSIONS_KEY) || '{}');
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
   function saveSession() {
     const name = prompt('Session name?', new Date().toISOString());
     if (!name) return;
     try {
-      const sessions = JSON.parse(localStorage.getItem(SESSIONS_KEY) || '{}');
+      const sessions = getSessions();
       sessions[name] = buildState();
       localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
       persistState();
@@ -105,7 +114,7 @@ export default function ImageManagement() {
 
   function loadSession() {
     try {
-      const sessions = JSON.parse(localStorage.getItem(SESSIONS_KEY) || '{}');
+      const sessions = getSessions();
       const names = Object.keys(sessions);
       if (names.length === 0) {
         addToast('No saved sessions', 'error');
