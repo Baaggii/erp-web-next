@@ -988,6 +988,9 @@ export default function PosTransactionsPage() {
                       imagenameField={
                         formConfigs[config.masterTable]?.imagenameField || []
                       }
+                      imageIdField={
+                        formConfigs[config.masterTable]?.imageIdField || ''
+                      }
                       relations={relationsMap[t.table] || {}}
                       relationConfigs={relationConfigs[t.table] || {}}
                       relationData={relationData[t.table] || {}}
