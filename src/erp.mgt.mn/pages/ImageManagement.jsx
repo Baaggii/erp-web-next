@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
@@ -226,15 +227,13 @@ export default function ImageManagement() {
     }
   }
 
+  function getTables() {
+    return { uploads, ignored, pending, hostIgnored };
+  }
+
   function persistAll(partial = {}) {
-    persistSnapshot({
-      uploads,
-      ignored,
-      pending,
-      hostIgnored,
-      folderName,
-      ...partial,
-    });
+    const tables = getTables();
+    persistSnapshot({ ...tables, folderName, ...partial });
   }
 
   function getSessionNames() {
@@ -677,7 +676,9 @@ export default function ImageManagement() {
   }
 
   async function renameSelected() {
-    const items = [...uploads, ...ignored].filter(
+    const tables = getTables();
+    const allItems = Object.values(tables).flat();
+    const items = allItems.filter(
       (u) => uploadSel.includes(u.id) && u.handle && !u.processed,
     );
     if (items.length === 0) {
@@ -706,23 +707,25 @@ export default function ImageManagement() {
       }
       const data = await res.json().catch(() => ({}));
       const list = Array.isArray(data.list) ? data.list : [];
-      const newUploads = uploads
-        .map((u) => {
-          const found = list.find((x) => x.originalName === u.originalName);
-          const merged = found ? { ...u, ...found, id: u.id } : u;
-          return { ...merged, description: extractDateFromName(merged.originalName) };
-        })
-        .sort((a, b) => a.originalName.localeCompare(b.originalName));
-      const newIgnored = ignored
-        .map((u) => {
-          const found = list.find((x) => x.originalName === u.originalName);
-          const merged = found ? { ...u, ...found, id: u.id } : u;
-          return { ...merged, description: extractDateFromName(merged.originalName) };
-        })
-        .sort((a, b) => a.originalName.localeCompare(b.originalName));
-      setUploads(newUploads);
-      setIgnored(newIgnored);
-      persistAll({ uploads: newUploads, ignored: newIgnored });
+      const updated = {};
+      for (const [key, arr] of Object.entries(tables)) {
+        if (arr.some((u) => 'originalName' in u)) {
+          updated[key] = arr
+            .map((u) => {
+              const found = list.find((x) => x.originalName === u.originalName);
+              const merged = found ? { ...u, ...found, id: u.id } : u;
+              return { ...merged, description: extractDateFromName(merged.originalName) };
+            })
+            .sort((a, b) => a.originalName.localeCompare(b.originalName));
+        } else {
+          updated[key] = arr;
+        }
+      }
+      setUploads(updated.uploads);
+      setIgnored(updated.ignored);
+      setPending(updated.pending);
+      setHostIgnored(updated.hostIgnored);
+      persistAll(updated);
       setReport(`Renamed ${list.length} file(s)`);
     } catch {
       addToast('Rename failed', 'error');
@@ -730,7 +733,9 @@ export default function ImageManagement() {
   }
 
   async function commitUploads() {
-    const items = [...uploads, ...ignored].filter(
+    const tables = getTables();
+    const allItems = Object.values(tables).flat();
+    const items = allItems.filter(
       (u) => uploadSel.includes(u.id) && u.tmpPath && !u.processed,
     );
     if (items.length === 0) return;
@@ -743,16 +748,18 @@ export default function ImageManagement() {
     if (res.ok) {
       const data = await res.json().catch(() => ({}));
       addToast(`Uploaded ${data.uploaded || 0} file(s)`, 'success');
-      const newUploads = uploads.map((u) =>
-        uploadSel.includes(u.id) && u.tmpPath ? { ...u, processed: true } : u,
-      );
-      const newIgnored = ignored.map((u) =>
-        uploadSel.includes(u.id) && u.tmpPath ? { ...u, processed: true } : u,
-      );
-      setUploads(newUploads);
-      setIgnored(newIgnored);
+      const updated = {};
+      for (const [key, arr] of Object.entries(tables)) {
+        updated[key] = arr.map((u) =>
+          uploadSel.includes(u.id) && u.tmpPath ? { ...u, processed: true } : u,
+        );
+      }
+      setUploads(updated.uploads);
+      setIgnored(updated.ignored);
+      setPending(updated.pending);
+      setHostIgnored(updated.hostIgnored);
       setUploadSel([]);
-      persistAll({ uploads: newUploads, ignored: newIgnored });
+      persistAll(updated);
       setReport(`Uploaded ${data.uploaded || 0} file(s)`);
     } else {
       addToast('Upload failed', 'error');
