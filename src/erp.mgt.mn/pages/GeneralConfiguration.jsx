@@ -73,6 +73,12 @@ export default function GeneralConfiguration() {
         >
           General
         </button>
+        <button
+          className={`tab-button ${tab === 'images' ? 'active' : ''}`}
+          onClick={() => setTab('images')}
+        >
+          Images
+        </button>
       </div>
       <div style={{ marginBottom: '0.5rem' }}>
         <button onClick={() => setTab('forms')} disabled={tab === 'forms'}>
@@ -84,8 +90,11 @@ export default function GeneralConfiguration() {
         <button onClick={() => setTab('general')} disabled={tab === 'general'} style={{ marginLeft: '0.5rem' }}>
           General
         </button>
+        <button onClick={() => setTab('images')} disabled={tab === 'images'} style={{ marginLeft: '0.5rem' }}>
+          Images
+        </button>
       </div>
-      {tab !== 'general' ? (
+      {tab === 'forms' || tab === 'pos' ? (
         <>
           <div style={{ marginBottom: '0.5rem' }}>
             <label>
@@ -148,25 +157,16 @@ export default function GeneralConfiguration() {
             </label>
           </div>
         </>
-      ) : (
+      ) : tab === 'images' ? (
         <>
           <div style={{ marginBottom: '0.5rem' }}>
             <label>
               Base Path{' '}
               <input
-                name="imageStorage.basePath"
+                name="basePath"
                 type="text"
-                value={active.imageStorage?.basePath ?? ''}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setCfg((c) => ({
-                    ...c,
-                    general: {
-                      ...(c.general || {}),
-                      imageStorage: { ...(c.general?.imageStorage || {}), basePath: val },
-                    },
-                  }));
-                }}
+                value={active.basePath ?? ''}
+                onChange={handleChange}
               />
             </label>
           </div>
@@ -174,27 +174,39 @@ export default function GeneralConfiguration() {
             <label>
               Cleanup Days{' '}
               <input
-                name="imageStorage.cleanupDays"
+                name="cleanupDays"
                 type="number"
                 inputMode="decimal"
-                value={active.imageStorage?.cleanupDays ?? ''}
-                onChange={(e) => {
-                  const val = Number(e.target.value);
-                  setCfg((c) => ({
-                    ...c,
-                    general: {
-                      ...(c.general || {}),
-                      imageStorage: {
-                        ...(c.general?.imageStorage || {}),
-                        cleanupDays: val,
-                      },
-                    },
-                  }));
-                }}
+                value={active.cleanupDays ?? ''}
+                onChange={handleChange}
                 style={{ width: '4rem' }}
               />
             </label>
           </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <label>
+              Ignore on Search
+              <textarea
+                name="ignoreOnSearch"
+                value={(active.ignoreOnSearch || []).join('\n')}
+                onChange={(e) => {
+                  const list = e.target.value
+                    .split('\n')
+                    .map((s) => s.trim())
+                    .filter(Boolean);
+                  setCfg((c) => ({
+                    ...c,
+                    images: { ...(c.images || {}), ignoreOnSearch: list },
+                  }));
+                }}
+                rows={3}
+                style={{ display: 'block', width: '100%', marginTop: '0.25rem' }}
+              />
+            </label>
+          </div>
+        </>
+      ) : (
+        <>
           <div style={{ marginBottom: '0.5rem' }}>
             <label>
               Enable AI API{' '}
