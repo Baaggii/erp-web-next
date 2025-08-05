@@ -26,10 +26,11 @@ const defaults = {
     viewToastEnabled: true,
     imageToastEnabled: false,
     debugLoggingEnabled: false,
-    imageStorage: {
-      basePath: 'uploads',
-      cleanupDays: 30,
-    },
+  },
+  images: {
+    basePath: 'uploads',
+    cleanupDays: 30,
+    ignoreOnSearch: ['deleted_images'],
   },
 };
 
@@ -37,17 +38,19 @@ async function readConfig() {
   try {
     const data = await fs.readFile(filePath, 'utf8');
     const parsed = JSON.parse(data);
-    if (parsed.forms || parsed.pos || parsed.general) {
+    if (parsed.forms || parsed.pos || parsed.general || parsed.images) {
+      const { imageStorage, ...restGeneral } = parsed.general || {};
+      const images = parsed.images || imageStorage || {};
       return {
         ...defaults,
         ...parsed,
         general: {
           ...defaults.general,
-          ...(parsed.general || {}),
-          imageStorage: {
-            ...defaults.general.imageStorage,
-            ...(parsed.general?.imageStorage || {}),
-          },
+          ...restGeneral,
+        },
+        images: {
+          ...defaults.images,
+          ...images,
         },
       };
     }
@@ -55,10 +58,8 @@ async function readConfig() {
     return {
       forms: { ...defaults.forms, ...parsed },
       pos: { ...defaults.pos },
-      general: {
-        ...defaults.general,
-        imageStorage: { ...defaults.general.imageStorage },
-      },
+      general: { ...defaults.general },
+      images: { ...defaults.images },
     };
   } catch {
     return { ...defaults };
@@ -79,14 +80,10 @@ export async function updateGeneralConfig(updates = {}) {
   if (updates.forms) Object.assign(cfg.forms, updates.forms);
   if (updates.pos) Object.assign(cfg.pos, updates.pos);
   if (updates.general) {
-    if (updates.general.imageStorage) {
-      cfg.general.imageStorage = {
-        ...cfg.general.imageStorage,
-        ...updates.general.imageStorage,
-      };
-    }
-    const { imageStorage, ...rest } = updates.general;
-    Object.assign(cfg.general, rest);
+    Object.assign(cfg.general, updates.general);
+  }
+  if (updates.images) {
+    Object.assign(cfg.images, updates.images);
   }
   await writeConfig(cfg);
   return cfg;

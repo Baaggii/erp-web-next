@@ -21,10 +21,13 @@
     "viewToastEnabled": false,
     "imageToastEnabled": false,
     "debugLoggingEnabled": false,
-    "imageStorage": {
-      "basePath": "uploads",
-      "cleanupDays": 30
-    },
     "imageDir": "txn_images"
+  },
+  "images": {
+    "basePath": "uploads",
+    "cleanupDays": 30,
+    "ignoreOnSearch": [
+      "deleted_images"
+    ]
   }
 }

@@ -14,13 +14,14 @@ const projectRoot = path.resolve(__dirname, '../../');
 async function getDirs() {
   const cfg = await getGeneralConfig();
   const subdir = cfg.general?.imageDir || 'txn_images';
-  const basePath = cfg.general?.imageStorage?.basePath || 'uploads';
+  const basePath = cfg.images?.basePath || 'uploads';
+  const ignore = (cfg.images?.ignoreOnSearch || []).map((s) => s.toLowerCase());
   const baseDir = path.isAbsolute(basePath)
     ? path.join(basePath, subdir)
     : path.join(projectRoot, basePath, subdir);
   const baseName = path.basename(basePath);
   const urlBase = `/api/${baseName}/${subdir}`;
-  return { baseDir, urlBase, basePath: baseName };
+  return { baseDir, urlBase, basePath: baseName, ignore };
 }
 
 function ensureDir(dir) {
@@ -360,7 +361,7 @@ export async function renameImages(table, oldName, newName, folder = null) {
 }
 
 export async function searchImages(term, page = 1, perPage = 20) {
-  const { baseDir, urlBase } = await getDirs();
+  const { baseDir, urlBase, ignore } = await getDirs();
   ensureDir(baseDir);
   const safe = sanitizeName(term);
   const regex = new RegExp(`(^|[\\-_~])${safe}([\\-_~]|$)`, 'i');
@@ -377,6 +378,7 @@ export async function searchImages(term, page = 1, perPage = 20) {
       const full = path.join(dir, entry.name);
       const relPath = path.join(rel, entry.name);
       if (entry.isDirectory()) {
+        if (ignore.includes(entry.name.toLowerCase())) continue;
         await walk(full, relPath);
       } else if (regex.test(entry.name)) {
         list.push(`${urlBase}/${relPath.replace(/\\\\/g, '/')}`);
