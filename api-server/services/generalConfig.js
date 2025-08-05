@@ -24,6 +24,7 @@ const defaults = {
     triggerToastEnabled: true,
     procToastEnabled: true,
     viewToastEnabled: true,
+    imageToastEnabled: false,
     debugLoggingEnabled: false,
     imageStorage: {
       basePath: 'uploads',
