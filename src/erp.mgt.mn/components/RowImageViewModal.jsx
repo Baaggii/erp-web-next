@@ -351,18 +351,16 @@ export default function RowImageViewModal({
                       position: 'absolute',
                       top: '0.25rem',
                       right: '0.25rem',
-                      background: 'rgba(0,0,0,0.6)',
-                      color: '#fff',
+                      background: 'red',
+                      color: 'white',
                       border: 'none',
-                      borderRadius: '9999px',
-                      width: '1.5rem',
-                      height: '1.5rem',
+                      borderRadius: '0.25rem',
+                      padding: '0.25rem 0.5rem',
                       cursor: 'pointer',
-                      lineHeight: '1.5rem',
-                      padding: 0,
+                      fontSize: '0.75rem',
                     }}
                   >
-                    ×
+                    delete
                   </button>
                 </div>
               ))}
