@@ -13,6 +13,7 @@ import {
   checkUploadedImages,
   commitUploadedImages,
   detectIncompleteFromNames,
+  searchImages,
 } from '../services/transactionImageService.js';
 import { getGeneralConfig } from '../services/generalConfig.js';
 
@@ -102,6 +103,17 @@ router.post('/upload_commit', requireAuth, async (req, res, next) => {
     const arr = Array.isArray(req.body?.list) ? req.body.list : [];
     const uploaded = await commitUploadedImages(arr);
     res.json({ uploaded });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/search/:value', requireAuth, async (req, res, next) => {
+  try {
+    const page = parseInt(req.query.page, 10) || 1;
+    const perPage = parseInt(req.query.pageSize, 10) || 20;
+    const { files, total } = await searchImages(req.params.value, page, perPage);
+    res.json({ files: toAbsolute(req, files), total, page, perPage });
   } catch (err) {
     next(err);
   }
