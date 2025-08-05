@@ -339,8 +339,12 @@ export default function ImageManagement() {
     ? Math.max(1, Math.ceil((pendingSummary.incompleteFound || 0) / pageSize))
     : 1;
 
-  const canRenameSelected = [...uploads, ...ignored].some(
+  const allTables = Object.values(getTables()).flat();
+  const canRenameSelected = allTables.some(
     (u) => uploadSel.includes(u.id) && u.handle && !u.processed,
+  );
+  const canUploadSelected = allTables.some(
+    (u) => uploadSel.includes(u.id) && u.tmpPath && !u.processed,
   );
 
   function toggle(id) {
@@ -852,8 +856,7 @@ export default function ImageManagement() {
                 onClick={commitUploads}
                 style={{ marginBottom: '0.5rem' }}
                 disabled={
-                  uploadSel.length === 0 ||
-                  ![...uploads, ...ignored].some((u) => uploadSel.includes(u.id) && u.tmpPath)
+                  uploadSel.length === 0 || !canUploadSelected
                 }
               >
                 Upload Selected
