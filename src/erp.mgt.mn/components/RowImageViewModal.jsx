@@ -17,7 +17,7 @@ export default function RowImageViewModal({
 }) {
   const [files, setFiles] = useState([]);
   const [showGallery, setShowGallery] = useState(false);
-  const [fullscreen, setFullscreen] = useState(null);
+  const [fullscreenIndex, setFullscreenIndex] = useState(null);
   const { addToast } = useToast();
   const generalConfig = useGeneralConfig();
   const toast = (msg, type = 'info') => {
@@ -226,16 +226,17 @@ export default function RowImageViewModal({
   useEffect(() => {
     if (!visible) {
       setShowGallery(false);
-      setFullscreen(null);
+      setFullscreenIndex(null);
       loaded.current = false;
     }
   }, [visible]);
 
   if (!visible) return null;
 
-  const handleView = (src) => {
-    toast(`Showing image: ${src}`, 'info');
-    setFullscreen(src);
+  const handleView = (idx) => {
+    const src = files[idx]?.src;
+    if (src) toast(`Showing image: ${src}`, 'info');
+    setFullscreenIndex(idx);
   };
 
   const handleDelete = async (file) => {
@@ -258,9 +259,19 @@ export default function RowImageViewModal({
     }
   };
 
+  const showPrev = (e) => {
+    e.stopPropagation();
+    setFullscreenIndex((i) => (i > 0 ? i - 1 : files.length - 1));
+  };
+
+  const showNext = (e) => {
+    e.stopPropagation();
+    setFullscreenIndex((i) => (i < files.length - 1 ? i + 1 : 0));
+  };
+
   const listView = (
     <div style={{ maxHeight: '40vh', overflowY: 'auto' }}>
-      {files.map((f) => (
+      {files.map((f, idx) => (
         <div key={f.path} style={{ marginBottom: '0.25rem' }}>
           <img
             src={f.src}
@@ -273,7 +284,7 @@ export default function RowImageViewModal({
           />
           <span
             style={{ cursor: 'pointer', color: '#2563eb' }}
-            onClick={() => handleView(f.src)}
+            onClick={() => handleView(idx)}
           >
             {f.name}
           </span>
@@ -281,9 +292,6 @@ export default function RowImageViewModal({
       ))}
     </div>
   );
-
-  const gridCols = Math.ceil(Math.sqrt(files.length));
-  const gridRows = Math.ceil(files.length / gridCols);
 
   return (
     <>
@@ -322,15 +330,16 @@ export default function RowImageViewModal({
             <div
               style={{
                 flex: 1,
+                overflowY: 'auto',
                 display: 'grid',
-                gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
-                gridTemplateRows: `repeat(${gridRows}, 1fr)`,
+                gridTemplateColumns: 'repeat(2, 1fr)',
                 gap: '0.5rem',
                 marginTop: '1rem',
+                alignContent: 'start',
               }}
             >
-              {files.map((f) => (
-                <div key={f.path} style={{ position: 'relative' }}>
+              {files.map((f, idx) => (
+                <div key={f.path} style={{ position: 'relative', aspectRatio: '1 / 1' }}>
                   <img
                     src={f.src}
                     alt=""
@@ -338,8 +347,8 @@ export default function RowImageViewModal({
                       e.currentTarget.onerror = null;
                       e.currentTarget.src = placeholder;
                     }}
-                    style={{ width: '100%', height: '100%', objectFit: 'contain', cursor: 'pointer' }}
-                    onClick={() => handleView(f.src)}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }}
+                    onClick={() => handleView(idx)}
                   />
                   <button
                     type="button"
@@ -351,18 +360,16 @@ export default function RowImageViewModal({
                       position: 'absolute',
                       top: '0.25rem',
                       right: '0.25rem',
-                      background: 'rgba(0,0,0,0.6)',
-                      color: '#fff',
+                      background: 'red',
+                      color: 'white',
                       border: 'none',
-                      borderRadius: '9999px',
-                      width: '1.5rem',
-                      height: '1.5rem',
+                      borderRadius: '0.25rem',
+                      padding: '0.25rem 0.5rem',
                       cursor: 'pointer',
-                      lineHeight: '1.5rem',
-                      padding: 0,
+                      fontSize: '0.75rem',
                     }}
                   >
-                    ×
+                    delete
                   </button>
                 </div>
               ))}
@@ -370,7 +377,7 @@ export default function RowImageViewModal({
           </div>,
           document.body,
         )}
-      {fullscreen &&
+      {fullscreenIndex !== null &&
         createPortal(
           <div
             style={{
@@ -385,10 +392,22 @@ export default function RowImageViewModal({
               justifyContent: 'center',
               zIndex: 1200,
             }}
-            onClick={() => setFullscreen(null)}
+            onClick={() => setFullscreenIndex(null)}
           >
+            <button
+              type="button"
+              onClick={showPrev}
+              style={{
+                position: 'absolute',
+                left: '1rem',
+                top: '50%',
+                transform: 'translateY(-50%)',
+              }}
+            >
+              Prev
+            </button>
             <img
-              src={fullscreen}
+              src={files[fullscreenIndex]?.src}
               alt=""
               onError={(e) => {
                 e.currentTarget.onerror = null;
@@ -396,6 +415,18 @@ export default function RowImageViewModal({
               }}
               style={{ maxWidth: '90%', maxHeight: '90%' }}
             />
+            <button
+              type="button"
+              onClick={showNext}
+              style={{
+                position: 'absolute',
+                right: '1rem',
+                top: '50%',
+                transform: 'translateY(-50%)',
+              }}
+            >
+              Next
+            </button>
           </div>,
           document.body,
         )}

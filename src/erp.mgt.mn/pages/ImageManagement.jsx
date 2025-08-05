@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
@@ -433,7 +434,9 @@ export default function ImageManagement() {
   }
 
   async function commitUploads() {
-    const items = [...uploads, ...ignored].filter(
+    const tables = getTables();
+    const allItems = Object.values(tables).flat();
+    const items = allItems.filter(
       (u) => uploadSel.includes(u.id) && u.tmpPath && !u.processed,
     );
     if (items.length === 0) return;
@@ -446,14 +449,16 @@ export default function ImageManagement() {
     if (res.ok) {
       const data = await res.json().catch(() => ({}));
       addToast(`Uploaded ${data.uploaded || 0} file(s)`, 'success');
-      const newUploads = uploads.map((u) =>
-        uploadSel.includes(u.id) && u.tmpPath ? { ...u, processed: true } : u,
-      );
-      const newIgnored = ignored.map((u) =>
-        uploadSel.includes(u.id) && u.tmpPath ? { ...u, processed: true } : u,
-      );
-      setUploads(newUploads);
-      setIgnored(newIgnored);
+      const updated = {};
+      for (const [key, arr] of Object.entries(tables)) {
+        updated[key] = arr.map((u) =>
+          uploadSel.includes(u.id) && u.tmpPath ? { ...u, processed: true } : u,
+        );
+      }
+      setUploads(updated.uploads);
+      setIgnored(updated.ignored);
+      setPending(updated.pending);
+      setHostIgnored(updated.hostIgnored);
       setUploadSel([]);
       persistState(newUploads, newIgnored, folderName, pending, hostIgnored);
       setReport(`Uploaded ${data.uploaded || 0} file(s)`);
@@ -532,8 +537,7 @@ export default function ImageManagement() {
                 onClick={commitUploads}
                 style={{ marginBottom: '0.5rem' }}
                 disabled={
-                  uploadSel.length === 0 ||
-                  ![...uploads, ...ignored].some((u) => uploadSel.includes(u.id) && u.tmpPath)
+                  uploadSel.length === 0 || !canUploadSelected
                 }
               >
                 Upload Selected
