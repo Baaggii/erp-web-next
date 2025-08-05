@@ -17,7 +17,7 @@ export default function RowImageViewModal({
 }) {
   const [files, setFiles] = useState([]);
   const [showGallery, setShowGallery] = useState(false);
-  const [fullscreen, setFullscreen] = useState(null);
+  const [fullscreenIndex, setFullscreenIndex] = useState(null);
   const { addToast } = useToast();
   const generalConfig = useGeneralConfig();
   const toast = (msg, type = 'info') => {
@@ -226,16 +226,47 @@ export default function RowImageViewModal({
   useEffect(() => {
     if (!visible) {
       setShowGallery(false);
-      setFullscreen(null);
+      setFullscreenIndex(null);
       loaded.current = false;
     }
   }, [visible]);
 
   if (!visible) return null;
 
-  const handleView = (src) => {
-    toast(`Showing image: ${src}`, 'info');
-    setFullscreen(src);
+  const handleView = (idx) => {
+    const src = files[idx]?.src;
+    if (src) toast(`Showing image: ${src}`, 'info');
+    setFullscreenIndex(idx);
+  };
+
+  const handleDelete = async (file) => {
+    if (!window.confirm('Delete this image?')) return;
+    const safeTable = encodeURIComponent(table);
+    const params = new URLSearchParams();
+    if (folder) params.set('folder', folder);
+    const name = row._imageName || 'unused';
+    const url = `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(name)}/${encodeURIComponent(file.name)}?${params.toString()}`;
+    try {
+      const res = await fetch(url, { method: 'DELETE', credentials: 'include' });
+      if (res.ok) {
+        setFiles((prev) => prev.filter((f) => f.path !== file.path));
+        toast('Image deleted', 'info');
+      } else {
+        toast('Failed to delete image', 'error');
+      }
+    } catch {
+      toast('Failed to delete image', 'error');
+    }
+  };
+
+  const showPrev = (e) => {
+    e.stopPropagation();
+    setFullscreenIndex((i) => (i > 0 ? i - 1 : files.length - 1));
+  };
+
+  const showNext = (e) => {
+    e.stopPropagation();
+    setFullscreenIndex((i) => (i < files.length - 1 ? i + 1 : 0));
   };
 
   const handleDelete = async (file) => {
@@ -260,7 +291,7 @@ export default function RowImageViewModal({
 
   const listView = (
     <div style={{ maxHeight: '40vh', overflowY: 'auto' }}>
-      {files.map((f) => (
+      {files.map((f, idx) => (
         <div key={f.path} style={{ marginBottom: '0.25rem' }}>
           <img
             src={f.src}
@@ -273,7 +304,7 @@ export default function RowImageViewModal({
           />
           <span
             style={{ cursor: 'pointer', color: '#2563eb' }}
-            onClick={() => handleView(f.src)}
+            onClick={() => handleView(idx)}
           >
             {f.name}
           </span>
@@ -321,13 +352,13 @@ export default function RowImageViewModal({
                 flex: 1,
                 overflowY: 'auto',
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                gridTemplateColumns: 'repeat(2, 1fr)',
                 gap: '0.5rem',
                 marginTop: '1rem',
                 alignContent: 'start',
               }}
             >
-              {files.map((f) => (
+              {files.map((f, idx) => (
                 <div key={f.path} style={{ position: 'relative', aspectRatio: '1 / 1' }}>
                   <img
                     src={f.src}
@@ -336,8 +367,8 @@ export default function RowImageViewModal({
                       e.currentTarget.onerror = null;
                       e.currentTarget.src = placeholder;
                     }}
-                    style={{ width: '100%', height: '100%', objectFit: 'contain', cursor: 'pointer' }}
-                    onClick={() => handleView(f.src)}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }}
+                    onClick={() => handleView(idx)}
                   />
                   <button
                     type="button"
@@ -366,7 +397,7 @@ export default function RowImageViewModal({
           </div>,
           document.body,
         )}
-      {fullscreen &&
+      {fullscreenIndex !== null &&
         createPortal(
           <div
             style={{
@@ -381,10 +412,22 @@ export default function RowImageViewModal({
               justifyContent: 'center',
               zIndex: 1200,
             }}
-            onClick={() => setFullscreen(null)}
+            onClick={() => setFullscreenIndex(null)}
           >
+            <button
+              type="button"
+              onClick={showPrev}
+              style={{
+                position: 'absolute',
+                left: '1rem',
+                top: '50%',
+                transform: 'translateY(-50%)',
+              }}
+            >
+              Prev
+            </button>
             <img
-              src={fullscreen}
+              src={files[fullscreenIndex]?.src}
               alt=""
               onError={(e) => {
                 e.currentTarget.onerror = null;
@@ -392,6 +435,18 @@ export default function RowImageViewModal({
               }}
               style={{ maxWidth: '90%', maxHeight: '90%' }}
             />
+            <button
+              type="button"
+              onClick={showNext}
+              style={{
+                position: 'absolute',
+                right: '1rem',
+                top: '50%',
+                transform: 'translateY(-50%)',
+              }}
+            >
+              Next
+            </button>
           </div>,
           document.body,
         )}

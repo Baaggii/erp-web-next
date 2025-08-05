@@ -15,7 +15,7 @@ export default function ImageSearchModal({
 }) {
   const totalPages = Math.ceil(total / perPage);
   const [items, setItems] = useState(images);
-  const [fullscreen, setFullscreen] = useState(null);
+  const [fullscreenIndex, setFullscreenIndex] = useState(null);
   const [showGallery, setShowGallery] = useState(false);
 
   useEffect(() => {
@@ -44,6 +44,16 @@ export default function ImageSearchModal({
     }
   }
 
+  const showPrev = (e) => {
+    e.stopPropagation();
+    setFullscreenIndex((i) => (i > 0 ? i - 1 : items.length - 1));
+  };
+
+  const showNext = (e) => {
+    e.stopPropagation();
+    setFullscreenIndex((i) => (i < items.length - 1 ? i + 1 : 0));
+  };
+
   return (
     <>
       <Modal visible={visible} title={`Images for "${term}"`} onClose={onClose} width="80%">
@@ -57,12 +67,12 @@ export default function ImageSearchModal({
               gap: '0.5rem',
             }}
           >
-            {items.map((src) => (
+            {items.map((src, idx) => (
               <div key={src} style={{ position: 'relative' }}>
                 <img
                   src={src}
                   style={{ width: '100%', height: 'auto', objectFit: 'cover', cursor: 'pointer' }}
-                  onClick={() => setFullscreen(src)}
+                  onClick={() => setFullscreenIndex(idx)}
                 />
                 <button
                   type="button"
@@ -143,18 +153,18 @@ export default function ImageSearchModal({
                 flex: 1,
                 overflowY: 'auto',
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                gridTemplateColumns: 'repeat(2, 1fr)',
                 gap: '0.5rem',
                 marginTop: '1rem',
                 alignContent: 'start',
               }}
             >
-              {items.map((src) => (
+              {items.map((src, idx) => (
                 <div key={src} style={{ position: 'relative', aspectRatio: '1 / 1' }}>
                   <img
                     src={src}
-                    style={{ width: '100%', height: '100%', objectFit: 'contain', cursor: 'pointer' }}
-                    onClick={() => setFullscreen(src)}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }}
+                    onClick={() => setFullscreenIndex(idx)}
                   />
                   <button
                     type="button"
@@ -183,7 +193,7 @@ export default function ImageSearchModal({
           </div>,
           document.body,
         )}
-      {fullscreen &&
+      {fullscreenIndex !== null &&
         createPortal(
           <div
             style={{
@@ -198,9 +208,37 @@ export default function ImageSearchModal({
               justifyContent: 'center',
               zIndex: 1200,
             }}
-            onClick={() => setFullscreen(null)}
+            onClick={() => setFullscreenIndex(null)}
           >
-            <img src={fullscreen} alt="" style={{ maxWidth: '90%', maxHeight: '90%' }} />
+            <button
+              type="button"
+              onClick={showPrev}
+              style={{
+                position: 'absolute',
+                left: '1rem',
+                top: '50%',
+                transform: 'translateY(-50%)',
+              }}
+            >
+              Prev
+            </button>
+            <img
+              src={items[fullscreenIndex]}
+              alt=""
+              style={{ maxWidth: '90%', maxHeight: '90%' }}
+            />
+            <button
+              type="button"
+              onClick={showNext}
+              style={{
+                position: 'absolute',
+                right: '1rem',
+                top: '50%',
+                transform: 'translateY(-50%)',
+              }}
+            >
+              Next
+            </button>
           </div>,
           document.body,
         )}
