@@ -58,6 +58,7 @@ export default function ImageManagement() {
       // ignore
     }
   }, []);
+
   function persistState(
     up = uploads,
     ig = ignored,
@@ -436,7 +437,7 @@ export default function ImageManagement() {
         .sort((a, b) => a.originalName.localeCompare(b.originalName));
       setUploads(newUploads);
       setIgnored(newIgnored);
-      persistState(newUploads, newIgnored);
+      persistState(newUploads, newIgnored, folderName, pending, hostIgnored);
       setReport(`Renamed ${list.length} file(s)`);
     } catch {
       addToast('Rename failed', 'error');
@@ -470,7 +471,7 @@ export default function ImageManagement() {
       setPending(updated.pending);
       setHostIgnored(updated.hostIgnored);
       setUploadSel([]);
-      persistState(newUploads, newIgnored);
+      persistState(newUploads, newIgnored, folderName, pending, hostIgnored);
       setReport(`Uploaded ${data.uploaded || 0} file(s)`);
     } else {
       addToast('Upload failed', 'error');
