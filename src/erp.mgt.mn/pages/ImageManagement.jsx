@@ -96,11 +96,6 @@ export default function ImageManagement() {
     ? Math.max(1, Math.ceil((pendingSummary.incompleteFound || 0) / pageSize))
     : 1;
 
-  function isAllSelected(list, sel, key) {
-    const ids = list.filter((p) => !p.processed).map((p) => p[key]);
-    return ids.length > 0 && ids.every((id) => sel.includes(id));
-  }
-
   function toggle(id) {
     setSelected((prev) =>
       prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
@@ -108,13 +103,15 @@ export default function ImageManagement() {
   }
 
   function toggleAll() {
-    const ids = pending.filter((p) => !p.processed).map((p) => p.currentName);
-    const allSelected = ids.length > 0 && ids.every((id) => selected.includes(id));
-    setSelected((prev) =>
-      allSelected
-        ? prev.filter((id) => !ids.includes(id))
-        : [...prev, ...ids.filter((id) => !prev.includes(id))],
-    );
+    const unprocessed = pending.filter((p) => !p.processed).map((p) => p.currentName);
+    const all = pending.map((p) => p.currentName);
+    if (selected.length === all.length) {
+      setSelected([]);
+    } else if (selected.length === unprocessed.length && unprocessed.length !== all.length) {
+      setSelected(all);
+    } else {
+      setSelected(unprocessed);
+    }
   }
 
   function toggleHostIgnored(id) {
@@ -124,13 +121,20 @@ export default function ImageManagement() {
   }
 
   function toggleHostIgnoredAll(list) {
-    const ids = list.filter((p) => !p.processed).map((p) => p.currentName);
-    const allSelected = ids.length > 0 && ids.every((id) => hostIgnoredSel.includes(id));
-    setHostIgnoredSel((prev) =>
-      allSelected
-        ? prev.filter((id) => !ids.includes(id))
-        : [...prev, ...ids.filter((id) => !prev.includes(id))],
-    );
+    const allIds = list.map((p) => p.currentName);
+    const unprocessedIds = list.filter((p) => !p.processed).map((p) => p.currentName);
+    const allSelected = allIds.every((id) => hostIgnoredSel.includes(id));
+    const unprocessedSelected =
+      unprocessedIds.length > 0 &&
+      unprocessedIds.every((id) => hostIgnoredSel.includes(id)) &&
+      !allSelected;
+    if (allSelected) {
+      setHostIgnoredSel((prev) => prev.filter((id) => !allIds.includes(id)));
+    } else if (unprocessedSelected || unprocessedIds.length === allIds.length) {
+      setHostIgnoredSel((prev) => [...prev, ...allIds.filter((id) => !prev.includes(id))]);
+    } else {
+      setHostIgnoredSel((prev) => [...prev, ...unprocessedIds.filter((id) => !prev.includes(id))]);
+    }
   }
 
   function toggleUpload(id) {
@@ -140,13 +144,20 @@ export default function ImageManagement() {
   }
 
   function toggleUploadAll(list) {
-    const ids = list.filter((u) => !u.processed).map((u) => u.id);
-    const allSelected = ids.length > 0 && ids.every((id) => uploadSel.includes(id));
-    setUploadSel((prev) =>
-      allSelected
-        ? prev.filter((id) => !ids.includes(id))
-        : [...prev, ...ids.filter((id) => !prev.includes(id))],
-    );
+    const allIds = list.map((u) => u.id);
+    const unprocessedIds = list.filter((u) => !u.processed).map((u) => u.id);
+    const allSelected = allIds.every((id) => uploadSel.includes(id));
+    const unprocessedSelected =
+      unprocessedIds.length > 0 &&
+      unprocessedIds.every((id) => uploadSel.includes(id)) &&
+      !allSelected;
+    if (allSelected) {
+      setUploadSel((prev) => prev.filter((id) => !allIds.includes(id)));
+    } else if (unprocessedSelected || unprocessedIds.length === allIds.length) {
+      setUploadSel((prev) => [...prev, ...allIds.filter((id) => !prev.includes(id))]);
+    } else {
+      setUploadSel((prev) => [...prev, ...unprocessedIds.filter((id) => !prev.includes(id))]);
+    }
   }
 
   useEffect(() => {
@@ -614,7 +625,7 @@ export default function ImageManagement() {
                         <th className="border px-2 py-1">
                           <input
                             type="checkbox"
-                            checked={isAllSelected(pageUploads, uploadSel, 'id')}
+                            checked={pageUploads.length > 0 && pageUploads.every((u) => uploadSel.includes(u.id))}
                             onChange={() => toggleUploadAll(pageUploads)}
                           />
                         </th>
@@ -696,7 +707,7 @@ export default function ImageManagement() {
                         <th className="border px-2 py-1">
                           <input
                             type="checkbox"
-                            checked={isAllSelected(pageIgnored, uploadSel, 'id')}
+                            checked={pageIgnored.length > 0 && pageIgnored.every((u) => uploadSel.includes(u.id))}
                             onChange={() => toggleUploadAll(pageIgnored)}
                           />
                         </th>
@@ -819,7 +830,7 @@ export default function ImageManagement() {
                 <thead>
                   <tr>
                     <th className="border px-2 py-1">
-                      <input type="checkbox" checked={isAllSelected(pending, selected, 'currentName')} onChange={toggleAll} />
+                      <input type="checkbox" checked={selected.length === pending.length && pending.length > 0} onChange={toggleAll} />
                     </th>
                     <th className="border px-2 py-1">Current</th>
                     <th className="border px-2 py-1">New Name</th>
@@ -920,7 +931,10 @@ export default function ImageManagement() {
                     <th className="border px-2 py-1">
                       <input
                         type="checkbox"
-                        checked={isAllSelected(pageHostIgnored, hostIgnoredSel, 'currentName')}
+                        checked={
+                          pageHostIgnored.length > 0 &&
+                          pageHostIgnored.every((p) => hostIgnoredSel.includes(p.currentName))
+                        }
                         onChange={() => toggleHostIgnoredAll(pageHostIgnored)}
                       />
                     </th>
