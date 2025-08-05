@@ -15,6 +15,7 @@ import CascadeDeleteModal from './CascadeDeleteModal.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
 import RowImageViewModal from './RowImageViewModal.jsx';
 import RowImageUploadModal from './RowImageUploadModal.jsx';
+import ImageSearchModal from './ImageSearchModal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
@@ -44,7 +45,13 @@ function logRowsMemory(rows) {
     } catch (err) {
       console.error('Failed to compute memory usage', err);
     }
-  }
+}
+
+function sanitizeName(name) {
+  return String(name)
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/gi, '_');
+}
 
 const MAX_WIDTH = ch(40);
 
@@ -138,6 +145,12 @@ const TableManager = forwardRef(function TableManager({
   const [detailRefs, setDetailRefs] = useState([]);
   const [imagesRow, setImagesRow] = useState(null);
   const [uploadRow, setUploadRow] = useState(null);
+  const [ctxMenu, setCtxMenu] = useState(null); // { x, y, value }
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchImages, setSearchImages] = useState([]);
+  const [searchPage, setSearchPage] = useState(1);
+  const [searchTotal, setSearchTotal] = useState(0);
+  const [showSearch, setShowSearch] = useState(false);
   const [viewDisplayMap, setViewDisplayMap] = useState({});
   const [viewColumns, setViewColumns] = useState({});
   const [editLabels, setEditLabels] = useState(false);
@@ -151,6 +164,14 @@ const TableManager = forwardRef(function TableManager({
   const [typeOptions, setTypeOptions] = useState([]);
   const { user, company } = useContext(AuthContext);
   const { addToast } = useToast();
+
+  useEffect(() => {
+    function hideMenu() {
+      setCtxMenu(null);
+    }
+    window.addEventListener('click', hideMenu);
+    return () => window.removeEventListener('click', hideMenu);
+  }, []);
 
   const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
   const columnCaseMap = useMemo(() => {
@@ -788,6 +809,34 @@ const TableManager = forwardRef(function TableManager({
 
   function openUpload(row) {
     setUploadRow(row);
+  }
+
+  function openContextMenu(e, value) {
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxMenu({ x: e.clientX, y: e.clientY, value });
+  }
+
+  async function loadSearch(term, pg = 1) {
+    const params = new URLSearchParams({ page: pg, pageSize: 20 });
+    try {
+      const res = await fetch(
+        `/api/transaction_images/search/${encodeURIComponent(term)}?${params.toString()}`,
+        { credentials: 'include' },
+      );
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setSearchImages(data.files || []);
+        setSearchPage(data.page || pg);
+        setSearchTotal(data.total || 0);
+        setSearchTerm(term);
+        setShowSearch(true);
+      } else {
+        addToast('Failed to search images', 'error');
+      }
+    } catch {
+      addToast('Failed to search images', 'error');
+    }
   }
 
   function toggleRow(id) {
@@ -1782,6 +1831,7 @@ const TableManager = forwardRef(function TableManager({
                     key={c}
                     style={style}
                     title={raw}
+                    onContextMenu={(e) => raw && openContextMenu(e, sanitizeName(raw))}
                   >
                     {display}
                   </td>
@@ -2052,6 +2102,42 @@ const TableManager = forwardRef(function TableManager({
         columnCaseMap={columnCaseMap}
         configs={allConfigs}
       />
+      <ImageSearchModal
+        visible={showSearch}
+        term={searchTerm}
+        images={searchImages}
+        page={searchPage}
+        total={searchTotal}
+        perPage={20}
+        onClose={() => setShowSearch(false)}
+        onPrev={() => loadSearch(searchTerm, searchPage - 1)}
+        onNext={() => loadSearch(searchTerm, searchPage + 1)}
+      />
+      {ctxMenu && (
+        <ul
+          style={{
+            position: 'fixed',
+            top: ctxMenu.y,
+            left: ctxMenu.x,
+            background: '#fff',
+            border: '1px solid #ccc',
+            listStyle: 'none',
+            margin: 0,
+            padding: '0.25rem 0',
+            zIndex: 1000,
+          }}
+        >
+          <li
+            style={{ padding: '0.25rem 1rem', cursor: 'pointer' }}
+            onClick={() => {
+              loadSearch(ctxMenu.value);
+              setCtxMenu(null);
+            }}
+          >
+            Search images
+          </li>
+        </ul>
+      )}
       {user?.role === 'admin' && (
         <button onClick={() => {
           const map = {};

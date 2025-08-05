@@ -359,6 +359,38 @@ export async function renameImages(table, oldName, newName, folder = null) {
   }
 }
 
+export async function searchImages(term, page = 1, perPage = 20) {
+  const { baseDir, urlBase } = await getDirs();
+  ensureDir(baseDir);
+  const safe = sanitizeName(term);
+  const regex = new RegExp(`(^|[\\-_~])${safe}([\\-_~]|$)`, 'i');
+  const list = [];
+
+  async function walk(dir, rel = '') {
+    let entries;
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      const relPath = path.join(rel, entry.name);
+      if (entry.isDirectory()) {
+        await walk(full, relPath);
+      } else if (regex.test(entry.name)) {
+        list.push(`${urlBase}/${relPath.replace(/\\\\/g, '/')}`);
+      }
+    }
+  }
+
+  await walk(baseDir);
+  const total = list.length;
+  const start = (page - 1) * perPage;
+  const files = list.slice(start, start + perPage);
+  return { files, total };
+}
+
 export async function moveImagesToDeleted(table, row = {}) {
   const configs = await getConfigsByTable(table).catch(() => ({}));
   const cfg = pickConfig(configs, row);
@@ -396,8 +428,12 @@ export async function moveImagesToDeleted(table, row = {}) {
 export async function deleteImage(table, file, folder = null) {
   const { baseDir } = await getDirs();
   const dir = path.join(baseDir, folder || table);
+  const targetDir = path.join(baseDir, 'deleted_images');
+  ensureDir(targetDir);
   try {
-    await fs.unlink(path.join(dir, path.basename(file)));
+    const src = path.join(dir, path.basename(file));
+    const dest = path.join(targetDir, path.basename(file));
+    await fs.rename(src, dest);
     return true;
   } catch {
     return false;
