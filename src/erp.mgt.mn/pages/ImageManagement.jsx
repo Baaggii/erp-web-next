@@ -5,6 +5,62 @@ const FOLDER_STATE_KEY = 'imgMgmtFolderState';
 const SESSIONS_KEY = 'imgMgmtSessions';
 const SESSION_PREFIX = 'imgMgmtSession:';
 
+// IndexedDB helpers for storing directory handles
+function getHandleDB() {
+  if (typeof indexedDB === 'undefined') return Promise.reject();
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('imgMgmtHandles', 1);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore('dirs');
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function saveDirHandle(key, handle) {
+  if (!handle) return;
+  try {
+    const db = await getHandleDB();
+    await new Promise((res, rej) => {
+      const tx = db.transaction('dirs', 'readwrite');
+      tx.objectStore('dirs').put(handle, key);
+      tx.oncomplete = res;
+      tx.onerror = () => rej(tx.error);
+    });
+  } catch {
+    // ignore
+  }
+}
+
+async function loadDirHandle(key) {
+  try {
+    const db = await getHandleDB();
+    return await new Promise((res, rej) => {
+      const tx = db.transaction('dirs', 'readonly');
+      const req = tx.objectStore('dirs').get(key);
+      req.onsuccess = () => res(req.result || null);
+      req.onerror = () => rej(req.error);
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function deleteDirHandle(key) {
+  try {
+    const db = await getHandleDB();
+    await new Promise((res, rej) => {
+      const tx = db.transaction('dirs', 'readwrite');
+      tx.objectStore('dirs').delete(key);
+      tx.oncomplete = res;
+      tx.onerror = () => rej(tx.error);
+    });
+  } catch {
+    // ignore
+  }
+}
+
 function extractDateFromName(name) {
   const match = typeof name === 'string' ? name.match(/(?:__|_)(\d{13})_/) : null;
   if (match) {
@@ -40,27 +96,52 @@ export default function ImageManagement() {
   const [pageSize, setPageSize] = useState(200);
   const detectAbortRef = useRef();
   const scanCancelRef = useRef(false);
+  const dirHandleRef = useRef();
   const [activeOp, setActiveOp] = useState(null);
   const [report, setReport] = useState('');
   const [sessionNames, setSessionNames] = useState([]);
   const [selectedSession, setSelectedSession] = useState('');
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(FOLDER_STATE_KEY);
-      if (raw) {
-        applySession(JSON.parse(raw));
+    (async () => {
+      try {
+        const raw = localStorage.getItem(FOLDER_STATE_KEY);
+        if (raw) {
+          const data = JSON.parse(raw);
+          const dir = await loadDirHandle(FOLDER_STATE_KEY);
+          if (dir) {
+            try { await dir.requestPermission?.({ mode: 'read' }); } catch {}
+            dirHandleRef.current = dir;
+            data.uploads = await attachHandles(dir, data.uploads);
+            data.ignored = await attachHandles(dir, data.ignored);
+          }
+          applySession(data);
+        }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
-    }
-    setSessionNames(getSessionNames());
+      setSessionNames(getSessionNames());
+    })();
   }, []);
 
   function stateLabel(item = {}) {
     if (item.processed) return 'Processed';
     if (item.newName) return 'New';
     return '';
+  }
+
+  async function attachHandles(dirHandle, list = []) {
+    const arr = Array.isArray(list) ? list : [];
+    return Promise.all(
+      arr.map(async (u) => {
+        try {
+          const handle = await dirHandle.getFileHandle(u.originalName);
+          return { ...u, handle };
+        } catch {
+          return u;
+        }
+      }),
+    );
   }
 
   function buildSession(partial = {}) {
@@ -137,10 +218,9 @@ export default function ImageManagement() {
 
   function persistSnapshot(partial) {
     try {
-      localStorage.setItem(
-        FOLDER_STATE_KEY,
-        JSON.stringify(buildSession(partial)),
-      );
+      const data = buildSession(partial);
+      localStorage.setItem(FOLDER_STATE_KEY, JSON.stringify(data));
+      saveDirHandle(FOLDER_STATE_KEY, dirHandleRef.current);
     } catch {
       // ignore
     }
@@ -159,7 +239,7 @@ export default function ImageManagement() {
     return n.replace(/[^\w.-]/g, '_').slice(0, 100);
   }
 
-  function saveSession() {
+  async function saveSession() {
     const raw = prompt('Session name?', folderName || new Date().toISOString());
     const name = raw ? sanitizeName(raw.trim()) : '';
     if (!name) return;
@@ -170,6 +250,7 @@ export default function ImageManagement() {
       const names = new Set(getSessionNames());
       names.add(name);
       localStorage.setItem(SESSIONS_KEY, JSON.stringify([...names]));
+      await saveDirHandle(name, dirHandleRef.current);
       persistSnapshot(data);
       setSessionNames([...names]);
       setSelectedSession(name);
@@ -180,7 +261,7 @@ export default function ImageManagement() {
     }
   }
 
-  function loadSession(name = selectedSession) {
+  async function loadSession(name = selectedSession) {
     if (!name) {
       addToast('No session selected', 'error');
       return;
@@ -192,6 +273,15 @@ export default function ImageManagement() {
         return;
       }
       const data = JSON.parse(raw);
+      const dir = await loadDirHandle(name);
+      if (dir) {
+        try { await dir.requestPermission?.({ mode: 'read' }); } catch {}
+        dirHandleRef.current = dir;
+        data.uploads = await attachHandles(dir, data.uploads);
+        data.ignored = await attachHandles(dir, data.ignored);
+      } else {
+        dirHandleRef.current = null;
+      }
       applySession(data);
       setSelected([]);
       setHostIgnoredSel([]);
@@ -208,12 +298,13 @@ export default function ImageManagement() {
     }
   }
 
-  function deleteSession(name = selectedSession) {
+  async function deleteSession(name = selectedSession) {
     if (!name) return;
     try {
       localStorage.removeItem(SESSION_PREFIX + name);
       const names = getSessionNames().filter((n) => n !== name);
       localStorage.setItem(SESSIONS_KEY, JSON.stringify(names));
+      await deleteDirHandle(name);
       setSessionNames(names);
       if (selectedSession === name) setSelectedSession('');
       addToast('State deleted', 'success');
@@ -354,6 +445,7 @@ export default function ImageManagement() {
     scanCancelRef.current = false;
     try {
       const dirHandle = await window.showDirectoryPicker();
+      dirHandleRef.current = dirHandle;
       const handles = {};
       const names = [];
       for await (const entry of dirHandle.values()) {
