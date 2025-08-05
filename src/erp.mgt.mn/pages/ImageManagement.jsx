@@ -1,9 +1,66 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
 const FOLDER_STATE_KEY = 'imgMgmtFolderState';
 const SESSIONS_KEY = 'imgMgmtSessions';
 const SESSION_PREFIX = 'imgMgmtSession:';
+
+// IndexedDB helpers for storing directory handles
+function getHandleDB() {
+  if (typeof indexedDB === 'undefined') return Promise.reject();
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('imgMgmtHandles', 1);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore('dirs');
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function saveDirHandle(key, handle) {
+  if (!handle) return;
+  try {
+    const db = await getHandleDB();
+    await new Promise((res, rej) => {
+      const tx = db.transaction('dirs', 'readwrite');
+      tx.objectStore('dirs').put(handle, key);
+      tx.oncomplete = res;
+      tx.onerror = () => rej(tx.error);
+    });
+  } catch {
+    // ignore
+  }
+}
+
+async function loadDirHandle(key) {
+  try {
+    const db = await getHandleDB();
+    return await new Promise((res, rej) => {
+      const tx = db.transaction('dirs', 'readonly');
+      const req = tx.objectStore('dirs').get(key);
+      req.onsuccess = () => res(req.result || null);
+      req.onerror = () => rej(req.error);
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function deleteDirHandle(key) {
+  try {
+    const db = await getHandleDB();
+    await new Promise((res, rej) => {
+      const tx = db.transaction('dirs', 'readwrite');
+      tx.objectStore('dirs').delete(key);
+      tx.oncomplete = res;
+      tx.onerror = () => rej(tx.error);
+    });
+  } catch {
+    // ignore
+  }
+}
 
 function extractDateFromName(name) {
   const match = typeof name === 'string' ? name.match(/(?:__|_)(\d{13})_/) : null;
@@ -40,27 +97,52 @@ export default function ImageManagement() {
   const [pageSize, setPageSize] = useState(200);
   const detectAbortRef = useRef();
   const scanCancelRef = useRef(false);
+  const dirHandleRef = useRef();
   const [activeOp, setActiveOp] = useState(null);
   const [report, setReport] = useState('');
   const [sessionNames, setSessionNames] = useState([]);
   const [selectedSession, setSelectedSession] = useState('');
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(FOLDER_STATE_KEY);
-      if (raw) {
-        applySession(JSON.parse(raw));
+    (async () => {
+      try {
+        const raw = localStorage.getItem(FOLDER_STATE_KEY);
+        if (raw) {
+          const data = JSON.parse(raw);
+          const dir = await loadDirHandle(FOLDER_STATE_KEY);
+          if (dir) {
+            try { await dir.requestPermission?.({ mode: 'read' }); } catch {}
+            dirHandleRef.current = dir;
+            data.uploads = await attachHandles(dir, data.uploads);
+            data.ignored = await attachHandles(dir, data.ignored);
+          }
+          applySession(data);
+        }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
-    }
-    setSessionNames(getSessionNames());
+      setSessionNames(getSessionNames());
+    })();
   }, []);
 
   function stateLabel(item = {}) {
     if (item.processed) return 'Processed';
     if (item.newName) return 'New';
     return '';
+  }
+
+  async function attachHandles(dirHandle, list = []) {
+    const arr = Array.isArray(list) ? list : [];
+    return Promise.all(
+      arr.map(async (u) => {
+        try {
+          const handle = await dirHandle.getFileHandle(u.originalName);
+          return { ...u, handle };
+        } catch {
+          return u;
+        }
+      }),
+    );
   }
 
   function buildSession(partial = {}) {
@@ -135,15 +217,23 @@ export default function ImageManagement() {
     );
   }
 
-  function persistSnapshot(partial) {
+  function persistSnapshot(partial = {}) {
     try {
-      localStorage.setItem(
-        FOLDER_STATE_KEY,
-        JSON.stringify(buildSession(partial)),
-      );
+      const data = buildSession(partial);
+      localStorage.setItem(FOLDER_STATE_KEY, JSON.stringify(data));
+      saveDirHandle(FOLDER_STATE_KEY, dirHandleRef.current);
     } catch {
       // ignore
     }
+  }
+
+  function getTables() {
+    return { uploads, ignored, pending, hostIgnored };
+  }
+
+  function persistAll(partial = {}) {
+    const tables = getTables();
+    persistSnapshot({ ...tables, folderName, ...partial });
   }
 
   function getSessionNames() {
@@ -159,7 +249,7 @@ export default function ImageManagement() {
     return n.replace(/[^\w.-]/g, '_').slice(0, 100);
   }
 
-  function saveSession() {
+  async function saveSession() {
     const raw = prompt('Session name?', folderName || new Date().toISOString());
     const name = raw ? sanitizeName(raw.trim()) : '';
     if (!name) return;
@@ -170,7 +260,8 @@ export default function ImageManagement() {
       const names = new Set(getSessionNames());
       names.add(name);
       localStorage.setItem(SESSIONS_KEY, JSON.stringify([...names]));
-      persistSnapshot(data);
+      await saveDirHandle(name, dirHandleRef.current);
+      persistAll(data);
       setSessionNames([...names]);
       setSelectedSession(name);
       addToast('State saved', 'success');
@@ -180,7 +271,7 @@ export default function ImageManagement() {
     }
   }
 
-  function loadSession(name = selectedSession) {
+  async function loadSession(name = selectedSession) {
     if (!name) {
       addToast('No session selected', 'error');
       return;
@@ -192,6 +283,15 @@ export default function ImageManagement() {
         return;
       }
       const data = JSON.parse(raw);
+      const dir = await loadDirHandle(name);
+      if (dir) {
+        try { await dir.requestPermission?.({ mode: 'read' }); } catch {}
+        dirHandleRef.current = dir;
+        data.uploads = await attachHandles(dir, data.uploads);
+        data.ignored = await attachHandles(dir, data.ignored);
+      } else {
+        dirHandleRef.current = null;
+      }
       applySession(data);
       setSelected([]);
       setHostIgnoredSel([]);
@@ -200,7 +300,7 @@ export default function ImageManagement() {
       setIgnoredPage(1);
       setHostIgnoredPage(1);
       setPendingPage(1);
-      persistSnapshot(data);
+      persistAll(data);
       addToast('State loaded', 'success');
     } catch (err) {
       console.error(err);
@@ -208,12 +308,13 @@ export default function ImageManagement() {
     }
   }
 
-  function deleteSession(name = selectedSession) {
+  async function deleteSession(name = selectedSession) {
     if (!name) return;
     try {
       localStorage.removeItem(SESSION_PREFIX + name);
       const names = getSessionNames().filter((n) => n !== name);
       localStorage.setItem(SESSIONS_KEY, JSON.stringify(names));
+      await deleteDirHandle(name);
       setSessionNames(names);
       if (selectedSession === name) setSelectedSession('');
       addToast('State deleted', 'success');
@@ -354,6 +455,7 @@ export default function ImageManagement() {
     scanCancelRef.current = false;
     try {
       const dirHandle = await window.showDirectoryPicker();
+      dirHandleRef.current = dirHandle;
       const handles = {};
       const names = [];
       for await (const entry of dirHandle.values()) {
@@ -426,7 +528,7 @@ export default function ImageManagement() {
       setReport(
         `Scanned ${names.length} file(s), found ${processed} incomplete name(s), ${skipped.length} unflagged.`,
       );
-      persistSnapshot({
+      persistAll({
         uploads: uploadsList,
         ignored: ignoredList,
         folderName: dirHandle.name || '',
@@ -500,7 +602,7 @@ export default function ImageManagement() {
         setReport(
           `Scanned ${sum.totalFiles || 0} file(s), found ${sum.incompleteFound || 0} incomplete name(s), ${sum.skipped || 0} not incomplete.`,
         );
-        persistSnapshot({
+        persistAll({
           uploads,
           ignored,
           folderName,
@@ -513,7 +615,7 @@ export default function ImageManagement() {
         setHostIgnoredPage(1);
         setPendingSummary(null);
         setHasMore(false);
-        persistSnapshot({ uploads, ignored, folderName, pending: [], hostIgnored: [] });
+        persistAll({ uploads, ignored, folderName, pending: [], hostIgnored: [] });
       }
       setPendingPage(p);
     } catch (e) {
@@ -523,7 +625,7 @@ export default function ImageManagement() {
         setHostIgnoredPage(1);
         setPendingSummary(null);
         setHasMore(false);
-        persistSnapshot({ uploads, ignored, folderName, pending: [], hostIgnored: [] });
+        persistAll({ uploads, ignored, folderName, pending: [], hostIgnored: [] });
       }
     } finally {
       detectAbortRef.current = null;
@@ -560,7 +662,7 @@ export default function ImageManagement() {
     if (newPending) {
       setPending(newPending);
       setSelected([]);
-      persistSnapshot({ uploads, ignored, folderName, pending: newPending, hostIgnored });
+      persistAll({ uploads, ignored, folderName, pending: newPending, hostIgnored });
     }
   }
 
@@ -569,12 +671,14 @@ export default function ImageManagement() {
     if (newHostIgnored) {
       setHostIgnored(newHostIgnored);
       setHostIgnoredSel([]);
-      persistSnapshot({ uploads, ignored, folderName, pending, hostIgnored: newHostIgnored });
+      persistAll({ uploads, ignored, folderName, pending, hostIgnored: newHostIgnored });
     }
   }
 
   async function renameSelected() {
-    const items = [...uploads, ...ignored].filter(
+    const tables = getTables();
+    const allItems = Object.values(tables).flat();
+    const items = allItems.filter(
       (u) => uploadSel.includes(u.id) && u.handle && !u.processed,
     );
     if (items.length === 0) {
@@ -603,23 +707,25 @@ export default function ImageManagement() {
       }
       const data = await res.json().catch(() => ({}));
       const list = Array.isArray(data.list) ? data.list : [];
-      const newUploads = uploads
-        .map((u) => {
-          const found = list.find((x) => x.originalName === u.originalName);
-          const merged = found ? { ...u, ...found, id: u.id } : u;
-          return { ...merged, description: extractDateFromName(merged.originalName) };
-        })
-        .sort((a, b) => a.originalName.localeCompare(b.originalName));
-      const newIgnored = ignored
-        .map((u) => {
-          const found = list.find((x) => x.originalName === u.originalName);
-          const merged = found ? { ...u, ...found, id: u.id } : u;
-          return { ...merged, description: extractDateFromName(merged.originalName) };
-        })
-        .sort((a, b) => a.originalName.localeCompare(b.originalName));
-      setUploads(newUploads);
-      setIgnored(newIgnored);
-      persistSnapshot({ uploads: newUploads, ignored: newIgnored });
+      const updated = {};
+      for (const [key, arr] of Object.entries(tables)) {
+        if (arr.some((u) => 'originalName' in u)) {
+          updated[key] = arr
+            .map((u) => {
+              const found = list.find((x) => x.originalName === u.originalName);
+              const merged = found ? { ...u, ...found, id: u.id } : u;
+              return { ...merged, description: extractDateFromName(merged.originalName) };
+            })
+            .sort((a, b) => a.originalName.localeCompare(b.originalName));
+        } else {
+          updated[key] = arr;
+        }
+      }
+      setUploads(updated.uploads);
+      setIgnored(updated.ignored);
+      setPending(updated.pending);
+      setHostIgnored(updated.hostIgnored);
+      persistAll(updated);
       setReport(`Renamed ${list.length} file(s)`);
     } catch {
       addToast('Rename failed', 'error');
@@ -627,7 +733,9 @@ export default function ImageManagement() {
   }
 
   async function commitUploads() {
-    const items = [...uploads, ...ignored].filter(
+    const tables = getTables();
+    const allItems = Object.values(tables).flat();
+    const items = allItems.filter(
       (u) => uploadSel.includes(u.id) && u.tmpPath && !u.processed,
     );
     if (items.length === 0) return;
@@ -640,16 +748,18 @@ export default function ImageManagement() {
     if (res.ok) {
       const data = await res.json().catch(() => ({}));
       addToast(`Uploaded ${data.uploaded || 0} file(s)`, 'success');
-      const newUploads = uploads.map((u) =>
-        uploadSel.includes(u.id) && u.tmpPath ? { ...u, processed: true } : u,
-      );
-      const newIgnored = ignored.map((u) =>
-        uploadSel.includes(u.id) && u.tmpPath ? { ...u, processed: true } : u,
-      );
-      setUploads(newUploads);
-      setIgnored(newIgnored);
+      const updated = {};
+      for (const [key, arr] of Object.entries(tables)) {
+        updated[key] = arr.map((u) =>
+          uploadSel.includes(u.id) && u.tmpPath ? { ...u, processed: true } : u,
+        );
+      }
+      setUploads(updated.uploads);
+      setIgnored(updated.ignored);
+      setPending(updated.pending);
+      setHostIgnored(updated.hostIgnored);
       setUploadSel([]);
-      persistSnapshot({ uploads: newUploads, ignored: newIgnored });
+      persistAll(updated);
       setReport(`Uploaded ${data.uploaded || 0} file(s)`);
     } else {
       addToast('Upload failed', 'error');
@@ -757,7 +867,7 @@ export default function ImageManagement() {
                   setIgnored(remainingIgnored);
                   setUploadSel([]);
                   setReport(`Deleted ${uploadSel.length} file(s)`);
-                  persistSnapshot({ uploads: remainingUploads, ignored: remainingIgnored });
+                  persistAll({ uploads: remainingUploads, ignored: remainingIgnored });
                 }}
                 style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
                 disabled={uploadSel.length === 0}
@@ -850,7 +960,7 @@ export default function ImageManagement() {
                                 const remainingUploads = uploads.filter((x) => x.id !== u.id);
                                 setUploads(remainingUploads);
                                 setUploadSel((s) => s.filter((id) => id !== u.id));
-                                persistSnapshot({ uploads: remainingUploads, ignored });
+                                persistAll({ uploads: remainingUploads, ignored });
                               }}
                             >
                               Delete
@@ -934,7 +1044,7 @@ export default function ImageManagement() {
                                 const remainingIgnored = ignored.filter((x) => x.id !== u.id);
                                 setIgnored(remainingIgnored);
                                 setUploadSel((s) => s.filter((id) => id !== u.id));
-                                persistSnapshot({ uploads, ignored: remainingIgnored });
+                                persistAll({ uploads, ignored: remainingIgnored });
                               }}
                             >
                               Delete
@@ -1018,7 +1128,7 @@ export default function ImageManagement() {
                   const remaining = pending.filter((p) => !selected.includes(p.currentName));
                   setPending(remaining);
                   setSelected([]);
-                  persistSnapshot({ uploads, ignored, folderName, pending: remaining, hostIgnored });
+                  persistAll({ uploads, ignored, folderName, pending: remaining, hostIgnored });
                 }}
                 style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
                 disabled={selected.length === 0}
@@ -1086,7 +1196,7 @@ export default function ImageManagement() {
                   );
                   setHostIgnored(remaining);
                   setHostIgnoredSel([]);
-                  persistSnapshot({ uploads, ignored, folderName, pending, hostIgnored: remaining });
+                  persistAll({ uploads, ignored, folderName, pending, hostIgnored: remaining });
                 }}
                 style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
                 disabled={hostIgnoredSel.length === 0}
