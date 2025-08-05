@@ -16,6 +16,7 @@ export default function ImageSearchModal({
   const totalPages = Math.ceil(total / perPage);
   const [items, setItems] = useState(images);
   const [fullscreen, setFullscreen] = useState(null);
+  const [showGallery, setShowGallery] = useState(false);
 
   useEffect(() => {
     setItems(images);
@@ -88,6 +89,13 @@ export default function ImageSearchModal({
             ))}
           </div>
         )}
+        {items.length > 0 && (
+          <div style={{ textAlign: 'right', marginTop: '0.5rem' }}>
+            <button type="button" onClick={() => setShowGallery(true)}>
+              View all images
+            </button>
+          </div>
+        )}
         {totalPages > 1 && (
           <div
             style={{
@@ -109,6 +117,72 @@ export default function ImageSearchModal({
           </div>
         )}
       </Modal>
+      {showGallery &&
+        createPortal(
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0,0,0,0.85)',
+              zIndex: 1100,
+              padding: '1rem',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            <div style={{ textAlign: 'right' }}>
+              <button type="button" onClick={() => setShowGallery(false)}>
+                Close
+              </button>
+            </div>
+            <div
+              style={{
+                flex: 1,
+                overflowY: 'auto',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                gap: '0.5rem',
+                marginTop: '1rem',
+                alignContent: 'start',
+              }}
+            >
+              {items.map((src) => (
+                <div key={src} style={{ position: 'relative', aspectRatio: '1 / 1' }}>
+                  <img
+                    src={src}
+                    style={{ width: '100%', height: '100%', objectFit: 'contain', cursor: 'pointer' }}
+                    onClick={() => setFullscreen(src)}
+                  />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(src);
+                    }}
+                    style={{
+                      position: 'absolute',
+                      top: '0.25rem',
+                      right: '0.25rem',
+                      background: 'red',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.25rem',
+                      padding: '0.25rem 0.5rem',
+                      cursor: 'pointer',
+                      fontSize: '0.75rem',
+                    }}
+                  >
+                    delete
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>,
+          document.body,
+        )}
       {fullscreen &&
         createPortal(
           <div
