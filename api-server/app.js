@@ -37,7 +37,7 @@ app.use(logger);
 
 // Serve uploaded images statically before CSRF so image requests don't require tokens
 const imgCfg = await getGeneralConfig();
-const imgBase = imgCfg.general?.imageStorage?.basePath || "uploads";
+const imgBase = imgCfg.images?.basePath || "uploads";
 const projectRoot = path.resolve(__dirname, "../");
 const uploadsDir = path.isAbsolute(imgBase)
   ? imgBase
