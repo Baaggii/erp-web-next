@@ -269,26 +269,6 @@ export default function RowImageViewModal({
     setFullscreenIndex((i) => (i < files.length - 1 ? i + 1 : 0));
   };
 
-  const handleDelete = async (file) => {
-    if (!window.confirm('Delete this image?')) return;
-    const safeTable = encodeURIComponent(table);
-    const params = new URLSearchParams();
-    if (folder) params.set('folder', folder);
-    const name = row._imageName || 'unused';
-    const url = `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(name)}/${encodeURIComponent(file.name)}?${params.toString()}`;
-    try {
-      const res = await fetch(url, { method: 'DELETE', credentials: 'include' });
-      if (res.ok) {
-        setFiles((prev) => prev.filter((f) => f.path !== file.path));
-        toast('Image deleted', 'info');
-      } else {
-        toast('Failed to delete image', 'error');
-      }
-    } catch {
-      toast('Failed to delete image', 'error');
-    }
-  };
-
   const listView = (
     <div style={{ maxHeight: '40vh', overflowY: 'auto' }}>
       {files.map((f, idx) => (
