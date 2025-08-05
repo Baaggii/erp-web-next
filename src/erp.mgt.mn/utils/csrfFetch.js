@@ -1,3 +1,5 @@
+import { API_BASE } from './apiBase.js';
+
 let tokenPromise;
 
 function dispatchStart(key) {
@@ -14,7 +16,7 @@ function currentKey() {
 
 async function getToken() {
   if (!tokenPromise) {
-    tokenPromise = fetch('/api/csrf-token', { credentials: 'include' })
+    tokenPromise = fetch(`${API_BASE}/csrf-token`, { credentials: 'include' })
       .then(res => res.json())
       .then(data => data.csrfToken)
       .catch(() => undefined);
@@ -45,7 +47,7 @@ window.fetch = async (url, options = {}, _retry) => {
       msg = data.message;
     } catch {}
     if (msg && msg.toLowerCase().includes('expired')) {
-      const refreshRes = await originalFetch('/api/auth/refresh', {
+      const refreshRes = await originalFetch(`${API_BASE}/auth/refresh`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'X-CSRF-Token': await getToken() },
