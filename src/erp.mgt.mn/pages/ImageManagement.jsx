@@ -673,7 +673,7 @@ export default function ImageManagement() {
     const tables = getTables();
     const allItems = Object.values(tables).flat();
     const items = allItems.filter(
-      (u) => uploadSel.includes(u.id) && u.handle && !u.processed,
+      (u) => uploadSel.includes(u.id) && u.handle && !u.tmpPath && !u.processed,
     );
     if (items.length === 0) {
       addToast('No local files to rename', 'error');
@@ -685,15 +685,17 @@ export default function ImageManagement() {
     for (let i = 0; i < items.length; i += chunkSize) {
       const chunk = items.slice(i, i + chunkSize);
       const formData = new FormData();
-      try {
-        for (const u of chunk) {
+      const valid = [];
+      for (const u of chunk) {
+        try {
           const file = await u.handle.getFile();
           formData.append('images', file, u.originalName);
+          valid.push(u);
+        } catch {
+          addToast(`Missing local file: ${u.originalName}`, 'error');
         }
-      } catch {
-        addToast('Rename failed', 'error');
-        return;
       }
+      if (valid.length === 0) continue;
       let res;
       try {
         res = await fetch('/api/transaction_images/upload_check', {
