@@ -79,13 +79,7 @@ export default function FormsManagement() {
 
     fetch('/api/procedures', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : { procedures: [] }))
-      .then((data) =>
-        setProcedureOptions(
-          (data.procedures || []).filter((p) =>
-            String(p).toLowerCase().includes('report'),
-          )
-        )
-      )
+      .then((data) => setProcedureOptions(data.procedures || []))
       .catch(() => setProcedureOptions([]));
   }, []);
 
@@ -830,31 +824,6 @@ export default function FormsManagement() {
               <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedDepartments: departments.map((d) => String(d.id)) }))}>All</button>
               <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedDepartments: [] }))}>None</button>
             </label>
-            {procedureOptions.length > 0 && (
-              <label style={{ marginLeft: '1rem' }}>
-                Procedures:{' '}
-                <select
-                  multiple
-                  size={8}
-                  value={config.procedures}
-                  onChange={(e) =>
-                    setConfig((c) => ({
-                      ...c,
-                      procedures: Array.from(
-                        e.target.selectedOptions,
-                        (o) => o.value,
-                      ),
-                    }))
-                  }
-                >
-                  {procedureOptions.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
           </div>
           <div style={{ marginTop: '1rem' }}>
             <button onClick={handleSave}>Save Configuration</button>

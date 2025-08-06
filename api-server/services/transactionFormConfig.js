@@ -83,7 +83,6 @@ function parseEntry(raw = {}) {
       ? raw.allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
       : [],
     moduleLabel: typeof raw.moduleLabel === 'string' ? raw.moduleLabel : '',
-    procedures: arrify(raw.procedures),
   };
 }
 
@@ -172,7 +171,6 @@ export async function setFormConfig(table, name, config, options = {}) {
     viewSource = {},
     transactionTypeField = '',
     transactionTypeValue = '',
-    procedures = [],
   } = config || {};
   const uid = arrify(userIdFields.length ? userIdFields : userIdField ? [userIdField] : []);
   const bid = arrify(
@@ -218,7 +216,6 @@ export async function setFormConfig(table, name, config, options = {}) {
     moduleLabel: moduleLabel || undefined,
     allowedBranches: ab,
     allowedDepartments: ad,
-    procedures: arrify(procedures),
   };
   if (editableFields !== undefined) {
     cfg[table][name].editableFields = arrify(editableFields);
