@@ -1040,9 +1040,7 @@ export async function listStoredProcedures() {
   const [rows] = await pool.query(
     'SHOW PROCEDURE STATUS WHERE Db = DATABASE()'
   );
-  return rows
-    .map((r) => r.Name)
-    .filter((n) => typeof n === 'string' && n.toLowerCase().includes('report'));
+  return rows.map((r) => r.Name);
 }
 
 export async function getProcedureParams(name) {
