@@ -748,11 +748,43 @@ export default function ImageManagement() {
       return [];
     }
 
-    const combined = [];
+    let newUploads = uploads.slice();
+    let newIgnored = ignored.slice();
+    let renamedCount = 0;
     try {
       for (let i = 0; i < items.length && !controller.signal.aborted; i += 50) {
-        const res = await uploadCheckBatch(items.slice(i, i + 50));
-        combined.push(...res);
+        const batch = items.slice(i, i + 50);
+        const res = await uploadCheckBatch(batch);
+        renamedCount += res.length;
+        const resMap = new Map(res.map((r) => [r.originalName, r]));
+        const ids = new Set(batch.map((u) => u.id));
+        newUploads = newUploads
+          .map((u) => {
+            if (!ids.has(u.id)) return u;
+            const found = resMap.get(u.originalName);
+            if (found) {
+              const merged = { ...u, ...found, id: u.id, reason: '' };
+              return { ...merged, description: extractDateFromName(merged.originalName) };
+            }
+            const msg = 'No match found';
+            return { ...u, description: msg, reason: msg };
+          })
+          .sort((a, b) => a.originalName.localeCompare(b.originalName));
+        newIgnored = newIgnored
+          .map((u) => {
+            if (!ids.has(u.id)) return u;
+            const found = resMap.get(u.originalName);
+            if (found) {
+              const merged = { ...u, ...found, id: u.id, reason: '' };
+              return { ...merged, description: extractDateFromName(merged.originalName) };
+            }
+            const msg = 'No match found';
+            return { ...u, description: msg, reason: msg };
+          })
+          .sort((a, b) => a.originalName.localeCompare(b.originalName));
+        setUploads(newUploads);
+        setIgnored(newIgnored);
+        persistAll({ uploads: newUploads, ignored: newIgnored });
       }
       if (controller.signal.aborted) {
         addToast('Rename canceled', 'info');
@@ -762,27 +794,11 @@ export default function ImageManagement() {
       setActiveOp(null);
     }
 
-    const newUploads = uploads
-      .map((u) => {
-        const found = combined.find((x) => x.originalName === u.originalName);
-        const merged = found ? { ...u, ...found, id: u.id } : u;
-        return { ...merged, description: extractDateFromName(merged.originalName) };
-      })
-      .sort((a, b) => a.originalName.localeCompare(b.originalName));
-
-    const newIgnored = ignored
-      .map((u) => {
-        const found = combined.find((x) => x.originalName === u.originalName);
-        const merged = found ? { ...u, ...found, id: u.id } : u;
-        return { ...merged, description: extractDateFromName(merged.originalName) };
-      })
-      .sort((a, b) => a.originalName.localeCompare(b.originalName));
-
     setUploads(newUploads);
     setIgnored(newIgnored);
     persistAll({ uploads: newUploads, ignored: newIgnored });
     setUploadSel((s) => s.filter((id) => !items.some((u) => u.id === id)));
-    setReport(`Renamed ${combined.length} file(s)`);
+    setReport(`Renamed ${renamedCount} file(s)`);
   }
 
   async function commitUploads() {
