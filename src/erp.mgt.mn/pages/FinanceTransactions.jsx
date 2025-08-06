@@ -297,6 +297,7 @@ useEffect(() => {
       const name = p.toLowerCase();
       if (name.includes('start') || name.includes('from')) return startDate || null;
       if (name.includes('end') || name.includes('to')) return endDate || null;
+      if (name.includes('branch')) return company?.branch_id ?? null;
       if (name.includes('company')) return company?.company_id ?? null;
       if (name.includes('user') || name.includes('emp')) return user?.empid ?? null;
       return null;
@@ -387,26 +388,26 @@ useEffect(() => {
                     </option>
                   ))}
                 </select>
+                {selectedProc && (
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                    />
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      style={{ marginLeft: '0.5rem' }}
+                    />
+                    <button onClick={runReport} style={{ marginLeft: '0.5rem' }}>
+                      Run
+                    </button>
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        )}
-        {selectedProc && (
-          <div style={{ marginBottom: '0.5rem' }}>
-            <input
-              type="datetime-local"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-            />
-            <input
-              type="datetime-local"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
-            />
-            <button onClick={runReport} style={{ marginLeft: '0.5rem' }}>
-              Run
-            </button>
           </div>
         )}
       {table && config && (
