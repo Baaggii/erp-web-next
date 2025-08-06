@@ -7,6 +7,7 @@ import React, {
 } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import TableManager from '../components/TableManager.jsx';
+import ReportTable from '../components/ReportTable.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { useRolePermissions } from '../hooks/useRolePermissions.js';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
@@ -47,6 +48,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   );
   const [procParams, setProcParams] = useState([]);
   const [reportResult, setReportResult] = useState(null);
+  const [manualParams, setManualParams] = useState({});
   const { company, user } = useContext(AuthContext);
   const perms = useRolePermissions();
   const licensed = useCompanyModules(company?.company_id);
@@ -277,6 +279,7 @@ useEffect(() => {
   useEffect(() => {
     if (!selectedProc) {
       setProcParams([]);
+      setManualParams({});
       return;
     }
     fetch(`/api/procedures/${encodeURIComponent(selectedProc)}/params`, {
@@ -292,10 +295,12 @@ useEffect(() => {
     setStartDate('');
     setEndDate('');
     setDatePreset('custom');
+    setManualParams({});
   }, [name]);
 
   useEffect(() => {
     setReportResult(null);
+    setManualParams({});
   }, [selectedProc, name]);
 
 
@@ -311,6 +316,18 @@ useEffect(() => {
       return null;
     });
   }, [procParams, startDate, endDate, company, user]);
+
+  const finalParams = useMemo(() => {
+    return procParams.map((p, i) => {
+      const auto = autoParams[i];
+      return auto ?? manualParams[p] ?? null;
+    });
+  }, [procParams, autoParams, manualParams]);
+
+  const allParamsProvided = useMemo(
+    () => finalParams.every((v) => v !== null && v !== ''),
+    [finalParams],
+  );
 
   function handlePresetChange(e) {
     const value = e.target.value;
@@ -362,8 +379,12 @@ useEffect(() => {
 
   async function runReport() {
     if (!selectedProc) return;
+    if (!allParamsProvided) {
+      addToast('Missing parameters', 'error');
+      return;
+    }
     const paramMap = procParams.reduce((acc, p, i) => {
-      acc[p] = autoParams[i];
+      acc[p] = finalParams[i];
       return acc;
     }, {});
     addToast(`Calling ${selectedProc}`, 'info');
@@ -372,7 +393,7 @@ useEffect(() => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ name: selectedProc, params: autoParams }),
+        body: JSON.stringify({ name: selectedProc, params: finalParams }),
       });
       if (res.ok) {
         const data = await res.json().catch(() => ({ row: [] }));
@@ -477,7 +498,25 @@ useEffect(() => {
                       }}
                       style={{ marginLeft: '0.5rem' }}
                     />
-                    <button onClick={runReport} style={{ marginLeft: '0.5rem' }}>
+                    {procParams.map((p, i) =>
+                      autoParams[i] === null ? (
+                        <input
+                          key={p}
+                          type="text"
+                          placeholder={p}
+                          value={manualParams[p] || ''}
+                          onChange={(e) =>
+                            setManualParams((m) => ({ ...m, [p]: e.target.value }))
+                          }
+                          style={{ marginLeft: '0.5rem' }}
+                        />
+                      ) : null,
+                    )}
+                    <button
+                      onClick={runReport}
+                      style={{ marginLeft: '0.5rem' }}
+                      disabled={!allParamsProvided}
+                    >
                       Run
                     </button>
                   </div>
@@ -524,32 +563,7 @@ useEffect(() => {
               </span>
             )}
           </h4>
-          {reportResult.rows.length > 0 ? (
-            <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-              <thead>
-                <tr>
-                  {Object.keys(reportResult.rows[0]).map((col) => (
-                    <th key={col} style={{ textAlign: 'left', padding: '0.25rem 0.5rem' }}>
-                      {col}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {reportResult.rows.map((row, idx) => (
-                  <tr key={idx}>
-                    {Object.keys(reportResult.rows[0]).map((col) => (
-                      <td key={col} style={{ padding: '0.25rem 0.5rem' }}>
-                        {row[col]}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <p>No data</p>
-          )}
+          <ReportTable rows={reportResult.rows} />
         </div>
       )}
       {transactionNames.length === 0 && (

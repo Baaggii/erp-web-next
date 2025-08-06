@@ -3,6 +3,7 @@ import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
+import ReportTable from '../components/ReportTable.jsx';
 
 export default function Reports() {
   const { company, user } = useContext(AuthContext);
@@ -14,6 +15,7 @@ export default function Reports() {
   const [endDate, setEndDate] = useState('');
   const [datePreset, setDatePreset] = useState('custom');
   const [result, setResult] = useState(null);
+  const [manualParams, setManualParams] = useState({});
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -39,6 +41,7 @@ export default function Reports() {
   useEffect(() => {
     if (!selectedProc) {
       setProcParams([]);
+      setManualParams({});
       return;
     }
     fetch(`/api/procedures/${encodeURIComponent(selectedProc)}/params`, {
@@ -51,6 +54,7 @@ export default function Reports() {
 
   useEffect(() => {
     setResult(null);
+    setManualParams({});
   }, [selectedProc]);
 
   const autoParams = useMemo(() => {
@@ -64,6 +68,18 @@ export default function Reports() {
       return null;
     });
   }, [procParams, startDate, endDate, company, user]);
+
+  const finalParams = useMemo(() => {
+    return procParams.map((p, i) => {
+      const auto = autoParams[i];
+      return auto ?? manualParams[p] ?? null;
+    });
+  }, [procParams, autoParams, manualParams]);
+
+  const allParamsProvided = useMemo(
+    () => finalParams.every((v) => v !== null && v !== ''),
+    [finalParams],
+  );
 
   function handlePresetChange(e) {
     const value = e.target.value;
@@ -115,8 +131,12 @@ export default function Reports() {
 
   async function runReport() {
     if (!selectedProc) return;
+    if (!allParamsProvided) {
+      addToast('Missing parameters', 'error');
+      return;
+    }
     const paramMap = procParams.reduce((acc, p, i) => {
-      acc[p] = autoParams[i];
+      acc[p] = finalParams[i];
       return acc;
     }, {});
     addToast(`Calling ${selectedProc}`, 'info');
@@ -125,7 +145,7 @@ export default function Reports() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ name: selectedProc, params: autoParams }),
+        body: JSON.stringify({ name: selectedProc, params: finalParams }),
       });
       if (res.ok) {
         const data = await res.json().catch(() => ({ row: [] }));
@@ -146,26 +166,29 @@ export default function Reports() {
   return (
     <div>
       <h2>Тайлан</h2>
-      {procedures.length > 0 ? (
-        <div style={{ marginBottom: '0.5rem' }}>
-          <select
-            value={selectedProc}
-            onChange={(e) => {
-              setSelectedProc(e.target.value);
-              setDatePreset('custom');
-              setStartDate('');
-              setEndDate('');
-            }}
-          >
-            <option value="">-- select --</option>
-            {procedures.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-          {selectedProc && (
-            <div style={{ marginTop: '0.5rem' }}>
+      <div style={{ marginBottom: '0.5rem' }}>
+        <select
+          value={selectedProc}
+          onChange={(e) => {
+            setSelectedProc(e.target.value);
+            setDatePreset('custom');
+            setStartDate('');
+            setEndDate('');
+          }}
+          disabled={procedures.length === 0}
+        >
+          <option value="">-- select --</option>
+          {procedures.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </select>
+        {procedures.length === 0 && (
+          <span style={{ marginLeft: '0.5rem' }}>Тайлан тохируулаагүй байна.</span>
+        )}
+        {selectedProc && (
+          <div style={{ marginTop: '0.5rem' }}>
               <select
                 value={datePreset}
                 onChange={handlePresetChange}
@@ -197,15 +220,30 @@ export default function Reports() {
                 }}
                 style={{ marginLeft: '0.5rem' }}
               />
-              <button onClick={runReport} style={{ marginLeft: '0.5rem' }}>
+              {procParams.map((p, i) =>
+                autoParams[i] === null ? (
+                  <input
+                    key={p}
+                    type="text"
+                    placeholder={p}
+                    value={manualParams[p] || ''}
+                    onChange={(e) =>
+                      setManualParams((m) => ({ ...m, [p]: e.target.value }))
+                    }
+                    style={{ marginLeft: '0.5rem' }}
+                  />
+                ) : null,
+              )}
+              <button
+                onClick={runReport}
+                style={{ marginLeft: '0.5rem' }}
+                disabled={!allParamsProvided}
+              >
                 Run
               </button>
             </div>
-          )}
-        </div>
-      ) : (
-        <p>Тайлан тохируулаагүй байна.</p>
-      )}
+        )}
+      </div>
       {result && (
         <div style={{ marginTop: '1rem' }}>
           <h4>
@@ -221,32 +259,7 @@ export default function Reports() {
               </span>
             )}
           </h4>
-          {result.rows.length > 0 ? (
-            <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-              <thead>
-                <tr>
-                  {Object.keys(result.rows[0]).map((col) => (
-                    <th key={col} style={{ textAlign: 'left', padding: '0.25rem 0.5rem' }}>
-                      {col}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {result.rows.map((row, idx) => (
-                  <tr key={idx}>
-                    {Object.keys(result.rows[0]).map((col) => (
-                      <td key={col} style={{ padding: '0.25rem 0.5rem' }}>
-                        {row[col]}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <p>No data</p>
-          )}
+          <ReportTable rows={result.rows} />
         </div>
       )}
     </div>
