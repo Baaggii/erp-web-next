@@ -697,9 +697,7 @@ export default function ImageManagement() {
       return;
     }
 
-    const tables = getTables();
-    const allItems = Object.values(tables).flat();
-    const items = allItems.filter(
+    const items = [...uploads, ...ignored].filter(
       (u) => uploadSel.includes(u.id) && u.handle && !u.tmpPath && !u.processed,
     );
     if (items.length === 0) {
@@ -764,25 +762,25 @@ export default function ImageManagement() {
       setActiveOp(null);
     }
 
-    const updated = {};
-    for (const [key, arr] of Object.entries(tables)) {
-      if (arr.some((u) => 'originalName' in u)) {
-        updated[key] = arr
-          .map((u) => {
-            const found = combined.find((x) => x.originalName === u.originalName);
-            const merged = found ? { ...u, ...found, id: u.id } : u;
-            return { ...merged, description: extractDateFromName(merged.originalName) };
-          })
-          .sort((a, b) => a.originalName.localeCompare(b.originalName));
-      } else {
-        updated[key] = arr;
-      }
-    }
-    setUploads(updated.uploads);
-    setIgnored(updated.ignored);
-    setPending(updated.pending);
-    setHostIgnored(updated.hostIgnored);
-    persistAll(updated);
+    const newUploads = uploads
+      .map((u) => {
+        const found = combined.find((x) => x.originalName === u.originalName);
+        const merged = found ? { ...u, ...found, id: u.id } : u;
+        return { ...merged, description: extractDateFromName(merged.originalName) };
+      })
+      .sort((a, b) => a.originalName.localeCompare(b.originalName));
+
+    const newIgnored = ignored
+      .map((u) => {
+        const found = combined.find((x) => x.originalName === u.originalName);
+        const merged = found ? { ...u, ...found, id: u.id } : u;
+        return { ...merged, description: extractDateFromName(merged.originalName) };
+      })
+      .sort((a, b) => a.originalName.localeCompare(b.originalName));
+
+    setUploads(newUploads);
+    setIgnored(newIgnored);
+    persistAll({ uploads: newUploads, ignored: newIgnored });
     setUploadSel((s) => s.filter((id) => !items.some((u) => u.id === id)));
     setReport(`Renamed ${combined.length} file(s)`);
   }
