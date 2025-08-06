@@ -12,6 +12,7 @@ import { useRolePermissions } from '../hooks/useRolePermissions.js';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
 import { useTxnSession } from '../context/TxnSessionContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
+import formatTimestamp from '../utils/formatTimestamp.js';
 
 function isEqual(a, b) {
   try {
@@ -353,7 +354,8 @@ useEffect(() => {
       default:
         return;
     }
-    const fmt = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : '');
+    const fmt = (d) =>
+      d instanceof Date ? formatTimestamp(d).slice(0, 10) : '';
     setStartDate(fmt(start));
     setEndDate(fmt(end));
   }
