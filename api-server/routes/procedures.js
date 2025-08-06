@@ -1,8 +1,30 @@
 import express from 'express';
 import { requireAuth } from '../middlewares/auth.js';
-import { callStoredProcedure } from '../../db/index.js';
+import {
+  callStoredProcedure,
+  listStoredProcedures,
+  getProcedureParams,
+} from '../../db/index.js';
 
 const router = express.Router();
+
+router.get('/', requireAuth, async (req, res, next) => {
+  try {
+    const procedures = await listStoredProcedures();
+    res.json({ procedures });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:name/params', requireAuth, async (req, res, next) => {
+  try {
+    const parameters = await getProcedureParams(req.params.name);
+    res.json({ parameters });
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.post('/', requireAuth, async (req, res, next) => {
   try {

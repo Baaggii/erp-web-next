@@ -15,6 +15,7 @@ export default function FormsManagement() {
   const [txnTypes, setTxnTypes] = useState([]);
   const [columns, setColumns] = useState([]);
   const [views, setViews] = useState([]);
+  const [procedureOptions, setProcedureOptions] = useState([]);
   const modules = useModules();
   useEffect(() => {
     debugLog('Component mounted: FormsManagement');
@@ -47,6 +48,7 @@ export default function FormsManagement() {
     transactionTypeValue: '',
     allowedBranches: [],
     allowedDepartments: [],
+    procedures: [],
   });
 
   useEffect(() => {
@@ -74,6 +76,11 @@ export default function FormsManagement() {
       .then((res) => (res.ok ? res.json() : { rows: [] }))
       .then((data) => setTxnTypes(data.rows || []))
       .catch(() => setTxnTypes([]));
+
+    fetch('/api/procedures', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { procedures: [] }))
+      .then((data) => setProcedureOptions(data.procedures || []))
+      .catch(() => setProcedureOptions([]));
   }, []);
 
   useEffect(() => {
@@ -123,6 +130,7 @@ export default function FormsManagement() {
             transactionTypeValue: filtered[name].transactionTypeValue || '',
             allowedBranches: (filtered[name].allowedBranches || []).map(String),
             allowedDepartments: (filtered[name].allowedDepartments || []).map(String),
+            procedures: filtered[name].procedures || [],
           });
         } else {
           setName('');
@@ -154,6 +162,7 @@ export default function FormsManagement() {
             transactionTypeValue: '',
             allowedBranches: [],
             allowedDepartments: [],
+            procedures: [],
           });
         }
       })
@@ -188,6 +197,7 @@ export default function FormsManagement() {
           transactionTypeValue: '',
           allowedBranches: [],
           allowedDepartments: [],
+          procedures: [],
         });
         setModuleKey('');
       });
@@ -227,6 +237,7 @@ export default function FormsManagement() {
           transactionTypeValue: cfg.transactionTypeValue || '',
           allowedBranches: (cfg.allowedBranches || []).map(String),
           allowedDepartments: (cfg.allowedDepartments || []).map(String),
+          procedures: cfg.procedures || [],
         });
       })
       .catch(() => {
@@ -258,6 +269,7 @@ export default function FormsManagement() {
           transactionTypeValue: '',
           allowedBranches: [],
           allowedDepartments: [],
+          procedures: [],
         });
         setModuleKey('');
       });
@@ -381,6 +393,7 @@ export default function FormsManagement() {
       transactionTypeValue: '',
       allowedBranches: [],
       allowedDepartments: [],
+      procedures: [],
     });
     setModuleKey('');
   }
@@ -414,6 +427,7 @@ export default function FormsManagement() {
       transactionTypeValue: cfg.transactionTypeValue || '',
       allowedBranches: (cfg.allowedBranches || []).map(String),
       allowedDepartments: (cfg.allowedDepartments || []).map(String),
+      procedures: cfg.procedures || [],
     });
   }
 
@@ -515,6 +529,32 @@ export default function FormsManagement() {
                   </option>
                 ))}
               </select>
+            )}
+
+            {procedureOptions.length > 0 && (
+              <>
+                <span style={{ marginLeft: '0.5rem' }}>Procedures</span>
+                <select
+                  multiple
+                  value={config.procedures}
+                  onChange={(e) =>
+                    setConfig((c) => ({
+                      ...c,
+                      procedures: Array.from(
+                        e.target.selectedOptions,
+                        (o) => o.value,
+                      ),
+                    }))
+                  }
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  {procedureOptions.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              </>
             )}
 
             <input
