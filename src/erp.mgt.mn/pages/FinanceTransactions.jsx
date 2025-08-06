@@ -316,17 +316,42 @@ useEffect(() => {
     setDatePreset(value);
     if (value === 'custom') return;
     const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
     let start = '', end = '';
-    if (value === 'month') {
-      start = new Date(now.getFullYear(), now.getMonth(), 1);
-      end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    } else if (value === 'quarter') {
-      const q = Math.floor(now.getMonth() / 3);
-      start = new Date(now.getFullYear(), q * 3, 1);
-      end = new Date(now.getFullYear(), q * 3 + 3, 0);
-    } else if (value === 'year') {
-      start = new Date(now.getFullYear(), 0, 1);
-      end = new Date(now.getFullYear(), 12, 0);
+    switch (value) {
+      case 'month':
+        start = new Date(y, m, 1);
+        end = new Date(y, m + 1, 1);
+        break;
+      case 'q1':
+        start = new Date(y, 0, 1);
+        end = new Date(y, 3, 1);
+        break;
+      case 'q2':
+        start = new Date(y, 3, 1);
+        end = new Date(y, 6, 1);
+        break;
+      case 'q3':
+        start = new Date(y, 6, 1);
+        end = new Date(y, 9, 1);
+        break;
+      case 'q4':
+        start = new Date(y, 9, 1);
+        end = new Date(y + 1, 0, 1);
+        break;
+      case 'quarter': {
+        const q = Math.floor(m / 3);
+        start = new Date(y, q * 3, 1);
+        end = new Date(y, q * 3 + 3, 1);
+        break;
+      }
+      case 'year':
+        start = new Date(y, 0, 1);
+        end = new Date(y + 1, 0, 1);
+        break;
+      default:
+        return;
     }
     const fmt = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : '');
     setStartDate(fmt(start));
@@ -426,6 +451,10 @@ useEffect(() => {
                     >
                       <option value="custom">Custom</option>
                       <option value="month">This month</option>
+                      <option value="q1">Quarter #1</option>
+                      <option value="q2">Quarter #2</option>
+                      <option value="q3">Quarter #3</option>
+                      <option value="q4">Quarter #4</option>
                       <option value="quarter">This quarter</option>
                       <option value="year">This year</option>
                     </select>
