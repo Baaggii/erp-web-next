@@ -679,51 +679,61 @@ export default function ImageManagement() {
       addToast('No local files to rename', 'error');
       return;
     }
-    const formData = new FormData();
-    try {
-      for (const u of items) {
-        const file = await u.handle.getFile();
-        formData.append('images', file, u.originalName);
+
+    const chunkSize = 50;
+    const combined = [];
+    for (let i = 0; i < items.length; i += chunkSize) {
+      const chunk = items.slice(i, i + chunkSize);
+      const formData = new FormData();
+      try {
+        for (const u of chunk) {
+          const file = await u.handle.getFile();
+          formData.append('images', file, u.originalName);
+        }
+      } catch {
+        addToast('Rename failed', 'error');
+        return;
       }
-    } catch {
-      addToast('Rename failed', 'error');
-      return;
-    }
-    try {
-      const res = await fetch('/api/transaction_images/upload_check', {
-        method: 'POST',
-        body: formData,
-        credentials: 'include',
-      });
+      let res;
+      try {
+        res = await fetch('/api/transaction_images/upload_check', {
+          method: 'POST',
+          body: formData,
+          credentials: 'include',
+        });
+      } catch {
+        addToast('Rename failed', 'error');
+        return;
+      }
       if (!res.ok) {
         addToast('Rename failed', 'error');
         return;
       }
       const data = await res.json().catch(() => ({}));
       const list = Array.isArray(data.list) ? data.list : [];
-      const updated = {};
-      for (const [key, arr] of Object.entries(tables)) {
-        if (arr.some((u) => 'originalName' in u)) {
-          updated[key] = arr
-            .map((u) => {
-              const found = list.find((x) => x.originalName === u.originalName);
-              const merged = found ? { ...u, ...found, id: u.id } : u;
-              return { ...merged, description: extractDateFromName(merged.originalName) };
-            })
-            .sort((a, b) => a.originalName.localeCompare(b.originalName));
-        } else {
-          updated[key] = arr;
-        }
-      }
-      setUploads(updated.uploads);
-      setIgnored(updated.ignored);
-      setPending(updated.pending);
-      setHostIgnored(updated.hostIgnored);
-      persistAll(updated);
-      setReport(`Renamed ${list.length} file(s)`);
-    } catch {
-      addToast('Rename failed', 'error');
+      combined.push(...list);
     }
+
+    const updated = {};
+    for (const [key, arr] of Object.entries(tables)) {
+      if (arr.some((u) => 'originalName' in u)) {
+        updated[key] = arr
+          .map((u) => {
+            const found = combined.find((x) => x.originalName === u.originalName);
+            const merged = found ? { ...u, ...found, id: u.id } : u;
+            return { ...merged, description: extractDateFromName(merged.originalName) };
+          })
+          .sort((a, b) => a.originalName.localeCompare(b.originalName));
+      } else {
+        updated[key] = arr;
+      }
+    }
+    setUploads(updated.uploads);
+    setIgnored(updated.ignored);
+    setPending(updated.pending);
+    setHostIgnored(updated.hostIgnored);
+    persistAll(updated);
+    setReport(`Renamed ${combined.length} file(s)`);
   }
 
   async function commitUploads() {
