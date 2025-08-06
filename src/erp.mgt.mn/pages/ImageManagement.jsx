@@ -710,9 +710,10 @@ export default function ImageManagement() {
     setActiveOp('rename');
 
     async function uploadCheckBatch(batch) {
-      if (controller.signal.aborted) return [];
+      if (controller.signal.aborted) return { list: [], missing: [] };
       const formData = new FormData();
       const valid = [];
+      const missing = [];
       for (const u of batch) {
         try {
           const file = await u.handle.getFile();
@@ -720,9 +721,10 @@ export default function ImageManagement() {
           valid.push(u);
         } catch {
           addToast(`Missing local file: ${u.originalName}`, 'error');
+          missing.push(u.id);
         }
       }
-      if (valid.length === 0) return [];
+      if (valid.length === 0) return { list: [], missing };
       try {
         res = await fetch('/api/transaction_images/upload_check', {
           method: 'POST',
@@ -732,20 +734,23 @@ export default function ImageManagement() {
         });
         if (res.ok) {
           const data = await res.json().catch(() => ({}));
-          return Array.isArray(data.list) ? data.list : [];
+          return { list: Array.isArray(data.list) ? data.list : [], missing };
         }
       } catch {
-        if (controller.signal.aborted) return [];
+        if (controller.signal.aborted) return { list: [], missing };
         // fall through to recursive split
       }
-      if (batch.length > 1) {
-        const mid = Math.floor(batch.length / 2);
-        const first = await uploadCheckBatch(batch.slice(0, mid));
-        const second = await uploadCheckBatch(batch.slice(mid));
-        return [...first, ...second];
+      if (valid.length > 1) {
+        const mid = Math.floor(valid.length / 2);
+        const first = await uploadCheckBatch(valid.slice(0, mid));
+        const second = await uploadCheckBatch(valid.slice(mid));
+        return {
+          list: [...first.list, ...second.list],
+          missing: [...missing, ...first.missing, ...second.missing],
+        };
       }
       addToast('Rename failed', 'error');
-      return [];
+      return { list: [], missing };
     }
 
     let newUploads = uploads.slice();
@@ -754,31 +759,40 @@ export default function ImageManagement() {
     try {
       for (let i = 0; i < items.length && !controller.signal.aborted; i += 50) {
         const batch = items.slice(i, i + 50);
-        const res = await uploadCheckBatch(batch);
+        const { list: res, missing } = await uploadCheckBatch(batch);
         renamedCount += res.length;
         const resMap = new Map(res.map((r) => [r.originalName, r]));
         const ids = new Set(batch.map((u) => u.id));
+        const missingSet = new Set(missing);
         newUploads = newUploads
           .map((u) => {
             if (!ids.has(u.id)) return u;
+            if (missingSet.has(u.id)) {
+              const msg = 'Missing local file';
+              return { ...u, description: msg, reason: msg };
+            }
             const found = resMap.get(u.originalName);
             if (found) {
               const merged = { ...u, ...found, id: u.id, reason: '' };
               return { ...merged, description: extractDateFromName(merged.originalName) };
             }
-            const msg = 'No match found';
+            const msg = u.reason || 'No match found';
             return { ...u, description: msg, reason: msg };
           })
           .sort((a, b) => a.originalName.localeCompare(b.originalName));
         newIgnored = newIgnored
           .map((u) => {
             if (!ids.has(u.id)) return u;
+            if (missingSet.has(u.id)) {
+              const msg = 'Missing local file';
+              return { ...u, description: msg, reason: msg };
+            }
             const found = resMap.get(u.originalName);
             if (found) {
               const merged = { ...u, ...found, id: u.id, reason: '' };
               return { ...merged, description: extractDateFromName(merged.originalName) };
             }
-            const msg = 'No match found';
+            const msg = u.reason || 'No match found';
             return { ...u, description: msg, reason: msg };
           })
           .sort((a, b) => a.originalName.localeCompare(b.originalName));
