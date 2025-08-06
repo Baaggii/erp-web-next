@@ -12,6 +12,7 @@ import { useRolePermissions } from '../hooks/useRolePermissions.js';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
 import { useTxnSession } from '../context/TxnSessionContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
+import formatTimestamp from '../utils/formatTimestamp.js';
 
 function isEqual(a, b) {
   try {
@@ -38,7 +39,15 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const [showTable, setShowTable] = useState(() =>
     sessionState.showTable || !!sessionState.config,
   );
-  const { company } = useContext(AuthContext);
+  const [selectedProc, setSelectedProc] = useState(() => sessionState.selectedProc || '');
+  const [startDate, setStartDate] = useState(() => sessionState.startDate || '');
+  const [endDate, setEndDate] = useState(() => sessionState.endDate || '');
+  const [datePreset, setDatePreset] = useState(
+    () => sessionState.datePreset || 'custom',
+  );
+  const [procParams, setProcParams] = useState([]);
+  const [reportResult, setReportResult] = useState(null);
+  const { company, user } = useContext(AuthContext);
   const perms = useRolePermissions();
   const licensed = useCompanyModules(company?.company_id);
   const tableRef = useRef(null);
@@ -89,6 +98,10 @@ useEffect(() => {
     config: sessionState.config || null,
     refreshId: sessionState.refreshId || 0,
     showTable: sessionState.showTable || !!sessionState.config,
+    selectedProc: sessionState.selectedProc || '',
+    startDate: sessionState.startDate || '',
+    endDate: sessionState.endDate || '',
+    datePreset: sessionState.datePreset || 'custom',
   };
 
   if (!isEqual(prevSessionRef.current, next)) {
@@ -97,6 +110,10 @@ useEffect(() => {
     setConfig(next.config);
     setRefreshId(next.refreshId);
     setShowTable(next.showTable);
+    setSelectedProc(next.selectedProc);
+    setStartDate(next.startDate);
+    setEndDate(next.endDate);
+    setDatePreset(next.datePreset);
     prevSessionRef.current = next;
   }
 
@@ -107,8 +124,18 @@ useEffect(() => {
   // persist state to session
   useEffect(() => {
     console.log('FinanceTransactions persist session effect');
-    setSessionState({ name, table, config, refreshId, showTable });
-  }, [name, table, config, refreshId, showTable]);
+    setSessionState({
+      name,
+      table,
+      config,
+      refreshId,
+      showTable,
+      selectedProc,
+      startDate,
+      endDate,
+      datePreset,
+    });
+  }, [name, table, config, refreshId, showTable, selectedProc, startDate, endDate, datePreset]);
 
   useEffect(() => {
     console.log('FinanceTransactions search param effect');
@@ -247,8 +274,121 @@ useEffect(() => {
   };
 }, [table, name, addToast]);
 
+  useEffect(() => {
+    if (!selectedProc) {
+      setProcParams([]);
+      return;
+    }
+    fetch(`/api/procedures/${encodeURIComponent(selectedProc)}/params`, {
+      credentials: 'include',
+    })
+      .then((res) => (res.ok ? res.json() : { parameters: [] }))
+      .then((data) => setProcParams(data.parameters || []))
+      .catch(() => setProcParams([]));
+  }, [selectedProc]);
+
+  useEffect(() => {
+    setSelectedProc('');
+    setStartDate('');
+    setEndDate('');
+    setDatePreset('custom');
+  }, [name]);
+
+  useEffect(() => {
+    setReportResult(null);
+  }, [selectedProc, name]);
+
 
   const transactionNames = useMemo(() => Object.keys(configs), [configs]);
+  const autoParams = useMemo(() => {
+    return procParams.map((p) => {
+      const name = p.toLowerCase();
+      if (name.includes('start') || name.includes('from')) return startDate || null;
+      if (name.includes('end') || name.includes('to')) return endDate || null;
+      if (name.includes('branch')) return company?.branch_id ?? null;
+      if (name.includes('company')) return company?.company_id ?? null;
+      if (name.includes('user') || name.includes('emp')) return user?.empid ?? null;
+      return null;
+    });
+  }, [procParams, startDate, endDate, company, user]);
+
+  function handlePresetChange(e) {
+    const value = e.target.value;
+    setDatePreset(value);
+    if (value === 'custom') return;
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    let start = '', end = '';
+    switch (value) {
+      case 'month':
+        start = new Date(y, m, 1);
+        end = new Date(y, m + 1, 1);
+        break;
+      case 'q1':
+        start = new Date(y, 0, 1);
+        end = new Date(y, 3, 1);
+        break;
+      case 'q2':
+        start = new Date(y, 3, 1);
+        end = new Date(y, 6, 1);
+        break;
+      case 'q3':
+        start = new Date(y, 6, 1);
+        end = new Date(y, 9, 1);
+        break;
+      case 'q4':
+        start = new Date(y, 9, 1);
+        end = new Date(y + 1, 0, 1);
+        break;
+      case 'quarter': {
+        const q = Math.floor(m / 3);
+        start = new Date(y, q * 3, 1);
+        end = new Date(y, q * 3 + 3, 1);
+        break;
+      }
+      case 'year':
+        start = new Date(y, 0, 1);
+        end = new Date(y + 1, 0, 1);
+        break;
+      default:
+        return;
+    }
+    const fmt = (d) =>
+      d instanceof Date ? formatTimestamp(d).slice(0, 10) : '';
+    setStartDate(fmt(start));
+    setEndDate(fmt(end));
+  }
+
+  async function runReport() {
+    if (!selectedProc) return;
+    const paramMap = procParams.reduce((acc, p, i) => {
+      acc[p] = autoParams[i];
+      return acc;
+    }, {});
+    addToast(`Calling ${selectedProc}`, 'info');
+    try {
+      const res = await fetch('/api/procedures', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name: selectedProc, params: autoParams }),
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({ row: [] }));
+        const rows = Array.isArray(data.row) ? data.row : [];
+        addToast(
+          `${selectedProc} returned ${rows.length} row${rows.length === 1 ? '' : 's'}`,
+          'success',
+        );
+        setReportResult({ name: selectedProc, params: paramMap, rows });
+      } else {
+        addToast('Failed to run procedure', 'error');
+      }
+    } catch {
+      addToast('Failed to run procedure', 'error');
+    }
+  }
 
   if (!perms || !licensed) return <p>Ачааллаж байна...</p>;
   if (!perms[moduleKey] || !licensed[moduleKey]) return <p>Нэвтрэх эрхгүй.</p>;
@@ -259,36 +399,91 @@ useEffect(() => {
     <div>
       <h2>{moduleLabel || 'Гүйлгээ'}</h2>
         {transactionNames.length > 0 && (
-          <div style={{ marginBottom: '0.5rem', maxWidth: '300px' }}>
-            <select
-              value={name}
-              onChange={(e) => {
-                const newName = e.target.value;
-                if (newName === name) return;
-                setName(newName);
-                setRefreshId((r) => r + 1);
-                setShowTable(true);
-                if (!newName) {
-                  if (table !== '') setTable('');
-                  if (config !== null) setConfig(null);
-                } else if (configs[newName]) {
-                  const tbl = configs[newName].table ?? configs[newName];
-                  if (tbl !== table) {
-                    setTable(tbl);
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
+            <div style={{ maxWidth: '300px' }}>
+              <select
+                value={name}
+                onChange={(e) => {
+                  const newName = e.target.value;
+                  if (newName === name) return;
+                  setName(newName);
+                  setRefreshId((r) => r + 1);
+                  setShowTable(true);
+                  if (!newName) {
+                    if (table !== '') setTable('');
                     if (config !== null) setConfig(null);
+                  } else if (configs[newName]) {
+                    const tbl = configs[newName].table ?? configs[newName];
+                    if (tbl !== table) {
+                      setTable(tbl);
+                      if (config !== null) setConfig(null);
+                    }
                   }
-                }
-              }}
-
-              style={{ width: '100%', padding: '0.5rem', borderRadius: '3px', border: '1px solid #ccc' }}
-            >
-              <option value="">{caption}</option>
-              {transactionNames.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
+                }}
+                style={{ width: '100%', padding: '0.5rem', borderRadius: '3px', border: '1px solid #ccc' }}
+              >
+                <option value="">{caption}</option>
+                {transactionNames.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {config?.procedures?.length > 0 && (
+              <div style={{ marginLeft: '1rem' }}>
+                <span style={{ marginRight: '0.5rem' }}>REPORTS</span>
+                <select
+                  value={selectedProc}
+                  onChange={(e) => setSelectedProc(e.target.value)}
+                >
+                  <option value="">-- select --</option>
+                  {config.procedures.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+                {selectedProc && (
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <select
+                      value={datePreset}
+                      onChange={handlePresetChange}
+                      style={{ marginRight: '0.5rem' }}
+                    >
+                      <option value="custom">Custom</option>
+                      <option value="month">This month</option>
+                      <option value="q1">Quarter #1</option>
+                      <option value="q2">Quarter #2</option>
+                      <option value="q3">Quarter #3</option>
+                      <option value="q4">Quarter #4</option>
+                      <option value="quarter">This quarter</option>
+                      <option value="year">This year</option>
+                    </select>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => {
+                        setStartDate(e.target.value);
+                        setDatePreset('custom');
+                      }}
+                    />
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => {
+                        setEndDate(e.target.value);
+                        setDatePreset('custom');
+                      }}
+                      style={{ marginLeft: '0.5rem' }}
+                    />
+                    <button onClick={runReport} style={{ marginLeft: '0.5rem' }}>
+                      Run
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       {table && config && (
@@ -313,6 +508,49 @@ useEffect(() => {
           addLabel="Гүйлгээ нэмэх"
           showTable={showTable}
         />
+      )}
+      {reportResult && (
+        <div style={{ marginTop: '1rem' }}>
+          <h4>
+            {reportResult.name}
+            {Object.keys(reportResult.params).length > 0 && (
+              <span>
+                {' '}
+                (
+                {Object.entries(reportResult.params)
+                  .map(([k, v]) => `${k}=${v}`)
+                  .join(', ')}
+                )
+              </span>
+            )}
+          </h4>
+          {reportResult.rows.length > 0 ? (
+            <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+              <thead>
+                <tr>
+                  {Object.keys(reportResult.rows[0]).map((col) => (
+                    <th key={col} style={{ textAlign: 'left', padding: '0.25rem 0.5rem' }}>
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {reportResult.rows.map((row, idx) => (
+                  <tr key={idx}>
+                    {Object.keys(reportResult.rows[0]).map((col) => (
+                      <td key={col} style={{ padding: '0.25rem 0.5rem' }}>
+                        {row[col]}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p>No data</p>
+          )}
+        </div>
       )}
       {transactionNames.length === 0 && (
         <p>Гүйлгээ тохируулаагүй байна.</p>
