@@ -18,6 +18,33 @@ export function useModules() {
     try {
       const res = await fetch('/api/modules', { credentials: 'include' });
       const rows = res.ok ? await res.json() : [];
+      try {
+        const params = new URLSearchParams();
+        if (company?.branch_id !== undefined)
+          params.set('branchId', company.branch_id);
+        if (company?.department_id !== undefined)
+          params.set('departmentId', company.department_id);
+        const pres = await fetch(
+          `/api/report_procedures${params.toString() ? `?${params.toString()}` : ''}`,
+          { credentials: 'include' },
+        );
+        if (pres.ok) {
+          const data = await pres.json();
+          const list = Array.isArray(data.procedures) ? data.procedures : [];
+          list.forEach((p) => {
+            const key = `proc_${p.toLowerCase().replace(/[^a-z0-9_]/g, '_')}`;
+            rows.push({
+              module_key: key,
+              label: p,
+              parent_key: 'reports',
+              show_in_sidebar: true,
+              show_in_header: false,
+            });
+          });
+        }
+      } catch (e) {
+        console.error('Failed to load procedures', e);
+      }
       cache.data = rows;
       cache.branchId = company?.branch_id;
       cache.departmentId = company?.department_id;
