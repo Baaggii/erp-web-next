@@ -42,6 +42,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const [startDate, setStartDate] = useState(() => sessionState.startDate || '');
   const [endDate, setEndDate] = useState(() => sessionState.endDate || '');
   const [procParams, setProcParams] = useState([]);
+  const [reportResult, setReportResult] = useState(null);
   const { company, user } = useContext(AuthContext);
   const perms = useRolePermissions();
   const licensed = useCompanyModules(company?.company_id);
@@ -285,6 +286,10 @@ useEffect(() => {
     setEndDate('');
   }, [name]);
 
+  useEffect(() => {
+    setReportResult(null);
+  }, [selectedProc, name]);
+
 
   const transactionNames = useMemo(() => Object.keys(configs), [configs]);
   const autoParams = useMemo(() => {
@@ -300,6 +305,11 @@ useEffect(() => {
 
   async function runReport() {
     if (!selectedProc) return;
+    const paramMap = procParams.reduce((acc, p, i) => {
+      acc[p] = autoParams[i];
+      return acc;
+    }, {});
+    addToast(`Calling ${selectedProc}`, 'info');
     try {
       const res = await fetch('/api/procedures', {
         method: 'POST',
@@ -308,8 +318,13 @@ useEffect(() => {
         body: JSON.stringify({ name: selectedProc, params: autoParams }),
       });
       if (res.ok) {
-        const data = await res.json().catch(() => ({}));
-        console.log('procedure result', data.row);
+        const data = await res.json().catch(() => ({ row: [] }));
+        const rows = Array.isArray(data.row) ? data.row : [];
+        addToast(
+          `${selectedProc} returned ${rows.length} row${rows.length === 1 ? '' : 's'}`,
+          'success',
+        );
+        setReportResult({ name: selectedProc, params: paramMap, rows });
       } else {
         addToast('Failed to run procedure', 'error');
       }
@@ -416,6 +431,49 @@ useEffect(() => {
           addLabel="Гүйлгээ нэмэх"
           showTable={showTable}
         />
+      )}
+      {reportResult && (
+        <div style={{ marginTop: '1rem' }}>
+          <h4>
+            {reportResult.name}
+            {Object.keys(reportResult.params).length > 0 && (
+              <span>
+                {' '}
+                (
+                {Object.entries(reportResult.params)
+                  .map(([k, v]) => `${k}=${v}`)
+                  .join(', ')}
+                )
+              </span>
+            )}
+          </h4>
+          {reportResult.rows.length > 0 ? (
+            <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+              <thead>
+                <tr>
+                  {Object.keys(reportResult.rows[0]).map((col) => (
+                    <th key={col} style={{ textAlign: 'left', padding: '0.25rem 0.5rem' }}>
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {reportResult.rows.map((row, idx) => (
+                  <tr key={idx}>
+                    {Object.keys(reportResult.rows[0]).map((col) => (
+                      <td key={col} style={{ padding: '0.25rem 0.5rem' }}>
+                        {row[col]}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p>No data</p>
+          )}
+        </div>
       )}
       {transactionNames.length === 0 && (
         <p>Гүйлгээ тохируулаагүй байна.</p>
