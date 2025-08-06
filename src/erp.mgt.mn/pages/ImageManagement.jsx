@@ -680,13 +680,10 @@ export default function ImageManagement() {
       return;
     }
 
-    const chunkSize = 50;
-    const combined = [];
-    for (let i = 0; i < items.length; i += chunkSize) {
-      const chunk = items.slice(i, i + chunkSize);
+    async function uploadCheckBatch(batch) {
       const formData = new FormData();
       const valid = [];
-      for (const u of chunk) {
+      for (const u of batch) {
         try {
           const file = await u.handle.getFile();
           formData.append('images', file, u.originalName);
@@ -695,26 +692,31 @@ export default function ImageManagement() {
           addToast(`Missing local file: ${u.originalName}`, 'error');
         }
       }
-      if (valid.length === 0) continue;
-      let res;
+      if (valid.length === 0) return [];
       try {
         res = await fetch('/api/transaction_images/upload_check', {
           method: 'POST',
           body: formData,
           credentials: 'include',
         });
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          return Array.isArray(data.list) ? data.list : [];
+        }
       } catch {
-        addToast('Rename failed', 'error');
-        return;
+        // fall through to recursive split
       }
-      if (!res.ok) {
-        addToast('Rename failed', 'error');
-        return;
+      if (batch.length > 1) {
+        const mid = Math.floor(batch.length / 2);
+        const first = await uploadCheckBatch(batch.slice(0, mid));
+        const second = await uploadCheckBatch(batch.slice(mid));
+        return [...first, ...second];
       }
-      const data = await res.json().catch(() => ({}));
-      const list = Array.isArray(data.list) ? data.list : [];
-      combined.push(...list);
+      addToast('Rename failed', 'error');
+      return [];
     }
+
+    const combined = await uploadCheckBatch(items);
 
     const updated = {};
     for (const [key, arr] of Object.entries(tables)) {
@@ -735,6 +737,7 @@ export default function ImageManagement() {
     setPending(updated.pending);
     setHostIgnored(updated.hostIgnored);
     persistAll(updated);
+    setUploadSel((s) => s.filter((id) => !items.some((u) => u.id === id)));
     setReport(`Renamed ${combined.length} file(s)`);
   }
 
