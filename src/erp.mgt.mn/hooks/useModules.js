@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useContext } from 'react';
+import { AuthContext } from '../context/AuthContext.jsx';
 import { debugLog } from '../utils/debug.js';
 
-const cache = { data: null };
+const cache = { data: null, branchId: undefined, departmentId: undefined };
 const emitter = new EventTarget();
 
 export function refreshModules() {
@@ -10,6 +11,7 @@ export function refreshModules() {
 }
 
 export function useModules() {
+  const { company } = useContext(AuthContext);
   const [modules, setModules] = useState(cache.data || []);
 
   async function fetchModules() {
@@ -17,7 +19,15 @@ export function useModules() {
       const res = await fetch('/api/modules', { credentials: 'include' });
       const rows = res.ok ? await res.json() : [];
       try {
-        const pres = await fetch('/api/procedures', { credentials: 'include' });
+        const params = new URLSearchParams();
+        if (company?.branch_id !== undefined)
+          params.set('branchId', company.branch_id);
+        if (company?.department_id !== undefined)
+          params.set('departmentId', company.department_id);
+        const pres = await fetch(
+          `/api/report_procedures${params.toString() ? `?${params.toString()}` : ''}`,
+          { credentials: 'include' },
+        );
         if (pres.ok) {
           const data = await pres.json();
           const list = Array.isArray(data.procedures) ? data.procedures : [];
@@ -36,6 +46,8 @@ export function useModules() {
         console.error('Failed to load procedures', e);
       }
       cache.data = rows;
+      cache.branchId = company?.branch_id;
+      cache.departmentId = company?.department_id;
       setModules(rows);
     } catch (err) {
       console.error('Failed to load modules', err);
@@ -45,17 +57,21 @@ export function useModules() {
 
   useEffect(() => {
     debugLog('useModules effect: initial fetch');
-    if (!cache.data) {
+    if (
+      !cache.data ||
+      cache.branchId !== company?.branch_id ||
+      cache.departmentId !== company?.department_id
+    ) {
       fetchModules();
     }
-  }, []);
+  }, [company?.branch_id, company?.department_id]);
 
   useEffect(() => {
     debugLog('useModules effect: refresh listener');
     const handler = () => fetchModules();
     emitter.addEventListener('refresh', handler);
     return () => emitter.removeEventListener('refresh', handler);
-  }, []);
+  }, [company?.branch_id, company?.department_id]);
 
   return modules;
 }
