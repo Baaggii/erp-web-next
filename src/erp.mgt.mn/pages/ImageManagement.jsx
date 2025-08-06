@@ -47,31 +47,20 @@ export default function ImageManagement() {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed.folderName) setFolderName(parsed.folderName);
-        if (Array.isArray(parsed.uploads)) setUploads(parsed.uploads.map((u) => ({ ...u, processed: !!u.processed })));
-        if (Array.isArray(parsed.ignored)) setIgnored(parsed.ignored.map((u) => ({ ...u, processed: !!u.processed })));
-        if (Array.isArray(parsed.pending)) setPending(parsed.pending.map((u) => ({ ...u, processed: !!u.processed })));
-        if (Array.isArray(parsed.hostIgnored))
-          setHostIgnored(parsed.hostIgnored.map((u) => ({ ...u, processed: !!u.processed })));
+        if (Array.isArray(parsed.uploads)) setUploads(parsed.uploads);
+        if (Array.isArray(parsed.ignored)) setIgnored(parsed.ignored);
       }
     } catch {
       // ignore
     }
   }, []);
 
-  function persistState(
-    up = uploads,
-    ig = ignored,
-    folder = folderName,
-    pend = pending,
-    hostIg = hostIgnored,
-  ) {
+  function persistState(up = uploads, ig = ignored, folder = folderName) {
     try {
       const data = {
         folderName: folder,
         uploads: up.map(({ handle, ...rest }) => rest),
         ignored: ig.map(({ handle, ...rest }) => rest),
-        pending: pend,
-        hostIgnored: hostIg,
       };
       localStorage.setItem(FOLDER_STATE_KEY, JSON.stringify(data));
     } catch {
@@ -102,14 +91,10 @@ export default function ImageManagement() {
   }
 
   function toggleAll() {
-    const unprocessed = pending.filter((p) => !p.processed).map((p) => p.currentName);
-    const all = pending.map((p) => p.currentName);
-    if (selected.length === all.length) {
+    if (selected.length === pending.length) {
       setSelected([]);
-    } else if (selected.length === unprocessed.length && unprocessed.length !== all.length) {
-      setSelected(all);
     } else {
-      setSelected(unprocessed);
+      setSelected(pending.map((p) => p.currentName));
     }
   }
 
@@ -120,19 +105,12 @@ export default function ImageManagement() {
   }
 
   function toggleHostIgnoredAll(list) {
-    const allIds = list.map((p) => p.currentName);
-    const unprocessedIds = list.filter((p) => !p.processed).map((p) => p.currentName);
-    const allSelected = allIds.every((id) => hostIgnoredSel.includes(id));
-    const unprocessedSelected =
-      unprocessedIds.length > 0 &&
-      unprocessedIds.every((id) => hostIgnoredSel.includes(id)) &&
-      !allSelected;
+    const ids = list.map((p) => p.currentName);
+    const allSelected = ids.every((id) => hostIgnoredSel.includes(id));
     if (allSelected) {
-      setHostIgnoredSel((prev) => prev.filter((id) => !allIds.includes(id)));
-    } else if (unprocessedSelected || unprocessedIds.length === allIds.length) {
-      setHostIgnoredSel((prev) => [...prev, ...allIds.filter((id) => !prev.includes(id))]);
+      setHostIgnoredSel((prev) => prev.filter((id) => !ids.includes(id)));
     } else {
-      setHostIgnoredSel((prev) => [...prev, ...unprocessedIds.filter((id) => !prev.includes(id))]);
+      setHostIgnoredSel((prev) => [...prev, ...ids.filter((id) => !prev.includes(id))]);
     }
   }
 
@@ -143,19 +121,12 @@ export default function ImageManagement() {
   }
 
   function toggleUploadAll(list) {
-    const allIds = list.map((u) => u.id);
-    const unprocessedIds = list.filter((u) => !u.processed).map((u) => u.id);
-    const allSelected = allIds.every((id) => uploadSel.includes(id));
-    const unprocessedSelected =
-      unprocessedIds.length > 0 &&
-      unprocessedIds.every((id) => uploadSel.includes(id)) &&
-      !allSelected;
+    const ids = list.filter((u) => !u.processed).map((u) => u.id);
+    const allSelected = ids.every((id) => uploadSel.includes(id));
     if (allSelected) {
-      setUploadSel((prev) => prev.filter((id) => !allIds.includes(id)));
-    } else if (unprocessedSelected || unprocessedIds.length === allIds.length) {
-      setUploadSel((prev) => [...prev, ...allIds.filter((id) => !prev.includes(id))]);
+      setUploadSel((prev) => prev.filter((id) => !ids.includes(id)));
     } else {
-      setUploadSel((prev) => [...prev, ...unprocessedIds.filter((id) => !prev.includes(id))]);
+      setUploadSel((prev) => [...prev, ...ids.filter((id) => !prev.includes(id))]);
     }
   }
 
@@ -251,14 +222,10 @@ export default function ImageManagement() {
       setUploadSel([]);
       setUploadPage(1);
       setIgnoredPage(1);
-      setPending([]);
-      setHostIgnored([]);
-      setSelected([]);
-      setHostIgnoredSel([]);
       setReport(
         `Scanned ${names.length} file(s), found ${processed} incomplete name(s), ${skipped.length} unflagged.`,
       );
-      persistState(uploadsList, ignoredList, dirHandle.name || '', [], []);
+      persistState(uploadsList, ignoredList, dirHandle.name || '');
     } catch {
       // ignore
     } finally {
@@ -299,11 +266,7 @@ export default function ImageManagement() {
           ? data.list
               .slice()
               .sort((a, b) => a.currentName.localeCompare(b.currentName))
-              .map((p) => ({
-                ...p,
-                description: extractDateFromName(p.currentName),
-                processed: false,
-              }))
+              .map((p) => ({ ...p, description: extractDateFromName(p.currentName) }))
           : [];
         const miss = Array.isArray(data.skipped)
           ? data.skipped
@@ -312,7 +275,6 @@ export default function ImageManagement() {
               .map((p) => ({
                 ...p,
                 description: extractDateFromName(p.currentName),
-                processed: false,
               }))
           : [];
         setPending(list);
@@ -326,14 +288,12 @@ export default function ImageManagement() {
         setReport(
           `Scanned ${sum.totalFiles || 0} file(s), found ${sum.incompleteFound || 0} incomplete name(s), ${sum.skipped || 0} not incomplete.`,
         );
-        persistState(uploads, ignored, folderName, list, miss);
       } else {
         setPending([]);
         setHostIgnored([]);
         setHostIgnoredPage(1);
         setPendingSummary(null);
         setHasMore(false);
-        persistState(uploads, ignored, folderName, [], []);
       }
       setPage(p);
     } catch (e) {
@@ -343,7 +303,6 @@ export default function ImageManagement() {
         setHostIgnoredPage(1);
         setPendingSummary(null);
         setHasMore(false);
-        persistState(uploads, ignored, folderName, [], []);
       }
     } finally {
       detectAbortRef.current = null;
@@ -353,8 +312,8 @@ export default function ImageManagement() {
   }
 
   async function applyFixesSelection(list, sel) {
-    const items = list.filter((p) => sel.includes(p.currentName) && !p.processed);
-    if (items.length === 0) return null;
+    const items = list.filter((p) => sel.includes(p.currentName));
+    if (items.length === 0) return;
     const res = await fetch('/api/transaction_images/fix_incomplete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -365,32 +324,18 @@ export default function ImageManagement() {
       const data = await res.json().catch(() => ({}));
       addToast(`Renamed ${data.fixed || 0} file(s)`, 'success');
       setReport(`Renamed ${data.fixed || 0} file(s)`);
-      const newList = list.map((p) =>
-        sel.includes(p.currentName) ? { ...p, processed: true } : p,
-      );
-      return newList;
+      detectFromHost(page);
     } else {
       addToast('Rename failed', 'error');
-      return null;
     }
   }
 
   async function applyFixes() {
-    const newPending = await applyFixesSelection(pending, selected);
-    if (newPending) {
-      setPending(newPending);
-      setSelected([]);
-      persistState(uploads, ignored, folderName, newPending, hostIgnored);
-    }
+    await applyFixesSelection(pending, selected);
   }
 
   async function applyFixesHostIgnored() {
-    const newHostIgnored = await applyFixesSelection(hostIgnored, hostIgnoredSel);
-    if (newHostIgnored) {
-      setHostIgnored(newHostIgnored);
-      setHostIgnoredSel([]);
-      persistState(uploads, ignored, folderName, pending, newHostIgnored);
-    }
+    await applyFixesSelection(hostIgnored, hostIgnoredSel);
   }
 
   async function renameSelected() {
@@ -398,62 +343,49 @@ export default function ImageManagement() {
       (u) => uploadSel.includes(u.id) && u.handle && !u.tmpPath && !u.processed,
     );
     if (items.length === 0) return;
-
-    const chunkSize = 20;
-    let merged = [];
-
-    for (let i = 0; i < items.length; i += chunkSize) {
-      const chunk = items.slice(i, i + chunkSize);
-      const formData = new FormData();
-      try {
-        for (const u of chunk) {
-          const file = await u.handle.getFile();
-          formData.append('images', file, u.originalName);
-        }
-      } catch {
-        addToast('Rename failed', 'error');
-        return;
+    const formData = new FormData();
+    try {
+      for (const u of items) {
+        const file = await u.handle.getFile();
+        formData.append('images', file, u.originalName);
       }
-      try {
-        const res = await fetch('/api/transaction_images/upload_check', {
-          method: 'POST',
-          body: formData,
-          credentials: 'include',
-        });
-        if (!res.ok) {
-          addToast('Rename failed', 'error');
-          return;
-        }
-        const data = await res.json().catch(() => ({}));
-        const list = Array.isArray(data.list) ? data.list : [];
-        merged = merged.concat(list);
-      } catch {
-        addToast('Rename failed', 'error');
-        return;
-      }
+    } catch {
+      addToast('Rename failed', 'error');
+      return;
     }
-
-    const newUploads = uploads
-      .map((u) => {
-        const found = merged.find((x) => x.originalName === u.originalName);
-        const result = found ? { ...u, ...found, id: u.id } : u;
-        return { ...result, description: extractDateFromName(result.originalName) };
-      })
-      .sort((a, b) => a.originalName.localeCompare(b.originalName));
-
-    const newIgnored = ignored
-      .map((u) => {
-        const found = merged.find((x) => x.originalName === u.originalName);
-        const result = found ? { ...u, ...found, id: u.id } : u;
-        return { ...result, description: extractDateFromName(result.originalName) };
-      })
-      .sort((a, b) => a.originalName.localeCompare(b.originalName));
-
-    setUploads(newUploads);
-    setIgnored(newIgnored);
-    setUploadSel([]);
-    persistState(newUploads, newIgnored);
-    setReport(`Renamed ${merged.length} file(s)`);
+    try {
+      const res = await fetch('/api/transaction_images/upload_check', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        addToast('Rename failed', 'error');
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      const list = Array.isArray(data.list) ? data.list : [];
+      const newUploads = uploads
+        .map((u) => {
+          const found = list.find((x) => x.originalName === u.originalName);
+          const merged = found ? { ...u, ...found, id: u.id } : u;
+          return { ...merged, description: extractDateFromName(merged.originalName) };
+        })
+        .sort((a, b) => a.originalName.localeCompare(b.originalName));
+      const newIgnored = ignored
+        .map((u) => {
+          const found = list.find((x) => x.originalName === u.originalName);
+          const merged = found ? { ...u, ...found, id: u.id } : u;
+          return { ...merged, description: extractDateFromName(merged.originalName) };
+        })
+        .sort((a, b) => a.originalName.localeCompare(b.originalName));
+      setUploads(newUploads);
+      setIgnored(newIgnored);
+      persistState(newUploads, newIgnored);
+      setReport(`Renamed ${list.length} file(s)`);
+    } catch {
+      addToast('Rename failed', 'error');
+    }
   }
 
   async function commitUploads() {
@@ -525,15 +457,6 @@ export default function ImageManagement() {
               Select Folder
             </button>
             {folderName && <span style={{ marginRight: '0.5rem' }}>{folderName}</span>}
-            <button
-              type="button"
-              onClick={() => {
-                persistState();
-                addToast('State saved', 'success');
-              }}
-            >
-              Save
-            </button>
           </div>
           {uploadSummary && (
             <p style={{ marginBottom: '0.5rem' }}>
@@ -825,10 +748,8 @@ export default function ImageManagement() {
               <button
                 type="button"
                 onClick={() => {
-                  const remaining = pending.filter((p) => !selected.includes(p.currentName));
-                  setPending(remaining);
+                  setPending((prev) => prev.filter((p) => !selected.includes(p.currentName)));
                   setSelected([]);
-                  persistState(uploads, ignored, folderName, remaining, hostIgnored);
                 }}
                 style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
                 disabled={selected.length === 0}
@@ -889,12 +810,8 @@ export default function ImageManagement() {
               <button
                 type="button"
                 onClick={() => {
-                  const remaining = hostIgnored.filter(
-                    (p) => !hostIgnoredSel.includes(p.currentName),
-                  );
-                  setHostIgnored(remaining);
+                  setHostIgnored((prev) => prev.filter((p) => !hostIgnoredSel.includes(p.currentName)));
                   setHostIgnoredSel([]);
-                  persistState(uploads, ignored, folderName, pending, remaining);
                 }}
                 style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
                 disabled={hostIgnoredSel.length === 0}
