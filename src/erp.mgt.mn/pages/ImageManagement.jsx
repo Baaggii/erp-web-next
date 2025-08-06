@@ -399,7 +399,8 @@ export default function ImageManagement() {
     );
     if (items.length === 0) return;
 
-    const chunkSize = 100;
+    // Smaller batches prevent oversized multipart requests when many files are selected
+    const chunkSize = 20;
     const allResults = [];
 
     try {
