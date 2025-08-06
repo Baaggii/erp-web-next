@@ -314,18 +314,25 @@ export default function ImageManagement() {
   async function applyFixesSelection(list, sel) {
     const items = list.filter((p) => sel.includes(p.currentName));
     if (items.length === 0) return;
-    const res = await fetch('/api/transaction_images/fix_incomplete', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ list: items }),
-    });
-    if (res.ok) {
-      const data = await res.json().catch(() => ({}));
-      addToast(`Renamed ${data.fixed || 0} file(s)`, 'success');
-      setReport(`Renamed ${data.fixed || 0} file(s)`);
+    const chunkSize = 200;
+    let totalFixed = 0;
+    try {
+      for (let i = 0; i < items.length; i += chunkSize) {
+        const chunk = items.slice(i, i + chunkSize);
+        const res = await fetch('/api/transaction_images/fix_incomplete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ list: chunk }),
+        });
+        if (!res.ok) throw new Error('fail');
+        const data = await res.json().catch(() => ({}));
+        totalFixed += data.fixed || 0;
+      }
+      addToast(`Renamed ${totalFixed} file(s)`, 'success');
+      setReport(`Renamed ${totalFixed} file(s)`);
       detectFromHost(page);
-    } else {
+    } catch {
       addToast('Rename failed', 'error');
     }
   }
@@ -343,46 +350,45 @@ export default function ImageManagement() {
       (u) => uploadSel.includes(u.id) && u.handle && !u.tmpPath && !u.processed,
     );
     if (items.length === 0) return;
-    const formData = new FormData();
+    const chunkSize = 50;
+    let allResults = [];
     try {
-      for (const u of items) {
-        const file = await u.handle.getFile();
-        formData.append('images', file, u.originalName);
+      for (let i = 0; i < items.length; i += chunkSize) {
+        const chunk = items.slice(i, i + chunkSize);
+        const formData = new FormData();
+        for (const u of chunk) {
+          const file = await u.handle.getFile();
+          formData.append('images', file, u.originalName);
+        }
+        const res = await fetch('/api/transaction_images/upload_check', {
+          method: 'POST',
+          body: formData,
+          credentials: 'include',
+        });
+        if (!res.ok) throw new Error('fail');
+        const data = await res.json().catch(() => ({}));
+        allResults = allResults.concat(Array.isArray(data.list) ? data.list : []);
       }
-    } catch {
-      addToast('Rename failed', 'error');
-      return;
-    }
-    try {
-      const res = await fetch('/api/transaction_images/upload_check', {
-        method: 'POST',
-        body: formData,
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        addToast('Rename failed', 'error');
-        return;
-      }
-      const data = await res.json().catch(() => ({}));
-      const list = Array.isArray(data.list) ? data.list : [];
+      const processedIds = items.map((u) => u.id);
       const newUploads = uploads
         .map((u) => {
-          const found = list.find((x) => x.originalName === u.originalName);
+          const found = allResults.find((x) => x.originalName === u.originalName);
           const merged = found ? { ...u, ...found, id: u.id } : u;
           return { ...merged, description: extractDateFromName(merged.originalName) };
         })
         .sort((a, b) => a.originalName.localeCompare(b.originalName));
       const newIgnored = ignored
         .map((u) => {
-          const found = list.find((x) => x.originalName === u.originalName);
+          const found = allResults.find((x) => x.originalName === u.originalName);
           const merged = found ? { ...u, ...found, id: u.id } : u;
           return { ...merged, description: extractDateFromName(merged.originalName) };
         })
         .sort((a, b) => a.originalName.localeCompare(b.originalName));
       setUploads(newUploads);
       setIgnored(newIgnored);
+      setUploadSel((prev) => prev.filter((id) => !processedIds.includes(id)));
       persistState(newUploads, newIgnored);
-      setReport(`Renamed ${list.length} file(s)`);
+      setReport(`Renamed ${allResults.length} file(s)`);
     } catch {
       addToast('Rename failed', 'error');
     }
@@ -393,27 +399,35 @@ export default function ImageManagement() {
       (u) => uploadSel.includes(u.id) && u.tmpPath && !u.processed,
     );
     if (items.length === 0) return;
-    const res = await fetch('/api/transaction_images/upload_commit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ list: items }),
-    });
-    if (res.ok) {
-      const data = await res.json().catch(() => ({}));
-      addToast(`Uploaded ${data.uploaded || 0} file(s)`, 'success');
+    const chunkSize = 200;
+    let totalUploaded = 0;
+    try {
+      for (let i = 0; i < items.length; i += chunkSize) {
+        const chunk = items.slice(i, i + chunkSize);
+        const res = await fetch('/api/transaction_images/upload_commit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ list: chunk }),
+        });
+        if (!res.ok) throw new Error('fail');
+        const data = await res.json().catch(() => ({}));
+        totalUploaded += data.uploaded || 0;
+      }
+      addToast(`Uploaded ${totalUploaded} file(s)`, 'success');
+      const processedIds = items.map((u) => u.id);
       const newUploads = uploads.map((u) =>
-        uploadSel.includes(u.id) && u.tmpPath ? { ...u, processed: true } : u,
+        processedIds.includes(u.id) && u.tmpPath ? { ...u, processed: true } : u,
       );
       const newIgnored = ignored.map((u) =>
-        uploadSel.includes(u.id) && u.tmpPath ? { ...u, processed: true } : u,
+        processedIds.includes(u.id) && u.tmpPath ? { ...u, processed: true } : u,
       );
       setUploads(newUploads);
       setIgnored(newIgnored);
-      setUploadSel([]);
+      setUploadSel((prev) => prev.filter((id) => !processedIds.includes(id)));
       persistState(newUploads, newIgnored);
-      setReport(`Uploaded ${data.uploaded || 0} file(s)`);
-    } else {
+      setReport(`Uploaded ${totalUploaded} file(s)`);
+    } catch {
       addToast('Upload failed', 'error');
     }
   }
