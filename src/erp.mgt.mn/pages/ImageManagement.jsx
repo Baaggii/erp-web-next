@@ -399,57 +399,61 @@ export default function ImageManagement() {
     );
     if (items.length === 0) return;
 
-    const formData = new FormData();
-    try {
-      for (const u of items) {
-        const file = await u.handle.getFile();
-        formData.append('images', file, u.originalName);
-      }
-    } catch {
-      addToast('Rename failed', 'error');
-      return;
-    }
-    try {
-      for (let i = 0; i < items.length; i += chunkSize) {
-        const chunk = items.slice(i, i + chunkSize);
-        const formData = new FormData();
+    const chunkSize = 20;
+    let merged = [];
+
+    for (let i = 0; i < items.length; i += chunkSize) {
+      const chunk = items.slice(i, i + chunkSize);
+      const formData = new FormData();
+      try {
         for (const u of chunk) {
           const file = await u.handle.getFile();
           formData.append('images', file, u.originalName);
         }
+      } catch {
+        addToast('Rename failed', 'error');
+        return;
+      }
+      try {
         const res = await fetch('/api/transaction_images/upload_check', {
           method: 'POST',
           body: formData,
           credentials: 'include',
         });
-        if (!res.ok) throw new Error();
+        if (!res.ok) {
+          addToast('Rename failed', 'error');
+          return;
+        }
         const data = await res.json().catch(() => ({}));
-        if (Array.isArray(data.list)) allResults.push(...data.list);
+        const list = Array.isArray(data.list) ? data.list : [];
+        merged = merged.concat(list);
+      } catch {
+        addToast('Rename failed', 'error');
+        return;
       }
-
-      const newUploads = uploads
-        .map((u) => {
-          const found = allResults.find((x) => x.originalName === u.originalName);
-          const merged = found ? { ...u, ...found, id: u.id } : u;
-          return { ...merged, description: extractDateFromName(merged.originalName) };
-        })
-        .sort((a, b) => a.originalName.localeCompare(b.originalName));
-      const newIgnored = ignored
-        .map((u) => {
-          const found = allResults.find((x) => x.originalName === u.originalName);
-          const merged = found ? { ...u, ...found, id: u.id } : u;
-          return { ...merged, description: extractDateFromName(merged.originalName) };
-        })
-        .sort((a, b) => a.originalName.localeCompare(b.originalName));
-
-      setUploads(newUploads);
-      setIgnored(newIgnored);
-      setUploadSel([]);
-      persistState(newUploads, newIgnored);
-      setReport(`Renamed ${allResults.length} file(s)`);
-    } catch {
-      addToast('Rename failed', 'error');
     }
+
+    const newUploads = uploads
+      .map((u) => {
+        const found = merged.find((x) => x.originalName === u.originalName);
+        const result = found ? { ...u, ...found, id: u.id } : u;
+        return { ...result, description: extractDateFromName(result.originalName) };
+      })
+      .sort((a, b) => a.originalName.localeCompare(b.originalName));
+
+    const newIgnored = ignored
+      .map((u) => {
+        const found = merged.find((x) => x.originalName === u.originalName);
+        const result = found ? { ...u, ...found, id: u.id } : u;
+        return { ...result, description: extractDateFromName(result.originalName) };
+      })
+      .sort((a, b) => a.originalName.localeCompare(b.originalName));
+
+    setUploads(newUploads);
+    setIgnored(newIgnored);
+    setUploadSel([]);
+    persistState(newUploads, newIgnored);
+    setReport(`Renamed ${merged.length} file(s)`);
   }
 
   async function commitUploads() {
