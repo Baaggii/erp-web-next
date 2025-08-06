@@ -97,6 +97,8 @@ export default function ImageManagement() {
   const [pageSize, setPageSize] = useState(200);
   const detectAbortRef = useRef();
   const scanCancelRef = useRef(false);
+  const renameAbortRef = useRef();
+  const commitAbortRef = useRef();
   const dirHandleRef = useRef();
   const [activeOp, setActiveOp] = useState(null);
   const [report, setReport] = useState('');
@@ -431,12 +433,29 @@ export default function ImageManagement() {
   useEffect(() => {
     function onKey(e) {
       if (e.key === 'Escape' && activeOp) {
-        const action = activeOp === 'detect' ? 'detection' : 'folder selection';
+        const labels = {
+          detect: 'detection',
+          folder: 'folder selection',
+          rename: 'rename',
+          commit: 'upload commit',
+        };
+        const action = labels[activeOp] || 'operation';
         if (window.confirm(`Cancel ${action}?`)) {
-          if (activeOp === 'detect') {
-            detectAbortRef.current?.abort();
-          } else {
-            scanCancelRef.current = true;
+          switch (activeOp) {
+            case 'detect':
+              detectAbortRef.current?.abort();
+              break;
+            case 'folder':
+              scanCancelRef.current = true;
+              break;
+            case 'rename':
+              renameAbortRef.current?.abort();
+              break;
+            case 'commit':
+              commitAbortRef.current?.abort();
+              break;
+            default:
+              break;
           }
           setActiveOp(null);
         }
@@ -670,6 +689,14 @@ export default function ImageManagement() {
   }
 
   async function renameSelected() {
+    if (activeOp === 'rename') {
+      if (window.confirm('Cancel rename?')) {
+        renameAbortRef.current?.abort();
+        setActiveOp(null);
+      }
+      return;
+    }
+
     const tables = getTables();
     const allItems = Object.values(tables).flat();
     const items = allItems.filter(
@@ -680,7 +707,12 @@ export default function ImageManagement() {
       return;
     }
 
+    const controller = new AbortController();
+    renameAbortRef.current = controller;
+    setActiveOp('rename');
+
     async function uploadCheckBatch(batch) {
+      if (controller.signal.aborted) return [];
       const formData = new FormData();
       const valid = [];
       for (const u of batch) {
@@ -698,12 +730,14 @@ export default function ImageManagement() {
           method: 'POST',
           body: formData,
           credentials: 'include',
+          signal: controller.signal,
         });
         if (res.ok) {
           const data = await res.json().catch(() => ({}));
           return Array.isArray(data.list) ? data.list : [];
         }
       } catch {
+        if (controller.signal.aborted) return [];
         // fall through to recursive split
       }
       if (batch.length > 1) {
@@ -716,7 +750,19 @@ export default function ImageManagement() {
       return [];
     }
 
-    const combined = await uploadCheckBatch(items);
+    const combined = [];
+    try {
+      for (let i = 0; i < items.length && !controller.signal.aborted; i += 50) {
+        const res = await uploadCheckBatch(items.slice(i, i + 50));
+        combined.push(...res);
+      }
+      if (controller.signal.aborted) {
+        addToast('Rename canceled', 'info');
+        return;
+      }
+    } finally {
+      setActiveOp(null);
+    }
 
     const updated = {};
     for (const [key, arr] of Object.entries(tables)) {
@@ -742,36 +788,57 @@ export default function ImageManagement() {
   }
 
   async function commitUploads() {
+    if (activeOp === 'commit') {
+      if (window.confirm('Cancel upload commit?')) {
+        commitAbortRef.current?.abort();
+        setActiveOp(null);
+      }
+      return;
+    }
+
     const tables = getTables();
     const allItems = Object.values(tables).flat();
     const items = allItems.filter(
       (u) => uploadSel.includes(u.id) && u.tmpPath && !u.processed,
     );
     if (items.length === 0) return;
-    const res = await fetch('/api/transaction_images/upload_commit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ list: items }),
-    });
-    if (res.ok) {
-      const data = await res.json().catch(() => ({}));
-      addToast(`Uploaded ${data.uploaded || 0} file(s)`, 'success');
-      const updated = {};
-      for (const [key, arr] of Object.entries(tables)) {
-        updated[key] = arr.map((u) =>
-          uploadSel.includes(u.id) && u.tmpPath ? { ...u, processed: true } : u,
-        );
+
+    const controller = new AbortController();
+    commitAbortRef.current = controller;
+    setActiveOp('commit');
+
+    try {
+      const res = await fetch('/api/transaction_images/upload_commit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ list: items }),
+        signal: controller.signal,
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        addToast(`Uploaded ${data.uploaded || 0} file(s)`, 'success');
+        const updated = {};
+        for (const [key, arr] of Object.entries(tables)) {
+          updated[key] = arr.map((u) =>
+            uploadSel.includes(u.id) && u.tmpPath ? { ...u, processed: true } : u,
+          );
+        }
+        setUploads(updated.uploads);
+        setIgnored(updated.ignored);
+        setPending(updated.pending);
+        setHostIgnored(updated.hostIgnored);
+        setUploadSel([]);
+        persistAll(updated);
+        setReport(`Uploaded ${data.uploaded || 0} file(s)`);
+      } else {
+        addToast('Upload failed', 'error');
       }
-      setUploads(updated.uploads);
-      setIgnored(updated.ignored);
-      setPending(updated.pending);
-      setHostIgnored(updated.hostIgnored);
-      setUploadSel([]);
-      persistAll(updated);
-      setReport(`Uploaded ${data.uploaded || 0} file(s)`);
-    } else {
-      addToast('Upload failed', 'error');
+    } catch {
+      if (controller.signal.aborted) addToast('Upload canceled', 'info');
+      else addToast('Upload failed', 'error');
+    } finally {
+      setActiveOp(null);
     }
   }
 
