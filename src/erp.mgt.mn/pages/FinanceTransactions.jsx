@@ -41,6 +41,9 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const [selectedProc, setSelectedProc] = useState(() => sessionState.selectedProc || '');
   const [startDate, setStartDate] = useState(() => sessionState.startDate || '');
   const [endDate, setEndDate] = useState(() => sessionState.endDate || '');
+  const [datePreset, setDatePreset] = useState(
+    () => sessionState.datePreset || 'custom',
+  );
   const [procParams, setProcParams] = useState([]);
   const [reportResult, setReportResult] = useState(null);
   const { company, user } = useContext(AuthContext);
@@ -97,6 +100,7 @@ useEffect(() => {
     selectedProc: sessionState.selectedProc || '',
     startDate: sessionState.startDate || '',
     endDate: sessionState.endDate || '',
+    datePreset: sessionState.datePreset || 'custom',
   };
 
   if (!isEqual(prevSessionRef.current, next)) {
@@ -108,6 +112,7 @@ useEffect(() => {
     setSelectedProc(next.selectedProc);
     setStartDate(next.startDate);
     setEndDate(next.endDate);
+    setDatePreset(next.datePreset);
     prevSessionRef.current = next;
   }
 
@@ -127,8 +132,9 @@ useEffect(() => {
       selectedProc,
       startDate,
       endDate,
+      datePreset,
     });
-  }, [name, table, config, refreshId, showTable, selectedProc, startDate, endDate]);
+  }, [name, table, config, refreshId, showTable, selectedProc, startDate, endDate, datePreset]);
 
   useEffect(() => {
     console.log('FinanceTransactions search param effect');
@@ -284,6 +290,7 @@ useEffect(() => {
     setSelectedProc('');
     setStartDate('');
     setEndDate('');
+    setDatePreset('custom');
   }, [name]);
 
   useEffect(() => {
@@ -303,6 +310,28 @@ useEffect(() => {
       return null;
     });
   }, [procParams, startDate, endDate, company, user]);
+
+  function handlePresetChange(e) {
+    const value = e.target.value;
+    setDatePreset(value);
+    if (value === 'custom') return;
+    const now = new Date();
+    let start = '', end = '';
+    if (value === 'month') {
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+      end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    } else if (value === 'quarter') {
+      const q = Math.floor(now.getMonth() / 3);
+      start = new Date(now.getFullYear(), q * 3, 1);
+      end = new Date(now.getFullYear(), q * 3 + 3, 0);
+    } else if (value === 'year') {
+      start = new Date(now.getFullYear(), 0, 1);
+      end = new Date(now.getFullYear(), 12, 0);
+    }
+    const fmt = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : '');
+    setStartDate(fmt(start));
+    setEndDate(fmt(end));
+  }
 
   async function runReport() {
     if (!selectedProc) return;
@@ -390,15 +419,31 @@ useEffect(() => {
                 </select>
                 {selectedProc && (
                   <div style={{ marginTop: '0.5rem' }}>
+                    <select
+                      value={datePreset}
+                      onChange={handlePresetChange}
+                      style={{ marginRight: '0.5rem' }}
+                    >
+                      <option value="custom">Custom</option>
+                      <option value="month">This month</option>
+                      <option value="quarter">This quarter</option>
+                      <option value="year">This year</option>
+                    </select>
                     <input
                       type="date"
                       value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
+                      onChange={(e) => {
+                        setStartDate(e.target.value);
+                        setDatePreset('custom');
+                      }}
                     />
                     <input
                       type="date"
                       value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
+                      onChange={(e) => {
+                        setEndDate(e.target.value);
+                        setDatePreset('custom');
+                      }}
                       style={{ marginLeft: '0.5rem' }}
                     />
                     <button onClick={runReport} style={{ marginLeft: '0.5rem' }}>
