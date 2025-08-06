@@ -645,47 +645,30 @@ export default function ImageManagement() {
   }
 
   async function applyFixesSelection(list, sel) {
-    const items = list.filter((p) => sel.includes(p.currentName));
+    const items = list.filter((p) => sel.includes(p.currentName) && !p.processed);
     if (items.length === 0) return;
-    const chunkSize = 200;
-    let totalFixed = 0;
-    try {
-      for (let i = 0; i < items.length; i += chunkSize) {
-        const chunk = items.slice(i, i + chunkSize);
-        const res = await fetch('/api/transaction_images/fix_incomplete', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ list: chunk }),
-        });
-        if (!res.ok) throw new Error('fail');
-        const data = await res.json().catch(() => ({}));
-        totalFixed += data.fixed || 0;
-      }
-      addToast(`Renamed ${totalFixed} file(s)`, 'success');
-      setReport(`Renamed ${totalFixed} file(s)`);
-      detectFromHost(page);
-    } catch {
+    const res = await fetch('/api/transaction_images/fix_incomplete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ list: items }),
+    });
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      addToast(`Renamed ${data.fixed || 0} file(s)`, 'success');
+      setReport(`Renamed ${data.fixed || 0} file(s)`);
+      await detectFromHost(pendingPage);
+    } else {
       addToast('Rename failed', 'error');
     }
   }
 
   async function applyFixes() {
-    const newPending = await applyFixesSelection(pending, selected);
-    if (newPending) {
-      setPending(newPending);
-      setSelected([]);
-      persistAll({ uploads, ignored, folderName, pending: newPending, hostIgnored });
-    }
+    await applyFixesSelection(pending, selected);
   }
 
   async function applyFixesHostIgnored() {
-    const newHostIgnored = await applyFixesSelection(hostIgnored, hostIgnoredSel);
-    if (newHostIgnored) {
-      setHostIgnored(newHostIgnored);
-      setHostIgnoredSel([]);
-      persistAll({ uploads, ignored, folderName, pending, hostIgnored: newHostIgnored });
-    }
+    await applyFixesSelection(hostIgnored, hostIgnoredSel);
   }
 
   async function renameSelected() {
@@ -782,7 +765,7 @@ export default function ImageManagement() {
               const msg = 'Rename failed';
               return { ...u, description: msg, reason: msg };
             }
-            const msg = u.reason || 'No match found';
+            const msg = u.reason && u.reason !== 'Rename failed' ? u.reason : 'No match found';
             return { ...u, description: msg, reason: msg };
           })
           .sort((a, b) => a.originalName.localeCompare(b.originalName));
@@ -802,7 +785,7 @@ export default function ImageManagement() {
               const msg = 'Rename failed';
               return { ...u, description: msg, reason: msg };
             }
-            const msg = u.reason || 'No match found';
+            const msg = u.reason && u.reason !== 'Rename failed' ? u.reason : 'No match found';
             return { ...u, description: msg, reason: msg };
           })
           .sort((a, b) => a.originalName.localeCompare(b.originalName));
