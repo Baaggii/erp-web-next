@@ -710,7 +710,7 @@ export default function ImageManagement() {
     setActiveOp('rename');
 
     async function uploadCheckBatch(batch) {
-      if (controller.signal.aborted) return { list: [], missing: [] };
+      if (controller.signal.aborted) return { list: [], missing: [], failed: [] };
       const formData = new FormData();
       const valid = [];
       const missing = [];
@@ -724,7 +724,7 @@ export default function ImageManagement() {
           missing.push(u.id);
         }
       }
-      if (valid.length === 0) return { list: [], missing };
+      if (valid.length === 0) return { list: [], missing, failed: [] };
       try {
         res = await fetch('/api/transaction_images/upload_check', {
           method: 'POST',
@@ -734,10 +734,10 @@ export default function ImageManagement() {
         });
         if (res.ok) {
           const data = await res.json().catch(() => ({}));
-          return { list: Array.isArray(data.list) ? data.list : [], missing };
+          return { list: Array.isArray(data.list) ? data.list : [], missing, failed: [] };
         }
       } catch {
-        if (controller.signal.aborted) return { list: [], missing };
+        if (controller.signal.aborted) return { list: [], missing, failed: [] };
         // fall through to recursive split
       }
       if (valid.length > 1) {
@@ -747,10 +747,11 @@ export default function ImageManagement() {
         return {
           list: [...first.list, ...second.list],
           missing: [...missing, ...first.missing, ...second.missing],
+          failed: [...first.failed, ...second.failed],
         };
       }
       addToast('Rename failed', 'error');
-      return { list: [], missing };
+      return { list: [], missing, failed: valid.map((v) => v.id) };
     }
 
     let newUploads = uploads.slice();
@@ -759,11 +760,12 @@ export default function ImageManagement() {
     try {
       for (let i = 0; i < items.length && !controller.signal.aborted; i += 50) {
         const batch = items.slice(i, i + 50);
-        const { list: res, missing } = await uploadCheckBatch(batch);
+        const { list: res, missing, failed } = await uploadCheckBatch(batch);
         renamedCount += res.length;
         const resMap = new Map(res.map((r) => [r.originalName, r]));
         const ids = new Set(batch.map((u) => u.id));
         const missingSet = new Set(missing);
+        const failedSet = new Set(failed);
         newUploads = newUploads
           .map((u) => {
             if (!ids.has(u.id)) return u;
@@ -775,6 +777,10 @@ export default function ImageManagement() {
             if (found) {
               const merged = { ...u, ...found, id: u.id, reason: '' };
               return { ...merged, description: extractDateFromName(merged.originalName) };
+            }
+            if (failedSet.has(u.id)) {
+              const msg = 'Rename failed';
+              return { ...u, description: msg, reason: msg };
             }
             const msg = u.reason || 'No match found';
             return { ...u, description: msg, reason: msg };
@@ -791,6 +797,10 @@ export default function ImageManagement() {
             if (found) {
               const merged = { ...u, ...found, id: u.id, reason: '' };
               return { ...merged, description: extractDateFromName(merged.originalName) };
+            }
+            if (failedSet.has(u.id)) {
+              const msg = 'Rename failed';
+              return { ...u, description: msg, reason: msg };
             }
             const msg = u.reason || 'No match found';
             return { ...u, description: msg, reason: msg };
