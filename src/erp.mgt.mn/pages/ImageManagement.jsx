@@ -399,10 +399,16 @@ export default function ImageManagement() {
     );
     if (items.length === 0) return;
 
-    // Smaller batches prevent oversized multipart requests when many files are selected
-    const chunkSize = 20;
-    const allResults = [];
-
+    const formData = new FormData();
+    try {
+      for (const u of items) {
+        const file = await u.handle.getFile();
+        formData.append('images', file, u.originalName);
+      }
+    } catch {
+      addToast('Rename failed', 'error');
+      return;
+    }
     try {
       for (let i = 0; i < items.length; i += chunkSize) {
         const chunk = items.slice(i, i + chunkSize);
