@@ -1105,94 +1105,96 @@ export async function getProcedureRawRows(
       createSql = rows && rows[0] && rows[0].body;
     } catch {}
   }
-  if (!createSql) {
-    const callSql = `CALL ${name}`;
-    const file = `${name.replace(/[^a-z0-9_]/gi, '_')}_rows.sql`;
-    await fs.writeFile(path.join(process.cwd(), 'config', file), callSql);
-    return { rows: [], sql: callSql, file };
-  }
-  const bodyMatch = createSql.match(/BEGIN\s*([\s\S]*)END/i);
-  const body = bodyMatch ? bodyMatch[1] : createSql;
-  function escapeRegExp(s) {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  }
-  const selectMatches = [...body.matchAll(/SELECT[\s\S]*?(?=;|END|$)/gi)];
-  const colRegex = new RegExp(`\\b${escapeRegExp(column)}\\b`, 'i');
-  let sql = '';
-  for (const m of selectMatches) {
-    if (colRegex.test(m[0])) {
-      sql = m[0];
-      break;
+
+  // default to CALL statement when definition cannot be retrieved
+  let sql = createSql ? '' : `CALL ${name}`;
+  let transformed = false;
+
+  if (createSql) {
+    const bodyMatch = createSql.match(/BEGIN\s*([\s\S]*)END/i);
+    const body = bodyMatch ? bodyMatch[1] : createSql;
+    function escapeRegExp(s) {
+      return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
-  }
-  if (!sql && selectMatches.length) {
-    sql = selectMatches[selectMatches.length - 1][0];
-  }
-  if (!sql) {
-    const file = `${name.replace(/[^a-z0-9_]/gi, '_')}_rows.sql`;
-    await fs.writeFile(path.join(process.cwd(), 'config', file), createSql);
-    return { rows: [], sql: createSql, file };
-  }
-  const colRe = escapeRegExp(column);
-  const sumRegex = new RegExp(
-    `SUM\\(([^)]*)\\)\\s*(?:AS\\s+)?` + '`?' + colRe + '`?',
-    'i',
-  );
-  const sumMatch = sql.match(sumRegex);
-  if (sumMatch) {
-    sql = sql.replace(sumRegex, `${sumMatch[1]} AS ${column}`);
-  }
-
-  sql = sql.replace(/GROUP BY[\s\S]*?(HAVING|ORDER BY|$)/i, '$1');
-  sql = sql.replace(/HAVING[\s\S]*?(ORDER BY|$)/i, '$1');
-
-  if (params && typeof params === 'object') {
-    for (const [key, val] of Object.entries(params)) {
-      const re = new RegExp(`\\b${escapeRegExp(key)}\\b`, 'gi');
-      const rep =
-        val === null || val === undefined
-          ? 'NULL'
-          : typeof val === 'number'
-          ? String(val)
-          : `'${val}'`;
-      sql = sql.replace(re, rep);
+    const selectMatches = [...body.matchAll(/SELECT[\s\S]*?(?=;|END|$)/gi)];
+    const colRegex = new RegExp(`\\b${escapeRegExp(column)}\\b`, 'i');
+    for (const m of selectMatches) {
+      if (colRegex.test(m[0])) {
+        sql = m[0];
+        break;
+      }
     }
-  }
-
-  if (sessionVars && typeof sessionVars === 'object') {
-    for (const [key, val] of Object.entries(sessionVars)) {
-      const re = new RegExp(`@session_${escapeRegExp(key)}\\b`, 'gi');
-      const rep =
-        val === null || val === undefined
-          ? 'NULL'
-          : typeof val === 'number'
-          ? String(val)
-          : `'${val}'`;
-      sql = sql.replace(re, rep);
+    if (!sql && selectMatches.length) {
+      sql = selectMatches[selectMatches.length - 1][0];
     }
-  }
+    if (sql) {
+      const colRe = escapeRegExp(column);
+      const sumRegex = new RegExp(
+        `SUM\\(([^)]*)\\)\\s*(?:AS\\s+)?` + '`?' + colRe + '`?`,
+        'i',
+      );
+      const sumMatch = sql.match(sumRegex);
+      if (sumMatch) {
+        sql = sql.replace(sumRegex, `${sumMatch[1]} AS ${column}`);
+      }
 
-  if (groupField && groupValue !== undefined) {
-    const rep =
-      typeof groupValue === 'number' ? String(groupValue) : `'${groupValue}'`;
-    if (/WHERE/i.test(sql)) {
-      sql = sql.replace(/WHERE/i, `WHERE ${groupField} = ${rep} AND `);
+      sql = sql.replace(/GROUP BY[\s\S]*?(HAVING|ORDER BY|$)/i, '$1');
+      sql = sql.replace(/HAVING[\s\S]*?(ORDER BY|$)/i, '$1');
+
+      if (params && typeof params === 'object') {
+        for (const [key, val] of Object.entries(params)) {
+          const re = new RegExp(`\\b${escapeRegExp(key)}\\b`, 'gi');
+          const rep =
+            val === null || val === undefined
+              ? 'NULL'
+              : typeof val === 'number'
+              ? String(val)
+              : `'${val}'`;
+          sql = sql.replace(re, rep);
+        }
+      }
+
+      if (sessionVars && typeof sessionVars === 'object') {
+        for (const [key, val] of Object.entries(sessionVars)) {
+          const re = new RegExp(`@session_${escapeRegExp(key)}\\b`, 'gi');
+          const rep =
+            val === null || val === undefined
+              ? 'NULL'
+              : typeof val === 'number'
+              ? String(val)
+              : `'${val}'`;
+          sql = sql.replace(re, rep);
+        }
+      }
+
+      if (groupField && groupValue !== undefined) {
+        const rep =
+          typeof groupValue === 'number' ? String(groupValue) : `'${groupValue}'`;
+        if (/WHERE/i.test(sql)) {
+          sql = sql.replace(/WHERE/i, `WHERE ${groupField} = ${rep} AND `);
+        } else {
+          sql += ` WHERE ${groupField} = ${rep}`;
+        }
+      }
+
+      sql = sql.replace(/;\s*$/, '');
+      transformed = true;
     } else {
-      sql += ` WHERE ${groupField} = ${rep}`;
+      // fall back to the full procedure definition if no SELECT match
+      sql = createSql;
     }
   }
-
-  // Trim trailing statement terminators to avoid MySQL complaining when
-  // executing the reconstructed query.
-  sql = sql.replace(/;\s*$/, '');
 
   const file = `${name.replace(/[^a-z0-9_]/gi, '_')}_rows.sql`;
   await fs.writeFile(path.join(process.cwd(), 'config', file), sql);
 
-  try {
-    const [out] = await pool.query(sql);
-    return { rows: out, sql, file };
-  } catch {
-    return { rows: [], sql, file };
+  if (transformed) {
+    try {
+      const [out] = await pool.query(sql);
+      return { rows: out, sql, file };
+    } catch {
+      return { rows: [], sql, file };
+    }
   }
+  return { rows: [], sql, file };
 }
