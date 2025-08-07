@@ -955,6 +955,8 @@ export async function listInventoryTransactions({
   endDate,
   page = 1,
   perPage = 50,
+  refCol,
+  refVal,
 } = {}) {
   const clauses = [];
   const params = [];
@@ -969,6 +971,10 @@ export async function listInventoryTransactions({
   if (endDate) {
     clauses.push('transaction_date <= ?');
     params.push(endDate);
+  }
+  if (refCol && /^[a-zA-Z0-9_]+$/.test(refCol)) {
+    clauses.push(`${refCol} = ?`);
+    params.push(refVal);
   }
   const where = clauses.length > 0 ? 'WHERE ' + clauses.join(' AND ') : '';
 

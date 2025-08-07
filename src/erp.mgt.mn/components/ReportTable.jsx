@@ -2,6 +2,7 @@ import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig, { updateCache } from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
+import Modal from './Modal.jsx';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -39,6 +40,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
   const [search, setSearch] = useState('');
   const [editLabels, setEditLabels] = useState(false);
   const [labelEdits, setLabelEdits] = useState({});
+  const [txnInfo, setTxnInfo] = useState(null);
 
   useEffect(() => {
     setPage(1);
@@ -130,6 +132,24 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
         ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
         : { col, dir: 'asc' },
     );
+  }
+
+  function handleCellClick(col, value) {
+    if (value === null || value === undefined || value === '') return;
+    setTxnInfo({ loading: true, col, value, data: [] });
+    fetch(
+      `/api/inventory_transactions?refCol=${encodeURIComponent(col)}&refVal=${encodeURIComponent(
+        value,
+      )}`,
+      { credentials: 'include' },
+    )
+      .then((res) => (res.ok ? res.json() : { rows: [] }))
+      .then((data) => {
+        setTxnInfo({ loading: false, col, value, data: data.rows || [] });
+      })
+      .catch(() => {
+        setTxnInfo({ loading: false, col, value, data: [] });
+      });
   }
 
   function handleSaveFieldLabels() {
@@ -285,7 +305,11 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                     style.textOverflow = 'ellipsis';
                   }
                   return (
-                    <td key={col} style={style}>
+                    <td
+                      key={col}
+                      style={{ ...style, cursor: row[col] ? 'pointer' : 'default' }}
+                      onClick={() => handleCellClick(col, row[col])}
+                    >
                       {numericColumns.includes(col) ? formatNumber(row[col]) : row[col]}
                     </td>
                   );
@@ -370,6 +394,59 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
           />
         </label>
       </div>
+      {txnInfo && (
+        <Modal
+          visible
+          title={`Transactions for ${txnInfo.col} = ${txnInfo.value}`}
+          onClose={() => setTxnInfo(null)}
+          width="80%"
+        >
+          {txnInfo.loading ? (
+            <div>Loading...</div>
+          ) : txnInfo.data.length > 0 ? (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                <thead>
+                  <tr>
+                    {Object.keys(txnInfo.data[0]).map((c) => (
+                      <th
+                        key={c}
+                        style={{
+                          padding: '0.25rem',
+                          border: '1px solid #d1d5db',
+                          textAlign: 'left',
+                        }}
+                      >
+                        {c}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {txnInfo.data.map((r, idx) => (
+                    <tr key={idx}>
+                      {Object.keys(txnInfo.data[0]).map((c) => (
+                        <td
+                          key={c}
+                          style={{
+                            padding: '0.25rem',
+                            border: '1px solid #d1d5db',
+                            textAlign: 'left',
+                          }}
+                        >
+                          {typeof r[c] === 'number' ? formatNumber(r[c]) : r[c]}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div>No transactions</div>
+          )}
+        </Modal>
+      )}
       {user?.role === 'admin' && generalConfig.general?.editLabelsEnabled && (
         <button
           onClick={() => {
