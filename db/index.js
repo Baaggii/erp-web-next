@@ -36,6 +36,8 @@ try {
 }
 import defaultModules from "./defaultModules.js";
 import { logDb } from "./debugLog.js";
+import fs from "fs/promises";
+import path from "path";
 
 const tableColumnsCache = new Map();
 
@@ -1077,9 +1079,9 @@ export async function getProcedureRawRows(
 ) {
   const [rows] = await pool.query(`SHOW CREATE PROCEDURE \`${name}\``);
   const createSql = rows && rows[0] && rows[0]['Create Procedure'];
-  if (!createSql) return [];
+  if (!createSql) return { rows: [], sql: '', file: '' };
   const match = createSql.match(/BEGIN\s+(SELECT[\s\S]*?)\s+END/i);
-  if (!match) return [];
+  if (!match) return { rows: [], sql: '', file: '' };
   let sql = match[1];
 
   const sumRegex = new RegExp(
@@ -1130,6 +1132,9 @@ export async function getProcedureRawRows(
     }
   }
 
+  const file = `${name.replace(/[^a-z0-9_]/gi, '_')}_rows.sql`;
+  await fs.writeFile(path.join(process.cwd(), 'config', file), sql);
+
   const [out] = await pool.query(sql);
-  return out;
+  return { rows: out, sql, file };
 }

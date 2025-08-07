@@ -51,6 +51,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
   const procFieldLabels = generalConfig.general?.procFieldLabels || {};
   const fieldLabels = procFieldLabels[procedure] || {};
   const headerMap = useHeaderMappings([procedure]);
+  const general = generalConfig.general || {};
 
   const columns = rows && rows.length ? Object.keys(rows[0]) : [];
 
@@ -159,12 +160,40 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       credentials: 'include',
       body: JSON.stringify(payload),
     })
-      .then((res) => (res.ok ? res.json() : { rows: [] }))
+      .then((res) => (res.ok ? res.json() : { rows: [], sql: '', file: '' }))
       .then((data) => {
         setTxnInfo({ loading: false, col, value, data: data.rows || [] });
+        if (general.reportRowToastEnabled) {
+          if (data.sql) {
+            const preview = data.sql.length > 200 ? `${data.sql.slice(0, 200)}…` : data.sql;
+            window.dispatchEvent(
+              new CustomEvent('toast', {
+                detail: {
+                  message: `SQL saved to ${data.file || ''}: ${preview}`,
+                  type: 'info',
+                },
+              }),
+            );
+          }
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: {
+                message: `Rows fetched: ${data.rows ? data.rows.length : 0}`,
+                type: data.rows && data.rows.length ? 'success' : 'error',
+              },
+            }),
+          );
+        }
       })
       .catch(() => {
         setTxnInfo({ loading: false, col, value, data: [] });
+        if (general.reportRowToastEnabled) {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message: 'Row fetch failed', type: 'error' },
+            }),
+          );
+        }
       });
   }
 

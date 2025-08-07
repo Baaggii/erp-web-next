@@ -19,6 +19,7 @@
     "triggerToastEnabled": false,
     "procToastEnabled": false,
     "viewToastEnabled": false,
+    "reportRowToastEnabled": false,
     "imageToastEnabled": false,
     "debugLoggingEnabled": false,
     "editLabelsEnabled": false,
