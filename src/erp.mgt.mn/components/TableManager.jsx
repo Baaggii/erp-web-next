@@ -1643,20 +1643,16 @@ const TableManager = forwardRef(function TableManager({
       >
         <div>
           Rows per page:
-          <select
+          <input
+            type="number"
             value={perPage}
             onChange={(e) => {
               setPage(1);
-              setPerPage(Number(e.target.value));
+              setPerPage(Number(e.target.value) || 1);
             }}
-            style={{ marginLeft: '0.25rem' }}
-          >
-            {[10, 25, 50].map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
+            min="1"
+            style={{ marginLeft: '0.25rem', width: '4rem' }}
+          />
         </div>
         <div>
           <button onClick={() => setPage(1)} disabled={page === 1} style={{ marginRight: '0.25rem' }}>
@@ -1670,7 +1666,22 @@ const TableManager = forwardRef(function TableManager({
             {'<'}
           </button>
           <span>
-            Page {page} of {Math.max(1, Math.ceil(count / perPage))}
+            Page
+            <input
+              type="number"
+              value={page}
+              onChange={(e) => {
+                let val = Number(e.target.value) || 1;
+                const max = Math.max(1, Math.ceil(count / perPage));
+                if (val < 1) val = 1;
+                if (val > max) val = max;
+                setPage(val);
+              }}
+              style={{ width: '3rem', margin: '0 0.25rem', textAlign: 'center' }}
+              min="1"
+              max={Math.max(1, Math.ceil(count / perPage))}
+            />
+            of {Math.max(1, Math.ceil(count / perPage))}
           </span>
           <button
             onClick={() => setPage((p) => Math.min(Math.ceil(count / perPage), p + 1))}
@@ -1990,20 +2001,16 @@ const TableManager = forwardRef(function TableManager({
       >
         <div>
           Rows per page:
-          <select
+          <input
+            type="number"
             value={perPage}
             onChange={(e) => {
               setPage(1);
-              setPerPage(Number(e.target.value));
+              setPerPage(Number(e.target.value) || 1);
             }}
-            style={{ marginLeft: '0.25rem' }}
-          >
-            {[10, 25, 50].map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
+            min="1"
+            style={{ marginLeft: '0.25rem', width: '4rem' }}
+          />
         </div>
         <div>
           <button onClick={() => setPage(1)} disabled={page === 1} style={{ marginRight: '0.25rem' }}>
@@ -2017,7 +2024,22 @@ const TableManager = forwardRef(function TableManager({
             {'<'}
           </button>
           <span>
-            Page {page} of {Math.max(1, Math.ceil(count / perPage))}
+            Page
+            <input
+              type="number"
+              value={page}
+              onChange={(e) => {
+                let val = Number(e.target.value) || 1;
+                const max = Math.max(1, Math.ceil(count / perPage));
+                if (val < 1) val = 1;
+                if (val > max) val = max;
+                setPage(val);
+              }}
+              style={{ width: '3rem', margin: '0 0.25rem', textAlign: 'center' }}
+              min="1"
+              max={Math.max(1, Math.ceil(count / perPage))}
+            />
+            of {Math.max(1, Math.ceil(count / perPage))}
           </span>
           <button
             onClick={() => setPage((p) => Math.min(Math.ceil(count / perPage), p + 1))}
