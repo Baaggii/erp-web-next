@@ -24,6 +24,7 @@ const defaults = {
     triggerToastEnabled: true,
     procToastEnabled: true,
     viewToastEnabled: true,
+    reportRowToastEnabled: true,
     imageToastEnabled: false,
     debugLoggingEnabled: false,
     editLabelsEnabled: false,
