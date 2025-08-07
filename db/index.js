@@ -955,6 +955,8 @@ export async function listInventoryTransactions({
   endDate,
   page = 1,
   perPage = 50,
+  refCol,
+  refVal,
 } = {}) {
   const clauses = [];
   const params = [];
@@ -969,6 +971,10 @@ export async function listInventoryTransactions({
   if (endDate) {
     clauses.push('transaction_date <= ?');
     params.push(endDate);
+  }
+  if (refCol && /^[a-zA-Z0-9_]+$/.test(refCol)) {
+    clauses.push(`${refCol} = ?`);
+    params.push(refVal);
   }
   const where = clauses.length > 0 ? 'WHERE ' + clauses.join(' AND ') : '';
 
@@ -1034,4 +1040,25 @@ export async function callStoredProcedure(name, params = [], aliases = []) {
   } finally {
     conn.release();
   }
+}
+
+export async function listStoredProcedures() {
+  const [rows] = await pool.query(
+    'SHOW PROCEDURE STATUS WHERE Db = DATABASE()'
+  );
+  return rows
+    .map((r) => r.Name)
+    .filter((n) => typeof n === 'string' && n.toLowerCase().includes('report'));
+}
+
+export async function getProcedureParams(name) {
+  const [rows] = await pool.query(
+    `SELECT PARAMETER_NAME AS name
+       FROM information_schema.parameters
+      WHERE SPECIFIC_NAME = ?
+        AND ROUTINE_TYPE = 'PROCEDURE'
+      ORDER BY ORDINAL_POSITION`,
+    [name],
+  );
+  return rows.map((r) => r.name).filter(Boolean);
 }
