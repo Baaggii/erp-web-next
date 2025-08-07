@@ -83,6 +83,7 @@ function parseEntry(raw = {}) {
       ? raw.allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
       : [],
     moduleLabel: typeof raw.moduleLabel === 'string' ? raw.moduleLabel : '',
+    procedures: arrify(raw.procedures || raw.procedure),
   };
 }
 
@@ -118,6 +119,18 @@ export async function getConfigsByTransTypeValue(val) {
     }
   }
   return result;
+}
+
+export async function findTableByProcedure(proc) {
+  if (!proc) return null;
+  const cfg = await readConfig();
+  for (const [tbl, names] of Object.entries(cfg)) {
+    for (const info of Object.values(names)) {
+      const parsed = parseEntry(info);
+      if (parsed.procedures.includes(proc)) return tbl;
+    }
+  }
+  return null;
 }
 
 export async function listTransactionNames({ moduleKey, branchId, departmentId } = {}) {
@@ -171,6 +184,7 @@ export async function setFormConfig(table, name, config, options = {}) {
     viewSource = {},
     transactionTypeField = '',
     transactionTypeValue = '',
+    procedures = [],
   } = config || {};
   const uid = arrify(userIdFields.length ? userIdFields : userIdField ? [userIdField] : []);
   const bid = arrify(
@@ -216,6 +230,7 @@ export async function setFormConfig(table, name, config, options = {}) {
     moduleLabel: moduleLabel || undefined,
     allowedBranches: ab,
     allowedDepartments: ad,
+    procedures: arrify(procedures),
   };
   if (editableFields !== undefined) {
     cfg[table][name].editableFields = arrify(editableFields);
