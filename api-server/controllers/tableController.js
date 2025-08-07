@@ -9,11 +9,11 @@ import {
   listTableRelationships,
   listTableColumns,
   listTableColumnMeta,
-  saveTableColumnLabels,
   pool,
   getPrimaryKeyColumns,
 } from '../../db/index.js';
 import { moveImagesToDeleted } from '../services/transactionImageService.js';
+import { addMappings } from '../services/headerMappings.js';
 let bcrypt;
 try {
   const mod = await import('bcryptjs');
@@ -158,7 +158,7 @@ export async function saveColumnLabels(req, res, next) {
   try {
     if (req.user.role !== 'admin') return res.sendStatus(403);
     const labels = req.body.labels || {};
-    await saveTableColumnLabels(req.params.table, labels);
+    await addMappings(labels);
     res.sendStatus(204);
   } catch (err) {
     next(err);
