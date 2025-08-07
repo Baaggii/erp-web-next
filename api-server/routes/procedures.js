@@ -49,7 +49,7 @@ router.post('/raw', requireAuth, async (req, res, next) => {
     const { name, params, column, groupField, groupValue, session } = req.body || {};
     if (!name || !column)
       return res.status(400).json({ message: 'name and column required' });
-    const { rows, sql, file } = await getProcedureRawRows(
+    const { rows, sql, original, file } = await getProcedureRawRows(
       name,
       params || {},
       column,
@@ -57,7 +57,7 @@ router.post('/raw', requireAuth, async (req, res, next) => {
       groupValue,
       { ...(session || {}), empid: req.user?.empid },
     );
-    res.json({ rows, sql, file });
+    res.json({ rows, sql, original, file });
   } catch (err) {
     next(err);
   }
