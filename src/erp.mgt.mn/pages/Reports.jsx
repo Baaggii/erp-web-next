@@ -19,7 +19,6 @@ export default function Reports() {
 
   useEffect(() => {
     const params = new URLSearchParams();
-    params.set('moduleKey', 'reports');
     if (company?.branch_id !== undefined)
       params.set('branchId', company.branch_id);
     if (company?.department_id !== undefined)
@@ -30,7 +29,9 @@ export default function Reports() {
         const set = new Set();
         Object.values(data || {}).forEach((cfg) => {
           if (Array.isArray(cfg.procedures)) {
-            cfg.procedures.forEach((p) => set.add(p));
+            cfg.procedures
+              .filter((p) => p.toLowerCase().includes('report'))
+              .forEach((p) => set.add(p));
           }
         });
         setProcedures(Array.from(set).sort());
