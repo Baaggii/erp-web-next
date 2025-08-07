@@ -692,6 +692,9 @@ export default function ImageManagement() {
     renameAbortRef.current = controller;
     setActiveOp('rename');
 
+    const chunkSize = 50;
+    let merged = [];
+
     try {
       for (let i = 0; i < items.length; i += chunkSize) {
         if (controller.signal.aborted) break;
@@ -703,6 +706,7 @@ export default function ImageManagement() {
             formData.append('images', file, u.originalName);
           } catch {
             addToast(`Missing local file: ${u.originalName}`, 'error');
+            merged.push({ originalName: u.originalName, reason: 'Missing local file' });
           }
         }
         if (![...formData].length) continue;
@@ -726,31 +730,22 @@ export default function ImageManagement() {
         return;
       }
 
-      if (merged.length) {
-        const fixRes = await fetch('/api/transaction_images/fix_incomplete', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ list: merged }),
-          signal: controller.signal,
-        });
-        if (!fixRes.ok) {
-          addToast('Rename failed', 'error');
-          return;
-        }
-        const fixData = await fixRes.json().catch(() => ({}));
-        addToast(`Renamed ${fixData.fixed || 0} file(s)`, 'success');
-        setReport(`Renamed ${fixData.fixed || 0} file(s)`);
-      }
+      const mapResults = (arr) =>
+        arr
+          .map((u) => {
+            const found = merged.find((x) => x.originalName === u.originalName);
+            return found ? { ...u, ...found, id: u.id } : u;
+          })
+          .sort((a, b) => a.originalName.localeCompare(b.originalName));
 
-      const renamed = new Set(merged.map((x) => x.originalName));
-      const newUploads = uploads.filter((u) => !renamed.has(u.originalName));
-      const newIgnored = ignored.filter((u) => !renamed.has(u.originalName));
+      const newUploads = mapResults(uploads);
+      const newIgnored = mapResults(ignored);
 
       setUploads(newUploads);
       setIgnored(newIgnored);
       setUploadSel([]);
       persistAll({ uploads: newUploads, ignored: newIgnored });
+      setReport(`Renamed ${merged.length} file(s)`);
     } catch {
       if (controller.signal.aborted) addToast('Rename canceled', 'info');
       else addToast('Rename failed', 'error');
