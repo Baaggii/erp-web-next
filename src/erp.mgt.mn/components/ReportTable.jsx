@@ -3,6 +3,22 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig, { updateCache } from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
 
+function ch(n) {
+  return Math.round(n * 8);
+}
+
+function getAverageLength(columnKey, data) {
+  const values = data
+    .slice(0, 20)
+    .map((r) => (r[columnKey] ?? '').toString());
+  if (values.length === 0) return 0;
+  return Math.round(
+    values.reduce((sum, val) => sum + val.length, 0) / values.length,
+  );
+}
+
+const MAX_WIDTH = ch(40);
+
 export default function ReportTable({ procedure = '', params = {}, rows = [] }) {
   const { user } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
@@ -46,6 +62,50 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       return 0;
     });
   }, [filtered, sort]);
+
+  const columnAlign = useMemo(() => {
+    const map = {};
+    columns.forEach((c) => {
+      const sample = sorted.find((r) => r[c] !== null && r[c] !== undefined);
+      map[c] = typeof sample?.[c] === 'number' ? 'right' : 'left';
+    });
+    return map;
+  }, [columns, sorted]);
+
+  const columnWidths = useMemo(() => {
+    const map = {};
+    if (sorted.length === 0) return map;
+    columns.forEach((c) => {
+      const avg = getAverageLength(c, sorted);
+      let w;
+      if (avg <= 4) w = ch(Math.max(avg + 1, 5));
+      else if (avg <= 10) w = ch(12);
+      else w = ch(20);
+      map[c] = Math.min(w, MAX_WIDTH);
+    });
+    return map;
+  }, [columns, sorted]);
+
+  const numericColumns = useMemo(
+    () =>
+      columns.filter((c) =>
+        sorted.some(
+          (r) => r[c] !== null && r[c] !== '' && !isNaN(Number(String(r[c]).replace(',', '.'))),
+        ),
+      ),
+    [columns, sorted],
+  );
+
+  const totals = useMemo(() => {
+    const sums = {};
+    numericColumns.forEach((c) => {
+      sums[c] = sorted.reduce((sum, r) => {
+        const val = Number(String(r[c] ?? 0).replace(',', '.'));
+        return sum + (isNaN(val) ? 0 : val);
+      }, 0);
+    });
+    return sums;
+  }, [numericColumns, sorted]);
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / perPage));
   const pageRows = useMemo(
@@ -148,19 +208,6 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
           placeholder="Search"
           style={{ marginRight: '0.5rem' }}
         />
-        <label>
-          Page size:
-          <input
-            type="number"
-            value={perPage}
-            onChange={(e) => {
-              setPerPage(Number(e.target.value) || 1);
-              setPage(1);
-            }}
-            min="1"
-            style={{ marginLeft: '0.25rem', width: '4rem' }}
-          />
-        </label>
       </div>
       <div style={{ overflowX: 'auto' }}>
         <table
@@ -180,11 +227,26 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                   style={{
                     padding: '0.5rem',
                     border: '1px solid #d1d5db',
-                    textAlign: 'left',
-                    whiteSpace: 'nowrap',
-                    cursor: 'pointer',
+                    whiteSpace: 'normal',
+                    wordBreak: 'break-word',
+                    lineHeight: 1.2,
+                    fontSize: '0.75rem',
+                    textAlign: columnAlign[col],
+                    width: columnWidths[col],
+                    minWidth: columnWidths[col],
+                    maxWidth: MAX_WIDTH,
                     resize: 'horizontal',
-                    overflow: 'auto',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    cursor: 'pointer',
+                    ...(columnWidths[col] <= ch(8)
+                      ? {
+                          writingMode: 'vertical-rl',
+                          transform: 'rotate(180deg)',
+                          overflowWrap: 'break-word',
+                          maxHeight: '15ch',
+                        }
+                      : {}),
                   }}
                 >
                   {fieldLabels[col] || col}
@@ -196,21 +258,53 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
           <tbody>
             {pageRows.map((row, idx) => (
               <tr key={idx}>
-                {columns.map((col) => (
+                {columns.map((col) => {
+                  const w = columnWidths[col];
+                  const style = {
+                    padding: '0.5rem',
+                    border: '1px solid #d1d5db',
+                    textAlign: columnAlign[col],
+                  };
+                  if (w) {
+                    style.width = w;
+                    style.minWidth = w;
+                    style.maxWidth = MAX_WIDTH;
+                    style.whiteSpace = 'nowrap';
+                    style.overflow = 'hidden';
+                    style.textOverflow = 'ellipsis';
+                  }
+                  return (
+                    <td key={col} style={style}>
+                      {row[col]}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+          {numericColumns.length > 0 && (
+            <tfoot>
+              <tr>
+                {columns.map((col, idx) => (
                   <td
                     key={col}
                     style={{
                       padding: '0.5rem',
                       border: '1px solid #d1d5db',
-                      whiteSpace: 'nowrap',
+                      textAlign: columnAlign[col],
+                      fontWeight: 'bold',
                     }}
                   >
-                    {row[col]}
+                    {idx === 0
+                      ? 'TOTAL'
+                      : numericColumns.includes(col)
+                      ? totals[col]
+                      : ''}
                   </td>
                 ))}
               </tr>
-            ))}
-          </tbody>
+            </tfoot>
+          )}
         </table>
       </div>
       <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center' }}>
@@ -251,6 +345,19 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
         <button onClick={() => setPage(totalPages)} disabled={page === totalPages}>
           {'>>'}
         </button>
+        <label style={{ marginLeft: '1rem' }}>
+          Page size:
+          <input
+            type="number"
+            value={perPage}
+            onChange={(e) => {
+              setPerPage(Number(e.target.value) || 1);
+              setPage(1);
+            }}
+            min="1"
+            style={{ marginLeft: '0.25rem', width: '4rem' }}
+          />
+        </label>
       </div>
       {user?.role === 'admin' && generalConfig.general?.editLabelsEnabled && (
         <button
