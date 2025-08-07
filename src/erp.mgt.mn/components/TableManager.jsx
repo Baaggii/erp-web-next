@@ -19,6 +19,7 @@ import ImageSearchModal from './ImageSearchModal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -163,6 +164,7 @@ const TableManager = forwardRef(function TableManager({
   const [typeFilter, setTypeFilter] = useState('');
   const [typeOptions, setTypeOptions] = useState([]);
   const { user, company } = useContext(AuthContext);
+  const generalConfig = useGeneralConfig();
   const { addToast } = useToast();
 
   useEffect(() => {
@@ -1475,36 +1477,62 @@ const TableManager = forwardRef(function TableManager({
               const val = e.target.value;
               setDatePreset(val);
               const now = new Date();
+              const y = now.getFullYear();
+              const m = now.getMonth();
+              const fmt = (d) => formatTimestamp(d).slice(0, 10);
               if (val === 'custom') {
                 setCustomStartDate('');
                 setCustomEndDate('');
                 setDateFilter('');
                 return;
               }
-              if (val === 'month') {
-                const m = String(now.getMonth() + 1).padStart(2, '0');
-                setDateFilter(`${now.getFullYear()}-${m}`);
-                return;
+              let start;
+              let end;
+              switch (val) {
+                case 'month':
+                  start = new Date(y, m, 1);
+                  end = new Date(y, m + 1, 1);
+                  break;
+                case 'q1':
+                  start = new Date(y, 0, 1);
+                  end = new Date(y, 3, 1);
+                  break;
+                case 'q2':
+                  start = new Date(y, 3, 1);
+                  end = new Date(y, 6, 1);
+                  break;
+                case 'q3':
+                  start = new Date(y, 6, 1);
+                  end = new Date(y, 9, 1);
+                  break;
+                case 'q4':
+                  start = new Date(y, 9, 1);
+                  end = new Date(y + 1, 0, 1);
+                  break;
+                case 'quarter': {
+                  const q = Math.floor(m / 3);
+                  start = new Date(y, q * 3, 1);
+                  end = new Date(y, q * 3 + 3, 1);
+                  break;
+                }
+                case 'year':
+                  start = new Date(y, 0, 1);
+                  end = new Date(y + 1, 0, 1);
+                  break;
+                default:
+                  setDateFilter('');
+                  return;
               }
-              if (val === 'year') {
-                setDateFilter(String(now.getFullYear()));
-                return;
-              }
-              if (val === 'quarter') {
-                const q = Math.floor(now.getMonth() / 3);
-                const start = new Date(now.getFullYear(), q * 3, 1);
-                const end = new Date(now.getFullYear(), q * 3 + 3, 0);
-                setDateFilter(
-                  `${formatTimestamp(start).slice(0, 10)}-${formatTimestamp(end).slice(0, 10)}`,
-                );
-                return;
-              }
-              setDateFilter('');
-            }}
+              setDateFilter(`${fmt(start)}-${fmt(end)}`);
+              }}
             style={{ marginRight: '0.5rem' }}
           >
             <option value="custom">Custom</option>
             <option value="month">This Month</option>
+            <option value="q1">Quarter #1</option>
+            <option value="q2">Quarter #2</option>
+            <option value="q3">Quarter #3</option>
+            <option value="q4">Quarter #4</option>
             <option value="quarter">This Quarter</option>
             <option value="year">This Year</option>
           </select>
@@ -2138,7 +2166,7 @@ const TableManager = forwardRef(function TableManager({
           </li>
         </ul>
       )}
-      {user?.role === 'admin' && (
+      {user?.role === 'admin' && generalConfig.general?.editLabelsEnabled && (
         <button onClick={() => {
           const map = {};
           columnMeta.forEach((c) => { map[c.name] = c.label || ''; });
@@ -2171,11 +2199,11 @@ const TableManager = forwardRef(function TableManager({
             <div style={{ textAlign: 'right' }}>
               <button onClick={() => setEditLabels(false)} style={{ marginRight: '0.5rem' }}>Cancel</button>
               <button onClick={async () => {
-                await fetch(`/api/tables/${encodeURIComponent(table)}/labels`, {
-                  method: 'PUT',
+                await fetch('/api/header_mappings', {
+                  method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   credentials: 'include',
-                  body: JSON.stringify({ labels: labelEdits }),
+                  body: JSON.stringify({ mappings: labelEdits }),
                 });
                 const res = await fetch(`/api/tables/${encodeURIComponent(table)}/columns`, { credentials: 'include' });
                 if (res.ok) {
