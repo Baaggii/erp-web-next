@@ -92,6 +92,7 @@ export default function ImageManagement() {
   const [ignored, setIgnored] = useState([]);
   const [ignoredPage, setIgnoredPage] = useState(1);
   const [folderName, setFolderName] = useState('');
+  const [folderFiles, setFolderFiles] = useState([]);
   const [uploadSummary, setUploadSummary] = useState(null);
   const [pendingSummary, setPendingSummary] = useState(null);
   const [pageSize, setPageSize] = useState(200);
@@ -156,13 +157,23 @@ export default function ImageManagement() {
     const mapUploads = (list = []) =>
       list
         .filter(Boolean)
-        .map(({ originalName = '', newName = '', tmpPath = '', reason = '', processed }) => ({
-          originalName,
-          newName,
-          tmpPath,
-          reason,
-          processed: !!processed,
-        }));
+        .map(
+          ({
+            originalName = '',
+            newName = '',
+            tmpPath = '',
+            reason = '',
+            processed,
+            index,
+          }) => ({
+            originalName,
+            newName,
+            tmpPath,
+            reason,
+            index,
+            processed: !!processed,
+          }),
+        );
 
     return {
       folderName: partial.folderName ?? (folderName || ''),
@@ -187,25 +198,28 @@ export default function ImageManagement() {
 
   function applySession(data = {}) {
     setFolderName(data.folderName || '');
-    setUploads(
-      Array.isArray(data.uploads)
-        ? data.uploads.map((u) => ({
-            ...u,
-            id: u.originalName,
-            description: extractDateFromName(u.originalName),
-            processed: !!u.processed,
-          }))
-        : [],
-    );
-    setIgnored(
-      Array.isArray(data.ignored)
-        ? data.ignored.map((u) => ({
-            ...u,
-            id: u.originalName,
-            description: extractDateFromName(u.originalName),
-            processed: !!u.processed,
-          }))
-        : [],
+    const upArr = Array.isArray(data.uploads)
+      ? data.uploads.map((u) => ({
+          ...u,
+          id: u.originalName,
+          description: extractDateFromName(u.originalName),
+          processed: !!u.processed,
+          index: u.index,
+        }))
+      : [];
+    const igArr = Array.isArray(data.ignored)
+      ? data.ignored.map((u) => ({
+          ...u,
+          id: u.originalName,
+          description: extractDateFromName(u.originalName),
+          processed: !!u.processed,
+          index: u.index,
+        }))
+      : [];
+    setUploads(upArr);
+    setIgnored(igArr);
+    setFolderFiles(
+      [...upArr, ...igArr].map((u) => ({ name: u.originalName, handle: u.handle, index: u.index })),
     );
     setPending(
       Array.isArray(data.pending)
@@ -475,15 +489,14 @@ export default function ImageManagement() {
     try {
       const dirHandle = await window.showDirectoryPicker();
       dirHandleRef.current = dirHandle;
-      const handles = {};
-      const names = [];
+      const files = [];
       for await (const entry of dirHandle.values()) {
         if (scanCancelRef.current) break;
         if (entry.kind === 'file') {
-          names.push(entry.name);
-          handles[entry.name] = entry;
+          files.push({ name: entry.name, handle: entry, index: files.length });
         }
       }
+      const names = files.map((f) => f.name);
       if (scanCancelRef.current) return;
       const chunkSize = 200;
       let all = [];
@@ -517,25 +530,34 @@ export default function ImageManagement() {
       if (scanCancelRef.current) return;
       setFolderName(dirHandle.name || '');
       const sorted = all.slice().sort((a, b) => a.originalName.localeCompare(b.originalName));
-      const uploadsList = sorted.map((u) => ({
-        originalName: u.originalName,
-        id: u.originalName,
-        handle: handles[u.originalName],
-        description: extractDateFromName(u.originalName),
-        processed: false,
-      }));
+      const uploadsList = sorted.map((u) => {
+        const f = files.find((p) => p.name === u.originalName);
+        return {
+          originalName: u.originalName,
+          id: u.originalName,
+          handle: f?.handle,
+          index: f?.index,
+          description: extractDateFromName(u.originalName),
+          processed: false,
+        };
+      });
       setUploads(uploadsList);
       const skippedSorted = skipped
         .slice()
         .sort((a, b) => a.originalName.localeCompare(b.originalName));
-      const ignoredList = skippedSorted.map((u) => ({
-        originalName: u.originalName,
-        id: u.originalName,
-        handle: handles[u.originalName],
-        reason: u.reason,
-        processed: false,
-      }));
+      const ignoredList = skippedSorted.map((u) => {
+        const f = files.find((p) => p.name === u.originalName);
+        return {
+          originalName: u.originalName,
+          id: u.originalName,
+          handle: f?.handle,
+          index: f?.index,
+          reason: u.reason,
+          processed: false,
+        };
+      });
       setIgnored(ignoredList);
+      setFolderFiles(files);
       setUploadSummary({ totalFiles: names.length, processed, unflagged: skipped.length });
       setUploadSel([]);
       setUploadPage(1);
@@ -680,8 +702,13 @@ export default function ImageManagement() {
       return;
     }
 
+    if (uploadSel.length === 0) {
+      addToast('No files selected', 'error');
+      return;
+    }
+
     const items = [...uploads, ...ignored].filter(
-      (u) => uploadSel.includes(u.id) && u.handle && !u.tmpPath && !u.processed,
+      (u) => uploadSel.includes(u.id) && !u.processed,
     );
     if (items.length === 0) {
       addToast('No local files to rename', 'error');
@@ -692,24 +719,43 @@ export default function ImageManagement() {
     renameAbortRef.current = controller;
     setActiveOp('rename');
 
-    async function uploadCheckBatch(batch) {
-      if (controller.signal.aborted) return { list: [], missing: [], failed: [] };
-      const formData = new FormData();
-      const ids = [];
-      const missing = [];
-      for (const u of batch) {
-        try {
-          const file = await u.handle.getFile();
-          formData.append('images', file, u.originalName);
-          ids.push(u.id);
-        } catch {
-          addToast(`Missing local file: ${u.originalName}`, 'error');
-          missing.push(u.id);
+    const chunkSize = 50;
+    let merged = [];
+    let skipped = 0;
+
+    try {
+      for (let i = 0; i < items.length; i += chunkSize) {
+        if (controller.signal.aborted) break;
+        const chunk = items.slice(i, i + chunkSize);
+        const formData = new FormData();
+        for (const u of chunk) {
+          const f = folderFiles[u.index];
+          if (!f?.handle) {
+            addToast(`Missing local file: ${u.originalName}`, 'error');
+            merged.push({ index: u.index, reason: 'Missing local file' });
+            skipped += 1;
+            continue;
+          }
+          try {
+            const file = await f.handle.getFile();
+            formData.append('images', file, u.originalName);
+            formData.append(
+              'meta',
+              JSON.stringify({
+                index: u.index,
+                originalName: u.originalName,
+                rowId: u.rowId,
+                transType: u.transType,
+              }),
+            );
+          } catch {
+            addToast(`Missing local file: ${u.originalName}`, 'error');
+            merged.push({ index: u.index, reason: 'Missing local file' });
+            skipped += 1;
+          }
         }
-      }
-      if (ids.length === 0) return { list: [], missing, failed: [] };
-      try {
-        res = await fetch('/api/transaction_images/upload_check', {
+        if (![...formData].length) continue;
+        const res = await fetch('/api/transaction_images/upload_check', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -717,84 +763,75 @@ export default function ImageManagement() {
         });
         if (res.ok) {
           const data = await res.json().catch(() => ({}));
-          return { list: Array.isArray(data.list) ? data.list : [], missing, failed: [] };
+          return Array.isArray(data.list) ? data.list : [];
         }
-      } catch {
-        if (controller.signal.aborted) return { list: [], missing, failed: [] };
+        const data = await res.json().catch(() => ({}));
+        const list = Array.isArray(data.list) ? data.list : null;
+        if (!list) {
+          addToast('Rename failed', 'error');
+          return;
+        }
+        for (const r of list) {
+          if (typeof r.index === 'undefined') {
+            addToast('Rename failed', 'error');
+            return;
+          }
+        }
+        merged = merged.concat(list);
       }
-      addToast('Rename failed', 'error');
-      return { list: [], missing, failed: ids };
-    }
 
-    let newUploads = uploads.slice();
-    let newIgnored = ignored.slice();
-    let renamedCount = 0;
-    try {
-      for (let i = 0; i < items.length && !controller.signal.aborted; i += 50) {
-        const batch = items.slice(i, i + 50);
-        const { list: res, missing, failed } = await uploadCheckBatch(batch);
-        renamedCount += res.length;
-        const resMap = new Map(res.map((r) => [r.originalName, r]));
-        const ids = new Set(batch.map((u) => u.id));
-        const missingSet = new Set(missing);
-        const failedSet = new Set(failed);
-        newUploads = newUploads
-          .map((u) => {
-            if (!ids.has(u.id)) return u;
-            if (missingSet.has(u.id)) {
-              const msg = 'Missing local file';
-              return { ...u, description: msg, reason: msg };
-            }
-            const found = resMap.get(u.originalName);
-            if (found) {
-              const merged = { ...u, ...found, id: u.id, reason: '' };
-              return { ...merged, description: extractDateFromName(merged.originalName) };
-            }
-            if (failedSet.has(u.id)) {
-              const msg = 'Rename failed';
-              return { ...u, description: msg, reason: msg };
-            }
-            const msg = u.reason && u.reason !== 'Rename failed' ? u.reason : 'No match found';
-            return { ...u, description: msg, reason: msg };
-          })
-          .sort((a, b) => a.originalName.localeCompare(b.originalName));
-        newIgnored = newIgnored
-          .map((u) => {
-            if (!ids.has(u.id)) return u;
-            if (missingSet.has(u.id)) {
-              const msg = 'Missing local file';
-              return { ...u, description: msg, reason: msg };
-            }
-            const found = resMap.get(u.originalName);
-            if (found) {
-              const merged = { ...u, ...found, id: u.id, reason: '' };
-              return { ...merged, description: extractDateFromName(merged.originalName) };
-            }
-            if (failedSet.has(u.id)) {
-              const msg = 'Rename failed';
-              return { ...u, description: msg, reason: msg };
-            }
-            const msg = u.reason && u.reason !== 'Rename failed' ? u.reason : 'No match found';
-            return { ...u, description: msg, reason: msg };
-          })
-          .sort((a, b) => a.originalName.localeCompare(b.originalName));
-        setUploads(newUploads);
-        setIgnored(newIgnored);
-        persistAll({ uploads: newUploads, ignored: newIgnored });
-      }
       if (controller.signal.aborted) {
         addToast('Rename canceled', 'info');
         return;
       }
+
+      const resultMap = new Map(merged.map((r) => [String(r.index), r]));
+      const updateList = (arr) =>
+        arr
+          .map((u) => {
+            if (!uploadSel.includes(u.id)) return u;
+            const r = resultMap.get(String(u.index));
+            if (!r) {
+              const reason = u.reason || 'No match found';
+              return { ...u, reason, description: reason };
+            }
+            if (!r.newName) {
+              const reason = r.reason || 'No match found';
+              return { ...u, reason, description: reason };
+            }
+            return {
+              ...u,
+              newName: r.newName,
+              folder: r.folder,
+              folderDisplay: r.folderDisplay,
+              tmpPath: r.tmpPath,
+              description: extractDateFromName(r.newName),
+            };
+          })
+          .sort((a, b) => a.originalName.localeCompare(b.originalName));
+
+      const newUploads = updateList(uploads);
+      const newIgnored = updateList(ignored);
+
+      const processedCount = merged.filter((m) => m.newName).length;
+      const skipCount =
+        skipped + items.filter((u) => !resultMap.has(String(u.index))).length +
+        merged.filter((m) => !m.newName).length;
+      if (processedCount) addToast(`Renamed ${processedCount} file(s)`, 'success');
+      else addToast('No files renamed', 'warning');
+      if (skipCount) addToast(`Skipped ${skipCount} file(s)`, 'warning');
+
+      setUploads(newUploads);
+      setIgnored(newIgnored);
+      setUploadSel([]);
+      persistAll({ uploads: newUploads, ignored: newIgnored });
+      setReport(`Renamed ${processedCount} file(s)`);
+    } catch {
+      if (controller.signal.aborted) addToast('Rename canceled', 'info');
+      else addToast('Rename failed', 'error');
     } finally {
       setActiveOp(null);
     }
-
-    setUploads(newUploads);
-    setIgnored(newIgnored);
-    persistAll({ uploads: newUploads, ignored: newIgnored });
-    setUploadSel((s) => s.filter((id) => !items.some((u) => u.id === id)));
-    setReport(`Renamed ${renamedCount} file(s)`);
   }
 
   async function commitUploads() {
