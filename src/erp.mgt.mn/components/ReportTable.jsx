@@ -1,9 +1,38 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig, { updateCache } from '../hooks/useGeneralConfig.js';
+import useHeaderMappings from '../hooks/useHeaderMappings.js';
+import Modal from './Modal.jsx';
+
+function ch(n) {
+  return Math.round(n * 8);
+}
+
+function getAverageLength(columnKey, data) {
+  const values = data
+    .slice(0, 20)
+    .map((r) => (r[columnKey] ?? '').toString());
+  if (values.length === 0) return 0;
+  return Math.round(
+    values.reduce((sum, val) => sum + val.length, 0) / values.length,
+  );
+}
+
+const MAX_WIDTH = ch(40);
+
+const numberFmt = new Intl.NumberFormat('en-US', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+function formatNumber(val) {
+  if (val === null || val === undefined || val === '') return '';
+  const num = Number(String(val).replace(',', '.'));
+  return Number.isNaN(num) ? '' : numberFmt.format(num);
+}
 
 export default function ReportTable({ procedure = '', params = {}, rows = [] }) {
-  const { user } = useContext(AuthContext);
+  const { user, company } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
@@ -11,14 +40,18 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
   const [search, setSearch] = useState('');
   const [editLabels, setEditLabels] = useState(false);
   const [labelEdits, setLabelEdits] = useState({});
+  const [txnInfo, setTxnInfo] = useState(null);
 
   useEffect(() => {
     setPage(1);
   }, [rows]);
 
+
   const procLabels = generalConfig.general?.procLabels || {};
   const procFieldLabels = generalConfig.general?.procFieldLabels || {};
   const fieldLabels = procFieldLabels[procedure] || {};
+  const headerMap = useHeaderMappings([procedure]);
+  const general = generalConfig.general || {};
 
   const columns = rows && rows.length ? Object.keys(rows[0]) : [];
 
@@ -45,6 +78,50 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     });
   }, [filtered, sort]);
 
+  const columnAlign = useMemo(() => {
+    const map = {};
+    columns.forEach((c) => {
+      const sample = sorted.find((r) => r[c] !== null && r[c] !== undefined);
+      map[c] = typeof sample?.[c] === 'number' ? 'right' : 'left';
+    });
+    return map;
+  }, [columns, sorted]);
+
+  const columnWidths = useMemo(() => {
+    const map = {};
+    if (sorted.length === 0) return map;
+    columns.forEach((c) => {
+      const avg = getAverageLength(c, sorted);
+      let w;
+      if (avg <= 4) w = ch(Math.max(avg + 1, 5));
+      else if (avg <= 10) w = ch(12);
+      else w = ch(20);
+      map[c] = Math.min(w, MAX_WIDTH);
+    });
+    return map;
+  }, [columns, sorted]);
+
+  const numericColumns = useMemo(
+    () =>
+      columns.filter((c) =>
+        sorted.some(
+          (r) => r[c] !== null && r[c] !== '' && !isNaN(Number(String(r[c]).replace(',', '.'))),
+        ),
+      ),
+    [columns, sorted],
+  );
+
+  const totals = useMemo(() => {
+    const sums = {};
+    numericColumns.forEach((c) => {
+      sums[c] = sorted.reduce((sum, r) => {
+        const val = Number(String(r[c] ?? 0).replace(',', '.'));
+        return sum + (isNaN(val) ? 0 : val);
+      }, 0);
+    });
+    return sums;
+  }, [numericColumns, sorted]);
+
   const totalPages = Math.max(1, Math.ceil(sorted.length / perPage));
   const pageRows = useMemo(
     () => sorted.slice((page - 1) * perPage, page * perPage),
@@ -57,6 +134,67 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
         ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
         : { col, dir: 'asc' },
     );
+  }
+
+  function handleCellClick(col, value, row) {
+    const num = Number(String(value).replace(',', '.'));
+    if (!procedure || Number.isNaN(num) || num <= 0) return;
+    const firstField = columns[0];
+    const payload = {
+      name: procedure,
+      column: col,
+      params,
+      groupField: firstField,
+      groupValue: row[firstField],
+      session: {
+        empid: user?.empid,
+        company_id: company?.company_id,
+        branch_id: company?.branch_id,
+        department_id: company?.department_id,
+      },
+    };
+    setTxnInfo({ loading: true, col, value, data: [] });
+    fetch('/api/procedures/raw', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    })
+      .then((res) => (res.ok ? res.json() : { rows: [], sql: '', file: '' }))
+      .then((data) => {
+        setTxnInfo({ loading: false, col, value, data: data.rows || [] });
+        if (general.reportRowToastEnabled) {
+          if (data.sql) {
+            const preview = data.sql.length > 200 ? `${data.sql.slice(0, 200)}…` : data.sql;
+            window.dispatchEvent(
+              new CustomEvent('toast', {
+                detail: {
+                  message: `SQL saved to ${data.file || ''}: ${preview}`,
+                  type: 'info',
+                },
+              }),
+            );
+          }
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: {
+                message: `Rows fetched: ${data.rows ? data.rows.length : 0}`,
+                type: data.rows && data.rows.length ? 'success' : 'error',
+              },
+            }),
+          );
+        }
+      })
+      .catch(() => {
+        setTxnInfo({ loading: false, col, value, data: [] });
+        if (general.reportRowToastEnabled) {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message: 'Row fetch failed', type: 'error' },
+            }),
+          );
+        }
+      });
   }
 
   function handleSaveFieldLabels() {
@@ -97,14 +235,14 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       .then((data) => data && updateCache(data));
   }
 
-  const procLabel = procLabels[procedure] || procedure;
+  const procLabel = procLabels[procedure] || headerMap[procedure] || procedure;
   const paramText =
     generalConfig.general?.showReportParams &&
     params &&
     Object.keys(params).length > 0
-      ? ` (${Object.entries(params)
+      ? Object.entries(params)
           .map(([k, v]) => `${k}=${v}`)
-          .join(', ')})`
+          .join(', ')
       : '';
 
   if (!rows || rows.length === 0) {
@@ -121,6 +259,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
             </button>
           )}
         </h4>
+        {paramText && <div style={{ marginTop: '0.25rem' }}>{paramText}</div>}
         <p>No data</p>
       </div>
     );
@@ -130,13 +269,13 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     <div style={{ marginTop: '1rem' }}>
       <h4>
         {procLabel}
-        {paramText}
         {user?.role === 'admin' && generalConfig.general?.editLabelsEnabled && (
           <button onClick={handleEditProcLabel} style={{ marginLeft: '0.5rem' }}>
             Edit label
           </button>
         )}
       </h4>
+      {paramText && <div style={{ marginTop: '0.25rem' }}>{paramText}</div>}
       <div style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center' }}>
         <input
           type="text"
@@ -145,23 +284,6 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
           placeholder="Search"
           style={{ marginRight: '0.5rem' }}
         />
-        <label>
-          Page size:
-          <select
-            value={perPage}
-            onChange={(e) => {
-              setPerPage(Number(e.target.value));
-              setPage(1);
-            }}
-            style={{ marginLeft: '0.25rem' }}
-          >
-            {[10, 25, 50, 100, 250, 500, 1000].map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-        </label>
       </div>
       <div style={{ overflowX: 'auto' }}>
         <table
@@ -181,11 +303,26 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                   style={{
                     padding: '0.5rem',
                     border: '1px solid #d1d5db',
-                    textAlign: 'left',
-                    whiteSpace: 'nowrap',
-                    cursor: 'pointer',
+                    whiteSpace: 'normal',
+                    wordBreak: 'break-word',
+                    lineHeight: 1.2,
+                    fontSize: '0.75rem',
+                    textAlign: columnAlign[col],
+                    width: columnWidths[col],
+                    minWidth: columnWidths[col],
+                    maxWidth: MAX_WIDTH,
                     resize: 'horizontal',
-                    overflow: 'auto',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    cursor: 'pointer',
+                    ...(columnWidths[col] <= ch(8)
+                      ? {
+                          writingMode: 'vertical-rl',
+                          transform: 'rotate(180deg)',
+                          overflowWrap: 'break-word',
+                          maxHeight: '15ch',
+                        }
+                      : {}),
                   }}
                 >
                   {fieldLabels[col] || col}
@@ -197,21 +334,57 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
           <tbody>
             {pageRows.map((row, idx) => (
               <tr key={idx}>
-                {columns.map((col) => (
+                {columns.map((col) => {
+                  const w = columnWidths[col];
+                  const style = {
+                    padding: '0.5rem',
+                    border: '1px solid #d1d5db',
+                    textAlign: columnAlign[col],
+                  };
+                  if (w) {
+                    style.width = w;
+                    style.minWidth = w;
+                    style.maxWidth = MAX_WIDTH;
+                    style.whiteSpace = 'nowrap';
+                    style.overflow = 'hidden';
+                    style.textOverflow = 'ellipsis';
+                  }
+                  return (
+                    <td
+                      key={col}
+                      style={{ ...style, cursor: row[col] ? 'pointer' : 'default' }}
+                      onClick={() => handleCellClick(col, row[col], row)}
+                    >
+                      {numericColumns.includes(col) ? formatNumber(row[col]) : row[col]}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+          {numericColumns.length > 0 && (
+            <tfoot>
+              <tr>
+                {columns.map((col, idx) => (
                   <td
                     key={col}
                     style={{
                       padding: '0.5rem',
                       border: '1px solid #d1d5db',
-                      whiteSpace: 'nowrap',
+                      textAlign: columnAlign[col],
+                      fontWeight: 'bold',
                     }}
                   >
-                    {row[col]}
+                    {idx === 0
+                      ? 'TOTAL'
+                      : numericColumns.includes(col)
+                      ? formatNumber(totals[col])
+                      : ''}
                   </td>
                 ))}
               </tr>
-            ))}
-          </tbody>
+            </tfoot>
+          )}
         </table>
       </div>
       <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center' }}>
@@ -226,7 +399,21 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
           {'<'}
         </button>
         <span style={{ margin: '0 0.5rem' }}>
-          Page {page} of {totalPages}
+          Page
+          <input
+            type="number"
+            value={page}
+            onChange={(e) => {
+              let val = Number(e.target.value) || 1;
+              if (val < 1) val = 1;
+              if (val > totalPages) val = totalPages;
+              setPage(val);
+            }}
+            style={{ width: '3rem', margin: '0 0.25rem', textAlign: 'center' }}
+            min="1"
+            max={totalPages}
+          />
+          of {totalPages}
         </span>
         <button
           onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
@@ -238,7 +425,73 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
         <button onClick={() => setPage(totalPages)} disabled={page === totalPages}>
           {'>>'}
         </button>
+        <label style={{ marginLeft: '1rem' }}>
+          Page size:
+          <input
+            type="number"
+            value={perPage}
+            onChange={(e) => {
+              setPerPage(Number(e.target.value) || 1);
+              setPage(1);
+            }}
+            min="1"
+            style={{ marginLeft: '0.25rem', width: '4rem' }}
+          />
+        </label>
       </div>
+      {txnInfo && (
+        <Modal
+          visible
+          title={`Transactions for ${txnInfo.col} = ${txnInfo.value}`}
+          onClose={() => setTxnInfo(null)}
+          width="80%"
+        >
+          {txnInfo.loading ? (
+            <div>Loading...</div>
+          ) : txnInfo.data.length > 0 ? (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                <thead>
+                  <tr>
+                    {Object.keys(txnInfo.data[0]).map((c) => (
+                      <th
+                        key={c}
+                        style={{
+                          padding: '0.25rem',
+                          border: '1px solid #d1d5db',
+                          textAlign: 'left',
+                        }}
+                      >
+                        {c}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {txnInfo.data.map((r, idx) => (
+                    <tr key={idx}>
+                      {Object.keys(txnInfo.data[0]).map((c) => (
+                        <td
+                          key={c}
+                          style={{
+                            padding: '0.25rem',
+                            border: '1px solid #d1d5db',
+                            textAlign: 'left',
+                          }}
+                        >
+                          {typeof r[c] === 'number' ? formatNumber(r[c]) : r[c]}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div>No transactions</div>
+          )}
+        </Modal>
+      )}
       {user?.role === 'admin' && generalConfig.general?.editLabelsEnabled && (
         <button
           onClick={() => {

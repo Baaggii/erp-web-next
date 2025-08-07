@@ -15,6 +15,7 @@ import { useTxnSession } from '../context/TxnSessionContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import useHeaderMappings from '../hooks/useHeaderMappings.js';
 
 function isEqual(a, b) {
   try {
@@ -61,6 +62,20 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const sessionLoaded = useRef(false);
   const prevSessionRef = useRef({});
   const prevConfigRef = useRef(null);
+
+  const procMap = useHeaderMappings(
+    config?.procedures
+      ? [...config.procedures, selectedProc].filter(Boolean)
+      : selectedProc
+      ? [selectedProc]
+      : [],
+  );
+
+  function getProcLabel(name) {
+    return (
+      generalConfig.general?.procLabels?.[name] || procMap[name] || name
+    );
+  }
 
 
   useEffect(() => {
@@ -389,7 +404,7 @@ useEffect(() => {
       acc[p] = finalParams[i];
       return acc;
     }, {});
-    const label = generalConfig.general?.procLabels?.[selectedProc] || selectedProc;
+    const label = getProcLabel(selectedProc);
     addToast(`Calling ${label}`, 'info');
     try {
       const res = await fetch('/api/procedures', {
@@ -464,7 +479,7 @@ useEffect(() => {
                   <option value="">-- select --</option>
                   {config.procedures.map((p) => (
                     <option key={p} value={p}>
-                      {generalConfig.general?.procLabels?.[p] || p}
+                      {getProcLabel(p)}
                     </option>
                   ))}
                 </select>
