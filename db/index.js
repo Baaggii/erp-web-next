@@ -1083,15 +1083,31 @@ export async function getProcedureRawRows(
     createSql = rows && rows[0] && rows[0]['Create Procedure'];
   } catch {}
   if (!createSql) {
-    const [rows] = await pool.query(
-      `SELECT ROUTINE_DEFINITION AS def
-         FROM information_schema.routines
-        WHERE ROUTINE_SCHEMA = DATABASE() AND ROUTINE_NAME = ?`,
-      [name],
-    );
-    createSql = rows && rows[0] && rows[0].def;
+    try {
+      const [rows] = await pool.query(
+        `SELECT ROUTINE_DEFINITION AS def
+           FROM information_schema.routines
+          WHERE ROUTINE_SCHEMA = DATABASE() AND ROUTINE_NAME = ?`,
+        [name],
+      );
+      createSql = rows && rows[0] && rows[0].def;
+    } catch {}
   }
-  if (!createSql) return { rows: [], sql: '', file: '' };
+  // Final fallback: try mysql.proc for environments where information_schema
+  // access is restricted. This still may fail, but ensures we return some SQL
+  // text when possible so the frontend can display it for debugging.
+  if (!createSql) {
+    try {
+      const [rows] = await pool.query(
+        `SELECT body FROM mysql.proc WHERE db = DATABASE() AND name = ?`,
+        [name],
+      );
+      createSql = rows && rows[0] && rows[0].body;
+    } catch {}
+  }
+  if (!createSql) {
+    return { rows: [], sql: `CALL ${name}` }; // at least return call text
+  }
   const bodyMatch = createSql.match(/BEGIN\s*([\s\S]*)END/i);
   const body = bodyMatch ? bodyMatch[1] : createSql;
   const selectMatch = body.match(/SELECT[\s\S]*?(?=END|$)/i);
@@ -1102,8 +1118,12 @@ export async function getProcedureRawRows(
   }
   let sql = selectMatch[0];
 
+  function escapeRegExp(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+  const colRe = escapeRegExp(column);
   const sumRegex = new RegExp(
-    'SUM\\(([^)]*)\\)\\s+AS\\s+`?' + column + '`?',
+    `SUM\\(([^)]*)\\)\\s*(?:AS\\s+)?` + '`?' + colRe + '`?',
     'i',
   );
   const sumMatch = sql.match(sumRegex);
@@ -1116,7 +1136,7 @@ export async function getProcedureRawRows(
 
   if (params && typeof params === 'object') {
     for (const [key, val] of Object.entries(params)) {
-      const re = new RegExp(`\\b${key}\\b`, 'gi');
+      const re = new RegExp(`\\b${escapeRegExp(key)}\\b`, 'gi');
       const rep =
         val === null || val === undefined
           ? 'NULL'
@@ -1129,7 +1149,7 @@ export async function getProcedureRawRows(
 
   if (sessionVars && typeof sessionVars === 'object') {
     for (const [key, val] of Object.entries(sessionVars)) {
-      const re = new RegExp(`@session_${key}\\b`, 'gi');
+      const re = new RegExp(`@session_${escapeRegExp(key)}\\b`, 'gi');
       const rep =
         val === null || val === undefined
           ? 'NULL'
@@ -1149,6 +1169,10 @@ export async function getProcedureRawRows(
       sql += ` WHERE ${groupField} = ${rep}`;
     }
   }
+
+  // Trim trailing statement terminators to avoid MySQL complaining when
+  // executing the reconstructed query.
+  sql = sql.replace(/;\s*$/, '');
 
   const file = `${name.replace(/[^a-z0-9_]/gi, '_')}_rows.sql`;
   await fs.writeFile(path.join(process.cwd(), 'config', file), sql);
