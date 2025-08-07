@@ -766,30 +766,30 @@ export async function checkUploadedImages(files = [], names = []) {
     ? files
     : names.map((n) => ({ originalname: typeof n === 'string' ? n : n?.name || String(n) }));
   items = items.slice(0, limit);
-  for (const file of items) {
-    const ext = path.extname(file.originalname || '');
-    const base = path.basename(file.originalname || '', ext);
-    let unique = '';
-    let suffix = '';
-    let found;
-    const save = parseSaveName(base);
-    if (save) {
-      ({ unique } = save);
-      suffix = `__${save.ts}_${save.rand}`;
-      if (hasTxnCode(base, unique, codes)) continue;
-      found = await findTxnByParts(
-        save.inv,
-        save.sp,
-        save.transType,
-        Number(save.ts),
-      );
-    } else {
-      ({ unique, suffix } = parseFileUnique(base));
-      if (!unique) continue;
-      if (hasTxnCode(base, unique, codes)) continue;
-      found = await findTxnByUniqueId(unique);
-    }
-    if (!found) continue;
+    for (const file of items) {
+      const ext = path.extname(file.originalname || '');
+      const base = path.basename(file.originalname || '', ext);
+      let unique = '';
+      let suffix = '';
+      let found;
+      const save = parseSaveName(base);
+      if (save) {
+        ({ unique } = save);
+        suffix = `__${save.ts}_${save.rand}`;
+        if (hasTxnCode(base, unique, codes)) continue;
+        found = await findTxnByParts(
+          save.inv,
+          save.sp,
+          save.transType,
+          Number(save.ts),
+        );
+      } else {
+        ({ unique, suffix } = parseFileUnique(base));
+        if (!unique) continue;
+        if (hasTxnCode(base, unique, codes)) continue;
+        found = await findTxnByUniqueId(unique);
+      }
+      if (!found) continue;
     const { row, configs, numField } = found;
     const cfg = pickConfig(configs, row);
     let newBase = '';
@@ -871,7 +871,6 @@ export async function checkUploadedImages(files = [], names = []) {
       folder: folderRaw,
       folderDisplay,
       id: file.path || file.originalname,
-      index: file.index,
     });
   }
   return { list: results, summary: { totalFiles: items.length, processed } };

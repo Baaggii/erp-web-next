@@ -79,28 +79,8 @@ router.post(
   },
   async (req, res, next) => {
     try {
-      let metaRaw = req.body?.meta || [];
-      if (!Array.isArray(metaRaw)) metaRaw = [metaRaw];
-      const files = Array.isArray(req.files) ? req.files : [];
-      if (metaRaw.length && metaRaw.length !== files.length) {
-        return res.status(400).json({ message: 'Mismatched metadata' });
-      }
-      const withMeta = files.map((f, i) => {
-        let m = {};
-        try {
-          m = JSON.parse(metaRaw[i] || '{}');
-        } catch {
-          // ignore malformed metadata
-        }
-        return {
-          ...f,
-          index: m.index,
-          rowId: m.rowId,
-          transType: m.transType,
-          originalname: m.originalName || f.originalname,
-        };
-      });
-      const { list, summary } = await checkUploadedImages(withMeta);
+      const names = Array.isArray(req.body?.names) ? req.body.names : [];
+      const { list, summary } = await checkUploadedImages(req.files || [], names);
       res.json({ list, summary });
     } catch (err) {
       next(err);
