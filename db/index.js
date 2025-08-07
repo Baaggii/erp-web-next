@@ -38,6 +38,7 @@ import defaultModules from "./defaultModules.js";
 import { logDb } from "./debugLog.js";
 import fs from "fs/promises";
 import path from "path";
+import { findTableByProcedure } from "../api-server/services/transactionFormConfig.js";
 
 const tableColumnsCache = new Map();
 
@@ -1106,6 +1107,47 @@ export async function getProcedureRawRows(
     } catch {}
   }
   if (!createSql) {
+    const table = await findTableByProcedure(name);
+    if (table) {
+      const clauses = [];
+      const qParams = [];
+      if (groupField && groupValue !== undefined) {
+        clauses.push(`\`${groupField}\` = ?`);
+        qParams.push(groupValue);
+      }
+      const start = params.start_date || params.startDate;
+      if (start) {
+        clauses.push('transaction_date >= ?');
+        qParams.push(start);
+      }
+      const end = params.end_date || params.endDate;
+      if (end) {
+        clauses.push('transaction_date <= ?');
+        qParams.push(end);
+      }
+      const sessMap = {
+        branch_id: sessionVars.branch_id ?? sessionVars.branchId,
+        company_id: sessionVars.company_id ?? sessionVars.companyId,
+        department_id: sessionVars.department_id ?? sessionVars.departmentId,
+      };
+      for (const [k, v] of Object.entries(sessMap)) {
+        if (v !== undefined) {
+          clauses.push(`\`${k}\` = ?`);
+          qParams.push(v);
+        }
+      }
+      let base = `SELECT * FROM \`${table}\``;
+      if (clauses.length) base += ' WHERE ' + clauses.join(' AND ');
+      const fullSql = mysql.format(base, qParams);
+      const file = `${name.replace(/[^a-z0-9_]/gi, '_')}_rows.sql`;
+      await fs.writeFile(path.join(process.cwd(), 'config', file), fullSql);
+      try {
+        const [out] = await pool.query(base, qParams);
+        return { rows: out, sql: fullSql, file };
+      } catch {
+        return { rows: [], sql: fullSql, file };
+      }
+    }
     return { rows: [], sql: `CALL ${name}` }; // at least return call text
   }
   const bodyMatch = createSql.match(/BEGIN\s*([\s\S]*)END/i);
