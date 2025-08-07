@@ -41,10 +41,24 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
   const [editLabels, setEditLabels] = useState(false);
   const [labelEdits, setLabelEdits] = useState({});
   const [txnInfo, setTxnInfo] = useState(null);
+  const [txnTable, setTxnTable] = useState('');
 
   useEffect(() => {
     setPage(1);
   }, [rows]);
+
+  useEffect(() => {
+    if (!procedure) {
+      setTxnTable('');
+      return;
+    }
+    fetch(`/api/transaction_forms?proc=${encodeURIComponent(procedure)}`, {
+      credentials: 'include',
+    })
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((data) => setTxnTable(data.table || ''))
+      .catch(() => setTxnTable(''));
+  }, [procedure]);
 
   const procLabels = generalConfig.general?.procLabels || {};
   const procFieldLabels = generalConfig.general?.procFieldLabels || {};
@@ -135,12 +149,12 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
   }
 
   function handleCellClick(col, value) {
-    if (value === null || value === undefined || value === '') return;
+    if (value === null || value === undefined || value === '' || !txnTable) return;
     setTxnInfo({ loading: true, col, value, data: [] });
     fetch(
-      `/api/inventory_transactions?refCol=${encodeURIComponent(col)}&refVal=${encodeURIComponent(
-        value,
-      )}`,
+      `/api/transactions?table=${encodeURIComponent(txnTable)}&refCol=${encodeURIComponent(
+        col,
+      )}&refVal=${encodeURIComponent(value)}`,
       { credentials: 'include' },
     )
       .then((res) => (res.ok ? res.json() : { rows: [] }))
