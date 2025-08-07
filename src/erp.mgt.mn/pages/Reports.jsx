@@ -5,6 +5,7 @@ import { useToast } from '../context/ToastContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import ReportTable from '../components/ReportTable.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import useHeaderMappings from '../hooks/useHeaderMappings.js';
 
 export default function Reports() {
   const { company, user } = useContext(AuthContext);
@@ -18,6 +19,13 @@ export default function Reports() {
   const [datePreset, setDatePreset] = useState('custom');
   const [result, setResult] = useState(null);
   const [manualParams, setManualParams] = useState({});
+  const procMap = useHeaderMappings(procedures);
+
+  function getLabel(name) {
+    return (
+      generalConfig.general?.procLabels?.[name] || procMap[name] || name
+    );
+  }
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -142,7 +150,7 @@ export default function Reports() {
       acc[p] = finalParams[i];
       return acc;
     }, {});
-    const label = generalConfig.general?.procLabels?.[selectedProc] || selectedProc;
+    const label = getLabel(selectedProc);
     addToast(`Calling ${label}`, 'info');
     try {
       const res = await fetch('/api/procedures', {
@@ -184,7 +192,7 @@ export default function Reports() {
           <option value="">-- select --</option>
           {procedures.map((p) => (
             <option key={p} value={p}>
-              {generalConfig.general?.procLabels?.[p] || p}
+              {getLabel(p)}
             </option>
           ))}
         </select>
