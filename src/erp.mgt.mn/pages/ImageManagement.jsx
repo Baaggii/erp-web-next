@@ -771,6 +771,12 @@ export default function ImageManagement() {
           addToast('Rename failed', 'error');
           return;
         }
+        const data = await res.json().catch(() => ({}));
+        const list = Array.isArray(data.list) ? data.list : null;
+        if (!list) {
+          addToast('Rename failed', 'error');
+          return;
+        }
         for (const r of list) {
           if (typeof r.index === 'undefined') {
             addToast('Rename failed', 'error');
@@ -790,9 +796,12 @@ export default function ImageManagement() {
         arr
           .map((u) => {
             const r = resultMap.get(String(u.index));
-            if (!r) return u;
+            if (!r) {
+              return { ...u, reason: 'No match found', description: 'No match found' };
+            }
             if (!r.newName) {
-              return { ...u, reason: r.reason || 'Skipped' };
+              const reason = r.reason || 'No match found';
+              return { ...u, reason, description: reason };
             }
             return {
               ...u,
