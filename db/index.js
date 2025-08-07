@@ -1106,10 +1106,7 @@ export async function getProcedureRawRows(
     } catch {}
   }
   if (!createSql) {
-    const callSql = `CALL ${name}`;
-    const file = `${name.replace(/[^a-z0-9_]/gi, '_')}_rows.sql`;
-    await fs.writeFile(path.join(process.cwd(), 'config', file), callSql);
-    return { rows: [], sql: callSql, file };
+    createSql = `CALL ${name}`;
   }
   const bodyMatch = createSql.match(/BEGIN\s*([\s\S]*)END/i);
   const body = bodyMatch ? bodyMatch[1] : createSql;
@@ -1129,9 +1126,7 @@ export async function getProcedureRawRows(
     sql = selectMatches[selectMatches.length - 1][0];
   }
   if (!sql) {
-    const file = `${name.replace(/[^a-z0-9_]/gi, '_')}_rows.sql`;
-    await fs.writeFile(path.join(process.cwd(), 'config', file), createSql);
-    return { rows: [], sql: createSql, file };
+    sql = createSql;
   }
   const colRe = escapeRegExp(column);
   const sumRegex = new RegExp(
