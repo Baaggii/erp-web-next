@@ -719,44 +719,44 @@ export default function ImageManagement() {
     renameAbortRef.current = controller;
     setActiveOp('rename');
 
-    const chunkSize = 50;
     let merged = [];
     let skipped = 0;
 
     try {
-      for (let i = 0; i < items.length; i += chunkSize) {
-        if (controller.signal.aborted) break;
-        const chunk = items.slice(i, i + chunkSize);
-        const formData = new FormData();
-        const sendItems = [];
-        for (const u of chunk) {
-          const f = folderFiles[u.index];
-          if (!f?.handle) {
-            addToast(`Missing local file: ${u.originalName}`, 'error');
-            merged.push({ index: u.index, reason: 'Missing local file' });
-            skipped += 1;
-            continue;
-          }
-          try {
-            const file = await f.handle.getFile();
-            formData.append('images', file, u.originalName);
-            formData.append(
-              'meta',
-              JSON.stringify({
-                index: u.index,
-                originalName: u.originalName,
-                rowId: u.rowId,
-                transType: u.transType,
-              }),
-            );
-            sendItems.push(u);
-          } catch {
-            addToast(`Missing local file: ${u.originalName}`, 'error');
-            merged.push({ index: u.index, reason: 'Missing local file' });
-            skipped += 1;
-          }
+      const formData = new FormData();
+      const sendItems = [];
+      for (const u of items) {
+        const f = folderFiles[u.index];
+        if (!f?.handle) {
+          addToast(`Missing local file: ${u.originalName}`, 'error');
+          merged.push({ index: u.index, reason: 'Missing local file' });
+          skipped += 1;
+          continue;
         }
-        if (![...formData].length) continue;
+        try {
+          const file = await f.handle.getFile();
+          formData.append('images', file, u.originalName);
+          formData.append(
+            'meta',
+            JSON.stringify({
+              index: u.index,
+              originalName: u.originalName,
+              rowId: u.rowId,
+              transType: u.transType,
+            }),
+          );
+          sendItems.push(u);
+        } catch {
+          addToast(`Missing local file: ${u.originalName}`, 'error');
+          merged.push({ index: u.index, reason: 'Missing local file' });
+          skipped += 1;
+        }
+      }
+      if (controller.signal.aborted) {
+        addToast('Rename canceled', 'info');
+        return;
+      }
+      if ([...formData].length) {
         try {
           const res = await fetch('/api/transaction_images/upload_check', {
             method: 'POST',
