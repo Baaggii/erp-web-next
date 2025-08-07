@@ -2199,11 +2199,11 @@ const TableManager = forwardRef(function TableManager({
             <div style={{ textAlign: 'right' }}>
               <button onClick={() => setEditLabels(false)} style={{ marginRight: '0.5rem' }}>Cancel</button>
               <button onClick={async () => {
-                await fetch(`/api/tables/${encodeURIComponent(table)}/labels`, {
-                  method: 'PUT',
+                await fetch('/api/header_mappings', {
+                  method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   credentials: 'include',
-                  body: JSON.stringify({ labels: labelEdits }),
+                  body: JSON.stringify({ mappings: labelEdits }),
                 });
                 const res = await fetch(`/api/tables/${encodeURIComponent(table)}/columns`, { credentials: 'include' });
                 if (res.ok) {
