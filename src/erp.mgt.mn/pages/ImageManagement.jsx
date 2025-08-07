@@ -92,6 +92,7 @@ export default function ImageManagement() {
   const [ignored, setIgnored] = useState([]);
   const [ignoredPage, setIgnoredPage] = useState(1);
   const [folderName, setFolderName] = useState('');
+  const [folderFiles, setFolderFiles] = useState([]);
   const [uploadSummary, setUploadSummary] = useState(null);
   const [pendingSummary, setPendingSummary] = useState(null);
   const [pageSize, setPageSize] = useState(200);
@@ -156,13 +157,23 @@ export default function ImageManagement() {
     const mapUploads = (list = []) =>
       list
         .filter(Boolean)
-        .map(({ originalName = '', newName = '', tmpPath = '', reason = '', processed }) => ({
-          originalName,
-          newName,
-          tmpPath,
-          reason,
-          processed: !!processed,
-        }));
+        .map(
+          ({
+            originalName = '',
+            newName = '',
+            tmpPath = '',
+            reason = '',
+            processed,
+            index,
+          }) => ({
+            originalName,
+            newName,
+            tmpPath,
+            reason,
+            index,
+            processed: !!processed,
+          }),
+        );
 
     return {
       folderName: partial.folderName ?? (folderName || ''),
@@ -187,25 +198,28 @@ export default function ImageManagement() {
 
   function applySession(data = {}) {
     setFolderName(data.folderName || '');
-    setUploads(
-      Array.isArray(data.uploads)
-        ? data.uploads.map((u) => ({
-            ...u,
-            id: u.originalName,
-            description: extractDateFromName(u.originalName),
-            processed: !!u.processed,
-          }))
-        : [],
-    );
-    setIgnored(
-      Array.isArray(data.ignored)
-        ? data.ignored.map((u) => ({
-            ...u,
-            id: u.originalName,
-            description: extractDateFromName(u.originalName),
-            processed: !!u.processed,
-          }))
-        : [],
+    const upArr = Array.isArray(data.uploads)
+      ? data.uploads.map((u) => ({
+          ...u,
+          id: u.originalName,
+          description: extractDateFromName(u.originalName),
+          processed: !!u.processed,
+          index: u.index,
+        }))
+      : [];
+    const igArr = Array.isArray(data.ignored)
+      ? data.ignored.map((u) => ({
+          ...u,
+          id: u.originalName,
+          description: extractDateFromName(u.originalName),
+          processed: !!u.processed,
+          index: u.index,
+        }))
+      : [];
+    setUploads(upArr);
+    setIgnored(igArr);
+    setFolderFiles(
+      [...upArr, ...igArr].map((u) => ({ name: u.originalName, handle: u.handle, index: u.index })),
     );
     setPending(
       Array.isArray(data.pending)
@@ -475,15 +489,14 @@ export default function ImageManagement() {
     try {
       const dirHandle = await window.showDirectoryPicker();
       dirHandleRef.current = dirHandle;
-      const handles = {};
-      const names = [];
+      const files = [];
       for await (const entry of dirHandle.values()) {
         if (scanCancelRef.current) break;
         if (entry.kind === 'file') {
-          names.push(entry.name);
-          handles[entry.name] = entry;
+          files.push({ name: entry.name, handle: entry, index: files.length });
         }
       }
+      const names = files.map((f) => f.name);
       if (scanCancelRef.current) return;
       const chunkSize = 200;
       let all = [];
@@ -517,25 +530,34 @@ export default function ImageManagement() {
       if (scanCancelRef.current) return;
       setFolderName(dirHandle.name || '');
       const sorted = all.slice().sort((a, b) => a.originalName.localeCompare(b.originalName));
-      const uploadsList = sorted.map((u) => ({
-        originalName: u.originalName,
-        id: u.originalName,
-        handle: handles[u.originalName],
-        description: extractDateFromName(u.originalName),
-        processed: false,
-      }));
+      const uploadsList = sorted.map((u) => {
+        const f = files.find((p) => p.name === u.originalName);
+        return {
+          originalName: u.originalName,
+          id: u.originalName,
+          handle: f?.handle,
+          index: f?.index,
+          description: extractDateFromName(u.originalName),
+          processed: false,
+        };
+      });
       setUploads(uploadsList);
       const skippedSorted = skipped
         .slice()
         .sort((a, b) => a.originalName.localeCompare(b.originalName));
-      const ignoredList = skippedSorted.map((u) => ({
-        originalName: u.originalName,
-        id: u.originalName,
-        handle: handles[u.originalName],
-        reason: u.reason,
-        processed: false,
-      }));
+      const ignoredList = skippedSorted.map((u) => {
+        const f = files.find((p) => p.name === u.originalName);
+        return {
+          originalName: u.originalName,
+          id: u.originalName,
+          handle: f?.handle,
+          index: f?.index,
+          reason: u.reason,
+          processed: false,
+        };
+      });
       setIgnored(ignoredList);
+      setFolderFiles(files);
       setUploadSummary({ totalFiles: names.length, processed, unflagged: skipped.length });
       setUploadSel([]);
       setUploadPage(1);
@@ -681,7 +703,7 @@ export default function ImageManagement() {
     }
 
     const items = [...uploads, ...ignored].filter(
-      (u) => uploadSel.includes(u.id) && u.handle && !u.tmpPath && !u.processed,
+      (u) => uploadSel.includes(u.id) && !u.tmpPath && !u.processed,
     );
     if (items.length === 0) {
       addToast('No local files to rename', 'error');
@@ -694,6 +716,7 @@ export default function ImageManagement() {
 
     const chunkSize = 50;
     let merged = [];
+    let skipped = 0;
 
     try {
       for (let i = 0; i < items.length; i += chunkSize) {
@@ -701,12 +724,29 @@ export default function ImageManagement() {
         const chunk = items.slice(i, i + chunkSize);
         const formData = new FormData();
         for (const u of chunk) {
+          const f = folderFiles[u.index];
+          if (!f?.handle) {
+            addToast(`Missing local file: ${u.originalName}`, 'error');
+            merged.push({ index: u.index, reason: 'Missing local file' });
+            skipped += 1;
+            continue;
+          }
           try {
-            const file = await u.handle.getFile();
+            const file = await f.handle.getFile();
             formData.append('images', file, u.originalName);
+            formData.append(
+              'meta',
+              JSON.stringify({
+                index: u.index,
+                originalName: u.originalName,
+                rowId: u.rowId,
+                transType: u.transType,
+              }),
+            );
           } catch {
             addToast(`Missing local file: ${u.originalName}`, 'error');
-            merged.push({ originalName: u.originalName, reason: 'Missing local file' });
+            merged.push({ index: u.index, reason: 'Missing local file' });
+            skipped += 1;
           }
         }
         if (![...formData].length) continue;
@@ -721,7 +761,17 @@ export default function ImageManagement() {
           return Array.isArray(data.list) ? data.list : [];
         }
         const data = await res.json().catch(() => ({}));
-        const list = Array.isArray(data.list) ? data.list : [];
+        const list = Array.isArray(data.list) ? data.list : null;
+        if (!list) {
+          addToast('Rename failed', 'error');
+          return;
+        }
+        for (const r of list) {
+          if (typeof r.index === 'undefined') {
+            addToast('Rename failed', 'error');
+            return;
+          }
+        }
         merged = merged.concat(list);
       }
 
@@ -730,22 +780,40 @@ export default function ImageManagement() {
         return;
       }
 
-      const mapResults = (arr) =>
+      const resultMap = new Map(merged.map((r) => [String(r.index), r]));
+      const updateList = (arr) =>
         arr
           .map((u) => {
-            const found = merged.find((x) => x.originalName === u.originalName);
-            return found ? { ...u, ...found, id: u.id } : u;
+            const r = resultMap.get(String(u.index));
+            if (!r) return u;
+            if (!r.newName) {
+              return { ...u, reason: r.reason || 'Skipped' };
+            }
+            return {
+              ...u,
+              newName: r.newName,
+              folder: r.folder,
+              folderDisplay: r.folderDisplay,
+              tmpPath: r.tmpPath,
+              description: extractDateFromName(r.newName),
+            };
           })
           .sort((a, b) => a.originalName.localeCompare(b.originalName));
 
-      const newUploads = mapResults(uploads);
-      const newIgnored = mapResults(ignored);
+      const newUploads = updateList(uploads);
+      const newIgnored = updateList(ignored);
+
+      const processedCount = merged.filter((m) => m.newName).length;
+      const skipCount =
+        skipped + items.filter((u) => !resultMap.has(String(u.index))).length +
+        merged.filter((m) => !m.newName).length;
+      if (skipCount) addToast(`Skipped ${skipCount} file(s)`, 'warning');
 
       setUploads(newUploads);
       setIgnored(newIgnored);
       setUploadSel([]);
       persistAll({ uploads: newUploads, ignored: newIgnored });
-      setReport(`Renamed ${merged.length} file(s)`);
+      setReport(`Renamed ${processedCount} file(s)`);
     } catch {
       if (controller.signal.aborted) addToast('Rename canceled', 'info');
       else addToast('Rename failed', 'error');
