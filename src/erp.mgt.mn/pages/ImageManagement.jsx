@@ -356,7 +356,10 @@ export default function ImageManagement() {
     : 1;
 
   const canRenameSelected = [...uploads, ...ignored].some(
-    (u) => uploadSel.includes(u.id) && u.handle && !u.processed,
+    (u) =>
+      uploadSel.includes(u.id) &&
+      folderFiles[u.index]?.handle &&
+      !u.processed,
   );
 
   function toggle(id) {
