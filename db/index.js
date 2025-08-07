@@ -1078,10 +1078,14 @@ export async function getProcedureRawRows(
   sessionVars = {},
 ) {
   const [rows] = await pool.query(`SHOW CREATE PROCEDURE \`${name}\``);
-  const createSql = rows && rows[0] && rows[0]['Create Procedure'];
+  const createSql = rows && rows[0] && rows[0]["Create Procedure"];
   if (!createSql) return { rows: [], sql: '', file: '' };
   const match = createSql.match(/BEGIN\s+(SELECT[\s\S]*?)\s+END/i);
-  if (!match) return { rows: [], sql: '', file: '' };
+  if (!match) {
+    const file = `${name.replace(/[^a-z0-9_]/gi, '_')}_rows.sql`;
+    await fs.writeFile(path.join(process.cwd(), 'config', file), createSql);
+    return { rows: [], sql: createSql, file };
+  }
   let sql = match[1];
 
   const sumRegex = new RegExp(
@@ -1135,6 +1139,10 @@ export async function getProcedureRawRows(
   const file = `${name.replace(/[^a-z0-9_]/gi, '_')}_rows.sql`;
   await fs.writeFile(path.join(process.cwd(), 'config', file), sql);
 
-  const [out] = await pool.query(sql);
-  return { rows: out, sql, file };
+  try {
+    const [out] = await pool.query(sql);
+    return { rows: out, sql, file };
+  } catch {
+    return { rows: [], sql, file };
+  }
 }
