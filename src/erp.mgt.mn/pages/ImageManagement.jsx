@@ -540,10 +540,6 @@ export default function ImageManagement() {
       setUploadSel([]);
       setUploadPage(1);
       setIgnoredPage(1);
-      setPending([]);
-      setHostIgnored([]);
-      setSelected([]);
-      setHostIgnoredSel([]);
       setReport(
         `Scanned ${names.length} file(s), found ${processed} incomplete name(s), ${skipped.length} unflagged.`,
       );
@@ -594,11 +590,7 @@ export default function ImageManagement() {
           ? data.list
               .slice()
               .sort((a, b) => a.currentName.localeCompare(b.currentName))
-              .map((p) => ({
-                ...p,
-                description: extractDateFromName(p.currentName),
-                processed: false,
-              }))
+              .map((p) => ({ ...p, description: extractDateFromName(p.currentName) }))
           : [];
         const miss = Array.isArray(data.skipped)
           ? data.skipped
@@ -607,7 +599,6 @@ export default function ImageManagement() {
               .map((p) => ({
                 ...p,
                 description: extractDateFromName(p.currentName),
-                processed: false,
               }))
           : [];
         setPending(list);
@@ -701,8 +692,9 @@ export default function ImageManagement() {
     renameAbortRef.current = controller;
     setActiveOp('rename');
 
-    const chunkSize = 20;
-    let merged = [];
+    const controller = new AbortController();
+    renameAbortRef.current = controller;
+    setActiveOp('rename');
 
     try {
       for (let i = 0; i < items.length; i += chunkSize) {
@@ -720,13 +712,13 @@ export default function ImageManagement() {
         if (![...formData].length) continue;
         const res = await fetch('/api/transaction_images/upload_check', {
           method: 'POST',
-          body: formData,
+          headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           signal: controller.signal,
         });
-        if (!res.ok) {
-          addToast('Rename failed', 'error');
-          return;
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          return Array.isArray(data.list) ? data.list : [];
         }
         const data = await res.json().catch(() => ({}));
         const list = Array.isArray(data.list) ? data.list : [];
@@ -1185,8 +1177,7 @@ export default function ImageManagement() {
               <button
                 type="button"
                 onClick={() => {
-                  const remaining = pending.filter((p) => !selected.includes(p.currentName));
-                  setPending(remaining);
+                  setPending((prev) => prev.filter((p) => !selected.includes(p.currentName)));
                   setSelected([]);
                   persistAll({ uploads, ignored, folderName, pending: remaining, hostIgnored });
                 }}
@@ -1251,10 +1242,7 @@ export default function ImageManagement() {
               <button
                 type="button"
                 onClick={() => {
-                  const remaining = hostIgnored.filter(
-                    (p) => !hostIgnoredSel.includes(p.currentName),
-                  );
-                  setHostIgnored(remaining);
+                  setHostIgnored((prev) => prev.filter((p) => !hostIgnoredSel.includes(p.currentName)));
                   setHostIgnoredSel([]);
                   persistAll({ uploads, ignored, folderName, pending, hostIgnored: remaining });
                 }}
