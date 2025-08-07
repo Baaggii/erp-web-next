@@ -1035,3 +1035,24 @@ export async function callStoredProcedure(name, params = [], aliases = []) {
     conn.release();
   }
 }
+
+export async function listStoredProcedures() {
+  const [rows] = await pool.query(
+    'SHOW PROCEDURE STATUS WHERE Db = DATABASE()'
+  );
+  return rows
+    .map((r) => r.Name)
+    .filter((n) => typeof n === 'string' && n.toLowerCase().includes('report'));
+}
+
+export async function getProcedureParams(name) {
+  const [rows] = await pool.query(
+    `SELECT PARAMETER_NAME AS name
+       FROM information_schema.parameters
+      WHERE SPECIFIC_NAME = ?
+        AND ROUTINE_TYPE = 'PROCEDURE'
+      ORDER BY ORDINAL_POSITION`,
+    [name],
+  );
+  return rows.map((r) => r.name).filter(Boolean);
+}
