@@ -6,7 +6,6 @@ import { useRolePermissions } from '../hooks/useRolePermissions.js';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
 import { useTxnModules } from '../hooks/useTxnModules.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
-import useProcLabels from '../hooks/useProcLabels.js';
 
 export default function FormsIndex() {
   const [transactions, setTransactions] = useState({});
@@ -16,11 +15,10 @@ export default function FormsIndex() {
   const licensed = useCompanyModules(company?.company_id);
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
-  const procLabelMap = useProcLabels(modules.map((m) => m.module_key));
 
   const moduleMap = {};
   modules.forEach((m) => {
-    const label = procLabelMap[m.module_key] || m.label;
+    const label = generalConfig.general?.procLabels?.[m.module_key] || m.label;
     moduleMap[m.module_key] = { ...m, label };
   });
 
@@ -86,7 +84,7 @@ export default function FormsIndex() {
         groups.map(([key]) => {
           const mod = modules.find((m) => m.module_key === key);
           const label = mod
-            ? procLabelMap[mod.module_key] || mod.label
+            ? generalConfig.general?.procLabels?.[mod.module_key] || mod.label
             : key;
           return (
             <div key={key} style={{ marginBottom: '1rem' }}>
