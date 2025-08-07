@@ -185,6 +185,15 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                 },
               }),
             );
+          } else {
+            window.dispatchEvent(
+              new CustomEvent('toast', {
+                detail: {
+                  message: 'No SQL generated',
+                  type: 'error',
+                },
+              }),
+            );
           }
           window.dispatchEvent(
             new CustomEvent('toast', {
@@ -209,6 +218,12 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                   message: `SQL saved to ${file}: ${preview}`,
                   type: 'info',
                 },
+              }),
+            );
+          } else {
+            window.dispatchEvent(
+              new CustomEvent('toast', {
+                detail: { message: 'No SQL generated', type: 'error' },
               }),
             );
           }
@@ -517,7 +532,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
           ) : (
             <div>
               No transactions
-              {txnInfo.sql && (
+              {txnInfo.sql ? (
                 <pre
                   style={{
                     marginTop: '0.5rem',
@@ -531,6 +546,8 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                 >
                   {txnInfo.sql}
                 </pre>
+              ) : (
+                <div style={{ marginTop: '0.5rem' }}>SQL not generated</div>
               )}
             </div>
           )}
