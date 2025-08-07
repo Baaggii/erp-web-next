@@ -26,6 +26,10 @@ const defaults = {
     viewToastEnabled: true,
     imageToastEnabled: false,
     debugLoggingEnabled: false,
+    editLabelsEnabled: false,
+    showReportParams: false,
+    procLabels: {},
+    procFieldLabels: {},
   },
   images: {
     basePath: 'uploads',

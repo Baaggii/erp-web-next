@@ -4,10 +4,12 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import ReportTable from '../components/ReportTable.jsx';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 export default function Reports() {
   const { company, user } = useContext(AuthContext);
   const { addToast } = useToast();
+  const generalConfig = useGeneralConfig();
   const [procedures, setProcedures] = useState([]);
   const [selectedProc, setSelectedProc] = useState('');
   const [procParams, setProcParams] = useState([]);
@@ -140,7 +142,8 @@ export default function Reports() {
       acc[p] = finalParams[i];
       return acc;
     }, {});
-    addToast(`Calling ${selectedProc}`, 'info');
+    const label = generalConfig.general?.procLabels?.[selectedProc] || selectedProc;
+    addToast(`Calling ${label}`, 'info');
     try {
       const res = await fetch('/api/procedures', {
         method: 'POST',
@@ -152,7 +155,7 @@ export default function Reports() {
         const data = await res.json().catch(() => ({ row: [] }));
         const rows = Array.isArray(data.row) ? data.row : [];
         addToast(
-          `${selectedProc} returned ${rows.length} row${rows.length === 1 ? '' : 's'}`,
+          `${label} returned ${rows.length} row${rows.length === 1 ? '' : 's'}`,
           'success',
         );
         setResult({ name: selectedProc, params: paramMap, rows });
@@ -181,7 +184,7 @@ export default function Reports() {
           <option value="">-- select --</option>
           {procedures.map((p) => (
             <option key={p} value={p}>
-              {p}
+              {generalConfig.general?.procLabels?.[p] || p}
             </option>
           ))}
         </select>
@@ -246,22 +249,11 @@ export default function Reports() {
         )}
       </div>
       {result && (
-        <div style={{ marginTop: '1rem' }}>
-          <h4>
-            {result.name}
-            {Object.keys(result.params).length > 0 && (
-              <span>
-                {' '}
-                (
-                {Object.entries(result.params)
-                  .map(([k, v]) => `${k}=${v}`)
-                  .join(', ')}
-                )
-              </span>
-            )}
-          </h4>
-          <ReportTable rows={result.rows} />
-        </div>
+        <ReportTable
+          procedure={result.name}
+          params={result.params}
+          rows={result.rows}
+        />
       )}
     </div>
   );

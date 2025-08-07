@@ -14,6 +14,7 @@ import { useCompanyModules } from '../hooks/useCompanyModules.js';
 import { useTxnSession } from '../context/TxnSessionContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 function isEqual(a, b) {
   try {
@@ -50,6 +51,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const [reportResult, setReportResult] = useState(null);
   const [manualParams, setManualParams] = useState({});
   const { company, user } = useContext(AuthContext);
+  const generalConfig = useGeneralConfig();
   const perms = useRolePermissions();
   const licensed = useCompanyModules(company?.company_id);
   const tableRef = useRef(null);
@@ -387,7 +389,8 @@ useEffect(() => {
       acc[p] = finalParams[i];
       return acc;
     }, {});
-    addToast(`Calling ${selectedProc}`, 'info');
+    const label = generalConfig.general?.procLabels?.[selectedProc] || selectedProc;
+    addToast(`Calling ${label}`, 'info');
     try {
       const res = await fetch('/api/procedures', {
         method: 'POST',
@@ -399,7 +402,7 @@ useEffect(() => {
         const data = await res.json().catch(() => ({ row: [] }));
         const rows = Array.isArray(data.row) ? data.row : [];
         addToast(
-          `${selectedProc} returned ${rows.length} row${rows.length === 1 ? '' : 's'}`,
+          `${label} returned ${rows.length} row${rows.length === 1 ? '' : 's'}`,
           'success',
         );
         setReportResult({ name: selectedProc, params: paramMap, rows });
@@ -461,7 +464,7 @@ useEffect(() => {
                   <option value="">-- select --</option>
                   {config.procedures.map((p) => (
                     <option key={p} value={p}>
-                      {p}
+                      {generalConfig.general?.procLabels?.[p] || p}
                     </option>
                   ))}
                 </select>
@@ -549,22 +552,11 @@ useEffect(() => {
         />
       )}
       {reportResult && (
-        <div style={{ marginTop: '1rem' }}>
-          <h4>
-            {reportResult.name}
-            {Object.keys(reportResult.params).length > 0 && (
-              <span>
-                {' '}
-                (
-                {Object.entries(reportResult.params)
-                  .map(([k, v]) => `${k}=${v}`)
-                  .join(', ')}
-                )
-              </span>
-            )}
-          </h4>
-          <ReportTable rows={reportResult.rows} />
-        </div>
+        <ReportTable
+          procedure={reportResult.name}
+          params={reportResult.params}
+          rows={reportResult.rows}
+        />
       )}
       {transactionNames.length === 0 && (
         <p>Гүйлгээ тохируулаагүй байна.</p>

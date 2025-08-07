@@ -19,6 +19,7 @@ import ImageSearchModal from './ImageSearchModal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -163,6 +164,7 @@ const TableManager = forwardRef(function TableManager({
   const [typeFilter, setTypeFilter] = useState('');
   const [typeOptions, setTypeOptions] = useState([]);
   const { user, company } = useContext(AuthContext);
+  const generalConfig = useGeneralConfig();
   const { addToast } = useToast();
 
   useEffect(() => {
@@ -2164,7 +2166,7 @@ const TableManager = forwardRef(function TableManager({
           </li>
         </ul>
       )}
-      {user?.role === 'admin' && (
+      {user?.role === 'admin' && generalConfig.general?.editLabelsEnabled && (
         <button onClick={() => {
           const map = {};
           columnMeta.forEach((c) => { map[c.name] = c.label || ''; });

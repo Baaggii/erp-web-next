@@ -69,7 +69,8 @@ export default function ERPLayout() {
     const mod = modules.find(
       (m) => m.module_key.replace(/_/g, '-') === seg,
     );
-    return mod ? mod.label : 'ERP';
+    if (!mod) return 'ERP';
+    return generalConfig.general?.procLabels?.[mod.module_key] || mod.label;
   }
 
   const windowTitle = titleForPath(location.pathname);
@@ -189,12 +190,14 @@ function Sidebar({ onOpen, open, isMobile }) {
   const licensed = useCompanyModules(company?.company_id);
   const modules = useModules();
   const txnModuleKeys = useTxnModules();
+  const generalConfig = useGeneralConfig();
 
   if (!perms || !licensed) return null;
 
   const allMap = {};
   modules.forEach((m) => {
-    allMap[m.module_key] = { ...m };
+    const label = generalConfig.general?.procLabels?.[m.module_key] || m.label;
+    allMap[m.module_key] = { ...m, label };
   });
 
   function isFormsDescendant(mod) {
@@ -216,7 +219,8 @@ function Sidebar({ onOpen, open, isMobile }) {
       return;
     if (isFormsDescendant(m) && txnModuleKeys && !txnModuleKeys.has(m.module_key))
       return;
-    map[m.module_key] = { ...m, children: [] };
+    const label = generalConfig.general?.procLabels?.[m.module_key] || m.label;
+    map[m.module_key] = { ...m, label, children: [] };
   });
 
   // Ensure parents exist for permitted modules so children don't become

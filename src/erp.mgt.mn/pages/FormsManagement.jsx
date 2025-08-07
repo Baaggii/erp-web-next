@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useModules } from '../hooks/useModules.js';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { debugLog } from '../utils/debug.js';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 export default function FormsManagement() {
   const [tables, setTables] = useState([]);
@@ -16,6 +17,7 @@ export default function FormsManagement() {
   const [columns, setColumns] = useState([]);
   const [views, setViews] = useState([]);
   const [procedureOptions, setProcedureOptions] = useState([]);
+  const generalConfig = useGeneralConfig();
   const modules = useModules();
   useEffect(() => {
     debugLog('Component mounted: FormsManagement');
@@ -849,7 +851,7 @@ export default function FormsManagement() {
                 >
                   {procedureOptions.map((p) => (
                     <option key={p} value={p}>
-                      {p}
+                      {generalConfig.general?.procLabels?.[p] || p}
                     </option>
                   ))}
                 </select>
