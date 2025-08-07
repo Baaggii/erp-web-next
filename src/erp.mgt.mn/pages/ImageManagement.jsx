@@ -692,24 +692,21 @@ export default function ImageManagement() {
     renameAbortRef.current = controller;
     setActiveOp('rename');
 
-    async function uploadCheckBatch(batch) {
-      if (controller.signal.aborted) return { list: [], missing: [], failed: [] };
-      const formData = new FormData();
-      const ids = [];
-      const missing = [];
-      for (const u of batch) {
-        try {
-          const file = await u.handle.getFile();
-          formData.append('images', file, u.originalName);
-          ids.push(u.id);
-        } catch {
-          addToast(`Missing local file: ${u.originalName}`, 'error');
-          missing.push(u.id);
+    try {
+      for (let i = 0; i < items.length; i += chunkSize) {
+        if (controller.signal.aborted) break;
+        const chunk = items.slice(i, i + chunkSize);
+        const formData = new FormData();
+        for (const u of chunk) {
+          try {
+            const file = await u.handle.getFile();
+            formData.append('images', file, u.originalName);
+          } catch {
+            addToast(`Missing local file: ${u.originalName}`, 'error');
+          }
         }
-      }
-      if (ids.length === 0) return { list: [], missing, failed: [] };
-      try {
-        res = await fetch('/api/transaction_images/upload_check', {
+        if (![...formData].length) continue;
+        const res = await fetch('/api/transaction_images/upload_check', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -717,84 +714,49 @@ export default function ImageManagement() {
         });
         if (res.ok) {
           const data = await res.json().catch(() => ({}));
-          return { list: Array.isArray(data.list) ? data.list : [], missing, failed: [] };
+          return Array.isArray(data.list) ? data.list : [];
         }
-      } catch {
-        if (controller.signal.aborted) return { list: [], missing, failed: [] };
+        const data = await res.json().catch(() => ({}));
+        const list = Array.isArray(data.list) ? data.list : [];
+        merged = merged.concat(list);
       }
-      addToast('Rename failed', 'error');
-      return { list: [], missing, failed: ids };
-    }
 
-    let newUploads = uploads.slice();
-    let newIgnored = ignored.slice();
-    let renamedCount = 0;
-    try {
-      for (let i = 0; i < items.length && !controller.signal.aborted; i += 50) {
-        const batch = items.slice(i, i + 50);
-        const { list: res, missing, failed } = await uploadCheckBatch(batch);
-        renamedCount += res.length;
-        const resMap = new Map(res.map((r) => [r.originalName, r]));
-        const ids = new Set(batch.map((u) => u.id));
-        const missingSet = new Set(missing);
-        const failedSet = new Set(failed);
-        newUploads = newUploads
-          .map((u) => {
-            if (!ids.has(u.id)) return u;
-            if (missingSet.has(u.id)) {
-              const msg = 'Missing local file';
-              return { ...u, description: msg, reason: msg };
-            }
-            const found = resMap.get(u.originalName);
-            if (found) {
-              const merged = { ...u, ...found, id: u.id, reason: '' };
-              return { ...merged, description: extractDateFromName(merged.originalName) };
-            }
-            if (failedSet.has(u.id)) {
-              const msg = 'Rename failed';
-              return { ...u, description: msg, reason: msg };
-            }
-            const msg = u.reason && u.reason !== 'Rename failed' ? u.reason : 'No match found';
-            return { ...u, description: msg, reason: msg };
-          })
-          .sort((a, b) => a.originalName.localeCompare(b.originalName));
-        newIgnored = newIgnored
-          .map((u) => {
-            if (!ids.has(u.id)) return u;
-            if (missingSet.has(u.id)) {
-              const msg = 'Missing local file';
-              return { ...u, description: msg, reason: msg };
-            }
-            const found = resMap.get(u.originalName);
-            if (found) {
-              const merged = { ...u, ...found, id: u.id, reason: '' };
-              return { ...merged, description: extractDateFromName(merged.originalName) };
-            }
-            if (failedSet.has(u.id)) {
-              const msg = 'Rename failed';
-              return { ...u, description: msg, reason: msg };
-            }
-            const msg = u.reason && u.reason !== 'Rename failed' ? u.reason : 'No match found';
-            return { ...u, description: msg, reason: msg };
-          })
-          .sort((a, b) => a.originalName.localeCompare(b.originalName));
-        setUploads(newUploads);
-        setIgnored(newIgnored);
-        persistAll({ uploads: newUploads, ignored: newIgnored });
-      }
       if (controller.signal.aborted) {
         addToast('Rename canceled', 'info');
         return;
       }
+
+      if (merged.length) {
+        const fixRes = await fetch('/api/transaction_images/fix_incomplete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ list: merged }),
+          signal: controller.signal,
+        });
+        if (!fixRes.ok) {
+          addToast('Rename failed', 'error');
+          return;
+        }
+        const fixData = await fixRes.json().catch(() => ({}));
+        addToast(`Renamed ${fixData.fixed || 0} file(s)`, 'success');
+        setReport(`Renamed ${fixData.fixed || 0} file(s)`);
+      }
+
+      const renamed = new Set(merged.map((x) => x.originalName));
+      const newUploads = uploads.filter((u) => !renamed.has(u.originalName));
+      const newIgnored = ignored.filter((u) => !renamed.has(u.originalName));
+
+      setUploads(newUploads);
+      setIgnored(newIgnored);
+      setUploadSel([]);
+      persistAll({ uploads: newUploads, ignored: newIgnored });
+    } catch {
+      if (controller.signal.aborted) addToast('Rename canceled', 'info');
+      else addToast('Rename failed', 'error');
     } finally {
       setActiveOp(null);
     }
-
-    setUploads(newUploads);
-    setIgnored(newIgnored);
-    persistAll({ uploads: newUploads, ignored: newIgnored });
-    setUploadSel((s) => s.filter((id) => !items.some((u) => u.id === id)));
-    setReport(`Renamed ${renamedCount} file(s)`);
   }
 
   async function commitUploads() {
