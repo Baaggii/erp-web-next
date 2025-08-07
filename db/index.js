@@ -949,8 +949,7 @@ export async function deleteTableRowCascade(tableName, id) {
   }
 }
 
-export async function listTransactions({
-  table,
+export async function listInventoryTransactions({
   branchId,
   startDate,
   endDate,
@@ -959,9 +958,6 @@ export async function listTransactions({
   refCol,
   refVal,
 } = {}) {
-  if (!table || !/^[a-zA-Z0-9_]+$/.test(table)) {
-    throw new Error('Invalid table');
-  }
   const clauses = [];
   const params = [];
   if (branchId !== undefined && branchId !== '') {
@@ -983,12 +979,12 @@ export async function listTransactions({
   const where = clauses.length > 0 ? 'WHERE ' + clauses.join(' AND ') : '';
 
   const [countRows] = await pool.query(
-    `SELECT COUNT(*) AS count FROM \`${table}\` ${where}`,
+    `SELECT COUNT(*) AS count FROM inventory_transactions ${where}`,
     params,
   );
   const count = countRows[0].count;
 
-  let sql = `SELECT * FROM \`${table}\` ${where} ORDER BY id DESC`;
+  let sql = `SELECT * FROM inventory_transactions ${where} ORDER BY id DESC`;
   const qParams = [...params];
   if (count > 100) {
     const limit = Math.min(Number(perPage) || 50, 500);
