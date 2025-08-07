@@ -1,8 +1,9 @@
 import express from 'express';
-import { getTransactions } from '../controllers/transactionController.js';
+import { requireAuth } from '../middlewares/auth.js';
+import { getInventoryTransactions } from '../controllers/transactionController.js';
 
 const router = express.Router();
 
-router.get('/', getTransactions);
+router.get('/', requireAuth, getInventoryTransactions);
 
 export default router;

@@ -97,7 +97,7 @@ app.use("/api/views", viewsRoutes);
 app.use("/api/procedures", requireAuth, procedureRoutes);
 app.use("/api/proc_triggers", requireAuth, procTriggerRoutes);
 app.use("/api/report_procedures", reportProcedureRoutes);
-app.use("/api/transactions", requireAuth, transactionRoutes);
+app.use("/api/inventory_transactions", requireAuth, transactionRoutes);
 app.use("/api/transaction_images", transactionImageRoutes);
 app.use("/api/tables", requireAuth, tableRoutes);
 app.use("/api/general_config", requireAuth, generalConfigRoutes);

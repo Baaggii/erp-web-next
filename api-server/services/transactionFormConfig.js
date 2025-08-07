@@ -121,18 +121,6 @@ export async function getConfigsByTransTypeValue(val) {
   return result;
 }
 
-export async function findTableByProcedure(proc) {
-  if (!proc) return null;
-  const cfg = await readConfig();
-  for (const [tbl, names] of Object.entries(cfg)) {
-    for (const info of Object.values(names)) {
-      const parsed = parseEntry(info);
-      if (parsed.procedures.includes(proc)) return tbl;
-    }
-  }
-  return null;
-}
-
 export async function listTransactionNames({ moduleKey, branchId, departmentId } = {}) {
   const cfg = await readConfig();
   const result = {};
