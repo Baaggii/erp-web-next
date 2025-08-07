@@ -692,10 +692,6 @@ export default function ImageManagement() {
     renameAbortRef.current = controller;
     setActiveOp('rename');
 
-    const controller = new AbortController();
-    renameAbortRef.current = controller;
-    setActiveOp('rename');
-
     try {
       for (let i = 0; i < items.length; i += chunkSize) {
         if (controller.signal.aborted) break;
