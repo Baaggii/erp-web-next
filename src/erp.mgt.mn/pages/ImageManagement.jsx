@@ -692,6 +692,10 @@ export default function ImageManagement() {
     renameAbortRef.current = controller;
     setActiveOp('rename');
 
+    const controller = new AbortController();
+    renameAbortRef.current = controller;
+    setActiveOp('rename');
+
     try {
       for (let i = 0; i < items.length; i += chunkSize) {
         if (controller.signal.aborted) break;
@@ -726,33 +730,31 @@ export default function ImageManagement() {
         return;
       }
 
-      const newUploads = uploads
-        .map((u) => {
-          const found = merged.find((x) => x.originalName === u.originalName);
-          const result = found ? { ...u, ...found, id: u.id } : u;
-          return {
-            ...result,
-            description: extractDateFromName(result.originalName),
-          };
-        })
-        .sort((a, b) => a.originalName.localeCompare(b.originalName));
+      if (merged.length) {
+        const fixRes = await fetch('/api/transaction_images/fix_incomplete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ list: merged }),
+          signal: controller.signal,
+        });
+        if (!fixRes.ok) {
+          addToast('Rename failed', 'error');
+          return;
+        }
+        const fixData = await fixRes.json().catch(() => ({}));
+        addToast(`Renamed ${fixData.fixed || 0} file(s)`, 'success');
+        setReport(`Renamed ${fixData.fixed || 0} file(s)`);
+      }
 
-      const newIgnored = ignored
-        .map((u) => {
-          const found = merged.find((x) => x.originalName === u.originalName);
-          const result = found ? { ...u, ...found, id: u.id } : u;
-          return {
-            ...result,
-            description: extractDateFromName(result.originalName),
-          };
-        })
-        .sort((a, b) => a.originalName.localeCompare(b.originalName));
+      const renamed = new Set(merged.map((x) => x.originalName));
+      const newUploads = uploads.filter((u) => !renamed.has(u.originalName));
+      const newIgnored = ignored.filter((u) => !renamed.has(u.originalName));
 
       setUploads(newUploads);
       setIgnored(newIgnored);
       setUploadSel([]);
       persistAll({ uploads: newUploads, ignored: newIgnored });
-      setReport(`Renamed ${merged.length} file(s)`);
     } catch {
       if (controller.signal.aborted) addToast('Rename canceled', 'info');
       else addToast('Rename failed', 'error');
