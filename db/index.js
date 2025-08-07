@@ -1083,7 +1083,7 @@ export async function getProcedureRawRows(
   let sql = match[1];
 
   const sumRegex = new RegExp(
-    `SUM\\(([^)]*)\\)\\s+AS\\s+\\`?${column}\\`?`,
+    'SUM\\(([^)]*)\\)\\s+AS\\s+`?' + column + '`?',
     'i',
   );
   const sumMatch = sql.match(sumRegex);
