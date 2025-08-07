@@ -173,69 +173,62 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
           data: data.rows || [],
           sql: data.sql || '',
         });
-        if (general.reportRowToastEnabled) {
-          if (data.sql) {
-            const preview =
-              data.sql.length > 200 ? `${data.sql.slice(0, 200)}…` : data.sql;
-            window.dispatchEvent(
-              new CustomEvent('toast', {
-                detail: {
-                  message: `SQL saved to ${data.file || ''}: ${preview}`,
-                  type: 'info',
-                },
-              }),
-            );
-          } else {
-            window.dispatchEvent(
-              new CustomEvent('toast', {
-                detail: {
-                  message: 'No SQL generated',
-                  type: 'error',
-                },
-              }),
-            );
-          }
+        if (data.sql) {
+          const preview =
+            data.sql.length > 200 ? `${data.sql.slice(0, 200)}…` : data.sql;
           window.dispatchEvent(
             new CustomEvent('toast', {
               detail: {
-                message: `Rows fetched: ${data.rows ? data.rows.length : 0}`,
-                type: data.rows && data.rows.length ? 'success' : 'error',
+                message: `SQL saved to ${data.file || ''}: ${preview}`,
+                type: 'info',
               },
             }),
           );
+        } else {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message: 'No SQL generated', type: 'error' },
+            }),
+          );
         }
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: {
+              message: `Rows fetched: ${data.rows ? data.rows.length : 0}`,
+              type: data.rows && data.rows.length ? 'success' : 'error',
+            },
+          }),
+        );
       })
       .catch((err) => {
         const sql = err && typeof err === 'object' ? err.sql || '' : '';
         const file = err && typeof err === 'object' ? err.file || '' : '';
         setTxnInfo({ loading: false, col, value, data: [], sql });
-        if (general.reportRowToastEnabled) {
-          if (sql) {
-            const preview = sql.length > 200 ? `${sql.slice(0, 200)}…` : sql;
-            window.dispatchEvent(
-              new CustomEvent('toast', {
-                detail: {
-                  message: `SQL saved to ${file}: ${preview}`,
-                  type: 'info',
-                },
-              }),
-            );
-          } else {
-            window.dispatchEvent(
-              new CustomEvent('toast', {
-                detail: { message: 'No SQL generated', type: 'error' },
-              }),
-            );
-          }
+        if (sql) {
+          const preview = sql.length > 200 ? `${sql.slice(0, 200)}…` : sql;
           window.dispatchEvent(
             new CustomEvent('toast', {
               detail: {
-                message: err && err.message ? err.message : 'Row fetch failed',
-                type: 'error',
+                message: `SQL saved to ${file}: ${preview}`,
+                type: 'info',
               },
             }),
           );
+        } else {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message: 'No SQL generated', type: 'error' },
+            }),
+          );
         }
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: {
+              message: err && err.message ? err.message : 'Row fetch failed',
+              type: 'error',
+            },
+          }),
+        );
       });
   }
 
