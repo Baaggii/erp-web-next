@@ -1079,7 +1079,8 @@ export async function getProcedureRawRows(
 ) {
   let createSql = '';
   try {
-    const [rows] = await pool.query(`SHOW CREATE PROCEDURE \`${name}\``);
+    const showSql = mysql.format('SHOW CREATE PROCEDURE ??', [name]);
+    const [rows] = await pool.query(showSql);
     createSql = rows && rows[0] && rows[0]['Create Procedure'];
   } catch {}
   if (!createSql) {
@@ -1093,20 +1094,13 @@ export async function getProcedureRawRows(
       createSql = rows && rows[0] && rows[0].def;
     } catch {}
   }
-  // Final fallback: try mysql.proc for environments where information_schema
-  // access is restricted. This still may fail, but ensures we return some SQL
-  // text when possible so the frontend can display it for debugging.
   if (!createSql) {
-    try {
-      const [rows] = await pool.query(
-        `SELECT body FROM mysql.proc WHERE db = DATABASE() AND name = ?`,
-        [name],
-      );
-      createSql = rows && rows[0] && rows[0].body;
-    } catch {}
-  }
-  if (!createSql) {
-    createSql = `CALL ${name}`;
+    const file = `${name.replace(/[^a-z0-9_]/gi, '_')}_rows.sql`;
+    await fs.writeFile(
+      path.join(process.cwd(), 'config', file),
+      `-- No SQL found for ${name}\n`,
+    );
+    return { rows: [], sql: '', original: '', file };
   }
   const bodyMatch = createSql.match(/BEGIN\s*([\s\S]*)END/i);
   const body = bodyMatch ? bodyMatch[1] : createSql;
