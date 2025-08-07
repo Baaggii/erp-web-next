@@ -33,7 +33,7 @@ import ImageManagementPage from './pages/ImageManagement.jsx';
 import FinanceTransactionsPage from './pages/FinanceTransactions.jsx';
 import { useModules } from './hooks/useModules.js';
 import { useTxnModules } from './hooks/useTxnModules.js';
-import useGeneralConfig from './hooks/useGeneralConfig.js';
+import useProcLabels from './hooks/useProcLabels.js';
 
 export default function App() {
   const modules = useModules();
@@ -44,9 +44,10 @@ export default function App() {
     debugLog('Component mounted: App');
   }, []);
 
+  const procLabelMap = useProcLabels(modules.map((m) => m.module_key));
   const moduleMap = {};
   modules.forEach((m) => {
-    const label = generalConfig.general?.procLabels?.[m.module_key] || m.label;
+    const label = procLabelMap[m.module_key] || m.label;
     moduleMap[m.module_key] = { ...m, label, children: [] };
   });
   modules.forEach((m) => {

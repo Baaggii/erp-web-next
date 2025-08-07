@@ -15,6 +15,7 @@ import useGeneralConfig from "../hooks/useGeneralConfig.js";
 import { useTabs } from "../context/TabContext.jsx";
 import { useIsLoading } from "../context/LoadingContext.jsx";
 import Spinner from "./Spinner.jsx";
+import useProcLabels from "../hooks/useProcLabels.js";
 
 /**
  * A desktop‐style “ERPLayout” with:
@@ -47,6 +48,7 @@ export default function ERPLayout() {
   }, []);
 
   const modules = useModules();
+  const procLabelMap = useProcLabels(modules.map((m) => m.module_key));
   const titleMap = {
     "/": "Blue Link демо",
     "/forms": "Маягтууд",
@@ -70,7 +72,7 @@ export default function ERPLayout() {
       (m) => m.module_key.replace(/_/g, '-') === seg,
     );
     if (!mod) return 'ERP';
-    return generalConfig.general?.procLabels?.[mod.module_key] || mod.label;
+    return procLabelMap[mod.module_key] || mod.label;
   }
 
   const windowTitle = titleForPath(location.pathname);
@@ -190,13 +192,13 @@ function Sidebar({ onOpen, open, isMobile }) {
   const licensed = useCompanyModules(company?.company_id);
   const modules = useModules();
   const txnModuleKeys = useTxnModules();
-  const generalConfig = useGeneralConfig();
+  const procLabelMap = useProcLabels(modules.map((m) => m.module_key));
 
   if (!perms || !licensed) return null;
 
   const allMap = {};
   modules.forEach((m) => {
-    const label = generalConfig.general?.procLabels?.[m.module_key] || m.label;
+    const label = procLabelMap[m.module_key] || m.label;
     allMap[m.module_key] = { ...m, label };
   });
 
@@ -219,7 +221,7 @@ function Sidebar({ onOpen, open, isMobile }) {
       return;
     if (isFormsDescendant(m) && txnModuleKeys && !txnModuleKeys.has(m.module_key))
       return;
-    const label = generalConfig.general?.procLabels?.[m.module_key] || m.label;
+    const label = procLabelMap[m.module_key] || m.label;
     map[m.module_key] = { ...m, label, children: [] };
   });
 

@@ -1,10 +1,12 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig, { updateCache } from '../hooks/useGeneralConfig.js';
+import useProcLabels from '../hooks/useProcLabels.js';
 
 export default function ReportTable({ procedure = '', params = {}, rows = [] }) {
   const { user } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
+  const procLabelMap = useProcLabels([procedure]);
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
   const [sort, setSort] = useState(null); // { col, dir }
@@ -97,7 +99,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       .then((data) => data && updateCache(data));
   }
 
-  const procLabel = procLabels[procedure] || procedure;
+  const procLabel = procLabelMap[procedure] || procedure;
   const paramText =
     generalConfig.general?.showReportParams &&
     params &&
@@ -130,13 +132,13 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     <div style={{ marginTop: '1rem' }}>
       <h4>
         {procLabel}
-        {paramText}
         {user?.role === 'admin' && generalConfig.general?.editLabelsEnabled && (
           <button onClick={handleEditProcLabel} style={{ marginLeft: '0.5rem' }}>
             Edit label
           </button>
         )}
       </h4>
+      {paramText && <div style={{ marginBottom: '0.5rem' }}>{paramText}</div>}
       <div style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center' }}>
         <input
           type="text"
@@ -147,20 +149,18 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
         />
         <label>
           Page size:
-          <select
+          <input
+            type="number"
             value={perPage}
+            min={1}
+            max={1000}
             onChange={(e) => {
-              setPerPage(Number(e.target.value));
+              const val = Math.min(1000, Math.max(1, Number(e.target.value) || 1));
+              setPerPage(val);
               setPage(1);
             }}
-            style={{ marginLeft: '0.25rem' }}
-          >
-            {[10, 25, 50, 100, 250, 500, 1000].map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
+            style={{ marginLeft: '0.25rem', width: '4rem' }}
+          />
         </label>
       </div>
       <div style={{ overflowX: 'auto' }}>
@@ -226,7 +226,22 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
           {'<'}
         </button>
         <span style={{ margin: '0 0.5rem' }}>
-          Page {page} of {totalPages}
+          Page
+          <input
+            type="number"
+            value={page}
+            min={1}
+            max={totalPages}
+            onChange={(e) => {
+              const val = Math.min(
+                totalPages,
+                Math.max(1, Number(e.target.value) || 1),
+              );
+              setPage(val);
+            }}
+            style={{ width: '4rem', margin: '0 0.25rem' }}
+          />
+          of {totalPages}
         </span>
         <button
           onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
