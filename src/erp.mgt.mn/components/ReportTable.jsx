@@ -122,6 +122,16 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     return sums;
   }, [numericColumns, sorted]);
 
+  useEffect(() => {
+    if (procedure) {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message: `Selected procedure: ${procedure}`, type: 'info' },
+        }),
+      );
+    }
+  }, [procedure]);
+
   const totalPages = Math.max(1, Math.ceil(sorted.length / perPage));
   const pageRows = useMemo(
     () => sorted.slice((page - 1) * perPage, page * perPage),
@@ -139,6 +149,11 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
   function handleCellClick(col, value, row) {
     const num = Number(String(value).replace(',', '.'));
     if (!procedure || Number.isNaN(num) || num <= 0) return;
+    window.dispatchEvent(
+      new CustomEvent('toast', {
+        detail: { message: `Procedure: ${procedure}`, type: 'info' },
+      }),
+    );
     const firstField = columns[0];
     const payload = {
       name: procedure,
@@ -173,13 +188,15 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
           data: data.rows || [],
           sql: data.sql || '',
         });
-        if (data.sql) {
+        if (data.original) {
           const preview =
-            data.sql.length > 200 ? `${data.sql.slice(0, 200)}…` : data.sql;
+            data.original.length > 200
+              ? `${data.original.slice(0, 200)}…`
+              : data.original;
           window.dispatchEvent(
             new CustomEvent('toast', {
               detail: {
-                message: `SQL saved to ${data.file || ''}: ${preview}`,
+                message: `Procedure SQL saved to ${data.file || ''}: ${preview}`,
                 type: 'info',
               },
             }),
@@ -187,7 +204,25 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
         } else {
           window.dispatchEvent(
             new CustomEvent('toast', {
-              detail: { message: 'No SQL generated', type: 'error' },
+              detail: { message: 'Procedure SQL not found', type: 'error' },
+            }),
+          );
+        }
+        if (data.sql && data.sql !== data.original) {
+          const preview =
+            data.sql.length > 200 ? `${data.sql.slice(0, 200)}…` : data.sql;
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: {
+                message: `Transformed SQL saved to ${data.file || ''}: ${preview}`,
+                type: 'info',
+              },
+            }),
+          );
+        } else {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message: 'SQL transformation failed', type: 'error' },
             }),
           );
         }

@@ -1128,66 +1128,75 @@ export async function getProcedureRawRows(
   if (!sql) {
     sql = createSql;
   }
-  const colRe = escapeRegExp(column);
-  const sumRegex = new RegExp(
-    `SUM\\(([^)]*)\\)\\s*(?:AS\\s+)?` + '`?' + colRe + '`?',
-    'i',
-  );
-  const sumMatch = sql.match(sumRegex);
-  if (sumMatch) {
-    sql = sql.replace(sumRegex, `${sumMatch[1]} AS ${column}`);
-  }
 
-  sql = sql.replace(/GROUP BY[\s\S]*?(HAVING|ORDER BY|$)/i, '$1');
-  sql = sql.replace(/HAVING[\s\S]*?(ORDER BY|$)/i, '$1');
+  const originalSql = sql;
 
-  if (params && typeof params === 'object') {
-    for (const [key, val] of Object.entries(params)) {
-      const re = new RegExp(`\\b${escapeRegExp(key)}\\b`, 'gi');
+  if (/^SELECT/i.test(sql)) {
+    const colRe = escapeRegExp(column);
+    const sumRegex = new RegExp(
+      `SUM\\(([^)]*)\\)\\s*(?:AS\\s+)?` + '`?' + colRe + '`?',
+      'i',
+    );
+    const sumMatch = sql.match(sumRegex);
+    if (sumMatch) {
+      sql = sql.replace(sumRegex, `${sumMatch[1]} AS ${column}`);
+    }
+
+    sql = sql.replace(/GROUP BY[\s\S]*?(HAVING|ORDER BY|$)/i, '$1');
+    sql = sql.replace(/HAVING[\s\S]*?(ORDER BY|$)/i, '$1');
+
+    if (params && typeof params === 'object') {
+      for (const [key, val] of Object.entries(params)) {
+        const re = new RegExp(`\\b${escapeRegExp(key)}\\b`, 'gi');
+        const rep =
+          val === null || val === undefined
+            ? 'NULL'
+            : typeof val === 'number'
+            ? String(val)
+            : `'${val}'`;
+        sql = sql.replace(re, rep);
+      }
+    }
+
+    if (sessionVars && typeof sessionVars === 'object') {
+      for (const [key, val] of Object.entries(sessionVars)) {
+        const re = new RegExp(`@session_${escapeRegExp(key)}\\b`, 'gi');
+        const rep =
+          val === null || val === undefined
+            ? 'NULL'
+            : typeof val === 'number'
+            ? String(val)
+            : `'${val}'`;
+        sql = sql.replace(re, rep);
+      }
+    }
+
+    if (groupField && groupValue !== undefined) {
       const rep =
-        val === null || val === undefined
-          ? 'NULL'
-          : typeof val === 'number'
-          ? String(val)
-          : `'${val}'`;
-      sql = sql.replace(re, rep);
+        typeof groupValue === 'number' ? String(groupValue) : `'${groupValue}'`;
+      if (/WHERE/i.test(sql)) {
+        sql = sql.replace(/WHERE/i, `WHERE ${groupField} = ${rep} AND `);
+      } else {
+        sql += ` WHERE ${groupField} = ${rep}`;
+      }
     }
-  }
 
-  if (sessionVars && typeof sessionVars === 'object') {
-    for (const [key, val] of Object.entries(sessionVars)) {
-      const re = new RegExp(`@session_${escapeRegExp(key)}\\b`, 'gi');
-      const rep =
-        val === null || val === undefined
-          ? 'NULL'
-          : typeof val === 'number'
-          ? String(val)
-          : `'${val}'`;
-      sql = sql.replace(re, rep);
-    }
+    // Trim trailing statement terminators to avoid MySQL complaining when
+    // executing the reconstructed query.
+    sql = sql.replace(/;\s*$/, '');
   }
-
-  if (groupField && groupValue !== undefined) {
-    const rep =
-      typeof groupValue === 'number' ? String(groupValue) : `'${groupValue}'`;
-    if (/WHERE/i.test(sql)) {
-      sql = sql.replace(/WHERE/i, `WHERE ${groupField} = ${rep} AND `);
-    } else {
-      sql += ` WHERE ${groupField} = ${rep}`;
-    }
-  }
-
-  // Trim trailing statement terminators to avoid MySQL complaining when
-  // executing the reconstructed query.
-  sql = sql.replace(/;\s*$/, '');
 
   const file = `${name.replace(/[^a-z0-9_]/gi, '_')}_rows.sql`;
-  await fs.writeFile(path.join(process.cwd(), 'config', file), sql);
+  let content = `-- Original SQL for ${name}\n${originalSql}\n`;
+  if (sql && sql !== originalSql) {
+    content += `\n-- Transformed SQL for ${name}\n${sql}\n`;
+  }
+  await fs.writeFile(path.join(process.cwd(), 'config', file), content);
 
   try {
     const [out] = await pool.query(sql);
-    return { rows: out, sql, file };
+    return { rows: out, sql, original: originalSql, file };
   } catch {
-    return { rows: [], sql, file };
+    return { rows: [], sql, original: originalSql, file };
   }
 }
