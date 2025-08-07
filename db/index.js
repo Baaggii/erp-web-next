@@ -1078,38 +1078,55 @@ export async function getProcedureRawRows(
   sessionVars = {},
 ) {
   let createSql = '';
+  const dbName =
+    process.env.DB_NAME ||
+    pool?.config?.connectionConfig?.database ||
+    pool?.config?.database;
+
+  // Primary attempt: SHOW CREATE PROCEDURE with database qualification when available.
   try {
-    const [rows] = await pool.query(`SHOW CREATE PROCEDURE \`${name}\``);
+    const procIdent = mysql.format('??', [name]);
+    const showSql = dbName
+      ? `SHOW CREATE PROCEDURE ${mysql.format('??', [dbName])}.${procIdent}`
+      : `SHOW CREATE PROCEDURE ${procIdent}`;
+    const [rows] = await pool.query(showSql);
     createSql = rows && rows[0] && rows[0]['Create Procedure'];
   } catch {}
+
+  // Fallback: try without database qualification in case the connection is
+  // already using the correct schema.
   if (!createSql) {
+    try {
+      const [rows] = await pool.query(
+        `SHOW CREATE PROCEDURE ${mysql.format('??', [name])}`,
+      );
+      createSql = rows && rows[0] && rows[0]['Create Procedure'];
+    } catch {}
+  }
+
+  // Final fallback: query information_schema when SHOW CREATE PROCEDURE is not
+  // permitted or returns nothing.
+  if (!createSql && dbName) {
     try {
       const [rows] = await pool.query(
         `SELECT ROUTINE_DEFINITION AS def
            FROM information_schema.routines
-          WHERE ROUTINE_SCHEMA = DATABASE() AND ROUTINE_NAME = ?`,
-        [name],
+          WHERE ROUTINE_SCHEMA = ? AND ROUTINE_NAME = ?`,
+        [dbName, name],
       );
       createSql = rows && rows[0] && rows[0].def;
     } catch {}
   }
-  // Final fallback: try mysql.proc for environments where information_schema
-  // access is restricted. This still may fail, but ensures we return some SQL
-  // text when possible so the frontend can display it for debugging.
+
+  // If the procedure definition still can't be located, persist a marker file
+  // so the frontend can report the failure via toast notifications.
   if (!createSql) {
-    try {
-      const [rows] = await pool.query(
-        `SELECT body FROM mysql.proc WHERE db = DATABASE() AND name = ?`,
-        [name],
-      );
-      createSql = rows && rows[0] && rows[0].body;
-    } catch {}
-  }
-  if (!createSql) {
-    const callSql = `CALL ${name}`;
     const file = `${name.replace(/[^a-z0-9_]/gi, '_')}_rows.sql`;
-    await fs.writeFile(path.join(process.cwd(), 'config', file), callSql);
-    return { rows: [], sql: callSql, file };
+    await fs.writeFile(
+      path.join(process.cwd(), 'config', file),
+      `-- No SQL found for ${name}\n`,
+    );
+    return { rows: [], sql: '', original: '', file };
   }
   const bodyMatch = createSql.match(/BEGIN\s*([\s\S]*)END/i);
   const body = bodyMatch ? bodyMatch[1] : createSql;
@@ -1129,70 +1146,79 @@ export async function getProcedureRawRows(
     sql = selectMatches[selectMatches.length - 1][0];
   }
   if (!sql) {
-    const file = `${name.replace(/[^a-z0-9_]/gi, '_')}_rows.sql`;
-    await fs.writeFile(path.join(process.cwd(), 'config', file), createSql);
-    return { rows: [], sql: createSql, file };
-  }
-  const colRe = escapeRegExp(column);
-  const sumRegex = new RegExp(
-    `SUM\\(([^)]*)\\)\\s*(?:AS\\s+)?` + '`?' + colRe + '`?',
-    'i',
-  );
-  const sumMatch = sql.match(sumRegex);
-  if (sumMatch) {
-    sql = sql.replace(sumRegex, `${sumMatch[1]} AS ${column}`);
+    sql = createSql;
   }
 
-  sql = sql.replace(/GROUP BY[\s\S]*?(HAVING|ORDER BY|$)/i, '$1');
-  sql = sql.replace(/HAVING[\s\S]*?(ORDER BY|$)/i, '$1');
+  const originalSql = sql;
 
-  if (params && typeof params === 'object') {
-    for (const [key, val] of Object.entries(params)) {
-      const re = new RegExp(`\\b${escapeRegExp(key)}\\b`, 'gi');
+  if (/^SELECT/i.test(sql)) {
+    const colRe = escapeRegExp(column);
+    const sumRegex = new RegExp(
+      `SUM\\s*\\((CASE[\\s\\S]*?END)\\)\\s*(?:AS\\s+)?` + '`?' + colRe + '`?`,
+      'i',
+    );
+    const sumMatch = sql.match(sumRegex);
+    if (sumMatch) {
+      // Replace the aggregate with the raw CASE expression so rows are returned
+      // at the transaction level instead of as a summary.
+      sql = sql.replace(sumRegex, `${sumMatch[1]} AS ${column}`);
+    }
+
+    sql = sql.replace(/GROUP BY[\s\S]*?(HAVING|ORDER BY|$)/i, '$1');
+    sql = sql.replace(/HAVING[\s\S]*?(ORDER BY|$)/i, '$1');
+
+    if (params && typeof params === 'object') {
+      for (const [key, val] of Object.entries(params)) {
+        const re = new RegExp(`\\b${escapeRegExp(key)}\\b`, 'gi');
+        const rep =
+          val === null || val === undefined
+            ? 'NULL'
+            : typeof val === 'number'
+            ? String(val)
+            : `'${val}'`;
+        sql = sql.replace(re, rep);
+      }
+    }
+
+    if (sessionVars && typeof sessionVars === 'object') {
+      for (const [key, val] of Object.entries(sessionVars)) {
+        const re = new RegExp(`@session_${escapeRegExp(key)}\\b`, 'gi');
+        const rep =
+          val === null || val === undefined
+            ? 'NULL'
+            : typeof val === 'number'
+            ? String(val)
+            : `'${val}'`;
+        sql = sql.replace(re, rep);
+      }
+    }
+
+    if (groupField && groupValue !== undefined) {
       const rep =
-        val === null || val === undefined
-          ? 'NULL'
-          : typeof val === 'number'
-          ? String(val)
-          : `'${val}'`;
-      sql = sql.replace(re, rep);
+        typeof groupValue === 'number' ? String(groupValue) : `'${groupValue}'`;
+      if (/WHERE/i.test(sql)) {
+        sql = sql.replace(/WHERE/i, `WHERE ${groupField} = ${rep} AND `);
+      } else {
+        sql += ` WHERE ${groupField} = ${rep}`;
+      }
     }
-  }
 
-  if (sessionVars && typeof sessionVars === 'object') {
-    for (const [key, val] of Object.entries(sessionVars)) {
-      const re = new RegExp(`@session_${escapeRegExp(key)}\\b`, 'gi');
-      const rep =
-        val === null || val === undefined
-          ? 'NULL'
-          : typeof val === 'number'
-          ? String(val)
-          : `'${val}'`;
-      sql = sql.replace(re, rep);
-    }
+    // Trim trailing statement terminators to avoid MySQL complaining when
+    // executing the reconstructed query.
+    sql = sql.replace(/;\s*$/, '');
   }
-
-  if (groupField && groupValue !== undefined) {
-    const rep =
-      typeof groupValue === 'number' ? String(groupValue) : `'${groupValue}'`;
-    if (/WHERE/i.test(sql)) {
-      sql = sql.replace(/WHERE/i, `WHERE ${groupField} = ${rep} AND `);
-    } else {
-      sql += ` WHERE ${groupField} = ${rep}`;
-    }
-  }
-
-  // Trim trailing statement terminators to avoid MySQL complaining when
-  // executing the reconstructed query.
-  sql = sql.replace(/;\s*$/, '');
 
   const file = `${name.replace(/[^a-z0-9_]/gi, '_')}_rows.sql`;
-  await fs.writeFile(path.join(process.cwd(), 'config', file), sql);
+  let content = `-- Original SQL for ${name}\n${originalSql}\n`;
+  if (sql && sql !== originalSql) {
+    content += `\n-- Transformed SQL for ${name}\n${sql}\n`;
+  }
+  await fs.writeFile(path.join(process.cwd(), 'config', file), content);
 
   try {
     const [out] = await pool.query(sql);
-    return { rows: out, sql, file };
+    return { rows: out, sql, original: originalSql, file };
   } catch {
-    return { rows: [], sql, file };
+    return { rows: [], sql, original: originalSql, file };
   }
 }
