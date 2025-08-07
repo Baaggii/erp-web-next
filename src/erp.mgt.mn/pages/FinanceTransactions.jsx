@@ -14,7 +14,7 @@ import { useCompanyModules } from '../hooks/useCompanyModules.js';
 import { useTxnSession } from '../context/TxnSessionContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
-import useProcLabels from '../hooks/useProcLabels.js';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 function isEqual(a, b) {
   try {
@@ -49,9 +49,9 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   );
   const [procParams, setProcParams] = useState([]);
   const [reportResult, setReportResult] = useState(null);
-  const procLabelMap = useProcLabels(config?.procedures || []);
   const [manualParams, setManualParams] = useState({});
   const { company, user } = useContext(AuthContext);
+  const generalConfig = useGeneralConfig();
   const perms = useRolePermissions();
   const licensed = useCompanyModules(company?.company_id);
   const tableRef = useRef(null);
@@ -389,7 +389,7 @@ useEffect(() => {
       acc[p] = finalParams[i];
       return acc;
     }, {});
-    const label = procLabelMap[selectedProc] || selectedProc;
+    const label = generalConfig.general?.procLabels?.[selectedProc] || selectedProc;
     addToast(`Calling ${label}`, 'info');
     try {
       const res = await fetch('/api/procedures', {
@@ -464,7 +464,7 @@ useEffect(() => {
                   <option value="">-- select --</option>
                   {config.procedures.map((p) => (
                     <option key={p} value={p}>
-                      {procLabelMap[p]}
+                      {generalConfig.general?.procLabels?.[p] || p}
                     </option>
                   ))}
                 </select>

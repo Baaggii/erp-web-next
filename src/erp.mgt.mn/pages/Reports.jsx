@@ -4,14 +4,14 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import ReportTable from '../components/ReportTable.jsx';
-import useProcLabels from '../hooks/useProcLabels.js';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 export default function Reports() {
   const { company, user } = useContext(AuthContext);
   const { addToast } = useToast();
+  const generalConfig = useGeneralConfig();
   const [procedures, setProcedures] = useState([]);
   const [selectedProc, setSelectedProc] = useState('');
-  const procLabelMap = useProcLabels(procedures);
   const [procParams, setProcParams] = useState([]);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -36,8 +36,7 @@ export default function Reports() {
               .forEach((p) => set.add(p));
           }
         });
-        const list = Array.from(set).sort();
-        setProcedures(list);
+        setProcedures(Array.from(set).sort());
       })
       .catch(() => setProcedures([]));
   }, [company?.branch_id, company?.department_id]);
@@ -143,7 +142,7 @@ export default function Reports() {
       acc[p] = finalParams[i];
       return acc;
     }, {});
-    const label = procLabelMap[selectedProc] || selectedProc;
+    const label = generalConfig.general?.procLabels?.[selectedProc] || selectedProc;
     addToast(`Calling ${label}`, 'info');
     try {
       const res = await fetch('/api/procedures', {
@@ -185,7 +184,7 @@ export default function Reports() {
           <option value="">-- select --</option>
           {procedures.map((p) => (
             <option key={p} value={p}>
-              {procLabelMap[p]}
+              {generalConfig.general?.procLabels?.[p] || p}
             </option>
           ))}
         </select>

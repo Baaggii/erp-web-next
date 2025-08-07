@@ -3,7 +3,6 @@ import { useModules } from '../hooks/useModules.js';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { debugLog } from '../utils/debug.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
-import useProcLabels from '../hooks/useProcLabels.js';
 
 export default function FormsManagement() {
   const [tables, setTables] = useState([]);
@@ -20,7 +19,6 @@ export default function FormsManagement() {
   const [procedureOptions, setProcedureOptions] = useState([]);
   const generalConfig = useGeneralConfig();
   const modules = useModules();
-  const procLabelMap = useProcLabels(procedureOptions);
   useEffect(() => {
     debugLog('Component mounted: FormsManagement');
   }, []);
@@ -853,7 +851,7 @@ export default function FormsManagement() {
                 >
                   {procedureOptions.map((p) => (
                     <option key={p} value={p}>
-                      {procLabelMap[p]}
+                      {generalConfig.general?.procLabels?.[p] || p}
                     </option>
                   ))}
                 </select>
