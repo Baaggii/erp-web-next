@@ -160,7 +160,11 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       credentials: 'include',
       body: JSON.stringify(payload),
     })
-      .then((res) => (res.ok ? res.json() : { rows: [], sql: '', file: '' }))
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw data;
+        return data;
+      })
       .then((data) => {
         setTxnInfo({
           loading: false,
@@ -171,7 +175,8 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
         });
         if (general.reportRowToastEnabled) {
           if (data.sql) {
-            const preview = data.sql.length > 200 ? `${data.sql.slice(0, 200)}…` : data.sql;
+            const preview =
+              data.sql.length > 200 ? `${data.sql.slice(0, 200)}…` : data.sql;
             window.dispatchEvent(
               new CustomEvent('toast', {
                 detail: {
@@ -191,12 +196,28 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
           );
         }
       })
-      .catch(() => {
-        setTxnInfo({ loading: false, col, value, data: [], sql: '' });
+      .catch((err) => {
+        const sql = err && typeof err === 'object' ? err.sql || '' : '';
+        const file = err && typeof err === 'object' ? err.file || '' : '';
+        setTxnInfo({ loading: false, col, value, data: [], sql });
         if (general.reportRowToastEnabled) {
+          if (sql) {
+            const preview = sql.length > 200 ? `${sql.slice(0, 200)}…` : sql;
+            window.dispatchEvent(
+              new CustomEvent('toast', {
+                detail: {
+                  message: `SQL saved to ${file}: ${preview}`,
+                  type: 'info',
+                },
+              }),
+            );
+          }
           window.dispatchEvent(
             new CustomEvent('toast', {
-              detail: { message: 'Row fetch failed', type: 'error' },
+              detail: {
+                message: err && err.message ? err.message : 'Row fetch failed',
+                type: 'error',
+              },
             }),
           );
         }
