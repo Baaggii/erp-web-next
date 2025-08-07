@@ -694,26 +694,27 @@ export default function ImageManagement() {
 
     async function uploadCheckBatch(batch) {
       if (controller.signal.aborted) return { list: [], missing: [], failed: [] };
-      const formData = new FormData();
-      const valid = [];
+      const names = [];
+      const ids = [];
       const missing = [];
       for (const u of batch) {
         try {
-          const file = await u.handle.getFile();
-          formData.append('images', file, u.originalName);
-          valid.push(u);
+          await u.handle.getFile();
+          names.push(u.originalName);
+          ids.push(u.id);
         } catch {
           addToast(`Missing local file: ${u.originalName}`, 'error');
           missing.push(u.id);
         }
       }
-      if (valid.length === 0) return { list: [], missing, failed: [] };
+      if (names.length === 0) return { list: [], missing, failed: [] };
       try {
         res = await fetch('/api/transaction_images/upload_check', {
           method: 'POST',
-          body: formData,
+          headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           signal: controller.signal,
+          body: JSON.stringify({ names }),
         });
         if (res.ok) {
           const data = await res.json().catch(() => ({}));
@@ -721,20 +722,9 @@ export default function ImageManagement() {
         }
       } catch {
         if (controller.signal.aborted) return { list: [], missing, failed: [] };
-        // fall through to recursive split
-      }
-      if (valid.length > 1) {
-        const mid = Math.floor(valid.length / 2);
-        const first = await uploadCheckBatch(valid.slice(0, mid));
-        const second = await uploadCheckBatch(valid.slice(mid));
-        return {
-          list: [...first.list, ...second.list],
-          missing: [...missing, ...first.missing, ...second.missing],
-          failed: [...first.failed, ...second.failed],
-        };
       }
       addToast('Rename failed', 'error');
-      return { list: [], missing, failed: valid.map((v) => v.id) };
+      return { list: [], missing, failed: ids };
     }
 
     let newUploads = uploads.slice();
