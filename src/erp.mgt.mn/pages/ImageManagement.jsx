@@ -694,27 +694,26 @@ export default function ImageManagement() {
 
     async function uploadCheckBatch(batch) {
       if (controller.signal.aborted) return { list: [], missing: [], failed: [] };
-      const names = [];
+      const formData = new FormData();
       const ids = [];
       const missing = [];
       for (const u of batch) {
         try {
-          await u.handle.getFile();
-          names.push(u.originalName);
+          const file = await u.handle.getFile();
+          formData.append('images', file, u.originalName);
           ids.push(u.id);
         } catch {
           addToast(`Missing local file: ${u.originalName}`, 'error');
           missing.push(u.id);
         }
       }
-      if (names.length === 0) return { list: [], missing, failed: [] };
+      if (ids.length === 0) return { list: [], missing, failed: [] };
       try {
         res = await fetch('/api/transaction_images/upload_check', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           signal: controller.signal,
-          body: JSON.stringify({ names }),
         });
         if (res.ok) {
           const data = await res.json().catch(() => ({}));
