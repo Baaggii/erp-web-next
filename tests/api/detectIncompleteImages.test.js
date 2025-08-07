@@ -188,7 +188,9 @@ await test('checkUploadedImages handles object names', async () => {
   const restoreDb = mockPool(async () => [[]]);
   const { list, summary } = await checkUploadedImages([], [{ name: 'abc.jpg' }]);
   assert.equal(summary.totalFiles, 1);
-  assert.equal(list.length, 0);
+  assert.equal(summary.processed, 0);
+  assert.equal(list.length, 1);
+  assert.equal(list[0].reason, 'Invalid filename');
   restoreDb();
 });
 
@@ -297,8 +299,11 @@ await test('checkUploadedImages skips files with transaction codes', async () =>
     { originalname: `t1_4001_uuid12345_${ts}_abcd12.jpg`, path: tmp2 },
   ]);
   assert.equal(summary.processed, 1);
-  assert.equal(list.length, 1);
-  assert.equal(list[0].originalName, 'uuid12345.jpg');
+  assert.equal(list.length, 2);
+  const success = list.find((i) => i.newName);
+  const skipped = list.find((i) => i.reason);
+  assert.ok(success && success.originalName === 'uuid12345.jpg');
+  assert.equal(skipped.reason, 'Already renamed');
 
   restoreDb();
   await fs.writeFile(cfgPath, origCfg);
