@@ -680,9 +680,7 @@ export default function ImageManagement() {
       return;
     }
 
-    const tables = getTables();
-    const allItems = Object.values(tables).flat();
-    const items = allItems.filter(
+    const items = [...uploads, ...ignored].filter(
       (u) => uploadSel.includes(u.id) && u.handle && !u.tmpPath && !u.processed,
     );
     if (items.length === 0) {
@@ -694,22 +692,25 @@ export default function ImageManagement() {
     renameAbortRef.current = controller;
     setActiveOp('rename');
 
-    async function uploadCheckBatch(batch) {
-      if (controller.signal.aborted) return [];
-      const formData = new FormData();
-      const valid = [];
-      for (const u of batch) {
-        try {
-          const file = await u.handle.getFile();
-          formData.append('images', file, u.originalName);
-          valid.push(u);
-        } catch {
-          addToast(`Missing local file: ${u.originalName}`, 'error');
+    const controller = new AbortController();
+    renameAbortRef.current = controller;
+    setActiveOp('rename');
+
+    try {
+      for (let i = 0; i < items.length; i += chunkSize) {
+        if (controller.signal.aborted) break;
+        const chunk = items.slice(i, i + chunkSize);
+        const formData = new FormData();
+        for (const u of chunk) {
+          try {
+            const file = await u.handle.getFile();
+            formData.append('images', file, u.originalName);
+          } catch {
+            addToast(`Missing local file: ${u.originalName}`, 'error');
+          }
         }
-      }
-      if (valid.length === 0) return [];
-      try {
-        res = await fetch('/api/transaction_images/upload_check', {
+        if (![...formData].length) continue;
+        const res = await fetch('/api/transaction_images/upload_check', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -719,46 +720,46 @@ export default function ImageManagement() {
           const data = await res.json().catch(() => ({}));
           return Array.isArray(data.list) ? data.list : [];
         }
-      } catch {
-        if (controller.signal.aborted) return [];
+        const data = await res.json().catch(() => ({}));
+        const list = Array.isArray(data.list) ? data.list : [];
+        merged = merged.concat(list);
       }
-      if (batch.length > 1) {
-        const mid = Math.floor(batch.length / 2);
-        const first = await uploadCheckBatch(batch.slice(0, mid));
-        const second = await uploadCheckBatch(batch.slice(mid));
-        return [...first, ...second];
-      }
-      addToast('Rename failed', 'error');
-      return [];
-    }
 
-    try {
-      const combined = await uploadCheckBatch(items);
       if (controller.signal.aborted) {
         addToast('Rename canceled', 'info');
         return;
       }
-      const updated = {};
-      for (const [key, arr] of Object.entries(tables)) {
-        if (arr.some((u) => 'originalName' in u)) {
-          updated[key] = arr
-            .map((u) => {
-              const found = combined.find((x) => x.originalName === u.originalName);
-              const merged = found ? { ...u, ...found, id: u.id } : u;
-              return { ...merged, description: extractDateFromName(merged.originalName) };
-            })
-            .sort((a, b) => a.originalName.localeCompare(b.originalName));
-        } else {
-          updated[key] = arr;
-        }
-      }
-      setUploads(updated.uploads);
-      setIgnored(updated.ignored);
-      setPending(updated.pending);
-      setHostIgnored(updated.hostIgnored);
-      persistAll(updated);
-      setUploadSel((s) => s.filter((id) => !items.some((u) => u.id === id)));
-      setReport(`Renamed ${combined.length} file(s)`);
+
+      const newUploads = uploads
+        .map((u) => {
+          const found = merged.find((x) => x.originalName === u.originalName);
+          const result = found ? { ...u, ...found, id: u.id } : u;
+          return {
+            ...result,
+            description: extractDateFromName(result.originalName),
+          };
+        })
+        .sort((a, b) => a.originalName.localeCompare(b.originalName));
+
+      const newIgnored = ignored
+        .map((u) => {
+          const found = merged.find((x) => x.originalName === u.originalName);
+          const result = found ? { ...u, ...found, id: u.id } : u;
+          return {
+            ...result,
+            description: extractDateFromName(result.originalName),
+          };
+        })
+        .sort((a, b) => a.originalName.localeCompare(b.originalName));
+
+      setUploads(newUploads);
+      setIgnored(newIgnored);
+      setUploadSel([]);
+      persistAll({ uploads: newUploads, ignored: newIgnored });
+      setReport(`Renamed ${merged.length} file(s)`);
+    } catch {
+      if (controller.signal.aborted) addToast('Rename canceled', 'info');
+      else addToast('Rename failed', 'error');
     } finally {
       setActiveOp(null);
     }
