@@ -789,9 +789,11 @@ export default function ImageManagement() {
       const updateList = (arr) =>
         arr
           .map((u) => {
+            if (!uploadSel.includes(u.id)) return u;
             const r = resultMap.get(String(u.index));
             if (!r) {
-              return { ...u, reason: 'No match found', description: 'No match found' };
+              const reason = u.reason || 'No match found';
+              return { ...u, reason, description: reason };
             }
             if (!r.newName) {
               const reason = r.reason || 'No match found';
@@ -815,6 +817,8 @@ export default function ImageManagement() {
       const skipCount =
         skipped + items.filter((u) => !resultMap.has(String(u.index))).length +
         merged.filter((m) => !m.newName).length;
+      if (processedCount) addToast(`Renamed ${processedCount} file(s)`, 'success');
+      else addToast('No files renamed', 'warning');
       if (skipCount) addToast(`Skipped ${skipCount} file(s)`, 'warning');
 
       setUploads(newUploads);
