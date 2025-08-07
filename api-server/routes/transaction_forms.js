@@ -5,6 +5,7 @@ import {
   listTransactionNames,
   setFormConfig,
   deleteFormConfig,
+  findTableByProcedure,
 } from '../services/transactionFormConfig.js';
 import { requireAuth } from '../middlewares/auth.js';
 
@@ -12,8 +13,12 @@ const router = express.Router();
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
-    const { table, name, moduleKey, branchId, departmentId } = req.query;
-    if (table && name) {
+    const { table, name, moduleKey, branchId, departmentId, proc } = req.query;
+    if (proc) {
+      const tbl = await findTableByProcedure(proc);
+      if (tbl) res.json({ table: tbl });
+      else res.status(404).json({ message: 'Table not found' });
+    } else if (table && name) {
       const cfg = await getFormConfig(table, name);
       res.json(cfg);
     } else if (table) {
