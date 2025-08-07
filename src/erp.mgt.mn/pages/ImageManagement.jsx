@@ -771,12 +771,6 @@ export default function ImageManagement() {
           addToast('Rename failed', 'error');
           return;
         }
-        const data = await res.json().catch(() => ({}));
-        const list = Array.isArray(data.list) ? data.list : null;
-        if (!list) {
-          addToast('Rename failed', 'error');
-          return;
-        }
         for (const r of list) {
           if (typeof r.index === 'undefined') {
             addToast('Rename failed', 'error');
