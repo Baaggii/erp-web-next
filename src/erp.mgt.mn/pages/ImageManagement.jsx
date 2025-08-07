@@ -723,18 +723,31 @@ export default function ImageManagement() {
     let skipped = 0;
 
     try {
-      const formData = new FormData();
       const sendItems = [];
       for (const u of items) {
         const f = folderFiles[u.index];
         if (!f?.handle) {
           addToast(`Missing local file: ${u.originalName}`, 'error');
           merged.push({ index: u.index, reason: 'Missing local file' });
-          skipped += 1;
           continue;
         }
         try {
           const file = await f.handle.getFile();
+          sendItems.push({ u, file });
+        } catch {
+          addToast(`Missing local file: ${u.originalName}`, 'error');
+          merged.push({ index: u.index, reason: 'Missing local file' });
+        }
+      }
+
+      for (let i = 0; i < sendItems.length; i += 10) {
+        if (controller.signal.aborted) {
+          addToast('Rename canceled', 'info');
+          return;
+        }
+        const batch = sendItems.slice(i, i + 10);
+        const formData = new FormData();
+        for (const { u, file } of batch) {
           formData.append('images', file, u.originalName);
           formData.append(
             'meta',
@@ -745,18 +758,7 @@ export default function ImageManagement() {
               transType: u.transType,
             }),
           );
-          sendItems.push(u);
-        } catch {
-          addToast(`Missing local file: ${u.originalName}`, 'error');
-          merged.push({ index: u.index, reason: 'Missing local file' });
-          skipped += 1;
         }
-      }
-      if (controller.signal.aborted) {
-        addToast('Rename canceled', 'info');
-        return;
-      }
-      if ([...formData].length) {
         try {
           const res = await fetch('/api/transaction_images/upload_check', {
             method: 'POST',
@@ -775,7 +777,7 @@ export default function ImageManagement() {
         } catch {
           addToast('Rename failed', 'error');
           merged = merged.concat(
-            sendItems.map((u) => ({ index: u.index, reason: 'Rename failed' })),
+            batch.map(({ u }) => ({ index: u.index, reason: 'Rename failed' })),
           );
         }
       }
@@ -814,9 +816,7 @@ export default function ImageManagement() {
       const newIgnored = updateList(ignored);
 
       const processedCount = merged.filter((m) => m.newName).length;
-      const skipCount =
-        skipped + items.filter((u) => !resultMap.has(String(u.index))).length +
-        merged.filter((m) => !m.newName).length;
+      const skipCount = items.length - processedCount;
       if (processedCount) addToast(`Renamed ${processedCount} file(s)`, 'success');
       else addToast('No files renamed', 'warning');
       if (skipCount) addToast(`Skipped ${skipCount} file(s)`, 'warning');
