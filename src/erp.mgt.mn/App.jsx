@@ -40,6 +40,7 @@ export default function App() {
   useGeneralConfig();
   const modules = useModules();
   const txnModules = useTxnModules();
+  const generalConfig = useGeneralConfig();
 
   useEffect(() => {
     debugLog('Component mounted: App');

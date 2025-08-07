@@ -97,6 +97,8 @@ export default function ImageManagement() {
   const [pageSize, setPageSize] = useState(200);
   const detectAbortRef = useRef();
   const scanCancelRef = useRef(false);
+  const renameAbortRef = useRef();
+  const commitAbortRef = useRef();
   const dirHandleRef = useRef();
   const [activeOp, setActiveOp] = useState(null);
   const [report, setReport] = useState('');
@@ -431,12 +433,29 @@ export default function ImageManagement() {
   useEffect(() => {
     function onKey(e) {
       if (e.key === 'Escape' && activeOp) {
-        const action = activeOp === 'detect' ? 'detection' : 'folder selection';
+        const labels = {
+          detect: 'detection',
+          folder: 'folder selection',
+          rename: 'rename',
+          commit: 'upload commit',
+        };
+        const action = labels[activeOp] || 'operation';
         if (window.confirm(`Cancel ${action}?`)) {
-          if (activeOp === 'detect') {
-            detectAbortRef.current?.abort();
-          } else {
-            scanCancelRef.current = true;
+          switch (activeOp) {
+            case 'detect':
+              detectAbortRef.current?.abort();
+              break;
+            case 'folder':
+              scanCancelRef.current = true;
+              break;
+            case 'rename':
+              renameAbortRef.current?.abort();
+              break;
+            case 'commit':
+              commitAbortRef.current?.abort();
+              break;
+            default:
+              break;
           }
           setActiveOp(null);
         }
@@ -626,129 +645,9 @@ export default function ImageManagement() {
   }
 
   async function applyFixesSelection(list, sel) {
-    const items = list.filter((p) => sel.includes(p.currentName));
+    const items = list.filter((p) => sel.includes(p.currentName) && !p.processed);
     if (items.length === 0) return;
-    const chunkSize = 200;
-    let totalFixed = 0;
-    try {
-      for (let i = 0; i < items.length; i += chunkSize) {
-        const chunk = items.slice(i, i + chunkSize);
-        const res = await fetch('/api/transaction_images/fix_incomplete', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ list: chunk }),
-        });
-        if (!res.ok) throw new Error('fail');
-        const data = await res.json().catch(() => ({}));
-        totalFixed += data.fixed || 0;
-      }
-      addToast(`Renamed ${totalFixed} file(s)`, 'success');
-      setReport(`Renamed ${totalFixed} file(s)`);
-      detectFromHost(page);
-    } catch {
-      addToast('Rename failed', 'error');
-    }
-  }
-
-  async function applyFixes() {
-    const newPending = await applyFixesSelection(pending, selected);
-    if (newPending) {
-      setPending(newPending);
-      setSelected([]);
-      persistAll({ uploads, ignored, folderName, pending: newPending, hostIgnored });
-    }
-  }
-
-  async function applyFixesHostIgnored() {
-    const newHostIgnored = await applyFixesSelection(hostIgnored, hostIgnoredSel);
-    if (newHostIgnored) {
-      setHostIgnored(newHostIgnored);
-      setHostIgnoredSel([]);
-      persistAll({ uploads, ignored, folderName, pending, hostIgnored: newHostIgnored });
-    }
-  }
-
-  async function renameSelected() {
-    const tables = getTables();
-    const allItems = Object.values(tables).flat();
-    const items = allItems.filter(
-      (u) => uploadSel.includes(u.id) && u.handle && !u.tmpPath && !u.processed,
-    );
-    if (items.length === 0) {
-      addToast('No local files to rename', 'error');
-      return;
-    }
-
-    async function uploadCheckBatch(batch) {
-      const formData = new FormData();
-      const valid = [];
-      for (const u of batch) {
-        try {
-          const file = await u.handle.getFile();
-          formData.append('images', file, u.originalName);
-          valid.push(u);
-        } catch {
-          addToast(`Missing local file: ${u.originalName}`, 'error');
-        }
-      }
-      if (valid.length === 0) return [];
-      try {
-        res = await fetch('/api/transaction_images/upload_check', {
-          method: 'POST',
-          body: formData,
-          credentials: 'include',
-        });
-        if (res.ok) {
-          const data = await res.json().catch(() => ({}));
-          return Array.isArray(data.list) ? data.list : [];
-        }
-      } catch {
-        // fall through to recursive split
-      }
-      if (batch.length > 1) {
-        const mid = Math.floor(batch.length / 2);
-        const first = await uploadCheckBatch(batch.slice(0, mid));
-        const second = await uploadCheckBatch(batch.slice(mid));
-        return [...first, ...second];
-      }
-      addToast('Rename failed', 'error');
-      return [];
-    }
-
-    const combined = await uploadCheckBatch(items);
-
-    const updated = {};
-    for (const [key, arr] of Object.entries(tables)) {
-      if (arr.some((u) => 'originalName' in u)) {
-        updated[key] = arr
-          .map((u) => {
-            const found = combined.find((x) => x.originalName === u.originalName);
-            const merged = found ? { ...u, ...found, id: u.id } : u;
-            return { ...merged, description: extractDateFromName(merged.originalName) };
-          })
-          .sort((a, b) => a.originalName.localeCompare(b.originalName));
-      } else {
-        updated[key] = arr;
-      }
-    }
-    setUploads(updated.uploads);
-    setIgnored(updated.ignored);
-    setPending(updated.pending);
-    setHostIgnored(updated.hostIgnored);
-    persistAll(updated);
-    setUploadSel((s) => s.filter((id) => !items.some((u) => u.id === id)));
-    setReport(`Renamed ${combined.length} file(s)`);
-  }
-
-  async function commitUploads() {
-    const tables = getTables();
-    const allItems = Object.values(tables).flat();
-    const items = allItems.filter(
-      (u) => uploadSel.includes(u.id) && u.tmpPath && !u.processed,
-    );
-    if (items.length === 0) return;
-    const res = await fetch('/api/transaction_images/upload_commit', {
+    const res = await fetch('/api/transaction_images/fix_incomplete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -756,22 +655,200 @@ export default function ImageManagement() {
     });
     if (res.ok) {
       const data = await res.json().catch(() => ({}));
-      addToast(`Uploaded ${data.uploaded || 0} file(s)`, 'success');
-      const updated = {};
-      for (const [key, arr] of Object.entries(tables)) {
-        updated[key] = arr.map((u) =>
-          uploadSel.includes(u.id) && u.tmpPath ? { ...u, processed: true } : u,
-        );
-      }
-      setUploads(updated.uploads);
-      setIgnored(updated.ignored);
-      setPending(updated.pending);
-      setHostIgnored(updated.hostIgnored);
-      setUploadSel([]);
-      persistAll(updated);
-      setReport(`Uploaded ${data.uploaded || 0} file(s)`);
+      addToast(`Renamed ${data.fixed || 0} file(s)`, 'success');
+      setReport(`Renamed ${data.fixed || 0} file(s)`);
+      await detectFromHost(pendingPage);
     } else {
-      addToast('Upload failed', 'error');
+      addToast('Rename failed', 'error');
+    }
+  }
+
+  async function applyFixes() {
+    await applyFixesSelection(pending, selected);
+  }
+
+  async function applyFixesHostIgnored() {
+    await applyFixesSelection(hostIgnored, hostIgnoredSel);
+  }
+
+  async function renameSelected() {
+    if (activeOp === 'rename') {
+      if (window.confirm('Cancel rename?')) {
+        renameAbortRef.current?.abort();
+        setActiveOp(null);
+      }
+      return;
+    }
+
+    const items = [...uploads, ...ignored].filter(
+      (u) => uploadSel.includes(u.id) && u.handle && !u.tmpPath && !u.processed,
+    );
+    if (items.length === 0) {
+      addToast('No local files to rename', 'error');
+      return;
+    }
+
+    const controller = new AbortController();
+    renameAbortRef.current = controller;
+    setActiveOp('rename');
+
+    async function uploadCheckBatch(batch) {
+      if (controller.signal.aborted) return { list: [], missing: [], failed: [] };
+      const formData = new FormData();
+      const ids = [];
+      const missing = [];
+      for (const u of batch) {
+        try {
+          const file = await u.handle.getFile();
+          formData.append('images', file, u.originalName);
+          ids.push(u.id);
+        } catch {
+          addToast(`Missing local file: ${u.originalName}`, 'error');
+          missing.push(u.id);
+        }
+      }
+      if (ids.length === 0) return { list: [], missing, failed: [] };
+      try {
+        res = await fetch('/api/transaction_images/upload_check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          signal: controller.signal,
+        });
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          return { list: Array.isArray(data.list) ? data.list : [], missing, failed: [] };
+        }
+      } catch {
+        if (controller.signal.aborted) return { list: [], missing, failed: [] };
+      }
+      addToast('Rename failed', 'error');
+      return { list: [], missing, failed: ids };
+    }
+
+    let newUploads = uploads.slice();
+    let newIgnored = ignored.slice();
+    let renamedCount = 0;
+    try {
+      for (let i = 0; i < items.length && !controller.signal.aborted; i += 50) {
+        const batch = items.slice(i, i + 50);
+        const { list: res, missing, failed } = await uploadCheckBatch(batch);
+        renamedCount += res.length;
+        const resMap = new Map(res.map((r) => [r.originalName, r]));
+        const ids = new Set(batch.map((u) => u.id));
+        const missingSet = new Set(missing);
+        const failedSet = new Set(failed);
+        newUploads = newUploads
+          .map((u) => {
+            if (!ids.has(u.id)) return u;
+            if (missingSet.has(u.id)) {
+              const msg = 'Missing local file';
+              return { ...u, description: msg, reason: msg };
+            }
+            const found = resMap.get(u.originalName);
+            if (found) {
+              const merged = { ...u, ...found, id: u.id, reason: '' };
+              return { ...merged, description: extractDateFromName(merged.originalName) };
+            }
+            if (failedSet.has(u.id)) {
+              const msg = 'Rename failed';
+              return { ...u, description: msg, reason: msg };
+            }
+            const msg = u.reason && u.reason !== 'Rename failed' ? u.reason : 'No match found';
+            return { ...u, description: msg, reason: msg };
+          })
+          .sort((a, b) => a.originalName.localeCompare(b.originalName));
+        newIgnored = newIgnored
+          .map((u) => {
+            if (!ids.has(u.id)) return u;
+            if (missingSet.has(u.id)) {
+              const msg = 'Missing local file';
+              return { ...u, description: msg, reason: msg };
+            }
+            const found = resMap.get(u.originalName);
+            if (found) {
+              const merged = { ...u, ...found, id: u.id, reason: '' };
+              return { ...merged, description: extractDateFromName(merged.originalName) };
+            }
+            if (failedSet.has(u.id)) {
+              const msg = 'Rename failed';
+              return { ...u, description: msg, reason: msg };
+            }
+            const msg = u.reason && u.reason !== 'Rename failed' ? u.reason : 'No match found';
+            return { ...u, description: msg, reason: msg };
+          })
+          .sort((a, b) => a.originalName.localeCompare(b.originalName));
+        setUploads(newUploads);
+        setIgnored(newIgnored);
+        persistAll({ uploads: newUploads, ignored: newIgnored });
+      }
+      if (controller.signal.aborted) {
+        addToast('Rename canceled', 'info');
+        return;
+      }
+    } finally {
+      setActiveOp(null);
+    }
+
+    setUploads(newUploads);
+    setIgnored(newIgnored);
+    persistAll({ uploads: newUploads, ignored: newIgnored });
+    setUploadSel((s) => s.filter((id) => !items.some((u) => u.id === id)));
+    setReport(`Renamed ${renamedCount} file(s)`);
+  }
+
+  async function commitUploads() {
+    if (activeOp === 'commit') {
+      if (window.confirm('Cancel upload commit?')) {
+        commitAbortRef.current?.abort();
+        setActiveOp(null);
+      }
+      return;
+    }
+
+    const tables = getTables();
+    const allItems = Object.values(tables).flat();
+    const items = allItems.filter(
+      (u) => uploadSel.includes(u.id) && u.tmpPath && !u.processed,
+    );
+    if (items.length === 0) return;
+
+    const controller = new AbortController();
+    commitAbortRef.current = controller;
+    setActiveOp('commit');
+
+    try {
+      const res = await fetch('/api/transaction_images/upload_commit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ list: items }),
+        signal: controller.signal,
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        addToast(`Uploaded ${data.uploaded || 0} file(s)`, 'success');
+        const updated = {};
+        for (const [key, arr] of Object.entries(tables)) {
+          updated[key] = arr.map((u) =>
+            uploadSel.includes(u.id) && u.tmpPath ? { ...u, processed: true } : u,
+          );
+        }
+        setUploads(updated.uploads);
+        setIgnored(updated.ignored);
+        setPending(updated.pending);
+        setHostIgnored(updated.hostIgnored);
+        setUploadSel([]);
+        persistAll(updated);
+        setReport(`Uploaded ${data.uploaded || 0} file(s)`);
+      } else {
+        addToast('Upload failed', 'error');
+      }
+    } catch {
+      if (controller.signal.aborted) addToast('Upload canceled', 'info');
+      else addToast('Upload failed', 'error');
+    } finally {
+      setActiveOp(null);
     }
   }
 
