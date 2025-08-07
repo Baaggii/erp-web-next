@@ -34,10 +34,8 @@ import FinanceTransactionsPage from './pages/FinanceTransactions.jsx';
 import { useModules } from './hooks/useModules.js';
 import { useTxnModules } from './hooks/useTxnModules.js';
 import useProcLabels from './hooks/useProcLabels.js';
-import useGeneralConfig from './hooks/useGeneralConfig.js';
 
 export default function App() {
-  useGeneralConfig();
   const modules = useModules();
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
