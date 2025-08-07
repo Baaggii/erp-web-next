@@ -356,7 +356,10 @@ export default function ImageManagement() {
     : 1;
 
   const canRenameSelected = [...uploads, ...ignored].some(
-    (u) => uploadSel.includes(u.id) && u.handle && !u.processed,
+    (u) =>
+      uploadSel.includes(u.id) &&
+      folderFiles[u.index]?.handle &&
+      !u.processed,
   );
 
   function toggle(id) {
@@ -740,14 +743,10 @@ export default function ImageManagement() {
         }
       }
 
-      for (let i = 0; i < sendItems.length; i += 10) {
-        if (controller.signal.aborted) {
-          addToast('Rename canceled', 'info');
-          return;
-        }
-        const batch = sendItems.slice(i, i + 10);
+      async function uploadBatch(list) {
+        if (controller.signal.aborted || list.length === 0) return;
         const formData = new FormData();
-        for (const { u, file } of batch) {
+        for (const { u, file } of list) {
           formData.append('images', file, u.originalName);
           formData.append(
             'meta',
@@ -775,12 +774,18 @@ export default function ImageManagement() {
           }
           merged = merged.concat(list);
         } catch {
-          addToast('Rename failed', 'error');
-          merged = merged.concat(
-            batch.map(({ u }) => ({ index: u.index, reason: 'Rename failed' })),
-          );
+          if (list.length === 1) {
+            addToast('Rename failed', 'error');
+            merged.push({ index: list[0].u.index, reason: 'Rename failed' });
+          } else {
+            const mid = Math.floor(list.length / 2);
+            await uploadBatch(list.slice(0, mid));
+            await uploadBatch(list.slice(mid));
+          }
         }
       }
+
+      await uploadBatch(sendItems);
 
       if (controller.signal.aborted) {
         addToast('Rename canceled', 'info');
