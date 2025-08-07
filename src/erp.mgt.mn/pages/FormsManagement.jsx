@@ -541,6 +541,32 @@ export default function FormsManagement() {
               </select>
             )}
 
+            {procedureOptions.length > 0 && (
+              <>
+                <span style={{ marginLeft: '0.5rem' }}>Procedures</span>
+                <select
+                  multiple
+                  value={config.procedures}
+                  onChange={(e) =>
+                    setConfig((c) => ({
+                      ...c,
+                      procedures: Array.from(
+                        e.target.selectedOptions,
+                        (o) => o.value,
+                      ),
+                    }))
+                  }
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  {procedureOptions.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+
             <input
               type="text"
               placeholder="Image folder"

@@ -38,6 +38,7 @@ import useProcLabels from './hooks/useProcLabels.js';
 export default function App() {
   const modules = useModules();
   const txnModules = useTxnModules();
+  const generalConfig = useGeneralConfig();
 
   useEffect(() => {
     debugLog('Component mounted: App');
