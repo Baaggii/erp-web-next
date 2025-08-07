@@ -1077,16 +1077,30 @@ export async function getProcedureRawRows(
   groupValue,
   sessionVars = {},
 ) {
-  const [rows] = await pool.query(`SHOW CREATE PROCEDURE \`${name}\``);
-  const createSql = rows && rows[0] && rows[0]["Create Procedure"];
+  let createSql = '';
+  try {
+    const [rows] = await pool.query(`SHOW CREATE PROCEDURE \`${name}\``);
+    createSql = rows && rows[0] && rows[0]['Create Procedure'];
+  } catch {}
+  if (!createSql) {
+    const [rows] = await pool.query(
+      `SELECT ROUTINE_DEFINITION AS def
+         FROM information_schema.routines
+        WHERE ROUTINE_SCHEMA = DATABASE() AND ROUTINE_NAME = ?`,
+      [name],
+    );
+    createSql = rows && rows[0] && rows[0].def;
+  }
   if (!createSql) return { rows: [], sql: '', file: '' };
-  const match = createSql.match(/BEGIN\s+(SELECT[\s\S]*?)\s+END/i);
-  if (!match) {
+  const bodyMatch = createSql.match(/BEGIN\s*([\s\S]*)END/i);
+  const body = bodyMatch ? bodyMatch[1] : createSql;
+  const selectMatch = body.match(/SELECT[\s\S]*?(?=END|$)/i);
+  if (!selectMatch) {
     const file = `${name.replace(/[^a-z0-9_]/gi, '_')}_rows.sql`;
     await fs.writeFile(path.join(process.cwd(), 'config', file), createSql);
     return { rows: [], sql: createSql, file };
   }
-  let sql = match[1];
+  let sql = selectMatch[0];
 
   const sumRegex = new RegExp(
     'SUM\\(([^)]*)\\)\\s+AS\\s+`?' + column + '`?',
