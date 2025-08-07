@@ -6,6 +6,7 @@ import { useRolePermissions } from '../hooks/useRolePermissions.js';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
 import { useTxnModules } from '../hooks/useTxnModules.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import useHeaderMappings from '../hooks/useHeaderMappings.js';
 
 export default function FormsIndex() {
   const [transactions, setTransactions] = useState({});
@@ -16,9 +17,13 @@ export default function FormsIndex() {
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
 
+  const headerMap = useHeaderMappings(modules.map((m) => m.module_key));
   const moduleMap = {};
   modules.forEach((m) => {
-    const label = generalConfig.general?.procLabels?.[m.module_key] || m.label;
+    const label =
+      generalConfig.general?.procLabels?.[m.module_key] ||
+      headerMap[m.module_key] ||
+      m.label;
     moduleMap[m.module_key] = { ...m, label };
   });
 
@@ -84,7 +89,9 @@ export default function FormsIndex() {
         groups.map(([key]) => {
           const mod = modules.find((m) => m.module_key === key);
           const label = mod
-            ? generalConfig.general?.procLabels?.[mod.module_key] || mod.label
+            ? generalConfig.general?.procLabels?.[mod.module_key] ||
+              headerMap[mod.module_key] ||
+              mod.label
             : key;
           return (
             <div key={key} style={{ marginBottom: '1rem' }}>
