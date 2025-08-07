@@ -1078,8 +1078,11 @@ export async function getProcedureRawRows(
   sessionVars = {},
 ) {
   let createSql = '';
+  const dbName = process.env.DB_NAME;
   try {
-    const showSql = mysql.format('SHOW CREATE PROCEDURE ??', [name]);
+    const dbIdent = mysql.format('??', [dbName]);
+    const procIdent = mysql.format('??', [name]);
+    const showSql = `SHOW CREATE PROCEDURE ${dbIdent}.${procIdent}`;
     const [rows] = await pool.query(showSql);
     createSql = rows && rows[0] && rows[0]['Create Procedure'];
   } catch {}
@@ -1088,8 +1091,8 @@ export async function getProcedureRawRows(
       const [rows] = await pool.query(
         `SELECT ROUTINE_DEFINITION AS def
            FROM information_schema.routines
-          WHERE ROUTINE_SCHEMA = DATABASE() AND ROUTINE_NAME = ?`,
-        [name],
+          WHERE ROUTINE_SCHEMA = ? AND ROUTINE_NAME = ?`,
+        [dbName, name],
       );
       createSql = rows && rows[0] && rows[0].def;
     } catch {}
