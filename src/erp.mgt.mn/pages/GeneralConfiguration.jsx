@@ -264,6 +264,17 @@ export default function GeneralConfiguration() {
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
             <label>
+              Show Report Row Toasts{' '}
+              <input
+                name="reportRowToastEnabled"
+                type="checkbox"
+                checked={active.reportRowToastEnabled ?? false}
+                onChange={handleChange}
+              />
+            </label>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <label>
               Show Image Toasts{' '}
               <input
                 name="imageToastEnabled"
