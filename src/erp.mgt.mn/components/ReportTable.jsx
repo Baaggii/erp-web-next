@@ -153,7 +153,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
         department_id: company?.department_id,
       },
     };
-    setTxnInfo({ loading: true, col, value, data: [] });
+    setTxnInfo({ loading: true, col, value, data: [], sql: '' });
     fetch('/api/procedures/raw', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -162,7 +162,13 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     })
       .then((res) => (res.ok ? res.json() : { rows: [], sql: '', file: '' }))
       .then((data) => {
-        setTxnInfo({ loading: false, col, value, data: data.rows || [] });
+        setTxnInfo({
+          loading: false,
+          col,
+          value,
+          data: data.rows || [],
+          sql: data.sql || '',
+        });
         if (general.reportRowToastEnabled) {
           if (data.sql) {
             const preview = data.sql.length > 200 ? `${data.sql.slice(0, 200)}…` : data.sql;
@@ -186,7 +192,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
         }
       })
       .catch(() => {
-        setTxnInfo({ loading: false, col, value, data: [] });
+        setTxnInfo({ loading: false, col, value, data: [], sql: '' });
         if (general.reportRowToastEnabled) {
           window.dispatchEvent(
             new CustomEvent('toast', {
@@ -488,7 +494,24 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
               </table>
             </div>
           ) : (
-            <div>No transactions</div>
+            <div>
+              No transactions
+              {txnInfo.sql && (
+                <pre
+                  style={{
+                    marginTop: '0.5rem',
+                    whiteSpace: 'pre-wrap',
+                    maxHeight: '200px',
+                    overflow: 'auto',
+                    background: '#f9fafb',
+                    padding: '0.5rem',
+                    border: '1px solid #d1d5db',
+                  }}
+                >
+                  {txnInfo.sql}
+                </pre>
+              )}
+            </div>
           )}
         </Modal>
       )}
