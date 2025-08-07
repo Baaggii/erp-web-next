@@ -949,7 +949,8 @@ export async function deleteTableRowCascade(tableName, id) {
   }
 }
 
-export async function listInventoryTransactions({
+export async function listTransactions({
+  table,
   branchId,
   startDate,
   endDate,
@@ -958,6 +959,9 @@ export async function listInventoryTransactions({
   refCol,
   refVal,
 } = {}) {
+  if (!table || !/^[a-zA-Z0-9_]+$/.test(table)) {
+    throw new Error('Invalid table');
+  }
   const clauses = [];
   const params = [];
   if (branchId !== undefined && branchId !== '') {
@@ -979,12 +983,12 @@ export async function listInventoryTransactions({
   const where = clauses.length > 0 ? 'WHERE ' + clauses.join(' AND ') : '';
 
   const [countRows] = await pool.query(
-    `SELECT COUNT(*) AS count FROM inventory_transactions ${where}`,
+    `SELECT COUNT(*) AS count FROM \`${table}\` ${where}`,
     params,
   );
   const count = countRows[0].count;
 
-  let sql = `SELECT * FROM inventory_transactions ${where} ORDER BY id DESC`;
+  let sql = `SELECT * FROM \`${table}\` ${where} ORDER BY id DESC`;
   const qParams = [...params];
   if (count > 100) {
     const limit = Math.min(Number(perPage) || 50, 500);
@@ -1061,4 +1065,71 @@ export async function getProcedureParams(name) {
     [name],
   );
   return rows.map((r) => r.name).filter(Boolean);
+}
+
+export async function getProcedureRawRows(
+  name,
+  params = {},
+  column,
+  groupField,
+  groupValue,
+  sessionVars = {},
+) {
+  const [rows] = await pool.query(`SHOW CREATE PROCEDURE \`${name}\``);
+  const createSql = rows && rows[0] && rows[0]['Create Procedure'];
+  if (!createSql) return [];
+  const match = createSql.match(/BEGIN\s+(SELECT[\s\S]*?)\s+END/i);
+  if (!match) return [];
+  let sql = match[1];
+
+  const sumRegex = new RegExp(
+    `SUM\\(([^)]*)\\)\\s+AS\\s+\\`?${column}\\`?`,
+    'i',
+  );
+  const sumMatch = sql.match(sumRegex);
+  if (sumMatch) {
+    sql = sql.replace(sumRegex, `${sumMatch[1]} AS ${column}`);
+  }
+
+  sql = sql.replace(/GROUP BY[\s\S]*?(HAVING|ORDER BY|$)/i, '$1');
+  sql = sql.replace(/HAVING[\s\S]*?(ORDER BY|$)/i, '$1');
+
+  if (params && typeof params === 'object') {
+    for (const [key, val] of Object.entries(params)) {
+      const re = new RegExp(`\\b${key}\\b`, 'gi');
+      const rep =
+        val === null || val === undefined
+          ? 'NULL'
+          : typeof val === 'number'
+          ? String(val)
+          : `'${val}'`;
+      sql = sql.replace(re, rep);
+    }
+  }
+
+  if (sessionVars && typeof sessionVars === 'object') {
+    for (const [key, val] of Object.entries(sessionVars)) {
+      const re = new RegExp(`@session_${key}\\b`, 'gi');
+      const rep =
+        val === null || val === undefined
+          ? 'NULL'
+          : typeof val === 'number'
+          ? String(val)
+          : `'${val}'`;
+      sql = sql.replace(re, rep);
+    }
+  }
+
+  if (groupField && groupValue !== undefined) {
+    const rep =
+      typeof groupValue === 'number' ? String(groupValue) : `'${groupValue}'`;
+    if (/WHERE/i.test(sql)) {
+      sql = sql.replace(/WHERE/i, `WHERE ${groupField} = ${rep} AND `);
+    } else {
+      sql += ` WHERE ${groupField} = ${rep}`;
+    }
+  }
+
+  const [out] = await pool.query(sql);
+  return out;
 }

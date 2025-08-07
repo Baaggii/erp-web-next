@@ -1,9 +1,19 @@
-import { listInventoryTransactions } from '../../db/index.js';
+import { listTransactions } from '../../db/index.js';
 
-export async function getInventoryTransactions(req, res, next) {
+export async function getTransactions(req, res, next) {
   try {
-    const { startDate, endDate, branchId, page, perPage, refCol, refVal } = req.query;
-    const result = await listInventoryTransactions({
+    const {
+      table,
+      startDate,
+      endDate,
+      branchId,
+      page,
+      perPage,
+      refCol,
+      refVal,
+    } = req.query;
+    const result = await listTransactions({
+      table,
       branchId,
       startDate,
       endDate,

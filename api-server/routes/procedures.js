@@ -4,6 +4,7 @@ import {
   callStoredProcedure,
   listStoredProcedures,
   getProcedureParams,
+  getProcedureRawRows,
 } from '../../db/index.js';
 
 const router = express.Router();
@@ -38,6 +39,25 @@ router.post('/', requireAuth, async (req, res, next) => {
       Array.isArray(aliases) ? aliases : [],
     );
     res.json({ row });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/raw', requireAuth, async (req, res, next) => {
+  try {
+    const { name, params, column, groupField, groupValue, session } = req.body || {};
+    if (!name || !column)
+      return res.status(400).json({ message: 'name and column required' });
+    const rows = await getProcedureRawRows(
+      name,
+      params || {},
+      column,
+      groupField,
+      groupValue,
+      { ...(session || {}), empid: req.user?.empid },
+    );
+    res.json({ rows });
   } catch (err) {
     next(err);
   }

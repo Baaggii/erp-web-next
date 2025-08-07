@@ -32,7 +32,7 @@ function formatNumber(val) {
 }
 
 export default function ReportTable({ procedure = '', params = {}, rows = [] }) {
-  const { user } = useContext(AuthContext);
+  const { user, company } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
@@ -45,6 +45,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
   useEffect(() => {
     setPage(1);
   }, [rows]);
+
 
   const procLabels = generalConfig.general?.procLabels || {};
   const procFieldLabels = generalConfig.general?.procFieldLabels || {};
@@ -134,15 +135,30 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     );
   }
 
-  function handleCellClick(col, value) {
-    if (value === null || value === undefined || value === '') return;
+  function handleCellClick(col, value, row) {
+    const num = Number(String(value).replace(',', '.'));
+    if (!procedure || Number.isNaN(num) || num <= 0) return;
+    const firstField = columns[0];
+    const payload = {
+      name: procedure,
+      column: col,
+      params,
+      groupField: firstField,
+      groupValue: row[firstField],
+      session: {
+        empid: user?.empid,
+        company_id: company?.company_id,
+        branch_id: company?.branch_id,
+        department_id: company?.department_id,
+      },
+    };
     setTxnInfo({ loading: true, col, value, data: [] });
-    fetch(
-      `/api/inventory_transactions?refCol=${encodeURIComponent(col)}&refVal=${encodeURIComponent(
-        value,
-      )}`,
-      { credentials: 'include' },
-    )
+    fetch('/api/procedures/raw', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    })
       .then((res) => (res.ok ? res.json() : { rows: [] }))
       .then((data) => {
         setTxnInfo({ loading: false, col, value, data: data.rows || [] });
@@ -308,7 +324,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                     <td
                       key={col}
                       style={{ ...style, cursor: row[col] ? 'pointer' : 'default' }}
-                      onClick={() => handleCellClick(col, row[col])}
+                      onClick={() => handleCellClick(col, row[col], row)}
                     >
                       {numericColumns.includes(col) ? formatNumber(row[col]) : row[col]}
                     </td>
