@@ -1,6 +1,7 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig, { updateCache } from '../hooks/useGeneralConfig.js';
+import useHeaderMappings from '../hooks/useHeaderMappings.js';
 
 export default function ReportTable({ procedure = '', params = {}, rows = [] }) {
   const { user } = useContext(AuthContext);
@@ -19,6 +20,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
   const procLabels = generalConfig.general?.procLabels || {};
   const procFieldLabels = generalConfig.general?.procFieldLabels || {};
   const fieldLabels = procFieldLabels[procedure] || {};
+  const headerMap = useHeaderMappings([procedure]);
 
   const columns = rows && rows.length ? Object.keys(rows[0]) : [];
 
@@ -97,14 +99,14 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       .then((data) => data && updateCache(data));
   }
 
-  const procLabel = procLabels[procedure] || procedure;
+  const procLabel = procLabels[procedure] || headerMap[procedure] || procedure;
   const paramText =
     generalConfig.general?.showReportParams &&
     params &&
     Object.keys(params).length > 0
-      ? ` (${Object.entries(params)
+      ? Object.entries(params)
           .map(([k, v]) => `${k}=${v}`)
-          .join(', ')})`
+          .join(', ')
       : '';
 
   if (!rows || rows.length === 0) {
@@ -121,6 +123,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
             </button>
           )}
         </h4>
+        {paramText && <div style={{ marginTop: '0.25rem' }}>{paramText}</div>}
         <p>No data</p>
       </div>
     );
@@ -130,13 +133,13 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     <div style={{ marginTop: '1rem' }}>
       <h4>
         {procLabel}
-        {paramText}
         {user?.role === 'admin' && generalConfig.general?.editLabelsEnabled && (
           <button onClick={handleEditProcLabel} style={{ marginLeft: '0.5rem' }}>
             Edit label
           </button>
         )}
       </h4>
+      {paramText && <div style={{ marginTop: '0.25rem' }}>{paramText}</div>}
       <div style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center' }}>
         <input
           type="text"
@@ -147,20 +150,16 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
         />
         <label>
           Page size:
-          <select
+          <input
+            type="number"
             value={perPage}
             onChange={(e) => {
-              setPerPage(Number(e.target.value));
+              setPerPage(Number(e.target.value) || 1);
               setPage(1);
             }}
-            style={{ marginLeft: '0.25rem' }}
-          >
-            {[10, 25, 50, 100, 250, 500, 1000].map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
+            min="1"
+            style={{ marginLeft: '0.25rem', width: '4rem' }}
+          />
         </label>
       </div>
       <div style={{ overflowX: 'auto' }}>
@@ -226,7 +225,21 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
           {'<'}
         </button>
         <span style={{ margin: '0 0.5rem' }}>
-          Page {page} of {totalPages}
+          Page
+          <input
+            type="number"
+            value={page}
+            onChange={(e) => {
+              let val = Number(e.target.value) || 1;
+              if (val < 1) val = 1;
+              if (val > totalPages) val = totalPages;
+              setPage(val);
+            }}
+            style={{ width: '3rem', margin: '0 0.25rem', textAlign: 'center' }}
+            min="1"
+            max={totalPages}
+          />
+          of {totalPages}
         </span>
         <button
           onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
