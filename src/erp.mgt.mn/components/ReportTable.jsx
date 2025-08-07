@@ -19,6 +19,17 @@ function getAverageLength(columnKey, data) {
 
 const MAX_WIDTH = ch(40);
 
+const numberFmt = new Intl.NumberFormat('en-US', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+function formatNumber(val) {
+  if (val === null || val === undefined || val === '') return '';
+  const num = Number(String(val).replace(',', '.'));
+  return Number.isNaN(num) ? '' : numberFmt.format(num);
+}
+
 export default function ReportTable({ procedure = '', params = {}, rows = [] }) {
   const { user } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
@@ -275,7 +286,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                   }
                   return (
                     <td key={col} style={style}>
-                      {row[col]}
+                      {numericColumns.includes(col) ? formatNumber(row[col]) : row[col]}
                     </td>
                   );
                 })}
@@ -298,7 +309,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                     {idx === 0
                       ? 'TOTAL'
                       : numericColumns.includes(col)
-                      ? totals[col]
+                      ? formatNumber(totals[col])
                       : ''}
                   </td>
                 ))}
