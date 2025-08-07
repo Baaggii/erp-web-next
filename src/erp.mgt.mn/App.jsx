@@ -33,10 +33,12 @@ import ImageManagementPage from './pages/ImageManagement.jsx';
 import FinanceTransactionsPage from './pages/FinanceTransactions.jsx';
 import { useModules } from './hooks/useModules.js';
 import { useTxnModules } from './hooks/useTxnModules.js';
+import useGeneralConfig from './hooks/useGeneralConfig.js';
 
 export default function App() {
   const modules = useModules();
   const txnModules = useTxnModules();
+  const generalConfig = useGeneralConfig();
 
   useEffect(() => {
     debugLog('Component mounted: App');
@@ -44,7 +46,8 @@ export default function App() {
 
   const moduleMap = {};
   modules.forEach((m) => {
-    moduleMap[m.module_key] = { ...m, children: [] };
+    const label = generalConfig.general?.procLabels?.[m.module_key] || m.label;
+    moduleMap[m.module_key] = { ...m, label, children: [] };
   });
   modules.forEach((m) => {
     if (m.parent_key && moduleMap[m.parent_key]) {

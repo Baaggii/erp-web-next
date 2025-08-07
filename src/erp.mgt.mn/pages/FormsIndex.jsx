@@ -5,6 +5,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import { useRolePermissions } from '../hooks/useRolePermissions.js';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
 import { useTxnModules } from '../hooks/useTxnModules.js';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 export default function FormsIndex() {
   const [transactions, setTransactions] = useState({});
@@ -13,10 +14,12 @@ export default function FormsIndex() {
   const perms = useRolePermissions();
   const licensed = useCompanyModules(company?.company_id);
   const txnModules = useTxnModules();
+  const generalConfig = useGeneralConfig();
 
   const moduleMap = {};
   modules.forEach((m) => {
-    moduleMap[m.module_key] = { ...m };
+    const label = generalConfig.general?.procLabels?.[m.module_key] || m.label;
+    moduleMap[m.module_key] = { ...m, label };
   });
 
   function isFormsDescendant(mod) {
@@ -80,9 +83,12 @@ export default function FormsIndex() {
       ) : (
         groups.map(([key]) => {
           const mod = modules.find((m) => m.module_key === key);
+          const label = mod
+            ? generalConfig.general?.procLabels?.[mod.module_key] || mod.label
+            : key;
           return (
             <div key={key} style={{ marginBottom: '1rem' }}>
-              <FinanceTransactionsPage moduleKey={key} moduleLabel={mod ? mod.label : key} />
+              <FinanceTransactionsPage moduleKey={key} moduleLabel={label} />
             </div>
           );
         })

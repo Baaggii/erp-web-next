@@ -275,6 +275,28 @@ export default function GeneralConfiguration() {
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
             <label>
+              Enable Field Label Editing{' '}
+              <input
+                name="editLabelsEnabled"
+                type="checkbox"
+                checked={active.editLabelsEnabled ?? false}
+                onChange={handleChange}
+              />
+            </label>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <label>
+              Show Report Parameters{' '}
+              <input
+                name="showReportParams"
+                type="checkbox"
+                checked={active.showReportParams ?? false}
+                onChange={handleChange}
+              />
+            </label>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <label>
               Enable Debug Logging{' '}
               <input
                 name="debugLoggingEnabled"

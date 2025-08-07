@@ -1,10 +1,12 @@
 import React from 'react';
 import { useRolePermissions } from '../hooks/useRolePermissions.js';
 import { useModules } from '../hooks/useModules.js';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 export default function HeaderMenu({ onOpen }) {
   const perms = useRolePermissions();
   const modules = useModules();
+  const generalConfig = useGeneralConfig();
   const items = modules.filter((r) => r.show_in_header);
 
   if (!perms) return null;
@@ -19,7 +21,7 @@ export default function HeaderMenu({ onOpen }) {
               style={styles.btn}
               onClick={() => onOpen(m.module_key)}
             >
-              {m.label}
+              {generalConfig.general?.procLabels?.[m.module_key] || m.label}
             </button>
           ),
       )}

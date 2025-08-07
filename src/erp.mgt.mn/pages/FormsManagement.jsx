@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useModules } from '../hooks/useModules.js';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { debugLog } from '../utils/debug.js';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 export default function FormsManagement() {
   const [tables, setTables] = useState([]);
@@ -15,6 +16,8 @@ export default function FormsManagement() {
   const [txnTypes, setTxnTypes] = useState([]);
   const [columns, setColumns] = useState([]);
   const [views, setViews] = useState([]);
+  const [procedureOptions, setProcedureOptions] = useState([]);
+  const generalConfig = useGeneralConfig();
   const modules = useModules();
   useEffect(() => {
     debugLog('Component mounted: FormsManagement');
@@ -47,6 +50,7 @@ export default function FormsManagement() {
     transactionTypeValue: '',
     allowedBranches: [],
     allowedDepartments: [],
+    procedures: [],
   });
 
   useEffect(() => {
@@ -74,6 +78,17 @@ export default function FormsManagement() {
       .then((res) => (res.ok ? res.json() : { rows: [] }))
       .then((data) => setTxnTypes(data.rows || []))
       .catch(() => setTxnTypes([]));
+
+    fetch('/api/procedures', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { procedures: [] }))
+      .then((data) =>
+        setProcedureOptions(
+          (data.procedures || []).filter((p) =>
+            String(p).toLowerCase().includes('report'),
+          )
+        )
+      )
+      .catch(() => setProcedureOptions([]));
   }, []);
 
   useEffect(() => {
@@ -123,6 +138,7 @@ export default function FormsManagement() {
             transactionTypeValue: filtered[name].transactionTypeValue || '',
             allowedBranches: (filtered[name].allowedBranches || []).map(String),
             allowedDepartments: (filtered[name].allowedDepartments || []).map(String),
+            procedures: filtered[name].procedures || [],
           });
         } else {
           setName('');
@@ -154,6 +170,7 @@ export default function FormsManagement() {
             transactionTypeValue: '',
             allowedBranches: [],
             allowedDepartments: [],
+            procedures: [],
           });
         }
       })
@@ -188,6 +205,7 @@ export default function FormsManagement() {
           transactionTypeValue: '',
           allowedBranches: [],
           allowedDepartments: [],
+          procedures: [],
         });
         setModuleKey('');
       });
@@ -227,6 +245,7 @@ export default function FormsManagement() {
           transactionTypeValue: cfg.transactionTypeValue || '',
           allowedBranches: (cfg.allowedBranches || []).map(String),
           allowedDepartments: (cfg.allowedDepartments || []).map(String),
+          procedures: cfg.procedures || [],
         });
       })
       .catch(() => {
@@ -258,6 +277,7 @@ export default function FormsManagement() {
           transactionTypeValue: '',
           allowedBranches: [],
           allowedDepartments: [],
+          procedures: [],
         });
         setModuleKey('');
       });
@@ -381,6 +401,7 @@ export default function FormsManagement() {
       transactionTypeValue: '',
       allowedBranches: [],
       allowedDepartments: [],
+      procedures: [],
     });
     setModuleKey('');
   }
@@ -414,6 +435,7 @@ export default function FormsManagement() {
       transactionTypeValue: cfg.transactionTypeValue || '',
       allowedBranches: (cfg.allowedBranches || []).map(String),
       allowedDepartments: (cfg.allowedDepartments || []).map(String),
+      procedures: cfg.procedures || [],
     });
   }
 
@@ -739,7 +761,7 @@ export default function FormsManagement() {
             </tbody>
           </table>
           </div>
-          <div style={{ marginTop: '1rem' }}>
+          <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'flex-start' }}>
             <label style={{ marginLeft: '1rem' }}>
               Allowed branches:{' '}
               <select
@@ -784,6 +806,31 @@ export default function FormsManagement() {
               <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedDepartments: departments.map((d) => String(d.id)) }))}>All</button>
               <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedDepartments: [] }))}>None</button>
             </label>
+            {procedureOptions.length > 0 && (
+              <label style={{ marginLeft: '1rem' }}>
+                Procedures:{' '}
+                <select
+                  multiple
+                  size={8}
+                  value={config.procedures}
+                  onChange={(e) =>
+                    setConfig((c) => ({
+                      ...c,
+                      procedures: Array.from(
+                        e.target.selectedOptions,
+                        (o) => o.value,
+                      ),
+                    }))
+                  }
+                >
+                  {procedureOptions.map((p) => (
+                    <option key={p} value={p}>
+                      {generalConfig.general?.procLabels?.[p] || p}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
           </div>
           <div style={{ marginTop: '1rem' }}>
             <button onClick={handleSave}>Save Configuration</button>
