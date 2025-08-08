@@ -130,6 +130,7 @@ export default function ImageManagement() {
             data.ignored = await attachHandles(dir, data.ignored);
           }
           applySession(data);
+          setTab('fix');
         }
       } catch {
         // ignore
@@ -242,6 +243,10 @@ export default function ImageManagement() {
       : [];
     setHostIgnored(hostArr);
     hostIgnoredRef.current = hostArr;
+    setUploadPage(1);
+    setIgnoredPage(1);
+    setPendingPage(1);
+    setHostIgnoredPage(1);
   }
 
   function persistSnapshot(partial = {}) {
@@ -270,7 +275,12 @@ export default function ImageManagement() {
   
   function saveTables() {
     try {
-      persistAll();
+      persistSnapshot({
+        uploads: pageUploads,
+        ignored: pageIgnored,
+        pending,
+        hostIgnored: pageHostIgnored,
+      });
       addToast('Tables saved locally', 'success');
     } catch (err) {
       console.error(err);
