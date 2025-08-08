@@ -275,12 +275,7 @@ export default function ImageManagement() {
   
   function saveTables() {
     try {
-      persistSnapshot({
-        uploads: pageUploads,
-        ignored: pageIgnored,
-        pending,
-        hostIgnored: pageHostIgnored,
-      });
+      persistAll();
       addToast('Tables saved locally', 'success');
     } catch (err) {
       console.error(err);
