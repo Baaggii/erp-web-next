@@ -718,13 +718,17 @@ export default function ImageManagement() {
       return;
     }
     try {
+      const idxMap = new Map();
+      const payload = items.map((u, i) => {
+        const idx = typeof u.index === 'number' ? u.index : i;
+        idxMap.set(u.id, idx);
+        return { name: u.originalName, index: idx };
+      });
       const res = await fetch('/api/transaction_images/upload_check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          names: items.map((u) => ({ name: u.originalName, index: u.index })),
-        }),
+        body: JSON.stringify({ names: payload }),
       });
       if (!res.ok) throw new Error('bad response');
       const data = await res.json().catch(() => ({}));
@@ -734,7 +738,8 @@ export default function ImageManagement() {
         arr
           .map((u) => {
             if (!uploadSel.includes(u.id)) return u;
-            const r = resultMap.get(String(u.index));
+            const idx = idxMap.get(u.id);
+            const r = resultMap.get(String(idx));
             if (!r) {
               const reason = u.reason || 'No match found';
               return { ...u, reason, description: reason };
@@ -749,6 +754,7 @@ export default function ImageManagement() {
               folder: r.folder,
               folderDisplay: r.folderDisplay,
               tmpPath: r.tmpPath,
+              processed: !!r.processed,
               description: extractDateFromName(r.newName),
             };
           })
@@ -789,13 +795,14 @@ export default function ImageManagement() {
       addToast('No renamed files to upload', 'error');
       return;
     }
-    setUploadSel(ids);
-    await renameSelected();
-    setUploadSel(ids);
-    await commitUploads();
+    await renameSelected(ids, { keepSelection: true });
+    await commitUploads(ids);
   }
 
-  async function renameSelected() {
+  async function renameSelected(
+    selectedIds = uploadSel,
+    { keepSelection = false } = {},
+  ) {
     if (activeOp === 'rename') {
       if (window.confirm('Cancel rename?')) {
         renameAbortRef.current?.abort();
@@ -804,13 +811,13 @@ export default function ImageManagement() {
       return;
     }
 
-    if (uploadSel.length === 0) {
+    if (selectedIds.length === 0) {
       addToast('No files selected', 'error');
       return;
     }
 
     const items = [...uploads, ...ignored].filter(
-      (u) => uploadSel.includes(u.id) && !u.processed,
+      (u) => selectedIds.includes(u.id) && !u.processed,
     );
     if (items.length === 0) {
       addToast('No local files to rename', 'error');
@@ -895,7 +902,7 @@ export default function ImageManagement() {
       const updateList = (arr) =>
         arr
           .map((u) => {
-            if (!uploadSel.includes(u.id)) return u;
+            if (!selectedIds.includes(u.id)) return u;
             const r = resultMap.get(String(u.index));
             if (!r) {
               const reason = u.reason || 'No match found';
@@ -927,7 +934,8 @@ export default function ImageManagement() {
 
       setUploads(newUploads);
       setIgnored(newIgnored);
-      setUploadSel([]);
+      if (!keepSelection)
+        setUploadSel((prev) => prev.filter((id) => !selectedIds.includes(id)));
       persistAll({ uploads: newUploads, ignored: newIgnored });
       setReport(`Renamed ${processedCount} file(s)`);
     } catch {
@@ -940,25 +948,21 @@ export default function ImageManagement() {
         const resultMap = new Map(merged.map((r) => [String(r.index), r]));
         const updateList = (arr) =>
           arr.map((u) => {
-            if (!uploadSel.includes(u.id)) return u;
+            if (!selectedIds.includes(u.id)) return u;
             const r = resultMap.get(String(u.index));
-            if (!r) return u;
-            const reason = r.reason || 'Rename failed';
+            const reason = r?.reason || u.reason || 'Rename failed';
             return { ...u, reason, description: reason };
           });
-        const newUploads = updateList(uploads);
-        const newIgnored = updateList(ignored);
-        setUploads(newUploads);
-        setIgnored(newIgnored);
-        setUploadSel([]);
-        persistAll({ uploads: newUploads, ignored: newIgnored });
+        setUploads(updateList(uploads));
+        setIgnored(updateList(ignored));
       }
     } finally {
+      persistAll({ uploads, ignored });
       setActiveOp(null);
     }
   }
 
-  async function commitUploads() {
+  async function commitUploads(selectedIds = uploadSel) {
     if (activeOp === 'commit') {
       if (window.confirm('Cancel upload commit?')) {
         commitAbortRef.current?.abort();
@@ -970,7 +974,7 @@ export default function ImageManagement() {
     const tables = getTables();
     const allItems = Object.values(tables).flat();
     const items = allItems.filter(
-      (u) => uploadSel.includes(u.id) && u.tmpPath && !u.processed,
+      (u) => selectedIds.includes(u.id) && u.tmpPath && !u.processed,
     );
     if (items.length === 0) return;
 
@@ -992,14 +996,14 @@ export default function ImageManagement() {
         const updated = {};
         for (const [key, arr] of Object.entries(tables)) {
           updated[key] = arr.map((u) =>
-            uploadSel.includes(u.id) && u.tmpPath ? { ...u, processed: true } : u,
+            selectedIds.includes(u.id) && u.tmpPath ? { ...u, processed: true } : u,
           );
         }
         setUploads(updated.uploads);
         setIgnored(updated.ignored);
         setPending(updated.pending);
         setHostIgnored(updated.hostIgnored);
-        setUploadSel([]);
+        setUploadSel((prev) => prev.filter((id) => !selectedIds.includes(id)));
         persistAll(updated);
         setReport(`Uploaded ${data.uploaded || 0} file(s)`);
       } else {
@@ -1121,7 +1125,7 @@ export default function ImageManagement() {
               <button
                 type="button"
                 onClick={commitUploads}
-                style={{ marginBottom: '0.5rem' }}
+                style={{ marginBottom: '0.5rem', marginRight: '0.5rem' }}
                 disabled={
                   uploadSel.length === 0 ||
                   ![...uploads, ...ignored].some((u) => uploadSel.includes(u.id) && u.tmpPath)
@@ -1140,10 +1144,30 @@ export default function ImageManagement() {
                   setReport(`Deleted ${uploadSel.length} file(s)`);
                   persistAll({ uploads: remainingUploads, ignored: remainingIgnored });
                 }}
-                style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
+                style={{ marginBottom: '0.5rem', marginRight: '0.5rem' }}
                 disabled={uploadSel.length === 0}
               >
                 Delete Selected
+              </button>
+              <button
+                type="button"
+                onClick={renameSelectedNames}
+                style={{
+                  marginBottom: '0.5rem',
+                  marginLeft: '1rem',
+                  marginRight: '0.5rem',
+                }}
+                disabled={uploadSel.length === 0}
+              >
+                Rename Names
+              </button>
+              <button
+                type="button"
+                onClick={uploadRenamedNames}
+                style={{ marginBottom: '0.5rem', marginRight: '0.5rem' }}
+                disabled={!canUploadNames}
+              >
+                Upload Names
               </button>
               <div style={{ marginBottom: '0.5rem' }}>
                 <label style={{ marginRight: '0.5rem' }}>

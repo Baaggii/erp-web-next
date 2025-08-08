@@ -761,6 +761,7 @@ export async function checkUploadedImages(files = [], names = []) {
   const results = [];
   let processed = 0;
   const codes = await fetchTxnCodes();
+  const { baseDir } = await getDirs();
   let items = files.length
     ? files
     : names.map((n) => ({
@@ -876,6 +877,19 @@ export async function checkUploadedImages(files = [], names = []) {
           finalBase = `${newBase}${suffix}`;
         }
         const newName = `${finalBase}${ext}`;
+        const target = path.join(baseDir, folderRaw, newName);
+        if (fssync.existsSync(target)) {
+          results.push({
+            originalName: file.originalname,
+            newName,
+            folder: folderRaw,
+            folderDisplay,
+            id: file.path || file.originalname,
+            index: file.index,
+            processed: true,
+          });
+          continue;
+        }
         results.push({
           tmpPath: file.path,
           originalName: file.originalname,
