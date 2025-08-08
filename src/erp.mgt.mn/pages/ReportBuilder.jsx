@@ -10,6 +10,7 @@ const SESSION_PARAMS = [
 const PARAM_TYPES = ['INT', 'DATE', 'VARCHAR(50)', 'DECIMAL(10,2)'];
 const AGGREGATES = ['NONE', 'SUM', 'COUNT', 'MAX', 'MIN'];
 const OPERATORS = ['=', '>', '<', '>=', '<=', '<>'];
+const CALC_OPERATORS = ['+', '-', '*', '/'];
 
 export default function ReportBuilder() {
   const [tables, setTables] = useState([]); // list of table names
@@ -18,7 +19,7 @@ export default function ReportBuilder() {
   const [procName, setProcName] = useState('');
   const [fromTable, setFromTable] = useState('');
   const [joins, setJoins] = useState([]); // {table, alias, type, targetTable, conditions:[{fromField,toField,connector}], filters:[]}
-  const [fields, setFields] = useState([]); // {table, field, alias, aggregate, conditions:[], calc:''}
+  const [fields, setFields] = useState([]); // {table, field, alias, aggregate, conditions:[], calcParts:[{source,table,field,alias,operator}]}
   const [groups, setGroups] = useState([]); // {table, field}
   const [having, setHaving] = useState([]); // {source:'field'|'alias', aggregate, table, field, alias, operator, valueType, value, param, connector}
   const [params, setParams] = useState([]); // {name,type,source}
@@ -176,6 +177,7 @@ export default function ReportBuilder() {
         field: firstField,
         alias: firstField,
         aggregate: 'NONE',
+        calcParts: [],
       },
     ]);
   }
@@ -230,6 +232,52 @@ export default function ReportBuilder() {
     const updated = fields.map((f, i) =>
       i === fIndex
         ? { ...f, conditions: (f.conditions || []).filter((_, k) => k !== cIndex) }
+        : f,
+    );
+    setFields(updated);
+  }
+
+  function addCalcPart(fIndex) {
+    const parts = fields[fIndex].calcParts || [];
+    const part = {
+      source: 'alias',
+      alias: fields.slice(0, fIndex).find((pf) => pf.alias)?.alias || '',
+      table: fromTable,
+      field: (tableFields[fromTable] || [])[0] || '',
+      operator: parts.length ? '+' : undefined,
+    };
+    const updated = fields.map((f, i) =>
+      i === fIndex ? { ...f, calcParts: [...parts, part] } : f,
+    );
+    setFields(updated);
+  }
+
+  function updateCalcPart(fIndex, pIndex, key, value) {
+    const updated = fields.map((f, i) => {
+      if (i !== fIndex) return f;
+      const parts = (f.calcParts || []).map((p, k) => {
+        if (k !== pIndex) return p;
+        const next = { ...p, [key]: value };
+        if (key === 'source') {
+          if (value === 'alias') {
+            next.alias = fields.slice(0, fIndex).find((pf) => pf.alias)?.alias || '';
+          } else {
+            next.table = fromTable;
+            next.field = (tableFields[fromTable] || [])[0] || '';
+          }
+        }
+        if (key === 'table') ensureFields(value);
+        return next;
+      });
+      return { ...f, calcParts: parts };
+    });
+    setFields(updated);
+  }
+
+  function removeCalcPart(fIndex, pIndex) {
+    const updated = fields.map((f, i) =>
+      i === fIndex
+        ? { ...f, calcParts: (f.calcParts || []).filter((_, k) => k !== pIndex) }
         : f,
     );
     setFields(updated);
@@ -439,11 +487,19 @@ export default function ReportBuilder() {
       }
 
       const fieldExprMap = {};
-      const select = fields.map((f) => {
+      const select = fields.map((f, idx) => {
         let expr = '';
         const base = `${aliases[f.table]}.${f.field}`;
-        if (f.calc) {
-          expr = f.calc;
+        if (f.calcParts?.length) {
+          expr = f.calcParts
+            .map((p, k) => {
+              const seg =
+                p.source === 'alias'
+                  ? p.alias
+                  : `${aliases[p.table]}.${p.field}`;
+              return k > 0 ? `${p.operator} ${seg}` : seg;
+            })
+            .join(' ');
           Object.entries(fieldExprMap).forEach(([al, ex]) => {
             const re = new RegExp(`\\b${al}\\b`, 'g');
             expr = expr.replace(re, `(${ex})`);
@@ -461,9 +517,9 @@ export default function ReportBuilder() {
                 );
               })
               .join('');
-            expr = `${f.aggregate}(CASE WHEN ${cond} THEN ${base} ELSE 0 END)`;
+            expr = `${f.aggregate}(CASE WHEN ${cond} THEN IFNULL(${base}, 0) ELSE 0 END)`;
           } else {
-            expr = `${f.aggregate}(${base})`;
+            expr = `${f.aggregate}(IFNULL(${base}, 0))`;
           }
         } else {
           expr = base;
@@ -627,6 +683,11 @@ export default function ReportBuilder() {
         setFields(
           (data.fields || []).map((f) => ({
             ...f,
+            calcParts: (f.calcParts || []).map((p, idx) => ({
+              operator: idx > 0 ? p.operator || '+' : undefined,
+              source: p.source || 'field',
+              ...p,
+            })),
             conditions: (f.conditions || []).map((c) => ({
               connector: c.connector || 'AND',
               ...c,
@@ -985,31 +1046,92 @@ export default function ReportBuilder() {
               onChange={(e) => updateField(i, 'alias', e.target.value)}
               style={{ marginLeft: '0.5rem' }}
             />
-            <input
-              placeholder="calc"
-              value={f.calc || ''}
-              onChange={(e) => updateField(i, 'calc', e.target.value)}
-              style={{ marginLeft: '0.5rem', width: '150px' }}
-            />
-            <select
-              value=""
-              onChange={(e) => {
-                const v = e.target.value;
-                if (!v) return;
-                updateField(i, 'calc', (f.calc ? `${f.calc} ` : '') + v);
-                e.target.selectedIndex = 0;
-              }}
+            {(f.calcParts || []).map((p, k) => (
+              <span key={k} style={{ marginLeft: '0.5rem' }}>
+                {k > 0 && (
+                  <select
+                    value={p.operator}
+                    onChange={(e) =>
+                      updateCalcPart(i, k, 'operator', e.target.value)
+                    }
+                    style={{ marginRight: '0.5rem' }}
+                  >
+                    {CALC_OPERATORS.map((op) => (
+                      <option key={op} value={op}>
+                        {op}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <select
+                  value={p.source}
+                  onChange={(e) =>
+                    updateCalcPart(i, k, 'source', e.target.value)
+                  }
+                >
+                  <option value="field">Field</option>
+                  <option value="alias">Alias</option>
+                </select>
+                {p.source === 'alias' ? (
+                  <select
+                    value={p.alias}
+                    onChange={(e) =>
+                      updateCalcPart(i, k, 'alias', e.target.value)
+                    }
+                    style={{ marginLeft: '0.5rem' }}
+                  >
+                    {fields.slice(0, i).map((pf) =>
+                      pf.alias ? (
+                        <option key={pf.alias} value={pf.alias}>
+                          {pf.alias}
+                        </option>
+                      ) : null,
+                    )}
+                  </select>
+                ) : (
+                  <>
+                    <select
+                      value={p.table}
+                      onChange={(e) =>
+                        updateCalcPart(i, k, 'table', e.target.value)
+                      }
+                      style={{ marginLeft: '0.5rem' }}
+                    >
+                      {availableTables.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={p.field}
+                      onChange={(e) =>
+                        updateCalcPart(i, k, 'field', e.target.value)
+                      }
+                      style={{ marginLeft: '0.5rem' }}
+                    >
+                      {(tableFields[p.table] || []).map((col) => (
+                        <option key={col} value={col}>
+                          {col}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                )}
+                <button
+                  onClick={() => removeCalcPart(i, k)}
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+            <button
+              onClick={() => addCalcPart(i)}
               style={{ marginLeft: '0.5rem' }}
             >
-              <option value="">alias</option>
-              {fields.slice(0, i).map((pf) =>
-                pf.alias ? (
-                  <option key={pf.alias} value={pf.alias}>
-                    {pf.alias}
-                  </option>
-                ) : null,
-              )}
-            </select>
+              Add Part
+            </button>
             {f.aggregate !== 'NONE' && (
               <div style={{ display: 'inline-block', marginLeft: '0.5rem' }}>
                 {(f.conditions || []).map((c, k) => (
