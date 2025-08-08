@@ -1,6 +1,10 @@
 import express from 'express';
 import { requireAuth } from '../middlewares/auth.js';
-import { listDatabaseTables, listTableColumns } from '../../db/index.js';
+import {
+  listDatabaseTables,
+  listTableColumns,
+  saveStoredProcedure,
+} from '../../db/index.js';
 
 const router = express.Router();
 
@@ -21,6 +25,18 @@ router.get('/fields', requireAuth, async (req, res, next) => {
     if (!table) return res.status(400).json({ message: 'table required' });
     const fields = await listTableColumns(table);
     res.json({ fields });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Save a stored procedure
+router.post('/procedures', requireAuth, async (req, res, next) => {
+  try {
+    const { sql } = req.body || {};
+    if (!sql) return res.status(400).json({ message: 'sql required' });
+    await saveStoredProcedure(sql);
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

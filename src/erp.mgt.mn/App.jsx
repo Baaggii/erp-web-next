@@ -106,8 +106,6 @@ export default function App() {
     'tables_management',
     'coding_tables',
     'forms_management',
-    'report_management',
-    'report_builder',
     'relations_config',
     'pos_transaction_management',
     'image_management',

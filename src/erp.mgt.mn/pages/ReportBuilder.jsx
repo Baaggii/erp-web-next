@@ -17,12 +17,13 @@ export default function ReportBuilder() {
 
   const [procName, setProcName] = useState('');
   const [fromTable, setFromTable] = useState('');
-  const [joins, setJoins] = useState([]); // {table, alias, type, targetTable, conditions:[{fromField,toField,connector}]}
-  const [fields, setFields] = useState([]); // {table, field, alias, aggregate}
+  const [joins, setJoins] = useState([]); // {table, alias, type, targetTable, conditions:[{fromField,toField,connector}], filters:[]}
+  const [fields, setFields] = useState([]); // {table, field, alias, aggregate, conditions:[], calc:''}
   const [groups, setGroups] = useState([]); // {table, field}
-  const [having, setHaving] = useState([]); // {aggregate, table, field, operator, valueType, value, param, connector}
+  const [having, setHaving] = useState([]); // {source:'field'|'alias', aggregate, table, field, alias, operator, valueType, value, param, connector}
   const [params, setParams] = useState([]); // {name,type,source}
   const [conditions, setConditions] = useState([]); // {table,field,param,connector}
+  const [fromFilters, setFromFilters] = useState([]); // {field,operator,valueType,param,value,connector}
   const [script, setScript] = useState('');
   const [error, setError] = useState('');
 
@@ -63,6 +64,12 @@ export default function ReportBuilder() {
   // load fields when primary table changes
   useEffect(() => {
     ensureFields(fromTable);
+    setFromFilters((prev) =>
+      prev.map((f) => ({
+        ...f,
+        field: (tableFields[fromTable] || [])[0] || f.field,
+      })),
+    );
   }, [fromTable]);
 
   const availableTables = [fromTable, ...joins.map((j) => j.table)].filter(Boolean);
@@ -88,6 +95,7 @@ export default function ReportBuilder() {
             connector: 'AND',
           },
         ],
+        filters: [],
       },
     ]);
   }
@@ -101,6 +109,10 @@ export default function ReportBuilder() {
         next.conditions = next.conditions.map((c) => ({
           ...c,
           toField: (tableFields[value] || [])[0] || '',
+        }));
+        next.filters = (next.filters || []).map((f) => ({
+          ...f,
+          field: (tableFields[value] || [])[0] || f.field,
         }));
       }
       if (key === 'targetTable') {
@@ -177,6 +189,44 @@ export default function ReportBuilder() {
     setFields(fields.filter((_, i) => i !== index));
   }
 
+  function addFieldCondition(fIndex) {
+    const table = fromTable;
+    const newCond = {
+      table,
+      field: (tableFields[table] || [])[0] || '',
+      operator: '=',
+      valueType: params.length ? 'param' : 'value',
+      value: '',
+      param: params[0]?.name || '',
+      connector: 'AND',
+    };
+    const updated = fields.map((f, i) =>
+      i === fIndex ? { ...f, conditions: [...(f.conditions || []), newCond] } : f,
+    );
+    setFields(updated);
+  }
+
+  function updateFieldCondition(fIndex, cIndex, key, value) {
+    const updated = fields.map((f, i) => {
+      if (i !== fIndex) return f;
+      const conds = (f.conditions || []).map((c, k) =>
+        k === cIndex ? { ...c, [key]: value } : c,
+      );
+      if (key === 'table') ensureFields(value);
+      return { ...f, conditions: conds };
+    });
+    setFields(updated);
+  }
+
+  function removeFieldCondition(fIndex, cIndex) {
+    const updated = fields.map((f, i) =>
+      i === fIndex
+        ? { ...f, conditions: (f.conditions || []).filter((_, k) => k !== cIndex) }
+        : f,
+    );
+    setFields(updated);
+  }
+
   function addGroup() {
     if (!fromTable) return;
     setGroups([
@@ -200,9 +250,11 @@ export default function ReportBuilder() {
     setHaving([
       ...having,
       {
+        source: 'field',
         aggregate: 'SUM',
         table: fromTable,
         field: (tableFields[fromTable] || [])[0] || '',
+        alias: '',
         operator: '=',
         valueType: params.length ? 'param' : 'value',
         param: params[0]?.name || '',
@@ -219,6 +271,9 @@ export default function ReportBuilder() {
       if (key === 'table') ensureFields(value);
       if (key === 'valueType' && value === 'param') {
         next.param = params[0]?.name || '';
+      }
+      if (key === 'source' && value === 'alias') {
+        next.alias = fields.find((f) => f.alias)?.alias || '';
       }
       return next;
     });
@@ -250,6 +305,19 @@ export default function ReportBuilder() {
     setParams(params.filter((p) => p.name !== name));
     setConditions(conditions.filter((c) => c.param !== name));
     setHaving(having.filter((h) => h.param !== name));
+    setFromFilters(fromFilters.filter((f) => f.param !== name));
+    setJoins(
+      joins.map((j) => ({
+        ...j,
+        filters: (j.filters || []).filter((f) => f.param !== name),
+      })),
+    );
+    setFields(
+      fields.map((f) => ({
+        ...f,
+        conditions: (f.conditions || []).filter((c) => c.param !== name),
+      })),
+    );
   }
 
   function addCondition() {
@@ -276,6 +344,69 @@ export default function ReportBuilder() {
     setConditions(conditions.filter((_, i) => i !== index));
   }
 
+  function addFromFilter() {
+    if (!fromTable) return;
+    setFromFilters([
+      ...fromFilters,
+      {
+        field: (tableFields[fromTable] || [])[0] || '',
+        operator: '=',
+        valueType: params.length ? 'param' : 'value',
+        value: '',
+        param: params[0]?.name || '',
+        connector: 'AND',
+      },
+    ]);
+  }
+
+  function updateFromFilter(index, key, value) {
+    const updated = fromFilters.map((f, i) =>
+      i === index ? { ...f, [key]: value } : f,
+    );
+    setFromFilters(updated);
+  }
+
+  function removeFromFilter(index) {
+    setFromFilters(fromFilters.filter((_, i) => i !== index));
+  }
+
+  function addJoinFilter(jIndex) {
+    const join = joins[jIndex];
+    ensureFields(join.table);
+    const newFilter = {
+      field: (tableFields[join.table] || [])[0] || '',
+      operator: '=',
+      valueType: params.length ? 'param' : 'value',
+      value: '',
+      param: params[0]?.name || '',
+      connector: 'AND',
+    };
+    const updated = joins.map((j, i) =>
+      i === jIndex ? { ...j, filters: [...(j.filters || []), newFilter] } : j,
+    );
+    setJoins(updated);
+  }
+
+  function updateJoinFilter(jIndex, fIndex, key, value) {
+    const updated = joins.map((j, i) => {
+      if (i !== jIndex) return j;
+      const flts = (j.filters || []).map((f, k) =>
+        k === fIndex ? { ...f, [key]: value } : f,
+      );
+      return { ...j, filters: flts };
+    });
+    setJoins(updated);
+  }
+
+  function removeJoinFilter(jIndex, fIndex) {
+    const updated = joins.map((j, i) =>
+      i === jIndex
+        ? { ...j, filters: (j.filters || []).filter((_, k) => k !== fIndex) }
+        : j,
+    );
+    setJoins(updated);
+  }
+
   function buildAliases() {
     const map = {};
     if (fromTable) map[fromTable] = 't0';
@@ -289,13 +420,49 @@ export default function ReportBuilder() {
     try {
       const aliases = buildAliases();
 
-      const select = fields.map((f) => ({
-        expr:
-          f.aggregate && f.aggregate !== 'NONE'
-            ? `${f.aggregate}(${aliases[f.table]}.${f.field})`
-            : `${aliases[f.table]}.${f.field}`,
-        alias: f.alias || undefined,
-      }));
+      function buildTableFilterSql(filters) {
+        return filters
+          .map((f, idx) => {
+            const right = f.valueType === 'param' ? `:${f.param}` : f.value;
+            const connector = idx > 0 ? ` ${f.connector} ` : '';
+            return `${connector}(${f.field} ${f.operator} ${right})`;
+          })
+          .join('');
+      }
+
+      const fieldExprMap = {};
+      const select = fields.map((f) => {
+        let expr = '';
+        const base = `${aliases[f.table]}.${f.field}`;
+        if (f.calc) {
+          expr = f.calc;
+          Object.entries(fieldExprMap).forEach(([al, ex]) => {
+            const re = new RegExp(`\\b${al}\\b`, 'g');
+            expr = expr.replace(re, `(${ex})`);
+          });
+        } else if (f.aggregate && f.aggregate !== 'NONE') {
+          if (f.conditions?.length) {
+            const cond = f.conditions
+              .map((c, idx) => {
+                const connector = idx > 0 ? ` ${c.connector} ` : '';
+                const right =
+                  c.valueType === 'param' ? `:${c.param}` : c.value;
+                return (
+                  connector +
+                  `(${aliases[c.table]}.${c.field} ${c.operator} ${right})`
+                );
+              })
+              .join('');
+            expr = `${f.aggregate}(CASE WHEN ${cond} THEN ${base} ELSE 0 END)`;
+          } else {
+            expr = `${f.aggregate}(${base})`;
+          }
+        } else {
+          expr = base;
+        }
+        if (f.alias) fieldExprMap[f.alias] = expr;
+        return { expr, alias: f.alias || undefined };
+      });
 
       const joinDefs = joins.map((j) => {
         const onInner = j.conditions
@@ -306,13 +473,20 @@ export default function ReportBuilder() {
           )
           .join('');
         const on = j.conditions.length > 1 ? `(${onInner})` : onInner;
+        const tablePart = j.filters?.length
+          ? `(SELECT * FROM ${j.table} WHERE ${buildTableFilterSql(j.filters)})`
+          : j.table;
         return {
-          table: j.table,
+          table: tablePart,
           alias: aliases[j.table],
           type: j.type,
           on,
         };
       });
+
+      const fromTableSql = fromFilters.length
+        ? `(SELECT * FROM ${fromTable} WHERE ${buildTableFilterSql(fromFilters)})`
+        : fromTable;
 
       const where = conditions.map((c) => ({
         expr: `${aliases[c.table]}.${c.field} = :${c.param}`,
@@ -321,15 +495,17 @@ export default function ReportBuilder() {
 
       const groupBy = groups.map((g) => `${aliases[g.table]}.${g.field}`);
 
-      const havingDefs = having.map((h) => ({
-        expr: `${h.aggregate}(${aliases[h.table]}.${h.field}) ${h.operator} ${
-          h.valueType === 'param' ? `:${h.param}` : h.value
-        }`,
-        connector: h.connector,
-      }));
+      const havingDefs = having.map((h) => {
+        const left =
+          h.source === 'alias'
+            ? h.alias
+            : `${h.aggregate}(${aliases[h.table]}.${h.field})`;
+        const right = h.valueType === 'param' ? `:${h.param}` : h.value;
+        return { expr: `${left} ${h.operator} ${right}`, connector: h.connector };
+      });
 
       const report = {
-        from: { table: fromTable, alias: aliases[fromTable] },
+        from: { table: fromTableSql, alias: aliases[fromTable] },
         joins: joinDefs,
         select,
         where,
@@ -355,7 +531,7 @@ export default function ReportBuilder() {
     if (!script) return;
     try {
       const name = `report_${procName || 'report'}`;
-      const res = await fetch('/api/report-builder/procedures', {
+      const res = await fetch('/api/report_builder/procedures', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, sql: script }),
@@ -385,6 +561,7 @@ export default function ReportBuilder() {
       having,
       params,
       conditions,
+      fromFilters,
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], {
       type: 'application/json',
@@ -409,6 +586,12 @@ export default function ReportBuilder() {
         const data = JSON.parse(text);
         setProcName(data.procName || '');
         setFromTable(data.fromTable || '');
+        setFromFilters(
+          (data.fromFilters || []).map((f) => ({
+            connector: f.connector || 'AND',
+            ...f,
+          })),
+        );
         setJoins(
           (data.joins || []).map((j) => ({
             ...j,
@@ -416,14 +599,27 @@ export default function ReportBuilder() {
               connector: c.connector || 'AND',
               ...c,
             })),
+            filters: (j.filters || []).map((f) => ({
+              connector: f.connector || 'AND',
+              ...f,
+            })),
+            })),
+        );
+        setFields(
+          (data.fields || []).map((f) => ({
+            ...f,
+            conditions: (f.conditions || []).map((c) => ({
+              connector: c.connector || 'AND',
+              ...c,
+            })),
           })),
         );
-        setFields(data.fields || []);
         setGroups(data.groups || []);
         setHaving(
           (data.having || []).map((h) => ({
             connector: h.connector || 'AND',
             valueType: h.valueType || (h.param ? 'param' : 'value'),
+            source: h.source || 'field',
             ...h,
           })),
         );
@@ -462,6 +658,79 @@ export default function ReportBuilder() {
             </option>
           ))}
         </select>
+      </section>
+
+      <section>
+        <h3>Primary Table Filters</h3>
+        {fromFilters.map((f, i) => (
+          <div key={i} style={{ marginBottom: '0.5rem' }}>
+            {i > 0 && (
+              <select
+                value={f.connector}
+                onChange={(e) => updateFromFilter(i, 'connector', e.target.value)}
+                style={{ marginRight: '0.5rem' }}
+              >
+                <option value="AND">AND</option>
+                <option value="OR">OR</option>
+              </select>
+            )}
+            <select
+              value={f.field}
+              onChange={(e) => updateFromFilter(i, 'field', e.target.value)}
+            >
+              {(tableFields[fromTable] || []).map((col) => (
+                <option key={col} value={col}>
+                  {col}
+                </option>
+              ))}
+            </select>
+            <select
+              value={f.operator}
+              onChange={(e) => updateFromFilter(i, 'operator', e.target.value)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              {OPERATORS.map((op) => (
+                <option key={op} value={op}>
+                  {op}
+                </option>
+              ))}
+            </select>
+            <select
+              value={f.valueType}
+              onChange={(e) => updateFromFilter(i, 'valueType', e.target.value)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              <option value="param">Param</option>
+              <option value="value">Value</option>
+            </select>
+            {f.valueType === 'param' ? (
+              <select
+                value={f.param}
+                onChange={(e) => updateFromFilter(i, 'param', e.target.value)}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                {params.map((p) => (
+                  <option key={p.name} value={p.name}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                value={f.value}
+                onChange={(e) => updateFromFilter(i, 'value', e.target.value)}
+                style={{ marginLeft: '0.5rem' }}
+              />
+            )}
+            <button
+              onClick={() => removeFromFilter(i)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        <button onClick={addFromFilter}>Add Filter</button>
       </section>
 
       <section>
@@ -555,6 +824,83 @@ export default function ReportBuilder() {
               >
                 Add Condition
               </button>
+              {j.filters && j.filters.length > 0 && <span> | </span>}
+              {j.filters?.map((f, k) => (
+                <div key={k} style={{ marginTop: '0.25rem' }}>
+                  {k > 0 && (
+                    <select
+                      value={f.connector}
+                      onChange={(e) =>
+                        updateJoinFilter(i, k, 'connector', e.target.value)
+                      }
+                      style={{ marginRight: '0.5rem' }}
+                    >
+                      <option value="AND">AND</option>
+                      <option value="OR">OR</option>
+                    </select>
+                  )}
+                  <select
+                    value={f.field}
+                    onChange={(e) => updateJoinFilter(i, k, 'field', e.target.value)}
+                  >
+                    {(tableFields[j.table] || []).map((col) => (
+                      <option key={col} value={col}>
+                        {col}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={f.operator}
+                    onChange={(e) => updateJoinFilter(i, k, 'operator', e.target.value)}
+                    style={{ marginLeft: '0.5rem' }}
+                  >
+                    {OPERATORS.map((op) => (
+                      <option key={op} value={op}>
+                        {op}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={f.valueType}
+                    onChange={(e) => updateJoinFilter(i, k, 'valueType', e.target.value)}
+                    style={{ marginLeft: '0.5rem' }}
+                  >
+                    <option value="param">Param</option>
+                    <option value="value">Value</option>
+                  </select>
+                  {f.valueType === 'param' ? (
+                    <select
+                      value={f.param}
+                      onChange={(e) => updateJoinFilter(i, k, 'param', e.target.value)}
+                      style={{ marginLeft: '0.5rem' }}
+                    >
+                      {params.map((p) => (
+                        <option key={p.name} value={p.name}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      value={f.value}
+                      onChange={(e) => updateJoinFilter(i, k, 'value', e.target.value)}
+                      style={{ marginLeft: '0.5rem' }}
+                    />
+                  )}
+                  <button
+                    onClick={() => removeJoinFilter(i, k)}
+                    style={{ marginLeft: '0.5rem' }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={() => addJoinFilter(i)}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                Add Filter
+              </button>
               <button
                 onClick={() => removeJoin(i)}
                 style={{ marginLeft: '0.5rem' }}
@@ -609,6 +955,110 @@ export default function ReportBuilder() {
               onChange={(e) => updateField(i, 'alias', e.target.value)}
               style={{ marginLeft: '0.5rem' }}
             />
+            <input
+              placeholder="calc"
+              value={f.calc || ''}
+              onChange={(e) => updateField(i, 'calc', e.target.value)}
+              style={{ marginLeft: '0.5rem', width: '150px' }}
+            />
+            {f.aggregate !== 'NONE' && (
+              <div style={{ display: 'inline-block', marginLeft: '0.5rem' }}>
+                {(f.conditions || []).map((c, k) => (
+                  <div key={k} style={{ marginTop: '0.25rem' }}>
+                    {k > 0 && (
+                      <select
+                        value={c.connector}
+                        onChange={(e) =>
+                          updateFieldCondition(i, k, 'connector', e.target.value)
+                        }
+                        style={{ marginRight: '0.5rem' }}
+                      >
+                        <option value="AND">AND</option>
+                        <option value="OR">OR</option>
+                      </select>
+                    )}
+                    <select
+                      value={c.table}
+                      onChange={(e) =>
+                        updateFieldCondition(i, k, 'table', e.target.value)
+                      }
+                    >
+                      {availableTables.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={c.field}
+                      onChange={(e) =>
+                        updateFieldCondition(i, k, 'field', e.target.value)
+                      }
+                      style={{ marginLeft: '0.5rem' }}
+                    >
+                      {(tableFields[c.table] || []).map((col) => (
+                        <option key={col} value={col}>
+                          {col}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={c.operator}
+                      onChange={(e) =>
+                        updateFieldCondition(i, k, 'operator', e.target.value)
+                      }
+                      style={{ marginLeft: '0.5rem' }}
+                    >
+                      {OPERATORS.map((op) => (
+                        <option key={op} value={op}>
+                          {op}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={c.valueType}
+                      onChange={(e) =>
+                        updateFieldCondition(i, k, 'valueType', e.target.value)
+                      }
+                      style={{ marginLeft: '0.5rem' }}
+                    >
+                      <option value="param">Param</option>
+                      <option value="value">Value</option>
+                    </select>
+                    {c.valueType === 'param' ? (
+                      <select
+                        value={c.param}
+                        onChange={(e) =>
+                          updateFieldCondition(i, k, 'param', e.target.value)
+                        }
+                        style={{ marginLeft: '0.5rem' }}
+                      >
+                        {params.map((p) => (
+                          <option key={p.name} value={p.name}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        value={c.value}
+                        onChange={(e) =>
+                          updateFieldCondition(i, k, 'value', e.target.value)
+                        }
+                        style={{ marginLeft: '0.5rem' }}
+                      />
+                    )}
+                    <button
+                      onClick={() => removeFieldCondition(i, k)}
+                      style={{ marginLeft: '0.5rem' }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+                <button onClick={() => addFieldCondition(i)}>Add Condition</button>
+              </div>
+            )}
             <button
               onClick={() => removeField(i)}
               style={{ marginLeft: '0.5rem' }}
@@ -671,37 +1121,63 @@ export default function ReportBuilder() {
               </select>
             )}
             <select
-              value={h.aggregate}
-              onChange={(e) => updateHaving(i, 'aggregate', e.target.value)}
+              value={h.source}
+              onChange={(e) => updateHaving(i, 'source', e.target.value)}
             >
-              {AGGREGATES.filter((a) => a !== 'NONE').map((ag) => (
-                <option key={ag} value={ag}>
-                  {ag}
-                </option>
-              ))}
+              <option value="field">Field</option>
+              <option value="alias">Alias</option>
             </select>
-            <select
-              value={h.table}
-              onChange={(e) => updateHaving(i, 'table', e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              {availableTables.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-            <select
-              value={h.field}
-              onChange={(e) => updateHaving(i, 'field', e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              {(tableFields[h.table] || []).map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
-              ))}
-            </select>
+            {h.source === 'field' ? (
+              <>
+                <select
+                  value={h.aggregate}
+                  onChange={(e) => updateHaving(i, 'aggregate', e.target.value)}
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  {AGGREGATES.filter((a) => a !== 'NONE').map((ag) => (
+                    <option key={ag} value={ag}>
+                      {ag}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={h.table}
+                  onChange={(e) => updateHaving(i, 'table', e.target.value)}
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  {availableTables.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={h.field}
+                  onChange={(e) => updateHaving(i, 'field', e.target.value)}
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  {(tableFields[h.table] || []).map((f) => (
+                    <option key={f} value={f}>
+                      {f}
+                    </option>
+                  ))}
+                </select>
+              </>
+            ) : (
+              <select
+                value={h.alias}
+                onChange={(e) => updateHaving(i, 'alias', e.target.value)}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                {fields
+                  .filter((f) => f.alias)
+                  .map((f) => (
+                    <option key={f.alias} value={f.alias}>
+                      {f.alias}
+                    </option>
+                  ))}
+              </select>
+            )}
             <select
               value={h.operator}
               onChange={(e) => updateHaving(i, 'operator', e.target.value)}
