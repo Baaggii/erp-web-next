@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import buildStoredProcedure from '../utils/buildStoredProcedure.js';
-import csrfFetch from '../utils/csrfFetch.js';
+// global fetch is patched with CSRF token handling in main.jsx
 
   export default function ReportBuilder() {
     const [procName, setProcName] = useState('inventory');
@@ -22,7 +22,7 @@ import csrfFetch from '../utils/csrfFetch.js';
       if (!script) return;
       try {
         const name = `report_${procName}`;
-        const res = await csrfFetch('/api/report-builder/procedures', {
+        const res = await fetch('/api/report-builder/procedures', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name, sql: script }),
