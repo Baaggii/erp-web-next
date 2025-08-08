@@ -62,47 +62,7 @@ async function deleteDirHandle(key) {
   }
 }
 
-// IndexedDB helpers for storing directory handles
-function getHandleDB() {
-  if (typeof indexedDB === 'undefined') return Promise.reject();
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open('imgMgmtHandles', 1);
-    req.onupgradeneeded = () => {
-      req.result.createObjectStore('dirs');
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
 
-async function saveDirHandle(key, handle) {
-  if (!handle) return;
-  try {
-    const db = await getHandleDB();
-    await new Promise((res, rej) => {
-      const tx = db.transaction('dirs', 'readwrite');
-      tx.objectStore('dirs').put(handle, key);
-      tx.oncomplete = res;
-      tx.onerror = () => rej(tx.error);
-    });
-  } catch {
-    // ignore
-  }
-}
-
-async function loadDirHandle(key) {
-  try {
-    const db = await getHandleDB();
-    return await new Promise((res, rej) => {
-      const tx = db.transaction('dirs', 'readonly');
-      const req = tx.objectStore('dirs').get(key);
-      req.onsuccess = () => res(req.result || null);
-      req.onerror = () => rej(req.error);
-    });
-  } catch {
-    return null;
-  }
-}
 
 function extractDateFromName(name) {
   const match = typeof name === 'string' ? name.match(/(?:__|_)(\d{13})_/) : null;
