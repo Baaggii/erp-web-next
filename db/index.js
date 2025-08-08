@@ -1078,35 +1078,15 @@ export async function getProcedureRawRows(
   sessionVars = {},
 ) {
   let createSql = '';
-  const dbName =
-    process.env.DB_NAME ||
-    pool?.config?.connectionConfig?.database ||
-    pool?.config?.database;
-
-  // Primary attempt: SHOW CREATE PROCEDURE with database qualification when available.
+  const dbName = process.env.DB_NAME;
   try {
+    const dbIdent = mysql.format('??', [dbName]);
     const procIdent = mysql.format('??', [name]);
-    const showSql = dbName
-      ? `SHOW CREATE PROCEDURE ${mysql.format('??', [dbName])}.${procIdent}`
-      : `SHOW CREATE PROCEDURE ${procIdent}`;
+    const showSql = `SHOW CREATE PROCEDURE ${dbIdent}.${procIdent}`;
     const [rows] = await pool.query(showSql);
     createSql = rows && rows[0] && rows[0]['Create Procedure'];
   } catch {}
-
-  // Fallback: try without database qualification in case the connection is
-  // already using the correct schema.
   if (!createSql) {
-    try {
-      const [rows] = await pool.query(
-        `SHOW CREATE PROCEDURE ${mysql.format('??', [name])}`,
-      );
-      createSql = rows && rows[0] && rows[0]['Create Procedure'];
-    } catch {}
-  }
-
-  // Final fallback: query information_schema when SHOW CREATE PROCEDURE is not
-  // permitted or returns nothing.
-  if (!createSql && dbName) {
     try {
       const [rows] = await pool.query(
         `SELECT ROUTINE_DEFINITION AS def
@@ -1117,9 +1097,6 @@ export async function getProcedureRawRows(
       createSql = rows && rows[0] && rows[0].def;
     } catch {}
   }
-
-  // If the procedure definition still can't be located, persist a marker file
-  // so the frontend can report the failure via toast notifications.
   if (!createSql) {
     const file = `${name.replace(/[^a-z0-9_]/gi, '_')}_rows.sql`;
     await fs.writeFile(
@@ -1154,13 +1131,11 @@ export async function getProcedureRawRows(
   if (/^SELECT/i.test(sql)) {
     const colRe = escapeRegExp(column);
     const sumRegex = new RegExp(
-      `SUM\\s*\\((CASE[\\s\\S]*?END)\\)\\s*(?:AS\\s+)?` + '`?' + colRe + '`?`,
+      `SUM\\(([^)]*)\\)\\s*(?:AS\\s+)?` + '`?' + colRe + '`?',
       'i',
     );
     const sumMatch = sql.match(sumRegex);
     if (sumMatch) {
-      // Replace the aggregate with the raw CASE expression so rows are returned
-      // at the transaction level instead of as a summary.
       sql = sql.replace(sumRegex, `${sumMatch[1]} AS ${column}`);
     }
 
