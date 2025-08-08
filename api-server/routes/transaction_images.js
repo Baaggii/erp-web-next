@@ -82,6 +82,7 @@ router.post(
       let metaRaw = req.body?.meta || [];
       if (!Array.isArray(metaRaw)) metaRaw = [metaRaw];
       const files = Array.isArray(req.files) ? req.files : [];
+      const names = Array.isArray(req.body?.names) ? req.body.names : [];
       if (metaRaw.length && metaRaw.length !== files.length) {
         return res.status(400).json({ message: 'Mismatched metadata' });
       }
@@ -100,7 +101,7 @@ router.post(
           originalname: m.originalName || f.originalname,
         };
       });
-      const { list, summary } = await checkUploadedImages(withMeta);
+      const { list, summary } = await checkUploadedImages(withMeta, names);
       res.json({ list, summary });
     } catch (err) {
       next(err);

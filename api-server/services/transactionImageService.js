@@ -763,7 +763,10 @@ export async function checkUploadedImages(files = [], names = []) {
   const codes = await fetchTxnCodes();
   let items = files.length
     ? files
-    : names.map((n) => ({ originalname: typeof n === 'string' ? n : n?.name || String(n) }));
+    : names.map((n) => ({
+        originalname: typeof n === 'string' ? n : n?.name || String(n),
+        index: n?.index,
+      }));
   for (const file of items) {
     const ext = path.extname(file.originalname || '');
     const base = path.basename(file.originalname || '', ext);

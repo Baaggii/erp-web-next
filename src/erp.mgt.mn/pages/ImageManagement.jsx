@@ -696,6 +696,71 @@ export default function ImageManagement() {
     await applyFixesSelection(hostIgnored, hostIgnoredSel);
   }
 
+  async function renameSelectedNames() {
+    if (uploadSel.length === 0) {
+      addToast('No files selected', 'error');
+      return;
+    }
+    const items = [...uploads, ...ignored].filter(
+      (u) => uploadSel.includes(u.id) && !u.processed,
+    );
+    if (items.length === 0) {
+      addToast('No files to rename', 'error');
+      return;
+    }
+    try {
+      const res = await fetch('/api/transaction_images/upload_check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          names: items.map((u) => ({ name: u.originalName, index: u.index })),
+        }),
+      });
+      if (!res.ok) throw new Error('bad response');
+      const data = await res.json().catch(() => ({}));
+      const list = Array.isArray(data.list) ? data.list : [];
+      const resultMap = new Map(list.map((r) => [String(r.index), r]));
+      const updateList = (arr) =>
+        arr
+          .map((u) => {
+            if (!uploadSel.includes(u.id)) return u;
+            const r = resultMap.get(String(u.index));
+            if (!r) {
+              const reason = u.reason || 'No match found';
+              return { ...u, reason, description: reason };
+            }
+            if (!r.newName) {
+              const reason = r.reason || 'No match found';
+              return { ...u, reason, description: reason };
+            }
+            return {
+              ...u,
+              newName: r.newName,
+              folder: r.folder,
+              folderDisplay: r.folderDisplay,
+              tmpPath: r.tmpPath,
+              description: extractDateFromName(r.newName),
+            };
+          })
+          .sort((a, b) => a.originalName.localeCompare(b.originalName));
+      const newUploads = updateList(uploads);
+      const newIgnored = updateList(ignored);
+      const processedCount = list.filter((m) => m.newName).length;
+      const skipCount = items.length - processedCount;
+      if (processedCount) addToast(`Renamed ${processedCount} file(s)`, 'success');
+      else addToast('No files renamed', 'warning');
+      if (skipCount) addToast(`Skipped ${skipCount} file(s)`, 'warning');
+      setUploads(newUploads);
+      setIgnored(newIgnored);
+      setUploadSel([]);
+      persistAll({ uploads: newUploads, ignored: newIgnored });
+      setReport(`Renamed ${processedCount} file(s)`);
+    } catch {
+      addToast('Rename failed', 'error');
+    }
+  }
+
   async function renameSelected() {
     if (activeOp === 'rename') {
       if (window.confirm('Cancel rename?')) {
@@ -994,6 +1059,14 @@ export default function ImageManagement() {
                 disabled={!canRenameSelected}
               >
                 Rename Selected
+              </button>
+              <button
+                type="button"
+                onClick={renameSelectedNames}
+                style={{ marginBottom: '0.5rem', marginRight: '0.5rem' }}
+                disabled={uploadSel.length === 0}
+              >
+                Rename Names
               </button>
               <button
                 type="button"
