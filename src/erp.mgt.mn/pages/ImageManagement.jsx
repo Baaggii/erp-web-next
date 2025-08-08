@@ -64,48 +64,6 @@ async function deleteDirHandle(key) {
 
 
 
-// IndexedDB helpers for storing directory handles
-function getHandleDB() {
-  if (typeof indexedDB === 'undefined') return Promise.reject();
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open('imgMgmtHandles', 1);
-    req.onupgradeneeded = () => {
-      req.result.createObjectStore('dirs');
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function saveDirHandle(key, handle) {
-  if (!handle) return;
-  try {
-    const db = await getHandleDB();
-    await new Promise((res, rej) => {
-      const tx = db.transaction('dirs', 'readwrite');
-      tx.objectStore('dirs').put(handle, key);
-      tx.oncomplete = res;
-      tx.onerror = () => rej(tx.error);
-    });
-  } catch {
-    // ignore
-  }
-}
-
-async function loadDirHandle(key) {
-  try {
-    const db = await getHandleDB();
-    return await new Promise((res, rej) => {
-      const tx = db.transaction('dirs', 'readonly');
-      const req = tx.objectStore('dirs').get(key);
-      req.onsuccess = () => res(req.result || null);
-      req.onerror = () => rej(req.error);
-    });
-  } catch {
-    return null;
-  }
-}
-
 function extractDateFromName(name) {
   const match = typeof name === 'string' ? name.match(/(?:__|_)(\d{13})_/) : null;
   if (match) {
@@ -476,28 +434,15 @@ export default function ImageManagement() {
     try {
       const dirHandle = await window.showDirectoryPicker();
       dirHandleRef.current = dirHandle;
-      let handlePath = dirHandle?.path || '';
+      const handlePath = dirHandle?.path || dirHandle?.name || '';
+      setFolderName(handlePath);
       const files = [];
       for await (const entry of dirHandle.values()) {
         if (scanCancelRef.current) break;
         if (entry.kind === 'file') {
-          if (!handlePath) {
-            try {
-              const f = await entry.getFile();
-              const fullPath = f.path || f.webkitRelativePath || '';
-              if (fullPath) {
-                const cut = Math.max(fullPath.lastIndexOf('/'), fullPath.lastIndexOf('\\'));
-                handlePath = cut >= 0 ? fullPath.slice(0, cut) : fullPath;
-              }
-            } catch {
-              // ignore failures; we'll fall back to dirHandle name
-            }
-          }
           files.push({ name: entry.name, handle: entry, index: files.length });
         }
       }
-      if (!handlePath) handlePath = dirHandle?.name || '';
-      setFolderName(handlePath);
       const names = files.map((f) => f.name);
       if (scanCancelRef.current) return;
       const chunkSize = 200;
