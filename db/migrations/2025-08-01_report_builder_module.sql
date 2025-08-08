@@ -16,3 +16,9 @@ INSERT IGNORE INTO role_module_permissions (company_id, role_id, module_key, all
 SELECT c.id, rdm.role_id, rdm.module_key, rdm.allowed
   FROM companies c
   JOIN role_default_modules rdm ON rdm.module_key = 'report_builder';
+
+-- License the Report Builder module for all companies
+INSERT INTO company_module_licenses (company_id, module_key, licensed)
+SELECT c.id, 'report_builder', 1
+  FROM companies c
+ON DUPLICATE KEY UPDATE licensed = VALUES(licensed);
