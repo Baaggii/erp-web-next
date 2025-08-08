@@ -203,6 +203,10 @@ export default function ImageManagement() {
           reason,
           processed: !!processed,
         })),
+      uploadPage: partial.uploadPage ?? uploadPage,
+      ignoredPage: partial.ignoredPage ?? ignoredPage,
+      pendingPage: partial.pendingPage ?? pendingPage,
+      hostIgnoredPage: partial.hostIgnoredPage ?? hostIgnoredPage,
     };
   }
 
@@ -243,10 +247,14 @@ export default function ImageManagement() {
       : [];
     setHostIgnored(hostArr);
     hostIgnoredRef.current = hostArr;
-    setUploadPage(1);
-    setIgnoredPage(1);
-    setPendingPage(1);
-    setHostIgnoredPage(1);
+    const upLast = Math.max(1, Math.ceil(upArr.length / uploadPageSize));
+    const igLast = Math.max(1, Math.ceil(igArr.length / uploadPageSize));
+    const pendLast = Math.max(1, Math.ceil(pendingArr.length / pageSize));
+    const hostLast = Math.max(1, Math.ceil(hostArr.length / pageSize));
+    setUploadPage(Math.min(data.uploadPage || 1, upLast));
+    setIgnoredPage(Math.min(data.ignoredPage || 1, igLast));
+    setPendingPage(Math.min(data.pendingPage || 1, pendLast));
+    setHostIgnoredPage(Math.min(data.hostIgnoredPage || 1, hostLast));
   }
 
   function persistSnapshot(partial = {}) {
@@ -265,6 +273,10 @@ export default function ImageManagement() {
       ignored: ignoredRef.current,
       pending: pendingRef.current,
       hostIgnored: hostIgnoredRef.current,
+      uploadPage,
+      ignoredPage,
+      pendingPage,
+      hostIgnoredPage,
     };
   }
 
