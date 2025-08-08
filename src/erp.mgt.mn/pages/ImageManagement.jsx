@@ -109,6 +109,16 @@ export default function ImageManagement() {
   const [report, setReport] = useState('');
   const [sessionNames, setSessionNames] = useState([]);
   const [selectedSession, setSelectedSession] = useState('');
+  const uploadsRef = useRef(uploads);
+  const ignoredRef = useRef(ignored);
+  const pendingRef = useRef(pending);
+  const hostIgnoredRef = useRef(hostIgnored);
+  const batchRef = useRef(false);
+
+  useEffect(() => { uploadsRef.current = uploads; }, [uploads]);
+  useEffect(() => { ignoredRef.current = ignored; }, [ignored]);
+  useEffect(() => { pendingRef.current = pending; }, [pending]);
+  useEffect(() => { hostIgnoredRef.current = hostIgnored; }, [hostIgnored]);
 
   useEffect(() => {
     (async () => {
@@ -220,20 +230,22 @@ export default function ImageManagement() {
         }))
       : [];
     setUploads(upArr);
+    uploadsRef.current = upArr;
     setIgnored(igArr);
+    ignoredRef.current = igArr;
     setFolderFiles(
       [...upArr, ...igArr].map((u) => ({ name: u.originalName, handle: u.handle, index: u.index })),
     );
-    setPending(
-      Array.isArray(data.pending)
-        ? data.pending.map((u) => ({ ...u, processed: !!u.processed }))
-        : [],
-    );
-    setHostIgnored(
-      Array.isArray(data.hostIgnored)
-        ? data.hostIgnored.map((u) => ({ ...u, processed: !!u.processed }))
-        : [],
-    );
+    const pendingArr = Array.isArray(data.pending)
+      ? data.pending.map((u) => ({ ...u, processed: !!u.processed }))
+      : [];
+    setPending(pendingArr);
+    pendingRef.current = pendingArr;
+    const hostArr = Array.isArray(data.hostIgnored)
+      ? data.hostIgnored.map((u) => ({ ...u, processed: !!u.processed }))
+      : [];
+    setHostIgnored(hostArr);
+    hostIgnoredRef.current = hostArr;
   }
 
   function persistSnapshot(partial = {}) {
@@ -247,7 +259,12 @@ export default function ImageManagement() {
   }
 
   function getTables() {
-    return { uploads, ignored, pending, hostIgnored };
+    return {
+      uploads: uploadsRef.current,
+      ignored: ignoredRef.current,
+      pending: pendingRef.current,
+      hostIgnored: hostIgnoredRef.current,
+    };
   }
 
   function persistAll(partial = {}) {
@@ -503,6 +520,7 @@ export default function ImageManagement() {
         };
       });
       setUploads(uploadsList);
+      uploadsRef.current = uploadsList;
       const skippedSorted = skipped
         .slice()
         .sort((a, b) => a.originalName.localeCompare(b.originalName));
@@ -518,6 +536,7 @@ export default function ImageManagement() {
         };
       });
       setIgnored(ignoredList);
+      ignoredRef.current = ignoredList;
       setFolderFiles(files);
       setUploadSummary({ totalFiles: names.length, processed, unflagged: skipped.length });
       setUploadSel([]);
@@ -585,7 +604,9 @@ export default function ImageManagement() {
               }))
           : [];
         setPending(list);
+        pendingRef.current = list;
         setHostIgnored(miss);
+        hostIgnoredRef.current = miss;
         setHostIgnoredPage(1);
         setPendingSummary(data.summary || null);
         setHasMore(!!data.hasMore);
@@ -596,29 +617,33 @@ export default function ImageManagement() {
           `Scanned ${sum.totalFiles || 0} file(s), found ${sum.incompleteFound || 0} incomplete name(s), ${sum.skipped || 0} not incomplete.`,
         );
         persistAll({
-          uploads,
-          ignored,
+          uploads: uploadsRef.current,
+          ignored: ignoredRef.current,
           folderName,
           pending: list,
           hostIgnored: miss,
         });
       } else {
         setPending([]);
+        pendingRef.current = [];
         setHostIgnored([]);
+        hostIgnoredRef.current = [];
         setHostIgnoredPage(1);
         setPendingSummary(null);
         setHasMore(false);
-        persistAll({ uploads, ignored, folderName, pending: [], hostIgnored: [] });
+        persistAll({ uploads: uploadsRef.current, ignored: ignoredRef.current, folderName, pending: [], hostIgnored: [] });
       }
       setPendingPage(p);
     } catch (e) {
       if (e.name !== 'AbortError') {
         setPending([]);
+        pendingRef.current = [];
         setHostIgnored([]);
+        hostIgnoredRef.current = [];
         setHostIgnoredPage(1);
         setPendingSummary(null);
         setHasMore(false);
-        persistAll({ uploads, ignored, folderName, pending: [], hostIgnored: [] });
+        persistAll({ uploads: uploadsRef.current, ignored: ignoredRef.current, folderName, pending: [], hostIgnored: [] });
       }
     } finally {
       detectAbortRef.current = null;
@@ -720,7 +745,9 @@ export default function ImageManagement() {
       else addToast('No files renamed', 'warning');
       if (skipCount) addToast(`Skipped ${skipCount} file(s)`, 'warning');
       setUploads(newUploads);
+      uploadsRef.current = newUploads;
       setIgnored(newIgnored);
+      ignoredRef.current = newIgnored;
       setUploadSel([]);
       persistAll({ uploads: newUploads, ignored: newIgnored });
       setReport(`Renamed ${processedCount} file(s)`);
@@ -770,34 +797,39 @@ export default function ImageManagement() {
   }
 
   async function renameAndUploadAll() {
-    const items = uploads.slice(uploadStart).map((u, idx) => ({
-      id: u.id,
-      index: uploadStart + idx,
-    }));
-    if (items.length === 0) {
-      addToast('No files to process', 'error');
-      return;
+    batchRef.current = true;
+    try {
+      const items = uploadsRef.current.slice(uploadStart).map((u, idx) => ({
+        id: u.id,
+        index: uploadStart + idx,
+      }));
+      if (items.length === 0) {
+        addToast('No files to process', 'error');
+        return;
+      }
+      for (let i = 0; i < items.length; i += 10) {
+        const chunk = items.slice(i, i + 10);
+        const firstIndex = chunk[0].index;
+        const lastIndex = chunk[chunk.length - 1].index;
+        const page = Math.floor(firstIndex / uploadPageSize) + 1;
+        setUploadPage(page);
+        setReport(
+          `Processing page ${page}, rows ${firstIndex + 1}-${lastIndex + 1}`,
+        );
+        await new Promise((r) => setTimeout(r));
+        const chunkIds = chunk.map((c) => c.id);
+        await renameSelected(chunkIds, { keepSelection: true, silent: true });
+        const tables = getTables();
+        const toUpload = [...tables.uploads, ...tables.ignored]
+          .filter((u) => chunkIds.includes(u.id) && u.tmpPath && !u.processed)
+          .map((u) => u.id);
+        if (toUpload.length) await commitUploads(toUpload, { silent: true });
+      }
+      setReport('Rename and upload completed');
+      addToast('Rename and upload completed', 'success');
+    } finally {
+      batchRef.current = false;
     }
-    for (let i = 0; i < items.length; i += 10) {
-      const chunk = items.slice(i, i + 10);
-      const firstIndex = chunk[0].index;
-      const lastIndex = chunk[chunk.length - 1].index;
-      const page = Math.floor(firstIndex / uploadPageSize) + 1;
-      setUploadPage(page);
-      setReport(
-        `Processing page ${page}, rows ${firstIndex + 1}-${lastIndex + 1}`,
-      );
-      await new Promise((r) => setTimeout(r));
-      const chunkIds = chunk.map((c) => c.id);
-      await renameSelected(chunkIds, { keepSelection: true, silent: true });
-      const tables = getTables();
-      const toUpload = [...tables.uploads, ...tables.ignored]
-        .filter((u) => chunkIds.includes(u.id) && u.newName && !u.processed)
-        .map((u) => u.id);
-      if (toUpload.length) await commitUploads(toUpload, { silent: true });
-    }
-    setReport('Rename and upload completed');
-    addToast('Rename and upload completed', 'success');
   }
 
   async function renameSelected(
@@ -805,7 +837,7 @@ export default function ImageManagement() {
     { keepSelection = false, silent = false } = {},
   ) {
     if (selectedIds && selectedIds.preventDefault) selectedIds = uploadSel;
-    if (activeOp === 'rename') {
+    if (activeOp === 'rename' && !batchRef.current) {
       if (window.confirm('Cancel rename?')) {
         renameAbortRef.current?.abort();
         setActiveOp(null);
@@ -942,7 +974,9 @@ export default function ImageManagement() {
       }
 
       setUploads(newUploads);
+      uploadsRef.current = newUploads;
       setIgnored(newIgnored);
+      ignoredRef.current = newIgnored;
       if (!keepSelection)
         setUploadSel((prev) => prev.filter((id) => !selectedIds.includes(id)));
       persistAll({ uploads: newUploads, ignored: newIgnored });
@@ -963,11 +997,15 @@ export default function ImageManagement() {
             const reason = r?.reason || u.reason || 'Rename failed';
             return { ...u, reason, description: reason };
           });
-        setUploads(updateList(uploads));
-        setIgnored(updateList(ignored));
+        const updatedUploads = updateList(uploads);
+        const updatedIgnored = updateList(ignored);
+        setUploads(updatedUploads);
+        uploadsRef.current = updatedUploads;
+        setIgnored(updatedIgnored);
+        ignoredRef.current = updatedIgnored;
       }
     } finally {
-      persistAll({ uploads, ignored });
+      persistAll({ uploads: uploadsRef.current, ignored: ignoredRef.current });
       setActiveOp(null);
     }
     const idMap = new Map(items.map((u) => [String(u.index), u.id]));
@@ -976,7 +1014,7 @@ export default function ImageManagement() {
 
   async function commitUploads(selectedIds = uploadSel, { silent = false } = {}) {
     if (selectedIds && selectedIds.preventDefault) selectedIds = uploadSel;
-    if (activeOp === 'commit') {
+    if (activeOp === 'commit' && !batchRef.current) {
       if (window.confirm('Cancel upload commit?')) {
         commitAbortRef.current?.abort();
         setActiveOp(null);
@@ -1013,9 +1051,13 @@ export default function ImageManagement() {
           );
         }
         setUploads(updated.uploads);
+        uploadsRef.current = updated.uploads;
         setIgnored(updated.ignored);
+        ignoredRef.current = updated.ignored;
         setPending(updated.pending);
+        pendingRef.current = updated.pending;
         setHostIgnored(updated.hostIgnored);
+        hostIgnoredRef.current = updated.hostIgnored;
         setUploadSel((prev) => prev.filter((id) => !selectedIds.includes(id)));
         persistAll(updated);
         if (!silent) setReport(`Uploaded ${data.uploaded || 0} file(s)`);
@@ -1169,7 +1211,9 @@ export default function ImageManagement() {
                   const remainingUploads = uploads.filter((u) => !uploadSel.includes(u.id));
                   const remainingIgnored = ignored.filter((u) => !uploadSel.includes(u.id));
                   setUploads(remainingUploads);
+                  uploadsRef.current = remainingUploads;
                   setIgnored(remainingIgnored);
+                  ignoredRef.current = remainingIgnored;
                   setUploadSel([]);
                   setReport(`Deleted ${uploadSel.length} file(s)`);
                   persistAll({ uploads: remainingUploads, ignored: remainingIgnored });
@@ -1295,6 +1339,7 @@ export default function ImageManagement() {
                               onClick={() => {
                                 const remainingUploads = uploads.filter((x) => x.id !== u.id);
                                 setUploads(remainingUploads);
+                                uploadsRef.current = remainingUploads;
                                 setUploadSel((s) => s.filter((id) => id !== u.id));
                                 persistAll({ uploads: remainingUploads, ignored });
                               }}
@@ -1382,8 +1427,9 @@ export default function ImageManagement() {
                               onClick={() => {
                                 const remainingIgnored = ignored.filter((x) => x.id !== u.id);
                                 setIgnored(remainingIgnored);
+                                ignoredRef.current = remainingIgnored;
                                 setUploadSel((s) => s.filter((id) => id !== u.id));
-                                persistAll({ uploads, ignored: remainingIgnored });
+                                persistAll({ uploads: uploadsRef.current, ignored: remainingIgnored });
                               }}
                             >
                               Delete
@@ -1467,9 +1513,19 @@ export default function ImageManagement() {
               <button
                 type="button"
                 onClick={() => {
-                  setPending((prev) => prev.filter((p) => !selected.includes(p.currentName)));
+                  const remaining = pendingRef.current.filter(
+                    (p) => !selected.includes(p.currentName),
+                  );
+                  setPending(remaining);
+                  pendingRef.current = remaining;
                   setSelected([]);
-                  persistAll({ uploads, ignored, folderName, pending: remaining, hostIgnored });
+                  persistAll({
+                    uploads: uploadsRef.current,
+                    ignored: ignoredRef.current,
+                    folderName,
+                    pending: remaining,
+                    hostIgnored: hostIgnoredRef.current,
+                  });
                 }}
                 style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
                 disabled={selected.length === 0}
@@ -1505,8 +1561,19 @@ export default function ImageManagement() {
                         <button
                           type="button"
                           onClick={() => {
-                            setPending((prev) => prev.filter((x) => x.currentName !== p.currentName));
+                            const remaining = pendingRef.current.filter(
+                              (x) => x.currentName !== p.currentName,
+                            );
+                            setPending(remaining);
+                            pendingRef.current = remaining;
                             setSelected((s) => s.filter((id) => id !== p.currentName));
+                            persistAll({
+                              uploads: uploadsRef.current,
+                              ignored: ignoredRef.current,
+                              pending: remaining,
+                              hostIgnored: hostIgnoredRef.current,
+                              folderName,
+                            });
                           }}
                         >
                           Delete
@@ -1532,9 +1599,19 @@ export default function ImageManagement() {
               <button
                 type="button"
                 onClick={() => {
-                  setHostIgnored((prev) => prev.filter((p) => !hostIgnoredSel.includes(p.currentName)));
+                  const remaining = hostIgnoredRef.current.filter(
+                    (p) => !hostIgnoredSel.includes(p.currentName),
+                  );
+                  setHostIgnored(remaining);
+                  hostIgnoredRef.current = remaining;
                   setHostIgnoredSel([]);
-                  persistAll({ uploads, ignored, folderName, pending, hostIgnored: remaining });
+                  persistAll({
+                    uploads: uploadsRef.current,
+                    ignored: ignoredRef.current,
+                    folderName,
+                    pending: pendingRef.current,
+                    hostIgnored: remaining,
+                  });
                 }}
                 style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
                 disabled={hostIgnoredSel.length === 0}
@@ -1621,8 +1698,19 @@ export default function ImageManagement() {
                         <button
                           type="button"
                           onClick={() => {
-                            setHostIgnored((prev) => prev.filter((x) => x.currentName !== p.currentName));
+                            const remaining = hostIgnoredRef.current.filter(
+                              (x) => x.currentName !== p.currentName,
+                            );
+                            setHostIgnored(remaining);
+                            hostIgnoredRef.current = remaining;
                             setHostIgnoredSel((s) => s.filter((id) => id !== p.currentName));
+                            persistAll({
+                              uploads: uploadsRef.current,
+                              ignored: ignoredRef.current,
+                              pending: pendingRef.current,
+                              hostIgnored: remaining,
+                              folderName,
+                            });
                           }}
                         >
                           Delete
