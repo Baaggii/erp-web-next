@@ -491,7 +491,7 @@ export default function ImageManagement() {
       if ((e.ctrlKey || e.metaKey) && key === 'a') {
         e.preventDefault();
         const allIds = [...uploads, ...ignored].map((u) => u.id);
-        setUploadSel(allIds);
+        setUploadSel((prev) => (prev.length === allIds.length ? [] : allIds));
         return;
       }
       if ((e.ctrlKey || e.metaKey) && key === 'd') {
@@ -761,6 +761,9 @@ export default function ImageManagement() {
               const reason = r.reason || 'No match found';
               return { ...u, reason, description: reason };
             }
+            const desc = r.reason && !r.tmpPath
+              ? r.reason
+              : extractDateFromName(r.newName);
             return {
               ...u,
               newName: r.newName,
@@ -768,7 +771,8 @@ export default function ImageManagement() {
               folderDisplay: r.folderDisplay,
               tmpPath: r.tmpPath,
               processed: !!r.processed,
-              description: extractDateFromName(r.newName),
+              reason: r.reason,
+              description: desc,
             };
           })
           .sort((a, b) => a.originalName.localeCompare(b.originalName));
@@ -787,13 +791,6 @@ export default function ImageManagement() {
     } catch {
       addToast('Rename failed', 'error');
     }
-  }
-
-  async function uploadRenamedNames() {
-    if (uploadSel.length === 0) {
-      addToast('No files selected', 'error');
-      return;
-    }
     const ids = uploadSel.filter((id) => {
       const u = [...uploads, ...ignored].find((x) => x.id === id);
       return (
@@ -806,6 +803,30 @@ export default function ImageManagement() {
     });
     if (ids.length === 0) {
       addToast('No renamed files to upload', 'error');
+      return;
+    }
+    const merged = await renameSelected(ids, { keepSelection: true });
+    const ready = merged
+      .filter((r) => r.tmpPath && r.id && !r.processed)
+      .map((r) => r.id);
+    if (ready.length === 0) {
+      addToast('No files ready to upload', 'error');
+      return;
+    }
+    await commitUploads(ready);
+  }
+
+  async function uploadRenamedNames() {
+    if (uploadSel.length === 0) {
+      addToast('No files selected', 'error');
+      return;
+    }
+    const ids = uploadSel.filter((id) => {
+      const u = [...uploads, ...ignored].find((x) => x.id === id);
+      return u && !u.processed && folderFiles[u.index]?.handle;
+    });
+    if (ids.length === 0) {
+      addToast('No local files to upload', 'error');
       return;
     }
     const merged = await renameSelected(ids, { keepSelection: true });
@@ -932,13 +953,18 @@ export default function ImageManagement() {
               const reason = r.reason || 'No match found';
               return { ...u, reason, description: reason };
             }
+            const desc = r.reason && !r.tmpPath
+              ? r.reason
+              : extractDateFromName(r.newName);
             return {
               ...u,
               newName: r.newName,
               folder: r.folder,
               folderDisplay: r.folderDisplay,
               tmpPath: r.tmpPath,
-              description: extractDateFromName(r.newName),
+              processed: !!r.processed,
+              reason: r.reason,
+              description: desc,
             };
           })
           .sort((a, b) => a.originalName.localeCompare(b.originalName));

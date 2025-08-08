@@ -16,12 +16,13 @@ async function getDirs() {
   const subdir = cfg.general?.imageDir || 'txn_images';
   const basePath = cfg.images?.basePath || 'uploads';
   const ignore = (cfg.images?.ignoreOnSearch || []).map((s) => s.toLowerCase());
-  const baseDir = path.isAbsolute(basePath)
-    ? path.join(basePath, subdir)
-    : path.join(projectRoot, basePath, subdir);
+  const baseRoot = path.isAbsolute(basePath)
+    ? basePath
+    : path.join(projectRoot, basePath);
+  const baseDir = path.join(baseRoot, subdir);
   const baseName = path.basename(basePath);
   const urlBase = `/api/${baseName}/${subdir}`;
-  return { baseDir, urlBase, basePath: baseName, ignore };
+  return { baseDir, baseRoot, urlBase, basePath: baseName, ignore };
 }
 
 function ensureDir(dir) {
@@ -761,7 +762,7 @@ export async function checkUploadedImages(files = [], names = []) {
   const results = [];
   let processed = 0;
   const codes = await fetchTxnCodes();
-  const { baseDir, ignore } = await getDirs();
+  const { baseDir, baseRoot, ignore } = await getDirs();
   let items = files.length
     ? files
     : names.map((n) => ({
@@ -882,8 +883,8 @@ export async function checkUploadedImages(files = [], names = []) {
         if (!exists && Array.isArray(ignore)) {
           for (const ig of ignore) {
             if (!ig) continue;
-            const alt1 = path.join(baseDir, ig, newName);
-            const alt2 = path.join(baseDir, ig, folderRaw, newName);
+            const alt1 = path.join(baseRoot, ig, newName);
+            const alt2 = path.join(baseRoot, ig, folderRaw, newName);
             if (fssync.existsSync(alt1) || fssync.existsSync(alt2)) {
               exists = true;
               break;
