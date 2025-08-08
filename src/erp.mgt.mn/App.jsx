@@ -20,6 +20,7 @@ import TablesManagementPage from './pages/TablesManagement.jsx';
 import CodingTablesPage from './pages/CodingTables.jsx';
 import FormsManagementPage from './pages/FormsManagement.jsx';
 import ReportManagementPage from './pages/ReportManagement.jsx';
+import ReportBuilderPage from './pages/ReportBuilder.jsx';
 import RelationsConfigPage from './pages/RelationsConfig.jsx';
 import PosTxnConfigPage from './pages/PosTxnConfig.jsx';
 import PosTransactionsPage from './pages/PosTransactions.jsx';
@@ -73,7 +74,7 @@ export default function App() {
     tables_management: <TablesManagementPage />,
     coding_tables: <CodingTablesPage />,
     forms_management: <FormsManagementPage />,
-    report_management: <ReportManagementPage />,
+    report_builder: <ReportBuilderPage />,
     relations_config: <RelationsConfigPage />,
     pos_transaction_management: <PosTxnConfigPage />,
     pos_transactions: <PosTransactionsPage />,
@@ -93,6 +94,7 @@ export default function App() {
 
   const indexComponents = {
     settings: <GeneralSettings />,
+    report_management: <ReportManagementPage />,
   };
 
   const adminOnly = new Set([
