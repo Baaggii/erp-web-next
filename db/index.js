@@ -565,6 +565,20 @@ export async function listTableColumns(tableName) {
   return rows.map((r) => r.COLUMN_NAME);
 }
 
+export async function saveStoredProcedure(sql) {
+  const cleaned = sql
+    .replace(/^DELIMITER \$\$/gm, '')
+    .replace(/^DELIMITER ;/gm, '')
+    .replace(/END \$\$/gm, 'END');
+  const statements = cleaned
+    .split(';')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  for (const stmt of statements) {
+    await pool.query(stmt);
+  }
+}
+
 export async function getTableColumnLabels(tableName) {
   const [rows] = await pool.query(
     'SELECT column_name, mn_label FROM table_column_labels WHERE table_name = ?',
