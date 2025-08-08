@@ -255,6 +255,7 @@ export default function ImageManagement() {
     setIgnoredPage(Math.min(data.ignoredPage || 1, igLast));
     setPendingPage(Math.min(data.pendingPage || 1, pendLast));
     setHostIgnoredPage(Math.min(data.hostIgnoredPage || 1, hostLast));
+    setHasMore(pendingArr.length > (data.pendingPage || 1) * pageSize);
   }
 
   function persistSnapshot(partial = {}) {
@@ -283,6 +284,12 @@ export default function ImageManagement() {
   function persistAll(partial = {}) {
     const tables = getTables();
     persistSnapshot({ ...tables, folderName, ...partial });
+  }
+
+  function clampPage(value, last) {
+    const num = Number(value);
+    if (!Number.isFinite(num) || num < 1) return 1;
+    return Math.min(num, last);
   }
 
   async function fetchAllRemote() {
@@ -330,6 +337,8 @@ export default function ImageManagement() {
   async function saveTables() {
     try {
       const remote = await fetchAllRemote();
+      pendingRef.current = remote.pending;
+      hostIgnoredRef.current = remote.hostIgnored;
       persistAll(remote);
       addToast('Tables saved locally', 'success');
     } catch (err) {
@@ -352,7 +361,7 @@ export default function ImageManagement() {
   const hostIgnoredLastPage = Math.max(1, Math.ceil(hostIgnored.length / pageSize));
   const lastPage = pendingSummary
     ? Math.max(1, Math.ceil((pendingSummary.incompleteFound || 0) / pageSize))
-    : 1;
+    : Math.max(1, Math.ceil(pending.length / pageSize));
 
   const canRenameSelected = [...uploads, ...ignored].some(
     (u) =>
@@ -1332,7 +1341,16 @@ export default function ImageManagement() {
                       Prev
                     </button>
                     <span style={{ marginRight: '0.5rem' }}>
-                      Page {uploadPage} / {uploadLastPage}
+                      Page{' '}
+                      <input
+                        type="number"
+                        value={uploadPage}
+                        onChange={(e) =>
+                          setUploadPage(clampPage(e.target.value, uploadLastPage))
+                        }
+                        style={{ width: '3rem' }}
+                      />{' '}
+                      / {uploadLastPage}
                     </span>
                     <button
                       type="button"
@@ -1420,7 +1438,16 @@ export default function ImageManagement() {
                       Prev
                     </button>
                     <span style={{ marginRight: '0.5rem' }}>
-                      Page {ignoredPage} / {ignoredLastPage}
+                      Page{' '}
+                      <input
+                        type="number"
+                        value={ignoredPage}
+                        onChange={(e) =>
+                          setIgnoredPage(clampPage(e.target.value, ignoredLastPage))
+                        }
+                        style={{ width: '3rem' }}
+                      />{' '}
+                      / {ignoredLastPage}
                     </span>
                     <button
                       type="button"
@@ -1519,7 +1546,16 @@ export default function ImageManagement() {
             Prev
           </button>
           <span style={{ marginRight: '0.5rem' }}>
-            Page {pendingPage} / {lastPage}
+            Page{' '}
+            <input
+              type="number"
+              value={pendingPage}
+              onChange={(e) =>
+                detectFromHost(clampPage(e.target.value, lastPage))
+              }
+              style={{ width: '3rem' }}
+            />{' '}
+            / {lastPage}
           </span>
           <button
             type="button"
@@ -1682,7 +1718,18 @@ export default function ImageManagement() {
                   Prev
                 </button>
                 <span style={{ marginRight: '0.5rem' }}>
-                  Page {hostIgnoredPage} / {hostIgnoredLastPage}
+                  Page{' '}
+                  <input
+                    type="number"
+                    value={hostIgnoredPage}
+                    onChange={(e) =>
+                      setHostIgnoredPage(
+                        clampPage(e.target.value, hostIgnoredLastPage),
+                      )
+                    }
+                    style={{ width: '3rem' }}
+                  />{' '}
+                  / {hostIgnoredLastPage}
                 </span>
                 <button
                   type="button"
