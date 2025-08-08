@@ -64,7 +64,6 @@ async function deleteDirHandle(key) {
 
 
 
-
 // IndexedDB helpers for storing directory handles
 function getHandleDB() {
   if (typeof indexedDB === 'undefined') return Promise.reject();
