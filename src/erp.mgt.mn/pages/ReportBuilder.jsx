@@ -9,6 +9,7 @@ const SESSION_PARAMS = [
 
 const PARAM_TYPES = ['INT', 'DATE', 'VARCHAR(50)', 'DECIMAL(10,2)'];
 const AGGREGATES = ['NONE', 'SUM', 'COUNT', 'MAX', 'MIN'];
+const OPERATORS = ['=', '>', '<', '>=', '<=', '<>'];
 
 export default function ReportBuilder() {
   const [tables, setTables] = useState([]); // list of table names
@@ -16,10 +17,10 @@ export default function ReportBuilder() {
 
   const [procName, setProcName] = useState('');
   const [fromTable, setFromTable] = useState('');
-  const [joins, setJoins] = useState([]); // {table, alias, type, primaryField, joinField}
+  const [joins, setJoins] = useState([]); // {table, alias, type, targetTable, conditions:[{fromField,toField}]}
   const [fields, setFields] = useState([]); // {table, field, alias, aggregate}
   const [groups, setGroups] = useState([]); // {table, field}
-  const [having, setHaving] = useState([]); // {aggregate, table, field, param}
+  const [having, setHaving] = useState([]); // {aggregate, table, field, operator, param}
   const [params, setParams] = useState([]); // {name,type,source}
   const [conditions, setConditions] = useState([]); // {table,field,param}
   const [script, setScript] = useState('');
@@ -66,33 +67,88 @@ export default function ReportBuilder() {
   const availableTables = [fromTable, ...joins.map((j) => j.table)].filter(Boolean);
 
   function addJoin() {
-    const remaining = tables.filter(
-      (t) => t !== fromTable && !joins.some((j) => j.table === t),
-    );
+    const remaining = tables.filter((t) => t !== fromTable);
     const table = remaining[0] || tables[0];
     if (!table) return;
     ensureFields(table);
     const alias = `t${joins.length + 1}`;
+    const targetTable = fromTable;
     setJoins([
       ...joins,
       {
         table,
         alias,
         type: 'INNER',
-        primaryField: (tableFields[fromTable] || [])[0] || '',
-        joinField: (tableFields[table] || [])[0] || '',
+        targetTable,
+        conditions: [
+          {
+            fromField: (tableFields[targetTable] || [])[0] || '',
+            toField: (tableFields[table] || [])[0] || '',
+          },
+        ],
       },
     ]);
   }
 
   function updateJoin(index, key, value) {
-    const updated = joins.map((j, i) => (i === index ? { ...j, [key]: value } : j));
+    const updated = joins.map((j, i) => {
+      if (i !== index) return j;
+      const next = { ...j, [key]: value };
+      if (key === 'table') {
+        ensureFields(value);
+        next.conditions = next.conditions.map((c) => ({
+          ...c,
+          toField: (tableFields[value] || [])[0] || '',
+        }));
+      }
+      if (key === 'targetTable') {
+        ensureFields(value);
+        next.conditions = next.conditions.map((c) => ({
+          ...c,
+          fromField: (tableFields[value] || [])[0] || '',
+        }));
+      }
+      return next;
+    });
     setJoins(updated);
-    if (key === 'table') ensureFields(value);
   }
 
   function removeJoin(index) {
     setJoins(joins.filter((_, i) => i !== index));
+  }
+
+  function addJoinCondition(jIndex) {
+    const j = joins[jIndex];
+    ensureFields(j.targetTable);
+    ensureFields(j.table);
+    const newCond = {
+      fromField: (tableFields[j.targetTable] || [])[0] || '',
+      toField: (tableFields[j.table] || [])[0] || '',
+    };
+    const updated = joins.map((jn, i) =>
+      i === jIndex ? { ...jn, conditions: [...jn.conditions, newCond] } : jn,
+    );
+    setJoins(updated);
+  }
+
+  function updateJoinCondition(jIndex, cIndex, key, value) {
+    const updated = joins.map((jn, i) => {
+      if (i !== jIndex) return jn;
+      const conds = jn.conditions.map((c, k) =>
+        k === cIndex ? { ...c, [key]: value } : c,
+      );
+      return { ...jn, conditions: conds };
+    });
+    setJoins(updated);
+  }
+
+  function removeJoinCondition(jIndex, cIndex) {
+    const updated = joins.map((jn, i) =>
+      i === jIndex
+        ? { ...jn, conditions: jn.conditions.filter((_, k) => k !== cIndex) }
+        : jn,
+    );
+    setJoins(updated);
   }
 
   function addField() {
@@ -144,6 +200,7 @@ export default function ReportBuilder() {
         aggregate: 'SUM',
         table: fromTable,
         field: (tableFields[fromTable] || [])[0] || '',
+        operator: '=',
         param: params[0].name,
       },
     ]);
@@ -226,12 +283,20 @@ export default function ReportBuilder() {
         alias: f.alias || undefined,
       }));
 
-      const joinDefs = joins.map((j) => ({
-        table: j.table,
-        alias: aliases[j.table],
-        type: j.type,
-        on: `${aliases[fromTable]}.${j.primaryField} = ${aliases[j.table]}.${j.joinField}`,
-      }));
+      const joinDefs = joins.map((j) => {
+        const on = j.conditions
+          .map(
+            (c) =>
+              `${aliases[j.targetTable]}.${c.fromField} = ${aliases[j.table]}.${c.toField}`,
+          )
+          .join(' AND ');
+        return {
+          table: j.table,
+          alias: aliases[j.table],
+          type: j.type,
+          on,
+        };
+      });
 
       const where = conditions.map((c) => ({
         expr: `${aliases[c.table]}.${c.field} = :${c.param}`,
@@ -240,7 +305,7 @@ export default function ReportBuilder() {
       const groupBy = groups.map((g) => `${aliases[g.table]}.${g.field}`);
 
       const havingDefs = having.map((h) => ({
-        expr: `${h.aggregate}(${aliases[h.table]}.${h.field}) = :${h.param}`,
+        expr: `${h.aggregate}(${aliases[h.table]}.${h.field}) ${h.operator} :${h.param}`,
       }));
 
       const report = {
@@ -311,58 +376,92 @@ export default function ReportBuilder() {
 
       <section>
         <h3>Joins</h3>
-        {joins.map((j, i) => (
-          <div key={i} style={{ marginBottom: '0.5rem' }}>
-            <select
-              value={j.type}
-              onChange={(e) => updateJoin(i, 'type', e.target.value)}
-            >
-              <option value="INNER">INNER</option>
-              <option value="LEFT">LEFT</option>
-            </select>
-            <select
-              value={j.table}
-              onChange={(e) => updateJoin(i, 'table', e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              {tables
-                .filter((t) => t !== fromTable)
-                .map((t) => (
+        {joins.map((j, i) => {
+          const targets = [fromTable, ...joins.slice(0, i).map((jn) => jn.table)];
+          return (
+            <div key={i} style={{ marginBottom: '0.5rem' }}>
+              <select
+                value={j.type}
+                onChange={(e) => updateJoin(i, 'type', e.target.value)}
+              >
+                <option value="INNER">INNER</option>
+                <option value="LEFT">LEFT</option>
+              </select>
+              <select
+                value={j.table}
+                onChange={(e) => updateJoin(i, 'table', e.target.value)}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                {tables.map((t) => (
                   <option key={t} value={t}>
                     {t}
                   </option>
                 ))}
-            </select>
-            <span> on </span>
-            <select
-              value={j.primaryField}
-              onChange={(e) => updateJoin(i, 'primaryField', e.target.value)}
-            >
-              {(tableFields[fromTable] || []).map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
+              </select>
+              <span> with </span>
+              <select
+                value={j.targetTable}
+                onChange={(e) => updateJoin(i, 'targetTable', e.target.value)}
+              >
+                {targets.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+              {j.conditions.map((c, k) => (
+                <div
+                  key={k}
+                  style={{ display: 'inline-block', marginLeft: '0.5rem' }}
+                >
+                  <select
+                    value={c.fromField}
+                    onChange={(e) =>
+                      updateJoinCondition(i, k, 'fromField', e.target.value)
+                    }
+                  >
+                    {(tableFields[j.targetTable] || []).map((f) => (
+                      <option key={f} value={f}>
+                        {f}
+                      </option>
+                    ))}
+                  </select>
+                  <span> = </span>
+                  <select
+                    value={c.toField}
+                    onChange={(e) =>
+                      updateJoinCondition(i, k, 'toField', e.target.value)
+                    }
+                  >
+                    {(tableFields[j.table] || []).map((f) => (
+                      <option key={f} value={f}>
+                        {f}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => removeJoinCondition(i, k)}
+                    style={{ marginLeft: '0.5rem' }}
+                  >
+                    ✕
+                  </button>
+                </div>
               ))}
-            </select>
-            <span> = </span>
-            <select
-              value={j.joinField}
-              onChange={(e) => updateJoin(i, 'joinField', e.target.value)}
-            >
-              {(tableFields[j.table] || []).map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={() => removeJoin(i)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              ✕
-            </button>
-          </div>
-        ))}
+              <button
+                onClick={() => addJoinCondition(i)}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                Add Condition
+              </button>
+              <button
+                onClick={() => removeJoin(i)}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                ✕
+              </button>
+            </div>
+          );
+        })}
         <button onClick={addJoin}>Add Join</button>
       </section>
 
@@ -488,6 +587,17 @@ export default function ReportBuilder() {
               {(tableFields[h.table] || []).map((f) => (
                 <option key={f} value={f}>
                   {f}
+                </option>
+              ))}
+            </select>
+            <select
+              value={h.operator}
+              onChange={(e) => updateHaving(i, 'operator', e.target.value)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              {OPERATORS.map((op) => (
+                <option key={op} value={op}>
+                  {op}
                 </option>
               ))}
             </select>
