@@ -62,6 +62,48 @@ async function deleteDirHandle(key) {
   }
 }
 
+// IndexedDB helpers for storing directory handles
+function getHandleDB() {
+  if (typeof indexedDB === 'undefined') return Promise.reject();
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('imgMgmtHandles', 1);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore('dirs');
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function saveDirHandle(key, handle) {
+  if (!handle) return;
+  try {
+    const db = await getHandleDB();
+    await new Promise((res, rej) => {
+      const tx = db.transaction('dirs', 'readwrite');
+      tx.objectStore('dirs').put(handle, key);
+      tx.oncomplete = res;
+      tx.onerror = () => rej(tx.error);
+    });
+  } catch {
+    // ignore
+  }
+}
+
+async function loadDirHandle(key) {
+  try {
+    const db = await getHandleDB();
+    return await new Promise((res, rej) => {
+      const tx = db.transaction('dirs', 'readonly');
+      const req = tx.objectStore('dirs').get(key);
+      req.onsuccess = () => res(req.result || null);
+      req.onerror = () => rej(req.error);
+    });
+  } catch {
+    return null;
+  }
+}
+
 function extractDateFromName(name) {
   const match = typeof name === 'string' ? name.match(/(?:__|_)(\d{13})_/) : null;
   if (match) {
@@ -124,7 +166,6 @@ export default function ImageManagement() {
       } catch {
         // ignore
       }
-      setSessionNames(getSessionNames());
     })();
   }, []);
 
@@ -252,90 +293,14 @@ export default function ImageManagement() {
     persistSnapshot({ ...tables, folderName, ...partial });
   }
 
-  function getSessionNames() {
-    try {
-      const parsed = JSON.parse(localStorage.getItem(SESSIONS_KEY) || '[]');
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  }
-
-  function sanitizeName(n = '') {
-    return n.replace(/[^\w.-]/g, '_').slice(0, 100);
-  }
-
   async function saveSession() {
-    const raw = prompt('Session name?', folderName || new Date().toISOString());
-    const name = raw ? sanitizeName(raw.trim()) : '';
-    if (!name) return;
     try {
       const data = buildSession();
-      const serialized = JSON.stringify(data);
-      localStorage.setItem(SESSION_PREFIX + name, serialized);
-      const names = new Set(getSessionNames());
-      names.add(name);
-      localStorage.setItem(SESSIONS_KEY, JSON.stringify([...names]));
-      await saveDirHandle(name, dirHandleRef.current);
       persistAll(data);
-      setSessionNames([...names]);
-      setSelectedSession(name);
       addToast('State saved', 'success');
     } catch (err) {
       console.error(err);
       addToast('Failed to save state', 'error');
-    }
-  }
-
-  async function loadSession(name = selectedSession) {
-    if (!name) {
-      addToast('No session selected', 'error');
-      return;
-    }
-    try {
-      const raw = localStorage.getItem(SESSION_PREFIX + name);
-      if (!raw) {
-        addToast('No saved sessions', 'error');
-        return;
-      }
-      const data = JSON.parse(raw);
-      const dir = await loadDirHandle(name);
-      if (dir) {
-        try { await dir.requestPermission?.({ mode: 'read' }); } catch {}
-        dirHandleRef.current = dir;
-        data.uploads = await attachHandles(dir, data.uploads);
-        data.ignored = await attachHandles(dir, data.ignored);
-      } else {
-        dirHandleRef.current = null;
-      }
-      applySession(data);
-      setSelected([]);
-      setHostIgnoredSel([]);
-      setUploadSel([]);
-      setUploadPage(1);
-      setIgnoredPage(1);
-      setHostIgnoredPage(1);
-      setPendingPage(1);
-      persistAll(data);
-      addToast('State loaded', 'success');
-    } catch (err) {
-      console.error(err);
-      addToast('Failed to load session', 'error');
-    }
-  }
-
-  async function deleteSession(name = selectedSession) {
-    if (!name) return;
-    try {
-      localStorage.removeItem(SESSION_PREFIX + name);
-      const names = getSessionNames().filter((n) => n !== name);
-      localStorage.setItem(SESSIONS_KEY, JSON.stringify(names));
-      await deleteDirHandle(name);
-      setSessionNames(names);
-      if (selectedSession === name) setSelectedSession('');
-      addToast('State deleted', 'success');
-    } catch {
-      addToast('Failed to delete session', 'error');
     }
   }
 
@@ -363,12 +328,7 @@ export default function ImageManagement() {
   );
 
   const canUploadNames = [...uploads, ...ignored].some(
-    (u) =>
-      uploadSel.includes(u.id) &&
-      folderFiles[u.index]?.handle &&
-      u.newName &&
-      !u.tmpPath &&
-      !u.processed,
+    (u) => uploadSel.includes(u.id) && folderFiles[u.index]?.handle && !u.processed,
   );
 
   function toggle(id) {
@@ -554,6 +514,7 @@ export default function ImageManagement() {
       }
       if (scanCancelRef.current) return;
       setFolderName(dirHandle.name || '');
+      addToast(`Folder loaded: ${dirHandle.name || ''}`, 'success');
       const sorted = all.slice().sort((a, b) => a.originalName.localeCompare(b.originalName));
       const uploadsList = sorted.map((u) => {
         const f = files.find((p) => p.name === u.originalName);
@@ -791,90 +752,6 @@ export default function ImageManagement() {
     } catch {
       addToast('Rename failed', 'error');
     }
-    try {
-      const idxMap = new Map();
-      const payload = items.map((u, i) => {
-        const idx = typeof u.index === 'number' ? u.index : i;
-        idxMap.set(u.id, idx);
-        return { name: u.originalName, index: idx };
-      });
-      const res = await fetch('/api/transaction_images/upload_check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ names: payload }),
-      });
-      if (!res.ok) throw new Error('bad response');
-      const data = await res.json().catch(() => ({}));
-      const list = Array.isArray(data.list) ? data.list : [];
-      const resultMap = new Map(list.map((r) => [String(r.index), r]));
-      const updateList = (arr) =>
-        arr
-          .map((u) => {
-            if (!uploadSel.includes(u.id)) return u;
-            const idx = idxMap.get(u.id);
-            const r = resultMap.get(String(idx));
-            if (!r) {
-              const reason = u.reason || 'No match found';
-              return { ...u, reason, description: reason };
-            }
-            if (!r.newName) {
-              const reason = r.reason || 'No match found';
-              return { ...u, reason, description: reason };
-            }
-            const desc = r.reason && !r.tmpPath
-              ? r.reason
-              : extractDateFromName(r.newName);
-            return {
-              ...u,
-              newName: r.newName,
-              folder: r.folder,
-              folderDisplay: r.folderDisplay,
-              tmpPath: r.tmpPath,
-              processed: !!r.processed,
-              reason: r.reason,
-              description: desc,
-            };
-          })
-          .sort((a, b) => a.originalName.localeCompare(b.originalName));
-      const newUploads = updateList(uploads);
-      const newIgnored = updateList(ignored);
-      const processedCount = list.filter((m) => m.newName).length;
-      const skipCount = items.length - processedCount;
-      if (processedCount) addToast(`Renamed ${processedCount} file(s)`, 'success');
-      else addToast('No files renamed', 'warning');
-      if (skipCount) addToast(`Skipped ${skipCount} file(s)`, 'warning');
-      setUploads(newUploads);
-      setIgnored(newIgnored);
-      setUploadSel([]);
-      persistAll({ uploads: newUploads, ignored: newIgnored });
-      setReport(`Renamed ${processedCount} file(s)`);
-    } catch {
-      addToast('Rename failed', 'error');
-    }
-    const ids = uploadSel.filter((id) => {
-      const u = [...uploads, ...ignored].find((x) => x.id === id);
-      return (
-        u &&
-        u.newName &&
-        !u.tmpPath &&
-        !u.processed &&
-        folderFiles[u.index]?.handle
-      );
-    });
-    if (ids.length === 0) {
-      addToast('No renamed files to upload', 'error');
-      return;
-    }
-    const merged = await renameSelected(ids, { keepSelection: true });
-    const ready = merged
-      .filter((r) => r.tmpPath && r.id && !r.processed)
-      .map((r) => r.id);
-    if (ready.length === 0) {
-      addToast('No files ready to upload', 'error');
-      return;
-    }
-    await commitUploads(ready);
   }
 
   async function uploadRenamedNames() {
@@ -882,30 +759,38 @@ export default function ImageManagement() {
       addToast('No files selected', 'error');
       return;
     }
-    const ids = uploadSel.filter((id) => {
-      const u = [...uploads, ...ignored].find((x) => x.id === id);
-      return u && !u.processed && folderFiles[u.index]?.handle;
-    });
-    if (ids.length === 0) {
+    const all = [...uploads, ...ignored];
+    const selectedItems = all.filter(
+      (u) => uploadSel.includes(u.id) && !u.processed && folderFiles[u.index]?.handle,
+    );
+    if (selectedItems.length === 0) {
       addToast('No local files to upload', 'error');
       return;
     }
-    const merged = await renameSelected(ids, { keepSelection: true, silent: true });
-    const readyItems = merged.filter((r) => r.tmpPath && r.id && !r.processed);
-    const ready = readyItems.map((r) => r.id);
-    const processedCount = readyItems.length;
-    const skipCount = merged.length - processedCount;
-    if (processedCount) addToast(`Renamed ${processedCount} file(s)`, 'success');
-    else addToast('No files renamed', 'warning');
-    if (skipCount) addToast(`Skipped ${skipCount} file(s)`, 'warning');
-    if (ready.length === 0) {
+    const toRename = selectedItems.filter((u) => !u.tmpPath).map((u) => u.id);
+    let processedCount = 0;
+    let skipCount = 0;
+    if (toRename.length) {
+      const merged = await renameSelected(toRename, { keepSelection: true, silent: true });
+      processedCount = merged.filter((r) => r.newName).length;
+      skipCount = toRename.length - processedCount;
+      if (processedCount) addToast(`Renamed ${processedCount} file(s)`, 'success');
+      else addToast('No files renamed', 'warning');
+      if (skipCount) addToast(`Skipped ${skipCount} file(s)`, 'warning');
+    }
+    const tables = getTables();
+    const readyItems = Object.values(tables)
+      .flat()
+      .filter((u) => uploadSel.includes(u.id) && u.tmpPath && !u.processed);
+    if (readyItems.length === 0) {
       addToast('No files ready to upload', 'error');
       return;
     }
-    const uploaded = await commitUploads(ready, { silent: true });
+    const readyIds = readyItems.map((u) => u.id);
+    const uploaded = await commitUploads(readyIds, { silent: true });
     if (uploaded) addToast(`Uploaded ${uploaded} file(s)`, 'success');
-    if (ready.length > uploaded)
-      addToast(`Failed to upload ${ready.length - uploaded} file(s)`, 'error');
+    if (readyIds.length > uploaded)
+      addToast(`Failed to upload ${readyIds.length - uploaded} file(s)`, 'error');
     setReport(`Uploaded ${uploaded || 0} file(s)`);
   }
 
@@ -1180,12 +1065,14 @@ export default function ImageManagement() {
             <button type="button" onClick={selectFolder} style={{ marginRight: '0.5rem' }}>
               Select Folder
             </button>
-            {folderName && <span style={{ marginRight: '0.5rem' }}>{folderName}</span>}
-            <button
-              type="button"
-              onClick={saveSession}
+            <input
+              type="text"
+              value={folderName}
+              onChange={(e) => setFolderName(e.target.value)}
+              placeholder="Selected folder"
               style={{ marginRight: '0.5rem' }}
-            >
+            />
+            <button type="button" onClick={saveSession} style={{ marginRight: '0.5rem' }}>
               Save
             </button>
             <select
