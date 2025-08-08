@@ -3,8 +3,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
 const FOLDER_STATE_KEY = 'imgMgmtFolderState';
-const SESSIONS_KEY = 'imgMgmtSessions';
-const SESSION_PREFIX = 'imgMgmtSession:';
 
 // IndexedDB helpers for storing directory handles
 function getHandleDB() {
@@ -107,8 +105,6 @@ export default function ImageManagement() {
   const dirHandleRef = useRef();
   const [activeOp, setActiveOp] = useState(null);
   const [report, setReport] = useState('');
-  const [sessionNames, setSessionNames] = useState([]);
-  const [selectedSession, setSelectedSession] = useState('');
   const uploadsRef = useRef(uploads);
   const ignoredRef = useRef(ignored);
   const pendingRef = useRef(pending);
@@ -134,6 +130,7 @@ export default function ImageManagement() {
             data.ignored = await attachHandles(dir, data.ignored);
           }
           applySession(data);
+          setTab('fix');
         }
       } catch {
         // ignore
@@ -246,6 +243,10 @@ export default function ImageManagement() {
       : [];
     setHostIgnored(hostArr);
     hostIgnoredRef.current = hostArr;
+    setUploadPage(1);
+    setIgnoredPage(1);
+    setPendingPage(1);
+    setHostIgnoredPage(1);
   }
 
   function persistSnapshot(partial = {}) {
@@ -271,14 +272,14 @@ export default function ImageManagement() {
     const tables = getTables();
     persistSnapshot({ ...tables, folderName, ...partial });
   }
-
-  async function saveSession() {
+  
+  function saveTables() {
     try {
       persistAll();
-      addToast('State saved', 'success');
+      addToast('Tables saved locally', 'success');
     } catch (err) {
       console.error(err);
-      addToast('Failed to save state', 'error');
+      addToast('Failed to save tables', 'error');
     }
   }
 
@@ -1120,27 +1121,6 @@ export default function ImageManagement() {
               placeholder="Selected folder"
               style={{ marginRight: '0.5rem' }}
             />
-            <button type="button" onClick={saveSession} style={{ marginRight: '0.5rem' }}>
-              Save
-            </button>
-            <select
-              value={selectedSession}
-              onChange={(e) => setSelectedSession(e.target.value)}
-              style={{ marginRight: '0.5rem' }}
-            >
-              <option value="">Select session</option>
-              {sessionNames.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-            <button type="button" onClick={() => loadSession()} disabled={!selectedSession} style={{ marginRight: '0.5rem' }}>
-              Load
-            </button>
-            <button type="button" onClick={() => deleteSession()} disabled={!selectedSession}>
-              Delete
-            </button>
           </div>
           {uploadSummary && (
             <p style={{ marginBottom: '0.5rem' }}>
@@ -1157,6 +1137,17 @@ export default function ImageManagement() {
                 disabled={!canRenameSelected}
               >
                 Rename Selected
+              </button>
+              <button
+                type="button"
+                onClick={saveTables}
+                style={{
+                  marginBottom: '0.5rem',
+                  marginRight: '0.5rem',
+                  float: 'right',
+                }}
+              >
+                Save Tables
               </button>
               <button
                 type="button"
