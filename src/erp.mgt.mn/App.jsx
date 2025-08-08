@@ -74,7 +74,6 @@ export default function App() {
     tables_management: <TablesManagementPage />,
     coding_tables: <CodingTablesPage />,
     forms_management: <FormsManagementPage />,
-    report_management: <ReportManagementPage />,
     report_builder: <ReportBuilderPage />,
     relations_config: <RelationsConfigPage />,
     pos_transaction_management: <PosTxnConfigPage />,
@@ -95,6 +94,7 @@ export default function App() {
 
   const indexComponents = {
     settings: <GeneralSettings />,
+    report_management: <ReportManagementPage />,
   };
 
   const adminOnly = new Set([
