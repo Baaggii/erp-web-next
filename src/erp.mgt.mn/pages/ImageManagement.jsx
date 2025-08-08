@@ -64,6 +64,8 @@ async function deleteDirHandle(key) {
 
 
 
+
+
 function extractDateFromName(name) {
   const match = typeof name === 'string' ? name.match(/(?:__|_)(\d{13})_/) : null;
   if (match) {
@@ -255,8 +257,7 @@ export default function ImageManagement() {
 
   async function saveSession() {
     try {
-      const data = buildSession();
-      persistAll(data);
+      persistAll();
       addToast('State saved', 'success');
     } catch (err) {
       console.error(err);
@@ -434,15 +435,28 @@ export default function ImageManagement() {
     try {
       const dirHandle = await window.showDirectoryPicker();
       dirHandleRef.current = dirHandle;
-      const handlePath = dirHandle?.path || dirHandle?.name || '';
-      setFolderName(handlePath);
+      let handlePath = dirHandle?.path || '';
       const files = [];
       for await (const entry of dirHandle.values()) {
         if (scanCancelRef.current) break;
         if (entry.kind === 'file') {
+          if (!handlePath) {
+            try {
+              const f = await entry.getFile();
+              const fullPath = f.path || f.webkitRelativePath || '';
+              if (fullPath) {
+                const cut = Math.max(fullPath.lastIndexOf('/'), fullPath.lastIndexOf('\\'));
+                handlePath = cut >= 0 ? fullPath.slice(0, cut) : fullPath;
+              }
+            } catch {
+              // ignore failures; we'll fall back to dirHandle name
+            }
+          }
           files.push({ name: entry.name, handle: entry, index: files.length });
         }
       }
+      if (!handlePath) handlePath = dirHandle?.name || '';
+      setFolderName(handlePath);
       const names = files.map((f) => f.name);
       if (scanCancelRef.current) return;
       const chunkSize = 200;
