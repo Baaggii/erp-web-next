@@ -791,6 +791,67 @@ export default function ImageManagement() {
     } catch {
       addToast('Rename failed', 'error');
     }
+    try {
+      const idxMap = new Map();
+      const payload = items.map((u, i) => {
+        const idx = typeof u.index === 'number' ? u.index : i;
+        idxMap.set(u.id, idx);
+        return { name: u.originalName, index: idx };
+      });
+      const res = await fetch('/api/transaction_images/upload_check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ names: payload }),
+      });
+      if (!res.ok) throw new Error('bad response');
+      const data = await res.json().catch(() => ({}));
+      const list = Array.isArray(data.list) ? data.list : [];
+      const resultMap = new Map(list.map((r) => [String(r.index), r]));
+      const updateList = (arr) =>
+        arr
+          .map((u) => {
+            if (!uploadSel.includes(u.id)) return u;
+            const idx = idxMap.get(u.id);
+            const r = resultMap.get(String(idx));
+            if (!r) {
+              const reason = u.reason || 'No match found';
+              return { ...u, reason, description: reason };
+            }
+            if (!r.newName) {
+              const reason = r.reason || 'No match found';
+              return { ...u, reason, description: reason };
+            }
+            const desc = r.reason && !r.tmpPath
+              ? r.reason
+              : extractDateFromName(r.newName);
+            return {
+              ...u,
+              newName: r.newName,
+              folder: r.folder,
+              folderDisplay: r.folderDisplay,
+              tmpPath: r.tmpPath,
+              processed: !!r.processed,
+              reason: r.reason,
+              description: desc,
+            };
+          })
+          .sort((a, b) => a.originalName.localeCompare(b.originalName));
+      const newUploads = updateList(uploads);
+      const newIgnored = updateList(ignored);
+      const processedCount = list.filter((m) => m.newName).length;
+      const skipCount = items.length - processedCount;
+      if (processedCount) addToast(`Renamed ${processedCount} file(s)`, 'success');
+      else addToast('No files renamed', 'warning');
+      if (skipCount) addToast(`Skipped ${skipCount} file(s)`, 'warning');
+      setUploads(newUploads);
+      setIgnored(newIgnored);
+      setUploadSel([]);
+      persistAll({ uploads: newUploads, ignored: newIgnored });
+      setReport(`Renamed ${processedCount} file(s)`);
+    } catch {
+      addToast('Rename failed', 'error');
+    }
     const ids = uploadSel.filter((id) => {
       const u = [...uploads, ...ignored].find((x) => x.id === id);
       return (
@@ -829,21 +890,30 @@ export default function ImageManagement() {
       addToast('No local files to upload', 'error');
       return;
     }
-    const merged = await renameSelected(ids, { keepSelection: true });
-    const ready = merged
-      .filter((r) => r.tmpPath && r.id && !r.processed)
-      .map((r) => r.id);
+    const merged = await renameSelected(ids, { keepSelection: true, silent: true });
+    const readyItems = merged.filter((r) => r.tmpPath && r.id && !r.processed);
+    const ready = readyItems.map((r) => r.id);
+    const processedCount = readyItems.length;
+    const skipCount = merged.length - processedCount;
+    if (processedCount) addToast(`Renamed ${processedCount} file(s)`, 'success');
+    else addToast('No files renamed', 'warning');
+    if (skipCount) addToast(`Skipped ${skipCount} file(s)`, 'warning');
     if (ready.length === 0) {
       addToast('No files ready to upload', 'error');
       return;
     }
-    await commitUploads(ready);
+    const uploaded = await commitUploads(ready, { silent: true });
+    if (uploaded) addToast(`Uploaded ${uploaded} file(s)`, 'success');
+    if (ready.length > uploaded)
+      addToast(`Failed to upload ${ready.length - uploaded} file(s)`, 'error');
+    setReport(`Uploaded ${uploaded || 0} file(s)`);
   }
 
   async function renameSelected(
     selectedIds = uploadSel,
-    { keepSelection = false } = {},
+    { keepSelection = false, silent = false } = {},
   ) {
+    if (selectedIds && selectedIds.preventDefault) selectedIds = uploadSel;
     if (activeOp === 'rename') {
       if (window.confirm('Cancel rename?')) {
         renameAbortRef.current?.abort();
@@ -853,7 +923,7 @@ export default function ImageManagement() {
     }
 
     if (selectedIds.length === 0) {
-      addToast('No files selected', 'error');
+      if (!silent) addToast('No files selected', 'error');
       return;
     }
 
@@ -861,7 +931,7 @@ export default function ImageManagement() {
       (u) => selectedIds.includes(u.id) && !u.processed,
     );
     if (items.length === 0) {
-      addToast('No local files to rename', 'error');
+      if (!silent) addToast('No local files to rename', 'error');
       return;
     }
 
@@ -877,7 +947,7 @@ export default function ImageManagement() {
       for (const u of items) {
         const f = folderFiles[u.index];
         if (!f?.handle) {
-          addToast(`Missing local file: ${u.originalName}`, 'error');
+          if (!silent) addToast(`Missing local file: ${u.originalName}`, 'error');
           merged.push({ index: u.index, reason: 'Missing local file' });
           continue;
         }
@@ -885,7 +955,7 @@ export default function ImageManagement() {
           const file = await f.handle.getFile();
           sendItems.push({ u, file });
         } catch {
-          addToast(`Missing local file: ${u.originalName}`, 'error');
+          if (!silent) addToast(`Missing local file: ${u.originalName}`, 'error');
           merged.push({ index: u.index, reason: 'Missing local file' });
         }
       }
@@ -922,7 +992,7 @@ export default function ImageManagement() {
           merged = merged.concat(list);
         } catch {
           if (list.length === 1) {
-            addToast('Rename failed', 'error');
+            if (!silent) addToast('Rename failed', 'error');
             merged.push({ index: list[0].u.index, reason: 'Rename failed' });
           } else {
             const mid = Math.floor(list.length / 2);
@@ -935,7 +1005,7 @@ export default function ImageManagement() {
       await uploadBatch(sendItems);
 
       if (controller.signal.aborted) {
-        addToast('Rename canceled', 'info');
+        if (!silent) addToast('Rename canceled', 'info');
         return;
       }
 
@@ -974,9 +1044,11 @@ export default function ImageManagement() {
 
       const processedCount = merged.filter((m) => m.newName).length;
       const skipCount = items.length - processedCount;
-      if (processedCount) addToast(`Renamed ${processedCount} file(s)`, 'success');
-      else addToast('No files renamed', 'warning');
-      if (skipCount) addToast(`Skipped ${skipCount} file(s)`, 'warning');
+      if (!silent) {
+        if (processedCount) addToast(`Renamed ${processedCount} file(s)`, 'success');
+        else addToast('No files renamed', 'warning');
+        if (skipCount) addToast(`Skipped ${skipCount} file(s)`, 'warning');
+      }
 
       setUploads(newUploads);
       setIgnored(newIgnored);
@@ -985,9 +1057,10 @@ export default function ImageManagement() {
       persistAll({ uploads: newUploads, ignored: newIgnored });
       setReport(`Renamed ${processedCount} file(s)`);
     } catch {
-      if (controller.signal.aborted) addToast('Rename canceled', 'info');
-      else {
-        addToast('Rename failed', 'error');
+      if (controller.signal.aborted) {
+        if (!silent) addToast('Rename canceled', 'info');
+      } else {
+        if (!silent) addToast('Rename failed', 'error');
         merged = merged.concat(
           items.map((u) => ({ index: u.index, reason: 'Rename failed' })),
         );
@@ -1010,13 +1083,14 @@ export default function ImageManagement() {
     return merged.map((r) => ({ ...r, id: idMap.get(String(r.index)) }));
   }
 
-  async function commitUploads(selectedIds = uploadSel) {
+  async function commitUploads(selectedIds = uploadSel, { silent = false } = {}) {
+    if (selectedIds && selectedIds.preventDefault) selectedIds = uploadSel;
     if (activeOp === 'commit') {
       if (window.confirm('Cancel upload commit?')) {
         commitAbortRef.current?.abort();
         setActiveOp(null);
       }
-      return;
+      return 0;
     }
 
     const tables = getTables();
@@ -1024,7 +1098,7 @@ export default function ImageManagement() {
     const items = allItems.filter(
       (u) => selectedIds.includes(u.id) && u.tmpPath && !u.processed,
     );
-    if (items.length === 0) return;
+    if (items.length === 0) return 0;
 
     const controller = new AbortController();
     commitAbortRef.current = controller;
@@ -1040,7 +1114,7 @@ export default function ImageManagement() {
       });
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
-        addToast(`Uploaded ${data.uploaded || 0} file(s)`, 'success');
+        if (!silent) addToast(`Uploaded ${data.uploaded || 0} file(s)`, 'success');
         const updated = {};
         for (const [key, arr] of Object.entries(tables)) {
           updated[key] = arr.map((u) =>
@@ -1053,13 +1127,16 @@ export default function ImageManagement() {
         setHostIgnored(updated.hostIgnored);
         setUploadSel((prev) => prev.filter((id) => !selectedIds.includes(id)));
         persistAll(updated);
-        setReport(`Uploaded ${data.uploaded || 0} file(s)`);
-      } else {
-        addToast('Upload failed', 'error');
+        if (!silent) setReport(`Uploaded ${data.uploaded || 0} file(s)`);
+        return data.uploaded || 0;
       }
+      if (!silent) addToast('Upload failed', 'error');
+      return 0;
     } catch {
-      if (controller.signal.aborted) addToast('Upload canceled', 'info');
-      else addToast('Upload failed', 'error');
+      if (controller.signal.aborted) {
+        if (!silent) addToast('Upload canceled', 'info');
+      } else if (!silent) addToast('Upload failed', 'error');
+      return 0;
     } finally {
       setActiveOp(null);
     }
