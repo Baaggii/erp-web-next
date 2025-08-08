@@ -472,26 +472,28 @@ export default function ReportBuilder() {
         return { expr, alias: f.alias || undefined };
       });
 
-      const joinDefs = joins.map((j) => {
-        const conds = j.conditions.filter((c) => c.fromField && c.toField);
-        const onInner = conds
-          .map(
-            (c, idx) =>
-              (idx > 0 ? ` ${c.connector} ` : '') +
-              `${aliases[j.targetTable]}.${c.fromField} = ${aliases[j.table]}.${c.toField}`,
-          )
-          .join('');
-        const on = conds.length > 1 ? `(${onInner})` : onInner;
-        const tablePart = j.filters?.length
-          ? `(SELECT * FROM ${j.table} WHERE ${buildTableFilterSql(j.filters)})`
-          : j.table;
-        return {
-          table: tablePart,
-          alias: aliases[j.table],
-          type: j.type,
-          on,
-        };
-      });
+      const joinDefs = joins
+        .map((j) => {
+          const conds = j.conditions.filter((c) => c.fromField && c.toField);
+          const onInner = conds
+            .map(
+              (c, idx) =>
+                (idx > 0 ? ` ${c.connector} ` : '') +
+                `${aliases[j.targetTable]}.${c.fromField} = ${aliases[j.table]}.${c.toField}`,
+            )
+            .join('');
+          const on = conds.length > 1 ? `(${onInner})` : onInner;
+          const tablePart = j.filters?.length
+            ? `(SELECT * FROM ${j.table} WHERE ${buildTableFilterSql(j.filters)})`
+            : j.table;
+          return {
+            table: tablePart,
+            alias: aliases[j.table],
+            type: j.type,
+            on,
+          };
+        })
+        .filter((j) => j.on);
 
       const fromTableSql = fromFilters.length
         ? `(SELECT * FROM ${fromTable} WHERE ${buildTableFilterSql(fromFilters)})`
@@ -989,6 +991,25 @@ export default function ReportBuilder() {
               onChange={(e) => updateField(i, 'calc', e.target.value)}
               style={{ marginLeft: '0.5rem', width: '150px' }}
             />
+            <select
+              value=""
+              onChange={(e) => {
+                const v = e.target.value;
+                if (!v) return;
+                updateField(i, 'calc', (f.calc ? `${f.calc} ` : '') + v);
+                e.target.selectedIndex = 0;
+              }}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              <option value="">alias</option>
+              {fields.slice(0, i).map((pf) =>
+                pf.alias ? (
+                  <option key={pf.alias} value={pf.alias}>
+                    {pf.alias}
+                  </option>
+                ) : null,
+              )}
+            </select>
             {f.aggregate !== 'NONE' && (
               <div style={{ display: 'inline-block', marginLeft: '0.5rem' }}>
                 {(f.conditions || []).map((c, k) => (

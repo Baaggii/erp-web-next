@@ -10,11 +10,33 @@ export default function buildReportSql(definition = {}) {
 
   const parts = [];
 
-  // SELECT clause
+  // SELECT clause with alias expansion
   const selectItems = (definition.select || []).filter((s) => s && s.expr);
+  const aliasMap = {};
+
+  function expandExpr(expr) {
+    let result = expr;
+    let replaced = true;
+    while (replaced) {
+      replaced = false;
+      for (const [al, ex] of Object.entries(aliasMap)) {
+        const re = new RegExp(`\\b${al}\\b`, 'g');
+        if (re.test(result)) {
+          result = result.replace(re, `(${ex})`);
+          replaced = true;
+        }
+      }
+    }
+    return result;
+  }
+
   const selectList =
     selectItems
-      .map((sel) => (sel.alias ? `${sel.expr} AS ${sel.alias}` : sel.expr))
+      .map((sel) => {
+        const expr = expandExpr(sel.expr);
+        if (sel.alias) aliasMap[sel.alias] = expr;
+        return sel.alias ? `${expr} AS ${sel.alias}` : expr;
+      })
       .join(', ') || '*';
   parts.push(`SELECT ${selectList}`);
 
@@ -26,6 +48,7 @@ export default function buildReportSql(definition = {}) {
 
   // JOIN clauses
   (definition.joins || []).forEach(({ table, alias, type = 'JOIN', on }) => {
+    if (!on) return;
     parts.push(`${type} ${table}` + (alias ? ` ${alias}` : '') + ` ON ${on}`);
   });
 
