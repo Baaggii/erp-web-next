@@ -3,6 +3,64 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
 const FOLDER_STATE_KEY = 'imgMgmtFolderState';
+const SESSIONS_KEY = 'imgMgmtSessions';
+const SESSION_PREFIX = 'imgMgmtSession:';
+
+// IndexedDB helpers for storing directory handles
+function getHandleDB() {
+  if (typeof indexedDB === 'undefined') return Promise.reject();
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('imgMgmtHandles', 1);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore('dirs');
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function saveDirHandle(key, handle) {
+  if (!handle) return;
+  try {
+    const db = await getHandleDB();
+    await new Promise((res, rej) => {
+      const tx = db.transaction('dirs', 'readwrite');
+      tx.objectStore('dirs').put(handle, key);
+      tx.oncomplete = res;
+      tx.onerror = () => rej(tx.error);
+    });
+  } catch {
+    // ignore
+  }
+}
+
+async function loadDirHandle(key) {
+  try {
+    const db = await getHandleDB();
+    return await new Promise((res, rej) => {
+      const tx = db.transaction('dirs', 'readonly');
+      const req = tx.objectStore('dirs').get(key);
+      req.onsuccess = () => res(req.result || null);
+      req.onerror = () => rej(req.error);
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function deleteDirHandle(key) {
+  try {
+    const db = await getHandleDB();
+    await new Promise((res, rej) => {
+      const tx = db.transaction('dirs', 'readwrite');
+      tx.objectStore('dirs').delete(key);
+      tx.oncomplete = res;
+      tx.onerror = () => rej(tx.error);
+    });
+  } catch {
+    // ignore
+  }
+}
 
 // IndexedDB helpers for storing directory handles
 function getHandleDB() {
@@ -87,6 +145,8 @@ export default function ImageManagement() {
   const dirHandleRef = useRef();
   const [activeOp, setActiveOp] = useState(null);
   const [report, setReport] = useState('');
+  const [sessionNames, setSessionNames] = useState([]);
+  const [selectedSession, setSelectedSession] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -489,10 +549,6 @@ export default function ImageManagement() {
       setUploadSel([]);
       setUploadPage(1);
       setIgnoredPage(1);
-      setPending([]);
-      setHostIgnored([]);
-      setSelected([]);
-      setHostIgnoredSel([]);
       setReport(
         `Scanned ${names.length} file(s), found ${processed} incomplete name(s), ${skipped.length} unflagged.`,
       );
@@ -543,11 +599,7 @@ export default function ImageManagement() {
           ? data.list
               .slice()
               .sort((a, b) => a.currentName.localeCompare(b.currentName))
-              .map((p) => ({
-                ...p,
-                description: extractDateFromName(p.currentName),
-                processed: false,
-              }))
+              .map((p) => ({ ...p, description: extractDateFromName(p.currentName) }))
           : [];
         const miss = Array.isArray(data.skipped)
           ? data.skipped
@@ -556,7 +608,6 @@ export default function ImageManagement() {
               .map((p) => ({
                 ...p,
                 description: extractDateFromName(p.currentName),
-                processed: false,
               }))
           : [];
         setPending(list);
@@ -775,6 +826,7 @@ export default function ImageManagement() {
     setActiveOp('rename');
 
     let merged = [];
+    let skipped = 0;
 
     try {
       const sendItems = [];
@@ -1024,6 +1076,24 @@ export default function ImageManagement() {
             <button type="button" onClick={saveSession} style={{ marginRight: '0.5rem' }}>
               Save
             </button>
+            <select
+              value={selectedSession}
+              onChange={(e) => setSelectedSession(e.target.value)}
+              style={{ marginRight: '0.5rem' }}
+            >
+              <option value="">Select session</option>
+              {sessionNames.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+            <button type="button" onClick={() => loadSession()} disabled={!selectedSession} style={{ marginRight: '0.5rem' }}>
+              Load
+            </button>
+            <button type="button" onClick={() => deleteSession()} disabled={!selectedSession}>
+              Delete
+            </button>
           </div>
           {uploadSummary && (
             <p style={{ marginBottom: '0.5rem' }}>
@@ -1040,6 +1110,30 @@ export default function ImageManagement() {
                 disabled={!canRenameSelected}
               >
                 Rename Selected
+              </button>
+              <button
+                type="button"
+                onClick={uploadRenamedNames}
+                style={{
+                  marginBottom: '0.5rem',
+                  marginRight: '0.5rem',
+                  float: 'right',
+                }}
+                disabled={!canUploadNames}
+              >
+                Upload Names
+              </button>
+              <button
+                type="button"
+                onClick={renameSelectedNames}
+                style={{
+                  marginBottom: '0.5rem',
+                  marginRight: '0.5rem',
+                  float: 'right',
+                }}
+                disabled={uploadSel.length === 0}
+              >
+                Rename Names
               </button>
               <button
                 type="button"
@@ -1339,8 +1433,7 @@ export default function ImageManagement() {
               <button
                 type="button"
                 onClick={() => {
-                  const remaining = pending.filter((p) => !selected.includes(p.currentName));
-                  setPending(remaining);
+                  setPending((prev) => prev.filter((p) => !selected.includes(p.currentName)));
                   setSelected([]);
                   persistAll({ uploads, ignored, folderName, pending: remaining, hostIgnored });
                 }}
@@ -1405,10 +1498,7 @@ export default function ImageManagement() {
               <button
                 type="button"
                 onClick={() => {
-                  const remaining = hostIgnored.filter(
-                    (p) => !hostIgnoredSel.includes(p.currentName),
-                  );
-                  setHostIgnored(remaining);
+                  setHostIgnored((prev) => prev.filter((p) => !hostIgnoredSel.includes(p.currentName)));
                   setHostIgnoredSel([]);
                   persistAll({ uploads, ignored, folderName, pending, hostIgnored: remaining });
                 }}
