@@ -1,10 +1,8 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useModules } from '../hooks/useModules.js';
 import modulePath from '../utils/modulePath.js';
 
 export default function ReportManagement() {
-  const navigate = useNavigate();
   const modules = useModules();
 
   function openReportBuilder() {
@@ -13,9 +11,8 @@ export default function ReportManagement() {
       map[m.module_key] = m;
     });
     const builder = modules.find((m) => m.module_key === 'report_builder');
-    if (builder) {
-      navigate(modulePath(builder, map));
-    }
+    const path = builder ? modulePath(builder, map) : '/report-management/report-builder';
+    window.open(`#${path}`, '_blank', 'noopener');
   }
 
   return (
