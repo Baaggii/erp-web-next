@@ -267,30 +267,11 @@ export default function ImageManagement() {
     const tables = getTables();
     persistSnapshot({ ...tables, folderName, ...partial });
   }
-
-  async function saveLocal() {
-    try {
-      persistAll();
-      addToast('Local tables saved', 'success');
-    } catch (err) {
-      console.error(err);
-      addToast('Failed to save local tables', 'error');
-    }
-  }
-
+  
   function saveTables() {
     try {
-      const data = buildSession();
-      delete data.folderName;
-      const blob = new Blob([JSON.stringify(data)], {
-        type: 'application/json',
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'image-tables.json';
-      a.click();
-      URL.revokeObjectURL(url);
+      persistAll();
+      addToast('Tables saved locally', 'success');
     } catch (err) {
       console.error(err);
       addToast('Failed to save tables', 'error');
@@ -1135,9 +1116,6 @@ export default function ImageManagement() {
               placeholder="Selected folder"
               style={{ marginRight: '0.5rem' }}
             />
-            <button type="button" onClick={saveLocal} style={{ marginRight: '0.5rem' }}>
-              Save Local
-            </button>
           </div>
           {uploadSummary && (
             <p style={{ marginBottom: '0.5rem' }}>
