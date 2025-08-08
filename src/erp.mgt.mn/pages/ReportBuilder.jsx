@@ -1,0 +1,1547 @@
+import React, { useEffect, useState, useRef } from 'react';
+import buildStoredProcedure from '../utils/buildStoredProcedure.js';
+
+const SESSION_PARAMS = [
+  { name: 'session_branch_id', type: 'INT' },
+  { name: 'session_user_id', type: 'VARCHAR(10)' },
+  { name: 'session_company_id', type: 'INT' },
+];
+
+const PARAM_TYPES = ['INT', 'DATE', 'VARCHAR(50)', 'DECIMAL(10,2)'];
+const AGGREGATES = ['NONE', 'SUM', 'COUNT', 'MAX', 'MIN'];
+const OPERATORS = ['=', '>', '<', '>=', '<=', '<>'];
+const CALC_OPERATORS = ['+', '-', '*', '/'];
+
+export default function ReportBuilder() {
+  const [tables, setTables] = useState([]); // list of table names
+  const [tableFields, setTableFields] = useState({}); // { tableName: [field, ...] }
+
+  const [procName, setProcName] = useState('');
+  const [fromTable, setFromTable] = useState('');
+  const [joins, setJoins] = useState([]); // {table, alias, type, targetTable, conditions:[{fromField,toField,connector}], filters:[]}
+  const [fields, setFields] = useState([]); // {table, field, alias, aggregate, conditions:[], calcParts:[{source,table,field,alias,operator}]}
+  const [groups, setGroups] = useState([]); // {table, field}
+  const [having, setHaving] = useState([]); // {source:'field'|'alias', aggregate, table, field, alias, operator, valueType, value, param, connector}
+  const [params, setParams] = useState([]); // {name,type,source}
+  const [conditions, setConditions] = useState([]); // {table,field,param,connector}
+  const [fromFilters, setFromFilters] = useState([]); // {field,operator,valueType,param,value,connector}
+  const [script, setScript] = useState('');
+  const [error, setError] = useState('');
+
+  const [customParamName, setCustomParamName] = useState('');
+  const [customParamType, setCustomParamType] = useState(PARAM_TYPES[0]);
+  const fileInput = useRef(null);
+
+  // Fetch table list on mount
+  useEffect(() => {
+    async function fetchTables() {
+      try {
+        const res = await fetch('/api/report_builder/tables');
+        const data = await res.json();
+        setTables(data.tables || []);
+        const first = data.tables?.[0];
+        if (first) setFromTable(first);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+    fetchTables();
+  }, []);
+
+  // Ensure fields for a table are loaded
+  async function ensureFields(table) {
+    if (!table || tableFields[table]) return;
+    try {
+      const res = await fetch(
+        `/api/report_builder/fields?table=${encodeURIComponent(table)}`,
+      );
+      const data = await res.json();
+      setTableFields((prev) => ({ ...prev, [table]: data.fields || [] }));
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  // load fields when primary table changes
+  useEffect(() => {
+    ensureFields(fromTable);
+    setFromFilters((prev) =>
+      prev.map((f) => ({
+        ...f,
+        field: (tableFields[fromTable] || [])[0] || f.field,
+      })),
+    );
+  }, [fromTable]);
+
+  const availableTables = [fromTable, ...joins.map((j) => j.table)].filter(Boolean);
+
+  function addJoin() {
+    const remaining = tables.filter((t) => t !== fromTable);
+    const table = remaining[0] || tables[0];
+    if (!table) return;
+    ensureFields(table);
+    const alias = `t${joins.length + 1}`;
+    const targetTable = fromTable;
+    setJoins([
+      ...joins,
+      {
+        table,
+        alias,
+        type: 'JOIN',
+        targetTable,
+        conditions: [
+          {
+            fromField: (tableFields[targetTable] || [])[0] || '',
+            toField: (tableFields[table] || [])[0] || '',
+            connector: 'AND',
+          },
+        ],
+        filters: [],
+      },
+    ]);
+  }
+
+  function updateJoin(index, key, value) {
+    const updated = joins.map((j, i) => {
+      if (i !== index) return j;
+      const next = { ...j, [key]: value };
+      if (key === 'table') {
+        ensureFields(value);
+        next.conditions = next.conditions.map((c) => ({
+          ...c,
+          toField: (tableFields[value] || [])[0] || '',
+        }));
+        next.filters = (next.filters || []).map((f) => ({
+          ...f,
+          field: (tableFields[value] || [])[0] || f.field,
+        }));
+      }
+      if (key === 'targetTable') {
+        ensureFields(value);
+        next.conditions = next.conditions.map((c) => ({
+          ...c,
+          fromField: (tableFields[value] || [])[0] || '',
+        }));
+      }
+      return next;
+    });
+    setJoins(updated);
+  }
+
+  function removeJoin(index) {
+    setJoins(joins.filter((_, i) => i !== index));
+  }
+
+  function addJoinCondition(jIndex) {
+    const j = joins[jIndex];
+    ensureFields(j.targetTable);
+    ensureFields(j.table);
+    const newCond = {
+      fromField: (tableFields[j.targetTable] || [])[0] || '',
+      toField: (tableFields[j.table] || [])[0] || '',
+      connector: 'AND',
+    };
+    const updated = joins.map((jn, i) =>
+      i === jIndex ? { ...jn, conditions: [...jn.conditions, newCond] } : jn,
+    );
+    setJoins(updated);
+  }
+
+  function updateJoinCondition(jIndex, cIndex, key, value) {
+    const updated = joins.map((jn, i) => {
+      if (i !== jIndex) return jn;
+      const conds = jn.conditions.map((c, k) =>
+        k === cIndex ? { ...c, [key]: value } : c,
+      );
+      return { ...jn, conditions: conds };
+    });
+    setJoins(updated);
+  }
+
+  function removeJoinCondition(jIndex, cIndex) {
+    const updated = joins.map((jn, i) =>
+      i === jIndex
+        ? { ...jn, conditions: jn.conditions.filter((_, k) => k !== cIndex) }
+        : jn,
+    );
+    setJoins(updated);
+  }
+
+  function addField() {
+    if (!fromTable) return;
+    const firstField = (tableFields[fromTable] || [])[0] || '';
+    setFields([
+      ...fields,
+      {
+        table: fromTable,
+        field: firstField,
+        alias: firstField,
+        aggregate: 'NONE',
+        calcParts: [],
+      },
+    ]);
+  }
+
+  function updateField(index, key, value) {
+    const updated = fields.map((f, i) => {
+      if (i !== index) return f;
+      const next = { ...f, [key]: value };
+      if (key === 'field' && (!f.alias || f.alias === f.field)) {
+        next.alias = value;
+      }
+      return next;
+    });
+    setFields(updated);
+    if (key === 'table') ensureFields(value);
+  }
+
+  function removeField(index) {
+    setFields(fields.filter((_, i) => i !== index));
+  }
+
+  function addFieldCondition(fIndex) {
+    const table = fromTable;
+    const newCond = {
+      table,
+      field: (tableFields[table] || [])[0] || '',
+      operator: '=',
+      valueType: params.length ? 'param' : 'value',
+      value: '',
+      param: params[0]?.name || '',
+      connector: 'AND',
+    };
+    const updated = fields.map((f, i) =>
+      i === fIndex ? { ...f, conditions: [...(f.conditions || []), newCond] } : f,
+    );
+    setFields(updated);
+  }
+
+  function updateFieldCondition(fIndex, cIndex, key, value) {
+    const updated = fields.map((f, i) => {
+      if (i !== fIndex) return f;
+      const conds = (f.conditions || []).map((c, k) =>
+        k === cIndex ? { ...c, [key]: value } : c,
+      );
+      if (key === 'table') ensureFields(value);
+      return { ...f, conditions: conds };
+    });
+    setFields(updated);
+  }
+
+  function removeFieldCondition(fIndex, cIndex) {
+    const updated = fields.map((f, i) =>
+      i === fIndex
+        ? { ...f, conditions: (f.conditions || []).filter((_, k) => k !== cIndex) }
+        : f,
+    );
+    setFields(updated);
+  }
+
+  function addCalcPart(fIndex) {
+    const parts = fields[fIndex].calcParts || [];
+    const part = {
+      source: 'alias',
+      alias: fields.slice(0, fIndex).find((pf) => pf.alias)?.alias || '',
+      table: fromTable,
+      field: (tableFields[fromTable] || [])[0] || '',
+      operator: parts.length ? '+' : undefined,
+    };
+    const updated = fields.map((f, i) =>
+      i === fIndex ? { ...f, calcParts: [...parts, part] } : f,
+    );
+    setFields(updated);
+  }
+
+  function updateCalcPart(fIndex, pIndex, key, value) {
+    const updated = fields.map((f, i) => {
+      if (i !== fIndex) return f;
+      const parts = (f.calcParts || []).map((p, k) => {
+        if (k !== pIndex) return p;
+        const next = { ...p, [key]: value };
+        if (key === 'source') {
+          if (value === 'alias') {
+            next.alias = fields.slice(0, fIndex).find((pf) => pf.alias)?.alias || '';
+          } else {
+            next.table = fromTable;
+            next.field = (tableFields[fromTable] || [])[0] || '';
+          }
+        }
+        if (key === 'table') ensureFields(value);
+        return next;
+      });
+      return { ...f, calcParts: parts };
+    });
+    setFields(updated);
+  }
+
+  function removeCalcPart(fIndex, pIndex) {
+    const updated = fields.map((f, i) =>
+      i === fIndex
+        ? { ...f, calcParts: (f.calcParts || []).filter((_, k) => k !== pIndex) }
+        : f,
+    );
+    setFields(updated);
+  }
+
+  function addGroup() {
+    if (!fromTable) return;
+    setGroups([
+      ...groups,
+      { table: fromTable, field: (tableFields[fromTable] || [])[0] || '' },
+    ]);
+  }
+
+  function updateGroup(index, key, value) {
+    const updated = groups.map((g, i) => (i === index ? { ...g, [key]: value } : g));
+    setGroups(updated);
+    if (key === 'table') ensureFields(value);
+  }
+
+  function removeGroup(index) {
+    setGroups(groups.filter((_, i) => i !== index));
+  }
+
+  function addHaving() {
+    if (!fromTable) return;
+    setHaving([
+      ...having,
+      {
+        source: 'field',
+        aggregate: 'SUM',
+        table: fromTable,
+        field: (tableFields[fromTable] || [])[0] || '',
+        alias: '',
+        operator: '=',
+        valueType: params.length ? 'param' : 'value',
+        param: params[0]?.name || '',
+        value: '',
+        connector: 'AND',
+      },
+    ]);
+  }
+
+  function updateHaving(index, key, value) {
+    const updated = having.map((h, i) => {
+      if (i !== index) return h;
+      const next = { ...h, [key]: value };
+      if (key === 'table') ensureFields(value);
+      if (key === 'valueType' && value === 'param') {
+        next.param = params[0]?.name || '';
+      }
+      if (key === 'source' && value === 'alias') {
+        next.alias = fields.find((f) => f.alias)?.alias || '';
+      }
+      return next;
+    });
+    setHaving(updated);
+  }
+
+  function removeHaving(index) {
+    setHaving(having.filter((_, i) => i !== index));
+  }
+
+  function toggleSessionParam(param, checked) {
+    setParams((prev) =>
+      checked
+        ? [...prev, { ...param, source: 'session' }]
+        : prev.filter((p) => p.name !== param.name),
+    );
+  }
+
+  function addCustomParam() {
+    if (!customParamName.trim()) return;
+    setParams([
+      ...params,
+      { name: customParamName.trim(), type: customParamType, source: 'custom' },
+    ]);
+    setCustomParamName('');
+  }
+
+  function removeParam(name) {
+    setParams(params.filter((p) => p.name !== name));
+    setConditions(conditions.filter((c) => c.param !== name));
+    setHaving(having.filter((h) => h.param !== name));
+    setFromFilters(fromFilters.filter((f) => f.param !== name));
+    setJoins(
+      joins.map((j) => ({
+        ...j,
+        filters: (j.filters || []).filter((f) => f.param !== name),
+      })),
+    );
+    setFields(
+      fields.map((f) => ({
+        ...f,
+        conditions: (f.conditions || []).filter((c) => c.param !== name),
+      })),
+    );
+  }
+
+  function addCondition() {
+    if (!params.length || !fromTable) return;
+    const table = fromTable;
+    setConditions([
+      ...conditions,
+      {
+        table,
+        field: (tableFields[table] || [])[0] || '',
+        param: params[0].name,
+        connector: 'AND',
+      },
+    ]);
+  }
+
+  function updateCondition(index, key, value) {
+    const updated = conditions.map((c, i) => (i === index ? { ...c, [key]: value } : c));
+    setConditions(updated);
+    if (key === 'table') ensureFields(value);
+  }
+
+  function removeCondition(index) {
+    setConditions(conditions.filter((_, i) => i !== index));
+  }
+
+  function addFromFilter() {
+    if (!fromTable) return;
+    setFromFilters([
+      ...fromFilters,
+      {
+        field: (tableFields[fromTable] || [])[0] || '',
+        operator: '=',
+        valueType: params.length ? 'param' : 'value',
+        value: '',
+        param: params[0]?.name || '',
+        connector: 'AND',
+      },
+    ]);
+  }
+
+  function updateFromFilter(index, key, value) {
+    const updated = fromFilters.map((f, i) =>
+      i === index ? { ...f, [key]: value } : f,
+    );
+    setFromFilters(updated);
+  }
+
+  function removeFromFilter(index) {
+    setFromFilters(fromFilters.filter((_, i) => i !== index));
+  }
+
+  function addJoinFilter(jIndex) {
+    const join = joins[jIndex];
+    ensureFields(join.table);
+    const newFilter = {
+      field: (tableFields[join.table] || [])[0] || '',
+      operator: '=',
+      valueType: params.length ? 'param' : 'value',
+      value: '',
+      param: params[0]?.name || '',
+      connector: 'AND',
+    };
+    const updated = joins.map((j, i) =>
+      i === jIndex ? { ...j, filters: [...(j.filters || []), newFilter] } : j,
+    );
+    setJoins(updated);
+  }
+
+  function updateJoinFilter(jIndex, fIndex, key, value) {
+    const updated = joins.map((j, i) => {
+      if (i !== jIndex) return j;
+      const flts = (j.filters || []).map((f, k) =>
+        k === fIndex ? { ...f, [key]: value } : f,
+      );
+      return { ...j, filters: flts };
+    });
+    setJoins(updated);
+  }
+
+  function removeJoinFilter(jIndex, fIndex) {
+    const updated = joins.map((j, i) =>
+      i === jIndex
+        ? { ...j, filters: (j.filters || []).filter((_, k) => k !== fIndex) }
+        : j,
+    );
+    setJoins(updated);
+  }
+
+  function buildAliases() {
+    const map = {};
+    if (fromTable) map[fromTable] = 't0';
+    joins.forEach((j, i) => {
+      map[j.table] = j.alias || `t${i + 1}`;
+    });
+    return map;
+  }
+
+  function handleGenerate() {
+    try {
+      const aliases = buildAliases();
+
+      function buildTableFilterSql(filters) {
+        return filters
+          .map((f, idx) => {
+            const right = f.valueType === 'param' ? `:${f.param}` : f.value;
+            const connector = idx > 0 ? ` ${f.connector} ` : '';
+            return `${connector}(${f.field} ${f.operator} ${right})`;
+          })
+          .join('');
+      }
+
+      const fieldExprMap = {};
+      const select = fields.map((f, idx) => {
+        let expr = '';
+        const base = `${aliases[f.table]}.${f.field}`;
+        if (f.calcParts?.length) {
+          expr = f.calcParts
+            .map((p, k) => {
+              const seg =
+                p.source === 'alias'
+                  ? p.alias
+                  : `${aliases[p.table]}.${p.field}`;
+              return k > 0 ? `${p.operator} ${seg}` : seg;
+            })
+            .join(' ');
+          Object.entries(fieldExprMap).forEach(([al, ex]) => {
+            const re = new RegExp(`\\b${al}\\b`, 'g');
+            expr = expr.replace(re, `(${ex})`);
+          });
+        } else if (f.aggregate && f.aggregate !== 'NONE') {
+          if (f.conditions?.length) {
+            const cond = f.conditions
+              .map((c, idx) => {
+                const connector = idx > 0 ? ` ${c.connector} ` : '';
+                const right =
+                  c.valueType === 'param' ? `:${c.param}` : c.value;
+                return (
+                  connector +
+                  `(${aliases[c.table]}.${c.field} ${c.operator} ${right})`
+                );
+              })
+              .join('');
+            expr = `${f.aggregate}(CASE WHEN ${cond} THEN IFNULL(${base}, 0) ELSE 0 END)`;
+          } else {
+            expr = `${f.aggregate}(IFNULL(${base}, 0))`;
+          }
+        } else {
+          expr = base;
+        }
+        if (f.alias) fieldExprMap[f.alias] = expr;
+        return { expr, alias: f.alias || undefined };
+      });
+
+      const joinDefs = joins
+        .map((j) => {
+          const conds = j.conditions.filter((c) => c.fromField && c.toField);
+          const onInner = conds
+            .map(
+              (c, idx) =>
+                (idx > 0 ? ` ${c.connector} ` : '') +
+                `${aliases[j.targetTable]}.${c.fromField} = ${aliases[j.table]}.${c.toField}`,
+            )
+            .join('');
+          const on = conds.length > 1 ? `(${onInner})` : onInner;
+          const tablePart = j.filters?.length
+            ? `(SELECT * FROM ${j.table} WHERE ${buildTableFilterSql(j.filters)})`
+            : j.table;
+          return {
+            table: tablePart,
+            alias: aliases[j.table],
+            type: j.type,
+            on,
+          };
+        })
+        .filter((j) => j.on);
+
+      const fromTableSql = fromFilters.length
+        ? `(SELECT * FROM ${fromTable} WHERE ${buildTableFilterSql(fromFilters)})`
+        : fromTable;
+
+      const where = conditions
+        .filter((c) => c.table && c.field && c.param)
+        .map((c) => ({
+          expr: `${aliases[c.table]}.${c.field} = :${c.param}`,
+          connector: c.connector,
+        }));
+
+      const groupBy = groups
+        .filter((g) => g.table && g.field)
+        .map((g) => `${aliases[g.table]}.${g.field}`);
+
+      const havingDefs = having
+        .filter((h) =>
+          h.source === 'alias' ? h.alias : h.table && h.field,
+        )
+        .map((h) => {
+          const left =
+            h.source === 'alias'
+              ? h.alias
+              : `${h.aggregate}(${aliases[h.table]}.${h.field})`;
+          const right = h.valueType === 'param' ? `:${h.param}` : h.value;
+          return { expr: `${left} ${h.operator} ${right}`, connector: h.connector };
+        });
+
+      const report = {
+        from: { table: fromTableSql, alias: aliases[fromTable] },
+        joins: joinDefs,
+        select,
+        where,
+        groupBy,
+        having: havingDefs,
+      };
+
+      const built = buildStoredProcedure({
+        name: procName || 'report',
+        params: params.map(({ name, type }) => ({ name, type })),
+        report,
+      });
+
+      setScript(built);
+      setError('');
+    } catch (err) {
+      setScript('');
+      setError(err.message);
+    }
+  }
+
+  async function handleSave() {
+    if (!script) return;
+    try {
+      const name = `report_${procName || 'report'}`;
+      const res = await fetch('/api/report_builder/procedures', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, sql: script }),
+      });
+      if (!res.ok) throw new Error('Save failed');
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message: 'Stored procedure saved', type: 'success' },
+        }),
+      );
+    } catch (err) {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message: err.message || 'Save failed', type: 'error' },
+        }),
+      );
+    }
+  }
+
+  function handleSaveConfig() {
+    const data = {
+      procName,
+      fromTable,
+      joins,
+      fields,
+      groups,
+      having,
+      params,
+      conditions,
+      fromFilters,
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'report_builder.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function handleLoadClick() {
+    fileInput.current?.click();
+  }
+
+  function handleFileChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    file.text().then((text) => {
+      try {
+        const data = JSON.parse(text);
+        setProcName(data.procName || '');
+        setFromTable(data.fromTable || '');
+        setFromFilters(
+          (data.fromFilters || []).map((f) => ({
+            connector: f.connector || 'AND',
+            ...f,
+          })),
+        );
+        setJoins(
+          (data.joins || []).map((j) => ({
+            ...j,
+            conditions: (j.conditions || []).map((c) => ({
+              connector: c.connector || 'AND',
+              ...c,
+            })),
+            filters: (j.filters || []).map((f) => ({
+              connector: f.connector || 'AND',
+              ...f,
+            })),
+            })),
+        );
+        setFields(
+          (data.fields || []).map((f) => ({
+            ...f,
+            calcParts: (f.calcParts || []).map((p, idx) => ({
+              operator: idx > 0 ? p.operator || '+' : undefined,
+              source: p.source || 'field',
+              ...p,
+            })),
+            conditions: (f.conditions || []).map((c) => ({
+              connector: c.connector || 'AND',
+              ...c,
+            })),
+          })),
+        );
+        setGroups(data.groups || []);
+        setHaving(
+          (data.having || []).map((h) => ({
+            connector: h.connector || 'AND',
+            valueType: h.valueType || (h.param ? 'param' : 'value'),
+            source: h.source || 'field',
+            ...h,
+          })),
+        );
+        setParams(data.params || []);
+        setConditions(
+          (data.conditions || []).map((c) => ({
+            connector: c.connector || 'AND',
+            ...c,
+          })),
+        );
+        ensureFields(data.fromTable);
+        (data.joins || []).forEach((j) => {
+          ensureFields(j.table);
+          ensureFields(j.targetTable);
+        });
+      } catch (err) {
+        console.error(err);
+      }
+    });
+  }
+
+  if (!tables.length) {
+    return <div>Loading...</div>;
+  }
+
+  return (
+    <div>
+      <h2>Report Builder</h2>
+
+      <section>
+        <h3>Primary Table</h3>
+        <select value={fromTable} onChange={(e) => setFromTable(e.target.value)}>
+          {tables.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+      </section>
+
+      <section>
+        <h3>Primary Table Filters</h3>
+        {fromFilters.map((f, i) => (
+          <div key={i} style={{ marginBottom: '0.5rem' }}>
+            {i > 0 && (
+              <select
+                value={f.connector}
+                onChange={(e) => updateFromFilter(i, 'connector', e.target.value)}
+                style={{ marginRight: '0.5rem' }}
+              >
+                <option value="AND">AND</option>
+                <option value="OR">OR</option>
+              </select>
+            )}
+            <select
+              value={f.field}
+              onChange={(e) => updateFromFilter(i, 'field', e.target.value)}
+            >
+              {(tableFields[fromTable] || []).map((col) => (
+                <option key={col} value={col}>
+                  {col}
+                </option>
+              ))}
+            </select>
+            <select
+              value={f.operator}
+              onChange={(e) => updateFromFilter(i, 'operator', e.target.value)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              {OPERATORS.map((op) => (
+                <option key={op} value={op}>
+                  {op}
+                </option>
+              ))}
+            </select>
+            <select
+              value={f.valueType}
+              onChange={(e) => updateFromFilter(i, 'valueType', e.target.value)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              <option value="param">Param</option>
+              <option value="value">Value</option>
+            </select>
+            {f.valueType === 'param' ? (
+              <select
+                value={f.param}
+                onChange={(e) => updateFromFilter(i, 'param', e.target.value)}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                {params.map((p) => (
+                  <option key={p.name} value={p.name}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                value={f.value}
+                onChange={(e) => updateFromFilter(i, 'value', e.target.value)}
+                style={{ marginLeft: '0.5rem' }}
+              />
+            )}
+            <button
+              onClick={() => removeFromFilter(i)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        <button onClick={addFromFilter}>Add Filter</button>
+      </section>
+
+      <section>
+        <h3>Joins</h3>
+        {joins.map((j, i) => {
+          const targets = [fromTable, ...joins.slice(0, i).map((jn) => jn.table)];
+          return (
+            <div key={i} style={{ marginBottom: '0.5rem' }}>
+              <select
+                value={j.type}
+                onChange={(e) => updateJoin(i, 'type', e.target.value)}
+              >
+                {[
+                  'JOIN',
+                  'INNER JOIN',
+                  'LEFT JOIN',
+                  'RIGHT JOIN',
+                  'FULL JOIN',
+                  'FULL OUTER JOIN',
+                  'CROSS JOIN',
+                ].map((jt) => (
+                  <option key={jt} value={jt}>
+                    {jt}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={j.table}
+                onChange={(e) => updateJoin(i, 'table', e.target.value)}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                {tables.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+              <span> with </span>
+              <select
+                value={j.targetTable}
+                onChange={(e) => updateJoin(i, 'targetTable', e.target.value)}
+              >
+                {targets.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+              {j.conditions.map((c, k) => (
+                <div
+                  key={k}
+                  style={{ display: 'inline-block', marginLeft: '0.5rem' }}
+                >
+                  {k > 0 && (
+                    <select
+                      value={c.connector}
+                      onChange={(e) =>
+                        updateJoinCondition(i, k, 'connector', e.target.value)
+                      }
+                      style={{ marginRight: '0.5rem' }}
+                    >
+                      <option value="AND">AND</option>
+                      <option value="OR">OR</option>
+                    </select>
+                  )}
+                  <select
+                    value={c.fromField}
+                    onChange={(e) =>
+                      updateJoinCondition(i, k, 'fromField', e.target.value)
+                    }
+                  >
+                    {(tableFields[j.targetTable] || []).map((f) => (
+                      <option key={f} value={f}>
+                        {f}
+                      </option>
+                    ))}
+                  </select>
+                  <span> = </span>
+                  <select
+                    value={c.toField}
+                    onChange={(e) =>
+                      updateJoinCondition(i, k, 'toField', e.target.value)
+                    }
+                  >
+                    {(tableFields[j.table] || []).map((f) => (
+                      <option key={f} value={f}>
+                        {f}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => removeJoinCondition(i, k)}
+                    style={{ marginLeft: '0.5rem' }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={() => addJoinCondition(i)}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                Add Condition
+              </button>
+              {j.filters && j.filters.length > 0 && <span> | </span>}
+              {j.filters?.map((f, k) => (
+                <div key={k} style={{ marginTop: '0.25rem' }}>
+                  {k > 0 && (
+                    <select
+                      value={f.connector}
+                      onChange={(e) =>
+                        updateJoinFilter(i, k, 'connector', e.target.value)
+                      }
+                      style={{ marginRight: '0.5rem' }}
+                    >
+                      <option value="AND">AND</option>
+                      <option value="OR">OR</option>
+                    </select>
+                  )}
+                  <select
+                    value={f.field}
+                    onChange={(e) => updateJoinFilter(i, k, 'field', e.target.value)}
+                  >
+                    {(tableFields[j.table] || []).map((col) => (
+                      <option key={col} value={col}>
+                        {col}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={f.operator}
+                    onChange={(e) => updateJoinFilter(i, k, 'operator', e.target.value)}
+                    style={{ marginLeft: '0.5rem' }}
+                  >
+                    {OPERATORS.map((op) => (
+                      <option key={op} value={op}>
+                        {op}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={f.valueType}
+                    onChange={(e) => updateJoinFilter(i, k, 'valueType', e.target.value)}
+                    style={{ marginLeft: '0.5rem' }}
+                  >
+                    <option value="param">Param</option>
+                    <option value="value">Value</option>
+                  </select>
+                  {f.valueType === 'param' ? (
+                    <select
+                      value={f.param}
+                      onChange={(e) => updateJoinFilter(i, k, 'param', e.target.value)}
+                      style={{ marginLeft: '0.5rem' }}
+                    >
+                      {params.map((p) => (
+                        <option key={p.name} value={p.name}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      value={f.value}
+                      onChange={(e) => updateJoinFilter(i, k, 'value', e.target.value)}
+                      style={{ marginLeft: '0.5rem' }}
+                    />
+                  )}
+                  <button
+                    onClick={() => removeJoinFilter(i, k)}
+                    style={{ marginLeft: '0.5rem' }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={() => addJoinFilter(i)}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                Add Filter
+              </button>
+              <button
+                onClick={() => removeJoin(i)}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                ✕
+              </button>
+            </div>
+          );
+        })}
+        <button onClick={addJoin}>Add Join</button>
+      </section>
+
+      <section>
+        <h3>Select Fields</h3>
+        {fields.map((f, i) => (
+          <div key={i} style={{ marginBottom: '0.5rem' }}>
+            <select
+              value={f.table}
+              onChange={(e) => updateField(i, 'table', e.target.value)}
+            >
+              {availableTables.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+            <select
+              value={f.field}
+              onChange={(e) => updateField(i, 'field', e.target.value)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              {(tableFields[f.table] || []).map((col) => (
+                <option key={col} value={col}>
+                  {col}
+                </option>
+              ))}
+            </select>
+            <select
+              value={f.aggregate}
+              onChange={(e) => updateField(i, 'aggregate', e.target.value)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              {AGGREGATES.map((ag) => (
+                <option key={ag} value={ag}>
+                  {ag}
+                </option>
+              ))}
+            </select>
+            <input
+              placeholder="alias"
+              value={f.alias}
+              onChange={(e) => updateField(i, 'alias', e.target.value)}
+              style={{ marginLeft: '0.5rem' }}
+            />
+            {(f.calcParts || []).map((p, k) => (
+              <span key={k} style={{ marginLeft: '0.5rem' }}>
+                {k > 0 && (
+                  <select
+                    value={p.operator}
+                    onChange={(e) =>
+                      updateCalcPart(i, k, 'operator', e.target.value)
+                    }
+                    style={{ marginRight: '0.5rem' }}
+                  >
+                    {CALC_OPERATORS.map((op) => (
+                      <option key={op} value={op}>
+                        {op}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <select
+                  value={p.source}
+                  onChange={(e) =>
+                    updateCalcPart(i, k, 'source', e.target.value)
+                  }
+                >
+                  <option value="field">Field</option>
+                  <option value="alias">Alias</option>
+                </select>
+                {p.source === 'alias' ? (
+                  <select
+                    value={p.alias}
+                    onChange={(e) =>
+                      updateCalcPart(i, k, 'alias', e.target.value)
+                    }
+                    style={{ marginLeft: '0.5rem' }}
+                  >
+                    {fields.slice(0, i).map((pf) =>
+                      pf.alias ? (
+                        <option key={pf.alias} value={pf.alias}>
+                          {pf.alias}
+                        </option>
+                      ) : null,
+                    )}
+                  </select>
+                ) : (
+                  <>
+                    <select
+                      value={p.table}
+                      onChange={(e) =>
+                        updateCalcPart(i, k, 'table', e.target.value)
+                      }
+                      style={{ marginLeft: '0.5rem' }}
+                    >
+                      {availableTables.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={p.field}
+                      onChange={(e) =>
+                        updateCalcPart(i, k, 'field', e.target.value)
+                      }
+                      style={{ marginLeft: '0.5rem' }}
+                    >
+                      {(tableFields[p.table] || []).map((col) => (
+                        <option key={col} value={col}>
+                          {col}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                )}
+                <button
+                  onClick={() => removeCalcPart(i, k)}
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+            <button
+              onClick={() => addCalcPart(i)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              Add Part
+            </button>
+            {f.aggregate !== 'NONE' && (
+              <div style={{ display: 'inline-block', marginLeft: '0.5rem' }}>
+                {(f.conditions || []).map((c, k) => (
+                  <div key={k} style={{ marginTop: '0.25rem' }}>
+                    {k > 0 && (
+                      <select
+                        value={c.connector}
+                        onChange={(e) =>
+                          updateFieldCondition(i, k, 'connector', e.target.value)
+                        }
+                        style={{ marginRight: '0.5rem' }}
+                      >
+                        <option value="AND">AND</option>
+                        <option value="OR">OR</option>
+                      </select>
+                    )}
+                    <select
+                      value={c.table}
+                      onChange={(e) =>
+                        updateFieldCondition(i, k, 'table', e.target.value)
+                      }
+                    >
+                      {availableTables.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={c.field}
+                      onChange={(e) =>
+                        updateFieldCondition(i, k, 'field', e.target.value)
+                      }
+                      style={{ marginLeft: '0.5rem' }}
+                    >
+                      {(tableFields[c.table] || []).map((col) => (
+                        <option key={col} value={col}>
+                          {col}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={c.operator}
+                      onChange={(e) =>
+                        updateFieldCondition(i, k, 'operator', e.target.value)
+                      }
+                      style={{ marginLeft: '0.5rem' }}
+                    >
+                      {OPERATORS.map((op) => (
+                        <option key={op} value={op}>
+                          {op}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={c.valueType}
+                      onChange={(e) =>
+                        updateFieldCondition(i, k, 'valueType', e.target.value)
+                      }
+                      style={{ marginLeft: '0.5rem' }}
+                    >
+                      <option value="param">Param</option>
+                      <option value="value">Value</option>
+                    </select>
+                    {c.valueType === 'param' ? (
+                      <select
+                        value={c.param}
+                        onChange={(e) =>
+                          updateFieldCondition(i, k, 'param', e.target.value)
+                        }
+                        style={{ marginLeft: '0.5rem' }}
+                      >
+                        {params.map((p) => (
+                          <option key={p.name} value={p.name}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        value={c.value}
+                        onChange={(e) =>
+                          updateFieldCondition(i, k, 'value', e.target.value)
+                        }
+                        style={{ marginLeft: '0.5rem' }}
+                      />
+                    )}
+                    <button
+                      onClick={() => removeFieldCondition(i, k)}
+                      style={{ marginLeft: '0.5rem' }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+                <button onClick={() => addFieldCondition(i)}>Add Condition</button>
+              </div>
+            )}
+            <button
+              onClick={() => removeField(i)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        <button onClick={addField}>Add Field</button>
+      </section>
+
+      <section>
+        <h3>Group By</h3>
+        {groups.map((g, i) => (
+          <div key={i} style={{ marginBottom: '0.5rem' }}>
+            <select
+              value={g.table}
+              onChange={(e) => updateGroup(i, 'table', e.target.value)}
+            >
+              {availableTables.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+            <select
+              value={g.field}
+              onChange={(e) => updateGroup(i, 'field', e.target.value)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              {(tableFields[g.table] || []).map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => removeGroup(i)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        <button onClick={addGroup}>Add Group</button>
+      </section>
+
+      <section>
+        <h3>Having</h3>
+        {having.map((h, i) => (
+          <div key={i} style={{ marginBottom: '0.5rem' }}>
+            {i > 0 && (
+              <select
+                value={h.connector}
+                onChange={(e) => updateHaving(i, 'connector', e.target.value)}
+                style={{ marginRight: '0.5rem' }}
+              >
+                <option value="AND">AND</option>
+                <option value="OR">OR</option>
+              </select>
+            )}
+            <select
+              value={h.source}
+              onChange={(e) => updateHaving(i, 'source', e.target.value)}
+            >
+              <option value="field">Field</option>
+              <option value="alias">Alias</option>
+            </select>
+            {h.source === 'field' ? (
+              <>
+                <select
+                  value={h.aggregate}
+                  onChange={(e) => updateHaving(i, 'aggregate', e.target.value)}
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  {AGGREGATES.filter((a) => a !== 'NONE').map((ag) => (
+                    <option key={ag} value={ag}>
+                      {ag}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={h.table}
+                  onChange={(e) => updateHaving(i, 'table', e.target.value)}
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  {availableTables.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={h.field}
+                  onChange={(e) => updateHaving(i, 'field', e.target.value)}
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  {(tableFields[h.table] || []).map((f) => (
+                    <option key={f} value={f}>
+                      {f}
+                    </option>
+                  ))}
+                </select>
+              </>
+            ) : (
+              <select
+                value={h.alias}
+                onChange={(e) => updateHaving(i, 'alias', e.target.value)}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                {fields
+                  .filter((f) => f.alias)
+                  .map((f) => (
+                    <option key={f.alias} value={f.alias}>
+                      {f.alias}
+                    </option>
+                  ))}
+              </select>
+            )}
+            <select
+              value={h.operator}
+              onChange={(e) => updateHaving(i, 'operator', e.target.value)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              {OPERATORS.map((op) => (
+                <option key={op} value={op}>
+                  {op}
+                </option>
+              ))}
+            </select>
+            <select
+              value={h.valueType}
+              onChange={(e) => updateHaving(i, 'valueType', e.target.value)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              <option value="param">Param</option>
+              <option value="value">Value</option>
+            </select>
+            {h.valueType === 'param' ? (
+              <select
+                value={h.param}
+                onChange={(e) => updateHaving(i, 'param', e.target.value)}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                {params.map((p) => (
+                  <option key={p.name} value={p.name}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                value={h.value}
+                onChange={(e) => updateHaving(i, 'value', e.target.value)}
+                style={{ marginLeft: '0.5rem' }}
+              />
+            )}
+            <button
+              onClick={() => removeHaving(i)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        <button onClick={addHaving}>Add Having</button>
+      </section>
+
+      <section>
+        <h3>Parameters</h3>
+        <div>
+          {SESSION_PARAMS.map((p) => (
+            <label key={p.name} style={{ marginRight: '1rem' }}>
+              <input
+                type="checkbox"
+                checked={params.some((x) => x.name === p.name)}
+                onChange={(e) => toggleSessionParam(p, e.target.checked)}
+              />
+              {p.name}
+            </label>
+          ))}
+        </div>
+        <div style={{ marginTop: '0.5rem' }}>
+          <input
+            placeholder="name"
+            value={customParamName}
+            onChange={(e) => setCustomParamName(e.target.value)}
+          />
+          <select
+            value={customParamType}
+            onChange={(e) => setCustomParamType(e.target.value)}
+            style={{ marginLeft: '0.5rem' }}
+          >
+            {PARAM_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+          <button onClick={addCustomParam} style={{ marginLeft: '0.5rem' }}>
+            Add
+          </button>
+        </div>
+        <ul>
+          {params
+            .filter((p) => p.source === 'custom')
+            .map((p) => (
+              <li key={p.name}>
+                {p.name} {p.type}{' '}
+                <button onClick={() => removeParam(p.name)}>✕</button>
+              </li>
+            ))}
+        </ul>
+      </section>
+
+      <section>
+        <h3>Conditions</h3>
+        {conditions.map((c, i) => (
+          <div key={i} style={{ marginBottom: '0.5rem' }}>
+            {i > 0 && (
+              <select
+                value={c.connector}
+                onChange={(e) => updateCondition(i, 'connector', e.target.value)}
+                style={{ marginRight: '0.5rem' }}
+              >
+                <option value="AND">AND</option>
+                <option value="OR">OR</option>
+              </select>
+            )}
+            <select
+              value={c.table}
+              onChange={(e) => updateCondition(i, 'table', e.target.value)}
+            >
+              {availableTables.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+            <select
+              value={c.field}
+              onChange={(e) => updateCondition(i, 'field', e.target.value)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              {(tableFields[c.table] || []).map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+            <span> = </span>
+            <select
+              value={c.param}
+              onChange={(e) => updateCondition(i, 'param', e.target.value)}
+            >
+              {params.map((p) => (
+                <option key={p.name} value={p.name}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => removeCondition(i)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        <button onClick={addCondition} disabled={!params.length}>
+          Add Condition
+        </button>
+      </section>
+
+      <section style={{ marginTop: '1rem' }}>
+        <label>
+          Procedure Name:
+          <div>
+            report_
+            <input
+              value={procName}
+              onChange={(e) => setProcName(e.target.value)}
+              style={{ width: '50%' }}
+            />
+          </div>
+        </label>
+      </section>
+
+      <div style={{ marginTop: '1rem' }}>
+        <button onClick={handleGenerate}>Generate Procedure</button>
+        <button onClick={handleSave} style={{ marginLeft: '0.5rem' }}>
+          Save Procedure
+        </button>
+        <button onClick={handleSaveConfig} style={{ marginLeft: '0.5rem' }}>
+          Save Config
+        </button>
+        <button onClick={handleLoadClick} style={{ marginLeft: '0.5rem' }}>
+          Load Config
+        </button>
+        <input
+          type="file"
+          accept="application/json"
+          ref={fileInput}
+          style={{ display: 'none' }}
+          onChange={handleFileChange}
+        />
+      </div>
+      {error && <p style={{ color: 'red' }}>{error}</p>}
+      {script && (
+        <pre style={{ whiteSpace: 'pre-wrap', marginTop: '1rem' }}>{script}</pre>
+      )}
+    </div>
+  );
+}
+
