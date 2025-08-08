@@ -1,14 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import buildStoredProcedure from '../utils/buildStoredProcedure.js';
-
-// Available tables and their fields. In a real application these would be
-// fetched from the backend but for now we provide a small static list to keep
-// the UI simple and script-free.
-const TABLES = {
-  orders: ['id', 'customer_id', 'date', 'branch_id'],
-  customers: ['id', 'name'],
-  order_items: ['id', 'order_id', 'price'],
-};
 
 const SESSION_PARAMS = [
   { name: 'session_branch_id', type: 'INT' },
@@ -17,13 +8,18 @@ const SESSION_PARAMS = [
 ];
 
 const PARAM_TYPES = ['INT', 'DATE', 'VARCHAR(50)', 'DECIMAL(10,2)'];
+const AGGREGATES = ['NONE', 'SUM', 'COUNT', 'MAX', 'MIN'];
 
 export default function ReportBuilder() {
-  const tableNames = Object.keys(TABLES);
+  const [tables, setTables] = useState([]); // list of table names
+  const [tableFields, setTableFields] = useState({}); // { tableName: [field, ...] }
+
   const [procName, setProcName] = useState('');
-  const [fromTable, setFromTable] = useState(tableNames[0]);
-  const [joins, setJoins] = useState([]); // {table,type,primaryField,joinField}
-  const [fields, setFields] = useState([]); // {table,field,alias,aggregate}
+  const [fromTable, setFromTable] = useState('');
+  const [joins, setJoins] = useState([]); // {table, alias, type, primaryField, joinField}
+  const [fields, setFields] = useState([]); // {table, field, alias, aggregate}
+  const [groups, setGroups] = useState([]); // {table, field}
+  const [having, setHaving] = useState([]); // {aggregate, table, field, param}
   const [params, setParams] = useState([]); // {name,type,source}
   const [conditions, setConditions] = useState([]); // {table,field,param}
   const [script, setScript] = useState('');
@@ -32,26 +28,67 @@ export default function ReportBuilder() {
   const [customParamName, setCustomParamName] = useState('');
   const [customParamType, setCustomParamType] = useState(PARAM_TYPES[0]);
 
-  const availableTables = [fromTable, ...joins.map((j) => j.table)];
+  // Fetch table list on mount
+  useEffect(() => {
+    async function fetchTables() {
+      try {
+        const res = await fetch('/api/report_builder/tables');
+        const data = await res.json();
+        setTables(data.tables || []);
+        const first = data.tables?.[0];
+        if (first) setFromTable(first);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+    fetchTables();
+  }, []);
+
+  // Ensure fields for a table are loaded
+  async function ensureFields(table) {
+    if (!table || tableFields[table]) return;
+    try {
+      const res = await fetch(
+        `/api/report_builder/fields?table=${encodeURIComponent(table)}`,
+      );
+      const data = await res.json();
+      setTableFields((prev) => ({ ...prev, [table]: data.fields || [] }));
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  // load fields when primary table changes
+  useEffect(() => {
+    ensureFields(fromTable);
+  }, [fromTable]);
+
+  const availableTables = [fromTable, ...joins.map((j) => j.table)].filter(Boolean);
 
   function addJoin() {
-    const remaining = tableNames.filter(
-      (t) => t !== fromTable && !joins.some((j) => j.table === t)
+    const remaining = tables.filter(
+      (t) => t !== fromTable && !joins.some((j) => j.table === t),
     );
-    const table = remaining[0] || tableNames[0];
+    const table = remaining[0] || tables[0];
+    if (!table) return;
+    ensureFields(table);
+    const alias = `t${joins.length + 1}`;
     setJoins([
       ...joins,
       {
         table,
+        alias,
         type: 'INNER',
-        primaryField: TABLES[fromTable][0],
-        joinField: TABLES[table][0],
+        primaryField: (tableFields[fromTable] || [])[0] || '',
+        joinField: (tableFields[table] || [])[0] || '',
       },
     ]);
   }
 
   function updateJoin(index, key, value) {
-    setJoins(joins.map((j, i) => (i === index ? { ...j, [key]: value } : j)));
+    const updated = joins.map((j, i) => (i === index ? { ...j, [key]: value } : j));
+    setJoins(updated);
+    if (key === 'table') ensureFields(value);
   }
 
   function removeJoin(index) {
@@ -59,11 +96,12 @@ export default function ReportBuilder() {
   }
 
   function addField() {
+    if (!fromTable) return;
     setFields([
       ...fields,
       {
         table: fromTable,
-        field: TABLES[fromTable][0],
+        field: (tableFields[fromTable] || [])[0] || '',
         alias: '',
         aggregate: 'NONE',
       },
@@ -71,18 +109,61 @@ export default function ReportBuilder() {
   }
 
   function updateField(index, key, value) {
-    setFields(fields.map((f, i) => (i === index ? { ...f, [key]: value } : f)));
+    const updated = fields.map((f, i) => (i === index ? { ...f, [key]: value } : f));
+    setFields(updated);
+    if (key === 'table') ensureFields(value);
   }
 
   function removeField(index) {
     setFields(fields.filter((_, i) => i !== index));
   }
 
+  function addGroup() {
+    if (!fromTable) return;
+    setGroups([
+      ...groups,
+      { table: fromTable, field: (tableFields[fromTable] || [])[0] || '' },
+    ]);
+  }
+
+  function updateGroup(index, key, value) {
+    const updated = groups.map((g, i) => (i === index ? { ...g, [key]: value } : g));
+    setGroups(updated);
+    if (key === 'table') ensureFields(value);
+  }
+
+  function removeGroup(index) {
+    setGroups(groups.filter((_, i) => i !== index));
+  }
+
+  function addHaving() {
+    if (!params.length || !fromTable) return;
+    setHaving([
+      ...having,
+      {
+        aggregate: 'SUM',
+        table: fromTable,
+        field: (tableFields[fromTable] || [])[0] || '',
+        param: params[0].name,
+      },
+    ]);
+  }
+
+  function updateHaving(index, key, value) {
+    const updated = having.map((h, i) => (i === index ? { ...h, [key]: value } : h));
+    setHaving(updated);
+    if (key === 'table') ensureFields(value);
+  }
+
+  function removeHaving(index) {
+    setHaving(having.filter((_, i) => i !== index));
+  }
+
   function toggleSessionParam(param, checked) {
     setParams((prev) =>
       checked
         ? [...prev, { ...param, source: 'session' }]
-        : prev.filter((p) => p.name !== param.name)
+        : prev.filter((p) => p.name !== param.name),
     );
   }
 
@@ -98,25 +179,26 @@ export default function ReportBuilder() {
   function removeParam(name) {
     setParams(params.filter((p) => p.name !== name));
     setConditions(conditions.filter((c) => c.param !== name));
+    setHaving(having.filter((h) => h.param !== name));
   }
 
   function addCondition() {
-    if (!params.length) return;
+    if (!params.length || !fromTable) return;
     const table = fromTable;
     setConditions([
       ...conditions,
       {
         table,
-        field: TABLES[table][0],
+        field: (tableFields[table] || [])[0] || '',
         param: params[0].name,
       },
     ]);
   }
 
   function updateCondition(index, key, value) {
-    setConditions(
-      conditions.map((c, i) => (i === index ? { ...c, [key]: value } : c))
-    );
+    const updated = conditions.map((c, i) => (i === index ? { ...c, [key]: value } : c));
+    setConditions(updated);
+    if (key === 'table') ensureFields(value);
   }
 
   function removeCondition(index) {
@@ -124,9 +206,10 @@ export default function ReportBuilder() {
   }
 
   function buildAliases() {
-    const map = { [fromTable]: 't0' };
+    const map = {};
+    if (fromTable) map[fromTable] = 't0';
     joins.forEach((j, i) => {
-      map[j.table] = `t${i + 1}`;
+      map[j.table] = j.alias || `t${i + 1}`;
     });
     return map;
   }
@@ -154,11 +237,19 @@ export default function ReportBuilder() {
         expr: `${aliases[c.table]}.${c.field} = :${c.param}`,
       }));
 
+      const groupBy = groups.map((g) => `${aliases[g.table]}.${g.field}`);
+
+      const havingDefs = having.map((h) => ({
+        expr: `${h.aggregate}(${aliases[h.table]}.${h.field}) = :${h.param}`,
+      }));
+
       const report = {
         from: { table: fromTable, alias: aliases[fromTable] },
         joins: joinDefs,
         select,
         where,
+        groupBy,
+        having: havingDefs,
       };
 
       const built = buildStoredProcedure({
@@ -188,15 +279,19 @@ export default function ReportBuilder() {
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: { message: 'Stored procedure saved', type: 'success' },
-        })
+        }),
       );
     } catch (err) {
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: { message: err.message || 'Save failed', type: 'error' },
-        })
+        }),
       );
     }
+  }
+
+  if (!tables.length) {
+    return <div>Loading...</div>;
   }
 
   return (
@@ -206,7 +301,7 @@ export default function ReportBuilder() {
       <section>
         <h3>Primary Table</h3>
         <select value={fromTable} onChange={(e) => setFromTable(e.target.value)}>
-          {tableNames.map((t) => (
+          {tables.map((t) => (
             <option key={t} value={t}>
               {t}
             </option>
@@ -230,7 +325,7 @@ export default function ReportBuilder() {
               onChange={(e) => updateJoin(i, 'table', e.target.value)}
               style={{ marginLeft: '0.5rem' }}
             >
-              {tableNames
+              {tables
                 .filter((t) => t !== fromTable)
                 .map((t) => (
                   <option key={t} value={t}>
@@ -243,7 +338,7 @@ export default function ReportBuilder() {
               value={j.primaryField}
               onChange={(e) => updateJoin(i, 'primaryField', e.target.value)}
             >
-              {TABLES[fromTable].map((f) => (
+              {(tableFields[fromTable] || []).map((f) => (
                 <option key={f} value={f}>
                   {f}
                 </option>
@@ -254,7 +349,7 @@ export default function ReportBuilder() {
               value={j.joinField}
               onChange={(e) => updateJoin(i, 'joinField', e.target.value)}
             >
-              {TABLES[j.table].map((f) => (
+              {(tableFields[j.table] || []).map((f) => (
                 <option key={f} value={f}>
                   {f}
                 </option>
@@ -272,7 +367,7 @@ export default function ReportBuilder() {
       </section>
 
       <section>
-      <h3>Fields</h3>
+        <h3>Select Fields</h3>
         {fields.map((f, i) => (
           <div key={i} style={{ marginBottom: '0.5rem' }}>
             <select
@@ -290,7 +385,7 @@ export default function ReportBuilder() {
               onChange={(e) => updateField(i, 'field', e.target.value)}
               style={{ marginLeft: '0.5rem' }}
             >
-              {TABLES[f.table].map((col) => (
+              {(tableFields[f.table] || []).map((col) => (
                 <option key={col} value={col}>
                   {col}
                 </option>
@@ -301,11 +396,11 @@ export default function ReportBuilder() {
               onChange={(e) => updateField(i, 'aggregate', e.target.value)}
               style={{ marginLeft: '0.5rem' }}
             >
-              <option value="NONE">NONE</option>
-              <option value="SUM">SUM</option>
-              <option value="COUNT">COUNT</option>
-              <option value="MAX">MAX</option>
-              <option value="MIN">MIN</option>
+              {AGGREGATES.map((ag) => (
+                <option key={ag} value={ag}>
+                  {ag}
+                </option>
+              ))}
             </select>
             <input
               placeholder="alias"
@@ -322,6 +417,102 @@ export default function ReportBuilder() {
           </div>
         ))}
         <button onClick={addField}>Add Field</button>
+      </section>
+
+      <section>
+        <h3>Group By</h3>
+        {groups.map((g, i) => (
+          <div key={i} style={{ marginBottom: '0.5rem' }}>
+            <select
+              value={g.table}
+              onChange={(e) => updateGroup(i, 'table', e.target.value)}
+            >
+              {availableTables.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+            <select
+              value={g.field}
+              onChange={(e) => updateGroup(i, 'field', e.target.value)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              {(tableFields[g.table] || []).map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => removeGroup(i)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        <button onClick={addGroup}>Add Group</button>
+      </section>
+
+      <section>
+        <h3>Having</h3>
+        {having.map((h, i) => (
+          <div key={i} style={{ marginBottom: '0.5rem' }}>
+            <select
+              value={h.aggregate}
+              onChange={(e) => updateHaving(i, 'aggregate', e.target.value)}
+            >
+              {AGGREGATES.filter((a) => a !== 'NONE').map((ag) => (
+                <option key={ag} value={ag}>
+                  {ag}
+                </option>
+              ))}
+            </select>
+            <select
+              value={h.table}
+              onChange={(e) => updateHaving(i, 'table', e.target.value)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              {availableTables.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+            <select
+              value={h.field}
+              onChange={(e) => updateHaving(i, 'field', e.target.value)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              {(tableFields[h.table] || []).map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+            <select
+              value={h.param}
+              onChange={(e) => updateHaving(i, 'param', e.target.value)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              {params.map((p) => (
+                <option key={p.name} value={p.name}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => removeHaving(i)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        <button onClick={addHaving} disabled={!params.length}>
+          Add Having
+        </button>
       </section>
 
       <section>
@@ -390,7 +581,7 @@ export default function ReportBuilder() {
               onChange={(e) => updateCondition(i, 'field', e.target.value)}
               style={{ marginLeft: '0.5rem' }}
             >
-              {TABLES[c.table].map((f) => (
+              {(tableFields[c.table] || []).map((f) => (
                 <option key={f} value={f}>
                   {f}
                 </option>
