@@ -769,6 +769,37 @@ export default function ImageManagement() {
     setReport(`Uploaded ${uploaded || 0} file(s)`);
   }
 
+  async function renameAndUploadAll() {
+    const items = uploads.slice(uploadStart).map((u, idx) => ({
+      id: u.id,
+      index: uploadStart + idx,
+    }));
+    if (items.length === 0) {
+      addToast('No files to process', 'error');
+      return;
+    }
+    for (let i = 0; i < items.length; i += 10) {
+      const chunk = items.slice(i, i + 10);
+      const firstIndex = chunk[0].index;
+      const lastIndex = chunk[chunk.length - 1].index;
+      const page = Math.floor(firstIndex / uploadPageSize) + 1;
+      setUploadPage(page);
+      setReport(
+        `Processing page ${page}, rows ${firstIndex + 1}-${lastIndex + 1}`,
+      );
+      await new Promise((r) => setTimeout(r));
+      const chunkIds = chunk.map((c) => c.id);
+      await renameSelected(chunkIds, { keepSelection: true, silent: true });
+      const tables = getTables();
+      const toUpload = [...tables.uploads, ...tables.ignored]
+        .filter((u) => chunkIds.includes(u.id) && u.newName && !u.processed)
+        .map((u) => u.id);
+      if (toUpload.length) await commitUploads(toUpload, { silent: true });
+    }
+    setReport('Rename and upload completed');
+    addToast('Rename and upload completed', 'success');
+  }
+
   async function renameSelected(
     selectedIds = uploadSel,
     { keepSelection = false, silent = false } = {},
@@ -1087,6 +1118,18 @@ export default function ImageManagement() {
               </button>
               <button
                 type="button"
+                onClick={renameAndUploadAll}
+                style={{
+                  marginBottom: '0.5rem',
+                  marginRight: '0.5rem',
+                  float: 'right',
+                }}
+                disabled={uploads.length === 0}
+              >
+                Rename & Upload Local Images
+              </button>
+              <button
+                type="button"
                 onClick={uploadRenamedNames}
                 style={{
                   marginBottom: '0.5rem',
@@ -1156,6 +1199,14 @@ export default function ImageManagement() {
               >
                 Upload Names
               </button>
+              <button
+                type="button"
+                onClick={renameAndUploadAll}
+                style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
+                disabled={uploads.length === 0}
+              >
+                Rename & Upload Local Images
+              </button>
               <div style={{ marginBottom: '0.5rem' }}>
                 <label style={{ marginRight: '0.5rem' }}>
                   Page Size:{' '}
@@ -1190,6 +1241,9 @@ export default function ImageManagement() {
                     >
                       Prev
                     </button>
+                    <span style={{ marginRight: '0.5rem' }}>
+                      Page {uploadPage} / {uploadLastPage}
+                    </span>
                     <button
                       type="button"
                       disabled={!uploadHasMore}
@@ -1274,6 +1328,9 @@ export default function ImageManagement() {
                     >
                       Prev
                     </button>
+                    <span style={{ marginRight: '0.5rem' }}>
+                      Page {ignoredPage} / {ignoredLastPage}
+                    </span>
                     <button
                       type="button"
                       disabled={!ignoredHasMore}
@@ -1361,19 +1418,22 @@ export default function ImageManagement() {
             >
               First
             </button>
-            <button
-              type="button"
-              disabled={pendingPage === 1}
-              onClick={() => detectFromHost(pendingPage - 1)}
-              style={{ marginRight: '0.5rem' }}
-            >
-              Prev
-            </button>
-            <button
-              type="button"
-              disabled={!hasMore}
-              onClick={() => detectFromHost(pendingPage + 1)}
-              style={{ marginRight: '0.5rem' }}
+          <button
+            type="button"
+            disabled={pendingPage === 1}
+            onClick={() => detectFromHost(pendingPage - 1)}
+            style={{ marginRight: '0.5rem' }}
+          >
+            Prev
+          </button>
+          <span style={{ marginRight: '0.5rem' }}>
+            Page {pendingPage} / {lastPage}
+          </span>
+          <button
+            type="button"
+            disabled={!hasMore}
+            onClick={() => detectFromHost(pendingPage + 1)}
+            style={{ marginRight: '0.5rem' }}
             >
               Next
             </button>
@@ -1498,6 +1558,9 @@ export default function ImageManagement() {
                 >
                   Prev
                 </button>
+                <span style={{ marginRight: '0.5rem' }}>
+                  Page {hostIgnoredPage} / {hostIgnoredLastPage}
+                </span>
                 <button
                   type="button"
                   disabled={!hostIgnoredHasMore}
