@@ -20,6 +20,7 @@ import TablesManagementPage from './pages/TablesManagement.jsx';
 import CodingTablesPage from './pages/CodingTables.jsx';
 import FormsManagementPage from './pages/FormsManagement.jsx';
 import ReportManagementPage from './pages/ReportManagement.jsx';
+import ReportBuilderPage from './pages/ReportBuilder.jsx';
 import RelationsConfigPage from './pages/RelationsConfig.jsx';
 import PosTxnConfigPage from './pages/PosTxnConfig.jsx';
 import PosTransactionsPage from './pages/PosTransactions.jsx';
@@ -74,6 +75,7 @@ export default function App() {
     coding_tables: <CodingTablesPage />,
     forms_management: <FormsManagementPage />,
     report_management: <ReportManagementPage />,
+    report_builder: <ReportBuilderPage />,
     relations_config: <RelationsConfigPage />,
     pos_transaction_management: <PosTxnConfigPage />,
     pos_transactions: <PosTransactionsPage />,
@@ -105,6 +107,7 @@ export default function App() {
     'coding_tables',
     'forms_management',
     'report_management',
+    'report_builder',
     'relations_config',
     'pos_transaction_management',
     'image_management',
