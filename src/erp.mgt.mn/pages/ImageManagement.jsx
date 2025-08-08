@@ -278,6 +278,25 @@ export default function ImageManagement() {
     }
   }
 
+  function saveTables() {
+    try {
+      const data = buildSession();
+      delete data.folderName;
+      const blob = new Blob([JSON.stringify(data)], {
+        type: 'application/json',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'image-tables.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      addToast('Failed to save tables', 'error');
+    }
+  }
+
   const uploadStart = (uploadPage - 1) * uploadPageSize;
   const pageUploads = uploads.slice(uploadStart, uploadStart + uploadPageSize);
   const uploadHasMore = uploadStart + uploadPageSize < uploads.length;
@@ -1135,6 +1154,17 @@ export default function ImageManagement() {
                 disabled={!canRenameSelected}
               >
                 Rename Selected
+              </button>
+              <button
+                type="button"
+                onClick={saveTables}
+                style={{
+                  marginBottom: '0.5rem',
+                  marginRight: '0.5rem',
+                  float: 'right',
+                }}
+              >
+                Save Tables
               </button>
               <button
                 type="button"
