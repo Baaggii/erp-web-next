@@ -11,9 +11,11 @@ export default function buildReportSql(definition = {}) {
   const parts = [];
 
   // SELECT clause
-  const selectList = (definition.select || [])
-    .map((sel) => (sel.alias ? `${sel.expr} AS ${sel.alias}` : sel.expr))
-    .join(', ') || '*';
+  const selectItems = (definition.select || []).filter((s) => s && s.expr);
+  const selectList =
+    selectItems
+      .map((sel) => (sel.alias ? `${sel.expr} AS ${sel.alias}` : sel.expr))
+      .join(', ') || '*';
   parts.push(`SELECT ${selectList}`);
 
   // FROM clause
@@ -23,21 +25,22 @@ export default function buildReportSql(definition = {}) {
   );
 
   // JOIN clauses
-  (definition.joins || []).forEach(({ table, alias, type = 'INNER', on }) => {
-    parts.push(
-      `${type} JOIN ${table}` + (alias ? ` ${alias}` : '') + ` ON ${on}`
-    );
+  (definition.joins || []).forEach(({ table, alias, type = 'JOIN', on }) => {
+    parts.push(`${type} ${table}` + (alias ? ` ${alias}` : '') + ` ON ${on}`);
   });
 
   // WHERE clause
   if (definition.where?.length) {
-    const whereClause = definition.where
-      .map((w, i) => {
-        const connector = i > 0 ? ` ${w.connector || 'AND'} ` : '';
-        return connector + `(${w.expr})`;
-      })
-      .join('');
-    parts.push(`WHERE ${whereClause}`);
+    const whereItems = definition.where.filter((w) => w && w.expr);
+    if (whereItems.length) {
+      const whereClause = whereItems
+        .map((w, i) => {
+          const connector = i > 0 ? ` ${w.connector || 'AND'} ` : '';
+          return connector + `(${w.expr})`;
+        })
+        .join('');
+      parts.push(`WHERE ${whereClause}`);
+    }
   }
 
   // GROUP BY clause
@@ -47,13 +50,16 @@ export default function buildReportSql(definition = {}) {
 
   // HAVING clause
   if (definition.having?.length) {
-    const havingClause = definition.having
-      .map((h, i) => {
-        const connector = i > 0 ? ` ${h.connector || 'AND'} ` : '';
-        return connector + `(${h.expr})`;
-      })
-      .join('');
-    parts.push(`HAVING ${havingClause}`);
+    const havingItems = definition.having.filter((h) => h && h.expr);
+    if (havingItems.length) {
+      const havingClause = havingItems
+        .map((h, i) => {
+          const connector = i > 0 ? ` ${h.connector || 'AND'} ` : '';
+          return connector + `(${h.expr})`;
+        })
+        .join('');
+      parts.push(`HAVING ${havingClause}`);
+    }
   }
 
   return parts.join('\n');

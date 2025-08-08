@@ -15,7 +15,12 @@ export default function buildStoredProcedure(definition = {}) {
 
   const procName = `report_${name}`;
   const paramLines = params.map((p) => `IN ${p.name} ${p.type}`).join(',\n  ');
-  const selectSql = buildReportSql(report)
+  let selectSql = buildReportSql(report);
+  params.forEach((p) => {
+    const re = new RegExp(`:${p.name}\\b`, 'g');
+    selectSql = selectSql.replace(re, p.name);
+  });
+  selectSql = selectSql
     .split('\n')
     .map((l) => `  ${l}`)
     .join('\n');

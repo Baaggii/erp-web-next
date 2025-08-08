@@ -86,7 +86,7 @@ export default function ReportBuilder() {
       {
         table,
         alias,
-        type: 'INNER',
+        type: 'JOIN',
         targetTable,
         conditions: [
           {
@@ -168,19 +168,27 @@ export default function ReportBuilder() {
 
   function addField() {
     if (!fromTable) return;
+    const firstField = (tableFields[fromTable] || [])[0] || '';
     setFields([
       ...fields,
       {
         table: fromTable,
-        field: (tableFields[fromTable] || [])[0] || '',
-        alias: '',
+        field: firstField,
+        alias: firstField,
         aggregate: 'NONE',
       },
     ]);
   }
 
   function updateField(index, key, value) {
-    const updated = fields.map((f, i) => (i === index ? { ...f, [key]: value } : f));
+    const updated = fields.map((f, i) => {
+      if (i !== index) return f;
+      const next = { ...f, [key]: value };
+      if (key === 'field' && (!f.alias || f.alias === f.field)) {
+        next.alias = value;
+      }
+      return next;
+    });
     setFields(updated);
     if (key === 'table') ensureFields(value);
   }
@@ -465,14 +473,15 @@ export default function ReportBuilder() {
       });
 
       const joinDefs = joins.map((j) => {
-        const onInner = j.conditions
+        const conds = j.conditions.filter((c) => c.fromField && c.toField);
+        const onInner = conds
           .map(
             (c, idx) =>
               (idx > 0 ? ` ${c.connector} ` : '') +
               `${aliases[j.targetTable]}.${c.fromField} = ${aliases[j.table]}.${c.toField}`,
           )
           .join('');
-        const on = j.conditions.length > 1 ? `(${onInner})` : onInner;
+        const on = conds.length > 1 ? `(${onInner})` : onInner;
         const tablePart = j.filters?.length
           ? `(SELECT * FROM ${j.table} WHERE ${buildTableFilterSql(j.filters)})`
           : j.table;
@@ -488,21 +497,29 @@ export default function ReportBuilder() {
         ? `(SELECT * FROM ${fromTable} WHERE ${buildTableFilterSql(fromFilters)})`
         : fromTable;
 
-      const where = conditions.map((c) => ({
-        expr: `${aliases[c.table]}.${c.field} = :${c.param}`,
-        connector: c.connector,
-      }));
+      const where = conditions
+        .filter((c) => c.table && c.field && c.param)
+        .map((c) => ({
+          expr: `${aliases[c.table]}.${c.field} = :${c.param}`,
+          connector: c.connector,
+        }));
 
-      const groupBy = groups.map((g) => `${aliases[g.table]}.${g.field}`);
+      const groupBy = groups
+        .filter((g) => g.table && g.field)
+        .map((g) => `${aliases[g.table]}.${g.field}`);
 
-      const havingDefs = having.map((h) => {
-        const left =
-          h.source === 'alias'
-            ? h.alias
-            : `${h.aggregate}(${aliases[h.table]}.${h.field})`;
-        const right = h.valueType === 'param' ? `:${h.param}` : h.value;
-        return { expr: `${left} ${h.operator} ${right}`, connector: h.connector };
-      });
+      const havingDefs = having
+        .filter((h) =>
+          h.source === 'alias' ? h.alias : h.table && h.field,
+        )
+        .map((h) => {
+          const left =
+            h.source === 'alias'
+              ? h.alias
+              : `${h.aggregate}(${aliases[h.table]}.${h.field})`;
+          const right = h.valueType === 'param' ? `:${h.param}` : h.value;
+          return { expr: `${left} ${h.operator} ${right}`, connector: h.connector };
+        });
 
       const report = {
         from: { table: fromTableSql, alias: aliases[fromTable] },
@@ -743,8 +760,19 @@ export default function ReportBuilder() {
                 value={j.type}
                 onChange={(e) => updateJoin(i, 'type', e.target.value)}
               >
-                <option value="INNER">INNER</option>
-                <option value="LEFT">LEFT</option>
+                {[
+                  'JOIN',
+                  'INNER JOIN',
+                  'LEFT JOIN',
+                  'RIGHT JOIN',
+                  'FULL JOIN',
+                  'FULL OUTER JOIN',
+                  'CROSS JOIN',
+                ].map((jt) => (
+                  <option key={jt} value={jt}>
+                    {jt}
+                  </option>
+                ))}
               </select>
               <select
                 value={j.table}
