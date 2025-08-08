@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import buildStoredProcedure from '../utils/buildStoredProcedure.js';
 
 const SESSION_PARAMS = [
@@ -17,17 +17,18 @@ export default function ReportBuilder() {
 
   const [procName, setProcName] = useState('');
   const [fromTable, setFromTable] = useState('');
-  const [joins, setJoins] = useState([]); // {table, alias, type, targetTable, conditions:[{fromField,toField}]}
+  const [joins, setJoins] = useState([]); // {table, alias, type, targetTable, conditions:[{fromField,toField,connector}]}
   const [fields, setFields] = useState([]); // {table, field, alias, aggregate}
   const [groups, setGroups] = useState([]); // {table, field}
-  const [having, setHaving] = useState([]); // {aggregate, table, field, operator, param}
+  const [having, setHaving] = useState([]); // {aggregate, table, field, operator, valueType, value, param, connector}
   const [params, setParams] = useState([]); // {name,type,source}
-  const [conditions, setConditions] = useState([]); // {table,field,param}
+  const [conditions, setConditions] = useState([]); // {table,field,param,connector}
   const [script, setScript] = useState('');
   const [error, setError] = useState('');
 
   const [customParamName, setCustomParamName] = useState('');
   const [customParamType, setCustomParamType] = useState(PARAM_TYPES[0]);
+  const fileInput = useRef(null);
 
   // Fetch table list on mount
   useEffect(() => {
@@ -84,6 +85,7 @@ export default function ReportBuilder() {
           {
             fromField: (tableFields[targetTable] || [])[0] || '',
             toField: (tableFields[table] || [])[0] || '',
+            connector: 'AND',
           },
         ],
       },
@@ -124,6 +126,7 @@ export default function ReportBuilder() {
     const newCond = {
       fromField: (tableFields[j.targetTable] || [])[0] || '',
       toField: (tableFields[j.table] || [])[0] || '',
+      connector: 'AND',
     };
     const updated = joins.map((jn, i) =>
       i === jIndex ? { ...jn, conditions: [...jn.conditions, newCond] } : jn,
@@ -193,7 +196,7 @@ export default function ReportBuilder() {
   }
 
   function addHaving() {
-    if (!params.length || !fromTable) return;
+    if (!fromTable) return;
     setHaving([
       ...having,
       {
@@ -201,15 +204,25 @@ export default function ReportBuilder() {
         table: fromTable,
         field: (tableFields[fromTable] || [])[0] || '',
         operator: '=',
-        param: params[0].name,
+        valueType: params.length ? 'param' : 'value',
+        param: params[0]?.name || '',
+        value: '',
+        connector: 'AND',
       },
     ]);
   }
 
   function updateHaving(index, key, value) {
-    const updated = having.map((h, i) => (i === index ? { ...h, [key]: value } : h));
+    const updated = having.map((h, i) => {
+      if (i !== index) return h;
+      const next = { ...h, [key]: value };
+      if (key === 'table') ensureFields(value);
+      if (key === 'valueType' && value === 'param') {
+        next.param = params[0]?.name || '';
+      }
+      return next;
+    });
     setHaving(updated);
-    if (key === 'table') ensureFields(value);
   }
 
   function removeHaving(index) {
@@ -248,6 +261,7 @@ export default function ReportBuilder() {
         table,
         field: (tableFields[table] || [])[0] || '',
         param: params[0].name,
+        connector: 'AND',
       },
     ]);
   }
@@ -284,12 +298,14 @@ export default function ReportBuilder() {
       }));
 
       const joinDefs = joins.map((j) => {
-        const on = j.conditions
+        const onInner = j.conditions
           .map(
-            (c) =>
+            (c, idx) =>
+              (idx > 0 ? ` ${c.connector} ` : '') +
               `${aliases[j.targetTable]}.${c.fromField} = ${aliases[j.table]}.${c.toField}`,
           )
-          .join(' AND ');
+          .join('');
+        const on = j.conditions.length > 1 ? `(${onInner})` : onInner;
         return {
           table: j.table,
           alias: aliases[j.table],
@@ -300,12 +316,16 @@ export default function ReportBuilder() {
 
       const where = conditions.map((c) => ({
         expr: `${aliases[c.table]}.${c.field} = :${c.param}`,
+        connector: c.connector,
       }));
 
       const groupBy = groups.map((g) => `${aliases[g.table]}.${g.field}`);
 
       const havingDefs = having.map((h) => ({
-        expr: `${h.aggregate}(${aliases[h.table]}.${h.field}) ${h.operator} :${h.param}`,
+        expr: `${h.aggregate}(${aliases[h.table]}.${h.field}) ${h.operator} ${
+          h.valueType === 'param' ? `:${h.param}` : h.value
+        }`,
+        connector: h.connector,
       }));
 
       const report = {
@@ -353,6 +373,76 @@ export default function ReportBuilder() {
         }),
       );
     }
+  }
+
+  function handleSaveConfig() {
+    const data = {
+      procName,
+      fromTable,
+      joins,
+      fields,
+      groups,
+      having,
+      params,
+      conditions,
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'report_builder.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function handleLoadClick() {
+    fileInput.current?.click();
+  }
+
+  function handleFileChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    file.text().then((text) => {
+      try {
+        const data = JSON.parse(text);
+        setProcName(data.procName || '');
+        setFromTable(data.fromTable || '');
+        setJoins(
+          (data.joins || []).map((j) => ({
+            ...j,
+            conditions: (j.conditions || []).map((c) => ({
+              connector: c.connector || 'AND',
+              ...c,
+            })),
+          })),
+        );
+        setFields(data.fields || []);
+        setGroups(data.groups || []);
+        setHaving(
+          (data.having || []).map((h) => ({
+            connector: h.connector || 'AND',
+            valueType: h.valueType || (h.param ? 'param' : 'value'),
+            ...h,
+          })),
+        );
+        setParams(data.params || []);
+        setConditions(
+          (data.conditions || []).map((c) => ({
+            connector: c.connector || 'AND',
+            ...c,
+          })),
+        );
+        ensureFields(data.fromTable);
+        (data.joins || []).forEach((j) => {
+          ensureFields(j.table);
+          ensureFields(j.targetTable);
+        });
+      } catch (err) {
+        console.error(err);
+      }
+    });
   }
 
   if (!tables.length) {
@@ -414,6 +504,18 @@ export default function ReportBuilder() {
                   key={k}
                   style={{ display: 'inline-block', marginLeft: '0.5rem' }}
                 >
+                  {k > 0 && (
+                    <select
+                      value={c.connector}
+                      onChange={(e) =>
+                        updateJoinCondition(i, k, 'connector', e.target.value)
+                      }
+                      style={{ marginRight: '0.5rem' }}
+                    >
+                      <option value="AND">AND</option>
+                      <option value="OR">OR</option>
+                    </select>
+                  )}
                   <select
                     value={c.fromField}
                     onChange={(e) =>
@@ -558,6 +660,16 @@ export default function ReportBuilder() {
         <h3>Having</h3>
         {having.map((h, i) => (
           <div key={i} style={{ marginBottom: '0.5rem' }}>
+            {i > 0 && (
+              <select
+                value={h.connector}
+                onChange={(e) => updateHaving(i, 'connector', e.target.value)}
+                style={{ marginRight: '0.5rem' }}
+              >
+                <option value="AND">AND</option>
+                <option value="OR">OR</option>
+              </select>
+            )}
             <select
               value={h.aggregate}
               onChange={(e) => updateHaving(i, 'aggregate', e.target.value)}
@@ -602,16 +714,32 @@ export default function ReportBuilder() {
               ))}
             </select>
             <select
-              value={h.param}
-              onChange={(e) => updateHaving(i, 'param', e.target.value)}
+              value={h.valueType}
+              onChange={(e) => updateHaving(i, 'valueType', e.target.value)}
               style={{ marginLeft: '0.5rem' }}
             >
-              {params.map((p) => (
-                <option key={p.name} value={p.name}>
-                  {p.name}
-                </option>
-              ))}
+              <option value="param">Param</option>
+              <option value="value">Value</option>
             </select>
+            {h.valueType === 'param' ? (
+              <select
+                value={h.param}
+                onChange={(e) => updateHaving(i, 'param', e.target.value)}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                {params.map((p) => (
+                  <option key={p.name} value={p.name}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                value={h.value}
+                onChange={(e) => updateHaving(i, 'value', e.target.value)}
+                style={{ marginLeft: '0.5rem' }}
+              />
+            )}
             <button
               onClick={() => removeHaving(i)}
               style={{ marginLeft: '0.5rem' }}
@@ -620,9 +748,7 @@ export default function ReportBuilder() {
             </button>
           </div>
         ))}
-        <button onClick={addHaving} disabled={!params.length}>
-          Add Having
-        </button>
+        <button onClick={addHaving}>Add Having</button>
       </section>
 
       <section>
@@ -676,6 +802,16 @@ export default function ReportBuilder() {
         <h3>Conditions</h3>
         {conditions.map((c, i) => (
           <div key={i} style={{ marginBottom: '0.5rem' }}>
+            {i > 0 && (
+              <select
+                value={c.connector}
+                onChange={(e) => updateCondition(i, 'connector', e.target.value)}
+                style={{ marginRight: '0.5rem' }}
+              >
+                <option value="AND">AND</option>
+                <option value="OR">OR</option>
+              </select>
+            )}
             <select
               value={c.table}
               onChange={(e) => updateCondition(i, 'table', e.target.value)}
@@ -740,6 +876,19 @@ export default function ReportBuilder() {
         <button onClick={handleSave} style={{ marginLeft: '0.5rem' }}>
           Save Procedure
         </button>
+        <button onClick={handleSaveConfig} style={{ marginLeft: '0.5rem' }}>
+          Save Config
+        </button>
+        <button onClick={handleLoadClick} style={{ marginLeft: '0.5rem' }}>
+          Load Config
+        </button>
+        <input
+          type="file"
+          accept="application/json"
+          ref={fileInput}
+          style={{ display: 'none' }}
+          onChange={handleFileChange}
+        />
       </div>
       {error && <p style={{ color: 'red' }}>{error}</p>}
       {script && (

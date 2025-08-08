@@ -31,7 +31,12 @@ export default function buildReportSql(definition = {}) {
 
   // WHERE clause
   if (definition.where?.length) {
-    const whereClause = definition.where.map((w) => w.expr).join(' AND ');
+    const whereClause = definition.where
+      .map((w, i) => {
+        const connector = i > 0 ? ` ${w.connector || 'AND'} ` : '';
+        return connector + `(${w.expr})`;
+      })
+      .join('');
     parts.push(`WHERE ${whereClause}`);
   }
 
@@ -42,7 +47,12 @@ export default function buildReportSql(definition = {}) {
 
   // HAVING clause
   if (definition.having?.length) {
-    const havingClause = definition.having.map((h) => h.expr).join(' AND ');
+    const havingClause = definition.having
+      .map((h, i) => {
+        const connector = i > 0 ? ` ${h.connector || 'AND'} ` : '';
+        return connector + `(${h.expr})`;
+      })
+      .join('');
     parts.push(`HAVING ${havingClause}`);
   }
 
