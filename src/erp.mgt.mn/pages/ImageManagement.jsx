@@ -362,6 +362,15 @@ export default function ImageManagement() {
       !u.processed,
   );
 
+  const canUploadNames = [...uploads, ...ignored].some(
+    (u) =>
+      uploadSel.includes(u.id) &&
+      folderFiles[u.index]?.handle &&
+      u.newName &&
+      !u.tmpPath &&
+      !u.processed,
+  );
+
   function toggle(id) {
     setSelected((prev) =>
       prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
@@ -761,6 +770,31 @@ export default function ImageManagement() {
     }
   }
 
+  async function uploadRenamedNames() {
+    if (uploadSel.length === 0) {
+      addToast('No files selected', 'error');
+      return;
+    }
+    const ids = uploadSel.filter((id) => {
+      const u = [...uploads, ...ignored].find((x) => x.id === id);
+      return (
+        u &&
+        u.newName &&
+        !u.tmpPath &&
+        !u.processed &&
+        folderFiles[u.index]?.handle
+      );
+    });
+    if (ids.length === 0) {
+      addToast('No renamed files to upload', 'error');
+      return;
+    }
+    setUploadSel(ids);
+    await renameSelected();
+    setUploadSel(ids);
+    await commitUploads();
+  }
+
   async function renameSelected() {
     if (activeOp === 'rename') {
       if (window.confirm('Cancel rename?')) {
@@ -1062,8 +1096,24 @@ export default function ImageManagement() {
               </button>
               <button
                 type="button"
+                onClick={uploadRenamedNames}
+                style={{
+                  marginBottom: '0.5rem',
+                  marginRight: '0.5rem',
+                  float: 'right',
+                }}
+                disabled={!canUploadNames}
+              >
+                Upload Names
+              </button>
+              <button
+                type="button"
                 onClick={renameSelectedNames}
-                style={{ marginBottom: '0.5rem', marginRight: '0.5rem' }}
+                style={{
+                  marginBottom: '0.5rem',
+                  marginRight: '0.5rem',
+                  float: 'right',
+                }}
                 disabled={uploadSel.length === 0}
               >
                 Rename Names
