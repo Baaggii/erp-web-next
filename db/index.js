@@ -1168,13 +1168,29 @@ export async function getProcedureRawRows(
       }
     }
 
-    if (groupField && groupValue !== undefined) {
-      const rep =
-        typeof groupValue === 'number' ? String(groupValue) : `'${groupValue}'`;
-      if (/WHERE/i.test(sql)) {
-        sql = sql.replace(/WHERE/i, `WHERE ${groupField} = ${rep} AND `);
-      } else {
-        sql += ` WHERE ${groupField} = ${rep}`;
+    if (groupValue !== undefined) {
+      let condField = groupField;
+      const sel = sql.match(/SELECT\s+([\s\S]+?)\s+FROM/i);
+      if (sel) {
+        const firstField = sel[1].split(/,(?![^()]*\))/)[0]?.trim();
+        const m = firstField?.match(/^(.+?)\s+(?:AS\s+)?`?([a-z0-9_]+)`?$/i);
+        if (m) {
+          const expr = m[1].trim();
+          const alias = m[2];
+          if (!groupField || alias === groupField) condField = expr;
+        } else if (!groupField) {
+          condField = firstField;
+        }
+      }
+      if (condField) {
+        const rep =
+          typeof groupValue === 'number' ? String(groupValue) : `'${groupValue}'`;
+        const clause = `${condField} = ${rep}`;
+        if (/WHERE/i.test(sql)) {
+          sql = sql.replace(/WHERE/i, `WHERE ${clause} AND `);
+        } else {
+          sql += ` WHERE ${clause}`;
+        }
       }
     }
 
