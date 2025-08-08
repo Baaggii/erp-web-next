@@ -769,6 +769,24 @@ export default function ImageManagement() {
     setReport(`Uploaded ${uploaded || 0} file(s)`);
   }
 
+  async function renameAndUploadAll() {
+    const ids = uploads.slice(uploadStart).map((u) => u.id);
+    if (ids.length === 0) {
+      addToast('No files to process', 'error');
+      return;
+    }
+    for (let i = 0; i < ids.length; i += 10) {
+      const chunk = ids.slice(i, i + 10);
+      await renameSelected(chunk, { keepSelection: true, silent: true });
+      const tables = getTables();
+      const toUpload = [...tables.uploads, ...tables.ignored]
+        .filter((u) => chunk.includes(u.id) && u.newName && !u.processed)
+        .map((u) => u.id);
+      if (toUpload.length) await commitUploads(toUpload, { silent: true });
+    }
+    addToast('Rename and upload completed', 'success');
+  }
+
   async function renameSelected(
     selectedIds = uploadSel,
     { keepSelection = false, silent = false } = {},
@@ -1087,6 +1105,18 @@ export default function ImageManagement() {
               </button>
               <button
                 type="button"
+                onClick={renameAndUploadAll}
+                style={{
+                  marginBottom: '0.5rem',
+                  marginRight: '0.5rem',
+                  float: 'right',
+                }}
+                disabled={uploads.length === 0}
+              >
+                Rename & Upload Local Images
+              </button>
+              <button
+                type="button"
                 onClick={uploadRenamedNames}
                 style={{
                   marginBottom: '0.5rem',
@@ -1155,6 +1185,14 @@ export default function ImageManagement() {
                 disabled={!canUploadNames}
               >
                 Upload Names
+              </button>
+              <button
+                type="button"
+                onClick={renameAndUploadAll}
+                style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
+                disabled={uploads.length === 0}
+              >
+                Rename & Upload Local Images
               </button>
               <div style={{ marginBottom: '0.5rem' }}>
                 <label style={{ marginRight: '0.5rem' }}>
