@@ -458,7 +458,8 @@ export default function ImageManagement() {
 
   useEffect(() => {
     function onKey(e) {
-      if (e.key === 'Escape' && activeOp) {
+      const key = e.key.toLowerCase();
+      if (key === 'escape' && activeOp) {
         const labels = {
           detect: 'detection',
           folder: 'folder selection',
@@ -485,11 +486,23 @@ export default function ImageManagement() {
           }
           setActiveOp(null);
         }
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && key === 'a') {
+        e.preventDefault();
+        const allIds = [...uploads, ...ignored].map((u) => u.id);
+        setUploadSel(allIds);
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && key === 'd') {
+        e.preventDefault();
+        setUploadSel([]);
+        return;
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [activeOp]);
+  }, [activeOp, uploads, ignored]);
 
   async function selectFolder() {
     if (!window.showDirectoryPicker) {
@@ -795,8 +808,15 @@ export default function ImageManagement() {
       addToast('No renamed files to upload', 'error');
       return;
     }
-    await renameSelected(ids, { keepSelection: true });
-    await commitUploads(ids);
+    const merged = await renameSelected(ids, { keepSelection: true });
+    const ready = merged
+      .filter((r) => r.tmpPath && r.id && !r.processed)
+      .map((r) => r.id);
+    if (ready.length === 0) {
+      addToast('No files ready to upload', 'error');
+      return;
+    }
+    await commitUploads(ready);
   }
 
   async function renameSelected(
@@ -960,6 +980,8 @@ export default function ImageManagement() {
       persistAll({ uploads, ignored });
       setActiveOp(null);
     }
+    const idMap = new Map(items.map((u) => [String(u.index), u.id]));
+    return merged.map((r) => ({ ...r, id: idMap.get(String(r.index)) }));
   }
 
   async function commitUploads(selectedIds = uploadSel) {

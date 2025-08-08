@@ -761,7 +761,7 @@ export async function checkUploadedImages(files = [], names = []) {
   const results = [];
   let processed = 0;
   const codes = await fetchTxnCodes();
-  const { baseDir } = await getDirs();
+  const { baseDir, ignore } = await getDirs();
   let items = files.length
     ? files
     : names.map((n) => ({
@@ -878,7 +878,19 @@ export async function checkUploadedImages(files = [], names = []) {
         }
         const newName = `${finalBase}${ext}`;
         const target = path.join(baseDir, folderRaw, newName);
-        if (fssync.existsSync(target)) {
+        let exists = fssync.existsSync(target);
+        if (!exists && Array.isArray(ignore)) {
+          for (const ig of ignore) {
+            if (!ig) continue;
+            const alt1 = path.join(baseDir, ig, newName);
+            const alt2 = path.join(baseDir, ig, folderRaw, newName);
+            if (fssync.existsSync(alt1) || fssync.existsSync(alt2)) {
+              exists = true;
+              break;
+            }
+          }
+        }
+        if (exists) {
           results.push({
             originalName: file.originalname,
             newName,
@@ -887,6 +899,7 @@ export async function checkUploadedImages(files = [], names = []) {
             id: file.path || file.originalname,
             index: file.index,
             processed: true,
+            reason: 'Exists in ignored path',
           });
           continue;
         }
