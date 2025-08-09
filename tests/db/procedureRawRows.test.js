@@ -47,6 +47,6 @@ END`;
   assert.ok(!/HAVING/i.test(sql));
   assert.ok(!/SUM\(/i.test(sql));
   assert.ok(/^SELECT \* FROM \(/i.test(sql));
-  assert.ok(!/after/i.test(sql));
+  assert.ok(/after/i.test(sql));
   await fs.unlink(path.join(process.cwd(), 'config', 'sp_test_rows.sql')).catch(() => {});
 });

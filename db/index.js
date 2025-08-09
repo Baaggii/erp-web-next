@@ -1130,10 +1130,15 @@ export async function getProcedureRawRows(
   function escapeRegExp(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
-  const firstSelect = body.match(/SELECT[\s\S]*?(?=;|END|$)/i);
-  let sql = firstSelect ? firstSelect[0] : createSql;
-
+  const firstSelectIdx = body.search(/SELECT/i);
+  let sql = firstSelectIdx === -1 ? createSql : body.slice(firstSelectIdx);
   const originalSql = sql;
+  let remainder = '';
+  const firstSemi = sql.indexOf(';');
+  if (firstSemi !== -1) {
+    remainder = sql.slice(firstSemi);
+    sql = sql.slice(0, firstSemi);
+  }
 
   if (/^SELECT/i.test(sql)) {
     const colRe = escapeRegExp(column);
@@ -1191,6 +1196,9 @@ export async function getProcedureRawRows(
 
     sql = sql.replace(/;\s*$/, '');
   }
+
+  sql += remainder;
+  sql = sql.replace(/;\s*$/, '');
 
   const file = `${name.replace(/[^a-z0-9_]/gi, '_')}_rows.sql`;
   let content = `-- Original SQL for ${name}\n${originalSql}\n`;
