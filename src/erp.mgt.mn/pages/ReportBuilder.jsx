@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import buildStoredProcedure from '../utils/buildStoredProcedure.js';
+import buildReportSql from '../utils/buildReportSql.js';
 
 const SESSION_PARAMS = [
   { name: 'session_branch_id', type: 'INT' },
@@ -26,12 +27,15 @@ export default function ReportBuilder() {
   const [params, setParams] = useState([]); // {name,type,source}
   const [conditions, setConditions] = useState([]); // {table,field,param,connector}
   const [fromFilters, setFromFilters] = useState([]); // {field,operator,valueType,param,value,connector}
-  const [script, setScript] = useState('');
+  const [selectSql, setSelectSql] = useState('');
+  const [viewSql, setViewSql] = useState('');
+  const [procSql, setProcSql] = useState('');
   const [error, setError] = useState('');
+  const [savedReports, setSavedReports] = useState([]);
+  const [selectedReport, setSelectedReport] = useState('');
 
   const [customParamName, setCustomParamName] = useState('');
   const [customParamType, setCustomParamType] = useState(PARAM_TYPES[0]);
-  const fileInput = useRef(null);
 
   // Fetch table list on mount
   useEffect(() => {
@@ -47,6 +51,17 @@ export default function ReportBuilder() {
       }
     }
     fetchTables();
+    async function fetchSaved() {
+      try {
+        const res = await fetch('/api/report_builder/configs');
+        const data = await res.json();
+        setSavedReports(data.names || []);
+        setSelectedReport(data.names?.[0] || '');
+      } catch (err) {
+        console.error(err);
+      }
+    }
+    fetchSaved();
   }, []);
 
   // Ensure fields for a table are loaded
@@ -507,51 +522,50 @@ export default function ReportBuilder() {
     return map;
   }
 
-  function handleGenerate() {
-    try {
-      const aliases = buildAliases();
+  function buildDefinition() {
+    const aliases = buildAliases();
 
-      function buildTableFilterSql(filters) {
-        return filters
-          .filter((f) => f.field && (f.valueType === 'param' ? f.param : f.value))
-          .map((f, idx) => {
-            const right = f.valueType === 'param' ? `:${f.param}` : f.value;
-            const connector = idx > 0 ? ` ${f.connector} ` : '';
-            return `${connector}(${f.field} ${f.operator} ${right})`;
-          })
-          .join('');
-      }
-
-      const joinDefs = joins
-        .map((j) => {
-          const conds = j.conditions.filter((c) => c.fromField && c.toField);
-          const onInner = conds
-            .map(
-              (c, idx) =>
-                (idx > 0 ? ` ${c.connector} ` : '') +
-                `${aliases[j.targetTable]}.${c.fromField} = ${aliases[j.table]}.${c.toField}`,
-            )
-            .join('');
-          const on = conds.length > 1 ? `(${onInner})` : onInner;
-          const tablePart = j.filters?.length
-            ? `(SELECT * FROM ${j.table} WHERE ${buildTableFilterSql(j.filters)})`
-            : j.table;
-          return {
-            table: tablePart,
-            alias: aliases[j.table],
-            type: j.type,
-            on,
-            original: j.table,
-          };
+    function buildTableFilterSql(filters) {
+      return filters
+        .filter((f) => f.field && (f.valueType === 'param' ? f.param : f.value))
+        .map((f, idx) => {
+          const right = f.valueType === 'param' ? `:${f.param}` : f.value;
+          const connector = idx > 0 ? ` ${f.connector} ` : '';
+          return `${connector}(${f.field} ${f.operator} ${right})`;
         })
-        .filter((j) => j.on);
+        .join('');
+    }
 
-      const validTables = new Set([fromTable, ...joinDefs.map((j) => j.original)]);
+    const joinDefs = joins
+      .map((j) => {
+        const conds = j.conditions.filter((c) => c.fromField && c.toField);
+        const onInner = conds
+          .map(
+            (c, idx) =>
+              (idx > 0 ? ` ${c.connector} ` : '') +
+              `${aliases[j.targetTable]}.${c.fromField} = ${aliases[j.table]}.${c.toField}`,
+          )
+          .join('');
+        const on = conds.length > 1 ? `(${onInner})` : onInner;
+        const tablePart = j.filters?.length
+          ? `(SELECT * FROM ${j.table} WHERE ${buildTableFilterSql(j.filters)})`
+          : j.table;
+        return {
+          table: tablePart,
+          alias: aliases[j.table],
+          type: j.type,
+          on,
+          original: j.table,
+        };
+      })
+      .filter((j) => j.on);
 
-      const fieldExprMap = {};
-      const select = fields
-        .filter((f) => (f.source === 'alias' ? f.baseAlias : f.field))
-        .map((f) => {
+    const validTables = new Set([fromTable, ...joinDefs.map((j) => j.original)]);
+
+    const fieldExprMap = {};
+    const select = fields
+      .filter((f) => (f.source === 'alias' ? f.baseAlias : f.field))
+      .map((f) => {
         if (f.source === 'field' && !validTables.has(f.table)) {
           throw new Error(`Table ${f.table} is not joined`);
         }
@@ -610,78 +624,104 @@ export default function ReportBuilder() {
         return { expr, alias: f.alias || undefined };
       });
 
-      const fromTableSql = fromFilters.length
-        ? `(SELECT * FROM ${fromTable} WHERE ${buildTableFilterSql(fromFilters)})`
-        : fromTable;
+    const fromTableSql = fromFilters.length
+      ? `(SELECT * FROM ${fromTable} WHERE ${buildTableFilterSql(fromFilters)})`
+      : fromTable;
 
-      const where = conditions
-        .filter((c) => c.table && c.field && c.param)
-        .map((c) => {
-          if (!validTables.has(c.table)) {
-            throw new Error(`Table ${c.table} is not joined`);
-          }
-          return {
-            expr: `${aliases[c.table]}.${c.field} = :${c.param}`,
-            connector: c.connector,
-          };
-        });
-
-      const groupBy = groups
-        .filter((g) => g.table && g.field)
-        .map((g) => {
-          if (!validTables.has(g.table)) {
-            throw new Error(`Table ${g.table} is not joined`);
-          }
-          return `${aliases[g.table]}.${g.field}`;
-        });
-
-      const havingDefs = having
-        .filter((h) =>
-          h.source === 'alias' ? h.alias : h.table && h.field
-        )
-        .map((h) => {
-          const left =
-            h.source === 'alias'
-              ? h.alias
-              : `${h.aggregate}(${aliases[h.table]}.${h.field})`;
-          if (h.source === 'field' && !validTables.has(h.table)) {
-            throw new Error(`Table ${h.table} is not joined`);
-          }
-          const right = h.valueType === 'param' ? `:${h.param}` : h.value;
-          return { expr: `${left} ${h.operator} ${right}`, connector: h.connector };
-        });
-
-      const report = {
-        from: { table: fromTableSql, alias: aliases[fromTable] },
-        joins: joinDefs,
-        select,
-        where,
-        groupBy,
-        having: havingDefs,
-      };
-
-      const built = buildStoredProcedure({
-        name: procName || 'report',
-        params: params.map(({ name, type }) => ({ name, type })),
-        report,
+    const where = conditions
+      .filter((c) => c.table && c.field && c.param)
+      .map((c) => {
+        if (!validTables.has(c.table)) {
+          throw new Error(`Table ${c.table} is not joined`);
+        }
+        return {
+          expr: `${aliases[c.table]}.${c.field} = :${c.param}`,
+          connector: c.connector,
+        };
       });
 
-      setScript(built);
+    const groupBy = groups
+      .filter((g) => g.table && g.field)
+      .map((g) => {
+        if (!validTables.has(g.table)) {
+          throw new Error(`Table ${g.table} is not joined`);
+        }
+        return `${aliases[g.table]}.${g.field}`;
+      });
+
+    const havingDefs = having
+      .filter((h) => (h.source === 'alias' ? h.alias : h.table && h.field))
+      .map((h) => {
+        const left =
+          h.source === 'alias'
+            ? h.alias
+            : `${h.aggregate}(${aliases[h.table]}.${h.field})`;
+        if (h.source === 'field' && !validTables.has(h.table)) {
+          throw new Error(`Table ${h.table} is not joined`);
+        }
+        const right = h.valueType === 'param' ? `:${h.param}` : h.value;
+        return { expr: `${left} ${h.operator} ${right}`, connector: h.connector };
+      });
+
+    const report = {
+      from: { table: fromTableSql, alias: aliases[fromTable] },
+      joins: joinDefs,
+      select,
+      where,
+      groupBy,
+      having: havingDefs,
+    };
+
+    return { report, params: params.map(({ name, type }) => ({ name, type })) };
+  }
+
+  function handleGenerateSql() {
+    try {
+      const { report } = buildDefinition();
+      setSelectSql(buildReportSql(report));
       setError('');
     } catch (err) {
-      setScript('');
+      setSelectSql('');
+      setError(err.message);
+    }
+  }
+
+  function handleGenerateView() {
+    try {
+      const { report } = buildDefinition();
+      const sql = buildReportSql(report);
+      const view = `CREATE OR REPLACE VIEW view_${procName || 'report'} AS\n${sql};`;
+      setViewSql(view);
+      setError('');
+    } catch (err) {
+      setViewSql('');
+      setError(err.message);
+    }
+  }
+
+  function handleGenerateProc() {
+    try {
+      const { report, params: p } = buildDefinition();
+      const built = buildStoredProcedure({
+        name: procName || 'report',
+        params: p,
+        report,
+      });
+      setProcSql(built);
+      setError('');
+    } catch (err) {
+      setProcSql('');
       setError(err.message);
     }
   }
 
   async function handleSave() {
-    if (!script) return;
+    if (!procSql) return;
     try {
-      const name = `report_${procName || 'report'}`;
       const res = await fetch('/api/report_builder/procedures', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, sql: script }),
+        body: JSON.stringify({ sql: procSql }),
       });
       if (!res.ok) throw new Error('Save failed');
       window.dispatchEvent(
@@ -698,7 +738,7 @@ export default function ReportBuilder() {
     }
   }
 
-  function handleSaveConfig() {
+  async function handleSaveConfig() {
     const data = {
       procName,
       fromTable,
@@ -710,27 +750,42 @@ export default function ReportBuilder() {
       conditions,
       fromFilters,
     };
-    const blob = new Blob([JSON.stringify(data, null, 2)], {
-      type: 'application/json',
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'report_builder.json';
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const name = procName || 'report';
+      const res = await fetch(
+        `/api/report_builder/configs/${encodeURIComponent(name)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        },
+      );
+      if (!res.ok) throw new Error('Save failed');
+      const listRes = await fetch('/api/report_builder/configs');
+      const listData = await listRes.json();
+      setSavedReports(listData.names || []);
+      setSelectedReport(name);
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message: 'Config saved', type: 'success' },
+        }),
+      );
+    } catch (err) {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message: err.message || 'Save failed', type: 'error' },
+        }),
+      );
+    }
   }
 
-  function handleLoadClick() {
-    fileInput.current?.click();
-  }
-
-  function handleFileChange(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    file.text().then((text) => {
-      try {
-        const data = JSON.parse(text);
+  async function handleLoad() {
+    if (!selectedReport) return;
+    try {
+      const res = await fetch(
+        `/api/report_builder/configs/${encodeURIComponent(selectedReport)}`,
+      );
+      const data = await res.json();
         setProcName(data.procName || '');
         setFromTable(data.fromTable || '');
         setFromFilters(
@@ -792,10 +847,9 @@ export default function ReportBuilder() {
           ensureFields(j.table);
           ensureFields(j.targetTable);
         });
-      } catch (err) {
-        console.error(err);
-      }
-    });
+    } catch (err) {
+      console.error(err);
+    }
   }
 
   if (!tables.length) {
@@ -1629,27 +1683,43 @@ export default function ReportBuilder() {
       </section>
 
       <div style={{ marginTop: '1rem' }}>
-        <button onClick={handleGenerate}>Generate Procedure</button>
+        <button onClick={handleGenerateSql}>Create SQL</button>
+        <button onClick={handleGenerateView} style={{ marginLeft: '0.5rem' }}>
+          Create View
+        </button>
+        <button onClick={handleGenerateProc} style={{ marginLeft: '0.5rem' }}>
+          Create Procedure
+        </button>
         <button onClick={handleSave} style={{ marginLeft: '0.5rem' }}>
           Save Procedure
         </button>
         <button onClick={handleSaveConfig} style={{ marginLeft: '0.5rem' }}>
           Save Config
         </button>
-        <button onClick={handleLoadClick} style={{ marginLeft: '0.5rem' }}>
-          Load Config
+        <select
+          value={selectedReport}
+          onChange={(e) => setSelectedReport(e.target.value)}
+          style={{ marginLeft: '0.5rem' }}
+        >
+          {savedReports.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+        <button onClick={handleLoad} style={{ marginLeft: '0.5rem' }}>
+          Load
         </button>
-        <input
-          type="file"
-          accept="application/json"
-          ref={fileInput}
-          style={{ display: 'none' }}
-          onChange={handleFileChange}
-        />
       </div>
       {error && <p style={{ color: 'red' }}>{error}</p>}
-      {script && (
-        <pre style={{ whiteSpace: 'pre-wrap', marginTop: '1rem' }}>{script}</pre>
+      {selectSql && (
+        <pre style={{ whiteSpace: 'pre-wrap', marginTop: '1rem' }}>{selectSql}</pre>
+      )}
+      {viewSql && (
+        <pre style={{ whiteSpace: 'pre-wrap', marginTop: '1rem' }}>{viewSql}</pre>
+      )}
+      {procSql && (
+        <pre style={{ whiteSpace: 'pre-wrap', marginTop: '1rem' }}>{procSql}</pre>
       )}
     </div>
   );
