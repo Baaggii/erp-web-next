@@ -1149,30 +1149,22 @@ export async function getProcedureRawRows(
   const originalSql = sql;
 
   if (/^SELECT/i.test(sql)) {
-    const sel = sql.match(/SELECT\s+([\s\S]+?)\s+FROM/i);
-    if (sel) {
-      const [, fieldsStr] = sel;
-      const parts = fieldsStr.split(/,(?![^()]*\))/);
-      const colLower = column.toLowerCase();
-      const newParts = [];
-      for (const part of parts) {
-        if (/SUM\s*\(/i.test(part)) {
-          const aliasMatch =
-            part.match(/\bAS\s+`?([a-z0-9_]+)`?/i) ||
-            part.match(/`?([a-z0-9_]+)`?\s*$/i);
-          const alias = aliasMatch ? aliasMatch[1] : '';
-          if (alias.toLowerCase() === colLower) {
-            const inner = part.match(/SUM\s*\(([^)]*)\)/i);
-            const expr = inner ? inner[1].trim() : '';
-            newParts.push(`${expr} AS ${alias}`);
-          }
-        } else {
-          newParts.push(part.trim());
-        }
-      }
-      const replacement = sel[0].replace(fieldsStr, newParts.join(', '));
-      sql = sql.replace(sel[0], replacement);
-    }
+    const colRe = escapeRegExp(column);
+
+    const keepRegex = new RegExp(
+      'SUM\\(([^)]*)\\)\\s*(?:AS\\s+)?`?' + colRe + '`?',
+      'i',
+    );
+    sql = sql.replace(keepRegex, (_, inner) => `${inner} AS ${column}`);
+
+    sql = sql.replace(
+      /,\s*SUM\([^)]*\)\s*(?:AS\s+)?`?[a-z0-9_]+`?/gi,
+      '',
+    );
+    sql = sql.replace(
+      /SELECT\s*SUM\([^)]*\)\s*(?:AS\s+)?`?[a-z0-9_]+`?\s*,/i,
+      'SELECT ',
+    );
 
     sql = sql.replace(/GROUP BY[\s\S]*?(HAVING|ORDER BY|$)/i, '$1');
     sql = sql.replace(/HAVING[\s\S]*?(ORDER BY|$)/i, '$1');
@@ -1203,34 +1195,13 @@ export async function getProcedureRawRows(
       }
     }
 
+    sql = sql.replace(/;\s*$/, '');
     if (groupValue !== undefined) {
-      let condField = groupField;
-      const sel = sql.match(/SELECT\s+([\s\S]+?)\s+FROM/i);
-      if (sel) {
-        const firstField = sel[1].split(/,(?![^()]*\))/)[0]?.trim();
-        const m = firstField?.match(/^(.+?)\s+(?:AS\s+)?`?([a-z0-9_]+)`?$/i);
-        if (m) {
-          const expr = m[1].trim();
-          const alias = m[2];
-          if (!groupField || alias === groupField) condField = expr;
-        } else if (!groupField) {
-          condField = firstField;
-        }
-      }
-      if (condField) {
-        const rep =
-          typeof groupValue === 'number' ? String(groupValue) : `'${groupValue}'`;
-        const clause = `${condField} = ${rep}`;
-        if (/WHERE/i.test(sql)) {
-          sql = sql.replace(/WHERE/i, `WHERE ${clause} AND `);
-        } else {
-          sql += ` WHERE ${clause}`;
-        }
-      }
+      const rep =
+        typeof groupValue === 'number' ? String(groupValue) : `'${groupValue}'`;
+      sql = `SELECT * FROM (${sql}) AS _raw WHERE ${groupField} = ${rep}`;
     }
 
-    // Trim trailing statement terminators to avoid MySQL complaining when
-    // executing the reconstructed query.
     sql = sql.replace(/;\s*$/, '');
   }
 
