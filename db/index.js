@@ -1233,6 +1233,63 @@ export async function getProcedureRawRows(
     }
 
     sql = sql.replace(/;\s*$/, '');
+
+    const fromIdx = (() => {
+      const upper = sql.toUpperCase();
+      let depth = 0;
+      for (let i = 0; i < upper.length; i++) {
+        const ch = upper[i];
+        if (ch === '(') depth++;
+        else if (ch === ')') depth--;
+        else if (depth === 0 && upper.startsWith('FROM', i)) return i;
+      }
+      return -1;
+    })();
+    if (fromIdx !== -1) {
+      const fieldsPart = sql.slice(6, fromIdx);
+      const rest = sql.slice(fromIdx);
+      const afterFrom = rest.slice(4).trimStart();
+      let table = '';
+      let alias = '';
+      const m1 = afterFrom.match(/\(\s*SELECT\s+\*\s+FROM\s+`?([a-zA-Z0-9_]+)`?[^)]*\)\s*([a-zA-Z0-9_]+)/i);
+      const m2 = afterFrom.match(/`?([a-zA-Z0-9_]+)`?(?:\s+AS)?\s*([a-zA-Z0-9_]+)?/i);
+      if (m1) {
+        table = m1[1];
+        alias = m1[2];
+      } else if (m2) {
+        table = m2[1];
+        alias = m2[2] || m2[1];
+      }
+      if (table) {
+        const prefix = alias ? `${alias}.` : '';
+        try {
+          const txt = await fs.readFile(
+            path.join(process.cwd(), 'config', 'transactionForms.json'),
+            'utf8',
+          );
+          const cfg = JSON.parse(txt);
+          const byTable = cfg[table] || {};
+          const set = new Set();
+          for (const info of Object.values(byTable)) {
+            if (info && Array.isArray(info.visibleFields)) {
+              for (const f of info.visibleFields) set.add(String(f));
+            }
+          }
+          const add = [];
+          for (const f of set) {
+            if (!new RegExp(`\\b${escapeRegExp(f)}\\b`, 'i').test(fieldsPart)) {
+              add.push(prefix + f);
+            }
+          }
+          if (add.length) {
+            const fp = fieldsPart.trim();
+            const newFields = fp ? fp + ', ' + add.join(', ') : add.join(', ');
+            sql = 'SELECT ' + newFields + ' ' + rest;
+          }
+        } catch {}
+      }
+    }
+
     if (groupValue !== undefined) {
       const rep =
         typeof groupValue === 'number' ? String(groupValue) : `'${groupValue}'`;

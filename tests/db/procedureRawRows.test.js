@@ -20,7 +20,7 @@ function mockPool(createSql) {
   };
 }
 
-test('getProcedureRawRows expands alias and removes aggregates', async () => {
+test('getProcedureRawRows expands alias and removes aggregates', { concurrency: false }, async () => {
   const createSql = `CREATE PROCEDURE \`sp_test\`()
 BEGIN
   SELECT c.name AS category, SUM(t.amount) AS total, SUM(t.count) AS cnt
@@ -51,7 +51,7 @@ END`;
   await fs.unlink(path.join(process.cwd(), 'config', 'sp_test_rows.sql')).catch(() => {});
 });
 
-test('getProcedureRawRows handles nested SUM expressions', async () => {
+test('getProcedureRawRows handles nested SUM expressions', { concurrency: false }, async () => {
   const createSql = `CREATE PROCEDURE \`sp_case\`()
 BEGIN
   SELECT t.id, t.name,
@@ -75,4 +75,41 @@ END`;
   assert.ok(!/SUM\(/i.test(sql));
   assert.ok(sql.includes("id = 5"));
   await fs.unlink(path.join(process.cwd(), 'config', 'sp_case_rows.sql')).catch(() => {});
+});
+
+test('getProcedureRawRows appends visibleFields from config', { concurrency: false }, async () => {
+  const tmp = await fs.mkdtemp(path.join(process.cwd(), 'tmp-'));
+  const origCwd = process.cwd();
+  process.chdir(tmp);
+  await fs.mkdir(path.join(tmp, 'config'), { recursive: true });
+  await fs.writeFile(
+    path.join(tmp, 'config', 'transactionForms.json'),
+    JSON.stringify({
+      trans: {
+        A: { visibleFields: ['id', 'note'] },
+        B: { visibleFields: ['date', 'note'] },
+      },
+    }),
+  );
+  const createSql = `CREATE PROCEDURE \`sp_vis\`()
+BEGIN
+  SELECT category, SUM(amount) AS total
+  FROM trans
+  GROUP BY category;
+END`;
+  const restore = mockPool(createSql);
+  const { sql } = await db.getProcedureRawRows(
+    'sp_vis',
+    {},
+    'total',
+    'category',
+    'Phones',
+  );
+  restore();
+  assert.ok(sql.includes('trans.id'));
+  assert.ok(sql.includes('trans.note'));
+  assert.ok(sql.includes('trans.date'));
+  process.chdir(origCwd);
+  await fs.rm(tmp, { recursive: true, force: true });
+  await fs.unlink(path.join(process.cwd(), 'config', 'sp_vis_rows.sql')).catch(() => {});
 });
