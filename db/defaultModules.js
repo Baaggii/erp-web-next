@@ -13,6 +13,7 @@ export default [
   { moduleKey: 'coding_tables', label: 'Кодын хүснэгтүүд', parentKey: 'developer', showInSidebar: true, showInHeader: false },
   { moduleKey: 'forms_management', label: 'Маягтын удирдлага', parentKey: 'developer', showInSidebar: true, showInHeader: false },
   { moduleKey: 'report_management', label: 'Тайлангийн удирдлага', parentKey: 'developer', showInSidebar: true, showInHeader: false },
+  { moduleKey: 'report_builder', label: 'Тайлангийн бүтээгч', parentKey: 'report_management', showInSidebar: true, showInHeader: false },
   { moduleKey: 'image_management', label: 'Image Management', parentKey: 'developer', showInSidebar: true, showInHeader: false },
   { moduleKey: 'general_configuration', label: 'Ерөнхий тохиргоо', parentKey: 'settings', showInSidebar: true, showInHeader: false },
   { moduleKey: 'change_password', label: 'Нууц үг солих', parentKey: 'settings', showInSidebar: true, showInHeader: false },
