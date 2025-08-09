@@ -566,6 +566,26 @@ export async function listTableColumns(tableName) {
   return rows.map((r) => r.COLUMN_NAME);
 }
 
+export async function listTableColumnsDetailed(tableName) {
+  const [rows] = await pool.query(
+    `SELECT COLUMN_NAME, COLUMN_TYPE
+       FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ?
+      ORDER BY ORDINAL_POSITION`,
+    [tableName],
+  );
+  return rows.map((r) => ({
+    name: r.COLUMN_NAME,
+    enumValues: /^enum\(/i.test(r.COLUMN_TYPE)
+      ? r.COLUMN_TYPE
+          .slice(5, -1)
+          .split(',')
+          .map((v) => v.trim().slice(1, -1))
+      : [],
+  }));
+}
+
 export async function saveStoredProcedure(sql) {
   const cleaned = sql
     .replace(/^DELIMITER \$\$/gm, '')

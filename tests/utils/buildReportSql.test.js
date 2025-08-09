@@ -13,3 +13,14 @@ test('buildReportSql adds non aggregated fields to group by', () => {
   assert.ok(sql.includes('GROUP BY category'));
   assert.ok(!sql.match(/GROUP BY.*GROUP BY/));
 });
+
+test('buildReportSql unions additional tables', () => {
+  const sql = buildReportSql({
+    from: { table: 'sales', alias: 's' },
+    select: [{ expr: 's.id' }],
+    unions: ['sales_archive'],
+  });
+  assert.ok(sql.includes('FROM sales s'));
+  assert.ok(sql.includes('UNION'));
+  assert.ok(sql.includes('FROM sales_archive s'));
+});

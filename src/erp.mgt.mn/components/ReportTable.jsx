@@ -395,6 +395,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       </div>
       <div className="table-container overflow-x-auto">
         <table
+          className="table-manager"
           style={{
             borderCollapse: 'collapse',
             tableLayout: 'fixed',
@@ -402,7 +403,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
             maxWidth: '2000px',
           }}
         >
-          <thead className="sticky-header">
+          <thead className="table-manager sticky-header">
             <tr style={{ backgroundColor: '#e5e7eb' }}>
               {columns.map((col) => (
                 <th
@@ -439,7 +440,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="table-manager">
             {pageRows.map((row, idx) => (
               <tr key={idx}>
                 {columns.map((col) => {
@@ -559,9 +560,10 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
           ) : txnInfo.data.length > 0 ? (
             <div className="table-container overflow-x-auto">
               <table
+                className="table-manager"
                 style={{ borderCollapse: 'collapse', tableLayout: 'fixed', width: '100%' }}
               >
-                <thead className="sticky-header">
+                <thead className="table-manager sticky-header">
                   <tr>
                     {modalColumns.map((c) => (
                       <th
@@ -583,7 +585,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                     ))}
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="table-manager">
                   {txnInfo.data.map((r, idx) => (
                     <tr key={idx}>
                       {modalColumns.map((c) => (
