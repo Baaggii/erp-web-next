@@ -581,6 +581,10 @@ export async function saveStoredProcedure(sql) {
   }
 }
 
+export async function saveView(sql) {
+  await pool.query(sql);
+}
+
 export async function getTableColumnLabels(tableName) {
   const [rows] = await pool.query(
     'SELECT column_name, mn_label FROM table_column_labels WHERE table_name = ?',

@@ -687,6 +687,7 @@ export default function ReportBuilder() {
   }
 
   function handleGenerateSql() {
+    setSelectSql('');
     try {
       const { report } = buildDefinition();
       setSelectSql(buildReportSql(report));
@@ -698,6 +699,7 @@ export default function ReportBuilder() {
   }
 
   function handleGenerateView() {
+    setViewSql('');
     try {
       const { report } = buildDefinition();
       const sql = buildReportSql(report);
@@ -711,6 +713,7 @@ export default function ReportBuilder() {
   }
 
   function handleGenerateProc() {
+    setProcSql('');
     try {
       const { report, params: p } = buildDefinition();
       const built = buildStoredProcedure({
@@ -726,8 +729,9 @@ export default function ReportBuilder() {
     }
   }
 
-  async function handleSave() {
+  async function handlePostProc() {
     if (!procSql) return;
+    if (!window.confirm('POST stored procedure to database?')) return;
     try {
       const res = await fetch('/api/report_builder/procedures', {
         method: 'POST',
@@ -738,6 +742,30 @@ export default function ReportBuilder() {
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: { message: 'Stored procedure saved', type: 'success' },
+        }),
+      );
+    } catch (err) {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message: err.message || 'Save failed', type: 'error' },
+        }),
+      );
+    }
+  }
+
+  async function handlePostView() {
+    if (!viewSql) return;
+    if (!window.confirm('POST view to database?')) return;
+    try {
+      const res = await fetch('/api/report_builder/views', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql: viewSql }),
+      });
+      if (!res.ok) throw new Error('Save failed');
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message: 'View saved', type: 'success' },
         }),
       );
     } catch (err) {
@@ -1752,9 +1780,16 @@ export default function ReportBuilder() {
         </button>
       </section>
 
+      {viewSql && (
+        <section style={{ marginTop: '1rem' }}>
+          <h3>View</h3>
+          <button onClick={handlePostView}>POST View</button>
+        </section>
+      )}
+
       <section style={{ marginTop: '1rem' }}>
         <h3>Stored Procedure</h3>
-        <button onClick={handleSave}>Save Procedure</button>
+        {procSql && <button onClick={handlePostProc}>POST Procedure</button>}
         <button onClick={handleSaveProcFile} style={{ marginLeft: '0.5rem' }}>
           Save to Host
         </button>
