@@ -23,7 +23,7 @@ function mockPool(createSql) {
 test('getProcedureRawRows expands alias and removes aggregates', async () => {
   const createSql = `CREATE PROCEDURE \`sp_test\`()
 BEGIN
-  SELECT c.name AS category, SUM(t.amount) AS total
+  SELECT c.name AS category, SUM(t.amount) AS total, SUM(t.count) AS cnt
   FROM trans t
   JOIN categories c ON c.id = t.category_id
   WHERE t.date BETWEEN start_date AND end_date
@@ -39,6 +39,7 @@ END`;
   );
   restore();
   assert.ok(sql.includes('t.amount AS total'));
+  assert.ok(!/\bcnt\b/i.test(sql));
   assert.ok(sql.includes("c.name = 'Phones'"));
   assert.ok(sql.includes("'2024-01-01'"));
   assert.ok(!/GROUP BY/i.test(sql));
