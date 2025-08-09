@@ -1130,21 +1130,8 @@ export async function getProcedureRawRows(
   function escapeRegExp(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
-  const selectMatches = [...body.matchAll(/SELECT[\s\S]*?(?=;|END|$)/gi)];
-  const colRegex = new RegExp(`\\b${escapeRegExp(column)}\\b`, 'i');
-  let sql = '';
-  for (const m of selectMatches) {
-    if (colRegex.test(m[0])) {
-      sql = m[0];
-      break;
-    }
-  }
-  if (!sql && selectMatches.length) {
-    sql = selectMatches[selectMatches.length - 1][0];
-  }
-  if (!sql) {
-    sql = createSql;
-  }
+  const firstSelect = body.match(/SELECT[\s\S]*?(?=;|END|$)/i);
+  let sql = firstSelect ? firstSelect[0] : createSql;
 
   const originalSql = sql;
 

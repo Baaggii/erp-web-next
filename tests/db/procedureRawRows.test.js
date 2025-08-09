@@ -28,6 +28,7 @@ BEGIN
   JOIN categories c ON c.id = t.category_id
   WHERE t.date BETWEEN start_date AND end_date
   GROUP BY c.name;
+  SELECT 'after';
 END`;
   const restore = mockPool(createSql);
   const { sql } = await db.getProcedureRawRows(
@@ -46,5 +47,6 @@ END`;
   assert.ok(!/HAVING/i.test(sql));
   assert.ok(!/SUM\(/i.test(sql));
   assert.ok(/^SELECT \* FROM \(/i.test(sql));
+  assert.ok(!/after/i.test(sql));
   await fs.unlink(path.join(process.cwd(), 'config', 'sp_test_rows.sql')).catch(() => {});
 });
