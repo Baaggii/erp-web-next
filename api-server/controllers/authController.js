@@ -16,7 +16,11 @@ export async function login(req, res, next) {
       role: user.role,
     });
 
-    const refreshToken = jwtService.signRefresh({ id: user.id });
+    const refreshToken = jwtService.signRefresh({
+      id: user.id,
+      empid: user.empid,
+      role: user.role,
+    });
 
     res.cookie(getCookieName(), token, {
       httpOnly: true,
@@ -87,11 +91,22 @@ export async function refresh(req, res) {
       empid: user.empid,
       role: user.role,
     });
+    const newRefresh = jwtService.signRefresh({
+      id: user.id,
+      empid: user.empid,
+      role: user.role,
+    });
     res.cookie(getCookieName(), newAccess, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: jwtService.getExpiryMillis(),
+    });
+    res.cookie(getRefreshCookieName(), newRefresh, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: jwtService.getRefreshExpiryMillis(),
     });
     res.json({
       id: user.id,
