@@ -87,18 +87,20 @@ test(
         return JSON.stringify({
           trans: {
             general: {
-              A: { visibleFields: ['id'] },
+              A: {
+                visibleFields: ['id'],
+                headerFields: ['hdr'],
+                mainFields: ['main'],
+                footerFields: ['ftr'],
+              },
               subgroup: { B: { visibleFields: ['note'] } },
             },
-          },
-          Other: {
-            C: { mainFields: ['trans'], visibleFields: ['date'] },
           },
         });
       }
       if (p.endsWith(path.join('config', 'tableDisplayFields.json'))) {
         return JSON.stringify({
-          trans: { idField: 'id', displayFields: ['id', 'note', 'date'] },
+          trans: { idField: 'id', displayFields: ['id', 'note', 'hdr', 'main', 'ftr'] },
         });
       }
       return origRead(p, enc);
@@ -121,8 +123,10 @@ END`;
     fs.readFile = origRead;
     assert.ok(sql.includes('tr.id'));
     assert.ok(sql.includes('tr.note'));
-    assert.ok(sql.includes('tr.date'));
-    assert.deepEqual(displayFields, ['id', 'note', 'date']);
+    assert.ok(sql.includes('tr.hdr'));
+    assert.ok(sql.includes('tr.main'));
+    assert.ok(sql.includes('tr.ftr'));
+    assert.deepEqual(displayFields, ['id', 'note', 'hdr', 'main', 'ftr']);
     await fs
       .unlink(path.join(process.cwd(), 'config', 'sp_vis_rows.sql'))
       .catch(() => {});

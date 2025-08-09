@@ -1283,28 +1283,24 @@ export async function getProcedureRawRows(
           const cfg = JSON.parse(txt);
           const set = new Set();
 
-          function collect(obj, tblKey) {
+          function collect(obj) {
             if (!obj || typeof obj !== 'object') return;
-            const main = Array.isArray(obj.mainFields)
-              ? obj.mainFields.map(String)
-              : [];
-            if (
-              tblKey === table ||
-              main.some((f) => String(f) === String(table))
-            ) {
-              if (Array.isArray(obj.visibleFields)) {
-                for (const f of obj.visibleFields) set.add(String(f));
-              }
-            }
+            ['visibleFields', 'headerFields', 'mainFields', 'footerFields'].forEach(
+              (key) => {
+                if (Array.isArray(obj[key])) {
+                  for (const f of obj[key]) set.add(String(f));
+                }
+              },
+            );
             for (const val of Object.values(obj)) {
               if (val && typeof val === 'object' && !Array.isArray(val)) {
-                collect(val, tblKey);
+                collect(val);
               }
             }
           }
 
-          for (const [tblKey, forms] of Object.entries(cfg)) {
-            collect(forms, tblKey);
+          if (cfg[table]) {
+            collect(cfg[table]);
           }
           const add = [];
           for (const f of set) {

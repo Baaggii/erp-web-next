@@ -67,8 +67,19 @@ export default function buildReportSql(definition = {}) {
   }
 
   // GROUP BY clause
-  if (definition.groupBy?.length) {
-    parts.push(`GROUP BY ${definition.groupBy.join(', ')}`);
+  const aggRe = /\b(SUM|COUNT|AVG|MIN|MAX)\s*\(/i;
+  const hasAgg = selectItems.some((s) => aggRe.test(s.expr));
+  const groupSet = new Set(definition.groupBy || []);
+  if (hasAgg) {
+    selectItems.forEach((s) => {
+      if (!aggRe.test(s.expr)) {
+        const gb = s.alias || expandExpr(s.expr);
+        if (gb) groupSet.add(gb);
+      }
+    });
+  }
+  if (groupSet.size) {
+    parts.push(`GROUP BY ${Array.from(groupSet).join(', ')}`);
   }
 
   // HAVING clause

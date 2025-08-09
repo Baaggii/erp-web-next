@@ -133,6 +133,30 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     return all;
   }, [txnInfo]);
 
+  const modalAlign = useMemo(() => {
+    const map = {};
+    if (!txnInfo || !txnInfo.data) return map;
+    modalColumns.forEach((c) => {
+      const sample = txnInfo.data.find((r) => r[c] !== null && r[c] !== undefined);
+      map[c] = typeof sample?.[c] === 'number' ? 'right' : 'left';
+    });
+    return map;
+  }, [modalColumns, txnInfo]);
+
+  const modalWidths = useMemo(() => {
+    const map = {};
+    if (!txnInfo || !txnInfo.data) return map;
+    modalColumns.forEach((c) => {
+      const avg = getAverageLength(c, txnInfo.data);
+      let w;
+      if (avg <= 4) w = ch(Math.max(avg + 1, 5));
+      else if (avg <= 10) w = ch(12);
+      else w = ch(20);
+      map[c] = Math.min(w, MAX_WIDTH);
+    });
+    return map;
+  }, [modalColumns, txnInfo]);
+
   useEffect(() => {
     if (procedure) {
       window.dispatchEvent(
@@ -369,7 +393,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
           style={{ marginRight: '0.5rem' }}
         />
       </div>
-      <div style={{ overflowX: 'auto' }}>
+      <div className="table-container overflow-x-auto">
         <table
           style={{
             borderCollapse: 'collapse',
@@ -378,7 +402,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
             maxWidth: '2000px',
           }}
         >
-          <thead>
+          <thead className="sticky-header">
             <tr style={{ backgroundColor: '#e5e7eb' }}>
               {columns.map((col) => (
                 <th
@@ -533,9 +557,11 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
           {txnInfo.loading ? (
             <div>Loading...</div>
           ) : txnInfo.data.length > 0 ? (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-                <thead>
+            <div className="table-container overflow-x-auto">
+              <table
+                style={{ borderCollapse: 'collapse', tableLayout: 'fixed', width: '100%' }}
+              >
+                <thead className="sticky-header">
                   <tr>
                     {modalColumns.map((c) => (
                       <th
@@ -543,7 +569,13 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                         style={{
                           padding: '0.25rem',
                           border: '1px solid #d1d5db',
-                          textAlign: 'left',
+                          textAlign: modalAlign[c],
+                          width: modalWidths[c],
+                          minWidth: modalWidths[c],
+                          maxWidth: MAX_WIDTH,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
                         }}
                       >
                         {fieldLabels[c] || c}
@@ -560,7 +592,13 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                           style={{
                             padding: '0.25rem',
                             border: '1px solid #d1d5db',
-                            textAlign: 'left',
+                            textAlign: modalAlign[c],
+                            width: modalWidths[c],
+                            minWidth: modalWidths[c],
+                            maxWidth: MAX_WIDTH,
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
                           }}
                         >
                           {typeof r[c] === 'number' ? formatNumber(r[c]) : r[c]}
