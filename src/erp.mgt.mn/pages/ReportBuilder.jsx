@@ -16,6 +16,7 @@ const CALC_OPERATORS = ['+', '-', '*', '/'];
 export default function ReportBuilder() {
   const [tables, setTables] = useState([]); // list of table names
   const [tableFields, setTableFields] = useState({}); // { tableName: [field, ...] }
+  const [fieldEnums, setFieldEnums] = useState({}); // { tableName: { field: [enum] } }
 
   const [procName, setProcName] = useState('');
   const [fromTable, setFromTable] = useState('');
@@ -27,6 +28,7 @@ export default function ReportBuilder() {
   const [params, setParams] = useState([]); // {name,type,source}
   const [conditions, setConditions] = useState([]); // {table,field,param,connector}
   const [fromFilters, setFromFilters] = useState([]); // {field,operator,valueType,param,value,connector}
+  const [unions, setUnions] = useState([]); // [table]
   const [selectSql, setSelectSql] = useState('');
   const [viewSql, setViewSql] = useState('');
   const [procSql, setProcSql] = useState('');
@@ -83,7 +85,13 @@ export default function ReportBuilder() {
         `/api/report_builder/fields?table=${encodeURIComponent(table)}`,
       );
       const data = await res.json();
-      setTableFields((prev) => ({ ...prev, [table]: data.fields || [] }));
+      const names = (data.fields || []).map((f) => f.name || f);
+      const enums = {};
+      (data.fields || []).forEach((f) => {
+        enums[f.name || f] = f.enumValues || [];
+      });
+      setTableFields((prev) => ({ ...prev, [table]: names }));
+      setFieldEnums((prev) => ({ ...prev, [table]: enums }));
     } catch (err) {
       console.error(err);
     }
@@ -99,6 +107,24 @@ export default function ReportBuilder() {
       })),
     );
   }, [fromTable]);
+
+  useEffect(() => {
+    const auto = fields
+      .filter((f) => f.aggregate === 'NONE' && f.table && f.field)
+      .map((f) => ({ table: f.table, field: f.field }));
+    setGroups((prev) => {
+      const map = new Map(prev.map((g) => [`${g.table}.${g.field}`, g]));
+      let changed = false;
+      auto.forEach((g) => {
+        const key = `${g.table}.${g.field}`;
+        if (!map.has(key)) {
+          map.set(key, g);
+          changed = true;
+        }
+      });
+      return changed ? Array.from(map.values()) : prev;
+    });
+  }, [fields]);
 
   const availableTables = [fromTable, ...joins.map((j) => j.table)].filter(Boolean);
 
@@ -487,6 +513,21 @@ export default function ReportBuilder() {
     setFromFilters(fromFilters.filter((_, i) => i !== index));
   }
 
+  function addUnion() {
+    const remaining = tables.filter((t) => t !== fromTable);
+    const table = remaining[0] || tables[0];
+    if (!table) return;
+    setUnions([...unions, table]);
+  }
+
+  function updateUnion(index, value) {
+    setUnions(unions.map((u, i) => (i === index ? value : u)));
+  }
+
+  function removeUnion(index) {
+    setUnions(unions.filter((_, i) => i !== index));
+  }
+
   function addJoinFilter(jIndex) {
     const join = joins[jIndex];
     ensureFields(join.table);
@@ -674,6 +715,8 @@ export default function ReportBuilder() {
         return { expr: `${left} ${h.operator} ${right}`, connector: h.connector };
       });
 
+    const unionTables = unions.filter((t) => t && t !== fromTable);
+
     const report = {
       from: { table: fromTableSql, alias: aliases[fromTable] },
       joins: joinDefs,
@@ -681,6 +724,7 @@ export default function ReportBuilder() {
       where,
       groupBy,
       having: havingDefs,
+      unions: unionTables,
     };
 
     return { report, params: params.map(({ name, type }) => ({ name, type })) };
@@ -788,6 +832,7 @@ export default function ReportBuilder() {
       params,
       conditions,
       fromFilters,
+      unions,
     };
     try {
       const name = procName || 'report';
@@ -866,6 +911,7 @@ export default function ReportBuilder() {
           })),
         );
         setGroups(data.groups || []);
+        setUnions(data.unions || []);
         setHaving(
           (data.having || []).map((h) => ({
             connector: h.connector || 'AND',
@@ -959,6 +1005,25 @@ export default function ReportBuilder() {
       </section>
 
       <section>
+        <h3>Union Tables</h3>
+        {unions.map((u, i) => (
+          <div key={i} style={{ marginBottom: '0.5rem' }}>
+            <select value={u} onChange={(e) => updateUnion(i, e.target.value)}>
+              {tables.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+            <button onClick={() => removeUnion(i)} style={{ marginLeft: '0.5rem' }}>
+              ✕
+            </button>
+          </div>
+        ))}
+        <button onClick={addUnion}>Add Union</button>
+      </section>
+
+      <section>
         <h3>Primary Table Filters</h3>
         {fromFilters.map((f, i) => (
           <div key={i} style={{ marginBottom: '0.5rem' }}>
@@ -1010,6 +1075,19 @@ export default function ReportBuilder() {
                 {params.map((p) => (
                   <option key={p.name} value={p.name}>
                     {p.name}
+                  </option>
+                ))}
+              </select>
+            ) : fieldEnums[fromTable]?.[f.field]?.length ? (
+              <select
+                value={f.value}
+                onChange={(e) => updateFromFilter(i, 'value', e.target.value)}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                <option value=""></option>
+                {fieldEnums[fromTable][f.field].map((v) => (
+                  <option key={v} value={v}>
+                    {v}
                   </option>
                 ))}
               </select>
@@ -1186,6 +1264,19 @@ export default function ReportBuilder() {
                       {params.map((p) => (
                         <option key={p.name} value={p.name}>
                           {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : fieldEnums[j.table]?.[f.field]?.length ? (
+                    <select
+                      value={f.value}
+                      onChange={(e) => updateJoinFilter(i, k, 'value', e.target.value)}
+                      style={{ marginLeft: '0.5rem' }}
+                    >
+                      <option value=""></option>
+                      {fieldEnums[j.table][f.field].map((v) => (
+                        <option key={v} value={v}>
+                          {v}
                         </option>
                       ))}
                     </select>
@@ -1461,6 +1552,21 @@ export default function ReportBuilder() {
                           </option>
                         ))}
                       </select>
+                    ) : fieldEnums[c.table]?.[c.field]?.length ? (
+                      <select
+                        value={c.value}
+                        onChange={(e) =>
+                          updateFieldCondition(i, k, 'value', e.target.value)
+                        }
+                        style={{ marginLeft: '0.5rem' }}
+                      >
+                        <option value=""></option>
+                        {fieldEnums[c.table][c.field].map((v) => (
+                          <option key={v} value={v}>
+                            {v}
+                          </option>
+                        ))}
+                      </select>
                     ) : (
                       <input
                         value={c.value}
@@ -1628,6 +1734,19 @@ export default function ReportBuilder() {
                 {params.map((p) => (
                   <option key={p.name} value={p.name}>
                     {p.name}
+                  </option>
+                ))}
+              </select>
+            ) : h.source === 'field' && fieldEnums[h.table]?.[h.field]?.length ? (
+              <select
+                value={h.value}
+                onChange={(e) => updateHaving(i, 'value', e.target.value)}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                <option value=""></option>
+                {fieldEnums[h.table][h.field].map((v) => (
+                  <option key={v} value={v}>
+                    {v}
                   </option>
                 ))}
               </select>
