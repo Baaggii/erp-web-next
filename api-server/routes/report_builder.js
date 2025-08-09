@@ -1,6 +1,4 @@
 import express from 'express';
-import path from 'path';
-import fs from 'fs/promises';
 import { requireAuth } from '../middlewares/auth.js';
 import {
   listDatabaseTables,
@@ -9,7 +7,6 @@ import {
 } from '../../db/index.js';
 
 const router = express.Router();
-const CONFIG_DIR = path.join(process.cwd(), 'uploads', 'report_builder');
 
 // List database tables
 router.get('/tables', requireAuth, async (req, res, next) => {
@@ -40,44 +37,6 @@ router.post('/procedures', requireAuth, async (req, res, next) => {
     if (!sql) return res.status(400).json({ message: 'sql required' });
     await saveStoredProcedure(sql);
     res.json({ ok: true });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// Save report definition to host
-router.post('/configs/:name', requireAuth, async (req, res, next) => {
-  try {
-    const { name } = req.params;
-    if (!name) return res.status(400).json({ message: 'name required' });
-    await fs.mkdir(CONFIG_DIR, { recursive: true });
-    const file = path.join(CONFIG_DIR, `${name}.json`);
-    await fs.writeFile(file, JSON.stringify(req.body || {}, null, 2));
-    res.json({ ok: true });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// List saved report definitions
-router.get('/configs', requireAuth, async (req, res, next) => {
-  try {
-    await fs.mkdir(CONFIG_DIR, { recursive: true });
-    const files = await fs.readdir(CONFIG_DIR);
-    const names = files.filter((f) => f.endsWith('.json')).map((f) => f.replace(/\.json$/, ''));
-    res.json({ names });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// Load a saved report definition
-router.get('/configs/:name', requireAuth, async (req, res, next) => {
-  try {
-    const { name } = req.params;
-    const file = path.join(CONFIG_DIR, `${name}.json`);
-    const text = await fs.readFile(file, 'utf-8');
-    res.json(JSON.parse(text));
   } catch (err) {
     next(err);
   }
