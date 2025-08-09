@@ -81,6 +81,7 @@ export const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
+  multipleStatements: true,
 });
 
 /**
@@ -563,6 +564,21 @@ export async function listTableColumns(tableName) {
     [tableName],
   );
   return rows.map((r) => r.COLUMN_NAME);
+}
+
+export async function saveStoredProcedure(sql) {
+  const cleaned = sql
+    .replace(/^DELIMITER \$\$/gm, '')
+    .replace(/^DELIMITER ;/gm, '')
+    .replace(/END \$\$/gm, 'END;');
+  const dropMatch = cleaned.match(/DROP\s+PROCEDURE[^;]+;/i);
+  const createMatch = cleaned.match(/CREATE\s+PROCEDURE[\s\S]+END;/i);
+  if (dropMatch) {
+    await pool.query(dropMatch[0]);
+  }
+  if (createMatch) {
+    await pool.query(createMatch[0]);
+  }
 }
 
 export async function getTableColumnLabels(tableName) {
