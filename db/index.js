@@ -81,6 +81,7 @@ export const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
+  multipleStatements: true,
 });
 
 /**
@@ -563,6 +564,25 @@ export async function listTableColumns(tableName) {
     [tableName],
   );
   return rows.map((r) => r.COLUMN_NAME);
+}
+
+export async function saveStoredProcedure(sql) {
+  const cleaned = sql
+    .replace(/^DELIMITER \$\$/gm, '')
+    .replace(/^DELIMITER ;/gm, '')
+    .replace(/END\s*\$\$/gm, 'END;');
+  const dropMatch = cleaned.match(/DROP\s+PROCEDURE[^;]+;/i);
+  const createMatch = cleaned.match(/CREATE\s+PROCEDURE[\s\S]+END;/i);
+  if (dropMatch) {
+    await pool.query(dropMatch[0]);
+  }
+  if (createMatch) {
+    await pool.query(createMatch[0]);
+  }
+}
+
+export async function saveView(sql) {
+  await pool.query(sql);
 }
 
 export async function getTableColumnLabels(tableName) {
@@ -1110,34 +1130,33 @@ export async function getProcedureRawRows(
   function escapeRegExp(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
-  const selectMatches = [...body.matchAll(/SELECT[\s\S]*?(?=;|END|$)/gi)];
-  const colRegex = new RegExp(`\\b${escapeRegExp(column)}\\b`, 'i');
-  let sql = '';
-  for (const m of selectMatches) {
-    if (colRegex.test(m[0])) {
-      sql = m[0];
-      break;
-    }
-  }
-  if (!sql && selectMatches.length) {
-    sql = selectMatches[selectMatches.length - 1][0];
-  }
-  if (!sql) {
-    sql = createSql;
-  }
-
+  const firstSelectIdx = body.search(/SELECT/i);
+  let sql = firstSelectIdx === -1 ? createSql : body.slice(firstSelectIdx);
   const originalSql = sql;
+  let remainder = '';
+  const firstSemi = sql.indexOf(';');
+  if (firstSemi !== -1) {
+    remainder = sql.slice(firstSemi);
+    sql = sql.slice(0, firstSemi);
+  }
 
   if (/^SELECT/i.test(sql)) {
     const colRe = escapeRegExp(column);
-    const sumRegex = new RegExp(
-      `SUM\\(([^)]*)\\)\\s*(?:AS\\s+)?` + '`?' + colRe + '`?',
+
+    const keepRegex = new RegExp(
+      'SUM\\(([^)]*)\\)\\s*(?:AS\\s+)?`?' + colRe + '`?',
       'i',
     );
-    const sumMatch = sql.match(sumRegex);
-    if (sumMatch) {
-      sql = sql.replace(sumRegex, `${sumMatch[1]} AS ${column}`);
-    }
+    sql = sql.replace(keepRegex, (_, inner) => `${inner} AS ${column}`);
+
+    sql = sql.replace(
+      /,\s*SUM\([^)]*\)\s*(?:AS\s+)?`?[a-z0-9_]+`?/gi,
+      '',
+    );
+    sql = sql.replace(
+      /SELECT\s*SUM\([^)]*\)\s*(?:AS\s+)?`?[a-z0-9_]+`?\s*,/i,
+      'SELECT ',
+    );
 
     sql = sql.replace(/GROUP BY[\s\S]*?(HAVING|ORDER BY|$)/i, '$1');
     sql = sql.replace(/HAVING[\s\S]*?(ORDER BY|$)/i, '$1');
@@ -1168,36 +1187,18 @@ export async function getProcedureRawRows(
       }
     }
 
+    sql = sql.replace(/;\s*$/, '');
     if (groupValue !== undefined) {
-      let condField = groupField;
-      const sel = sql.match(/SELECT\s+([\s\S]+?)\s+FROM/i);
-      if (sel) {
-        const firstField = sel[1].split(/,(?![^()]*\))/)[0]?.trim();
-        const m = firstField?.match(/^(.+?)\s+(?:AS\s+)?`?([a-z0-9_]+)`?$/i);
-        if (m) {
-          const expr = m[1].trim();
-          const alias = m[2];
-          if (!groupField || alias === groupField) condField = expr;
-        } else if (!groupField) {
-          condField = firstField;
-        }
-      }
-      if (condField) {
-        const rep =
-          typeof groupValue === 'number' ? String(groupValue) : `'${groupValue}'`;
-        const clause = `${condField} = ${rep}`;
-        if (/WHERE/i.test(sql)) {
-          sql = sql.replace(/WHERE/i, `WHERE ${clause} AND `);
-        } else {
-          sql += ` WHERE ${clause}`;
-        }
-      }
+      const rep =
+        typeof groupValue === 'number' ? String(groupValue) : `'${groupValue}'`;
+      sql = `SELECT * FROM (${sql}) AS _raw WHERE ${groupField} = ${rep}`;
     }
 
-    // Trim trailing statement terminators to avoid MySQL complaining when
-    // executing the reconstructed query.
     sql = sql.replace(/;\s*$/, '');
   }
+
+  sql += remainder;
+  sql = sql.replace(/;\s*$/, '');
 
   const file = `${name.replace(/[^a-z0-9_]/gi, '_')}_rows.sql`;
   let content = `-- Original SQL for ${name}\n${originalSql}\n`;
