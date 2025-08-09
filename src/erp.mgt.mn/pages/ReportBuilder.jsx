@@ -601,7 +601,6 @@ export default function ReportBuilder() {
 
       const where = conditions
         .filter((c) => c.table && c.field && c.param)
-        .map((c) => {
           if (!validTables.has(c.table)) {
             throw new Error(`Table ${c.table} is not joined`);
           }
