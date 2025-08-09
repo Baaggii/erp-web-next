@@ -9,7 +9,14 @@ const baseDir = path.join(process.cwd(), 'uploads', 'txn_images', 'search_images
 
 await test('searchImages finds files by field value', async () => {
   const orig = await getGeneralConfig();
-  await updateGeneralConfig({ images: { ignoreOnSearch: ['ignored'] } });
+  await updateGeneralConfig({
+    images: {
+      ignoreOnSearch: [
+        path.join(process.cwd(), 'uploads'),
+        path.join(baseDir, 'ignored'),
+      ],
+    },
+  });
 
   await fs.rm(baseDir, { recursive: true, force: true });
   await fs.mkdir(baseDir, { recursive: true });
