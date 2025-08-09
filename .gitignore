@@ -10,7 +10,8 @@ config/*.json
 !config/headerMappings.json
 config/generated.sql
 .ico
-uploads/
 uploads/*
 !uploads/.gitkeep
+!uploads/report_builder/
+!uploads/report_builder/.gitkeep
 !config/.gitkeep

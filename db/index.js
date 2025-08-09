@@ -81,6 +81,7 @@ export const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
+  multipleStatements: true,
 });
 
 /**
@@ -569,13 +570,14 @@ export async function saveStoredProcedure(sql) {
   const cleaned = sql
     .replace(/^DELIMITER \$\$/gm, '')
     .replace(/^DELIMITER ;/gm, '')
-    .replace(/END \$\$/gm, 'END');
-  const statements = cleaned
-    .split(';')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  for (const stmt of statements) {
-    await pool.query(stmt);
+    .replace(/END\s*\$\$/gm, 'END;');
+  const dropMatch = cleaned.match(/DROP\s+PROCEDURE[^;]+;/i);
+  const createMatch = cleaned.match(/CREATE\s+PROCEDURE[\s\S]+END;/i);
+  if (dropMatch) {
+    await pool.query(dropMatch[0]);
+  }
+  if (createMatch) {
+    await pool.query(createMatch[0]);
   }
 }
 
