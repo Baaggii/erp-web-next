@@ -77,39 +77,51 @@ END`;
   await fs.unlink(path.join(process.cwd(), 'config', 'sp_case_rows.sql')).catch(() => {});
 });
 
-test('getProcedureRawRows appends visibleFields from config', { concurrency: false }, async () => {
-  const tmp = await fs.mkdtemp(path.join(process.cwd(), 'tmp-'));
-  const origCwd = process.cwd();
-  process.chdir(tmp);
-  await fs.mkdir(path.join(tmp, 'config'), { recursive: true });
-  await fs.writeFile(
-    path.join(tmp, 'config', 'transactionForms.json'),
-    JSON.stringify({
-      trans: {
-        A: { visibleFields: ['id', 'note'] },
-        B: { visibleFields: ['date', 'note'] },
-      },
-    }),
-  );
-  const createSql = `CREATE PROCEDURE \`sp_vis\`()
+test(
+  'getProcedureRawRows appends visibleFields from all configs and returns displayFields',
+  { concurrency: false },
+  async () => {
+    const origRead = fs.readFile;
+    fs.readFile = async (p, enc) => {
+      if (p.endsWith(path.join('config', 'transactionForms.json'))) {
+        return JSON.stringify({
+          Foo: {
+            A: { mainFields: ['trans'], visibleFields: ['id', 'note'] },
+          },
+          Bar: {
+            B: { mainFields: ['trans'], visibleFields: ['date', 'note'] },
+          },
+        });
+      }
+      if (p.endsWith(path.join('config', 'tableDisplayFields.json'))) {
+        return JSON.stringify({
+          trans: { idField: 'id', displayFields: ['id', 'note', 'date'] },
+        });
+      }
+      return origRead(p, enc);
+    };
+    const createSql = `CREATE PROCEDURE \`sp_vis\`()
 BEGIN
   SELECT tr.category, SUM(tr.amount) AS total
   FROM (SELECT * FROM trans) tr
   GROUP BY tr.category;
 END`;
-  const restore = mockPool(createSql);
-  const { sql } = await db.getProcedureRawRows(
-    'sp_vis',
-    {},
-    'total',
-    'category',
-    'Phones',
-  );
-  restore();
-  assert.ok(sql.includes('tr.id'));
-  assert.ok(sql.includes('tr.note'));
-  assert.ok(sql.includes('tr.date'));
-  process.chdir(origCwd);
-  await fs.rm(tmp, { recursive: true, force: true });
-  await fs.unlink(path.join(process.cwd(), 'config', 'sp_vis_rows.sql')).catch(() => {});
-});
+    const restore = mockPool(createSql);
+    const { sql, displayFields } = await db.getProcedureRawRows(
+      'sp_vis',
+      {},
+      'total',
+      'category',
+      'Phones',
+    );
+    restore();
+    fs.readFile = origRead;
+    assert.ok(sql.includes('tr.id'));
+    assert.ok(sql.includes('tr.note'));
+    assert.ok(sql.includes('tr.date'));
+    assert.deepEqual(displayFields, ['id', 'note', 'date']);
+    await fs
+      .unlink(path.join(process.cwd(), 'config', 'sp_vis_rows.sql'))
+      .catch(() => {});
+  },
+);

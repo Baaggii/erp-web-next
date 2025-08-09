@@ -1134,6 +1134,7 @@ export async function getProcedureRawRows(
   let sql = firstSelectIdx === -1 ? createSql : body.slice(firstSelectIdx);
   const originalSql = sql;
   let remainder = '';
+  let displayFields = [];
   const firstSemi = sql.indexOf(';');
   if (firstSemi !== -1) {
     remainder = sql.slice(firstSemi);
@@ -1280,11 +1281,20 @@ export async function getProcedureRawRows(
             'utf8',
           );
           const cfg = JSON.parse(txt);
-          const byTable = cfg[table] || {};
           const set = new Set();
-          for (const info of Object.values(byTable)) {
-            if (info && Array.isArray(info.visibleFields)) {
-              for (const f of info.visibleFields) set.add(String(f));
+          for (const [tblKey, forms] of Object.entries(cfg)) {
+            for (const info of Object.values(forms || {})) {
+              const main = Array.isArray(info?.mainFields)
+                ? info.mainFields.map(String)
+                : [];
+              if (
+                tblKey === table ||
+                main.some((f) => String(f) === String(table))
+              ) {
+                if (Array.isArray(info.visibleFields)) {
+                  for (const f of info.visibleFields) set.add(String(f));
+                }
+              }
             }
           }
           const add = [];
@@ -1297,6 +1307,16 @@ export async function getProcedureRawRows(
             const fp = fieldsPart.trim();
             const newFields = fp ? fp + ', ' + add.join(', ') : add.join(', ');
             sql = 'SELECT ' + newFields + ' ' + rest;
+          }
+        } catch {}
+        try {
+          const dfTxt = await fs.readFile(
+            path.join(process.cwd(), 'config', 'tableDisplayFields.json'),
+            'utf8',
+          );
+          const dfCfg = JSON.parse(dfTxt);
+          if (dfCfg[table] && Array.isArray(dfCfg[table].displayFields)) {
+            displayFields = dfCfg[table].displayFields.map(String);
           }
         } catch {}
       }
@@ -1323,8 +1343,8 @@ export async function getProcedureRawRows(
 
   try {
     const [out] = await pool.query(sql);
-    return { rows: out, sql, original: originalSql, file };
+    return { rows: out, sql, original: originalSql, file, displayFields };
   } catch {
-    return { rows: [], sql, original: originalSql, file };
+    return { rows: [], sql, original: originalSql, file, displayFields };
   }
 }
