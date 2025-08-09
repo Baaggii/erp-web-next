@@ -1251,14 +1251,26 @@ export async function getProcedureRawRows(
       const afterFrom = rest.slice(4).trimStart();
       let table = '';
       let alias = '';
-      const m1 = afterFrom.match(/\(\s*SELECT\s+\*\s+FROM\s+`?([a-zA-Z0-9_]+)`?[^)]*\)\s*([a-zA-Z0-9_]+)/i);
-      const m2 = afterFrom.match(/`?([a-zA-Z0-9_]+)`?(?:\s+AS)?\s*([a-zA-Z0-9_]+)?/i);
-      if (m1) {
-        table = m1[1];
-        alias = m1[2];
-      } else if (m2) {
-        table = m2[1];
-        alias = m2[2] || m2[1];
+      if (afterFrom.startsWith('(')) {
+        let depth = 1;
+        let i = 1;
+        while (i < afterFrom.length && depth > 0) {
+          const ch = afterFrom[i];
+          if (ch === '(') depth++;
+          else if (ch === ')') depth--;
+          i++;
+        }
+        const sub = afterFrom.slice(1, i - 1);
+        const aliasMatch = afterFrom.slice(i).match(/^\s*([a-zA-Z0-9_]+)/);
+        alias = aliasMatch ? aliasMatch[1] : '';
+        const tableMatch = sub.match(/FROM\s+`?([a-zA-Z0-9_]+)`?/i);
+        table = tableMatch ? tableMatch[1] : '';
+      } else {
+        const m = afterFrom.match(/`?([a-zA-Z0-9_]+)`?(?:\s+(?:AS\s+)?([a-zA-Z0-9_]+))?/i);
+        if (m) {
+          table = m[1];
+          alias = m[2] || m[1];
+        }
       }
       if (table) {
         const prefix = alias ? `${alias}.` : '';

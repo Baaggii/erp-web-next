@@ -93,9 +93,9 @@ test('getProcedureRawRows appends visibleFields from config', { concurrency: fal
   );
   const createSql = `CREATE PROCEDURE \`sp_vis\`()
 BEGIN
-  SELECT category, SUM(amount) AS total
-  FROM trans
-  GROUP BY category;
+  SELECT tr.category, SUM(tr.amount) AS total
+  FROM (SELECT * FROM trans) tr
+  GROUP BY tr.category;
 END`;
   const restore = mockPool(createSql);
   const { sql } = await db.getProcedureRawRows(
@@ -106,9 +106,9 @@ END`;
     'Phones',
   );
   restore();
-  assert.ok(sql.includes('trans.id'));
-  assert.ok(sql.includes('trans.note'));
-  assert.ok(sql.includes('trans.date'));
+  assert.ok(sql.includes('tr.id'));
+  assert.ok(sql.includes('tr.note'));
+  assert.ok(sql.includes('tr.date'));
   process.chdir(origCwd);
   await fs.rm(tmp, { recursive: true, force: true });
   await fs.unlink(path.join(process.cwd(), 'config', 'sp_vis_rows.sql')).catch(() => {});
