@@ -33,7 +33,6 @@ export default function ReportBuilder() {
   const [procFiles, setProcFiles] = useState([]); // saved procedure names on host
   const [selectedProcFile, setSelectedProcFile] = useState('');
   const [error, setError] = useState('');
-
   const [customParamName, setCustomParamName] = useState('');
   const [customParamType, setCustomParamType] = useState(PARAM_TYPES[0]);
 

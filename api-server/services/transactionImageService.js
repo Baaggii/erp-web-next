@@ -15,12 +15,14 @@ async function getDirs() {
   const cfg = await getGeneralConfig();
   const subdir = cfg.general?.imageDir || 'txn_images';
   const basePath = cfg.images?.basePath || 'uploads';
-  const ignore = (cfg.images?.ignoreOnSearch || []).map((s) => s.toLowerCase());
   const baseRoot = path.isAbsolute(basePath)
     ? basePath
     : path.join(projectRoot, basePath);
   const baseDir = path.join(baseRoot, subdir);
   const baseName = path.basename(basePath);
+  const ignore = (cfg.images?.ignoreOnSearch || [])
+    .map((s) => path.basename(String(s)).toLowerCase())
+    .filter((s) => s && s !== baseName.toLowerCase());
   const urlBase = `/api/${baseName}/${subdir}`;
   return { baseDir, baseRoot, urlBase, basePath: baseName, ignore };
 }

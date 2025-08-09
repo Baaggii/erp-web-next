@@ -3,8 +3,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
 const FOLDER_STATE_KEY = 'imgMgmtFolderState';
-const SESSIONS_KEY = 'imgMgmtSessions';
-const SESSION_PREFIX = 'imgMgmtSession:';
 
 // IndexedDB helpers for storing directory handles
 function getHandleDB() {
@@ -107,8 +105,6 @@ export default function ImageManagement() {
   const dirHandleRef = useRef();
   const [activeOp, setActiveOp] = useState(null);
   const [report, setReport] = useState('');
-  const [sessionNames, setSessionNames] = useState([]);
-  const [selectedSession, setSelectedSession] = useState('');
   const uploadsRef = useRef(uploads);
   const ignoredRef = useRef(ignored);
   const pendingRef = useRef(pending);
@@ -134,6 +130,7 @@ export default function ImageManagement() {
             data.ignored = await attachHandles(dir, data.ignored);
           }
           applySession(data);
+          setTab('fix');
         }
       } catch {
         // ignore
@@ -206,6 +203,10 @@ export default function ImageManagement() {
           reason,
           processed: !!processed,
         })),
+      uploadPage: partial.uploadPage ?? uploadPage,
+      ignoredPage: partial.ignoredPage ?? ignoredPage,
+      pendingPage: partial.pendingPage ?? pendingPage,
+      hostIgnoredPage: partial.hostIgnoredPage ?? hostIgnoredPage,
     };
   }
 
@@ -246,6 +247,15 @@ export default function ImageManagement() {
       : [];
     setHostIgnored(hostArr);
     hostIgnoredRef.current = hostArr;
+    const upLast = Math.max(1, Math.ceil(upArr.length / uploadPageSize));
+    const igLast = Math.max(1, Math.ceil(igArr.length / uploadPageSize));
+    const pendLast = Math.max(1, Math.ceil(pendingArr.length / pageSize));
+    const hostLast = Math.max(1, Math.ceil(hostArr.length / pageSize));
+    setUploadPage(Math.min(data.uploadPage || 1, upLast));
+    setIgnoredPage(Math.min(data.ignoredPage || 1, igLast));
+    setPendingPage(Math.min(data.pendingPage || 1, pendLast));
+    setHostIgnoredPage(Math.min(data.hostIgnoredPage || 1, hostLast));
+    setHasMore(pendingArr.length > (data.pendingPage || 1) * pageSize);
   }
 
   function persistSnapshot(partial = {}) {
@@ -264,6 +274,10 @@ export default function ImageManagement() {
       ignored: ignoredRef.current,
       pending: pendingRef.current,
       hostIgnored: hostIgnoredRef.current,
+      uploadPage,
+      ignoredPage,
+      pendingPage,
+      hostIgnoredPage,
     };
   }
 
@@ -272,13 +286,64 @@ export default function ImageManagement() {
     persistSnapshot({ ...tables, folderName, ...partial });
   }
 
-  async function saveSession() {
+  function clampPage(value, last) {
+    const num = Number(value);
+    if (!Number.isFinite(num) || num < 1) return 1;
+    return Math.min(num, last);
+  }
+
+  async function fetchAllRemote() {
+    const cachedPending = new Map(
+      (pendingRef.current || []).map((p) => [p.currentName, p]),
+    );
+    const cachedHostIgnored = new Map(
+      (hostIgnoredRef.current || []).map((p) => [p.currentName, p]),
+    );
+    let page = 1;
+    let more = true;
+    const allPending = [];
+    const allHostIgnored = [];
+    while (more) {
+      const res = await fetch(
+        `/api/transaction_images/detect_incomplete?page=${page}&pageSize=${pageSize}`,
+        { credentials: 'include' },
+      );
+      if (!res.ok) break;
+      const data = await res.json();
+      const list = Array.isArray(data.list)
+        ? data.list
+            .slice()
+            .sort((a, b) => a.currentName.localeCompare(b.currentName))
+            .map((p) => ({ ...p, description: extractDateFromName(p.currentName) }))
+        : [];
+      const miss = Array.isArray(data.skipped)
+        ? data.skipped
+            .slice()
+            .sort((a, b) => a.currentName.localeCompare(b.currentName))
+            .map((p) => ({ ...p, description: extractDateFromName(p.currentName) }))
+        : [];
+      list.forEach((item) => {
+        allPending.push(cachedPending.get(item.currentName) || item);
+      });
+      miss.forEach((item) => {
+        allHostIgnored.push(cachedHostIgnored.get(item.currentName) || item);
+      });
+      more = !!data.hasMore;
+      page += 1;
+    }
+    return { pending: allPending, hostIgnored: allHostIgnored };
+  }
+
+  async function saveTables() {
     try {
-      persistAll();
-      addToast('State saved', 'success');
+      const remote = await fetchAllRemote();
+      pendingRef.current = remote.pending;
+      hostIgnoredRef.current = remote.hostIgnored;
+      persistAll(remote);
+      addToast('Tables saved locally', 'success');
     } catch (err) {
       console.error(err);
-      addToast('Failed to save state', 'error');
+      addToast('Failed to save tables', 'error');
     }
   }
 
@@ -296,7 +361,7 @@ export default function ImageManagement() {
   const hostIgnoredLastPage = Math.max(1, Math.ceil(hostIgnored.length / pageSize));
   const lastPage = pendingSummary
     ? Math.max(1, Math.ceil((pendingSummary.incompleteFound || 0) / pageSize))
-    : 1;
+    : Math.max(1, Math.ceil(pending.length / pageSize));
 
   const canRenameSelected = [...uploads, ...ignored].some(
     (u) =>
@@ -1120,27 +1185,6 @@ export default function ImageManagement() {
               placeholder="Selected folder"
               style={{ marginRight: '0.5rem' }}
             />
-            <button type="button" onClick={saveSession} style={{ marginRight: '0.5rem' }}>
-              Save
-            </button>
-            <select
-              value={selectedSession}
-              onChange={(e) => setSelectedSession(e.target.value)}
-              style={{ marginRight: '0.5rem' }}
-            >
-              <option value="">Select session</option>
-              {sessionNames.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-            <button type="button" onClick={() => loadSession()} disabled={!selectedSession} style={{ marginRight: '0.5rem' }}>
-              Load
-            </button>
-            <button type="button" onClick={() => deleteSession()} disabled={!selectedSession}>
-              Delete
-            </button>
           </div>
           {uploadSummary && (
             <p style={{ marginBottom: '0.5rem' }}>
@@ -1157,6 +1201,17 @@ export default function ImageManagement() {
                 disabled={!canRenameSelected}
               >
                 Rename Selected
+              </button>
+              <button
+                type="button"
+                onClick={saveTables}
+                style={{
+                  marginBottom: '0.5rem',
+                  marginRight: '0.5rem',
+                  float: 'right',
+                }}
+              >
+                Save Tables
               </button>
               <button
                 type="button"
@@ -1286,7 +1341,16 @@ export default function ImageManagement() {
                       Prev
                     </button>
                     <span style={{ marginRight: '0.5rem' }}>
-                      Page {uploadPage} / {uploadLastPage}
+                      Page{' '}
+                      <input
+                        type="number"
+                        value={uploadPage}
+                        onChange={(e) =>
+                          setUploadPage(clampPage(e.target.value, uploadLastPage))
+                        }
+                        style={{ width: '3rem' }}
+                      />{' '}
+                      / {uploadLastPage}
                     </span>
                     <button
                       type="button"
@@ -1374,7 +1438,16 @@ export default function ImageManagement() {
                       Prev
                     </button>
                     <span style={{ marginRight: '0.5rem' }}>
-                      Page {ignoredPage} / {ignoredLastPage}
+                      Page{' '}
+                      <input
+                        type="number"
+                        value={ignoredPage}
+                        onChange={(e) =>
+                          setIgnoredPage(clampPage(e.target.value, ignoredLastPage))
+                        }
+                        style={{ width: '3rem' }}
+                      />{' '}
+                      / {ignoredLastPage}
                     </span>
                     <button
                       type="button"
@@ -1473,7 +1546,16 @@ export default function ImageManagement() {
             Prev
           </button>
           <span style={{ marginRight: '0.5rem' }}>
-            Page {pendingPage} / {lastPage}
+            Page{' '}
+            <input
+              type="number"
+              value={pendingPage}
+              onChange={(e) =>
+                detectFromHost(clampPage(e.target.value, lastPage))
+              }
+              style={{ width: '3rem' }}
+            />{' '}
+            / {lastPage}
           </span>
           <button
             type="button"
@@ -1636,7 +1718,18 @@ export default function ImageManagement() {
                   Prev
                 </button>
                 <span style={{ marginRight: '0.5rem' }}>
-                  Page {hostIgnoredPage} / {hostIgnoredLastPage}
+                  Page{' '}
+                  <input
+                    type="number"
+                    value={hostIgnoredPage}
+                    onChange={(e) =>
+                      setHostIgnoredPage(
+                        clampPage(e.target.value, hostIgnoredLastPage),
+                      )
+                    }
+                    style={{ width: '3rem' }}
+                  />{' '}
+                  / {hostIgnoredLastPage}
                 </span>
                 <button
                   type="button"
