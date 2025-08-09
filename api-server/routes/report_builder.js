@@ -6,7 +6,6 @@ import {
   listDatabaseTables,
   listTableColumns,
   saveStoredProcedure,
-  saveView,
 } from '../../db/index.js';
 
 const router = express.Router();
@@ -47,28 +46,16 @@ router.post('/procedures', requireAuth, async (req, res, next) => {
   }
 });
 
-// Save a view
-router.post('/views', requireAuth, async (req, res, next) => {
-  try {
-    const { sql } = req.body || {};
-    if (!sql) return res.status(400).json({ message: 'sql required' });
-    await saveView(sql);
-    res.json({ ok: true });
-  } catch (err) {
-    next(err);
-  }
-});
-
 // Save generated stored procedure SQL to host
 router.post('/procedure-files/:name', requireAuth, async (req, res, next) => {
   try {
     const { name } = req.params;
-    const { sql, definition } = req.body || {};
+    const { sql } = req.body || {};
     if (!name) return res.status(400).json({ message: 'name required' });
     if (!sql) return res.status(400).json({ message: 'sql required' });
     await fs.mkdir(PROC_DIR, { recursive: true });
     const file = path.join(PROC_DIR, `${name}.json`);
-    await fs.writeFile(file, JSON.stringify({ sql, definition }, null, 2));
+    await fs.writeFile(file, JSON.stringify({ sql }, null, 2));
     res.json({ ok: true });
   } catch (err) {
     next(err);
