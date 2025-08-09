@@ -1141,22 +1141,67 @@ export async function getProcedureRawRows(
   }
 
   if (/^SELECT/i.test(sql)) {
-    const colRe = escapeRegExp(column);
+    function filterAggregates(input, aliasToKeep) {
+      const upper = input.toUpperCase();
+      // find FROM at top level
+      let depth = 0;
+      let fromIdx = -1;
+      for (let i = 0; i < upper.length; i++) {
+        const ch = upper[i];
+        if (ch === '(') depth++;
+        else if (ch === ')') depth--;
+        else if (depth === 0 && upper.startsWith('FROM', i)) {
+          fromIdx = i;
+          break;
+        }
+      }
+      if (fromIdx === -1) return input;
+      const fieldsPart = input.slice(6, fromIdx);
+      const rest = input.slice(fromIdx);
+      const fields = [];
+      let buf = '';
+      depth = 0;
+      for (let i = 0; i < fieldsPart.length; i++) {
+        const ch = fieldsPart[i];
+        if (ch === '(') depth++;
+        else if (ch === ')') depth--;
+        if (ch === ',' && depth === 0) {
+          fields.push(buf.trim());
+          buf = '';
+        } else {
+          buf += ch;
+        }
+      }
+      if (buf.trim()) fields.push(buf.trim());
+      const kept = [];
+      for (let field of fields) {
+        const sumIdx = field.toUpperCase().indexOf('SUM(');
+        if (sumIdx === -1) {
+          kept.push(field);
+          continue;
+        }
+        const aliasMatch = field.match(/(?:AS\s+)?`?([a-zA-Z0-9_]+)`?\s*$/i);
+        const alias = aliasMatch ? aliasMatch[1] : null;
+        if (alias && alias.toLowerCase() === String(aliasToKeep).toLowerCase()) {
+          let start = sumIdx + 4;
+          let depth2 = 1;
+          let j = start;
+          while (j < field.length && depth2 > 0) {
+            const ch2 = field[j];
+            if (ch2 === '(') depth2++;
+            else if (ch2 === ')') depth2--;
+            j++;
+          }
+          const inner = field.slice(start, j - 1);
+          field = field.slice(0, sumIdx) + inner + field.slice(j);
+          kept.push(field.trim());
+        }
+      }
+      if (!kept.length) return input;
+      return 'SELECT ' + kept.join(', ') + ' ' + rest;
+    }
 
-    const keepRegex = new RegExp(
-      'SUM\\(([^)]*)\\)\\s*(?:AS\\s+)?`?' + colRe + '`?',
-      'i',
-    );
-    sql = sql.replace(keepRegex, (_, inner) => `${inner} AS ${column}`);
-
-    sql = sql.replace(
-      /,\s*SUM\([^)]*\)\s*(?:AS\s+)?`?[a-z0-9_]+`?/gi,
-      '',
-    );
-    sql = sql.replace(
-      /SELECT\s*SUM\([^)]*\)\s*(?:AS\s+)?`?[a-z0-9_]+`?\s*,/i,
-      'SELECT ',
-    );
+    sql = filterAggregates(sql, column);
 
     sql = sql.replace(/GROUP BY[\s\S]*?(HAVING|ORDER BY|$)/i, '$1');
     sql = sql.replace(/HAVING[\s\S]*?(ORDER BY|$)/i, '$1');
