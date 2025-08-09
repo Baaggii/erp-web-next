@@ -1149,14 +1149,29 @@ export async function getProcedureRawRows(
   const originalSql = sql;
 
   if (/^SELECT/i.test(sql)) {
-    const colRe = escapeRegExp(column);
-    const sumRegex = new RegExp(
-      `SUM\\(([^)]*)\\)\\s*(?:AS\\s+)?` + '`?' + colRe + '`?',
-      'i',
-    );
-    const sumMatch = sql.match(sumRegex);
-    if (sumMatch) {
-      sql = sql.replace(sumRegex, `${sumMatch[1]} AS ${column}`);
+    const sel = sql.match(/SELECT\s+([\s\S]+?)\s+FROM/i);
+    if (sel) {
+      const [, fieldsStr] = sel;
+      const parts = fieldsStr.split(/,(?![^()]*\))/);
+      const colLower = column.toLowerCase();
+      const newParts = [];
+      for (const part of parts) {
+        if (/SUM\s*\(/i.test(part)) {
+          const aliasMatch =
+            part.match(/\bAS\s+`?([a-z0-9_]+)`?/i) ||
+            part.match(/`?([a-z0-9_]+)`?\s*$/i);
+          const alias = aliasMatch ? aliasMatch[1] : '';
+          if (alias.toLowerCase() === colLower) {
+            const inner = part.match(/SUM\s*\(([^)]*)\)/i);
+            const expr = inner ? inner[1].trim() : '';
+            newParts.push(`${expr} AS ${alias}`);
+          }
+        } else {
+          newParts.push(part.trim());
+        }
+      }
+      const replacement = sel[0].replace(fieldsStr, newParts.join(', '));
+      sql = sql.replace(sel[0], replacement);
     }
 
     sql = sql.replace(/GROUP BY[\s\S]*?(HAVING|ORDER BY|$)/i, '$1');
