@@ -6,6 +6,7 @@ import {
   listDatabaseTables,
   listTableColumns,
   saveStoredProcedure,
+  saveView,
 } from '../../db/index.js';
 
 const router = express.Router();
@@ -40,6 +41,18 @@ router.post('/procedures', requireAuth, async (req, res, next) => {
     const { sql } = req.body || {};
     if (!sql) return res.status(400).json({ message: 'sql required' });
     await saveStoredProcedure(sql);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Save a view
+router.post('/views', requireAuth, async (req, res, next) => {
+  try {
+    const { sql } = req.body || {};
+    if (!sql) return res.status(400).json({ message: 'sql required' });
+    await saveView(sql);
     res.json({ ok: true });
   } catch (err) {
     next(err);
