@@ -213,6 +213,8 @@ export default function ImageManagement() {
       ignoredPage: partial.ignoredPage ?? ignoredPage,
       pendingPage: partial.pendingPage ?? pendingPage,
       hostIgnoredPage: partial.hostIgnoredPage ?? hostIgnoredPage,
+      uploadPageSize: partial.uploadPageSize ?? uploadPageSize,
+      pageSize: partial.pageSize ?? pageSize,
     };
   }
 
@@ -253,15 +255,19 @@ export default function ImageManagement() {
       : [];
     setHostIgnored(hostArr);
     hostIgnoredRef.current = hostArr;
-    const upLast = Math.max(1, Math.ceil(upArr.length / uploadPageSize));
-    const igLast = Math.max(1, Math.ceil(igArr.length / uploadPageSize));
-    const pendLast = Math.max(1, Math.ceil(pendingArr.length / pageSize));
-    const hostLast = Math.max(1, Math.ceil(hostArr.length / pageSize));
+    const upSize = Number(data.uploadPageSize) || uploadPageSize;
+    const pendSize = Number(data.pageSize) || pageSize;
+    setUploadPageSize(upSize);
+    setPageSize(pendSize);
+    const upLast = Math.max(1, Math.ceil(upArr.length / upSize));
+    const igLast = Math.max(1, Math.ceil(igArr.length / upSize));
+    const pendLast = Math.max(1, Math.ceil(pendingArr.length / pendSize));
+    const hostLast = Math.max(1, Math.ceil(hostArr.length / pendSize));
     setUploadPage(Math.min(data.uploadPage || 1, upLast));
     setIgnoredPage(Math.min(data.ignoredPage || 1, igLast));
     setPendingPage(Math.min(data.pendingPage || 1, pendLast));
     setHostIgnoredPage(Math.min(data.hostIgnoredPage || 1, hostLast));
-    setHasMore(pendingArr.length > (data.pendingPage || 1) * pageSize);
+    setHasMore(pendingArr.length > (data.pendingPage || 1) * pendSize);
   }
 
   function persistSnapshot(partial = {}) {
@@ -284,6 +290,8 @@ export default function ImageManagement() {
       ignoredPage,
       pendingPage,
       hostIgnoredPage,
+      uploadPageSize,
+      pageSize,
     };
   }
 
