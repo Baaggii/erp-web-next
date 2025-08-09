@@ -26,11 +26,22 @@ export function requireAuth(req, res, next) {
             empid: rPayload.empid,
             role: rPayload.role,
           });
+          const newRefresh = jwtService.signRefresh({
+            id: rPayload.id,
+            empid: rPayload.empid,
+            role: rPayload.role,
+          });
           res.cookie(getCookieName(), newAccess, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',
             maxAge: jwtService.getExpiryMillis(),
+          });
+          res.cookie(getRefreshCookieName(), newRefresh, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            maxAge: jwtService.getRefreshExpiryMillis(),
           });
           req.user = jwtService.verify(newAccess);
           refreshed = true;
