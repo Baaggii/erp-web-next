@@ -30,12 +30,9 @@ export default function ReportBuilder() {
   const [selectSql, setSelectSql] = useState('');
   const [viewSql, setViewSql] = useState('');
   const [procSql, setProcSql] = useState('');
-  const [error, setError] = useState('');
-  const [savedReports, setSavedReports] = useState([]);
-  const [selectedReport, setSelectedReport] = useState('');
-  const [procFiles, setProcFiles] = useState([]);
+  const [procFiles, setProcFiles] = useState([]); // saved procedure names on host
   const [selectedProcFile, setSelectedProcFile] = useState('');
-  const [procFileText, setProcFileText] = useState('');
+  const [error, setError] = useState('');
 
   const [customParamName, setCustomParamName] = useState('');
   const [customParamType, setCustomParamType] = useState(PARAM_TYPES[0]);
@@ -54,26 +51,26 @@ export default function ReportBuilder() {
       }
     }
     fetchTables();
-    async function fetchSaved() {
-      try {
-        const res = await fetch('/api/report_builder/configs');
-        const data = await res.json();
-        setSavedReports(data.names || []);
-        setSelectedReport(data.names?.[0] || '');
-      } catch (err) {
-        console.error(err);
-      }
-      try {
-        const res = await fetch('/api/report_builder/procedure-files');
-        const data = await res.json();
-        setProcFiles(data.names || []);
-        setSelectedProcFile(data.names?.[0] || '');
-      } catch (err) {
-        console.error(err);
-      }
-    }
-    fetchSaved();
   }, []);
+
+  // Fetch saved procedure files on mount
+  useEffect(() => {
+    fetchProcFiles();
+  }, []);
+
+  async function fetchProcFiles() {
+    try {
+      const res = await fetch('/api/report_builder/procedure-files');
+      const data = await res.json();
+      const names = data.names || [];
+      setProcFiles(names);
+      setSelectedProcFile((prev) =>
+        prev && names.includes(prev) ? prev : names[0] || '',
+      );
+    } catch (err) {
+      console.error(err);
+    }
+  }
 
   // Ensure fields for a table are loaded
   async function ensureFields(table) {
@@ -687,17 +684,18 @@ export default function ReportBuilder() {
   }
 
   function handleGenerateSql() {
+    setSelectSql('');
     try {
       const { report } = buildDefinition();
       setSelectSql(buildReportSql(report));
       setError('');
     } catch (err) {
-      setSelectSql('');
       setError(err.message);
     }
   }
 
   function handleGenerateView() {
+    setViewSql('');
     try {
       const { report } = buildDefinition();
       const sql = buildReportSql(report);
@@ -705,12 +703,12 @@ export default function ReportBuilder() {
       setViewSql(view);
       setError('');
     } catch (err) {
-      setViewSql('');
       setError(err.message);
     }
   }
 
   function handleGenerateProc() {
+    setProcSql('');
     try {
       const { report, params: p } = buildDefinition();
       const built = buildStoredProcedure({
@@ -721,13 +719,13 @@ export default function ReportBuilder() {
       setProcSql(built);
       setError('');
     } catch (err) {
-      setProcSql('');
       setError(err.message);
     }
   }
 
-  async function handleSave() {
+  async function handlePostProcedure() {
     if (!procSql) return;
+    if (!window.confirm('POST stored procedure to database?')) return;
     try {
       const res = await fetch('/api/report_builder/procedures', {
         method: 'POST',
@@ -749,142 +747,39 @@ export default function ReportBuilder() {
     }
   }
 
-  async function handleSaveConfig() {
-    const data = {
-      procName,
-      fromTable,
-      joins,
-      fields,
-      groups,
-      having,
-      params,
-      conditions,
-      fromFilters,
-    };
-    try {
-      const name = procName || 'report';
-      const res = await fetch(
-        `/api/report_builder/configs/${encodeURIComponent(name)}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
-        },
-      );
-      if (!res.ok) throw new Error('Save failed');
-      const listRes = await fetch('/api/report_builder/configs');
-      const listData = await listRes.json();
-      setSavedReports(listData.names || []);
-      setSelectedReport(name);
-      window.dispatchEvent(
-        new CustomEvent('toast', {
-          detail: { message: 'Config saved', type: 'success' },
-        }),
-      );
-    } catch (err) {
-      window.dispatchEvent(
-        new CustomEvent('toast', {
-          detail: { message: err.message || 'Save failed', type: 'error' },
-        }),
-      );
-    }
-  }
-
-  async function handleLoadConfig() {
-    if (!selectedReport) return;
-    try {
-      const res = await fetch(
-        `/api/report_builder/configs/${encodeURIComponent(selectedReport)}`,
-      );
-      const data = await res.json();
-        setProcName(data.procName || '');
-        setFromTable(data.fromTable || '');
-        setFromFilters(
-          (data.fromFilters || []).map((f) => ({
-            connector: f.connector || 'AND',
-            ...f,
-          })),
-        );
-        setJoins(
-          (data.joins || []).map((j) => ({
-            ...j,
-            conditions: (j.conditions || []).map((c) => ({
-              connector: c.connector || 'AND',
-              ...c,
-            })),
-            filters: (j.filters || []).map((f) => ({
-              connector: f.connector || 'AND',
-              ...f,
-            })),
-            })),
-        );
-        setFields(
-          (data.fields || []).map((f) => ({
-            source: f.source || 'field',
-            table: f.table || fromTable,
-            field: f.field || '',
-            baseAlias: f.baseAlias || '',
-            alias: f.alias || '',
-            aggregate: f.aggregate || 'NONE',
-            calcParts: (f.calcParts || []).map((p) => ({
-              operator: p.operator || '+',
-              source: p.source || 'field',
-              ...p,
-            })),
-            conditions: (f.conditions || []).map((c) => ({
-              connector: c.connector || 'AND',
-              ...c,
-            })),
-          })),
-        );
-        setGroups(data.groups || []);
-        setHaving(
-          (data.having || []).map((h) => ({
-            connector: h.connector || 'AND',
-            valueType: h.valueType || (h.param ? 'param' : 'value'),
-            source: h.source || 'field',
-            ...h,
-          })),
-        );
-        setParams(data.params || []);
-        setConditions(
-          (data.conditions || []).map((c) => ({
-            connector: c.connector || 'AND',
-            ...c,
-          })),
-        );
-        ensureFields(data.fromTable);
-        (data.joins || []).forEach((j) => {
-          ensureFields(j.table);
-          ensureFields(j.targetTable);
-        });
-    } catch (err) {
-      console.error(err);
-    }
-  }
-
-  async function handleSaveProcFile() {
+  async function handleSaveProcHost() {
     if (!procSql) return;
-    const name = procName || 'report';
-    try {
-      const res = await fetch(
-        `/api/report_builder/procedure-files/${encodeURIComponent(name)}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sql: procSql }),
-        },
-      );
-      if (!res.ok) throw new Error('Save failed');
-      const listRes = await fetch('/api/report_builder/procedure-files');
-      const listData = await listRes.json();
-      setProcFiles(listData.names || []);
-      setSelectedProcFile(name);
+    if (!procName) {
       window.dispatchEvent(
         new CustomEvent('toast', {
-          detail: { message: 'Procedure saved to host', type: 'success' },
+          detail: { message: 'Procedure name required', type: 'error' },
         }),
       );
+      return;
+    }
+    try {
+      const definition = {
+        fromTable,
+        joins,
+        fields,
+        groups,
+        having,
+        params,
+        conditions,
+        fromFilters,
+      };
+      const res = await fetch(`/api/report_builder/procedure-files/${procName}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql: procSql, definition }),
+      });
+      if (!res.ok) throw new Error('Save failed');
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message: 'Saved to host', type: 'success' },
+        }),
+      );
+      fetchProcFiles();
     } catch (err) {
       window.dispatchEvent(
         new CustomEvent('toast', {
@@ -894,21 +789,67 @@ export default function ReportBuilder() {
     }
   }
 
-  async function handleLoadProcFile() {
+  async function handleLoadProcHost() {
     if (!selectedProcFile) return;
     try {
-      const res = await fetch(
-        `/api/report_builder/procedure-files/${encodeURIComponent(selectedProcFile)}`,
+      const fileRes = await fetch(
+        `/api/report_builder/procedure-files/${selectedProcFile}`,
       );
-      const data = await res.json();
-      setProcFileText(data.sql || '');
+      if (!fileRes.ok) throw new Error('Load failed');
+      const fileData = await fileRes.json();
+      const def = fileData.definition || {};
+      if (def.fromTable) {
+        await ensureFields(def.fromTable);
+        setFromTable(def.fromTable);
+      }
+      if (Array.isArray(def.joins)) {
+        for (const j of def.joins) {
+          await ensureFields(j.table);
+          await ensureFields(j.targetTable);
+        }
+        setJoins(def.joins);
+      }
+      setFields(def.fields || []);
+      setGroups(def.groups || []);
+      setHaving(def.having || []);
+      setParams(def.params || []);
+      setConditions(def.conditions || []);
+      setFromFilters(def.fromFilters || []);
+      setProcName(selectedProcFile);
+      setSelectSql('');
+      setViewSql('');
+      setProcSql(fileData.sql || '');
     } catch (err) {
-      console.error(err);
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message: err.message || 'Load failed', type: 'error' },
+        }),
+      );
     }
   }
 
-  function handleParseSql() {
-    setProcSql(procFileText);
+  async function handlePostView() {
+    if (!viewSql) return;
+    if (!window.confirm('POST view to database?')) return;
+    try {
+      const res = await fetch('/api/report_builder/views', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql: viewSql }),
+      });
+      if (!res.ok) throw new Error('Save failed');
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message: 'View saved', type: 'success' },
+        }),
+      );
+    } catch (err) {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message: err.message || 'Save failed', type: 'error' },
+        }),
+      );
+    }
   }
 
   if (!tables.length) {
@@ -1742,82 +1683,86 @@ export default function ReportBuilder() {
       </section>
 
       <section style={{ marginTop: '1rem' }}>
-        <h3>Generate</h3>
+        <h3>SQL</h3>
         <button onClick={handleGenerateSql}>Create SQL</button>
-        <button onClick={handleGenerateView} style={{ marginLeft: '0.5rem' }}>
-          Create View
-        </button>
-        <button onClick={handleGenerateProc} style={{ marginLeft: '0.5rem' }}>
-          Create Procedure
-        </button>
+        {selectSql && (
+          <textarea
+            readOnly
+            value={selectSql}
+            rows={8}
+            style={{ width: '100%', marginTop: '0.5rem' }}
+          />
+        )}
+      </section>
+
+      <section style={{ marginTop: '1rem' }}>
+        <h3>View</h3>
+        <button onClick={handleGenerateView}>Create View</button>
+        {viewSql && (
+          <>
+            <div style={{ marginTop: '0.5rem' }}>
+              <button onClick={handlePostView}>POST View</button>
+            </div>
+            <textarea
+              readOnly
+              value={viewSql}
+              rows={8}
+              style={{ width: '100%', marginTop: '0.5rem' }}
+            />
+          </>
+        )}
       </section>
 
       <section style={{ marginTop: '1rem' }}>
         <h3>Stored Procedure</h3>
-        <button onClick={handleSave}>Save Procedure</button>
-        <button onClick={handleSaveProcFile} style={{ marginLeft: '0.5rem' }}>
-          Save to Host
-        </button>
-        <select
-          value={selectedProcFile}
-          onChange={(e) => setSelectedProcFile(e.target.value)}
-          style={{ marginLeft: '0.5rem' }}
-        >
-          {procFiles.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-        <button onClick={handleLoadProcFile} style={{ marginLeft: '0.5rem' }}>
-          Load from Host
-        </button>
-      </section>
-
-      {procFileText && (
-        <section style={{ marginTop: '1rem' }}>
-          <h3>Edit Loaded SQL</h3>
-          <textarea
-            value={procFileText}
-            onChange={(e) => setProcFileText(e.target.value)}
-            rows={8}
-            style={{ width: '100%' }}
-          />
-          <button onClick={handleParseSql} style={{ marginTop: '0.5rem' }}>
-            Parse SQL
+        <button onClick={handleGenerateProc}>Create Procedure</button>
+        <div style={{ marginTop: '0.5rem' }}>
+          <label>
+            Saved Procedures:
+            <select
+              value={selectedProcFile}
+              onChange={(e) => setSelectedProcFile(e.target.value)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              <option value="">--select--</option>
+              {procFiles.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            onClick={handleLoadProcHost}
+            disabled={!selectedProcFile}
+            style={{ marginLeft: '0.5rem' }}
+          >
+            Load from Host
           </button>
-        </section>
-      )}
-
-      <section style={{ marginTop: '1rem' }}>
-        <h3>Config</h3>
-        <button onClick={handleSaveConfig}>Save Config</button>
-        <select
-          value={selectedReport}
-          onChange={(e) => setSelectedReport(e.target.value)}
-          style={{ marginLeft: '0.5rem' }}
-        >
-          {savedReports.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-        <button onClick={handleLoadConfig} style={{ marginLeft: '0.5rem' }}>
-          Load Config
-        </button>
+          <button
+            onClick={handleSaveProcHost}
+            disabled={!procSql}
+            style={{ marginLeft: '0.5rem' }}
+          >
+            Save to Host
+          </button>
+        </div>
+        {procSql && (
+          <>
+            <div style={{ marginTop: '0.5rem' }}>
+              <button onClick={handlePostProcedure}>POST Procedure</button>
+            </div>
+            <textarea
+              readOnly
+              value={procSql}
+              rows={8}
+              style={{ width: '100%', marginTop: '0.5rem' }}
+            />
+          </>
+        )}
       </section>
 
       {error && <p style={{ color: 'red' }}>{error}</p>}
-      {selectSql && (
-        <pre style={{ whiteSpace: 'pre-wrap', marginTop: '1rem' }}>{selectSql}</pre>
-      )}
-      {viewSql && (
-        <pre style={{ whiteSpace: 'pre-wrap', marginTop: '1rem' }}>{viewSql}</pre>
-      )}
-      {procSql && (
-        <pre style={{ whiteSpace: 'pre-wrap', marginTop: '1rem' }}>{procSql}</pre>
-      )}
     </div>
   );
 }
