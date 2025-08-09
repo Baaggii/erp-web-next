@@ -38,6 +38,7 @@ import reportProcedureRoutes from "./routes/report_procedures.js";
 import generalConfigRoutes from "./routes/general_config.js";
 import { requireAuth } from "./middlewares/auth.js";
 import featureToggle from "./middlewares/featureToggle.js";
+import reportBuilderRoutes from "./routes/report_builder.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -97,6 +98,7 @@ app.use("/api/views", viewsRoutes);
 app.use("/api/procedures", requireAuth, procedureRoutes);
 app.use("/api/proc_triggers", requireAuth, procTriggerRoutes);
 app.use("/api/report_procedures", reportProcedureRoutes);
+app.use("/api/report_builder", reportBuilderRoutes);
 app.use("/api/transactions", requireAuth, transactionRoutes);
 app.use("/api/transaction_images", transactionImageRoutes);
 app.use("/api/tables", requireAuth, tableRoutes);
