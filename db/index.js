@@ -1150,14 +1150,21 @@ export async function getProcedureRawRows(
 
   if (/^SELECT/i.test(sql)) {
     const colRe = escapeRegExp(column);
-    const sumRegex = new RegExp(
-      `SUM\\(([^)]*)\\)\\s*(?:AS\\s+)?` + '`?' + colRe + '`?',
+
+    const keepRegex = new RegExp(
+      'SUM\\(([^)]*)\\)\\s*(?:AS\\s+)?`?' + colRe + '`?',
       'i',
     );
-    const sumMatch = sql.match(sumRegex);
-    if (sumMatch) {
-      sql = sql.replace(sumRegex, `${sumMatch[1]} AS ${column}`);
-    }
+    sql = sql.replace(keepRegex, (_, inner) => `${inner} AS ${column}`);
+
+    sql = sql.replace(
+      /,\s*SUM\([^)]*\)\s*(?:AS\s+)?`?[a-z0-9_]+`?/gi,
+      '',
+    );
+    sql = sql.replace(
+      /SELECT\s*SUM\([^)]*\)\s*(?:AS\s+)?`?[a-z0-9_]+`?\s*,/i,
+      'SELECT ',
+    );
 
     sql = sql.replace(/GROUP BY[\s\S]*?(HAVING|ORDER BY|$)/i, '$1');
     sql = sql.replace(/HAVING[\s\S]*?(ORDER BY|$)/i, '$1');
@@ -1188,34 +1195,13 @@ export async function getProcedureRawRows(
       }
     }
 
+    sql = sql.replace(/;\s*$/, '');
     if (groupValue !== undefined) {
-      let condField = groupField;
-      const sel = sql.match(/SELECT\s+([\s\S]+?)\s+FROM/i);
-      if (sel) {
-        const firstField = sel[1].split(/,(?![^()]*\))/)[0]?.trim();
-        const m = firstField?.match(/^(.+?)\s+(?:AS\s+)?`?([a-z0-9_]+)`?$/i);
-        if (m) {
-          const expr = m[1].trim();
-          const alias = m[2];
-          if (!groupField || alias === groupField) condField = expr;
-        } else if (!groupField) {
-          condField = firstField;
-        }
-      }
-      if (condField) {
-        const rep =
-          typeof groupValue === 'number' ? String(groupValue) : `'${groupValue}'`;
-        const clause = `${condField} = ${rep}`;
-        if (/WHERE/i.test(sql)) {
-          sql = sql.replace(/WHERE/i, `WHERE ${clause} AND `);
-        } else {
-          sql += ` WHERE ${clause}`;
-        }
-      }
+      const rep =
+        typeof groupValue === 'number' ? String(groupValue) : `'${groupValue}'`;
+      sql = `SELECT * FROM (${sql}) AS _raw WHERE ${groupField} = ${rep}`;
     }
 
-    // Trim trailing statement terminators to avoid MySQL complaining when
-    // executing the reconstructed query.
     sql = sql.replace(/;\s*$/, '');
   }
 
