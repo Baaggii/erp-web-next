@@ -19,7 +19,7 @@ export default function ReportBuilder() {
   const [procName, setProcName] = useState('');
   const [fromTable, setFromTable] = useState('');
   const [joins, setJoins] = useState([]); // {table, alias, type, targetTable, conditions:[{fromField,toField,connector}], filters:[]}
-  const [fields, setFields] = useState([]); // {table, field, alias, aggregate, conditions:[], calcParts:[{source,table,field,alias,operator}]}
+  const [fields, setFields] = useState([]); // {source:'field'|'alias', table, field, baseAlias, alias, aggregate, conditions:[], calcParts:[{source,table,field,alias,operator}]}
   const [groups, setGroups] = useState([]); // {table, field}
   const [having, setHaving] = useState([]); // {source:'field'|'alias', aggregate, table, field, alias, operator, valueType, value, param, connector}
   const [params, setParams] = useState([]); // {name,type,source}
@@ -173,10 +173,13 @@ export default function ReportBuilder() {
     setFields([
       ...fields,
       {
+        source: 'field',
         table: fromTable,
         field: firstField,
+        baseAlias: '',
         alias: firstField,
         aggregate: 'NONE',
+        conditions: [],
         calcParts: [],
       },
     ]);
@@ -189,10 +192,32 @@ export default function ReportBuilder() {
       if (key === 'field' && (!f.alias || f.alias === f.field)) {
         next.alias = value;
       }
+      if (key === 'source') {
+        if (value === 'alias') {
+          next.baseAlias =
+            fields.slice(0, index).find((pf) => pf.alias)?.alias || '';
+        } else {
+          const first = (tableFields[fromTable] || [])[0] || '';
+          next.table = fromTable;
+          next.field = first;
+          if (!next.alias) next.alias = first;
+          next.baseAlias = '';
+          ensureFields(fromTable);
+        }
+      }
+      if (key === 'table') {
+        ensureFields(value);
+        next.field = (tableFields[value] || [])[0] || '';
+        if (!next.alias || next.alias === f.field) {
+          next.alias = next.field;
+        }
+      }
+      if (key === 'baseAlias') {
+        next.baseAlias = value;
+      }
       return next;
     });
     setFields(updated);
-    if (key === 'table') ensureFields(value);
   }
 
   function removeField(index) {
@@ -200,7 +225,7 @@ export default function ReportBuilder() {
   }
 
   function addFieldCondition(fIndex) {
-    const table = fromTable;
+    const table = fields[fIndex]?.table || fromTable;
     const newCond = {
       table,
       field: (tableFields[table] || [])[0] || '',
@@ -244,7 +269,7 @@ export default function ReportBuilder() {
       alias: fields.slice(0, fIndex).find((pf) => pf.alias)?.alias || '',
       table: fromTable,
       field: (tableFields[fromTable] || [])[0] || '',
-      operator: parts.length ? '+' : undefined,
+      operator: '+',
     };
     const updated = fields.map((f, i) =>
       i === fIndex ? { ...f, calcParts: [...parts, part] } : f,
@@ -486,48 +511,6 @@ export default function ReportBuilder() {
           .join('');
       }
 
-      const fieldExprMap = {};
-      const select = fields.map((f, idx) => {
-        let expr = '';
-        const base = `${aliases[f.table]}.${f.field}`;
-        if (f.calcParts?.length) {
-          expr = f.calcParts
-            .map((p, k) => {
-              const seg =
-                p.source === 'alias'
-                  ? p.alias
-                  : `${aliases[p.table]}.${p.field}`;
-              return k > 0 ? `${p.operator} ${seg}` : seg;
-            })
-            .join(' ');
-          Object.entries(fieldExprMap).forEach(([al, ex]) => {
-            const re = new RegExp(`\\b${al}\\b`, 'g');
-            expr = expr.replace(re, `(${ex})`);
-          });
-        } else if (f.aggregate && f.aggregate !== 'NONE') {
-          if (f.conditions?.length) {
-            const cond = f.conditions
-              .map((c, idx) => {
-                const connector = idx > 0 ? ` ${c.connector} ` : '';
-                const right =
-                  c.valueType === 'param' ? `:${c.param}` : c.value;
-                return (
-                  connector +
-                  `(${aliases[c.table]}.${c.field} ${c.operator} ${right})`
-                );
-              })
-              .join('');
-            expr = `${f.aggregate}(CASE WHEN ${cond} THEN IFNULL(${base}, 0) ELSE 0 END)`;
-          } else {
-            expr = `${f.aggregate}(IFNULL(${base}, 0))`;
-          }
-        } else {
-          expr = base;
-        }
-        if (f.alias) fieldExprMap[f.alias] = expr;
-        return { expr, alias: f.alias || undefined };
-      });
-
       const joinDefs = joins
         .map((j) => {
           const conds = j.conditions.filter((c) => c.fromField && c.toField);
@@ -547,9 +530,70 @@ export default function ReportBuilder() {
             alias: aliases[j.table],
             type: j.type,
             on,
+            original: j.table,
           };
         })
         .filter((j) => j.on);
+
+      const validTables = new Set([fromTable, ...joinDefs.map((j) => j.original)]);
+
+      const fieldExprMap = {};
+      const select = fields.map((f) => {
+        if (f.source === 'field' && !validTables.has(f.table)) {
+          throw new Error(`Table ${f.table} is not joined`);
+        }
+        let base =
+          f.source === 'alias'
+            ? f.baseAlias
+            : `${aliases[f.table]}.${f.field}`;
+        if (f.calcParts?.length) {
+          const exprParts = [base];
+          f.calcParts.forEach((p) => {
+            const seg =
+              p.source === 'alias'
+                ? p.alias
+                : `${aliases[p.table]}.${p.field}`;
+            if (p.source === 'field' && !validTables.has(p.table)) {
+              throw new Error(`Table ${p.table} is not joined`);
+            }
+            exprParts.push(`${p.operator} ${seg}`);
+          });
+          let expr = exprParts.join(' ');
+          Object.entries(fieldExprMap).forEach(([al, ex]) => {
+            const re = new RegExp(`\\b${al}\\b`, 'g');
+            expr = expr.replace(re, `(${ex})`);
+          });
+          if (f.alias) fieldExprMap[f.alias] = expr;
+          return { expr, alias: f.alias || undefined };
+        }
+        if (f.aggregate && f.aggregate !== 'NONE' && f.source === 'field') {
+          if (f.conditions?.length) {
+            const cond = f.conditions
+              .map((c, idx) => {
+                if (!validTables.has(c.table)) {
+                  throw new Error(`Table ${c.table} is not joined`);
+                }
+                const connector = idx > 0 ? ` ${c.connector} ` : '';
+                const right =
+                  c.valueType === 'param' ? `:${c.param}` : c.value;
+                return (
+                  connector +
+                  `(${aliases[c.table]}.${c.field} ${c.operator} ${right})`
+                );
+              })
+              .join('');
+            const expr = `${f.aggregate}(CASE WHEN ${cond} THEN IFNULL(${base}, 0) ELSE 0 END)`;
+            if (f.alias) fieldExprMap[f.alias] = expr;
+            return { expr, alias: f.alias || undefined };
+          }
+          const expr = `${f.aggregate}(IFNULL(${base}, 0))`;
+          if (f.alias) fieldExprMap[f.alias] = expr;
+          return { expr, alias: f.alias || undefined };
+        }
+        let expr = base;
+        if (f.alias) fieldExprMap[f.alias] = expr;
+        return { expr, alias: f.alias || undefined };
+      });
 
       const fromTableSql = fromFilters.length
         ? `(SELECT * FROM ${fromTable} WHERE ${buildTableFilterSql(fromFilters)})`
@@ -557,14 +601,23 @@ export default function ReportBuilder() {
 
       const where = conditions
         .filter((c) => c.table && c.field && c.param)
-        .map((c) => ({
-          expr: `${aliases[c.table]}.${c.field} = :${c.param}`,
-          connector: c.connector,
-        }));
+          if (!validTables.has(c.table)) {
+            throw new Error(`Table ${c.table} is not joined`);
+          }
+          return {
+            expr: `${aliases[c.table]}.${c.field} = :${c.param}`,
+            connector: c.connector,
+          };
+        });
 
       const groupBy = groups
         .filter((g) => g.table && g.field)
-        .map((g) => `${aliases[g.table]}.${g.field}`);
+        .map((g) => {
+          if (!validTables.has(g.table)) {
+            throw new Error(`Table ${g.table} is not joined`);
+          }
+          return `${aliases[g.table]}.${g.field}`;
+        });
 
       const havingDefs = having
         .filter((h) =>
@@ -575,6 +628,9 @@ export default function ReportBuilder() {
             h.source === 'alias'
               ? h.alias
               : `${h.aggregate}(${aliases[h.table]}.${h.field})`;
+          if (h.source === 'field' && !validTables.has(h.table)) {
+            throw new Error(`Table ${h.table} is not joined`);
+          }
           const right = h.valueType === 'param' ? `:${h.param}` : h.value;
           return { expr: `${left} ${h.operator} ${right}`, connector: h.connector };
         });
@@ -682,7 +738,12 @@ export default function ReportBuilder() {
         );
         setFields(
           (data.fields || []).map((f) => ({
-            ...f,
+            source: f.source || 'field',
+            table: f.table || fromTable,
+            field: f.field || '',
+            baseAlias: f.baseAlias || '',
+            alias: f.alias || '',
+            aggregate: f.aggregate || 'NONE',
             calcParts: (f.calcParts || []).map((p, idx) => ({
               operator: idx > 0 ? p.operator || '+' : undefined,
               source: p.source || 'field',
@@ -1009,37 +1070,63 @@ export default function ReportBuilder() {
         {fields.map((f, i) => (
           <div key={i} style={{ marginBottom: '0.5rem' }}>
             <select
-              value={f.table}
-              onChange={(e) => updateField(i, 'table', e.target.value)}
+              value={f.source}
+              onChange={(e) => updateField(i, 'source', e.target.value)}
             >
-              {availableTables.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
+              <option value="field">Field</option>
+              <option value="alias">Alias</option>
             </select>
-            <select
-              value={f.field}
-              onChange={(e) => updateField(i, 'field', e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              {(tableFields[f.table] || []).map((col) => (
-                <option key={col} value={col}>
-                  {col}
-                </option>
-              ))}
-            </select>
-            <select
-              value={f.aggregate}
-              onChange={(e) => updateField(i, 'aggregate', e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              {AGGREGATES.map((ag) => (
-                <option key={ag} value={ag}>
-                  {ag}
-                </option>
-              ))}
-            </select>
+            {f.source === 'alias' ? (
+              <select
+                value={f.baseAlias}
+                onChange={(e) => updateField(i, 'baseAlias', e.target.value)}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                {fields.slice(0, i).map((pf) =>
+                  pf.alias ? (
+                    <option key={pf.alias} value={pf.alias}>
+                      {pf.alias}
+                    </option>
+                  ) : null,
+                )}
+              </select>
+            ) : (
+              <>
+                <select
+                  value={f.table}
+                  onChange={(e) => updateField(i, 'table', e.target.value)}
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  {availableTables.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={f.field}
+                  onChange={(e) => updateField(i, 'field', e.target.value)}
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  {(tableFields[f.table] || []).map((col) => (
+                    <option key={col} value={col}>
+                      {col}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={f.aggregate}
+                  onChange={(e) => updateField(i, 'aggregate', e.target.value)}
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  {AGGREGATES.map((ag) => (
+                    <option key={ag} value={ag}>
+                      {ag}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
             <input
               placeholder="alias"
               value={f.alias}
@@ -1132,7 +1219,7 @@ export default function ReportBuilder() {
             >
               Add Part
             </button>
-            {f.aggregate !== 'NONE' && (
+            {f.source === 'field' && f.aggregate !== 'NONE' && (
               <div style={{ display: 'inline-block', marginLeft: '0.5rem' }}>
                 {(f.conditions || []).map((c, k) => (
                   <div key={k} style={{ marginTop: '0.25rem' }}>
