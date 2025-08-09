@@ -85,11 +85,14 @@ test(
     fs.readFile = async (p, enc) => {
       if (p.endsWith(path.join('config', 'transactionForms.json'))) {
         return JSON.stringify({
-          Foo: {
-            A: { mainFields: ['trans'], visibleFields: ['id', 'note'] },
+          trans: {
+            general: {
+              A: { visibleFields: ['id'] },
+              subgroup: { B: { visibleFields: ['note'] } },
+            },
           },
-          Bar: {
-            B: { mainFields: ['trans'], visibleFields: ['date', 'note'] },
+          Other: {
+            C: { mainFields: ['trans'], visibleFields: ['date'] },
           },
         });
       }
