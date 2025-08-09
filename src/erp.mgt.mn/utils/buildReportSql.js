@@ -37,8 +37,8 @@ export default function buildReportSql(definition = {}) {
         if (sel.alias) aliasMap[sel.alias] = expr;
         return sel.alias ? `${expr} AS ${sel.alias}` : expr;
       })
-      .join(', ') || '*';
-  parts.push(`SELECT ${selectList}`);
+      .join(',\n  ') || '*';
+  parts.push(`SELECT${selectList ? '\n  ' + selectList : ''}`);
 
   // FROM clause
   parts.push(
@@ -58,11 +58,11 @@ export default function buildReportSql(definition = {}) {
     if (whereItems.length) {
       const whereClause = whereItems
         .map((w, i) => {
-          const connector = i > 0 ? ` ${w.connector || 'AND'} ` : '';
-          return connector + `(${w.expr})`;
+          const connector = i > 0 ? `${w.connector || 'AND'} ` : '';
+          return connector + w.expr;
         })
-        .join('');
-      parts.push(`WHERE ${whereClause}`);
+        .join('\n  ');
+      parts.push(`WHERE\n  ${whereClause}`);
     }
   }
 
@@ -77,11 +77,11 @@ export default function buildReportSql(definition = {}) {
     if (havingItems.length) {
       const havingClause = havingItems
         .map((h, i) => {
-          const connector = i > 0 ? ` ${h.connector || 'AND'} ` : '';
-          return connector + `(${h.expr})`;
+          const connector = i > 0 ? `${h.connector || 'AND'} ` : '';
+          return connector + h.expr;
         })
-        .join('');
-      parts.push(`HAVING ${havingClause}`);
+        .join('\n  ');
+      parts.push(`HAVING\n  ${havingClause}`);
     }
   }
 

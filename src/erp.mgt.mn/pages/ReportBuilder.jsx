@@ -20,6 +20,7 @@ export default function ReportBuilder() {
   const [fromTable, setFromTable] = useState('');
   const [joins, setJoins] = useState([]); // {table, alias, type, targetTable, conditions:[{fromField,toField,connector}], filters:[]}
   const [fields, setFields] = useState([]); // {source:'field'|'alias', table, field, baseAlias, alias, aggregate, conditions:[], calcParts:[{source,table,field,alias,operator}]}
+  const [dragIndex, setDragIndex] = useState(null);
   const [groups, setGroups] = useState([]); // {table, field}
   const [having, setHaving] = useState([]); // {source:'field'|'alias', aggregate, table, field, alias, operator, valueType, value, param, connector}
   const [params, setParams] = useState([]); // {name,type,source}
@@ -308,6 +309,15 @@ export default function ReportBuilder() {
     setFields(updated);
   }
 
+  function handleFieldDrop(index) {
+    if (dragIndex === null) return;
+    const updated = [...fields];
+    const [moved] = updated.splice(dragIndex, 1);
+    updated.splice(index, 0, moved);
+    setFields(updated);
+    setDragIndex(null);
+  }
+
   function addGroup() {
     if (!fromTable) return;
     setGroups([
@@ -503,6 +513,7 @@ export default function ReportBuilder() {
 
       function buildTableFilterSql(filters) {
         return filters
+          .filter((f) => f.field && (f.valueType === 'param' ? f.param : f.value))
           .map((f, idx) => {
             const right = f.valueType === 'param' ? `:${f.param}` : f.value;
             const connector = idx > 0 ? ` ${f.connector} ` : '';
@@ -538,7 +549,9 @@ export default function ReportBuilder() {
       const validTables = new Set([fromTable, ...joinDefs.map((j) => j.original)]);
 
       const fieldExprMap = {};
-      const select = fields.map((f) => {
+      const select = fields
+        .filter((f) => (f.source === 'alias' ? f.baseAlias : f.field))
+        .map((f) => {
         if (f.source === 'field' && !validTables.has(f.table)) {
           throw new Error(`Table ${f.table} is not joined`);
         }
@@ -553,6 +566,7 @@ export default function ReportBuilder() {
               p.source === 'alias'
                 ? p.alias
                 : `${aliases[p.table]}.${p.field}`;
+            if (!seg) return;
             if (p.source === 'field' && !validTables.has(p.table)) {
               throw new Error(`Table ${p.table} is not joined`);
             }
@@ -569,6 +583,7 @@ export default function ReportBuilder() {
         if (f.aggregate && f.aggregate !== 'NONE' && f.source === 'field') {
           if (f.conditions?.length) {
             const cond = f.conditions
+              .filter((c) => c.field && (c.valueType === 'param' ? c.param : c.value))
               .map((c, idx) => {
                 if (!validTables.has(c.table)) {
                   throw new Error(`Table ${c.table} is not joined`);
@@ -745,8 +760,8 @@ export default function ReportBuilder() {
             baseAlias: f.baseAlias || '',
             alias: f.alias || '',
             aggregate: f.aggregate || 'NONE',
-            calcParts: (f.calcParts || []).map((p, idx) => ({
-              operator: idx > 0 ? p.operator || '+' : undefined,
+            calcParts: (f.calcParts || []).map((p) => ({
+              operator: p.operator || '+',
               source: p.source || 'field',
               ...p,
             })),
@@ -1069,7 +1084,14 @@ export default function ReportBuilder() {
       <section>
         <h3>Select Fields</h3>
         {fields.map((f, i) => (
-          <div key={i} style={{ marginBottom: '0.5rem' }}>
+          <div
+            key={i}
+            style={{ marginBottom: '0.5rem' }}
+            draggable
+            onDragStart={() => setDragIndex(i)}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => handleFieldDrop(i)}
+          >
             <select
               value={f.source}
               onChange={(e) => updateField(i, 'source', e.target.value)}
