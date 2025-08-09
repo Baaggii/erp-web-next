@@ -116,26 +116,32 @@ export default function ImageManagement() {
   useEffect(() => { pendingRef.current = pending; }, [pending]);
   useEffect(() => { hostIgnoredRef.current = hostIgnored; }, [hostIgnored]);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const raw = localStorage.getItem(FOLDER_STATE_KEY);
-        if (raw) {
-          const data = JSON.parse(raw);
-          const dir = await loadDirHandle(FOLDER_STATE_KEY);
-          if (dir) {
-            try { await dir.requestPermission?.({ mode: 'read' }); } catch {}
-            dirHandleRef.current = dir;
-            data.uploads = await attachHandles(dir, data.uploads);
-            data.ignored = await attachHandles(dir, data.ignored);
-          }
-          applySession(data);
-          setTab('fix');
-        }
-      } catch {
-        // ignore
+  async function loadTables({ silent = false } = {}) {
+    try {
+      const raw = localStorage.getItem(FOLDER_STATE_KEY);
+      if (!raw) {
+        if (!silent) addToast('No saved tables found', 'error');
+        return;
       }
-    })();
+      const data = JSON.parse(raw);
+      const dir = await loadDirHandle(FOLDER_STATE_KEY);
+      if (dir) {
+        try { await dir.requestPermission?.({ mode: 'read' }); } catch {}
+        dirHandleRef.current = dir;
+        data.uploads = await attachHandles(dir, data.uploads);
+        data.ignored = await attachHandles(dir, data.ignored);
+      }
+      applySession(data);
+      setTab('fix');
+      if (!silent) addToast('Tables loaded', 'success');
+    } catch (err) {
+      console.error(err);
+      if (!silent) addToast('Failed to load tables', 'error');
+    }
+  }
+
+  useEffect(() => {
+    loadTables({ silent: true });
   }, []);
 
   function stateLabel(item = {}) {
@@ -1201,6 +1207,17 @@ export default function ImageManagement() {
                 disabled={!canRenameSelected}
               >
                 Rename Selected
+              </button>
+              <button
+                type="button"
+                onClick={loadTables}
+                style={{
+                  marginBottom: '0.5rem',
+                  marginRight: '0.5rem',
+                  float: 'right',
+                }}
+              >
+                Load Tables
               </button>
               <button
                 type="button"
