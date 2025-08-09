@@ -122,6 +122,17 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     return sums;
   }, [numericColumns, sorted]);
 
+  const modalColumns = useMemo(() => {
+    if (!txnInfo || !txnInfo.data || txnInfo.data.length === 0) return [];
+    const all = Object.keys(txnInfo.data[0]);
+    if (Array.isArray(txnInfo.displayFields) && txnInfo.displayFields.length > 0) {
+      const ordered = txnInfo.displayFields.filter((f) => all.includes(f));
+      const rest = all.filter((f) => !ordered.includes(f));
+      return [...ordered, ...rest];
+    }
+    return all;
+  }, [txnInfo]);
+
   useEffect(() => {
     if (procedure) {
       window.dispatchEvent(
@@ -168,7 +179,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
         department_id: company?.department_id,
       },
     };
-    setTxnInfo({ loading: true, col, value, data: [], sql: '' });
+    setTxnInfo({ loading: true, col, value, data: [], sql: '', displayFields: [] });
     fetch('/api/procedures/raw', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -187,6 +198,9 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
           value,
           data: data.rows || [],
           sql: data.sql || '',
+          displayFields: Array.isArray(data.displayFields)
+            ? data.displayFields
+            : [],
         });
         if (data.original) {
           const preview =
@@ -238,7 +252,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       .catch((err) => {
         const sql = err && typeof err === 'object' ? err.sql || '' : '';
         const file = err && typeof err === 'object' ? err.file || '' : '';
-        setTxnInfo({ loading: false, col, value, data: [], sql });
+        setTxnInfo({ loading: false, col, value, data: [], sql, displayFields: [] });
         if (sql) {
           const preview = sql.length > 200 ? `${sql.slice(0, 200)}…` : sql;
           window.dispatchEvent(
@@ -523,7 +537,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
               <table style={{ borderCollapse: 'collapse', width: '100%' }}>
                 <thead>
                   <tr>
-                    {Object.keys(txnInfo.data[0]).map((c) => (
+                    {modalColumns.map((c) => (
                       <th
                         key={c}
                         style={{
@@ -532,7 +546,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                           textAlign: 'left',
                         }}
                       >
-                        {c}
+                        {fieldLabels[c] || c}
                       </th>
                     ))}
                   </tr>
@@ -540,7 +554,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                 <tbody>
                   {txnInfo.data.map((r, idx) => (
                     <tr key={idx}>
-                      {Object.keys(txnInfo.data[0]).map((c) => (
+                      {modalColumns.map((c) => (
                         <td
                           key={c}
                           style={{
