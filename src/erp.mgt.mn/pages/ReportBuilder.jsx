@@ -32,6 +32,7 @@ function ReportBuilderInner() {
   const [fromFilters, setFromFilters] = useState([]); // {field,operator,valueType,param,value,connector,open,close}
   const [unionQueries, setUnionQueries] = useState([]); // {unionType, ...queryState}
   const [unionType, setUnionType] = useState('UNION');
+  const [currentUnionIndex, setCurrentUnionIndex] = useState(0);
   const [selectSql, setSelectSql] = useState('');
   const [viewSql, setViewSql] = useState('');
   const [procSql, setProcSql] = useState('');
@@ -48,6 +49,33 @@ function ReportBuilderInner() {
 
   const [customParamName, setCustomParamName] = useState('');
   const [customParamType, setCustomParamType] = useState(PARAM_TYPES[0]);
+
+  useEffect(() => {
+    setUnionQueries((prev) => {
+      const arr = [...prev];
+      arr[currentUnionIndex] = {
+        unionType,
+        fromTable,
+        joins,
+        fields,
+        groups,
+        having,
+        conditions,
+        fromFilters,
+      };
+      return arr;
+    });
+  }, [
+    unionType,
+    fromTable,
+    joins,
+    fields,
+    groups,
+    having,
+    conditions,
+    fromFilters,
+    currentUnionIndex,
+  ]);
 
   // Fetch table list on mount
   useEffect(() => {
@@ -570,17 +598,21 @@ function ReportBuilderInner() {
   }
 
   function addUnionQuery() {
-    const snapshot = {
-      unionType,
-      fromTable,
-      joins,
-      fields,
-      groups,
-      having,
-      conditions,
-      fromFilters,
-    };
-    setUnionQueries([...unionQueries, snapshot]);
+    const newIndex = unionQueries.length;
+    setUnionQueries((prev) => [
+      ...prev,
+      {
+        unionType: 'UNION',
+        fromTable,
+        joins: [],
+        fields: [],
+        groups: [],
+        having: [],
+        conditions: [],
+        fromFilters: [],
+      },
+    ]);
+    setCurrentUnionIndex(newIndex);
     setJoins([]);
     setFields([]);
     setGroups([]);
@@ -588,6 +620,22 @@ function ReportBuilderInner() {
     setConditions([]);
     setFromFilters([]);
     setUnionType('UNION');
+  }
+
+  function switchUnionQuery(index) {
+    const q = unionQueries[index];
+    if (!q) return;
+    setCurrentUnionIndex(index);
+    setUnionType(q.unionType || 'UNION');
+    setFromTable(q.fromTable || '');
+    setJoins(q.joins || []);
+    setFields(q.fields || []);
+    setGroups(q.groups || []);
+    setHaving(q.having || []);
+    setConditions(q.conditions || []);
+    setFromFilters(q.fromFilters || []);
+    ensureFields(q.fromTable);
+    (q.joins || []).forEach((j) => ensureFields(j.table));
   }
 
   function addJoinFilter(jIndex) {
@@ -833,18 +881,12 @@ function ReportBuilderInner() {
     };
   }
 
-  function buildDefinition(includeCurrent = true) {
-    const states = includeCurrent
-      ? [
-          ...unionQueries,
-          { fromTable, joins, fields, groups, having, conditions, fromFilters, unionType: null },
-        ]
-      : [...unionQueries];
-    const built = states.map((s) => buildFromState(s));
+  function buildDefinition() {
+    const built = unionQueries.map((s) => buildFromState(s));
     const first = built[0];
     const unions = [];
     for (let i = 1; i < built.length; i++) {
-      const type = states[i - 1].unionType || 'UNION';
+      const type = unionQueries[i - 1].unionType || 'UNION';
       unions.push({ ...built[i], type });
     }
     return {
@@ -978,17 +1020,22 @@ function ReportBuilderInner() {
   }
 
   async function handleSaveConfig() {
+    const first = unionQueries[0] || {};
+    const legacyUnions = unionQueries.slice(1).map((q, i) => ({
+      ...q,
+      unionType: unionQueries[i].unionType || 'UNION',
+    }));
     const data = {
       procName,
-      fromTable,
-      joins,
-      fields,
-      groups,
-      having,
+      fromTable: first.fromTable,
+      joins: first.joins,
+      fields: first.fields,
+      groups: first.groups,
+      having: first.having,
       params,
-      conditions,
-      fromFilters,
-      unionQueries,
+      conditions: first.conditions,
+      fromFilters: first.fromFilters,
+      unionQueries: legacyUnions,
     };
     try {
       const name = procName || 'report';
@@ -1026,73 +1073,93 @@ function ReportBuilderInner() {
         `/api/report_builder/configs/${encodeURIComponent(selectedReport)}`,
       );
       const data = await res.json();
-        setProcName(data.procName || '');
-        setFromTable(data.fromTable || '');
-        setFromFilters(
-          (data.fromFilters || []).map((f) => ({
-            connector: f.connector || 'AND',
-            ...f,
-          })),
-        );
-        setJoins(
-          (data.joins || []).map((j) => ({
-            ...j,
-            conditions: (j.conditions || []).map((c) => ({
-              connector: c.connector || 'AND',
-              ...c,
-            })),
-            filters: (j.filters || []).map((f) => ({
-              connector: f.connector || 'AND',
-              ...f,
-            })),
-            })),
-        );
-        setFields(
-          (data.fields || []).map((f) => ({
-            source: f.source || 'field',
-            table: f.table || fromTable,
-            field: f.field || '',
-            baseAlias: f.baseAlias || '',
-            alias: f.alias || '',
-            aggregate: f.aggregate || 'NONE',
-            calcParts: (f.calcParts || []).map((p) => ({
-              operator: p.operator || '+',
-              source: p.source || 'field',
-              ...p,
-            })),
-            conditions: (f.conditions || []).map((c) => ({
-              connector: c.connector || 'AND',
-              ...c,
-            })),
-          })),
-        );
-        setGroups(data.groups || []);
-        setUnionQueries(
-          (data.unionQueries || []).map((q) => ({
-            unionType: q.unionType || 'UNION',
-            ...q,
-          })),
-        );
-        setHaving(
-          (data.having || []).map((h) => ({
-            connector: h.connector || 'AND',
-            valueType: h.valueType || (h.param ? 'param' : 'value'),
-            source: h.source || 'field',
-            ...h,
-          })),
-        );
-        setParams(data.params || []);
-        setConditions(
-          (data.conditions || []).map((c) => ({
+      setProcName(data.procName || '');
+      const unionsRaw = data.unionQueries || [];
+      const normalize = (q) => ({
+        unionType: q.unionType || 'UNION',
+        fromTable: q.fromTable || '',
+        joins: (q.joins || []).map((j) => ({
+          ...j,
+          conditions: (j.conditions || []).map((c) => ({
             connector: c.connector || 'AND',
             ...c,
           })),
+          filters: (j.filters || []).map((f) => ({
+            connector: f.connector || 'AND',
+            ...f,
+          })),
+        })),
+        fields: (q.fields || []).map((f) => ({
+          source: f.source || 'field',
+          table: f.table || q.fromTable,
+          field: f.field || '',
+          baseAlias: f.baseAlias || '',
+          alias: f.alias || '',
+          aggregate: f.aggregate || 'NONE',
+          calcParts: (f.calcParts || []).map((p) => ({
+            operator: p.operator || '+',
+            source: p.source || 'field',
+            ...p,
+          })),
+          conditions: (f.conditions || []).map((c) => ({
+            connector: c.connector || 'AND',
+            ...c,
+          })),
+        })),
+        groups: q.groups || [],
+        having: (q.having || []).map((h) => ({
+          connector: h.connector || 'AND',
+          valueType: h.valueType || (h.param ? 'param' : 'value'),
+          source: h.source || 'field',
+          ...h,
+        })),
+        conditions: (q.conditions || []).map((c) => ({
+          connector: c.connector || 'AND',
+          ...c,
+        })),
+        fromFilters: (q.fromFilters || []).map((f) => ({
+          connector: f.connector || 'AND',
+          ...f,
+        })),
+      });
+      const all = [];
+      all.push(
+        normalize({
+          fromTable: data.fromTable,
+          joins: data.joins,
+          fields: data.fields,
+          groups: data.groups,
+          having: data.having,
+          conditions: data.conditions,
+          fromFilters: data.fromFilters,
+          unionType: unionsRaw[0]?.unionType,
+        }),
+      );
+      for (let i = 0; i < unionsRaw.length; i++) {
+        all.push(
+          normalize({
+            ...unionsRaw[i],
+            unionType: unionsRaw[i + 1]?.unionType,
+          }),
         );
-        ensureFields(data.fromTable);
-        (data.joins || []).forEach((j) => {
-          ensureFields(j.table);
-          ensureFields(j.targetTable);
-        });
+      }
+      const first = all[0];
+      setUnionQueries(all);
+      setCurrentUnionIndex(0);
+      setFromTable(first.fromTable || '');
+      setFromFilters(first.fromFilters || []);
+      setJoins(first.joins || []);
+      setFields(first.fields || []);
+      setGroups(first.groups || []);
+      setUnionType(first.unionType || 'UNION');
+      setHaving(first.having || []);
+      setParams(data.params || []);
+      setConditions(first.conditions || []);
+      ensureFields(first.fromTable);
+      (first.joins || []).forEach((j) => {
+        ensureFields(j.table);
+        ensureFields(j.targetTable);
+      });
     } catch (err) {
       console.error(err);
     }
@@ -1493,12 +1560,17 @@ function ReportBuilderInner() {
         {fields.map((f, i) => (
           <div
             key={i}
-            style={{ marginBottom: '0.5rem' }}
-            draggable
-            onDragStart={() => setDragIndex(i)}
+            style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}
             onDragOver={(e) => e.preventDefault()}
             onDrop={() => handleFieldDrop(i)}
           >
+            <span
+              draggable
+              onDragStart={() => setDragIndex(i)}
+              style={{ cursor: 'move', marginRight: '0.5rem' }}
+            >
+              ☰
+            </span>
             <select
               value={f.source}
               onChange={(e) => updateField(i, 'source', e.target.value)}
@@ -2110,7 +2182,7 @@ function ReportBuilderInner() {
         </button>
         <div style={{ marginTop: '0.5rem' }}>
           <span style={{ marginRight: '0.5rem' }}>
-            Added: {unionQueries.length}
+            Added: {Math.max(0, unionQueries.length - 1)}
           </span>
           <select
             value={unionType}
@@ -2120,7 +2192,21 @@ function ReportBuilderInner() {
             <option value="UNION">UNION</option>
             <option value="UNION ALL">UNION ALL</option>
           </select>
-          <button onClick={addUnionQuery}>Add UNION</button>
+          <button onClick={addUnionQuery} style={{ marginRight: '0.5rem' }}>
+            Add UNION
+          </button>
+          {unionQueries.map((_, idx) => (
+            <button
+              key={idx}
+              onClick={() => switchUnionQuery(idx)}
+              style={{
+                marginRight: '0.25rem',
+                fontWeight: currentUnionIndex === idx ? 'bold' : undefined,
+              }}
+            >
+              {idx + 1}
+            </button>
+          ))}
         </div>
       </section>
 
