@@ -4,9 +4,11 @@ import fs from 'fs/promises';
 import { requireAuth } from '../middlewares/auth.js';
 import {
   listDatabaseTables,
-  listTableColumns,
+  listTableColumnsDetailed,
   saveStoredProcedure,
   saveView,
+  listReportProcedures,
+  deleteProcedure,
 } from '../../db/index.js';
 
 const router = express.Router();
@@ -28,8 +30,18 @@ router.get('/fields', requireAuth, async (req, res, next) => {
   try {
     const { table } = req.query;
     if (!table) return res.status(400).json({ message: 'table required' });
-    const fields = await listTableColumns(table);
+    const fields = await listTableColumnsDetailed(table);
     res.json({ fields });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// List stored procedures containing "report"
+router.get('/procedures', requireAuth, async (req, res, next) => {
+  try {
+    const names = await listReportProcedures();
+    res.json({ names });
   } catch (err) {
     next(err);
   }
@@ -41,6 +53,18 @@ router.post('/procedures', requireAuth, async (req, res, next) => {
     const { sql } = req.body || {};
     if (!sql) return res.status(400).json({ message: 'sql required' });
     await saveStoredProcedure(sql);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Delete a stored procedure
+router.delete('/procedures/:name', requireAuth, async (req, res, next) => {
+  try {
+    const { name } = req.params;
+    if (!name) return res.status(400).json({ message: 'name required' });
+    await deleteProcedure(name);
     res.json({ ok: true });
   } catch (err) {
     next(err);
