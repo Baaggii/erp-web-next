@@ -103,11 +103,17 @@ router.post('/procedure-files/:name', requireAuth, async (req, res, next) => {
 // List stored procedure files on host
 router.get('/procedure-files', requireAuth, async (req, res, next) => {
   try {
+    const { prefix = '' } = req.query;
     await fs.mkdir(PROC_DIR, { recursive: true });
     const files = await fs.readdir(PROC_DIR);
     const names = files
       .filter((f) => f.endsWith('.json'))
-      .map((f) => f.replace(/\.json$/, ''));
+      .map((f) => f.replace(/\.json$/, ''))
+      .filter(
+        (n) =>
+          typeof n === 'string' &&
+          (!prefix || n.toLowerCase().includes(prefix.toLowerCase())),
+      );
     res.json({ names });
   } catch (err) {
     next(err);
@@ -143,9 +149,17 @@ router.post('/configs/:name', requireAuth, async (req, res, next) => {
 // List saved report definitions
 router.get('/configs', requireAuth, async (req, res, next) => {
   try {
+    const { prefix = '' } = req.query;
     await fs.mkdir(CONFIG_DIR, { recursive: true });
     const files = await fs.readdir(CONFIG_DIR);
-    const names = files.filter((f) => f.endsWith('.json')).map((f) => f.replace(/\.json$/, ''));
+    const names = files
+      .filter((f) => f.endsWith('.json'))
+      .map((f) => f.replace(/\.json$/, ''))
+      .filter(
+        (n) =>
+          typeof n === 'string' &&
+          (!prefix || n.toLowerCase().includes(prefix.toLowerCase())),
+      );
     res.json({ names });
   } catch (err) {
     next(err);
