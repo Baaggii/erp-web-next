@@ -144,6 +144,18 @@ export default function ImageManagement() {
     loadTables({ silent: true });
   }, []);
 
+  useEffect(() => {
+    if (
+      tab === 'fix' &&
+      uploadsRef.current.length === 0 &&
+      ignoredRef.current.length === 0 &&
+      pendingRef.current.length === 0 &&
+      hostIgnoredRef.current.length === 0
+    ) {
+      loadTables({ silent: true });
+    }
+  }, [tab]);
+
   function stateLabel(item = {}) {
     if (item.processed) return 'Processed';
     if (item.newName) return 'New';
@@ -1200,33 +1212,34 @@ export default function ImageManagement() {
               style={{ marginRight: '0.5rem' }}
             />
           </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <span style={{ fontWeight: 'bold', marginRight: '0.5rem' }}>
+              Session (save or restore tables):
+            </span>
+            <button
+              type="button"
+              onClick={saveTables}
+              style={{ marginRight: '0.5rem' }}
+            >
+              Save Tables
+            </button>
+            <button
+              type="button"
+              onClick={() => loadTables()}
+              style={{ marginRight: '0.5rem' }}
+            >
+              Load Tables
+            </button>
+          </div>
           {uploadSummary && (
             <p style={{ marginBottom: '0.5rem' }}>
               {`Scanned ${uploadSummary.totalFiles || 0} file(s), found ${uploadSummary.processed || 0} incomplete name(s), ${uploadSummary.unflagged || 0} unflagged.`}
             </p>
           )}
-          {(uploads.length > 0 || ignored.length > 0) && (
-            <div style={{ marginBottom: '1rem' }}>
-                <h4>Uploads</h4>
-                <div style={{ marginBottom: '0.5rem' }}>
-                  <span style={{ fontWeight: 'bold', marginRight: '0.5rem' }}>
-                    Session (save or restore tables):
-                  </span>
-                  <button
-                    type="button"
-                    onClick={saveTables}
-                    style={{ marginRight: '0.5rem' }}
-                  >
-                    Save Tables
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => loadTables()}
-                    style={{ marginRight: '0.5rem' }}
-                  >
-                    Load Tables
-                  </button>
-                </div>
+          <div style={{ marginBottom: '1rem' }}>
+            <h4>Uploads</h4>
+            {(uploads.length > 0 || ignored.length > 0) && (
+              <>
                 <div style={{ marginBottom: '0.5rem' }}>
                   <span style={{ fontWeight: 'bold', marginRight: '0.5rem' }}>
                     Batch (run on all rows):
@@ -1298,216 +1311,217 @@ export default function ImageManagement() {
                     Delete Selected
                   </button>
                 </div>
-              <div style={{ marginBottom: '0.5rem' }}>
-                <label style={{ marginRight: '0.5rem' }}>
-                  Page Size:{' '}
-                  <input
-                    type="number"
-                    value={uploadPageSize}
-                    onChange={(e) => {
-                      setUploadPageSize(Number(e.target.value));
-                      setUploadPage(1);
-                      setIgnoredPage(1);
-                    }}
-                    style={{ width: '4rem' }}
-                  />
-                </label>
-              </div>
-              {uploads.length > 0 && (
-                <div style={{ marginBottom: '1rem' }}>
-                  <div style={{ marginBottom: '0.5rem' }}>
-                    <button
-                      type="button"
-                      disabled={uploadPage === 1}
-                      onClick={() => setUploadPage(1)}
-                      style={{ marginRight: '0.5rem' }}
-                    >
-                      First
-                    </button>
-                    <button
-                      type="button"
-                      disabled={uploadPage === 1}
-                      onClick={() => setUploadPage(uploadPage - 1)}
-                      style={{ marginRight: '0.5rem' }}
-                    >
-                      Prev
-                    </button>
-                    <span style={{ marginRight: '0.5rem' }}>
-                      Page{' '}
-                      <input
-                        type="number"
-                        value={uploadPage}
-                        onChange={(e) =>
-                          setUploadPage(clampPage(e.target.value, uploadLastPage))
-                        }
-                        style={{ width: '3rem' }}
-                      />{' '}
-                      / {uploadLastPage}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={!uploadHasMore}
-                      onClick={() => setUploadPage(uploadPage + 1)}
-                      style={{ marginRight: '0.5rem' }}
-                    >
-                      Next
-                    </button>
-                    <button
-                      type="button"
-                      disabled={uploadPage === uploadLastPage}
-                      onClick={() => setUploadPage(uploadLastPage)}
-                    >
-                      Last
-                    </button>
-                  </div>
-                  <table className="min-w-full border border-gray-300 text-sm" style={{ tableLayout: 'fixed' }}>
-                    <thead>
-                      <tr>
-                        <th className="border px-2 py-1">
-                          <input
-                            type="checkbox"
-                            checked={pageUploads.length > 0 && pageUploads.every((u) => uploadSel.includes(u.id))}
-                            onChange={() => toggleUploadAll(pageUploads)}
-                          />
-                        </th>
-                        <th className="border px-2 py-1">Original</th>
-                        <th className="border px-2 py-1">New Name</th>
-                        <th className="border px-2 py-1">Folder</th>
-                        <th className="border px-2 py-1">Description</th>
-                        <th className="border px-2 py-1">State</th>
-                        <th className="border px-2 py-1">Delete</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pageUploads.map((u) => (
-                        <tr key={u.id} className={uploadSel.includes(u.id) ? 'bg-blue-50' : ''}>
-                          <td className="border px-2 py-1 text-center">
-                            <input type="checkbox" checked={uploadSel.includes(u.id)} onChange={() => toggleUpload(u.id)} />
-                          </td>
-                          <td className="border px-2 py-1">{u.originalName}</td>
-                          <td className="border px-2 py-1">{u.newName}</td>
-                          <td className="border px-2 py-1">{u.folderDisplay}</td>
-                          <td className="border px-2 py-1">{u.description}</td>
-                          <td className="border px-2 py-1">{stateLabel(u)}</td>
-                          <td className="border px-2 py-1 text-center">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const remainingUploads = uploads.filter((x) => x.id !== u.id);
-                                setUploads(remainingUploads);
-                                uploadsRef.current = remainingUploads;
-                                setUploadSel((s) => s.filter((id) => id !== u.id));
-                                persistAll({ uploads: remainingUploads, ignored });
-                              }}
-                            >
-                              Delete
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <label style={{ marginRight: '0.5rem' }}>
+                    Page Size:{' '}
+                    <input
+                      type="number"
+                      value={uploadPageSize}
+                      onChange={(e) => {
+                        setUploadPageSize(Number(e.target.value));
+                        setUploadPage(1);
+                        setIgnoredPage(1);
+                      }}
+                      style={{ width: '4rem' }}
+                    />
+                  </label>
                 </div>
-              )}
-              {ignored.length > 0 && (
-                <div>
-                  <h4>Not Incomplete</h4>
-                  <div style={{ marginBottom: '0.5rem' }}>
-                    <button
-                      type="button"
-                      disabled={ignoredPage === 1}
-                      onClick={() => setIgnoredPage(1)}
-                      style={{ marginRight: '0.5rem' }}
-                    >
-                      First
-                    </button>
-                    <button
-                      type="button"
-                      disabled={ignoredPage === 1}
-                      onClick={() => setIgnoredPage(ignoredPage - 1)}
-                      style={{ marginRight: '0.5rem' }}
-                    >
-                      Prev
-                    </button>
-                    <span style={{ marginRight: '0.5rem' }}>
-                      Page{' '}
-                      <input
-                        type="number"
-                        value={ignoredPage}
-                        onChange={(e) =>
-                          setIgnoredPage(clampPage(e.target.value, ignoredLastPage))
-                        }
-                        style={{ width: '3rem' }}
-                      />{' '}
-                      / {ignoredLastPage}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={!ignoredHasMore}
-                      onClick={() => setIgnoredPage(ignoredPage + 1)}
-                      style={{ marginRight: '0.5rem' }}
-                    >
-                      Next
-                    </button>
-                    <button
-                      type="button"
-                      disabled={ignoredPage === ignoredLastPage}
-                      onClick={() => setIgnoredPage(ignoredLastPage)}
-                    >
-                      Last
-                    </button>
-                  </div>
-                  <table className="min-w-full border border-gray-300 text-sm" style={{ tableLayout: 'fixed' }}>
-                    <thead>
-                      <tr>
-                        <th className="border px-2 py-1">
-                          <input
-                            type="checkbox"
-                            checked={pageIgnored.length > 0 && pageIgnored.every((u) => uploadSel.includes(u.id))}
-                            onChange={() => toggleUploadAll(pageIgnored)}
-                          />
-                        </th>
-                        <th className="border px-2 py-1">Original</th>
-                        <th className="border px-2 py-1">New Name</th>
-                        <th className="border px-2 py-1">Folder</th>
-                        <th className="border px-2 py-1">Description</th>
-                        <th className="border px-2 py-1">State</th>
-                        <th className="border px-2 py-1">Delete</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pageIgnored.map((u) => (
-                        <tr key={u.id} className={uploadSel.includes(u.id) ? 'bg-blue-50' : ''}>
-                          <td className="border px-2 py-1 text-center">
-                            <input type="checkbox" checked={uploadSel.includes(u.id)} onChange={() => toggleUpload(u.id)} />
-                          </td>
-                          <td className="border px-2 py-1">{u.originalName}</td>
-                          <td className="border px-2 py-1">{u.newName}</td>
-                          <td className="border px-2 py-1">{u.folderDisplay}</td>
-                          <td className="border px-2 py-1">{u.reason}</td>
-                          <td className="border px-2 py-1">{stateLabel(u)}</td>
-                          <td className="border px-2 py-1 text-center">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const remainingIgnored = ignored.filter((x) => x.id !== u.id);
-                                setIgnored(remainingIgnored);
-                                ignoredRef.current = remainingIgnored;
-                                setUploadSel((s) => s.filter((id) => id !== u.id));
-                                persistAll({ uploads: uploadsRef.current, ignored: remainingIgnored });
-                              }}
-                            >
-                              Delete
-                            </button>
-                          </td>
+                {uploads.length > 0 && (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <div style={{ marginBottom: '0.5rem' }}>
+                      <button
+                        type="button"
+                        disabled={uploadPage === 1}
+                        onClick={() => setUploadPage(1)}
+                        style={{ marginRight: '0.5rem' }}
+                      >
+                        First
+                      </button>
+                      <button
+                        type="button"
+                        disabled={uploadPage === 1}
+                        onClick={() => setUploadPage(uploadPage - 1)}
+                        style={{ marginRight: '0.5rem' }}
+                      >
+                        Prev
+                      </button>
+                      <span style={{ marginRight: '0.5rem' }}>
+                        Page{' '}
+                        <input
+                          type="number"
+                          value={uploadPage}
+                          onChange={(e) =>
+                            setUploadPage(clampPage(e.target.value, uploadLastPage))
+                          }
+                          style={{ width: '3rem' }}
+                        />{' '}
+                        / {uploadLastPage}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={!uploadHasMore}
+                        onClick={() => setUploadPage(uploadPage + 1)}
+                        style={{ marginRight: '0.5rem' }}
+                      >
+                        Next
+                      </button>
+                      <button
+                        type="button"
+                        disabled={uploadPage === uploadLastPage}
+                        onClick={() => setUploadPage(uploadLastPage)}
+                      >
+                        Last
+                      </button>
+                    </div>
+                    <table className="min-w-full border border-gray-300 text-sm" style={{ tableLayout: 'fixed' }}>
+                      <thead>
+                        <tr>
+                          <th className="border px-2 py-1">
+                            <input
+                              type="checkbox"
+                              checked={pageUploads.length > 0 && pageUploads.every((u) => uploadSel.includes(u.id))}
+                              onChange={() => toggleUploadAll(pageUploads)}
+                            />
+                          </th>
+                          <th className="border px-2 py-1">Original</th>
+                          <th className="border px-2 py-1">New Name</th>
+                          <th className="border px-2 py-1">Folder</th>
+                          <th className="border px-2 py-1">Description</th>
+                          <th className="border px-2 py-1">State</th>
+                          <th className="border px-2 py-1">Delete</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
+                      </thead>
+                      <tbody>
+                        {pageUploads.map((u) => (
+                          <tr key={u.id} className={uploadSel.includes(u.id) ? 'bg-blue-50' : ''}>
+                            <td className="border px-2 py-1 text-center">
+                              <input type="checkbox" checked={uploadSel.includes(u.id)} onChange={() => toggleUpload(u.id)} />
+                            </td>
+                            <td className="border px-2 py-1">{u.originalName}</td>
+                            <td className="border px-2 py-1">{u.newName}</td>
+                            <td className="border px-2 py-1">{u.folderDisplay}</td>
+                            <td className="border px-2 py-1">{u.description}</td>
+                            <td className="border px-2 py-1">{stateLabel(u)}</td>
+                            <td className="border px-2 py-1 text-center">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const remainingUploads = uploads.filter((x) => x.id !== u.id);
+                                  setUploads(remainingUploads);
+                                  uploadsRef.current = remainingUploads;
+                                  setUploadSel((s) => s.filter((id) => id !== u.id));
+                                  persistAll({ uploads: remainingUploads, ignored });
+                                }}
+                              >
+                                Delete
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {ignored.length > 0 && (
+                  <div>
+                    <h4>Not Incomplete</h4>
+                    <div style={{ marginBottom: '0.5rem' }}>
+                      <button
+                        type="button"
+                        disabled={ignoredPage === 1}
+                        onClick={() => setIgnoredPage(1)}
+                        style={{ marginRight: '0.5rem' }}
+                      >
+                        First
+                      </button>
+                      <button
+                        type="button"
+                        disabled={ignoredPage === 1}
+                        onClick={() => setIgnoredPage(ignoredPage - 1)}
+                        style={{ marginRight: '0.5rem' }}
+                      >
+                        Prev
+                      </button>
+                      <span style={{ marginRight: '0.5rem' }}>
+                        Page{' '}
+                        <input
+                          type="number"
+                          value={ignoredPage}
+                          onChange={(e) =>
+                            setIgnoredPage(clampPage(e.target.value, ignoredLastPage))
+                          }
+                          style={{ width: '3rem' }}
+                        />{' '}
+                        / {ignoredLastPage}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={!ignoredHasMore}
+                        onClick={() => setIgnoredPage(ignoredPage + 1)}
+                        style={{ marginRight: '0.5rem' }}
+                      >
+                        Next
+                      </button>
+                      <button
+                        type="button"
+                        disabled={ignoredPage === ignoredLastPage}
+                        onClick={() => setIgnoredPage(ignoredLastPage)}
+                      >
+                        Last
+                      </button>
+                    </div>
+                    <table className="min-w-full border border-gray-300 text-sm" style={{ tableLayout: 'fixed' }}>
+                      <thead>
+                        <tr>
+                          <th className="border px-2 py-1">
+                            <input
+                              type="checkbox"
+                              checked={pageIgnored.length > 0 && pageIgnored.every((u) => uploadSel.includes(u.id))}
+                              onChange={() => toggleUploadAll(pageIgnored)}
+                            />
+                          </th>
+                          <th className="border px-2 py-1">Original</th>
+                          <th className="border px-2 py-1">New Name</th>
+                          <th className="border px-2 py-1">Folder</th>
+                          <th className="border px-2 py-1">Description</th>
+                          <th className="border px-2 py-1">State</th>
+                          <th className="border px-2 py-1">Delete</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pageIgnored.map((u) => (
+                          <tr key={u.id} className={uploadSel.includes(u.id) ? 'bg-blue-50' : ''}>
+                            <td className="border px-2 py-1 text-center">
+                              <input type="checkbox" checked={uploadSel.includes(u.id)} onChange={() => toggleUpload(u.id)} />
+                            </td>
+                            <td className="border px-2 py-1">{u.originalName}</td>
+                            <td className="border px-2 py-1">{u.newName}</td>
+                            <td className="border px-2 py-1">{u.folderDisplay}</td>
+                            <td className="border px-2 py-1">{u.reason}</td>
+                            <td className="border px-2 py-1">{stateLabel(u)}</td>
+                            <td className="border px-2 py-1 text-center">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const remainingIgnored = ignored.filter((x) => x.id !== u.id);
+                                  setIgnored(remainingIgnored);
+                                  ignoredRef.current = remainingIgnored;
+                                  setUploadSel((s) => s.filter((id) => id !== u.id));
+                                  persistAll({ uploads: uploadsRef.current, ignored: remainingIgnored });
+                                }}
+                              >
+                                Delete
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
           <div style={{ marginBottom: '0.5rem', marginTop: '1rem' }}>
             <button type="button" onClick={() => detectFromHost(1)} style={{ marginRight: '0.5rem' }}>
               Detect from host
