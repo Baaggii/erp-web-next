@@ -31,8 +31,8 @@ const defaults = {
     showReportParams: false,
     procLabels: {},
     procFieldLabels: {},
-    reportProcSuffix: '',
-    reportViewSuffix: '',
+    reportProcPrefix: '',
+    reportViewPrefix: '',
   },
   images: {
     basePath: 'uploads',
