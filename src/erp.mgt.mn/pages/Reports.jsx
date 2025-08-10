@@ -33,6 +33,7 @@ export default function Reports() {
       params.set('branchId', company.branch_id);
     if (company?.department_id !== undefined)
       params.set('departmentId', company.department_id);
+    const prefix = generalConfig?.general?.reportProcPrefix || '';
     fetch(`/api/transaction_forms?${params.toString()}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
       .then((data) => {
@@ -40,14 +41,20 @@ export default function Reports() {
         Object.values(data || {}).forEach((cfg) => {
           if (Array.isArray(cfg.procedures)) {
             cfg.procedures
-              .filter((p) => p.toLowerCase().includes('report'))
+              .filter((p) => {
+                const low = p.toLowerCase();
+                return (
+                  low.includes('report') &&
+                  (!prefix || low.includes(prefix.toLowerCase()))
+                );
+              })
               .forEach((p) => set.add(p));
           }
         });
         setProcedures(Array.from(set).sort());
       })
       .catch(() => setProcedures([]));
-  }, [company?.branch_id, company?.department_id]);
+  }, [company?.branch_id, company?.department_id, generalConfig]);
 
   useEffect(() => {
     if (!selectedProc) {
