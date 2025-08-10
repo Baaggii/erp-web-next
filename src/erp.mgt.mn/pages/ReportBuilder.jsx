@@ -1782,6 +1782,12 @@ function ReportBuilderInner() {
             >
               ☰
             </span>
+            <button
+              onClick={() => removeField(i)}
+              style={{ marginRight: '0.5rem' }}
+            >
+              ✕
+            </button>
             <select
               value={f.source}
               onChange={(e) => updateField(i, 'source', e.target.value)}
@@ -2078,12 +2084,6 @@ function ReportBuilderInner() {
                 <button onClick={() => addFieldCondition(i)}>Add Condition</button>
               </div>
             )}
-            <button
-              onClick={() => removeField(i)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              ✕
-            </button>
           </div>
         ))}
         <button onClick={addField}>Add Field</button>
