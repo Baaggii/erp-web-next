@@ -7,6 +7,16 @@ export function requireAuth(req, res, next) {
   const token = req.cookies?.[getCookieName()];
   const rToken = req.cookies?.[getRefreshCookieName()];
 
+  function clearCookies() {
+    const opts = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+    };
+    res.clearCookie(getCookieName(), opts);
+    res.clearCookie(getRefreshCookieName(), opts);
+  }
+
   function issueTokens(payload) {
     const newAccess = jwtService.sign({
       id: payload.id,
@@ -39,8 +49,11 @@ export function requireAuth(req, res, next) {
         const payload = jwtService.verifyRefresh(rToken);
         issueTokens(payload);
         return next();
-      } catch {}
+      } catch {
+        clearCookies();
+      }
     }
+    clearCookies();
     return res.status(401).json({ message: 'Authentication required' });
   }
 
@@ -55,17 +68,13 @@ export function requireAuth(req, res, next) {
         const payload = jwtService.verifyRefresh(rToken);
         issueTokens(payload);
         return next();
-      } catch {}
+      } catch {
+        clearCookies();
+      }
     }
 
     console.error('JWT verification failed:', err);
-    const opts = {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-    };
-    res.clearCookie(getCookieName(), opts);
-    res.clearCookie(getRefreshCookieName(), opts);
+    clearCookies();
     return res.status(401).json({ message: 'Invalid or expired token' });
   }
 }
