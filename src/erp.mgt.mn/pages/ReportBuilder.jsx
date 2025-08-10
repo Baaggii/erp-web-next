@@ -97,34 +97,48 @@ function ReportBuilderInner() {
       }
     }
     fetchTables();
+  }, []);
+
+  useEffect(() => {
+    if (!generalConfig) return;
+    const suffix = generalConfig?.general?.reportProcSuffix || '';
     async function fetchSaved() {
       try {
         const res = await fetch('/api/report_builder/configs');
         const data = await res.json();
-        setSavedReports(data.names || []);
-        setSelectedReport(data.names?.[0] || '');
+        const list = suffix
+          ? (data.names || []).filter((n) => n.endsWith(suffix))
+          : data.names || [];
+        setSavedReports(list);
+        setSelectedReport(list[0] || '');
       } catch (err) {
         console.error(err);
       }
       try {
         const res = await fetch('/api/report_builder/procedure-files');
         const data = await res.json();
-        setProcFiles(data.names || []);
-        setSelectedProcFile(data.names?.[0] || '');
+        const list = suffix
+          ? (data.names || []).filter((n) => n.endsWith(suffix))
+          : data.names || [];
+        setProcFiles(list);
+        setSelectedProcFile(list[0] || '');
       } catch (err) {
         console.error(err);
       }
       try {
         const res = await fetch('/api/report_builder/procedures');
         const data = await res.json();
-        setDbProcedures(data.names || []);
-        setSelectedDbProcedure(data.names?.[0] || '');
+        const list = suffix
+          ? (data.names || []).filter((n) => n.endsWith(suffix))
+          : data.names || [];
+        setDbProcedures(list);
+        setSelectedDbProcedure(list[0] || '');
       } catch (err) {
         console.error(err);
       }
     }
     fetchSaved();
-  }, []);
+  }, [generalConfig]);
 
   // Ensure fields for a table are loaded
   async function ensureFields(table) {
@@ -1021,8 +1035,12 @@ function ReportBuilderInner() {
       try {
         const listRes = await fetch('/api/report_builder/procedures');
         const data = await listRes.json();
-        setDbProcedures(data.names || []);
-        setSelectedDbProcedure(data.names?.[0] || '');
+        const suffix = generalConfig?.general?.reportProcSuffix || '';
+        const list = suffix
+          ? (data.names || []).filter((n) => n.endsWith(suffix))
+          : data.names || [];
+        setDbProcedures(list);
+        setSelectedDbProcedure(list[0] || '');
       } catch (err) {
         console.error(err);
       }
@@ -1108,7 +1126,8 @@ function ReportBuilderInner() {
       unionQueries: legacyUnions,
     };
     try {
-      const name = procName || 'report';
+      const suffix = generalConfig?.general?.reportProcSuffix || '';
+      const name = `${procName || 'report'}${suffix}`;
       const res = await fetch(
         `/api/report_builder/configs/${encodeURIComponent(name)}`,
         {
@@ -1120,7 +1139,10 @@ function ReportBuilderInner() {
       if (!res.ok) throw new Error('Save failed');
       const listRes = await fetch('/api/report_builder/configs');
       const listData = await listRes.json();
-      setSavedReports(listData.names || []);
+      const list = suffix
+        ? (listData.names || []).filter((n) => n.endsWith(suffix))
+        : listData.names || [];
+      setSavedReports(list);
       setSelectedReport(name);
       window.dispatchEvent(
         new CustomEvent('toast', {
@@ -1237,7 +1259,8 @@ function ReportBuilderInner() {
 
   async function handleSaveProcFile() {
     if (!procSql) return;
-    const name = procName || 'report';
+    const suffix = generalConfig?.general?.reportProcSuffix || '';
+    const name = `${procName || 'report'}${suffix}`;
     try {
       const res = await fetch(
         `/api/report_builder/procedure-files/${encodeURIComponent(name)}`,
@@ -1250,7 +1273,10 @@ function ReportBuilderInner() {
       if (!res.ok) throw new Error('Save failed');
       const listRes = await fetch('/api/report_builder/procedure-files');
       const listData = await listRes.json();
-      setProcFiles(listData.names || []);
+      const list = suffix
+        ? (listData.names || []).filter((n) => n.endsWith(suffix))
+        : listData.names || [];
+      setProcFiles(list);
       setSelectedProcFile(name);
       window.dispatchEvent(
         new CustomEvent('toast', {
@@ -2401,6 +2427,7 @@ function ReportBuilderInner() {
               onChange={(e) => setProcName(e.target.value)}
               style={{ width: '50%' }}
             />
+            {generalConfig?.general?.reportProcSuffix || ''}
           </div>
         </label>
       </section>
