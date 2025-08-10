@@ -318,54 +318,9 @@ export default function ImageManagement() {
     return Math.min(num, last);
   }
 
-  async function fetchAllRemote() {
-    const cachedPending = new Map(
-      (pendingRef.current || []).map((p) => [p.currentName, p]),
-    );
-    const cachedHostIgnored = new Map(
-      (hostIgnoredRef.current || []).map((p) => [p.currentName, p]),
-    );
-    let page = 1;
-    let more = true;
-    const allPending = [];
-    const allHostIgnored = [];
-    while (more) {
-      const res = await fetch(
-        `/api/transaction_images/detect_incomplete?page=${page}&pageSize=${pageSize}`,
-        { credentials: 'include' },
-      );
-      if (!res.ok) break;
-      const data = await res.json();
-      const list = Array.isArray(data.list)
-        ? data.list
-            .slice()
-            .sort((a, b) => a.currentName.localeCompare(b.currentName))
-            .map((p) => ({ ...p, description: extractDateFromName(p.currentName) }))
-        : [];
-      const miss = Array.isArray(data.skipped)
-        ? data.skipped
-            .slice()
-            .sort((a, b) => a.currentName.localeCompare(b.currentName))
-            .map((p) => ({ ...p, description: extractDateFromName(p.currentName) }))
-        : [];
-      list.forEach((item) => {
-        allPending.push(cachedPending.get(item.currentName) || item);
-      });
-      miss.forEach((item) => {
-        allHostIgnored.push(cachedHostIgnored.get(item.currentName) || item);
-      });
-      more = !!data.hasMore;
-      page += 1;
-    }
-    return { pending: allPending, hostIgnored: allHostIgnored };
-  }
-
   async function saveTables() {
     try {
-      const remote = await fetchAllRemote();
-      pendingRef.current = remote.pending;
-      hostIgnoredRef.current = remote.hostIgnored;
-      persistAll(remote);
+      persistAll();
       addToast('Tables saved locally', 'success');
     } catch (err) {
       console.error(err);
@@ -890,10 +845,11 @@ export default function ImageManagement() {
   async function renameAndUploadAll() {
     batchRef.current = true;
     try {
-      const items = uploadsRef.current.slice(uploadStart).map((u, idx) => ({
-        id: u.id,
-        index: uploadStart + idx,
-      }));
+      const items = [];
+      for (let i = uploadStart; i < uploadsRef.current.length; i++) {
+        const u = uploadsRef.current[i];
+        if (!u.processed) items.push({ id: u.id, index: i });
+      }
       if (items.length === 0) {
         addToast('No files to process', 'error');
         return;
