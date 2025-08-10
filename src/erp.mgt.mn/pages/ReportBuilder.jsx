@@ -806,13 +806,21 @@ function ReportBuilderInner() {
       })
       .filter((j) => j.on);
 
-    const validTables = new Set([ft, ...joinDefs.map((j) => j.original)]);
+    // Track tables in a case-insensitive set so comparisons ignore letter case
+    const validTables = new Set(
+      [ft, ...joinDefs.map((j) => j.original)]
+        .filter(Boolean)
+        .map((t) => t.toLowerCase()),
+    );
 
     const fieldExprMap = {};
     const select = fs
       .filter((f) => (f.source === 'alias' ? f.baseAlias : f.field))
       .map((f) => {
-        if (f.source === 'field' && !validTables.has(f.table)) {
+        if (
+          f.source === 'field' &&
+          !validTables.has((f.table || '').toLowerCase())
+        ) {
           throw new Error(`Table ${f.table} is not joined`);
         }
         let base =
@@ -827,7 +835,10 @@ function ReportBuilderInner() {
                 ? p.alias
                 : `${aliases[p.table]}.${p.field}`;
             if (!seg) return;
-            if (p.source === 'field' && !validTables.has(p.table)) {
+            if (
+              p.source === 'field' &&
+              !validTables.has((p.table || '').toLowerCase())
+            ) {
               throw new Error(`Table ${p.table} is not joined`);
             }
             exprParts.push(`${p.operator} ${seg}`);
@@ -846,7 +857,7 @@ function ReportBuilderInner() {
               const cond = f.conditions
                 .filter((c) => c.field && (c.valueType === 'param' ? c.param : c.value))
                 .map((c, idx) => {
-                  if (!validTables.has(c.table)) {
+                  if (!validTables.has((c.table || '').toLowerCase())) {
                     throw new Error(`Table ${c.table} is not joined`);
                   }
                   const connector = idx > 0 ? ` ${c.connector} ` : '';
@@ -871,7 +882,7 @@ function ReportBuilderInner() {
             const cond = f.conditions
               .filter((c) => c.field && (c.valueType === 'param' ? c.param : c.value))
               .map((c, idx) => {
-                if (!validTables.has(c.table)) {
+                if (!validTables.has((c.table || '').toLowerCase())) {
                   throw new Error(`Table ${c.table} is not joined`);
                 }
                 const connector = idx > 0 ? ` ${c.connector} ` : '';
@@ -907,7 +918,7 @@ function ReportBuilderInner() {
         if (c.raw) {
           return { expr: c.raw, connector: c.connector, open: c.open, close: c.close };
         }
-        if (!validTables.has(c.table)) {
+        if (!validTables.has((c.table || '').toLowerCase())) {
           throw new Error(`Table ${c.table} is not joined`);
         }
         return {
@@ -921,7 +932,7 @@ function ReportBuilderInner() {
     const groupBy = gs
       .filter((g) => g.table && g.field)
       .map((g) => {
-        if (!validTables.has(g.table)) {
+        if (!validTables.has((g.table || '').toLowerCase())) {
           throw new Error(`Table ${g.table} is not joined`);
         }
         return `${aliases[g.table]}.${g.field}`;
@@ -934,7 +945,10 @@ function ReportBuilderInner() {
           h.source === 'alias'
             ? h.alias
             : `${h.aggregate}(${aliases[h.table]}.${h.field})`;
-        if (h.source === 'field' && !validTables.has(h.table)) {
+        if (
+          h.source === 'field' &&
+          !validTables.has((h.table || '').toLowerCase())
+        ) {
           throw new Error(`Table ${h.table} is not joined`);
         }
         const right = h.valueType === 'param' ? `:${h.param}` : h.value;

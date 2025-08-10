@@ -18,8 +18,11 @@ export default function buildReportSql(definition = {}) {
     function expandExpr(expr) {
       let result = expr;
       let replaced = true;
-      while (replaced) {
+      let guard = 0;
+      // Prevent infinite loops if aliases reference each other
+      while (replaced && guard < 50) {
         replaced = false;
+        guard++;
         for (const [al, ex] of Object.entries(aliasMap)) {
           const re = new RegExp(`\\b${al}\\b`, 'g');
           if (re.test(result)) {
