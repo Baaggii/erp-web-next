@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import buildStoredProcedure from '../utils/buildStoredProcedure.js';
 import buildReportSql from '../utils/buildReportSql.js';
+import ErrorBoundary from '../components/ErrorBoundary.jsx';
 
 const SESSION_PARAMS = [
   { name: 'session_branch_id', type: 'INT' },
@@ -13,7 +14,7 @@ const AGGREGATES = ['NONE', 'SUM', 'COUNT', 'MAX', 'MIN'];
 const OPERATORS = ['=', '>', '<', '>=', '<=', '<>'];
 const CALC_OPERATORS = ['+', '-', '*', '/'];
 
-export default function ReportBuilder() {
+function ReportBuilderInner() {
   const [tables, setTables] = useState([]); // list of table names
   const [tableFields, setTableFields] = useState({}); // { tableName: [field, ...] }
   const [fieldEnums, setFieldEnums] = useState({}); // { tableName: { field: [enum] } }
@@ -2228,3 +2229,11 @@ export default function ReportBuilder() {
   );
 }
 
+
+export default function ReportBuilder(props) {
+  return (
+    <ErrorBoundary>
+      <ReportBuilderInner {...props} />
+    </ErrorBoundary>
+  );
+}
