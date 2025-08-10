@@ -54,6 +54,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
   const general = generalConfig.general || {};
 
   const columns = rows && rows.length ? Object.keys(rows[0]) : [];
+  const columnHeaderMap = useHeaderMappings(columns);
 
   const filtered = useMemo(() => {
     if (!search) return rows;
@@ -122,6 +123,43 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     return sums;
   }, [numericColumns, sorted]);
 
+  const modalColumns = useMemo(() => {
+    if (!txnInfo || !txnInfo.data || txnInfo.data.length === 0) return [];
+    const all = Object.keys(txnInfo.data[0]);
+    if (Array.isArray(txnInfo.displayFields) && txnInfo.displayFields.length > 0) {
+      const ordered = txnInfo.displayFields.filter((f) => all.includes(f));
+      const rest = all.filter((f) => !ordered.includes(f));
+      return [...ordered, ...rest];
+    }
+    return all;
+  }, [txnInfo]);
+
+  const modalHeaderMap = useHeaderMappings(modalColumns);
+
+  const modalAlign = useMemo(() => {
+    const map = {};
+    if (!txnInfo || !txnInfo.data) return map;
+    modalColumns.forEach((c) => {
+      const sample = txnInfo.data.find((r) => r[c] !== null && r[c] !== undefined);
+      map[c] = typeof sample?.[c] === 'number' ? 'right' : 'left';
+    });
+    return map;
+  }, [modalColumns, txnInfo]);
+
+  const modalWidths = useMemo(() => {
+    const map = {};
+    if (!txnInfo || !txnInfo.data) return map;
+    modalColumns.forEach((c) => {
+      const avg = getAverageLength(c, txnInfo.data);
+      let w;
+      if (avg <= 4) w = ch(Math.max(avg + 1, 5));
+      else if (avg <= 10) w = ch(12);
+      else w = ch(20);
+      map[c] = Math.min(w, MAX_WIDTH);
+    });
+    return map;
+  }, [modalColumns, txnInfo]);
+
   useEffect(() => {
     if (procedure) {
       window.dispatchEvent(
@@ -168,7 +206,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
         department_id: company?.department_id,
       },
     };
-    setTxnInfo({ loading: true, col, value, data: [], sql: '' });
+    setTxnInfo({ loading: true, col, value, data: [], sql: '', displayFields: [] });
     fetch('/api/procedures/raw', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -187,6 +225,9 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
           value,
           data: data.rows || [],
           sql: data.sql || '',
+          displayFields: Array.isArray(data.displayFields)
+            ? data.displayFields
+            : [],
         });
         if (data.original) {
           const preview =
@@ -238,7 +279,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       .catch((err) => {
         const sql = err && typeof err === 'object' ? err.sql || '' : '';
         const file = err && typeof err === 'object' ? err.file || '' : '';
-        setTxnInfo({ loading: false, col, value, data: [], sql });
+        setTxnInfo({ loading: false, col, value, data: [], sql, displayFields: [] });
         if (sql) {
           const preview = sql.length > 200 ? `${sql.slice(0, 200)}…` : sql;
           window.dispatchEvent(
@@ -355,8 +396,9 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
           style={{ marginRight: '0.5rem' }}
         />
       </div>
-      <div style={{ overflowX: 'auto' }}>
+      <div className="table-container overflow-x-auto">
         <table
+          className="table-manager"
           style={{
             borderCollapse: 'collapse',
             tableLayout: 'fixed',
@@ -364,7 +406,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
             maxWidth: '2000px',
           }}
         >
-          <thead>
+          <thead className="table-manager sticky-header">
             <tr style={{ backgroundColor: '#e5e7eb' }}>
               {columns.map((col) => (
                 <th
@@ -395,13 +437,13 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                       : {}),
                   }}
                 >
-                  {fieldLabels[col] || col}
+                  {fieldLabels[col] || columnHeaderMap[col] || col}
                   {sort && sort.col === col && (sort.dir === 'asc' ? ' ▲' : ' ▼')}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="table-manager">
             {pageRows.map((row, idx) => (
               <tr key={idx}>
                 {columns.map((col) => {
@@ -519,34 +561,49 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
           {txnInfo.loading ? (
             <div>Loading...</div>
           ) : txnInfo.data.length > 0 ? (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-                <thead>
+            <div className="table-container overflow-x-auto">
+              <table
+                className="table-manager"
+                style={{ borderCollapse: 'collapse', tableLayout: 'fixed', width: '100%' }}
+              >
+                <thead className="table-manager sticky-header">
                   <tr>
-                    {Object.keys(txnInfo.data[0]).map((c) => (
+                    {modalColumns.map((c) => (
                       <th
                         key={c}
                         style={{
                           padding: '0.25rem',
                           border: '1px solid #d1d5db',
-                          textAlign: 'left',
+                          textAlign: modalAlign[c],
+                          width: modalWidths[c],
+                          minWidth: modalWidths[c],
+                          maxWidth: MAX_WIDTH,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
                         }}
                       >
-                        {c}
+                        {fieldLabels[c] || modalHeaderMap[c] || c}
                       </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="table-manager">
                   {txnInfo.data.map((r, idx) => (
                     <tr key={idx}>
-                      {Object.keys(txnInfo.data[0]).map((c) => (
+                      {modalColumns.map((c) => (
                         <td
                           key={c}
                           style={{
                             padding: '0.25rem',
                             border: '1px solid #d1d5db',
-                            textAlign: 'left',
+                            textAlign: modalAlign[c],
+                            width: modalWidths[c],
+                            minWidth: modalWidths[c],
+                            maxWidth: MAX_WIDTH,
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
                           }}
                         >
                           {typeof r[c] === 'number' ? formatNumber(r[c]) : r[c]}
