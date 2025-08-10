@@ -107,7 +107,14 @@ export default function buildReportSql(definition = {}) {
   // Subsequent UNION blocks, if any
   const unions = definition.unions || [];
   if (!unions.length) return main;
-  const rest = unions.map((u) => build(u));
-  return [main, ...rest].map((q) => `(${q})`).join('\nUNION\n');
+  const rest = unions.map((u) => ({
+    type: u.type || 'UNION',
+    sql: build(u),
+  }));
+  let combined = `(${main})`;
+  rest.forEach(({ type, sql }) => {
+    combined += `\n${type}\n(${sql})`;
+  });
+  return combined;
 }
 

@@ -209,6 +209,32 @@ export default function GeneralConfiguration() {
         <>
           <div style={{ marginBottom: '0.5rem' }}>
             <label>
+              Stored Procedure Suffix{' '}
+              <input
+                name="reportProcSuffix"
+                type="text"
+                value={active.reportProcSuffix ?? ''}
+                onChange={handleChange}
+                style={{ width: '8rem' }}
+              />
+            </label>
+            <div style={{ fontSize: '0.8rem' }}>Appended to report stored procedure names</div>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <label>
+              View Suffix{' '}
+              <input
+                name="reportViewSuffix"
+                type="text"
+                value={active.reportViewSuffix ?? ''}
+                onChange={handleChange}
+                style={{ width: '8rem' }}
+              />
+            </label>
+            <div style={{ fontSize: '0.8rem' }}>Appended to report view names</div>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <label>
               Enable AI API{' '}
               <input
                 name="aiApiEnabled"
