@@ -51,7 +51,7 @@ export default function Reports() {
         setProcedures(Array.from(set).sort());
       })
       .catch(() => setProcedures([]));
-  }, [company?.branch_id, company?.department_id, generalConfig]);
+  }, [company?.branch_id, company?.department_id, generalConfig?.general?.reportProcPrefix]);
 
   useEffect(() => {
     if (!selectedProc) {

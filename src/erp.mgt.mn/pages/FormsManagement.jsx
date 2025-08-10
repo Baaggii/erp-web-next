@@ -114,7 +114,7 @@ export default function FormsManagement() {
           ),
         )
         .catch(() => setProcedureOptions([]));
-    }, [generalConfig]);
+    }, [generalConfig?.general?.reportProcPrefix, generalConfig?.general?.reportViewPrefix]);
 
   useEffect(() => {
     if (!table) return;

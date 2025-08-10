@@ -72,14 +72,14 @@ export function useModules() {
     ) {
       fetchModules();
     }
-  }, [company?.branch_id, company?.department_id, generalConfig]);
+  }, [company?.branch_id, company?.department_id, generalConfig?.general?.reportProcPrefix]);
 
   useEffect(() => {
     debugLog('useModules effect: refresh listener');
     const handler = () => fetchModules();
     emitter.addEventListener('refresh', handler);
     return () => emitter.removeEventListener('refresh', handler);
-  }, [company?.branch_id, company?.department_id, generalConfig]);
+  }, [company?.branch_id, company?.department_id, generalConfig?.general?.reportProcPrefix]);
 
   return modules;
 }

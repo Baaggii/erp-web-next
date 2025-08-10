@@ -100,8 +100,8 @@ function ReportBuilderInner() {
   }, []);
 
   useEffect(() => {
-    if (!generalConfig) return;
     const prefix = generalConfig?.general?.reportProcPrefix || '';
+    if (!generalConfig) return;
     async function fetchSaved() {
       try {
         const res = await fetch('/api/report_builder/configs');
@@ -142,7 +142,7 @@ function ReportBuilderInner() {
       }
     }
     fetchSaved();
-  }, [generalConfig]);
+  }, [generalConfig?.general?.reportProcPrefix]);
 
   // Ensure fields for a table are loaded
   async function ensureFields(table) {
@@ -997,7 +997,8 @@ function ReportBuilderInner() {
       const { report } = buildDefinition();
       const sql = buildReportSql(report);
       const prefix = generalConfig?.general?.reportViewPrefix || '';
-      const viewName = `view_${prefix}${procName || 'report'}`;
+      if (!procName) throw new Error('procedure name is required');
+      const viewName = `${prefix}${procName}`;
       const view = `CREATE OR REPLACE VIEW ${viewName} AS\n${sql};`;
       setViewSql(view);
       setError('');
@@ -1140,7 +1141,8 @@ function ReportBuilderInner() {
     };
     try {
       const prefix = generalConfig?.general?.reportProcPrefix || '';
-      const name = `${prefix}${procName || 'report'}`;
+      if (!procName) throw new Error('procedure name is required');
+      const name = `${prefix}${procName}`;
       const res = await fetch(
         `/api/report_builder/configs/${encodeURIComponent(name)}`,
         {
@@ -1273,7 +1275,8 @@ function ReportBuilderInner() {
   async function handleSaveProcFile() {
     if (!procSql) return;
     const prefix = generalConfig?.general?.reportProcPrefix || '';
-    const name = `${prefix}${procName || 'report'}`;
+    if (!procName) return;
+    const name = `${prefix}${procName}`;
     try {
       const res = await fetch(
         `/api/report_builder/procedure-files/${encodeURIComponent(name)}`,

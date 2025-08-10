@@ -299,7 +299,7 @@ useEffect(() => {
   return () => {
     canceled = true;
   };
-}, [table, name, addToast]);
+}, [table, name, addToast, generalConfig?.general?.reportProcPrefix]);
 
   useEffect(() => {
     if (!selectedProc) {
