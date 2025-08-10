@@ -5,12 +5,12 @@ import buildStoredProcedure from '../../src/erp.mgt.mn/utils/buildStoredProcedur
 // minimal report definition
 const report = { from: { table: 'tbl' } };
 
-test('buildStoredProcedure appends configured suffix', () => {
+test('buildStoredProcedure inserts configured prefix', () => {
   const sql = buildStoredProcedure({
     name: 'sales',
     report,
-    suffix: '_sp',
+    prefix: 'sp_',
   });
-  assert.ok(sql.includes('DROP PROCEDURE IF EXISTS report_sales_sp;'));
-  assert.ok(sql.includes('CREATE PROCEDURE report_sales_sp('));
+  assert.ok(sql.includes('DROP PROCEDURE IF EXISTS report_sp_sales;'));
+  assert.ok(sql.includes('CREATE PROCEDURE report_sp_sales('));
 });

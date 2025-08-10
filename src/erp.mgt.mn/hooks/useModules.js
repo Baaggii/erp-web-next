@@ -1,8 +1,9 @@
 import { useEffect, useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { debugLog } from '../utils/debug.js';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
-const cache = { data: null, branchId: undefined, departmentId: undefined };
+const cache = { data: null, branchId: undefined, departmentId: undefined, prefix: undefined };
 const emitter = new EventTarget();
 
 export function refreshModules() {
@@ -12,6 +13,7 @@ export function refreshModules() {
 
 export function useModules() {
   const { company } = useContext(AuthContext);
+  const generalConfig = useGeneralConfig();
   const [modules, setModules] = useState(cache.data || []);
 
   async function fetchModules() {
@@ -31,7 +33,11 @@ export function useModules() {
         if (pres.ok) {
           const data = await pres.json();
           const list = Array.isArray(data.procedures) ? data.procedures : [];
-          list.forEach((p) => {
+          const prefix = generalConfig?.general?.reportProcPrefix || '';
+          const filtered = prefix
+            ? list.filter((p) => p.includes(prefix))
+            : list;
+          filtered.forEach((p) => {
             const key = `proc_${p.toLowerCase().replace(/[^a-z0-9_]/g, '_')}`;
             rows.push({
               module_key: key,
@@ -48,6 +54,7 @@ export function useModules() {
       cache.data = rows;
       cache.branchId = company?.branch_id;
       cache.departmentId = company?.department_id;
+      cache.prefix = generalConfig?.general?.reportProcPrefix;
       setModules(rows);
     } catch (err) {
       console.error('Failed to load modules', err);
@@ -57,21 +64,23 @@ export function useModules() {
 
   useEffect(() => {
     debugLog('useModules effect: initial fetch');
+    const prefix = generalConfig?.general?.reportProcPrefix;
     if (
       !cache.data ||
       cache.branchId !== company?.branch_id ||
-      cache.departmentId !== company?.department_id
+      cache.departmentId !== company?.department_id ||
+      cache.prefix !== prefix
     ) {
       fetchModules();
     }
-  }, [company?.branch_id, company?.department_id]);
+  }, [company?.branch_id, company?.department_id, generalConfig]);
 
   useEffect(() => {
     debugLog('useModules effect: refresh listener');
     const handler = () => fetchModules();
     emitter.addEventListener('refresh', handler);
     return () => emitter.removeEventListener('refresh', handler);
-  }, [company?.branch_id, company?.department_id]);
+  }, [company?.branch_id, company?.department_id, generalConfig]);
 
   return modules;
 }

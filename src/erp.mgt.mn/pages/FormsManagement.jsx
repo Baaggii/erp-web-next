@@ -58,43 +58,58 @@ export default function FormsManagement() {
     procedures: [],
   });
 
-  useEffect(() => {
-    fetch('/api/tables', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => setTables(data))
-      .catch(() => setTables([]));
+    useEffect(() => {
+      const procPrefix = generalConfig?.general?.reportProcPrefix || '';
+      const viewPrefix = generalConfig?.general?.reportViewPrefix || '';
 
-    fetch('/api/views', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => setViews(data))
-      .catch(() => setViews([]));
+      fetch('/api/tables', { credentials: 'include' })
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data) => setTables(data))
+        .catch(() => setTables([]));
 
-    fetch('/api/tables/code_branches?perPage=500', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : { rows: [] }))
-      .then((data) => setBranches(data.rows || []))
-      .catch(() => setBranches([]));
-
-    fetch('/api/tables/code_department?perPage=500', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : { rows: [] }))
-      .then((data) => setDepartments(data.rows || []))
-      .catch(() => setDepartments([]));
-
-    fetch('/api/tables/code_transaction?perPage=500', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : { rows: [] }))
-      .then((data) => setTxnTypes(data.rows || []))
-      .catch(() => setTxnTypes([]));
-
-    fetch('/api/procedures', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : { procedures: [] }))
-      .then((data) =>
-        setProcedureOptions(
-          (data.procedures || []).filter((p) =>
-            String(p).toLowerCase().includes('report'),
-          )
+      fetch('/api/views', { credentials: 'include' })
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data) =>
+          setViews(
+            Array.isArray(data)
+              ? viewPrefix
+                ? data.filter((v) => String(v).includes(viewPrefix))
+                : data
+              : [],
+          ),
         )
-      )
-      .catch(() => setProcedureOptions([]));
-  }, []);
+        .catch(() => setViews([]));
+
+      fetch('/api/tables/code_branches?perPage=500', { credentials: 'include' })
+        .then((res) => (res.ok ? res.json() : { rows: [] }))
+        .then((data) => setBranches(data.rows || []))
+        .catch(() => setBranches([]));
+
+      fetch('/api/tables/code_department?perPage=500', { credentials: 'include' })
+        .then((res) => (res.ok ? res.json() : { rows: [] }))
+        .then((data) => setDepartments(data.rows || []))
+        .catch(() => setDepartments([]));
+
+      fetch('/api/tables/code_transaction?perPage=500', { credentials: 'include' })
+        .then((res) => (res.ok ? res.json() : { rows: [] }))
+        .then((data) => setTxnTypes(data.rows || []))
+        .catch(() => setTxnTypes([]));
+
+      fetch('/api/procedures', { credentials: 'include' })
+        .then((res) => (res.ok ? res.json() : { procedures: [] }))
+        .then((data) =>
+          setProcedureOptions(
+            (data.procedures || []).filter((p) => {
+              const low = String(p).toLowerCase();
+              return (
+                low.includes('report') &&
+                (!procPrefix || low.includes(procPrefix.toLowerCase()))
+              );
+            }),
+          ),
+        )
+        .catch(() => setProcedureOptions([]));
+    }, [generalConfig]);
 
   useEffect(() => {
     if (!table) return;
