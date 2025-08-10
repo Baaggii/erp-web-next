@@ -209,29 +209,29 @@ export default function GeneralConfiguration() {
         <>
           <div style={{ marginBottom: '0.5rem' }}>
             <label>
-              Stored Procedure Suffix{' '}
+              Stored Procedure Prefix{' '}
               <input
-                name="reportProcSuffix"
+                name="reportProcPrefix"
                 type="text"
-                value={active.reportProcSuffix ?? ''}
+                value={active.reportProcPrefix ?? ''}
                 onChange={handleChange}
                 style={{ width: '8rem' }}
               />
             </label>
-            <div style={{ fontSize: '0.8rem' }}>Appended to report stored procedure names</div>
+            <div style={{ fontSize: '0.8rem' }}>Prepended to report stored procedure names</div>
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
             <label>
-              View Suffix{' '}
+              View Prefix{' '}
               <input
-                name="reportViewSuffix"
+                name="reportViewPrefix"
                 type="text"
-                value={active.reportViewSuffix ?? ''}
+                value={active.reportViewPrefix ?? ''}
                 onChange={handleChange}
                 style={{ width: '8rem' }}
               />
             </label>
-            <div style={{ fontSize: '0.8rem' }}>Appended to report view names</div>
+            <div style={{ fontSize: '0.8rem' }}>Prepended to report view names</div>
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
             <label>

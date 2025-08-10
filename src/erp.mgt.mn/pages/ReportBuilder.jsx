@@ -97,34 +97,43 @@ function ReportBuilderInner() {
       }
     }
     fetchTables();
+  }, []);
+
+  useEffect(() => {
+    const prefix = generalConfig?.general?.reportProcPrefix || '';
+    if (!generalConfig) return;
+    const query = prefix ? `?prefix=${encodeURIComponent(prefix)}` : '';
     async function fetchSaved() {
       try {
-        const res = await fetch('/api/report_builder/configs');
+        const res = await fetch(`/api/report_builder/configs${query}`);
         const data = await res.json();
-        setSavedReports(data.names || []);
-        setSelectedReport(data.names?.[0] || '');
+        const list = data.names || [];
+        setSavedReports(list);
+        setSelectedReport(list[0] || '');
       } catch (err) {
         console.error(err);
       }
       try {
-        const res = await fetch('/api/report_builder/procedure-files');
+        const res = await fetch(`/api/report_builder/procedure-files${query}`);
         const data = await res.json();
-        setProcFiles(data.names || []);
-        setSelectedProcFile(data.names?.[0] || '');
+        const list = data.names || [];
+        setProcFiles(list);
+        setSelectedProcFile(list[0] || '');
       } catch (err) {
         console.error(err);
       }
       try {
-        const res = await fetch('/api/report_builder/procedures');
+        const res = await fetch(`/api/report_builder/procedures${query}`);
         const data = await res.json();
-        setDbProcedures(data.names || []);
-        setSelectedDbProcedure(data.names?.[0] || '');
+        const list = data.names || [];
+        setDbProcedures(list);
+        setSelectedDbProcedure(list[0] || '');
       } catch (err) {
         console.error(err);
       }
     }
     fetchSaved();
-  }, []);
+  }, [generalConfig?.general?.reportProcPrefix]);
 
   // Ensure fields for a table are loaded
   async function ensureFields(table) {
@@ -318,14 +327,19 @@ function ReportBuilderInner() {
       }
       if (key === 'source') {
         if (value === 'alias') {
-          next.baseAlias =
-            fields.slice(0, index).find((pf) => pf.alias)?.alias || '';
+          next.baseAlias = '';
+          next.table = '';
+          next.field = '';
+          next.aggregate = 'NONE';
+          next.calcParts = [];
+          next.alias = '';
         } else {
           const first = (tableFields[fromTable] || [])[0] || '';
           next.table = fromTable;
           next.field = first;
           if (!next.alias) next.alias = first;
           next.baseAlias = '';
+          next.calcParts = [];
           ensureFields(fromTable);
         }
       }
@@ -392,9 +406,9 @@ function ReportBuilderInner() {
     const parts = fields[fIndex].calcParts || [];
     const part = {
       source: 'alias',
-      alias: fields.slice(0, fIndex).find((pf) => pf.alias)?.alias || '',
-      table: fromTable,
-      field: (tableFields[fromTable] || [])[0] || '',
+      alias: '',
+      table: '',
+      field: '',
       operator: '+',
     };
     const updated = fields.map((f, i) =>
@@ -797,13 +811,23 @@ function ReportBuilderInner() {
       })
       .filter((j) => j.on);
 
-    const validTables = new Set([ft, ...joinDefs.map((j) => j.original)]);
+    // Track tables in a case-insensitive set so comparisons ignore letter case
+    const validTables = new Set(
+      [ft, ...joinDefs.map((j) => j.original)]
+        .filter(Boolean)
+        .map((t) => t.toLowerCase()),
+    );
 
     const fieldExprMap = {};
     const select = fs
-      .filter((f) => (f.source === 'alias' ? f.baseAlias : f.field))
+      .filter((f) =>
+        f.source === 'alias' ? f.baseAlias || f.calcParts?.length : f.field,
+      )
       .map((f) => {
-        if (f.source === 'field' && !validTables.has(f.table)) {
+        if (
+          f.source === 'field' &&
+          !validTables.has((f.table || '').toLowerCase())
+        ) {
           throw new Error(`Table ${f.table} is not joined`);
         }
         let base =
@@ -811,20 +835,29 @@ function ReportBuilderInner() {
             ? f.baseAlias
             : `${aliases[f.table]}.${f.field}`;
         if (f.calcParts?.length) {
-          const exprParts = [base];
+          const exprParts = [];
+          if (base) exprParts.push(base);
           f.calcParts.forEach((p) => {
             const seg =
               p.source === 'alias'
                 ? p.alias
                 : `${aliases[p.table]}.${p.field}`;
             if (!seg) return;
-            if (p.source === 'field' && !validTables.has(p.table)) {
+            if (
+              p.source === 'field' &&
+              !validTables.has((p.table || '').toLowerCase())
+            ) {
               throw new Error(`Table ${p.table} is not joined`);
             }
-            exprParts.push(`${p.operator} ${seg}`);
+            if (exprParts.length) {
+              exprParts.push(`${p.operator} ${seg}`);
+            } else {
+              exprParts.push(seg);
+            }
           });
           let expr = exprParts.join(' ');
           Object.entries(fieldExprMap).forEach(([al, ex]) => {
+            if (new RegExp(`\\b${al}\\b`).test(ex)) return;
             const re = new RegExp(`\\b${al}\\b`, 'g');
             expr = expr.replace(re, `(${ex})`);
           });
@@ -837,7 +870,7 @@ function ReportBuilderInner() {
               const cond = f.conditions
                 .filter((c) => c.field && (c.valueType === 'param' ? c.param : c.value))
                 .map((c, idx) => {
-                  if (!validTables.has(c.table)) {
+                  if (!validTables.has((c.table || '').toLowerCase())) {
                     throw new Error(`Table ${c.table} is not joined`);
                   }
                   const connector = idx > 0 ? ` ${c.connector} ` : '';
@@ -862,7 +895,7 @@ function ReportBuilderInner() {
             const cond = f.conditions
               .filter((c) => c.field && (c.valueType === 'param' ? c.param : c.value))
               .map((c, idx) => {
-                if (!validTables.has(c.table)) {
+                if (!validTables.has((c.table || '').toLowerCase())) {
                   throw new Error(`Table ${c.table} is not joined`);
                 }
                 const connector = idx > 0 ? ` ${c.connector} ` : '';
@@ -898,7 +931,7 @@ function ReportBuilderInner() {
         if (c.raw) {
           return { expr: c.raw, connector: c.connector, open: c.open, close: c.close };
         }
-        if (!validTables.has(c.table)) {
+        if (!validTables.has((c.table || '').toLowerCase())) {
           throw new Error(`Table ${c.table} is not joined`);
         }
         return {
@@ -912,7 +945,7 @@ function ReportBuilderInner() {
     const groupBy = gs
       .filter((g) => g.table && g.field)
       .map((g) => {
-        if (!validTables.has(g.table)) {
+        if (!validTables.has((g.table || '').toLowerCase())) {
           throw new Error(`Table ${g.table} is not joined`);
         }
         return `${aliases[g.table]}.${g.field}`;
@@ -925,7 +958,10 @@ function ReportBuilderInner() {
           h.source === 'alias'
             ? h.alias
             : `${h.aggregate}(${aliases[h.table]}.${h.field})`;
-        if (h.source === 'field' && !validTables.has(h.table)) {
+        if (
+          h.source === 'field' &&
+          !validTables.has((h.table || '').toLowerCase())
+        ) {
           throw new Error(`Table ${h.table} is not joined`);
         }
         const right = h.valueType === 'param' ? `:${h.param}` : h.value;
@@ -978,8 +1014,9 @@ function ReportBuilderInner() {
     try {
       const { report } = buildDefinition();
       const sql = buildReportSql(report);
-      const suffix = generalConfig?.general?.reportViewSuffix || '';
-      const viewName = `view_${procName || 'report'}${suffix}`;
+      const prefix = generalConfig?.general?.reportViewPrefix || '';
+      if (!procName) throw new Error('procedure name is required');
+      const viewName = `${prefix}${procName}`;
       const view = `CREATE OR REPLACE VIEW ${viewName} AS\n${sql};`;
       setViewSql(view);
       setError('');
@@ -993,12 +1030,12 @@ function ReportBuilderInner() {
     setProcSql('');
     try {
       const { report, params: p } = buildDefinition();
-      const suffix = generalConfig?.general?.reportProcSuffix || '';
+      const prefix = generalConfig?.general?.reportProcPrefix || '';
       const built = buildStoredProcedure({
-        name: procName || 'report',
+        name: procName,
         params: p,
         report,
-        suffix,
+        prefix,
       });
       setProcSql(built);
       setError('');
@@ -1012,17 +1049,32 @@ function ReportBuilderInner() {
     if (!procSql) return;
     if (!window.confirm('POST stored procedure to database?')) return;
     try {
-      const res = await fetch('/api/report_builder/procedures', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql: procSql }),
-      });
+      const res = await fetch(
+        `/api/report_builder/procedures${
+          prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''
+        }`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql: procSql }),
+        },
+      );
       if (!res.ok) throw new Error('Save failed');
       try {
-        const listRes = await fetch('/api/report_builder/procedures');
+      const listRes = await fetch(
+        `/api/report_builder/procedures${
+          prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''
+        }`,
+      );
         const data = await listRes.json();
-        setDbProcedures(data.names || []);
-        setSelectedDbProcedure(data.names?.[0] || '');
+        const prefix = generalConfig?.general?.reportProcPrefix || '';
+        const list = prefix
+          ? (data.names || []).filter((n) =>
+              n.toLowerCase().includes(prefix.toLowerCase()),
+            )
+          : data.names || [];
+        setDbProcedures(list);
+        setSelectedDbProcedure(list[0] || '');
       } catch (err) {
         console.error(err);
       }
@@ -1108,7 +1160,9 @@ function ReportBuilderInner() {
       unionQueries: legacyUnions,
     };
     try {
-      const name = procName || 'report';
+      const prefix = generalConfig?.general?.reportProcPrefix || '';
+      if (!procName) throw new Error('procedure name is required');
+      const name = `${prefix}${procName}`;
       const res = await fetch(
         `/api/report_builder/configs/${encodeURIComponent(name)}`,
         {
@@ -1118,9 +1172,12 @@ function ReportBuilderInner() {
         },
       );
       if (!res.ok) throw new Error('Save failed');
-      const listRes = await fetch('/api/report_builder/configs');
+      const listRes = await fetch(
+        `/api/report_builder/configs${prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''}`,
+      );
       const listData = await listRes.json();
-      setSavedReports(listData.names || []);
+      const list = listData.names || [];
+      setSavedReports(list);
       setSelectedReport(name);
       window.dispatchEvent(
         new CustomEvent('toast', {
@@ -1237,7 +1294,9 @@ function ReportBuilderInner() {
 
   async function handleSaveProcFile() {
     if (!procSql) return;
-    const name = procName || 'report';
+    const prefix = generalConfig?.general?.reportProcPrefix || '';
+    if (!procName) return;
+    const name = `${prefix}${procName}`;
     try {
       const res = await fetch(
         `/api/report_builder/procedure-files/${encodeURIComponent(name)}`,
@@ -1248,9 +1307,12 @@ function ReportBuilderInner() {
         },
       );
       if (!res.ok) throw new Error('Save failed');
-      const listRes = await fetch('/api/report_builder/procedure-files');
+      const listRes = await fetch(
+        `/api/report_builder/procedure-files${prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''}`,
+      );
       const listData = await listRes.json();
-      setProcFiles(listData.names || []);
+      const list = listData.names || [];
+      setProcFiles(list);
       setSelectedProcFile(name);
       window.dispatchEvent(
         new CustomEvent('toast', {
@@ -1280,7 +1342,33 @@ function ReportBuilderInner() {
   }
 
   function handleParseSql() {
-    setProcSql(procFileText);
+    const sql = procFileText || '';
+    setProcSql(sql);
+    const nameMatch = sql.match(/CREATE\s+PROCEDURE\s+`?([^`(]+)`?\s*\(/i);
+    if (nameMatch) {
+      const prefix = generalConfig?.general?.reportProcPrefix || '';
+      let name = nameMatch[1];
+      if (prefix && name.toLowerCase().startsWith(prefix.toLowerCase())) {
+        name = name.slice(prefix.length);
+      }
+      setProcName(name);
+    }
+    const paramsMatch = sql.match(/CREATE\s+PROCEDURE[\s\S]*?\(([^)]*)\)/i);
+    if (paramsMatch) {
+      const paramLines = paramsMatch[1]
+        .split(',')
+        .map((l) => l.trim())
+        .filter(Boolean);
+      const parsed = paramLines
+        .map((line) => {
+          const m = line.match(/IN\s+([\w]+)\s+([\w()]+)/i);
+          return m ? { name: m[1], type: m[2] } : null;
+        })
+        .filter(Boolean);
+      setParams(parsed);
+    } else {
+      setParams([]);
+    }
   }
 
   if (loading) {
@@ -1694,6 +1782,12 @@ function ReportBuilderInner() {
             >
               ☰
             </span>
+            <button
+              onClick={() => removeField(i)}
+              style={{ marginRight: '0.5rem' }}
+            >
+              ✕
+            </button>
             <select
               value={f.source}
               onChange={(e) => updateField(i, 'source', e.target.value)}
@@ -1707,6 +1801,7 @@ function ReportBuilderInner() {
                 onChange={(e) => updateField(i, 'baseAlias', e.target.value)}
                 style={{ marginLeft: '0.5rem' }}
               >
+                <option value=""></option>
                 {fields.slice(0, i).map((pf) =>
                   pf.alias ? (
                     <option key={pf.alias} value={pf.alias}>
@@ -1989,12 +2084,6 @@ function ReportBuilderInner() {
                 <button onClick={() => addFieldCondition(i)}>Add Condition</button>
               </div>
             )}
-            <button
-              onClick={() => removeField(i)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              ✕
-            </button>
           </div>
         ))}
         <button onClick={addField}>Add Field</button>
@@ -2395,7 +2484,7 @@ function ReportBuilderInner() {
         <label>
           Procedure Name:
           <div>
-            report_
+            {generalConfig?.general?.reportProcPrefix || ''}
             <input
               value={procName}
               onChange={(e) => setProcName(e.target.value)}
