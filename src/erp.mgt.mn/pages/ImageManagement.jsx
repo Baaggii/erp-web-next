@@ -1207,130 +1207,97 @@ export default function ImageManagement() {
           )}
           {(uploads.length > 0 || ignored.length > 0) && (
             <div style={{ marginBottom: '1rem' }}>
-              <h4>Uploads</h4>
-              <button
-                type="button"
-                onClick={renameSelected}
-                style={{ marginBottom: '0.5rem', marginRight: '0.5rem' }}
-                disabled={!canRenameSelected}
-              >
-                Rename Selected
-              </button>
-              <button
-                type="button"
-                onClick={loadTables}
-                style={{
-                  marginBottom: '0.5rem',
-                  marginRight: '0.5rem',
-                  float: 'right',
-                }}
-              >
-                Load Tables
-              </button>
-              <button
-                type="button"
-                onClick={saveTables}
-                style={{
-                  marginBottom: '0.5rem',
-                  marginRight: '0.5rem',
-                  float: 'right',
-                }}
-              >
-                Save Tables
-              </button>
-              <button
-                type="button"
-                onClick={renameAndUploadAll}
-                style={{
-                  marginBottom: '0.5rem',
-                  marginRight: '0.5rem',
-                  float: 'right',
-                }}
-                disabled={uploads.length === 0}
-              >
-                Rename & Upload Local Images
-              </button>
-              <button
-                type="button"
-                onClick={uploadRenamedNames}
-                style={{
-                  marginBottom: '0.5rem',
-                  marginRight: '0.5rem',
-                  float: 'right',
-                }}
-                disabled={!canUploadNames}
-              >
-                Upload Names
-              </button>
-              <button
-                type="button"
-                onClick={renameSelectedNames}
-                style={{
-                  marginBottom: '0.5rem',
-                  marginRight: '0.5rem',
-                  float: 'right',
-                }}
-                disabled={uploadSel.length === 0}
-              >
-                Rename Names
-              </button>
-              <button
-                type="button"
-                onClick={commitUploads}
-                style={{ marginBottom: '0.5rem', marginRight: '0.5rem' }}
-                disabled={
-                  uploadSel.length === 0 ||
-                  ![...uploads, ...ignored].some((u) => uploadSel.includes(u.id) && u.tmpPath)
-                }
-              >
-                Upload Selected
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const remainingUploads = uploads.filter((u) => !uploadSel.includes(u.id));
-                  const remainingIgnored = ignored.filter((u) => !uploadSel.includes(u.id));
-                  setUploads(remainingUploads);
-                  uploadsRef.current = remainingUploads;
-                  setIgnored(remainingIgnored);
-                  ignoredRef.current = remainingIgnored;
-                  setUploadSel([]);
-                  setReport(`Deleted ${uploadSel.length} file(s)`);
-                  persistAll({ uploads: remainingUploads, ignored: remainingIgnored });
-                }}
-                style={{ marginBottom: '0.5rem', marginRight: '0.5rem' }}
-                disabled={uploadSel.length === 0}
-              >
-                Delete Selected
-              </button>
-              <button
-                type="button"
-                onClick={renameSelectedNames}
-                style={{
-                  marginBottom: '0.5rem',
-                  marginLeft: '1rem',
-                  marginRight: '0.5rem',
-                }}
-                disabled={uploadSel.length === 0}
-              >
-                Rename Names
-              </button>
-              <button
-                type="button"
-                onClick={uploadRenamedNames}
-                style={{ marginBottom: '0.5rem', marginRight: '0.5rem' }}
-                disabled={!canUploadNames}
-              >
-                Upload Names
-              </button>
-              <button
-                type="button"
-                onClick={renameAndUploadAll}
-                style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
-                disabled={uploads.length === 0}
-              >
-                Rename & Upload Local Images
-              </button>
+                <h4>Uploads</h4>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <span style={{ fontWeight: 'bold', marginRight: '0.5rem' }}>
+                    Session (save or restore tables):
+                  </span>
+                  <button
+                    type="button"
+                    onClick={saveTables}
+                    style={{ marginRight: '0.5rem' }}
+                  >
+                    Save Tables
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => loadTables()}
+                    style={{ marginRight: '0.5rem' }}
+                  >
+                    Load Tables
+                  </button>
+                </div>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <span style={{ fontWeight: 'bold', marginRight: '0.5rem' }}>
+                    Batch (run on all rows):
+                  </span>
+                  <button
+                    type="button"
+                    onClick={renameAndUploadAll}
+                    style={{ marginRight: '0.5rem' }}
+                    disabled={uploads.length === 0}
+                  >
+                    Rename and Upload local images
+                  </button>
+                  <button
+                    type="button"
+                    onClick={uploadRenamedNames}
+                    style={{ marginRight: '0.5rem' }}
+                    disabled={!canUploadNames}
+                  >
+                    Upload Names
+                  </button>
+                </div>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <span style={{ fontWeight: 'bold', marginRight: '0.5rem' }}>
+                    Selection (only chosen rows):
+                  </span>
+                  <button
+                    type="button"
+                    onClick={renameSelected}
+                    style={{ marginRight: '0.5rem' }}
+                    disabled={!canRenameSelected}
+                  >
+                    Rename Selected
+                  </button>
+                  <button
+                    type="button"
+                    onClick={renameSelectedNames}
+                    style={{ marginRight: '0.5rem' }}
+                    disabled={uploadSel.length === 0}
+                  >
+                    Rename Names
+                  </button>
+                  <button
+                    type="button"
+                    onClick={commitUploads}
+                    style={{ marginRight: '0.5rem' }}
+                    disabled={
+                      uploadSel.length === 0 ||
+                      ![...uploads, ...ignored].some((u) => uploadSel.includes(u.id) && u.tmpPath)
+                    }
+                  >
+                    Upload Selected
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const remainingUploads = uploads.filter((u) => !uploadSel.includes(u.id));
+                      const remainingIgnored = ignored.filter((u) => !uploadSel.includes(u.id));
+                      setUploads(remainingUploads);
+                      uploadsRef.current = remainingUploads;
+                      setIgnored(remainingIgnored);
+                      ignoredRef.current = remainingIgnored;
+                      setUploadSel([]);
+                      setReport(`Deleted ${uploadSel.length} file(s)`);
+                      persistAll({ uploads: remainingUploads, ignored: remainingIgnored });
+                    }}
+                    style={{ marginRight: '0.5rem' }}
+                    disabled={uploadSel.length === 0}
+                  >
+                    Delete Selected
+                  </button>
+                </div>
               <div style={{ marginBottom: '0.5rem' }}>
                 <label style={{ marginRight: '0.5rem' }}>
                   Page Size:{' '}
