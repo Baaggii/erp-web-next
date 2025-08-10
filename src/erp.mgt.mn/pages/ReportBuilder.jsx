@@ -24,7 +24,7 @@ function ReportBuilderInner() {
   const [fromTable, setFromTable] = useState('');
   const [joins, setJoins] = useState([]); // {table, alias, type, targetTable, conditions:[{fromField,toField,connector,open,close}], filters:[]}
   const [fields, setFields] = useState([]); // {source:'field'|'alias', table, field, baseAlias, alias, aggregate, conditions:[], calcParts:[{source,table,field,alias,operator}]}
-  const [dragIndex, setDragIndex] = useState(null);
+  const [dragItem, setDragItem] = useState(null);
   const [groups, setGroups] = useState([]); // {table, field}
   const [having, setHaving] = useState([]); // {source:'field'|'alias', aggregate, table, field, alias, operator, valueType, value, param, connector}
   const [params, setParams] = useState([]); // {name,type,source}
@@ -432,13 +432,77 @@ function ReportBuilderInner() {
     setFields(updated);
   }
 
-  function handleFieldDrop(index) {
-    if (dragIndex === null) return;
-    const updated = [...fields];
-    const [moved] = updated.splice(dragIndex, 1);
-    updated.splice(index, 0, moved);
-    setFields(updated);
-    setDragIndex(null);
+  function reorder(list, from, to) {
+    const arr = [...list];
+    const [moved] = arr.splice(from, 1);
+    arr.splice(to, 0, moved);
+    return arr;
+  }
+
+  function handleDrop(type, index, parentIndex) {
+    if (!dragItem || dragItem.type !== type) return;
+    switch (type) {
+      case 'fromFilters':
+        setFromFilters(reorder(fromFilters, dragItem.index, index));
+        break;
+      case 'joins':
+        setJoins(reorder(joins, dragItem.index, index));
+        break;
+      case 'joinConditions':
+        if (dragItem.joinIndex === parentIndex) {
+          setJoins(
+            joins.map((j, ji) =>
+              ji === parentIndex
+                ? { ...j, conditions: reorder(j.conditions, dragItem.index, index) }
+                : j,
+            ),
+          );
+        }
+        break;
+      case 'joinFilters':
+        if (dragItem.joinIndex === parentIndex) {
+          setJoins(
+            joins.map((j, ji) =>
+              ji === parentIndex
+                ? {
+                    ...j,
+                    filters: reorder(j.filters || [], dragItem.index, index),
+                  }
+                : j,
+            ),
+          );
+        }
+        break;
+      case 'fields':
+        setFields(reorder(fields, dragItem.index, index));
+        break;
+      case 'fieldConditions':
+        if (dragItem.fieldIndex === parentIndex) {
+          setFields(
+            fields.map((f, fi) =>
+              fi === parentIndex
+                ? {
+                    ...f,
+                    conditions: reorder(f.conditions || [], dragItem.index, index),
+                  }
+                : f,
+            ),
+          );
+        }
+        break;
+      case 'groups':
+        setGroups(reorder(groups, dragItem.index, index));
+        break;
+      case 'having':
+        setHaving(reorder(having, dragItem.index, index));
+        break;
+      case 'conditions':
+        setConditions(reorder(conditions, dragItem.index, index));
+        break;
+      default:
+        break;
+    }
+    setDragItem(null);
   }
 
   function addGroup() {
@@ -1238,7 +1302,19 @@ function ReportBuilderInner() {
       <section>
         <h3>Primary Table Filters</h3>
         {fromFilters.map((f, i) => (
-          <div key={i} style={{ marginBottom: '0.5rem' }}>
+          <div
+            key={i}
+            style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => handleDrop('fromFilters', i)}
+          >
+            <span
+              draggable
+              onDragStart={() => setDragItem({ type: 'fromFilters', index: i })}
+              style={{ cursor: 'move', marginRight: '0.5rem' }}
+            >
+              ☰
+            </span>
             {i > 0 && (
               <select
                 value={f.connector}
@@ -1336,7 +1412,19 @@ function ReportBuilderInner() {
         {joins.map((j, i) => {
           const targets = [fromTable, ...joins.slice(0, i).map((jn) => jn.table)];
           return (
-            <div key={i} style={{ marginBottom: '0.5rem' }}>
+            <div
+              key={i}
+              style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => handleDrop('joins', i)}
+            >
+              <span
+                draggable
+                onDragStart={() => setDragItem({ type: 'joins', index: i })}
+                style={{ cursor: 'move', marginRight: '0.5rem' }}
+              >
+                ☰
+              </span>
               <select
                 value={j.type}
                 onChange={(e) => updateJoin(i, 'type', e.target.value)}
@@ -1380,8 +1468,23 @@ function ReportBuilderInner() {
               {j.conditions.map((c, k) => (
                 <div
                   key={k}
-                  style={{ display: 'inline-block', marginLeft: '0.5rem' }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    marginLeft: '0.5rem',
+                  }}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => handleDrop('joinConditions', k, i)}
                 >
+                  <span
+                    draggable
+                    onDragStart={() =>
+                      setDragItem({ type: 'joinConditions', joinIndex: i, index: k })
+                    }
+                    style={{ cursor: 'move', marginRight: '0.5rem' }}
+                  >
+                    ☰
+                  </span>
                   {k > 0 && (
                     <select
                       value={c.connector}
@@ -1445,7 +1548,21 @@ function ReportBuilderInner() {
               </button>
               {j.filters && j.filters.length > 0 && <span> | </span>}
               {j.filters?.map((f, k) => (
-                <div key={k} style={{ marginTop: '0.25rem' }}>
+                <div
+                  key={k}
+                  style={{ display: 'flex', alignItems: 'center', marginTop: '0.25rem' }}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => handleDrop('joinFilters', k, i)}
+                >
+                  <span
+                    draggable
+                    onDragStart={() =>
+                      setDragItem({ type: 'joinFilters', joinIndex: i, index: k })
+                    }
+                    style={{ cursor: 'move', marginRight: '0.5rem' }}
+                  >
+                    ☰
+                  </span>
                   {k > 0 && (
                     <select
                       value={f.connector}
@@ -1562,11 +1679,11 @@ function ReportBuilderInner() {
             key={i}
             style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}
             onDragOver={(e) => e.preventDefault()}
-            onDrop={() => handleFieldDrop(i)}
+            onDrop={() => handleDrop('fields', i)}
           >
             <span
               draggable
-              onDragStart={() => setDragIndex(i)}
+              onDragStart={() => setDragItem({ type: 'fields', index: i })}
               style={{ cursor: 'move', marginRight: '0.5rem' }}
             >
               ☰
@@ -1724,7 +1841,29 @@ function ReportBuilderInner() {
             {f.source === 'field' && f.aggregate !== 'NONE' && (
               <div style={{ display: 'inline-block', marginLeft: '0.5rem' }}>
                 {(f.conditions || []).map((c, k) => (
-                  <div key={k} style={{ marginTop: '0.25rem' }}>
+                  <div
+                    key={k}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      marginTop: '0.25rem',
+                    }}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => handleDrop('fieldConditions', k, i)}
+                  >
+                    <span
+                      draggable
+                      onDragStart={() =>
+                        setDragItem({
+                          type: 'fieldConditions',
+                          fieldIndex: i,
+                          index: k,
+                        })
+                      }
+                      style={{ cursor: 'move', marginRight: '0.5rem' }}
+                    >
+                      ☰
+                    </span>
                     {k > 0 && (
                       <select
                         value={c.connector}
@@ -1858,7 +1997,19 @@ function ReportBuilderInner() {
       <section>
         <h3>Group By</h3>
         {groups.map((g, i) => (
-          <div key={i} style={{ marginBottom: '0.5rem' }}>
+          <div
+            key={i}
+            style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => handleDrop('groups', i)}
+          >
+            <span
+              draggable
+              onDragStart={() => setDragItem({ type: 'groups', index: i })}
+              style={{ cursor: 'move', marginRight: '0.5rem' }}
+            >
+              ☰
+            </span>
             <select
               value={g.table}
               onChange={(e) => updateGroup(i, 'table', e.target.value)}
@@ -1894,7 +2045,19 @@ function ReportBuilderInner() {
       <section>
         <h3>Having</h3>
         {having.map((h, i) => (
-          <div key={i} style={{ marginBottom: '0.5rem' }}>
+          <div
+            key={i}
+            style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => handleDrop('having', i)}
+          >
+            <span
+              draggable
+              onDragStart={() => setDragItem({ type: 'having', index: i })}
+              style={{ cursor: 'move', marginRight: '0.5rem' }}
+            >
+              ☰
+            </span>
             {i > 0 && (
               <select
                 value={h.connector}
@@ -2085,7 +2248,19 @@ function ReportBuilderInner() {
       <section>
         <h3>Conditions</h3>
         {conditions.map((c, i) => (
-          <div key={i} style={{ marginBottom: '0.5rem' }}>
+          <div
+            key={i}
+            style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => handleDrop('conditions', i)}
+          >
+            <span
+              draggable
+              onDragStart={() => setDragItem({ type: 'conditions', index: i })}
+              style={{ cursor: 'move', marginRight: '0.5rem' }}
+            >
+              ☰
+            </span>
             {i > 0 && (
               <select
                 value={c.connector}
