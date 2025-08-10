@@ -43,10 +43,7 @@ export default function Reports() {
             cfg.procedures
               .filter((p) => {
                 const low = p.toLowerCase();
-                return (
-                  low.includes('report') &&
-                  (!prefix || low.includes(prefix.toLowerCase()))
-                );
+                return !prefix || low.includes(prefix.toLowerCase());
               })
               .forEach((p) => set.add(p));
           }

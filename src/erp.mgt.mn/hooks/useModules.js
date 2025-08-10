@@ -26,6 +26,8 @@ export function useModules() {
           params.set('branchId', company.branch_id);
         if (company?.department_id !== undefined)
           params.set('departmentId', company.department_id);
+        const prefix = generalConfig?.general?.reportProcPrefix || '';
+        if (prefix) params.set('prefix', prefix);
         const pres = await fetch(
           `/api/report_procedures${params.toString() ? `?${params.toString()}` : ''}`,
           { credentials: 'include' },
@@ -33,10 +35,7 @@ export function useModules() {
         if (pres.ok) {
           const data = await pres.json();
           const list = Array.isArray(data.procedures) ? data.procedures : [];
-          const prefix = generalConfig?.general?.reportProcPrefix || '';
-          const filtered = prefix
-            ? list.filter((p) => p.includes(prefix))
-            : list;
+          const filtered = prefix ? list.filter((p) => p.includes(prefix)) : list;
           filtered.forEach((p) => {
             const key = `proc_${p.toLowerCase().replace(/[^a-z0-9_]/g, '_')}`;
             rows.push({

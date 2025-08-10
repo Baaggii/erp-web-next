@@ -11,9 +11,8 @@ const router = express.Router();
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
-    const procedures = (await listStoredProcedures()).filter((p) =>
-      typeof p === 'string' && p.toLowerCase().includes('report'),
-    );
+    const { prefix = '' } = req.query;
+    const procedures = await listStoredProcedures(prefix);
     res.json({ procedures });
   } catch (err) {
     next(err);

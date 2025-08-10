@@ -11,6 +11,6 @@ test('buildStoredProcedure inserts configured prefix', () => {
     report,
     prefix: 'sp_',
   });
-  assert.ok(sql.includes('DROP PROCEDURE IF EXISTS report_sp_sales;'));
-  assert.ok(sql.includes('CREATE PROCEDURE report_sp_sales('));
+  assert.ok(sql.includes('DROP PROCEDURE IF EXISTS sp_sales;'));
+  assert.ok(sql.includes('CREATE PROCEDURE sp_sales('));
 });

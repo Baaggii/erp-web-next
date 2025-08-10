@@ -3,10 +3,10 @@ import buildReportSql from './buildReportSql.js';
 /**
  * Build a stored procedure SQL string from a procedure definition.
  * @param {Object} definition
- * @param {string} definition.name - Procedure name without the "report_" prefix
+ * @param {string} definition.name - Procedure name excluding any configured prefix
  * @param {Array<{name:string,type:string}>} [definition.params]
  * @param {Object} definition.report - Report definition passed to buildReportSql
- * @param {string} [definition.prefix] - Optional prefix inserted after "report_" in the procedure name
+ * @param {string} [definition.prefix] - Optional prefix inserted at the start of the procedure name
  * @returns {string}
  */
 export default function buildStoredProcedure(definition = {}) {
@@ -14,7 +14,7 @@ export default function buildStoredProcedure(definition = {}) {
   if (!name) throw new Error('procedure name is required');
   if (!report) throw new Error('report definition is required');
 
-  const procName = `report_${prefix}${name}`;
+  const procName = `${prefix}${name}`;
   const paramLines = params.map((p) => `IN ${p.name} ${p.type}`).join(',\n  ');
   let selectSql = buildReportSql(report);
   params.forEach((p) => {

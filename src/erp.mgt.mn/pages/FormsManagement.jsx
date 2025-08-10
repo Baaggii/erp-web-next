@@ -67,7 +67,10 @@ export default function FormsManagement() {
         .then((data) => setTables(data))
         .catch(() => setTables([]));
 
-      fetch('/api/views', { credentials: 'include' })
+      fetch(
+        `/api/views${viewPrefix ? `?prefix=${encodeURIComponent(viewPrefix)}` : ''}`,
+        { credentials: 'include' },
+      )
         .then((res) => (res.ok ? res.json() : []))
         .then((data) =>
           setViews(
@@ -95,16 +98,18 @@ export default function FormsManagement() {
         .then((data) => setTxnTypes(data.rows || []))
         .catch(() => setTxnTypes([]));
 
-      fetch('/api/procedures', { credentials: 'include' })
+      fetch(
+        `/api/procedures${
+          procPrefix ? `?prefix=${encodeURIComponent(procPrefix)}` : ''
+        }`,
+        { credentials: 'include' },
+      )
         .then((res) => (res.ok ? res.json() : { procedures: [] }))
         .then((data) =>
           setProcedureOptions(
             (data.procedures || []).filter((p) => {
               const low = String(p).toLowerCase();
-              return (
-                low.includes('report') &&
-                (!procPrefix || low.includes(procPrefix.toLowerCase()))
-              );
+              return !procPrefix || low.includes(procPrefix.toLowerCase());
             }),
           ),
         )

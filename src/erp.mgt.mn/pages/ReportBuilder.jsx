@@ -126,7 +126,11 @@ function ReportBuilderInner() {
         console.error(err);
       }
       try {
-        const res = await fetch('/api/report_builder/procedures');
+        const res = await fetch(
+          `/api/report_builder/procedures${
+            prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''
+          }`,
+        );
         const data = await res.json();
         const list = prefix
           ? (data.names || []).filter((n) => n.includes(prefix))
@@ -1009,7 +1013,7 @@ function ReportBuilderInner() {
       const { report, params: p } = buildDefinition();
       const prefix = generalConfig?.general?.reportProcPrefix || '';
       const built = buildStoredProcedure({
-        name: procName || 'report',
+        name: procName,
         params: p,
         report,
         prefix,
@@ -1026,14 +1030,23 @@ function ReportBuilderInner() {
     if (!procSql) return;
     if (!window.confirm('POST stored procedure to database?')) return;
     try {
-      const res = await fetch('/api/report_builder/procedures', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql: procSql }),
-      });
+      const res = await fetch(
+        `/api/report_builder/procedures${
+          prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''
+        }`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql: procSql }),
+        },
+      );
       if (!res.ok) throw new Error('Save failed');
       try {
-        const listRes = await fetch('/api/report_builder/procedures');
+      const listRes = await fetch(
+        `/api/report_builder/procedures${
+          prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''
+        }`,
+      );
         const data = await listRes.json();
         const prefix = generalConfig?.general?.reportProcPrefix || '';
         const list = prefix
@@ -2421,7 +2434,7 @@ function ReportBuilderInner() {
         <label>
           Procedure Name:
           <div>
-            report_{generalConfig?.general?.reportProcPrefix || ''}
+            {generalConfig?.general?.reportProcPrefix || ''}
             <input
               value={procName}
               onChange={(e) => setProcName(e.target.value)}
