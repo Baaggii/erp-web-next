@@ -12,7 +12,9 @@ export const AuthContext = createContext({
 });
 
 export default function AuthContextProvider({ children }) {
-  const [user, setUser] = useState(null);
+  // `user` starts as `undefined` so we can distinguish the initial loading
+  // state from an unauthenticated user (`null`).
+  const [user, setUser] = useState(undefined);
   const [company, setCompany] = useState(null);
 
   // Persist selected company across reloads
@@ -52,14 +54,29 @@ export default function AuthContextProvider({ children }) {
           trackSetState('AuthContext.setUser');
           setUser(data);
         } else {
-          // Not logged in or token expired → ignore
+          // Not logged in or token expired
+          trackSetState('AuthContext.setUser');
+          setUser(null);
         }
       } catch (err) {
         console.error('Unable to fetch profile:', err);
+        trackSetState('AuthContext.setUser');
+        setUser(null);
       }
     }
 
     loadProfile();
+  }, []);
+
+  useEffect(() => {
+    function handleLogout() {
+      trackSetState('AuthContext.setUser');
+      setUser(null);
+      trackSetState('AuthContext.setCompany');
+      setCompany(null);
+    }
+    window.addEventListener('auth:logout', handleLogout);
+    return () => window.removeEventListener('auth:logout', handleLogout);
   }, []);
 
   const value = useMemo(() => ({ user, setUser, company, setCompany }), [user, company]);
