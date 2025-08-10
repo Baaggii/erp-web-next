@@ -20,15 +20,15 @@ export default function ReportBuilder() {
 
   const [procName, setProcName] = useState('');
   const [fromTable, setFromTable] = useState('');
-  const [joins, setJoins] = useState([]); // {table, alias, type, targetTable, conditions:[{fromField,toField,connector}], filters:[]}
+  const [joins, setJoins] = useState([]); // {table, alias, type, targetTable, conditions:[{fromField,toField,connector,open,close}], filters:[]}
   const [fields, setFields] = useState([]); // {source:'field'|'alias', table, field, baseAlias, alias, aggregate, conditions:[], calcParts:[{source,table,field,alias,operator}]}
   const [dragIndex, setDragIndex] = useState(null);
   const [groups, setGroups] = useState([]); // {table, field}
   const [having, setHaving] = useState([]); // {source:'field'|'alias', aggregate, table, field, alias, operator, valueType, value, param, connector}
   const [params, setParams] = useState([]); // {name,type,source}
   const [conditions, setConditions] = useState([]); // {table,field,param,connector}
-  const [fromFilters, setFromFilters] = useState([]); // {field,operator,valueType,param,value,connector}
-  const [unions, setUnions] = useState([]); // [table]
+  const [fromFilters, setFromFilters] = useState([]); // {field,operator,valueType,param,value,connector,open,close}
+  const [unionQueries, setUnionQueries] = useState([]); // array of prior query states
   const [selectSql, setSelectSql] = useState('');
   const [viewSql, setViewSql] = useState('');
   const [procSql, setProcSql] = useState('');
@@ -37,6 +37,8 @@ export default function ReportBuilder() {
   const [selectedReport, setSelectedReport] = useState('');
   const [procFiles, setProcFiles] = useState([]);
   const [selectedProcFile, setSelectedProcFile] = useState('');
+  const [dbProcedures, setDbProcedures] = useState([]);
+  const [selectedDbProcedure, setSelectedDbProcedure] = useState('');
   const [procFileText, setProcFileText] = useState('');
 
   const [customParamName, setCustomParamName] = useState('');
@@ -70,6 +72,14 @@ export default function ReportBuilder() {
         const data = await res.json();
         setProcFiles(data.names || []);
         setSelectedProcFile(data.names?.[0] || '');
+      } catch (err) {
+        console.error(err);
+      }
+      try {
+        const res = await fetch('/api/report_builder/procedures');
+        const data = await res.json();
+        setDbProcedures(data.names || []);
+        setSelectedDbProcedure(data.names?.[0] || '');
       } catch (err) {
         console.error(err);
       }
@@ -193,6 +203,8 @@ export default function ReportBuilder() {
       fromField: (tableFields[j.targetTable] || [])[0] || '',
       toField: (tableFields[j.table] || [])[0] || '',
       connector: 'AND',
+      open: 0,
+      close: 0,
     };
     const updated = joins.map((jn, i) =>
       i === jIndex ? { ...jn, conditions: [...jn.conditions, newCond] } : jn,
@@ -403,6 +415,8 @@ export default function ReportBuilder() {
         param: params[0]?.name || '',
         value: '',
         connector: 'AND',
+        open: 0,
+        close: 0,
       },
     ]);
   }
@@ -473,12 +487,17 @@ export default function ReportBuilder() {
         field: (tableFields[table] || [])[0] || '',
         param: params[0].name,
         connector: 'AND',
+        open: 0,
+        close: 0,
       },
     ]);
   }
 
   function addRawCondition() {
-    setConditions([...conditions, { raw: '', connector: 'AND' }]);
+    setConditions([
+      ...conditions,
+      { raw: '', connector: 'AND', open: 0, close: 0 },
+    ]);
   }
 
   function updateCondition(index, key, value) {
@@ -502,6 +521,8 @@ export default function ReportBuilder() {
         value: '',
         param: params[0]?.name || '',
         connector: 'AND',
+        open: 0,
+        close: 0,
       },
     ]);
   }
@@ -517,19 +538,23 @@ export default function ReportBuilder() {
     setFromFilters(fromFilters.filter((_, i) => i !== index));
   }
 
-  function addUnion() {
-    const remaining = tables.filter((t) => t !== fromTable);
-    const table = remaining[0] || tables[0];
-    if (!table) return;
-    setUnions([...unions, table]);
-  }
-
-  function updateUnion(index, value) {
-    setUnions(unions.map((u, i) => (i === index ? value : u)));
-  }
-
-  function removeUnion(index) {
-    setUnions(unions.filter((_, i) => i !== index));
+  function addUnionQuery() {
+    const snapshot = {
+      fromTable,
+      joins,
+      fields,
+      groups,
+      having,
+      conditions,
+      fromFilters,
+    };
+    setUnionQueries([...unionQueries, snapshot]);
+    setJoins([]);
+    setFields([]);
+    setGroups([]);
+    setHaving([]);
+    setConditions([]);
+    setFromFilters([]);
   }
 
   function addJoinFilter(jIndex) {
@@ -542,6 +567,8 @@ export default function ReportBuilder() {
       value: '',
       param: params[0]?.name || '',
       connector: 'AND',
+      open: 0,
+      close: 0,
     };
     const updated = joins.map((j, i) =>
       i === jIndex ? { ...j, filters: [...(j.filters || []), newFilter] } : j,
@@ -569,38 +596,45 @@ export default function ReportBuilder() {
     setJoins(updated);
   }
 
-  function buildAliases() {
-    const map = {};
-    if (fromTable) map[fromTable] = 't0';
-    joins.forEach((j, i) => {
-      map[j.table] = j.alias || `t${i + 1}`;
-    });
-    return map;
-  }
-
-  function buildDefinition() {
-    const aliases = buildAliases();
+  function buildFromState(st) {
+    const { fromTable: ft, joins: js, fields: fs, groups: gs, having: hv, conditions: cs, fromFilters: ff } = st;
+    const aliases = {};
+    if (ft) aliases[ft] = 't0';
+    const usedAliases = new Set(Object.values(aliases));
+    let nextAlias = 1;
 
     function buildTableFilterSql(filters) {
-      return filters
+      return (filters || [])
         .filter((f) => f.field && (f.valueType === 'param' ? f.param : f.value))
         .map((f, idx) => {
           const right = f.valueType === 'param' ? `:${f.param}` : f.value;
           const connector = idx > 0 ? ` ${f.connector} ` : '';
-          return `${connector}(${f.field} ${f.operator} ${right})`;
+          const open = '('.repeat(f.open || 0);
+          const close = ')'.repeat(f.close || 0);
+          return `${connector}${open}${f.field} ${f.operator} ${right}${close}`;
         })
         .join('');
     }
 
-    const joinDefs = joins
+    const joinDefs = (js || [])
       .map((j) => {
+        let alias = j.alias || `t${nextAlias++}`;
+        while (usedAliases.has(alias)) {
+          alias = `t${nextAlias++}`;
+        }
+        usedAliases.add(alias);
+        if (!aliases[j.table]) aliases[j.table] = alias;
         const conds = j.conditions.filter((c) => c.fromField && c.toField);
         const onInner = conds
-          .map(
-            (c, idx) =>
-              (idx > 0 ? ` ${c.connector} ` : '') +
-              `${aliases[j.targetTable]}.${c.fromField} = ${aliases[j.table]}.${c.toField}`,
-          )
+          .map((c, idx) => {
+            const connector = idx > 0 ? ` ${c.connector} ` : '';
+            const open = '('.repeat(c.open || 0);
+            const close = ')'.repeat(c.close || 0);
+            return (
+              connector +
+              `${open}${aliases[j.targetTable]}.${c.fromField} = ${alias}.${c.toField}${close}`
+            );
+          })
           .join('');
         const on = conds.length > 1 ? `(${onInner})` : onInner;
         const tablePart = j.filters?.length
@@ -608,7 +642,7 @@ export default function ReportBuilder() {
           : j.table;
         return {
           table: tablePart,
-          alias: aliases[j.table],
+          alias,
           type: j.type,
           on,
           original: j.table,
@@ -616,10 +650,10 @@ export default function ReportBuilder() {
       })
       .filter((j) => j.on);
 
-    const validTables = new Set([fromTable, ...joinDefs.map((j) => j.original)]);
+    const validTables = new Set([ft, ...joinDefs.map((j) => j.original)]);
 
     const fieldExprMap = {};
-    const select = fields
+    const select = fs
       .filter((f) => (f.source === 'alias' ? f.baseAlias : f.field))
       .map((f) => {
         if (f.source === 'field' && !validTables.has(f.table)) {
@@ -703,15 +737,15 @@ export default function ReportBuilder() {
         return { expr, alias: f.alias || undefined };
       });
 
-    const fromTableSql = fromFilters.length
-      ? `(SELECT * FROM ${fromTable} WHERE ${buildTableFilterSql(fromFilters)})`
-      : fromTable;
+    const fromTableSql = ff.length
+      ? `(SELECT * FROM ${ft} WHERE ${buildTableFilterSql(ff)})`
+      : ft;
 
-    const where = conditions
+    const where = cs
       .filter((c) => c.raw || (c.table && c.field && c.param))
       .map((c) => {
         if (c.raw) {
-          return { expr: c.raw, connector: c.connector };
+          return { expr: c.raw, connector: c.connector, open: c.open, close: c.close };
         }
         if (!validTables.has(c.table)) {
           throw new Error(`Table ${c.table} is not joined`);
@@ -719,10 +753,12 @@ export default function ReportBuilder() {
         return {
           expr: `${aliases[c.table]}.${c.field} = :${c.param}`,
           connector: c.connector,
+          open: c.open,
+          close: c.close,
         };
       });
 
-    const groupBy = groups
+    const groupBy = gs
       .filter((g) => g.table && g.field)
       .map((g) => {
         if (!validTables.has(g.table)) {
@@ -731,7 +767,7 @@ export default function ReportBuilder() {
         return `${aliases[g.table]}.${g.field}`;
       });
 
-    const havingDefs = having
+    const havingDefs = hv
       .filter((h) => (h.source === 'alias' ? h.alias : h.table && h.field))
       .map((h) => {
         const left =
@@ -742,13 +778,16 @@ export default function ReportBuilder() {
           throw new Error(`Table ${h.table} is not joined`);
         }
         const right = h.valueType === 'param' ? `:${h.param}` : h.value;
-        return { expr: `${left} ${h.operator} ${right}`, connector: h.connector };
+        return {
+          expr: `${left} ${h.operator} ${right}`,
+          connector: h.connector,
+          open: h.open,
+          close: h.close,
+        };
       });
 
-    const unionTables = unions.filter((t) => t && t !== fromTable);
-
-    const report = {
-      from: { table: fromTableSql, alias: aliases[fromTable] },
+    return {
+      from: { table: fromTableSql, alias: aliases[ft] },
       joins: joinDefs,
       select,
       where,
@@ -756,8 +795,18 @@ export default function ReportBuilder() {
       having: havingDefs,
       unions: unionTables,
     };
+  }
 
-    return { report, params: params.map(({ name, type }) => ({ name, type })) };
+  function buildDefinition(includeCurrent = true) {
+    const states = includeCurrent
+      ? [...unionQueries, { fromTable, joins, fields, groups, having, conditions, fromFilters }]
+      : [...unionQueries];
+    const reports = states.map((s) => buildFromState(s));
+    const [first, ...rest] = reports;
+    return {
+      report: { ...first, unions: rest },
+      params: params.map(({ name, type }) => ({ name, type })),
+    };
   }
 
   function handleGenerateSql() {
@@ -813,6 +862,14 @@ export default function ReportBuilder() {
         body: JSON.stringify({ sql: procSql }),
       });
       if (!res.ok) throw new Error('Save failed');
+      try {
+        const listRes = await fetch('/api/report_builder/procedures');
+        const data = await listRes.json();
+        setDbProcedures(data.names || []);
+        setSelectedDbProcedure(data.names?.[0] || '');
+      } catch (err) {
+        console.error(err);
+      }
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: { message: 'Stored procedure saved', type: 'success' },
@@ -822,6 +879,31 @@ export default function ReportBuilder() {
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: { message: err.message || 'Save failed', type: 'error' },
+        }),
+      );
+    }
+  }
+
+  async function handleDeleteProcedure() {
+    if (!selectedDbProcedure) return;
+    if (!window.confirm(`Delete procedure ${selectedDbProcedure}?`)) return;
+    try {
+      const res = await fetch(
+        `/api/report_builder/procedures/${encodeURIComponent(selectedDbProcedure)}`,
+        { method: 'DELETE' },
+      );
+      if (!res.ok) throw new Error('Delete failed');
+      setDbProcedures(dbProcedures.filter((n) => n !== selectedDbProcedure));
+      setSelectedDbProcedure('');
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message: 'Procedure deleted', type: 'success' },
+        }),
+      );
+    } catch (err) {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message: err.message || 'Delete failed', type: 'error' },
         }),
       );
     }
@@ -862,7 +944,7 @@ export default function ReportBuilder() {
       params,
       conditions,
       fromFilters,
-      unions,
+      unionQueries,
     };
     try {
       const name = procName || 'report';
@@ -941,7 +1023,7 @@ export default function ReportBuilder() {
           })),
         );
         setGroups(data.groups || []);
-        setUnions(data.unions || []);
+        setUnionQueries(data.unionQueries || []);
         setHaving(
           (data.having || []).map((h) => ({
             connector: h.connector || 'AND',
@@ -1067,6 +1149,12 @@ export default function ReportBuilder() {
                 <option value="OR">OR</option>
               </select>
             )}
+            <input
+              type="number"
+              value={f.open || 0}
+              onChange={(e) => updateFromFilter(i, 'open', Number(e.target.value))}
+              style={{ width: '3rem', marginRight: '0.25rem' }}
+            />
             <select
               value={f.field}
               onChange={(e) => updateFromFilter(i, 'field', e.target.value)}
@@ -1128,6 +1216,12 @@ export default function ReportBuilder() {
                 style={{ marginLeft: '0.5rem' }}
               />
             )}
+            <input
+              type="number"
+              value={f.close || 0}
+              onChange={(e) => updateFromFilter(i, 'close', Number(e.target.value))}
+              style={{ width: '3rem', marginLeft: '0.25rem' }}
+            />
             <button
               onClick={() => removeFromFilter(i)}
               style={{ marginLeft: '0.5rem' }}
@@ -1202,6 +1296,14 @@ export default function ReportBuilder() {
                       <option value="OR">OR</option>
                     </select>
                   )}
+                  <input
+                    type="number"
+                    value={c.open || 0}
+                    onChange={(e) =>
+                      updateJoinCondition(i, k, 'open', Number(e.target.value))
+                    }
+                    style={{ width: '3rem', marginRight: '0.25rem' }}
+                  />
                   <select
                     value={c.fromField}
                     onChange={(e) =>
@@ -1227,6 +1329,14 @@ export default function ReportBuilder() {
                       </option>
                     ))}
                   </select>
+                  <input
+                    type="number"
+                    value={c.close || 0}
+                    onChange={(e) =>
+                      updateJoinCondition(i, k, 'close', Number(e.target.value))
+                    }
+                    style={{ width: '3rem', marginLeft: '0.25rem' }}
+                  />
                   <button
                     onClick={() => removeJoinCondition(i, k)}
                     style={{ marginLeft: '0.5rem' }}
@@ -1256,6 +1366,14 @@ export default function ReportBuilder() {
                       <option value="OR">OR</option>
                     </select>
                   )}
+                  <input
+                    type="number"
+                    value={f.open || 0}
+                    onChange={(e) =>
+                      updateJoinFilter(i, k, 'open', Number(e.target.value))
+                    }
+                    style={{ width: '3rem', marginRight: '0.25rem' }}
+                  />
                   <select
                     value={f.field}
                     onChange={(e) => updateJoinFilter(i, k, 'field', e.target.value)}
@@ -1317,6 +1435,14 @@ export default function ReportBuilder() {
                       style={{ marginLeft: '0.5rem' }}
                     />
                   )}
+                  <input
+                    type="number"
+                    value={f.close || 0}
+                    onChange={(e) =>
+                      updateJoinFilter(i, k, 'close', Number(e.target.value))
+                    }
+                    style={{ width: '3rem', marginLeft: '0.25rem' }}
+                  />
                   <button
                     onClick={() => removeJoinFilter(i, k)}
                     style={{ marginLeft: '0.5rem' }}
@@ -1678,6 +1804,12 @@ export default function ReportBuilder() {
                 <option value="OR">OR</option>
               </select>
             )}
+            <input
+              type="number"
+              value={h.open || 0}
+              onChange={(e) => updateHaving(i, 'open', Number(e.target.value))}
+              style={{ width: '3rem', marginRight: '0.25rem' }}
+            />
             <select
               value={h.source}
               onChange={(e) => updateHaving(i, 'source', e.target.value)}
@@ -1787,6 +1919,12 @@ export default function ReportBuilder() {
                 style={{ marginLeft: '0.5rem' }}
               />
             )}
+            <input
+              type="number"
+              value={h.close || 0}
+              onChange={(e) => updateHaving(i, 'close', Number(e.target.value))}
+              style={{ width: '3rem', marginLeft: '0.25rem' }}
+            />
             <button
               onClick={() => removeHaving(i)}
               style={{ marginLeft: '0.5rem' }}
@@ -1799,22 +1937,11 @@ export default function ReportBuilder() {
       </section>
 
       <section>
-        <h3>Union Tables</h3>
-        {unions.map((u, i) => (
-          <div key={i} style={{ marginBottom: '0.5rem' }}>
-            <select value={u} onChange={(e) => updateUnion(i, e.target.value)}>
-              {tables.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-            <button onClick={() => removeUnion(i)} style={{ marginLeft: '0.5rem' }}>
-              ✕
-            </button>
-          </div>
-        ))}
-        <button onClick={addUnion}>Add Union</button>
+        <h3>Union Queries</h3>
+        <div style={{ marginBottom: '0.5rem' }}>
+          Added: {unionQueries.length}
+        </div>
+        <button onClick={addUnionQuery}>Add UNION</button>
       </section>
 
       <section>
@@ -1881,9 +2008,25 @@ export default function ReportBuilder() {
             {c.raw ? (
               <>
                 <input
+                  type="number"
+                  value={c.open || 0}
+                  onChange={(e) =>
+                    updateCondition(i, 'open', Number(e.target.value))
+                  }
+                  style={{ width: '3rem', marginRight: '0.25rem' }}
+                />
+                <input
                   value={c.raw}
                   onChange={(e) => updateCondition(i, 'raw', e.target.value)}
-                  style={{ width: '60%' }}
+                  style={{ width: '50%' }}
+                />
+                <input
+                  type="number"
+                  value={c.close || 0}
+                  onChange={(e) =>
+                    updateCondition(i, 'close', Number(e.target.value))
+                  }
+                  style={{ width: '3rem', marginLeft: '0.25rem' }}
                 />
                 <button
                   onClick={() => removeCondition(i)}
@@ -1894,6 +2037,14 @@ export default function ReportBuilder() {
               </>
             ) : (
               <>
+                <input
+                  type="number"
+                  value={c.open || 0}
+                  onChange={(e) =>
+                    updateCondition(i, 'open', Number(e.target.value))
+                  }
+                  style={{ width: '3rem', marginRight: '0.25rem' }}
+                />
                 <select
                   value={c.table}
                   onChange={(e) => updateCondition(i, 'table', e.target.value)}
@@ -1926,6 +2077,14 @@ export default function ReportBuilder() {
                     </option>
                   ))}
                 </select>
+                <input
+                  type="number"
+                  value={c.close || 0}
+                  onChange={(e) =>
+                    updateCondition(i, 'close', Number(e.target.value))
+                  }
+                  style={{ width: '3rem', marginLeft: '0.25rem' }}
+                />
                 <button
                   onClick={() => removeCondition(i)}
                   style={{ marginLeft: '0.5rem' }}
@@ -1995,6 +2154,20 @@ export default function ReportBuilder() {
         </select>
         <button onClick={handleLoadProcFile} style={{ marginLeft: '0.5rem' }}>
           Load from Host
+        </button>
+        <select
+          value={selectedDbProcedure}
+          onChange={(e) => setSelectedDbProcedure(e.target.value)}
+          style={{ marginLeft: '0.5rem' }}
+        >
+          {dbProcedures.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+        <button onClick={handleDeleteProcedure} style={{ marginLeft: '0.5rem' }}>
+          Delete Procedure
         </button>
       </section>
 

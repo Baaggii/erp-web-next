@@ -59,7 +59,9 @@ export default function buildReportSql(definition = {}) {
         const whereClause = whereItems
           .map((w, i) => {
             const connector = i > 0 ? `${w.connector || 'AND'} ` : '';
-            return connector + w.expr;
+            const open = '('.repeat(w.open || 0);
+            const close = ')'.repeat(w.close || 0);
+            return connector + open + w.expr + close;
           })
           .join('\n  ');
         parts.push(`WHERE\n  ${whereClause}`);
@@ -89,7 +91,9 @@ export default function buildReportSql(definition = {}) {
         const havingClause = havingItems
           .map((h, i) => {
             const connector = i > 0 ? `${h.connector || 'AND'} ` : '';
-            return connector + h.expr;
+            const open = '('.repeat(h.open || 0);
+            const close = ')'.repeat(h.close || 0);
+            return connector + open + h.expr + close;
           })
           .join('\n  ');
         parts.push(`HAVING\n  ${havingClause}`);
@@ -102,9 +106,7 @@ export default function buildReportSql(definition = {}) {
   const main = build(definition);
   const unions = definition.unions || [];
   if (!unions.length) return main;
-  const rest = unions.map((t) =>
-    build({ ...definition, unions: [], from: { ...definition.from, table: t } }),
-  );
-  return [main, ...rest].join('\nUNION\n');
+  const rest = unions.map((u) => build(u));
+  return [main, ...rest].map((q) => `(${q})`).join('\nUNION\n');
 }
 

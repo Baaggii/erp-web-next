@@ -7,6 +7,8 @@ import {
   listTableColumnsDetailed,
   saveStoredProcedure,
   saveView,
+  listReportProcedures,
+  deleteProcedure,
 } from '../../db/index.js';
 
 const router = express.Router();
@@ -35,12 +37,34 @@ router.get('/fields', requireAuth, async (req, res, next) => {
   }
 });
 
+// List stored procedures containing "report"
+router.get('/procedures', requireAuth, async (req, res, next) => {
+  try {
+    const names = await listReportProcedures();
+    res.json({ names });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Save a stored procedure
 router.post('/procedures', requireAuth, async (req, res, next) => {
   try {
     const { sql } = req.body || {};
     if (!sql) return res.status(400).json({ message: 'sql required' });
     await saveStoredProcedure(sql);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Delete a stored procedure
+router.delete('/procedures/:name', requireAuth, async (req, res, next) => {
+  try {
+    const { name } = req.params;
+    if (!name) return res.status(400).json({ message: 'name required' });
+    await deleteProcedure(name);
     res.json({ ok: true });
   } catch (err) {
     next(err);

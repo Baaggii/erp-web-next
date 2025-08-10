@@ -605,6 +605,23 @@ export async function saveView(sql) {
   await pool.query(sql);
 }
 
+export async function listReportProcedures() {
+  const [rows] = await pool.query(
+    `SELECT ROUTINE_NAME
+       FROM information_schema.ROUTINES
+      WHERE ROUTINE_TYPE = 'PROCEDURE'
+        AND ROUTINE_SCHEMA = DATABASE()
+        AND ROUTINE_NAME LIKE '%report%'
+      ORDER BY ROUTINE_NAME`,
+  );
+  return rows.map((r) => r.ROUTINE_NAME);
+}
+
+export async function deleteProcedure(name) {
+  if (!name) return;
+  await pool.query(`DROP PROCEDURE IF EXISTS \`${name}\``);
+}
+
 export async function getTableColumnLabels(tableName) {
   const [rows] = await pool.query(
     'SELECT column_name, mn_label FROM table_column_labels WHERE table_name = ?',
