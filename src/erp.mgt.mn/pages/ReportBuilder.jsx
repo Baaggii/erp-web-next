@@ -327,8 +327,7 @@ function ReportBuilderInner() {
       }
       if (key === 'source') {
         if (value === 'alias') {
-          next.baseAlias =
-            fields.slice(0, index).find((pf) => pf.alias)?.alias || '';
+          next.baseAlias = '';
           next.table = '';
           next.field = '';
           next.aggregate = 'NONE';
@@ -820,7 +819,9 @@ function ReportBuilderInner() {
 
     const fieldExprMap = {};
     const select = fs
-      .filter((f) => (f.source === 'alias' ? f.baseAlias : f.field))
+      .filter((f) =>
+        f.source === 'alias' ? f.baseAlias || f.calcParts?.length : f.field,
+      )
       .map((f) => {
         if (
           f.source === 'field' &&
@@ -833,7 +834,8 @@ function ReportBuilderInner() {
             ? f.baseAlias
             : `${aliases[f.table]}.${f.field}`;
         if (f.calcParts?.length) {
-          const exprParts = [base];
+          const exprParts = [];
+          if (base) exprParts.push(base);
           f.calcParts.forEach((p) => {
             const seg =
               p.source === 'alias'
@@ -846,7 +848,11 @@ function ReportBuilderInner() {
             ) {
               throw new Error(`Table ${p.table} is not joined`);
             }
-            exprParts.push(`${p.operator} ${seg}`);
+            if (exprParts.length) {
+              exprParts.push(`${p.operator} ${seg}`);
+            } else {
+              exprParts.push(seg);
+            }
           });
           let expr = exprParts.join(' ');
           Object.entries(fieldExprMap).forEach(([al, ex]) => {
