@@ -332,6 +332,7 @@ function ReportBuilderInner() {
           next.field = '';
           next.aggregate = 'NONE';
           next.calcParts = [];
+          next.alias = '';
         } else {
           const first = (tableFields[fromTable] || [])[0] || '';
           next.table = fromTable;
@@ -406,8 +407,8 @@ function ReportBuilderInner() {
     const part = {
       source: 'alias',
       alias: '',
-      table: fromTable,
-      field: (tableFields[fromTable] || [])[0] || '',
+      table: '',
+      field: '',
       operator: '+',
     };
     const updated = fields.map((f, i) =>
@@ -1794,6 +1795,7 @@ function ReportBuilderInner() {
                 onChange={(e) => updateField(i, 'baseAlias', e.target.value)}
                 style={{ marginLeft: '0.5rem' }}
               >
+                <option value=""></option>
                 {fields.slice(0, i).map((pf) =>
                   pf.alias ? (
                     <option key={pf.alias} value={pf.alias}>
