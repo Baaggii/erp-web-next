@@ -33,6 +33,8 @@ export default function ReportBuilder() {
   const [viewSql, setViewSql] = useState('');
   const [procSql, setProcSql] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [savedReports, setSavedReports] = useState([]);
   const [selectedReport, setSelectedReport] = useState('');
   const [procFiles, setProcFiles] = useState([]);
@@ -49,12 +51,16 @@ export default function ReportBuilder() {
     async function fetchTables() {
       try {
         const res = await fetch('/api/report_builder/tables');
-        const data = await res.json();
+        if (!res.ok) throw new Error('Failed to load tables');
+        const data = await res.json().catch(() => ({}));
         setTables(data.tables || []);
         const first = data.tables?.[0];
         if (first) setFromTable(first);
       } catch (err) {
         console.error(err);
+        setLoadError('Failed to load tables');
+      } finally {
+        setLoading(false);
       }
     }
     fetchTables();
@@ -1097,8 +1103,11 @@ export default function ReportBuilder() {
     setProcSql(procFileText);
   }
 
-  if (!tables.length) {
+  if (loading) {
     return <div>Loading...</div>;
+  }
+  if (!tables.length) {
+    return <div>{loadError || 'No tables found'}</div>;
   }
 
   return (
