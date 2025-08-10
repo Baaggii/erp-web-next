@@ -329,12 +329,17 @@ function ReportBuilderInner() {
         if (value === 'alias') {
           next.baseAlias =
             fields.slice(0, index).find((pf) => pf.alias)?.alias || '';
+          next.table = '';
+          next.field = '';
+          next.aggregate = 'NONE';
+          next.calcParts = [];
         } else {
           const first = (tableFields[fromTable] || [])[0] || '';
           next.table = fromTable;
           next.field = first;
           if (!next.alias) next.alias = first;
           next.baseAlias = '';
+          next.calcParts = [];
           ensureFields(fromTable);
         }
       }
@@ -401,7 +406,7 @@ function ReportBuilderInner() {
     const parts = fields[fIndex].calcParts || [];
     const part = {
       source: 'alias',
-      alias: fields.slice(0, fIndex).find((pf) => pf.alias)?.alias || '',
+      alias: '',
       table: fromTable,
       field: (tableFields[fromTable] || [])[0] || '',
       operator: '+',
@@ -845,6 +850,7 @@ function ReportBuilderInner() {
           });
           let expr = exprParts.join(' ');
           Object.entries(fieldExprMap).forEach(([al, ex]) => {
+            if (new RegExp(`\\b${al}\\b`).test(ex)) return;
             const re = new RegExp(`\\b${al}\\b`, 'g');
             expr = expr.replace(re, `(${ex})`);
           });

@@ -25,7 +25,7 @@ export default function buildReportSql(definition = {}) {
         guard++;
         for (const [al, ex] of Object.entries(aliasMap)) {
           const re = new RegExp(`\\b${al}\\b`, 'g');
-          if (re.test(result)) {
+          if (re.test(result) && !new RegExp(`\\b${al}\\b`).test(ex)) {
             result = result.replace(re, `(${ex})`);
             replaced = true;
           }
