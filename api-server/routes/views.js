@@ -6,7 +6,8 @@ const router = express.Router();
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
-    const views = await listDatabaseViews();
+    const { prefix = '' } = req.query;
+    const views = await listDatabaseViews(prefix);
     res.json(views);
   } catch (err) {
     next(err);

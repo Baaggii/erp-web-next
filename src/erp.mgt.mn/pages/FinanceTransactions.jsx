@@ -270,9 +270,19 @@ useEffect(() => {
     .then((cfg) => {
       if (canceled) return;
       if (cfg && cfg.moduleKey) {
-        if (!isEqual(cfg, prevConfigRef.current)) {
-          setConfig(cfg);
-          prevConfigRef.current = cfg;
+        const prefix = generalConfig?.general?.reportProcPrefix || '';
+        let nextCfg = cfg;
+        if (prefix && Array.isArray(cfg.procedures)) {
+          nextCfg = {
+            ...cfg,
+            procedures: cfg.procedures.filter((p) =>
+              p.toLowerCase().includes(prefix.toLowerCase()),
+            ),
+          };
+        }
+        if (!isEqual(nextCfg, prevConfigRef.current)) {
+          setConfig(nextCfg);
+          prevConfigRef.current = nextCfg;
         }
         setShowTable(true);
       } else {
@@ -291,7 +301,7 @@ useEffect(() => {
   return () => {
     canceled = true;
   };
-}, [table, name, addToast]);
+}, [table, name, addToast, generalConfig?.general?.reportProcPrefix]);
 
   useEffect(() => {
     if (!selectedProc) {
