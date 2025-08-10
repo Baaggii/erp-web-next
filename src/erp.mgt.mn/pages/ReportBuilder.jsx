@@ -800,7 +800,6 @@ function ReportBuilderInner() {
       where,
       groupBy,
       having: havingDefs,
-      unions: unionTables,
     };
   }
 
@@ -1124,25 +1123,6 @@ function ReportBuilderInner() {
             </option>
           ))}
         </select>
-      </section>
-
-      <section>
-        <h3>Union Tables</h3>
-        {unions.map((u, i) => (
-          <div key={i} style={{ marginBottom: '0.5rem' }}>
-            <select value={u} onChange={(e) => updateUnion(i, e.target.value)}>
-              {tables.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-            <button onClick={() => removeUnion(i)} style={{ marginLeft: '0.5rem' }}>
-              ✕
-            </button>
-          </div>
-        ))}
-        <button onClick={addUnion}>Add Union</button>
       </section>
 
       <section>
