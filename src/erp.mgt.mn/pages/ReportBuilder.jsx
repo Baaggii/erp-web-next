@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import buildStoredProcedure from '../utils/buildStoredProcedure.js';
 import buildReportSql from '../utils/buildReportSql.js';
 import ErrorBoundary from '../components/ErrorBoundary.jsx';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 const SESSION_PARAMS = [
   { name: 'session_branch_id', type: 'INT' },
@@ -38,6 +39,7 @@ function ReportBuilderInner() {
   const [procSql, setProcSql] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const generalConfig = useGeneralConfig();
   const [loadError, setLoadError] = useState('');
   const [savedReports, setSavedReports] = useState([]);
   const [selectedReport, setSelectedReport] = useState('');
@@ -976,7 +978,9 @@ function ReportBuilderInner() {
     try {
       const { report } = buildDefinition();
       const sql = buildReportSql(report);
-      const view = `CREATE OR REPLACE VIEW view_${procName || 'report'} AS\n${sql};`;
+      const suffix = generalConfig?.general?.reportViewSuffix || '';
+      const viewName = `view_${procName || 'report'}${suffix}`;
+      const view = `CREATE OR REPLACE VIEW ${viewName} AS\n${sql};`;
       setViewSql(view);
       setError('');
     } catch (err) {
@@ -989,10 +993,12 @@ function ReportBuilderInner() {
     setProcSql('');
     try {
       const { report, params: p } = buildDefinition();
+      const suffix = generalConfig?.general?.reportProcSuffix || '';
       const built = buildStoredProcedure({
         name: procName || 'report',
         params: p,
         report,
+        suffix,
       });
       setProcSql(built);
       setError('');
