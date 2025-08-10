@@ -14,13 +14,30 @@ test('buildReportSql adds non aggregated fields to group by', () => {
   assert.ok(!sql.match(/GROUP BY.*GROUP BY/));
 });
 
-test('buildReportSql unions additional tables', () => {
+test('buildReportSql unions additional queries', () => {
   const sql = buildReportSql({
     from: { table: 'sales', alias: 's' },
     select: [{ expr: 's.id' }],
-    unions: ['sales_archive'],
+    unions: [
+      {
+        from: { table: 'sales_archive', alias: 'sa' },
+        select: [{ expr: 'sa.id' }],
+      },
+    ],
   });
   assert.ok(sql.includes('FROM sales s'));
   assert.ok(sql.includes('UNION'));
-  assert.ok(sql.includes('FROM sales_archive s'));
+  assert.ok(sql.includes('FROM sales_archive sa'));
+});
+
+test('buildReportSql allows parenthesized conditions', () => {
+  const sql = buildReportSql({
+    from: { table: 'tbl', alias: 't' },
+    select: [{ expr: 't.id' }],
+    where: [
+      { expr: 't.branchid = :bid', open: 1 },
+      { expr: 't.alt_branch = :bid', connector: 'OR', close: 1 },
+    ],
+  });
+  assert.ok(/\(t.branchid = :bid\s*OR t.alt_branch = :bid\)/.test(sql));
 });
