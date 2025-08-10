@@ -104,9 +104,10 @@ export default function buildReportSql(definition = {}) {
   }
 
   const main = build(definition);
-  const unionDefs = definition.unions || [];
-  if (!unionDefs.length) return main;
-  const rest = unionDefs.map((u) => build(u));
+  // Subsequent UNION blocks, if any
+  const unions = definition.unions || [];
+  if (!unions.length) return main;
+  const rest = unions.map((u) => build(u));
   return [main, ...rest].map((q) => `(${q})`).join('\nUNION\n');
 }
 
