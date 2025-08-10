@@ -477,6 +477,10 @@ export default function ReportBuilder() {
     ]);
   }
 
+  function addRawCondition() {
+    setConditions([...conditions, { raw: '', connector: 'AND' }]);
+  }
+
   function updateCondition(index, key, value) {
     const updated = conditions.map((c, i) => (i === index ? { ...c, [key]: value } : c));
     setConditions(updated);
@@ -647,6 +651,30 @@ export default function ReportBuilder() {
           return { expr, alias: f.alias || undefined };
         }
         if (f.aggregate && f.aggregate !== 'NONE' && f.source === 'field') {
+          if (f.aggregate === 'COUNT') {
+            if (f.conditions?.length) {
+              const cond = f.conditions
+                .filter((c) => c.field && (c.valueType === 'param' ? c.param : c.value))
+                .map((c, idx) => {
+                  if (!validTables.has(c.table)) {
+                    throw new Error(`Table ${c.table} is not joined`);
+                  }
+                  const connector = idx > 0 ? ` ${c.connector} ` : '';
+                  const right = c.valueType === 'param' ? `:${c.param}` : c.value;
+                  return (
+                    connector +
+                    `(${aliases[c.table]}.${c.field} ${c.operator} ${right})`
+                  );
+                })
+                .join('');
+              const expr = `SUM(CASE WHEN ${cond} THEN 1 ELSE 0 END)`;
+              if (f.alias) fieldExprMap[f.alias] = expr;
+              return { expr, alias: f.alias || undefined };
+            }
+            const expr = 'COUNT(*)';
+            if (f.alias) fieldExprMap[f.alias] = expr;
+            return { expr, alias: f.alias || undefined };
+          }
           if (f.conditions?.length) {
             const cond = f.conditions
               .filter((c) => c.field && (c.valueType === 'param' ? c.param : c.value))
@@ -655,8 +683,7 @@ export default function ReportBuilder() {
                   throw new Error(`Table ${c.table} is not joined`);
                 }
                 const connector = idx > 0 ? ` ${c.connector} ` : '';
-                const right =
-                  c.valueType === 'param' ? `:${c.param}` : c.value;
+                const right = c.valueType === 'param' ? `:${c.param}` : c.value;
                 return (
                   connector +
                   `(${aliases[c.table]}.${c.field} ${c.operator} ${right})`
@@ -681,8 +708,11 @@ export default function ReportBuilder() {
       : fromTable;
 
     const where = conditions
-      .filter((c) => c.table && c.field && c.param)
+      .filter((c) => c.raw || (c.table && c.field && c.param))
       .map((c) => {
+        if (c.raw) {
+          return { expr: c.raw, connector: c.connector };
+        }
         if (!validTables.has(c.table)) {
           throw new Error(`Table ${c.table} is not joined`);
         }
@@ -1769,6 +1799,25 @@ export default function ReportBuilder() {
       </section>
 
       <section>
+        <h3>Union Tables</h3>
+        {unions.map((u, i) => (
+          <div key={i} style={{ marginBottom: '0.5rem' }}>
+            <select value={u} onChange={(e) => updateUnion(i, e.target.value)}>
+              {tables.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+            <button onClick={() => removeUnion(i)} style={{ marginLeft: '0.5rem' }}>
+              ✕
+            </button>
+          </div>
+        ))}
+        <button onClick={addUnion}>Add Union</button>
+      </section>
+
+      <section>
         <h3>Parameters</h3>
         <div>
           {SESSION_PARAMS.map((p) => (
@@ -1829,48 +1878,69 @@ export default function ReportBuilder() {
                 <option value="OR">OR</option>
               </select>
             )}
-            <select
-              value={c.table}
-              onChange={(e) => updateCondition(i, 'table', e.target.value)}
-            >
-              {availableTables.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-            <select
-              value={c.field}
-              onChange={(e) => updateCondition(i, 'field', e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              {(tableFields[c.table] || []).map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
-              ))}
-            </select>
-            <span> = </span>
-            <select
-              value={c.param}
-              onChange={(e) => updateCondition(i, 'param', e.target.value)}
-            >
-              {params.map((p) => (
-                <option key={p.name} value={p.name}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={() => removeCondition(i)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              ✕
-            </button>
+            {c.raw ? (
+              <>
+                <input
+                  value={c.raw}
+                  onChange={(e) => updateCondition(i, 'raw', e.target.value)}
+                  style={{ width: '60%' }}
+                />
+                <button
+                  onClick={() => removeCondition(i)}
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  ✕
+                </button>
+              </>
+            ) : (
+              <>
+                <select
+                  value={c.table}
+                  onChange={(e) => updateCondition(i, 'table', e.target.value)}
+                >
+                  {availableTables.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={c.field}
+                  onChange={(e) => updateCondition(i, 'field', e.target.value)}
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  {(tableFields[c.table] || []).map((f) => (
+                    <option key={f} value={f}>
+                      {f}
+                    </option>
+                  ))}
+                </select>
+                <span> = </span>
+                <select
+                  value={c.param}
+                  onChange={(e) => updateCondition(i, 'param', e.target.value)}
+                >
+                  {params.map((p) => (
+                    <option key={p.name} value={p.name}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => removeCondition(i)}
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  ✕
+                </button>
+              </>
+            )}
           </div>
         ))}
         <button onClick={addCondition} disabled={!params.length}>
           Add Condition
+        </button>
+        <button onClick={addRawCondition} style={{ marginLeft: '0.5rem' }}>
+          Add Raw Condition
         </button>
       </section>
 

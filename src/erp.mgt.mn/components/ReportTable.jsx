@@ -54,6 +54,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
   const general = generalConfig.general || {};
 
   const columns = rows && rows.length ? Object.keys(rows[0]) : [];
+  const columnHeaderMap = useHeaderMappings(columns);
 
   const filtered = useMemo(() => {
     if (!search) return rows;
@@ -132,6 +133,8 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     }
     return all;
   }, [txnInfo]);
+
+  const modalHeaderMap = useHeaderMappings(modalColumns);
 
   const modalAlign = useMemo(() => {
     const map = {};
@@ -434,7 +437,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                       : {}),
                   }}
                 >
-                  {fieldLabels[col] || col}
+                  {fieldLabels[col] || columnHeaderMap[col] || col}
                   {sort && sort.col === col && (sort.dir === 'asc' ? ' ▲' : ' ▼')}
                 </th>
               ))}
@@ -580,7 +583,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                           whiteSpace: 'nowrap',
                         }}
                       >
-                        {fieldLabels[c] || c}
+                        {fieldLabels[c] || modalHeaderMap[c] || c}
                       </th>
                     ))}
                   </tr>
