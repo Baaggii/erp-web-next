@@ -547,11 +547,17 @@ export async function listDatabaseTables() {
   return rows.map((r) => Object.values(r)[0]);
 }
 
-export async function listDatabaseViews() {
+export async function listDatabaseViews(prefix = '') {
   const [rows] = await pool.query(
     "SHOW FULL TABLES WHERE TABLE_TYPE = 'VIEW'",
   );
-  return rows.map((r) => Object.values(r)[0]);
+  return rows
+    .map((r) => Object.values(r)[0])
+    .filter(
+      (n) =>
+        typeof n === 'string' &&
+        (!prefix || n.toLowerCase().includes(prefix.toLowerCase())),
+    );
 }
 
 export async function listTableColumns(tableName) {
@@ -568,7 +574,7 @@ export async function listTableColumns(tableName) {
 
 export async function listTableColumnsDetailed(tableName) {
   const [rows] = await pool.query(
-    `SELECT COLUMN_NAME, COLUMN_TYPE
+    `SELECT COLUMN_NAME, COLUMN_TYPE, DATA_TYPE
        FROM information_schema.COLUMNS
       WHERE TABLE_SCHEMA = DATABASE()
         AND TABLE_NAME = ?
@@ -577,6 +583,7 @@ export async function listTableColumnsDetailed(tableName) {
   );
   return rows.map((r) => ({
     name: r.COLUMN_NAME,
+    type: r.DATA_TYPE,
     enumValues: /^enum\(/i.test(r.COLUMN_TYPE)
       ? r.COLUMN_TYPE
           .slice(5, -1)
@@ -605,14 +612,15 @@ export async function saveView(sql) {
   await pool.query(sql);
 }
 
-export async function listReportProcedures() {
+export async function listReportProcedures(prefix = '') {
   const [rows] = await pool.query(
     `SELECT ROUTINE_NAME
        FROM information_schema.ROUTINES
       WHERE ROUTINE_TYPE = 'PROCEDURE'
         AND ROUTINE_SCHEMA = DATABASE()
-        AND ROUTINE_NAME LIKE '%report%'
+        ${prefix ? "AND ROUTINE_NAME LIKE ?" : ''}
       ORDER BY ROUTINE_NAME`,
+    prefix ? [`%${prefix}%`] : [],
   );
   return rows.map((r) => r.ROUTINE_NAME);
 }
@@ -1105,13 +1113,17 @@ export async function callStoredProcedure(name, params = [], aliases = []) {
   }
 }
 
-export async function listStoredProcedures() {
+export async function listStoredProcedures(prefix = '') {
   const [rows] = await pool.query(
     'SHOW PROCEDURE STATUS WHERE Db = DATABASE()'
   );
   return rows
     .map((r) => r.Name)
-    .filter((n) => typeof n === 'string' && n.toLowerCase().includes('report'));
+    .filter(
+      (n) =>
+        typeof n === 'string' &&
+        (!prefix || n.toLowerCase().includes(prefix.toLowerCase())),
+    );
 }
 
 export async function getProcedureParams(name) {
