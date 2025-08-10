@@ -26,8 +26,8 @@
     "showReportParams": false,
     "procLabels": {},
     "procFieldLabels": {},
-    "reportProcSuffix": "",
-    "reportViewSuffix": "",
+    "reportProcPrefix": "",
+    "reportViewPrefix": "",
     "imageDir": "txn_images"
   },
   "images": {

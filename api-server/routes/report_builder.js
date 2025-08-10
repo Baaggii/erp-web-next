@@ -37,10 +37,11 @@ router.get('/fields', requireAuth, async (req, res, next) => {
   }
 });
 
-// List stored procedures containing "report"
+// List stored procedures
 router.get('/procedures', requireAuth, async (req, res, next) => {
   try {
-    const names = await listReportProcedures();
+    const { prefix = '' } = req.query;
+    const names = await listReportProcedures(prefix);
     res.json({ names });
   } catch (err) {
     next(err);
