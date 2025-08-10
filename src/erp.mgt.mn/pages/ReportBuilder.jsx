@@ -302,15 +302,14 @@ function ReportBuilderInner() {
 
   function addField() {
     if (!fromTable) return;
-    const firstField = (tableFields[fromTable] || [])[0] || '';
     setFields([
       ...fields,
       {
-        source: 'field',
-        table: fromTable,
-        field: firstField,
+        source: 'none',
+        table: '',
+        field: '',
         baseAlias: '',
-        alias: firstField,
+        alias: '',
         aggregate: 'NONE',
         conditions: [],
         calcParts: [],
@@ -333,7 +332,7 @@ function ReportBuilderInner() {
           next.aggregate = 'NONE';
           next.calcParts = [];
           next.alias = '';
-        } else {
+        } else if (value === 'field') {
           const first = (tableFields[fromTable] || [])[0] || '';
           next.table = fromTable;
           next.field = first;
@@ -341,6 +340,13 @@ function ReportBuilderInner() {
           next.baseAlias = '';
           next.calcParts = [];
           ensureFields(fromTable);
+        } else {
+          next.baseAlias = '';
+          next.table = '';
+          next.field = '';
+          next.aggregate = 'NONE';
+          next.calcParts = [];
+          next.alias = '';
         }
       }
       if (key === 'table') {
@@ -830,7 +836,9 @@ function ReportBuilderInner() {
       .filter((f) =>
         f.source === 'alias'
           ? f.baseAlias || f.calcParts?.some((p) => p.source !== 'none')
-          : f.field,
+          : f.source === 'field'
+          ? f.field
+          : f.calcParts?.some((p) => p.source !== 'none'),
       )
       .map((f) => {
         if (
@@ -839,10 +847,12 @@ function ReportBuilderInner() {
         ) {
           throw new Error(`Table ${f.table} is not joined`);
         }
-        let base =
-          f.source === 'alias'
-            ? f.baseAlias
-            : `${aliases[f.table]}.${f.field}`;
+        let base = '';
+        if (f.source === 'alias') {
+          base = f.baseAlias;
+        } else if (f.source === 'field') {
+          base = `${aliases[f.table]}.${f.field}`;
+        }
         if (f.calcParts?.length) {
           const exprParts = [];
           if (base) exprParts.push(base);
@@ -1806,6 +1816,7 @@ function ReportBuilderInner() {
               value={f.source}
               onChange={(e) => updateField(i, 'source', e.target.value)}
             >
+              <option value="none">None</option>
               <option value="field">Field</option>
               <option value="alias">Alias</option>
             </select>
@@ -1824,7 +1835,7 @@ function ReportBuilderInner() {
                   ) : null,
                 )}
               </select>
-            ) : (
+            ) : f.source === 'field' ? (
               <>
                 <select
                   value={f.table}
@@ -1860,7 +1871,7 @@ function ReportBuilderInner() {
                   ))}
                 </select>
               </>
-            )}
+            ) : null}
             <input
               placeholder="alias"
               value={f.alias}
