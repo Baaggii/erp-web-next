@@ -107,11 +107,7 @@ function ReportBuilderInner() {
       try {
         const res = await fetch(`/api/report_builder/configs${query}`);
         const data = await res.json();
-        const list = prefix
-          ? (data.names || []).filter((n) =>
-              n.toLowerCase().includes(prefix.toLowerCase()),
-            )
-          : data.names || [];
+        const list = data.names || [];
         setSavedReports(list);
         setSelectedReport(list[0] || '');
       } catch (err) {
@@ -120,11 +116,7 @@ function ReportBuilderInner() {
       try {
         const res = await fetch(`/api/report_builder/procedure-files${query}`);
         const data = await res.json();
-        const list = prefix
-          ? (data.names || []).filter((n) =>
-              n.toLowerCase().includes(prefix.toLowerCase()),
-            )
-          : data.names || [];
+        const list = data.names || [];
         setProcFiles(list);
         setSelectedProcFile(list[0] || '');
       } catch (err) {
@@ -133,11 +125,7 @@ function ReportBuilderInner() {
       try {
         const res = await fetch(`/api/report_builder/procedures${query}`);
         const data = await res.json();
-        const list = prefix
-          ? (data.names || []).filter((n) =>
-              n.toLowerCase().includes(prefix.toLowerCase()),
-            )
-          : data.names || [];
+        const list = data.names || [];
         setDbProcedures(list);
         setSelectedDbProcedure(list[0] || '');
       } catch (err) {
@@ -1157,13 +1145,11 @@ function ReportBuilderInner() {
         },
       );
       if (!res.ok) throw new Error('Save failed');
-      const listRes = await fetch('/api/report_builder/configs');
+      const listRes = await fetch(
+        `/api/report_builder/configs${prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''}`,
+      );
       const listData = await listRes.json();
-      const list = prefix
-        ? (listData.names || []).filter((n) =>
-            n.toLowerCase().includes(prefix.toLowerCase()),
-          )
-        : listData.names || [];
+      const list = listData.names || [];
       setSavedReports(list);
       setSelectedReport(name);
       window.dispatchEvent(
@@ -1294,13 +1280,11 @@ function ReportBuilderInner() {
         },
       );
       if (!res.ok) throw new Error('Save failed');
-      const listRes = await fetch('/api/report_builder/procedure-files');
+      const listRes = await fetch(
+        `/api/report_builder/procedure-files${prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''}`,
+      );
       const listData = await listRes.json();
-      const list = prefix
-        ? (listData.names || []).filter((n) =>
-            n.toLowerCase().includes(prefix.toLowerCase()),
-          )
-        : listData.names || [];
+      const list = listData.names || [];
       setProcFiles(list);
       setSelectedProcFile(name);
       window.dispatchEvent(
