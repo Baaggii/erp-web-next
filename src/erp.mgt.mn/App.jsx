@@ -20,6 +20,7 @@ import TablesManagementPage from './pages/TablesManagement.jsx';
 import CodingTablesPage from './pages/CodingTables.jsx';
 import FormsManagementPage from './pages/FormsManagement.jsx';
 import ReportManagementPage from './pages/ReportManagement.jsx';
+import ReportBuilderPage from './pages/ReportBuilder.jsx';
 import RelationsConfigPage from './pages/RelationsConfig.jsx';
 import PosTxnConfigPage from './pages/PosTxnConfig.jsx';
 import PosTransactionsPage from './pages/PosTransactions.jsx';
@@ -37,14 +38,37 @@ import { useTxnModules } from './hooks/useTxnModules.js';
 import useGeneralConfig from './hooks/useGeneralConfig.js';
 
 export default function App() {
+  useEffect(() => {
+    debugLog('Component mounted: App');
+  }, []);
+
+  return (
+    <ToastProvider>
+      <AuthContextProvider>
+        <TxnSessionProvider>
+          <LoadingProvider>
+            <TabProvider>
+              <HashRouter>
+                <Routes>
+                  <Route path="/login" element={<LoginPage />} />
+                  <Route element={<RequireAuth />}>
+                    <Route path="/*" element={<AuthedApp />} />
+                  </Route>
+                </Routes>
+              </HashRouter>
+            </TabProvider>
+          </LoadingProvider>
+        </TxnSessionProvider>
+      </AuthContextProvider>
+    </ToastProvider>
+  );
+}
+
+function AuthedApp() {
   const modules = useModules();
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
   const headerMap = useHeaderMappings(modules.map((m) => m.module_key));
-
-  useEffect(() => {
-    debugLog('Component mounted: App');
-  }, []);
 
   const moduleMap = {};
   modules.forEach((m) => {
@@ -73,7 +97,7 @@ export default function App() {
     tables_management: <TablesManagementPage />,
     coding_tables: <CodingTablesPage />,
     forms_management: <FormsManagementPage />,
-    report_management: <ReportManagementPage />,
+    report_builder: <ReportBuilderPage />,
     relations_config: <RelationsConfigPage />,
     pos_transaction_management: <PosTxnConfigPage />,
     pos_transactions: <PosTransactionsPage />,
@@ -93,6 +117,7 @@ export default function App() {
 
   const indexComponents = {
     settings: <GeneralSettings />,
+    report_management: <ReportManagementPage />,
   };
 
   const adminOnly = new Set([
@@ -104,7 +129,6 @@ export default function App() {
     'tables_management',
     'coding_tables',
     'forms_management',
-    'report_management',
     'relations_config',
     'pos_transaction_management',
     'image_management',
@@ -142,32 +166,17 @@ export default function App() {
     .map((m) => moduleMap[m.module_key]);
 
   return (
-    <ToastProvider>
-      <AuthContextProvider>
-        <TxnSessionProvider>
-          <LoadingProvider>
-            <TabProvider>
-              <HashRouter>
-                <Routes>
-                  <Route path="/login" element={<LoginPage />} />
-                  <Route element={<RequireAuth />}>
-                    <Route path="/" element={<ERPLayout />}>{roots.map(renderRoute)}</Route>
-                    <Route
-                      path="inventory-demo"
-                      element={
-                        <AppLayout title="Inventory">
-                          <InventoryPage />
-                        </AppLayout>
-                      }
-                    />
-                  </Route>
-                </Routes>
-              </HashRouter>
-            </TabProvider>
-          </LoadingProvider>
-        </TxnSessionProvider>
-      </AuthContextProvider>
-    </ToastProvider>
+    <Routes>
+      <Route path="/" element={<ERPLayout />}>{roots.map(renderRoute)}</Route>
+      <Route
+        path="inventory-demo"
+        element={
+          <AppLayout title="Inventory">
+            <InventoryPage />
+          </AppLayout>
+        }
+      />
+    </Routes>
   );
 }
 

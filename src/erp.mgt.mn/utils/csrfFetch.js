@@ -56,6 +56,13 @@ window.fetch = async (url, options = {}, _retry) => {
         return window.fetch(url, options, true);
       }
     }
+    if (!url.toString().includes('/auth/login')) {
+      window.dispatchEvent(new CustomEvent('auth:logout'));
+      if (!window.location.hash.startsWith('#/login')) {
+        window.location.hash = '#/login';
+      }
+    }
+    return res;
   }
   if (!res.ok) {
     let errorMsg = res.statusText;
