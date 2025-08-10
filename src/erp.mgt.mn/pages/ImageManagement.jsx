@@ -3,8 +3,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
 const FOLDER_STATE_KEY = 'imgMgmtFolderState';
-const SESSIONS_KEY = 'imgMgmtSessions';
-const SESSION_PREFIX = 'imgMgmtSession:';
 
 // IndexedDB helpers for storing directory handles
 function getHandleDB() {
@@ -107,29 +105,56 @@ export default function ImageManagement() {
   const dirHandleRef = useRef();
   const [activeOp, setActiveOp] = useState(null);
   const [report, setReport] = useState('');
-  const [sessionNames, setSessionNames] = useState([]);
-  const [selectedSession, setSelectedSession] = useState('');
+  const uploadsRef = useRef(uploads);
+  const ignoredRef = useRef(ignored);
+  const pendingRef = useRef(pending);
+  const hostIgnoredRef = useRef(hostIgnored);
+  const batchRef = useRef(false);
+
+  useEffect(() => { uploadsRef.current = uploads; }, [uploads]);
+  useEffect(() => { ignoredRef.current = ignored; }, [ignored]);
+  useEffect(() => { pendingRef.current = pending; }, [pending]);
+  useEffect(() => { hostIgnoredRef.current = hostIgnored; }, [hostIgnored]);
+
+  async function loadTables({ silent = false } = {}) {
+    try {
+      const raw = localStorage.getItem(FOLDER_STATE_KEY);
+      if (!raw) {
+        if (!silent) addToast('No saved tables found', 'error');
+        return;
+      }
+      const data = JSON.parse(raw);
+      const dir = await loadDirHandle(FOLDER_STATE_KEY);
+      if (dir) {
+        try { await dir.requestPermission?.({ mode: 'read' }); } catch {}
+        dirHandleRef.current = dir;
+        data.uploads = await attachHandles(dir, data.uploads);
+        data.ignored = await attachHandles(dir, data.ignored);
+      }
+      applySession(data);
+      setTab('fix');
+      if (!silent) addToast('Tables loaded', 'success');
+    } catch (err) {
+      console.error(err);
+      if (!silent) addToast('Failed to load tables', 'error');
+    }
+  }
 
   useEffect(() => {
-    (async () => {
-      try {
-        const raw = localStorage.getItem(FOLDER_STATE_KEY);
-        if (raw) {
-          const data = JSON.parse(raw);
-          const dir = await loadDirHandle(FOLDER_STATE_KEY);
-          if (dir) {
-            try { await dir.requestPermission?.({ mode: 'read' }); } catch {}
-            dirHandleRef.current = dir;
-            data.uploads = await attachHandles(dir, data.uploads);
-            data.ignored = await attachHandles(dir, data.ignored);
-          }
-          applySession(data);
-        }
-      } catch {
-        // ignore
-      }
-    })();
+    loadTables({ silent: true });
   }, []);
+
+  useEffect(() => {
+    if (
+      tab === 'fix' &&
+      uploadsRef.current.length === 0 &&
+      ignoredRef.current.length === 0 &&
+      pendingRef.current.length === 0 &&
+      hostIgnoredRef.current.length === 0
+    ) {
+      loadTables({ silent: true });
+    }
+  }, [tab]);
 
   function stateLabel(item = {}) {
     if (item.processed) return 'Processed';
@@ -196,6 +221,12 @@ export default function ImageManagement() {
           reason,
           processed: !!processed,
         })),
+      uploadPage: partial.uploadPage ?? uploadPage,
+      ignoredPage: partial.ignoredPage ?? ignoredPage,
+      pendingPage: partial.pendingPage ?? pendingPage,
+      hostIgnoredPage: partial.hostIgnoredPage ?? hostIgnoredPage,
+      uploadPageSize: partial.uploadPageSize ?? uploadPageSize,
+      pageSize: partial.pageSize ?? pageSize,
     };
   }
 
@@ -220,20 +251,35 @@ export default function ImageManagement() {
         }))
       : [];
     setUploads(upArr);
+    uploadsRef.current = upArr;
     setIgnored(igArr);
+    ignoredRef.current = igArr;
     setFolderFiles(
       [...upArr, ...igArr].map((u) => ({ name: u.originalName, handle: u.handle, index: u.index })),
     );
-    setPending(
-      Array.isArray(data.pending)
-        ? data.pending.map((u) => ({ ...u, processed: !!u.processed }))
-        : [],
-    );
-    setHostIgnored(
-      Array.isArray(data.hostIgnored)
-        ? data.hostIgnored.map((u) => ({ ...u, processed: !!u.processed }))
-        : [],
-    );
+    const pendingArr = Array.isArray(data.pending)
+      ? data.pending.map((u) => ({ ...u, processed: !!u.processed }))
+      : [];
+    setPending(pendingArr);
+    pendingRef.current = pendingArr;
+    const hostArr = Array.isArray(data.hostIgnored)
+      ? data.hostIgnored.map((u) => ({ ...u, processed: !!u.processed }))
+      : [];
+    setHostIgnored(hostArr);
+    hostIgnoredRef.current = hostArr;
+    const upSize = Number(data.uploadPageSize) || uploadPageSize;
+    const pendSize = Number(data.pageSize) || pageSize;
+    setUploadPageSize(upSize);
+    setPageSize(pendSize);
+    const upLast = Math.max(1, Math.ceil(upArr.length / upSize));
+    const igLast = Math.max(1, Math.ceil(igArr.length / upSize));
+    const pendLast = Math.max(1, Math.ceil(pendingArr.length / pendSize));
+    const hostLast = Math.max(1, Math.ceil(hostArr.length / pendSize));
+    setUploadPage(Math.min(data.uploadPage || 1, upLast));
+    setIgnoredPage(Math.min(data.ignoredPage || 1, igLast));
+    setPendingPage(Math.min(data.pendingPage || 1, pendLast));
+    setHostIgnoredPage(Math.min(data.hostIgnoredPage || 1, hostLast));
+    setHasMore(pendingArr.length > (data.pendingPage || 1) * pendSize);
   }
 
   function persistSnapshot(partial = {}) {
@@ -247,7 +293,18 @@ export default function ImageManagement() {
   }
 
   function getTables() {
-    return { uploads, ignored, pending, hostIgnored };
+    return {
+      uploads: uploadsRef.current,
+      ignored: ignoredRef.current,
+      pending: pendingRef.current,
+      hostIgnored: hostIgnoredRef.current,
+      uploadPage,
+      ignoredPage,
+      pendingPage,
+      hostIgnoredPage,
+      uploadPageSize,
+      pageSize,
+    };
   }
 
   function persistAll(partial = {}) {
@@ -255,13 +312,19 @@ export default function ImageManagement() {
     persistSnapshot({ ...tables, folderName, ...partial });
   }
 
-  async function saveSession() {
+  function clampPage(value, last) {
+    const num = Number(value);
+    if (!Number.isFinite(num) || num < 1) return 1;
+    return Math.min(num, last);
+  }
+
+  async function saveTables() {
     try {
       persistAll();
-      addToast('State saved', 'success');
+      addToast('Tables saved locally', 'success');
     } catch (err) {
       console.error(err);
-      addToast('Failed to save state', 'error');
+      addToast('Failed to save tables', 'error');
     }
   }
 
@@ -279,7 +342,7 @@ export default function ImageManagement() {
   const hostIgnoredLastPage = Math.max(1, Math.ceil(hostIgnored.length / pageSize));
   const lastPage = pendingSummary
     ? Math.max(1, Math.ceil((pendingSummary.incompleteFound || 0) / pageSize))
-    : 1;
+    : Math.max(1, Math.ceil(pending.length / pageSize));
 
   const canRenameSelected = [...uploads, ...ignored].some(
     (u) =>
@@ -503,6 +566,7 @@ export default function ImageManagement() {
         };
       });
       setUploads(uploadsList);
+      uploadsRef.current = uploadsList;
       const skippedSorted = skipped
         .slice()
         .sort((a, b) => a.originalName.localeCompare(b.originalName));
@@ -518,6 +582,7 @@ export default function ImageManagement() {
         };
       });
       setIgnored(ignoredList);
+      ignoredRef.current = ignoredList;
       setFolderFiles(files);
       setUploadSummary({ totalFiles: names.length, processed, unflagged: skipped.length });
       setUploadSel([]);
@@ -585,7 +650,9 @@ export default function ImageManagement() {
               }))
           : [];
         setPending(list);
+        pendingRef.current = list;
         setHostIgnored(miss);
+        hostIgnoredRef.current = miss;
         setHostIgnoredPage(1);
         setPendingSummary(data.summary || null);
         setHasMore(!!data.hasMore);
@@ -596,29 +663,33 @@ export default function ImageManagement() {
           `Scanned ${sum.totalFiles || 0} file(s), found ${sum.incompleteFound || 0} incomplete name(s), ${sum.skipped || 0} not incomplete.`,
         );
         persistAll({
-          uploads,
-          ignored,
+          uploads: uploadsRef.current,
+          ignored: ignoredRef.current,
           folderName,
           pending: list,
           hostIgnored: miss,
         });
       } else {
         setPending([]);
+        pendingRef.current = [];
         setHostIgnored([]);
+        hostIgnoredRef.current = [];
         setHostIgnoredPage(1);
         setPendingSummary(null);
         setHasMore(false);
-        persistAll({ uploads, ignored, folderName, pending: [], hostIgnored: [] });
+        persistAll({ uploads: uploadsRef.current, ignored: ignoredRef.current, folderName, pending: [], hostIgnored: [] });
       }
       setPendingPage(p);
     } catch (e) {
       if (e.name !== 'AbortError') {
         setPending([]);
+        pendingRef.current = [];
         setHostIgnored([]);
+        hostIgnoredRef.current = [];
         setHostIgnoredPage(1);
         setPendingSummary(null);
         setHasMore(false);
-        persistAll({ uploads, ignored, folderName, pending: [], hostIgnored: [] });
+        persistAll({ uploads: uploadsRef.current, ignored: ignoredRef.current, folderName, pending: [], hostIgnored: [] });
       }
     } finally {
       detectAbortRef.current = null;
@@ -720,7 +791,9 @@ export default function ImageManagement() {
       else addToast('No files renamed', 'warning');
       if (skipCount) addToast(`Skipped ${skipCount} file(s)`, 'warning');
       setUploads(newUploads);
+      uploadsRef.current = newUploads;
       setIgnored(newIgnored);
+      ignoredRef.current = newIgnored;
       setUploadSel([]);
       persistAll({ uploads: newUploads, ignored: newIgnored });
       setReport(`Renamed ${processedCount} file(s)`);
@@ -769,12 +842,49 @@ export default function ImageManagement() {
     setReport(`Uploaded ${uploaded || 0} file(s)`);
   }
 
+  async function renameAndUploadAll() {
+    batchRef.current = true;
+    try {
+      const items = [];
+      for (let i = uploadStart; i < uploadsRef.current.length; i++) {
+        const u = uploadsRef.current[i];
+        if (!u.processed) items.push({ id: u.id, index: i });
+      }
+      if (items.length === 0) {
+        addToast('No files to process', 'error');
+        return;
+      }
+      for (let i = 0; i < items.length; i += 10) {
+        const chunk = items.slice(i, i + 10);
+        const firstIndex = chunk[0].index;
+        const lastIndex = chunk[chunk.length - 1].index;
+        const page = Math.floor(firstIndex / uploadPageSize) + 1;
+        setUploadPage(page);
+        setReport(
+          `Processing page ${page}, rows ${firstIndex + 1}-${lastIndex + 1}`,
+        );
+        await new Promise((r) => setTimeout(r));
+        const chunkIds = chunk.map((c) => c.id);
+        await renameSelected(chunkIds, { keepSelection: true, silent: true });
+        const tables = getTables();
+        const toUpload = [...tables.uploads, ...tables.ignored]
+          .filter((u) => chunkIds.includes(u.id) && u.tmpPath && !u.processed)
+          .map((u) => u.id);
+        if (toUpload.length) await commitUploads(toUpload, { silent: true });
+      }
+      setReport('Rename and upload completed');
+      addToast('Rename and upload completed', 'success');
+    } finally {
+      batchRef.current = false;
+    }
+  }
+
   async function renameSelected(
     selectedIds = uploadSel,
     { keepSelection = false, silent = false } = {},
   ) {
     if (selectedIds && selectedIds.preventDefault) selectedIds = uploadSel;
-    if (activeOp === 'rename') {
+    if (activeOp === 'rename' && !batchRef.current) {
       if (window.confirm('Cancel rename?')) {
         renameAbortRef.current?.abort();
         setActiveOp(null);
@@ -911,7 +1021,9 @@ export default function ImageManagement() {
       }
 
       setUploads(newUploads);
+      uploadsRef.current = newUploads;
       setIgnored(newIgnored);
+      ignoredRef.current = newIgnored;
       if (!keepSelection)
         setUploadSel((prev) => prev.filter((id) => !selectedIds.includes(id)));
       persistAll({ uploads: newUploads, ignored: newIgnored });
@@ -932,11 +1044,15 @@ export default function ImageManagement() {
             const reason = r?.reason || u.reason || 'Rename failed';
             return { ...u, reason, description: reason };
           });
-        setUploads(updateList(uploads));
-        setIgnored(updateList(ignored));
+        const updatedUploads = updateList(uploads);
+        const updatedIgnored = updateList(ignored);
+        setUploads(updatedUploads);
+        uploadsRef.current = updatedUploads;
+        setIgnored(updatedIgnored);
+        ignoredRef.current = updatedIgnored;
       }
     } finally {
-      persistAll({ uploads, ignored });
+      persistAll({ uploads: uploadsRef.current, ignored: ignoredRef.current });
       setActiveOp(null);
     }
     const idMap = new Map(items.map((u) => [String(u.index), u.id]));
@@ -945,7 +1061,7 @@ export default function ImageManagement() {
 
   async function commitUploads(selectedIds = uploadSel, { silent = false } = {}) {
     if (selectedIds && selectedIds.preventDefault) selectedIds = uploadSel;
-    if (activeOp === 'commit') {
+    if (activeOp === 'commit' && !batchRef.current) {
       if (window.confirm('Cancel upload commit?')) {
         commitAbortRef.current?.abort();
         setActiveOp(null);
@@ -982,9 +1098,13 @@ export default function ImageManagement() {
           );
         }
         setUploads(updated.uploads);
+        uploadsRef.current = updated.uploads;
         setIgnored(updated.ignored);
+        ignoredRef.current = updated.ignored;
         setPending(updated.pending);
+        pendingRef.current = updated.pending;
         setHostIgnored(updated.hostIgnored);
+        hostIgnoredRef.current = updated.hostIgnored;
         setUploadSel((prev) => prev.filter((id) => !selectedIds.includes(id)));
         persistAll(updated);
         if (!silent) setReport(`Uploaded ${data.uploaded || 0} file(s)`);
@@ -1047,26 +1167,24 @@ export default function ImageManagement() {
               placeholder="Selected folder"
               style={{ marginRight: '0.5rem' }}
             />
-            <button type="button" onClick={saveSession} style={{ marginRight: '0.5rem' }}>
-              Save
-            </button>
-            <select
-              value={selectedSession}
-              onChange={(e) => setSelectedSession(e.target.value)}
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <span style={{ fontWeight: 'bold', marginRight: '0.5rem' }}>
+              Session (save or restore tables):
+            </span>
+            <button
+              type="button"
+              onClick={saveTables}
               style={{ marginRight: '0.5rem' }}
             >
-              <option value="">Select session</option>
-              {sessionNames.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-            <button type="button" onClick={() => loadSession()} disabled={!selectedSession} style={{ marginRight: '0.5rem' }}>
-              Load
+              Save Tables
             </button>
-            <button type="button" onClick={() => deleteSession()} disabled={!selectedSession}>
-              Delete
+            <button
+              type="button"
+              onClick={() => loadTables()}
+              style={{ marginRight: '0.5rem' }}
+            >
+              Load Tables
             </button>
           </div>
           {uploadSummary && (
@@ -1074,272 +1192,292 @@ export default function ImageManagement() {
               {`Scanned ${uploadSummary.totalFiles || 0} file(s), found ${uploadSummary.processed || 0} incomplete name(s), ${uploadSummary.unflagged || 0} unflagged.`}
             </p>
           )}
-          {(uploads.length > 0 || ignored.length > 0) && (
-            <div style={{ marginBottom: '1rem' }}>
-              <h4>Uploads</h4>
-              <button
-                type="button"
-                onClick={renameSelected}
-                style={{ marginBottom: '0.5rem', marginRight: '0.5rem' }}
-                disabled={!canRenameSelected}
-              >
-                Rename Selected
-              </button>
-              <button
-                type="button"
-                onClick={uploadRenamedNames}
-                style={{
-                  marginBottom: '0.5rem',
-                  marginRight: '0.5rem',
-                  float: 'right',
-                }}
-                disabled={!canUploadNames}
-              >
-                Upload Names
-              </button>
-              <button
-                type="button"
-                onClick={renameSelectedNames}
-                style={{
-                  marginBottom: '0.5rem',
-                  marginRight: '0.5rem',
-                  float: 'right',
-                }}
-                disabled={uploadSel.length === 0}
-              >
-                Rename Names
-              </button>
-              <button
-                type="button"
-                onClick={commitUploads}
-                style={{ marginBottom: '0.5rem', marginRight: '0.5rem' }}
-                disabled={
-                  uploadSel.length === 0 ||
-                  ![...uploads, ...ignored].some((u) => uploadSel.includes(u.id) && u.tmpPath)
-                }
-              >
-                Upload Selected
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const remainingUploads = uploads.filter((u) => !uploadSel.includes(u.id));
-                  const remainingIgnored = ignored.filter((u) => !uploadSel.includes(u.id));
-                  setUploads(remainingUploads);
-                  setIgnored(remainingIgnored);
-                  setUploadSel([]);
-                  setReport(`Deleted ${uploadSel.length} file(s)`);
-                  persistAll({ uploads: remainingUploads, ignored: remainingIgnored });
-                }}
-                style={{ marginBottom: '0.5rem', marginRight: '0.5rem' }}
-                disabled={uploadSel.length === 0}
-              >
-                Delete Selected
-              </button>
-              <button
-                type="button"
-                onClick={renameSelectedNames}
-                style={{
-                  marginBottom: '0.5rem',
-                  marginLeft: '1rem',
-                  marginRight: '0.5rem',
-                }}
-                disabled={uploadSel.length === 0}
-              >
-                Rename Names
-              </button>
-              <button
-                type="button"
-                onClick={uploadRenamedNames}
-                style={{ marginBottom: '0.5rem', marginRight: '0.5rem' }}
-                disabled={!canUploadNames}
-              >
-                Upload Names
-              </button>
-              <div style={{ marginBottom: '0.5rem' }}>
-                <label style={{ marginRight: '0.5rem' }}>
-                  Page Size:{' '}
-                  <input
-                    type="number"
-                    value={uploadPageSize}
-                    onChange={(e) => {
-                      setUploadPageSize(Number(e.target.value));
-                      setUploadPage(1);
-                      setIgnoredPage(1);
+          <div style={{ marginBottom: '1rem' }}>
+            <h4>Uploads</h4>
+            {(uploads.length > 0 || ignored.length > 0) && (
+              <>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <span style={{ fontWeight: 'bold', marginRight: '0.5rem' }}>
+                    Batch (run on all rows):
+                  </span>
+                  <button
+                    type="button"
+                    onClick={renameAndUploadAll}
+                    style={{ marginRight: '0.5rem' }}
+                    disabled={uploads.length === 0}
+                  >
+                    Rename and Upload local images
+                  </button>
+                  <button
+                    type="button"
+                    onClick={uploadRenamedNames}
+                    style={{ marginRight: '0.5rem' }}
+                    disabled={!canUploadNames}
+                  >
+                    Upload Names
+                  </button>
+                </div>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <span style={{ fontWeight: 'bold', marginRight: '0.5rem' }}>
+                    Selection (only chosen rows):
+                  </span>
+                  <button
+                    type="button"
+                    onClick={renameSelected}
+                    style={{ marginRight: '0.5rem' }}
+                    disabled={!canRenameSelected}
+                  >
+                    Rename Selected
+                  </button>
+                  <button
+                    type="button"
+                    onClick={renameSelectedNames}
+                    style={{ marginRight: '0.5rem' }}
+                    disabled={uploadSel.length === 0}
+                  >
+                    Rename Names
+                  </button>
+                  <button
+                    type="button"
+                    onClick={commitUploads}
+                    style={{ marginRight: '0.5rem' }}
+                    disabled={
+                      uploadSel.length === 0 ||
+                      ![...uploads, ...ignored].some((u) => uploadSel.includes(u.id) && u.tmpPath)
+                    }
+                  >
+                    Upload Selected
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const remainingUploads = uploads.filter((u) => !uploadSel.includes(u.id));
+                      const remainingIgnored = ignored.filter((u) => !uploadSel.includes(u.id));
+                      setUploads(remainingUploads);
+                      uploadsRef.current = remainingUploads;
+                      setIgnored(remainingIgnored);
+                      ignoredRef.current = remainingIgnored;
+                      setUploadSel([]);
+                      setReport(`Deleted ${uploadSel.length} file(s)`);
+                      persistAll({ uploads: remainingUploads, ignored: remainingIgnored });
                     }}
-                    style={{ width: '4rem' }}
-                  />
-                </label>
-              </div>
-              {uploads.length > 0 && (
-                <div style={{ marginBottom: '1rem' }}>
-                  <div style={{ marginBottom: '0.5rem' }}>
-                    <button
-                      type="button"
-                      disabled={uploadPage === 1}
-                      onClick={() => setUploadPage(1)}
-                      style={{ marginRight: '0.5rem' }}
-                    >
-                      First
-                    </button>
-                    <button
-                      type="button"
-                      disabled={uploadPage === 1}
-                      onClick={() => setUploadPage(uploadPage - 1)}
-                      style={{ marginRight: '0.5rem' }}
-                    >
-                      Prev
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!uploadHasMore}
-                      onClick={() => setUploadPage(uploadPage + 1)}
-                      style={{ marginRight: '0.5rem' }}
-                    >
-                      Next
-                    </button>
-                    <button
-                      type="button"
-                      disabled={uploadPage === uploadLastPage}
-                      onClick={() => setUploadPage(uploadLastPage)}
-                    >
-                      Last
-                    </button>
-                  </div>
-                  <table className="min-w-full border border-gray-300 text-sm" style={{ tableLayout: 'fixed' }}>
-                    <thead>
-                      <tr>
-                        <th className="border px-2 py-1">
-                          <input
-                            type="checkbox"
-                            checked={pageUploads.length > 0 && pageUploads.every((u) => uploadSel.includes(u.id))}
-                            onChange={() => toggleUploadAll(pageUploads)}
-                          />
-                        </th>
-                        <th className="border px-2 py-1">Original</th>
-                        <th className="border px-2 py-1">New Name</th>
-                        <th className="border px-2 py-1">Folder</th>
-                        <th className="border px-2 py-1">Description</th>
-                        <th className="border px-2 py-1">State</th>
-                        <th className="border px-2 py-1">Delete</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pageUploads.map((u) => (
-                        <tr key={u.id} className={uploadSel.includes(u.id) ? 'bg-blue-50' : ''}>
-                          <td className="border px-2 py-1 text-center">
-                            <input type="checkbox" checked={uploadSel.includes(u.id)} onChange={() => toggleUpload(u.id)} />
-                          </td>
-                          <td className="border px-2 py-1">{u.originalName}</td>
-                          <td className="border px-2 py-1">{u.newName}</td>
-                          <td className="border px-2 py-1">{u.folderDisplay}</td>
-                          <td className="border px-2 py-1">{u.description}</td>
-                          <td className="border px-2 py-1">{stateLabel(u)}</td>
-                          <td className="border px-2 py-1 text-center">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const remainingUploads = uploads.filter((x) => x.id !== u.id);
-                                setUploads(remainingUploads);
-                                setUploadSel((s) => s.filter((id) => id !== u.id));
-                                persistAll({ uploads: remainingUploads, ignored });
-                              }}
-                            >
-                              Delete
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                    style={{ marginRight: '0.5rem' }}
+                    disabled={uploadSel.length === 0}
+                  >
+                    Delete Selected
+                  </button>
                 </div>
-              )}
-              {ignored.length > 0 && (
-                <div>
-                  <h4>Not Incomplete</h4>
-                  <div style={{ marginBottom: '0.5rem' }}>
-                    <button
-                      type="button"
-                      disabled={ignoredPage === 1}
-                      onClick={() => setIgnoredPage(1)}
-                      style={{ marginRight: '0.5rem' }}
-                    >
-                      First
-                    </button>
-                    <button
-                      type="button"
-                      disabled={ignoredPage === 1}
-                      onClick={() => setIgnoredPage(ignoredPage - 1)}
-                      style={{ marginRight: '0.5rem' }}
-                    >
-                      Prev
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!ignoredHasMore}
-                      onClick={() => setIgnoredPage(ignoredPage + 1)}
-                      style={{ marginRight: '0.5rem' }}
-                    >
-                      Next
-                    </button>
-                    <button
-                      type="button"
-                      disabled={ignoredPage === ignoredLastPage}
-                      onClick={() => setIgnoredPage(ignoredLastPage)}
-                    >
-                      Last
-                    </button>
-                  </div>
-                  <table className="min-w-full border border-gray-300 text-sm" style={{ tableLayout: 'fixed' }}>
-                    <thead>
-                      <tr>
-                        <th className="border px-2 py-1">
-                          <input
-                            type="checkbox"
-                            checked={pageIgnored.length > 0 && pageIgnored.every((u) => uploadSel.includes(u.id))}
-                            onChange={() => toggleUploadAll(pageIgnored)}
-                          />
-                        </th>
-                        <th className="border px-2 py-1">Original</th>
-                        <th className="border px-2 py-1">New Name</th>
-                        <th className="border px-2 py-1">Folder</th>
-                        <th className="border px-2 py-1">Description</th>
-                        <th className="border px-2 py-1">State</th>
-                        <th className="border px-2 py-1">Delete</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pageIgnored.map((u) => (
-                        <tr key={u.id} className={uploadSel.includes(u.id) ? 'bg-blue-50' : ''}>
-                          <td className="border px-2 py-1 text-center">
-                            <input type="checkbox" checked={uploadSel.includes(u.id)} onChange={() => toggleUpload(u.id)} />
-                          </td>
-                          <td className="border px-2 py-1">{u.originalName}</td>
-                          <td className="border px-2 py-1">{u.newName}</td>
-                          <td className="border px-2 py-1">{u.folderDisplay}</td>
-                          <td className="border px-2 py-1">{u.reason}</td>
-                          <td className="border px-2 py-1">{stateLabel(u)}</td>
-                          <td className="border px-2 py-1 text-center">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const remainingIgnored = ignored.filter((x) => x.id !== u.id);
-                                setIgnored(remainingIgnored);
-                                setUploadSel((s) => s.filter((id) => id !== u.id));
-                                persistAll({ uploads, ignored: remainingIgnored });
-                              }}
-                            >
-                              Delete
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <label style={{ marginRight: '0.5rem' }}>
+                    Page Size:{' '}
+                    <input
+                      type="number"
+                      value={uploadPageSize}
+                      onChange={(e) => {
+                        setUploadPageSize(Number(e.target.value));
+                        setUploadPage(1);
+                        setIgnoredPage(1);
+                      }}
+                      style={{ width: '4rem' }}
+                    />
+                  </label>
                 </div>
-              )}
-            </div>
-          )}
+                {uploads.length > 0 && (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <div style={{ marginBottom: '0.5rem' }}>
+                      <button
+                        type="button"
+                        disabled={uploadPage === 1}
+                        onClick={() => setUploadPage(1)}
+                        style={{ marginRight: '0.5rem' }}
+                      >
+                        First
+                      </button>
+                      <button
+                        type="button"
+                        disabled={uploadPage === 1}
+                        onClick={() => setUploadPage(uploadPage - 1)}
+                        style={{ marginRight: '0.5rem' }}
+                      >
+                        Prev
+                      </button>
+                      <span style={{ marginRight: '0.5rem' }}>
+                        Page{' '}
+                        <input
+                          type="number"
+                          value={uploadPage}
+                          onChange={(e) =>
+                            setUploadPage(clampPage(e.target.value, uploadLastPage))
+                          }
+                          style={{ width: '3rem' }}
+                        />{' '}
+                        / {uploadLastPage}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={!uploadHasMore}
+                        onClick={() => setUploadPage(uploadPage + 1)}
+                        style={{ marginRight: '0.5rem' }}
+                      >
+                        Next
+                      </button>
+                      <button
+                        type="button"
+                        disabled={uploadPage === uploadLastPage}
+                        onClick={() => setUploadPage(uploadLastPage)}
+                      >
+                        Last
+                      </button>
+                    </div>
+                    <table className="min-w-full border border-gray-300 text-sm" style={{ tableLayout: 'fixed' }}>
+                      <thead>
+                        <tr>
+                          <th className="border px-2 py-1">
+                            <input
+                              type="checkbox"
+                              checked={pageUploads.length > 0 && pageUploads.every((u) => uploadSel.includes(u.id))}
+                              onChange={() => toggleUploadAll(pageUploads)}
+                            />
+                          </th>
+                          <th className="border px-2 py-1">Original</th>
+                          <th className="border px-2 py-1">New Name</th>
+                          <th className="border px-2 py-1">Folder</th>
+                          <th className="border px-2 py-1">Description</th>
+                          <th className="border px-2 py-1">State</th>
+                          <th className="border px-2 py-1">Delete</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pageUploads.map((u) => (
+                          <tr key={u.id} className={uploadSel.includes(u.id) ? 'bg-blue-50' : ''}>
+                            <td className="border px-2 py-1 text-center">
+                              <input type="checkbox" checked={uploadSel.includes(u.id)} onChange={() => toggleUpload(u.id)} />
+                            </td>
+                            <td className="border px-2 py-1">{u.originalName}</td>
+                            <td className="border px-2 py-1">{u.newName}</td>
+                            <td className="border px-2 py-1">{u.folderDisplay}</td>
+                            <td className="border px-2 py-1">{u.description}</td>
+                            <td className="border px-2 py-1">{stateLabel(u)}</td>
+                            <td className="border px-2 py-1 text-center">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const remainingUploads = uploads.filter((x) => x.id !== u.id);
+                                  setUploads(remainingUploads);
+                                  uploadsRef.current = remainingUploads;
+                                  setUploadSel((s) => s.filter((id) => id !== u.id));
+                                  persistAll({ uploads: remainingUploads, ignored });
+                                }}
+                              >
+                                Delete
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {ignored.length > 0 && (
+                  <div>
+                    <h4>Not Incomplete</h4>
+                    <div style={{ marginBottom: '0.5rem' }}>
+                      <button
+                        type="button"
+                        disabled={ignoredPage === 1}
+                        onClick={() => setIgnoredPage(1)}
+                        style={{ marginRight: '0.5rem' }}
+                      >
+                        First
+                      </button>
+                      <button
+                        type="button"
+                        disabled={ignoredPage === 1}
+                        onClick={() => setIgnoredPage(ignoredPage - 1)}
+                        style={{ marginRight: '0.5rem' }}
+                      >
+                        Prev
+                      </button>
+                      <span style={{ marginRight: '0.5rem' }}>
+                        Page{' '}
+                        <input
+                          type="number"
+                          value={ignoredPage}
+                          onChange={(e) =>
+                            setIgnoredPage(clampPage(e.target.value, ignoredLastPage))
+                          }
+                          style={{ width: '3rem' }}
+                        />{' '}
+                        / {ignoredLastPage}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={!ignoredHasMore}
+                        onClick={() => setIgnoredPage(ignoredPage + 1)}
+                        style={{ marginRight: '0.5rem' }}
+                      >
+                        Next
+                      </button>
+                      <button
+                        type="button"
+                        disabled={ignoredPage === ignoredLastPage}
+                        onClick={() => setIgnoredPage(ignoredLastPage)}
+                      >
+                        Last
+                      </button>
+                    </div>
+                    <table className="min-w-full border border-gray-300 text-sm" style={{ tableLayout: 'fixed' }}>
+                      <thead>
+                        <tr>
+                          <th className="border px-2 py-1">
+                            <input
+                              type="checkbox"
+                              checked={pageIgnored.length > 0 && pageIgnored.every((u) => uploadSel.includes(u.id))}
+                              onChange={() => toggleUploadAll(pageIgnored)}
+                            />
+                          </th>
+                          <th className="border px-2 py-1">Original</th>
+                          <th className="border px-2 py-1">New Name</th>
+                          <th className="border px-2 py-1">Folder</th>
+                          <th className="border px-2 py-1">Description</th>
+                          <th className="border px-2 py-1">State</th>
+                          <th className="border px-2 py-1">Delete</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pageIgnored.map((u) => (
+                          <tr key={u.id} className={uploadSel.includes(u.id) ? 'bg-blue-50' : ''}>
+                            <td className="border px-2 py-1 text-center">
+                              <input type="checkbox" checked={uploadSel.includes(u.id)} onChange={() => toggleUpload(u.id)} />
+                            </td>
+                            <td className="border px-2 py-1">{u.originalName}</td>
+                            <td className="border px-2 py-1">{u.newName}</td>
+                            <td className="border px-2 py-1">{u.folderDisplay}</td>
+                            <td className="border px-2 py-1">{u.reason}</td>
+                            <td className="border px-2 py-1">{stateLabel(u)}</td>
+                            <td className="border px-2 py-1 text-center">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const remainingIgnored = ignored.filter((x) => x.id !== u.id);
+                                  setIgnored(remainingIgnored);
+                                  ignoredRef.current = remainingIgnored;
+                                  setUploadSel((s) => s.filter((id) => id !== u.id));
+                                  persistAll({ uploads: uploadsRef.current, ignored: remainingIgnored });
+                                }}
+                              >
+                                Delete
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
           <div style={{ marginBottom: '0.5rem', marginTop: '1rem' }}>
             <button type="button" onClick={() => detectFromHost(1)} style={{ marginRight: '0.5rem' }}>
               Detect from host
@@ -1361,19 +1499,31 @@ export default function ImageManagement() {
             >
               First
             </button>
-            <button
-              type="button"
-              disabled={pendingPage === 1}
-              onClick={() => detectFromHost(pendingPage - 1)}
-              style={{ marginRight: '0.5rem' }}
-            >
-              Prev
-            </button>
-            <button
-              type="button"
-              disabled={!hasMore}
-              onClick={() => detectFromHost(pendingPage + 1)}
-              style={{ marginRight: '0.5rem' }}
+          <button
+            type="button"
+            disabled={pendingPage === 1}
+            onClick={() => detectFromHost(pendingPage - 1)}
+            style={{ marginRight: '0.5rem' }}
+          >
+            Prev
+          </button>
+          <span style={{ marginRight: '0.5rem' }}>
+            Page{' '}
+            <input
+              type="number"
+              value={pendingPage}
+              onChange={(e) =>
+                detectFromHost(clampPage(e.target.value, lastPage))
+              }
+              style={{ width: '3rem' }}
+            />{' '}
+            / {lastPage}
+          </span>
+          <button
+            type="button"
+            disabled={!hasMore}
+            onClick={() => detectFromHost(pendingPage + 1)}
+            style={{ marginRight: '0.5rem' }}
             >
               Next
             </button>
@@ -1407,9 +1557,19 @@ export default function ImageManagement() {
               <button
                 type="button"
                 onClick={() => {
-                  setPending((prev) => prev.filter((p) => !selected.includes(p.currentName)));
+                  const remaining = pendingRef.current.filter(
+                    (p) => !selected.includes(p.currentName),
+                  );
+                  setPending(remaining);
+                  pendingRef.current = remaining;
                   setSelected([]);
-                  persistAll({ uploads, ignored, folderName, pending: remaining, hostIgnored });
+                  persistAll({
+                    uploads: uploadsRef.current,
+                    ignored: ignoredRef.current,
+                    folderName,
+                    pending: remaining,
+                    hostIgnored: hostIgnoredRef.current,
+                  });
                 }}
                 style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
                 disabled={selected.length === 0}
@@ -1445,8 +1605,19 @@ export default function ImageManagement() {
                         <button
                           type="button"
                           onClick={() => {
-                            setPending((prev) => prev.filter((x) => x.currentName !== p.currentName));
+                            const remaining = pendingRef.current.filter(
+                              (x) => x.currentName !== p.currentName,
+                            );
+                            setPending(remaining);
+                            pendingRef.current = remaining;
                             setSelected((s) => s.filter((id) => id !== p.currentName));
+                            persistAll({
+                              uploads: uploadsRef.current,
+                              ignored: ignoredRef.current,
+                              pending: remaining,
+                              hostIgnored: hostIgnoredRef.current,
+                              folderName,
+                            });
                           }}
                         >
                           Delete
@@ -1472,9 +1643,19 @@ export default function ImageManagement() {
               <button
                 type="button"
                 onClick={() => {
-                  setHostIgnored((prev) => prev.filter((p) => !hostIgnoredSel.includes(p.currentName)));
+                  const remaining = hostIgnoredRef.current.filter(
+                    (p) => !hostIgnoredSel.includes(p.currentName),
+                  );
+                  setHostIgnored(remaining);
+                  hostIgnoredRef.current = remaining;
                   setHostIgnoredSel([]);
-                  persistAll({ uploads, ignored, folderName, pending, hostIgnored: remaining });
+                  persistAll({
+                    uploads: uploadsRef.current,
+                    ignored: ignoredRef.current,
+                    folderName,
+                    pending: pendingRef.current,
+                    hostIgnored: remaining,
+                  });
                 }}
                 style={{ marginBottom: '0.5rem', marginLeft: '0.5rem' }}
                 disabled={hostIgnoredSel.length === 0}
@@ -1498,6 +1679,20 @@ export default function ImageManagement() {
                 >
                   Prev
                 </button>
+                <span style={{ marginRight: '0.5rem' }}>
+                  Page{' '}
+                  <input
+                    type="number"
+                    value={hostIgnoredPage}
+                    onChange={(e) =>
+                      setHostIgnoredPage(
+                        clampPage(e.target.value, hostIgnoredLastPage),
+                      )
+                    }
+                    style={{ width: '3rem' }}
+                  />{' '}
+                  / {hostIgnoredLastPage}
+                </span>
                 <button
                   type="button"
                   disabled={!hostIgnoredHasMore}
@@ -1558,8 +1753,19 @@ export default function ImageManagement() {
                         <button
                           type="button"
                           onClick={() => {
-                            setHostIgnored((prev) => prev.filter((x) => x.currentName !== p.currentName));
+                            const remaining = hostIgnoredRef.current.filter(
+                              (x) => x.currentName !== p.currentName,
+                            );
+                            setHostIgnored(remaining);
+                            hostIgnoredRef.current = remaining;
                             setHostIgnoredSel((s) => s.filter((id) => id !== p.currentName));
+                            persistAll({
+                              uploads: uploadsRef.current,
+                              ignored: ignoredRef.current,
+                              pending: pendingRef.current,
+                              hostIgnored: remaining,
+                              folderName,
+                            });
                           }}
                         >
                           Delete
