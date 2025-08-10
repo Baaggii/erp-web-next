@@ -62,6 +62,17 @@ export default function AuthContextProvider({ children }) {
     loadProfile();
   }, []);
 
+  useEffect(() => {
+    function handleLogout() {
+      trackSetState('AuthContext.setUser');
+      setUser(null);
+      trackSetState('AuthContext.setCompany');
+      setCompany(null);
+    }
+    window.addEventListener('auth:logout', handleLogout);
+    return () => window.removeEventListener('auth:logout', handleLogout);
+  }, []);
+
   const value = useMemo(() => ({ user, setUser, company, setCompany }), [user, company]);
 
   return (
