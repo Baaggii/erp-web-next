@@ -20,13 +20,14 @@ test('buildReportSql unions additional queries', () => {
     select: [{ expr: 's.id' }],
     unions: [
       {
+        type: 'UNION ALL',
         from: { table: 'sales_archive', alias: 'sa' },
         select: [{ expr: 'sa.id' }],
       },
     ],
   });
   assert.ok(sql.includes('FROM sales s'));
-  assert.ok(sql.includes('UNION'));
+  assert.ok(sql.includes('UNION ALL'));
   assert.ok(sql.includes('FROM sales_archive sa'));
 });
 

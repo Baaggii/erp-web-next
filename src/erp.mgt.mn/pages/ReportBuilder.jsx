@@ -13,6 +13,7 @@ const PARAM_TYPES = ['INT', 'DATE', 'VARCHAR(50)', 'DECIMAL(10,2)'];
 const AGGREGATES = ['NONE', 'SUM', 'COUNT', 'MAX', 'MIN'];
 const OPERATORS = ['=', '>', '<', '>=', '<=', '<>'];
 const CALC_OPERATORS = ['+', '-', '*', '/'];
+const PAREN_OPTIONS = [0, 1, 2, 3];
 
 function ReportBuilderInner() {
   const [tables, setTables] = useState([]); // list of table names
@@ -23,13 +24,15 @@ function ReportBuilderInner() {
   const [fromTable, setFromTable] = useState('');
   const [joins, setJoins] = useState([]); // {table, alias, type, targetTable, conditions:[{fromField,toField,connector,open,close}], filters:[]}
   const [fields, setFields] = useState([]); // {source:'field'|'alias', table, field, baseAlias, alias, aggregate, conditions:[], calcParts:[{source,table,field,alias,operator}]}
-  const [dragIndex, setDragIndex] = useState(null);
+  const [dragItem, setDragItem] = useState(null);
   const [groups, setGroups] = useState([]); // {table, field}
   const [having, setHaving] = useState([]); // {source:'field'|'alias', aggregate, table, field, alias, operator, valueType, value, param, connector}
   const [params, setParams] = useState([]); // {name,type,source}
   const [conditions, setConditions] = useState([]); // {table,field,param,connector}
   const [fromFilters, setFromFilters] = useState([]); // {field,operator,valueType,param,value,connector,open,close}
-  const [unionQueries, setUnionQueries] = useState([]); // array of prior query states
+  const [unionQueries, setUnionQueries] = useState([]); // {unionType, ...queryState}
+  const [unionType, setUnionType] = useState('UNION');
+  const [currentUnionIndex, setCurrentUnionIndex] = useState(0);
   const [selectSql, setSelectSql] = useState('');
   const [viewSql, setViewSql] = useState('');
   const [procSql, setProcSql] = useState('');
@@ -46,6 +49,33 @@ function ReportBuilderInner() {
 
   const [customParamName, setCustomParamName] = useState('');
   const [customParamType, setCustomParamType] = useState(PARAM_TYPES[0]);
+
+  useEffect(() => {
+    setUnionQueries((prev) => {
+      const arr = [...prev];
+      arr[currentUnionIndex] = {
+        unionType,
+        fromTable,
+        joins,
+        fields,
+        groups,
+        having,
+        conditions,
+        fromFilters,
+      };
+      return arr;
+    });
+  }, [
+    unionType,
+    fromTable,
+    joins,
+    fields,
+    groups,
+    having,
+    conditions,
+    fromFilters,
+    currentUnionIndex,
+  ]);
 
   // Fetch table list on mount
   useEffect(() => {
@@ -144,6 +174,26 @@ function ReportBuilderInner() {
   }, [fields]);
 
   const availableTables = [fromTable, ...joins.map((j) => j.table)].filter(Boolean);
+
+  function renderParenSelect(value, onChange, side) {
+    return (
+      <select
+        value={value || 0}
+        onChange={(e) => onChange(Number(e.target.value))}
+        style={{
+          width: '3rem',
+          marginRight: side === 'open' ? '0.25rem' : undefined,
+          marginLeft: side === 'close' ? '0.25rem' : undefined,
+        }}
+      >
+        {PAREN_OPTIONS.map((n) => (
+          <option key={n} value={n}>
+            {side === 'open' ? '('.repeat(n) : ')'.repeat(n)}
+          </option>
+        ))}
+      </select>
+    );
+  }
 
   function addJoin() {
     const remaining = tables.filter((t) => t !== fromTable);
@@ -306,6 +356,8 @@ function ReportBuilderInner() {
       value: '',
       param: params[0]?.name || '',
       connector: 'AND',
+      open: 0,
+      close: 0,
     };
     const updated = fields.map((f, i) =>
       i === fIndex ? { ...f, conditions: [...(f.conditions || []), newCond] } : f,
@@ -380,13 +432,77 @@ function ReportBuilderInner() {
     setFields(updated);
   }
 
-  function handleFieldDrop(index) {
-    if (dragIndex === null) return;
-    const updated = [...fields];
-    const [moved] = updated.splice(dragIndex, 1);
-    updated.splice(index, 0, moved);
-    setFields(updated);
-    setDragIndex(null);
+  function reorder(list, from, to) {
+    const arr = [...list];
+    const [moved] = arr.splice(from, 1);
+    arr.splice(to, 0, moved);
+    return arr;
+  }
+
+  function handleDrop(type, index, parentIndex) {
+    if (!dragItem || dragItem.type !== type) return;
+    switch (type) {
+      case 'fromFilters':
+        setFromFilters(reorder(fromFilters, dragItem.index, index));
+        break;
+      case 'joins':
+        setJoins(reorder(joins, dragItem.index, index));
+        break;
+      case 'joinConditions':
+        if (dragItem.joinIndex === parentIndex) {
+          setJoins(
+            joins.map((j, ji) =>
+              ji === parentIndex
+                ? { ...j, conditions: reorder(j.conditions, dragItem.index, index) }
+                : j,
+            ),
+          );
+        }
+        break;
+      case 'joinFilters':
+        if (dragItem.joinIndex === parentIndex) {
+          setJoins(
+            joins.map((j, ji) =>
+              ji === parentIndex
+                ? {
+                    ...j,
+                    filters: reorder(j.filters || [], dragItem.index, index),
+                  }
+                : j,
+            ),
+          );
+        }
+        break;
+      case 'fields':
+        setFields(reorder(fields, dragItem.index, index));
+        break;
+      case 'fieldConditions':
+        if (dragItem.fieldIndex === parentIndex) {
+          setFields(
+            fields.map((f, fi) =>
+              fi === parentIndex
+                ? {
+                    ...f,
+                    conditions: reorder(f.conditions || [], dragItem.index, index),
+                  }
+                : f,
+            ),
+          );
+        }
+        break;
+      case 'groups':
+        setGroups(reorder(groups, dragItem.index, index));
+        break;
+      case 'having':
+        setHaving(reorder(having, dragItem.index, index));
+        break;
+      case 'conditions':
+        setConditions(reorder(conditions, dragItem.index, index));
+        break;
+      default:
+        break;
+    }
+    setDragItem(null);
   }
 
   function addGroup() {
@@ -546,22 +662,44 @@ function ReportBuilderInner() {
   }
 
   function addUnionQuery() {
-    const snapshot = {
-      fromTable,
-      joins,
-      fields,
-      groups,
-      having,
-      conditions,
-      fromFilters,
-    };
-    setUnionQueries([...unionQueries, snapshot]);
+    const newIndex = unionQueries.length;
+    setUnionQueries((prev) => [
+      ...prev,
+      {
+        unionType: 'UNION',
+        fromTable,
+        joins: [],
+        fields: [],
+        groups: [],
+        having: [],
+        conditions: [],
+        fromFilters: [],
+      },
+    ]);
+    setCurrentUnionIndex(newIndex);
     setJoins([]);
     setFields([]);
     setGroups([]);
     setHaving([]);
     setConditions([]);
     setFromFilters([]);
+    setUnionType('UNION');
+  }
+
+  function switchUnionQuery(index) {
+    const q = unionQueries[index];
+    if (!q) return;
+    setCurrentUnionIndex(index);
+    setUnionType(q.unionType || 'UNION');
+    setFromTable(q.fromTable || '');
+    setJoins(q.joins || []);
+    setFields(q.fields || []);
+    setGroups(q.groups || []);
+    setHaving(q.having || []);
+    setConditions(q.conditions || []);
+    setFromFilters(q.fromFilters || []);
+    ensureFields(q.fromTable);
+    (q.joins || []).forEach((j) => ensureFields(j.table));
   }
 
   function addJoinFilter(jIndex) {
@@ -702,9 +840,11 @@ function ReportBuilderInner() {
                   }
                   const connector = idx > 0 ? ` ${c.connector} ` : '';
                   const right = c.valueType === 'param' ? `:${c.param}` : c.value;
+                  const open = '('.repeat(c.open || 0);
+                  const close = ')'.repeat(c.close || 0);
                   return (
                     connector +
-                    `(${aliases[c.table]}.${c.field} ${c.operator} ${right})`
+                    `${open}(${aliases[c.table]}.${c.field} ${c.operator} ${right})${close}`
                   );
                 })
                 .join('');
@@ -725,9 +865,11 @@ function ReportBuilderInner() {
                 }
                 const connector = idx > 0 ? ` ${c.connector} ` : '';
                 const right = c.valueType === 'param' ? `:${c.param}` : c.value;
+                const open = '('.repeat(c.open || 0);
+                const close = ')'.repeat(c.close || 0);
                 return (
                   connector +
-                  `(${aliases[c.table]}.${c.field} ${c.operator} ${right})`
+                  `${open}(${aliases[c.table]}.${c.field} ${c.operator} ${right})${close}`
                 );
               })
               .join('');
@@ -800,18 +942,19 @@ function ReportBuilderInner() {
       where,
       groupBy,
       having: havingDefs,
-      unions: unionTables,
     };
   }
 
-  function buildDefinition(includeCurrent = true) {
-    const states = includeCurrent
-      ? [...unionQueries, { fromTable, joins, fields, groups, having, conditions, fromFilters }]
-      : [...unionQueries];
-    const reports = states.map((s) => buildFromState(s));
-    const [first, ...rest] = reports;
+  function buildDefinition() {
+    const built = unionQueries.map((s) => buildFromState(s));
+    const first = built[0];
+    const unions = [];
+    for (let i = 1; i < built.length; i++) {
+      const type = unionQueries[i - 1].unionType || 'UNION';
+      unions.push({ ...built[i], type });
+    }
     return {
-      report: { ...first, unions: rest },
+      report: { ...first, unions },
       params: params.map(({ name, type }) => ({ name, type })),
     };
   }
@@ -941,17 +1084,22 @@ function ReportBuilderInner() {
   }
 
   async function handleSaveConfig() {
+    const first = unionQueries[0] || {};
+    const legacyUnions = unionQueries.slice(1).map((q, i) => ({
+      ...q,
+      unionType: unionQueries[i].unionType || 'UNION',
+    }));
     const data = {
       procName,
-      fromTable,
-      joins,
-      fields,
-      groups,
-      having,
+      fromTable: first.fromTable,
+      joins: first.joins,
+      fields: first.fields,
+      groups: first.groups,
+      having: first.having,
       params,
-      conditions,
-      fromFilters,
-      unionQueries,
+      conditions: first.conditions,
+      fromFilters: first.fromFilters,
+      unionQueries: legacyUnions,
     };
     try {
       const name = procName || 'report';
@@ -989,68 +1137,93 @@ function ReportBuilderInner() {
         `/api/report_builder/configs/${encodeURIComponent(selectedReport)}`,
       );
       const data = await res.json();
-        setProcName(data.procName || '');
-        setFromTable(data.fromTable || '');
-        setFromFilters(
-          (data.fromFilters || []).map((f) => ({
-            connector: f.connector || 'AND',
-            ...f,
-          })),
-        );
-        setJoins(
-          (data.joins || []).map((j) => ({
-            ...j,
-            conditions: (j.conditions || []).map((c) => ({
-              connector: c.connector || 'AND',
-              ...c,
-            })),
-            filters: (j.filters || []).map((f) => ({
-              connector: f.connector || 'AND',
-              ...f,
-            })),
-            })),
-        );
-        setFields(
-          (data.fields || []).map((f) => ({
-            source: f.source || 'field',
-            table: f.table || fromTable,
-            field: f.field || '',
-            baseAlias: f.baseAlias || '',
-            alias: f.alias || '',
-            aggregate: f.aggregate || 'NONE',
-            calcParts: (f.calcParts || []).map((p) => ({
-              operator: p.operator || '+',
-              source: p.source || 'field',
-              ...p,
-            })),
-            conditions: (f.conditions || []).map((c) => ({
-              connector: c.connector || 'AND',
-              ...c,
-            })),
-          })),
-        );
-        setGroups(data.groups || []);
-        setUnionQueries(data.unionQueries || []);
-        setHaving(
-          (data.having || []).map((h) => ({
-            connector: h.connector || 'AND',
-            valueType: h.valueType || (h.param ? 'param' : 'value'),
-            source: h.source || 'field',
-            ...h,
-          })),
-        );
-        setParams(data.params || []);
-        setConditions(
-          (data.conditions || []).map((c) => ({
+      setProcName(data.procName || '');
+      const unionsRaw = data.unionQueries || [];
+      const normalize = (q) => ({
+        unionType: q.unionType || 'UNION',
+        fromTable: q.fromTable || '',
+        joins: (q.joins || []).map((j) => ({
+          ...j,
+          conditions: (j.conditions || []).map((c) => ({
             connector: c.connector || 'AND',
             ...c,
           })),
+          filters: (j.filters || []).map((f) => ({
+            connector: f.connector || 'AND',
+            ...f,
+          })),
+        })),
+        fields: (q.fields || []).map((f) => ({
+          source: f.source || 'field',
+          table: f.table || q.fromTable,
+          field: f.field || '',
+          baseAlias: f.baseAlias || '',
+          alias: f.alias || '',
+          aggregate: f.aggregate || 'NONE',
+          calcParts: (f.calcParts || []).map((p) => ({
+            operator: p.operator || '+',
+            source: p.source || 'field',
+            ...p,
+          })),
+          conditions: (f.conditions || []).map((c) => ({
+            connector: c.connector || 'AND',
+            ...c,
+          })),
+        })),
+        groups: q.groups || [],
+        having: (q.having || []).map((h) => ({
+          connector: h.connector || 'AND',
+          valueType: h.valueType || (h.param ? 'param' : 'value'),
+          source: h.source || 'field',
+          ...h,
+        })),
+        conditions: (q.conditions || []).map((c) => ({
+          connector: c.connector || 'AND',
+          ...c,
+        })),
+        fromFilters: (q.fromFilters || []).map((f) => ({
+          connector: f.connector || 'AND',
+          ...f,
+        })),
+      });
+      const all = [];
+      all.push(
+        normalize({
+          fromTable: data.fromTable,
+          joins: data.joins,
+          fields: data.fields,
+          groups: data.groups,
+          having: data.having,
+          conditions: data.conditions,
+          fromFilters: data.fromFilters,
+          unionType: unionsRaw[0]?.unionType,
+        }),
+      );
+      for (let i = 0; i < unionsRaw.length; i++) {
+        all.push(
+          normalize({
+            ...unionsRaw[i],
+            unionType: unionsRaw[i + 1]?.unionType,
+          }),
         );
-        ensureFields(data.fromTable);
-        (data.joins || []).forEach((j) => {
-          ensureFields(j.table);
-          ensureFields(j.targetTable);
-        });
+      }
+      const first = all[0];
+      setUnionQueries(all);
+      setCurrentUnionIndex(0);
+      setFromTable(first.fromTable || '');
+      setFromFilters(first.fromFilters || []);
+      setJoins(first.joins || []);
+      setFields(first.fields || []);
+      setGroups(first.groups || []);
+      setUnionType(first.unionType || 'UNION');
+      setHaving(first.having || []);
+      setParams(data.params || []);
+      setConditions(first.conditions || []);
+      ensureFields(first.fromTable);
+      (first.joins || []).forEach((j) => {
+        ensureFields(j.table);
+        ensureFields(j.targetTable);
+      });
     } catch (err) {
       console.error(err);
     }
@@ -1127,28 +1300,21 @@ function ReportBuilderInner() {
       </section>
 
       <section>
-        <h3>Union Tables</h3>
-        {unions.map((u, i) => (
-          <div key={i} style={{ marginBottom: '0.5rem' }}>
-            <select value={u} onChange={(e) => updateUnion(i, e.target.value)}>
-              {tables.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-            <button onClick={() => removeUnion(i)} style={{ marginLeft: '0.5rem' }}>
-              ✕
-            </button>
-          </div>
-        ))}
-        <button onClick={addUnion}>Add Union</button>
-      </section>
-
-      <section>
         <h3>Primary Table Filters</h3>
         {fromFilters.map((f, i) => (
-          <div key={i} style={{ marginBottom: '0.5rem' }}>
+          <div
+            key={i}
+            style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => handleDrop('fromFilters', i)}
+          >
+            <span
+              draggable
+              onDragStart={() => setDragItem({ type: 'fromFilters', index: i })}
+              style={{ cursor: 'move', marginRight: '0.5rem' }}
+            >
+              ☰
+            </span>
             {i > 0 && (
               <select
                 value={f.connector}
@@ -1159,12 +1325,11 @@ function ReportBuilderInner() {
                 <option value="OR">OR</option>
               </select>
             )}
-            <input
-              type="number"
-              value={f.open || 0}
-              onChange={(e) => updateFromFilter(i, 'open', Number(e.target.value))}
-              style={{ width: '3rem', marginRight: '0.25rem' }}
-            />
+            {renderParenSelect(
+              f.open,
+              (v) => updateFromFilter(i, 'open', v),
+              'open',
+            )}
             <select
               value={f.field}
               onChange={(e) => updateFromFilter(i, 'field', e.target.value)}
@@ -1226,12 +1391,11 @@ function ReportBuilderInner() {
                 style={{ marginLeft: '0.5rem' }}
               />
             )}
-            <input
-              type="number"
-              value={f.close || 0}
-              onChange={(e) => updateFromFilter(i, 'close', Number(e.target.value))}
-              style={{ width: '3rem', marginLeft: '0.25rem' }}
-            />
+            {renderParenSelect(
+              f.close,
+              (v) => updateFromFilter(i, 'close', v),
+              'close',
+            )}
             <button
               onClick={() => removeFromFilter(i)}
               style={{ marginLeft: '0.5rem' }}
@@ -1248,7 +1412,19 @@ function ReportBuilderInner() {
         {joins.map((j, i) => {
           const targets = [fromTable, ...joins.slice(0, i).map((jn) => jn.table)];
           return (
-            <div key={i} style={{ marginBottom: '0.5rem' }}>
+            <div
+              key={i}
+              style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => handleDrop('joins', i)}
+            >
+              <span
+                draggable
+                onDragStart={() => setDragItem({ type: 'joins', index: i })}
+                style={{ cursor: 'move', marginRight: '0.5rem' }}
+              >
+                ☰
+              </span>
               <select
                 value={j.type}
                 onChange={(e) => updateJoin(i, 'type', e.target.value)}
@@ -1292,8 +1468,23 @@ function ReportBuilderInner() {
               {j.conditions.map((c, k) => (
                 <div
                   key={k}
-                  style={{ display: 'inline-block', marginLeft: '0.5rem' }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    marginLeft: '0.5rem',
+                  }}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => handleDrop('joinConditions', k, i)}
                 >
+                  <span
+                    draggable
+                    onDragStart={() =>
+                      setDragItem({ type: 'joinConditions', joinIndex: i, index: k })
+                    }
+                    style={{ cursor: 'move', marginRight: '0.5rem' }}
+                  >
+                    ☰
+                  </span>
                   {k > 0 && (
                     <select
                       value={c.connector}
@@ -1306,14 +1497,11 @@ function ReportBuilderInner() {
                       <option value="OR">OR</option>
                     </select>
                   )}
-                  <input
-                    type="number"
-                    value={c.open || 0}
-                    onChange={(e) =>
-                      updateJoinCondition(i, k, 'open', Number(e.target.value))
-                    }
-                    style={{ width: '3rem', marginRight: '0.25rem' }}
-                  />
+                  {renderParenSelect(
+                    c.open,
+                    (v) => updateJoinCondition(i, k, 'open', v),
+                    'open',
+                  )}
                   <select
                     value={c.fromField}
                     onChange={(e) =>
@@ -1339,14 +1527,11 @@ function ReportBuilderInner() {
                       </option>
                     ))}
                   </select>
-                  <input
-                    type="number"
-                    value={c.close || 0}
-                    onChange={(e) =>
-                      updateJoinCondition(i, k, 'close', Number(e.target.value))
-                    }
-                    style={{ width: '3rem', marginLeft: '0.25rem' }}
-                  />
+                  {renderParenSelect(
+                    c.close,
+                    (v) => updateJoinCondition(i, k, 'close', v),
+                    'close',
+                  )}
                   <button
                     onClick={() => removeJoinCondition(i, k)}
                     style={{ marginLeft: '0.5rem' }}
@@ -1363,7 +1548,21 @@ function ReportBuilderInner() {
               </button>
               {j.filters && j.filters.length > 0 && <span> | </span>}
               {j.filters?.map((f, k) => (
-                <div key={k} style={{ marginTop: '0.25rem' }}>
+                <div
+                  key={k}
+                  style={{ display: 'flex', alignItems: 'center', marginTop: '0.25rem' }}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => handleDrop('joinFilters', k, i)}
+                >
+                  <span
+                    draggable
+                    onDragStart={() =>
+                      setDragItem({ type: 'joinFilters', joinIndex: i, index: k })
+                    }
+                    style={{ cursor: 'move', marginRight: '0.5rem' }}
+                  >
+                    ☰
+                  </span>
                   {k > 0 && (
                     <select
                       value={f.connector}
@@ -1376,14 +1575,11 @@ function ReportBuilderInner() {
                       <option value="OR">OR</option>
                     </select>
                   )}
-                  <input
-                    type="number"
-                    value={f.open || 0}
-                    onChange={(e) =>
-                      updateJoinFilter(i, k, 'open', Number(e.target.value))
-                    }
-                    style={{ width: '3rem', marginRight: '0.25rem' }}
-                  />
+                  {renderParenSelect(
+                    f.open,
+                    (v) => updateJoinFilter(i, k, 'open', v),
+                    'open',
+                  )}
                   <select
                     value={f.field}
                     onChange={(e) => updateJoinFilter(i, k, 'field', e.target.value)}
@@ -1445,14 +1641,11 @@ function ReportBuilderInner() {
                       style={{ marginLeft: '0.5rem' }}
                     />
                   )}
-                  <input
-                    type="number"
-                    value={f.close || 0}
-                    onChange={(e) =>
-                      updateJoinFilter(i, k, 'close', Number(e.target.value))
-                    }
-                    style={{ width: '3rem', marginLeft: '0.25rem' }}
-                  />
+                  {renderParenSelect(
+                    f.close,
+                    (v) => updateJoinFilter(i, k, 'close', v),
+                    'close',
+                  )}
                   <button
                     onClick={() => removeJoinFilter(i, k)}
                     style={{ marginLeft: '0.5rem' }}
@@ -1484,12 +1677,17 @@ function ReportBuilderInner() {
         {fields.map((f, i) => (
           <div
             key={i}
-            style={{ marginBottom: '0.5rem' }}
-            draggable
-            onDragStart={() => setDragIndex(i)}
+            style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}
             onDragOver={(e) => e.preventDefault()}
-            onDrop={() => handleFieldDrop(i)}
+            onDrop={() => handleDrop('fields', i)}
           >
+            <span
+              draggable
+              onDragStart={() => setDragItem({ type: 'fields', index: i })}
+              style={{ cursor: 'move', marginRight: '0.5rem' }}
+            >
+              ☰
+            </span>
             <select
               value={f.source}
               onChange={(e) => updateField(i, 'source', e.target.value)}
@@ -1643,7 +1841,29 @@ function ReportBuilderInner() {
             {f.source === 'field' && f.aggregate !== 'NONE' && (
               <div style={{ display: 'inline-block', marginLeft: '0.5rem' }}>
                 {(f.conditions || []).map((c, k) => (
-                  <div key={k} style={{ marginTop: '0.25rem' }}>
+                  <div
+                    key={k}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      marginTop: '0.25rem',
+                    }}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => handleDrop('fieldConditions', k, i)}
+                  >
+                    <span
+                      draggable
+                      onDragStart={() =>
+                        setDragItem({
+                          type: 'fieldConditions',
+                          fieldIndex: i,
+                          index: k,
+                        })
+                      }
+                      style={{ cursor: 'move', marginRight: '0.5rem' }}
+                    >
+                      ☰
+                    </span>
                     {k > 0 && (
                       <select
                         value={c.connector}
@@ -1655,6 +1875,11 @@ function ReportBuilderInner() {
                         <option value="AND">AND</option>
                         <option value="OR">OR</option>
                       </select>
+                    )}
+                    {renderParenSelect(
+                      c.open,
+                      (v) => updateFieldCondition(i, k, 'open', v),
+                      'open',
                     )}
                     <select
                       value={c.table}
@@ -1742,6 +1967,11 @@ function ReportBuilderInner() {
                         style={{ marginLeft: '0.5rem' }}
                       />
                     )}
+                    {renderParenSelect(
+                      c.close,
+                      (v) => updateFieldCondition(i, k, 'close', v),
+                      'close',
+                    )}
                     <button
                       onClick={() => removeFieldCondition(i, k)}
                       style={{ marginLeft: '0.5rem' }}
@@ -1767,7 +1997,19 @@ function ReportBuilderInner() {
       <section>
         <h3>Group By</h3>
         {groups.map((g, i) => (
-          <div key={i} style={{ marginBottom: '0.5rem' }}>
+          <div
+            key={i}
+            style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => handleDrop('groups', i)}
+          >
+            <span
+              draggable
+              onDragStart={() => setDragItem({ type: 'groups', index: i })}
+              style={{ cursor: 'move', marginRight: '0.5rem' }}
+            >
+              ☰
+            </span>
             <select
               value={g.table}
               onChange={(e) => updateGroup(i, 'table', e.target.value)}
@@ -1803,7 +2045,19 @@ function ReportBuilderInner() {
       <section>
         <h3>Having</h3>
         {having.map((h, i) => (
-          <div key={i} style={{ marginBottom: '0.5rem' }}>
+          <div
+            key={i}
+            style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => handleDrop('having', i)}
+          >
+            <span
+              draggable
+              onDragStart={() => setDragItem({ type: 'having', index: i })}
+              style={{ cursor: 'move', marginRight: '0.5rem' }}
+            >
+              ☰
+            </span>
             {i > 0 && (
               <select
                 value={h.connector}
@@ -1814,12 +2068,11 @@ function ReportBuilderInner() {
                 <option value="OR">OR</option>
               </select>
             )}
-            <input
-              type="number"
-              value={h.open || 0}
-              onChange={(e) => updateHaving(i, 'open', Number(e.target.value))}
-              style={{ width: '3rem', marginRight: '0.25rem' }}
-            />
+            {renderParenSelect(
+              h.open,
+              (v) => updateHaving(i, 'open', v),
+              'open',
+            )}
             <select
               value={h.source}
               onChange={(e) => updateHaving(i, 'source', e.target.value)}
@@ -1929,12 +2182,11 @@ function ReportBuilderInner() {
                 style={{ marginLeft: '0.5rem' }}
               />
             )}
-            <input
-              type="number"
-              value={h.close || 0}
-              onChange={(e) => updateHaving(i, 'close', Number(e.target.value))}
-              style={{ width: '3rem', marginLeft: '0.25rem' }}
-            />
+            {renderParenSelect(
+              h.close,
+              (v) => updateHaving(i, 'close', v),
+              'close',
+            )}
             <button
               onClick={() => removeHaving(i)}
               style={{ marginLeft: '0.5rem' }}
@@ -1944,14 +2196,6 @@ function ReportBuilderInner() {
           </div>
         ))}
         <button onClick={addHaving}>Add Having</button>
-      </section>
-
-      <section>
-        <h3>Union Queries</h3>
-        <div style={{ marginBottom: '0.5rem' }}>
-          Added: {unionQueries.length}
-        </div>
-        <button onClick={addUnionQuery}>Add UNION</button>
       </section>
 
       <section>
@@ -2004,7 +2248,19 @@ function ReportBuilderInner() {
       <section>
         <h3>Conditions</h3>
         {conditions.map((c, i) => (
-          <div key={i} style={{ marginBottom: '0.5rem' }}>
+          <div
+            key={i}
+            style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => handleDrop('conditions', i)}
+          >
+            <span
+              draggable
+              onDragStart={() => setDragItem({ type: 'conditions', index: i })}
+              style={{ cursor: 'move', marginRight: '0.5rem' }}
+            >
+              ☰
+            </span>
             {i > 0 && (
               <select
                 value={c.connector}
@@ -2017,27 +2273,21 @@ function ReportBuilderInner() {
             )}
             {c.raw ? (
               <>
-                <input
-                  type="number"
-                  value={c.open || 0}
-                  onChange={(e) =>
-                    updateCondition(i, 'open', Number(e.target.value))
-                  }
-                  style={{ width: '3rem', marginRight: '0.25rem' }}
-                />
+                {renderParenSelect(
+                  c.open,
+                  (v) => updateCondition(i, 'open', v),
+                  'open',
+                )}
                 <input
                   value={c.raw}
                   onChange={(e) => updateCondition(i, 'raw', e.target.value)}
                   style={{ width: '50%' }}
                 />
-                <input
-                  type="number"
-                  value={c.close || 0}
-                  onChange={(e) =>
-                    updateCondition(i, 'close', Number(e.target.value))
-                  }
-                  style={{ width: '3rem', marginLeft: '0.25rem' }}
-                />
+                {renderParenSelect(
+                  c.close,
+                  (v) => updateCondition(i, 'close', v),
+                  'close',
+                )}
                 <button
                   onClick={() => removeCondition(i)}
                   style={{ marginLeft: '0.5rem' }}
@@ -2047,14 +2297,11 @@ function ReportBuilderInner() {
               </>
             ) : (
               <>
-                <input
-                  type="number"
-                  value={c.open || 0}
-                  onChange={(e) =>
-                    updateCondition(i, 'open', Number(e.target.value))
-                  }
-                  style={{ width: '3rem', marginRight: '0.25rem' }}
-                />
+                {renderParenSelect(
+                  c.open,
+                  (v) => updateCondition(i, 'open', v),
+                  'open',
+                )}
                 <select
                   value={c.table}
                   onChange={(e) => updateCondition(i, 'table', e.target.value)}
@@ -2087,14 +2334,11 @@ function ReportBuilderInner() {
                     </option>
                   ))}
                 </select>
-                <input
-                  type="number"
-                  value={c.close || 0}
-                  onChange={(e) =>
-                    updateCondition(i, 'close', Number(e.target.value))
-                  }
-                  style={{ width: '3rem', marginLeft: '0.25rem' }}
-                />
+                {renderParenSelect(
+                  c.close,
+                  (v) => updateCondition(i, 'close', v),
+                  'close',
+                )}
                 <button
                   onClick={() => removeCondition(i)}
                   style={{ marginLeft: '0.5rem' }}
@@ -2111,6 +2355,34 @@ function ReportBuilderInner() {
         <button onClick={addRawCondition} style={{ marginLeft: '0.5rem' }}>
           Add Raw Condition
         </button>
+        <div style={{ marginTop: '0.5rem' }}>
+          <span style={{ marginRight: '0.5rem' }}>
+            Added: {Math.max(0, unionQueries.length - 1)}
+          </span>
+          <select
+            value={unionType}
+            onChange={(e) => setUnionType(e.target.value)}
+            style={{ marginRight: '0.5rem' }}
+          >
+            <option value="UNION">UNION</option>
+            <option value="UNION ALL">UNION ALL</option>
+          </select>
+          <button onClick={addUnionQuery} style={{ marginRight: '0.5rem' }}>
+            Add UNION
+          </button>
+          {unionQueries.map((_, idx) => (
+            <button
+              key={idx}
+              onClick={() => switchUnionQuery(idx)}
+              style={{
+                marginRight: '0.25rem',
+                fontWeight: currentUnionIndex === idx ? 'bold' : undefined,
+              }}
+            >
+              {idx + 1}
+            </button>
+          ))}
+        </div>
       </section>
 
       <section style={{ marginTop: '1rem' }}>
