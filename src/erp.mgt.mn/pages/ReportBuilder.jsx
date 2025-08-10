@@ -405,7 +405,7 @@ function ReportBuilderInner() {
   function addCalcPart(fIndex) {
     const parts = fields[fIndex].calcParts || [];
     const part = {
-      source: 'alias',
+      source: 'none',
       alias: '',
       table: '',
       field: '',
@@ -426,9 +426,16 @@ function ReportBuilderInner() {
         if (key === 'source') {
           if (value === 'alias') {
             next.alias = fields.slice(0, fIndex).find((pf) => pf.alias)?.alias || '';
-          } else {
+            next.table = '';
+            next.field = '';
+          } else if (value === 'field') {
             next.table = fromTable;
             next.field = (tableFields[fromTable] || [])[0] || '';
+            next.alias = '';
+          } else {
+            next.alias = '';
+            next.table = '';
+            next.field = '';
           }
         }
         if (key === 'table') ensureFields(value);
@@ -821,7 +828,9 @@ function ReportBuilderInner() {
     const fieldExprMap = {};
     const select = fs
       .filter((f) =>
-        f.source === 'alias' ? f.baseAlias || f.calcParts?.length : f.field,
+        f.source === 'alias'
+          ? f.baseAlias || f.calcParts?.some((p) => p.source !== 'none')
+          : f.field,
       )
       .map((f) => {
         if (
@@ -841,7 +850,9 @@ function ReportBuilderInner() {
             const seg =
               p.source === 'alias'
                 ? p.alias
-                : `${aliases[p.table]}.${p.field}`;
+                : p.source === 'field'
+                ? `${aliases[p.table]}.${p.field}`
+                : '';
             if (!seg) return;
             if (
               p.source === 'field' &&
@@ -1151,7 +1162,10 @@ function ReportBuilderInner() {
       procName,
       fromTable: first.fromTable,
       joins: first.joins,
-      fields: first.fields,
+      fields: first.fields.map((f) => ({
+        ...f,
+        calcParts: (f.calcParts || []).filter((p) => p.source !== 'none'),
+      })),
       groups: first.groups,
       having: first.having,
       params,
@@ -1876,6 +1890,7 @@ function ReportBuilderInner() {
                     updateCalcPart(i, k, 'source', e.target.value)
                   }
                 >
+                  <option value="none">None</option>
                   <option value="field">Field</option>
                   <option value="alias">Alias</option>
                 </select>
@@ -1895,7 +1910,7 @@ function ReportBuilderInner() {
                       ) : null,
                     )}
                   </select>
-                ) : (
+                ) : p.source === 'field' ? (
                   <>
                     <select
                       value={p.table}
@@ -1924,7 +1939,7 @@ function ReportBuilderInner() {
                       ))}
                     </select>
                   </>
-                )}
+                ) : null}
                 <button
                   onClick={() => removeCalcPart(i, k)}
                   style={{ marginLeft: '0.5rem' }}
