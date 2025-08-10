@@ -107,7 +107,11 @@ function ReportBuilderInner() {
       try {
         const res = await fetch(`/api/report_builder/configs${query}`);
         const data = await res.json();
-        const list = data.names || [];
+        const list = prefix
+          ? (data.names || []).filter((n) =>
+              n.toLowerCase().includes(prefix.toLowerCase()),
+            )
+          : data.names || [];
         setSavedReports(list);
         setSelectedReport(list[0] || '');
       } catch (err) {
@@ -116,7 +120,11 @@ function ReportBuilderInner() {
       try {
         const res = await fetch(`/api/report_builder/procedure-files${query}`);
         const data = await res.json();
-        const list = data.names || [];
+        const list = prefix
+          ? (data.names || []).filter((n) =>
+              n.toLowerCase().includes(prefix.toLowerCase()),
+            )
+          : data.names || [];
         setProcFiles(list);
         setSelectedProcFile(list[0] || '');
       } catch (err) {
@@ -125,7 +133,11 @@ function ReportBuilderInner() {
       try {
         const res = await fetch(`/api/report_builder/procedures${query}`);
         const data = await res.json();
-        const list = data.names || [];
+        const list = prefix
+          ? (data.names || []).filter((n) =>
+              n.toLowerCase().includes(prefix.toLowerCase()),
+            )
+          : data.names || [];
         setDbProcedures(list);
         setSelectedDbProcedure(list[0] || '');
       } catch (err) {
