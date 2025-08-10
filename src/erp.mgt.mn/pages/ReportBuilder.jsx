@@ -2455,6 +2455,7 @@ function ReportBuilderInner() {
               onChange={(e) => setProcName(e.target.value)}
               style={{ width: '50%' }}
             />
+            {generalConfig?.general?.reportProcSuffix || ''}
           </div>
         </label>
       </section>
