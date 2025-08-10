@@ -1069,6 +1069,7 @@ function ReportBuilderInner() {
   async function handlePostProc() {
     if (!procSql) return;
     if (!window.confirm('POST stored procedure to database?')) return;
+    const prefix = generalConfig?.general?.reportProcPrefix || '';
     try {
       const res = await fetch(
         `/api/report_builder/procedures${
@@ -1082,13 +1083,12 @@ function ReportBuilderInner() {
       );
       if (!res.ok) throw new Error('Save failed');
       try {
-      const listRes = await fetch(
-        `/api/report_builder/procedures${
-          prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''
-        }`,
-      );
+        const listRes = await fetch(
+          `/api/report_builder/procedures${
+            prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''
+          }`,
+        );
         const data = await listRes.json();
-        const prefix = generalConfig?.general?.reportProcPrefix || '';
         const list = prefix
           ? (data.names || []).filter((n) =>
               n.toLowerCase().includes(prefix.toLowerCase()),
