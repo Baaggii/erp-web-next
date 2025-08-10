@@ -4,7 +4,7 @@ import fs from 'fs/promises';
 import { requireAuth } from '../middlewares/auth.js';
 import {
   listDatabaseTables,
-  listTableColumns,
+  listTableColumnsDetailed,
   saveStoredProcedure,
   saveView,
 } from '../../db/index.js';
@@ -28,7 +28,7 @@ router.get('/fields', requireAuth, async (req, res, next) => {
   try {
     const { table } = req.query;
     if (!table) return res.status(400).json({ message: 'table required' });
-    const fields = await listTableColumns(table);
+    const fields = await listTableColumnsDetailed(table);
     res.json({ fields });
   } catch (err) {
     next(err);
