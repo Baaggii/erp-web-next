@@ -320,7 +320,20 @@ export default function ImageManagement() {
 
   async function saveTables() {
     try {
-      persistAll();
+      const data = buildSession();
+      localStorage.setItem(FOLDER_STATE_KEY, JSON.stringify(data));
+      saveDirHandle(FOLDER_STATE_KEY, dirHandleRef.current);
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: 'application/json',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'tables.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
       addToast('Tables saved locally', 'success');
     } catch (err) {
       console.error(err);
