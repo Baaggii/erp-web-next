@@ -42,3 +42,15 @@ test('buildReportSql allows parenthesized conditions', () => {
   });
   assert.ok(/\(t.branchid = :bid\s*OR t.alt_branch = :bid\)/.test(sql));
 });
+
+test('buildReportSql handles recursive aliases without hanging', () => {
+  const sql = buildReportSql({
+    from: { table: 'tbl', alias: 't' },
+    select: [
+      { expr: 'b', alias: 'a' },
+      { expr: 'a', alias: 'b' },
+      { expr: 'a', alias: 'c' },
+    ],
+  });
+  assert.ok(sql.includes('SELECT'));
+});
