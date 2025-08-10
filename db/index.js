@@ -574,7 +574,7 @@ export async function listTableColumns(tableName) {
 
 export async function listTableColumnsDetailed(tableName) {
   const [rows] = await pool.query(
-    `SELECT COLUMN_NAME, COLUMN_TYPE
+    `SELECT COLUMN_NAME, COLUMN_TYPE, DATA_TYPE
        FROM information_schema.COLUMNS
       WHERE TABLE_SCHEMA = DATABASE()
         AND TABLE_NAME = ?
@@ -583,6 +583,7 @@ export async function listTableColumnsDetailed(tableName) {
   );
   return rows.map((r) => ({
     name: r.COLUMN_NAME,
+    type: r.DATA_TYPE,
     enumValues: /^enum\(/i.test(r.COLUMN_TYPE)
       ? r.COLUMN_TYPE
           .slice(5, -1)

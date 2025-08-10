@@ -3,6 +3,7 @@ import buildStoredProcedure from '../utils/buildStoredProcedure.js';
 import buildReportSql from '../utils/buildReportSql.js';
 import ErrorBoundary from '../components/ErrorBoundary.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import formatSqlValue from '../utils/formatSqlValue.js';
 
 const SESSION_PARAMS = [
   { name: 'session_branch_id', type: 'INT' },
@@ -20,6 +21,7 @@ function ReportBuilderInner() {
   const [tables, setTables] = useState([]); // list of table names
   const [tableFields, setTableFields] = useState({}); // { tableName: [field, ...] }
   const [fieldEnums, setFieldEnums] = useState({}); // { tableName: { field: [enum] } }
+  const [fieldTypes, setFieldTypes] = useState({}); // { tableName: { field: type } }
 
   const [procName, setProcName] = useState('');
   const [fromTable, setFromTable] = useState('');
@@ -145,11 +147,15 @@ function ReportBuilderInner() {
       const data = await res.json();
       const names = (data.fields || []).map((f) => f.name || f);
       const enums = {};
+      const types = {};
       (data.fields || []).forEach((f) => {
-        enums[f.name || f] = f.enumValues || [];
+        const key = f.name || f;
+        enums[key] = f.enumValues || [];
+        types[key] = f.type || '';
       });
       setTableFields((prev) => ({ ...prev, [table]: names }));
       setFieldEnums((prev) => ({ ...prev, [table]: enums }));
+      setFieldTypes((prev) => ({ ...prev, [table]: types }));
     } catch (err) {
       console.error(err);
     }
@@ -777,11 +783,19 @@ function ReportBuilderInner() {
     const usedAliases = new Set(Object.values(aliases));
     let nextAlias = 1;
 
-    function buildTableFilterSql(filters) {
+    function formatValue(val, table, field) {
+      const type = (fieldTypes[table] || {})[field] || '';
+      return formatSqlValue(val, type);
+    }
+
+    function buildTableFilterSql(filters, table) {
       return (filters || [])
         .filter((f) => f.field && (f.valueType === 'param' ? f.param : f.value))
         .map((f, idx) => {
-          const right = f.valueType === 'param' ? `:${f.param}` : f.value;
+          const right =
+            f.valueType === 'param'
+              ? `:${f.param}`
+              : formatValue(f.value, table, f.field);
           const connector = idx > 0 ? ` ${f.connector} ` : '';
           const open = '('.repeat(f.open || 0);
           const close = ')'.repeat(f.close || 0);
@@ -812,7 +826,7 @@ function ReportBuilderInner() {
           .join('');
         const on = conds.length > 1 ? `(${onInner})` : onInner;
         const tablePart = j.filters?.length
-          ? `(SELECT * FROM ${j.table} WHERE ${buildTableFilterSql(j.filters)})`
+          ? `(SELECT * FROM ${j.table} WHERE ${buildTableFilterSql(j.filters, j.table)})`
           : j.table;
         return {
           table: tablePart,
@@ -895,7 +909,10 @@ function ReportBuilderInner() {
                     throw new Error(`Table ${c.table} is not joined`);
                   }
                   const connector = idx > 0 ? ` ${c.connector} ` : '';
-                  const right = c.valueType === 'param' ? `:${c.param}` : c.value;
+                  const right =
+                    c.valueType === 'param'
+                      ? `:${c.param}`
+                      : formatValue(c.value, c.table, c.field);
                   const open = '('.repeat(c.open || 0);
                   const close = ')'.repeat(c.close || 0);
                   return (
@@ -920,7 +937,10 @@ function ReportBuilderInner() {
                   throw new Error(`Table ${c.table} is not joined`);
                 }
                 const connector = idx > 0 ? ` ${c.connector} ` : '';
-                const right = c.valueType === 'param' ? `:${c.param}` : c.value;
+                const right =
+                  c.valueType === 'param'
+                    ? `:${c.param}`
+                    : formatValue(c.value, c.table, c.field);
                 const open = '('.repeat(c.open || 0);
                 const close = ')'.repeat(c.close || 0);
                 return (
@@ -943,7 +963,7 @@ function ReportBuilderInner() {
       });
 
     const fromTableSql = ff.length
-      ? `(SELECT * FROM ${ft} WHERE ${buildTableFilterSql(ff)})`
+      ? `(SELECT * FROM ${ft} WHERE ${buildTableFilterSql(ff, ft)})`
       : ft;
 
     const where = cs
@@ -985,7 +1005,10 @@ function ReportBuilderInner() {
         ) {
           throw new Error(`Table ${h.table} is not joined`);
         }
-        const right = h.valueType === 'param' ? `:${h.param}` : h.value;
+        const right =
+          h.valueType === 'param'
+            ? `:${h.param}`
+            : formatValue(h.value, h.table, h.field);
         return {
           expr: `${left} ${h.operator} ${right}`,
           connector: h.connector,
