@@ -107,7 +107,9 @@ function ReportBuilderInner() {
         const res = await fetch('/api/report_builder/configs');
         const data = await res.json();
         const list = prefix
-          ? (data.names || []).filter((n) => n.includes(prefix))
+          ? (data.names || []).filter((n) =>
+              n.toLowerCase().includes(prefix.toLowerCase()),
+            )
           : data.names || [];
         setSavedReports(list);
         setSelectedReport(list[0] || '');
@@ -118,7 +120,9 @@ function ReportBuilderInner() {
         const res = await fetch('/api/report_builder/procedure-files');
         const data = await res.json();
         const list = prefix
-          ? (data.names || []).filter((n) => n.includes(prefix))
+          ? (data.names || []).filter((n) =>
+              n.toLowerCase().includes(prefix.toLowerCase()),
+            )
           : data.names || [];
         setProcFiles(list);
         setSelectedProcFile(list[0] || '');
@@ -133,7 +137,9 @@ function ReportBuilderInner() {
         );
         const data = await res.json();
         const list = prefix
-          ? (data.names || []).filter((n) => n.includes(prefix))
+          ? (data.names || []).filter((n) =>
+              n.toLowerCase().includes(prefix.toLowerCase()),
+            )
           : data.names || [];
         setDbProcedures(list);
         setSelectedDbProcedure(list[0] || '');
@@ -1051,7 +1057,9 @@ function ReportBuilderInner() {
         const data = await listRes.json();
         const prefix = generalConfig?.general?.reportProcPrefix || '';
         const list = prefix
-          ? (data.names || []).filter((n) => n.includes(prefix))
+          ? (data.names || []).filter((n) =>
+              n.toLowerCase().includes(prefix.toLowerCase()),
+            )
           : data.names || [];
         setDbProcedures(list);
         setSelectedDbProcedure(list[0] || '');
@@ -1155,7 +1163,9 @@ function ReportBuilderInner() {
       const listRes = await fetch('/api/report_builder/configs');
       const listData = await listRes.json();
       const list = prefix
-        ? (listData.names || []).filter((n) => n.includes(prefix))
+        ? (listData.names || []).filter((n) =>
+            n.toLowerCase().includes(prefix.toLowerCase()),
+          )
         : listData.names || [];
       setSavedReports(list);
       setSelectedReport(name);
@@ -1290,7 +1300,9 @@ function ReportBuilderInner() {
       const listRes = await fetch('/api/report_builder/procedure-files');
       const listData = await listRes.json();
       const list = prefix
-        ? (listData.names || []).filter((n) => n.includes(prefix))
+        ? (listData.names || []).filter((n) =>
+            n.toLowerCase().includes(prefix.toLowerCase()),
+          )
         : listData.names || [];
       setProcFiles(list);
       setSelectedProcFile(name);
