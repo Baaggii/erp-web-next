@@ -1315,7 +1315,33 @@ function ReportBuilderInner() {
   }
 
   function handleParseSql() {
-    setProcSql(procFileText);
+    const sql = procFileText || '';
+    setProcSql(sql);
+    const nameMatch = sql.match(/CREATE\s+PROCEDURE\s+`?([^`(]+)`?\s*\(/i);
+    if (nameMatch) {
+      const prefix = generalConfig?.general?.reportProcPrefix || '';
+      let name = nameMatch[1];
+      if (prefix && name.toLowerCase().startsWith(prefix.toLowerCase())) {
+        name = name.slice(prefix.length);
+      }
+      setProcName(name);
+    }
+    const paramsMatch = sql.match(/CREATE\s+PROCEDURE[\s\S]*?\(([^)]*)\)/i);
+    if (paramsMatch) {
+      const paramLines = paramsMatch[1]
+        .split(',')
+        .map((l) => l.trim())
+        .filter(Boolean);
+      const parsed = paramLines
+        .map((line) => {
+          const m = line.match(/IN\s+([\w]+)\s+([\w()]+)/i);
+          return m ? { name: m[1], type: m[2] } : null;
+        })
+        .filter(Boolean);
+      setParams(parsed);
+    } else {
+      setParams([]);
+    }
   }
 
   if (loading) {
