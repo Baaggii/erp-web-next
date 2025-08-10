@@ -13,6 +13,7 @@ const PARAM_TYPES = ['INT', 'DATE', 'VARCHAR(50)', 'DECIMAL(10,2)'];
 const AGGREGATES = ['NONE', 'SUM', 'COUNT', 'MAX', 'MIN'];
 const OPERATORS = ['=', '>', '<', '>=', '<=', '<>'];
 const CALC_OPERATORS = ['+', '-', '*', '/'];
+const PAREN_OPTIONS = [0, 1, 2, 3];
 
 function ReportBuilderInner() {
   const [tables, setTables] = useState([]); // list of table names
@@ -29,7 +30,8 @@ function ReportBuilderInner() {
   const [params, setParams] = useState([]); // {name,type,source}
   const [conditions, setConditions] = useState([]); // {table,field,param,connector}
   const [fromFilters, setFromFilters] = useState([]); // {field,operator,valueType,param,value,connector,open,close}
-  const [unionQueries, setUnionQueries] = useState([]); // array of prior query states
+  const [unionQueries, setUnionQueries] = useState([]); // {unionType, ...queryState}
+  const [unionType, setUnionType] = useState('UNION');
   const [selectSql, setSelectSql] = useState('');
   const [viewSql, setViewSql] = useState('');
   const [procSql, setProcSql] = useState('');
@@ -144,6 +146,26 @@ function ReportBuilderInner() {
   }, [fields]);
 
   const availableTables = [fromTable, ...joins.map((j) => j.table)].filter(Boolean);
+
+  function renderParenSelect(value, onChange, side) {
+    return (
+      <select
+        value={value || 0}
+        onChange={(e) => onChange(Number(e.target.value))}
+        style={{
+          width: '3rem',
+          marginRight: side === 'open' ? '0.25rem' : undefined,
+          marginLeft: side === 'close' ? '0.25rem' : undefined,
+        }}
+      >
+        {PAREN_OPTIONS.map((n) => (
+          <option key={n} value={n}>
+            {side === 'open' ? '('.repeat(n) : ')'.repeat(n)}
+          </option>
+        ))}
+      </select>
+    );
+  }
 
   function addJoin() {
     const remaining = tables.filter((t) => t !== fromTable);
@@ -306,6 +328,8 @@ function ReportBuilderInner() {
       value: '',
       param: params[0]?.name || '',
       connector: 'AND',
+      open: 0,
+      close: 0,
     };
     const updated = fields.map((f, i) =>
       i === fIndex ? { ...f, conditions: [...(f.conditions || []), newCond] } : f,
@@ -547,6 +571,7 @@ function ReportBuilderInner() {
 
   function addUnionQuery() {
     const snapshot = {
+      unionType,
       fromTable,
       joins,
       fields,
@@ -562,6 +587,7 @@ function ReportBuilderInner() {
     setHaving([]);
     setConditions([]);
     setFromFilters([]);
+    setUnionType('UNION');
   }
 
   function addJoinFilter(jIndex) {
@@ -702,9 +728,11 @@ function ReportBuilderInner() {
                   }
                   const connector = idx > 0 ? ` ${c.connector} ` : '';
                   const right = c.valueType === 'param' ? `:${c.param}` : c.value;
+                  const open = '('.repeat(c.open || 0);
+                  const close = ')'.repeat(c.close || 0);
                   return (
                     connector +
-                    `(${aliases[c.table]}.${c.field} ${c.operator} ${right})`
+                    `${open}(${aliases[c.table]}.${c.field} ${c.operator} ${right})${close}`
                   );
                 })
                 .join('');
@@ -725,9 +753,11 @@ function ReportBuilderInner() {
                 }
                 const connector = idx > 0 ? ` ${c.connector} ` : '';
                 const right = c.valueType === 'param' ? `:${c.param}` : c.value;
+                const open = '('.repeat(c.open || 0);
+                const close = ')'.repeat(c.close || 0);
                 return (
                   connector +
-                  `(${aliases[c.table]}.${c.field} ${c.operator} ${right})`
+                  `${open}(${aliases[c.table]}.${c.field} ${c.operator} ${right})${close}`
                 );
               })
               .join('');
@@ -805,12 +835,20 @@ function ReportBuilderInner() {
 
   function buildDefinition(includeCurrent = true) {
     const states = includeCurrent
-      ? [...unionQueries, { fromTable, joins, fields, groups, having, conditions, fromFilters }]
+      ? [
+          ...unionQueries,
+          { fromTable, joins, fields, groups, having, conditions, fromFilters, unionType: null },
+        ]
       : [...unionQueries];
-    const reports = states.map((s) => buildFromState(s));
-    const [first, ...rest] = reports;
+    const built = states.map((s) => buildFromState(s));
+    const first = built[0];
+    const unions = [];
+    for (let i = 1; i < built.length; i++) {
+      const type = states[i - 1].unionType || 'UNION';
+      unions.push({ ...built[i], type });
+    }
     return {
-      report: { ...first, unions: rest },
+      report: { ...first, unions },
       params: params.map(({ name, type }) => ({ name, type })),
     };
   }
@@ -1029,7 +1067,12 @@ function ReportBuilderInner() {
           })),
         );
         setGroups(data.groups || []);
-        setUnionQueries(data.unionQueries || []);
+        setUnionQueries(
+          (data.unionQueries || []).map((q) => ({
+            unionType: q.unionType || 'UNION',
+            ...q,
+          })),
+        );
         setHaving(
           (data.having || []).map((h) => ({
             connector: h.connector || 'AND',
@@ -1139,12 +1182,11 @@ function ReportBuilderInner() {
                 <option value="OR">OR</option>
               </select>
             )}
-            <input
-              type="number"
-              value={f.open || 0}
-              onChange={(e) => updateFromFilter(i, 'open', Number(e.target.value))}
-              style={{ width: '3rem', marginRight: '0.25rem' }}
-            />
+            {renderParenSelect(
+              f.open,
+              (v) => updateFromFilter(i, 'open', v),
+              'open',
+            )}
             <select
               value={f.field}
               onChange={(e) => updateFromFilter(i, 'field', e.target.value)}
@@ -1206,12 +1248,11 @@ function ReportBuilderInner() {
                 style={{ marginLeft: '0.5rem' }}
               />
             )}
-            <input
-              type="number"
-              value={f.close || 0}
-              onChange={(e) => updateFromFilter(i, 'close', Number(e.target.value))}
-              style={{ width: '3rem', marginLeft: '0.25rem' }}
-            />
+            {renderParenSelect(
+              f.close,
+              (v) => updateFromFilter(i, 'close', v),
+              'close',
+            )}
             <button
               onClick={() => removeFromFilter(i)}
               style={{ marginLeft: '0.5rem' }}
@@ -1286,14 +1327,11 @@ function ReportBuilderInner() {
                       <option value="OR">OR</option>
                     </select>
                   )}
-                  <input
-                    type="number"
-                    value={c.open || 0}
-                    onChange={(e) =>
-                      updateJoinCondition(i, k, 'open', Number(e.target.value))
-                    }
-                    style={{ width: '3rem', marginRight: '0.25rem' }}
-                  />
+                  {renderParenSelect(
+                    c.open,
+                    (v) => updateJoinCondition(i, k, 'open', v),
+                    'open',
+                  )}
                   <select
                     value={c.fromField}
                     onChange={(e) =>
@@ -1319,14 +1357,11 @@ function ReportBuilderInner() {
                       </option>
                     ))}
                   </select>
-                  <input
-                    type="number"
-                    value={c.close || 0}
-                    onChange={(e) =>
-                      updateJoinCondition(i, k, 'close', Number(e.target.value))
-                    }
-                    style={{ width: '3rem', marginLeft: '0.25rem' }}
-                  />
+                  {renderParenSelect(
+                    c.close,
+                    (v) => updateJoinCondition(i, k, 'close', v),
+                    'close',
+                  )}
                   <button
                     onClick={() => removeJoinCondition(i, k)}
                     style={{ marginLeft: '0.5rem' }}
@@ -1356,14 +1391,11 @@ function ReportBuilderInner() {
                       <option value="OR">OR</option>
                     </select>
                   )}
-                  <input
-                    type="number"
-                    value={f.open || 0}
-                    onChange={(e) =>
-                      updateJoinFilter(i, k, 'open', Number(e.target.value))
-                    }
-                    style={{ width: '3rem', marginRight: '0.25rem' }}
-                  />
+                  {renderParenSelect(
+                    f.open,
+                    (v) => updateJoinFilter(i, k, 'open', v),
+                    'open',
+                  )}
                   <select
                     value={f.field}
                     onChange={(e) => updateJoinFilter(i, k, 'field', e.target.value)}
@@ -1425,14 +1457,11 @@ function ReportBuilderInner() {
                       style={{ marginLeft: '0.5rem' }}
                     />
                   )}
-                  <input
-                    type="number"
-                    value={f.close || 0}
-                    onChange={(e) =>
-                      updateJoinFilter(i, k, 'close', Number(e.target.value))
-                    }
-                    style={{ width: '3rem', marginLeft: '0.25rem' }}
-                  />
+                  {renderParenSelect(
+                    f.close,
+                    (v) => updateJoinFilter(i, k, 'close', v),
+                    'close',
+                  )}
                   <button
                     onClick={() => removeJoinFilter(i, k)}
                     style={{ marginLeft: '0.5rem' }}
@@ -1636,6 +1665,11 @@ function ReportBuilderInner() {
                         <option value="OR">OR</option>
                       </select>
                     )}
+                    {renderParenSelect(
+                      c.open,
+                      (v) => updateFieldCondition(i, k, 'open', v),
+                      'open',
+                    )}
                     <select
                       value={c.table}
                       onChange={(e) =>
@@ -1722,6 +1756,11 @@ function ReportBuilderInner() {
                         style={{ marginLeft: '0.5rem' }}
                       />
                     )}
+                    {renderParenSelect(
+                      c.close,
+                      (v) => updateFieldCondition(i, k, 'close', v),
+                      'close',
+                    )}
                     <button
                       onClick={() => removeFieldCondition(i, k)}
                       style={{ marginLeft: '0.5rem' }}
@@ -1794,12 +1833,11 @@ function ReportBuilderInner() {
                 <option value="OR">OR</option>
               </select>
             )}
-            <input
-              type="number"
-              value={h.open || 0}
-              onChange={(e) => updateHaving(i, 'open', Number(e.target.value))}
-              style={{ width: '3rem', marginRight: '0.25rem' }}
-            />
+            {renderParenSelect(
+              h.open,
+              (v) => updateHaving(i, 'open', v),
+              'open',
+            )}
             <select
               value={h.source}
               onChange={(e) => updateHaving(i, 'source', e.target.value)}
@@ -1909,12 +1947,11 @@ function ReportBuilderInner() {
                 style={{ marginLeft: '0.5rem' }}
               />
             )}
-            <input
-              type="number"
-              value={h.close || 0}
-              onChange={(e) => updateHaving(i, 'close', Number(e.target.value))}
-              style={{ width: '3rem', marginLeft: '0.25rem' }}
-            />
+            {renderParenSelect(
+              h.close,
+              (v) => updateHaving(i, 'close', v),
+              'close',
+            )}
             <button
               onClick={() => removeHaving(i)}
               style={{ marginLeft: '0.5rem' }}
@@ -1924,14 +1961,6 @@ function ReportBuilderInner() {
           </div>
         ))}
         <button onClick={addHaving}>Add Having</button>
-      </section>
-
-      <section>
-        <h3>Union Queries</h3>
-        <div style={{ marginBottom: '0.5rem' }}>
-          Added: {unionQueries.length}
-        </div>
-        <button onClick={addUnionQuery}>Add UNION</button>
       </section>
 
       <section>
@@ -1997,27 +2026,21 @@ function ReportBuilderInner() {
             )}
             {c.raw ? (
               <>
-                <input
-                  type="number"
-                  value={c.open || 0}
-                  onChange={(e) =>
-                    updateCondition(i, 'open', Number(e.target.value))
-                  }
-                  style={{ width: '3rem', marginRight: '0.25rem' }}
-                />
+                {renderParenSelect(
+                  c.open,
+                  (v) => updateCondition(i, 'open', v),
+                  'open',
+                )}
                 <input
                   value={c.raw}
                   onChange={(e) => updateCondition(i, 'raw', e.target.value)}
                   style={{ width: '50%' }}
                 />
-                <input
-                  type="number"
-                  value={c.close || 0}
-                  onChange={(e) =>
-                    updateCondition(i, 'close', Number(e.target.value))
-                  }
-                  style={{ width: '3rem', marginLeft: '0.25rem' }}
-                />
+                {renderParenSelect(
+                  c.close,
+                  (v) => updateCondition(i, 'close', v),
+                  'close',
+                )}
                 <button
                   onClick={() => removeCondition(i)}
                   style={{ marginLeft: '0.5rem' }}
@@ -2027,14 +2050,11 @@ function ReportBuilderInner() {
               </>
             ) : (
               <>
-                <input
-                  type="number"
-                  value={c.open || 0}
-                  onChange={(e) =>
-                    updateCondition(i, 'open', Number(e.target.value))
-                  }
-                  style={{ width: '3rem', marginRight: '0.25rem' }}
-                />
+                {renderParenSelect(
+                  c.open,
+                  (v) => updateCondition(i, 'open', v),
+                  'open',
+                )}
                 <select
                   value={c.table}
                   onChange={(e) => updateCondition(i, 'table', e.target.value)}
@@ -2067,14 +2087,11 @@ function ReportBuilderInner() {
                     </option>
                   ))}
                 </select>
-                <input
-                  type="number"
-                  value={c.close || 0}
-                  onChange={(e) =>
-                    updateCondition(i, 'close', Number(e.target.value))
-                  }
-                  style={{ width: '3rem', marginLeft: '0.25rem' }}
-                />
+                {renderParenSelect(
+                  c.close,
+                  (v) => updateCondition(i, 'close', v),
+                  'close',
+                )}
                 <button
                   onClick={() => removeCondition(i)}
                   style={{ marginLeft: '0.5rem' }}
@@ -2091,6 +2108,20 @@ function ReportBuilderInner() {
         <button onClick={addRawCondition} style={{ marginLeft: '0.5rem' }}>
           Add Raw Condition
         </button>
+        <div style={{ marginTop: '0.5rem' }}>
+          <span style={{ marginRight: '0.5rem' }}>
+            Added: {unionQueries.length}
+          </span>
+          <select
+            value={unionType}
+            onChange={(e) => setUnionType(e.target.value)}
+            style={{ marginRight: '0.5rem' }}
+          >
+            <option value="UNION">UNION</option>
+            <option value="UNION ALL">UNION ALL</option>
+          </select>
+          <button onClick={addUnionQuery}>Add UNION</button>
+        </div>
       </section>
 
       <section style={{ marginTop: '1rem' }}>
