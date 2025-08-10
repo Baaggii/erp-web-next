@@ -1815,7 +1815,7 @@ function ReportBuilderInner() {
                 onChange={(e) => updateField(i, 'baseAlias', e.target.value)}
                 style={{ marginLeft: '0.5rem' }}
               >
-                <option value=""></option>
+                <option value="">None</option>
                 {fields.slice(0, i).map((pf) =>
                   pf.alias ? (
                     <option key={pf.alias} value={pf.alias}>
@@ -1902,6 +1902,7 @@ function ReportBuilderInner() {
                     }
                     style={{ marginLeft: '0.5rem' }}
                   >
+                    <option value="">None</option>
                     {fields.slice(0, i).map((pf) =>
                       pf.alias ? (
                         <option key={pf.alias} value={pf.alias}>
