@@ -1438,12 +1438,9 @@ export async function getProcedureRawRows(
           return Number.isNaN(num) ? mysql.escape(val) : String(num);
         }
         if (/date/.test(type)) {
-          const d = val instanceof Date ? val : new Date(val);
+          const d = new Date(val);
           if (!Number.isNaN(d.getTime())) {
-            const yyyy = d.getFullYear();
-            const mm = String(d.getMonth() + 1).padStart(2, '0');
-            const dd = String(d.getDate()).padStart(2, '0');
-            return `'${yyyy}-${mm}-${dd}'`;
+            return `'${d.toISOString().slice(0, 10)}'`;
           }
         }
         return mysql.escape(val);
