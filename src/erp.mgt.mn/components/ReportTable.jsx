@@ -32,16 +32,31 @@ function formatNumber(val) {
   return Number.isNaN(num) ? '' : numberFmt.format(num);
 }
 
-function formatCellValue(val) {
-  if (val === null || val === undefined) return '';
-  if (val instanceof Date) {
-    return val.toISOString().slice(0, 10);
+function normalizeDateInput(value, format) {
+  if (typeof value !== 'string') return value;
+  let v = value.trim().replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
+  if (/^\d{4}-\d{2}-\d{2}T/.test(v) && !isNaN(Date.parse(v))) {
+    const local = formatTimestamp(new Date(v));
+    return format === 'HH:MM:SS' ? local.slice(11, 19) : local.slice(0, 10);
   }
-  const str = String(val);
+  return v;
+}
+
+function formatCellValue(val, placeholder) {
+  if (val === null || val === undefined) return '';
+  let str;
+  if (val instanceof Date) {
+    str = formatTimestamp(val);
+  } else {
+    str = String(val);
+  }
+  if (placeholder) {
+    return normalizeDateInput(str, placeholder);
+  }
   if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
     return str.slice(0, 10);
   }
-  return val;
+  return str;
 }
 
 function isCountColumn(name) {
@@ -73,6 +88,19 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
 
   const columns = rows && rows.length ? Object.keys(rows[0]) : [];
   const columnHeaderMap = useHeaderMappings(columns);
+
+  const placeholders = useMemo(() => {
+    const map = {};
+    columns.forEach((c) => {
+      const lower = c.toLowerCase();
+      if (lower.includes('time') && !lower.includes('date')) {
+        map[c] = 'HH:MM:SS';
+      } else if (lower.includes('timestamp') || lower.includes('date')) {
+        map[c] = 'YYYY-MM-DD';
+      }
+    });
+    return map;
+  }, [columns]);
 
   const filtered = useMemo(() => {
     if (!search) return rows;
@@ -113,12 +141,14 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       const avg = getAverageLength(c, sorted);
       let w;
       if (avg <= 4) w = ch(Math.max(avg + 1, 5));
+      else if (placeholders[c] && placeholders[c].includes('YYYY-MM-DD'))
+        w = ch(12);
       else if (avg <= 10) w = ch(12);
       else w = ch(20);
       map[c] = Math.min(w, MAX_WIDTH);
     });
     return map;
-  }, [columns, sorted]);
+  }, [columns, sorted, placeholders]);
 
   const numericColumns = useMemo(
     () =>
@@ -154,6 +184,19 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
 
   const modalHeaderMap = useHeaderMappings(modalColumns);
 
+  const modalPlaceholders = useMemo(() => {
+    const map = {};
+    modalColumns.forEach((c) => {
+      const lower = c.toLowerCase();
+      if (lower.includes('time') && !lower.includes('date')) {
+        map[c] = 'HH:MM:SS';
+      } else if (lower.includes('timestamp') || lower.includes('date')) {
+        map[c] = 'YYYY-MM-DD';
+      }
+    });
+    return map;
+  }, [modalColumns]);
+
   const modalAlign = useMemo(() => {
     const map = {};
     if (!txnInfo || !txnInfo.data) return map;
@@ -171,12 +214,14 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       const avg = getAverageLength(c, txnInfo.data);
       let w;
       if (avg <= 4) w = ch(Math.max(avg + 1, 5));
+      else if (modalPlaceholders[c] && modalPlaceholders[c].includes('YYYY-MM-DD'))
+        w = ch(12);
       else if (avg <= 10) w = ch(12);
       else w = ch(20);
       map[c] = Math.min(w, MAX_WIDTH);
     });
     return map;
-  }, [modalColumns, txnInfo]);
+  }, [modalColumns, txnInfo, modalPlaceholders]);
 
   useEffect(() => {
     if (procedure) {
@@ -211,7 +256,6 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       }),
     );
     const firstField = columns[0];
-    const displayValue = row[firstField];
 
     let idx = 0;
     let groupField = columns[idx];
@@ -228,37 +272,33 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       groupValue = row[groupField];
     }
 
-    if (groupValue instanceof Date) {
-      groupValue = groupValue.toISOString().slice(0, 10);
-    } else if (
-      typeof groupValue === 'string' &&
-      /^\d{4}-\d{2}-\d{2}/.test(groupValue)
-    ) {
-      groupValue = groupValue.slice(0, 10);
-    } else {
-      const parsed = Number(groupValue);
-      if (!Number.isNaN(parsed)) {
-        groupValue = parsed;
-      }
+    if (placeholders[groupField]) {
+      groupValue = formatCellValue(groupValue, placeholders[groupField]);
+    } else if (numericColumns.includes(groupField)) {
+      const parsed = Number(String(groupValue).replace(',', '.'));
+      if (!Number.isNaN(parsed)) groupValue = parsed;
     }
 
     const allConditions = [];
-    for (const field of columns) {
+    for (let i = 0; i < columns.length; i++) {
+      const field = columns[i];
       const val = row[field];
       if (
         !field ||
-        field.toLowerCase() === 'modal' ||
-        String(val).toLowerCase() === 'modal' ||
-        isCountColumn(field)
+        val === undefined ||
+        val === null ||
+        val === '' ||
+        isCountColumn(field) ||
+        (i !== 0 &&
+          (field.toLowerCase() === 'modal' ||
+            String(val).toLowerCase() === 'modal'))
       ) {
         continue;
       }
       let outVal = val;
-      if (val instanceof Date) {
-        outVal = val.toISOString().slice(0, 10);
-      } else if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}/.test(val)) {
-        outVal = val.slice(0, 10);
-      } else {
+      if (placeholders[field]) {
+        outVal = formatCellValue(val, placeholders[field]);
+      } else if (numericColumns.includes(field)) {
         const numVal = Number(String(val).replace(',', '.'));
         if (!Number.isNaN(numVal)) outVal = numVal;
       }
@@ -267,6 +307,8 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     const extraConditions = allConditions.filter(
       (c) => c.field !== groupField && c.field !== col,
     );
+    const fallback = allConditions.find((c) => c.field === firstField);
+    if (fallback) extraConditions.unshift(fallback);
     const payload = {
       name: procedure,
       column: col,
@@ -298,7 +340,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
           const entries = Object.entries(r).filter(([k]) => !isCountColumn(k));
           return Object.fromEntries(entries);
         });
-        if (idx > 0 && !isCountColumn(firstField)) {
+        if (idx > 0 && firstField && !isCountColumn(firstField)) {
           const replaceVal =
             firstField.toLowerCase() === 'modal' ? groupValue : displayValue;
           outRows = outRows.map((r) => ({ ...r, [firstField]: replaceVal }));
@@ -553,7 +595,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                     >
                       {numericColumns.includes(col)
                         ? formatNumber(row[col])
-                        : formatCellValue(row[col])}
+                        : formatCellValue(row[col], placeholders[col])}
                     </td>
                   );
                 })}
@@ -694,7 +736,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                         >
                           {typeof r[c] === 'number'
                             ? formatNumber(r[c])
-                            : formatCellValue(r[c])}
+                            : formatCellValue(r[c], modalPlaceholders[c])}
                         </td>
                       ))}
                     </tr>
