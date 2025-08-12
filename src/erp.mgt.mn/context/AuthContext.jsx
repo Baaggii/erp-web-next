@@ -9,6 +9,12 @@ export const AuthContext = createContext({
   setUser: () => {},
   company: null,
   setCompany: () => {},
+  session: null,
+  setSession: () => {},
+  userLevel: null,
+  setUserLevel: () => {},
+  permissions: null,
+  setPermissions: () => {},
 });
 
 export default function AuthContextProvider({ children }) {
@@ -16,6 +22,9 @@ export default function AuthContextProvider({ children }) {
   // state from an unauthenticated user (`null`).
   const [user, setUser] = useState(undefined);
   const [company, setCompany] = useState(null);
+  const [session, setSession] = useState(null);
+  const [userLevel, setUserLevel] = useState(null);
+  const [permissions, setPermissions] = useState(null);
 
   // Persist selected company across reloads
   useEffect(() => {
@@ -25,6 +34,20 @@ export default function AuthContextProvider({ children }) {
       try {
         trackSetState('AuthContext.setCompany');
         setCompany(JSON.parse(stored));
+      } catch {
+        // ignore parse errors
+      }
+    }
+    // Load stored session if available
+    const storedSession = localStorage.getItem('erp_session');
+    if (storedSession) {
+      try {
+        const parsed = JSON.parse(storedSession);
+        trackSetState('AuthContext.setSession');
+        setSession(parsed);
+        // For backward compatibility, also set company
+        trackSetState('AuthContext.setCompany');
+        setCompany((prev) => prev || parsed);
       } catch {
         // ignore parse errors
       }
@@ -40,6 +63,16 @@ export default function AuthContextProvider({ children }) {
     }
   }, [company]);
 
+  // Persist session across reloads
+  useEffect(() => {
+    debugLog('AuthContext: persist session');
+    if (session) {
+      localStorage.setItem('erp_session', JSON.stringify(session));
+    } else {
+      localStorage.removeItem('erp_session');
+    }
+  }, [session]);
+
   // On mount, attempt to load the current profile (if a cookie is present)
   useEffect(() => {
     debugLog('AuthContext: load profile');
@@ -52,16 +85,43 @@ export default function AuthContextProvider({ children }) {
         if (res.ok) {
           const data = await res.json();
           trackSetState('AuthContext.setUser');
-          setUser(data);
+          setUser(data.user ?? null);
+          trackSetState('AuthContext.setSession');
+          setSession(data.session ?? null);
+          trackSetState('AuthContext.setUserLevel');
+          setUserLevel(data.user_level ?? null);
+          trackSetState('AuthContext.setPermissions');
+          setPermissions(data.permissions ?? null);
+          // keep company for compatibility
+          if (data.session) {
+            trackSetState('AuthContext.setCompany');
+            setCompany(data.session);
+          }
         } else {
           // Not logged in or token expired
           trackSetState('AuthContext.setUser');
           setUser(null);
+          trackSetState('AuthContext.setSession');
+          setSession(null);
+          trackSetState('AuthContext.setUserLevel');
+          setUserLevel(null);
+          trackSetState('AuthContext.setPermissions');
+          setPermissions(null);
+          trackSetState('AuthContext.setCompany');
+          setCompany(null);
         }
       } catch (err) {
         console.error('Unable to fetch profile:', err);
         trackSetState('AuthContext.setUser');
         setUser(null);
+        trackSetState('AuthContext.setSession');
+        setSession(null);
+        trackSetState('AuthContext.setUserLevel');
+        setUserLevel(null);
+        trackSetState('AuthContext.setPermissions');
+        setPermissions(null);
+        trackSetState('AuthContext.setCompany');
+        setCompany(null);
       }
     }
 
@@ -72,6 +132,12 @@ export default function AuthContextProvider({ children }) {
     function handleLogout() {
       trackSetState('AuthContext.setUser');
       setUser(null);
+      trackSetState('AuthContext.setSession');
+      setSession(null);
+      trackSetState('AuthContext.setUserLevel');
+      setUserLevel(null);
+      trackSetState('AuthContext.setPermissions');
+      setPermissions(null);
       trackSetState('AuthContext.setCompany');
       setCompany(null);
     }
@@ -79,7 +145,21 @@ export default function AuthContextProvider({ children }) {
     return () => window.removeEventListener('auth:logout', handleLogout);
   }, []);
 
-  const value = useMemo(() => ({ user, setUser, company, setCompany }), [user, company]);
+  const value = useMemo(
+    () => ({
+      user,
+      setUser,
+      company,
+      setCompany,
+      session,
+      setSession,
+      userLevel,
+      setUserLevel,
+      permissions,
+      setPermissions,
+    }),
+    [user, company, session, userLevel, permissions],
+  );
 
   return (
     <AuthContext.Provider value={value}>

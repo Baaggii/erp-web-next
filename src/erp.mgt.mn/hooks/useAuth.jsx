@@ -1,14 +1,13 @@
 // src/erp.mgt.mn/hooks/useAuth.jsx
-import { useContext } from 'react';
-import { AuthContext } from '../context/AuthContext.jsx';
 import { API_BASE } from '../utils/apiBase.js';
 
 // src/erp.mgt.mn/hooks/useAuth.jsx
 
 /**
  * Performs a login request and sets an HttpOnly cookie on success.
+ * Returns the authenticated user profile, session info and permissions.
  * @param {{empid: string, password: string}} credentials - empid refers to the employee login ID
- * @returns {Promise<{id: number, empid: string, role: string}>}
+ * @returns {Promise<{user: object, session: object, user_level: number, permissions: object}>}
 */
 export async function login({ empid, password }) {
   let res;
@@ -55,7 +54,7 @@ export async function logout() {
 
 /**
  * Fetches current user profile if authenticated.
- * @returns {Promise<{id: number, empid: string, role: string}>}
+ * @returns {Promise<{user: object, session: object, user_level: number, permissions: object}>}
 */
 export async function fetchProfile() {
   const res = await fetch(`${API_BASE}/auth/me`, { credentials: 'include' });
