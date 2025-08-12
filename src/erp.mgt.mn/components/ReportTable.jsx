@@ -31,6 +31,18 @@ function formatNumber(val) {
   return Number.isNaN(num) ? '' : numberFmt.format(num);
 }
 
+function formatCellValue(val) {
+  if (val === null || val === undefined) return '';
+  if (val instanceof Date) {
+    return val.toISOString().slice(0, 10);
+  }
+  const str = String(val);
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+    return str.slice(0, 10);
+  }
+  return val;
+}
+
 export default function ReportTable({ procedure = '', params = {}, rows = [] }) {
   const { user, company } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
@@ -193,12 +205,18 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       }),
     );
     const firstField = columns[0];
+    let groupField = firstField;
+    let groupValue = row[firstField];
+    if (String(groupValue).toLowerCase() === 'modal' && columns.length > 1) {
+      groupField = columns[1];
+      groupValue = row[groupField];
+    }
     const payload = {
       name: procedure,
       column: col,
       params,
-      groupField: firstField,
-      groupValue: row[firstField],
+      groupField,
+      groupValue,
       session: {
         empid: user?.empid,
         company_id: company?.company_id,
@@ -219,11 +237,15 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
         return data;
       })
       .then((data) => {
+        let outRows = data.rows || [];
+        if (String(row[firstField]).toLowerCase() === 'modal') {
+          outRows = outRows.map((r) => ({ ...r, [firstField]: groupValue }));
+        }
         setTxnInfo({
           loading: false,
           col,
           value,
-          data: data.rows || [],
+          data: outRows,
           sql: data.sql || '',
           displayFields: Array.isArray(data.displayFields)
             ? data.displayFields
@@ -467,7 +489,9 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                       style={{ ...style, cursor: row[col] ? 'pointer' : 'default' }}
                       onClick={() => handleCellClick(col, row[col], row)}
                     >
-                      {numericColumns.includes(col) ? formatNumber(row[col]) : row[col]}
+                      {numericColumns.includes(col)
+                        ? formatNumber(row[col])
+                        : formatCellValue(row[col])}
                     </td>
                   );
                 })}
@@ -606,7 +630,9 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                             textOverflow: 'ellipsis',
                           }}
                         >
-                          {typeof r[c] === 'number' ? formatNumber(r[c]) : r[c]}
+                          {typeof r[c] === 'number'
+                            ? formatNumber(r[c])
+                            : formatCellValue(r[c])}
                         </td>
                       ))}
                     </tr>
