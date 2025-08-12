@@ -3,6 +3,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig, { updateCache } from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import Modal from './Modal.jsx';
+import formatTimestamp from '../utils/formatTimestamp.js';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -34,7 +35,7 @@ function formatNumber(val) {
 function formatCellValue(val) {
   if (val === null || val === undefined) return '';
   if (val instanceof Date) {
-    return val.toISOString().slice(0, 10);
+    return formatTimestamp(val).slice(0, 10);
   }
   const str = String(val);
   if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
