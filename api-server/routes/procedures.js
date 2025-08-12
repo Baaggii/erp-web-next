@@ -45,7 +45,15 @@ router.post('/', requireAuth, async (req, res, next) => {
 
 router.post('/raw', requireAuth, async (req, res, next) => {
   try {
-    const { name, params, column, groupField, groupValue, session } = req.body || {};
+    const {
+      name,
+      params,
+      column,
+      groupField,
+      groupValue,
+      extraConditions,
+      session,
+    } = req.body || {};
     if (!name || !column)
       return res.status(400).json({ message: 'name and column required' });
     const { rows, sql, original, file, displayFields } = await getProcedureRawRows(
@@ -54,6 +62,7 @@ router.post('/raw', requireAuth, async (req, res, next) => {
       column,
       groupField,
       groupValue,
+      Array.isArray(extraConditions) ? extraConditions : [],
       { ...(session || {}), empid: req.user?.empid },
     );
     res.json({ rows, sql, original, file, displayFields });
