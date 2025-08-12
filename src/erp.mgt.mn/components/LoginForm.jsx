@@ -2,6 +2,7 @@
 import React, { useState, useContext } from 'react';
 import { login } from '../hooks/useAuth.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
+import { refreshRolePermissions } from '../hooks/useRolePermissions.js';
 import { refreshCompanyModules } from '../hooks/useCompanyModules.js';
 import { refreshModules } from '../hooks/useModules.js';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
@@ -12,10 +13,9 @@ export default function LoginForm() {
   const [empid, setEmpid] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
-  const { setUser, setCompany, setSession, setUserLevel, setPermissions } =
-    useContext(AuthContext);
-  const [sessionChoices, setSessionChoices] = useState(null);
-  const [selectedSession, setSelectedSession] = useState('');
+  const { setUser, setCompany } = useContext(AuthContext);
+  const [companyChoices, setCompanyChoices] = useState(null);
+  const [selectedCompany, setSelectedCompany] = useState('');
   const navigate = useNavigate();
 
   async function handleSubmit(e) {
@@ -26,70 +26,51 @@ export default function LoginForm() {
       // Send POST /api/auth/login with credentials: 'include'
       const loggedIn = await login({ empid, password });
 
-      // The login response returns the user profile and session information
-      if (loggedIn.user) {
-        setUser(loggedIn.user);
-      }
+      // The login response already returns the user profile
+      setUser(loggedIn);
 
-      // If multiple session choices are provided, allow the user to select
-      if (Array.isArray(loggedIn.sessions) && loggedIn.sessions.length > 1) {
-        setSessionChoices(loggedIn.sessions);
+      // Fetch company assignments
+      const res = await fetch(
+        `/api/user_companies?empid=${encodeURIComponent(loggedIn.empid)}`,
+        { credentials: 'include' },
+      );
+      const assignments = res.ok ? await res.json() : [];
+
+      if (assignments.length === 1) {
+        const choice = assignments[0];
+        setCompany(choice);
+        const roleId = choice.role_id || loggedIn.role_id || (loggedIn.role === 'admin' ? 1 : 2);
+        refreshRolePermissions(roleId, choice.company_id);
+        refreshCompanyModules(choice.company_id);
+        refreshModules();
+        refreshTxnModules();
+        navigate('/');
+      } else if (assignments.length > 1) {
         setCompany(null);
-        setSession(null);
-        return;
+        setCompanyChoices(assignments);
+      } else {
+        refreshModules();
+        refreshTxnModules();
+        navigate('/');
       }
-
-      const session = loggedIn.session ||
-        (Array.isArray(loggedIn.sessions) ? loggedIn.sessions[0] : null);
-
-      if (session) {
-        setSession(session);
-        // for backward compatibility with existing hooks
-        setCompany(session);
-        if (loggedIn.user_level !== undefined) {
-          setUserLevel(loggedIn.user_level);
-        } else if (session.user_level !== undefined) {
-          setUserLevel(session.user_level);
-        }
-        if (loggedIn.permissions) {
-          setPermissions(loggedIn.permissions);
-        } else if (session.permissions) {
-          setPermissions(session.permissions);
-        }
-        if (session.company_id) {
-          refreshCompanyModules(session.company_id);
-        }
-      }
-
-      refreshModules();
-      refreshTxnModules();
-      navigate('/');
     } catch (err) {
       console.error('Login failed:', err);
       setError(err.message || 'Login error');
     }
   }
 
-  if (sessionChoices) {
+  if (companyChoices) {
     return (
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          const choice = sessionChoices.find(
-            (c) => `${c.company_id}-${c.branch_id || ''}` === selectedSession,
+          const choice = companyChoices.find(
+            (c) => `${c.company_id}-${c.branch_id || ''}` === selectedCompany,
           );
           if (choice) {
-            setSession(choice);
             setCompany(choice);
-            if (choice.user_level !== undefined) {
-              setUserLevel(choice.user_level);
-            }
-            if (choice.permissions) {
-              setPermissions(choice.permissions);
-            }
-            if (choice.company_id) {
-              refreshCompanyModules(choice.company_id);
-            }
+            refreshRolePermissions(choice.role_id, choice.company_id);
+            refreshCompanyModules(choice.company_id);
             refreshModules();
             refreshTxnModules();
             navigate('/');
@@ -98,26 +79,25 @@ export default function LoginForm() {
         style={{ maxWidth: '320px' }}
       >
         <div style={{ marginBottom: '0.75rem' }}>
-          <label htmlFor="session" style={{ display: 'block', marginBottom: '0.25rem' }}>
-            Ажиллах салбар сонгох
+          <label htmlFor="company" style={{ display: 'block', marginBottom: '0.25rem' }}>
+            Компани сонгох
           </label>
           <select
-            id="session"
-            value={selectedSession}
-            onChange={(e) => setSelectedSession(e.target.value)}
+            id="company"
+            value={selectedCompany}
+            onChange={(e) => setSelectedCompany(e.target.value)}
             required
             style={{ width: '100%', padding: '0.5rem', borderRadius: '3px', border: '1px solid #ccc' }}
           >
             <option value="" disabled>
               Сонгоно уу...
             </option>
-            {sessionChoices.map((c) => (
+            {companyChoices.map((c) => (
               <option
                 key={c.company_id + '-' + (c.branch_id || '')}
                 value={`${c.company_id}-${c.branch_id || ''}`}
               >
-                {c.branch_name ? `${c.branch_name} | ` : ''}
-                {c.company_name || c.company_id}
+                {c.branch_name ? `${c.branch_name} | ` : ''}{c.company_name}
               </option>
             ))}
           </select>
