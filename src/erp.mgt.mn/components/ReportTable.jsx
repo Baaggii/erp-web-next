@@ -209,8 +209,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     let groupField = firstField;
     let groupValue = row[firstField];
     if (String(groupValue).toLowerCase() === 'modal' && columns.length > 1) {
-      groupField = columns[1];
-      groupValue = row[groupField];
+      groupValue = row[columns[1]];
     }
     const payload = {
       name: procedure,
