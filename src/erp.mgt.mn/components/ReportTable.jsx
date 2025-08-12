@@ -193,12 +193,18 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       }),
     );
     const firstField = columns[0];
+    let groupField = firstField;
+    let groupValue = row[firstField];
+    if (String(groupValue).toLowerCase() === 'modal' && columns.length > 1) {
+      groupField = columns[1];
+      groupValue = row[groupField];
+    }
     const payload = {
       name: procedure,
       column: col,
       params,
-      groupField: firstField,
-      groupValue: row[firstField],
+      groupField,
+      groupValue,
       session: {
         empid: user?.empid,
         company_id: company?.company_id,
@@ -219,11 +225,15 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
         return data;
       })
       .then((data) => {
+        let outRows = data.rows || [];
+        if (String(row[firstField]).toLowerCase() === 'modal') {
+          outRows = outRows.map((r) => ({ ...r, [firstField]: groupValue }));
+        }
         setTxnInfo({
           loading: false,
           col,
           value,
-          data: data.rows || [],
+          data: outRows,
           sql: data.sql || '',
           displayFields: Array.isArray(data.displayFields)
             ? data.displayFields
