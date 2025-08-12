@@ -206,14 +206,37 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       }),
     );
     const firstField = columns[0];
+    const displayValue = row[firstField];
     let groupField = firstField;
-    let groupValue = row[firstField];
+    let groupValue = displayValue;
     const firstIsModal =
       firstField.toLowerCase() === 'modal' ||
       String(groupValue).toLowerCase() === 'modal';
+    const secondIsModal =
+      !firstIsModal && columns[1] && columns[1].toLowerCase() === 'modal';
     if (firstIsModal && columns.length > 1) {
       groupField = columns[1];
       groupValue = row[groupField];
+      if (
+        columns.length > 2 &&
+        (String(groupValue).toLowerCase() === 'modal' || isNaN(Number(groupValue)))
+      ) {
+        const alt = row[columns[2]];
+        if (alt !== undefined) {
+          groupValue = alt;
+        }
+      }
+    } else if (secondIsModal) {
+      groupValue = row[columns[1]];
+      if (
+        columns.length > 2 &&
+        (String(groupValue).toLowerCase() === 'modal' || isNaN(Number(groupValue)))
+      ) {
+        const alt = row[columns[2]];
+        if (alt !== undefined) {
+          groupValue = alt;
+        }
+      }
     }
     const payload = {
       name: procedure,
@@ -244,6 +267,8 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
         let outRows = data.rows || [];
         if (firstIsModal) {
           outRows = outRows.map((r) => ({ ...r, [firstField]: groupValue }));
+        } else if (secondIsModal) {
+          outRows = outRows.map((r) => ({ ...r, [firstField]: displayValue }));
         }
         setTxnInfo({
           loading: false,
