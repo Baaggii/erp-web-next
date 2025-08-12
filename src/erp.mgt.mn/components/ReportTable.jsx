@@ -233,12 +233,34 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     if (!Number.isNaN(parsed)) {
       groupValue = parsed;
     }
+
+    const clickedIdx = columns.indexOf(col);
+    const allConditions = [];
+    for (let i = 0; i < clickedIdx; i++) {
+      const field = columns[i];
+      const val = row[field];
+      if (
+        !field ||
+        field.toLowerCase() === 'modal' ||
+        String(val).toLowerCase() === 'modal' ||
+        isCountColumn(field)
+      ) {
+        continue;
+      }
+      const numVal = Number(String(val).replace(',', '.'));
+      allConditions.push({
+        field,
+        value: Number.isNaN(numVal) ? val : numVal,
+      });
+    }
+    const extraConditions = allConditions.filter((c) => c.field !== groupField);
     const payload = {
       name: procedure,
       column: col,
       params,
       groupField,
       groupValue,
+      extraConditions,
       session: {
         empid: user?.empid,
         company_id: company?.company_id,
