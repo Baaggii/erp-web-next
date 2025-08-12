@@ -207,36 +207,25 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     );
     const firstField = columns[0];
     const displayValue = row[firstField];
-    let groupField = firstField;
-    let groupValue = displayValue;
-    const firstIsModal =
-      firstField.toLowerCase() === 'modal' ||
-      String(groupValue).toLowerCase() === 'modal';
-    const secondIsModal =
-      !firstIsModal && columns[1] && columns[1].toLowerCase() === 'modal';
-    if (firstIsModal && columns.length > 1) {
-      groupField = columns[1];
+
+    let idx = 0;
+    let groupField = columns[idx];
+    let groupValue = row[groupField];
+
+    while (
+      idx < columns.length - 1 &&
+      (groupField.toLowerCase() === 'modal' ||
+        String(groupValue).toLowerCase() === 'modal' ||
+        Number.isNaN(Number(groupValue)))
+    ) {
+      idx += 1;
+      groupField = columns[idx];
       groupValue = row[groupField];
-      if (
-        columns.length > 2 &&
-        (String(groupValue).toLowerCase() === 'modal' || isNaN(Number(groupValue)))
-      ) {
-        const alt = row[columns[2]];
-        if (alt !== undefined) {
-          groupValue = alt;
-        }
-      }
-    } else if (secondIsModal) {
-      groupValue = row[columns[1]];
-      if (
-        columns.length > 2 &&
-        (String(groupValue).toLowerCase() === 'modal' || isNaN(Number(groupValue)))
-      ) {
-        const alt = row[columns[2]];
-        if (alt !== undefined) {
-          groupValue = alt;
-        }
-      }
+    }
+
+    const parsed = Number(groupValue);
+    if (!Number.isNaN(parsed)) {
+      groupValue = parsed;
     }
     const payload = {
       name: procedure,
@@ -265,10 +254,10 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       })
       .then((data) => {
         let outRows = data.rows || [];
-        if (firstIsModal) {
-          outRows = outRows.map((r) => ({ ...r, [firstField]: groupValue }));
-        } else if (secondIsModal) {
-          outRows = outRows.map((r) => ({ ...r, [firstField]: displayValue }));
+        if (idx > 0) {
+          const replaceVal =
+            firstField.toLowerCase() === 'modal' ? groupValue : displayValue;
+          outRows = outRows.map((r) => ({ ...r, [firstField]: replaceVal }));
         }
         setTxnInfo({
           loading: false,
