@@ -132,3 +132,52 @@ END`;
       .catch(() => {});
   },
 );
+
+test('getProcedureRawRows applies extraConditions from primary table only', {
+  concurrency: false,
+}, async () => {
+  const createSql = `CREATE PROCEDURE \`sp_multi\`()
+BEGIN
+  SELECT t.id, t.region, c.name, SUM(t.amount) AS total
+  FROM trans t
+  JOIN categories c ON c.id = t.category_id
+  GROUP BY t.id, t.region, c.name;
+END`;
+  const restore = mockPool(createSql);
+  const { sql } = await db.getProcedureRawRows(
+    'sp_multi',
+    {},
+    'total',
+    'region',
+    'West',
+    [
+      { field: 'id', value: 5 },
+      { field: 'name', value: 'Phones' },
+    ],
+  );
+  restore();
+  assert.ok(sql.includes("region = 'West'"));
+  assert.ok(sql.includes('id = 5'));
+  assert.ok(!sql.includes("name = 'Phones'"));
+  await fs.unlink(path.join(process.cwd(), 'config', 'sp_multi_rows.sql')).catch(() => {});
+});
+
+test('getProcedureRawRows formats date conditions', { concurrency: false }, async () => {
+  const createSql = `CREATE PROCEDURE \`sp_date\`()
+BEGIN
+  SELECT t.trans_date, SUM(t.amount) AS total
+  FROM trans t
+  GROUP BY t.trans_date;
+END`;
+  const restore = mockPool(createSql);
+  const { sql } = await db.getProcedureRawRows(
+    'sp_date',
+    {},
+    'total',
+    'trans_date',
+    '2025-08-12',
+  );
+  restore();
+  assert.ok(sql.includes("trans_date = '2025-08-12'"));
+  await fs.unlink(path.join(process.cwd(), 'config', 'sp_date_rows.sql')).catch(() => {});
+});

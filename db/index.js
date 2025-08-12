@@ -1144,6 +1144,7 @@ export async function getProcedureRawRows(
   column,
   groupField,
   groupValue,
+  extraConditions = [],
   sessionVars = {},
 ) {
   let createSql = '';
@@ -1225,7 +1226,11 @@ export async function getProcedureRawRows(
       if (buf.trim()) fields.push(buf.trim());
       const kept = [];
       for (let field of fields) {
-        const sumIdx = field.toUpperCase().indexOf('SUM(');
+        const upperField = field.toUpperCase();
+        if (upperField.includes('COUNT(')) {
+          continue;
+        }
+        const sumIdx = upperField.indexOf('SUM(');
         if (sumIdx === -1) {
           kept.push(field);
           continue;
@@ -1295,6 +1300,7 @@ export async function getProcedureRawRows(
       }
       return -1;
     })();
+    let primaryFields = [];
     if (fromIdx !== -1) {
       const fieldsPart = sql.slice(6, fromIdx);
       const rest = sql.slice(fromIdx);
@@ -1324,6 +1330,39 @@ export async function getProcedureRawRows(
       }
       if (table) {
         const prefix = alias ? `${alias}.` : '';
+        // Collect fields from primary table
+        const fields = [];
+        let buf = '';
+        let depth = 0;
+        for (let i = 0; i < fieldsPart.length; i++) {
+          const ch = fieldsPart[i];
+          if (ch === '(') depth++;
+          else if (ch === ')') depth--;
+          if (ch === ',' && depth === 0) {
+            fields.push(buf.trim());
+            buf = '';
+          } else {
+            buf += ch;
+          }
+        }
+        if (buf.trim()) fields.push(buf.trim());
+        for (const field of fields) {
+          const cleaned = field.replace(/`/g, '').trim();
+          if (
+            (prefix && cleaned.startsWith(prefix)) ||
+            (!prefix && !cleaned.includes('.'))
+          ) {
+            const m = field.match(/(?:AS\s+)?`?([a-zA-Z0-9_]+)`?\s*$/i);
+            if (m) {
+              primaryFields.push(m[1]);
+            } else {
+              const name = cleaned
+                .slice(prefix ? prefix.length : 0)
+                .split(/\s+/)[0];
+              primaryFields.push(name);
+            }
+          }
+        }
         try {
           const txt = await fs.readFile(
             path.join(process.cwd(), 'config', 'transactionForms.json'),
@@ -1376,10 +1415,29 @@ export async function getProcedureRawRows(
       }
     }
 
-    if (groupValue !== undefined) {
-      const rep =
-        typeof groupValue === 'number' ? String(groupValue) : `'${groupValue}'`;
-      sql = `SELECT * FROM (${sql}) AS _raw WHERE ${groupField} = ${rep}`;
+    if (
+      groupValue !== undefined ||
+      (Array.isArray(extraConditions) && extraConditions.length)
+    ) {
+      const pfSet = new Set(primaryFields.map((f) => String(f).toLowerCase()));
+      const clauses = [];
+      if (groupValue !== undefined && groupField) {
+        const rep =
+          typeof groupValue === 'number' ? String(groupValue) : `'${groupValue}'`;
+        clauses.push(`${groupField} = ${rep}`);
+      }
+      if (Array.isArray(extraConditions)) {
+        for (const { field, value } of extraConditions) {
+          if (!field) continue;
+          if (pfSet.size && !pfSet.has(String(field).toLowerCase())) continue;
+          const rep =
+            typeof value === 'number' ? String(value) : `'${value}'`;
+          clauses.push(`${field} = ${rep}`);
+        }
+      }
+      if (clauses.length) {
+        sql = `SELECT * FROM (${sql}) AS _raw WHERE ${clauses.join(' AND ')}`;
+      }
     }
 
     sql = sql.replace(/;\s*$/, '');

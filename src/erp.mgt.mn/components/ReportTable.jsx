@@ -3,6 +3,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig, { updateCache } from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import Modal from './Modal.jsx';
+import formatTimestamp from '../utils/formatTimestamp.js';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -29,6 +30,23 @@ function formatNumber(val) {
   if (val === null || val === undefined || val === '') return '';
   const num = Number(String(val).replace(',', '.'));
   return Number.isNaN(num) ? '' : numberFmt.format(num);
+}
+
+function formatCellValue(val) {
+  if (val === null || val === undefined) return '';
+  if (val instanceof Date) {
+    return formatTimestamp(val).slice(0, 10);
+  }
+  const str = String(val);
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+    return str.slice(0, 10);
+  }
+  return val;
+}
+
+function isCountColumn(name) {
+  const f = String(name).toLowerCase();
+  return f === 'count' || f === 'count()' || f.startsWith('count(');
 }
 
 export default function ReportTable({ procedure = '', params = {}, rows = [] }) {
@@ -193,12 +211,68 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       }),
     );
     const firstField = columns[0];
+    const displayValue = row[firstField];
+
+    let idx = 0;
+    let groupField = columns[idx];
+    let groupValue = row[groupField];
+
+    while (
+      idx < columns.length - 1 &&
+      (groupField.toLowerCase() === 'modal' ||
+        String(groupValue).toLowerCase() === 'modal' ||
+        isCountColumn(groupField) ||
+        Number.isNaN(Number(groupValue)))
+    ) {
+      idx += 1;
+      groupField = columns[idx];
+      groupValue = row[groupField];
+    }
+
+    if (groupValue instanceof Date) {
+      groupValue = formatTimestamp(groupValue).slice(0, 10);
+    } else if (
+      typeof groupValue === 'string' &&
+      /^\d{4}-\d{2}-\d{2}/.test(groupValue)
+    ) {
+      groupValue = groupValue.slice(0, 10);
+    } else {
+      const parsed = Number(groupValue);
+      if (!Number.isNaN(parsed)) {
+        groupValue = parsed;
+      }
+    }
+
+    const allConditions = [];
+    for (const field of columns) {
+      const val = row[field];
+      if (
+        !field ||
+        field.toLowerCase() === 'modal' ||
+        String(val).toLowerCase() === 'modal' ||
+        isCountColumn(field)
+      ) {
+        continue;
+      }
+      let outVal = val;
+      if (val instanceof Date) {
+        outVal = formatTimestamp(val).slice(0, 10);
+      } else if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}/.test(val)) {
+        outVal = val.slice(0, 10);
+      } else {
+        const numVal = Number(String(val).replace(',', '.'));
+        if (!Number.isNaN(numVal)) outVal = numVal;
+      }
+      allConditions.push({ field, value: outVal });
+    }
+    const extraConditions = allConditions.filter((c) => c.field !== groupField);
     const payload = {
       name: procedure,
       column: col,
       params,
-      groupField: firstField,
-      groupValue: row[firstField],
+      groupField,
+      groupValue,
+      extraConditions,
       session: {
         empid: user?.empid,
         company_id: company?.company_id,
@@ -219,11 +293,20 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
         return data;
       })
       .then((data) => {
+        let outRows = (data.rows || []).map((r) => {
+          const entries = Object.entries(r).filter(([k]) => !isCountColumn(k));
+          return Object.fromEntries(entries);
+        });
+        if (idx > 0 && !isCountColumn(firstField)) {
+          const replaceVal =
+            firstField.toLowerCase() === 'modal' ? groupValue : displayValue;
+          outRows = outRows.map((r) => ({ ...r, [firstField]: replaceVal }));
+        }
         setTxnInfo({
           loading: false,
           col,
           value,
-          data: data.rows || [],
+          data: outRows,
           sql: data.sql || '',
           displayFields: Array.isArray(data.displayFields)
             ? data.displayFields
@@ -467,7 +550,9 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                       style={{ ...style, cursor: row[col] ? 'pointer' : 'default' }}
                       onClick={() => handleCellClick(col, row[col], row)}
                     >
-                      {numericColumns.includes(col) ? formatNumber(row[col]) : row[col]}
+                      {numericColumns.includes(col)
+                        ? formatNumber(row[col])
+                        : formatCellValue(row[col])}
                     </td>
                   );
                 })}
@@ -606,7 +691,9 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                             textOverflow: 'ellipsis',
                           }}
                         >
-                          {typeof r[c] === 'number' ? formatNumber(r[c]) : r[c]}
+                          {typeof r[c] === 'number'
+                            ? formatNumber(r[c])
+                            : formatCellValue(r[c])}
                         </td>
                       ))}
                     </tr>
