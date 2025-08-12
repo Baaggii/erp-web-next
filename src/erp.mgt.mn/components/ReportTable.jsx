@@ -325,8 +325,6 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     );
     if (
       firstField &&
-      firstField !== groupField &&
-      firstField !== col &&
       !extraConditions.some((c) => c.field === firstField)
     ) {
       const fallback = allConditions.find((c) => c.field === firstField);
