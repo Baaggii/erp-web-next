@@ -12,6 +12,8 @@ export default function LoginForm() {
   // login using employee ID only
   const [empid, setEmpid] = useState('');
   const [password, setPassword] = useState('');
+  const [companyOptions, setCompanyOptions] = useState(null);
+  const [companyId, setCompanyId] = useState('');
   const [error, setError] = useState(null);
   const { setUser, setCompany } = useContext(AuthContext);
   const navigate = useNavigate();
@@ -22,7 +24,14 @@ export default function LoginForm() {
 
     try {
       // Send POST /api/auth/login with credentials: 'include'
-      const loggedIn = await login({ empid, password });
+      const payload = { empid, password };
+      if (companyId) payload.companyId = Number(companyId);
+      const loggedIn = await login(payload);
+
+      if (loggedIn.needsCompany) {
+        setCompanyOptions(loggedIn.sessions);
+        return;
+      }
 
       // The login response already returns the user profile
       setUser(loggedIn);
@@ -73,6 +82,28 @@ export default function LoginForm() {
           style={{ width: '100%', padding: '0.5rem', borderRadius: '3px', border: '1px solid #ccc' }}
         />
       </div>
+
+      {companyOptions && (
+        <div style={{ marginBottom: '0.75rem' }}>
+          <label htmlFor="company" style={{ display: 'block', marginBottom: '0.25rem' }}>
+            Компани
+          </label>
+          <select
+            id="company"
+            value={companyId}
+            onChange={(ev) => setCompanyId(ev.target.value)}
+            required
+            style={{ width: '100%', padding: '0.5rem', borderRadius: '3px', border: '1px solid #ccc' }}
+          >
+            <option value="">Компани сонгох</option>
+            {companyOptions.map((c) => (
+              <option key={c.company_id} value={c.company_id}>
+                {c.company_name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {error && (
         <p style={{ color: 'red', marginBottom: '0.75rem' }}>{error}</p>
