@@ -1350,6 +1350,8 @@ export async function getProcedureRawRows(
         if (buf.trim()) fields.push(buf.trim());
         for (const field of fields) {
           const cleaned = field.replace(/`/g, '').trim();
+          const lower = cleaned.toLowerCase();
+          if (/(?:sum|count|avg|min|max)\s*\(/i.test(lower)) continue;
           if (
             (prefix && cleaned.startsWith(prefix)) ||
             (!prefix && !cleaned.includes('.'))

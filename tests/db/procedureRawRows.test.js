@@ -217,6 +217,28 @@ END`;
   await fs.unlink(path.join(process.cwd(), 'config', 'sp_agg_rows.sql')).catch(() => {});
 });
 
+test('getProcedureRawRows removes non-column aggregate extraConditions', { concurrency: false }, async () => {
+  const createSql = `CREATE PROCEDURE \`sp_agg2\`()
+BEGIN
+  SELECT t.id, SUM(t.amount) AS total, COUNT(*) AS cnt
+  FROM trans t
+  GROUP BY t.id;
+END`;
+  const restore = mockPool(createSql);
+  const { sql } = await db.getProcedureRawRows(
+    'sp_agg2',
+    {},
+    'total',
+    'id',
+    1,
+    [{ field: 'cnt', value: 2 }],
+  );
+  restore();
+  assert.ok(sql.includes('id = 1'));
+  assert.ok(!sql.includes('cnt ='));
+  await fs.unlink(path.join(process.cwd(), 'config', 'sp_agg2_rows.sql')).catch(() => {});
+});
+
 test('getProcedureRawRows formats time conditions', { concurrency: false }, async () => {
   const createSql = `CREATE PROCEDURE \`sp_time\`()
 BEGIN
