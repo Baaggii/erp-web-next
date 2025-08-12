@@ -14,8 +14,6 @@ export default function LoginForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const { setUser, setCompany } = useContext(AuthContext);
-  const [companyChoices, setCompanyChoices] = useState(null);
-  const [selectedCompany, setSelectedCompany] = useState('');
   const navigate = useNavigate();
 
   async function handleSubmit(e) {
@@ -28,95 +26,19 @@ export default function LoginForm() {
 
       // The login response already returns the user profile
       setUser(loggedIn);
-
-      // Fetch company assignments
-      const res = await fetch(
-        `/api/user_companies?empid=${encodeURIComponent(loggedIn.empid)}`,
-        { credentials: 'include' },
+      setCompany(loggedIn.session || null);
+      refreshRolePermissions(
+        loggedIn.session?.user_level,
+        loggedIn.session?.company_id,
       );
-      const assignments = res.ok ? await res.json() : [];
-
-      if (assignments.length === 1) {
-        const choice = assignments[0];
-        setCompany(choice);
-        const roleId = choice.role_id || loggedIn.role_id || (loggedIn.role === 'admin' ? 1 : 2);
-        refreshRolePermissions(roleId, choice.company_id);
-        refreshCompanyModules(choice.company_id);
-        refreshModules();
-        refreshTxnModules();
-        navigate('/');
-      } else if (assignments.length > 1) {
-        setCompany(null);
-        setCompanyChoices(assignments);
-      } else {
-        refreshModules();
-        refreshTxnModules();
-        navigate('/');
-      }
+      refreshCompanyModules(loggedIn.session?.company_id);
+      refreshModules();
+      refreshTxnModules();
+      navigate('/');
     } catch (err) {
       console.error('Login failed:', err);
       setError(err.message || 'Login error');
     }
-  }
-
-  if (companyChoices) {
-    return (
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          const choice = companyChoices.find(
-            (c) => `${c.company_id}-${c.branch_id || ''}` === selectedCompany,
-          );
-          if (choice) {
-            setCompany(choice);
-            refreshRolePermissions(choice.role_id, choice.company_id);
-            refreshCompanyModules(choice.company_id);
-            refreshModules();
-            refreshTxnModules();
-            navigate('/');
-          }
-        }}
-        style={{ maxWidth: '320px' }}
-      >
-        <div style={{ marginBottom: '0.75rem' }}>
-          <label htmlFor="company" style={{ display: 'block', marginBottom: '0.25rem' }}>
-            Компани сонгох
-          </label>
-          <select
-            id="company"
-            value={selectedCompany}
-            onChange={(e) => setSelectedCompany(e.target.value)}
-            required
-            style={{ width: '100%', padding: '0.5rem', borderRadius: '3px', border: '1px solid #ccc' }}
-          >
-            <option value="" disabled>
-              Сонгоно уу...
-            </option>
-            {companyChoices.map((c) => (
-              <option
-                key={c.company_id + '-' + (c.branch_id || '')}
-                value={`${c.company_id}-${c.branch_id || ''}`}
-              >
-                {c.branch_name ? `${c.branch_name} | ` : ''}{c.company_name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <button
-          type="submit"
-          style={{
-            backgroundColor: '#2563eb',
-            color: '#fff',
-            padding: '0.5rem 1rem',
-            border: '1px solid #2563eb',
-            borderRadius: '3px',
-            cursor: 'pointer',
-          }}
-        >
-          Үргэлжлүүлэх
-        </button>
-      </form>
-    );
   }
 
   return (

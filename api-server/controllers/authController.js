@@ -1,4 +1,9 @@
-import { getUserByEmpId, getUserById, updateUserPassword } from '../../db/index.js';
+import {
+  getUserByEmpId,
+  getUserById,
+  updateUserPassword,
+  getEmploymentSession,
+} from '../../db/index.js';
 import { hash } from '../services/passwordService.js';
 import * as jwtService from '../services/jwtService.js';
 import { getCookieName, getRefreshCookieName } from '../utils/cookieNames.js';
@@ -10,6 +15,7 @@ export async function login(req, res, next) {
     if (!user || !(await user.verifyPassword(password))) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
+    const session = await getEmploymentSession(empid);
     const token = jwtService.sign({
       id: user.id,
       empid: user.empid,
@@ -38,6 +44,8 @@ export async function login(req, res, next) {
       id: user.id,
       empid: user.empid,
       role: user.role,
+      user_level: session?.user_level,
+      session,
     });
   } catch (err) {
     next(err);
@@ -56,10 +64,13 @@ export async function logout(req, res) {
 }
 
 export async function getProfile(req, res) {
+  const session = await getEmploymentSession(req.user.empid);
   res.json({
     id: req.user.id,
     empid: req.user.empid,
     role: req.user.role,
+    user_level: session?.user_level,
+    session,
   });
 }
 
@@ -86,6 +97,7 @@ export async function refresh(req, res) {
     const payload = jwtService.verifyRefresh(token);
     const user = await getUserById(payload.id);
     if (!user) throw new Error('User not found');
+    const session = await getEmploymentSession(user.empid);
     const newAccess = jwtService.sign({
       id: user.id,
       empid: user.empid,
@@ -112,6 +124,8 @@ export async function refresh(req, res) {
       id: user.id,
       empid: user.empid,
       role: user.role,
+      user_level: session?.user_level,
+      session,
     });
   } catch (err) {
     const opts = {

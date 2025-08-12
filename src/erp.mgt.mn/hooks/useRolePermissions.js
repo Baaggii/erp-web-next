@@ -8,9 +8,9 @@ const cache = {};
 // Simple event emitter for permission refresh events
 const emitter = new EventTarget();
 
-export function refreshRolePermissions(roleId, companyId) {
-  const key = `${roleId}-${companyId || ''}`;
-  if (roleId) delete cache[key];
+export function refreshRolePermissions(userLevel, companyId) {
+  const key = `${userLevel}-${companyId || ''}`;
+  if (userLevel) delete cache[key];
   emitter.dispatchEvent(new Event('refresh'));
 }
 
@@ -45,8 +45,7 @@ export function useRolePermissions() {
       setPerms(null);
       return;
     }
-    const roleId =
-      company?.role_id || user.role_id || (user.role === 'admin' ? 1 : 2);
+    const roleId = company?.user_level || user?.user_level;
     const companyId = company?.company_id;
 
     const key = `${roleId}-${companyId || ''}`;
@@ -62,8 +61,7 @@ export function useRolePermissions() {
   useEffect(() => {
     debugLog('useRolePermissions effect: refresh listener');
     if (!user) return;
-    const roleId =
-      company?.role_id || user.role_id || (user.role === 'admin' ? 1 : 2);
+    const roleId = company?.user_level || user?.user_level;
     const companyId = company?.company_id;
     const handler = () => fetchPerms(roleId, companyId);
     emitter.addEventListener('refresh', handler);
