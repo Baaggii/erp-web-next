@@ -255,8 +255,25 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
         detail: { message: `Procedure: ${procedure}`, type: 'info' },
       }),
     );
-    const firstField = columns[0];
-    const displayValue = row[firstField];
+    let firstIdx = 0;
+    let firstField = columns[firstIdx];
+    let displayValue = row[firstField];
+    while (
+      firstIdx < columns.length &&
+      (
+        !firstField ||
+        firstField.toLowerCase() === 'modal' ||
+        String(displayValue).toLowerCase() === 'modal' ||
+        isCountColumn(firstField) ||
+        displayValue === undefined ||
+        displayValue === null ||
+        displayValue === ''
+      )
+    ) {
+      firstIdx += 1;
+      firstField = columns[firstIdx];
+      displayValue = row[firstField];
+    }
 
     let idx = 0;
     let groupField = columns[idx];
@@ -306,9 +323,14 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     const extraConditions = allConditions.filter(
       (c) => c.field !== groupField && c.field !== col,
     );
-    if (extraConditions.length === 0 && firstField) {
+    if (
+      firstField &&
+      firstField !== groupField &&
+      firstField !== col &&
+      !extraConditions.some((c) => c.field === firstField)
+    ) {
       const fallback = allConditions.find((c) => c.field === firstField);
-      if (fallback) extraConditions.push(fallback);
+      if (fallback) extraConditions.unshift(fallback);
     }
     const payload = {
       name: procedure,
@@ -341,7 +363,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
           const entries = Object.entries(r).filter(([k]) => !isCountColumn(k));
           return Object.fromEntries(entries);
         });
-        if (idx > 0 && !isCountColumn(firstField)) {
+        if (idx > 0 && firstField && !isCountColumn(firstField)) {
           const replaceVal =
             firstField.toLowerCase() === 'modal' ? groupValue : displayValue;
           outRows = outRows.map((r) => ({ ...r, [firstField]: replaceVal }));
