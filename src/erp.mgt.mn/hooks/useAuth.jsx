@@ -1,20 +1,14 @@
 // src/erp.mgt.mn/hooks/useAuth.jsx
+import { useContext } from 'react';
+import { AuthContext } from '../context/AuthContext.jsx';
 import { API_BASE } from '../utils/apiBase.js';
 
 // src/erp.mgt.mn/hooks/useAuth.jsx
 
 /**
  * Performs a login request and sets an HttpOnly cookie on success.
- * The backend returns the authenticated user profile along with the
- * selected employment session and permission flags.
- * @param {{empid: string, password: string}} credentials - employee login ID and password
- * @returns {Promise<{
- *   user: object,
- *   session?: object,
- *   sessions?: Array<object>,
- *   user_level?: number,
- *   permissions?: object
- * }>}
+ * @param {{empid: string, password: string}} credentials - empid refers to the employee login ID
+ * @returns {Promise<{id: number, empid: string, role: string}>}
 */
 export async function login({ empid, password }) {
   let res;
@@ -22,8 +16,8 @@ export async function login({ empid, password }) {
     res = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include', // Ensures cookie is stored
-      body: JSON.stringify({ empid, password }),
+    credentials: 'include', // Ensures cookie is stored
+    body: JSON.stringify({ empid, password }),
     });
   } catch (err) {
     // Network errors (e.g. server unreachable)
@@ -61,9 +55,8 @@ export async function logout() {
 
 /**
  * Fetches current user profile if authenticated.
- * The structure mirrors the login response and typically contains
- * the user object, the active session and the permission flags.
- */
+ * @returns {Promise<{id: number, empid: string, role: string}>}
+*/
 export async function fetchProfile() {
   const res = await fetch(`${API_BASE}/auth/me`, { credentials: 'include' });
   if (!res.ok) throw new Error('Not authenticated');
