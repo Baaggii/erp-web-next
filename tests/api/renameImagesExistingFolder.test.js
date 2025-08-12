@@ -6,7 +6,7 @@ import { renameImages } from '../../api-server/services/transactionImageService.
 
 const baseDir = path.join(process.cwd(), 'uploads', 'txn_images');
 
-await test('renameImages handles images already in folder', async () => {
+await test('renameImages handles images already in folder', { concurrency: false }, async () => {
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
   const dir = path.join(baseDir, 'tool', '4001');
   await fs.mkdir(dir, { recursive: true });
