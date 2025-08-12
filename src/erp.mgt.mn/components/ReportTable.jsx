@@ -3,6 +3,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig, { updateCache } from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import Modal from './Modal.jsx';
+import formatTimestamp from '../utils/formatTimestamp.js';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -31,19 +32,10 @@ function formatNumber(val) {
   return Number.isNaN(num) ? '' : numberFmt.format(num);
 }
 
-function formatDate(val) {
-  const d = val instanceof Date ? val : new Date(val);
-  if (Number.isNaN(d.getTime())) return '';
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
 function formatCellValue(val) {
   if (val === null || val === undefined) return '';
   if (val instanceof Date) {
-    return formatDate(val);
+    return val.toISOString().slice(0, 10);
   }
   const str = String(val);
   if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
@@ -237,7 +229,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     }
 
     if (groupValue instanceof Date) {
-      groupValue = formatDate(groupValue);
+      groupValue = groupValue.toISOString().slice(0, 10);
     } else if (
       typeof groupValue === 'string' &&
       /^\d{4}-\d{2}-\d{2}/.test(groupValue)
@@ -263,7 +255,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       }
       let outVal = val;
       if (val instanceof Date) {
-        outVal = formatDate(val);
+        outVal = val.toISOString().slice(0, 10);
       } else if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}/.test(val)) {
         outVal = val.slice(0, 10);
       } else {
