@@ -44,6 +44,11 @@ function formatCellValue(val) {
   return val;
 }
 
+function isCountColumn(name) {
+  const f = String(name).toLowerCase();
+  return f === 'count' || f === 'count()' || f.startsWith('count(');
+}
+
 export default function ReportTable({ procedure = '', params = {}, rows = [] }) {
   const { user, company } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
@@ -216,6 +221,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       idx < columns.length - 1 &&
       (groupField.toLowerCase() === 'modal' ||
         String(groupValue).toLowerCase() === 'modal' ||
+        isCountColumn(groupField) ||
         Number.isNaN(Number(groupValue)))
     ) {
       idx += 1;
@@ -253,8 +259,11 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
         return data;
       })
       .then((data) => {
-        let outRows = data.rows || [];
-        if (idx > 0) {
+        let outRows = (data.rows || []).map((r) => {
+          const entries = Object.entries(r).filter(([k]) => !isCountColumn(k));
+          return Object.fromEntries(entries);
+        });
+        if (idx > 0 && !isCountColumn(firstField)) {
           const replaceVal =
             firstField.toLowerCase() === 'modal' ? groupValue : displayValue;
           outRows = outRows.map((r) => ({ ...r, [firstField]: replaceVal }));
