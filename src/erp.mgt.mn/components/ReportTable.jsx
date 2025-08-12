@@ -221,8 +221,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       idx < columns.length - 1 &&
       (groupField.toLowerCase() === 'modal' ||
         String(groupValue).toLowerCase() === 'modal' ||
-        isCountColumn(groupField) ||
-        Number.isNaN(Number(groupValue)))
+        isCountColumn(groupField))
     ) {
       idx += 1;
       groupField = columns[idx];
@@ -236,11 +235,6 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       /^\d{4}-\d{2}-\d{2}/.test(groupValue)
     ) {
       groupValue = groupValue.slice(0, 10);
-    } else {
-      const parsed = Number(groupValue);
-      if (!Number.isNaN(parsed)) {
-        groupValue = parsed;
-      }
     }
 
     const allConditions = [];
@@ -259,9 +253,6 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
         outVal = formatTimestamp(val).slice(0, 10);
       } else if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}/.test(val)) {
         outVal = val.slice(0, 10);
-      } else {
-        const numVal = Number(String(val).replace(',', '.'));
-        if (!Number.isNaN(numVal)) outVal = numVal;
       }
       allConditions.push({ field, value: outVal });
     }
