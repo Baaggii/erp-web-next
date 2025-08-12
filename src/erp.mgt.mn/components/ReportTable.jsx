@@ -208,8 +208,12 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     const firstField = columns[0];
     let groupField = firstField;
     let groupValue = row[firstField];
-    if (String(groupValue).toLowerCase() === 'modal' && columns.length > 1) {
-      groupValue = row[columns[1]];
+    const firstIsModal =
+      firstField.toLowerCase() === 'modal' ||
+      String(groupValue).toLowerCase() === 'modal';
+    if (firstIsModal && columns.length > 1) {
+      groupField = columns[1];
+      groupValue = row[groupField];
     }
     const payload = {
       name: procedure,
@@ -238,7 +242,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       })
       .then((data) => {
         let outRows = data.rows || [];
-        if (String(row[firstField]).toLowerCase() === 'modal') {
+        if (firstIsModal) {
           outRows = outRows.map((r) => ({ ...r, [firstField]: groupValue }));
         }
         setTxnInfo({
