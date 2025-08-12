@@ -245,6 +245,88 @@ export async function getEmploymentSession(empid, companyId) {
 }
 
 /**
+ * Fetch employment session info and permission flags for an employee
+ */
+export async function getEmploymentSession(empid) {
+  const [rows] = await pool.query(
+    `SELECT
+        e.employment_company_id AS company_id,
+        c.name AS company_name,
+        e.employment_branch_id AS branch_id,
+        b.name AS branch_name,
+        e.employment_department_id AS department_id,
+        e.employment_position_id AS position_id,
+        e.employment_user_level AS user_level,
+        ul.new_records,
+        ul.edit_delete_request,
+        ul.edit_records,
+        ul.delete_records,
+        ul.image_handler,
+        ul.audition,
+        ul.supervisor,
+        ul.companywide,
+        ul.branchwide,
+        ul.departmentwide,
+        ul.developer,
+        ul.system_settings,
+        ul.license_settings,
+        ul.ai,
+        ul.dashboard,
+        ul.ai_dashboard
+     FROM tbl_employment e
+     LEFT JOIN companies c ON e.employment_company_id = c.id
+     LEFT JOIN code_branches b ON e.employment_branch_id = b.id
+     LEFT JOIN code_userlevel ul ON e.employment_user_level = ul.userlever_id
+     WHERE e.employment_emp_id = ?
+     ORDER BY e.id DESC
+     LIMIT 1`,
+    [empid],
+  );
+  if (rows.length === 0) return null;
+  const row = rows[0];
+  const {
+    new_records,
+    edit_delete_request,
+    edit_records,
+    delete_records,
+    image_handler,
+    audition,
+    supervisor,
+    companywide,
+    branchwide,
+    departmentwide,
+    developer,
+    system_settings,
+    license_settings,
+    ai,
+    dashboard,
+    ai_dashboard,
+    ...rest
+  } = row;
+  return {
+    ...rest,
+    permissions: {
+      new_records: !!new_records,
+      edit_delete_request: !!edit_delete_request,
+      edit_records: !!edit_records,
+      delete_records: !!delete_records,
+      image_handler: !!image_handler,
+      audition: !!audition,
+      supervisor: !!supervisor,
+      companywide: !!companywide,
+      branchwide: !!branchwide,
+      departmentwide: !!departmentwide,
+      developer: !!developer,
+      system_settings: !!system_settings,
+      license_settings: !!license_settings,
+      ai: !!ai,
+      dashboard: !!dashboard,
+      ai_dashboard: !!ai_dashboard,
+    },
+  };
+}
+
+/**
  * List all users
  */
 export async function listUsers() {
@@ -1610,19 +1692,22 @@ export async function getProcedureRawRows(
         groupValue !== undefined &&
         groupValue !== null &&
         groupValue !== '' &&
-        groupField &&
-        pfSet.has(String(groupField).toLowerCase())
+        groupField
       ) {
-        const formatted = formatVal(groupField, groupValue);
-        if (formatted !== null) clauses.push(`${groupField} = ${formatted}`);
+        const gf = String(groupField).split('.').pop();
+        if (pfSet.has(gf.toLowerCase())) {
+          const formatted = formatVal(gf, groupValue);
+          if (formatted !== null) clauses.push(`${gf} = ${formatted}`);
+        }
       }
       if (Array.isArray(extraConditions)) {
         for (const { field, value } of extraConditions) {
           if (!field) continue;
           if (value === undefined || value === null || value === '') continue;
-          if (!pfSet.has(String(field).toLowerCase())) continue;
-          const formatted = formatVal(field, value);
-          if (formatted !== null) clauses.push(`${field} = ${formatted}`);
+          const f = String(field).split('.').pop();
+          if (!pfSet.has(f.toLowerCase())) continue;
+          const formatted = formatVal(f, value);
+          if (formatted !== null) clauses.push(`${f} = ${formatted}`);
         }
       }
       if (clauses.length) {
