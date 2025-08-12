@@ -209,33 +209,34 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     const displayValue = row[firstField];
     let groupField = firstField;
     let groupValue = displayValue;
-
-    const firstFieldIsModal = firstField.toLowerCase() === 'modal';
-    const firstValueIsModal = String(displayValue).toLowerCase() === 'modal';
-    const secondField = columns[1];
-    const secondFieldIsModal =
-      !firstFieldIsModal && secondField && secondField.toLowerCase() === 'modal';
-
-    if (firstFieldIsModal && secondField) {
-      groupField = secondField;
-      groupValue = row[secondField];
-    } else if (firstValueIsModal && secondField) {
-      groupValue = row[secondField];
-    }
-
-    if (
-      columns.length > 2 &&
-      (String(groupValue).toLowerCase() === 'modal' || isNaN(Number(groupValue)))
-    ) {
-      const alt = row[columns[2]];
-      if (alt !== undefined) {
-        groupValue = alt;
+    const firstIsModal =
+      firstField.toLowerCase() === 'modal' ||
+      String(groupValue).toLowerCase() === 'modal';
+    const secondIsModal =
+      !firstIsModal && columns[1] && columns[1].toLowerCase() === 'modal';
+    if (firstIsModal && columns.length > 1) {
+      groupField = columns[1];
+      groupValue = row[groupField];
+      if (
+        columns.length > 2 &&
+        (String(groupValue).toLowerCase() === 'modal' || isNaN(Number(groupValue)))
+      ) {
+        const alt = row[columns[2]];
+        if (alt !== undefined) {
+          groupValue = alt;
+        }
       }
-    }
-
-    const parsed = Number(groupValue);
-    if (!Number.isNaN(parsed)) {
-      groupValue = parsed;
+    } else if (secondIsModal) {
+      groupValue = row[columns[1]];
+      if (
+        columns.length > 2 &&
+        (String(groupValue).toLowerCase() === 'modal' || isNaN(Number(groupValue)))
+      ) {
+        const alt = row[columns[2]];
+        if (alt !== undefined) {
+          groupValue = alt;
+        }
+      }
     }
     const payload = {
       name: procedure,
@@ -264,9 +265,9 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       })
       .then((data) => {
         let outRows = data.rows || [];
-        if (firstFieldIsModal || firstValueIsModal) {
+        if (firstIsModal) {
           outRows = outRows.map((r) => ({ ...r, [firstField]: groupValue }));
-        } else if (secondFieldIsModal) {
+        } else if (secondIsModal) {
           outRows = outRows.map((r) => ({ ...r, [firstField]: displayValue }));
         }
         setTxnInfo({
