@@ -1191,6 +1191,7 @@ export async function getProcedureRawRows(
     sql = sql.slice(0, firstSemi);
   }
 
+  let columnWasAggregated = false;
   if (/^SELECT/i.test(sql)) {
     function filterAggregates(input, aliasToKeep) {
       const upper = input.toUpperCase();
@@ -1238,6 +1239,7 @@ export async function getProcedureRawRows(
         const aliasMatch = field.match(/(?:AS\s+)?`?([a-zA-Z0-9_]+)`?\s*$/i);
         const alias = aliasMatch ? aliasMatch[1] : null;
         if (alias && alias.toLowerCase() === String(aliasToKeep).toLowerCase()) {
+          columnWasAggregated = true;
           let start = sumIdx + 4;
           let depth2 = 1;
           let j = start;
@@ -1353,14 +1355,16 @@ export async function getProcedureRawRows(
             (!prefix && !cleaned.includes('.'))
           ) {
             const m = field.match(/(?:AS\s+)?`?([a-zA-Z0-9_]+)`?\s*$/i);
-            if (m) {
-              primaryFields.push(m[1]);
-            } else {
-              const name = cleaned
-                .slice(prefix ? prefix.length : 0)
-                .split(/\s+/)[0];
-              primaryFields.push(name);
+            const alias = m
+              ? m[1]
+              : cleaned.slice(prefix ? prefix.length : 0).split(/\s+/)[0];
+            if (
+              columnWasAggregated &&
+              alias.toLowerCase() === String(column).toLowerCase()
+            ) {
+              continue;
             }
+            primaryFields.push(alias);
           }
         }
         try {
@@ -1432,21 +1436,39 @@ export async function getProcedureRawRows(
       const pfSet = new Set(primaryFields.map((f) => String(f).toLowerCase()));
       const clauses = [];
       function formatVal(field, val) {
+        if (val === undefined || val === null || val === '') return null;
         const type = fieldTypes[String(field).toLowerCase()] || '';
         if (/int|decimal|float|double|bit|year/.test(type)) {
           const num = Number(val);
           return Number.isNaN(num) ? mysql.escape(val) : String(num);
         }
-        if (/date/.test(type)) {
+        if (/date|time|timestamp/.test(type)) {
           if (typeof val === 'string') {
-            const m = val.match(/^(\d{4}-\d{2}-\d{2})/);
-            if (m) return mysql.escape(m[1]);
+            const m = val.match(/^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}:\d{2}))?/);
+            if (m) {
+              const datePart = m[1];
+              const timePart = m[2];
+              if (/^time$/.test(type) || (type.includes('time') && !type.includes('date'))) {
+                return mysql.escape(timePart || datePart);
+              }
+              if (timePart) return mysql.escape(`${datePart} ${timePart}`);
+              return mysql.escape(datePart);
+            }
           }
           const d = new Date(val);
           if (!Number.isNaN(d.getTime())) {
             const yyyy = d.getFullYear();
             const mm = String(d.getMonth() + 1).padStart(2, '0');
             const dd = String(d.getDate()).padStart(2, '0');
+            const hh = String(d.getHours()).padStart(2, '0');
+            const mi = String(d.getMinutes()).padStart(2, '0');
+            const ss = String(d.getSeconds()).padStart(2, '0');
+            if (/^time$/.test(type) || (type.includes('time') && !type.includes('date'))) {
+              return mysql.escape(`${hh}:${mi}:${ss}`);
+            }
+            if (type.includes('timestamp') || type.includes('datetime')) {
+              return mysql.escape(`${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`);
+            }
             return mysql.escape(`${yyyy}-${mm}-${dd}`);
           }
         }
@@ -1454,16 +1476,21 @@ export async function getProcedureRawRows(
       }
       if (
         groupValue !== undefined &&
+        groupValue !== null &&
+        groupValue !== '' &&
         groupField &&
-        (!pfSet.size || pfSet.has(String(groupField).toLowerCase()))
+        pfSet.has(String(groupField).toLowerCase())
       ) {
-        clauses.push(`${groupField} = ${formatVal(groupField, groupValue)}`);
+        const formatted = formatVal(groupField, groupValue);
+        if (formatted !== null) clauses.push(`${groupField} = ${formatted}`);
       }
       if (Array.isArray(extraConditions)) {
         for (const { field, value } of extraConditions) {
           if (!field) continue;
-          if (pfSet.size && !pfSet.has(String(field).toLowerCase())) continue;
-          clauses.push(`${field} = ${formatVal(field, value)}`);
+          if (value === undefined || value === null || value === '') continue;
+          if (!pfSet.has(String(field).toLowerCase())) continue;
+          const formatted = formatVal(field, value);
+          if (formatted !== null) clauses.push(`${field} = ${formatted}`);
         }
       }
       if (clauses.length) {

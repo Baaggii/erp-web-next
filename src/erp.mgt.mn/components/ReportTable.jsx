@@ -285,6 +285,9 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       const val = row[field];
       if (
         !field ||
+        val === undefined ||
+        val === null ||
+        val === '' ||
         field.toLowerCase() === 'modal' ||
         String(val).toLowerCase() === 'modal' ||
         isCountColumn(field)

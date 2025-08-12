@@ -4,13 +4,24 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import * as db from '../../db/index.js';
 
-function mockPool(createSql) {
+function mockPool(createSql, columns = [
+  { Field: 'id', Type: 'int' },
+  { Field: 'category', Type: 'varchar(255)' },
+  { Field: 'region', Type: 'varchar(255)' },
+  { Field: 'name', Type: 'varchar(255)' },
+  { Field: 'trans_date', Type: 'date' },
+  { Field: 'trans_time', Type: 'time' },
+  { Field: 'amount', Type: 'decimal' },
+]) {
   const original = db.pool.query;
   const calls = [];
   db.pool.query = async (sql) => {
     calls.push(sql);
     if (sql.startsWith('SHOW CREATE PROCEDURE')) {
       return [[{ 'Create Procedure': createSql }]];
+    }
+    if (sql.startsWith('SHOW COLUMNS FROM')) {
+      return [columns];
     }
     return [[{ category: 'Phones', total: 100 }]];
   };
@@ -179,4 +190,53 @@ END`;
   restore();
   assert.ok(sql.includes("trans_date = '2025-08-12'"));
   await fs.unlink(path.join(process.cwd(), 'config', 'sp_date_rows.sql')).catch(() => {});
+});
+
+test('getProcedureRawRows ignores aggregate fields in extraConditions', { concurrency: false }, async () => {
+  const createSql = `CREATE PROCEDURE \`sp_agg\`()
+BEGIN
+  SELECT t.id, SUM(t.amount) AS total
+  FROM trans t
+  GROUP BY t.id;
+END`;
+  const restore = mockPool(createSql);
+  const { sql } = await db.getProcedureRawRows(
+    'sp_agg',
+    {},
+    'total',
+    'id',
+    1,
+    [
+      { field: 'id', value: 1 },
+      { field: 'total', value: 500 },
+    ],
+  );
+  restore();
+  assert.ok(sql.includes('id = 1'));
+  assert.ok(!sql.includes('total ='));
+  await fs.unlink(path.join(process.cwd(), 'config', 'sp_agg_rows.sql')).catch(() => {});
+});
+
+test('getProcedureRawRows formats time conditions', { concurrency: false }, async () => {
+  const createSql = `CREATE PROCEDURE \`sp_time\`()
+BEGIN
+  SELECT t.trans_time, SUM(t.amount) AS total
+  FROM trans t
+  GROUP BY t.trans_time;
+END`;
+  const columns = [
+    { Field: 'trans_time', Type: 'time' },
+    { Field: 'amount', Type: 'decimal' },
+  ];
+  const restore = mockPool(createSql, columns);
+  const { sql } = await db.getProcedureRawRows(
+    'sp_time',
+    {},
+    'total',
+    'trans_time',
+    '12:34:56',
+  );
+  restore();
+  assert.ok(sql.includes("trans_time = '12:34:56'"));
+  await fs.unlink(path.join(process.cwd(), 'config', 'sp_time_rows.sql')).catch(() => {});
 });
