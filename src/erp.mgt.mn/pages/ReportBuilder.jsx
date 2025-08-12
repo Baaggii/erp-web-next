@@ -470,7 +470,7 @@ function ReportBuilderInner() {
   function reorder(list, from, to) {
     const arr = [...list];
     const [moved] = arr.splice(from, 1);
-    arr.splice(to, 0, moved);
+    arr.splice(from < to ? to - 1 : to, 0, moved);
     return arr;
   }
 
