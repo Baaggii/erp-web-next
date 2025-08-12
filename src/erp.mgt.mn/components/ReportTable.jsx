@@ -35,7 +35,7 @@ function formatNumber(val) {
 function formatCellValue(val) {
   if (val === null || val === undefined) return '';
   if (val instanceof Date) {
-    return formatTimestamp(val).slice(0, 10);
+    return val.toISOString().slice(0, 10);
   }
   const str = String(val);
   if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
@@ -221,8 +221,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       idx < columns.length - 1 &&
       (groupField.toLowerCase() === 'modal' ||
         String(groupValue).toLowerCase() === 'modal' ||
-        isCountColumn(groupField) ||
-        Number.isNaN(Number(groupValue)))
+        isCountColumn(groupField))
     ) {
       idx += 1;
       groupField = columns[idx];
@@ -230,7 +229,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     }
 
     if (groupValue instanceof Date) {
-      groupValue = formatTimestamp(groupValue).slice(0, 10);
+      groupValue = groupValue.toISOString().slice(0, 10);
     } else if (
       typeof groupValue === 'string' &&
       /^\d{4}-\d{2}-\d{2}/.test(groupValue)
@@ -256,7 +255,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       }
       let outVal = val;
       if (val instanceof Date) {
-        outVal = formatTimestamp(val).slice(0, 10);
+        outVal = val.toISOString().slice(0, 10);
       } else if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}/.test(val)) {
         outVal = val.slice(0, 10);
       } else {
@@ -265,7 +264,9 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       }
       allConditions.push({ field, value: outVal });
     }
-    const extraConditions = allConditions.filter((c) => c.field !== groupField);
+    const extraConditions = allConditions.filter(
+      (c) => c.field !== groupField && c.field !== col,
+    );
     const payload = {
       name: procedure,
       column: col,
