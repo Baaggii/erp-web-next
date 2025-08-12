@@ -3,6 +3,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig, { updateCache } from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import Modal from './Modal.jsx';
+import formatTimestamp from '../utils/formatTimestamp.js';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -29,6 +30,18 @@ function formatNumber(val) {
   if (val === null || val === undefined || val === '') return '';
   const num = Number(String(val).replace(',', '.'));
   return Number.isNaN(num) ? '' : numberFmt.format(num);
+}
+
+function formatCellValue(val) {
+  if (val === null || val === undefined) return '';
+  if (val instanceof Date) {
+    return formatTimestamp(val).slice(0, 10);
+  }
+  const str = String(val);
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+    return str.slice(0, 10);
+  }
+  return val;
 }
 
 export default function ReportTable({ procedure = '', params = {}, rows = [] }) {
@@ -193,12 +206,33 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       }),
     );
     const firstField = columns[0];
+    const displayValue = row[firstField];
+
+    let idx = 0;
+    let groupField = columns[idx];
+    let groupValue = row[groupField];
+
+    while (
+      idx < columns.length - 1 &&
+      (groupField.toLowerCase() === 'modal' ||
+        String(groupValue).toLowerCase() === 'modal' ||
+        Number.isNaN(Number(groupValue)))
+    ) {
+      idx += 1;
+      groupField = columns[idx];
+      groupValue = row[groupField];
+    }
+
+    const parsed = Number(groupValue);
+    if (!Number.isNaN(parsed)) {
+      groupValue = parsed;
+    }
     const payload = {
       name: procedure,
       column: col,
       params,
-      groupField: firstField,
-      groupValue: row[firstField],
+      groupField,
+      groupValue,
       session: {
         empid: user?.empid,
         company_id: company?.company_id,
@@ -219,11 +253,17 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
         return data;
       })
       .then((data) => {
+        let outRows = data.rows || [];
+        if (idx > 0) {
+          const replaceVal =
+            firstField.toLowerCase() === 'modal' ? groupValue : displayValue;
+          outRows = outRows.map((r) => ({ ...r, [firstField]: replaceVal }));
+        }
         setTxnInfo({
           loading: false,
           col,
           value,
-          data: data.rows || [],
+          data: outRows,
           sql: data.sql || '',
           displayFields: Array.isArray(data.displayFields)
             ? data.displayFields
@@ -467,7 +507,9 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                       style={{ ...style, cursor: row[col] ? 'pointer' : 'default' }}
                       onClick={() => handleCellClick(col, row[col], row)}
                     >
-                      {numericColumns.includes(col) ? formatNumber(row[col]) : row[col]}
+                      {numericColumns.includes(col)
+                        ? formatNumber(row[col])
+                        : formatCellValue(row[col])}
                     </td>
                   );
                 })}
@@ -606,7 +648,9 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                             textOverflow: 'ellipsis',
                           }}
                         >
-                          {typeof r[c] === 'number' ? formatNumber(r[c]) : r[c]}
+                          {typeof r[c] === 'number'
+                            ? formatNumber(r[c])
+                            : formatCellValue(r[c])}
                         </td>
                       ))}
                     </tr>
