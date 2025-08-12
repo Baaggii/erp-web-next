@@ -255,25 +255,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
         detail: { message: `Procedure: ${procedure}`, type: 'info' },
       }),
     );
-    let firstIdx = 0;
-    let firstField = columns[firstIdx];
-    let displayValue = row[firstField];
-    while (
-      firstIdx < columns.length &&
-      (
-        !firstField ||
-        firstField.toLowerCase() === 'modal' ||
-        String(displayValue).toLowerCase() === 'modal' ||
-        isCountColumn(firstField) ||
-        displayValue === undefined ||
-        displayValue === null ||
-        displayValue === ''
-      )
-    ) {
-      firstIdx += 1;
-      firstField = columns[firstIdx];
-      displayValue = row[firstField];
-    }
+    const firstField = columns[0];
 
     let idx = 0;
     let groupField = columns[idx];
@@ -298,16 +280,18 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     }
 
     const allConditions = [];
-    for (const field of columns) {
+    for (let i = 0; i < columns.length; i++) {
+      const field = columns[i];
       const val = row[field];
       if (
         !field ||
         val === undefined ||
         val === null ||
         val === '' ||
-        field.toLowerCase() === 'modal' ||
-        String(val).toLowerCase() === 'modal' ||
-        isCountColumn(field)
+        isCountColumn(field) ||
+        (i !== 0 &&
+          (field.toLowerCase() === 'modal' ||
+            String(val).toLowerCase() === 'modal'))
       ) {
         continue;
       }
