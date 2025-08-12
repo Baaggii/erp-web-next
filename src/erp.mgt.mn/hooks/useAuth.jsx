@@ -30,7 +30,7 @@ export async function login({ empid, password }) {
     if (contentType.includes('application/json')) {
       const data = await res.json().catch(() => ({}));
       if (data && data.message) message = data.message;
-    } else if (res.status === 503) {
+    } else if (res.status >= 500) {
       message = 'Service unavailable';
     } else {
       // Consume text to avoid unhandled promise rejections

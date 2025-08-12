@@ -1225,6 +1225,7 @@ export async function getProcedureRawRows(
       }
       if (buf.trim()) fields.push(buf.trim());
       const kept = [];
+      const aggAliases = new Set();
       for (let field of fields) {
         const upperField = field.toUpperCase();
         if (upperField.includes('COUNT(')) {
@@ -1250,13 +1251,16 @@ export async function getProcedureRawRows(
           const inner = field.slice(start, j - 1);
           field = field.slice(0, sumIdx) + inner + field.slice(j);
           kept.push(field.trim());
+          aggAliases.add(String(alias).toLowerCase());
         }
       }
-      if (!kept.length) return input;
-      return 'SELECT ' + kept.join(', ') + ' ' + rest;
+      if (!kept.length) return { sql: input, aggAliases: [] };
+      return { sql: 'SELECT ' + kept.join(', ') + ' ' + rest, aggAliases: [...aggAliases] };
     }
 
-    sql = filterAggregates(sql, column);
+    const aggInfo = filterAggregates(sql, column);
+    sql = aggInfo.sql;
+    const aggregateAliases = new Set(aggInfo.aggAliases.map((a) => String(a).toLowerCase()));
 
     sql = sql.replace(/GROUP BY[\s\S]*?(HAVING|ORDER BY|$)/i, '$1');
     sql = sql.replace(/HAVING[\s\S]*?(ORDER BY|$)/i, '$1');
@@ -1301,6 +1305,7 @@ export async function getProcedureRawRows(
       return -1;
     })();
     let primaryFields = [];
+    let typeMap = new Map();
     if (fromIdx !== -1) {
       const fieldsPart = sql.slice(6, fromIdx);
       const rest = sql.slice(fromIdx);
@@ -1355,6 +1360,48 @@ export async function getProcedureRawRows(
             const m = field.match(/(?:AS\s+)?`?([a-zA-Z0-9_]+)`?\s*$/i);
             if (m) {
               primaryFields.push(m[1]);
+            } else {
+              const name = cleaned
+                .slice(prefix ? prefix.length : 0)
+                .split(/\s+/)[0];
+              primaryFields.push(name);
+            }
+          }
+        }
+        try {
+          const cols = await listTableColumnsDetailed(table);
+          typeMap = new Map(
+            cols.map((c) => [c.name.toLowerCase(), c.type.toLowerCase()]),
+          );
+        } catch {}
+        // Collect fields from primary table
+        const fields = [];
+        let buf = '';
+        let depth = 0;
+        for (let i = 0; i < fieldsPart.length; i++) {
+          const ch = fieldsPart[i];
+          if (ch === '(') depth++;
+          else if (ch === ')') depth--;
+          if (ch === ',' && depth === 0) {
+            fields.push(buf.trim());
+            buf = '';
+          } else {
+            buf += ch;
+          }
+        }
+        if (buf.trim()) fields.push(buf.trim());
+        for (const field of fields) {
+          const cleaned = field.replace(/`/g, '').trim();
+          if (
+            (prefix && cleaned.startsWith(prefix)) ||
+            (!prefix && !cleaned.includes('.'))
+          ) {
+            const m = field.match(/(?:AS\s+)?`?([a-zA-Z0-9_]+)`?\s*$/i);
+            if (m) {
+              const alias = m[1];
+              if (!aggregateAliases.has(alias.toLowerCase())) {
+                primaryFields.push(alias);
+              }
             } else {
               const name = cleaned
                 .slice(prefix ? prefix.length : 0)
@@ -1421,17 +1468,35 @@ export async function getProcedureRawRows(
     ) {
       const pfSet = new Set(primaryFields.map((f) => String(f).toLowerCase()));
       const clauses = [];
-      if (groupValue !== undefined && groupField) {
-        const rep =
-          typeof groupValue === 'number' ? String(groupValue) : `'${groupValue}'`;
+
+      function formatByType(field, value) {
+        const type = typeMap.get(String(field).toLowerCase()) || '';
+        const t = type.toLowerCase();
+        const numRe = /int|decimal|double|float|real|bit|bigint|smallint|mediumint|tinyint|year/;
+        if (numRe.test(t)) {
+          const num = Number(value);
+          if (!Number.isNaN(num)) return String(num);
+          return `'${String(value).replace(/'/g, "''")}'`;
+        }
+        if (t === 'date') {
+          return `'${String(value).slice(0, 10)}'`;
+        }
+        return `'${String(value).replace(/'/g, "''")}'`;
+      }
+
+      if (
+        groupValue !== undefined &&
+        groupField &&
+        (!pfSet.size || pfSet.has(String(groupField).toLowerCase()))
+      ) {
+        const rep = formatByType(groupField, groupValue);
         clauses.push(`${groupField} = ${rep}`);
       }
       if (Array.isArray(extraConditions)) {
         for (const { field, value } of extraConditions) {
           if (!field) continue;
           if (pfSet.size && !pfSet.has(String(field).toLowerCase())) continue;
-          const rep =
-            typeof value === 'number' ? String(value) : `'${value}'`;
+          const rep = formatByType(field, value);
           clauses.push(`${field} = ${rep}`);
         }
       }

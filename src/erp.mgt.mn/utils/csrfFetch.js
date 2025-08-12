@@ -66,16 +66,21 @@ window.fetch = async (url, options = {}, _retry) => {
   }
   if (!res.ok) {
     let errorMsg = res.statusText;
-    try {
-      const data = await res.clone().json();
-      if (data && data.message) errorMsg = data.message;
-    } catch {
+    const contentType = res.headers.get('content-type') || '';
+    if (res.status >= 500) {
+      errorMsg = 'Service unavailable';
+    } else if (contentType.includes('application/json')) {
+      try {
+        const data = await res.clone().json();
+        if (data && data.message) errorMsg = data.message;
+      } catch {}
+    } else {
       try {
         const text = await res.clone().text();
         errorMsg = text.slice(0, 200);
       } catch {}
     }
-    if (import.meta.env.DEV) {
+    if (import.meta.env && import.meta.env.DEV) {
       console.error('API Error:', method, url, errorMsg);
     }
     window.dispatchEvent(
