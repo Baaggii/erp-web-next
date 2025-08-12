@@ -35,7 +35,7 @@ function formatNumber(val) {
 function formatCellValue(val) {
   if (val === null || val === undefined) return '';
   if (val instanceof Date) {
-    return val.toISOString().slice(0, 10);
+    return formatTimestamp(val).slice(0, 10);
   }
   const str = String(val);
   if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
@@ -229,7 +229,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     }
 
     if (groupValue instanceof Date) {
-      groupValue = groupValue.toISOString().slice(0, 10);
+      groupValue = formatTimestamp(groupValue).slice(0, 10);
     } else if (
       typeof groupValue === 'string' &&
       /^\d{4}-\d{2}-\d{2}/.test(groupValue)
@@ -255,7 +255,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       }
       let outVal = val;
       if (val instanceof Date) {
-        outVal = val.toISOString().slice(0, 10);
+        outVal = formatTimestamp(val).slice(0, 10);
       } else if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}/.test(val)) {
         outVal = val.slice(0, 10);
       } else {
