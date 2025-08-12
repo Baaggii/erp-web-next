@@ -18,16 +18,14 @@ export function requireAuth(req, res, next) {
   }
 
   function issueTokens(payload) {
-    const newAccess = jwtService.sign({
+    const base = {
       id: payload.id,
       empid: payload.empid,
       role: payload.role,
-    });
-    const newRefresh = jwtService.signRefresh({
-      id: payload.id,
-      empid: payload.empid,
-      role: payload.role,
-    });
+      companyId: payload.companyId,
+    };
+    const newAccess = jwtService.sign(base);
+    const newRefresh = jwtService.signRefresh(base);
     res.cookie(getCookieName(), newAccess, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -60,7 +58,7 @@ export function requireAuth(req, res, next) {
   try {
     // Verify the JWT
     const payload = jwtService.verify(token);
-    req.user = payload; // { id, empid, role, iat, exp }
+    req.user = payload; // { id, empid, role, companyId, iat, exp }
     return next();
   } catch (err) {
     if (err.name === 'TokenExpiredError' && rToken) {
