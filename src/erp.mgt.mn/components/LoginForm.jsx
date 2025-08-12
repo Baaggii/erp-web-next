@@ -2,6 +2,7 @@
 import React, { useState, useContext } from 'react';
 import { login } from '../hooks/useAuth.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
+import { refreshRolePermissions } from '../hooks/useRolePermissions.js';
 import { refreshCompanyModules } from '../hooks/useCompanyModules.js';
 import { refreshModules } from '../hooks/useModules.js';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
@@ -12,10 +13,9 @@ export default function LoginForm() {
   const [empid, setEmpid] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
-  const { setUser, setSession, setUserLevel, setPermissions } =
-    useContext(AuthContext);
-  const [sessionChoices, setSessionChoices] = useState(null);
-  const [selectedSession, setSelectedSession] = useState('');
+  const { setUser, setCompany } = useContext(AuthContext);
+  const [companyChoices, setCompanyChoices] = useState(null);
+  const [selectedCompany, setSelectedCompany] = useState('');
   const navigate = useNavigate();
 
   async function handleSubmit(e) {
@@ -26,39 +26,29 @@ export default function LoginForm() {
       // Send POST /api/auth/login with credentials: 'include'
       const loggedIn = await login({ empid, password });
 
-      // The login response includes user profile and session info
-      setUser(loggedIn.user);
+      // The login response already returns the user profile
+      setUser(loggedIn);
 
-      const sessions = Array.isArray(loggedIn.sessions)
-        ? loggedIn.sessions
-        : loggedIn.session
-        ? [
-            {
-              session: loggedIn.session,
-              user_level: loggedIn.user_level,
-              permissions: loggedIn.permissions,
-            },
-          ]
-        : [];
+      // Fetch company assignments
+      const res = await fetch(
+        `/api/user_companies?empid=${encodeURIComponent(loggedIn.empid)}`,
+        { credentials: 'include' },
+      );
+      const assignments = res.ok ? await res.json() : [];
 
-      if (sessions.length === 1) {
-        const choice = sessions[0];
-        setSession(choice.session);
-        setUserLevel(choice.user_level ?? null);
-        setPermissions(choice.permissions ?? null);
-        if (choice.session?.company_id)
-          refreshCompanyModules(choice.session.company_id);
+      if (assignments.length === 1) {
+        const choice = assignments[0];
+        setCompany(choice);
+        const roleId = choice.role_id || loggedIn.role_id || (loggedIn.role === 'admin' ? 1 : 2);
+        refreshRolePermissions(roleId, choice.company_id);
+        refreshCompanyModules(choice.company_id);
         refreshModules();
         refreshTxnModules();
         navigate('/');
-      } else if (sessions.length > 1) {
-        setSession(null);
-        setSessionChoices(sessions);
+      } else if (assignments.length > 1) {
+        setCompany(null);
+        setCompanyChoices(assignments);
       } else {
-        // No active employment session; proceed without session info
-        setSession(null);
-        setUserLevel(loggedIn.user_level ?? null);
-        setPermissions(loggedIn.permissions ?? null);
         refreshModules();
         refreshTxnModules();
         navigate('/');
@@ -69,18 +59,18 @@ export default function LoginForm() {
     }
   }
 
-  if (sessionChoices) {
+  if (companyChoices) {
     return (
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          const choice = sessionChoices.find((_, idx) => `${idx}` === selectedSession);
+          const choice = companyChoices.find(
+            (c) => `${c.company_id}-${c.branch_id || ''}` === selectedCompany,
+          );
           if (choice) {
-            setSession(choice.session);
-            setUserLevel(choice.user_level ?? null);
-            setPermissions(choice.permissions ?? null);
-            if (choice.session?.company_id)
-              refreshCompanyModules(choice.session.company_id);
+            setCompany(choice);
+            refreshRolePermissions(choice.role_id, choice.company_id);
+            refreshCompanyModules(choice.company_id);
             refreshModules();
             refreshTxnModules();
             navigate('/');
@@ -89,23 +79,25 @@ export default function LoginForm() {
         style={{ maxWidth: '320px' }}
       >
         <div style={{ marginBottom: '0.75rem' }}>
-          <label htmlFor="session" style={{ display: 'block', marginBottom: '0.25rem' }}>
+          <label htmlFor="company" style={{ display: 'block', marginBottom: '0.25rem' }}>
             Компани сонгох
           </label>
           <select
-            id="session"
-            value={selectedSession}
-            onChange={(e) => setSelectedSession(e.target.value)}
+            id="company"
+            value={selectedCompany}
+            onChange={(e) => setSelectedCompany(e.target.value)}
             required
             style={{ width: '100%', padding: '0.5rem', borderRadius: '3px', border: '1px solid #ccc' }}
           >
             <option value="" disabled>
               Сонгоно уу...
             </option>
-            {sessionChoices.map((c, idx) => (
-              <option key={idx} value={idx}>
-                {c.session?.branch_name ? `${c.session.branch_name} | ` : ''}
-                {c.session?.company_name || c.session?.company_id}
+            {companyChoices.map((c) => (
+              <option
+                key={c.company_id + '-' + (c.branch_id || '')}
+                value={`${c.company_id}-${c.branch_id || ''}`}
+              >
+                {c.branch_name ? `${c.branch_name} | ` : ''}{c.company_name}
               </option>
             ))}
           </select>
