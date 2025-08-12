@@ -1144,6 +1144,7 @@ export async function getProcedureRawRows(
   column,
   groupField,
   groupValue,
+  extraConditions = [],
   sessionVars = {},
 ) {
   let createSql = '';
@@ -1225,7 +1226,11 @@ export async function getProcedureRawRows(
       if (buf.trim()) fields.push(buf.trim());
       const kept = [];
       for (let field of fields) {
-        const sumIdx = field.toUpperCase().indexOf('SUM(');
+        const upperField = field.toUpperCase();
+        if (upperField.includes('COUNT(')) {
+          continue;
+        }
+        const sumIdx = upperField.indexOf('SUM(');
         if (sumIdx === -1) {
           kept.push(field);
           continue;
@@ -1376,10 +1381,27 @@ export async function getProcedureRawRows(
       }
     }
 
-    if (groupValue !== undefined) {
-      const rep =
-        typeof groupValue === 'number' ? String(groupValue) : `'${groupValue}'`;
-      sql = `SELECT * FROM (${sql}) AS _raw WHERE ${groupField} = ${rep}`;
+    if (
+      groupValue !== undefined ||
+      (Array.isArray(extraConditions) && extraConditions.length)
+    ) {
+      const clauses = [];
+      if (groupValue !== undefined && groupField) {
+        const rep =
+          typeof groupValue === 'number' ? String(groupValue) : `'${groupValue}'`;
+        clauses.push(`${groupField} = ${rep}`);
+      }
+      if (Array.isArray(extraConditions)) {
+        for (const { field, value } of extraConditions) {
+          if (!field) continue;
+          const rep =
+            typeof value === 'number' ? String(value) : `'${value}'`;
+          clauses.push(`${field} = ${rep}`);
+        }
+      }
+      if (clauses.length) {
+        sql = `SELECT * FROM (${sql}) AS _raw WHERE ${clauses.join(' AND ')}`;
+      }
     }
 
     sql = sql.replace(/;\s*$/, '');

@@ -132,3 +132,26 @@ END`;
       .catch(() => {});
   },
 );
+
+test('getProcedureRawRows applies extraConditions', { concurrency: false }, async () => {
+  const createSql = `CREATE PROCEDURE \`sp_multi\`()
+BEGIN
+  SELECT c.id, c.name, SUM(t.amount) AS total
+  FROM trans t
+  JOIN categories c ON c.id = t.category_id
+  GROUP BY c.id, c.name;
+END`;
+  const restore = mockPool(createSql);
+  const { sql } = await db.getProcedureRawRows(
+    'sp_multi',
+    {},
+    'total',
+    'id',
+    5,
+    [{ field: 'name', value: 'Phones' }],
+  );
+  restore();
+  assert.ok(sql.includes('id = 5'));
+  assert.ok(sql.includes("name = 'Phones'"));
+  await fs.unlink(path.join(process.cwd(), 'config', 'sp_multi_rows.sql')).catch(() => {});
+});
