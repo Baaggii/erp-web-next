@@ -1438,14 +1438,25 @@ export async function getProcedureRawRows(
           return Number.isNaN(num) ? mysql.escape(val) : String(num);
         }
         if (/date/.test(type)) {
+          if (typeof val === 'string') {
+            const m = val.match(/^(\d{4}-\d{2}-\d{2})/);
+            if (m) return mysql.escape(m[1]);
+          }
           const d = new Date(val);
           if (!Number.isNaN(d.getTime())) {
-            return `'${d.toISOString().slice(0, 10)}'`;
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            return mysql.escape(`${yyyy}-${mm}-${dd}`);
           }
         }
         return mysql.escape(val);
       }
-      if (groupValue !== undefined && groupField) {
+      if (
+        groupValue !== undefined &&
+        groupField &&
+        (!pfSet.size || pfSet.has(String(groupField).toLowerCase()))
+      ) {
         clauses.push(`${groupField} = ${formatVal(groupField, groupValue)}`);
       }
       if (Array.isArray(extraConditions)) {
