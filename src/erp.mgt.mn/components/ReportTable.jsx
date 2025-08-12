@@ -229,15 +229,22 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       groupValue = row[groupField];
     }
 
-    const parsed = Number(groupValue);
-    if (!Number.isNaN(parsed)) {
-      groupValue = parsed;
+    if (groupValue instanceof Date) {
+      groupValue = formatTimestamp(groupValue).slice(0, 10);
+    } else if (
+      typeof groupValue === 'string' &&
+      /^\d{4}-\d{2}-\d{2}/.test(groupValue)
+    ) {
+      groupValue = groupValue.slice(0, 10);
+    } else {
+      const parsed = Number(groupValue);
+      if (!Number.isNaN(parsed)) {
+        groupValue = parsed;
+      }
     }
 
-    const clickedIdx = columns.indexOf(col);
     const allConditions = [];
-    for (let i = 0; i < clickedIdx; i++) {
-      const field = columns[i];
+    for (const field of columns) {
       const val = row[field];
       if (
         !field ||
@@ -247,11 +254,16 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       ) {
         continue;
       }
-      const numVal = Number(String(val).replace(',', '.'));
-      allConditions.push({
-        field,
-        value: Number.isNaN(numVal) ? val : numVal,
-      });
+      let outVal = val;
+      if (val instanceof Date) {
+        outVal = formatTimestamp(val).slice(0, 10);
+      } else if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}/.test(val)) {
+        outVal = val.slice(0, 10);
+      } else {
+        const numVal = Number(String(val).replace(',', '.'));
+        if (!Number.isNaN(numVal)) outVal = numVal;
+      }
+      allConditions.push({ field, value: outVal });
     }
     const extraConditions = allConditions.filter((c) => c.field !== groupField);
     const payload = {
