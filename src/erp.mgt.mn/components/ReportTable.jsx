@@ -255,6 +255,13 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
         detail: { message: `Procedure: ${procedure}`, type: 'info' },
       }),
     );
+    let displayValue = value;
+    if (placeholders[col]) {
+      displayValue = formatCellValue(value, placeholders[col]);
+    } else if (numericColumns.includes(col)) {
+      const parsed = Number(String(value).replace(',', '.'));
+      if (!Number.isNaN(parsed)) displayValue = parsed;
+    }
     const firstField = columns[0];
 
     let idx = 0;
@@ -305,7 +312,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       allConditions.push({ field, value: outVal });
     }
     const extraConditions = allConditions.filter(
-      (c) => c.field !== groupField && c.field !== col,
+      (c) => c.field !== groupField && c.field !== col && c.field !== firstField,
     );
     const fallback = allConditions.find((c) => c.field === firstField);
     if (fallback) extraConditions.unshift(fallback);
