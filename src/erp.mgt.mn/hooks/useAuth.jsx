@@ -27,17 +27,15 @@ export async function login({ empid, password, companyId }) {
   }
 
   if (!res.ok) {
-    let message = 'Login failed';
     const contentType = res.headers.get('content-type') || '';
+    let message = 'Login failed';
     if (contentType.includes('application/json')) {
       const data = await res.json().catch(() => ({}));
       if (data && data.message) message = data.message;
     } else if (res.status === 503) {
       message = 'Service unavailable';
     } else {
-      // Consume text to avoid unhandled promise rejections
-      const text = await res.text().catch(() => '');
-      if (text) message = text;
+      message = res.statusText || message;
     }
     throw new Error(message);
   }
