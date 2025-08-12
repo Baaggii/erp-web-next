@@ -31,6 +31,18 @@ function formatNumber(val) {
   return Number.isNaN(num) ? '' : numberFmt.format(num);
 }
 
+function formatCellValue(val) {
+  if (val === null || val === undefined) return '';
+  if (val instanceof Date) {
+    return val.toISOString().slice(0, 10);
+  }
+  const str = String(val);
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+    return str.slice(0, 10);
+  }
+  return val;
+}
+
 export default function ReportTable({ procedure = '', params = {}, rows = [] }) {
   const { user, company } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
@@ -477,7 +489,9 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                       style={{ ...style, cursor: row[col] ? 'pointer' : 'default' }}
                       onClick={() => handleCellClick(col, row[col], row)}
                     >
-                      {numericColumns.includes(col) ? formatNumber(row[col]) : row[col]}
+                      {numericColumns.includes(col)
+                        ? formatNumber(row[col])
+                        : formatCellValue(row[col])}
                     </td>
                   );
                 })}
@@ -616,7 +630,9 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
                             textOverflow: 'ellipsis',
                           }}
                         >
-                          {typeof r[c] === 'number' ? formatNumber(r[c]) : r[c]}
+                          {typeof r[c] === 'number'
+                            ? formatNumber(r[c])
+                            : formatCellValue(r[c])}
                         </td>
                       ))}
                     </tr>
