@@ -1331,6 +1331,39 @@ export async function getProcedureRawRows(
       }
       if (table) {
         const prefix = alias ? `${alias}.` : '';
+        // Collect fields from primary table
+        const fields = [];
+        let buf = '';
+        let depth = 0;
+        for (let i = 0; i < fieldsPart.length; i++) {
+          const ch = fieldsPart[i];
+          if (ch === '(') depth++;
+          else if (ch === ')') depth--;
+          if (ch === ',' && depth === 0) {
+            fields.push(buf.trim());
+            buf = '';
+          } else {
+            buf += ch;
+          }
+        }
+        if (buf.trim()) fields.push(buf.trim());
+        for (const field of fields) {
+          const cleaned = field.replace(/`/g, '').trim();
+          if (
+            (prefix && cleaned.startsWith(prefix)) ||
+            (!prefix && !cleaned.includes('.'))
+          ) {
+            const m = field.match(/(?:AS\s+)?`?([a-zA-Z0-9_]+)`?\s*$/i);
+            if (m) {
+              primaryFields.push(m[1]);
+            } else {
+              const name = cleaned
+                .slice(prefix ? prefix.length : 0)
+                .split(/\s+/)[0];
+              primaryFields.push(name);
+            }
+          }
+        }
         try {
           const cols = await listTableColumnsDetailed(table);
           typeMap = new Map(
