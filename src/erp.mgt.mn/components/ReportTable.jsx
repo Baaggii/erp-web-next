@@ -3,7 +3,6 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig, { updateCache } from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import Modal from './Modal.jsx';
-import formatTimestamp from '../utils/formatTimestamp.js';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -32,10 +31,19 @@ function formatNumber(val) {
   return Number.isNaN(num) ? '' : numberFmt.format(num);
 }
 
+function formatDate(val) {
+  const d = val instanceof Date ? val : new Date(val);
+  if (Number.isNaN(d.getTime())) return '';
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 function formatCellValue(val) {
   if (val === null || val === undefined) return '';
   if (val instanceof Date) {
-    return formatTimestamp(val).slice(0, 10);
+    return formatDate(val);
   }
   const str = String(val);
   if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
@@ -221,8 +229,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       idx < columns.length - 1 &&
       (groupField.toLowerCase() === 'modal' ||
         String(groupValue).toLowerCase() === 'modal' ||
-        isCountColumn(groupField) ||
-        Number.isNaN(Number(groupValue)))
+        isCountColumn(groupField))
     ) {
       idx += 1;
       groupField = columns[idx];
@@ -230,7 +237,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     }
 
     if (groupValue instanceof Date) {
-      groupValue = formatTimestamp(groupValue).slice(0, 10);
+      groupValue = formatDate(groupValue);
     } else if (
       typeof groupValue === 'string' &&
       /^\d{4}-\d{2}-\d{2}/.test(groupValue)
@@ -256,7 +263,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       }
       let outVal = val;
       if (val instanceof Date) {
-        outVal = formatTimestamp(val).slice(0, 10);
+        outVal = formatDate(val);
       } else if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}/.test(val)) {
         outVal = val.slice(0, 10);
       } else {
@@ -265,7 +272,9 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       }
       allConditions.push({ field, value: outVal });
     }
-    const extraConditions = allConditions.filter((c) => c.field !== groupField);
+    const extraConditions = allConditions.filter(
+      (c) => c.field !== groupField && c.field !== col,
+    );
     const payload = {
       name: procedure,
       column: col,
