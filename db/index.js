@@ -1225,7 +1225,11 @@ export async function getProcedureRawRows(
       if (buf.trim()) fields.push(buf.trim());
       const kept = [];
       for (let field of fields) {
-        const sumIdx = field.toUpperCase().indexOf('SUM(');
+        const upperField = field.toUpperCase();
+        if (upperField.includes('COUNT(')) {
+          continue;
+        }
+        const sumIdx = upperField.indexOf('SUM(');
         if (sumIdx === -1) {
           kept.push(field);
           continue;
