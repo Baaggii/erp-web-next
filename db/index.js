@@ -1301,11 +1301,11 @@ export async function getProcedureRawRows(
       return -1;
     })();
     let primaryFields = [];
+    let table = '';
     if (fromIdx !== -1) {
       const fieldsPart = sql.slice(6, fromIdx);
       const rest = sql.slice(fromIdx);
       const afterFrom = rest.slice(4).trimStart();
-      let table = '';
       let alias = '';
       if (afterFrom.startsWith('(')) {
         let depth = 1;
@@ -1415,24 +1415,51 @@ export async function getProcedureRawRows(
       }
     }
 
+    let fieldTypes = {};
+    if (table) {
+      try {
+        const [cols] = await pool.query('SHOW COLUMNS FROM ??', [table]);
+        for (const c of cols) {
+          fieldTypes[c.Field.toLowerCase()] = c.Type.toLowerCase();
+        }
+      } catch {}
+    }
+
     if (
       groupValue !== undefined ||
       (Array.isArray(extraConditions) && extraConditions.length)
     ) {
       const pfSet = new Set(primaryFields.map((f) => String(f).toLowerCase()));
       const clauses = [];
-      if (groupValue !== undefined && groupField) {
-        const rep =
-          typeof groupValue === 'number' ? String(groupValue) : `'${groupValue}'`;
-        clauses.push(`${groupField} = ${rep}`);
+      function formatVal(field, val) {
+        const type = fieldTypes[String(field).toLowerCase()] || '';
+        if (/int|decimal|float|double|bit|year/.test(type)) {
+          const num = Number(val);
+          return Number.isNaN(num) ? mysql.escape(val) : String(num);
+        }
+        if (/date/.test(type)) {
+          const d = val instanceof Date ? val : new Date(val);
+          if (!Number.isNaN(d.getTime())) {
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            return `'${yyyy}-${mm}-${dd}'`;
+          }
+        }
+        return mysql.escape(val);
+      }
+      if (
+        groupValue !== undefined &&
+        groupField &&
+        (!pfSet.size || pfSet.has(String(groupField).toLowerCase()))
+      ) {
+        clauses.push(`${groupField} = ${formatVal(groupField, groupValue)}`);
       }
       if (Array.isArray(extraConditions)) {
         for (const { field, value } of extraConditions) {
           if (!field) continue;
           if (pfSet.size && !pfSet.has(String(field).toLowerCase())) continue;
-          const rep =
-            typeof value === 'number' ? String(value) : `'${value}'`;
-          clauses.push(`${field} = ${rep}`);
+          clauses.push(`${field} = ${formatVal(field, value)}`);
         }
       }
       if (clauses.length) {
