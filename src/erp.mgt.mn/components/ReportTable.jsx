@@ -307,13 +307,8 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     const extraConditions = allConditions.filter(
       (c) => c.field !== groupField && c.field !== col,
     );
-    if (
-      firstField &&
-      !extraConditions.some((c) => c.field === firstField)
-    ) {
-      const fallback = allConditions.find((c) => c.field === firstField);
-      if (fallback) extraConditions.unshift(fallback);
-    }
+    const fallback = allConditions.find((c) => c.field === firstField);
+    if (fallback) extraConditions.unshift(fallback);
     const payload = {
       name: procedure,
       column: col,
