@@ -29,17 +29,26 @@ export default function LoginForm() {
       // The login response includes user profile and session info
       setUser(loggedIn.user);
 
-      const sessions = Array.isArray(loggedIn.sessions)
-        ? loggedIn.sessions
-        : loggedIn.session
-        ? [
-            {
-              session: loggedIn.session,
-              user_level: loggedIn.user_level,
-              permissions: loggedIn.permissions,
-            },
-          ]
-        : [];
+      // Normalize session list so each element has {session, user_level, permissions}
+      const sessions = [];
+      if (Array.isArray(loggedIn.sessions)) {
+        for (const s of loggedIn.sessions) {
+          sessions.push({
+            session: s.session || s,
+            user_level: s.user_level ?? s.session?.user_level ?? loggedIn.user_level,
+            permissions:
+              s.permissions ?? s.session?.permissions ?? loggedIn.permissions,
+          });
+        }
+      } else if (loggedIn.session) {
+        sessions.push({
+          session: loggedIn.session,
+          user_level:
+            loggedIn.user_level ?? loggedIn.session.user_level ?? null,
+          permissions:
+            loggedIn.permissions ?? loggedIn.session.permissions ?? null,
+        });
+      }
 
       if (sessions.length === 1) {
         const choice = sessions[0];
