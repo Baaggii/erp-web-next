@@ -8,7 +8,7 @@ const baseDir = path.join(process.cwd(), 'uploads', 'txn_images');
 const srcDir = path.join(baseDir, 'delete_image_test');
 const deletedDir = path.join(baseDir, 'deleted_images');
 
-await test('deleteImage moves file to deleted_images', async () => {
+await test('deleteImage moves file to deleted_images', { concurrency: false }, async () => {
   await fs.rm(srcDir, { recursive: true, force: true });
   await fs.rm(deletedDir, { recursive: true, force: true });
   await fs.mkdir(srcDir, { recursive: true });
