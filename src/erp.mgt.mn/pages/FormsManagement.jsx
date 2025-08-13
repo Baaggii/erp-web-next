@@ -537,6 +537,23 @@ export default function FormsManagement() {
 
             {columns.length > 0 && (
               <select
+                value={config.detectField}
+                onChange={(e) =>
+                  setConfig((c) => ({ ...c, detectField: e.target.value }))
+                }
+                style={{ marginLeft: '0.5rem' }}
+              >
+                <option value="">-- detection field --</option>
+                {columns.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {columns.length > 0 && (
+              <select
                 value={config.transactionTypeField}
                 onChange={(e) =>
                   setConfig((c) => ({ ...c, transactionTypeField: e.target.value }))
