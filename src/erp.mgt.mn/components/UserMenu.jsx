@@ -26,12 +26,7 @@ export default function UserMenu({ user, onLogout }) {
   return (
     <div style={styles.wrapper}>
       <button style={styles.userBtn} onClick={toggle}>
-        {company?.employee_name
-          ? `${company.employee_name} (${user.empid})`
-          : user.empid}
-        {company?.company_name ? ` - ${company.company_name}` : ''}
-        {company?.branch_name ? ` - ${company.branch_name}` : ''}
-        {company?.department_name ? ` - ${company.department_name}` : ''} ▾
+        {company?.employee_name || user.empid} ▾
       </button>
       {open && (
         <div style={styles.menu}>

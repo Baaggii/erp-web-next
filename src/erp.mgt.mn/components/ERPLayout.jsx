@@ -165,9 +165,6 @@ function Header({ user, onLogout, onHome, isMobile, onToggleSidebar }) {
           style={styles.logoImage}
         />
         <span style={styles.logoText}>MyERP</span>
-        {company && (
-          <span style={styles.companyText}> ({company.company_name})</span>
-        )}
       </div>
       <nav style={styles.headerNav}>
         <button style={styles.iconBtn} onClick={onHome}>🗔 Нүүр</button>
@@ -179,7 +176,6 @@ function Header({ user, onLogout, onHome, isMobile, onToggleSidebar }) {
         <span style={styles.locationInfo}>
           {company.branch_name && `📍 ${company.branch_name} | `}
           {company.department_name && `🏬 ${company.department_name} | `}
-          {company.employee_name && `👤 ${company.employee_name} | `}
           🏢 {company.company_name}
         </span>
       )}
@@ -437,11 +433,6 @@ const styles = {
   logoText: {
     fontSize: "1.1rem",
     fontWeight: "bold",
-  },
-  companyText: {
-    marginLeft: "0.5rem",
-    fontSize: "0.9rem",
-    opacity: 0.8,
   },
   headerNav: {
     marginLeft: "2rem",

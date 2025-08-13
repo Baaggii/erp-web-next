@@ -180,6 +180,7 @@ export async function getEmploymentSessions(empid) {
   const companyName = buildDisplayExpr("c", companyCfg, "c.name");
   const branchName = buildDisplayExpr("b", branchCfg, "b.name");
   const deptName = buildDisplayExpr("d", deptCfg, "d.name");
+  const deptIdCol = deptCfg?.idField || "id";
   const empName = buildDisplayExpr(
     "emp",
     empCfg,
@@ -216,7 +217,7 @@ export async function getEmploymentSessions(empid) {
      FROM tbl_employment e
      LEFT JOIN companies c ON e.employment_company_id = c.id
      LEFT JOIN code_branches b ON e.employment_branch_id = b.id
-     LEFT JOIN code_department d ON e.employment_department_id = d.id
+     LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol}
      LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
      LEFT JOIN code_userlevel ul ON e.employment_user_level = ul.userlever_id
      WHERE e.employment_emp_id = ?
@@ -242,6 +243,7 @@ export async function getEmploymentSession(empid, companyId) {
     const companyName = buildDisplayExpr("c", companyCfg, "c.name");
     const branchName = buildDisplayExpr("b", branchCfg, "b.name");
     const deptName = buildDisplayExpr("d", deptCfg, "d.name");
+    const deptIdCol = deptCfg?.idField || "id";
     const empName = buildDisplayExpr(
       "emp",
       empCfg,
@@ -278,7 +280,7 @@ export async function getEmploymentSession(empid, companyId) {
        FROM tbl_employment e
        LEFT JOIN companies c ON e.employment_company_id = c.id
        LEFT JOIN code_branches b ON e.employment_branch_id = b.id
-       LEFT JOIN code_department d ON e.employment_department_id = d.id
+       LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol}
        LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
        LEFT JOIN code_userlevel ul ON e.employment_user_level = ul.userlever_id
        WHERE e.employment_emp_id = ? AND e.employment_company_id = ?
