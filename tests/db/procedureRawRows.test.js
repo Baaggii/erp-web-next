@@ -172,6 +172,27 @@ END`;
   await fs.unlink(path.join(process.cwd(), 'config', 'sp_multi_rows.sql')).catch(() => {});
 });
 
+test('getProcedureRawRows accepts prefixed field names', { concurrency: false }, async () => {
+  const createSql = `CREATE PROCEDURE \`sp_pref\`()
+BEGIN
+  SELECT t.id, t.region, t.amount
+  FROM trans t;
+END`;
+  const restore = mockPool(createSql);
+  const { sql } = await db.getProcedureRawRows(
+    'sp_pref',
+    {},
+    'amount',
+    't.region',
+    'West',
+    [{ field: 't.id', value: 7 }],
+  );
+  restore();
+  assert.ok(sql.includes("region = 'West'"));
+  assert.ok(sql.includes('id = 7'));
+  await fs.unlink(path.join(process.cwd(), 'config', 'sp_pref_rows.sql')).catch(() => {});
+});
+
 test('getProcedureRawRows formats date conditions', { concurrency: false }, async () => {
   const createSql = `CREATE PROCEDURE \`sp_date\`()
 BEGIN

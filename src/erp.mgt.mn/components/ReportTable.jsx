@@ -314,8 +314,22 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     const extraConditions = allConditions.filter(
       (c) => c.field !== groupField && c.field !== col && c.field !== firstField,
     );
-    const fallback = allConditions.find((c) => c.field === firstField);
-    if (fallback) extraConditions.unshift(fallback);
+    let firstVal = row[firstField];
+    if (placeholders[firstField]) {
+      firstVal = formatCellValue(firstVal, placeholders[firstField]);
+    } else if (numericColumns.includes(firstField)) {
+      const num = Number(String(firstVal).replace(',', '.'));
+      if (!Number.isNaN(num)) firstVal = num;
+    }
+    if (
+      firstField &&
+      firstVal !== undefined &&
+      firstVal !== null &&
+      firstVal !== '' &&
+      !extraConditions.some((c) => c.field === firstField)
+    ) {
+      extraConditions.unshift({ field: firstField, value: firstVal });
+    }
     const payload = {
       name: procedure,
       column: col,
