@@ -75,8 +75,7 @@ function parseEntry(raw = {}) {
       typeof raw.transactionTypeValue === 'string'
         ? raw.transactionTypeValue
         : '',
-    detectField:
-      typeof raw.detectField === 'string' ? raw.detectField : '',
+    detectFields: arrify(raw.detectFields || raw.detectField),
     moduleKey: typeof raw.moduleKey === 'string' ? raw.moduleKey : '',
     allowedBranches: Array.isArray(raw.allowedBranches)
       ? raw.allowedBranches.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
@@ -186,6 +185,7 @@ export async function setFormConfig(table, name, config, options = {}) {
     viewSource = {},
     transactionTypeField = '',
     transactionTypeValue = '',
+    detectFields = [],
     detectField = '',
     procedures = [],
   } = config || {};
@@ -229,7 +229,9 @@ export async function setFormConfig(table, name, config, options = {}) {
     viewSource: viewSource && typeof viewSource === 'object' ? viewSource : {},
     transactionTypeField: transactionTypeField || '',
     transactionTypeValue: transactionTypeValue || '',
-    detectField: detectField || '',
+    detectFields: arrify(
+      detectFields.length ? detectFields : detectField ? [detectField] : [],
+    ),
     moduleKey: parentModuleKey,
     moduleLabel: moduleLabel || undefined,
     allowedBranches: ab,

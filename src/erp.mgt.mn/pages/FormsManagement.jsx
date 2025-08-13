@@ -53,7 +53,7 @@ export default function FormsManagement() {
     viewSource: {},
     transactionTypeField: '',
     transactionTypeValue: '',
-    detectField: '',
+    detectFields: [],
     allowedBranches: [],
     allowedDepartments: [],
     procedures: [],
@@ -162,7 +162,7 @@ export default function FormsManagement() {
             viewSource: filtered[name].viewSource || {},
             transactionTypeField: filtered[name].transactionTypeField || '',
             transactionTypeValue: filtered[name].transactionTypeValue || '',
-            detectField: filtered[name].detectField || '',
+            detectFields: filtered[name].detectFields || [],
             allowedBranches: (filtered[name].allowedBranches || []).map(String),
             allowedDepartments: (filtered[name].allowedDepartments || []).map(String),
             procedures: filtered[name].procedures || [],
@@ -195,7 +195,7 @@ export default function FormsManagement() {
             viewSource: {},
             transactionTypeField: '',
             transactionTypeValue: '',
-            detectField: '',
+            detectFields: [],
             allowedBranches: [],
             allowedDepartments: [],
             procedures: [],
@@ -231,7 +231,7 @@ export default function FormsManagement() {
           viewSource: {},
           transactionTypeField: '',
           transactionTypeValue: '',
-          detectField: '',
+          detectFields: [],
           allowedBranches: [],
           allowedDepartments: [],
           procedures: [],
@@ -272,7 +272,7 @@ export default function FormsManagement() {
           viewSource: cfg.viewSource || {},
           transactionTypeField: cfg.transactionTypeField || '',
           transactionTypeValue: cfg.transactionTypeValue || '',
-          detectField: cfg.detectField || '',
+          detectFields: cfg.detectFields || [],
           allowedBranches: (cfg.allowedBranches || []).map(String),
           allowedDepartments: (cfg.allowedDepartments || []).map(String),
           procedures: cfg.procedures || [],
@@ -305,7 +305,7 @@ export default function FormsManagement() {
           viewSource: {},
           transactionTypeField: '',
           transactionTypeValue: '',
-          detectField: '',
+          detectFields: [],
           allowedBranches: [],
           allowedDepartments: [],
           procedures: [],
@@ -430,7 +430,7 @@ export default function FormsManagement() {
       viewSource: {},
       transactionTypeField: '',
       transactionTypeValue: '',
-      detectField: '',
+      detectFields: [],
       allowedBranches: [],
       allowedDepartments: [],
       procedures: [],
@@ -465,7 +465,7 @@ export default function FormsManagement() {
       viewSource: cfg.viewSource || {},
       transactionTypeField: cfg.transactionTypeField || '',
       transactionTypeValue: cfg.transactionTypeValue || '',
-      detectField: cfg.detectField || '',
+      detectFields: cfg.detectFields || [],
       allowedBranches: (cfg.allowedBranches || []).map(String),
       allowedDepartments: (cfg.allowedDepartments || []).map(String),
       procedures: cfg.procedures || [],
@@ -640,6 +640,7 @@ export default function FormsManagement() {
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Required</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Default</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Editable</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>Detect</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>UserID</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>BranchID</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>DepartmentID</th>
@@ -691,6 +692,13 @@ export default function FormsManagement() {
                       type="checkbox"
                       checked={config.editableDefaultFields.includes(col)}
                       onChange={() => toggleEditable(col)}
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.detectFields.includes(col)}
+                      onChange={() => toggleFieldList(col, 'detectFields')}
                     />
                   </td>
                   <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
