@@ -12,8 +12,7 @@ export default function LoginForm() {
   // login using employee ID only
   const [empid, setEmpid] = useState('');
   const [password, setPassword] = useState('');
-  const [companyOptions, setCompanyOptions] = useState([]);
-  const [isCompanyStep, setIsCompanyStep] = useState(false);
+  const [companyOptions, setCompanyOptions] = useState(null);
   const [companyId, setCompanyId] = useState('');
   const [error, setError] = useState(null);
   const { setUser, setCompany } = useContext(AuthContext);
@@ -26,15 +25,11 @@ export default function LoginForm() {
     try {
       // Send POST /api/auth/login with credentials: 'include'
       const payload = { empid, password };
-      if (isCompanyStep) {
-        payload.companyId = Number(companyId);
-      }
+      if (companyId) payload.companyId = Number(companyId);
       const loggedIn = await login(payload);
 
       if (loggedIn.needsCompany) {
-        setCompanyOptions(loggedIn.sessions || []);
-        setCompanyId('');
-        setIsCompanyStep(true);
+        setCompanyOptions(loggedIn.sessions);
         return;
       }
 
@@ -55,50 +50,6 @@ export default function LoginForm() {
     }
   }
 
-  if (isCompanyStep) {
-    return (
-      <form onSubmit={handleSubmit} style={{ maxWidth: '320px' }}>
-        <div style={{ marginBottom: '0.75rem' }}>
-          <label htmlFor="company" style={{ display: 'block', marginBottom: '0.25rem' }}>
-            Компани
-          </label>
-          <select
-            id="company"
-            value={companyId}
-            onChange={(ev) => setCompanyId(ev.target.value)}
-            required
-            style={{ width: '100%', padding: '0.5rem', borderRadius: '3px', border: '1px solid #ccc' }}
-          >
-            <option value="">Компани сонгох</option>
-            {companyOptions.map((c) => (
-              <option key={c.company_id} value={c.company_id}>
-                {c.company_name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {error && (
-          <p style={{ color: 'red', marginBottom: '0.75rem' }}>{error}</p>
-        )}
-
-        <button
-          type="submit"
-          style={{
-            backgroundColor: '#2563eb',
-            color: '#fff',
-            padding: '0.5rem 1rem',
-            border: '1px solid #2563eb',
-            borderRadius: '3px',
-            cursor: 'pointer',
-          }}
-        >
-          Сонгох
-        </button>
-      </form>
-    );
-  }
-
   return (
     <form onSubmit={handleSubmit} style={{ maxWidth: '320px' }}>
       <div style={{ marginBottom: '0.75rem' }}>
@@ -116,7 +67,10 @@ export default function LoginForm() {
       </div>
 
       <div style={{ marginBottom: '0.75rem' }}>
-        <label htmlFor="password" style={{ display: 'block', marginBottom: '0.25rem' }}>
+        <label
+          htmlFor="password"
+          style={{ display: 'block', marginBottom: '0.25rem' }}
+        >
           Нууц үг
         </label>
         <input
