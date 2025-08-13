@@ -178,6 +178,8 @@ function Header({ user, onLogout, onHome, isMobile, onToggleSidebar }) {
       {company && (
         <span style={styles.locationInfo}>
           {company.branch_name && `📍 ${company.branch_name} | `}
+          {company.department_name && `🏬 ${company.department_name} | `}
+          {company.employee_name && `👤 ${company.employee_name} | `}
           🏢 {company.company_name}
         </span>
       )}

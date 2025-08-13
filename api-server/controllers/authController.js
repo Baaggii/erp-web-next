@@ -60,6 +60,7 @@ export async function login(req, res, next) {
       id: user.id,
       empid: user.empid,
       role: user.role,
+      full_name: session?.employee_name,
       user_level: session?.user_level,
       session,
     });
@@ -85,6 +86,7 @@ export async function getProfile(req, res) {
     id: req.user.id,
     empid: req.user.empid,
     role: req.user.role,
+    full_name: session?.employee_name,
     user_level: session?.user_level,
     session,
   });
@@ -138,6 +140,7 @@ export async function refresh(req, res) {
       id: user.id,
       empid: user.empid,
       role: user.role,
+      full_name: session?.employee_name,
       user_level: session?.user_level,
       session,
     });

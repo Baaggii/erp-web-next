@@ -38,6 +38,15 @@ import defaultModules from "./defaultModules.js";
 import { logDb } from "./debugLog.js";
 import fs from "fs/promises";
 import path from "path";
+import { getDisplayFields as getDisplayCfg } from "../api-server/services/displayFieldConfig.js";
+
+function buildDisplayExpr(alias, cfg, fallback) {
+  const fields = (cfg?.displayFields || []).map((f) => `${alias}.${f}`);
+  if (fields.length) {
+    return `TRIM(CONCAT_WS(' ', ${fields.join(', ')}))`;
+  }
+  return fallback;
+}
 
 const tableColumnsCache = new Map();
 
@@ -161,14 +170,32 @@ function mapEmploymentRow(row) {
  * List all employment sessions for an employee
  */
 export async function getEmploymentSessions(empid) {
+  const [companyCfg, branchCfg, deptCfg, empCfg] = await Promise.all([
+    getDisplayCfg("companies"),
+    getDisplayCfg("code_branches"),
+    getDisplayCfg("code_department"),
+    getDisplayCfg("tbl_employee"),
+  ]);
+
+  const companyName = buildDisplayExpr("c", companyCfg, "c.name");
+  const branchName = buildDisplayExpr("b", branchCfg, "b.name");
+  const deptName = buildDisplayExpr("d", deptCfg, "d.name");
+  const empName = buildDisplayExpr(
+    "emp",
+    empCfg,
+    "CONCAT_WS(' ', emp.emp_fname, emp.emp_lname)",
+  );
+
   const [rows] = await pool.query(
     `SELECT
         e.employment_company_id AS company_id,
-        c.name AS company_name,
+        ${companyName} AS company_name,
         e.employment_branch_id AS branch_id,
-        b.name AS branch_name,
+        ${branchName} AS branch_name,
         e.employment_department_id AS department_id,
+        ${deptName} AS department_name,
         e.employment_position_id AS position_id,
+        ${empName} AS employee_name,
         e.employment_user_level AS user_level,
         ul.new_records,
         ul.edit_delete_request,
@@ -189,6 +216,8 @@ export async function getEmploymentSessions(empid) {
      FROM tbl_employment e
      LEFT JOIN companies c ON e.employment_company_id = c.id
      LEFT JOIN code_branches b ON e.employment_branch_id = b.id
+     LEFT JOIN code_department d ON e.employment_department_id = d.id
+     LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
      LEFT JOIN code_userlevel ul ON e.employment_user_level = ul.userlever_id
      WHERE e.employment_emp_id = ?
      ORDER BY e.id DESC`,
@@ -203,14 +232,32 @@ export async function getEmploymentSessions(empid) {
  */
 export async function getEmploymentSession(empid, companyId) {
   if (companyId) {
+    const [companyCfg, branchCfg, deptCfg, empCfg] = await Promise.all([
+      getDisplayCfg("companies"),
+      getDisplayCfg("code_branches"),
+      getDisplayCfg("code_department"),
+      getDisplayCfg("tbl_employee"),
+    ]);
+
+    const companyName = buildDisplayExpr("c", companyCfg, "c.name");
+    const branchName = buildDisplayExpr("b", branchCfg, "b.name");
+    const deptName = buildDisplayExpr("d", deptCfg, "d.name");
+    const empName = buildDisplayExpr(
+      "emp",
+      empCfg,
+      "CONCAT_WS(' ', emp.emp_fname, emp.emp_lname)",
+    );
+
     const [rows] = await pool.query(
       `SELECT
           e.employment_company_id AS company_id,
-          c.name AS company_name,
+          ${companyName} AS company_name,
           e.employment_branch_id AS branch_id,
-          b.name AS branch_name,
+          ${branchName} AS branch_name,
           e.employment_department_id AS department_id,
+          ${deptName} AS department_name,
           e.employment_position_id AS position_id,
+          ${empName} AS employee_name,
           e.employment_user_level AS user_level,
           ul.new_records,
           ul.edit_delete_request,
@@ -231,6 +278,8 @@ export async function getEmploymentSession(empid, companyId) {
        FROM tbl_employment e
        LEFT JOIN companies c ON e.employment_company_id = c.id
        LEFT JOIN code_branches b ON e.employment_branch_id = b.id
+       LEFT JOIN code_department d ON e.employment_department_id = d.id
+       LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
        LEFT JOIN code_userlevel ul ON e.employment_user_level = ul.userlever_id
        WHERE e.employment_emp_id = ? AND e.employment_company_id = ?
        ORDER BY e.id DESC
