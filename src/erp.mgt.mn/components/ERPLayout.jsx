@@ -106,9 +106,9 @@ export default function ERPLayout() {
   }
 
   function handleHome() {
-    const roleId = user?.role_id || (user?.role === 'admin' ? 1 : 2);
-    const companyId = user?.company_id || company?.company_id;
-    refreshRolePermissions(roleId, companyId);
+    const userLevel = user?.user_level || company?.user_level;
+    const companyId = company?.company_id;
+    refreshRolePermissions(userLevel, companyId);
     navigate('/');
   }
 
@@ -178,6 +178,8 @@ function Header({ user, onLogout, onHome, isMobile, onToggleSidebar }) {
       {company && (
         <span style={styles.locationInfo}>
           {company.branch_name && `📍 ${company.branch_name} | `}
+          {company.department_name && `🏬 ${company.department_name} | `}
+          {company.employee_name && `👤 ${company.employee_name} | `}
           🏢 {company.company_name}
         </span>
       )}

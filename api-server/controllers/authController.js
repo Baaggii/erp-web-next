@@ -1,26 +1,48 @@
-import { getUserByEmpId, getUserById, updateUserPassword } from '../../db/index.js';
+import {
+  getUserByEmpId,
+  getUserById,
+  updateUserPassword,
+  getEmploymentSession,
+  getEmploymentSessions,
+} from '../../db/index.js';
 import { hash } from '../services/passwordService.js';
 import * as jwtService from '../services/jwtService.js';
 import { getCookieName, getRefreshCookieName } from '../utils/cookieNames.js';
 
 export async function login(req, res, next) {
   try {
-    const { empid, password } = req.body;
+    const { empid, password, companyId } = req.body;
     const user = await getUserByEmpId(empid);
     if (!user || !(await user.verifyPassword(password))) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
-    const token = jwtService.sign({
-      id: user.id,
-      empid: user.empid,
-      role: user.role,
-    });
 
-    const refreshToken = jwtService.signRefresh({
+    const sessions = await getEmploymentSessions(empid);
+    if (sessions.length === 0) {
+      return res.status(403).json({ message: 'No active employment found' });
+    }
+
+    let session;
+    if (!companyId) {
+      if (sessions.length > 1) {
+        return res.json({ needsCompany: true, sessions });
+      }
+      session = sessions[0];
+    } else {
+      session = sessions.find((s) => s.company_id === Number(companyId));
+      if (!session) {
+        return res.status(400).json({ message: 'Invalid company selection' });
+      }
+    }
+
+    const payload = {
       id: user.id,
       empid: user.empid,
       role: user.role,
-    });
+      companyId: session.company_id,
+    };
+    const token = jwtService.sign(payload);
+    const refreshToken = jwtService.signRefresh(payload);
 
     res.cookie(getCookieName(), token, {
       httpOnly: true,
@@ -38,6 +60,9 @@ export async function login(req, res, next) {
       id: user.id,
       empid: user.empid,
       role: user.role,
+      full_name: session?.employee_name,
+      user_level: session?.user_level,
+      session,
     });
   } catch (err) {
     next(err);
@@ -56,10 +81,14 @@ export async function logout(req, res) {
 }
 
 export async function getProfile(req, res) {
+  const session = await getEmploymentSession(req.user.empid, req.user.companyId);
   res.json({
     id: req.user.id,
     empid: req.user.empid,
     role: req.user.role,
+    full_name: session?.employee_name,
+    user_level: session?.user_level,
+    session,
   });
 }
 
@@ -86,16 +115,15 @@ export async function refresh(req, res) {
     const payload = jwtService.verifyRefresh(token);
     const user = await getUserById(payload.id);
     if (!user) throw new Error('User not found');
-    const newAccess = jwtService.sign({
+    const session = await getEmploymentSession(user.empid, payload.companyId);
+    const newPayload = {
       id: user.id,
       empid: user.empid,
       role: user.role,
-    });
-    const newRefresh = jwtService.signRefresh({
-      id: user.id,
-      empid: user.empid,
-      role: user.role,
-    });
+      companyId: payload.companyId,
+    };
+    const newAccess = jwtService.sign(newPayload);
+    const newRefresh = jwtService.signRefresh(newPayload);
     res.cookie(getCookieName(), newAccess, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -112,6 +140,9 @@ export async function refresh(req, res) {
       id: user.id,
       empid: user.empid,
       role: user.role,
+      full_name: session?.employee_name,
+      user_level: session?.user_level,
+      session,
     });
   } catch (err) {
     const opts = {

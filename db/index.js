@@ -38,6 +38,15 @@ import defaultModules from "./defaultModules.js";
 import { logDb } from "./debugLog.js";
 import fs from "fs/promises";
 import path from "path";
+import { getDisplayFields as getDisplayCfg } from "../api-server/services/displayFieldConfig.js";
+
+function buildDisplayExpr(alias, cfg, fallback) {
+  const fields = (cfg?.displayFields || []).map((f) => `${alias}.${f}`);
+  if (fields.length) {
+    return `TRIM(CONCAT_WS(' ', ${fields.join(', ')}))`;
+  }
+  return fallback;
+}
 
 const tableColumnsCache = new Map();
 
@@ -112,6 +121,176 @@ export async function getUserByEmpId(empid) {
   const user = rows[0];
   user.verifyPassword = async (plain) => bcrypt.compare(plain, user.password);
   return user;
+}
+
+function mapEmploymentRow(row) {
+  const {
+    new_records,
+    edit_delete_request,
+    edit_records,
+    delete_records,
+    image_handler,
+    audition,
+    supervisor,
+    companywide,
+    branchwide,
+    departmentwide,
+    developer,
+    system_settings,
+    license_settings,
+    ai,
+    dashboard,
+    ai_dashboard,
+    ...rest
+  } = row;
+  return {
+    ...rest,
+    permissions: {
+      new_records: !!new_records,
+      edit_delete_request: !!edit_delete_request,
+      edit_records: !!edit_records,
+      delete_records: !!delete_records,
+      image_handler: !!image_handler,
+      audition: !!audition,
+      supervisor: !!supervisor,
+      companywide: !!companywide,
+      branchwide: !!branchwide,
+      departmentwide: !!departmentwide,
+      developer: !!developer,
+      system_settings: !!system_settings,
+      license_settings: !!license_settings,
+      ai: !!ai,
+      dashboard: !!dashboard,
+      ai_dashboard: !!ai_dashboard,
+    },
+  };
+}
+
+/**
+ * List all employment sessions for an employee
+ */
+export async function getEmploymentSessions(empid) {
+  const [companyCfg, branchCfg, deptCfg, empCfg] = await Promise.all([
+    getDisplayCfg("companies"),
+    getDisplayCfg("code_branches"),
+    getDisplayCfg("code_department"),
+    getDisplayCfg("tbl_employee"),
+  ]);
+
+  const companyName = buildDisplayExpr("c", companyCfg, "c.name");
+  const branchName = buildDisplayExpr("b", branchCfg, "b.name");
+  const deptName = buildDisplayExpr("d", deptCfg, "d.name");
+  const empName = buildDisplayExpr(
+    "emp",
+    empCfg,
+    "CONCAT_WS(' ', emp.emp_fname, emp.emp_lname)",
+  );
+
+  const [rows] = await pool.query(
+    `SELECT
+        e.employment_company_id AS company_id,
+        ${companyName} AS company_name,
+        e.employment_branch_id AS branch_id,
+        ${branchName} AS branch_name,
+        e.employment_department_id AS department_id,
+        ${deptName} AS department_name,
+        e.employment_position_id AS position_id,
+        ${empName} AS employee_name,
+        e.employment_user_level AS user_level,
+        ul.new_records,
+        ul.edit_delete_request,
+        ul.edit_records,
+        ul.delete_records,
+        ul.image_handler,
+        ul.audition,
+        ul.supervisor,
+        ul.companywide,
+        ul.branchwide,
+        ul.departmentwide,
+        ul.developer,
+        ul.system_settings,
+        ul.license_settings,
+        ul.ai,
+        ul.dashboard,
+        ul.ai_dashboard
+     FROM tbl_employment e
+     LEFT JOIN companies c ON e.employment_company_id = c.id
+     LEFT JOIN code_branches b ON e.employment_branch_id = b.id
+     LEFT JOIN code_department d ON e.employment_department_id = d.id
+     LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
+     LEFT JOIN code_userlevel ul ON e.employment_user_level = ul.userlever_id
+     WHERE e.employment_emp_id = ?
+     ORDER BY e.id DESC`,
+    [empid],
+  );
+  return rows.map(mapEmploymentRow);
+}
+
+/**
+ * Fetch employment session info and permission flags for an employee.
+ * Optionally filter by company ID.
+ */
+export async function getEmploymentSession(empid, companyId) {
+  if (companyId) {
+    const [companyCfg, branchCfg, deptCfg, empCfg] = await Promise.all([
+      getDisplayCfg("companies"),
+      getDisplayCfg("code_branches"),
+      getDisplayCfg("code_department"),
+      getDisplayCfg("tbl_employee"),
+    ]);
+
+    const companyName = buildDisplayExpr("c", companyCfg, "c.name");
+    const branchName = buildDisplayExpr("b", branchCfg, "b.name");
+    const deptName = buildDisplayExpr("d", deptCfg, "d.name");
+    const empName = buildDisplayExpr(
+      "emp",
+      empCfg,
+      "CONCAT_WS(' ', emp.emp_fname, emp.emp_lname)",
+    );
+
+    const [rows] = await pool.query(
+      `SELECT
+          e.employment_company_id AS company_id,
+          ${companyName} AS company_name,
+          e.employment_branch_id AS branch_id,
+          ${branchName} AS branch_name,
+          e.employment_department_id AS department_id,
+          ${deptName} AS department_name,
+          e.employment_position_id AS position_id,
+          ${empName} AS employee_name,
+          e.employment_user_level AS user_level,
+          ul.new_records,
+          ul.edit_delete_request,
+          ul.edit_records,
+          ul.delete_records,
+          ul.image_handler,
+          ul.audition,
+          ul.supervisor,
+          ul.companywide,
+          ul.branchwide,
+          ul.departmentwide,
+          ul.developer,
+          ul.system_settings,
+          ul.license_settings,
+          ul.ai,
+          ul.dashboard,
+          ul.ai_dashboard
+       FROM tbl_employment e
+       LEFT JOIN companies c ON e.employment_company_id = c.id
+       LEFT JOIN code_branches b ON e.employment_branch_id = b.id
+       LEFT JOIN code_department d ON e.employment_department_id = d.id
+       LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
+       LEFT JOIN code_userlevel ul ON e.employment_user_level = ul.userlever_id
+       WHERE e.employment_emp_id = ? AND e.employment_company_id = ?
+       ORDER BY e.id DESC
+       LIMIT 1`,
+      [empid, companyId],
+    );
+    if (rows.length === 0) return null;
+    return mapEmploymentRow(rows[0]);
+  }
+  const sessions = await getEmploymentSessions(empid);
+  return sessions[0] || null;
 }
 
 /**
