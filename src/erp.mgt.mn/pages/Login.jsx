@@ -5,7 +5,6 @@ import LoginForm from '../components/LoginForm.jsx';
 export default function LoginPage() {
   return (
     <div style={{ padding: '2rem' }}>
-      <h1>Нэвтрэх</h1>
       <LoginForm />
     </div>
   );
