@@ -168,9 +168,7 @@ export async function getEmploymentSessions(empid) {
         e.employment_branch_id AS branch_id,
         b.name AS branch_name,
         e.employment_department_id AS department_id,
-        d.name AS department_name,
         e.employment_position_id AS position_id,
-        emp.name AS employee_name,
         e.employment_user_level AS user_level,
         ul.new_records,
         ul.edit_delete_request,
@@ -191,8 +189,6 @@ export async function getEmploymentSessions(empid) {
      FROM tbl_employment e
      LEFT JOIN companies c ON e.employment_company_id = c.id
      LEFT JOIN code_branches b ON e.employment_branch_id = b.id
-     LEFT JOIN code_departments d ON e.employment_department_id = d.id
-     LEFT JOIN employee emp ON e.employment_emp_id = emp.emp_id
      LEFT JOIN code_userlevel ul ON e.employment_user_level = ul.userlever_id
      WHERE e.employment_emp_id = ?
      ORDER BY e.id DESC`,
@@ -214,9 +210,7 @@ export async function getEmploymentSession(empid, companyId) {
           e.employment_branch_id AS branch_id,
           b.name AS branch_name,
           e.employment_department_id AS department_id,
-          d.name AS department_name,
           e.employment_position_id AS position_id,
-          emp.name AS employee_name,
           e.employment_user_level AS user_level,
           ul.new_records,
           ul.edit_delete_request,
@@ -237,8 +231,6 @@ export async function getEmploymentSession(empid, companyId) {
        FROM tbl_employment e
        LEFT JOIN companies c ON e.employment_company_id = c.id
        LEFT JOIN code_branches b ON e.employment_branch_id = b.id
-       LEFT JOIN code_departments d ON e.employment_department_id = d.id
-       LEFT JOIN employee emp ON e.employment_emp_id = emp.emp_id
        LEFT JOIN code_userlevel ul ON e.employment_user_level = ul.userlever_id
        WHERE e.employment_emp_id = ? AND e.employment_company_id = ?
        ORDER BY e.id DESC
