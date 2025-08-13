@@ -53,15 +53,21 @@ export default function AuthContextProvider({ children }) {
           const data = await res.json();
           trackSetState('AuthContext.setUser');
           setUser(data);
+          trackSetState('AuthContext.setCompany');
+          setCompany(data.session || null);
         } else {
           // Not logged in or token expired
           trackSetState('AuthContext.setUser');
           setUser(null);
+          trackSetState('AuthContext.setCompany');
+          setCompany(null);
         }
       } catch (err) {
         console.error('Unable to fetch profile:', err);
         trackSetState('AuthContext.setUser');
         setUser(null);
+        trackSetState('AuthContext.setCompany');
+        setCompany(null);
       }
     }
 

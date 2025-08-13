@@ -12,10 +12,12 @@ export default function LoginForm() {
   // login using employee ID only
   const [empid, setEmpid] = useState('');
   const [password, setPassword] = useState('');
+  const [storedCreds, setStoredCreds] = useState({ empid: '', password: '' });
+  const [companyOptions, setCompanyOptions] = useState([]);
+  const [isCompanyStep, setIsCompanyStep] = useState(false);
+  const [companyId, setCompanyId] = useState('');
   const [error, setError] = useState(null);
   const { setUser, setCompany } = useContext(AuthContext);
-  const [companyChoices, setCompanyChoices] = useState(null);
-  const [selectedCompany, setSelectedCompany] = useState('');
   const navigate = useNavigate();
 
   async function handleSubmit(e) {
@@ -24,84 +26,66 @@ export default function LoginForm() {
 
     try {
       // Send POST /api/auth/login with credentials: 'include'
-      const loggedIn = await login({ empid, password });
+      const payload = isCompanyStep
+        ? { ...storedCreds, companyId: Number(companyId) }
+        : { empid, password };
+      const loggedIn = await login(payload);
+
+      if (loggedIn.needsCompany) {
+        setStoredCreds({ empid, password });
+        setEmpid('');
+        setPassword('');
+        setCompanyOptions(loggedIn.sessions || []);
+        setCompanyId('');
+        setIsCompanyStep(true);
+        return;
+      }
 
       // The login response already returns the user profile
       setUser(loggedIn);
-
-      // Fetch company assignments
-      const res = await fetch(
-        `/api/user_companies?empid=${encodeURIComponent(loggedIn.empid)}`,
-        { credentials: 'include' },
+      setCompany(loggedIn.session || null);
+      refreshRolePermissions(
+        loggedIn.session?.user_level,
+        loggedIn.session?.company_id,
       );
-      const assignments = res.ok ? await res.json() : [];
-
-      if (assignments.length === 1) {
-        const choice = assignments[0];
-        setCompany(choice);
-        const roleId = choice.role_id || loggedIn.role_id || (loggedIn.role === 'admin' ? 1 : 2);
-        refreshRolePermissions(roleId, choice.company_id);
-        refreshCompanyModules(choice.company_id);
-        refreshModules();
-        refreshTxnModules();
-        navigate('/');
-      } else if (assignments.length > 1) {
-        setCompany(null);
-        setCompanyChoices(assignments);
-      } else {
-        refreshModules();
-        refreshTxnModules();
-        navigate('/');
-      }
+      refreshCompanyModules(loggedIn.session?.company_id);
+      refreshModules();
+      refreshTxnModules();
+      setStoredCreds({ empid: '', password: '' });
+      navigate('/');
     } catch (err) {
       console.error('Login failed:', err);
       setError(err.message || 'Login error');
     }
   }
 
-  if (companyChoices) {
+  if (isCompanyStep) {
     return (
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          const choice = companyChoices.find(
-            (c) => `${c.company_id}-${c.branch_id || ''}` === selectedCompany,
-          );
-          if (choice) {
-            setCompany(choice);
-            refreshRolePermissions(choice.role_id, choice.company_id);
-            refreshCompanyModules(choice.company_id);
-            refreshModules();
-            refreshTxnModules();
-            navigate('/');
-          }
-        }}
-        style={{ maxWidth: '320px' }}
-      >
+      <form onSubmit={handleSubmit} style={{ maxWidth: '320px' }}>
         <div style={{ marginBottom: '0.75rem' }}>
           <label htmlFor="company" style={{ display: 'block', marginBottom: '0.25rem' }}>
-            Компани сонгох
+            Компани
           </label>
           <select
             id="company"
-            value={selectedCompany}
-            onChange={(e) => setSelectedCompany(e.target.value)}
+            value={companyId}
+            onChange={(ev) => setCompanyId(ev.target.value)}
             required
             style={{ width: '100%', padding: '0.5rem', borderRadius: '3px', border: '1px solid #ccc' }}
           >
-            <option value="" disabled>
-              Сонгоно уу...
-            </option>
-            {companyChoices.map((c) => (
-              <option
-                key={c.company_id + '-' + (c.branch_id || '')}
-                value={`${c.company_id}-${c.branch_id || ''}`}
-              >
-                {c.branch_name ? `${c.branch_name} | ` : ''}{c.company_name}
+            <option value="">Компани сонгох</option>
+            {companyOptions.map((c) => (
+              <option key={c.company_id} value={c.company_id}>
+                {c.company_name}
               </option>
             ))}
           </select>
         </div>
+
+        {error && (
+          <p style={{ color: 'red', marginBottom: '0.75rem' }}>{error}</p>
+        )}
+
         <button
           type="submit"
           style={{
@@ -113,7 +97,7 @@ export default function LoginForm() {
             cursor: 'pointer',
           }}
         >
-          Үргэлжлүүлэх
+          Сонгох
         </button>
       </form>
     );
@@ -136,10 +120,7 @@ export default function LoginForm() {
       </div>
 
       <div style={{ marginBottom: '0.75rem' }}>
-        <label
-          htmlFor="password"
-          style={{ display: 'block', marginBottom: '0.25rem' }}
-        >
+        <label htmlFor="password" style={{ display: 'block', marginBottom: '0.25rem' }}>
           Нууц үг
         </label>
         <input
