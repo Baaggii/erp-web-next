@@ -110,6 +110,15 @@ await test('setFormConfig stores additional field lists', async () => {
   await restore();
 });
 
+await test('setFormConfig stores detectField', async () => {
+  const { orig, restore } = await withTempFile();
+  await fs.writeFile(filePath, '{}');
+  await setFormConfig('tbl', 'DetectCfg', { detectField: 'd_field' });
+  const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
+  assert.equal(data.tbl.DetectCfg.detectField, 'd_field');
+  await restore();
+});
+
 await test('deleteFormConfig removes entry when unused', async () => {
   const { orig, restore } = await withTempFile();
   await fs.writeFile(

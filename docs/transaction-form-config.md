@@ -42,6 +42,7 @@ speed up loading when the images are viewed.
   row so you can verify the view integration.
 - **transactionTypeField** – column used to store the transaction type code
 - **transactionTypeValue** – default transaction type code value
+- **detectField** – column where automated detection results are stored
 - **moduleKey** – module slug used to group the form under a module. If omitted,
   the transaction will not be associated with any module and is hidden from the
   Forms list.
