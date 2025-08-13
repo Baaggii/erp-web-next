@@ -1610,19 +1610,22 @@ export async function getProcedureRawRows(
         groupValue !== undefined &&
         groupValue !== null &&
         groupValue !== '' &&
-        groupField &&
-        pfSet.has(String(groupField).toLowerCase())
+        groupField
       ) {
-        const formatted = formatVal(groupField, groupValue);
-        if (formatted !== null) clauses.push(`${groupField} = ${formatted}`);
+        const gf = String(groupField).split('.').pop();
+        if (pfSet.has(gf.toLowerCase())) {
+          const formatted = formatVal(gf, groupValue);
+          if (formatted !== null) clauses.push(`${gf} = ${formatted}`);
+        }
       }
       if (Array.isArray(extraConditions)) {
         for (const { field, value } of extraConditions) {
           if (!field) continue;
           if (value === undefined || value === null || value === '') continue;
-          if (!pfSet.has(String(field).toLowerCase())) continue;
-          const formatted = formatVal(field, value);
-          if (formatted !== null) clauses.push(`${field} = ${formatted}`);
+          const f = String(field).split('.').pop();
+          if (!pfSet.has(f.toLowerCase())) continue;
+          const formatted = formatVal(f, value);
+          if (formatted !== null) clauses.push(`${f} = ${formatted}`);
         }
       }
       if (clauses.length) {
