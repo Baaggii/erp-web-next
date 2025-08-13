@@ -129,6 +129,28 @@ export default function LoginForm() {
         />
       </div>
 
+      {companyOptions && (
+        <div style={{ marginBottom: '0.75rem' }}>
+          <label htmlFor="company" style={{ display: 'block', marginBottom: '0.25rem' }}>
+            Компани
+          </label>
+          <select
+            id="company"
+            value={companyId}
+            onChange={(ev) => setCompanyId(ev.target.value)}
+            required
+            style={{ width: '100%', padding: '0.5rem', borderRadius: '3px', border: '1px solid #ccc' }}
+          >
+            <option value="">Компани сонгох</option>
+            {companyOptions.map((c) => (
+              <option key={c.company_id} value={c.company_id}>
+                {c.company_name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {error && (
         <p style={{ color: 'red', marginBottom: '0.75rem' }}>{error}</p>
       )}
