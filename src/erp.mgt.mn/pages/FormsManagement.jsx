@@ -53,6 +53,7 @@ export default function FormsManagement() {
     viewSource: {},
     transactionTypeField: '',
     transactionTypeValue: '',
+    detectField: '',
     allowedBranches: [],
     allowedDepartments: [],
     procedures: [],
@@ -161,6 +162,7 @@ export default function FormsManagement() {
             viewSource: filtered[name].viewSource || {},
             transactionTypeField: filtered[name].transactionTypeField || '',
             transactionTypeValue: filtered[name].transactionTypeValue || '',
+            detectField: filtered[name].detectField || '',
             allowedBranches: (filtered[name].allowedBranches || []).map(String),
             allowedDepartments: (filtered[name].allowedDepartments || []).map(String),
             procedures: filtered[name].procedures || [],
@@ -193,6 +195,7 @@ export default function FormsManagement() {
             viewSource: {},
             transactionTypeField: '',
             transactionTypeValue: '',
+            detectField: '',
             allowedBranches: [],
             allowedDepartments: [],
             procedures: [],
@@ -228,6 +231,7 @@ export default function FormsManagement() {
           viewSource: {},
           transactionTypeField: '',
           transactionTypeValue: '',
+          detectField: '',
           allowedBranches: [],
           allowedDepartments: [],
           procedures: [],
@@ -268,6 +272,7 @@ export default function FormsManagement() {
           viewSource: cfg.viewSource || {},
           transactionTypeField: cfg.transactionTypeField || '',
           transactionTypeValue: cfg.transactionTypeValue || '',
+          detectField: cfg.detectField || '',
           allowedBranches: (cfg.allowedBranches || []).map(String),
           allowedDepartments: (cfg.allowedDepartments || []).map(String),
           procedures: cfg.procedures || [],
@@ -300,6 +305,7 @@ export default function FormsManagement() {
           viewSource: {},
           transactionTypeField: '',
           transactionTypeValue: '',
+          detectField: '',
           allowedBranches: [],
           allowedDepartments: [],
           procedures: [],
@@ -424,6 +430,7 @@ export default function FormsManagement() {
       viewSource: {},
       transactionTypeField: '',
       transactionTypeValue: '',
+      detectField: '',
       allowedBranches: [],
       allowedDepartments: [],
       procedures: [],
@@ -458,6 +465,7 @@ export default function FormsManagement() {
       viewSource: cfg.viewSource || {},
       transactionTypeField: cfg.transactionTypeField || '',
       transactionTypeValue: cfg.transactionTypeValue || '',
+      detectField: cfg.detectField || '',
       allowedBranches: (cfg.allowedBranches || []).map(String),
       allowedDepartments: (cfg.allowedDepartments || []).map(String),
       procedures: cfg.procedures || [],
@@ -526,6 +534,23 @@ export default function FormsManagement() {
                 </option>
               ))}
             </select>
+
+            {columns.length > 0 && (
+              <select
+                value={config.detectField}
+                onChange={(e) =>
+                  setConfig((c) => ({ ...c, detectField: e.target.value }))
+                }
+                style={{ marginLeft: '0.5rem' }}
+              >
+                <option value="">-- detection field --</option>
+                {columns.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            )}
 
             {columns.length > 0 && (
               <select
