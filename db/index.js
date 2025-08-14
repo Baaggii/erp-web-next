@@ -166,6 +166,55 @@ function mapEmploymentRow(row) {
   };
 }
 
+// Columns in code_userlevel and code_userlevel_settings that indicate the
+// permission flags. Keeping them in one place helps keep query building and
+// result mapping consistent across helpers.
+const USERLEVEL_FLAG_COLUMNS = [
+  "new_records",
+  "edit_delete_request",
+  "edit_records",
+  "delete_records",
+  "image_handler",
+  "audition",
+  "supervisor",
+  "companywide",
+  "branchwide",
+  "departmentwide",
+  "developer",
+  "system_settings",
+  "license_settings",
+  "ai",
+  "dashboard",
+  "ai_dashboard",
+];
+
+/**
+ * Fetch allowed actions for a given user level (uls_id) grouped by the flag
+ * columns. Returns an object where each flag maps to an array of module keys
+ * for which the flag is enabled.
+ */
+export async function getUserLevelPermissions(ulsId) {
+  if (!ulsId) return {};
+  const [rows] = await pool.query(
+    `SELECT module_key, ${USERLEVEL_FLAG_COLUMNS.join(", ")}
+       FROM code_userlevel_settings
+      WHERE uls_id = ?`,
+    [ulsId],
+  );
+
+  const grouped = {};
+  for (const flag of USERLEVEL_FLAG_COLUMNS) {
+    grouped[flag] = [];
+  }
+
+  for (const row of rows) {
+    for (const flag of USERLEVEL_FLAG_COLUMNS) {
+      if (row[flag]) grouped[flag].push(row.module_key);
+    }
+  }
+  return grouped;
+}
+
 /**
  * List all employment sessions for an employee
  */
@@ -224,7 +273,13 @@ export async function getEmploymentSessions(empid) {
      ORDER BY e.id DESC`,
     [empid],
   );
-  return rows.map(mapEmploymentRow);
+  return Promise.all(
+    rows.map(async (r) => {
+      const session = mapEmploymentRow(r);
+      session.actions = await getUserLevelPermissions(session.user_level);
+      return session;
+    }),
+  );
 }
 
 /**
@@ -289,7 +344,9 @@ export async function getEmploymentSession(empid, companyId) {
       [empid, companyId],
     );
     if (rows.length === 0) return null;
-    return mapEmploymentRow(rows[0]);
+    const session = mapEmploymentRow(rows[0]);
+    session.actions = await getUserLevelPermissions(session.user_level);
+    return session;
   }
   const sessions = await getEmploymentSessions(empid);
   return sessions[0] || null;
