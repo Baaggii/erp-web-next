@@ -9,7 +9,6 @@ import { useSearchParams } from 'react-router-dom';
 import TableManager from '../components/TableManager.jsx';
 import ReportTable from '../components/ReportTable.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
-import { useRolePermissions } from '../hooks/useRolePermissions.js';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
 import { useTxnSession } from '../context/TxnSessionContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
@@ -51,9 +50,8 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const [procParams, setProcParams] = useState([]);
   const [reportResult, setReportResult] = useState(null);
   const [manualParams, setManualParams] = useState({});
-  const { company, user } = useContext(AuthContext);
+  const { company, user, permissions: perms } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
-  const perms = useRolePermissions();
   const licensed = useCompanyModules(company?.company_id);
   const tableRef = useRef(null);
   const prevModuleKey = useRef(moduleKey);
