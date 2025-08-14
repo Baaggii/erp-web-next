@@ -42,7 +42,7 @@ if (!haveReact) {
     await act(async () => {
       await Promise.resolve();
     });
-    assert.deepEqual([...value], ['one']);
+    assert.deepEqual([...value.keys], ['one']);
     assert.equal(fetchCalls, 1);
 
     global.fetch = async () => {
@@ -56,7 +56,7 @@ if (!haveReact) {
     await act(async () => {
       await Promise.resolve();
     });
-    assert.deepEqual([...value], ['two']);
+    assert.deepEqual([...value.keys], ['two']);
     assert.equal(fetchCalls, 2);
     unmount();
   });

@@ -137,6 +137,8 @@ export async function findTableByProcedure(proc) {
 export async function listTransactionNames({ moduleKey, branchId, departmentId } = {}) {
   const cfg = await readConfig();
   const result = {};
+  const bId = branchId ? Number(branchId) : null;
+  const dId = departmentId ? Number(departmentId) : null;
   for (const [tbl, names] of Object.entries(cfg)) {
     for (const [name, info] of Object.entries(names)) {
       const parsed = parseEntry(info);
@@ -144,8 +146,8 @@ export async function listTransactionNames({ moduleKey, branchId, departmentId }
       const allowed = parsed.allowedBranches;
       const deptAllowed = parsed.allowedDepartments;
       if (moduleKey && moduleKey !== modKey) continue;
-      if (branchId && allowed.length > 0 && !allowed.includes(Number(branchId))) continue;
-      if (departmentId && deptAllowed.length > 0 && !deptAllowed.includes(Number(departmentId))) continue;
+      if (bId != null && allowed.length > 0 && !allowed.includes(bId)) continue;
+      if (dId != null && deptAllowed.length > 0 && !deptAllowed.includes(dId)) continue;
       result[name] = { table: tbl, ...parsed };
     }
   }
