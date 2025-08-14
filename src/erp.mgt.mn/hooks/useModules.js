@@ -22,10 +22,8 @@ export function useModules() {
       const rows = res.ok ? await res.json() : [];
       try {
         const params = new URLSearchParams();
-        if (branch !== undefined)
-          params.set('branchId', branch);
-        if (department !== undefined)
-          params.set('departmentId', department);
+        if (branch) params.set('branchId', branch);
+        if (department) params.set('departmentId', department);
         const prefix = generalConfig?.general?.reportProcPrefix || '';
         if (prefix) params.set('prefix', prefix);
         const pres = await fetch(

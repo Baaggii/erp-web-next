@@ -102,6 +102,7 @@ const TableManager = forwardRef(function TableManager({
   initialPerPage = 10,
   addLabel = 'Мөр нэмэх',
   showTable = true,
+  buttonPerms = {},
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -772,7 +773,9 @@ const TableManager = forwardRef(function TableManager({
     setShowForm(true);
   }
 
-  useImperativeHandle(ref, () => ({ openAdd }));
+  useImperativeHandle(ref, () => ({
+    openAdd: buttonPerms['New transaction'] ? openAdd : () => {},
+  }));
 
   async function openDetail(row) {
     setDetailRow(row);
@@ -1443,9 +1446,11 @@ const TableManager = forwardRef(function TableManager({
           textAlign: 'left',
         }}
       >
-        <button onClick={openAdd} style={{ marginRight: '0.5rem' }}>
-          {addLabel}
-        </button>
+        {buttonPerms['New transaction'] && (
+          <button onClick={openAdd} style={{ marginRight: '0.5rem' }}>
+            {addLabel}
+          </button>
+        )}
         <button onClick={selectCurrentPage} style={{ marginRight: '0.5rem' }}>
           Select All
         </button>
@@ -1455,7 +1460,7 @@ const TableManager = forwardRef(function TableManager({
         <button onClick={refreshRows} style={{ marginRight: '0.5rem' }}>
           Refresh Table
         </button>
-        {selectedRows.size > 0 && (
+        {selectedRows.size > 0 && buttonPerms['Delete transaction'] && (
           <button onClick={handleDeleteSelected}>Delete Selected</button>
         )}
       </div>
@@ -1899,20 +1904,24 @@ const TableManager = forwardRef(function TableManager({
                       >
                         ➕ Add Img
                       </button>
-                      <button
-                        onClick={() => openEdit(r)}
-                        disabled={rid === undefined}
-                        style={actionBtnStyle}
-                      >
-                        🖉 Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(r)}
-                        disabled={rid === undefined}
-                        style={deleteBtnStyle}
-                      >
-                        ❌ Delete
-                      </button>
+                      {buttonPerms['Edit transaction'] && (
+                        <button
+                          onClick={() => openEdit(r)}
+                          disabled={rid === undefined}
+                          style={actionBtnStyle}
+                        >
+                          🖉 Edit
+                        </button>
+                      )}
+                      {buttonPerms['Delete transaction'] && (
+                        <button
+                          onClick={() => handleDelete(r)}
+                          disabled={rid === undefined}
+                          style={deleteBtnStyle}
+                        >
+                          ❌ Delete
+                        </button>
+                      )}
                     </>
                   );
                 })()}
@@ -2248,7 +2257,8 @@ function propsEqual(prev, next) {
     prev.refreshId === next.refreshId &&
     prev.formConfig === next.formConfig &&
     prev.allConfigs === next.allConfigs &&
-    prev.showTable === next.showTable
+    prev.showTable === next.showTable &&
+    prev.buttonPerms === next.buttonPerms
   );
 }
 
