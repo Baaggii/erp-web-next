@@ -40,10 +40,8 @@ export default function FormsIndex() {
 
   useEffect(() => {
     const params = new URLSearchParams();
-    if (branch !== undefined)
-      params.set('branchId', branch);
-    if (department !== undefined)
-      params.set('departmentId', department);
+    if (branch != null) params.set('branchId', branch);
+    if (department != null) params.set('departmentId', department);
     const url = `/api/transaction_forms${params.toString() ? `?${params.toString()}` : ''}`;
     fetch(url, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
@@ -56,18 +54,28 @@ export default function FormsIndex() {
           if (!descendantKeys.includes(key)) return;
           if (
             allowedB.length > 0 &&
-            branch !== undefined &&
+            branch != null &&
             !allowedB.includes(branch)
           )
             return;
           if (
             allowedD.length > 0 &&
-            department !== undefined &&
+            department != null &&
             !allowedD.includes(department)
           )
             return;
-          if (perms && !perms[key]) return;
-          if (licensed && !licensed[key]) return;
+          if (
+            perms &&
+            Object.prototype.hasOwnProperty.call(perms, key) &&
+            !perms[key]
+          )
+            return;
+          if (
+            licensed &&
+            Object.prototype.hasOwnProperty.call(licensed, key) &&
+            !licensed[key]
+          )
+            return;
           if (!grouped[key]) grouped[key] = [];
           grouped[key].push(name);
         });
