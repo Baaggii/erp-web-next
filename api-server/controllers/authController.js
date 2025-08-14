@@ -4,6 +4,7 @@ import {
   updateUserPassword,
   getEmploymentSession,
   getEmploymentSessions,
+  getUserLevelActions,
 } from '../../db/index.js';
 import { hash } from '../services/passwordService.js';
 import * as jwtService from '../services/jwtService.js';
@@ -35,6 +36,8 @@ export async function login(req, res, next) {
       }
     }
 
+    const permissions = await getUserLevelActions(session.user_level);
+
     const payload = {
       id: user.id,
       empid: user.empid,
@@ -63,6 +66,7 @@ export async function login(req, res, next) {
       full_name: session?.employee_name,
       user_level: session?.user_level,
       session,
+      permissions,
     });
   } catch (err) {
     next(err);
@@ -82,6 +86,9 @@ export async function logout(req, res) {
 
 export async function getProfile(req, res) {
   const session = await getEmploymentSession(req.user.empid, req.user.companyId);
+  const permissions = session?.user_level
+    ? await getUserLevelActions(session.user_level)
+    : {};
   res.json({
     id: req.user.id,
     empid: req.user.empid,
@@ -89,6 +96,7 @@ export async function getProfile(req, res) {
     full_name: session?.employee_name,
     user_level: session?.user_level,
     session,
+    permissions,
   });
 }
 
@@ -116,6 +124,9 @@ export async function refresh(req, res) {
     const user = await getUserById(payload.id);
     if (!user) throw new Error('User not found');
     const session = await getEmploymentSession(user.empid, payload.companyId);
+    const permissions = session?.user_level
+      ? await getUserLevelActions(session.user_level)
+      : {};
     const newPayload = {
       id: user.id,
       empid: user.empid,
@@ -143,6 +154,7 @@ export async function refresh(req, res) {
       full_name: session?.employee_name,
       user_level: session?.user_level,
       session,
+      permissions,
     });
   } catch (err) {
     const opts = {
