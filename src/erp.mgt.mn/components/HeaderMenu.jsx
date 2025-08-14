@@ -1,12 +1,14 @@
 import React, { useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { useModules } from '../hooks/useModules.js';
+import { useTxnModules } from '../hooks/useTxnModules.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
 
 export default function HeaderMenu({ onOpen }) {
   const { permissions: perms } = useContext(AuthContext);
   const modules = useModules();
+  const txnModuleKeys = useTxnModules();
   const generalConfig = useGeneralConfig();
   const items = modules.filter((r) => r.show_in_header);
   const headerMap = useHeaderMappings(items.map((m) => m.module_key));
@@ -15,20 +17,21 @@ export default function HeaderMenu({ onOpen }) {
 
   return (
     <nav style={styles.menu}>
-      {items.map(
-        (m) =>
-          perms[m.module_key] && (
-            <button
-              key={m.module_key}
-              style={styles.btn}
-              onClick={() => onOpen(m.module_key)}
-            >
-              {generalConfig.general?.procLabels?.[m.module_key] ||
-                headerMap[m.module_key] ||
-                m.label}
-            </button>
-          ),
-      )}
+      {items.map((m) => {
+        const isTxn = txnModuleKeys && txnModuleKeys.has(m.module_key);
+        if (!isTxn && (!perms || !perms[m.module_key])) return null;
+        return (
+          <button
+            key={m.module_key}
+            style={styles.btn}
+            onClick={() => onOpen(m.module_key)}
+          >
+            {generalConfig.general?.procLabels?.[m.module_key] ||
+              headerMap[m.module_key] ||
+              m.label}
+          </button>
+        );
+      })}
     </nav>
   );
 }

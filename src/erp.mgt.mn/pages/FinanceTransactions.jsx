@@ -200,8 +200,18 @@ useEffect(() => {
             !allowedD.includes(department)
           )
             return;
-          if (perms && !perms[mKey]) return;
-          if (licensed && !licensed[mKey]) return;
+          if (
+            perms &&
+            Object.prototype.hasOwnProperty.call(perms, mKey) &&
+            !perms[mKey]
+          )
+            return;
+          if (
+            licensed &&
+            Object.prototype.hasOwnProperty.call(licensed, mKey) &&
+            !licensed[mKey]
+          )
+            return;
           filtered[n] = info;
         });
         setConfigs(filtered);
@@ -436,7 +446,15 @@ useEffect(() => {
   }
 
   if (!perms || !licensed) return <p>Ачааллаж байна...</p>;
-  if (!perms[moduleKey] || !licensed[moduleKey]) return <p>Нэвтрэх эрхгүй.</p>;
+  if (
+    (perms &&
+      Object.prototype.hasOwnProperty.call(perms, moduleKey) &&
+      !perms[moduleKey]) ||
+    (licensed &&
+      Object.prototype.hasOwnProperty.call(licensed, moduleKey) &&
+      !licensed[moduleKey])
+  )
+    return <p>Нэвтрэх эрхгүй.</p>;
 
   const caption = 'Гүйлгээ сонгоно уу';
 
