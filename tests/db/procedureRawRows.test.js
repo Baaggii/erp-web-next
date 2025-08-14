@@ -4,13 +4,24 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import * as db from '../../db/index.js';
 
-function mockPool(createSql) {
+function mockPool(createSql, columns = [
+  { Field: 'id', Type: 'int' },
+  { Field: 'category', Type: 'varchar(255)' },
+  { Field: 'region', Type: 'varchar(255)' },
+  { Field: 'name', Type: 'varchar(255)' },
+  { Field: 'trans_date', Type: 'date' },
+  { Field: 'trans_time', Type: 'time' },
+  { Field: 'amount', Type: 'decimal' },
+]) {
   const original = db.pool.query;
   const calls = [];
   db.pool.query = async (sql) => {
     calls.push(sql);
     if (sql.startsWith('SHOW CREATE PROCEDURE')) {
       return [[{ 'Create Procedure': createSql }]];
+    }
+    if (sql.startsWith('SHOW COLUMNS FROM')) {
+      return [columns];
     }
     return [[{ category: 'Phones', total: 100 }]];
   };
@@ -41,12 +52,11 @@ END`;
   restore();
   assert.ok(sql.includes('t.amount AS total'));
   assert.ok(!/\bcnt\b/i.test(sql));
-  assert.ok(sql.includes("category = 'Phones'"));
+  assert.ok(!sql.includes("category = 'Phones'"));
   assert.ok(sql.includes("'2024-01-01'"));
   assert.ok(!/GROUP BY/i.test(sql));
   assert.ok(!/HAVING/i.test(sql));
   assert.ok(!/SUM\(/i.test(sql));
-  assert.ok(/^SELECT \* FROM \(/i.test(sql));
   assert.ok(/after/i.test(sql));
   await fs.unlink(path.join(process.cwd(), 'config', 'sp_test_rows.sql')).catch(() => {});
 });
@@ -132,3 +142,144 @@ END`;
       .catch(() => {});
   },
 );
+
+test('getProcedureRawRows applies extraConditions from primary table only', {
+  concurrency: false,
+}, async () => {
+  const createSql = `CREATE PROCEDURE \`sp_multi\`()
+BEGIN
+  SELECT t.id, t.region, c.name, SUM(t.amount) AS total
+  FROM trans t
+  JOIN categories c ON c.id = t.category_id
+  GROUP BY t.id, t.region, c.name;
+END`;
+  const restore = mockPool(createSql);
+  const { sql } = await db.getProcedureRawRows(
+    'sp_multi',
+    {},
+    'total',
+    'region',
+    'West',
+    [
+      { field: 'id', value: 5 },
+      { field: 'name', value: 'Phones' },
+    ],
+  );
+  restore();
+  assert.ok(sql.includes("region = 'West'"));
+  assert.ok(sql.includes('id = 5'));
+  assert.ok(!sql.includes("name = 'Phones'"));
+  await fs.unlink(path.join(process.cwd(), 'config', 'sp_multi_rows.sql')).catch(() => {});
+});
+
+test('getProcedureRawRows accepts prefixed field names', { concurrency: false }, async () => {
+  const createSql = `CREATE PROCEDURE \`sp_pref\`()
+BEGIN
+  SELECT t.id, t.region, t.amount
+  FROM trans t;
+END`;
+  const restore = mockPool(createSql);
+  const { sql } = await db.getProcedureRawRows(
+    'sp_pref',
+    {},
+    'amount',
+    't.region',
+    'West',
+    [{ field: 't.id', value: 7 }],
+  );
+  restore();
+  assert.ok(sql.includes("region = 'West'"));
+  assert.ok(sql.includes('id = 7'));
+  await fs.unlink(path.join(process.cwd(), 'config', 'sp_pref_rows.sql')).catch(() => {});
+});
+
+test('getProcedureRawRows formats date conditions', { concurrency: false }, async () => {
+  const createSql = `CREATE PROCEDURE \`sp_date\`()
+BEGIN
+  SELECT t.trans_date, SUM(t.amount) AS total
+  FROM trans t
+  GROUP BY t.trans_date;
+END`;
+  const restore = mockPool(createSql);
+  const { sql } = await db.getProcedureRawRows(
+    'sp_date',
+    {},
+    'total',
+    'trans_date',
+    '2025-08-12',
+  );
+  restore();
+  assert.ok(sql.includes("trans_date = '2025-08-12'"));
+  await fs.unlink(path.join(process.cwd(), 'config', 'sp_date_rows.sql')).catch(() => {});
+});
+
+test('getProcedureRawRows ignores aggregate fields in extraConditions', { concurrency: false }, async () => {
+  const createSql = `CREATE PROCEDURE \`sp_agg\`()
+BEGIN
+  SELECT t.id, SUM(t.amount) AS total
+  FROM trans t
+  GROUP BY t.id;
+END`;
+  const restore = mockPool(createSql);
+  const { sql } = await db.getProcedureRawRows(
+    'sp_agg',
+    {},
+    'total',
+    'id',
+    1,
+    [
+      { field: 'id', value: 1 },
+      { field: 'total', value: 500 },
+    ],
+  );
+  restore();
+  assert.ok(sql.includes('id = 1'));
+  assert.ok(!sql.includes('total ='));
+  await fs.unlink(path.join(process.cwd(), 'config', 'sp_agg_rows.sql')).catch(() => {});
+});
+
+test('getProcedureRawRows removes non-column aggregate extraConditions', { concurrency: false }, async () => {
+  const createSql = `CREATE PROCEDURE \`sp_agg2\`()
+BEGIN
+  SELECT t.id, SUM(t.amount) AS total, COUNT(*) AS cnt
+  FROM trans t
+  GROUP BY t.id;
+END`;
+  const restore = mockPool(createSql);
+  const { sql } = await db.getProcedureRawRows(
+    'sp_agg2',
+    {},
+    'total',
+    'id',
+    1,
+    [{ field: 'cnt', value: 2 }],
+  );
+  restore();
+  assert.ok(sql.includes('id = 1'));
+  assert.ok(!sql.includes('cnt ='));
+  await fs.unlink(path.join(process.cwd(), 'config', 'sp_agg2_rows.sql')).catch(() => {});
+});
+
+test('getProcedureRawRows formats time conditions', { concurrency: false }, async () => {
+  const createSql = `CREATE PROCEDURE \`sp_time\`()
+BEGIN
+  SELECT t.trans_time, SUM(t.amount) AS total
+  FROM trans t
+  GROUP BY t.trans_time;
+END`;
+  const columns = [
+    { Field: 'trans_time', Type: 'time' },
+    { Field: 'amount', Type: 'decimal' },
+  ];
+  const restore = mockPool(createSql, columns);
+  const { sql } = await db.getProcedureRawRows(
+    'sp_time',
+    {},
+    'total',
+    'trans_time',
+    '12:34:56',
+  );
+  restore();
+  assert.ok(sql.includes("trans_time = '12:34:56'"));
+  await fs.unlink(path.join(process.cwd(), 'config', 'sp_time_rows.sql')).catch(() => {});
+});

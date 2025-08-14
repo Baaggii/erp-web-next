@@ -7,7 +7,7 @@ import { updateGeneralConfig, getGeneralConfig } from '../../api-server/services
 
 const baseDir = path.join(process.cwd(), 'uploads', 'txn_images', 'search_images_test');
 
-await test('searchImages finds files by field value', async () => {
+await test('searchImages finds files by field value', { concurrency: false }, async () => {
   const orig = await getGeneralConfig();
   await updateGeneralConfig({
     images: {

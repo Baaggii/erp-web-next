@@ -38,6 +38,15 @@ import defaultModules from "./defaultModules.js";
 import { logDb } from "./debugLog.js";
 import fs from "fs/promises";
 import path from "path";
+import { getDisplayFields as getDisplayCfg } from "../api-server/services/displayFieldConfig.js";
+
+function buildDisplayExpr(alias, cfg, fallback) {
+  const fields = (cfg?.displayFields || []).map((f) => `${alias}.${f}`);
+  if (fields.length) {
+    return `TRIM(CONCAT_WS(' ', ${fields.join(', ')}))`;
+  }
+  return fallback;
+}
 
 const tableColumnsCache = new Map();
 
@@ -112,6 +121,178 @@ export async function getUserByEmpId(empid) {
   const user = rows[0];
   user.verifyPassword = async (plain) => bcrypt.compare(plain, user.password);
   return user;
+}
+
+function mapEmploymentRow(row) {
+  const {
+    new_records,
+    edit_delete_request,
+    edit_records,
+    delete_records,
+    image_handler,
+    audition,
+    supervisor,
+    companywide,
+    branchwide,
+    departmentwide,
+    developer,
+    system_settings,
+    license_settings,
+    ai,
+    dashboard,
+    ai_dashboard,
+    ...rest
+  } = row;
+  return {
+    ...rest,
+    permissions: {
+      new_records: !!new_records,
+      edit_delete_request: !!edit_delete_request,
+      edit_records: !!edit_records,
+      delete_records: !!delete_records,
+      image_handler: !!image_handler,
+      audition: !!audition,
+      supervisor: !!supervisor,
+      companywide: !!companywide,
+      branchwide: !!branchwide,
+      departmentwide: !!departmentwide,
+      developer: !!developer,
+      system_settings: !!system_settings,
+      license_settings: !!license_settings,
+      ai: !!ai,
+      dashboard: !!dashboard,
+      ai_dashboard: !!ai_dashboard,
+    },
+  };
+}
+
+/**
+ * List all employment sessions for an employee
+ */
+export async function getEmploymentSessions(empid) {
+  const [companyCfg, branchCfg, deptCfg, empCfg] = await Promise.all([
+    getDisplayCfg("companies"),
+    getDisplayCfg("code_branches"),
+    getDisplayCfg("code_department"),
+    getDisplayCfg("tbl_employee"),
+  ]);
+
+  const companyName = buildDisplayExpr("c", companyCfg, "c.name");
+  const branchName = buildDisplayExpr("b", branchCfg, "b.name");
+  const deptName = buildDisplayExpr("d", deptCfg, "d.name");
+  const deptIdCol = deptCfg?.idField || "id";
+  const empName = buildDisplayExpr(
+    "emp",
+    empCfg,
+    "CONCAT_WS(' ', emp.emp_fname, emp.emp_lname)",
+  );
+
+  const [rows] = await pool.query(
+    `SELECT
+        e.employment_company_id AS company_id,
+        ${companyName} AS company_name,
+        e.employment_branch_id AS branch_id,
+        ${branchName} AS branch_name,
+        e.employment_department_id AS department_id,
+        ${deptName} AS department_name,
+        e.employment_position_id AS position_id,
+        ${empName} AS employee_name,
+        e.employment_user_level AS user_level,
+        ul.new_records,
+        ul.edit_delete_request,
+        ul.edit_records,
+        ul.delete_records,
+        ul.image_handler,
+        ul.audition,
+        ul.supervisor,
+        ul.companywide,
+        ul.branchwide,
+        ul.departmentwide,
+        ul.developer,
+        ul.system_settings,
+        ul.license_settings,
+        ul.ai,
+        ul.dashboard,
+        ul.ai_dashboard
+     FROM tbl_employment e
+     LEFT JOIN companies c ON e.employment_company_id = c.id
+     LEFT JOIN code_branches b ON e.employment_branch_id = b.id
+     LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol}
+     LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
+     LEFT JOIN code_userlevel ul ON e.employment_user_level = ul.userlever_id
+     WHERE e.employment_emp_id = ?
+     ORDER BY e.id DESC`,
+    [empid],
+  );
+  return rows.map(mapEmploymentRow);
+}
+
+/**
+ * Fetch employment session info and permission flags for an employee.
+ * Optionally filter by company ID.
+ */
+export async function getEmploymentSession(empid, companyId) {
+  if (companyId) {
+    const [companyCfg, branchCfg, deptCfg, empCfg] = await Promise.all([
+      getDisplayCfg("companies"),
+      getDisplayCfg("code_branches"),
+      getDisplayCfg("code_department"),
+      getDisplayCfg("tbl_employee"),
+    ]);
+
+    const companyName = buildDisplayExpr("c", companyCfg, "c.name");
+    const branchName = buildDisplayExpr("b", branchCfg, "b.name");
+    const deptName = buildDisplayExpr("d", deptCfg, "d.name");
+    const deptIdCol = deptCfg?.idField || "id";
+    const empName = buildDisplayExpr(
+      "emp",
+      empCfg,
+      "CONCAT_WS(' ', emp.emp_fname, emp.emp_lname)",
+    );
+
+    const [rows] = await pool.query(
+      `SELECT
+          e.employment_company_id AS company_id,
+          ${companyName} AS company_name,
+          e.employment_branch_id AS branch_id,
+          ${branchName} AS branch_name,
+          e.employment_department_id AS department_id,
+          ${deptName} AS department_name,
+          e.employment_position_id AS position_id,
+          ${empName} AS employee_name,
+          e.employment_user_level AS user_level,
+          ul.new_records,
+          ul.edit_delete_request,
+          ul.edit_records,
+          ul.delete_records,
+          ul.image_handler,
+          ul.audition,
+          ul.supervisor,
+          ul.companywide,
+          ul.branchwide,
+          ul.departmentwide,
+          ul.developer,
+          ul.system_settings,
+          ul.license_settings,
+          ul.ai,
+          ul.dashboard,
+          ul.ai_dashboard
+       FROM tbl_employment e
+       LEFT JOIN companies c ON e.employment_company_id = c.id
+       LEFT JOIN code_branches b ON e.employment_branch_id = b.id
+       LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol}
+       LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
+       LEFT JOIN code_userlevel ul ON e.employment_user_level = ul.userlever_id
+       WHERE e.employment_emp_id = ? AND e.employment_company_id = ?
+       ORDER BY e.id DESC
+       LIMIT 1`,
+      [empid, companyId],
+    );
+    if (rows.length === 0) return null;
+    return mapEmploymentRow(rows[0]);
+  }
+  const sessions = await getEmploymentSessions(empid);
+  return sessions[0] || null;
 }
 
 /**
@@ -574,7 +755,7 @@ export async function listTableColumns(tableName) {
 
 export async function listTableColumnsDetailed(tableName) {
   const [rows] = await pool.query(
-    `SELECT COLUMN_NAME, COLUMN_TYPE
+    `SELECT COLUMN_NAME, COLUMN_TYPE, DATA_TYPE
        FROM information_schema.COLUMNS
       WHERE TABLE_SCHEMA = DATABASE()
         AND TABLE_NAME = ?
@@ -583,6 +764,7 @@ export async function listTableColumnsDetailed(tableName) {
   );
   return rows.map((r) => ({
     name: r.COLUMN_NAME,
+    type: r.DATA_TYPE,
     enumValues: /^enum\(/i.test(r.COLUMN_TYPE)
       ? r.COLUMN_TYPE
           .slice(5, -1)
@@ -1143,6 +1325,7 @@ export async function getProcedureRawRows(
   column,
   groupField,
   groupValue,
+  extraConditions = [],
   sessionVars = {},
 ) {
   let createSql = '';
@@ -1189,6 +1372,7 @@ export async function getProcedureRawRows(
     sql = sql.slice(0, firstSemi);
   }
 
+  let columnWasAggregated = false;
   if (/^SELECT/i.test(sql)) {
     function filterAggregates(input, aliasToKeep) {
       const upper = input.toUpperCase();
@@ -1224,7 +1408,11 @@ export async function getProcedureRawRows(
       if (buf.trim()) fields.push(buf.trim());
       const kept = [];
       for (let field of fields) {
-        const sumIdx = field.toUpperCase().indexOf('SUM(');
+        const upperField = field.toUpperCase();
+        if (upperField.includes('COUNT(')) {
+          continue;
+        }
+        const sumIdx = upperField.indexOf('SUM(');
         if (sumIdx === -1) {
           kept.push(field);
           continue;
@@ -1232,6 +1420,7 @@ export async function getProcedureRawRows(
         const aliasMatch = field.match(/(?:AS\s+)?`?([a-zA-Z0-9_]+)`?\s*$/i);
         const alias = aliasMatch ? aliasMatch[1] : null;
         if (alias && alias.toLowerCase() === String(aliasToKeep).toLowerCase()) {
+          columnWasAggregated = true;
           let start = sumIdx + 4;
           let depth2 = 1;
           let j = start;
@@ -1294,11 +1483,12 @@ export async function getProcedureRawRows(
       }
       return -1;
     })();
+    let primaryFields = [];
+    let table = '';
     if (fromIdx !== -1) {
       const fieldsPart = sql.slice(6, fromIdx);
       const rest = sql.slice(fromIdx);
       const afterFrom = rest.slice(4).trimStart();
-      let table = '';
       let alias = '';
       if (afterFrom.startsWith('(')) {
         let depth = 1;
@@ -1323,6 +1513,43 @@ export async function getProcedureRawRows(
       }
       if (table) {
         const prefix = alias ? `${alias}.` : '';
+        // Collect fields from primary table
+        const fields = [];
+        let buf = '';
+        let depth = 0;
+        for (let i = 0; i < fieldsPart.length; i++) {
+          const ch = fieldsPart[i];
+          if (ch === '(') depth++;
+          else if (ch === ')') depth--;
+          if (ch === ',' && depth === 0) {
+            fields.push(buf.trim());
+            buf = '';
+          } else {
+            buf += ch;
+          }
+        }
+        if (buf.trim()) fields.push(buf.trim());
+        for (const field of fields) {
+          const cleaned = field.replace(/`/g, '').trim();
+          const lower = cleaned.toLowerCase();
+          if (/(?:sum|count|avg|min|max)\s*\(/i.test(lower)) continue;
+          if (
+            (prefix && cleaned.startsWith(prefix)) ||
+            (!prefix && !cleaned.includes('.'))
+          ) {
+            const m = field.match(/(?:AS\s+)?`?([a-zA-Z0-9_]+)`?\s*$/i);
+            const alias = m
+              ? m[1]
+              : cleaned.slice(prefix ? prefix.length : 0).split(/\s+/)[0];
+            if (
+              columnWasAggregated &&
+              alias.toLowerCase() === String(column).toLowerCase()
+            ) {
+              continue;
+            }
+            primaryFields.push(alias);
+          }
+        }
         try {
           const txt = await fs.readFile(
             path.join(process.cwd(), 'config', 'transactionForms.json'),
@@ -1375,10 +1602,86 @@ export async function getProcedureRawRows(
       }
     }
 
-    if (groupValue !== undefined) {
-      const rep =
-        typeof groupValue === 'number' ? String(groupValue) : `'${groupValue}'`;
-      sql = `SELECT * FROM (${sql}) AS _raw WHERE ${groupField} = ${rep}`;
+    let fieldTypes = {};
+    if (table) {
+      try {
+        const [cols] = await pool.query('SHOW COLUMNS FROM ??', [table]);
+        for (const c of cols) {
+          fieldTypes[c.Field.toLowerCase()] = c.Type.toLowerCase();
+        }
+      } catch {}
+    }
+
+    if (
+      groupValue !== undefined ||
+      (Array.isArray(extraConditions) && extraConditions.length)
+    ) {
+      const pfSet = new Set(primaryFields.map((f) => String(f).toLowerCase()));
+      const clauses = [];
+      function formatVal(field, val) {
+        if (val === undefined || val === null || val === '') return null;
+        const type = fieldTypes[String(field).toLowerCase()] || '';
+        if (/int|decimal|float|double|bit|year/.test(type)) {
+          const num = Number(val);
+          return Number.isNaN(num) ? mysql.escape(val) : String(num);
+        }
+        if (/date|time|timestamp/.test(type)) {
+          if (typeof val === 'string') {
+            const m = val.match(/^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}:\d{2}))?/);
+            if (m) {
+              const datePart = m[1];
+              const timePart = m[2];
+              if (/^time$/.test(type) || (type.includes('time') && !type.includes('date'))) {
+                return mysql.escape(timePart || datePart);
+              }
+              if (timePart) return mysql.escape(`${datePart} ${timePart}`);
+              return mysql.escape(datePart);
+            }
+          }
+          const d = new Date(val);
+          if (!Number.isNaN(d.getTime())) {
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            const hh = String(d.getHours()).padStart(2, '0');
+            const mi = String(d.getMinutes()).padStart(2, '0');
+            const ss = String(d.getSeconds()).padStart(2, '0');
+            if (/^time$/.test(type) || (type.includes('time') && !type.includes('date'))) {
+              return mysql.escape(`${hh}:${mi}:${ss}`);
+            }
+            if (type.includes('timestamp') || type.includes('datetime')) {
+              return mysql.escape(`${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`);
+            }
+            return mysql.escape(`${yyyy}-${mm}-${dd}`);
+          }
+        }
+        return mysql.escape(val);
+      }
+      if (
+        groupValue !== undefined &&
+        groupValue !== null &&
+        groupValue !== '' &&
+        groupField
+      ) {
+        const gf = String(groupField).split('.').pop();
+        if (pfSet.has(gf.toLowerCase())) {
+          const formatted = formatVal(gf, groupValue);
+          if (formatted !== null) clauses.push(`${gf} = ${formatted}`);
+        }
+      }
+      if (Array.isArray(extraConditions)) {
+        for (const { field, value } of extraConditions) {
+          if (!field) continue;
+          if (value === undefined || value === null || value === '') continue;
+          const f = String(field).split('.').pop();
+          if (!pfSet.has(f.toLowerCase())) continue;
+          const formatted = formatVal(f, value);
+          if (formatted !== null) clauses.push(`${f} = ${formatted}`);
+        }
+      }
+      if (clauses.length) {
+        sql = `SELECT * FROM (${sql}) AS _raw WHERE ${clauses.join(' AND ')}`;
+      }
     }
 
     sql = sql.replace(/;\s*$/, '');

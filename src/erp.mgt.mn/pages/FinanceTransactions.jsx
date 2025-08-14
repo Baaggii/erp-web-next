@@ -275,7 +275,9 @@ useEffect(() => {
         if (prefix && Array.isArray(cfg.procedures)) {
           nextCfg = {
             ...cfg,
-            procedures: cfg.procedures.filter((p) => p.includes(prefix)),
+            procedures: cfg.procedures.filter((p) =>
+              p.toLowerCase().includes(prefix.toLowerCase()),
+            ),
           };
         }
         if (!isEqual(nextCfg, prevConfigRef.current)) {
@@ -299,7 +301,7 @@ useEffect(() => {
   return () => {
     canceled = true;
   };
-}, [table, name, addToast]);
+}, [table, name, addToast, generalConfig?.general?.reportProcPrefix]);
 
   useEffect(() => {
     if (!selectedProc) {

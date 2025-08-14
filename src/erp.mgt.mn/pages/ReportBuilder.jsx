@@ -3,6 +3,7 @@ import buildStoredProcedure from '../utils/buildStoredProcedure.js';
 import buildReportSql from '../utils/buildReportSql.js';
 import ErrorBoundary from '../components/ErrorBoundary.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import formatSqlValue from '../utils/formatSqlValue.js';
 
 const SESSION_PARAMS = [
   { name: 'session_branch_id', type: 'INT' },
@@ -20,6 +21,7 @@ function ReportBuilderInner() {
   const [tables, setTables] = useState([]); // list of table names
   const [tableFields, setTableFields] = useState({}); // { tableName: [field, ...] }
   const [fieldEnums, setFieldEnums] = useState({}); // { tableName: { field: [enum] } }
+  const [fieldTypes, setFieldTypes] = useState({}); // { tableName: { field: type } }
 
   const [procName, setProcName] = useState('');
   const [fromTable, setFromTable] = useState('');
@@ -100,41 +102,32 @@ function ReportBuilderInner() {
   }, []);
 
   useEffect(() => {
-    if (!generalConfig) return;
     const prefix = generalConfig?.general?.reportProcPrefix || '';
+    if (!generalConfig) return;
+    const query = prefix ? `?prefix=${encodeURIComponent(prefix)}` : '';
     async function fetchSaved() {
       try {
-        const res = await fetch('/api/report_builder/configs');
+        const res = await fetch(`/api/report_builder/configs${query}`);
         const data = await res.json();
-        const list = prefix
-          ? (data.names || []).filter((n) => n.includes(prefix))
-          : data.names || [];
+        const list = data.names || [];
         setSavedReports(list);
         setSelectedReport(list[0] || '');
       } catch (err) {
         console.error(err);
       }
       try {
-        const res = await fetch('/api/report_builder/procedure-files');
+        const res = await fetch(`/api/report_builder/procedure-files${query}`);
         const data = await res.json();
-        const list = prefix
-          ? (data.names || []).filter((n) => n.includes(prefix))
-          : data.names || [];
+        const list = data.names || [];
         setProcFiles(list);
         setSelectedProcFile(list[0] || '');
       } catch (err) {
         console.error(err);
       }
       try {
-        const res = await fetch(
-          `/api/report_builder/procedures${
-            prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''
-          }`,
-        );
+        const res = await fetch(`/api/report_builder/procedures${query}`);
         const data = await res.json();
-        const list = prefix
-          ? (data.names || []).filter((n) => n.includes(prefix))
-          : data.names || [];
+        const list = data.names || [];
         setDbProcedures(list);
         setSelectedDbProcedure(list[0] || '');
       } catch (err) {
@@ -142,7 +135,7 @@ function ReportBuilderInner() {
       }
     }
     fetchSaved();
-  }, [generalConfig]);
+  }, [generalConfig?.general?.reportProcPrefix]);
 
   // Ensure fields for a table are loaded
   async function ensureFields(table) {
@@ -154,11 +147,15 @@ function ReportBuilderInner() {
       const data = await res.json();
       const names = (data.fields || []).map((f) => f.name || f);
       const enums = {};
+      const types = {};
       (data.fields || []).forEach((f) => {
-        enums[f.name || f] = f.enumValues || [];
+        const key = f.name || f;
+        enums[key] = f.enumValues || [];
+        types[key] = f.type || '';
       });
       setTableFields((prev) => ({ ...prev, [table]: names }));
       setFieldEnums((prev) => ({ ...prev, [table]: enums }));
+      setFieldTypes((prev) => ({ ...prev, [table]: types }));
     } catch (err) {
       console.error(err);
     }
@@ -311,15 +308,14 @@ function ReportBuilderInner() {
 
   function addField() {
     if (!fromTable) return;
-    const firstField = (tableFields[fromTable] || [])[0] || '';
     setFields([
       ...fields,
       {
-        source: 'field',
-        table: fromTable,
-        field: firstField,
+        source: 'none',
+        table: '',
+        field: '',
         baseAlias: '',
-        alias: firstField,
+        alias: '',
         aggregate: 'NONE',
         conditions: [],
         calcParts: [],
@@ -336,15 +332,27 @@ function ReportBuilderInner() {
       }
       if (key === 'source') {
         if (value === 'alias') {
-          next.baseAlias =
-            fields.slice(0, index).find((pf) => pf.alias)?.alias || '';
-        } else {
+          next.baseAlias = '';
+          next.table = '';
+          next.field = '';
+          next.aggregate = 'NONE';
+          next.calcParts = [];
+          next.alias = '';
+        } else if (value === 'field') {
           const first = (tableFields[fromTable] || [])[0] || '';
           next.table = fromTable;
           next.field = first;
           if (!next.alias) next.alias = first;
           next.baseAlias = '';
+          next.calcParts = [];
           ensureFields(fromTable);
+        } else {
+          next.baseAlias = '';
+          next.table = '';
+          next.field = '';
+          next.aggregate = 'NONE';
+          next.calcParts = [];
+          next.alias = '';
         }
       }
       if (key === 'table') {
@@ -409,10 +417,10 @@ function ReportBuilderInner() {
   function addCalcPart(fIndex) {
     const parts = fields[fIndex].calcParts || [];
     const part = {
-      source: 'alias',
-      alias: fields.slice(0, fIndex).find((pf) => pf.alias)?.alias || '',
-      table: fromTable,
-      field: (tableFields[fromTable] || [])[0] || '',
+      source: 'none',
+      alias: '',
+      table: '',
+      field: '',
       operator: '+',
     };
     const updated = fields.map((f, i) =>
@@ -430,9 +438,16 @@ function ReportBuilderInner() {
         if (key === 'source') {
           if (value === 'alias') {
             next.alias = fields.slice(0, fIndex).find((pf) => pf.alias)?.alias || '';
-          } else {
+            next.table = '';
+            next.field = '';
+          } else if (value === 'field') {
             next.table = fromTable;
             next.field = (tableFields[fromTable] || [])[0] || '';
+            next.alias = '';
+          } else {
+            next.alias = '';
+            next.table = '';
+            next.field = '';
           }
         }
         if (key === 'table') ensureFields(value);
@@ -455,7 +470,7 @@ function ReportBuilderInner() {
   function reorder(list, from, to) {
     const arr = [...list];
     const [moved] = arr.splice(from, 1);
-    arr.splice(to, 0, moved);
+    arr.splice(from < to ? to - 1 : to, 0, moved);
     return arr;
   }
 
@@ -768,11 +783,19 @@ function ReportBuilderInner() {
     const usedAliases = new Set(Object.values(aliases));
     let nextAlias = 1;
 
-    function buildTableFilterSql(filters) {
+    function formatValue(val, table, field) {
+      const type = (fieldTypes[table] || {})[field] || '';
+      return formatSqlValue(val, type);
+    }
+
+    function buildTableFilterSql(filters, table) {
       return (filters || [])
         .filter((f) => f.field && (f.valueType === 'param' ? f.param : f.value))
         .map((f, idx) => {
-          const right = f.valueType === 'param' ? `:${f.param}` : f.value;
+          const right =
+            f.valueType === 'param'
+              ? `:${f.param}`
+              : formatValue(f.value, table, f.field);
           const connector = idx > 0 ? ` ${f.connector} ` : '';
           const open = '('.repeat(f.open || 0);
           const close = ')'.repeat(f.close || 0);
@@ -803,7 +826,7 @@ function ReportBuilderInner() {
           .join('');
         const on = conds.length > 1 ? `(${onInner})` : onInner;
         const tablePart = j.filters?.length
-          ? `(SELECT * FROM ${j.table} WHERE ${buildTableFilterSql(j.filters)})`
+          ? `(SELECT * FROM ${j.table} WHERE ${buildTableFilterSql(j.filters, j.table)})`
           : j.table;
         return {
           table: tablePart,
@@ -815,34 +838,61 @@ function ReportBuilderInner() {
       })
       .filter((j) => j.on);
 
-    const validTables = new Set([ft, ...joinDefs.map((j) => j.original)]);
+    // Track tables in a case-insensitive set so comparisons ignore letter case
+    const validTables = new Set(
+      [ft, ...joinDefs.map((j) => j.original)]
+        .filter(Boolean)
+        .map((t) => t.toLowerCase()),
+    );
 
     const fieldExprMap = {};
     const select = fs
-      .filter((f) => (f.source === 'alias' ? f.baseAlias : f.field))
+      .filter((f) =>
+        f.source === 'alias'
+          ? f.baseAlias || f.calcParts?.some((p) => p.source !== 'none')
+          : f.source === 'field'
+          ? f.field
+          : f.calcParts?.some((p) => p.source !== 'none'),
+      )
       .map((f) => {
-        if (f.source === 'field' && !validTables.has(f.table)) {
+        if (
+          f.source === 'field' &&
+          !validTables.has((f.table || '').toLowerCase())
+        ) {
           throw new Error(`Table ${f.table} is not joined`);
         }
-        let base =
-          f.source === 'alias'
-            ? f.baseAlias
-            : `${aliases[f.table]}.${f.field}`;
+        let base = '';
+        if (f.source === 'alias') {
+          base = f.baseAlias;
+        } else if (f.source === 'field') {
+          base = `${aliases[f.table]}.${f.field}`;
+        }
         if (f.calcParts?.length) {
-          const exprParts = [base];
+          const exprParts = [];
+          if (base) exprParts.push(base);
           f.calcParts.forEach((p) => {
             const seg =
               p.source === 'alias'
                 ? p.alias
-                : `${aliases[p.table]}.${p.field}`;
+                : p.source === 'field'
+                ? `${aliases[p.table]}.${p.field}`
+                : '';
             if (!seg) return;
-            if (p.source === 'field' && !validTables.has(p.table)) {
+            if (
+              p.source === 'field' &&
+              !validTables.has((p.table || '').toLowerCase())
+            ) {
               throw new Error(`Table ${p.table} is not joined`);
             }
-            exprParts.push(`${p.operator} ${seg}`);
+            if (exprParts.length) {
+              exprParts.push(`${p.operator} ${seg}`);
+            } else {
+              exprParts.push(seg);
+            }
           });
           let expr = exprParts.join(' ');
           Object.entries(fieldExprMap).forEach(([al, ex]) => {
+            if (new RegExp(`\\b${al}\\b`).test(ex)) return;
             const re = new RegExp(`\\b${al}\\b`, 'g');
             expr = expr.replace(re, `(${ex})`);
           });
@@ -855,11 +905,14 @@ function ReportBuilderInner() {
               const cond = f.conditions
                 .filter((c) => c.field && (c.valueType === 'param' ? c.param : c.value))
                 .map((c, idx) => {
-                  if (!validTables.has(c.table)) {
+                  if (!validTables.has((c.table || '').toLowerCase())) {
                     throw new Error(`Table ${c.table} is not joined`);
                   }
                   const connector = idx > 0 ? ` ${c.connector} ` : '';
-                  const right = c.valueType === 'param' ? `:${c.param}` : c.value;
+                  const right =
+                    c.valueType === 'param'
+                      ? `:${c.param}`
+                      : formatValue(c.value, c.table, c.field);
                   const open = '('.repeat(c.open || 0);
                   const close = ')'.repeat(c.close || 0);
                   return (
@@ -880,11 +933,14 @@ function ReportBuilderInner() {
             const cond = f.conditions
               .filter((c) => c.field && (c.valueType === 'param' ? c.param : c.value))
               .map((c, idx) => {
-                if (!validTables.has(c.table)) {
+                if (!validTables.has((c.table || '').toLowerCase())) {
                   throw new Error(`Table ${c.table} is not joined`);
                 }
                 const connector = idx > 0 ? ` ${c.connector} ` : '';
-                const right = c.valueType === 'param' ? `:${c.param}` : c.value;
+                const right =
+                  c.valueType === 'param'
+                    ? `:${c.param}`
+                    : formatValue(c.value, c.table, c.field);
                 const open = '('.repeat(c.open || 0);
                 const close = ')'.repeat(c.close || 0);
                 return (
@@ -907,7 +963,7 @@ function ReportBuilderInner() {
       });
 
     const fromTableSql = ff.length
-      ? `(SELECT * FROM ${ft} WHERE ${buildTableFilterSql(ff)})`
+      ? `(SELECT * FROM ${ft} WHERE ${buildTableFilterSql(ff, ft)})`
       : ft;
 
     const where = cs
@@ -916,7 +972,7 @@ function ReportBuilderInner() {
         if (c.raw) {
           return { expr: c.raw, connector: c.connector, open: c.open, close: c.close };
         }
-        if (!validTables.has(c.table)) {
+        if (!validTables.has((c.table || '').toLowerCase())) {
           throw new Error(`Table ${c.table} is not joined`);
         }
         return {
@@ -930,7 +986,7 @@ function ReportBuilderInner() {
     const groupBy = gs
       .filter((g) => g.table && g.field)
       .map((g) => {
-        if (!validTables.has(g.table)) {
+        if (!validTables.has((g.table || '').toLowerCase())) {
           throw new Error(`Table ${g.table} is not joined`);
         }
         return `${aliases[g.table]}.${g.field}`;
@@ -943,10 +999,16 @@ function ReportBuilderInner() {
           h.source === 'alias'
             ? h.alias
             : `${h.aggregate}(${aliases[h.table]}.${h.field})`;
-        if (h.source === 'field' && !validTables.has(h.table)) {
+        if (
+          h.source === 'field' &&
+          !validTables.has((h.table || '').toLowerCase())
+        ) {
           throw new Error(`Table ${h.table} is not joined`);
         }
-        const right = h.valueType === 'param' ? `:${h.param}` : h.value;
+        const right =
+          h.valueType === 'param'
+            ? `:${h.param}`
+            : formatValue(h.value, h.table, h.field);
         return {
           expr: `${left} ${h.operator} ${right}`,
           connector: h.connector,
@@ -997,7 +1059,8 @@ function ReportBuilderInner() {
       const { report } = buildDefinition();
       const sql = buildReportSql(report);
       const prefix = generalConfig?.general?.reportViewPrefix || '';
-      const viewName = `view_${prefix}${procName || 'report'}`;
+      if (!procName) throw new Error('procedure name is required');
+      const viewName = `${prefix}${procName}`;
       const view = `CREATE OR REPLACE VIEW ${viewName} AS\n${sql};`;
       setViewSql(view);
       setError('');
@@ -1029,6 +1092,7 @@ function ReportBuilderInner() {
   async function handlePostProc() {
     if (!procSql) return;
     if (!window.confirm('POST stored procedure to database?')) return;
+    const prefix = generalConfig?.general?.reportProcPrefix || '';
     try {
       const res = await fetch(
         `/api/report_builder/procedures${
@@ -1042,15 +1106,16 @@ function ReportBuilderInner() {
       );
       if (!res.ok) throw new Error('Save failed');
       try {
-      const listRes = await fetch(
-        `/api/report_builder/procedures${
-          prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''
-        }`,
-      );
+        const listRes = await fetch(
+          `/api/report_builder/procedures${
+            prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''
+          }`,
+        );
         const data = await listRes.json();
-        const prefix = generalConfig?.general?.reportProcPrefix || '';
         const list = prefix
-          ? (data.names || []).filter((n) => n.includes(prefix))
+          ? (data.names || []).filter((n) =>
+              n.toLowerCase().includes(prefix.toLowerCase()),
+            )
           : data.names || [];
         setDbProcedures(list);
         setSelectedDbProcedure(list[0] || '');
@@ -1130,7 +1195,10 @@ function ReportBuilderInner() {
       procName,
       fromTable: first.fromTable,
       joins: first.joins,
-      fields: first.fields,
+      fields: first.fields.map((f) => ({
+        ...f,
+        calcParts: (f.calcParts || []).filter((p) => p.source !== 'none'),
+      })),
       groups: first.groups,
       having: first.having,
       params,
@@ -1140,7 +1208,8 @@ function ReportBuilderInner() {
     };
     try {
       const prefix = generalConfig?.general?.reportProcPrefix || '';
-      const name = `${prefix}${procName || 'report'}`;
+      if (!procName) throw new Error('procedure name is required');
+      const name = `${prefix}${procName}`;
       const res = await fetch(
         `/api/report_builder/configs/${encodeURIComponent(name)}`,
         {
@@ -1150,11 +1219,11 @@ function ReportBuilderInner() {
         },
       );
       if (!res.ok) throw new Error('Save failed');
-      const listRes = await fetch('/api/report_builder/configs');
+      const listRes = await fetch(
+        `/api/report_builder/configs${prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''}`,
+      );
       const listData = await listRes.json();
-      const list = prefix
-        ? (listData.names || []).filter((n) => n.includes(prefix))
-        : listData.names || [];
+      const list = listData.names || [];
       setSavedReports(list);
       setSelectedReport(name);
       window.dispatchEvent(
@@ -1273,7 +1342,8 @@ function ReportBuilderInner() {
   async function handleSaveProcFile() {
     if (!procSql) return;
     const prefix = generalConfig?.general?.reportProcPrefix || '';
-    const name = `${prefix}${procName || 'report'}`;
+    if (!procName) return;
+    const name = `${prefix}${procName}`;
     try {
       const res = await fetch(
         `/api/report_builder/procedure-files/${encodeURIComponent(name)}`,
@@ -1284,11 +1354,11 @@ function ReportBuilderInner() {
         },
       );
       if (!res.ok) throw new Error('Save failed');
-      const listRes = await fetch('/api/report_builder/procedure-files');
+      const listRes = await fetch(
+        `/api/report_builder/procedure-files${prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''}`,
+      );
       const listData = await listRes.json();
-      const list = prefix
-        ? (listData.names || []).filter((n) => n.includes(prefix))
-        : listData.names || [];
+      const list = listData.names || [];
       setProcFiles(list);
       setSelectedProcFile(name);
       window.dispatchEvent(
@@ -1319,7 +1389,33 @@ function ReportBuilderInner() {
   }
 
   function handleParseSql() {
-    setProcSql(procFileText);
+    const sql = procFileText || '';
+    setProcSql(sql);
+    const nameMatch = sql.match(/CREATE\s+PROCEDURE\s+`?([^`(]+)`?\s*\(/i);
+    if (nameMatch) {
+      const prefix = generalConfig?.general?.reportProcPrefix || '';
+      let name = nameMatch[1];
+      if (prefix && name.toLowerCase().startsWith(prefix.toLowerCase())) {
+        name = name.slice(prefix.length);
+      }
+      setProcName(name);
+    }
+    const paramsMatch = sql.match(/CREATE\s+PROCEDURE[\s\S]*?\(([^)]*)\)/i);
+    if (paramsMatch) {
+      const paramLines = paramsMatch[1]
+        .split(',')
+        .map((l) => l.trim())
+        .filter(Boolean);
+      const parsed = paramLines
+        .map((line) => {
+          const m = line.match(/IN\s+([\w]+)\s+([\w()]+)/i);
+          return m ? { name: m[1], type: m[2] } : null;
+        })
+        .filter(Boolean);
+      setParams(parsed);
+    } else {
+      setParams([]);
+    }
   }
 
   if (loading) {
@@ -1733,10 +1829,17 @@ function ReportBuilderInner() {
             >
               ☰
             </span>
+            <button
+              onClick={() => removeField(i)}
+              style={{ marginRight: '0.5rem' }}
+            >
+              ✕
+            </button>
             <select
               value={f.source}
               onChange={(e) => updateField(i, 'source', e.target.value)}
             >
+              <option value="none">None</option>
               <option value="field">Field</option>
               <option value="alias">Alias</option>
             </select>
@@ -1746,6 +1849,7 @@ function ReportBuilderInner() {
                 onChange={(e) => updateField(i, 'baseAlias', e.target.value)}
                 style={{ marginLeft: '0.5rem' }}
               >
+                <option value="">None</option>
                 {fields.slice(0, i).map((pf) =>
                   pf.alias ? (
                     <option key={pf.alias} value={pf.alias}>
@@ -1754,7 +1858,7 @@ function ReportBuilderInner() {
                   ) : null,
                 )}
               </select>
-            ) : (
+            ) : f.source === 'field' ? (
               <>
                 <select
                   value={f.table}
@@ -1790,7 +1894,7 @@ function ReportBuilderInner() {
                   ))}
                 </select>
               </>
-            )}
+            ) : null}
             <input
               placeholder="alias"
               value={f.alias}
@@ -1820,6 +1924,7 @@ function ReportBuilderInner() {
                     updateCalcPart(i, k, 'source', e.target.value)
                   }
                 >
+                  <option value="none">None</option>
                   <option value="field">Field</option>
                   <option value="alias">Alias</option>
                 </select>
@@ -1831,6 +1936,7 @@ function ReportBuilderInner() {
                     }
                     style={{ marginLeft: '0.5rem' }}
                   >
+                    <option value="">None</option>
                     {fields.slice(0, i).map((pf) =>
                       pf.alias ? (
                         <option key={pf.alias} value={pf.alias}>
@@ -1839,7 +1945,7 @@ function ReportBuilderInner() {
                       ) : null,
                     )}
                   </select>
-                ) : (
+                ) : p.source === 'field' ? (
                   <>
                     <select
                       value={p.table}
@@ -1868,7 +1974,7 @@ function ReportBuilderInner() {
                       ))}
                     </select>
                   </>
-                )}
+                ) : null}
                 <button
                   onClick={() => removeCalcPart(i, k)}
                   style={{ marginLeft: '0.5rem' }}
@@ -2028,12 +2134,6 @@ function ReportBuilderInner() {
                 <button onClick={() => addFieldCondition(i)}>Add Condition</button>
               </div>
             )}
-            <button
-              onClick={() => removeField(i)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              ✕
-            </button>
           </div>
         ))}
         <button onClick={addField}>Add Field</button>

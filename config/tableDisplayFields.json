@@ -6,6 +6,12 @@
       "emp_lname"
     ]
   },
+  "code_department": {
+    "idField": "department_id",
+    "displayFields": [
+      "name"
+    ]
+  },
   "tbl_contracter": {
     "idField": "manuf_id",
     "displayFields": [
