@@ -108,21 +108,21 @@ function Sidebar() {
         <NavLink to="/settings" className="menu-item" style={styles.menuItem} end>
           General
         </NavLink>
-        {user?.session?.permissions?.developer && (
-            <>
-              <NavLink to="/settings/users" className="menu-item" style={styles.menuItem}>
-                Users
-              </NavLink>
-              <NavLink to="/settings/user-companies" className="menu-item" style={styles.menuItem}>
-                User Companies
-              </NavLink>
-              <NavLink to="/settings/role-permissions" className="menu-item" style={styles.menuItem}>
-                Role Permissions
-              </NavLink>
-              <NavLink to="/settings/modules" className="menu-item" style={styles.menuItem}>
-                Modules
-              </NavLink>
-            </>
+        {user?.role === 'admin' && (
+          <>
+            <NavLink to="/settings/users" className="menu-item" style={styles.menuItem}>
+              Users
+            </NavLink>
+            <NavLink to="/settings/user-companies" className="menu-item" style={styles.menuItem}>
+              User Companies
+            </NavLink>
+            <NavLink to="/settings/role-permissions" className="menu-item" style={styles.menuItem}>
+              Role Permissions
+            </NavLink>
+            <NavLink to="/settings/modules" className="menu-item" style={styles.menuItem}>
+              Modules
+            </NavLink>
+          </>
         )}
         <NavLink to="/settings/change-password" className="menu-item" style={styles.menuItem}>
           Change Password

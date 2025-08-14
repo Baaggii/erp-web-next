@@ -14,7 +14,6 @@ import {
 } from '../../db/index.js';
 import { moveImagesToDeleted } from '../services/transactionImageService.js';
 import { addMappings } from '../services/headerMappings.js';
-import { getEmploymentSession } from '../../db/index.js';
 let bcrypt;
 try {
   const mod = await import('bcryptjs');
@@ -157,8 +156,7 @@ export async function getRowReferences(req, res, next) {
 
 export async function saveColumnLabels(req, res, next) {
   try {
-    const session = await getEmploymentSession(req.user.empid, req.user.companyId);
-    if (!session?.permissions?.developer) return res.sendStatus(403);
+    if (req.user.role !== 'admin') return res.sendStatus(403);
     const labels = req.body.labels || {};
     await addMappings(labels);
     res.sendStatus(204);

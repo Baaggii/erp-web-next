@@ -1,7 +1,6 @@
 import {
   listRoleModulePermissions,
-  setRoleModulePermission,
-  getEmploymentSession,
+  setRoleModulePermission
 } from '../../db/index.js';
 
 export async function listPermissions(req, res, next) {
@@ -17,8 +16,7 @@ export async function listPermissions(req, res, next) {
 
 export async function updatePermission(req, res, next) {
   try {
-    const session = await getEmploymentSession(req.user.empid, req.user.companyId);
-    if (!session?.permissions?.developer) {
+    if (req.user.role !== 'admin') {
       return res.sendStatus(403);
     }
     const { companyId, roleId, moduleKey, allowed } = req.body;

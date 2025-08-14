@@ -1,8 +1,4 @@
-import {
-  listCompanyModuleLicenses,
-  setCompanyModuleLicense,
-  getEmploymentSession,
-} from '../../db/index.js';
+import { listCompanyModuleLicenses, setCompanyModuleLicense } from '../../db/index.js';
 
 export async function listLicenses(req, res, next) {
   try {
@@ -16,8 +12,7 @@ export async function listLicenses(req, res, next) {
 
 export async function updateLicense(req, res, next) {
   try {
-    const session = await getEmploymentSession(req.user.empid, req.user.companyId);
-    if (!session?.permissions?.system_settings) {
+    if (req.user.role !== 'admin') {
       return res.sendStatus(403);
     }
     const { companyId, moduleKey, licensed } = req.body;

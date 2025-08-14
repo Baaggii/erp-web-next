@@ -185,5 +185,5 @@ function RequireAdminPage({ children }) {
   if (!user) {
     return <Navigate to="/login" replace />;
   }
-  return user.session?.permissions?.developer ? children : <Navigate to="/" replace />;
+  return user.role === 'admin' ? children : <Navigate to="/" replace />;
 }

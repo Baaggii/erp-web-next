@@ -3,8 +3,7 @@ import {
   assignCompanyToUser,
   removeCompanyAssignment,
   updateCompanyAssignment,
-  listAllUserCompanies,
-  getEmploymentSession,
+  listAllUserCompanies
 } from '../../db/index.js';
 import { requireAuth } from '../middlewares/auth.js';
 
@@ -28,8 +27,7 @@ export async function listAssignments(req, res, next) {
 
 export async function assignCompany(req, res, next) {
   try {
-    const session = await getEmploymentSession(req.user.empid, req.user.companyId);
-    if (!session?.permissions?.system_settings) {
+    if (req.user.role !== 'admin') {
       return res.sendStatus(403);
     }
     const { empid, companyId, roleId, branchId } = req.body;
@@ -45,8 +43,7 @@ export async function assignCompany(req, res, next) {
 
 export async function updateAssignment(req, res, next) {
   try {
-    const session = await getEmploymentSession(req.user.empid, req.user.companyId);
-    if (!session?.permissions?.system_settings) {
+    if (req.user.role !== 'admin') {
       return res.sendStatus(403);
     }
     const { empid, companyId, roleId, branchId } = req.body;
@@ -59,8 +56,7 @@ export async function updateAssignment(req, res, next) {
 
 export async function removeAssignment(req, res, next) {
   try {
-    const session = await getEmploymentSession(req.user.empid, req.user.companyId);
-    if (!session?.permissions?.system_settings) {
+    if (req.user.role !== 'admin') {
       return res.sendStatus(403);
     }
     const { empid, companyId } = req.body;
