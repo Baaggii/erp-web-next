@@ -4,7 +4,6 @@ import {
   updateUserPassword,
   getEmploymentSession,
   getEmploymentSessions,
-  getPermissionsForUserLevel,
 } from '../../db/index.js';
 import { hash } from '../services/passwordService.js';
 import * as jwtService from '../services/jwtService.js';
@@ -45,14 +44,6 @@ export async function login(req, res, next) {
     const token = jwtService.sign(payload);
     const refreshToken = jwtService.signRefresh(payload);
 
-    const permissions = await getPermissionsForUserLevel(session.user_level);
-    const userProfile = {
-      id: user.id,
-      empid: user.empid,
-      role: user.role,
-      full_name: session?.employee_name,
-    };
-
     res.cookie(getCookieName(), token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -65,7 +56,14 @@ export async function login(req, res, next) {
       sameSite: 'lax',
       maxAge: jwtService.getRefreshExpiryMillis(),
     });
-    res.json({ user: userProfile, session, permissions });
+    res.json({
+      id: user.id,
+      empid: user.empid,
+      role: user.role,
+      full_name: session?.employee_name,
+      user_level: session?.user_level,
+      session,
+    });
   } catch (err) {
     next(err);
   }
@@ -83,18 +81,15 @@ export async function logout(req, res) {
 }
 
 export async function getProfile(req, res) {
-  const session = await getEmploymentSession(
-    req.user.empid,
-    req.user.companyId,
-  );
-  const permissions = await getPermissionsForUserLevel(session?.user_level);
-  const userProfile = {
+  const session = await getEmploymentSession(req.user.empid, req.user.companyId);
+  res.json({
     id: req.user.id,
     empid: req.user.empid,
     role: req.user.role,
     full_name: session?.employee_name,
-  };
-  res.json({ user: userProfile, session, permissions });
+    user_level: session?.user_level,
+    session,
+  });
 }
 
 export async function changePassword(req, res, next) {
@@ -129,13 +124,6 @@ export async function refresh(req, res) {
     };
     const newAccess = jwtService.sign(newPayload);
     const newRefresh = jwtService.signRefresh(newPayload);
-    const permissions = await getPermissionsForUserLevel(session?.user_level);
-    const userProfile = {
-      id: user.id,
-      empid: user.empid,
-      role: user.role,
-      full_name: session?.employee_name,
-    };
     res.cookie(getCookieName(), newAccess, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -148,7 +136,14 @@ export async function refresh(req, res) {
       sameSite: 'lax',
       maxAge: jwtService.getRefreshExpiryMillis(),
     });
-    res.json({ user: userProfile, session, permissions });
+    res.json({
+      id: user.id,
+      empid: user.empid,
+      role: user.role,
+      full_name: session?.employee_name,
+      user_level: session?.user_level,
+      session,
+    });
   } catch (err) {
     const opts = {
       httpOnly: true,

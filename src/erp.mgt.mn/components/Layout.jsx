@@ -11,7 +11,7 @@ import { logout } from '../hooks/useAuth.jsx';
  *  - Main content area (faux window container)
  */
 export default function ERPLayout() {
-  const { user, setUser, setCompany, setPermissions } = useContext(AuthContext);
+  const { user, setUser } = useContext(AuthContext);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -34,8 +34,6 @@ export default function ERPLayout() {
   async function handleLogout() {
     await logout();
     setUser(null);
-    setCompany(null);
-    setPermissions(null);
     navigate('/login');
   }
 
@@ -85,7 +83,7 @@ function Header({ user, onLogout }) {
 
 /** Left sidebar with “menu groups” and “pinned items” **/
 function Sidebar() {
-  const { user, permissions } = useContext(AuthContext);
+  const { user } = useContext(AuthContext);
 
   // You can expand/collapse these groups if you like; this is a static example
   return (
@@ -110,7 +108,7 @@ function Sidebar() {
         <NavLink to="/settings" className="menu-item" style={styles.menuItem} end>
           General
         </NavLink>
-        {(permissions?.developer || permissions?.system_settings) && (
+        {user?.role === 'admin' && (
           <>
             <NavLink to="/settings/users" className="menu-item" style={styles.menuItem}>
               Users
