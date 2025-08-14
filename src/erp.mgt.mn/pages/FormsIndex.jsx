@@ -40,8 +40,8 @@ export default function FormsIndex() {
 
   useEffect(() => {
     const params = new URLSearchParams();
-    if (branch != null) params.set('branchId', branch);
-    if (department != null) params.set('departmentId', department);
+    if (branch) params.set('branchId', branch);
+    if (department) params.set('departmentId', department);
     const url = `/api/transaction_forms${params.toString() ? `?${params.toString()}` : ''}`;
     fetch(url, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
@@ -52,17 +52,9 @@ export default function FormsIndex() {
           const allowedD = info.allowedDepartments || [];
           const key = info.moduleKey || 'forms';
           if (!descendantKeys.includes(key)) return;
-          if (
-            allowedB.length > 0 &&
-            branch != null &&
-            !allowedB.includes(branch)
-          )
+          if (allowedB.length > 0 && branch && !allowedB.includes(branch))
             return;
-          if (
-            allowedD.length > 0 &&
-            department != null &&
-            !allowedD.includes(department)
-          )
+          if (allowedD.length > 0 && department && !allowedD.includes(department))
             return;
           if (
             perms &&

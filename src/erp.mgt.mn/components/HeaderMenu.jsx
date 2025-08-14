@@ -2,24 +2,27 @@ import React, { useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { useModules } from '../hooks/useModules.js';
 import { useTxnModules } from '../hooks/useTxnModules.js';
+import { useCompanyModules } from '../hooks/useCompanyModules.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
 
 export default function HeaderMenu({ onOpen }) {
-  const { permissions: perms } = useContext(AuthContext);
+  const { company, permissions: perms } = useContext(AuthContext);
   const modules = useModules();
   const txnModuleKeys = useTxnModules();
+  const licensed = useCompanyModules(company);
   const generalConfig = useGeneralConfig();
   const items = modules.filter((r) => r.show_in_header);
   const headerMap = useHeaderMappings(items.map((m) => m.module_key));
 
-  if (!perms) return null;
+  if (!perms || !licensed) return null;
 
   return (
     <nav style={styles.menu}>
       {items.map((m) => {
         const isTxn = txnModuleKeys && txnModuleKeys.has(m.module_key);
-        if (!isTxn && (!perms || !perms[m.module_key])) return null;
+        if (!licensed[m.module_key]) return null;
+        if (!isTxn && !perms[m.module_key]) return null;
         return (
           <button
             key={m.module_key}
