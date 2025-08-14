@@ -218,7 +218,7 @@ function Sidebar({ onOpen, open, isMobile }) {
     const isTxn = formsDesc && txnModuleKeys && txnModuleKeys.has(m.module_key);
     if (formsDesc && !isTxn) return;
     if (!m.show_in_sidebar) return;
-    if (!licensed[m.module_key]) return;
+    if (!isTxn && !licensed[m.module_key]) return;
     if (!isTxn && !perms[m.module_key]) return;
     const label =
       generalConfig.general?.procLabels?.[m.module_key] ||

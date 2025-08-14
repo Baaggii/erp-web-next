@@ -21,7 +21,7 @@ export default function HeaderMenu({ onOpen }) {
     <nav style={styles.menu}>
       {items.map((m) => {
         const isTxn = txnModuleKeys && txnModuleKeys.has(m.module_key);
-        if (!licensed[m.module_key]) return null;
+        if (!isTxn && !licensed[m.module_key]) return null;
         if (!isTxn && !perms[m.module_key]) return null;
         return (
           <button
