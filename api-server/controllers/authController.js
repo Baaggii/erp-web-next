@@ -38,6 +38,7 @@ export async function login(req, res, next) {
     const payload = {
       id: user.id,
       empid: user.empid,
+      role: user.role,
       companyId: session.company_id,
     };
     const token = jwtService.sign(payload);
@@ -58,6 +59,7 @@ export async function login(req, res, next) {
     res.json({
       id: user.id,
       empid: user.empid,
+      role: user.role,
       full_name: session?.employee_name,
       user_level: session?.user_level,
       session,
@@ -83,6 +85,7 @@ export async function getProfile(req, res) {
   res.json({
     id: req.user.id,
     empid: req.user.empid,
+    role: req.user.role,
     full_name: session?.employee_name,
     user_level: session?.user_level,
     session,
@@ -116,6 +119,7 @@ export async function refresh(req, res) {
     const newPayload = {
       id: user.id,
       empid: user.empid,
+      role: user.role,
       companyId: payload.companyId,
     };
     const newAccess = jwtService.sign(newPayload);
@@ -135,6 +139,7 @@ export async function refresh(req, res) {
     res.json({
       id: user.id,
       empid: user.empid,
+      role: user.role,
       full_name: session?.employee_name,
       user_level: session?.user_level,
       session,

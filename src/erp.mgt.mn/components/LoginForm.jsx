@@ -2,6 +2,7 @@
 import React, { useState, useContext } from 'react';
 import { login } from '../hooks/useAuth.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
+import { refreshRolePermissions } from '../hooks/useRolePermissions.js';
 import { refreshCompanyModules } from '../hooks/useCompanyModules.js';
 import { refreshModules } from '../hooks/useModules.js';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
@@ -43,6 +44,10 @@ export default function LoginForm() {
       // The login response already returns the user profile
       setUser(loggedIn);
       setCompany(loggedIn.session || null);
+      refreshRolePermissions(
+        loggedIn.session?.user_level,
+        loggedIn.session?.company_id,
+      );
       refreshCompanyModules(loggedIn.session?.company_id);
       refreshModules();
       refreshTxnModules();

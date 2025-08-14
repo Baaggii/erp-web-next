@@ -19,10 +19,6 @@ try {
         return typeof val === 'string' ? `'${val}'` : String(val);
       });
     },
-    escape(val) {
-      if (val === null || val === undefined) return 'NULL';
-      return typeof val === 'string' ? `'${val}'` : String(val);
-    },
   };
 }
 let dotenv;
@@ -43,26 +39,6 @@ import { logDb } from "./debugLog.js";
 import fs from "fs/promises";
 import path from "path";
 import { getDisplayFields as getDisplayCfg } from "../api-server/services/displayFieldConfig.js";
-
-const PERMISSION_COLS = [
-  "new_records",
-  "edit_delete_request",
-  "edit_records",
-  "delete_records",
-  "image_handler",
-  "audition",
-  "supervisor",
-  "companywide",
-  "branchwide",
-  "departmentwide",
-  "developer",
-  "system_settings",
-  "common_settings",
-  "license_settings",
-  "ai",
-  "dashboard",
-  "ai_dashboard",
-];
 
 function buildDisplayExpr(alias, cfg, fallback) {
   const fields = (cfg?.displayFields || []).map((f) => `${alias}.${f}`);
@@ -190,27 +166,6 @@ function mapEmploymentRow(row) {
   };
 }
 
-async function getUserLevelSettings(userLevel) {
-  const [rows] = await pool.query(
-    `SELECT action, ul_module_key, function_name, ${PERMISSION_COLS.join(
-      ","
-    )} FROM code_userlevel_settings WHERE uls_id = ?`,
-    [userLevel]
-  );
-  const actions = {};
-  for (const r of rows) {
-    const key = r.action === "module_key" ? r.ul_module_key : r.function_name;
-    const perms = {};
-    for (const col of PERMISSION_COLS) {
-      perms[col] = !!r[col];
-    }
-    perms.allowed = PERMISSION_COLS.some((c) => !!r[c]);
-    if (!actions[r.action]) actions[r.action] = {};
-    actions[r.action][key] = perms;
-  }
-  return actions;
-}
-
 /**
  * List all employment sessions for an employee
  */
@@ -269,13 +224,7 @@ export async function getEmploymentSessions(empid) {
      ORDER BY e.id DESC`,
     [empid],
   );
-  const sessions = rows.map(mapEmploymentRow);
-  await Promise.all(
-    sessions.map(async (s) => {
-      s.permissions.actions = await getUserLevelSettings(s.user_level);
-    }),
-  );
-  return sessions;
+  return rows.map(mapEmploymentRow);
 }
 
 /**
@@ -340,9 +289,7 @@ export async function getEmploymentSession(empid, companyId) {
       [empid, companyId],
     );
     if (rows.length === 0) return null;
-    const session = mapEmploymentRow(rows[0]);
-    session.permissions.actions = await getUserLevelSettings(session.user_level);
-    return session;
+    return mapEmploymentRow(rows[0]);
   }
   const sessions = await getEmploymentSessions(empid);
   return sessions[0] || null;

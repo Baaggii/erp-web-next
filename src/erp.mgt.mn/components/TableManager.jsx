@@ -1592,7 +1592,7 @@ const TableManager = forwardRef(function TableManager({
         <div style={{ backgroundColor: '#ddffee', padding: '0.25rem', textAlign: 'left' }}>
           Branch:{' '}
           <span style={{ marginRight: '0.5rem' }}>{company.branch_id}</span>
-          {user?.session?.permissions?.developer && (
+          {user?.role === 'admin' && (
             <button
               onClick={() =>
                 branchIdFields.forEach((f) => handleFilterChange(f, ''))
@@ -1607,7 +1607,7 @@ const TableManager = forwardRef(function TableManager({
         <div style={{ backgroundColor: '#eefcff', padding: '0.25rem', textAlign: 'left' }}>
           Department:{' '}
           <span style={{ marginRight: '0.5rem' }}>{company.department_id}</span>
-          {user?.session?.permissions?.developer && (
+          {user?.role === 'admin' && (
             <button onClick={() => departmentIdFields.forEach((f) => handleFilterChange(f, ''))}>
               Clear Department Filter
             </button>
@@ -1618,7 +1618,7 @@ const TableManager = forwardRef(function TableManager({
         <div style={{ backgroundColor: '#ffeecc', padding: '0.25rem', textAlign: 'left' }}>
           User:{' '}
           <span style={{ marginRight: '0.5rem' }}>{user.empid}</span>
-          {user?.session?.permissions?.developer && (
+          {user?.role === 'admin' && (
             <button
               onClick={() =>
                 userIdFields.forEach((f) => handleFilterChange(f, ''))
@@ -2188,8 +2188,7 @@ const TableManager = forwardRef(function TableManager({
           </li>
         </ul>
       )}
-          {user?.session?.permissions?.developer &&
-            generalConfig.general?.editLabelsEnabled && (
+      {user?.role === 'admin' && generalConfig.general?.editLabelsEnabled && (
         <button onClick={() => {
           const map = {};
           columnMeta.forEach((c) => { map[c.name] = c.label || ''; });
