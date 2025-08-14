@@ -196,7 +196,7 @@ const USERLEVEL_FLAG_COLUMNS = [
 export async function getUserLevelPermissions(ulsId) {
   if (!ulsId) return {};
   const [rows] = await pool.query(
-    `SELECT module AS module_key, ${USERLEVEL_FLAG_COLUMNS.join(", ")}
+    `SELECT module_key, ${USERLEVEL_FLAG_COLUMNS.join(", ")}
        FROM code_userlevel_settings
       WHERE uls_id = ?`,
     [ulsId],
