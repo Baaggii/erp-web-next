@@ -7,5 +7,5 @@ export default function RequireAdmin() {
   if (!user) {
     return <Navigate to="/login" replace />;
   }
-  return user.role === 'admin' ? <Outlet /> : <Navigate to="/" replace />;
+  return user.session?.permissions?.developer ? <Outlet /> : <Navigate to="/" replace />;
 }
