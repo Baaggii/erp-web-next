@@ -5,7 +5,7 @@ import UserMenu from "./UserMenu.jsx";
 import { useOutlet, useNavigate, useLocation } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext.jsx";
 import { logout } from "../hooks/useAuth.jsx";
-import { useRolePermissions, refreshRolePermissions } from "../hooks/useRolePermissions.js";
+import { useRolePermissions } from "../hooks/useRolePermissions.js";
 import { useCompanyModules } from "../hooks/useCompanyModules.js";
 import { useModules } from "../hooks/useModules.js";
 import { useTxnModules } from "../hooks/useTxnModules.js";
@@ -24,7 +24,7 @@ import useHeaderMappings from "../hooks/useHeaderMappings.js";
  *  - Main content area (faux window container)
  */
 export default function ERPLayout() {
-  const { user, setUser, company } = useContext(AuthContext);
+  const { user, setUser, company, setCompany, setPermissions } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const renderCount = useRef(0);
   useEffect(() => {
@@ -102,13 +102,12 @@ export default function ERPLayout() {
   async function handleLogout() {
     await logout();
     setUser(null);
+    setCompany(null);
+    setPermissions(null);
     navigate("/login");
   }
 
   function handleHome() {
-    const userLevel = user?.user_level || company?.user_level;
-    const companyId = company?.company_id;
-    refreshRolePermissions(userLevel, companyId);
     navigate('/');
   }
 

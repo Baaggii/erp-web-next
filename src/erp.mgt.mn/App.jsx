@@ -181,9 +181,11 @@ function AuthedApp() {
 }
 
 function RequireAdminPage({ children }) {
-  const { user } = useContext(AuthContext);
+  const { user, permissions } = useContext(AuthContext);
   if (!user) {
     return <Navigate to="/login" replace />;
   }
-  return user.role === 'admin' ? children : <Navigate to="/" replace />;
+  return permissions?.developer || permissions?.system_settings
+    ? children
+    : <Navigate to="/" replace />;
 }
