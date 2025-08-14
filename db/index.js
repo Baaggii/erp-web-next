@@ -295,6 +295,39 @@ export async function getEmploymentSession(empid, companyId) {
   return sessions[0] || null;
 }
 
+export async function getUserLevelActions(userLevelId) {
+  const [flagsRows] = await pool.query(
+    `SELECT new_records, edit_delete_request, edit_records, delete_records, image_handler, audition, supervisor, companywide, branchwide, departmentwide, developer, system_settings, license_settings, ai, dashboard, ai_dashboard FROM code_userlevel WHERE userlevel_id = ?`,
+    [userLevelId],
+  );
+  if (!flagsRows.length) return {};
+  const flags = flagsRows[0];
+  const conditions = Object.entries(flags)
+    .filter(([, v]) => v)
+    .map(([k]) => `${k} = 1`)
+    .join(' OR ');
+  if (!conditions) return {};
+  const [rows] = await pool.query(
+    `SELECT button, module_key, \`function\`, API FROM code_userlevel_settings WHERE ${conditions}`,
+  );
+  const result = {};
+  for (const row of rows) {
+    if (row.button) {
+      (result.button ||= []).push(row.button);
+    }
+    if (row.module_key) {
+      (result.module_key ||= []).push(row.module_key);
+    }
+    if (row.function) {
+      (result.function ||= []).push(row.function);
+    }
+    if (row.API) {
+      (result.API ||= []).push(row.API);
+    }
+  }
+  return result;
+}
+
 /**
  * List all users
  */
