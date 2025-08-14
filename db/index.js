@@ -136,6 +136,7 @@ function mapEmploymentRow(row) {
     branchwide,
     departmentwide,
     developer,
+    common_settings,
     system_settings,
     license_settings,
     ai,
@@ -157,6 +158,7 @@ function mapEmploymentRow(row) {
       branchwide: !!branchwide,
       departmentwide: !!departmentwide,
       developer: !!developer,
+      common_settings: !!common_settings,
       system_settings: !!system_settings,
       license_settings: !!license_settings,
       ai: !!ai,
@@ -209,6 +211,7 @@ export async function getEmploymentSessions(empid) {
         ul.branchwide,
         ul.departmentwide,
         ul.developer,
+        ul.common_settings,
         ul.system_settings,
         ul.license_settings,
         ul.ai,
@@ -272,6 +275,7 @@ export async function getEmploymentSession(empid, companyId) {
           ul.branchwide,
           ul.departmentwide,
           ul.developer,
+          ul.common_settings,
           ul.system_settings,
           ul.license_settings,
           ul.ai,
@@ -297,7 +301,7 @@ export async function getEmploymentSession(empid, companyId) {
 
 export async function getUserLevelActions(userLevelId) {
   const [flagsRows] = await pool.query(
-    `SELECT new_records, edit_delete_request, edit_records, delete_records, image_handler, audition, supervisor, companywide, branchwide, departmentwide, developer, system_settings, license_settings, ai, dashboard, ai_dashboard FROM code_userlevel WHERE userlevel_id = ?`,
+    `SELECT new_records, edit_delete_request, edit_records, delete_records, image_handler, audition, supervisor, companywide, branchwide, departmentwide, developer, common_settings, system_settings, license_settings, ai, dashboard, ai_dashboard FROM code_userlevel WHERE userlevel_id = ?`,
     [userLevelId],
   );
   if (!flagsRows.length) return {};

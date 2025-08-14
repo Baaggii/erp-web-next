@@ -332,3 +332,7 @@ CREATE TABLE role_module_permissions (
   FOREIGN KEY (role_id)   REFERENCES user_roles(id),
   FOREIGN KEY (module_key) REFERENCES modules(module_key)
 );
+
+-- Add common_settings flag
+ALTER TABLE code_userlevel
+  ADD COLUMN common_settings TINYINT(1) NOT NULL DEFAULT 0 AFTER developer;
