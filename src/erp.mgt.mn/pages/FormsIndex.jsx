@@ -2,7 +2,6 @@ import React, { useEffect, useState, useContext } from 'react';
 import FinanceTransactionsPage from './FinanceTransactions.jsx';
 import { useModules } from '../hooks/useModules.js';
 import { AuthContext } from '../context/AuthContext.jsx';
-import { useRolePermissions } from '../hooks/useRolePermissions.js';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
 import { useTxnModules } from '../hooks/useTxnModules.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
@@ -11,8 +10,7 @@ import useHeaderMappings from '../hooks/useHeaderMappings.js';
 export default function FormsIndex() {
   const [transactions, setTransactions] = useState({});
   const modules = useModules();
-  const { company } = useContext(AuthContext);
-  const perms = useRolePermissions();
+  const { company, permissions: perms } = useContext(AuthContext);
   const licensed = useCompanyModules(company?.company_id);
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();

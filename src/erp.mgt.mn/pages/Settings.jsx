@@ -1,6 +1,6 @@
 // src/erp.mgt.mn/pages/Settings.jsx
-import React, { useEffect, useState } from 'react';
-import { useRolePermissions } from '../hooks/useRolePermissions.js';
+import React, { useEffect, useState, useContext } from 'react';
+import { AuthContext } from '../context/AuthContext.jsx';
 import { Outlet, Link } from 'react-router-dom';
 
 export default function SettingsPage() {
@@ -10,7 +10,7 @@ export default function SettingsPage() {
 }
 
 export function GeneralSettings() {
-  const perms = useRolePermissions();
+  const { permissions: perms } = useContext(AuthContext);
   if (!perms) {
     return <p>Уншиж байна…</p>;
   }

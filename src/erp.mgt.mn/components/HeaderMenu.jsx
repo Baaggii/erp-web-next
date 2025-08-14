@@ -1,11 +1,11 @@
-import React from 'react';
-import { useRolePermissions } from '../hooks/useRolePermissions.js';
+import React, { useContext } from 'react';
+import { AuthContext } from '../context/AuthContext.jsx';
 import { useModules } from '../hooks/useModules.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
 
 export default function HeaderMenu({ onOpen }) {
-  const perms = useRolePermissions();
+  const { permissions: perms } = useContext(AuthContext);
   const modules = useModules();
   const generalConfig = useGeneralConfig();
   const items = modules.filter((r) => r.show_in_header);

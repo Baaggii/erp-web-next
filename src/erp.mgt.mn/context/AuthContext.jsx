@@ -9,6 +9,8 @@ export const AuthContext = createContext({
   setUser: () => {},
   company: null,
   setCompany: () => {},
+  permissions: null,
+  setPermissions: () => {},
 });
 
 export default function AuthContextProvider({ children }) {
@@ -16,6 +18,7 @@ export default function AuthContextProvider({ children }) {
   // state from an unauthenticated user (`null`).
   const [user, setUser] = useState(undefined);
   const [company, setCompany] = useState(null);
+  const [permissions, setPermissions] = useState(null);
 
   // Persist selected company across reloads
   useEffect(() => {
@@ -55,12 +58,16 @@ export default function AuthContextProvider({ children }) {
           setUser(data);
           trackSetState('AuthContext.setCompany');
           setCompany(data.session || null);
+          trackSetState('AuthContext.setPermissions');
+          setPermissions(data.permissions || null);
         } else {
           // Not logged in or token expired
           trackSetState('AuthContext.setUser');
           setUser(null);
           trackSetState('AuthContext.setCompany');
           setCompany(null);
+          trackSetState('AuthContext.setPermissions');
+          setPermissions(null);
         }
       } catch (err) {
         console.error('Unable to fetch profile:', err);
@@ -68,6 +75,8 @@ export default function AuthContextProvider({ children }) {
         setUser(null);
         trackSetState('AuthContext.setCompany');
         setCompany(null);
+        trackSetState('AuthContext.setPermissions');
+        setPermissions(null);
       }
     }
 
@@ -80,12 +89,17 @@ export default function AuthContextProvider({ children }) {
       setUser(null);
       trackSetState('AuthContext.setCompany');
       setCompany(null);
+      trackSetState('AuthContext.setPermissions');
+      setPermissions(null);
     }
     window.addEventListener('auth:logout', handleLogout);
     return () => window.removeEventListener('auth:logout', handleLogout);
   }, []);
 
-  const value = useMemo(() => ({ user, setUser, company, setCompany }), [user, company]);
+  const value = useMemo(
+    () => ({ user, setUser, company, setCompany, permissions, setPermissions }),
+    [user, company, permissions],
+  );
 
   return (
     <AuthContext.Provider value={value}>
