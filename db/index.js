@@ -161,6 +161,7 @@ function mapEmploymentRow(row) {
     departmentwide,
     developer,
     system_settings,
+    common_settings,
     license_settings,
     ai,
     dashboard,
@@ -182,6 +183,7 @@ function mapEmploymentRow(row) {
       departmentwide: !!departmentwide,
       developer: !!developer,
       system_settings: !!system_settings,
+      common_settings: !!common_settings,
       license_settings: !!license_settings,
       ai: !!ai,
       dashboard: !!dashboard,
@@ -255,6 +257,7 @@ export async function getEmploymentSessions(empid) {
         ul.departmentwide,
         ul.developer,
         ul.system_settings,
+        ul.common_settings,
         ul.license_settings,
         ul.ai,
         ul.dashboard,
@@ -322,12 +325,13 @@ export async function getEmploymentSession(empid, companyId) {
           ul.companywide,
           ul.branchwide,
           ul.departmentwide,
-          ul.developer,
-          ul.system_settings,
-          ul.license_settings,
-          ul.ai,
-          ul.dashboard,
-          ul.ai_dashboard
+        ul.developer,
+        ul.system_settings,
+        ul.common_settings,
+        ul.license_settings,
+        ul.ai,
+        ul.dashboard,
+        ul.ai_dashboard
        FROM tbl_employment e
        LEFT JOIN companies c ON e.employment_company_id = c.id
        LEFT JOIN code_branches b ON e.employment_branch_id = b.id
