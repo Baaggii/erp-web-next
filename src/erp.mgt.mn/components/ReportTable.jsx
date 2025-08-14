@@ -65,7 +65,7 @@ function isCountColumn(name) {
 }
 
 export default function ReportTable({ procedure = '', params = {}, rows = [] }) {
-  const { user, company } = useContext(AuthContext);
+  const { user, company, permissions } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
@@ -508,14 +508,15 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       <div>
         <h4>
           {procLabel}
-          {user?.role === 'admin' && generalConfig.general?.editLabelsEnabled && (
-            <button
-              onClick={handleEditProcLabel}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              Edit label
-            </button>
-          )}
+          {(permissions?.developer || permissions?.system_settings) &&
+            generalConfig.general?.editLabelsEnabled && (
+              <button
+                onClick={handleEditProcLabel}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                Edit label
+              </button>
+            )}
         </h4>
         {paramText && <div style={{ marginTop: '0.25rem' }}>{paramText}</div>}
         <p>No data</p>
@@ -527,11 +528,15 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     <div style={{ marginTop: '1rem' }}>
       <h4>
         {procLabel}
-        {user?.role === 'admin' && generalConfig.general?.editLabelsEnabled && (
-          <button onClick={handleEditProcLabel} style={{ marginLeft: '0.5rem' }}>
-            Edit label
-          </button>
-        )}
+        {(permissions?.developer || permissions?.system_settings) &&
+          generalConfig.general?.editLabelsEnabled && (
+            <button
+              onClick={handleEditProcLabel}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              Edit label
+            </button>
+          )}
       </h4>
       {paramText && <div style={{ marginTop: '0.25rem' }}>{paramText}</div>}
       <div style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center' }}>
@@ -789,21 +794,22 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
           )}
         </Modal>
       )}
-      {user?.role === 'admin' && generalConfig.general?.editLabelsEnabled && (
-        <button
-          onClick={() => {
-            const map = {};
-            columns.forEach((c) => {
-              map[c] = fieldLabels[c] || '';
-            });
-            setLabelEdits(map);
-            setEditLabels(true);
-          }}
-          style={{ marginTop: '0.5rem' }}
-        >
-          Edit Field Labels
-        </button>
-      )}
+      {(permissions?.developer || permissions?.system_settings) &&
+        generalConfig.general?.editLabelsEnabled && (
+          <button
+            onClick={() => {
+              const map = {};
+              columns.forEach((c) => {
+                map[c] = fieldLabels[c] || '';
+              });
+              setLabelEdits(map);
+              setEditLabels(true);
+            }}
+            style={{ marginTop: '0.5rem' }}
+          >
+            Edit Field Labels
+          </button>
+        )}
       {editLabels && (
         <div
           style={{

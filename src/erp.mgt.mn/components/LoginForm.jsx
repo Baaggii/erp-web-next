@@ -2,7 +2,6 @@
 import React, { useState, useContext } from 'react';
 import { login } from '../hooks/useAuth.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
-import { refreshRolePermissions } from '../hooks/useRolePermissions.js';
 import { refreshCompanyModules } from '../hooks/useCompanyModules.js';
 import { refreshModules } from '../hooks/useModules.js';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
@@ -17,7 +16,7 @@ export default function LoginForm() {
   const [isCompanyStep, setIsCompanyStep] = useState(false);
   const [companyId, setCompanyId] = useState('');
   const [error, setError] = useState(null);
-  const { setUser, setCompany } = useContext(AuthContext);
+  const { setUser, setCompany, setPermissions } = useContext(AuthContext);
   const navigate = useNavigate();
 
   async function handleSubmit(e) {
@@ -41,13 +40,9 @@ export default function LoginForm() {
         return;
       }
 
-      // The login response already returns the user profile
-      setUser(loggedIn);
+      setUser(loggedIn.user);
       setCompany(loggedIn.session || null);
-      refreshRolePermissions(
-        loggedIn.session?.user_level,
-        loggedIn.session?.company_id,
-      );
+      setPermissions(loggedIn.permissions || null);
       refreshCompanyModules(loggedIn.session?.company_id);
       refreshModules();
       refreshTxnModules();
