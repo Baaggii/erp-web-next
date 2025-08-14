@@ -217,8 +217,8 @@ function Sidebar({ onOpen, open, isMobile }) {
   const map = {};
   modules.forEach((m) => {
     if (
-      perms[m.module_key] === false ||
-      (Object.keys(licensed || {}).length > 0 && !licensed[m.module_key]) ||
+      !perms[m.module_key] ||
+      !licensed[m.module_key] ||
       !m.show_in_sidebar
     )
       return;
