@@ -23,13 +23,18 @@ function createRes() {
 
 test('saveModule blocks updates from form-management origin', async () => {
   let called = false;
-  const restore = mockPool(async () => { called = true; return [{}]; });
+  const restore = mockPool(async () => {
+    called = true;
+    return [{}];
+  });
   const req = {
     params: {},
     body: { moduleKey: 'test', label: 'Test' },
     headers: { 'x-origin': 'form-management' },
-    get(name) { return this.headers[name.toLowerCase()]; },
-    user: { role: 'admin', email: 'a@example.com' },
+    get(name) {
+      return this.headers[name.toLowerCase()];
+    },
+    user: { empid: 'a', companyId: 1 },
   };
   const res = createRes();
   await controller.saveModule(req, res, () => {});
@@ -40,19 +45,30 @@ test('saveModule blocks updates from form-management origin', async () => {
 });
 
 test('saveModule allows admin update', async () => {
-  let called = false;
-  const restore = mockPool(async () => { called = true; return [{}]; });
+  let callCount = 0;
+  const restore = mockPool(async () => {
+    callCount++;
+    if (callCount === 1) {
+      return [[{ company_id: 1, branch_id: 1, department_id: 1, position_id: 1, employee_name: '', user_level: 1, developer: 1 }]];
+    }
+    if (callCount === 2) {
+      return [[]];
+    }
+    return [{}];
+  });
   const req = {
     params: { moduleKey: 'x' },
     body: { label: 'X' },
     headers: {},
-    get(name) { return this.headers[name.toLowerCase()]; },
-    user: { role: 'admin', email: 'b@example.com' },
+    get(name) {
+      return this.headers[name.toLowerCase()];
+    },
+    user: { empid: 'b', companyId: 1 },
   };
   const res = createRes();
   await controller.saveModule(req, res, () => {});
   restore();
-  assert.equal(called, true);
+  assert.equal(callCount >= 3, true);
   assert.deepEqual(res.body, {
     moduleKey: 'x',
     label: 'X',
