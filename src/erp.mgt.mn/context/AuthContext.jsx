@@ -7,8 +7,16 @@ import { API_BASE } from '../utils/apiBase.js';
 export const AuthContext = createContext({
   user: null,
   setUser: () => {},
+  session: null,
+  setSession: () => {},
   company: null,
   setCompany: () => {},
+  branch: null,
+  setBranch: () => {},
+  department: null,
+  setDepartment: () => {},
+  position: null,
+  setPosition: () => {},
   permissions: null,
   setPermissions: () => {},
 });
@@ -17,17 +25,28 @@ export default function AuthContextProvider({ children }) {
   // `user` starts as `undefined` so we can distinguish the initial loading
   // state from an unauthenticated user (`null`).
   const [user, setUser] = useState(undefined);
+  const [session, setSession] = useState(null);
   const [company, setCompany] = useState(null);
+  const [branch, setBranch] = useState(null);
+  const [department, setDepartment] = useState(null);
+  const [position, setPosition] = useState(null);
   const [permissions, setPermissions] = useState(null);
 
-  // Persist selected company across reloads
+  // Persist employment IDs across reloads
   useEffect(() => {
-    debugLog('AuthContext: load stored company');
-    const stored = localStorage.getItem('erp_selected_company');
+    debugLog('AuthContext: load stored ids');
+    const stored = localStorage.getItem('erp_session_ids');
     if (stored) {
       try {
+        const data = JSON.parse(stored);
         trackSetState('AuthContext.setCompany');
-        setCompany(JSON.parse(stored));
+        setCompany(data.company ?? null);
+        trackSetState('AuthContext.setBranch');
+        setBranch(data.branch ?? null);
+        trackSetState('AuthContext.setDepartment');
+        setDepartment(data.department ?? null);
+        trackSetState('AuthContext.setPosition');
+        setPosition(data.position ?? null);
       } catch {
         // ignore parse errors
       }
@@ -35,13 +54,14 @@ export default function AuthContextProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    debugLog('AuthContext: persist company');
-    if (company) {
-      localStorage.setItem('erp_selected_company', JSON.stringify(company));
+    debugLog('AuthContext: persist ids');
+    const data = { company, branch, department, position };
+    if (company || branch || department || position) {
+      localStorage.setItem('erp_session_ids', JSON.stringify(data));
     } else {
-      localStorage.removeItem('erp_selected_company');
+      localStorage.removeItem('erp_session_ids');
     }
-  }, [company]);
+  }, [company, branch, department, position]);
 
   // On mount, attempt to load the current profile (if a cookie is present)
   useEffect(() => {
@@ -56,16 +76,32 @@ export default function AuthContextProvider({ children }) {
           const data = await res.json();
           trackSetState('AuthContext.setUser');
           setUser(data);
+          trackSetState('AuthContext.setSession');
+          setSession(data.session || null);
           trackSetState('AuthContext.setCompany');
-          setCompany(data.session || null);
+          setCompany(data.company ?? data.session?.company_id ?? null);
+          trackSetState('AuthContext.setBranch');
+          setBranch(data.branch ?? data.session?.branch_id ?? null);
+          trackSetState('AuthContext.setDepartment');
+          setDepartment(data.department ?? data.session?.department_id ?? null);
+          trackSetState('AuthContext.setPosition');
+          setPosition(data.position ?? data.session?.position_id ?? null);
           trackSetState('AuthContext.setPermissions');
           setPermissions(data.permissions || null);
         } else {
           // Not logged in or token expired
           trackSetState('AuthContext.setUser');
           setUser(null);
+          trackSetState('AuthContext.setSession');
+          setSession(null);
           trackSetState('AuthContext.setCompany');
           setCompany(null);
+          trackSetState('AuthContext.setBranch');
+          setBranch(null);
+          trackSetState('AuthContext.setDepartment');
+          setDepartment(null);
+          trackSetState('AuthContext.setPosition');
+          setPosition(null);
           trackSetState('AuthContext.setPermissions');
           setPermissions(null);
         }
@@ -73,8 +109,16 @@ export default function AuthContextProvider({ children }) {
         console.error('Unable to fetch profile:', err);
         trackSetState('AuthContext.setUser');
         setUser(null);
+        trackSetState('AuthContext.setSession');
+        setSession(null);
         trackSetState('AuthContext.setCompany');
         setCompany(null);
+        trackSetState('AuthContext.setBranch');
+        setBranch(null);
+        trackSetState('AuthContext.setDepartment');
+        setDepartment(null);
+        trackSetState('AuthContext.setPosition');
+        setPosition(null);
         trackSetState('AuthContext.setPermissions');
         setPermissions(null);
       }
@@ -87,8 +131,16 @@ export default function AuthContextProvider({ children }) {
     function handleLogout() {
       trackSetState('AuthContext.setUser');
       setUser(null);
+      trackSetState('AuthContext.setSession');
+      setSession(null);
       trackSetState('AuthContext.setCompany');
       setCompany(null);
+      trackSetState('AuthContext.setBranch');
+      setBranch(null);
+      trackSetState('AuthContext.setDepartment');
+      setDepartment(null);
+      trackSetState('AuthContext.setPosition');
+      setPosition(null);
       trackSetState('AuthContext.setPermissions');
       setPermissions(null);
     }
@@ -97,8 +149,31 @@ export default function AuthContextProvider({ children }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, setUser, company, setCompany, permissions, setPermissions }),
-    [user, company, permissions],
+    () => ({
+      user,
+      setUser,
+      session,
+      setSession,
+      company,
+      setCompany,
+      branch,
+      setBranch,
+      department,
+      setDepartment,
+      position,
+      setPosition,
+      permissions,
+      setPermissions,
+    }),
+    [
+      user,
+      session,
+      company,
+      branch,
+      department,
+      position,
+      permissions,
+    ],
   );
 
   return (

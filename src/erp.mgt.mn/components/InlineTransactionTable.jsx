@@ -56,7 +56,9 @@ export default forwardRef(function InlineTransactionTable({
   viewColumns = {},
   procTriggers = {},
   user = {},
-  company = {},
+  company,
+  branch,
+  department,
   scope = 'forms',
   labelFontSize,
   boxWidth,
@@ -94,19 +96,19 @@ export default forwardRef(function InlineTransactionTable({
         if (row[f] === undefined || row[f] === '') row[f] = user.empid;
       });
     }
-    if (company?.branch_id !== undefined) {
+    if (branch !== undefined) {
       branchIdSet.forEach((f) => {
-        if (row[f] === undefined || row[f] === '') row[f] = company.branch_id;
+        if (row[f] === undefined || row[f] === '') row[f] = branch;
       });
     }
-    if (company?.department_id !== undefined) {
+    if (department !== undefined) {
       departmentIdSet.forEach((f) => {
-        if (row[f] === undefined || row[f] === '') row[f] = company.department_id;
+        if (row[f] === undefined || row[f] === '') row[f] = department;
       });
     }
-    if (company?.company_id !== undefined) {
+    if (company !== undefined) {
       companyIdSet.forEach((f) => {
-        if (row[f] === undefined || row[f] === '') row[f] = company.company_id;
+        if (row[f] === undefined || row[f] === '') row[f] = company;
       });
     }
     const now = formatTimestamp(new Date()).slice(0, 10);
@@ -405,8 +407,8 @@ export default forwardRef(function InlineTransactionTable({
       };
       const getParam = (p) => {
         if (p === '$current') return getVal(tCol);
-        if (p === '$branchId') return company?.branch_id;
-        if (p === '$companyId') return company?.company_id;
+        if (p === '$branchId') return branch;
+        if (p === '$companyId') return company;
         if (p === '$employeeId') return user?.empid;
         if (p === '$date') return formatTimestamp(new Date()).slice(0, 10);
         return getVal(p);

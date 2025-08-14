@@ -5,7 +5,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 export default function UserMenu({ user, onLogout }) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
-  const { company } = useContext(AuthContext);
+  const { session } = useContext(AuthContext);
 
   if (!user) return null;
 
@@ -26,7 +26,7 @@ export default function UserMenu({ user, onLogout }) {
   return (
     <div style={styles.wrapper}>
       <button style={styles.userBtn} onClick={toggle}>
-        {company?.employee_name || user.empid} ▾
+        {session?.employee_name || user.empid} ▾
       </button>
       {open && (
         <div style={styles.menu}>

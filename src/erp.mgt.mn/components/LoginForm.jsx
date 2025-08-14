@@ -16,7 +16,15 @@ export default function LoginForm() {
   const [isCompanyStep, setIsCompanyStep] = useState(false);
   const [companyId, setCompanyId] = useState('');
   const [error, setError] = useState(null);
-  const { setUser, setCompany, setPermissions } = useContext(AuthContext);
+  const {
+    setUser,
+    setSession,
+    setCompany,
+    setBranch,
+    setDepartment,
+    setPosition,
+    setPermissions,
+  } = useContext(AuthContext);
   const navigate = useNavigate();
 
   async function handleSubmit(e) {
@@ -42,9 +50,13 @@ export default function LoginForm() {
 
       // The login response already returns the user profile
       setUser(loggedIn);
-      setCompany(loggedIn.session || null);
+      setSession(loggedIn.session || null);
+      setCompany(loggedIn.company ?? loggedIn.session?.company_id ?? null);
+      setBranch(loggedIn.branch ?? loggedIn.session?.branch_id ?? null);
+      setDepartment(loggedIn.department ?? loggedIn.session?.department_id ?? null);
+      setPosition(loggedIn.position ?? loggedIn.session?.position_id ?? null);
       setPermissions(loggedIn.permissions || null);
-      refreshCompanyModules(loggedIn.session?.company_id);
+      refreshCompanyModules(loggedIn.company);
       refreshModules();
       refreshTxnModules();
       setStoredCreds({ empid: '', password: '' });

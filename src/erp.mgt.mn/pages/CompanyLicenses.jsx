@@ -8,7 +8,7 @@ export default function CompanyLicenses() {
   const { company } = useContext(AuthContext);
 
   useEffect(() => {
-    loadLicenses(company?.company_id || '');
+    loadLicenses(company || '');
   }, [company]);
 
   function loadLicenses(companyId) {

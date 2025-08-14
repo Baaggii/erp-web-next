@@ -50,9 +50,9 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const [procParams, setProcParams] = useState([]);
   const [reportResult, setReportResult] = useState(null);
   const [manualParams, setManualParams] = useState({});
-  const { company, user, permissions: perms } = useContext(AuthContext);
+  const { company, branch, department, user, permissions: perms } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
-  const licensed = useCompanyModules(company?.company_id);
+  const licensed = useCompanyModules(company);
   const tableRef = useRef(null);
   const prevModuleKey = useRef(moduleKey);
   const { addToast } = useToast();
@@ -168,10 +168,10 @@ useEffect(() => {
     console.log('FinanceTransactions load forms effect');
     const params = new URLSearchParams();
     if (moduleKey) params.set('moduleKey', moduleKey);
-    if (company?.branch_id !== undefined)
-      params.set('branchId', company.branch_id);
-    if (company?.department_id !== undefined)
-      params.set('departmentId', company.department_id);
+    if (branch !== undefined)
+      params.set('branchId', branch);
+    if (department !== undefined)
+      params.set('departmentId', department);
     fetch(`/api/transaction_forms?${params.toString()}`, { credentials: 'include' })
       .then((res) => {
         if (!res.ok) {
@@ -192,14 +192,14 @@ useEffect(() => {
           if (mKey !== moduleKey) return;
           if (
             allowedB.length > 0 &&
-            company?.branch_id !== undefined &&
-            !allowedB.includes(company.branch_id)
+            branch !== undefined &&
+            !allowedB.includes(branch)
           )
             return;
           if (
             allowedD.length > 0 &&
-            company?.department_id !== undefined &&
-            !allowedD.includes(company.department_id)
+            department !== undefined &&
+            !allowedD.includes(department)
           )
             return;
           if (perms && !perms[mKey]) return;
@@ -216,7 +216,7 @@ useEffect(() => {
         addToast('Failed to load transaction forms', 'error');
         setConfigs({});
       });
-  }, [moduleKey, company, perms, licensed]);
+  }, [moduleKey, company, branch, department, perms, licensed]);
 
   useEffect(() => {
     console.log('FinanceTransactions table sync effect');
@@ -335,12 +335,12 @@ useEffect(() => {
       const name = p.toLowerCase();
       if (name.includes('start') || name.includes('from')) return startDate || null;
       if (name.includes('end') || name.includes('to')) return endDate || null;
-      if (name.includes('branch')) return company?.branch_id ?? null;
-      if (name.includes('company')) return company?.company_id ?? null;
+      if (name.includes('branch')) return branch ?? null;
+      if (name.includes('company')) return company ?? null;
       if (name.includes('user') || name.includes('emp')) return user?.empid ?? null;
       return null;
     });
-  }, [procParams, startDate, endDate, company, user]);
+  }, [procParams, startDate, endDate, company, branch, user]);
 
   const finalParams = useMemo(() => {
     return procParams.map((p, i) => {

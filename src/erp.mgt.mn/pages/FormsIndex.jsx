@@ -10,8 +10,8 @@ import useHeaderMappings from '../hooks/useHeaderMappings.js';
 export default function FormsIndex() {
   const [transactions, setTransactions] = useState({});
   const modules = useModules();
-  const { company, permissions: perms } = useContext(AuthContext);
-  const licensed = useCompanyModules(company?.company_id);
+  const { company, branch, department, permissions: perms } = useContext(AuthContext);
+  const licensed = useCompanyModules(company);
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
 
@@ -40,10 +40,10 @@ export default function FormsIndex() {
 
   useEffect(() => {
     const params = new URLSearchParams();
-    if (company?.branch_id !== undefined)
-      params.set('branchId', company.branch_id);
-    if (company?.department_id !== undefined)
-      params.set('departmentId', company.department_id);
+    if (branch !== undefined)
+      params.set('branchId', branch);
+    if (department !== undefined)
+      params.set('departmentId', department);
     const url = `/api/transaction_forms${params.toString() ? `?${params.toString()}` : ''}`;
     fetch(url, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
@@ -56,14 +56,14 @@ export default function FormsIndex() {
           if (!descendantKeys.includes(key)) return;
           if (
             allowedB.length > 0 &&
-            company?.branch_id !== undefined &&
-            !allowedB.includes(company.branch_id)
+            branch !== undefined &&
+            !allowedB.includes(branch)
           )
             return;
           if (
             allowedD.length > 0 &&
-            company?.department_id !== undefined &&
-            !allowedD.includes(company.department_id)
+            department !== undefined &&
+            !allowedD.includes(department)
           )
             return;
           if (perms && !perms[key]) return;

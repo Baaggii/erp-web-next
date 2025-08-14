@@ -15,7 +15,7 @@ const initialLayout = {
 };
 
 export default function BlueLinkPage() {
-  const { user, company } = useContext(AuthContext);
+  const { user, session } = useContext(AuthContext);
 
   useEffect(() => {
     if (window.erpDebug) console.warn('Mounted: BlueLinkPage');
@@ -34,7 +34,7 @@ export default function BlueLinkPage() {
       <h2 style={{ marginTop: 0 }}>Blue Link демо</h2>
       <p>
         Welcome, {user?.full_name || user?.username}
-        {company && ` (${company.company_name})`}
+        {session && ` (${session.company_name})`}
       </p>
       <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
         <div style={cardStyle}>

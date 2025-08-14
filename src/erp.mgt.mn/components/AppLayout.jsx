@@ -4,7 +4,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import { logout } from '../hooks/useAuth.jsx';
 
 export default function AppLayout({ children, title }) {
-  const { user, company } = useContext(AuthContext);
+  const { user, session } = useContext(AuthContext);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -50,10 +50,10 @@ export default function AppLayout({ children, title }) {
         <header className="sticky top-0 z-10 bg-white shadow-md flex items-center justify-between px-4 py-2">
           <h1 className="text-lg font-semibold">{title || 'ERP'}</h1>
           <div className="flex items-center space-x-3 text-sm">
-            {company && (
+            {session && (
               <span>
-                {company.branch_name && `${company.branch_name} | `}
-                {company.company_name}
+                {session.branch_name && `${session.branch_name} | `}
+                {session.company_name}
               </span>
             )}
             {user && (

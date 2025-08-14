@@ -13,7 +13,7 @@ export default function Users() {
   }, []);
 
   function loadUsers() {
-    const params = company ? `?companyId=${encodeURIComponent(company.company_id)}` : '';
+    const params = company ? `?companyId=${encodeURIComponent(company)}` : '';
     fetch(`/api/users${params}`, { credentials: 'include' })
       .then((res) => {
         if (!res.ok) throw new Error('Failed to fetch users');

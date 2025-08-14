@@ -98,7 +98,7 @@ const RowFormModal = function RowFormModal({
     () => new Set(disabledFields.map((f) => f.toLowerCase())),
     [disabledFields],
   );
-  const { user, company } = useContext(AuthContext);
+  const { user, company, branch, department } = useContext(AuthContext);
   const [formVals, setFormVals] = useState(() => {
     const init = {};
     const now = new Date();
@@ -120,12 +120,12 @@ const RowFormModal = function RowFormModal({
       }
       if (missing && !val) {
         if (userIdSet.has(c) && user?.empid) val = user.empid;
-        else if (branchIdSet.has(c) && company?.branch_id !== undefined)
-          val = company.branch_id;
-        else if (departmentIdSet.has(c) && company?.department_id !== undefined)
-          val = company.department_id;
-        else if (companyIdSet.has(c) && company?.company_id !== undefined)
-          val = company.company_id;
+        else if (branchIdSet.has(c) && branch !== undefined)
+          val = branch;
+        else if (departmentIdSet.has(c) && department !== undefined)
+          val = department;
+        else if (companyIdSet.has(c) && company !== undefined)
+          val = company;
       }
       init[c] = val;
     });
@@ -262,12 +262,12 @@ const RowFormModal = function RowFormModal({
       }
       if (missing && !v) {
         if (userIdSet.has(c) && user?.empid) v = user.empid;
-        else if (branchIdSet.has(c) && company?.branch_id !== undefined)
-          v = company.branch_id;
-        else if (departmentIdSet.has(c) && company?.department_id !== undefined)
-          v = company.department_id;
-        else if (companyIdSet.has(c) && company?.company_id !== undefined)
-          v = company.company_id;
+        else if (branchIdSet.has(c) && branch !== undefined)
+          v = branch;
+        else if (departmentIdSet.has(c) && department !== undefined)
+          v = department;
+        else if (companyIdSet.has(c) && company !== undefined)
+          v = company;
       }
       vals[c] = v;
     });
@@ -276,7 +276,7 @@ const RowFormModal = function RowFormModal({
     if (!same) setFormVals(vals);
     inputRefs.current = {};
     setErrors({});
-  }, [row, visible, user, company]);
+  }, [row, visible, user, company, branch, department]);
 
   function resizeInputs() {
     Object.values({ ...inputRefs.current, ...readonlyRefs.current }).forEach((el) => {
@@ -510,8 +510,8 @@ const RowFormModal = function RowFormModal({
       };
       const getParam = (p) => {
         if (p === '$current') return getVal(tCol);
-        if (p === '$branchId') return company?.branch_id;
-        if (p === '$companyId') return company?.company_id;
+        if (p === '$branchId') return branch;
+        if (p === '$companyId') return company;
         if (p === '$employeeId') return user?.empid;
         if (p === '$date') return formatTimestamp(new Date()).slice(0, 10);
         return getVal(p);
@@ -1004,6 +1004,8 @@ const RowFormModal = function RowFormModal({
               procTriggers={procTriggers}
               user={user}
               company={company}
+              branch={branch}
+              department={department}
               columnCaseMap={columnCaseMap}
               tableName={table}
               imagenameFields={imagenameField}

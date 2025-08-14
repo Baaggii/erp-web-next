@@ -125,6 +125,10 @@ export async function getUserByEmpId(empid) {
 
 function mapEmploymentRow(row) {
   const {
+    company_id,
+    branch_id,
+    department_id,
+    position_id,
     new_records,
     edit_delete_request,
     edit_records,
@@ -145,6 +149,10 @@ function mapEmploymentRow(row) {
     ...rest
   } = row;
   return {
+    company_id,
+    branch_id,
+    department_id,
+    position_id,
     ...rest,
     permissions: {
       new_records: !!new_records,

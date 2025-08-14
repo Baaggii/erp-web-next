@@ -10,7 +10,7 @@ export default function RolePermissions() {
   function loadPerms(roleId) {
     const params = [];
     if (roleId) params.push(`roleId=${encodeURIComponent(roleId)}`);
-    if (company) params.push(`companyId=${encodeURIComponent(company.company_id)}`);
+    if (company) params.push(`companyId=${encodeURIComponent(company)}`);
     const url = params.length ? `/api/role_permissions?${params.join("&")}` : "/api/role_permissions";
     fetch(url, { credentials: "include" })
       .then((res) => {
@@ -35,7 +35,7 @@ export default function RolePermissions() {
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify({
-        companyId: company?.company_id,
+        companyId: company,
         roleId: p.role_id,
         moduleKey: p.module_key,
         allowed: p.allowed ? 0 : 1,
