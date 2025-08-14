@@ -2,7 +2,6 @@ import { useContext, useMemo } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 
 export function refreshRolePermissions() {}
-
 export function useRolePermissions() {
   const { company } = useContext(AuthContext);
   return useMemo(() => {
