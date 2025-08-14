@@ -219,7 +219,7 @@ export async function getEmploymentSessions(empid) {
      LEFT JOIN code_branches b ON e.employment_branch_id = b.id
      LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol}
      LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
-     LEFT JOIN code_userlevel ul ON e.employment_user_level = ul.userlever_id
+     LEFT JOIN code_userlevel ul ON e.employment_user_level = ul.userlevel_id
      WHERE e.employment_emp_id = ?
      ORDER BY e.id DESC`,
     [empid],
@@ -282,7 +282,7 @@ export async function getEmploymentSession(empid, companyId) {
        LEFT JOIN code_branches b ON e.employment_branch_id = b.id
        LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol}
        LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
-       LEFT JOIN code_userlevel ul ON e.employment_user_level = ul.userlever_id
+       LEFT JOIN code_userlevel ul ON e.employment_user_level = ul.userlevel_id
        WHERE e.employment_emp_id = ? AND e.employment_company_id = ?
        ORDER BY e.id DESC
        LIMIT 1`,
