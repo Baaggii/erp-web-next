@@ -320,22 +320,14 @@ export async function getUserLevelActions(userLevelId) {
     .join(' OR ');
   if (!conditions) return {};
   const [rows] = await pool.query(
-    `SELECT button, module_key, \`function\`, API FROM code_userlevel_settings WHERE ${conditions}`,
+    `SELECT action, ul_module_key, function_name FROM code_userlevel_settings WHERE ${conditions}`,
   );
   const result = {};
   for (const row of rows) {
-    if (row.button) {
-      (result.button ||= []).push(row.button);
-    }
-    if (row.module_key) {
-      (result.module_key ||= []).push(row.module_key);
-    }
-    if (row.function) {
-      (result.function ||= []).push(row.function);
-    }
-    if (row.API) {
-      (result.API ||= []).push(row.API);
-    }
+    const key = row.action;
+    const value = row.action === 'module_key' ? row.ul_module_key : row.function_name;
+    if (!value) continue;
+    (result[key] ||= []).push(value);
   }
   return result;
 }
