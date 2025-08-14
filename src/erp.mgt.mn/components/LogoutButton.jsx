@@ -4,7 +4,7 @@ import { useAuth } from '../hooks/useAuth.jsx';    // <-- import the hook, not `
 import { AuthContext } from '../context/AuthContext.jsx';
 
 export default function LogoutButton() {
-  const { user, setUser, setCompany, setPermissions } = useContext(AuthContext);
+  const { user, setUser } = useContext(AuthContext);
 
   // Destructure `logout` from the hook:
   const { logout } = useAuth();
@@ -13,8 +13,6 @@ export default function LogoutButton() {
     try {
       await logout();
       setUser(null);
-      setCompany(null);
-      setPermissions(null);
     } catch (err) {
       console.error('Logout failed:', err);
     }

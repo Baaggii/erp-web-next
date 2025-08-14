@@ -124,77 +124,46 @@ export async function getUserByEmpId(empid) {
 }
 
 function mapEmploymentRow(row) {
-  const { ...rest } = row;
-  return { ...rest };
-}
-
-export async function getPermissionsForUserLevel(userLevel) {
-  if (!userLevel) {
-    return { actions: {} };
-  }
-
-  const [baseRows] = await pool.query(
-    `SELECT developer, system_settings, license_settings, ai, dashboard, ai_dashboard
-       FROM code_userlevel
-      WHERE userlever_id = ?
-      LIMIT 1`,
-    [userLevel],
-  );
-  const base = baseRows[0] || {};
-  const baseFlags = {
-    developer: base.developer ? 1 : 0,
-    system_settings: base.system_settings ? 1 : 0,
-    license_settings: base.license_settings ? 1 : 0,
-    ai: base.ai ? 1 : 0,
-    dashboard: base.dashboard ? 1 : 0,
-    ai_dashboard: base.ai_dashboard ? 1 : 0,
+  const {
+    new_records,
+    edit_delete_request,
+    edit_records,
+    delete_records,
+    image_handler,
+    audition,
+    supervisor,
+    companywide,
+    branchwide,
+    departmentwide,
+    developer,
+    system_settings,
+    license_settings,
+    ai,
+    dashboard,
+    ai_dashboard,
+    ...rest
+  } = row;
+  return {
+    ...rest,
+    permissions: {
+      new_records: !!new_records,
+      edit_delete_request: !!edit_delete_request,
+      edit_records: !!edit_records,
+      delete_records: !!delete_records,
+      image_handler: !!image_handler,
+      audition: !!audition,
+      supervisor: !!supervisor,
+      companywide: !!companywide,
+      branchwide: !!branchwide,
+      departmentwide: !!departmentwide,
+      developer: !!developer,
+      system_settings: !!system_settings,
+      license_settings: !!license_settings,
+      ai: !!ai,
+      dashboard: !!dashboard,
+      ai_dashboard: !!ai_dashboard,
+    },
   };
-
-  const [rows] = await pool.query(
-    `SELECT action, ul_module_key, function_name, api_name,
-            new_records, edit_delete_request, edit_records, delete_records,
-            image_handler, audition, supervisor, companywide, branchwide,
-            departmentwide, developer, system_settings, license_settings,
-            ai, dashboard, ai_dashboard
-       FROM code_userlevel_settings
-      WHERE uls_id = ?`,
-    [userLevel],
-  );
-
-  const actions = {};
-  for (const r of rows) {
-    const perms = {};
-    const fields = [
-      'new_records',
-      'edit_delete_request',
-      'edit_records',
-      'delete_records',
-      'image_handler',
-      'audition',
-      'supervisor',
-      'companywide',
-      'branchwide',
-      'departmentwide',
-      'developer',
-      'system_settings',
-      'license_settings',
-      'ai',
-      'dashboard',
-      'ai_dashboard',
-    ];
-    for (const f of fields) {
-      if (r[f]) perms[f] = 1;
-    }
-    if (Object.keys(perms).length === 0) continue;
-
-    let key = r.ul_module_key || r.function_name || r.api_name;
-    if (!key) continue;
-    const group = r.action;
-    actions[group] = actions[group] || {};
-    actions[group][key] = { ...perms };
-  }
-
-  return { ...baseFlags, actions };
 }
 
 /**
@@ -228,12 +197,29 @@ export async function getEmploymentSessions(empid) {
         ${deptName} AS department_name,
         e.employment_position_id AS position_id,
         ${empName} AS employee_name,
-        e.employment_user_level AS user_level
+        e.employment_user_level AS user_level,
+        ul.new_records,
+        ul.edit_delete_request,
+        ul.edit_records,
+        ul.delete_records,
+        ul.image_handler,
+        ul.audition,
+        ul.supervisor,
+        ul.companywide,
+        ul.branchwide,
+        ul.departmentwide,
+        ul.developer,
+        ul.system_settings,
+        ul.license_settings,
+        ul.ai,
+        ul.dashboard,
+        ul.ai_dashboard
      FROM tbl_employment e
      LEFT JOIN companies c ON e.employment_company_id = c.id
      LEFT JOIN code_branches b ON e.employment_branch_id = b.id
      LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol}
      LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
+     LEFT JOIN code_userlevel ul ON e.employment_user_level = ul.userlever_id
      WHERE e.employment_emp_id = ?
      ORDER BY e.id DESC`,
     [empid],
@@ -274,12 +260,29 @@ export async function getEmploymentSession(empid, companyId) {
           ${deptName} AS department_name,
           e.employment_position_id AS position_id,
           ${empName} AS employee_name,
-          e.employment_user_level AS user_level
+          e.employment_user_level AS user_level,
+          ul.new_records,
+          ul.edit_delete_request,
+          ul.edit_records,
+          ul.delete_records,
+          ul.image_handler,
+          ul.audition,
+          ul.supervisor,
+          ul.companywide,
+          ul.branchwide,
+          ul.departmentwide,
+          ul.developer,
+          ul.system_settings,
+          ul.license_settings,
+          ul.ai,
+          ul.dashboard,
+          ul.ai_dashboard
        FROM tbl_employment e
        LEFT JOIN companies c ON e.employment_company_id = c.id
        LEFT JOIN code_branches b ON e.employment_branch_id = b.id
        LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol}
        LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
+       LEFT JOIN code_userlevel ul ON e.employment_user_level = ul.userlever_id
        WHERE e.employment_emp_id = ? AND e.employment_company_id = ?
        ORDER BY e.id DESC
        LIMIT 1`,

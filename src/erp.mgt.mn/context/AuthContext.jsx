@@ -9,10 +9,6 @@ export const AuthContext = createContext({
   setUser: () => {},
   company: null,
   setCompany: () => {},
-  session: null,
-  setSession: () => {},
-  permissions: null,
-  setPermissions: () => {},
 });
 
 export default function AuthContextProvider({ children }) {
@@ -20,7 +16,6 @@ export default function AuthContextProvider({ children }) {
   // state from an unauthenticated user (`null`).
   const [user, setUser] = useState(undefined);
   const [company, setCompany] = useState(null);
-  const [permissions, setPermissions] = useState(null);
 
   // Persist selected company across reloads
   useEffect(() => {
@@ -57,19 +52,15 @@ export default function AuthContextProvider({ children }) {
         if (res.ok) {
           const data = await res.json();
           trackSetState('AuthContext.setUser');
-          setUser(data.user);
+          setUser(data);
           trackSetState('AuthContext.setCompany');
           setCompany(data.session || null);
-          trackSetState('AuthContext.setPermissions');
-          setPermissions(data.permissions || null);
         } else {
           // Not logged in or token expired
           trackSetState('AuthContext.setUser');
           setUser(null);
           trackSetState('AuthContext.setCompany');
           setCompany(null);
-          trackSetState('AuthContext.setPermissions');
-          setPermissions(null);
         }
       } catch (err) {
         console.error('Unable to fetch profile:', err);
@@ -77,8 +68,6 @@ export default function AuthContextProvider({ children }) {
         setUser(null);
         trackSetState('AuthContext.setCompany');
         setCompany(null);
-        trackSetState('AuthContext.setPermissions');
-        setPermissions(null);
       }
     }
 
@@ -91,26 +80,12 @@ export default function AuthContextProvider({ children }) {
       setUser(null);
       trackSetState('AuthContext.setCompany');
       setCompany(null);
-      trackSetState('AuthContext.setPermissions');
-      setPermissions(null);
     }
     window.addEventListener('auth:logout', handleLogout);
     return () => window.removeEventListener('auth:logout', handleLogout);
   }, []);
 
-  const value = useMemo(
-    () => ({
-      user,
-      setUser,
-      company,
-      setCompany,
-      session: company,
-      setSession: setCompany,
-      permissions,
-      setPermissions,
-    }),
-    [user, company, permissions],
-  );
+  const value = useMemo(() => ({ user, setUser, company, setCompany }), [user, company]);
 
   return (
     <AuthContext.Provider value={value}>
