@@ -168,10 +168,8 @@ useEffect(() => {
     console.log('FinanceTransactions load forms effect');
     const params = new URLSearchParams();
     if (moduleKey) params.set('moduleKey', moduleKey);
-    if (branch !== undefined)
-      params.set('branchId', branch);
-    if (department !== undefined)
-      params.set('departmentId', department);
+    if (branch != null) params.set('branchId', branch);
+    if (department != null) params.set('departmentId', department);
     fetch(`/api/transaction_forms?${params.toString()}`, { credentials: 'include' })
       .then((res) => {
         if (!res.ok) {
@@ -192,13 +190,13 @@ useEffect(() => {
           if (mKey !== moduleKey) return;
           if (
             allowedB.length > 0 &&
-            branch !== undefined &&
+            branch != null &&
             !allowedB.includes(branch)
           )
             return;
           if (
             allowedD.length > 0 &&
-            department !== undefined &&
+            department != null &&
             !allowedD.includes(department)
           )
             return;
