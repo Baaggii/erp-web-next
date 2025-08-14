@@ -1,6 +1,8 @@
 import {
   listRoleModulePermissions,
-  setRoleModulePermission
+  setRoleModulePermission,
+  getEmploymentSession,
+  getUserLevelActions,
 } from '../../db/index.js';
 
 export async function listPermissions(req, res, next) {
@@ -22,6 +24,21 @@ export async function updatePermission(req, res, next) {
     const { companyId, roleId, moduleKey, allowed } = req.body;
     await setRoleModulePermission(companyId, roleId, moduleKey, allowed);
     res.sendStatus(200);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getUserActions(req, res, next) {
+  try {
+    const session = await getEmploymentSession(
+      req.user.empid,
+      req.user.companyId,
+    );
+    const permissions = session?.user_level
+      ? await getUserLevelActions(session.user_level)
+      : {};
+    res.json(permissions);
   } catch (err) {
     next(err);
   }

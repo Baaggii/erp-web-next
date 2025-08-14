@@ -14,6 +14,7 @@ import companyRoutes from "./routes/companies.js";
 import settingsRoutes from "./routes/settings.js";
 import userCompanyRoutes from "./routes/user_companies.js";
 import rolePermissionRoutes from "./routes/role_permissions.js";
+import userActionRoutes from "./routes/user_actions.js";
 import moduleRoutes from "./routes/modules.js";
 import openaiRoutes from "./routes/openai.js";
 import headerMappingRoutes from "./routes/header_mappings.js";
@@ -68,6 +69,7 @@ app.get("/api/csrf-token", (req, res) => {
 
 // API routes
 app.use("/api/auth", authRoutes);
+app.use("/api/auth", userActionRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/companies", companyRoutes);
 app.use("/api/settings", settingsRoutes);
