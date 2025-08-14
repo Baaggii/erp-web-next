@@ -322,14 +322,19 @@ export async function getUserLevelActions(userLevelId) {
   const [rows] = await pool.query(
     `SELECT action, ul_module_key, function_name FROM code_userlevel_settings WHERE ${conditions}`,
   );
-  const result = {};
-  for (const row of rows) {
-    const key = row.action;
-    const value = row.action === 'module_key' ? row.ul_module_key : row.function_name;
-    if (!value) continue;
-    (result[key] ||= []).push(value);
+  const perms = {};
+  for (const { action, ul_module_key: mod, function_name: fn } of rows) {
+    if (action === 'module_key' && mod) {
+      perms[mod] = true;
+    } else if (action === 'button' && fn) {
+      (perms.buttons ||= {})[fn] = true;
+    } else if (action === 'function' && fn) {
+      (perms.functions ||= {})[fn] = true;
+    } else if (action === 'API' && fn) {
+      (perms.api ||= {})[fn] = true;
+    }
   }
-  return result;
+  return perms;
 }
 
 /**
