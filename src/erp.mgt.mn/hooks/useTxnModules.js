@@ -11,16 +11,16 @@ export function refreshTxnModules() {
 }
 
 export function useTxnModules() {
-  const { company } = useContext(AuthContext);
+  const { branch, department } = useContext(AuthContext);
   const [keys, setKeys] = useState(cache.keys || new Set());
 
   async function fetchKeys() {
     try {
       const params = new URLSearchParams();
-      if (company?.branch_id !== undefined)
-        params.set('branchId', company.branch_id);
-      if (company?.department_id !== undefined)
-        params.set('departmentId', company.department_id);
+      if (branch !== undefined)
+        params.set('branchId', branch);
+      if (department !== undefined)
+        params.set('departmentId', department);
       const res = await fetch(
         `/api/transaction_forms${params.toString() ? `?${params.toString()}` : ''}`,
         { credentials: 'include' },
@@ -31,8 +31,8 @@ export function useTxnModules() {
         if (info && info.moduleKey) set.add(info.moduleKey);
       });
       cache.keys = set;
-      cache.branchId = company?.branch_id;
-      cache.departmentId = company?.department_id;
+      cache.branchId = branch;
+      cache.departmentId = department;
       setKeys(new Set(set));
     } catch (err) {
       console.error('Failed to load transaction modules', err);
@@ -44,19 +44,19 @@ export function useTxnModules() {
     debugLog('useTxnModules effect: initial fetch');
     if (
       !cache.keys ||
-      cache.branchId !== company?.branch_id ||
-      cache.departmentId !== company?.department_id
+      cache.branchId !== branch ||
+      cache.departmentId !== department
     ) {
       fetchKeys();
     }
-  }, [company?.branch_id, company?.department_id]);
+  }, [branch, department]);
 
   useEffect(() => {
     debugLog('useTxnModules effect: refresh listener');
     const handler = () => fetchKeys();
     emitter.addEventListener('refresh', handler);
     return () => emitter.removeEventListener('refresh', handler);
-  }, [company?.branch_id, company?.department_id]);
+  }, [branch, department]);
 
   return keys;
 }

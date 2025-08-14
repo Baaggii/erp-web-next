@@ -65,7 +65,7 @@ function isCountColumn(name) {
 }
 
 export default function ReportTable({ procedure = '', params = {}, rows = [] }) {
-  const { user, company } = useContext(AuthContext);
+  const { user, company, branch, department } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
@@ -339,9 +339,9 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       extraConditions,
       session: {
         empid: user?.empid,
-        company_id: company?.company_id,
-        branch_id: company?.branch_id,
-        department_id: company?.department_id,
+        company_id: company,
+        branch_id: branch,
+        department_id: department,
       },
     };
     setTxnInfo({ loading: true, col, value, data: [], sql: '', displayFields: [] });

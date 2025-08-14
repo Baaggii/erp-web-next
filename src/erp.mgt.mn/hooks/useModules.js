@@ -12,7 +12,7 @@ export function refreshModules() {
 }
 
 export function useModules() {
-  const { company } = useContext(AuthContext);
+  const { branch, department } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const [modules, setModules] = useState(cache.data || []);
 
@@ -22,10 +22,10 @@ export function useModules() {
       const rows = res.ok ? await res.json() : [];
       try {
         const params = new URLSearchParams();
-        if (company?.branch_id !== undefined)
-          params.set('branchId', company.branch_id);
-        if (company?.department_id !== undefined)
-          params.set('departmentId', company.department_id);
+        if (branch !== undefined)
+          params.set('branchId', branch);
+        if (department !== undefined)
+          params.set('departmentId', department);
         const prefix = generalConfig?.general?.reportProcPrefix || '';
         if (prefix) params.set('prefix', prefix);
         const pres = await fetch(
@@ -55,8 +55,8 @@ export function useModules() {
         console.error('Failed to load procedures', e);
       }
       cache.data = rows;
-      cache.branchId = company?.branch_id;
-      cache.departmentId = company?.department_id;
+      cache.branchId = branch;
+      cache.departmentId = department;
       cache.prefix = generalConfig?.general?.reportProcPrefix;
       setModules(rows);
     } catch (err) {
@@ -70,20 +70,20 @@ export function useModules() {
     const prefix = generalConfig?.general?.reportProcPrefix;
     if (
       !cache.data ||
-      cache.branchId !== company?.branch_id ||
-      cache.departmentId !== company?.department_id ||
+      cache.branchId !== branch ||
+      cache.departmentId !== department ||
       cache.prefix !== prefix
     ) {
       fetchModules();
     }
-  }, [company?.branch_id, company?.department_id, generalConfig?.general?.reportProcPrefix]);
+  }, [branch, department, generalConfig?.general?.reportProcPrefix]);
 
   useEffect(() => {
     debugLog('useModules effect: refresh listener');
     const handler = () => fetchModules();
     emitter.addEventListener('refresh', handler);
     return () => emitter.removeEventListener('refresh', handler);
-  }, [company?.branch_id, company?.department_id, generalConfig?.general?.reportProcPrefix]);
+  }, [branch, department, generalConfig?.general?.reportProcPrefix]);
 
   return modules;
 }

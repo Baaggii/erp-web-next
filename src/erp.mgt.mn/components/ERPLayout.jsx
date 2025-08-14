@@ -23,7 +23,7 @@ import useHeaderMappings from "../hooks/useHeaderMappings.js";
  *  - Main content area (faux window container)
  */
 export default function ERPLayout() {
-  const { user, setUser, company } = useContext(AuthContext);
+  const { user, setUser } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const renderCount = useRef(0);
   useEffect(() => {
@@ -138,7 +138,7 @@ export default function ERPLayout() {
 
 /** Top header bar **/
 function Header({ user, onLogout, onHome, isMobile, onToggleSidebar }) {
-  const { company } = useContext(AuthContext);
+  const { session } = useContext(AuthContext);
   function handleOpen(id) {
     console.log("open module", id);
   }
@@ -168,11 +168,11 @@ function Header({ user, onLogout, onHome, isMobile, onToggleSidebar }) {
         <button style={styles.iconBtn}>❔ Тусламж</button>
       </nav>
       <HeaderMenu onOpen={handleOpen} />
-      {company && (
+      {session && (
         <span style={styles.locationInfo}>
-          {company.branch_name && `📍 ${company.branch_name} | `}
-          {company.department_name && `🏬 ${company.department_name} | `}
-          🏢 {company.company_name}
+          {session.branch_name && `📍 ${session.branch_name} | `}
+          {session.department_name && `🏬 ${session.department_name} | `}
+          🏢 {session.company_name}
         </span>
       )}
       <div style={styles.userSection}>
@@ -186,7 +186,7 @@ function Header({ user, onLogout, onHome, isMobile, onToggleSidebar }) {
 function Sidebar({ onOpen, open, isMobile }) {
   const { company, permissions: perms } = useContext(AuthContext);
   const location = useLocation();
-  const licensed = useCompanyModules(company?.company_id);
+  const licensed = useCompanyModules(company);
   const modules = useModules();
   const txnModuleKeys = useTxnModules();
   const generalConfig = useGeneralConfig();

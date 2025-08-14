@@ -163,7 +163,7 @@ const TableManager = forwardRef(function TableManager({
   const [customEndDate, setCustomEndDate] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [typeOptions, setTypeOptions] = useState([]);
-  const { user, company } = useContext(AuthContext);
+  const { user, company, branch, department } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const { addToast } = useToast();
 
@@ -356,14 +356,14 @@ const TableManager = forwardRef(function TableManager({
     } else {
       setTypeFilter('');
     }
-    if (company?.branch_id !== undefined && branchIdFields.length > 0) {
+    if (branch !== undefined && branchIdFields.length > 0) {
       branchIdFields.forEach((f) => {
-        if (validCols.has(f)) newFilters[f] = company.branch_id;
+        if (validCols.has(f)) newFilters[f] = branch;
       });
     }
-    if (company?.department_id !== undefined && departmentIdFields.length > 0) {
+    if (department !== undefined && departmentIdFields.length > 0) {
       departmentIdFields.forEach((f) => {
-        if (validCols.has(f)) newFilters[f] = company.department_id;
+        if (validCols.has(f)) newFilters[f] = department;
       });
     }
     if (user?.empid !== undefined && userIdFields.length > 0) {
@@ -732,9 +732,9 @@ const TableManager = forwardRef(function TableManager({
     all.forEach((c) => {
       let v = (formConfig?.defaultValues || {})[c] || '';
       if (userIdFields.includes(c) && user?.empid) v = user.empid;
-      if (branchIdFields.includes(c) && company?.branch_id !== undefined) v = company.branch_id;
-      if (departmentIdFields.includes(c) && company?.department_id !== undefined) v = company.department_id;
-      if (companyIdFields.includes(c) && company?.company_id !== undefined) v = company.company_id;
+      if (branchIdFields.includes(c) && branch !== undefined) v = branch;
+      if (departmentIdFields.includes(c) && department !== undefined) v = department;
+      if (companyIdFields.includes(c) && company !== undefined) v = company;
       vals[c] = v;
       defaults[c] = v;
       if (!v && formConfig?.dateField?.includes(c)) {
@@ -959,16 +959,16 @@ const TableManager = forwardRef(function TableManager({
         if (columns.has(f)) merged[f] = user?.empid;
       });
       branchIdFields.forEach((f) => {
-        if (columns.has(f) && company?.branch_id !== undefined)
-          merged[f] = company.branch_id;
+        if (columns.has(f) && branch !== undefined)
+          merged[f] = branch;
       });
       departmentIdFields.forEach((f) => {
-        if (columns.has(f) && company?.department_id !== undefined)
-          merged[f] = company.department_id;
+        if (columns.has(f) && department !== undefined)
+          merged[f] = department;
       });
       companyIdFields.forEach((f) => {
-        if (columns.has(f) && company?.company_id !== undefined)
-          merged[f] = company.company_id;
+        if (columns.has(f) && company !== undefined)
+          merged[f] = company;
       });
     }
 
@@ -1588,10 +1588,10 @@ const TableManager = forwardRef(function TableManager({
           )}
         </div>
       )}
-      {branchIdFields.length > 0 && company?.branch_id !== undefined && (
+      {branchIdFields.length > 0 && branch !== undefined && (
         <div style={{ backgroundColor: '#ddffee', padding: '0.25rem', textAlign: 'left' }}>
           Branch:{' '}
-          <span style={{ marginRight: '0.5rem' }}>{company.branch_id}</span>
+          <span style={{ marginRight: '0.5rem' }}>{branch}</span>
           {user?.role === 'admin' && (
             <button
               onClick={() =>
@@ -1603,10 +1603,10 @@ const TableManager = forwardRef(function TableManager({
           )}
         </div>
       )}
-      {departmentIdFields.length > 0 && company?.department_id !== undefined && (
+      {departmentIdFields.length > 0 && department !== undefined && (
         <div style={{ backgroundColor: '#eefcff', padding: '0.25rem', textAlign: 'left' }}>
           Department:{' '}
-          <span style={{ marginRight: '0.5rem' }}>{company.department_id}</span>
+          <span style={{ marginRight: '0.5rem' }}>{department}</span>
           {user?.role === 'admin' && (
             <button onClick={() => departmentIdFields.forEach((f) => handleFilterChange(f, ''))}>
               Clear Department Filter

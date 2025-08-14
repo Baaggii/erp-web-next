@@ -117,7 +117,7 @@ async function putRow(addToast, table, id, row) {
 
 export default function PosTransactionsPage() {
   const { addToast } = useToast();
-  const { user, company } = useContext(AuthContext);
+  const { user, company, branch } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const [configs, setConfigs] = useState({});
   const [name, setName] = useState('');
@@ -493,14 +493,14 @@ export default function PosTransactionsPage() {
           if (next[tbl][f] === undefined) next[tbl][f] = user.empid;
         });
       }
-      if (fc.branchIdFields && company?.branch_id !== undefined) {
+      if (fc.branchIdFields && branch !== undefined) {
         fc.branchIdFields.forEach((f) => {
-          if (next[tbl][f] === undefined) next[tbl][f] = company.branch_id;
+          if (next[tbl][f] === undefined) next[tbl][f] = branch;
         });
       }
-      if (fc.companyIdFields && company?.company_id !== undefined) {
+      if (fc.companyIdFields && company !== undefined) {
         fc.companyIdFields.forEach((f) => {
-          if (next[tbl][f] === undefined) next[tbl][f] = company.company_id;
+          if (next[tbl][f] === undefined) next[tbl][f] = company;
         });
       }
       if (fc.transactionTypeField && fc.transactionTypeValue) {
@@ -550,14 +550,14 @@ export default function PosTransactionsPage() {
             if (updated[f] === undefined) updated[f] = user.empid;
           });
         }
-        if (fc.branchIdFields && company?.branch_id !== undefined) {
+        if (fc.branchIdFields && branch !== undefined) {
           fc.branchIdFields.forEach((f) => {
-            if (updated[f] === undefined) updated[f] = company.branch_id;
+            if (updated[f] === undefined) updated[f] = branch;
           });
         }
-        if (fc.companyIdFields && company?.company_id !== undefined) {
+        if (fc.companyIdFields && company !== undefined) {
           fc.companyIdFields.forEach((f) => {
-            if (updated[f] === undefined) updated[f] = company.company_id;
+            if (updated[f] === undefined) updated[f] = company;
           });
         }
         if (fc.transactionTypeField && fc.transactionTypeValue) {
@@ -580,8 +580,8 @@ export default function PosTransactionsPage() {
 
     const session = {
       employeeId: user?.empid,
-      companyId: company?.company_id,
-      branchId: company?.branch_id,
+      companyId: company,
+      branchId: branch,
       date: formatTimestamp(new Date()),
     };
     try {
@@ -709,8 +709,8 @@ export default function PosTransactionsPage() {
     const postData = { masterId: masterIdRef.current, single, multi };
     const session = {
       employeeId: user?.empid,
-      companyId: company?.company_id,
-      branchId: company?.branch_id,
+      companyId: company,
+      branchId: branch,
       date: formatTimestamp(new Date()),
     };
     try {
@@ -1018,7 +1018,7 @@ export default function PosTransactionsPage() {
                     viewDisplays={viewDisplaysMap[t.table] || {}}
                     viewColumns={viewColumnsMap[t.table] || {}}
                     user={user}
-                    company={company}
+                    
                     columnCaseMap={(columnMeta[t.table] || []).reduce((m,c)=>{m[c.name.toLowerCase()] = c.name;return m;}, {})}
                     onChange={(changes) => handleChange(t.table, changes)}
                     onRowsChange={(rows) => handleRowsChange(t.table, rows)}

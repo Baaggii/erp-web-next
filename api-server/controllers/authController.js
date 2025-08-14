@@ -37,12 +37,18 @@ export async function login(req, res, next) {
     }
 
     const permissions = await getUserLevelActions(session.user_level);
+    const {
+      company_id: company,
+      branch_id: branch,
+      department_id: department,
+      position_id: position,
+    } = session || {};
 
     const payload = {
       id: user.id,
       empid: user.empid,
       role: user.role,
-      companyId: session.company_id,
+      companyId: company,
     };
     const token = jwtService.sign(payload);
     const refreshToken = jwtService.signRefresh(payload);
@@ -65,6 +71,10 @@ export async function login(req, res, next) {
       role: user.role,
       full_name: session?.employee_name,
       user_level: session?.user_level,
+      company,
+      branch,
+      department,
+      position,
       session,
       permissions,
     });
@@ -89,12 +99,22 @@ export async function getProfile(req, res) {
   const permissions = session?.user_level
     ? await getUserLevelActions(session.user_level)
     : {};
+  const {
+    company_id: company,
+    branch_id: branch,
+    department_id: department,
+    position_id: position,
+  } = session || {};
   res.json({
     id: req.user.id,
     empid: req.user.empid,
     role: req.user.role,
     full_name: session?.employee_name,
     user_level: session?.user_level,
+    company,
+    branch,
+    department,
+    position,
     session,
     permissions,
   });
@@ -127,11 +147,17 @@ export async function refresh(req, res) {
     const permissions = session?.user_level
       ? await getUserLevelActions(session.user_level)
       : {};
+    const {
+      company_id: company,
+      branch_id: branch,
+      department_id: department,
+      position_id: position,
+    } = session || {};
     const newPayload = {
       id: user.id,
       empid: user.empid,
       role: user.role,
-      companyId: payload.companyId,
+      companyId: company,
     };
     const newAccess = jwtService.sign(newPayload);
     const newRefresh = jwtService.signRefresh(newPayload);
@@ -153,6 +179,10 @@ export async function refresh(req, res) {
       role: user.role,
       full_name: session?.employee_name,
       user_level: session?.user_level,
+      company,
+      branch,
+      department,
+      position,
       session,
       permissions,
     });

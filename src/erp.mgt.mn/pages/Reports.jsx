@@ -8,7 +8,7 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
 
 export default function Reports() {
-  const { company, user } = useContext(AuthContext);
+  const { company, branch, user } = useContext(AuthContext);
   const { addToast } = useToast();
   const generalConfig = useGeneralConfig();
   const [procedures, setProcedures] = useState([]);
@@ -67,12 +67,12 @@ export default function Reports() {
       const name = p.toLowerCase();
       if (name.includes('start') || name.includes('from')) return startDate || null;
       if (name.includes('end') || name.includes('to')) return endDate || null;
-      if (name.includes('branch')) return company?.branch_id ?? null;
-      if (name.includes('company')) return company?.company_id ?? null;
+      if (name.includes('branch')) return branch ?? null;
+      if (name.includes('company')) return company ?? null;
       if (name.includes('user') || name.includes('emp')) return user?.empid ?? null;
       return null;
     });
-  }, [procParams, startDate, endDate, company, user]);
+  }, [procParams, startDate, endDate, company, branch, user]);
 
   const finalParams = useMemo(() => {
     return procParams.map((p, i) => {

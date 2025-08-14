@@ -20,7 +20,7 @@ export default function UserCompanies() {
   function loadAssignments(empid) {
     const params = [];
     if (empid) params.push(`empid=${encodeURIComponent(empid)}`);
-    if (company) params.push(`companyId=${encodeURIComponent(company.company_id)}`);
+    if (company) params.push(`companyId=${encodeURIComponent(company)}`);
     const url = params.length ? `/api/user_companies?${params.join('&')}` : '/api/user_companies';
     fetch(url, { credentials: 'include' })
       .then(res => {
