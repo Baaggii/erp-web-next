@@ -5,7 +5,7 @@ import UserMenu from "./UserMenu.jsx";
 import { useOutlet, useNavigate, useLocation } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext.jsx";
 import { logout } from "../hooks/useAuth.jsx";
-import { useRolePermissions, refreshRolePermissions } from "../hooks/useRolePermissions.js";
+import { useRolePermissions } from "../hooks/useRolePermissions.js";
 import { useCompanyModules } from "../hooks/useCompanyModules.js";
 import { useModules } from "../hooks/useModules.js";
 import { useTxnModules } from "../hooks/useTxnModules.js";
@@ -106,9 +106,6 @@ export default function ERPLayout() {
   }
 
   function handleHome() {
-    const roleId = user?.role_id || (user?.role === 'admin' ? 1 : 2);
-    const companyId = user?.company_id || company?.company_id;
-    refreshRolePermissions(roleId, companyId);
     navigate('/');
   }
 
@@ -165,9 +162,6 @@ function Header({ user, onLogout, onHome, isMobile, onToggleSidebar }) {
           style={styles.logoImage}
         />
         <span style={styles.logoText}>MyERP</span>
-        {company && (
-          <span style={styles.companyText}> ({company.company_name})</span>
-        )}
       </div>
       <nav style={styles.headerNav}>
         <button style={styles.iconBtn} onClick={onHome}>🗔 Нүүр</button>
@@ -178,6 +172,7 @@ function Header({ user, onLogout, onHome, isMobile, onToggleSidebar }) {
       {company && (
         <span style={styles.locationInfo}>
           {company.branch_name && `📍 ${company.branch_name} | `}
+          {company.department_name && `🏬 ${company.department_name} | `}
           🏢 {company.company_name}
         </span>
       )}
@@ -435,11 +430,6 @@ const styles = {
   logoText: {
     fontSize: "1.1rem",
     fontWeight: "bold",
-  },
-  companyText: {
-    marginLeft: "0.5rem",
-    fontSize: "0.9rem",
-    opacity: 0.8,
   },
   headerNav: {
     marginLeft: "2rem",
