@@ -9,7 +9,7 @@ import useHeaderMappings from '../hooks/useHeaderMappings.js';
 export default function HeaderMenu({ onOpen }) {
   const { company, permissions: perms } = useContext(AuthContext);
   const modules = useModules();
-  const txnModuleKeys = useTxnModules();
+  const txnModules = useTxnModules();
   const licensed = useCompanyModules(company);
   const generalConfig = useGeneralConfig();
   const items = modules.filter((r) => r.show_in_header);
@@ -20,7 +20,7 @@ export default function HeaderMenu({ onOpen }) {
   return (
     <nav style={styles.menu}>
       {items.map((m) => {
-        const isTxn = txnModuleKeys && txnModuleKeys.has(m.module_key);
+        const isTxn = txnModules && txnModules.keys.has(m.module_key);
         if (!isTxn && !licensed[m.module_key]) return null;
         if (!isTxn && !perms[m.module_key]) return null;
         return (

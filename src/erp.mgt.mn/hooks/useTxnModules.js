@@ -2,17 +2,28 @@ import { useEffect, useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { debugLog } from '../utils/debug.js';
 
-const cache = { keys: null, branchId: undefined, departmentId: undefined };
+// Cache both the set of transaction module keys and a label map so that other
+// hooks can synthesize missing module entries for non‑admin users.
+const cache = {
+  keys: null,
+  labels: null,
+  branchId: undefined,
+  departmentId: undefined,
+};
 const emitter = new EventTarget();
 
 export function refreshTxnModules() {
   delete cache.keys;
+  delete cache.labels;
   emitter.dispatchEvent(new Event('refresh'));
 }
 
 export function useTxnModules() {
   const { branch, department } = useContext(AuthContext);
-  const [keys, setKeys] = useState(cache.keys || new Set());
+  const [state, setState] = useState({
+    keys: cache.keys || new Set(),
+    labels: cache.labels || {},
+  });
 
   async function fetchKeys() {
     try {
@@ -25,16 +36,21 @@ export function useTxnModules() {
       );
       const data = res.ok ? await res.json() : {};
       const set = new Set();
+      const labels = {};
       Object.values(data).forEach((info) => {
-        if (info && info.moduleKey) set.add(info.moduleKey);
+        if (info && info.moduleKey) {
+          set.add(info.moduleKey);
+          if (info.moduleLabel) labels[info.moduleKey] = info.moduleLabel;
+        }
       });
       cache.keys = set;
+      cache.labels = labels;
       cache.branchId = branch;
       cache.departmentId = department;
-      setKeys(new Set(set));
+      setState({ keys: new Set(set), labels });
     } catch (err) {
       console.error('Failed to load transaction modules', err);
-      setKeys(new Set());
+      setState({ keys: new Set(), labels: {} });
     }
   }
 
@@ -56,5 +72,5 @@ export function useTxnModules() {
     return () => emitter.removeEventListener('refresh', handler);
   }, [branch, department]);
 
-  return keys;
+  return state;
 }

@@ -81,7 +81,7 @@ export default function ERPLayout() {
   const windowTitle = titleForPath(location.pathname);
 
   const { tabs, activeKey, openTab, closeTab, switchTab, setTabContent, cache } = useTabs();
-  const txnModuleKeys = useTxnModules();
+  const txnModules = useTxnModules();
 
   useEffect(() => {
     const title = titleForPath(location.pathname);
@@ -89,7 +89,7 @@ export default function ERPLayout() {
   }, [location.pathname, openTab]);
 
   function handleOpen(path, label, key) {
-    if (txnModuleKeys && txnModuleKeys.has(key)) {
+    if (txnModules && txnModules.keys.has(key)) {
       openTab({ key: path, label });
       navigate(path);
     } else {
@@ -188,7 +188,7 @@ function Sidebar({ onOpen, open, isMobile }) {
   const location = useLocation();
   const licensed = useCompanyModules(company);
   const modules = useModules();
-  const txnModuleKeys = useTxnModules();
+  const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
   const headerMap = useHeaderMappings(modules.map((m) => m.module_key));
 
@@ -215,7 +215,7 @@ function Sidebar({ onOpen, open, isMobile }) {
   const map = {};
   modules.forEach((m) => {
     const formsDesc = isFormsDescendant(m);
-    const isTxn = formsDesc && txnModuleKeys && txnModuleKeys.has(m.module_key);
+    const isTxn = formsDesc && txnModules && txnModules.keys.has(m.module_key);
     if (formsDesc && !isTxn) return;
     if (!m.show_in_sidebar) return;
     if (!isTxn && !licensed[m.module_key]) return;
