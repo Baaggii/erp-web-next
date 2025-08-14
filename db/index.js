@@ -151,7 +151,7 @@ export async function getPermissionsForUserLevel(userLevel) {
   };
 
   const [rows] = await pool.query(
-    `SELECT action, ul_module_key, function_name, api_name,
+    `SELECT action, ul_module_key, function_name,
             new_records, edit_delete_request, edit_records, delete_records,
             image_handler, audition, supervisor, companywide, branchwide,
             departmentwide, developer, system_settings, license_settings,
@@ -187,7 +187,7 @@ export async function getPermissionsForUserLevel(userLevel) {
     }
     if (Object.keys(perms).length === 0) continue;
 
-    let key = r.ul_module_key || r.function_name || r.api_name;
+    let key = r.ul_module_key || r.function_name;
     if (!key) continue;
     const group = r.action;
     actions[group] = actions[group] || {};
