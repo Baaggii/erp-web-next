@@ -168,10 +168,8 @@ useEffect(() => {
     console.log('FinanceTransactions load forms effect');
     const params = new URLSearchParams();
     if (moduleKey) params.set('moduleKey', moduleKey);
-    if (branch !== undefined)
-      params.set('branchId', branch);
-    if (department !== undefined)
-      params.set('departmentId', department);
+    if (branch) params.set('branchId', branch);
+    if (department) params.set('departmentId', department);
     fetch(`/api/transaction_forms?${params.toString()}`, { credentials: 'include' })
       .then((res) => {
         if (!res.ok) {
@@ -190,20 +188,22 @@ useEffect(() => {
           const allowedD = info.allowedDepartments || [];
           const mKey = info.moduleKey;
           if (mKey !== moduleKey) return;
+          if (allowedB.length > 0 && branch && !allowedB.includes(branch))
+            return;
+          if (allowedD.length > 0 && department && !allowedD.includes(department))
+            return;
           if (
-            allowedB.length > 0 &&
-            branch !== undefined &&
-            !allowedB.includes(branch)
+            perms &&
+            Object.prototype.hasOwnProperty.call(perms, mKey) &&
+            !perms[mKey]
           )
             return;
           if (
-            allowedD.length > 0 &&
-            department !== undefined &&
-            !allowedD.includes(department)
+            licensed &&
+            Object.prototype.hasOwnProperty.call(licensed, mKey) &&
+            !licensed[mKey]
           )
             return;
-          if (perms && !perms[mKey]) return;
-          if (licensed && !licensed[mKey]) return;
           filtered[n] = info;
         });
         setConfigs(filtered);
@@ -335,7 +335,7 @@ useEffect(() => {
       const name = p.toLowerCase();
       if (name.includes('start') || name.includes('from')) return startDate || null;
       if (name.includes('end') || name.includes('to')) return endDate || null;
-      if (name.includes('branch')) return branch ?? null;
+      if (name.includes('branch')) return branch || null;
       if (name.includes('company')) return company ?? null;
       if (name.includes('user') || name.includes('emp')) return user?.empid ?? null;
       return null;
@@ -438,7 +438,15 @@ useEffect(() => {
   }
 
   if (!perms || !licensed) return <p>Ачааллаж байна...</p>;
-  if (!perms[moduleKey] || !licensed[moduleKey]) return <p>Нэвтрэх эрхгүй.</p>;
+  if (
+    (perms &&
+      Object.prototype.hasOwnProperty.call(perms, moduleKey) &&
+      !perms[moduleKey]) ||
+    (licensed &&
+      Object.prototype.hasOwnProperty.call(licensed, moduleKey) &&
+      !licensed[moduleKey])
+  )
+    return <p>Нэвтрэх эрхгүй.</p>;
 
   const caption = 'Гүйлгээ сонгоно уу';
 
@@ -552,27 +560,33 @@ useEffect(() => {
           </div>
         )}
       {table && config && (
-        <div style={{ marginBottom: '0.5rem' }}>
-          <button onClick={() => tableRef.current?.openAdd()} style={{ marginRight: '0.5rem' }}>
-            Гүйлгээ нэмэх
-          </button>
-          <button onClick={() => setShowTable((v) => !v)}>
-            {showTable ? 'Хүснэгт нуух' : 'Хүснэгт харах'}
-          </button>
-        </div>
-      )}
-      {table && config && (
-        <TableManager
-          key={`${moduleKey}-${name}`}
-          ref={tableRef}
-          table={table}
-          refreshId={refreshId}
-          formConfig={config}
-          allConfigs={configs}
-          initialPerPage={10}
-          addLabel="Гүйлгээ нэмэх"
-          showTable={showTable}
-        />
+        <>
+          <div style={{ marginBottom: '0.5rem' }}>
+            {perms?.buttons?.['New transaction'] && (
+              <button
+                onClick={() => tableRef.current?.openAdd()}
+                style={{ marginRight: '0.5rem' }}
+              >
+                Гүйлгээ нэмэх
+              </button>
+            )}
+            <button onClick={() => setShowTable((v) => !v)}>
+              {showTable ? 'Хүснэгт нуух' : 'Хүснэгт харах'}
+            </button>
+          </div>
+          <TableManager
+            key={`${moduleKey}-${name}`}
+            ref={tableRef}
+            table={table}
+            refreshId={refreshId}
+            formConfig={config}
+            allConfigs={configs}
+            initialPerPage={10}
+            addLabel="Гүйлгээ нэмэх"
+            showTable={showTable}
+            buttonPerms={perms?.buttons || {}}
+          />
+        </>
       )}
       {reportResult && (
         <ReportTable

@@ -40,10 +40,8 @@ export default function FormsIndex() {
 
   useEffect(() => {
     const params = new URLSearchParams();
-    if (branch !== undefined)
-      params.set('branchId', branch);
-    if (department !== undefined)
-      params.set('departmentId', department);
+    if (branch) params.set('branchId', branch);
+    if (department) params.set('departmentId', department);
     const url = `/api/transaction_forms${params.toString() ? `?${params.toString()}` : ''}`;
     fetch(url, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
@@ -54,20 +52,22 @@ export default function FormsIndex() {
           const allowedD = info.allowedDepartments || [];
           const key = info.moduleKey || 'forms';
           if (!descendantKeys.includes(key)) return;
+          if (allowedB.length > 0 && branch && !allowedB.includes(branch))
+            return;
+          if (allowedD.length > 0 && department && !allowedD.includes(department))
+            return;
           if (
-            allowedB.length > 0 &&
-            branch !== undefined &&
-            !allowedB.includes(branch)
+            perms &&
+            Object.prototype.hasOwnProperty.call(perms, key) &&
+            !perms[key]
           )
             return;
           if (
-            allowedD.length > 0 &&
-            department !== undefined &&
-            !allowedD.includes(department)
+            licensed &&
+            Object.prototype.hasOwnProperty.call(licensed, key) &&
+            !licensed[key]
           )
             return;
-          if (perms && !perms[key]) return;
-          if (licensed && !licensed[key]) return;
           if (!grouped[key]) grouped[key] = [];
           grouped[key].push(name);
         });

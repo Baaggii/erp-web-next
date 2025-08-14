@@ -17,10 +17,8 @@ export function useTxnModules() {
   async function fetchKeys() {
     try {
       const params = new URLSearchParams();
-      if (branch !== undefined)
-        params.set('branchId', branch);
-      if (department !== undefined)
-        params.set('departmentId', department);
+      if (branch) params.set('branchId', branch);
+      if (department) params.set('departmentId', department);
       const res = await fetch(
         `/api/transaction_forms${params.toString() ? `?${params.toString()}` : ''}`,
         { credentials: 'include' },
