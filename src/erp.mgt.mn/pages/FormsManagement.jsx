@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useModules } from '../hooks/useModules.js';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { debugLog } from '../utils/debug.js';
@@ -10,7 +10,6 @@ export default function FormsManagement() {
   const [table, setTable] = useState('');
   const [names, setNames] = useState([]);
   const [name, setName] = useState('');
-  const [dupConfigs, setDupConfigs] = useState({});
   const [moduleKey, setModuleKey] = useState('');
   const [branches, setBranches] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -18,6 +17,8 @@ export default function FormsManagement() {
   const [columns, setColumns] = useState([]);
   const [views, setViews] = useState([]);
   const [procedureOptions, setProcedureOptions] = useState([]);
+  const [branchCfg, setBranchCfg] = useState({ idField: null, displayFields: [] });
+  const [deptCfg, setDeptCfg] = useState({ idField: null, displayFields: [] });
   const generalConfig = useGeneralConfig();
   const modules = useModules();
   const procMap = useHeaderMappings(procedureOptions);
@@ -26,6 +27,15 @@ export default function FormsManagement() {
   }
   useEffect(() => {
     debugLog('Component mounted: FormsManagement');
+  }, []);
+
+  useEffect(() => {
+    window.showBranchModal = () => {};
+    window.showDeptModal = () => {};
+    return () => {
+      delete window.showBranchModal;
+      delete window.showDeptModal;
+    };
   }, []);
   const [config, setConfig] = useState({
     visibleFields: [],
@@ -59,13 +69,45 @@ export default function FormsManagement() {
     procedures: [],
   });
 
+  const branchOptions = useMemo(() => {
+    const idField = branchCfg?.idField || 'id';
+    return branches.map((b) => {
+      const val = b[idField] ?? b.id;
+      const label = branchCfg?.displayFields?.length
+        ? branchCfg.displayFields
+            .map((f) => b[f])
+            .filter((v) => v !== undefined && v !== null)
+            .join(' - ')
+        : Object.values(b).join(' - ');
+      return { value: String(val), label };
+    });
+  }, [branches, branchCfg]);
+
+  const deptOptions = useMemo(() => {
+    const idField = deptCfg?.idField || 'id';
+    return departments.map((d) => {
+      const val = d[idField] ?? d.id;
+      const label = deptCfg?.displayFields?.length
+        ? deptCfg.displayFields
+            .map((f) => d[f])
+            .filter((v) => v !== undefined && v !== null)
+            .join(' - ')
+        : Object.values(d).join(' - ');
+      return { value: String(val), label };
+    });
+  }, [departments, deptCfg]);
+
     useEffect(() => {
       const procPrefix = generalConfig?.general?.reportProcPrefix || '';
       const viewPrefix = generalConfig?.general?.reportViewPrefix || '';
 
       fetch('/api/tables', { credentials: 'include' })
         .then((res) => (res.ok ? res.json() : []))
-        .then((data) => setTables(data))
+        .then((data) =>
+          setTables((Array.isArray(data) ? data : []).filter((t) =>
+            String(t).startsWith('transactions_'),
+          )),
+        )
         .catch(() => setTables([]));
 
       fetch(
@@ -98,6 +140,16 @@ export default function FormsManagement() {
         .then((res) => (res.ok ? res.json() : { rows: [] }))
         .then((data) => setTxnTypes(data.rows || []))
         .catch(() => setTxnTypes([]));
+
+      fetch('/api/display_fields?table=code_branches', { credentials: 'include' })
+        .then((res) => (res.ok ? res.json() : { idField: null, displayFields: [] }))
+        .then(setBranchCfg)
+        .catch(() => setBranchCfg({ idField: null, displayFields: [] }));
+
+      fetch('/api/display_fields?table=code_department', { credentials: 'include' })
+        .then((res) => (res.ok ? res.json() : { idField: null, displayFields: [] }))
+        .then(setDeptCfg)
+        .catch(() => setDeptCfg({ idField: null, displayFields: [] }));
 
       fetch(
         `/api/procedures${
@@ -133,7 +185,6 @@ export default function FormsManagement() {
           filtered[n] = info;
         });
         setNames(Object.keys(filtered));
-        setDupConfigs(filtered);
         if (filtered[name]) {
           setModuleKey(filtered[name].moduleKey || '');
           setConfig({
@@ -438,40 +489,6 @@ export default function FormsManagement() {
     setModuleKey('');
   }
 
-  function handleDuplicate(nameToCopy) {
-    const cfg = dupConfigs[nameToCopy];
-    if (!cfg) return;
-    setConfig({
-      visibleFields: cfg.visibleFields || [],
-      requiredFields: cfg.requiredFields || [],
-      defaultValues: cfg.defaultValues || {},
-      editableDefaultFields: cfg.editableDefaultFields || [],
-      userIdFields: cfg.userIdFields || [],
-      branchIdFields: cfg.branchIdFields || [],
-      companyIdFields: cfg.companyIdFields || [],
-      dateField: cfg.dateField || [],
-      emailField: cfg.emailField || [],
-      imagenameField: cfg.imagenameField || [],
-      imageIdField: cfg.imageIdField || '',
-      imageFolder: cfg.imageFolder || '',
-      printEmpField: cfg.printEmpField || [],
-      printCustField: cfg.printCustField || [],
-      totalCurrencyFields: cfg.totalCurrencyFields || [],
-      totalAmountFields: cfg.totalAmountFields || [],
-      signatureFields: cfg.signatureFields || [],
-      headerFields: cfg.headerFields || [],
-      mainFields: cfg.mainFields || [],
-      footerFields: cfg.footerFields || [],
-      viewSource: cfg.viewSource || {},
-      transactionTypeField: cfg.transactionTypeField || '',
-      transactionTypeValue: cfg.transactionTypeValue || '',
-      detectFields: cfg.detectFields || [],
-      allowedBranches: (cfg.allowedBranches || []).map(String),
-      allowedDepartments: (cfg.allowedDepartments || []).map(String),
-      procedures: cfg.procedures || [],
-    });
-  }
-
   return (
     <div>
       <h2>Маягтын удирдлага</h2>
@@ -487,149 +504,102 @@ export default function FormsManagement() {
       </div>
       {table && (
         <div>
-          <div style={{ marginBottom: '1rem' }}>
-            <select
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              style={{ marginRight: '0.5rem' }}
-            >
-              <option value="">-- select transaction --</option>
-              {names.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-            <input
-              type="text"
-              placeholder="Transaction name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-            <select
-              value={moduleKey}
-              onChange={(e) => setModuleKey(e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              <option value="">-- select module --</option>
-              {modules.map((m) => (
-                <option key={m.module_key} value={m.module_key}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-            <select
-              onChange={(e) => {
-                if (e.target.value) {
-                  handleDuplicate(e.target.value);
-                  e.target.value = '';
-                }
-              }}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              <option value="">Duplicate from existing</option>
-              {Object.keys(dupConfigs).map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
+          <div
+            style={{
+              marginBottom: '1rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem',
+            }}
+          >
+            <label>
+              Module:
+              <select value={moduleKey} onChange={(e) => setModuleKey(e.target.value)}>
+                <option value="">-- select module --</option>
+                {modules.map((m) => (
+                  <option key={m.module_key} value={m.module_key}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Existing configuration:
+              <select value={name} onChange={(e) => setName(e.target.value)}>
+                <option value="">-- select transaction --</option>
+                {names.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Transaction name:
+              <input
+                type="text"
+                placeholder="Transaction name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </label>
 
             {columns.length > 0 && (
-              <select
-                value={config.detectField}
-                onChange={(e) =>
-                  setConfig((c) => ({ ...c, detectField: e.target.value }))
-                }
-                style={{ marginLeft: '0.5rem' }}
-              >
-                <option value="">-- detection field --</option>
-                {columns.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            {columns.length > 0 && (
-              <select
-                value={config.transactionTypeField}
-                onChange={(e) =>
-                  setConfig((c) => ({ ...c, transactionTypeField: e.target.value }))
-                }
-                style={{ marginLeft: '0.5rem' }}
-              >
-                <option value="">-- transaction type field --</option>
-                {columns.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            {txnTypes.length > 0 && (
-              <select
-                value={config.transactionTypeValue}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setConfig((c) => ({ ...c, transactionTypeValue: val }));
-                  const found = txnTypes.find((t) => String(t.UITransType) === val);
-                  if (found && found.UITransTypeName) setName(found.UITransTypeName);
-                }}
-                style={{ marginLeft: '0.5rem' }}
-              >
-                <option value="">-- select type --</option>
-                {txnTypes.map((t) => (
-                  <option key={t.UITransType} value={t.UITransType}>
-                    {t.UITransType} - {t.UITransTypeName}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            {procedureOptions.length > 0 && (
-              <>
-                <span style={{ marginLeft: '0.5rem' }}>Procedures</span>
+              <label>
+                Transaction type field:
                 <select
-                  multiple
-                  value={config.procedures}
+                  value={config.transactionTypeField}
                   onChange={(e) =>
-                    setConfig((c) => ({
-                      ...c,
-                      procedures: Array.from(
-                        e.target.selectedOptions,
-                        (o) => o.value,
-                      ),
-                    }))
+                    setConfig((c) => ({ ...c, transactionTypeField: e.target.value }))
                   }
-                  style={{ marginLeft: '0.5rem' }}
                 >
-                  {procedureOptions.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
+                  <option value="">-- transaction type field --</option>
+                  {columns.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
                     </option>
                   ))}
                 </select>
-              </>
+              </label>
             )}
 
-            <input
-              type="text"
-              placeholder="Image folder"
-              value={config.imageFolder}
-              onChange={(e) =>
-                setConfig((c) => ({ ...c, imageFolder: e.target.value }))
-              }
-              style={{ marginLeft: '0.5rem' }}
-            />
-            
-            {name && (
-              <button onClick={handleDelete} style={{ marginLeft: '0.5rem' }}>
-                Delete
-              </button>
+            {txnTypes.length > 0 && (
+              <label>
+                Transaction type value:
+                <select
+                  value={config.transactionTypeValue}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setConfig((c) => ({ ...c, transactionTypeValue: val }));
+                    const found = txnTypes.find((t) => String(t.UITransType) === val);
+                    if (found && found.UITransTypeName) setName(found.UITransTypeName);
+                  }}
+                >
+                  <option value="">-- select type --</option>
+                  {txnTypes.map((t) => (
+                    <option key={t.UITransType} value={t.UITransType}>
+                      {t.UITransType} - {t.UITransTypeName}
+                    </option>
+                  ))}
+                </select>
+              </label>
             )}
+
+            <label>
+              Image folder:
+              <input
+                type="text"
+                placeholder="Image folder"
+                value={config.imageFolder}
+                onChange={(e) =>
+                  setConfig((c) => ({ ...c, imageFolder: e.target.value }))
+                }
+              />
+            </label>
+
+            {name && <button onClick={handleDelete}>Delete</button>}
           </div>
           <div className="table-container overflow-x-auto" style={{ maxHeight: '70vh' }}>
           <table style={{ borderCollapse: 'collapse', width: '100%' }}>
@@ -855,18 +825,36 @@ export default function FormsManagement() {
                 onChange={(e) =>
                   setConfig((c) => ({
                     ...c,
-                    allowedBranches: Array.from(e.target.selectedOptions, (o) => o.value),
+                    allowedBranches: Array.from(
+                      e.target.selectedOptions,
+                      (o) => o.value,
+                    ),
                   }))
                 }
               >
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.code} - {b.name}
+                {branchOptions.map((b) => (
+                  <option key={b.value} value={b.value}>
+                    {b.label}
                   </option>
                 ))}
               </select>
-              <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedBranches: branches.map((b) => String(b.id)) }))}>All</button>
-              <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedBranches: [] }))}>None</button>
+              <button
+                type="button"
+                onClick={() =>
+                  setConfig((c) => ({
+                    ...c,
+                    allowedBranches: branchOptions.map((b) => b.value),
+                  }))
+                }
+              >
+                All
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfig((c) => ({ ...c, allowedBranches: [] }))}
+              >
+                None
+              </button>
             </label>
             <label style={{ marginLeft: '1rem' }}>
               Allowed departments:{' '}
@@ -877,18 +865,36 @@ export default function FormsManagement() {
                 onChange={(e) =>
                   setConfig((c) => ({
                     ...c,
-                    allowedDepartments: Array.from(e.target.selectedOptions, (o) => o.value),
+                    allowedDepartments: Array.from(
+                      e.target.selectedOptions,
+                      (o) => o.value,
+                    ),
                   }))
                 }
               >
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.code} - {d.name}
+                {deptOptions.map((d) => (
+                  <option key={d.value} value={d.value}>
+                    {d.label}
                   </option>
                 ))}
               </select>
-              <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedDepartments: departments.map((d) => String(d.id)) }))}>All</button>
-              <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedDepartments: [] }))}>None</button>
+              <button
+                type="button"
+                onClick={() =>
+                  setConfig((c) => ({
+                    ...c,
+                    allowedDepartments: deptOptions.map((d) => d.value),
+                  }))
+                }
+              >
+                All
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfig((c) => ({ ...c, allowedDepartments: [] }))}
+              >
+                None
+              </button>
             </label>
             {procedureOptions.length > 0 && (
               <label style={{ marginLeft: '1rem' }}>
