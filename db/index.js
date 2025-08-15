@@ -1041,8 +1041,8 @@ export async function listTableRows(
         filterClauses.push(`\`${field}\` BETWEEN ? AND ?`);
         params.push(range[1], range[2]);
       } else {
-        filterClauses.push(`\`${field}\` LIKE ?`);
-        params.push(`%${value}%`);
+        filterClauses.push(`\`${field}\` = ?`);
+        params.push(value);
       }
     }
   }
