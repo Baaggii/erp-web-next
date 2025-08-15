@@ -4,7 +4,6 @@ import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { debugLog } from '../utils/debug.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
-import Modal from '../components/Modal.jsx';
 
 export default function FormsManagement() {
   const [tables, setTables] = useState([]);
@@ -19,10 +18,6 @@ export default function FormsManagement() {
   const [columns, setColumns] = useState([]);
   const [views, setViews] = useState([]);
   const [procedureOptions, setProcedureOptions] = useState([]);
-  const [displayConfigs, setDisplayConfigs] = useState({});
-  const [displayLoaded, setDisplayLoaded] = useState(false);
-  const [tableDisplayCfg, setTableDisplayCfg] = useState(null);
-  const [showDisplayModal, setShowDisplayModal] = useState(false);
   const generalConfig = useGeneralConfig();
   const modules = useModules();
   const procMap = useHeaderMappings(procedureOptions);
@@ -58,6 +53,7 @@ export default function FormsManagement() {
     viewSource: {},
     transactionTypeField: '',
     transactionTypeValue: '',
+    detectFields: [],
     allowedBranches: [],
     allowedDepartments: [],
     procedures: [],
@@ -69,25 +65,8 @@ export default function FormsManagement() {
 
       fetch('/api/tables', { credentials: 'include' })
         .then((res) => (res.ok ? res.json() : []))
-        .then((data) =>
-          setTables(
-            Array.isArray(data)
-              ? data.filter((t) => String(t).startsWith('transactions_'))
-              : [],
-          ),
-        )
+        .then((data) => setTables(data))
         .catch(() => setTables([]));
-
-      fetch('/api/display_fields', { credentials: 'include' })
-        .then((res) => (res.ok ? res.json() : {}))
-        .then((cfg) => {
-          setDisplayConfigs(cfg || {});
-          setDisplayLoaded(true);
-        })
-        .catch(() => {
-          setDisplayConfigs({});
-          setDisplayLoaded(true);
-        });
 
       fetch(
         `/api/views${viewPrefix ? `?prefix=${encodeURIComponent(viewPrefix)}` : ''}`,
@@ -139,27 +118,7 @@ export default function FormsManagement() {
     }, [generalConfig?.general?.reportProcPrefix, generalConfig?.general?.reportViewPrefix]);
 
   useEffect(() => {
-    if (!table || !displayLoaded) {
-      setTableDisplayCfg(null);
-      return;
-    }
-    const cfg = displayConfigs[table];
-    if (cfg && Array.isArray(cfg.displayFields) && cfg.displayFields.length > 0) {
-      setTableDisplayCfg(cfg);
-      setShowDisplayModal(false);
-    } else {
-      setTableDisplayCfg(null);
-      setShowDisplayModal(true);
-    }
-  }, [table, displayConfigs, displayLoaded]);
-
-  useEffect(() => {
-    if (!table || !tableDisplayCfg) {
-      setColumns([]);
-      setNames([]);
-      setDupConfigs({});
-      return;
-    }
+    if (!table) return;
     fetch(`/api/tables/${encodeURIComponent(table)}/columns`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : []))
       .then((cols) => setColumns(cols.map((c) => c.name || c)))
@@ -203,6 +162,7 @@ export default function FormsManagement() {
             viewSource: filtered[name].viewSource || {},
             transactionTypeField: filtered[name].transactionTypeField || '',
             transactionTypeValue: filtered[name].transactionTypeValue || '',
+            detectFields: filtered[name].detectFields || [],
             allowedBranches: (filtered[name].allowedBranches || []).map(String),
             allowedDepartments: (filtered[name].allowedDepartments || []).map(String),
             procedures: filtered[name].procedures || [],
@@ -235,6 +195,7 @@ export default function FormsManagement() {
             viewSource: {},
             transactionTypeField: '',
             transactionTypeValue: '',
+            detectFields: [],
             allowedBranches: [],
             allowedDepartments: [],
             procedures: [],
@@ -270,16 +231,17 @@ export default function FormsManagement() {
           viewSource: {},
           transactionTypeField: '',
           transactionTypeValue: '',
+          detectFields: [],
           allowedBranches: [],
           allowedDepartments: [],
           procedures: [],
         });
         setModuleKey('');
       });
-  }, [table, moduleKey, tableDisplayCfg]);
+  }, [table, moduleKey]);
 
   useEffect(() => {
-    if (!table || !tableDisplayCfg || !name || !names.includes(name)) return;
+    if (!table || !name || !names.includes(name)) return;
     fetch(`/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
       .then((cfg) => {
@@ -310,6 +272,7 @@ export default function FormsManagement() {
           viewSource: cfg.viewSource || {},
           transactionTypeField: cfg.transactionTypeField || '',
           transactionTypeValue: cfg.transactionTypeValue || '',
+          detectFields: cfg.detectFields || [],
           allowedBranches: (cfg.allowedBranches || []).map(String),
           allowedDepartments: (cfg.allowedDepartments || []).map(String),
           procedures: cfg.procedures || [],
@@ -342,13 +305,14 @@ export default function FormsManagement() {
           viewSource: {},
           transactionTypeField: '',
           transactionTypeValue: '',
+          detectFields: [],
           allowedBranches: [],
           allowedDepartments: [],
           procedures: [],
         });
         setModuleKey('');
       });
-  }, [table, name, names, tableDisplayCfg]);
+  }, [table, name, names]);
 
   // If a user selects a predefined transaction name, the associated module
   // parent key will be applied automatically based on the stored
@@ -466,6 +430,7 @@ export default function FormsManagement() {
       viewSource: {},
       transactionTypeField: '',
       transactionTypeValue: '',
+      detectFields: [],
       allowedBranches: [],
       allowedDepartments: [],
       procedures: [],
@@ -500,6 +465,7 @@ export default function FormsManagement() {
       viewSource: cfg.viewSource || {},
       transactionTypeField: cfg.transactionTypeField || '',
       transactionTypeValue: cfg.transactionTypeValue || '',
+      detectFields: cfg.detectFields || [],
       allowedBranches: (cfg.allowedBranches || []).map(String),
       allowedDepartments: (cfg.allowedDepartments || []).map(String),
       procedures: cfg.procedures || [],
@@ -519,29 +485,14 @@ export default function FormsManagement() {
           ))}
         </select>
       </div>
-      {tableDisplayCfg && (
-        <div style={{ marginBottom: '1rem' }}>
-          <div>
-            <strong>ID Field:</strong> {tableDisplayCfg.idField || '(none)'}
-          </div>
-          <div>
-            <strong>Display Fields:</strong>{' '}
-            {tableDisplayCfg.displayFields.join(', ')}
-          </div>
-        </div>
-      )}
-      {table && tableDisplayCfg && (
+      {table && (
         <div>
-          <div
-            style={{
-              marginBottom: '1rem',
-              display: 'flex',
-              flexDirection: 'column',
-              maxWidth: '20rem',
-              gap: '0.5rem',
-            }}
-          >
-            <select value={name} onChange={(e) => setName(e.target.value)}>
+          <div style={{ marginBottom: '1rem' }}>
+            <select
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              style={{ marginRight: '0.5rem' }}
+            >
               <option value="">-- select transaction --</option>
               {names.map((n) => (
                 <option key={n} value={n}>
@@ -555,7 +506,11 @@ export default function FormsManagement() {
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
-            <select value={moduleKey} onChange={(e) => setModuleKey(e.target.value)}>
+            <select
+              value={moduleKey}
+              onChange={(e) => setModuleKey(e.target.value)}
+              style={{ marginLeft: '0.5rem' }}
+            >
               <option value="">-- select module --</option>
               {modules.map((m) => (
                 <option key={m.module_key} value={m.module_key}>
@@ -570,6 +525,7 @@ export default function FormsManagement() {
                   e.target.value = '';
                 }
               }}
+              style={{ marginLeft: '0.5rem' }}
             >
               <option value="">Duplicate from existing</option>
               {Object.keys(dupConfigs).map((n) => (
@@ -578,12 +534,31 @@ export default function FormsManagement() {
                 </option>
               ))}
             </select>
+
+            {columns.length > 0 && (
+              <select
+                value={config.detectField}
+                onChange={(e) =>
+                  setConfig((c) => ({ ...c, detectField: e.target.value }))
+                }
+                style={{ marginLeft: '0.5rem' }}
+              >
+                <option value="">-- detection field --</option>
+                {columns.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            )}
+
             {columns.length > 0 && (
               <select
                 value={config.transactionTypeField}
                 onChange={(e) =>
                   setConfig((c) => ({ ...c, transactionTypeField: e.target.value }))
                 }
+                style={{ marginLeft: '0.5rem' }}
               >
                 <option value="">-- transaction type field --</option>
                 {columns.map((c) => (
@@ -593,6 +568,7 @@ export default function FormsManagement() {
                 ))}
               </select>
             )}
+
             {txnTypes.length > 0 && (
               <select
                 value={config.transactionTypeValue}
@@ -602,6 +578,7 @@ export default function FormsManagement() {
                   const found = txnTypes.find((t) => String(t.UITransType) === val);
                   if (found && found.UITransTypeName) setName(found.UITransTypeName);
                 }}
+                style={{ marginLeft: '0.5rem' }}
               >
                 <option value="">-- select type --</option>
                 {txnTypes.map((t) => (
@@ -611,6 +588,33 @@ export default function FormsManagement() {
                 ))}
               </select>
             )}
+
+            {procedureOptions.length > 0 && (
+              <>
+                <span style={{ marginLeft: '0.5rem' }}>Procedures</span>
+                <select
+                  multiple
+                  value={config.procedures}
+                  onChange={(e) =>
+                    setConfig((c) => ({
+                      ...c,
+                      procedures: Array.from(
+                        e.target.selectedOptions,
+                        (o) => o.value,
+                      ),
+                    }))
+                  }
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  {procedureOptions.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+
             <input
               type="text"
               placeholder="Image folder"
@@ -618,8 +622,14 @@ export default function FormsManagement() {
               onChange={(e) =>
                 setConfig((c) => ({ ...c, imageFolder: e.target.value }))
               }
+              style={{ marginLeft: '0.5rem' }}
             />
-            {name && <button onClick={handleDelete}>Delete</button>}
+            
+            {name && (
+              <button onClick={handleDelete} style={{ marginLeft: '0.5rem' }}>
+                Delete
+              </button>
+            )}
           </div>
           <div className="table-container overflow-x-auto" style={{ maxHeight: '70vh' }}>
           <table style={{ borderCollapse: 'collapse', width: '100%' }}>
@@ -630,6 +640,7 @@ export default function FormsManagement() {
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Required</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Default</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Editable</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>Detect</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>UserID</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>BranchID</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>DepartmentID</th>
@@ -681,6 +692,13 @@ export default function FormsManagement() {
                       type="checkbox"
                       checked={config.editableDefaultFields.includes(col)}
                       onChange={() => toggleEditable(col)}
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.detectFields.includes(col)}
+                      onChange={() => toggleFieldList(col, 'detectFields')}
                     />
                   </td>
                   <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
@@ -827,8 +845,8 @@ export default function FormsManagement() {
             </tbody>
           </table>
           </div>
-          <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'flex-start' }}>
+            <label style={{ marginLeft: '1rem' }}>
               Allowed branches:{' '}
               <select
                 multiple
@@ -841,41 +859,16 @@ export default function FormsManagement() {
                   }))
                 }
               >
-                {branches.map((b) => {
-                  const cfg = displayConfigs.code_branches;
-                  const idField = cfg?.idField || 'id';
-                  const labelParts = cfg?.displayFields
-                    ? cfg.displayFields.map((f) => b[f])
-                    : [b.code, b.name];
-                  const val = b[idField];
-                  return (
-                    <option key={val} value={val}>
-                      {labelParts.filter(Boolean).join(' - ')}
-                    </option>
-                  );
-                })}
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.code} - {b.name}
+                  </option>
+                ))}
               </select>
-              <button
-                type="button"
-                onClick={() =>
-                  setConfig((c) => ({
-                    ...c,
-                    allowedBranches: branches.map((b) =>
-                      String(b[displayConfigs.code_branches?.idField || 'id']),
-                    ),
-                  }))
-                }
-              >
-                All
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfig((c) => ({ ...c, allowedBranches: [] }))}
-              >
-                None
-              </button>
+              <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedBranches: branches.map((b) => String(b.id)) }))}>All</button>
+              <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedBranches: [] }))}>None</button>
             </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <label style={{ marginLeft: '1rem' }}>
               Allowed departments:{' '}
               <select
                 multiple
@@ -888,42 +881,17 @@ export default function FormsManagement() {
                   }))
                 }
               >
-                {departments.map((d) => {
-                  const cfg = displayConfigs.code_department;
-                  const idField = cfg?.idField || 'id';
-                  const labelParts = cfg?.displayFields
-                    ? cfg.displayFields.map((f) => d[f])
-                    : [d.code, d.name];
-                  const val = d[idField];
-                  return (
-                    <option key={val} value={val}>
-                      {labelParts.filter(Boolean).join(' - ')}
-                    </option>
-                  );
-                })}
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.code} - {d.name}
+                  </option>
+                ))}
               </select>
-              <button
-                type="button"
-                onClick={() =>
-                  setConfig((c) => ({
-                    ...c,
-                    allowedDepartments: departments.map((d) =>
-                      String(d[displayConfigs.code_department?.idField || 'id']),
-                    ),
-                  }))
-                }
-              >
-                All
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfig((c) => ({ ...c, allowedDepartments: [] }))}
-              >
-                None
-              </button>
+              <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedDepartments: departments.map((d) => String(d.id)) }))}>All</button>
+              <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedDepartments: [] }))}>None</button>
             </label>
             {procedureOptions.length > 0 && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <label style={{ marginLeft: '1rem' }}>
                 Procedures:{' '}
                 <select
                   multiple
@@ -953,13 +921,6 @@ export default function FormsManagement() {
           </div>
         </div>
       )}
-      <Modal
-        visible={showDisplayModal}
-        title="Display Fields Not Configured"
-        onClose={() => setShowDisplayModal(false)}
-      >
-        <p>No display field configuration found for this table.</p>
-      </Modal>
     </div>
   );
 }
