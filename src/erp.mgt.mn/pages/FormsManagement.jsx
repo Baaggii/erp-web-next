@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useModules } from '../hooks/useModules.js';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { debugLog } from '../utils/debug.js';
@@ -11,7 +11,6 @@ export default function FormsManagement() {
   const [table, setTable] = useState('');
   const [names, setNames] = useState([]);
   const [name, setName] = useState('');
-  const [dupConfigs, setDupConfigs] = useState({});
   const [moduleKey, setModuleKey] = useState('');
   const [branches, setBranches] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -23,6 +22,8 @@ export default function FormsManagement() {
   const [deptCfg, setDeptCfg] = useState({ idField: null, displayFields: [] });
   const [showBranchModal, setShowBranchModal] = useState(false);
   const [showDeptModal, setShowDeptModal] = useState(false);
+  const branchAutoOpened = useRef(false);
+  const deptAutoOpened = useRef(false);
   const generalConfig = useGeneralConfig();
   const modules = useModules();
   const procMap = useHeaderMappings(procedureOptions);
@@ -87,6 +88,20 @@ export default function FormsManagement() {
       return { value: String(val), label };
     });
   }, [departments, deptCfg]);
+
+  useEffect(() => {
+    if (!branchOptions && !branchAutoOpened.current) {
+      setShowBranchModal(true);
+      branchAutoOpened.current = true;
+    }
+  }, [branchOptions]);
+
+  useEffect(() => {
+    if (!deptOptions && !deptAutoOpened.current) {
+      setShowDeptModal(true);
+      deptAutoOpened.current = true;
+    }
+  }, [deptOptions]);
 
     useEffect(() => {
       const procPrefix = generalConfig?.general?.reportProcPrefix || '';
@@ -176,7 +191,6 @@ export default function FormsManagement() {
           filtered[n] = info;
         });
         setNames(Object.keys(filtered));
-        setDupConfigs(filtered);
         if (filtered[name]) {
           setModuleKey(filtered[name].moduleKey || '');
           setConfig({
@@ -481,40 +495,6 @@ export default function FormsManagement() {
     setModuleKey('');
   }
 
-  function handleDuplicate(nameToCopy) {
-    const cfg = dupConfigs[nameToCopy];
-    if (!cfg) return;
-    setConfig({
-      visibleFields: cfg.visibleFields || [],
-      requiredFields: cfg.requiredFields || [],
-      defaultValues: cfg.defaultValues || {},
-      editableDefaultFields: cfg.editableDefaultFields || [],
-      userIdFields: cfg.userIdFields || [],
-      branchIdFields: cfg.branchIdFields || [],
-      companyIdFields: cfg.companyIdFields || [],
-      dateField: cfg.dateField || [],
-      emailField: cfg.emailField || [],
-      imagenameField: cfg.imagenameField || [],
-      imageIdField: cfg.imageIdField || '',
-      imageFolder: cfg.imageFolder || '',
-      printEmpField: cfg.printEmpField || [],
-      printCustField: cfg.printCustField || [],
-      totalCurrencyFields: cfg.totalCurrencyFields || [],
-      totalAmountFields: cfg.totalAmountFields || [],
-      signatureFields: cfg.signatureFields || [],
-      headerFields: cfg.headerFields || [],
-      mainFields: cfg.mainFields || [],
-      footerFields: cfg.footerFields || [],
-      viewSource: cfg.viewSource || {},
-      transactionTypeField: cfg.transactionTypeField || '',
-      transactionTypeValue: cfg.transactionTypeValue || '',
-      detectFields: cfg.detectFields || [],
-      allowedBranches: (cfg.allowedBranches || []).map(String),
-      allowedDepartments: (cfg.allowedDepartments || []).map(String),
-      procedures: cfg.procedures || [],
-    });
-  }
-
   return (
     <div>
       <h2>Маягтын удирдлага</h2>
@@ -539,6 +519,18 @@ export default function FormsManagement() {
             }}
           >
             <label>
+              Module:
+              <select value={moduleKey} onChange={(e) => setModuleKey(e.target.value)}>
+                <option value="">-- select module --</option>
+                {modules.map((m) => (
+                  <option key={m.module_key} value={m.module_key}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
               Existing configuration:
               <select value={name} onChange={(e) => setName(e.target.value)}>
                 <option value="">-- select transaction --</option>
@@ -558,37 +550,6 @@ export default function FormsManagement() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
-            </label>
-
-            <label>
-              Module:
-              <select value={moduleKey} onChange={(e) => setModuleKey(e.target.value)}>
-                <option value="">-- select module --</option>
-                {modules.map((m) => (
-                  <option key={m.module_key} value={m.module_key}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label>
-              Duplicate from existing:
-              <select
-                onChange={(e) => {
-                  if (e.target.value) {
-                    handleDuplicate(e.target.value);
-                    e.target.value = '';
-                  }
-                }}
-              >
-                <option value="">Duplicate from existing</option>
-                {Object.keys(dupConfigs).map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
             </label>
 
             {columns.length > 0 && (
