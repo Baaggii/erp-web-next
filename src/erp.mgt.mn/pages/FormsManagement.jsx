@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useModules } from '../hooks/useModules.js';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { debugLog } from '../utils/debug.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
+import TableSelectModal from '../components/TableSelectModal.jsx';
 
 export default function FormsManagement() {
   const [tables, setTables] = useState([]);
@@ -18,6 +19,10 @@ export default function FormsManagement() {
   const [columns, setColumns] = useState([]);
   const [views, setViews] = useState([]);
   const [procedureOptions, setProcedureOptions] = useState([]);
+  const [branchCfg, setBranchCfg] = useState({ idField: null, displayFields: [] });
+  const [deptCfg, setDeptCfg] = useState({ idField: null, displayFields: [] });
+  const [showBranchModal, setShowBranchModal] = useState(false);
+  const [showDeptModal, setShowDeptModal] = useState(false);
   const generalConfig = useGeneralConfig();
   const modules = useModules();
   const procMap = useHeaderMappings(procedureOptions);
@@ -59,13 +64,41 @@ export default function FormsManagement() {
     procedures: [],
   });
 
+  const branchOptions = useMemo(() => {
+    if (!branchCfg?.idField || !branchCfg.displayFields?.length) return null;
+    return branches.map((b) => {
+      const val = b[branchCfg.idField] ?? b.id;
+      const label = branchCfg.displayFields
+        .map((f) => b[f])
+        .filter((v) => v !== undefined && v !== null)
+        .join(' - ');
+      return { value: String(val), label };
+    });
+  }, [branches, branchCfg]);
+
+  const deptOptions = useMemo(() => {
+    if (!deptCfg?.idField || !deptCfg.displayFields?.length) return null;
+    return departments.map((d) => {
+      const val = d[deptCfg.idField] ?? d.id;
+      const label = deptCfg.displayFields
+        .map((f) => d[f])
+        .filter((v) => v !== undefined && v !== null)
+        .join(' - ');
+      return { value: String(val), label };
+    });
+  }, [departments, deptCfg]);
+
     useEffect(() => {
       const procPrefix = generalConfig?.general?.reportProcPrefix || '';
       const viewPrefix = generalConfig?.general?.reportViewPrefix || '';
 
       fetch('/api/tables', { credentials: 'include' })
         .then((res) => (res.ok ? res.json() : []))
-        .then((data) => setTables(data))
+        .then((data) =>
+          setTables((Array.isArray(data) ? data : []).filter((t) =>
+            String(t).startsWith('transactions_'),
+          )),
+        )
         .catch(() => setTables([]));
 
       fetch(
@@ -98,6 +131,16 @@ export default function FormsManagement() {
         .then((res) => (res.ok ? res.json() : { rows: [] }))
         .then((data) => setTxnTypes(data.rows || []))
         .catch(() => setTxnTypes([]));
+
+      fetch('/api/display_fields?table=code_branches', { credentials: 'include' })
+        .then((res) => (res.ok ? res.json() : { idField: null, displayFields: [] }))
+        .then(setBranchCfg)
+        .catch(() => setBranchCfg({ idField: null, displayFields: [] }));
+
+      fetch('/api/display_fields?table=code_department', { credentials: 'include' })
+        .then((res) => (res.ok ? res.json() : { idField: null, displayFields: [] }))
+        .then(setDeptCfg)
+        .catch(() => setDeptCfg({ idField: null, displayFields: [] }));
 
       fetch(
         `/api/procedures${
@@ -487,149 +530,121 @@ export default function FormsManagement() {
       </div>
       {table && (
         <div>
-          <div style={{ marginBottom: '1rem' }}>
-            <select
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              style={{ marginRight: '0.5rem' }}
-            >
-              <option value="">-- select transaction --</option>
-              {names.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-            <input
-              type="text"
-              placeholder="Transaction name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-            <select
-              value={moduleKey}
-              onChange={(e) => setModuleKey(e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              <option value="">-- select module --</option>
-              {modules.map((m) => (
-                <option key={m.module_key} value={m.module_key}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-            <select
-              onChange={(e) => {
-                if (e.target.value) {
-                  handleDuplicate(e.target.value);
-                  e.target.value = '';
-                }
-              }}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              <option value="">Duplicate from existing</option>
-              {Object.keys(dupConfigs).map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-
-            {columns.length > 0 && (
-              <select
-                value={config.detectField}
-                onChange={(e) =>
-                  setConfig((c) => ({ ...c, detectField: e.target.value }))
-                }
-                style={{ marginLeft: '0.5rem' }}
-              >
-                <option value="">-- detection field --</option>
-                {columns.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
+          <div
+            style={{
+              marginBottom: '1rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem',
+            }}
+          >
+            <label>
+              Existing configuration:
+              <select value={name} onChange={(e) => setName(e.target.value)}>
+                <option value="">-- select transaction --</option>
+                {names.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
                   </option>
                 ))}
               </select>
-            )}
+            </label>
 
-            {columns.length > 0 && (
-              <select
-                value={config.transactionTypeField}
-                onChange={(e) =>
-                  setConfig((c) => ({ ...c, transactionTypeField: e.target.value }))
-                }
-                style={{ marginLeft: '0.5rem' }}
-              >
-                <option value="">-- transaction type field --</option>
-                {columns.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
+            <label>
+              Transaction name:
+              <input
+                type="text"
+                placeholder="Transaction name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </label>
+
+            <label>
+              Module:
+              <select value={moduleKey} onChange={(e) => setModuleKey(e.target.value)}>
+                <option value="">-- select module --</option>
+                {modules.map((m) => (
+                  <option key={m.module_key} value={m.module_key}>
+                    {m.label}
                   </option>
                 ))}
               </select>
-            )}
+            </label>
 
-            {txnTypes.length > 0 && (
+            <label>
+              Duplicate from existing:
               <select
-                value={config.transactionTypeValue}
                 onChange={(e) => {
-                  const val = e.target.value;
-                  setConfig((c) => ({ ...c, transactionTypeValue: val }));
-                  const found = txnTypes.find((t) => String(t.UITransType) === val);
-                  if (found && found.UITransTypeName) setName(found.UITransTypeName);
+                  if (e.target.value) {
+                    handleDuplicate(e.target.value);
+                    e.target.value = '';
+                  }
                 }}
-                style={{ marginLeft: '0.5rem' }}
               >
-                <option value="">-- select type --</option>
-                {txnTypes.map((t) => (
-                  <option key={t.UITransType} value={t.UITransType}>
-                    {t.UITransType} - {t.UITransTypeName}
+                <option value="">Duplicate from existing</option>
+                {Object.keys(dupConfigs).map((n) => (
+                  <option key={n} value={n}>
+                    {n}
                   </option>
                 ))}
               </select>
-            )}
+            </label>
 
-            {procedureOptions.length > 0 && (
-              <>
-                <span style={{ marginLeft: '0.5rem' }}>Procedures</span>
+            {columns.length > 0 && (
+              <label>
+                Transaction type field:
                 <select
-                  multiple
-                  value={config.procedures}
+                  value={config.transactionTypeField}
                   onChange={(e) =>
-                    setConfig((c) => ({
-                      ...c,
-                      procedures: Array.from(
-                        e.target.selectedOptions,
-                        (o) => o.value,
-                      ),
-                    }))
+                    setConfig((c) => ({ ...c, transactionTypeField: e.target.value }))
                   }
-                  style={{ marginLeft: '0.5rem' }}
                 >
-                  {procedureOptions.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
+                  <option value="">-- transaction type field --</option>
+                  {columns.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
                     </option>
                   ))}
                 </select>
-              </>
+              </label>
             )}
 
-            <input
-              type="text"
-              placeholder="Image folder"
-              value={config.imageFolder}
-              onChange={(e) =>
-                setConfig((c) => ({ ...c, imageFolder: e.target.value }))
-              }
-              style={{ marginLeft: '0.5rem' }}
-            />
-            
-            {name && (
-              <button onClick={handleDelete} style={{ marginLeft: '0.5rem' }}>
-                Delete
-              </button>
+            {txnTypes.length > 0 && (
+              <label>
+                Transaction type value:
+                <select
+                  value={config.transactionTypeValue}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setConfig((c) => ({ ...c, transactionTypeValue: val }));
+                    const found = txnTypes.find((t) => String(t.UITransType) === val);
+                    if (found && found.UITransTypeName) setName(found.UITransTypeName);
+                  }}
+                >
+                  <option value="">-- select type --</option>
+                  {txnTypes.map((t) => (
+                    <option key={t.UITransType} value={t.UITransType}>
+                      {t.UITransType} - {t.UITransTypeName}
+                    </option>
+                  ))}
+                </select>
+              </label>
             )}
+
+            <label>
+              Image folder:
+              <input
+                type="text"
+                placeholder="Image folder"
+                value={config.imageFolder}
+                onChange={(e) =>
+                  setConfig((c) => ({ ...c, imageFolder: e.target.value }))
+                }
+              />
+            </label>
+
+            {name && <button onClick={handleDelete}>Delete</button>}
           </div>
           <div className="table-container overflow-x-auto" style={{ maxHeight: '70vh' }}>
           <table style={{ borderCollapse: 'collapse', width: '100%' }}>
@@ -848,47 +863,109 @@ export default function FormsManagement() {
           <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'flex-start' }}>
             <label style={{ marginLeft: '1rem' }}>
               Allowed branches:{' '}
-              <select
-                multiple
-                size={8}
-                value={config.allowedBranches}
-                onChange={(e) =>
-                  setConfig((c) => ({
-                    ...c,
-                    allowedBranches: Array.from(e.target.selectedOptions, (o) => o.value),
-                  }))
-                }
-              >
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.code} - {b.name}
-                  </option>
-                ))}
-              </select>
-              <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedBranches: branches.map((b) => String(b.id)) }))}>All</button>
-              <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedBranches: [] }))}>None</button>
+              {branchOptions ? (
+                <>
+                  <select
+                    multiple
+                    size={8}
+                    value={config.allowedBranches}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        allowedBranches: Array.from(
+                          e.target.selectedOptions,
+                          (o) => o.value,
+                        ),
+                      }))
+                    }
+                  >
+                    {branchOptions.map((b) => (
+                      <option key={b.value} value={b.value}>
+                        {b.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setConfig((c) => ({
+                        ...c,
+                        allowedBranches: branchOptions.map((b) => b.value),
+                      }))
+                    }
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfig((c) => ({ ...c, allowedBranches: [] }))}
+                  >
+                    None
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button type="button" onClick={() => setShowBranchModal(true)}>
+                    Select...
+                  </button>
+                  {config.allowedBranches.length > 0 && (
+                    <div>{config.allowedBranches.join(', ')}</div>
+                  )}
+                </>
+              )}
             </label>
             <label style={{ marginLeft: '1rem' }}>
               Allowed departments:{' '}
-              <select
-                multiple
-                size={8}
-                value={config.allowedDepartments}
-                onChange={(e) =>
-                  setConfig((c) => ({
-                    ...c,
-                    allowedDepartments: Array.from(e.target.selectedOptions, (o) => o.value),
-                  }))
-                }
-              >
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.code} - {d.name}
-                  </option>
-                ))}
-              </select>
-              <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedDepartments: departments.map((d) => String(d.id)) }))}>All</button>
-              <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedDepartments: [] }))}>None</button>
+              {deptOptions ? (
+                <>
+                  <select
+                    multiple
+                    size={8}
+                    value={config.allowedDepartments}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        allowedDepartments: Array.from(
+                          e.target.selectedOptions,
+                          (o) => o.value,
+                        ),
+                      }))
+                    }
+                  >
+                    {deptOptions.map((d) => (
+                      <option key={d.value} value={d.value}>
+                        {d.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setConfig((c) => ({
+                        ...c,
+                        allowedDepartments: deptOptions.map((d) => d.value),
+                      }))
+                    }
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfig((c) => ({ ...c, allowedDepartments: [] }))}
+                  >
+                    None
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button type="button" onClick={() => setShowDeptModal(true)}>
+                    Select...
+                  </button>
+                  {config.allowedDepartments.length > 0 && (
+                    <div>{config.allowedDepartments.join(', ')}</div>
+                  )}
+                </>
+              )}
             </label>
             {procedureOptions.length > 0 && (
               <label style={{ marginLeft: '1rem' }}>
@@ -921,6 +998,24 @@ export default function FormsManagement() {
           </div>
         </div>
       )}
+      <TableSelectModal
+        table="code_branches"
+        visible={showBranchModal}
+        onClose={() => setShowBranchModal(false)}
+        onSelect={(ids) =>
+          setConfig((c) => ({ ...c, allowedBranches: ids.map(String) }))
+        }
+        idField={branchCfg.idField || 'id'}
+      />
+      <TableSelectModal
+        table="code_department"
+        visible={showDeptModal}
+        onClose={() => setShowDeptModal(false)}
+        onSelect={(ids) =>
+          setConfig((c) => ({ ...c, allowedDepartments: ids.map(String) }))
+        }
+        idField={deptCfg.idField || 'id'}
+      />
     </div>
   );
 }
