@@ -4,6 +4,7 @@ import {
   populateDefaultModules,
   populateRoleModulePermissions,
   populateCompanyModuleLicenses,
+  populateUserLevelModulePermissions,
   getEmploymentSession,
 } from "../../db/index.js";
 import { logActivity } from "../utils/activityLog.js";
@@ -67,6 +68,7 @@ export async function populatePermissions(req, res, next) {
     await populateDefaultModules();
     await populateCompanyModuleLicenses();
     await populateRoleModulePermissions();
+    await populateUserLevelModulePermissions();
     res.sendStatus(204);
   } catch (err) {
     next(err);
