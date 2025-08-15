@@ -4,6 +4,7 @@ import {
   populateDefaultModules,
   populateRoleModulePermissions,
   populateCompanyModuleLicenses,
+  getEmploymentSession,
 } from "../../db/index.js";
 import { logActivity } from "../utils/activityLog.js";
 
@@ -32,7 +33,11 @@ export async function saveModule(req, res, next) {
     logActivity(
       `saveModule attempt: ${req.user.email || req.user.id} -> ${moduleKey} origin=${origin}`,
     );
-    if (req.user.position !== 'admin') return res.sendStatus(403);
+    const session = await getEmploymentSession(
+      req.user.empid,
+      req.user.companyId,
+    );
+    if (!session?.permissions?.system_settings) return res.sendStatus(403);
     const label = req.body.label;
     const parentKey = req.body.parentKey || null;
     const showInSidebar = req.body.showInSidebar ?? true;
@@ -54,7 +59,11 @@ export async function saveModule(req, res, next) {
 
 export async function populatePermissions(req, res, next) {
   try {
-    if (req.user.position !== 'admin') return res.sendStatus(403);
+    const session = await getEmploymentSession(
+      req.user.empid,
+      req.user.companyId,
+    );
+    if (!session?.permissions?.system_settings) return res.sendStatus(403);
     await populateDefaultModules();
     await populateCompanyModuleLicenses();
     await populateRoleModulePermissions();

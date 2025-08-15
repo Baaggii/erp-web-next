@@ -50,6 +50,7 @@ export async function login(req, res, next) {
       empid: user.empid,
       position,
       companyId: company,
+      userLevel: session.user_level,
     };
     const token = jwtService.sign(payload);
     const refreshToken = jwtService.signRefresh(payload);
@@ -163,6 +164,7 @@ export async function refresh(req, res) {
       empid: user.empid,
       position,
       companyId: company,
+      userLevel: session.user_level,
     };
     const newAccess = jwtService.sign(newPayload);
     const newRefresh = jwtService.signRefresh(newPayload);

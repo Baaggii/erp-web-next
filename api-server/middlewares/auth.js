@@ -23,6 +23,7 @@ export function requireAuth(req, res, next) {
       empid: payload.empid,
       position: payload.position,
       companyId: payload.companyId,
+      userLevel: payload.userLevel,
     };
     const newAccess = jwtService.sign(base);
     const newRefresh = jwtService.signRefresh(base);

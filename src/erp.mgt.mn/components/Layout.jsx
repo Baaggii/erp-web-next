@@ -11,7 +11,7 @@ import { logout } from '../hooks/useAuth.jsx';
  *  - Main content area (faux window container)
  */
 export default function ERPLayout() {
-  const { user, setUser } = useContext(AuthContext);
+  const { user, session, setUser } = useContext(AuthContext);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -108,7 +108,7 @@ function Sidebar() {
         <NavLink to="/settings" className="menu-item" style={styles.menuItem} end>
           General
         </NavLink>
-        {user?.position === 'admin' && (
+        {session?.permissions?.system_settings && (
           <>
             <NavLink to="/settings/users" className="menu-item" style={styles.menuItem}>
               Users

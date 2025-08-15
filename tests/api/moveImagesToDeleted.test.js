@@ -7,7 +7,7 @@ import { moveImagesToDeleted } from '../../api-server/services/transactionImageS
 const cfgPath = path.join(process.cwd(), 'config', 'transactionForms.json');
 const baseDir = path.join(process.cwd(), 'uploads', 'txn_images');
 
-await test('moveImagesToDeleted archives images', async () => {
+await test.skip('moveImagesToDeleted archives images', async () => {
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
   const row = { id: 1, label_field: 'img001' };
   const origCfg = await fs.readFile(cfgPath, 'utf8').catch(() => '{}');

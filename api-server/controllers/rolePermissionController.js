@@ -18,7 +18,11 @@ export async function listPermissions(req, res, next) {
 
 export async function updatePermission(req, res, next) {
   try {
-    if (req.user.position !== 'admin') {
+    const session = await getEmploymentSession(
+      req.user.empid,
+      req.user.companyId,
+    );
+    if (!session?.permissions?.system_settings) {
       return res.sendStatus(403);
     }
     const { companyId, roleId: positionId, moduleKey, allowed } = req.body;
