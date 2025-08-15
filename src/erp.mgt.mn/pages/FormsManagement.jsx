@@ -4,6 +4,7 @@ import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { debugLog } from '../utils/debug.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
+import Modal from '../components/Modal.jsx';
 
 export default function FormsManagement() {
   const [tables, setTables] = useState([]);
@@ -18,6 +19,10 @@ export default function FormsManagement() {
   const [columns, setColumns] = useState([]);
   const [views, setViews] = useState([]);
   const [procedureOptions, setProcedureOptions] = useState([]);
+  const [displayConfigs, setDisplayConfigs] = useState({});
+  const [displayLoaded, setDisplayLoaded] = useState(false);
+  const [tableDisplayCfg, setTableDisplayCfg] = useState(null);
+  const [showDisplayModal, setShowDisplayModal] = useState(false);
   const generalConfig = useGeneralConfig();
   const modules = useModules();
   const procMap = useHeaderMappings(procedureOptions);
@@ -68,6 +73,17 @@ export default function FormsManagement() {
         .then((data) => setTables(data))
         .catch(() => setTables([]));
 
+      fetch('/api/display_fields', { credentials: 'include' })
+        .then((res) => (res.ok ? res.json() : {}))
+        .then((cfg) => {
+          setDisplayConfigs(cfg || {});
+          setDisplayLoaded(true);
+        })
+        .catch(() => {
+          setDisplayConfigs({});
+          setDisplayLoaded(true);
+        });
+
       fetch(
         `/api/views${viewPrefix ? `?prefix=${encodeURIComponent(viewPrefix)}` : ''}`,
         { credentials: 'include' },
@@ -116,6 +132,21 @@ export default function FormsManagement() {
         )
         .catch(() => setProcedureOptions([]));
     }, [generalConfig?.general?.reportProcPrefix, generalConfig?.general?.reportViewPrefix]);
+
+  useEffect(() => {
+    if (!table || !displayLoaded) {
+      setTableDisplayCfg(null);
+      return;
+    }
+    const cfg = displayConfigs[table];
+    if (cfg && Array.isArray(cfg.displayFields) && cfg.displayFields.length > 0) {
+      setTableDisplayCfg(cfg);
+      setShowDisplayModal(false);
+    } else {
+      setTableDisplayCfg(null);
+      setShowDisplayModal(true);
+    }
+  }, [table, displayConfigs, displayLoaded]);
 
   useEffect(() => {
     if (!table) return;
@@ -485,6 +516,17 @@ export default function FormsManagement() {
           ))}
         </select>
       </div>
+      {tableDisplayCfg && (
+        <div style={{ marginBottom: '1rem' }}>
+          <div>
+            <strong>ID Field:</strong> {tableDisplayCfg.idField || '(none)'}
+          </div>
+          <div>
+            <strong>Display Fields:</strong>{' '}
+            {tableDisplayCfg.displayFields.join(', ')}
+          </div>
+        </div>
+      )}
       {table && (
         <div>
           <div style={{ marginBottom: '1rem' }}>
@@ -921,6 +963,13 @@ export default function FormsManagement() {
           </div>
         </div>
       )}
+      <Modal
+        visible={showDisplayModal}
+        title="Display Fields Not Configured"
+        onClose={() => setShowDisplayModal(false)}
+      >
+        <p>No display field configuration found for this table.</p>
+      </Modal>
     </div>
   );
 }
