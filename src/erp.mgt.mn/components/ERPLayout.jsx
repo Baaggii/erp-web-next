@@ -214,8 +214,9 @@ function Sidebar({ onOpen, open, isMobile }) {
 
   const map = {};
   modules.forEach((m) => {
-    const isTxn = txnModules && txnModules.keys.has(m.module_key);
-    if (!isTxn && isFormsDescendant(m)) return;
+    const formsDesc = isFormsDescendant(m);
+    const isTxn = formsDesc && txnModules && txnModules.keys.has(m.module_key);
+    if (formsDesc && !isTxn) return;
     if (!m.show_in_sidebar) return;
     if (!isTxn && !licensed[m.module_key]) return;
     if (!isTxn && !perms[m.module_key]) return;
