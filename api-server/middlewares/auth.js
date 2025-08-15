@@ -21,8 +21,9 @@ export function requireAuth(req, res, next) {
     const base = {
       id: payload.id,
       empid: payload.empid,
-      role: payload.role,
+      position: payload.position,
       companyId: payload.companyId,
+      userLevel: payload.userLevel,
     };
     const newAccess = jwtService.sign(base);
     const newRefresh = jwtService.signRefresh(base);
@@ -58,7 +59,7 @@ export function requireAuth(req, res, next) {
   try {
     // Verify the JWT
     const payload = jwtService.verify(token);
-    req.user = payload; // { id, empid, role, companyId, iat, exp }
+    req.user = payload; // { id, empid, position, companyId, iat, exp }
     return next();
   } catch (err) {
     if (err.name === 'TokenExpiredError' && rToken) {

@@ -31,12 +31,11 @@ export default function Users() {
     const empid = prompt('EmpID?');
     if (!empid) return;
     const password = prompt('Password?');
-    const roleId = prompt('Role ID (1=admin,2=user)?', '2');
     const res = await fetch('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ empid, password, roleId })
+      body: JSON.stringify({ empid, password })
     });
     if (!res.ok) {
       let message = 'Failed to add user';
@@ -53,25 +52,7 @@ export default function Users() {
   }
 
   async function handleEdit(u) {
-    const roleId = prompt('Role ID?', u.role_id);
-    const res = await fetch(`/api/users/${u.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ roleId })
-    });
-    if (!res.ok) {
-      let message = 'Failed to update user';
-      try {
-        const data = await res.json();
-        if (data && data.message) message += `: ${data.message}`;
-      } catch {
-        // ignore json errors
-      }
-      alert(message);
-      return;
-    }
-    loadUsers();
+    alert('Editing users is not supported');
   }
 
   async function handleDelete(u) {
@@ -122,7 +103,7 @@ export default function Users() {
                 ID
               </th>
               <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
-                Үүрэг
+                Албан тушаал
               </th>
               <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                 Үйлдэл
@@ -140,7 +121,7 @@ export default function Users() {
                   {u.empid != null ? u.empid : ''}
                 </td>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
-                  {u.role != null ? u.role : ''}
+                  {u.position != null ? u.position : ''}
                 </td>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                   <button onClick={() => handleEdit(u)}>Засах</button>

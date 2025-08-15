@@ -6,5 +6,5 @@ UPDATE role_module_permissions SET company_id = 1 WHERE company_id IS NULL;
 
 ALTER TABLE role_module_permissions
   DROP PRIMARY KEY,
-  ADD PRIMARY KEY (company_id, role_id, module_key),
+  ADD PRIMARY KEY (company_id, position_id, module_key),
   ADD CONSTRAINT fk_rmp_company FOREIGN KEY (company_id) REFERENCES companies(id);

@@ -4,7 +4,7 @@ CREATE TABLE role_default_modules (
   module_key VARCHAR(50) NOT NULL,
   allowed TINYINT(1) DEFAULT 1,
   PRIMARY KEY (role_id, module_key),
-  FOREIGN KEY (role_id) REFERENCES user_roles(id),
+  FOREIGN KEY (role_id) REFERENCES code_position(position_id),
   FOREIGN KEY (module_key) REFERENCES modules(module_key)
 );
 
