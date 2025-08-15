@@ -7,7 +7,7 @@ import {
 
 export async function listPermissions(req, res, next) {
   try {
-    const positionId = req.query.roleId;
+    const positionId = req.query.positionId;
     const companyId = req.query.companyId;
     const perms = await listRoleModulePermissions(positionId, companyId);
     res.json(perms);
@@ -25,7 +25,7 @@ export async function updatePermission(req, res, next) {
     if (!session?.permissions?.system_settings) {
       return res.sendStatus(403);
     }
-    const { companyId, roleId: positionId, moduleKey, allowed } = req.body;
+    const { companyId, positionId, moduleKey, allowed } = req.body;
     await setRoleModulePermission(companyId, positionId, moduleKey, allowed);
     res.sendStatus(200);
   } catch (err) {

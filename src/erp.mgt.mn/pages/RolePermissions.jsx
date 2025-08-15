@@ -9,7 +9,7 @@ export default function RolePermissions() {
 
   function loadPerms(positionId) {
     const params = [];
-    if (positionId) params.push(`roleId=${encodeURIComponent(positionId)}`);
+    if (positionId) params.push(`positionId=${encodeURIComponent(positionId)}`);
     if (company) params.push(`companyId=${encodeURIComponent(company)}`);
     const url = params.length ? `/api/role_permissions?${params.join("&")}` : "/api/role_permissions";
     fetch(url, { credentials: "include" })
@@ -36,7 +36,7 @@ export default function RolePermissions() {
       credentials: "include",
       body: JSON.stringify({
         companyId: company,
-        roleId: p.role_id,
+        positionId: p.position_id,
         moduleKey: p.module_key,
         allowed: p.allowed ? 0 : 1,
       }),
@@ -88,7 +88,7 @@ export default function RolePermissions() {
           </thead>
           <tbody>
             {perms.map((p) => (
-              <tr key={p.role_id + "-" + p.module_key}>
+              <tr key={p.position_id + "-" + p.module_key}>
                 <td style={{ padding: "0.5rem", border: "1px solid #d1d5db" }}>
                   {p.role}
                 </td>
