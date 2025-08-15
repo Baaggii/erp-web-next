@@ -4,6 +4,7 @@ import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { debugLog } from '../utils/debug.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
+import TableSelectModal from '../components/TableSelectModal.jsx';
 
 export default function FormsManagement() {
   const [tables, setTables] = useState([]);
@@ -923,6 +924,24 @@ export default function FormsManagement() {
           </div>
         </div>
       )}
+      <TableSelectModal
+        table="code_branches"
+        visible={showBranchModal}
+        onClose={() => setShowBranchModal(false)}
+        onSelect={(ids) =>
+          setConfig((c) => ({ ...c, allowedBranches: ids.map(String) }))
+        }
+        idField={branchCfg.idField || 'id'}
+      />
+      <TableSelectModal
+        table="code_department"
+        visible={showDeptModal}
+        onClose={() => setShowDeptModal(false)}
+        onSelect={(ids) =>
+          setConfig((c) => ({ ...c, allowedDepartments: ids.map(String) }))
+        }
+        idField={deptCfg.idField || 'id'}
+      />
     </div>
   );
 }
