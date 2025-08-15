@@ -5,7 +5,6 @@ import './utils/csrfFetch.js';
 import './utils/debug.js';
 import { setupDebugHooks } from './utils/debugHooks.js';
 import './index.css';
-import './legacyModals.js';
 
 setupDebugHooks();
 
