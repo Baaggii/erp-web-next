@@ -1,5 +1,5 @@
 -- Seed permissions for all current modules
-INSERT INTO role_module_permissions (role_id, module_key, allowed) VALUES
+INSERT INTO role_module_permissions (position_id, module_key, allowed) VALUES
   (1, 'dashboard', 1),
   (1, 'forms', 1),
   (1, 'reports', 1),

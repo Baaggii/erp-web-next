@@ -29,7 +29,7 @@ test('saveModule blocks updates from form-management origin', async () => {
     body: { moduleKey: 'test', label: 'Test' },
     headers: { 'x-origin': 'form-management' },
     get(name) { return this.headers[name.toLowerCase()]; },
-    user: { role: 'admin', email: 'a@example.com' },
+    user: { position: 'admin', email: 'a@example.com' },
   };
   const res = createRes();
   await controller.saveModule(req, res, () => {});
@@ -47,7 +47,7 @@ test('saveModule allows admin update', async () => {
     body: { label: 'X' },
     headers: {},
     get(name) { return this.headers[name.toLowerCase()]; },
-    user: { role: 'admin', email: 'b@example.com' },
+    user: { position: 'admin', email: 'b@example.com' },
   };
   const res = createRes();
   await controller.saveModule(req, res, () => {});

@@ -156,7 +156,7 @@ export async function getRowReferences(req, res, next) {
 
 export async function saveColumnLabels(req, res, next) {
   try {
-    if (req.user.role !== 'admin') return res.sendStatus(403);
+    if (req.user.position !== 'admin') return res.sendStatus(403);
     const labels = req.body.labels || {};
     await addMappings(labels);
     res.sendStatus(204);

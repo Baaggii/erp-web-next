@@ -508,7 +508,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       <div>
         <h4>
           {procLabel}
-          {user?.role === 'admin' && generalConfig.general?.editLabelsEnabled && (
+          {user?.position === 'admin' && generalConfig.general?.editLabelsEnabled && (
             <button
               onClick={handleEditProcLabel}
               style={{ marginLeft: '0.5rem' }}
@@ -527,7 +527,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     <div style={{ marginTop: '1rem' }}>
       <h4>
         {procLabel}
-        {user?.role === 'admin' && generalConfig.general?.editLabelsEnabled && (
+        {user?.position === 'admin' && generalConfig.general?.editLabelsEnabled && (
           <button onClick={handleEditProcLabel} style={{ marginLeft: '0.5rem' }}>
             Edit label
           </button>
@@ -789,7 +789,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
           )}
         </Modal>
       )}
-      {user?.role === 'admin' && generalConfig.general?.editLabelsEnabled && (
+      {user?.position === 'admin' && generalConfig.general?.editLabelsEnabled && (
         <button
           onClick={() => {
             const map = {};
