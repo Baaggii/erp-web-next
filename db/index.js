@@ -307,6 +307,58 @@ export async function getUserLevelActions(userLevelId) {
   return perms;
 }
 
+export async function listActionGroups() {
+  const [rows] = await pool.query(
+    `SELECT action, ul_module_key, function_name
+       FROM code_userlevel_settings
+       WHERE action IS NOT NULL`,
+  );
+  const groups = { modules: new Set(), buttons: new Set(), functions: new Set(), api: new Set() };
+  for (const { action, ul_module_key: mod, function_name: fn } of rows) {
+    if (action === 'module_key' && mod) groups.modules.add(mod);
+    else if (action === 'button' && fn) groups.buttons.add(fn);
+    else if (action === 'function' && fn) groups.functions.add(fn);
+    else if (action === 'API' && fn) groups.api.add(fn);
+  }
+  return {
+    modules: Array.from(groups.modules),
+    buttons: Array.from(groups.buttons),
+    functions: Array.from(groups.functions),
+    api: Array.from(groups.api),
+  };
+}
+
+export async function setUserLevelActions(userLevelId, { modules = [], buttons = [], functions = [], api = [] }) {
+  await pool.query(
+    'DELETE FROM user_level_permissions WHERE user_level_id = ? AND action IS NOT NULL',
+    [userLevelId],
+  );
+  const values = [];
+  const params = [];
+  for (const m of modules) {
+    values.push('(?,\'module_key\',?,NULL)');
+    params.push(userLevelId, m);
+  }
+  for (const b of buttons) {
+    values.push('(?,\'button\',NULL,?)');
+    params.push(userLevelId, b);
+  }
+  for (const f of functions) {
+    values.push('(?,\'function\',NULL,?)');
+    params.push(userLevelId, f);
+  }
+  for (const a of api) {
+    values.push('(?,\'API\',NULL,?)');
+    params.push(userLevelId, a);
+  }
+  if (values.length) {
+    const sql =
+      'INSERT INTO user_level_permissions (user_level_id, action, ul_module_key, function_name) VALUES ' +
+      values.join(',');
+    await pool.query(sql, params);
+  }
+}
+
 /**
  * List all users
  */
