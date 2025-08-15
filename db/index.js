@@ -213,6 +213,7 @@ export async function getEmploymentSessions(empid) {
         p.position_name AS position,
         ${empName} AS employee_name,
         e.employment_user_level AS user_level,
+        ul.name AS user_level_name,
         ul.new_records,
         ul.edit_delete_request,
         ul.edit_records,
@@ -238,7 +239,7 @@ export async function getEmploymentSessions(empid) {
      LEFT JOIN code_position p ON e.employment_position_id = p.position_id
      LEFT JOIN code_userlevel ul ON e.employment_user_level = ul.userlevel_id
      WHERE e.employment_emp_id = ?
-     ORDER BY e.id DESC`,
+     ORDER BY company_name, department_name, branch_name, user_level_name`,
     [empid],
   );
   return rows.map(mapEmploymentRow);
@@ -279,6 +280,7 @@ export async function getEmploymentSession(empid, companyId) {
           p.position_name AS position,
           ${empName} AS employee_name,
           e.employment_user_level AS user_level,
+          ul.name AS user_level_name,
           ul.new_records,
           ul.edit_delete_request,
           ul.edit_records,
@@ -304,7 +306,7 @@ export async function getEmploymentSession(empid, companyId) {
        LEFT JOIN code_position p ON e.employment_position_id = p.position_id
        LEFT JOIN code_userlevel ul ON e.employment_user_level = ul.userlevel_id
        WHERE e.employment_emp_id = ? AND e.employment_company_id = ?
-       ORDER BY e.id DESC
+       ORDER BY company_name, department_name, branch_name, user_level_name
        LIMIT 1`,
       [empid, companyId],
     );
