@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useModules } from '../hooks/useModules.js';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { debugLog } from '../utils/debug.js';
@@ -20,10 +20,6 @@ export default function FormsManagement() {
   const [procedureOptions, setProcedureOptions] = useState([]);
   const [branchCfg, setBranchCfg] = useState({ idField: null, displayFields: [] });
   const [deptCfg, setDeptCfg] = useState({ idField: null, displayFields: [] });
-  const [showBranchModal, setShowBranchModal] = useState(false);
-  const [showDeptModal, setShowDeptModal] = useState(false);
-  const branchAutoOpened = useRef(false);
-  const deptAutoOpened = useRef(false);
   const generalConfig = useGeneralConfig();
   const modules = useModules();
   const procMap = useHeaderMappings(procedureOptions);
@@ -33,6 +29,7 @@ export default function FormsManagement() {
   useEffect(() => {
     debugLog('Component mounted: FormsManagement');
   }, []);
+
   const [config, setConfig] = useState({
     visibleFields: [],
     requiredFields: [],
@@ -66,42 +63,36 @@ export default function FormsManagement() {
   });
 
   const branchOptions = useMemo(() => {
-    if (!branchCfg?.idField || !branchCfg.displayFields?.length) return null;
+    const idField = branchCfg?.idField || 'id';
     return branches.map((b) => {
-      const val = b[branchCfg.idField] ?? b.id;
-      const label = branchCfg.displayFields
-        .map((f) => b[f])
-        .filter((v) => v !== undefined && v !== null)
-        .join(' - ');
+      const val = b[idField] ?? b.id;
+      const label = branchCfg?.displayFields?.length
+        ? branchCfg.displayFields
+            .map((f) => b[f])
+            .filter((v) => v !== undefined && v !== null)
+            .join(' - ')
+        : Object.values(b)
+            .filter((v) => v !== undefined && v !== null)
+            .join(' - ');
       return { value: String(val), label };
     });
   }, [branches, branchCfg]);
 
   const deptOptions = useMemo(() => {
-    if (!deptCfg?.idField || !deptCfg.displayFields?.length) return null;
+    const idField = deptCfg?.idField || 'id';
     return departments.map((d) => {
-      const val = d[deptCfg.idField] ?? d.id;
-      const label = deptCfg.displayFields
-        .map((f) => d[f])
-        .filter((v) => v !== undefined && v !== null)
-        .join(' - ');
+      const val = d[idField] ?? d.id;
+      const label = deptCfg?.displayFields?.length
+        ? deptCfg.displayFields
+            .map((f) => d[f])
+            .filter((v) => v !== undefined && v !== null)
+            .join(' - ')
+        : Object.values(d)
+            .filter((v) => v !== undefined && v !== null)
+            .join(' - ');
       return { value: String(val), label };
     });
   }, [departments, deptCfg]);
-
-  useEffect(() => {
-    if (!branchOptions && !branchAutoOpened.current) {
-      setShowBranchModal(true);
-      branchAutoOpened.current = true;
-    }
-  }, [branchOptions]);
-
-  useEffect(() => {
-    if (!deptOptions && !deptAutoOpened.current) {
-      setShowDeptModal(true);
-      deptAutoOpened.current = true;
-    }
-  }, [deptOptions]);
 
     useEffect(() => {
       const procPrefix = generalConfig?.general?.reportProcPrefix || '';
@@ -824,109 +815,83 @@ export default function FormsManagement() {
           <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'flex-start' }}>
             <label style={{ marginLeft: '1rem' }}>
               Allowed branches:{' '}
-              {branchOptions ? (
-                <>
-                  <select
-                    multiple
-                    size={8}
-                    value={config.allowedBranches}
-                    onChange={(e) =>
-                      setConfig((c) => ({
-                        ...c,
-                        allowedBranches: Array.from(
-                          e.target.selectedOptions,
-                          (o) => o.value,
-                        ),
-                      }))
-                    }
-                  >
-                    {branchOptions.map((b) => (
-                      <option key={b.value} value={b.value}>
-                        {b.label}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setConfig((c) => ({
-                        ...c,
-                        allowedBranches: branchOptions.map((b) => b.value),
-                      }))
-                    }
-                  >
-                    All
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfig((c) => ({ ...c, allowedBranches: [] }))}
-                  >
-                    None
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button type="button" onClick={() => setShowBranchModal(true)}>
-                    Select...
-                  </button>
-                  {config.allowedBranches.length > 0 && (
-                    <div>{config.allowedBranches.join(', ')}</div>
-                  )}
-                </>
-              )}
+              <select
+                multiple
+                size={8}
+                value={config.allowedBranches}
+                onChange={(e) =>
+                  setConfig((c) => ({
+                    ...c,
+                    allowedBranches: Array.from(
+                      e.target.selectedOptions,
+                      (o) => o.value,
+                    ),
+                  }))
+                }
+              >
+                {branchOptions.map((b) => (
+                  <option key={b.value} value={b.value}>
+                    {b.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() =>
+                  setConfig((c) => ({
+                    ...c,
+                    allowedBranches: branchOptions.map((b) => b.value),
+                  }))
+                }
+              >
+                All
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfig((c) => ({ ...c, allowedBranches: [] }))}
+              >
+                None
+              </button>
             </label>
             <label style={{ marginLeft: '1rem' }}>
               Allowed departments:{' '}
-              {deptOptions ? (
-                <>
-                  <select
-                    multiple
-                    size={8}
-                    value={config.allowedDepartments}
-                    onChange={(e) =>
-                      setConfig((c) => ({
-                        ...c,
-                        allowedDepartments: Array.from(
-                          e.target.selectedOptions,
-                          (o) => o.value,
-                        ),
-                      }))
-                    }
-                  >
-                    {deptOptions.map((d) => (
-                      <option key={d.value} value={d.value}>
-                        {d.label}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setConfig((c) => ({
-                        ...c,
-                        allowedDepartments: deptOptions.map((d) => d.value),
-                      }))
-                    }
-                  >
-                    All
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfig((c) => ({ ...c, allowedDepartments: [] }))}
-                  >
-                    None
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button type="button" onClick={() => setShowDeptModal(true)}>
-                    Select...
-                  </button>
-                  {config.allowedDepartments.length > 0 && (
-                    <div>{config.allowedDepartments.join(', ')}</div>
-                  )}
-                </>
-              )}
+              <select
+                multiple
+                size={8}
+                value={config.allowedDepartments}
+                onChange={(e) =>
+                  setConfig((c) => ({
+                    ...c,
+                    allowedDepartments: Array.from(
+                      e.target.selectedOptions,
+                      (o) => o.value,
+                    ),
+                  }))
+                }
+              >
+                {deptOptions.map((d) => (
+                  <option key={d.value} value={d.value}>
+                    {d.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() =>
+                  setConfig((c) => ({
+                    ...c,
+                    allowedDepartments: deptOptions.map((d) => d.value),
+                  }))
+                }
+              >
+                All
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfig((c) => ({ ...c, allowedDepartments: [] }))}
+              >
+                None
+              </button>
             </label>
             {procedureOptions.length > 0 && (
               <label style={{ marginLeft: '1rem' }}>
