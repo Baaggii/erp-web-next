@@ -620,6 +620,18 @@ export async function upsertModule(
        show_in_header = VALUES(show_in_header)`,
     [moduleKey, label, parentKey, showInSidebar ? 1 : 0, showInHeader ? 1 : 0],
   );
+  await pool.query(
+    `INSERT INTO user_level_permissions (user_level_id, action, ul_module_key)
+     SELECT ul.userlevel_id, 'module_key', ?
+       FROM user_levels ul
+       WHERE NOT EXISTS (
+         SELECT 1 FROM user_level_permissions up
+          WHERE up.user_level_id = ul.userlevel_id
+            AND up.action = 'module_key'
+            AND up.ul_module_key = ?
+       )`,
+    [moduleKey, moduleKey],
+  );
   return { moduleKey, label, parentKey, showInSidebar, showInHeader };
 }
 
@@ -703,6 +715,21 @@ export async function populateCompanyModuleLicenses() {
      SELECT c.id AS company_id, m.module_key, 0
        FROM companies c
        CROSS JOIN modules m`,
+  );
+}
+
+export async function populateUserLevelModulePermissions() {
+  await pool.query(
+    `INSERT INTO user_level_permissions (user_level_id, action, ul_module_key)
+     SELECT ul.userlevel_id, 'module_key', m.module_key
+       FROM user_levels ul
+       CROSS JOIN modules m
+       WHERE NOT EXISTS (
+         SELECT 1 FROM user_level_permissions up
+          WHERE up.user_level_id = ul.userlevel_id
+            AND up.action = 'module_key'
+            AND up.ul_module_key = m.module_key
+       )`,
   );
 }
 
