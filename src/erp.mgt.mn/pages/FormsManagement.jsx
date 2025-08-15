@@ -4,6 +4,7 @@ import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { debugLog } from '../utils/debug.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
+import Modal from '../components/Modal.jsx';
 
 export default function FormsManagement() {
   const [tables, setTables] = useState([]);
@@ -18,6 +19,11 @@ export default function FormsManagement() {
   const [columns, setColumns] = useState([]);
   const [views, setViews] = useState([]);
   const [procedureOptions, setProcedureOptions] = useState([]);
+  const [displayConfigs, setDisplayConfigs] = useState({});
+  const [displayLoaded, setDisplayLoaded] = useState(false);
+  const [tableDisplayCfg, setTableDisplayCfg] = useState(null);
+  const [showDisplayModal, setShowDisplayModal] = useState(false);
+  const [missingTable, setMissingTable] = useState('');
   const generalConfig = useGeneralConfig();
   const modules = useModules();
   const procMap = useHeaderMappings(procedureOptions);
@@ -53,7 +59,6 @@ export default function FormsManagement() {
     viewSource: {},
     transactionTypeField: '',
     transactionTypeValue: '',
-    detectFields: [],
     allowedBranches: [],
     allowedDepartments: [],
     procedures: [],
@@ -65,8 +70,25 @@ export default function FormsManagement() {
 
       fetch('/api/tables', { credentials: 'include' })
         .then((res) => (res.ok ? res.json() : []))
-        .then((data) => setTables(data))
+        .then((data) =>
+          setTables(
+            Array.isArray(data)
+              ? data.filter((t) => String(t).startsWith('transactions_'))
+              : [],
+          ),
+        )
         .catch(() => setTables([]));
+
+      fetch('/api/display_fields', { credentials: 'include' })
+        .then((res) => (res.ok ? res.json() : {}))
+        .then((cfg) => {
+          setDisplayConfigs(cfg || {});
+          setDisplayLoaded(true);
+        })
+        .catch(() => {
+          setDisplayConfigs({});
+          setDisplayLoaded(true);
+        });
 
       fetch(
         `/api/views${viewPrefix ? `?prefix=${encodeURIComponent(viewPrefix)}` : ''}`,
@@ -118,7 +140,43 @@ export default function FormsManagement() {
     }, [generalConfig?.general?.reportProcPrefix, generalConfig?.general?.reportViewPrefix]);
 
   useEffect(() => {
-    if (!table) return;
+    if (!table || !displayLoaded) {
+      setTableDisplayCfg(null);
+      return;
+    }
+
+    const cfg = displayConfigs[table];
+    if (cfg && Array.isArray(cfg.displayFields) && cfg.displayFields.length > 0) {
+      setTableDisplayCfg(cfg);
+    } else {
+      setTableDisplayCfg(null);
+      setMissingTable(table);
+      setShowDisplayModal(true);
+      return;
+    }
+
+    const lookupTables = ['code_branches', 'code_department'];
+    if (txnTypes.length > 0) lookupTables.push('code_transaction');
+    for (const t of lookupTables) {
+      const c = displayConfigs[t];
+      if (!c || !Array.isArray(c.displayFields) || c.displayFields.length === 0) {
+        setMissingTable(t);
+        setShowDisplayModal(true);
+        return;
+      }
+    }
+
+    setShowDisplayModal(false);
+    setMissingTable('');
+  }, [table, displayConfigs, displayLoaded, txnTypes.length]);
+
+  useEffect(() => {
+    if (!table || !tableDisplayCfg) {
+      setColumns([]);
+      setNames([]);
+      setDupConfigs({});
+      return;
+    }
     fetch(`/api/tables/${encodeURIComponent(table)}/columns`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : []))
       .then((cols) => setColumns(cols.map((c) => c.name || c)))
@@ -162,7 +220,6 @@ export default function FormsManagement() {
             viewSource: filtered[name].viewSource || {},
             transactionTypeField: filtered[name].transactionTypeField || '',
             transactionTypeValue: filtered[name].transactionTypeValue || '',
-            detectFields: filtered[name].detectFields || [],
             allowedBranches: (filtered[name].allowedBranches || []).map(String),
             allowedDepartments: (filtered[name].allowedDepartments || []).map(String),
             procedures: filtered[name].procedures || [],
@@ -195,7 +252,6 @@ export default function FormsManagement() {
             viewSource: {},
             transactionTypeField: '',
             transactionTypeValue: '',
-            detectFields: [],
             allowedBranches: [],
             allowedDepartments: [],
             procedures: [],
@@ -231,17 +287,16 @@ export default function FormsManagement() {
           viewSource: {},
           transactionTypeField: '',
           transactionTypeValue: '',
-          detectFields: [],
           allowedBranches: [],
           allowedDepartments: [],
           procedures: [],
         });
         setModuleKey('');
       });
-  }, [table, moduleKey]);
+  }, [table, moduleKey, tableDisplayCfg]);
 
   useEffect(() => {
-    if (!table || !name || !names.includes(name)) return;
+    if (!table || !tableDisplayCfg || !name || !names.includes(name)) return;
     fetch(`/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
       .then((cfg) => {
@@ -272,7 +327,6 @@ export default function FormsManagement() {
           viewSource: cfg.viewSource || {},
           transactionTypeField: cfg.transactionTypeField || '',
           transactionTypeValue: cfg.transactionTypeValue || '',
-          detectFields: cfg.detectFields || [],
           allowedBranches: (cfg.allowedBranches || []).map(String),
           allowedDepartments: (cfg.allowedDepartments || []).map(String),
           procedures: cfg.procedures || [],
@@ -305,14 +359,13 @@ export default function FormsManagement() {
           viewSource: {},
           transactionTypeField: '',
           transactionTypeValue: '',
-          detectFields: [],
           allowedBranches: [],
           allowedDepartments: [],
           procedures: [],
         });
         setModuleKey('');
       });
-  }, [table, name, names]);
+  }, [table, name, names, tableDisplayCfg]);
 
   // If a user selects a predefined transaction name, the associated module
   // parent key will be applied automatically based on the stored
@@ -369,8 +422,8 @@ export default function FormsManagement() {
     const cfg = {
       ...config,
       moduleKey,
-      allowedBranches: config.allowedBranches.map((b) => Number(b)).filter((b) => !Number.isNaN(b)),
-      allowedDepartments: config.allowedDepartments.map((d) => Number(d)).filter((d) => !Number.isNaN(d)),
+      allowedBranches: config.allowedBranches.map((b) => String(b)),
+      allowedDepartments: config.allowedDepartments.map((d) => String(d)),
       transactionTypeValue: config.transactionTypeValue
         ? String(config.transactionTypeValue)
         : '',
@@ -430,7 +483,6 @@ export default function FormsManagement() {
       viewSource: {},
       transactionTypeField: '',
       transactionTypeValue: '',
-      detectFields: [],
       allowedBranches: [],
       allowedDepartments: [],
       procedures: [],
@@ -465,7 +517,6 @@ export default function FormsManagement() {
       viewSource: cfg.viewSource || {},
       transactionTypeField: cfg.transactionTypeField || '',
       transactionTypeValue: cfg.transactionTypeValue || '',
-      detectFields: cfg.detectFields || [],
       allowedBranches: (cfg.allowedBranches || []).map(String),
       allowedDepartments: (cfg.allowedDepartments || []).map(String),
       procedures: cfg.procedures || [],
@@ -485,14 +536,29 @@ export default function FormsManagement() {
           ))}
         </select>
       </div>
-      {table && (
+      {tableDisplayCfg && (
+        <div style={{ marginBottom: '1rem' }}>
+          <div>
+            <strong>ID Field:</strong> {tableDisplayCfg.idField || '(none)'}
+          </div>
+          <div>
+            <strong>Display Fields:</strong>{' '}
+            {tableDisplayCfg.displayFields.join(', ')}
+          </div>
+        </div>
+      )}
+      {table && tableDisplayCfg && (
         <div>
-          <div style={{ marginBottom: '1rem' }}>
-            <select
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              style={{ marginRight: '0.5rem' }}
-            >
+          <div
+            style={{
+              marginBottom: '1rem',
+              display: 'flex',
+              flexDirection: 'column',
+              maxWidth: '20rem',
+              gap: '0.5rem',
+            }}
+          >
+            <select value={name} onChange={(e) => setName(e.target.value)}>
               <option value="">-- select transaction --</option>
               {names.map((n) => (
                 <option key={n} value={n}>
@@ -506,11 +572,7 @@ export default function FormsManagement() {
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
-            <select
-              value={moduleKey}
-              onChange={(e) => setModuleKey(e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
-            >
+            <select value={moduleKey} onChange={(e) => setModuleKey(e.target.value)}>
               <option value="">-- select module --</option>
               {modules.map((m) => (
                 <option key={m.module_key} value={m.module_key}>
@@ -525,7 +587,6 @@ export default function FormsManagement() {
                   e.target.value = '';
                 }
               }}
-              style={{ marginLeft: '0.5rem' }}
             >
               <option value="">Duplicate from existing</option>
               {Object.keys(dupConfigs).map((n) => (
@@ -534,31 +595,12 @@ export default function FormsManagement() {
                 </option>
               ))}
             </select>
-
-            {columns.length > 0 && (
-              <select
-                value={config.detectField}
-                onChange={(e) =>
-                  setConfig((c) => ({ ...c, detectField: e.target.value }))
-                }
-                style={{ marginLeft: '0.5rem' }}
-              >
-                <option value="">-- detection field --</option>
-                {columns.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            )}
-
             {columns.length > 0 && (
               <select
                 value={config.transactionTypeField}
                 onChange={(e) =>
                   setConfig((c) => ({ ...c, transactionTypeField: e.target.value }))
                 }
-                style={{ marginLeft: '0.5rem' }}
               >
                 <option value="">-- transaction type field --</option>
                 {columns.map((c) => (
@@ -568,53 +610,35 @@ export default function FormsManagement() {
                 ))}
               </select>
             )}
-
-            {txnTypes.length > 0 && (
+            {txnTypes.length > 0 && displayConfigs.code_transaction && (
               <select
                 value={config.transactionTypeValue}
                 onChange={(e) => {
                   const val = e.target.value;
                   setConfig((c) => ({ ...c, transactionTypeValue: val }));
-                  const found = txnTypes.find((t) => String(t.UITransType) === val);
-                  if (found && found.UITransTypeName) setName(found.UITransTypeName);
+                  const cfg = displayConfigs.code_transaction;
+                  const idField = cfg.idField;
+                  const found = txnTypes.find((t) => String(t[idField]) === val);
+                  if (found) {
+                    const nameField = cfg.displayFields[0];
+                    if (nameField && found[nameField]) setName(found[nameField]);
+                  }
                 }}
-                style={{ marginLeft: '0.5rem' }}
               >
                 <option value="">-- select type --</option>
-                {txnTypes.map((t) => (
-                  <option key={t.UITransType} value={t.UITransType}>
-                    {t.UITransType} - {t.UITransTypeName}
-                  </option>
-                ))}
+                {txnTypes.map((t) => {
+                  const cfg = displayConfigs.code_transaction;
+                  const idField = cfg.idField;
+                  const labelParts = cfg.displayFields.map((f) => t[f]);
+                  const val = t[idField];
+                  return (
+                    <option key={val} value={val}>
+                      {labelParts.filter(Boolean).join(' - ')}
+                    </option>
+                  );
+                })}
               </select>
             )}
-
-            {procedureOptions.length > 0 && (
-              <>
-                <span style={{ marginLeft: '0.5rem' }}>Procedures</span>
-                <select
-                  multiple
-                  value={config.procedures}
-                  onChange={(e) =>
-                    setConfig((c) => ({
-                      ...c,
-                      procedures: Array.from(
-                        e.target.selectedOptions,
-                        (o) => o.value,
-                      ),
-                    }))
-                  }
-                  style={{ marginLeft: '0.5rem' }}
-                >
-                  {procedureOptions.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </>
-            )}
-
             <input
               type="text"
               placeholder="Image folder"
@@ -622,14 +646,8 @@ export default function FormsManagement() {
               onChange={(e) =>
                 setConfig((c) => ({ ...c, imageFolder: e.target.value }))
               }
-              style={{ marginLeft: '0.5rem' }}
             />
-            
-            {name && (
-              <button onClick={handleDelete} style={{ marginLeft: '0.5rem' }}>
-                Delete
-              </button>
-            )}
+            {name && <button onClick={handleDelete}>Delete</button>}
           </div>
           <div className="table-container overflow-x-auto" style={{ maxHeight: '70vh' }}>
           <table style={{ borderCollapse: 'collapse', width: '100%' }}>
@@ -640,7 +658,6 @@ export default function FormsManagement() {
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Required</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Default</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Editable</th>
-                <th style={{ border: '1px solid #ccc', padding: '4px' }}>Detect</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>UserID</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>BranchID</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>DepartmentID</th>
@@ -692,13 +709,6 @@ export default function FormsManagement() {
                       type="checkbox"
                       checked={config.editableDefaultFields.includes(col)}
                       onChange={() => toggleEditable(col)}
-                    />
-                  </td>
-                  <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={config.detectFields.includes(col)}
-                      onChange={() => toggleFieldList(col, 'detectFields')}
                     />
                   </td>
                   <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
@@ -845,53 +855,99 @@ export default function FormsManagement() {
             </tbody>
           </table>
           </div>
-          <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'flex-start' }}>
-            <label style={{ marginLeft: '1rem' }}>
-              Allowed branches:{' '}
-              <select
-                multiple
-                size={8}
-                value={config.allowedBranches}
-                onChange={(e) =>
-                  setConfig((c) => ({
-                    ...c,
-                    allowedBranches: Array.from(e.target.selectedOptions, (o) => o.value),
-                  }))
-                }
-              >
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.code} - {b.name}
-                  </option>
-                ))}
-              </select>
-              <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedBranches: branches.map((b) => String(b.id)) }))}>All</button>
-              <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedBranches: [] }))}>None</button>
-            </label>
-            <label style={{ marginLeft: '1rem' }}>
-              Allowed departments:{' '}
-              <select
-                multiple
-                size={8}
-                value={config.allowedDepartments}
-                onChange={(e) =>
-                  setConfig((c) => ({
-                    ...c,
-                    allowedDepartments: Array.from(e.target.selectedOptions, (o) => o.value),
-                  }))
-                }
-              >
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.code} - {d.name}
-                  </option>
-                ))}
-              </select>
-              <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedDepartments: departments.map((d) => String(d.id)) }))}>All</button>
-              <button type="button" onClick={() => setConfig((c) => ({ ...c, allowedDepartments: [] }))}>None</button>
-            </label>
+          <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {displayConfigs.code_branches && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                Allowed branches:{' '}
+                <select
+                  multiple
+                  size={8}
+                  value={config.allowedBranches}
+                  onChange={(e) =>
+                    setConfig((c) => ({
+                      ...c,
+                      allowedBranches: Array.from(e.target.selectedOptions, (o) => o.value),
+                    }))
+                  }
+                >
+                  {branches.map((b) => {
+                    const cfg = displayConfigs.code_branches;
+                    const idField = cfg.idField;
+                    const labelParts = cfg.displayFields.map((f) => b[f]);
+                    const val = b[idField];
+                    return (
+                      <option key={val} value={val}>
+                        {labelParts.filter(Boolean).join(' - ')}
+                      </option>
+                    );
+                  })}
+                </select>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setConfig((c) => ({
+                      ...c,
+                      allowedBranches: branches.map((b) => String(b[displayConfigs.code_branches.idField])),
+                    }))
+                  }
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfig((c) => ({ ...c, allowedBranches: [] }))}
+                >
+                  None
+                </button>
+              </label>
+            )}
+            {displayConfigs.code_department && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                Allowed departments:{' '}
+                <select
+                  multiple
+                  size={8}
+                  value={config.allowedDepartments}
+                  onChange={(e) =>
+                    setConfig((c) => ({
+                      ...c,
+                      allowedDepartments: Array.from(e.target.selectedOptions, (o) => o.value),
+                    }))
+                  }
+                >
+                  {departments.map((d) => {
+                    const cfg = displayConfigs.code_department;
+                    const idField = cfg.idField;
+                    const labelParts = cfg.displayFields.map((f) => d[f]);
+                    const val = d[idField];
+                    return (
+                      <option key={val} value={val}>
+                        {labelParts.filter(Boolean).join(' - ')}
+                      </option>
+                    );
+                  })}
+                </select>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setConfig((c) => ({
+                      ...c,
+                      allowedDepartments: departments.map((d) => String(d[displayConfigs.code_department.idField])),
+                    }))
+                  }
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfig((c) => ({ ...c, allowedDepartments: [] }))}
+                >
+                  None
+                </button>
+              </label>
+            )}
             {procedureOptions.length > 0 && (
-              <label style={{ marginLeft: '1rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 Procedures:{' '}
                 <select
                   multiple
@@ -921,6 +977,13 @@ export default function FormsManagement() {
           </div>
         </div>
       )}
+      <Modal
+        visible={showDisplayModal}
+        title="Display Fields Not Configured"
+        onClose={() => setShowDisplayModal(false)}
+      >
+        <p>No display field configuration found for {missingTable}.</p>
+      </Modal>
     </div>
   );
 }
