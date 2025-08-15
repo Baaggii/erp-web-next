@@ -12,7 +12,7 @@ export async function listLicenses(req, res, next) {
 
 export async function updateLicense(req, res, next) {
   try {
-    if (req.user.role !== 'admin') {
+    if (req.user.position !== 'admin') {
       return res.sendStatus(403);
     }
     const { companyId, moduleKey, licensed } = req.body;

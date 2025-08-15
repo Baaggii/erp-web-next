@@ -17,20 +17,20 @@ module_hierarchy AS (
 )
 INSERT INTO role_default_modules (role_id, module_key, allowed)
 SELECT * FROM (
-  SELECT ur.id AS role_id, h.module_key,
+  SELECT cp.position_id AS role_id, h.module_key,
          CASE
-           WHEN ur.name = 'admin' THEN 1
+           WHEN cp.position_name = 'admin' THEN 1
            WHEN h.root IN ('settings', 'developer')
                 AND h.module_key <> 'change_password' THEN 0
            ELSE 1
          END AS allowed
-    FROM user_roles ur
+    FROM code_position cp
     CROSS JOIN module_hierarchy h
 ) AS vals
 ON DUPLICATE KEY UPDATE allowed = vals.allowed;
 
 -- Populate role_module_permissions using the defaults, but keep existing rows
-INSERT IGNORE INTO role_module_permissions (company_id, role_id, module_key, allowed)
+INSERT IGNORE INTO role_module_permissions (company_id, position_id, module_key, allowed)
 SELECT c.id, rdm.role_id, rdm.module_key, rdm.allowed
-FROM companies c
-CROSS JOIN role_default_modules rdm;
+  FROM companies c
+  CROSS JOIN role_default_modules rdm;

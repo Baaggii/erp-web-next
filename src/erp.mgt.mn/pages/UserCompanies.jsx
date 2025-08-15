@@ -70,13 +70,13 @@ export default function UserCompanies() {
     setShowForm(true);
   }
 
-  async function handleFormSubmit({ empid, companyId, roleId, branchId }) {
+  async function handleFormSubmit({ empid, companyId, positionId, branchId }) {
     const isEdit = Boolean(editing);
     const res = await fetch('/api/user_companies', {
       method: isEdit ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ empid, companyId, roleId, branchId })
+      body: JSON.stringify({ empid, companyId, positionId, branchId })
     });
     if (!res.ok) {
       const { message } = await res
@@ -132,7 +132,7 @@ export default function UserCompanies() {
               <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Хэрэглэгч</th>
               <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Компани</th>
               <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Салбар</th>
-              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Үүрэг</th>
+              <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Албан тушаал</th>
               <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Үйлдэл</th>
             </tr>
           </thead>
@@ -149,7 +149,7 @@ export default function UserCompanies() {
                   {a.branch_name != null ? a.branch_name : ''}
                 </td>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
-                  {a.role != null ? a.role : ''}
+                  {a.position != null ? a.position : ''}
                 </td>
                 <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                   <button onClick={() => handleEdit(a)}>Засах</button>
@@ -181,13 +181,13 @@ export default function UserCompanies() {
 function AssignmentFormModal({ visible, onCancel, onSubmit, assignment, users, companies }) {
   const [empid, setEmpid] = useState(assignment?.empid || '');
   const [companyId, setCompanyId] = useState(assignment?.company_id || '');
-  const [roleId, setRoleId] = useState(String(assignment?.role_id || 2));
+  const [positionId, setPositionId] = useState(String(assignment?.position_id || 2));
   const [branchId, setBranchId] = useState(assignment?.branch_id || '');
 
   useEffect(() => {
     setEmpid(assignment?.empid || '');
     setCompanyId(assignment?.company_id || '');
-    setRoleId(String(assignment?.role_id || 2));
+    setPositionId(String(assignment?.position_id || 2));
     setBranchId(assignment?.branch_id || '');
   }, [assignment]);
 
@@ -221,7 +221,7 @@ function AssignmentFormModal({ visible, onCancel, onSubmit, assignment, users, c
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            onSubmit({ empid, companyId, roleId, branchId });
+            onSubmit({ empid, companyId, positionId, branchId });
           }}
         >
           <div style={{ marginBottom: '0.75rem' }}>
@@ -284,10 +284,10 @@ function AssignmentFormModal({ visible, onCancel, onSubmit, assignment, users, c
           </div>
 
           <div style={{ marginBottom: '0.75rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.25rem' }}>Үүрэг</label>
+            <label style={{ display: 'block', marginBottom: '0.25rem' }}>Албан тушаал</label>
             <select
-              value={roleId}
-              onChange={(e) => setRoleId(e.target.value)}
+              value={positionId}
+              onChange={(e) => setPositionId(e.target.value)}
               required
               style={{ width: '100%', padding: '0.5rem' }}
             >

@@ -348,7 +348,9 @@ export async function renameImages(table, oldName, newName, folder = null) {
           const destFile = newPrefix + rest;
           const src = path.join(d, f);
           const dest = path.join(targetDir, destFile);
-          await fs.rename(src, dest);
+          if (src !== dest) {
+            await fs.rename(src, dest);
+          }
           if (!seen.has(destFile)) {
             const folderPart = folder || table;
             results.push(`${urlBase}/${folderPart}/${destFile}`);
@@ -438,7 +440,10 @@ export async function deleteImage(table, file, folder = null) {
   try {
     const src = path.join(dir, path.basename(file));
     const dest = path.join(targetDir, path.basename(file));
-    await fs.rename(src, dest);
+    await fs.rename(src, dest).catch(async () => {
+      await fs.copyFile(src, dest);
+      await fs.unlink(src);
+    });
     return true;
   } catch {
     return false;

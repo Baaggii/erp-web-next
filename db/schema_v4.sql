@@ -218,21 +218,14 @@ CREATE TABLE SGereeJ (
 
 
 -- Lookup table for roles
-CREATE TABLE IF NOT EXISTS user_roles (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(50) NOT NULL UNIQUE
-);
-
 -- Users table for authentication
 CREATE TABLE IF NOT EXISTS `users` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `empid` VARCHAR(50) NOT NULL UNIQUE,
   `password` VARCHAR(255) NOT NULL,
   `company` VARCHAR(100) DEFAULT 'ModMarket ХХК',
-  `role_id` INT NOT NULL DEFAULT 2,
   `created_by` VARCHAR(50) NOT NULL,
-  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (`role_id`) REFERENCES user_roles(id)
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
 -- Dynamic form submissions storage
@@ -256,14 +249,14 @@ CREATE TABLE companies (
 CREATE TABLE user_companies (
   empid       VARCHAR(50)               NOT NULL,
   company_id  INT                       NOT NULL,
-  role_id     INT                       NOT NULL DEFAULT 2,
+  position_id INT                       NOT NULL DEFAULT 2,
   created_by  VARCHAR(50)               NOT NULL,
   created_at  TIMESTAMP                 DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (empid, company_id),
   FOREIGN KEY (empid)     REFERENCES users(empid),
   FOREIGN KEY (company_id) REFERENCES companies(id),
   FOREIGN KEY (created_by) REFERENCES users(empid),
-  FOREIGN KEY (role_id)   REFERENCES user_roles(id)
+  FOREIGN KEY (position_id)   REFERENCES code_position(position_id)
 ) ENGINE=InnoDB;
 
 
@@ -324,12 +317,12 @@ CREATE TABLE payments (
 
 CREATE TABLE role_module_permissions (
   company_id INT NOT NULL,
-  role_id INT NOT NULL,
+  position_id INT NOT NULL,
   module_key VARCHAR(50) NOT NULL,
   allowed TINYINT(1) DEFAULT 1,
-  PRIMARY KEY (company_id, role_id, module_key),
+  PRIMARY KEY (company_id, position_id, module_key),
   FOREIGN KEY (company_id) REFERENCES companies(id),
-  FOREIGN KEY (role_id)   REFERENCES user_roles(id),
+  FOREIGN KEY (position_id)   REFERENCES code_position(position_id),
   FOREIGN KEY (module_key) REFERENCES modules(module_key)
 );
 

@@ -108,7 +108,7 @@ function Sidebar() {
         <NavLink to="/settings" className="menu-item" style={styles.menuItem} end>
           General
         </NavLink>
-        {user?.role === 'admin' && (
+        {user?.position === 'admin' && (
           <>
             <NavLink to="/settings/users" className="menu-item" style={styles.menuItem}>
               Users

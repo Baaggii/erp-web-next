@@ -4,12 +4,12 @@ import { AuthContext } from "../context/AuthContext.jsx";
 
 export default function RolePermissions() {
   const [perms, setPerms] = useState([]);
-  const [filterRoleId, setFilterRoleId] = useState("");
+  const [filterPositionId, setFilterPositionId] = useState("");
   const { company } = useContext(AuthContext);
 
-  function loadPerms(roleId) {
+  function loadPerms(positionId) {
     const params = [];
-    if (roleId) params.push(`roleId=${encodeURIComponent(roleId)}`);
+    if (positionId) params.push(`roleId=${encodeURIComponent(positionId)}`);
     if (company) params.push(`companyId=${encodeURIComponent(company)}`);
     const url = params.length ? `/api/role_permissions?${params.join("&")}` : "/api/role_permissions";
     fetch(url, { credentials: "include" })
@@ -26,7 +26,7 @@ export default function RolePermissions() {
   }, [company]);
 
   function handleFilter() {
-    loadPerms(filterRoleId);
+    loadPerms(filterPositionId);
   }
 
   async function handleToggle(p) {
@@ -45,7 +45,7 @@ export default function RolePermissions() {
       alert("Failed to update permission");
       return;
     }
-    loadPerms(filterRoleId);
+    loadPerms(filterPositionId);
   }
 
   return (
@@ -53,9 +53,9 @@ export default function RolePermissions() {
       <h2>Эрхийн тохиргоо</h2>
       <input
         type="text"
-        placeholder="Role ID-р шүүх"
-        value={filterRoleId}
-        onChange={(e) => setFilterRoleId(e.target.value)}
+        placeholder="Position ID-р шүүх"
+        value={filterPositionId}
+        onChange={(e) => setFilterPositionId(e.target.value)}
         style={{ marginRight: "0.5rem" }}
       />
       <button onClick={handleFilter}>Шүүх</button>
@@ -73,7 +73,7 @@ export default function RolePermissions() {
           <thead>
             <tr style={{ backgroundColor: "#e5e7eb" }}>
               <th style={{ padding: "0.5rem", border: "1px solid #d1d5db" }}>
-                Үүрэг
+                Албан тушаал
               </th>
               <th style={{ padding: "0.5rem", border: "1px solid #d1d5db" }}>
                 Модуль
