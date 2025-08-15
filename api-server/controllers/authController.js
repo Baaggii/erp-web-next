@@ -41,14 +41,16 @@ export async function login(req, res, next) {
       company_id: company,
       branch_id: branch,
       department_id: department,
-      position_id: position,
+      position_id,
+      position,
     } = session || {};
 
     const payload = {
       id: user.id,
       empid: user.empid,
-      role: user.role,
+      position,
       companyId: company,
+      userLevel: session.user_level,
     };
     const token = jwtService.sign(payload);
     const refreshToken = jwtService.signRefresh(payload);
@@ -68,12 +70,14 @@ export async function login(req, res, next) {
     res.json({
       id: user.id,
       empid: user.empid,
-      role: user.role,
+      position,
       full_name: session?.employee_name,
       user_level: session?.user_level,
+      user_level_name: session?.user_level_name,
       company,
       branch,
       department,
+      position_id,
       position,
       session,
       permissions,
@@ -103,17 +107,20 @@ export async function getProfile(req, res) {
     company_id: company,
     branch_id: branch,
     department_id: department,
-    position_id: position,
+    position_id,
+    position,
   } = session || {};
   res.json({
     id: req.user.id,
     empid: req.user.empid,
-    role: req.user.role,
+    position: req.user.position,
     full_name: session?.employee_name,
     user_level: session?.user_level,
+    user_level_name: session?.user_level_name,
     company,
     branch,
     department,
+    position_id,
     position,
     session,
     permissions,
@@ -151,13 +158,15 @@ export async function refresh(req, res) {
       company_id: company,
       branch_id: branch,
       department_id: department,
-      position_id: position,
+      position_id,
+      position,
     } = session || {};
     const newPayload = {
       id: user.id,
       empid: user.empid,
-      role: user.role,
+      position,
       companyId: company,
+      userLevel: session.user_level,
     };
     const newAccess = jwtService.sign(newPayload);
     const newRefresh = jwtService.signRefresh(newPayload);
@@ -176,12 +185,14 @@ export async function refresh(req, res) {
     res.json({
       id: user.id,
       empid: user.empid,
-      role: user.role,
+      position,
       full_name: session?.employee_name,
       user_level: session?.user_level,
+      user_level_name: session?.user_level_name,
       company,
       branch,
       department,
+      position_id,
       position,
       session,
       permissions,

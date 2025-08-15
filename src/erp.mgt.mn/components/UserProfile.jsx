@@ -9,8 +9,9 @@ export default function UserProfile() {
       Logged in as: {session?.employee_name || user.empid}
       {session?.employee_name && ` (${user.empid})`}
       {session?.company_name && ` - ${session.company_name}`}
-      {session?.branch_name && ` - ${session.branch_name}`}
       {session?.department_name && ` - ${session.department_name}`}
+      {session?.branch_name && ` - ${session.branch_name}`}
+      {session?.user_level_name && ` - ${session.user_level_name}`}
     </div>
   );
 }

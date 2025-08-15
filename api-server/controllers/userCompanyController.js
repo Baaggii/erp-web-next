@@ -3,7 +3,8 @@ import {
   assignCompanyToUser,
   removeCompanyAssignment,
   updateCompanyAssignment,
-  listAllUserCompanies
+  listAllUserCompanies,
+  getEmploymentSession,
 } from '../../db/index.js';
 import { requireAuth } from '../middlewares/auth.js';
 
@@ -27,11 +28,15 @@ export async function listAssignments(req, res, next) {
 
 export async function assignCompany(req, res, next) {
   try {
-    if (req.user.role !== 'admin') {
+    const session = await getEmploymentSession(
+      req.user.empid,
+      req.user.companyId,
+    );
+    if (!session?.permissions?.system_settings) {
       return res.sendStatus(403);
     }
-    const { empid, companyId, roleId, branchId } = req.body;
-    await assignCompanyToUser(empid, companyId, roleId, branchId, req.user.empid);
+    const { empid, companyId, positionId, branchId } = req.body;
+    await assignCompanyToUser(empid, companyId, positionId, branchId, req.user.empid);
     res.sendStatus(201);
   } catch (err) {
     if (err.code === 'ER_NO_REFERENCED_ROW_2') {
@@ -43,11 +48,15 @@ export async function assignCompany(req, res, next) {
 
 export async function updateAssignment(req, res, next) {
   try {
-    if (req.user.role !== 'admin') {
+    const session = await getEmploymentSession(
+      req.user.empid,
+      req.user.companyId,
+    );
+    if (!session?.permissions?.system_settings) {
       return res.sendStatus(403);
     }
-    const { empid, companyId, roleId, branchId } = req.body;
-    await updateCompanyAssignment(empid, companyId, roleId, branchId);
+    const { empid, companyId, positionId, branchId } = req.body;
+    await updateCompanyAssignment(empid, companyId, positionId, branchId);
     res.sendStatus(200);
   } catch (err) {
     next(err);
@@ -56,7 +65,11 @@ export async function updateAssignment(req, res, next) {
 
 export async function removeAssignment(req, res, next) {
   try {
-    if (req.user.role !== 'admin') {
+    const session = await getEmploymentSession(
+      req.user.empid,
+      req.user.companyId,
+    );
+    if (!session?.permissions?.system_settings) {
       return res.sendStatus(403);
     }
     const { empid, companyId } = req.body;

@@ -52,8 +52,10 @@ export default function AppLayout({ children, title }) {
           <div className="flex items-center space-x-3 text-sm">
             {session && (
               <span>
-                {session.branch_name && `${session.branch_name} | `}
                 {session.company_name}
+                {session.department_name && ` | ${session.department_name}`}
+                {session.branch_name && ` | ${session.branch_name}`}
+                {session.user_level_name && ` | ${session.user_level_name}`}
               </span>
             )}
             {user && (

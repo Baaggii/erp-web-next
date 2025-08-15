@@ -35,7 +35,6 @@ export async function createUser(req, res, next) {
     const newUser = await dbCreateUser({
       empid: req.body.empid,
       password: req.body.password,
-      role_id: req.body.roleId,
       created_by: req.user.empid
     });
     res.status(201).json(newUser);
@@ -46,9 +45,7 @@ export async function createUser(req, res, next) {
 
 export async function updateUser(req, res, next) {
   try {
-    const updated = await dbUpdateUser(req.params.id, {
-      role_id: req.body.roleId
-    });
+    const updated = await dbUpdateUser(req.params.id);
     res.json(updated);
   } catch (err) {
     next(err);

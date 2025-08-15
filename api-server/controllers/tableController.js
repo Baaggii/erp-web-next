@@ -11,6 +11,7 @@ import {
   listTableColumnMeta,
   pool,
   getPrimaryKeyColumns,
+  getEmploymentSession,
 } from '../../db/index.js';
 import { moveImagesToDeleted } from '../services/transactionImageService.js';
 import { addMappings } from '../services/headerMappings.js';
@@ -156,7 +157,11 @@ export async function getRowReferences(req, res, next) {
 
 export async function saveColumnLabels(req, res, next) {
   try {
-    if (req.user.role !== 'admin') return res.sendStatus(403);
+    const session = await getEmploymentSession(
+      req.user.empid,
+      req.user.companyId,
+    );
+    if (!session?.permissions?.system_settings) return res.sendStatus(403);
     const labels = req.body.labels || {};
     await addMappings(labels);
     res.sendStatus(204);

@@ -164,7 +164,7 @@ const TableManager = forwardRef(function TableManager({
   const [customEndDate, setCustomEndDate] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [typeOptions, setTypeOptions] = useState([]);
-  const { user, company, branch, department } = useContext(AuthContext);
+  const { user, company, branch, department, session } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const { addToast } = useToast();
 
@@ -1597,7 +1597,7 @@ const TableManager = forwardRef(function TableManager({
         <div style={{ backgroundColor: '#ddffee', padding: '0.25rem', textAlign: 'left' }}>
           Branch:{' '}
           <span style={{ marginRight: '0.5rem' }}>{branch}</span>
-          {user?.role === 'admin' && (
+          {session?.permissions?.system_settings && (
             <button
               onClick={() =>
                 branchIdFields.forEach((f) => handleFilterChange(f, ''))
@@ -1612,7 +1612,7 @@ const TableManager = forwardRef(function TableManager({
         <div style={{ backgroundColor: '#eefcff', padding: '0.25rem', textAlign: 'left' }}>
           Department:{' '}
           <span style={{ marginRight: '0.5rem' }}>{department}</span>
-          {user?.role === 'admin' && (
+          {session?.permissions?.system_settings && (
             <button onClick={() => departmentIdFields.forEach((f) => handleFilterChange(f, ''))}>
               Clear Department Filter
             </button>
@@ -1623,7 +1623,7 @@ const TableManager = forwardRef(function TableManager({
         <div style={{ backgroundColor: '#ffeecc', padding: '0.25rem', textAlign: 'left' }}>
           User:{' '}
           <span style={{ marginRight: '0.5rem' }}>{user.empid}</span>
-          {user?.role === 'admin' && (
+          {session?.permissions?.system_settings && (
             <button
               onClick={() =>
                 userIdFields.forEach((f) => handleFilterChange(f, ''))
@@ -2197,7 +2197,7 @@ const TableManager = forwardRef(function TableManager({
           </li>
         </ul>
       )}
-      {user?.role === 'admin' && generalConfig.general?.editLabelsEnabled && (
+      {session?.permissions?.system_settings && generalConfig.general?.editLabelsEnabled && (
         <button onClick={() => {
           const map = {};
           columnMeta.forEach((c) => { map[c.name] = c.label || ''; });

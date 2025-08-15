@@ -54,10 +54,10 @@ This document outlines the roadmap, scope, architecture, milestones, and deliver
   - `bcryptjs` for hashing  
   - `jsonwebtoken` for JWT  
 - **DB Schema**  
-  - `user_roles(id PK, name)`
-  - `users(id PK, empid, password, role_id FK→user_roles.id, created_by, created_at)`
-  - `companies(id PK, name, created_at)`  
-  - `user_companies(empid FK→users.empid, company_id FK→companies.id, role_id FK→user_roles.id, created_by, created_at)`
+  - `code_position(position_id PK, position_name)`
+  - `users(id PK, empid, password, created_by, created_at)`
+  - `companies(id PK, name, created_at)`
+  - `user_companies(empid FK→users.empid, company_id FK→companies.id, position_id FK→code_position.position_id, created_by, created_at)`
   - Single-database multi-tenant (company_id discriminator)
 
 ## 5. Milestones & Timeline

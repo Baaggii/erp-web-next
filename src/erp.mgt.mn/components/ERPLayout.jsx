@@ -170,9 +170,10 @@ function Header({ user, onLogout, onHome, isMobile, onToggleSidebar }) {
       <HeaderMenu onOpen={handleOpen} />
       {session && (
         <span style={styles.locationInfo}>
-          {session.branch_name && `📍 ${session.branch_name} | `}
-          {session.department_name && `🏬 ${session.department_name} | `}
           🏢 {session.company_name}
+          {session.department_name && ` | 🏬 ${session.department_name}`}
+          {session.branch_name && ` | 📍 ${session.branch_name}`}
+          {session.user_level_name && ` | 👤 ${session.user_level_name}`}
         </span>
       )}
       <div style={styles.userSection}>
