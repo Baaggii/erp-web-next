@@ -29,15 +29,6 @@ export default function FormsManagement() {
   useEffect(() => {
     debugLog('Component mounted: FormsManagement');
   }, []);
-
-  useEffect(() => {
-    window.showBranchModal = () => {};
-    window.showDeptModal = () => {};
-    return () => {
-      delete window.showBranchModal;
-      delete window.showDeptModal;
-    };
-  }, []);
   const [config, setConfig] = useState({
     visibleFields: [],
     requiredFields: [],
