@@ -132,25 +132,31 @@ function mapEmploymentRow(row) {
     department_id,
     position_id,
     position,
-    new_records,
-    edit_delete_request,
-    edit_records,
-    delete_records,
-    image_handler,
-    audition,
-    supervisor,
-    companywide,
-    branchwide,
-    departmentwide,
-    developer,
-    common_settings,
-    system_settings,
-    license_settings,
-    ai,
-    dashboard,
-    ai_dashboard,
+    permission_list,
     ...rest
   } = row;
+  const flags = new Set((permission_list || "").split(","));
+  const all = [
+    "new_records",
+    "edit_delete_request",
+    "edit_records",
+    "delete_records",
+    "image_handler",
+    "audition",
+    "supervisor",
+    "companywide",
+    "branchwide",
+    "departmentwide",
+    "developer",
+    "common_settings",
+    "system_settings",
+    "license_settings",
+    "ai",
+    "dashboard",
+    "ai_dashboard",
+  ];
+  const permissions = {};
+  for (const k of all) permissions[k] = flags.has(k);
   return {
     company_id,
     branch_id,
@@ -158,25 +164,7 @@ function mapEmploymentRow(row) {
     position_id,
     position,
     ...rest,
-    permissions: {
-      new_records: !!new_records,
-      edit_delete_request: !!edit_delete_request,
-      edit_records: !!edit_records,
-      delete_records: !!delete_records,
-      image_handler: !!image_handler,
-      audition: !!audition,
-      supervisor: !!supervisor,
-      companywide: !!companywide,
-      branchwide: !!branchwide,
-      departmentwide: !!departmentwide,
-      developer: !!developer,
-      common_settings: !!common_settings,
-      system_settings: !!system_settings,
-      license_settings: !!license_settings,
-      ai: !!ai,
-      dashboard: !!dashboard,
-      ai_dashboard: !!ai_dashboard,
-    },
+    permissions,
   };
 }
 
@@ -214,31 +202,21 @@ export async function getEmploymentSessions(empid) {
         ${empName} AS employee_name,
         e.employment_user_level AS user_level,
         ul.name AS user_level_name,
-        ul.new_records,
-        ul.edit_delete_request,
-        ul.edit_records,
-        ul.delete_records,
-        ul.image_handler,
-        ul.audition,
-        ul.supervisor,
-        ul.companywide,
-        ul.branchwide,
-        ul.departmentwide,
-        ul.developer,
-        ul.common_settings,
-        ul.system_settings,
-        ul.license_settings,
-        ul.ai,
-        ul.dashboard,
-        ul.ai_dashboard
+        GROUP_CONCAT(DISTINCT up.permission) AS permission_list
      FROM tbl_employment e
      LEFT JOIN companies c ON e.employment_company_id = c.id
      LEFT JOIN code_branches b ON e.employment_branch_id = b.id
      LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol}
      LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
      LEFT JOIN code_position p ON e.employment_position_id = p.position_id
-     LEFT JOIN code_userlevel ul ON e.employment_user_level = ul.userlevel_id
+     LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
+     LEFT JOIN user_level_permissions up ON up.user_level_id = ul.userlevel_id AND up.permission IS NOT NULL
      WHERE e.employment_emp_id = ?
+     GROUP BY e.employment_company_id, company_name,
+              e.employment_branch_id, branch_name,
+              e.employment_department_id, department_name,
+              e.employment_position_id, position,
+              employee_name, e.employment_user_level, ul.name
      ORDER BY company_name, department_name, branch_name, user_level_name`,
     [empid],
   );
@@ -281,31 +259,21 @@ export async function getEmploymentSession(empid, companyId) {
           ${empName} AS employee_name,
           e.employment_user_level AS user_level,
           ul.name AS user_level_name,
-          ul.new_records,
-          ul.edit_delete_request,
-          ul.edit_records,
-          ul.delete_records,
-          ul.image_handler,
-          ul.audition,
-          ul.supervisor,
-          ul.companywide,
-          ul.branchwide,
-          ul.departmentwide,
-          ul.developer,
-          ul.common_settings,
-          ul.system_settings,
-          ul.license_settings,
-          ul.ai,
-          ul.dashboard,
-          ul.ai_dashboard
+          GROUP_CONCAT(DISTINCT up.permission) AS permission_list
        FROM tbl_employment e
        LEFT JOIN companies c ON e.employment_company_id = c.id
        LEFT JOIN code_branches b ON e.employment_branch_id = b.id
        LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol}
        LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
        LEFT JOIN code_position p ON e.employment_position_id = p.position_id
-       LEFT JOIN code_userlevel ul ON e.employment_user_level = ul.userlevel_id
+       LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
+       LEFT JOIN user_level_permissions up ON up.user_level_id = ul.userlevel_id AND up.permission IS NOT NULL
        WHERE e.employment_emp_id = ? AND e.employment_company_id = ?
+       GROUP BY e.employment_company_id, company_name,
+                e.employment_branch_id, branch_name,
+                e.employment_department_id, department_name,
+                e.employment_position_id, position,
+                employee_name, e.employment_user_level, ul.name
        ORDER BY company_name, department_name, branch_name, user_level_name
        LIMIT 1`,
       [empid, companyId],
@@ -318,19 +286,11 @@ export async function getEmploymentSession(empid, companyId) {
 }
 
 export async function getUserLevelActions(userLevelId) {
-  const [flagsRows] = await pool.query(
-    `SELECT new_records, edit_delete_request, edit_records, delete_records, image_handler, audition, supervisor, companywide, branchwide, departmentwide, developer, common_settings, system_settings, license_settings, ai, dashboard, ai_dashboard FROM code_userlevel WHERE userlevel_id = ?`,
-    [userLevelId],
-  );
-  if (!flagsRows.length) return {};
-  const flags = flagsRows[0];
-  const conditions = Object.entries(flags)
-    .filter(([, v]) => v)
-    .map(([k]) => `${k} = 1`)
-    .join(' OR ');
-  if (!conditions) return {};
   const [rows] = await pool.query(
-    `SELECT action, ul_module_key, function_name FROM code_userlevel_settings WHERE ${conditions}`,
+    `SELECT action, ul_module_key, function_name
+       FROM user_level_permissions
+       WHERE user_level_id = ? AND action IS NOT NULL`,
+    [userLevelId],
   );
   const perms = {};
   for (const { action, ul_module_key: mod, function_name: fn } of rows) {
