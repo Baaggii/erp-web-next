@@ -27,6 +27,7 @@ import PosTxnConfigPage from './pages/PosTxnConfig.jsx';
 import PosTransactionsPage from './pages/PosTransactions.jsx';
 import ModulesPage from './pages/Modules.jsx';
 import GeneralConfigurationPage from './pages/GeneralConfiguration.jsx';
+import UserLevelActionsPage from './pages/UserLevelActions.jsx';
 import SettingsPage, { GeneralSettings } from './pages/Settings.jsx';
 import ChangePasswordPage from './pages/ChangePassword.jsx';
 import BlueLinkPage from './pages/BlueLinkPage.jsx';

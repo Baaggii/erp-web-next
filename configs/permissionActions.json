@@ -1,68 +1,21 @@
 {
-  "modules": [
-    "dashboard",
-    "forms",
-    "reports",
-    "settings",
-    "developer",
-    "users",
-    "user_companies",
-    "modules",
-    "company_licenses",
-    "tables_management",
-    "coding_tables",
-    "forms_management",
-    "report_management",
-    "report_builder",
-    "image_management",
-    "general_configuration",
-    "change_password",
-    "pos_transaction_management",
-    "pos_transactions",
-    "gl",
-    "po",
-    "sales"
-  ],
-  "buttons": [
-    "New transaction",
-    "Edit transaction",
-    "Delete transaction"
-  ],
-  "functions": [],
-  "api": [
-    "/api/ai_inventory/identify",
-    "/api/ai_inventory/results",
-    "/api/auth/change-password",
-    "/api/coding_table_configs",
-    "/api/companies",
-    "/api/company_modules",
-    "/api/display_fields",
-    "/api/general_config",
-    "/api/generated_sql",
-    "/api/generated_sql/execute",
-    "/api/header_mappings",
-    "/api/modules",
-    "/api/modules/populate",
-    "/api/openai",
-    "/api/pos_txn_config",
-    "/api/pos_txn_layout",
-    "/api/pos_txn_pending",
-    "/api/pos_txn_post",
-    "/api/procedures",
-    "/api/procedures/raw",
-    "/api/report_builder/tables",
-    "/api/report_builder/views",
-    "/api/settings",
-    "/api/tables",
-    "/api/tables/code_branches",
-    "/api/tables/code_department",
-    "/api/tables/code_transaction",
-    "/api/transaction_forms",
-    "/api/transaction_images/fix_incomplete",
-    "/api/transaction_images/upload_check",
-    "/api/transaction_images/upload_commit",
-    "/api/transaction_images/upload_scan",
-    "/api/user_companies",
-    "/api/users"
-  ]
+  "forms": {
+    "user_level_actions": {
+      "name": "User Level Actions",
+      "buttons": [
+        "Load",
+        "Save",
+        "Refresh",
+        "Batch Populate"
+      ],
+      "functions": [],
+      "api": [
+        { "key": "/api/permissions/actions", "description": "List available permission actions" },
+        { "key": "/api/permissions/user-levels", "description": "List user levels" },
+        { "key": "/api/permissions/actions/:userLevelId", "description": "Get or update user level actions" },
+        { "key": "/api/permissions/actions/populate", "description": "Populate missing user level permissions" }
+      ]
+    }
+  }
 }
+
