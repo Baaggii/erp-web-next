@@ -17,7 +17,7 @@ ALTER TABLE role_default_modules
   ADD CONSTRAINT fk_rdm_role
   FOREIGN KEY (role_id) REFERENCES code_position(position_id);
 
--- 3. role_module_permissions.role_id references code_position.position_id
+-- 3. role_module_permissions.position_id references code_position.position_id
 ALTER TABLE role_module_permissions
   ADD CONSTRAINT fk_rmp_role
-  FOREIGN KEY (role_id) REFERENCES code_position(position_id);
+  FOREIGN KEY (position_id) REFERENCES code_position(position_id);
