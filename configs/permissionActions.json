@@ -15,39 +15,7 @@
         { "key": "/api/permissions/actions/:userLevelId", "description": "Get or update user level actions" },
         { "key": "/api/permissions/actions/populate", "description": "Populate missing user level permissions" }
       ]
-    },
-    "finance_transactions": {
-      "name": "Finance Transactions",
-      "buttons": [
-        "New transaction",
-        "Edit transaction",
-        "Delete transaction",
-        "New",
-        "Save",
-        "Load",
-        "Delete",
-        "POST",
-        "Run"
-      ],
-      "functions": [],
-      "api": [
-        "/api/transaction_forms",
-        "/api/pos_txn_pending",
-        "/api/pos_txn_post",
-        "/api/pos_txn_layout"
-      ]
-    },
-    "reports": {
-      "name": "Reports",
-      "buttons": [
-        "Run",
-        "Export"
-      ],
-      "functions": [],
-      "api": [
-        "/api/procedures",
-        "/api/procedures/:name/params"
-      ]
     }
   }
 }
+
