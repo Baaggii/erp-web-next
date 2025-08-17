@@ -1,22 +1,39 @@
 import React, { useState, useEffect } from "react";
+import { useToast } from "../context/ToastContext.jsx";
 
 export default function UserLevelActions() {
   const [groups, setGroups] = useState({ modules: [], buttons: [], functions: [], api: [] });
   const [selected, setSelected] = useState({ modules: [], buttons: [], functions: [], api: [] });
   const [userLevelId, setUserLevelId] = useState("");
   const [missing, setMissing] = useState(null);
+  const { addToast } = useToast();
 
   useEffect(() => {
     fetch("/api/permissions/actions", { credentials: "include" })
-      .then((res) => res.json())
-      .then(setGroups)
-      .catch((err) => console.error("Failed to load action groups", err));
-  }, []);
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load action groups");
+        return res.json();
+      })
+      .then((data) => {
+        setGroups(data);
+        addToast("Action groups loaded", "success");
+      })
+      .catch((err) => {
+        console.error("Failed to load action groups", err);
+        addToast("Failed to load action groups", "error");
+      });
+  }, [addToast]);
 
   function loadCurrent() {
-    if (!userLevelId) return;
+    if (!userLevelId) {
+      addToast("User Level ID required", "error");
+      return;
+    }
     fetch(`/api/permissions/actions/${userLevelId}`, { credentials: "include" })
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load current actions");
+        return res.json();
+      })
       .then((data) => {
         const sel = {
           modules: Object.keys(data).filter(
@@ -33,8 +50,12 @@ export default function UserLevelActions() {
           functions: groups.functions.filter((f) => !sel.functions.includes(f)),
           api: groups.api.filter((a) => !sel.api.includes(a)),
         });
+        addToast("Current actions loaded", "success");
       })
-      .catch((err) => console.error("Failed to load current actions", err));
+      .catch((err) => {
+        console.error("Failed to load current actions", err);
+        addToast("Failed to load current actions", "error");
+      });
   }
 
   function handleSelect(type, options) {
@@ -42,14 +63,26 @@ export default function UserLevelActions() {
   }
 
   async function handleSave() {
-    if (!userLevelId) return;
-    const res = await fetch(`/api/permissions/actions/${userLevelId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(selected),
-    });
-    if (!res.ok) alert("Failed to save actions");
+    if (!userLevelId) {
+      addToast("User Level ID required", "error");
+      return;
+    }
+    try {
+      const res = await fetch(`/api/permissions/actions/${userLevelId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(selected),
+      });
+      if (res.ok) {
+        addToast("Actions updated", "success");
+      } else {
+        addToast("Failed to save actions", "error");
+      }
+    } catch (err) {
+      console.error("Failed to save actions", err);
+      addToast("Failed to save actions", "error");
+    }
   }
 
   function renderSelect(type, items) {
