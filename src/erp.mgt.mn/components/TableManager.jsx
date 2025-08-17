@@ -1557,16 +1557,18 @@ const TableManager = forwardRef(function TableManager({
               />
             </>
           )}
-          <button
-            onClick={() => {
-              setDateFilter('');
-              setDatePreset('custom');
-              setCustomStartDate('');
-              setCustomEndDate('');
-            }}
-          >
-            Clear Date Filter
-          </button>
+          {buttonPerms['Clear Date Filter'] && (
+            <button
+              onClick={() => {
+                setDateFilter('');
+                setDatePreset('custom');
+                setCustomStartDate('');
+                setCustomEndDate('');
+              }}
+            >
+              Clear Date Filter
+            </button>
+          )}
         </div>
       )}
       {formConfig?.transactionTypeField && (
@@ -1588,8 +1590,10 @@ const TableManager = forwardRef(function TableManager({
           ) : (
             <span style={{ marginRight: '0.5rem' }}>{typeFilter || 'All'}</span>
           )}
-          {typeFilter && (
-            <button onClick={() => setTypeFilter('')}>Clear Transaction Type Filter</button>
+          {typeFilter && buttonPerms['Clear Transaction Type Filter'] && (
+            <button onClick={() => setTypeFilter('')}>
+              Clear Transaction Type Filter
+            </button>
           )}
         </div>
       )}
@@ -1597,7 +1601,7 @@ const TableManager = forwardRef(function TableManager({
         <div style={{ backgroundColor: '#ddffee', padding: '0.25rem', textAlign: 'left' }}>
           Branch:{' '}
           <span style={{ marginRight: '0.5rem' }}>{branch}</span>
-          {session?.permissions?.system_settings && (
+          {buttonPerms['Clear Branch Filter'] && (
             <button
               onClick={() =>
                 branchIdFields.forEach((f) => handleFilterChange(f, ''))
@@ -1612,8 +1616,12 @@ const TableManager = forwardRef(function TableManager({
         <div style={{ backgroundColor: '#eefcff', padding: '0.25rem', textAlign: 'left' }}>
           Department:{' '}
           <span style={{ marginRight: '0.5rem' }}>{department}</span>
-          {session?.permissions?.system_settings && (
-            <button onClick={() => departmentIdFields.forEach((f) => handleFilterChange(f, ''))}>
+          {buttonPerms['Clear Department Filter'] && (
+            <button
+              onClick={() =>
+                departmentIdFields.forEach((f) => handleFilterChange(f, ''))
+              }
+            >
               Clear Department Filter
             </button>
           )}
@@ -1623,7 +1631,7 @@ const TableManager = forwardRef(function TableManager({
         <div style={{ backgroundColor: '#ffeecc', padding: '0.25rem', textAlign: 'left' }}>
           User:{' '}
           <span style={{ marginRight: '0.5rem' }}>{user.empid}</span>
-          {session?.permissions?.system_settings && (
+          {buttonPerms['Clear User Filter'] && (
             <button
               onClick={() =>
                 userIdFields.forEach((f) => handleFilterChange(f, ''))

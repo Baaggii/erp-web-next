@@ -1,5 +1,5 @@
-import React, { useContext, useEffect } from 'react';
-import { HashRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { HashRouter, Routes, Route, Outlet } from 'react-router-dom';
 import AuthContextProvider, { AuthContext } from './context/AuthContext.jsx';
 import { TabProvider } from './context/TabContext.jsx';
 import { TxnSessionProvider } from './context/TxnSessionContext.jsx';
@@ -26,6 +26,7 @@ import PosTxnConfigPage from './pages/PosTxnConfig.jsx';
 import PosTransactionsPage from './pages/PosTransactions.jsx';
 import ModulesPage from './pages/Modules.jsx';
 import GeneralConfigurationPage from './pages/GeneralConfiguration.jsx';
+import UserLevelActionsPage from './pages/UserLevelActions.jsx';
 import SettingsPage, { GeneralSettings } from './pages/Settings.jsx';
 import ChangePasswordPage from './pages/ChangePassword.jsx';
 import BlueLinkPage from './pages/BlueLinkPage.jsx';
@@ -92,6 +93,7 @@ function AuthedApp() {
     users: <UsersPage />,
     user_companies: <UserCompaniesPage />,
     role_permissions: <RolePermissionsPage />,
+    user_level_actions: <UserLevelActionsPage />,
     modules: <ModulesPage />,
     company_licenses: <CompanyLicensesPage />,
     tables_management: <TablesManagementPage />,
@@ -120,31 +122,12 @@ function AuthedApp() {
     report_management: <ReportManagementPage />,
   };
 
-  const adminOnly = new Set([
-    'users',
-    'user_companies',
-    'role_permissions',
-    'modules',
-    'company_licenses',
-    'tables_management',
-    'coding_tables',
-    'forms_management',
-    'relations_config',
-    'pos_transaction_management',
-    'image_management',
-    'general_configuration',
-  ]);
-
   function renderRoute(mod) {
     const slug = mod.module_key.replace(/_/g, '-');
     const children = mod.children.map(renderRoute);
     let element = componentMap[mod.module_key];
     if (!element) {
       element = mod.children.length > 0 ? <Outlet /> : <div>{mod.label}</div>;
-    }
-
-    if (adminOnly.has(mod.module_key)) {
-      element = <RequireAdminPage>{element}</RequireAdminPage>;
     }
 
     if (!mod.parent_key && mod.module_key === 'dashboard') {
@@ -177,17 +160,5 @@ function AuthedApp() {
         }
       />
     </Routes>
-  );
-}
-
-function RequireAdminPage({ children }) {
-  const { user, session } = useContext(AuthContext);
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-  return session?.permissions?.system_settings ? (
-    children
-  ) : (
-    <Navigate to="/" replace />
   );
 }
