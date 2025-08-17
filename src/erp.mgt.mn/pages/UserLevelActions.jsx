@@ -159,30 +159,7 @@ export default function UserLevelActions() {
       });
       if (res.ok) {
         addToast("Permissions populated", "success");
-        await loadGroups();
-      } else {
-        addToast("Failed to populate permissions", "error");
-      }
-    } catch (err) {
-      console.error("Failed to populate permissions", err);
-      addToast("Failed to populate permissions", "error");
-    }
-  }
-
-  async function handlePopulate() {
-    const allow = window.confirm(
-      "Allow all new operations by default? Click Cancel to disallow.",
-    );
-    try {
-      const res = await fetch("/api/permissions/actions/populate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ allow }),
-      });
-      if (res.ok) {
-        addToast("Permissions populated", "success");
-        await loadGroups();
+        loadGroups();
       } else {
         addToast("Failed to populate permissions", "error");
       }
@@ -214,29 +191,6 @@ export default function UserLevelActions() {
       addToast("Failed to populate permissions", "error");
     }
   }
-
-  const handlePopulate = async () => {
-    const allow = window.confirm(
-      "Allow all new operations by default? Click Cancel to disallow.",
-    );
-    try {
-      const res = await fetch("/api/permissions/actions/populate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ allow }),
-      });
-      if (res.ok) {
-        addToast("Permissions populated", "success");
-        loadGroups();
-      } else {
-        addToast("Failed to populate permissions", "error");
-      }
-    } catch (err) {
-      console.error("Failed to populate permissions", err);
-      addToast("Failed to populate permissions", "error");
-    }
-  };
 
   return (
     <div>
