@@ -21,17 +21,13 @@ export default function UserLevelActions() {
       const buttons = new Set();
       const functions = new Set();
       const api = new Set();
-      const collect = (items, set) => {
-        if (!items) return;
-        for (const it of items) {
-          if (typeof it === "string") set.add(it);
-          else if (it && typeof it === "object") set.add(it.key);
-        }
-      };
       for (const form of Object.values(forms)) {
-        collect(form.buttons, buttons);
-        collect(form.functions, functions);
-        collect(form.api, api);
+        form.buttons?.forEach((b) => buttons.add(b));
+        form.functions?.forEach((f) => functions.add(f));
+        form.api?.forEach((a) => {
+          const key = typeof a === "string" ? a : a.key;
+          api.add(key);
+        });
       }
       setGroups({ modules: data.modules || [], forms });
       setAllActions({
@@ -155,88 +151,29 @@ export default function UserLevelActions() {
       .replace(/\b\w/g, (c) => c.toUpperCase());
   }
 
-  function buildTree(items) {
-    const root = { name: null, children: new Map(), entries: [] };
-    for (const it of items || []) {
-      const key = typeof it === "string" ? it : it.key;
-      const label =
-        it && typeof it === "object"
-          ? it.name || it.description || describe(key)
-          : describe(key);
-      const path =
-        it && typeof it === "object" && it.group
-          ? it.group.split("/").filter(Boolean)
-          : [];
-      let node = root;
-      for (const part of path) {
-        if (!node.children.has(part)) {
-          node.children.set(part, { name: part, children: new Map(), entries: [] });
-        }
-        node = node.children.get(part);
-      }
-      node.entries.push({ key, label });
-    }
-    return root;
-  }
-
-  function renderTree(node, type, depth = 0, path = []) {
-    const elements = [];
-    const currentPath = node.name ? [...path, node.name] : path;
-    if (node.name) {
-      elements.push(
-        <div
-          key={`${currentPath.join("/")}-label`}
-          style={{ marginLeft: depth * 20, fontWeight: "bold" }}
-        >
-          {node.name}
-        </div>,
-      );
-    }
-    for (const entry of node.entries) {
-      elements.push(
-        <label
-          key={`${currentPath.join("/")}-${entry.key}`}
-          style={{ display: "block", marginLeft: (depth + 1) * 20 }}
-        >
-          <input
-            type="checkbox"
-            checked={selected[type].includes(entry.key)}
-            onChange={(e) => toggle(type, entry.key, e.target.checked)}
-          />
-          {entry.label}
-        </label>,
-      );
-    }
-    for (const child of node.children.values()) {
-      elements.push(...renderTree(child, type, depth + 1, currentPath));
-    }
-    return elements;
-  }
-
-  function renderActionTree(type, items) {
-    const tree = buildTree(items);
+  function renderChecklist(type, items) {
     return (
       <div style={{ maxHeight: "200px", overflowY: "auto" }}>
-        {renderTree(tree, type)}
+        {items.map((it) => {
+          const key = typeof it === "string" ? it : it.key;
+          const label =
+            it.name ||
+            (type === "api" && typeof it === "object"
+              ? it.description || it.key
+              : describe(key));
+          return (
+            <label key={key} style={{ display: "block" }}>
+              <input
+                type="checkbox"
+                checked={selected[type].includes(key)}
+                onChange={(e) => toggle(type, key, e.target.checked)}
+              />
+              {label}
+            </label>
+          );
+        })}
       </div>
     );
-    try {
-      const res = await fetch("/api/permissions/actions/populate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ allow }),
-      });
-      if (res.ok) {
-        addToast("Permissions populated", "success");
-        loadGroups();
-      } else {
-        addToast("Failed to populate permissions", "error");
-      }
-    } catch (err) {
-      console.error("Failed to populate permissions", err);
-      addToast("Failed to populate permissions", "error");
-    }
   }
 
   function renderModuleTree(items, depth = 0) {
@@ -320,19 +257,19 @@ export default function UserLevelActions() {
             {form.buttons?.length ? (
               <div>
                 <h4>Buttons</h4>
-                {renderActionTree("buttons", form.buttons)}
+                {renderChecklist("buttons", form.buttons)}
               </div>
             ) : null}
             {form.functions?.length ? (
               <div>
                 <h4>Functions</h4>
-                {renderActionTree("functions", form.functions)}
+                {renderChecklist("functions", form.functions)}
               </div>
             ) : null}
             {form.api?.length ? (
               <div>
                 <h4>APIs</h4>
-                {renderActionTree("api", form.api)}
+                {renderChecklist("api", form.api)}
               </div>
             ) : null}
           </div>

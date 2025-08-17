@@ -4,40 +4,40 @@
       "name": "Finance Transactions",
       "scope": "app",
       "buttons": [
-        { "key": "New transaction", "group": "Transactions" },
-        { "key": "Edit transaction", "group": "Transactions" },
-        { "key": "Delete transaction", "group": "Transactions" },
-        { "key": "New", "group": "Transactions" },
-        { "key": "Save", "group": "Transactions" },
-        { "key": "Load", "group": "Transactions" },
-        { "key": "Delete", "group": "Transactions" },
-        { "key": "POST", "group": "Transactions" },
-        { "key": "Run", "group": "Transactions" },
-        { "key": "Clear Date Filter", "group": "Filters" },
-        { "key": "Clear Transaction Type Filter", "group": "Filters" },
-        { "key": "Clear Branch Filter", "group": "Filters" },
-        { "key": "Clear Department Filter", "group": "Filters" },
-        { "key": "Clear User Filter", "group": "Filters" }
+        "New transaction",
+        "Edit transaction",
+        "Delete transaction",
+        "New",
+        "Save",
+        "Load",
+        "Delete",
+        "POST",
+        "Run",
+        "Clear Date Filter",
+        "Clear Transaction Type Filter",
+        "Clear Branch Filter",
+        "Clear Department Filter",
+        "Clear User Filter"
       ],
       "functions": [],
       "api": [
-        { "key": "/api/transaction_forms", "group": "Transactions" },
-        { "key": "/api/pos_txn_pending", "group": "Transactions" },
-        { "key": "/api/pos_txn_post", "group": "Transactions" },
-        { "key": "/api/pos_txn_layout", "group": "Transactions" }
+        "/api/transaction_forms",
+        "/api/pos_txn_pending",
+        "/api/pos_txn_post",
+        "/api/pos_txn_layout"
       ]
     },
     "reports": {
       "name": "Reports",
       "scope": "app",
       "buttons": [
-        { "key": "Run", "group": "Reports" },
-        { "key": "Export", "group": "Reports" }
+        "Run",
+        "Export"
       ],
       "functions": [],
       "api": [
-        { "key": "/api/procedures", "group": "Reports" },
-        { "key": "/api/procedures/:name/params", "group": "Reports" }
+        "/api/procedures",
+        "/api/procedures/:name/params"
       ]
     }
   }
