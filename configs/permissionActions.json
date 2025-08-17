@@ -39,6 +39,23 @@
         { "key": "/api/procedures", "group": "Reports" },
         { "key": "/api/procedures/:name/params", "group": "Reports" }
       ]
+    },
+    "user_level_actions": {
+      "name": "User Level Actions",
+      "scope": "developer",
+      "buttons": [
+        { "key": "Load", "group": "User Level Actions" },
+        { "key": "Save", "group": "User Level Actions" },
+        { "key": "Refresh", "group": "User Level Actions" },
+        { "key": "Batch Populate", "group": "User Level Actions" }
+      ],
+      "functions": [],
+      "api": [
+        { "key": "/api/permissions/actions", "group": "User Level Actions" },
+        { "key": "/api/permissions/actions/:userLevelId", "group": "User Level Actions" },
+        { "key": "/api/permissions/user-levels", "group": "User Level Actions" },
+        { "key": "/api/permissions/actions/populate", "group": "User Level Actions" }
+      ]
     }
   }
 }

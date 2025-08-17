@@ -25,9 +25,7 @@ export async function listGroups(req, res, next) {
     const registry = JSON.parse(raw);
     const allForms = registry.forms || {};
     const forms = Object.fromEntries(
-      Object.entries(allForms).filter(
-        ([, f]) => !['system', 'developer'].includes(f.scope),
-      ),
+      Object.entries(allForms).filter(([, f]) => f.scope !== 'system'),
     );
     const rawModules = await listModules();
     const nodes = new Map();
