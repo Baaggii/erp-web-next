@@ -40,8 +40,17 @@ try {
 import defaultModules from "./defaultModules.js";
 import { logDb } from "./debugLog.js";
 import fs from "fs/promises";
+import { existsSync } from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import { getDisplayFields as getDisplayCfg } from "../api-server/services/displayFieldConfig.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const actionsPath = (() => {
+  const cwdPath = path.resolve(process.cwd(), "configs/permissionActions.json");
+  if (existsSync(cwdPath)) return cwdPath;
+  return path.resolve(__dirname, "../configs/permissionActions.json");
+})();
 
 function buildDisplayExpr(alias, cfg, fallback) {
   const fields = (cfg?.displayFields || []).map((f) => `${alias}.${f}`);
@@ -279,7 +288,44 @@ export async function getEmploymentSession(empid, companyId) {
   return sessions[0] || null;
 }
 
+export async function listUserLevels() {
+  const [rows] = await pool.query(
+    'SELECT userlevel_id AS id, name FROM user_levels ORDER BY userlevel_id',
+  );
+  return rows;
+}
+
 export async function getUserLevelActions(userLevelId) {
+  if (Number(userLevelId) === 1) {
+    const perms = {};
+    const [mods] = await pool.query(
+      'SELECT module_key FROM modules',
+    );
+    for (const { module_key } of mods) perms[module_key] = true;
+    try {
+      const raw = await fs.readFile(actionsPath, 'utf8');
+      const registry = JSON.parse(raw);
+      if (Array.isArray(registry.modules)) {
+        registry.modules.forEach((m) => (perms[m] = true));
+      }
+      if (Array.isArray(registry.buttons)) {
+        perms.buttons = {};
+        registry.buttons.forEach((b) => (perms.buttons[b] = true));
+      }
+      if (Array.isArray(registry.functions)) {
+        perms.functions = {};
+        registry.functions.forEach((f) => (perms.functions[f] = true));
+      }
+      if (Array.isArray(registry.api)) {
+        perms.api = {};
+        registry.api.forEach((a) => {
+          const key = typeof a === 'string' ? a : a.key;
+          perms.api[key] = true;
+        });
+      }
+    } catch {}
+    return perms;
+  }
   const [rows] = await pool.query(
     `SELECT action, action_key
        FROM user_level_permissions
@@ -323,6 +369,7 @@ export async function listActionGroups() {
 }
 
 export async function setUserLevelActions(userLevelId, { modules = [], buttons = [], functions = [], api = [] }) {
+  if (Number(userLevelId) === 1) return;
   await pool.query(
     'DELETE FROM user_level_permissions WHERE userlevel_id = ? AND action IS NOT NULL',
     [userLevelId],
@@ -350,6 +397,43 @@ export async function setUserLevelActions(userLevelId, { modules = [], buttons =
       'INSERT INTO user_level_permissions (userlevel_id, action, action_key) VALUES ' +
       values.join(',');
     await pool.query(sql, params);
+  }
+}
+
+export async function populateMissingPermissions(allow = false) {
+  if (!allow) return;
+  const raw = await fs.readFile(actionsPath, 'utf8');
+  const registry = JSON.parse(raw);
+  const actions = [];
+  if (Array.isArray(registry.modules)) {
+    registry.modules.forEach((m) => actions.push(['module_key', m]));
+  }
+  if (Array.isArray(registry.buttons)) {
+    registry.buttons.forEach((b) => actions.push(['button', b]));
+  }
+  if (Array.isArray(registry.functions)) {
+    registry.functions.forEach((f) => actions.push(['function', f]));
+  }
+  if (Array.isArray(registry.api)) {
+    registry.api.forEach((a) => {
+      const key = typeof a === 'string' ? a : a.key;
+      actions.push(['API', key]);
+    });
+  }
+  for (const [action, key] of actions) {
+    await pool.query(
+      `INSERT INTO user_level_permissions (userlevel_id, action, action_key)
+       SELECT ul.userlevel_id, ?, ?
+         FROM user_levels ul
+         WHERE ul.userlevel_id <> 1
+           AND NOT EXISTS (
+             SELECT 1 FROM user_level_permissions up
+              WHERE up.userlevel_id = ul.userlevel_id
+                AND up.action = ?
+                AND up.action_key = ?
+           )`,
+      [action, key, action, key],
+    );
   }
 }
 
