@@ -38,7 +38,6 @@ export default function UserLevelActions() {
       .catch(() => addToast("Failed to load user levels", "error"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
   function loadCurrent() {
     if (!userLevelId) {
       addToast("User Level ID required", "error");
@@ -151,6 +150,23 @@ export default function UserLevelActions() {
         })}
       </div>
     );
+    try {
+      const res = await fetch("/api/permissions/actions/populate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ allow }),
+      });
+      if (res.ok) {
+        addToast("Permissions populated", "success");
+        loadGroups();
+      } else {
+        addToast("Failed to populate permissions", "error");
+      }
+    } catch (err) {
+      console.error("Failed to populate permissions", err);
+      addToast("Failed to populate permissions", "error");
+    }
   }
 
   async function handlePopulate() {
