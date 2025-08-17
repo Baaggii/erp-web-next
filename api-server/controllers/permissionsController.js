@@ -3,7 +3,6 @@ import {
   setUserLevelActions,
   listUserLevels,
   populateMissingPermissions,
-  listModules,
 } from '../../db/index.js';
 import fs from 'fs/promises';
 import { existsSync } from 'fs';
@@ -22,35 +21,8 @@ const actionsPath = (() => {
 export async function listGroups(req, res, next) {
   try {
     const raw = await fs.readFile(actionsPath, 'utf8');
-    const registry = JSON.parse(raw);
-    const allForms = registry.forms || {};
-    const forms = Object.fromEntries(
-      Object.entries(allForms).filter(
-        ([, f]) => !['system', 'developer'].includes(f.scope),
-      ),
-    );
-    const buttons = new Set();
-    const functions = new Set();
-    const api = new Set();
-    for (const form of Object.values(forms)) {
-      form.buttons?.forEach((b) => buttons.add(b));
-      form.functions?.forEach((f) => functions.add(f));
-      form.api?.forEach((a) => {
-        const key = typeof a === 'string' ? a : a.key;
-        api.add(key);
-      });
-    }
-    const rawModules = await listModules();
-    const modules = rawModules
-      .filter((m) => m.show_in_sidebar || m.show_in_header)
-      .map((m) => ({ key: m.module_key, name: m.label }));
-    res.json({
-      modules,
-      forms,
-      buttons: Array.from(buttons),
-      functions: Array.from(functions),
-      api: Array.from(api),
-    });
+    const groups = JSON.parse(raw);
+    res.json(groups);
   } catch (err) {
     next(err);
   }

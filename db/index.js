@@ -305,19 +305,23 @@ export async function getUserLevelActions(userLevelId) {
     try {
       const raw = await fs.readFile(actionsPath, 'utf8');
       const registry = JSON.parse(raw);
-      const forms = registry.forms || {};
-      if (Object.keys(forms).length) {
+      if (Array.isArray(registry.modules)) {
+        registry.modules.forEach((m) => (perms[m] = true));
+      }
+      if (Array.isArray(registry.buttons)) {
         perms.buttons = {};
+        registry.buttons.forEach((b) => (perms.buttons[b] = true));
+      }
+      if (Array.isArray(registry.functions)) {
         perms.functions = {};
+        registry.functions.forEach((f) => (perms.functions[f] = true));
+      }
+      if (Array.isArray(registry.api)) {
         perms.api = {};
-        for (const form of Object.values(forms)) {
-          form.buttons?.forEach((b) => (perms.buttons[b] = true));
-          form.functions?.forEach((f) => (perms.functions[f] = true));
-          form.api?.forEach((a) => {
-            const key = typeof a === 'string' ? a : a.key;
-            perms.api[key] = true;
-          });
-        }
+        registry.api.forEach((a) => {
+          const key = typeof a === 'string' ? a : a.key;
+          perms.api[key] = true;
+        });
       }
     } catch {}
     return perms;
@@ -401,13 +405,17 @@ export async function populateMissingPermissions(allow = false) {
   const raw = await fs.readFile(actionsPath, 'utf8');
   const registry = JSON.parse(raw);
   const actions = [];
-  const [mods] = await pool.query('SELECT module_key FROM modules');
-  for (const { module_key } of mods) actions.push(['module_key', module_key]);
-  const forms = registry.forms || {};
-  for (const form of Object.values(forms)) {
-    form.buttons?.forEach((b) => actions.push(['button', b]));
-    form.functions?.forEach((f) => actions.push(['function', f]));
-    form.api?.forEach((a) => {
+  if (Array.isArray(registry.modules)) {
+    registry.modules.forEach((m) => actions.push(['module_key', m]));
+  }
+  if (Array.isArray(registry.buttons)) {
+    registry.buttons.forEach((b) => actions.push(['button', b]));
+  }
+  if (Array.isArray(registry.functions)) {
+    registry.functions.forEach((f) => actions.push(['function', f]));
+  }
+  if (Array.isArray(registry.api)) {
+    registry.api.forEach((a) => {
       const key = typeof a === 'string' ? a : a.key;
       actions.push(['API', key]);
     });
@@ -706,6 +714,7 @@ export async function deleteModule(moduleKey) {
   await pool.query('DELETE FROM modules WHERE module_key = ?', [moduleKey]);
   return { moduleKey };
 }
+
 export async function populateDefaultModules() {
   for (const m of defaultModules) {
     await upsertModule(
