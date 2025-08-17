@@ -131,7 +131,6 @@ function mapEmploymentRow(row) {
     branch_id,
     department_id,
     position_id,
-    position,
     permission_list,
     ...rest
   } = row;
@@ -162,7 +161,6 @@ function mapEmploymentRow(row) {
     branch_id,
     department_id,
     position_id,
-    position,
     ...rest,
     permissions,
   };
@@ -198,7 +196,6 @@ export async function getEmploymentSessions(empid) {
         e.employment_department_id AS department_id,
         ${deptName} AS department_name,
         e.employment_position_id AS position_id,
-        p.position_name AS position,
         ${empName} AS employee_name,
         e.employment_user_level AS user_level,
         ul.name AS user_level_name,
@@ -208,14 +205,13 @@ export async function getEmploymentSessions(empid) {
      LEFT JOIN code_branches b ON e.employment_branch_id = b.id
      LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol}
      LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
-     LEFT JOIN code_position p ON e.employment_position_id = p.position_id
      LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
      LEFT JOIN user_level_permissions up ON up.user_level_id = ul.userlevel_id AND up.permission IS NOT NULL
      WHERE e.employment_emp_id = ?
      GROUP BY e.employment_company_id, company_name,
               e.employment_branch_id, branch_name,
               e.employment_department_id, department_name,
-              e.employment_position_id, position,
+              e.employment_position_id,
               employee_name, e.employment_user_level, ul.name
      ORDER BY company_name, department_name, branch_name, user_level_name`,
     [empid],
@@ -255,7 +251,6 @@ export async function getEmploymentSession(empid, companyId) {
           e.employment_department_id AS department_id,
           ${deptName} AS department_name,
           e.employment_position_id AS position_id,
-          p.position_name AS position,
           ${empName} AS employee_name,
           e.employment_user_level AS user_level,
           ul.name AS user_level_name,
@@ -265,14 +260,13 @@ export async function getEmploymentSession(empid, companyId) {
        LEFT JOIN code_branches b ON e.employment_branch_id = b.id
        LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol}
        LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
-       LEFT JOIN code_position p ON e.employment_position_id = p.position_id
        LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
        LEFT JOIN user_level_permissions up ON up.user_level_id = ul.userlevel_id AND up.permission IS NOT NULL
        WHERE e.employment_emp_id = ? AND e.employment_company_id = ?
        GROUP BY e.employment_company_id, company_name,
                 e.employment_branch_id, branch_name,
                 e.employment_department_id, department_name,
-                e.employment_position_id, position,
+                e.employment_position_id,
                 employee_name, e.employment_user_level, ul.name
        ORDER BY company_name, department_name, branch_name, user_level_name
        LIMIT 1`,
@@ -364,7 +358,7 @@ export async function setUserLevelActions(userLevelId, { modules = [], buttons =
  */
 export async function listUsers() {
   const [rows] = await pool.query(
-    `SELECT u.id, u.empid, e.employment_position_id AS position_id, p.position_name AS position, u.created_at
+    `SELECT u.id, u.empid, e.employment_position_id AS position_id, u.created_at
        FROM users u
        LEFT JOIN (
          SELECT t1.employment_emp_id, t1.employment_position_id
@@ -374,18 +368,16 @@ export async function listUsers() {
                FROM tbl_employment
                GROUP BY employment_emp_id
            ) t2 ON t1.employment_emp_id = t2.employment_emp_id AND t1.id = t2.max_id
-       ) e ON u.empid = e.employment_emp_id
-       LEFT JOIN code_position p ON e.employment_position_id = p.position_id`,
+       ) e ON u.empid = e.employment_emp_id`,
   );
   return rows;
 }
 
 export async function listUsersByCompany(companyId) {
   const [rows] = await pool.query(
-    `SELECT u.id, u.empid, uc.position_id, p.position_name AS position, u.created_at
+    `SELECT u.id, u.empid, uc.position_id, u.created_at
        FROM users u
        JOIN user_companies uc ON u.empid = uc.empid
-       JOIN code_position p ON uc.position_id = p.position_id
       WHERE uc.company_id = ?`,
     [companyId],
   );
@@ -466,11 +458,10 @@ export async function assignCompanyToUser(
  */
 export async function listUserCompanies(empid) {
   const [rows] = await pool.query(
-    `SELECT uc.empid, uc.company_id, c.name AS company_name, uc.position_id, p.position_name AS position,
+    `SELECT uc.empid, uc.company_id, c.name AS company_name, uc.position_id,
             uc.branch_id, b.name AS branch_name
      FROM user_companies uc
      JOIN companies c ON uc.company_id = c.id
-     JOIN code_position p ON uc.position_id = p.position_id
      LEFT JOIN code_branches b ON uc.branch_id = b.id
      WHERE uc.empid = ?`,
     [empid],
@@ -511,11 +502,10 @@ export async function listAllUserCompanies(companyId) {
     params.push(companyId);
   }
   const [rows] = await pool.query(
-    `SELECT uc.empid, uc.company_id, c.name AS company_name, uc.position_id, p.position_name AS position,
+    `SELECT uc.empid, uc.company_id, c.name AS company_name, uc.position_id,
             uc.branch_id, b.name AS branch_name
      FROM user_companies uc
      JOIN companies c ON uc.company_id = c.id
-     JOIN code_position p ON uc.position_id = p.position_id
      LEFT JOIN code_branches b ON uc.branch_id = b.id
      ${where}`,
     params,
@@ -653,61 +643,6 @@ export async function populateDefaultModules() {
   }
 }
 
-export async function populateRoleDefaultModules() {
-  const modules = await listModules();
-
-  const map = {};
-  modules.forEach((m) => {
-    map[m.module_key] = m;
-  });
-
-  function rootKey(key) {
-    let cur = map[key];
-    let last = cur;
-    while (cur && cur.parent_key) {
-      last = cur;
-      cur = map[cur.parent_key];
-    }
-    if (!cur && last) return last.module_key;
-    return cur ? cur.module_key : null;
-  }
-
-  const adminOnly = modules
-    .filter((m) => {
-      const root = rootKey(m.module_key);
-      return (
-        ["settings", "developer"].includes(root) && m.module_key !== "change_password"
-      );
-    })
-    .map((m) => m.module_key);
-
-  const inList = adminOnly.map((k) => pool.escape(k)).join(", ");
-
-  await pool.query(
-    `INSERT INTO role_default_modules (role_id, module_key, allowed)
-     SELECT * FROM (
-       SELECT cp.position_id AS role_id, m.module_key AS module_key,
-              CASE
-                WHEN cp.position_name = 'admin' THEN 1
-                WHEN m.module_key IN (${inList}) THEN 0
-                ELSE 1
-              END AS allowed
-         FROM code_position cp
-         CROSS JOIN modules m
-     ) AS vals
-     ON DUPLICATE KEY UPDATE allowed = vals.allowed`,
-  );
-}
-
-export async function populateRoleModulePermissions() {
-  await populateRoleDefaultModules();
-  await pool.query(
-    `INSERT IGNORE INTO role_module_permissions (company_id, position_id, module_key, allowed)
-     SELECT c.id, rdm.role_id, rdm.module_key, rdm.allowed
-       FROM companies c
-       CROSS JOIN role_default_modules rdm`,
-  );
-}
 
 export async function populateCompanyModuleLicenses() {
   await pool.query(
@@ -731,47 +666,6 @@ export async function populateUserLevelModulePermissions() {
             AND up.ul_module_key = m.module_key
        )`,
   );
-}
-
-/**
- * List module permissions for roles
- */
-export async function listRoleModulePermissions(positionId, companyId) {
-  const params = [];
-  let where = '';
-
-  if (companyId) {
-    where = 'WHERE rmp.company_id = ?';
-    params.push(companyId);
-  }
-
-  if (positionId) {
-    where += where ? ' AND rmp.position_id = ?' : 'WHERE rmp.position_id = ?';
-    params.push(positionId);
-  }
-
-  const [rows] = await pool.query(
-    `SELECT rmp.position_id, cp.position_name AS role, rmp.module_key, m.label, rmp.allowed
-       FROM role_module_permissions rmp
-       JOIN code_position cp ON rmp.position_id = cp.position_id
-       JOIN modules m ON rmp.module_key = m.module_key
-       ${where}`,
-    params,
-  );
-  return rows;
-}
-
-/**
- * Set a role's module permission
- */
-export async function setRoleModulePermission(companyId, positionId, moduleKey, allowed) {
-  await pool.query(
-    `INSERT INTO role_module_permissions (company_id, position_id, module_key, allowed)
-     VALUES (?, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE allowed = VALUES(allowed)`,
-    [companyId, positionId, moduleKey, allowed],
-  );
-  return { companyId, positionId, moduleKey, allowed };
 }
 
 /**
@@ -1098,15 +992,6 @@ export async function updateTableRow(tableName, id, updates) {
     return { company_id: companyId, module_key: moduleKey };
   }
 
-  if (tableName === 'role_module_permissions') {
-    const [companyId, positionId, moduleKey] = String(id).split('-');
-    await pool.query(
-      `UPDATE role_module_permissions SET ${setClause} WHERE company_id = ? AND position_id = ? AND module_key = ?`,
-      [...values, companyId, positionId, moduleKey],
-    );
-    return { company_id: companyId, position_id: positionId, module_key: moduleKey };
-  }
-
   if (tableName === 'user_companies') {
     const [empId, companyId] = String(id).split('-');
     await pool.query(
@@ -1171,15 +1056,6 @@ export async function deleteTableRow(tableName, id, conn = pool) {
       [companyId, moduleKey],
     );
     return { company_id: companyId, module_key: moduleKey };
-  }
-
-  if (tableName === 'role_module_permissions') {
-    const [companyId, positionId, moduleKey] = String(id).split('-');
-    await conn.query(
-      'DELETE FROM role_module_permissions WHERE company_id = ? AND position_id = ? AND module_key = ?',
-      [companyId, positionId, moduleKey],
-    );
-    return { company_id: companyId, position_id: positionId, module_key: moduleKey };
   }
 
   if (tableName === 'user_companies') {

@@ -6,7 +6,6 @@ export default [
   { moduleKey: 'developer', label: 'Хөгжүүлэгч', parentKey: 'settings', showInSidebar: true, showInHeader: false },
   { moduleKey: 'users', label: 'Хэрэглэгчид', parentKey: 'settings', showInSidebar: true, showInHeader: false },
   { moduleKey: 'user_companies', label: 'Хэрэглэгчийн компаниуд', parentKey: 'settings', showInSidebar: true, showInHeader: false },
-  { moduleKey: 'role_permissions', label: 'Эрхийн тохиргоо', parentKey: 'settings', showInSidebar: true, showInHeader: false },
   { moduleKey: 'modules', label: 'Модуль', parentKey: 'developer', showInSidebar: true, showInHeader: false },
   { moduleKey: 'company_licenses', label: 'Лиценз', parentKey: 'settings', showInSidebar: true, showInHeader: false },
   { moduleKey: 'tables_management', label: 'Хүснэгтийн удирдлага', parentKey: 'developer', showInSidebar: true, showInHeader: false },

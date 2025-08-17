@@ -2,7 +2,6 @@ import {
   listModules as dbListModules,
   upsertModule,
   populateDefaultModules,
-  populateRoleModulePermissions,
   populateCompanyModuleLicenses,
   populateUserLevelModulePermissions,
   getEmploymentSession,
@@ -67,7 +66,6 @@ export async function populatePermissions(req, res, next) {
     if (!session?.permissions?.system_settings) return res.sendStatus(403);
     await populateDefaultModules();
     await populateCompanyModuleLicenses();
-    await populateRoleModulePermissions();
     await populateUserLevelModulePermissions();
     res.sendStatus(204);
   } catch (err) {
