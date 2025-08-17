@@ -50,6 +50,18 @@ export default function UserLevelActions() {
       .catch(() => addToast("Failed to load user levels", "error"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function flattenModules(list) {
+    const keys = [];
+    for (const m of list) {
+      keys.push(m.key);
+      if (m.children?.length) {
+        keys.push(...flattenModules(m.children));
+      }
+    }
+    return keys;
+  }
+
   function loadCurrent() {
     if (!userLevelId) {
       addToast("User Level ID required", "error");
@@ -57,7 +69,7 @@ export default function UserLevelActions() {
     }
     if (userLevelId === "1") {
       const sel = {
-        modules: groups.modules.map((m) => m.key),
+        modules: flattenModules(groups.modules),
         buttons: allActions.buttons,
         functions: allActions.functions,
         api: allActions.api,
@@ -78,9 +90,9 @@ export default function UserLevelActions() {
           ),
           buttons: Object.keys(data.buttons || {}),
           functions: Object.keys(data.functions || {}),
-          api: Object.keys(data.api || {}),
-        };
-        const validModules = new Set(groups.modules.map((m) => m.key));
+        api: Object.keys(data.api || {}),
+      };
+        const validModules = new Set(flattenModules(groups.modules));
         const validButtons = new Set(allActions.buttons);
         const validFunctions = new Set(allActions.functions);
         const validApi = new Set(allActions.api);
@@ -164,6 +176,22 @@ export default function UserLevelActions() {
     );
   }
 
+  function renderModuleTree(items, depth = 0) {
+    return items.map((m) => (
+      <div key={m.key} style={{ marginLeft: depth * 20 }}>
+        <label>
+          <input
+            type="checkbox"
+            checked={selected.modules.includes(m.key)}
+            onChange={(e) => toggle("modules", m.key, e.target.checked)}
+          />
+          {m.name}
+        </label>
+        {m.children?.length ? renderModuleTree(m.children, depth + 1) : null}
+      </div>
+    ));
+  }
+
   async function handlePopulate() {
     const allow = window.confirm(
       "Allow all new operations by default? Click Cancel to disallow.",
@@ -219,10 +247,7 @@ export default function UserLevelActions() {
       <div style={{ display: "flex", gap: "1rem", marginTop: "1rem" }}>
         <div>
           <h3>Modules</h3>
-          {renderChecklist(
-            "modules",
-            groups.modules.map((m) => ({ key: m.key, name: m.name })),
-          )}
+          {renderModuleTree(groups.modules)}
         </div>
       </div>
       <div style={{ display: "flex", gap: "1rem", marginTop: "1rem", flexWrap: "wrap" }}>

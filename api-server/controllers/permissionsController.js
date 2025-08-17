@@ -30,10 +30,32 @@ export async function listGroups(req, res, next) {
       ),
     );
     const rawModules = await listModules();
-    const modules = rawModules
-      .filter((m) => m.show_in_sidebar || m.show_in_header)
-      .map((m) => ({ key: m.module_key, name: m.label }));
-    res.json({ modules, forms });
+    const nodes = new Map();
+    for (const m of rawModules) {
+      if (m.show_in_sidebar || m.show_in_header) {
+        nodes.set(m.module_key, {
+          key: m.module_key,
+          name: m.label,
+          parent: m.parent_key,
+          children: [],
+        });
+      }
+    }
+    const roots = [];
+    for (const node of nodes.values()) {
+      if (node.parent && nodes.has(node.parent)) {
+        nodes.get(node.parent).children.push(node);
+      } else {
+        roots.push(node);
+      }
+    }
+    // Remove the temporary parent references before sending
+    const strip = (n) => ({
+      key: n.key,
+      name: n.name,
+      children: n.children.map(strip),
+    });
+    res.json({ modules: roots.map(strip), forms });
   } catch (err) {
     next(err);
   }
