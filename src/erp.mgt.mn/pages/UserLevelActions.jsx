@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useToast } from "../context/ToastContext.jsx";
 
 export default function UserLevelActions() {
-  const [groups, setGroups] = useState({ modules: [], forms: {}, buttons: [], functions: [], api: [] });
+  const [groups, setGroups] = useState({ modules: [], buttons: [], functions: [], api: [] });
   const [selected, setSelected] = useState({ modules: [], buttons: [], functions: [], api: [] });
   const [userLevelId, setUserLevelId] = useState("");
   const [userLevels, setUserLevels] = useState([]);
@@ -16,19 +16,7 @@ export default function UserLevelActions() {
         throw new Error(msg || "Failed to load action groups");
       }
       const data = await res.json();
-      const forms = data.forms || {};
-      const buttons = [];
-      const functions = [];
-      const api = [];
-      Object.values(forms).forEach((f) => {
-        f.buttons?.forEach((b) => buttons.push(b));
-        f.functions?.forEach((fn) => functions.push(fn));
-        f.api?.forEach((a) => {
-          const key = typeof a === "string" ? a : a.key;
-          api.push(key);
-        });
-      });
-      setGroups({ modules: data.modules || [], forms, buttons, functions, api });
+      setGroups(data);
       addToast("Action groups loaded", "success");
     } catch (err) {
       console.error("Failed to load action groups", err);
@@ -51,10 +39,10 @@ export default function UserLevelActions() {
     }
     if (userLevelId === "1") {
       const sel = {
-        modules: groups.modules.map((m) => m.key),
+        modules: groups.modules,
         buttons: groups.buttons,
         functions: groups.functions,
-        api: groups.api,
+        api: groups.api.map((a) => (typeof a === "string" ? a : a.key)),
       };
       setSelected(sel);
       addToast("System admin has access to all actions", "info");
@@ -74,14 +62,6 @@ export default function UserLevelActions() {
           functions: Object.keys(data.functions || {}),
           api: Object.keys(data.api || {}),
         };
-        const validModules = new Set(groups.modules.map((m) => m.key));
-        const validButtons = new Set(groups.buttons);
-        const validFunctions = new Set(groups.functions);
-        const validApi = new Set(groups.api);
-        sel.modules = sel.modules.filter((m) => validModules.has(m));
-        sel.buttons = sel.buttons.filter((b) => validButtons.has(b));
-        sel.functions = sel.functions.filter((f) => validFunctions.has(f));
-        sel.api = sel.api.filter((a) => validApi.has(a));
         setSelected(sel);
         addToast("Current actions loaded", "success");
       })
@@ -139,10 +119,9 @@ export default function UserLevelActions() {
         {items.map((it) => {
           const key = typeof it === "string" ? it : it.key;
           const label =
-            it.name ||
-            (type === "api" && typeof it === "object"
+            type === "api" && typeof it === "object"
               ? it.description || it.key
-              : describe(key));
+              : describe(key);
           return (
             <label key={key} style={{ display: "block" }}>
               <input
@@ -213,36 +192,20 @@ export default function UserLevelActions() {
       <div style={{ display: "flex", gap: "1rem", marginTop: "1rem" }}>
         <div>
           <h3>Modules</h3>
-          {renderChecklist(
-            "modules",
-            groups.modules.map((m) => ({ key: m.key, name: m.name })),
-          )}
+          {renderChecklist("modules", groups.modules)}
         </div>
-      </div>
-      <div style={{ display: "flex", gap: "1rem", marginTop: "1rem", flexWrap: "wrap" }}>
-        {Object.entries(groups.forms).map(([formKey, form]) => (
-          <div key={formKey} style={{ minWidth: "200px" }}>
-            <h3>{form.name || describe(formKey)}</h3>
-            {form.buttons?.length ? (
-              <div>
-                <h4>Buttons</h4>
-                {renderChecklist("buttons", form.buttons)}
-              </div>
-            ) : null}
-            {form.functions?.length ? (
-              <div>
-                <h4>Functions</h4>
-                {renderChecklist("functions", form.functions)}
-              </div>
-            ) : null}
-            {form.api?.length ? (
-              <div>
-                <h4>APIs</h4>
-                {renderChecklist("api", form.api)}
-              </div>
-            ) : null}
-          </div>
-        ))}
+        <div>
+          <h3>Buttons</h3>
+          {renderChecklist("buttons", groups.buttons)}
+        </div>
+        <div>
+          <h3>Functions</h3>
+          {renderChecklist("functions", groups.functions)}
+        </div>
+        <div>
+          <h3>APIs</h3>
+          {renderChecklist("api", groups.api)}
+        </div>
       </div>
     </div>
   );
