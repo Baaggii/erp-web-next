@@ -3,6 +3,7 @@ import {
   setUserLevelActions,
   listUserLevels,
   populateMissingPermissions,
+  listModules,
 } from '../../db/index.js';
 import fs from 'fs/promises';
 import { existsSync } from 'fs';
@@ -21,8 +22,13 @@ const actionsPath = (() => {
 export async function listGroups(req, res, next) {
   try {
     const raw = await fs.readFile(actionsPath, 'utf8');
-    const groups = JSON.parse(raw);
-    res.json(groups);
+    const registry = JSON.parse(raw);
+    const forms = registry.forms || {};
+    const rawModules = await listModules();
+    const modules = rawModules
+      .filter((m) => m.show_in_sidebar || m.show_in_header)
+      .map((m) => ({ key: m.module_key, name: m.label }));
+    res.json({ modules, forms });
   } catch (err) {
     next(err);
   }
