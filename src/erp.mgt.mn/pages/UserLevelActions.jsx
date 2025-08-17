@@ -14,13 +14,16 @@ export default function UserLevelActions() {
         const res = await fetch("/api/permissions/actions", {
           credentials: "include",
         });
-        if (!res.ok) throw new Error("Failed to load action groups");
+        if (!res.ok) {
+          const msg = await res.text();
+          throw new Error(msg || "Failed to load action groups");
+        }
         const data = await res.json();
         setGroups(data);
         addToast("Action groups loaded", "success");
       } catch (err) {
         console.error("Failed to load action groups", err);
-        addToast("Failed to load action groups", "error");
+        addToast(`Failed to load action groups: ${err.message}`, "error");
       }
     }
     loadGroups();
