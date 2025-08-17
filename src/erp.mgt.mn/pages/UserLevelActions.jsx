@@ -26,7 +26,6 @@ export default function UserLevelActions() {
     loadGroups();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
   function loadCurrent() {
     if (!userLevelId) {
       addToast("User Level ID required", "error");
