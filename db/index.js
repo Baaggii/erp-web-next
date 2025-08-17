@@ -280,6 +280,61 @@ export async function getEmploymentSession(empid, companyId) {
 }
 
 export async function getUserLevelActions(userLevelId) {
+  // Attempt to read from the newer user_level_permission table first
+  try {
+    const [rows] = await pool.query(
+      `SELECT action, action_key FROM user_level_permission WHERE userlevel_id = ?`,
+      [userLevelId],
+    );
+    const perms = {};
+    for (const { action, action_key: key } of rows) {
+      if (action === 'module_key' && key) {
+        perms[key] = true;
+      } else if (action === 'button' && key) {
+        (perms.buttons ||= {})[key] = true;
+      } else if (action === 'function' && key) {
+        (perms.functions ||= {})[key] = true;
+      } else if (action === 'API' && key) {
+        (perms.api ||= {})[key] = true;
+      }
+    }
+    return perms;
+  } catch (err) {
+    // If action_key is missing, retry with legacy columns
+    if (err.code === 'ER_BAD_FIELD_ERROR') {
+      const [rows] = await pool.query(
+        `SELECT action, ul_module_key, function_name FROM user_level_permission WHERE userlevel_id = ?`,
+        [userLevelId],
+      );
+      const perms = {};
+      for (const { action, ul_module_key: mod, function_name: fn } of rows) {
+        if (action === 'module_key' && mod) {
+          perms[mod] = true;
+        } else if (action === 'button' && fn) {
+          (perms.buttons ||= {})[fn] = true;
+        } else if (action === 'function' && fn) {
+          (perms.functions ||= {})[fn] = true;
+        } else if (action === 'API' && fn) {
+          (perms.api ||= {})[fn] = true;
+        }
+      }
+      return perms;
+    }
+    // If the table doesn't exist, fall back to legacy flags
+    if (err.code !== 'ER_NO_SUCH_TABLE') throw err;
+  }
+
+  const [flagsRows] = await pool.query(
+    `SELECT new_records, edit_delete_request, edit_records, delete_records, image_handler, audition, supervisor, companywide, branchwide, departmentwide, developer, common_settings, system_settings, license_settings, ai, dashboard, ai_dashboard FROM code_userlevel WHERE userlevel_id = ?`,
+    [userLevelId],
+  );
+  if (!flagsRows.length) return {};
+  const flags = flagsRows[0];
+  const conditions = Object.entries(flags)
+    .filter(([, v]) => v)
+    .map(([k]) => `${k} = 1`)
+    .join(' OR ');
+  if (!conditions) return {};
   const [rows] = await pool.query(
     `SELECT action, action_key
        FROM user_level_permissions
