@@ -27,6 +27,7 @@ import PosTxnConfigPage from './pages/PosTxnConfig.jsx';
 import PosTransactionsPage from './pages/PosTransactions.jsx';
 import ModulesPage from './pages/Modules.jsx';
 import GeneralConfigurationPage from './pages/GeneralConfiguration.jsx';
+import UserLevelActionsPage from './pages/UserLevelActions.jsx';
 import SettingsPage, { GeneralSettings } from './pages/Settings.jsx';
 import ChangePasswordPage from './pages/ChangePassword.jsx';
 import BlueLinkPage from './pages/BlueLinkPage.jsx';
@@ -93,7 +94,7 @@ function AuthedApp() {
     users: <UsersPage />,
     user_companies: <UserCompaniesPage />,
     role_permissions: <RolePermissionsPage />,
-    action_permissions: <ActionPermissionsPage />,
+    user_level_actions: <UserLevelActionsPage />,
     modules: <ModulesPage />,
     company_licenses: <CompanyLicensesPage />,
     tables_management: <TablesManagementPage />,
@@ -126,7 +127,7 @@ function AuthedApp() {
     'users',
     'user_companies',
     'role_permissions',
-    'action_permissions',
+    'user_level_actions',
     'modules',
     'company_licenses',
     'tables_management',
