@@ -34,6 +34,18 @@ export default function UserLevelActions() {
       addToast("User Level ID required", "error");
       return;
     }
+    if (userLevelId === "1") {
+      const sel = {
+        modules: groups.modules,
+        buttons: groups.buttons,
+        functions: groups.functions,
+        api: groups.api,
+      };
+      setSelected(sel);
+      setMissing(null);
+      addToast("System admin has access to all actions", "info");
+      return;
+    }
     fetch(`/api/permissions/actions/${userLevelId}`, { credentials: "include" })
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load current actions");
@@ -63,13 +75,22 @@ export default function UserLevelActions() {
       });
   }
 
-  function handleSelect(type, options) {
-    setSelected((prev) => ({ ...prev, [type]: options }));
+  function toggle(type, action, checked) {
+    setSelected((prev) => {
+      const current = new Set(prev[type]);
+      if (checked) current.add(action);
+      else current.delete(action);
+      return { ...prev, [type]: Array.from(current) };
+    });
   }
 
   async function handleSave() {
     if (!userLevelId) {
       addToast("User Level ID required", "error");
+      return;
+    }
+    if (userLevelId === "1") {
+      addToast("System admin permissions cannot be modified", "error");
       return;
     }
     try {
@@ -90,22 +111,29 @@ export default function UserLevelActions() {
     }
   }
 
-  function renderSelect(type, items) {
+  function describe(key) {
+    return key
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  function renderChecklist(type, items) {
     return (
-      <select
-        multiple
-        value={selected[type]}
-        onChange={(e) =>
-          handleSelect(type, Array.from(e.target.selectedOptions).map((o) => o.value))
-        }
-        style={{ minWidth: "200px", minHeight: "120px" }}
-      >
-        {items.map((it) => (
-          <option key={it} value={it}>
-            {it}
-          </option>
-        ))}
-      </select>
+      <div style={{ maxHeight: "200px", overflowY: "auto" }}>
+        {items.map((it) => {
+          const isMissing = missing && missing[type]?.includes(it);
+          return (
+            <label key={it} style={{ display: "block", color: isMissing ? "#c00" : "inherit" }}>
+              <input
+                type="checkbox"
+                checked={selected[type].includes(it)}
+                onChange={(e) => toggle(type, it, e.target.checked)}
+              />
+              {describe(it)}
+            </label>
+          );
+        })}
+      </div>
     );
   }
 
@@ -122,7 +150,9 @@ export default function UserLevelActions() {
       <button onClick={loadCurrent} style={{ marginRight: "0.5rem" }}>
         Load
       </button>
-      <button onClick={handleSave}>Save</button>
+      <button onClick={handleSave} disabled={userLevelId === "1"}>
+        Save
+      </button>
       {missing &&
         (missing.modules.length ||
           missing.buttons.length ||
@@ -155,19 +185,19 @@ export default function UserLevelActions() {
       <div style={{ display: "flex", gap: "1rem", marginTop: "1rem" }}>
         <div>
           <h3>Modules</h3>
-          {renderSelect("modules", groups.modules)}
+          {renderChecklist("modules", groups.modules)}
         </div>
         <div>
           <h3>Buttons</h3>
-          {renderSelect("buttons", groups.buttons)}
+          {renderChecklist("buttons", groups.buttons)}
         </div>
         <div>
           <h3>Functions</h3>
-          {renderSelect("functions", groups.functions)}
+          {renderChecklist("functions", groups.functions)}
         </div>
         <div>
           <h3>APIs</h3>
-          {renderSelect("api", groups.api)}
+          {renderChecklist("api", groups.api)}
         </div>
       </div>
     </div>
