@@ -1,5 +1,7 @@
 -- Insert missing user level permission rows based on configs/permissionActions.json
 -- Requires MySQL 8.0+ for JSON_TABLE and access to the JSON file via LOAD_FILE
+-- Ensure string literals use the same collation as user_level_permissions table
+SET collation_connection = 'utf8mb4_unicode_ci';
 SET @json = LOAD_FILE('configs/permissionActions.json');
 
 INSERT INTO user_level_permissions (userlevel_id, action, action_key)
