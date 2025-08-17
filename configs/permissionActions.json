@@ -1,0 +1,21 @@
+{
+  "forms": {
+    "user_level_actions": {
+      "name": "User Level Actions",
+      "buttons": [
+        "Load",
+        "Save",
+        "Refresh",
+        "Batch Populate"
+      ],
+      "functions": [],
+      "api": [
+        { "key": "/api/permissions/actions", "description": "List available permission actions" },
+        { "key": "/api/permissions/user-levels", "description": "List user levels" },
+        { "key": "/api/permissions/actions/:userLevelId", "description": "Get or update user level actions" },
+        { "key": "/api/permissions/actions/populate", "description": "Populate missing user level permissions" }
+      ]
+    }
+  }
+}
+
