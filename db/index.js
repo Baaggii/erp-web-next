@@ -318,6 +318,61 @@ export async function getEmploymentSession(empid, companyId) {
 }
 
 export async function getUserLevelActions(userLevelId) {
+  // Attempt to read the modern permission layout first
+  try {
+    const [rows] = await pool.query(
+      `SELECT action, action_key FROM user_level_permission WHERE userlevel_id = ?`,
+      [userLevelId],
+    );
+    const perms = {};
+    for (const { action, action_key: key } of rows) {
+      if (action === 'module_key' && key) {
+        perms[key] = true;
+      } else if (action === 'button' && key) {
+        (perms.buttons ||= {})[key] = true;
+      } else if (action === 'function' && key) {
+        (perms.functions ||= {})[key] = true;
+      } else if (action === 'API' && key) {
+        (perms.api ||= {})[key] = true;
+      }
+    }
+    return perms;
+  } catch (err) {
+    // Fall back if the new schema isn't available
+    if (err.code !== 'ER_BAD_FIELD_ERROR' && err.code !== 'ER_NO_SUCH_TABLE') {
+      throw err;
+    }
+    if (err.code !== 'ER_NO_SUCH_TABLE') {
+      try {
+        const [rows] = await pool.query(
+          `SELECT action, ul_module_key, function_name FROM user_level_permission WHERE userlevel_id = ?`,
+          [userLevelId],
+        );
+        const perms = {};
+        for (const { action, ul_module_key: mod, function_name: fn } of rows) {
+          const key = action === 'module_key' ? mod : fn;
+          if (action === 'module_key' && key) {
+            perms[key] = true;
+          } else if (action === 'button' && key) {
+            (perms.buttons ||= {})[key] = true;
+          } else if (action === 'function' && key) {
+            (perms.functions ||= {})[key] = true;
+          } else if (action === 'API' && key) {
+            (perms.api ||= {})[key] = true;
+          }
+        }
+        return perms;
+      } catch (err2) {
+        if (err2.code !== 'ER_BAD_FIELD_ERROR' && err2.code !== 'ER_NO_SUCH_TABLE') {
+          throw err2;
+        }
+        // otherwise continue to legacy fallback
+      }
+    }
+  }
+
+  // Legacy flag-based permissions from code_userlevel and code_userlevel_settings
+
   const [flagsRows] = await pool.query(
     `SELECT new_records, edit_delete_request, edit_records, delete_records, image_handler, audition, supervisor, companywide, branchwide, departmentwide, developer, common_settings, system_settings, license_settings, ai, dashboard, ai_dashboard FROM code_userlevel WHERE userlevel_id = ?`,
     [userLevelId],
@@ -1002,8 +1057,8 @@ export async function listTableRows(
         filterClauses.push(`\`${field}\` BETWEEN ? AND ?`);
         params.push(range[1], range[2]);
       } else {
-        filterClauses.push(`\`${field}\` LIKE ?`);
-        params.push(`%${value}%`);
+        filterClauses.push(`\`${field}\` = ?`);
+        params.push(value);
       }
     }
   }
