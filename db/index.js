@@ -280,53 +280,47 @@ export async function getEmploymentSession(empid, companyId) {
 }
 
 export async function getUserLevelActions(userLevelId) {
-  // See which columns exist before querying to avoid "unknown column" errors
+  // Attempt to read from the newer user_level_permission table first
   try {
-    const columns = await getTableColumnsSafe('user_level_permission');
-    const lower = columns.map((c) => c.toLowerCase());
-    let rows = [];
-    if (lower.includes('action_key')) {
-      [rows] = await pool.query(
-        `SELECT action, action_key FROM user_level_permission WHERE userlevel_id = ?`,
-        [userLevelId],
-      );
-      const perms = {};
-      for (const { action, action_key: key } of rows) {
-        if (action === 'module_key' && key) {
-          perms[key] = true;
-        } else if (action === 'button' && key) {
-          (perms.buttons ||= {})[key] = true;
-        } else if (action === 'function' && key) {
-          (perms.functions ||= {})[key] = true;
-        } else if (action === 'API' && key) {
-          (perms.api ||= {})[key] = true;
-        }
+    const [rows] = await pool.query(
+      `SELECT action, action_key FROM user_level_permission WHERE userlevel_id = ?`,
+      [userLevelId],
+    );
+    const perms = {};
+    for (const { action, action_key: key } of rows) {
+      if (action === 'module_key' && key) {
+        perms[key] = true;
+      } else if (action === 'button' && key) {
+        (perms.buttons ||= {})[key] = true;
+      } else if (action === 'function' && key) {
+        (perms.functions ||= {})[key] = true;
+      } else if (action === 'API' && key) {
+        (perms.api ||= {})[key] = true;
       }
-      return perms;
     }
-
-    if (lower.includes('ul_module_key') || lower.includes('function_name')) {
-      [rows] = await pool.query(
+    return perms;
+  } catch (err) {
+    // If action_key is missing, retry with legacy columns
+    if (err.code === 'ER_BAD_FIELD_ERROR') {
+      const [rows] = await pool.query(
         `SELECT action, ul_module_key, function_name FROM user_level_permission WHERE userlevel_id = ?`,
         [userLevelId],
       );
       const perms = {};
       for (const { action, ul_module_key: mod, function_name: fn } of rows) {
-        const key = action === 'module_key' ? mod : fn;
-        if (action === 'module_key' && key) {
-          perms[key] = true;
-        } else if (action === 'button' && key) {
-          (perms.buttons ||= {})[key] = true;
-        } else if (action === 'function' && key) {
-          (perms.functions ||= {})[key] = true;
-        } else if (action === 'API' && key) {
-          (perms.api ||= {})[key] = true;
+        if (action === 'module_key' && mod) {
+          perms[mod] = true;
+        } else if (action === 'button' && fn) {
+          (perms.buttons ||= {})[fn] = true;
+        } else if (action === 'function' && fn) {
+          (perms.functions ||= {})[fn] = true;
+        } else if (action === 'API' && fn) {
+          (perms.api ||= {})[fn] = true;
         }
       }
       return perms;
     }
-  } catch (err) {
-    // If the table doesn't exist, fall back to legacy flag-based permissions
+    // If the table doesn't exist, fall back to legacy flags
     if (err.code !== 'ER_NO_SUCH_TABLE') throw err;
   }
 
