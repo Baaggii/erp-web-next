@@ -1,21 +1,73 @@
 {
-  "forms": {
-    "user_level_actions": {
-      "name": "User Level Actions",
-      "buttons": [
-        "Load",
-        "Save",
-        "Refresh",
-        "Batch Populate"
-      ],
-      "functions": [],
-      "api": [
-        { "key": "/api/permissions/actions", "description": "List available permission actions" },
-        { "key": "/api/permissions/user-levels", "description": "List user levels" },
-        { "key": "/api/permissions/actions/:userLevelId", "description": "Get or update user level actions" },
-        { "key": "/api/permissions/actions/populate", "description": "Populate missing user level permissions" }
-      ]
-    }
-  }
+  "modules": [
+    "dashboard",
+    "forms",
+    "reports",
+    "settings",
+    "developer",
+    "users",
+    "user_companies",
+    "user_level_actions",
+    "modules",
+    "company_licenses",
+    "tables_management",
+    "coding_tables",
+    "forms_management",
+    "report_management",
+    "report_builder",
+    "image_management",
+    "general_configuration",
+    "change_password",
+    "pos_transaction_management",
+    "pos_transactions",
+    "gl",
+    "po",
+    "sales"
+  ],
+  "buttons": [
+    "New transaction",
+    "Edit transaction",
+    "Delete transaction",
+    "Save configuration",
+    "Save tables",
+    "Save to host",
+    "Save"
+  ],
+  "functions": [],
+  "api": [
+    { "key": "/api/ai_inventory/identify", "description": "Identify inventory image" },
+    { "key": "/api/ai_inventory/results", "description": "Retrieve AI inventory results" },
+    { "key": "/api/auth/change-password", "description": "Change current user password" },
+    { "key": "/api/coding_table_configs", "description": "Manage coding table configurations" },
+    { "key": "/api/companies", "description": "List companies" },
+    { "key": "/api/company_modules", "description": "List company module licenses" },
+    { "key": "/api/display_fields", "description": "Retrieve table display field settings" },
+    { "key": "/api/general_config", "description": "General configuration" },
+    { "key": "/api/generated_sql", "description": "List generated SQL files" },
+    { "key": "/api/generated_sql/execute", "description": "Execute generated SQL" },
+    { "key": "/api/header_mappings", "description": "Manage header mappings" },
+    { "key": "/api/modules", "description": "List application modules" },
+    { "key": "/api/modules/populate", "description": "Populate default modules" },
+    { "key": "/api/openai", "description": "OpenAI proxy" },
+    { "key": "/api/pos_txn_config", "description": "POS transaction configuration" },
+    { "key": "/api/pos_txn_layout", "description": "POS transaction layout" },
+    { "key": "/api/pos_txn_pending", "description": "List pending POS transactions" },
+    { "key": "/api/pos_txn_post", "description": "Post POS transaction" },
+    { "key": "/api/procedures", "description": "List stored procedures" },
+    { "key": "/api/procedures/raw", "description": "Execute raw stored procedure" },
+    { "key": "/api/report_builder/tables", "description": "Report builder tables" },
+    { "key": "/api/report_builder/views", "description": "Report builder views" },
+    { "key": "/api/settings", "description": "System settings" },
+    { "key": "/api/tables", "description": "List database tables" },
+    { "key": "/api/tables/code_branches", "description": "List branch codes" },
+    { "key": "/api/tables/code_department", "description": "List department codes" },
+    { "key": "/api/tables/code_transaction", "description": "List transaction codes" },
+    { "key": "/api/transaction_forms", "description": "List transaction form configs" },
+    { "key": "/api/transaction_images/fix_incomplete", "description": "Fix incomplete transaction images" },
+    { "key": "/api/transaction_images/upload_check", "description": "Check transaction image upload" },
+    { "key": "/api/transaction_images/upload_commit", "description": "Commit transaction image upload" },
+    { "key": "/api/transaction_images/upload_scan", "description": "Scan transaction image upload" },
+    { "key": "/api/user_companies", "description": "Manage user companies" },
+    { "key": "/api/users", "description": "Manage users" }
+  ]
 }
-
