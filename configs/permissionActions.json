@@ -12,7 +12,12 @@
         "Load",
         "Delete",
         "POST",
-        "Run"
+        "Run",
+        "Clear Date Filter",
+        "Clear Transaction Type Filter",
+        "Clear Branch Filter",
+        "Clear Department Filter",
+        "Clear User Filter"
       ],
       "functions": [],
       "api": [
