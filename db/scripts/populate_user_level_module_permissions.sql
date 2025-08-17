@@ -3,8 +3,7 @@ INSERT INTO user_level_permissions (userlevel_id, action, action_key)
 SELECT ul.userlevel_id, 'module_key', m.module_key
   FROM user_levels ul
   CROSS JOIN modules m
-  WHERE ul.userlevel_id <> 1
-    AND m.module_key NOT LIKE 'transactions\_%'
+  WHERE m.module_key NOT LIKE 'transactions\_%'
     AND NOT EXISTS (
       SELECT 1 FROM user_level_permissions up
        WHERE up.userlevel_id = ul.userlevel_id

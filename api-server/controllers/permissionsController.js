@@ -36,11 +36,6 @@ export async function getActions(req, res, next) {
 export async function updateActions(req, res, next) {
   try {
     const id = req.params.userLevelId;
-    if (Number(id) === 1) {
-      return res
-        .status(400)
-        .json({ message: 'System admin permissions cannot be modified' });
-    }
     const { modules, buttons, functions, api } = req.body;
     await setUserLevelActions(id, { modules, buttons, functions, api });
     res.sendStatus(200);
