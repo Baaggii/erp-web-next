@@ -15,6 +15,7 @@ import ReportsPage from './pages/Reports.jsx';
 import UsersPage from './pages/Users.jsx';
 import UserCompaniesPage from './pages/UserCompanies.jsx';
 import RolePermissionsPage from './pages/RolePermissions.jsx';
+import ActionPermissionsPage from './pages/ActionPermissions.jsx';
 import CompanyLicensesPage from './pages/CompanyLicenses.jsx';
 import TablesManagementPage from './pages/TablesManagement.jsx';
 import CodingTablesPage from './pages/CodingTables.jsx';
@@ -92,6 +93,7 @@ function AuthedApp() {
     users: <UsersPage />,
     user_companies: <UserCompaniesPage />,
     role_permissions: <RolePermissionsPage />,
+    action_permissions: <ActionPermissionsPage />,
     modules: <ModulesPage />,
     company_licenses: <CompanyLicensesPage />,
     tables_management: <TablesManagementPage />,
@@ -124,6 +126,7 @@ function AuthedApp() {
     'users',
     'user_companies',
     'role_permissions',
+    'action_permissions',
     'modules',
     'company_licenses',
     'tables_management',
