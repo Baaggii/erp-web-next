@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useContext } from 'react';
 import TableManager from '../components/TableManager.jsx';
+import { AuthContext } from '../context/AuthContext.jsx';
 
 export default function TablesManagement() {
   const [tables, setTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState('');
   const [refreshId, setRefreshId] = useState(0);
+  const { permissions: perms } = useContext(AuthContext);
 
   const loadTables = async () => {
     try {
@@ -41,7 +43,11 @@ export default function TablesManagement() {
       </select>
       <button onClick={loadTables} style={{ marginLeft: '0.5rem' }}>Refresh List</button>
       {selectedTable && (
-        <TableManager table={selectedTable} refreshId={refreshId} />
+        <TableManager
+          table={selectedTable}
+          refreshId={refreshId}
+          buttonPerms={perms?.buttons || {}}
+        />
       )}
     </div>
   );
