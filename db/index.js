@@ -288,6 +288,13 @@ export async function getEmploymentSession(empid, companyId) {
   return sessions[0] || null;
 }
 
+export async function listUserLevels() {
+  const [rows] = await pool.query(
+    'SELECT userlevel_id AS id, name FROM user_levels ORDER BY userlevel_id',
+  );
+  return rows;
+}
+
 export async function getUserLevelActions(userLevelId) {
   if (Number(userLevelId) === 1) {
     const perms = {};
@@ -311,7 +318,10 @@ export async function getUserLevelActions(userLevelId) {
       }
       if (Array.isArray(registry.api)) {
         perms.api = {};
-        registry.api.forEach((a) => (perms.api[a] = true));
+        registry.api.forEach((a) => {
+          const key = typeof a === 'string' ? a : a.key;
+          perms.api[key] = true;
+        });
       }
     } catch {}
     return perms;
@@ -387,6 +397,43 @@ export async function setUserLevelActions(userLevelId, { modules = [], buttons =
       'INSERT INTO user_level_permissions (userlevel_id, action, action_key) VALUES ' +
       values.join(',');
     await pool.query(sql, params);
+  }
+}
+
+export async function populateMissingPermissions(allow = false) {
+  if (!allow) return;
+  const raw = await fs.readFile(actionsPath, 'utf8');
+  const registry = JSON.parse(raw);
+  const actions = [];
+  if (Array.isArray(registry.modules)) {
+    registry.modules.forEach((m) => actions.push(['module_key', m]));
+  }
+  if (Array.isArray(registry.buttons)) {
+    registry.buttons.forEach((b) => actions.push(['button', b]));
+  }
+  if (Array.isArray(registry.functions)) {
+    registry.functions.forEach((f) => actions.push(['function', f]));
+  }
+  if (Array.isArray(registry.api)) {
+    registry.api.forEach((a) => {
+      const key = typeof a === 'string' ? a : a.key;
+      actions.push(['API', key]);
+    });
+  }
+  for (const [action, key] of actions) {
+    await pool.query(
+      `INSERT INTO user_level_permissions (userlevel_id, action, action_key)
+       SELECT ul.userlevel_id, ?, ?
+         FROM user_levels ul
+         WHERE ul.userlevel_id <> 1
+           AND NOT EXISTS (
+             SELECT 1 FROM user_level_permissions up
+              WHERE up.userlevel_id = ul.userlevel_id
+                AND up.action = ?
+                AND up.action_key = ?
+           )`,
+      [action, key, action, key],
+    );
   }
 }
 

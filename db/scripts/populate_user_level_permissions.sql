@@ -21,7 +21,7 @@ SELECT ul.userlevel_id, a.action, a.action_key
     FROM JSON_TABLE(@json, '$.functions[*]' COLUMNS(action_key VARCHAR(255) PATH '$')) jt
     UNION ALL
     SELECT 'API' AS action, jt.action_key
-    FROM JSON_TABLE(@json, '$.api[*]' COLUMNS(action_key VARCHAR(255) PATH '$')) jt
+    FROM JSON_TABLE(@json, '$.api[*]' COLUMNS(action_key VARCHAR(255) PATH '$.key')) jt
   ) AS a
   LEFT JOIN user_level_permissions up
     ON up.userlevel_id = ul.userlevel_id

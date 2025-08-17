@@ -5,28 +5,31 @@ export default function UserLevelActions() {
   const [groups, setGroups] = useState({ modules: [], buttons: [], functions: [], api: [] });
   const [selected, setSelected] = useState({ modules: [], buttons: [], functions: [], api: [] });
   const [userLevelId, setUserLevelId] = useState("");
-  const [missing, setMissing] = useState(null);
+  const [userLevels, setUserLevels] = useState([]);
   const { addToast } = useToast();
 
-  useEffect(() => {
-    async function loadGroups() {
-      try {
-        const res = await fetch("/api/permissions/actions", {
-          credentials: "include",
-        });
-        if (!res.ok) {
-          const msg = await res.text();
-          throw new Error(msg || "Failed to load action groups");
-        }
-        const data = await res.json();
-        setGroups(data);
-        addToast("Action groups loaded", "success");
-      } catch (err) {
-        console.error("Failed to load action groups", err);
-        addToast(`Failed to load action groups: ${err.message}`, "error");
+  const loadGroups = async () => {
+    try {
+      const res = await fetch("/api/permissions/actions", { credentials: "include" });
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || "Failed to load action groups");
       }
+      const data = await res.json();
+      setGroups(data);
+      addToast("Action groups loaded", "success");
+    } catch (err) {
+      console.error("Failed to load action groups", err);
+      addToast(`Failed to load action groups: ${err.message}`, "error");
     }
+  };
+
+  useEffect(() => {
     loadGroups();
+    fetch("/api/permissions/user-levels", { credentials: "include" })
+      .then((res) => res.json())
+      .then(setUserLevels)
+      .catch(() => addToast("Failed to load user levels", "error"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   function loadCurrent() {
@@ -39,10 +42,9 @@ export default function UserLevelActions() {
         modules: groups.modules,
         buttons: groups.buttons,
         functions: groups.functions,
-        api: groups.api,
+        api: groups.api.map((a) => (typeof a === "string" ? a : a.key)),
       };
       setSelected(sel);
-      setMissing(null);
       addToast("System admin has access to all actions", "info");
       return;
     }
@@ -61,12 +63,6 @@ export default function UserLevelActions() {
           api: Object.keys(data.api || {}),
         };
         setSelected(sel);
-        setMissing({
-          modules: groups.modules.filter((m) => !sel.modules.includes(m)),
-          buttons: groups.buttons.filter((b) => !sel.buttons.includes(b)),
-          functions: groups.functions.filter((f) => !sel.functions.includes(f)),
-          api: groups.api.filter((a) => !sel.api.includes(a)),
-        });
         addToast("Current actions loaded", "success");
       })
       .catch((err) => {
@@ -121,15 +117,19 @@ export default function UserLevelActions() {
     return (
       <div style={{ maxHeight: "200px", overflowY: "auto" }}>
         {items.map((it) => {
-          const isMissing = missing && missing[type]?.includes(it);
+          const key = typeof it === "string" ? it : it.key;
+          const label =
+            type === "api" && typeof it === "object"
+              ? it.description || it.key
+              : describe(key);
           return (
-            <label key={it} style={{ display: "block", color: isMissing ? "#c00" : "inherit" }}>
+            <label key={key} style={{ display: "block" }}>
               <input
                 type="checkbox"
-                checked={selected[type].includes(it)}
-                onChange={(e) => toggle(type, it, e.target.checked)}
+                checked={selected[type].includes(key)}
+                onChange={(e) => toggle(type, key, e.target.checked)}
               />
-              {describe(it)}
+              {label}
             </label>
           );
         })}
@@ -137,51 +137,58 @@ export default function UserLevelActions() {
     );
   }
 
+  async function handlePopulate() {
+    const allow = window.confirm(
+      "Allow all new operations by default? Click Cancel to disallow.",
+    );
+    try {
+      const res = await fetch("/api/permissions/actions/populate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ allow }),
+      });
+      if (res.ok) {
+        addToast("Permissions populated", "success");
+        await loadGroups();
+      } else {
+        addToast("Failed to populate permissions", "error");
+      }
+    } catch (err) {
+      console.error("Failed to populate permissions", err);
+      addToast("Failed to populate permissions", "error");
+    }
+  }
+
   return (
     <div>
       <h2>User Level Actions</h2>
-      <input
-        type="text"
-        placeholder="User Level ID"
+      <select
         value={userLevelId}
         onChange={(e) => setUserLevelId(e.target.value)}
         style={{ marginRight: "0.5rem" }}
-      />
+      >
+        <option value="">Select user level</option>
+        {userLevels.map((ul) => (
+          <option key={ul.id} value={ul.id}>
+            {ul.name || ul.id}
+          </option>
+        ))}
+      </select>
       <button onClick={loadCurrent} style={{ marginRight: "0.5rem" }}>
         Load
       </button>
-      <button onClick={handleSave} disabled={userLevelId === "1"}>
+      <button
+        onClick={handleSave}
+        disabled={userLevelId === "1"}
+        style={{ marginRight: "0.5rem" }}
+      >
         Save
       </button>
-      {missing &&
-        (missing.modules.length ||
-          missing.buttons.length ||
-          missing.functions.length ||
-          missing.api.length) > 0 && (
-          <div
-            style={{
-              backgroundColor: "#ffeeba",
-              padding: "1rem",
-              marginTop: "1rem",
-            }}
-          >
-            <strong>Missing permissions detected:</strong>
-            <ul>
-              {missing.modules.map((m) => (
-                <li key={`m-${m}`}>Module: {m}</li>
-              ))}
-              {missing.buttons.map((b) => (
-                <li key={`b-${b}`}>Button: {b}</li>
-              ))}
-              {missing.functions.map((f) => (
-                <li key={`f-${f}`}>Function: {f}</li>
-              ))}
-              {missing.api.map((a) => (
-                <li key={`a-${a}`}>API: {a}</li>
-              ))}
-            </ul>
-          </div>
-        )}
+      <button onClick={loadGroups} style={{ marginRight: "0.5rem" }}>
+        Refresh
+      </button>
+      <button onClick={handlePopulate}>Batch Populate</button>
       <div style={{ display: "flex", gap: "1rem", marginTop: "1rem" }}>
         <div>
           <h3>Modules</h3>

@@ -1,4 +1,9 @@
-import { getUserLevelActions, setUserLevelActions } from '../../db/index.js';
+import {
+  getUserLevelActions,
+  setUserLevelActions,
+  listUserLevels,
+  populateMissingPermissions,
+} from '../../db/index.js';
 import fs from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
@@ -43,6 +48,25 @@ export async function updateActions(req, res, next) {
     }
     const { modules, buttons, functions, api } = req.body;
     await setUserLevelActions(id, { modules, buttons, functions, api });
+    res.sendStatus(200);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function listUserLevelsController(req, res, next) {
+  try {
+    const rows = await listUserLevels();
+    res.json(rows);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function populateMissing(req, res, next) {
+  try {
+    const allow = !!req.body?.allow;
+    await populateMissingPermissions(allow);
     res.sendStatus(200);
   } catch (err) {
     next(err);
