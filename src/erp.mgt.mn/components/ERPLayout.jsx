@@ -5,7 +5,6 @@ import UserMenu from "./UserMenu.jsx";
 import { useOutlet, useNavigate, useLocation } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext.jsx";
 import { logout } from "../hooks/useAuth.jsx";
-import { useCompanyModules } from "../hooks/useCompanyModules.js";
 import { useModules } from "../hooks/useModules.js";
 import { useTxnModules } from "../hooks/useTxnModules.js";
 import modulePath from "../utils/modulePath.js";
@@ -185,15 +184,14 @@ function Header({ user, onLogout, onHome, isMobile, onToggleSidebar }) {
 
 /** Left sidebar with “menu groups” and “pinned items” **/
 function Sidebar({ onOpen, open, isMobile }) {
-  const { company, permissions: perms } = useContext(AuthContext);
+  const { permissions: perms } = useContext(AuthContext);
   const location = useLocation();
-  const licensed = useCompanyModules(company);
   const modules = useModules();
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
   const headerMap = useHeaderMappings(modules.map((m) => m.module_key));
 
-  if (!perms || !licensed) return null;
+  if (!perms) return null;
 
   const allMap = {};
   modules.forEach((m) => {
@@ -219,7 +217,6 @@ function Sidebar({ onOpen, open, isMobile }) {
     const isTxn = formsDesc && txnModules && txnModules.keys.has(m.module_key);
     if (formsDesc && !isTxn) return;
     if (!m.show_in_sidebar) return;
-    if (!isTxn && !licensed[m.module_key]) return;
     if (!isTxn && !perms[m.module_key]) return;
     const label =
       generalConfig.general?.procLabels?.[m.module_key] ||
