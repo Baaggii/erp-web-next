@@ -220,6 +220,23 @@ export default function UserLevelActions() {
         {renderTree(tree, type)}
       </div>
     );
+    try {
+      const res = await fetch("/api/permissions/actions/populate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ allow }),
+      });
+      if (res.ok) {
+        addToast("Permissions populated", "success");
+        loadGroups();
+      } else {
+        addToast("Failed to populate permissions", "error");
+      }
+    } catch (err) {
+      console.error("Failed to populate permissions", err);
+      addToast("Failed to populate permissions", "error");
+    }
   }
 
   function renderModuleTree(items, depth = 0) {
