@@ -13,7 +13,6 @@ import userRoutes from "./routes/users.js";
 import companyRoutes from "./routes/companies.js";
 import settingsRoutes from "./routes/settings.js";
 import userCompanyRoutes from "./routes/user_companies.js";
-import rolePermissionRoutes from "./routes/role_permissions.js";
 import userActionRoutes from "./routes/user_actions.js";
 import moduleRoutes from "./routes/modules.js";
 import openaiRoutes from "./routes/openai.js";
@@ -22,6 +21,7 @@ import displayFieldRoutes from "./routes/display_fields.js";
 import codingTableConfigRoutes from "./routes/coding_table_configs.js";
 import generatedSqlRoutes from "./routes/generated_sql.js";
 import generalConfigRoutes from "./routes/general_config.js";
+import permissionsRoutes from "./routes/permissions.js";
 import { getGeneralConfig } from "./services/generalConfig.js";
 
 // Polyfill for __dirname in ES modules
@@ -74,7 +74,6 @@ app.use("/api/users", userRoutes);
 app.use("/api/companies", companyRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/user_companies", userCompanyRoutes);
-app.use("/api/role_permissions", rolePermissionRoutes);
 app.use("/api/modules", moduleRoutes);
 app.use("/api/header_mappings", headerMappingRoutes);
 app.use("/api/openai", openaiRoutes);
@@ -82,6 +81,7 @@ app.use("/api/display_fields", displayFieldRoutes);
 app.use("/api/coding_table_configs", codingTableConfigRoutes);
 app.use("/api/generated_sql", generatedSqlRoutes);
 app.use("/api/general_config", generalConfigRoutes);
+app.use("/api/permissions", permissionsRoutes);
 
 // Serve static React build and fallback to index.html
 // NOTE: adjust this path to where your SPA build actually lives.

@@ -131,52 +131,38 @@ function mapEmploymentRow(row) {
     branch_id,
     department_id,
     position_id,
-    position,
-    new_records,
-    edit_delete_request,
-    edit_records,
-    delete_records,
-    image_handler,
-    audition,
-    supervisor,
-    companywide,
-    branchwide,
-    departmentwide,
-    developer,
-    common_settings,
-    system_settings,
-    license_settings,
-    ai,
-    dashboard,
-    ai_dashboard,
+    permission_list,
     ...rest
   } = row;
+  const flags = new Set((permission_list || "").split(","));
+  const all = [
+    "new_records",
+    "edit_delete_request",
+    "edit_records",
+    "delete_records",
+    "image_handler",
+    "audition",
+    "supervisor",
+    "companywide",
+    "branchwide",
+    "departmentwide",
+    "developer",
+    "common_settings",
+    "system_settings",
+    "license_settings",
+    "ai",
+    "dashboard",
+    "ai_dashboard",
+  ];
+  const permissions = {};
+  for (const k of all) permissions[k] = flags.has(k);
   return {
     company_id,
     branch_id,
     department_id,
     position_id,
-    position,
     ...rest,
-    permissions: {
-      new_records: !!new_records,
-      edit_delete_request: !!edit_delete_request,
-      edit_records: !!edit_records,
-      delete_records: !!delete_records,
-      image_handler: !!image_handler,
-      audition: !!audition,
-      supervisor: !!supervisor,
-      companywide: !!companywide,
-      branchwide: !!branchwide,
-      departmentwide: !!departmentwide,
-      developer: !!developer,
-      common_settings: !!common_settings,
-      system_settings: !!system_settings,
-      license_settings: !!license_settings,
-      ai: !!ai,
-      dashboard: !!dashboard,
-      ai_dashboard: !!ai_dashboard,
-    },
+    permissions,
   };
 }
 
@@ -210,35 +196,23 @@ export async function getEmploymentSessions(empid) {
         e.employment_department_id AS department_id,
         ${deptName} AS department_name,
         e.employment_position_id AS position_id,
-        p.position_name AS position,
         ${empName} AS employee_name,
         e.employment_user_level AS user_level,
         ul.name AS user_level_name,
-        ul.new_records,
-        ul.edit_delete_request,
-        ul.edit_records,
-        ul.delete_records,
-        ul.image_handler,
-        ul.audition,
-        ul.supervisor,
-        ul.companywide,
-        ul.branchwide,
-        ul.departmentwide,
-        ul.developer,
-        ul.common_settings,
-        ul.system_settings,
-        ul.license_settings,
-        ul.ai,
-        ul.dashboard,
-        ul.ai_dashboard
+        GROUP_CONCAT(DISTINCT up.action_key) AS permission_list
      FROM tbl_employment e
      LEFT JOIN companies c ON e.employment_company_id = c.id
      LEFT JOIN code_branches b ON e.employment_branch_id = b.id
      LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol}
      LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
-     LEFT JOIN code_position p ON e.employment_position_id = p.position_id
-     LEFT JOIN code_userlevel ul ON e.employment_user_level = ul.userlevel_id
+     LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
+     LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission'
      WHERE e.employment_emp_id = ?
+     GROUP BY e.employment_company_id, company_name,
+              e.employment_branch_id, branch_name,
+              e.employment_department_id, department_name,
+              e.employment_position_id,
+              employee_name, e.employment_user_level, ul.name
      ORDER BY company_name, department_name, branch_name, user_level_name`,
     [empid],
   );
@@ -277,35 +251,23 @@ export async function getEmploymentSession(empid, companyId) {
           e.employment_department_id AS department_id,
           ${deptName} AS department_name,
           e.employment_position_id AS position_id,
-          p.position_name AS position,
           ${empName} AS employee_name,
           e.employment_user_level AS user_level,
           ul.name AS user_level_name,
-          ul.new_records,
-          ul.edit_delete_request,
-          ul.edit_records,
-          ul.delete_records,
-          ul.image_handler,
-          ul.audition,
-          ul.supervisor,
-          ul.companywide,
-          ul.branchwide,
-          ul.departmentwide,
-          ul.developer,
-          ul.common_settings,
-          ul.system_settings,
-          ul.license_settings,
-          ul.ai,
-          ul.dashboard,
-          ul.ai_dashboard
+          GROUP_CONCAT(DISTINCT up.action_key) AS permission_list
        FROM tbl_employment e
        LEFT JOIN companies c ON e.employment_company_id = c.id
        LEFT JOIN code_branches b ON e.employment_branch_id = b.id
        LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol}
        LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
-       LEFT JOIN code_position p ON e.employment_position_id = p.position_id
-       LEFT JOIN code_userlevel ul ON e.employment_user_level = ul.userlevel_id
+       LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
+       LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission'
        WHERE e.employment_emp_id = ? AND e.employment_company_id = ?
+       GROUP BY e.employment_company_id, company_name,
+                e.employment_branch_id, branch_name,
+                e.employment_department_id, department_name,
+                e.employment_position_id,
+                employee_name, e.employment_user_level, ul.name
        ORDER BY company_name, department_name, branch_name, user_level_name
        LIMIT 1`,
       [empid, companyId],
@@ -380,21 +342,76 @@ export async function getUserLevelActions(userLevelId) {
     .join(' OR ');
   if (!conditions) return {};
   const [rows] = await pool.query(
-    `SELECT action, ul_module_key, function_name FROM code_userlevel_settings WHERE ${conditions}`,
+    `SELECT action, action_key
+       FROM user_level_permissions
+       WHERE userlevel_id = ? AND action IS NOT NULL`,
+    [userLevelId],
   );
   const perms = {};
-  for (const { action, ul_module_key: mod, function_name: fn } of rows) {
-    if (action === 'module_key' && mod) {
-      perms[mod] = true;
-    } else if (action === 'button' && fn) {
-      (perms.buttons ||= {})[fn] = true;
-    } else if (action === 'function' && fn) {
-      (perms.functions ||= {})[fn] = true;
-    } else if (action === 'API' && fn) {
-      (perms.api ||= {})[fn] = true;
+  for (const { action, action_key: key } of rows) {
+    if (action === 'module_key' && key) {
+      perms[key] = true;
+    } else if (action === 'button' && key) {
+      (perms.buttons ||= {})[key] = true;
+    } else if (action === 'function' && key) {
+      (perms.functions ||= {})[key] = true;
+    } else if (action === 'API' && key) {
+      (perms.api ||= {})[key] = true;
     }
   }
   return perms;
+}
+
+export async function listActionGroups() {
+  const [rows] = await pool.query(
+    `SELECT action, COALESCE(ul_module_key, function_name) AS action_key
+       FROM code_userlevel_settings
+       WHERE action IS NOT NULL`,
+  );
+  const groups = { modules: new Set(), buttons: new Set(), functions: new Set(), api: new Set() };
+  for (const { action, action_key: key } of rows) {
+    if (action === 'module_key' && key) groups.modules.add(key);
+    else if (action === 'button' && key) groups.buttons.add(key);
+    else if (action === 'function' && key) groups.functions.add(key);
+    else if (action === 'API' && key) groups.api.add(key);
+  }
+  return {
+    modules: Array.from(groups.modules),
+    buttons: Array.from(groups.buttons),
+    functions: Array.from(groups.functions),
+    api: Array.from(groups.api),
+  };
+}
+
+export async function setUserLevelActions(userLevelId, { modules = [], buttons = [], functions = [], api = [] }) {
+  await pool.query(
+    'DELETE FROM user_level_permissions WHERE userlevel_id = ? AND action IS NOT NULL',
+    [userLevelId],
+  );
+  const values = [];
+  const params = [];
+  for (const m of modules) {
+    values.push('(?,\'module_key\',?)');
+    params.push(userLevelId, m);
+  }
+  for (const b of buttons) {
+    values.push('(?,\'button\',?)');
+    params.push(userLevelId, b);
+  }
+  for (const f of functions) {
+    values.push('(?,\'function\',?)');
+    params.push(userLevelId, f);
+  }
+  for (const a of api) {
+    values.push('(?,\'API\',?)');
+    params.push(userLevelId, a);
+  }
+  if (values.length) {
+    const sql =
+      'INSERT INTO user_level_permissions (userlevel_id, action, action_key) VALUES ' +
+      values.join(',');
+    await pool.query(sql, params);
+  }
 }
 
 /**
@@ -402,7 +419,7 @@ export async function getUserLevelActions(userLevelId) {
  */
 export async function listUsers() {
   const [rows] = await pool.query(
-    `SELECT u.id, u.empid, e.employment_position_id AS position_id, p.position_name AS position, u.created_at
+    `SELECT u.id, u.empid, e.employment_position_id AS position_id, u.created_at
        FROM users u
        LEFT JOIN (
          SELECT t1.employment_emp_id, t1.employment_position_id
@@ -412,18 +429,16 @@ export async function listUsers() {
                FROM tbl_employment
                GROUP BY employment_emp_id
            ) t2 ON t1.employment_emp_id = t2.employment_emp_id AND t1.id = t2.max_id
-       ) e ON u.empid = e.employment_emp_id
-       LEFT JOIN code_position p ON e.employment_position_id = p.position_id`,
+       ) e ON u.empid = e.employment_emp_id`,
   );
   return rows;
 }
 
 export async function listUsersByCompany(companyId) {
   const [rows] = await pool.query(
-    `SELECT u.id, u.empid, uc.position_id, p.position_name AS position, u.created_at
+    `SELECT u.id, u.empid, uc.position_id, u.created_at
        FROM users u
        JOIN user_companies uc ON u.empid = uc.empid
-       JOIN code_position p ON uc.position_id = p.position_id
       WHERE uc.company_id = ?`,
     [companyId],
   );
@@ -504,11 +519,10 @@ export async function assignCompanyToUser(
  */
 export async function listUserCompanies(empid) {
   const [rows] = await pool.query(
-    `SELECT uc.empid, uc.company_id, c.name AS company_name, uc.position_id, p.position_name AS position,
+    `SELECT uc.empid, uc.company_id, c.name AS company_name, uc.position_id,
             uc.branch_id, b.name AS branch_name
      FROM user_companies uc
      JOIN companies c ON uc.company_id = c.id
-     JOIN code_position p ON uc.position_id = p.position_id
      LEFT JOIN code_branches b ON uc.branch_id = b.id
      WHERE uc.empid = ?`,
     [empid],
@@ -549,11 +563,10 @@ export async function listAllUserCompanies(companyId) {
     params.push(companyId);
   }
   const [rows] = await pool.query(
-    `SELECT uc.empid, uc.company_id, c.name AS company_name, uc.position_id, p.position_name AS position,
+    `SELECT uc.empid, uc.company_id, c.name AS company_name, uc.position_id,
             uc.branch_id, b.name AS branch_name
      FROM user_companies uc
      JOIN companies c ON uc.company_id = c.id
-     JOIN code_position p ON uc.position_id = p.position_id
      LEFT JOIN code_branches b ON uc.branch_id = b.id
      ${where}`,
     params,
@@ -658,6 +671,18 @@ export async function upsertModule(
        show_in_header = VALUES(show_in_header)`,
     [moduleKey, label, parentKey, showInSidebar ? 1 : 0, showInHeader ? 1 : 0],
   );
+  await pool.query(
+    `INSERT INTO user_level_permissions (userlevel_id, action, action_key)
+     SELECT ul.userlevel_id, 'module_key', ?
+       FROM user_levels ul
+       WHERE NOT EXISTS (
+         SELECT 1 FROM user_level_permissions up
+          WHERE up.userlevel_id = ul.userlevel_id
+            AND up.action = 'module_key'
+            AND up.action_key = ?
+       )`,
+    [moduleKey, moduleKey],
+  );
   return { moduleKey, label, parentKey, showInSidebar, showInHeader };
 }
 
@@ -679,61 +704,6 @@ export async function populateDefaultModules() {
   }
 }
 
-export async function populateRoleDefaultModules() {
-  const modules = await listModules();
-
-  const map = {};
-  modules.forEach((m) => {
-    map[m.module_key] = m;
-  });
-
-  function rootKey(key) {
-    let cur = map[key];
-    let last = cur;
-    while (cur && cur.parent_key) {
-      last = cur;
-      cur = map[cur.parent_key];
-    }
-    if (!cur && last) return last.module_key;
-    return cur ? cur.module_key : null;
-  }
-
-  const adminOnly = modules
-    .filter((m) => {
-      const root = rootKey(m.module_key);
-      return (
-        ["settings", "developer"].includes(root) && m.module_key !== "change_password"
-      );
-    })
-    .map((m) => m.module_key);
-
-  const inList = adminOnly.map((k) => pool.escape(k)).join(", ");
-
-  await pool.query(
-    `INSERT INTO role_default_modules (role_id, module_key, allowed)
-     SELECT * FROM (
-       SELECT cp.position_id AS role_id, m.module_key AS module_key,
-              CASE
-                WHEN cp.position_name = 'admin' THEN 1
-                WHEN m.module_key IN (${inList}) THEN 0
-                ELSE 1
-              END AS allowed
-         FROM code_position cp
-         CROSS JOIN modules m
-     ) AS vals
-     ON DUPLICATE KEY UPDATE allowed = vals.allowed`,
-  );
-}
-
-export async function populateRoleModulePermissions() {
-  await populateRoleDefaultModules();
-  await pool.query(
-    `INSERT IGNORE INTO role_module_permissions (company_id, position_id, module_key, allowed)
-     SELECT c.id, rdm.role_id, rdm.module_key, rdm.allowed
-       FROM companies c
-       CROSS JOIN role_default_modules rdm`,
-  );
-}
 
 export async function populateCompanyModuleLicenses() {
   await pool.query(
@@ -744,45 +714,20 @@ export async function populateCompanyModuleLicenses() {
   );
 }
 
-/**
- * List module permissions for roles
- */
-export async function listRoleModulePermissions(positionId, companyId) {
-  const params = [];
-  let where = '';
-
-  if (companyId) {
-    where = 'WHERE rmp.company_id = ?';
-    params.push(companyId);
-  }
-
-  if (positionId) {
-    where += where ? ' AND rmp.position_id = ?' : 'WHERE rmp.position_id = ?';
-    params.push(positionId);
-  }
-
-  const [rows] = await pool.query(
-    `SELECT rmp.position_id, cp.position_name AS role, rmp.module_key, m.label, rmp.allowed
-       FROM role_module_permissions rmp
-       JOIN code_position cp ON rmp.position_id = cp.position_id
-       JOIN modules m ON rmp.module_key = m.module_key
-       ${where}`,
-    params,
-  );
-  return rows;
-}
-
-/**
- * Set a role's module permission
- */
-export async function setRoleModulePermission(companyId, positionId, moduleKey, allowed) {
+export async function populateUserLevelModulePermissions() {
   await pool.query(
-    `INSERT INTO role_module_permissions (company_id, position_id, module_key, allowed)
-     VALUES (?, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE allowed = VALUES(allowed)`,
-    [companyId, positionId, moduleKey, allowed],
+    `INSERT INTO user_level_permissions (userlevel_id, action, action_key)
+     SELECT ul.userlevel_id, 'module_key', m.module_key
+       FROM user_levels ul
+       CROSS JOIN modules m
+       WHERE m.module_key NOT LIKE 'transactions\\_%'
+         AND NOT EXISTS (
+           SELECT 1 FROM user_level_permissions up
+            WHERE up.userlevel_id = ul.userlevel_id
+              AND up.action = 'module_key'
+              AND up.action_key = m.module_key
+         )`,
   );
-  return { companyId, positionId, moduleKey, allowed };
 }
 
 /**
@@ -1109,15 +1054,6 @@ export async function updateTableRow(tableName, id, updates) {
     return { company_id: companyId, module_key: moduleKey };
   }
 
-  if (tableName === 'role_module_permissions') {
-    const [companyId, positionId, moduleKey] = String(id).split('-');
-    await pool.query(
-      `UPDATE role_module_permissions SET ${setClause} WHERE company_id = ? AND position_id = ? AND module_key = ?`,
-      [...values, companyId, positionId, moduleKey],
-    );
-    return { company_id: companyId, position_id: positionId, module_key: moduleKey };
-  }
-
   if (tableName === 'user_companies') {
     const [empId, companyId] = String(id).split('-');
     await pool.query(
@@ -1182,15 +1118,6 @@ export async function deleteTableRow(tableName, id, conn = pool) {
       [companyId, moduleKey],
     );
     return { company_id: companyId, module_key: moduleKey };
-  }
-
-  if (tableName === 'role_module_permissions') {
-    const [companyId, positionId, moduleKey] = String(id).split('-');
-    await conn.query(
-      'DELETE FROM role_module_permissions WHERE company_id = ? AND position_id = ? AND module_key = ?',
-      [companyId, positionId, moduleKey],
-    );
-    return { company_id: companyId, position_id: positionId, module_key: moduleKey };
   }
 
   if (tableName === 'user_companies') {
