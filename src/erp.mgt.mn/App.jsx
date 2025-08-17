@@ -15,6 +15,7 @@ import ReportsPage from './pages/Reports.jsx';
 import UsersPage from './pages/Users.jsx';
 import UserCompaniesPage from './pages/UserCompanies.jsx';
 import RolePermissionsPage from './pages/RolePermissions.jsx';
+import ActionPermissionsPage from './pages/ActionPermissions.jsx';
 import CompanyLicensesPage from './pages/CompanyLicenses.jsx';
 import TablesManagementPage from './pages/TablesManagement.jsx';
 import CodingTablesPage from './pages/CodingTables.jsx';
