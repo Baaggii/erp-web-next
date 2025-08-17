@@ -1,6 +1,6 @@
 import express from 'express';
 import { requireAuth } from '../middlewares/auth.js';
-import { getUserActions } from '../controllers/rolePermissionController.js';
+import { getUserActions } from '../controllers/userActionController.js';
 
 const router = express.Router();
 
