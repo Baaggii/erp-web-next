@@ -24,4 +24,5 @@ SELECT ul.userlevel_id, a.action, a.action_key
     ON up.userlevel_id = ul.userlevel_id
    AND up.action = a.action
    AND up.action_key = a.action_key
- WHERE up.userlevel_id IS NULL;
+ WHERE up.userlevel_id IS NULL
+   AND ul.userlevel_id <> 1;
