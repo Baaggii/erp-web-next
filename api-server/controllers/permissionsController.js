@@ -1,12 +1,13 @@
-import {
-  listActionGroups,
-  getUserLevelActions,
-  setUserLevelActions,
-} from '../../db/index.js';
+import { getUserLevelActions, setUserLevelActions } from '../../db/index.js';
+import fs from 'fs/promises';
+import path from 'path';
+
+const actionsPath = path.join(process.cwd(), 'configs', 'permissionActions.json');
 
 export async function listGroups(req, res, next) {
   try {
-    const groups = await listActionGroups();
+    const raw = await fs.readFile(actionsPath, 'utf8');
+    const groups = JSON.parse(raw);
     res.json(groups);
   } catch (err) {
     next(err);
