@@ -15,4 +15,8 @@ uploads/*
 !uploads/.gitkeep
 !uploads/report_builder/
 !uploads/report_builder/.gitkeep
+!uploads/txn_images/
+!uploads/txn_images/.gitkeep
+!uploads/txn_images/test_cleanup/
+!uploads/txn_images/test_cleanup/.gitkeep
 !config/.gitkeep
