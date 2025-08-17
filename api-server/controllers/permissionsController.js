@@ -1,12 +1,17 @@
 import { getUserLevelActions, setUserLevelActions } from '../../db/index.js';
 import fs from 'fs/promises';
+import { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// Resolve the permission registry relative to this file so it works
-// regardless of the current working directory when the server starts.
+// Resolve the permission registry path so it works regardless of the
+// directory the server is launched from or how the code is bundled.
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const actionsPath = path.join(__dirname, '../../configs/permissionActions.json');
+const actionsPath = (() => {
+  const cwdPath = path.resolve(process.cwd(), 'configs/permissionActions.json');
+  if (existsSync(cwdPath)) return cwdPath;
+  return path.resolve(__dirname, '../../configs/permissionActions.json');
+})();
 
 export async function listGroups(req, res, next) {
   try {

@@ -9,21 +9,23 @@ export default function UserLevelActions() {
   const { addToast } = useToast();
 
   useEffect(() => {
-    fetch("/api/permissions/actions", { credentials: "include" })
-      .then((res) => {
+    async function loadGroups() {
+      try {
+        const res = await fetch("/api/permissions/actions", {
+          credentials: "include",
+        });
         if (!res.ok) throw new Error("Failed to load action groups");
-        return res.json();
-      })
-      .then((data) => {
+        const data = await res.json();
         setGroups(data);
         addToast("Action groups loaded", "success");
-      })
-      .catch((err) => {
+      } catch (err) {
         console.error("Failed to load action groups", err);
         addToast("Failed to load action groups", "error");
-      });
-  }, [addToast]);
-
+      }
+    }
+    loadGroups();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   function loadCurrent() {
     if (!userLevelId) {
       addToast("User Level ID required", "error");
