@@ -1,0 +1,44 @@
+{
+  "forms": {
+    "finance_transactions": {
+      "name": "Finance Transactions",
+      "scope": "app",
+      "buttons": [
+        "New transaction",
+        "Edit transaction",
+        "Delete transaction",
+        "New",
+        "Save",
+        "Load",
+        "Delete",
+        "POST",
+        "Run",
+        "Clear Date Filter",
+        "Clear Transaction Type Filter",
+        "Clear Branch Filter",
+        "Clear Department Filter",
+        "Clear User Filter"
+      ],
+      "functions": [],
+      "api": [
+        "/api/transaction_forms",
+        "/api/pos_txn_pending",
+        "/api/pos_txn_post",
+        "/api/pos_txn_layout"
+      ]
+    },
+    "reports": {
+      "name": "Reports",
+      "scope": "app",
+      "buttons": [
+        "Run",
+        "Export"
+      ],
+      "functions": [],
+      "api": [
+        "/api/procedures",
+        "/api/procedures/:name/params"
+      ]
+    }
+  }
+}
