@@ -40,8 +40,17 @@ try {
 import defaultModules from "./defaultModules.js";
 import { logDb } from "./debugLog.js";
 import fs from "fs/promises";
+import { existsSync } from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import { getDisplayFields as getDisplayCfg } from "../api-server/services/displayFieldConfig.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const actionsPath = (() => {
+  const cwdPath = path.resolve(process.cwd(), "configs/permissionActions.json");
+  if (existsSync(cwdPath)) return cwdPath;
+  return path.resolve(__dirname, "../configs/permissionActions.json");
+})();
 
 function buildDisplayExpr(alias, cfg, fallback) {
   const fields = (cfg?.displayFields || []).map((f) => `${alias}.${f}`);
@@ -280,6 +289,30 @@ export async function getEmploymentSession(empid, companyId) {
 }
 
 export async function getUserLevelActions(userLevelId) {
+  if (Number(userLevelId) === 1) {
+    const perms = {};
+    const [mods] = await pool.query(
+      'SELECT module_key FROM modules',
+    );
+    for (const { module_key } of mods) perms[module_key] = true;
+    try {
+      const raw = await fs.readFile(actionsPath, 'utf8');
+      const registry = JSON.parse(raw);
+      if (Array.isArray(registry.buttons)) {
+        perms.buttons = {};
+        registry.buttons.forEach((b) => (perms.buttons[b] = true));
+      }
+      if (Array.isArray(registry.functions)) {
+        perms.functions = {};
+        registry.functions.forEach((f) => (perms.functions[f] = true));
+      }
+      if (Array.isArray(registry.api)) {
+        perms.api = {};
+        registry.api.forEach((a) => (perms.api[a] = true));
+      }
+    } catch {}
+    return perms;
+  }
   const [rows] = await pool.query(
     `SELECT action, action_key
        FROM user_level_permissions
@@ -323,6 +356,7 @@ export async function listActionGroups() {
 }
 
 export async function setUserLevelActions(userLevelId, { modules = [], buttons = [], functions = [], api = [] }) {
+  if (Number(userLevelId) === 1) return;
   await pool.query(
     'DELETE FROM user_level_permissions WHERE userlevel_id = ? AND action IS NOT NULL',
     [userLevelId],
