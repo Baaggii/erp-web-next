@@ -12,7 +12,7 @@ SELECT ul.userlevel_id, a.action, a.action_key
     FROM modules m
     UNION ALL
     SELECT 'button' AS action, jt.action_key
-    FROM JSON_TABLE(@json, '$.forms.*.buttons[*]' COLUMNS(action_key VARCHAR(255) PATH '$')) jt
+    FROM JSON_TABLE(@json, '$.forms.*.buttons[*]' COLUMNS(action_key VARCHAR(255) PATH '$.key')) jt
     UNION ALL
     SELECT 'function' AS action, jt.action_key
     FROM JSON_TABLE(@json, '$.forms.*.functions[*]' COLUMNS(action_key VARCHAR(255) PATH '$')) jt

@@ -311,7 +311,10 @@ export async function getUserLevelActions(userLevelId) {
         perms.functions = {};
         perms.api = {};
         for (const form of Object.values(forms)) {
-          form.buttons?.forEach((b) => (perms.buttons[b] = true));
+          form.buttons?.forEach((b) => {
+            const key = typeof b === 'string' ? b : b.key;
+            perms.buttons[key] = true;
+          });
           form.functions?.forEach((f) => (perms.functions[f] = true));
           form.api?.forEach((a) => {
             const key = typeof a === 'string' ? a : a.key;
@@ -405,7 +408,10 @@ export async function populateMissingPermissions(allow = false) {
   for (const { module_key } of mods) actions.push(['module_key', module_key]);
   const forms = registry.forms || {};
   for (const form of Object.values(forms)) {
-    form.buttons?.forEach((b) => actions.push(['button', b]));
+    form.buttons?.forEach((b) => {
+      const key = typeof b === 'string' ? b : b.key;
+      actions.push(['button', key]);
+    });
     form.functions?.forEach((f) => actions.push(['function', f]));
     form.api?.forEach((a) => {
       const key = typeof a === 'string' ? a : a.key;

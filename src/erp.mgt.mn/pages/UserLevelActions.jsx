@@ -21,13 +21,17 @@ export default function UserLevelActions() {
       const buttons = new Set();
       const functions = new Set();
       const api = new Set();
+      const collect = (items, set) => {
+        if (!items) return;
+        for (const it of items) {
+          if (typeof it === "string") set.add(it);
+          else if (it && typeof it === "object") set.add(it.key);
+        }
+      };
       for (const form of Object.values(forms)) {
-        form.buttons?.forEach((b) => buttons.add(b));
-        form.functions?.forEach((f) => functions.add(f));
-        form.api?.forEach((a) => {
-          const key = typeof a === "string" ? a : a.key;
-          api.add(key);
-        });
+        collect(form.buttons, buttons);
+        collect(form.functions, functions);
+        collect(form.api, api);
       }
       setGroups({ modules: data.modules || [], forms });
       setAllActions({
@@ -151,27 +155,97 @@ export default function UserLevelActions() {
       .replace(/\b\w/g, (c) => c.toUpperCase());
   }
 
-  function renderChecklist(type, items) {
+  function buildTree(items) {
+    const root = { name: null, children: new Map(), entries: [] };
+    for (const it of items || []) {
+      const key = typeof it === "string" ? it : it.key;
+      const label =
+        it && typeof it === "object"
+          ? it.name || it.description || describe(key)
+          : describe(key);
+      const path =
+        it && typeof it === "object" && it.group
+          ? it.group.split("/").filter(Boolean)
+          : [];
+      let node = root;
+      for (const part of path) {
+        if (!node.children.has(part)) {
+          node.children.set(part, { name: part, children: new Map(), entries: [] });
+        }
+        node = node.children.get(part);
+      }
+      node.entries.push({ key, label });
+    }
+    return root;
+  }
+
+  function collectKeys(node) {
+    let keys = node.entries.map((e) => e.key);
+    for (const child of node.children.values()) {
+      keys = keys.concat(collectKeys(child));
+    }
+    return keys;
+  }
+
+  function toggleGroup(type, keys, checked) {
+    setSelected((prev) => {
+      const current = new Set(prev[type]);
+      if (checked) keys.forEach((k) => current.add(k));
+      else keys.forEach((k) => current.delete(k));
+      return { ...prev, [type]: Array.from(current) };
+    });
+  }
+
+  function renderTree(node, type, depth = 0, path = []) {
+    const elements = [];
+    const currentPath = node.name ? [...path, node.name] : path;
+    if (node.name) {
+      const keys = collectKeys(node);
+      const groupChecked = keys.every((k) => selected[type].includes(k));
+      elements.push(
+        <label
+          key={`${currentPath.join("/")}-group`}
+          style={{
+            display: "block",
+            marginLeft: depth * 20,
+            fontWeight: "bold",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={groupChecked}
+            onChange={(e) => toggleGroup(type, keys, e.target.checked)}
+          />
+          {node.name}
+        </label>,
+      );
+    }
+    for (const entry of node.entries) {
+      elements.push(
+        <label
+          key={`${currentPath.join("/")}-${entry.key}`}
+          style={{ display: "block", marginLeft: (depth + 1) * 20 }}
+        >
+          <input
+            type="checkbox"
+            checked={selected[type].includes(entry.key)}
+            onChange={(e) => toggle(type, entry.key, e.target.checked)}
+          />
+          {entry.label}
+        </label>,
+      );
+    }
+    for (const child of node.children.values()) {
+      elements.push(...renderTree(child, type, depth + 1, currentPath));
+    }
+    return elements;
+  }
+
+  function renderActionTree(type, items) {
+    const tree = buildTree(items);
     return (
       <div style={{ maxHeight: "200px", overflowY: "auto" }}>
-        {items.map((it) => {
-          const key = typeof it === "string" ? it : it.key;
-          const label =
-            it.name ||
-            (type === "api" && typeof it === "object"
-              ? it.description || it.key
-              : describe(key));
-          return (
-            <label key={key} style={{ display: "block" }}>
-              <input
-                type="checkbox"
-                checked={selected[type].includes(key)}
-                onChange={(e) => toggle(type, key, e.target.checked)}
-              />
-              {label}
-            </label>
-          );
-        })}
+        {renderTree(tree, type)}
       </div>
     );
   }
@@ -257,19 +331,19 @@ export default function UserLevelActions() {
             {form.buttons?.length ? (
               <div>
                 <h4>Buttons</h4>
-                {renderChecklist("buttons", form.buttons)}
+                {renderActionTree("buttons", form.buttons)}
               </div>
             ) : null}
             {form.functions?.length ? (
               <div>
                 <h4>Functions</h4>
-                {renderChecklist("functions", form.functions)}
+                {renderActionTree("functions", form.functions)}
               </div>
             ) : null}
             {form.api?.length ? (
               <div>
                 <h4>APIs</h4>
-                {renderChecklist("api", form.api)}
+                {renderActionTree("api", form.api)}
               </div>
             ) : null}
           </div>
