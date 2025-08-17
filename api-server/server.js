@@ -35,6 +35,7 @@ import procedureRoutes from "./routes/procedures.js";
 import procTriggerRoutes from "./routes/proc_triggers.js";
 import reportProcedureRoutes from "./routes/report_procedures.js";
 import generalConfigRoutes from "./routes/general_config.js";
+import permissionsRoutes from "./routes/permissions.js";
 import { requireAuth } from "./middlewares/auth.js";
 import featureToggle from "./middlewares/featureToggle.js";
 import reportBuilderRoutes from "./routes/report_builder.js";
@@ -101,6 +102,7 @@ app.use("/api/transactions", requireAuth, transactionRoutes);
 app.use("/api/transaction_images", transactionImageRoutes);
 app.use("/api/tables", requireAuth, tableRoutes);
 app.use("/api/general_config", requireAuth, generalConfigRoutes);
+app.use("/api/permissions", permissionsRoutes);
 
 // Serve static React build and fallback to index.html
 // NOTE: adjust this path to where your SPA build actually lives.
