@@ -115,6 +115,7 @@ export default function ERPLayout() {
         onHome={handleHome}
         isMobile={isMobile}
         onToggleSidebar={() => setSidebarOpen((o) => !o)}
+        onOpen={handleOpen}
       />
       <div style={styles.body(isMobile)}>
         {isMobile && sidebarOpen && (
@@ -136,11 +137,8 @@ export default function ERPLayout() {
 }
 
 /** Top header bar **/
-function Header({ user, onLogout, onHome, isMobile, onToggleSidebar }) {
+function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, onOpen }) {
   const { session } = useContext(AuthContext);
-  function handleOpen(id) {
-    console.log("open module", id);
-  }
 
   return (
     <header className="sticky-header" style={styles.header(isMobile)}>
@@ -166,7 +164,7 @@ function Header({ user, onLogout, onHome, isMobile, onToggleSidebar }) {
         <button style={styles.iconBtn}>🗗 Цонхнууд</button>
         <button style={styles.iconBtn}>❔ Тусламж</button>
       </nav>
-      <HeaderMenu onOpen={handleOpen} />
+      <HeaderMenu onOpen={onOpen} />
       {session && (
         <span style={styles.locationInfo}>
           🏢 {session.company_name}
