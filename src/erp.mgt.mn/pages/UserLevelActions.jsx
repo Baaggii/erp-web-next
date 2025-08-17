@@ -16,19 +16,13 @@ export default function UserLevelActions() {
         throw new Error(msg || "Failed to load action groups");
       }
       const data = await res.json();
-      const forms = data.forms || {};
-      const buttons = [];
-      const functions = [];
-      const api = [];
-      Object.values(forms).forEach((f) => {
-        f.buttons?.forEach((b) => buttons.push(b));
-        f.functions?.forEach((fn) => functions.push(fn));
-        f.api?.forEach((a) => {
-          const key = typeof a === "string" ? a : a.key;
-          api.push(key);
-        });
+      setGroups({
+        modules: data.modules || [],
+        forms: data.forms || {},
+        buttons: data.buttons || [],
+        functions: data.functions || [],
+        api: data.api || [],
       });
-      setGroups({ modules: data.modules || [], forms, buttons, functions, api });
       addToast("Action groups loaded", "success");
     } catch (err) {
       console.error("Failed to load action groups", err);
@@ -156,6 +150,23 @@ export default function UserLevelActions() {
         })}
       </div>
     );
+    try {
+      const res = await fetch("/api/permissions/actions/populate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ allow }),
+      });
+      if (res.ok) {
+        addToast("Permissions populated", "success");
+        await loadGroups();
+      } else {
+        addToast("Failed to populate permissions", "error");
+      }
+    } catch (err) {
+      console.error("Failed to populate permissions", err);
+      addToast("Failed to populate permissions", "error");
+    }
   }
 
   async function handlePopulate() {
