@@ -7,6 +7,7 @@ import cookieParser from "cookie-parser";
 import { testConnection } from "../db/index.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
 import { logger } from "./middlewares/logging.js";
+import { activityLogger } from "./middlewares/activityLogger.js";
 import authRoutes from "./routes/auth.js";
 import userRoutes from "./routes/users.js";
 import companyRoutes from "./routes/companies.js";
@@ -39,6 +40,7 @@ import permissionsRoutes from "./routes/permissions.js";
 import { requireAuth } from "./middlewares/auth.js";
 import featureToggle from "./middlewares/featureToggle.js";
 import reportBuilderRoutes from "./routes/report_builder.js";
+import pendingRequestRoutes from "./routes/pending_request.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -50,6 +52,7 @@ app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 app.use(cookieParser());
 app.use(logger);
+app.use(activityLogger);
 
 // Serve uploaded images statically
 const imgCfg = await getGeneralConfig();
@@ -103,6 +106,7 @@ app.use("/api/transaction_images", transactionImageRoutes);
 app.use("/api/tables", requireAuth, tableRoutes);
 app.use("/api/general_config", requireAuth, generalConfigRoutes);
 app.use("/api/permissions", permissionsRoutes);
+app.use("/api/pending_request", pendingRequestRoutes);
 
 // Serve static React build and fallback to index.html
 // NOTE: adjust this path to where your SPA build actually lives.
