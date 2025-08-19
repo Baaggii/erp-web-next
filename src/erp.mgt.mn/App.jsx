@@ -38,6 +38,7 @@ import FinanceTransactionsPage from './pages/FinanceTransactions.jsx';
 import { useModules } from './hooks/useModules.js';
 import { useTxnModules } from './hooks/useTxnModules.js';
 import useGeneralConfig from './hooks/useGeneralConfig.js';
+import TabbedWindows from './components/TabbedWindows.jsx';
 
 export default function App() {
   useEffect(() => {
@@ -107,6 +108,7 @@ function AuthedApp() {
     general_configuration: <GeneralConfigurationPage />,
     image_management: <ImageManagementPage />,
     change_password: <ChangePasswordPage />,
+    sales: <TabbedWindows />,
   };
 
   modules.forEach((m) => {
