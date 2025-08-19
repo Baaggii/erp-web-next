@@ -1,5 +1,10 @@
 import React from 'react';
+import PendingRequestWidget from '../components/PendingRequestWidget.jsx';
 
 export default function SalesDashboard() {
-  return <div>Sales Dashboard Module</div>;
+  return (
+    <div>
+      <PendingRequestWidget />
+    </div>
+  );
 }

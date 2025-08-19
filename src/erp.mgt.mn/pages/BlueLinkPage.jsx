@@ -1,6 +1,7 @@
 import React, { useContext, useEffect } from 'react';
 import MosaicLayout from '../components/MosaicLayout.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
+import PendingRequestWidget from '../components/PendingRequestWidget.jsx';
 
 const initialLayout = {
   direction: 'row',
@@ -50,6 +51,7 @@ export default function BlueLinkPage() {
           <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>0</div>
         </div>
       </div>
+      <PendingRequestWidget />
       <MosaicLayout initialLayout={initialLayout} />
     </div>
   );
