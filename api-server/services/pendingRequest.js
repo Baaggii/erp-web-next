@@ -12,6 +12,15 @@ export const ALLOWED_TABLES = new Set([
   'permissions',
 ]);
 
+function parseProposedData(value) {
+  if (!value) return null;
+  try {
+    return typeof value === 'string' ? JSON.parse(value) : value;
+  } catch {
+    return null;
+  }
+}
+
 export async function createRequest({ tableName, recordId, empId, requestType, proposedData }) {
   if (!ALLOWED_TABLES.has(tableName)) {
     throw new Error('Invalid table name');
@@ -53,7 +62,10 @@ export async function listRequests(status, seniorEmpid) {
     `SELECT * FROM pending_request WHERE status = ? AND senior_empid = ?`,
     [status, seniorEmpid]
   );
-  return rows;
+  return rows.map((row) => ({
+    ...row,
+    proposed_data: parseProposedData(row.proposed_data),
+  }));
 }
 
 export async function respondRequest(id, responseEmpid, status, notes) {
@@ -66,8 +78,8 @@ export async function respondRequest(id, responseEmpid, status, notes) {
   if (req.senior_empid !== responseEmpid) throw new Error('Forbidden');
 
   if (status === 'accepted') {
-    if (req.request_type === 'edit' && req.proposed_data) {
-      const data = typeof req.proposed_data === 'string' ? JSON.parse(req.proposed_data) : req.proposed_data;
+    const data = parseProposedData(req.proposed_data);
+    if (req.request_type === 'edit' && data) {
       await updateTableRow(req.table_name, req.record_id, data);
       await logUserAction({
         emp_id: responseEmpid,
