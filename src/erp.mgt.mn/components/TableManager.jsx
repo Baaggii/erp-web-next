@@ -158,15 +158,24 @@ const TableManager = forwardRef(function TableManager({
   const [editLabels, setEditLabels] = useState(false);
   const [labelEdits, setLabelEdits] = useState({});
   const [isAdding, setIsAdding] = useState(false);
+  const [requestType, setRequestType] = useState(null);
   const [dateFilter, setDateFilter] = useState('');
   const [datePreset, setDatePreset] = useState('custom');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [typeOptions, setTypeOptions] = useState([]);
+  const [requestStatus, setRequestStatus] = useState('');
+  const [requestIdSet, setRequestIdSet] = useState(new Set());
+  const requestIdsKey = useMemo(
+    () => Array.from(requestIdSet).sort().join(','),
+    [requestIdSet],
+  );
   const { user, company, branch, department, session } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const { addToast } = useToast();
+  const canRequestStatus =
+    session?.permissions?.edit_delete_request || session?.permissions?.supervisor;
 
   useEffect(() => {
     function hideMenu() {
@@ -455,6 +464,35 @@ const TableManager = forwardRef(function TableManager({
   }, [typeFilter, formConfig, validCols]);
 
   useEffect(() => {
+    async function loadRequests() {
+      if (!requestStatus) {
+        setRequestIdSet(new Set());
+        return;
+      }
+      try {
+        const res = await fetch(
+          `/api/pending_request?status=${encodeURIComponent(requestStatus)}&senior_empid=${user?.empid}`,
+          { credentials: 'include' },
+        );
+        if (res.ok) {
+          const data = await res.json().catch(() => []);
+          const ids = new Set(
+            data
+              .filter((r) => r.table_name === table)
+              .map((r) => String(r.record_id)),
+          );
+          setRequestIdSet(ids);
+        } else {
+          setRequestIdSet(new Set());
+        }
+      } catch {
+        setRequestIdSet(new Set());
+      }
+    }
+    loadRequests();
+  }, [requestStatus, table, user?.empid]);
+
+  useEffect(() => {
     if (!table) return;
     let canceled = false;
     async function load() {
@@ -617,9 +655,12 @@ const TableManager = forwardRef(function TableManager({
       })
       .then((data) => {
         if (canceled) return;
-        const rows = data.rows || [];
+        let rows = data.rows || [];
+        if (requestStatus) {
+          rows = rows.filter((r) => requestIdSet.has(String(getRowId(r))));
+        }
         setRows(rows);
-        setCount(data.count || 0);
+        setCount(requestStatus ? rows.length : data.count || 0);
         // clear selections when data changes
         setSelectedRows(new Set());
         logRowsMemory(rows);
@@ -630,7 +671,19 @@ const TableManager = forwardRef(function TableManager({
     return () => {
       canceled = true;
     };
-  }, [table, page, perPage, filters, sort, refreshId, localRefresh, columnMeta, validCols]);
+  }, [
+    table,
+    page,
+    perPage,
+    filters,
+    sort,
+    refreshId,
+    localRefresh,
+    columnMeta,
+    validCols,
+    requestStatus,
+    requestIdsKey,
+  ]);
 
   useEffect(() => {
     setSelectedRows(new Set());
@@ -775,6 +828,19 @@ const TableManager = forwardRef(function TableManager({
     setEditing(row);
     setGridRows([row]);
     setIsAdding(false);
+    setShowForm(true);
+  }
+
+  async function openRequestEdit(row) {
+    if (getRowId(row) === undefined) {
+      addToast('Cannot edit rows without a primary key', 'error');
+      return;
+    }
+    await ensureColumnMeta();
+    setEditing(row);
+    setGridRows([row]);
+    setIsAdding(false);
+    setRequestType('edit');
     setShowForm(true);
   }
 
@@ -1005,6 +1071,35 @@ const TableManager = forwardRef(function TableManager({
       }
     });
 
+    if (requestType === 'edit') {
+      try {
+        const res = await fetch('/api/pending_request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            table_name: table,
+            record_id: getRowId(editing),
+            request_type: 'edit',
+            proposed_data: cleaned,
+          }),
+        });
+        if (res.ok) {
+          addToast('Edit request submitted', 'success');
+          setShowForm(false);
+          setEditing(null);
+          setIsAdding(false);
+          setGridRows([]);
+          setRequestType(null);
+        } else {
+          addToast('Edit request failed', 'error');
+        }
+      } catch {
+        addToast('Edit request failed', 'error');
+      }
+      return;
+    }
+
     const method = isAdding ? 'POST' : 'PUT';
     const url = isAdding
       ? `/api/tables/${encodeURIComponent(table)}`
@@ -1176,6 +1271,31 @@ const TableManager = forwardRef(function TableManager({
     }
     if (!window.confirm('Delete row and related records?')) return;
     await executeDeleteRow(id, true);
+  }
+
+  async function handleRequestDelete(row) {
+    const id = getRowId(row);
+    if (id === undefined) {
+      addToast('Delete request failed: table has no primary key', 'error');
+      return;
+    }
+    if (!window.confirm('Request delete?')) return;
+    try {
+      const res = await fetch('/api/pending_request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          table_name: table,
+          record_id: id,
+          request_type: 'delete',
+        }),
+      });
+      if (res.ok) addToast('Delete request submitted', 'success');
+      else addToast('Delete request failed', 'error');
+    } catch {
+      addToast('Delete request failed', 'error');
+    }
   }
 
   async function confirmCascadeDelete() {
@@ -1647,6 +1767,26 @@ const TableManager = forwardRef(function TableManager({
           )}
         </div>
       )}
+      {canRequestStatus && (
+        <div style={{ backgroundColor: '#e0f7ff', padding: '0.25rem', textAlign: 'left' }}>
+          Request Status:{' '}
+          <select
+            value={requestStatus}
+            onChange={(e) => setRequestStatus(e.target.value)}
+            style={{ marginRight: '0.5rem' }}
+          >
+            <option value="">-- all --</option>
+            <option value="pending">Pending</option>
+            <option value="accepted">Accepted</option>
+            <option value="declined">Declined</option>
+          </select>
+          {requestStatus && (
+            <button onClick={() => setRequestStatus('')}>
+              Clear Request Status
+            </button>
+          )}
+        </div>
+      )}
       {userIdFields.length > 0 && user?.empid !== undefined && (
         <div style={{ backgroundColor: '#ffeecc', padding: '0.25rem', textAlign: 'left' }}>
           User:{' '}
@@ -1950,6 +2090,24 @@ const TableManager = forwardRef(function TableManager({
                           ❌ Delete
                         </button>
                       )}
+                      {session?.permissions?.edit_delete_request && (
+                        <>
+                          <button
+                            onClick={() => openRequestEdit(r)}
+                            disabled={rid === undefined}
+                            style={actionBtnStyle}
+                          >
+                            📝 Request Edit
+                          </button>
+                          <button
+                            onClick={() => handleRequestDelete(r)}
+                            disabled={rid === undefined}
+                            style={actionBtnStyle}
+                          >
+                            🗑 Request Delete
+                          </button>
+                        </>
+                      )}
                     </>
                   );
                 })()}
@@ -2105,6 +2263,7 @@ const TableManager = forwardRef(function TableManager({
           setEditing(null);
           setIsAdding(false);
           setGridRows([]);
+          setRequestType(null);
         }}
         onSubmit={handleSubmit}
         onChange={handleFieldChange}
