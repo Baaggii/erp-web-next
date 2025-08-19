@@ -1,20 +1,15 @@
 import express from 'express';
 import { requireAuth } from '../middlewares/auth.js';
-import { createRequest, listRequests, respondRequest } from '../services/pendingRequest.js';
+import {
+  createRequest,
+  listRequests,
+  respondRequest,
+  ALLOWED_TABLES,
+  ALLOWED_REQUEST_TYPES,
+} from '../services/pendingRequest.js';
 import { getEmploymentSession } from '../../db/index.js';
 
 const router = express.Router();
-
-// Only allow pending requests for specific tables
-const ALLOWED_TABLES = new Set([
-  'users',
-  'user_companies',
-  'companies',
-  'transactions',
-  'transaction_forms',
-  'transaction_images',
-  'permissions',
-]);
 
 router.post('/', requireAuth, async (req, res, next) => {
   try {
@@ -31,7 +26,7 @@ router.post('/', requireAuth, async (req, res, next) => {
       return res.status(400).json({ message: 'invalid table_name' });
     }
 
-    if (!['edit', 'delete'].includes(request_type)) {
+    if (!ALLOWED_REQUEST_TYPES.has(request_type)) {
       return res.status(400).json({ message: 'invalid request_type' });
     }
     const result = await createRequest({
