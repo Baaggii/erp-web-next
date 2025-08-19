@@ -32,11 +32,13 @@ export async function getUser(req, res, next) {
 
 export async function createUser(req, res, next) {
   try {
+    res.locals.logTable = 'users';
     const newUser = await dbCreateUser({
       empid: req.body.empid,
       password: req.body.password,
       created_by: req.user.empid
     });
+    res.locals.logRecordId = newUser.id;
     res.status(201).json(newUser);
   } catch (err) {
     next(err);
@@ -45,6 +47,8 @@ export async function createUser(req, res, next) {
 
 export async function updateUser(req, res, next) {
   try {
+    res.locals.logTable = 'users';
+    res.locals.logRecordId = req.params.id;
     const updated = await dbUpdateUser(req.params.id);
     res.json(updated);
   } catch (err) {
@@ -54,6 +58,8 @@ export async function updateUser(req, res, next) {
 
 export async function deleteUser(req, res, next) {
   try {
+    res.locals.logTable = 'users';
+    res.locals.logRecordId = req.params.id;
     await dbDeleteUser(req.params.id);
     res.sendStatus(204);
   } catch (err) {

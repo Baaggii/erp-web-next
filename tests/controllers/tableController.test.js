@@ -69,7 +69,7 @@ test('addRow defaults g_burtgel_id from g_id when missing', async () => {
     return [{}];
   });
   const req = { params: { table: 'SGereeJ' }, body: { g_id: 7 } };
-  const res = { status() { return this; }, json() {} };
+  const res = { locals: {}, status() { return this; }, json() {} };
   await controller.addRow(req, res, (e) => { if (e) throw e; });
   restore();
 });
