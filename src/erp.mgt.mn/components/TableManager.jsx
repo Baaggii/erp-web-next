@@ -221,6 +221,18 @@ const TableManager = forwardRef(function TableManager({
     return defaultFields.filter(f => validCols.has(f));
   }, [formConfig, validCols]);
 
+  const generatedCols = useMemo(() => {
+    return new Set(
+      columnMeta
+        .filter(
+          (c) =>
+            typeof c.extra === 'string' &&
+            c.extra.toLowerCase().includes('generated'),
+        )
+        .map((c) => c.name),
+    );
+  }, [columnMeta]);
+
   function computeAutoInc(meta) {
     const auto = meta
       .filter(
@@ -366,30 +378,11 @@ const TableManager = forwardRef(function TableManager({
     } else {
       setTypeFilter('');
     }
-    if (company !== undefined && companyIdFields.length > 0) {
-      companyIdFields.forEach((f) => {
-        if (validCols.has(f)) newFilters[f] = company;
-      });
-    }
-    if (branch !== undefined && branchIdFields.length > 0) {
-      branchIdFields.forEach((f) => {
-        if (validCols.has(f)) newFilters[f] = branch;
-      });
-    }
-    if (department !== undefined && departmentIdFields.length > 0) {
-      departmentIdFields.forEach((f) => {
-        if (validCols.has(f)) newFilters[f] = department;
-      });
-    }
-    if (user?.empid !== undefined && userIdFields.length > 0) {
-      userIdFields.forEach((f) => {
-        if (validCols.has(f)) newFilters[f] = user.empid;
-      });
-    }
+    // Session-based filters removed: do not auto-fill filter cells with session data
     if (Object.keys(newFilters).length > 0) {
       setFilters((f) => ({ ...f, ...newFilters }));
     }
-  }, [formConfig, validCols, user, company, branch, department]);
+  }, [formConfig, validCols]);
 
   useEffect(() => {
     if (!formConfig?.transactionTypeField) {
@@ -787,13 +780,11 @@ const TableManager = forwardRef(function TableManager({
     await ensureColumnMeta();
     const vals = {};
     const defaults = {};
-    const all = columnMeta.map((c) => c.name);
+    const all = columnMeta
+      .filter((c) => !generatedCols.has(c.name))
+      .map((c) => c.name);
     all.forEach((c) => {
       let v = (formConfig?.defaultValues || {})[c] || '';
-      if (userIdFields.includes(c) && user?.empid) v = user.empid;
-      if (branchIdFields.includes(c) && branch !== undefined) v = branch;
-      if (departmentIdFields.includes(c) && department !== undefined) v = department;
-      if (companyIdFields.includes(c) && company !== undefined) v = company;
       vals[c] = v;
       defaults[c] = v;
       if (!v && formConfig?.dateField?.includes(c)) {
@@ -1025,26 +1016,11 @@ const TableManager = forwardRef(function TableManager({
     });
 
     Object.entries(formConfig?.defaultValues || {}).forEach(([k, v]) => {
-      if (merged[k] === undefined || merged[k] === '') merged[k] = v;
+      if ((merged[k] === undefined || merged[k] === '') && !generatedCols.has(k))
+        merged[k] = v;
     });
 
-    if (isAdding) {
-      userIdFields.forEach((f) => {
-        if (columns.has(f)) merged[f] = user?.empid;
-      });
-      branchIdFields.forEach((f) => {
-        if (columns.has(f) && branch !== undefined)
-          merged[f] = branch;
-      });
-      departmentIdFields.forEach((f) => {
-        if (columns.has(f) && department !== undefined)
-          merged[f] = department;
-      });
-      companyIdFields.forEach((f) => {
-        if (columns.has(f) && company !== undefined)
-          merged[f] = company;
-      });
-    }
+
 
     const baseRowForName = isAdding ? values : editing;
     const { name: oldImageName } = buildImageName(
@@ -1062,7 +1038,7 @@ const TableManager = forwardRef(function TableManager({
     }
 
     const cleaned = {};
-    const skipFields = new Set([...autoCols, 'id']);
+    const skipFields = new Set([...autoCols, ...generatedCols, 'id']);
     Object.entries(merged).forEach(([k, v]) => {
       if (skipFields.has(k) || k.startsWith('_')) return;
       if (v !== '') {
@@ -1480,14 +1456,21 @@ const TableManager = forwardRef(function TableManager({
     autoCols.add('id');
   }
   let formColumns = ordered.filter(
-    (c) => !autoCols.has(c) && c !== 'created_at' && c !== 'created_by'
+    (c) =>
+      !autoCols.has(c) &&
+      !generatedCols.has(c) &&
+      c !== 'created_at' &&
+      c !== 'created_by',
   );
 
   const lockedDefaults = Object.entries(formConfig?.defaultValues || {})
     .filter(
       ([k, v]) =>
-        v !== undefined && v !== '' &&
-        !(formConfig?.editableDefaultFields || []).includes(k)
+        v !== undefined &&
+        v !== '' &&
+        !(formConfig?.editableDefaultFields || []).includes(k) &&
+        !autoCols.has(k) &&
+        !generatedCols.has(k)
     )
     .map(([k]) => k);
 
