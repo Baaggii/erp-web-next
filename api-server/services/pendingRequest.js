@@ -94,7 +94,8 @@ export async function respondRequest(id, responseEmpid, status, notes) {
     );
     const req = rows[0];
     if (!req) throw new Error('Request not found');
-    if (req.senior_empid !== responseEmpid) throw new Error('Forbidden');
+    if (String(req.senior_empid) !== String(responseEmpid))
+      throw new Error('Forbidden');
 
     if (status === 'accepted') {
       const data = parseProposedData(req.proposed_data);
