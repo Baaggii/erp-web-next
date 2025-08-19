@@ -65,7 +65,15 @@ router.put('/:id/respond', requireAuth, async (req, res, next) => {
     if (!['accepted', 'declined'].includes(status)) {
       return res.status(400).json({ message: 'invalid status' });
     }
-    await respondRequest(req.params.id, req.user.empid, status, response_notes);
+    const session = await getEmploymentSession(req.user.empid, req.user.companyId);
+    const isSupervisor = !!session?.permissions?.supervisor;
+    await respondRequest(
+      req.params.id,
+      req.user.empid,
+      status,
+      response_notes,
+      isSupervisor,
+    );
     res.sendStatus(204);
   } catch (err) {
     if (err.message === 'Forbidden') return res.sendStatus(403);

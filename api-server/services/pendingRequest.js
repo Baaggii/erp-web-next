@@ -84,7 +84,13 @@ export async function listRequests(status, seniorEmpid) {
   }));
 }
 
-export async function respondRequest(id, responseEmpid, status, notes) {
+export async function respondRequest(
+  id,
+  responseEmpid,
+  status,
+  notes,
+  isSupervisor = false,
+) {
   const conn = await pool.getConnection();
   try {
     await conn.query('BEGIN');
@@ -94,7 +100,7 @@ export async function respondRequest(id, responseEmpid, status, notes) {
     );
     const req = rows[0];
     if (!req) throw new Error('Request not found');
-    if (String(req.senior_empid) !== String(responseEmpid))
+    if (!isSupervisor && String(req.senior_empid) !== String(responseEmpid))
       throw new Error('Forbidden');
 
     if (status === 'accepted') {
