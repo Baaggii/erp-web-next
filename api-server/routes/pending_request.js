@@ -4,7 +4,6 @@ import {
   createRequest,
   listRequests,
   respondRequest,
-  ALLOWED_TABLES,
   ALLOWED_REQUEST_TYPES,
 } from '../services/pendingRequest.js';
 import { getEmploymentSession } from '../../db/index.js';
@@ -22,10 +21,6 @@ router.post('/', requireAuth, async (req, res, next) => {
         .json({ message: 'table_name, record_id and request_type are required' });
     }
 
-    if (!ALLOWED_TABLES.has(table_name)) {
-      return res.status(400).json({ message: 'invalid table_name' });
-    }
-
     if (!ALLOWED_REQUEST_TYPES.has(request_type)) {
       return res.status(400).json({ message: 'invalid request_type' });
     }
@@ -38,6 +33,9 @@ router.post('/', requireAuth, async (req, res, next) => {
     });
     res.status(201).json(result);
   } catch (err) {
+    if (err.status === 400 && err.message === 'invalid table_name') {
+      return res.status(400).json({ message: 'invalid table_name' });
+    }
     next(err);
   }
 });

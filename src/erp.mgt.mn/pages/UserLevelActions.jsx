@@ -2,9 +2,20 @@ import React, { useState, useEffect } from "react";
 import { useToast } from "../context/ToastContext.jsx";
 
 export default function UserLevelActions() {
-  const [groups, setGroups] = useState({ modules: [], forms: {} });
-  const [allActions, setAllActions] = useState({ buttons: [], functions: [], api: [] });
-  const [selected, setSelected] = useState({ modules: [], buttons: [], functions: [], api: [] });
+  const [groups, setGroups] = useState({ modules: [], forms: {}, permissions: [] });
+  const [allActions, setAllActions] = useState({
+    buttons: [],
+    functions: [],
+    api: [],
+    permissions: [],
+  });
+  const [selected, setSelected] = useState({
+    modules: [],
+    buttons: [],
+    functions: [],
+    api: [],
+    permissions: [],
+  });
   const [userLevelId, setUserLevelId] = useState("");
   const [userLevels, setUserLevels] = useState([]);
   const { addToast } = useToast();
@@ -18,6 +29,7 @@ export default function UserLevelActions() {
       }
       const data = await res.json();
       const forms = data.forms || {};
+      const permissions = data.permissions || [];
       const buttons = new Set();
       const functions = new Set();
       const api = new Set();
@@ -33,11 +45,14 @@ export default function UserLevelActions() {
         collect(form.functions, functions);
         collect(form.api, api);
       }
-      setGroups({ modules: data.modules || [], forms });
+      setGroups({ modules: data.modules || [], forms, permissions });
       setAllActions({
         buttons: Array.from(buttons),
         functions: Array.from(functions),
         api: Array.from(api),
+        permissions: permissions.map((p) =>
+          typeof p === "string" ? p : p.key,
+        ),
       });
       addToast("Action groups loaded", "success");
     } catch (err) {
@@ -77,6 +92,7 @@ export default function UserLevelActions() {
         buttons: allActions.buttons,
         functions: allActions.functions,
         api: allActions.api,
+        permissions: allActions.permissions,
       };
       setSelected(sel);
       addToast("System admin has access to all actions", "info");
@@ -90,20 +106,26 @@ export default function UserLevelActions() {
       .then((data) => {
         const sel = {
           modules: Object.keys(data).filter(
-            (k) => !["buttons", "functions", "api"].includes(k)
+            (k) =>
+              !["buttons", "functions", "api", "permissions"].includes(k),
           ),
           buttons: Object.keys(data.buttons || {}),
           functions: Object.keys(data.functions || {}),
-        api: Object.keys(data.api || {}),
-      };
+          api: Object.keys(data.api || {}),
+          permissions: Object.keys(data.permissions || {}),
+        };
         const validModules = new Set(flattenModules(groups.modules));
         const validButtons = new Set(allActions.buttons);
         const validFunctions = new Set(allActions.functions);
         const validApi = new Set(allActions.api);
+        const validPermissions = new Set(allActions.permissions);
         sel.modules = sel.modules.filter((m) => validModules.has(m));
         sel.buttons = sel.buttons.filter((b) => validButtons.has(b));
         sel.functions = sel.functions.filter((f) => validFunctions.has(f));
         sel.api = sel.api.filter((a) => validApi.has(a));
+        sel.permissions = sel.permissions.filter((p) =>
+          validPermissions.has(p),
+        );
         setSelected(sel);
         addToast("Current actions loaded", "success");
       })
@@ -323,6 +345,12 @@ export default function UserLevelActions() {
           <h3>Modules</h3>
           {renderModuleTree(groups.modules)}
         </div>
+        {groups.permissions?.length ? (
+          <div>
+            <h3>Permissions</h3>
+            {renderActionTree("permissions", groups.permissions)}
+          </div>
+        ) : null}
       </div>
       <div style={{ display: "flex", gap: "1rem", marginTop: "1rem", flexWrap: "wrap" }}>
         {Object.entries(groups.forms).map(([formKey, form]) => (
