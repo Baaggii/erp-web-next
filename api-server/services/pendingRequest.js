@@ -1,7 +1,24 @@
 import { pool, updateTableRow, deleteTableRow } from '../../db/index.js';
 import { logUserAction } from './userActivityLog.js';
 
+export const ALLOWED_REQUEST_TYPES = new Set(['edit', 'delete']);
+export const ALLOWED_TABLES = new Set([
+  'users',
+  'user_companies',
+  'companies',
+  'transactions',
+  'transaction_forms',
+  'transaction_images',
+  'permissions',
+]);
+
 export async function createRequest({ tableName, recordId, empId, requestType, proposedData }) {
+  if (!ALLOWED_TABLES.has(tableName)) {
+    throw new Error('Invalid table name');
+  }
+  if (!ALLOWED_REQUEST_TYPES.has(requestType)) {
+    throw new Error('Invalid request type');
+  }
   const [rows] = await pool.query(
     'SELECT employment_senior_empid FROM tbl_employment WHERE employment_emp_id = ? LIMIT 1',
     [empId]
