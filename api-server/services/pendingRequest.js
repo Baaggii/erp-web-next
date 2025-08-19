@@ -1,16 +1,21 @@
-import { pool, updateTableRow, deleteTableRow } from '../../db/index.js';
+import {
+  pool,
+  updateTableRow,
+  deleteTableRow,
+  listTableColumns,
+} from '../../db/index.js';
 import { logUserAction } from './userActivityLog.js';
 
 export const ALLOWED_REQUEST_TYPES = new Set(['edit', 'delete']);
-export const ALLOWED_TABLES = new Set([
-  'users',
-  'user_companies',
-  'companies',
-  'transactions',
-  'transaction_forms',
-  'transaction_images',
-  'permissions',
-]);
+
+async function ensureValidTableName(tableName) {
+  const cols = await listTableColumns(tableName);
+  if (!cols.length) {
+    const err = new Error('invalid table_name');
+    err.status = 400;
+    throw err;
+  }
+}
 
 function parseProposedData(value) {
   if (!value) return null;
@@ -22,9 +27,7 @@ function parseProposedData(value) {
 }
 
 export async function createRequest({ tableName, recordId, empId, requestType, proposedData }) {
-  if (!ALLOWED_TABLES.has(tableName)) {
-    throw new Error('Invalid table name');
-  }
+  await ensureValidTableName(tableName);
   if (!ALLOWED_REQUEST_TYPES.has(requestType)) {
     throw new Error('Invalid request type');
   }
