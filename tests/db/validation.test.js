@@ -62,6 +62,26 @@ test('deleteTableRow uses primary key when no id column', async () => {
   assert.ok(called);
 });
 
+test('deleteTableRow uses soft delete column when configured', async () => {
+  const original = db.pool.query;
+  let called = false;
+  db.pool.query = async (sql, params) => {
+    if (sql.startsWith('SHOW KEYS')) {
+      return [[{ Column_name: 'id' }]];
+    }
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'id' }, { COLUMN_NAME: 'is_deleted' }]];
+    }
+    called = true;
+    assert.equal(sql, 'UPDATE ?? SET `is_deleted` = 1 WHERE id = ?');
+    assert.deepEqual(params, ['softdelete', '5']);
+    return [{}];
+  };
+  await db.deleteTableRow('softdelete', '5');
+  db.pool.query = original;
+  assert.ok(called);
+});
+
 test('deleteTableRow rejects when no primary or unique key', async () => {
   const original = db.pool.query;
   db.pool.query = async (sql) => {

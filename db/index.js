@@ -62,6 +62,43 @@ function buildDisplayExpr(alias, cfg, fallback) {
 
 const tableColumnsCache = new Map();
 
+// Load soft delete table configuration
+const softDeleteConfigPath = path.resolve(
+  process.cwd(),
+  "config",
+  "softDeleteTables.json",
+);
+let softDeleteConfig = {};
+try {
+  const data = await fs.readFile(softDeleteConfigPath, "utf8");
+  softDeleteConfig = JSON.parse(data);
+} catch {
+  softDeleteConfig = {};
+}
+const SOFT_DELETE_CANDIDATES = [
+  "is_deleted",
+  "deleted",
+  "deleted_at",
+  "isDeleted",
+  "deletedAt",
+];
+
+async function getSoftDeleteColumn(tableName) {
+  const cfgVal = softDeleteConfig[tableName];
+  if (cfgVal === undefined) return null;
+  const columns = await getTableColumnsSafe(tableName);
+  const lower = columns.map((c) => c.toLowerCase());
+  if (typeof cfgVal === "string") {
+    const idx = lower.indexOf(cfgVal.toLowerCase());
+    return idx !== -1 ? columns[idx] : null;
+  }
+  for (const cand of SOFT_DELETE_CANDIDATES) {
+    const idx = lower.indexOf(cand.toLowerCase());
+    if (idx !== -1) return columns[idx];
+  }
+  return null;
+}
+
 async function getTableColumnsSafe(tableName) {
   if (!tableColumnsCache.has(tableName)) {
     const cols = await listTableColumns(tableName);
@@ -1157,16 +1194,26 @@ export async function deleteTableRow(tableName, id, conn = pool) {
     throw err;
   }
 
+  const softCol = await getSoftDeleteColumn(tableName);
+
   if (pkCols.length === 1) {
     const col = pkCols[0];
     const where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
-    await conn.query(`DELETE FROM ?? WHERE ${where}`, [tableName, id]);
+    if (softCol) {
+      await conn.query(`UPDATE ?? SET \`${softCol}\` = 1 WHERE ${where}`, [tableName, id]);
+    } else {
+      await conn.query(`DELETE FROM ?? WHERE ${where}`, [tableName, id]);
+    }
     return { [col]: id };
   }
 
   const parts = String(id).split('-');
   const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
-  await conn.query(`DELETE FROM ?? WHERE ${where}`, [tableName, ...parts]);
+  if (softCol) {
+    await conn.query(`UPDATE ?? SET \`${softCol}\` = 1 WHERE ${where}`, [tableName, ...parts]);
+  } else {
+    await conn.query(`DELETE FROM ?? WHERE ${where}`, [tableName, ...parts]);
+  }
   const result = {};
   pkCols.forEach((c, i) => {
     result[c] = parts[i];
@@ -1213,7 +1260,15 @@ async function deleteCascade(conn, tableName, id, visited) {
   for (const r of refs) {
     const pkCols = await getPrimaryKeyColumns(r.table);
     if (pkCols.length === 0) {
-      await conn.query('DELETE FROM ?? WHERE ?? = ?', [r.table, r.column, r.value]);
+      const softCol = await getSoftDeleteColumn(r.table);
+      if (softCol) {
+        await conn.query(
+          `UPDATE ?? SET \`${softCol}\` = 1 WHERE ?? = ?`,
+          [r.table, r.column, r.value],
+        );
+      } else {
+        await conn.query('DELETE FROM ?? WHERE ?? = ?', [r.table, r.column, r.value]);
+      }
       continue;
     }
     const colList = pkCols.map((c) => `\`${c}\``).join(', ');
