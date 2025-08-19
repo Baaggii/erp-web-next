@@ -2,7 +2,7 @@
 
 Dynamic forms rely on a per-table configuration that declares which columns are shown to the user.  Each table can specify an `idField` used for storing references and a list of up to **20** `displayFields` that are rendered in selection lists or forms.
 
-The configuration file lives at `config/tableDisplayFields.json` and has the following structure:
+The configuration file lives at `config/tableDisplayFields.json` and has the following structure (table and column names are case-sensitive):
 
 ```json
 {

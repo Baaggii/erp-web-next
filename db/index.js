@@ -1737,7 +1737,7 @@ export async function getProcedureRawRows(
             'utf8',
           );
           const dfCfg = JSON.parse(dfTxt);
-          if (dfCfg[table] && Array.isArray(dfCfg[table].displayFields)) {
+          if (Array.isArray(dfCfg[table]?.displayFields)) {
             displayFields = dfCfg[table].displayFields.map(String);
           }
         } catch {}
