@@ -104,6 +104,7 @@ export async function addRow(req, res, next) {
       row.g_burtgel_id = row.g_id ?? 0;
     }
     const result = await insertTableRow(req.params.table, row);
+    res.locals.insertId = result?.id;
     res.status(201).json(result);
   } catch (err) {
     if (/Can't update table .* in stored function\/trigger/i.test(err.message)) {
