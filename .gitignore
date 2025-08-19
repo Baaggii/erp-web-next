@@ -9,6 +9,7 @@ Passengerfile.json
 config/*.json
 !config/headerMappings.json
 !config/userLevelActions.json
+!config/softDeleteTables.json
 config/generated.sql
 .ico
 uploads/*
