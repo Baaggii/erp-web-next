@@ -5,13 +5,34 @@ import { getEmploymentSession } from '../../db/index.js';
 
 const router = express.Router();
 
+// Only allow pending requests for specific tables
+const ALLOWED_TABLES = new Set([
+  'users',
+  'user_companies',
+  'companies',
+  'transactions',
+  'transaction_forms',
+  'transaction_images',
+  'permissions',
+]);
+
 router.post('/', requireAuth, async (req, res, next) => {
   try {
     const session = await getEmploymentSession(req.user.empid, req.user.companyId);
     if (!session?.permissions?.edit_delete_request) return res.sendStatus(403);
     const { table_name, record_id, request_type, proposed_data } = req.body;
     if (!table_name || !record_id || !request_type) {
-      return res.status(400).json({ message: 'table_name, record_id and request_type are required' });
+      return res
+        .status(400)
+        .json({ message: 'table_name, record_id and request_type are required' });
+    }
+
+    if (!ALLOWED_TABLES.has(table_name)) {
+      return res.status(400).json({ message: 'invalid table_name' });
+    }
+
+    if (!['edit', 'delete'].includes(request_type)) {
+      return res.status(400).json({ message: 'invalid request_type' });
     }
     const result = await createRequest({
       tableName: table_name,
