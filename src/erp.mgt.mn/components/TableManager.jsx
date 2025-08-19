@@ -103,6 +103,7 @@ const TableManager = forwardRef(function TableManager({
   addLabel = 'Мөр нэмэх',
   showTable = true,
   buttonPerms = {},
+  autoFillSession = true,
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -193,6 +194,20 @@ const TableManager = forwardRef(function TableManager({
     });
     return map;
   }, [columnMeta]);
+
+  const generatedCols = useMemo(
+    () =>
+      new Set(
+        columnMeta
+          .filter(
+            (c) =>
+              typeof c.extra === 'string' &&
+              /(virtual|stored)\s+generated/i.test(c.extra),
+          )
+          .map((c) => c.name),
+      ),
+    [columnMeta],
+  );
 
   const viewSourceMap = formConfig?.viewSource || {};
 
@@ -789,11 +804,14 @@ const TableManager = forwardRef(function TableManager({
     const defaults = {};
     const all = columnMeta.map((c) => c.name);
     all.forEach((c) => {
+      const isGenerated = generatedCols.has(c);
       let v = (formConfig?.defaultValues || {})[c] || '';
-      if (userIdFields.includes(c) && user?.empid) v = user.empid;
-      if (branchIdFields.includes(c) && branch !== undefined) v = branch;
-      if (departmentIdFields.includes(c) && department !== undefined) v = department;
-      if (companyIdFields.includes(c) && company !== undefined) v = company;
+      if (autoFillSession && !isGenerated) {
+        if (userIdFields.includes(c) && user?.empid) v = user.empid;
+        if (branchIdFields.includes(c) && branch !== undefined) v = branch;
+        if (departmentIdFields.includes(c) && department !== undefined) v = department;
+        if (companyIdFields.includes(c) && company !== undefined) v = company;
+      }
       vals[c] = v;
       defaults[c] = v;
       if (!v && formConfig?.dateField?.includes(c)) {
@@ -1028,21 +1046,18 @@ const TableManager = forwardRef(function TableManager({
       if (merged[k] === undefined || merged[k] === '') merged[k] = v;
     });
 
-    if (isAdding) {
+    if (isAdding && autoFillSession) {
       userIdFields.forEach((f) => {
         if (columns.has(f)) merged[f] = user?.empid;
       });
       branchIdFields.forEach((f) => {
-        if (columns.has(f) && branch !== undefined)
-          merged[f] = branch;
+        if (columns.has(f) && branch !== undefined) merged[f] = branch;
       });
       departmentIdFields.forEach((f) => {
-        if (columns.has(f) && department !== undefined)
-          merged[f] = department;
+        if (columns.has(f) && department !== undefined) merged[f] = department;
       });
       companyIdFields.forEach((f) => {
-        if (columns.has(f) && company !== undefined)
-          merged[f] = company;
+        if (columns.has(f) && company !== undefined) merged[f] = company;
       });
     }
 
@@ -1062,7 +1077,7 @@ const TableManager = forwardRef(function TableManager({
     }
 
     const cleaned = {};
-    const skipFields = new Set([...autoCols, 'id']);
+    const skipFields = new Set([...autoCols, ...generatedCols, 'id']);
     Object.entries(merged).forEach(([k, v]) => {
       if (skipFields.has(k) || k.startsWith('_')) return;
       if (v !== '') {
@@ -2298,6 +2313,7 @@ const TableManager = forwardRef(function TableManager({
         viewDisplays={viewDisplayMap}
         viewColumns={viewColumns}
         onRowsChange={setGridRows}
+        autoFillSession={autoFillSession}
         scope="forms"
       />
       <CascadeDeleteModal

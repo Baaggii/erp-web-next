@@ -54,6 +54,7 @@ const RowFormModal = function RowFormModal({
   viewDisplays = {},
   viewColumns = {},
   procTriggers = {},
+  autoFillSession = true,
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -118,7 +119,7 @@ const RowFormModal = function RowFormModal({
         else if (placeholder === 'HH:MM:SS') val = formatTimestamp(now).slice(11, 19);
         else val = formatTimestamp(now);
       }
-      if (missing && !val) {
+      if (autoFillSession && missing && !val) {
         if (userIdSet.has(c) && user?.empid) val = user.empid;
         else if (branchIdSet.has(c) && branch !== undefined)
           val = branch;

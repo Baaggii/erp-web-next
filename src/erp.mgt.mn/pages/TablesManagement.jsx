@@ -47,6 +47,7 @@ export default function TablesManagement() {
           table={selectedTable}
           refreshId={refreshId}
           buttonPerms={perms?.buttons || {}}
+          autoFillSession={false}
         />
       )}
     </div>
