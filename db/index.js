@@ -392,25 +392,35 @@ export async function getUserLevelActions(userLevelId) {
 }
 
 export async function listActionGroups() {
-  const [rows] = await pool.query(
-    `SELECT action, COALESCE(ul_module_key, function_name) AS action_key
-       FROM code_userlevel_settings
-       WHERE action IS NOT NULL`,
-  );
+  const raw = await fs.readFile(actionsPath, 'utf8');
+  const registry = JSON.parse(raw);
   const groups = {
-    modules: new Set(),
+    modules: new Set(Object.keys(registry.forms || {})),
     buttons: new Set(),
     functions: new Set(),
     api: new Set(),
     permissions: new Set(),
   };
-  for (const { action, action_key: key } of rows) {
-    if (action === 'module_key' && key) groups.modules.add(key);
-    else if (action === 'button' && key) groups.buttons.add(key);
-    else if (action === 'function' && key) groups.functions.add(key);
-    else if (action === 'API' && key) groups.api.add(key);
-    else if (action === 'permission' && key) groups.permissions.add(key);
+  const forms = registry.forms || {};
+  for (const form of Object.values(forms)) {
+    form.buttons?.forEach((b) => {
+      const key = typeof b === 'string' ? b : b.key;
+      if (key) groups.buttons.add(key);
+    });
+    form.functions?.forEach((f) => {
+      const key = typeof f === 'string' ? f : f.key;
+      if (key) groups.functions.add(key);
+    });
+    form.api?.forEach((a) => {
+      const key = typeof a === 'string' ? a : a.key;
+      if (key) groups.api.add(key);
+    });
   }
+  const perms = registry.permissions || [];
+  perms.forEach((p) => {
+    const key = typeof p === 'string' ? p : p.key;
+    if (key) groups.permissions.add(key);
+  });
   return {
     modules: Array.from(groups.modules),
     buttons: Array.from(groups.buttons),
