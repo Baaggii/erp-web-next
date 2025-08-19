@@ -46,13 +46,9 @@ router.get('/', requireAuth, async (req, res, next) => {
     if (!status || !senior_empid) {
       return res.status(400).json({ message: 'status and senior_empid are required' });
     }
-    if (req.user.empid !== senior_empid) return res.sendStatus(403);
-
     const session = await getEmploymentSession(req.user.empid, req.user.companyId);
-    if (
-      !session?.permissions?.edit_delete_request &&
-      !session?.permissions?.supervisor
-    ) {
+    const isSelf = String(req.user.empid) === String(senior_empid);
+    if (!isSelf && !session?.permissions?.supervisor) {
       return res.sendStatus(403);
     }
 
