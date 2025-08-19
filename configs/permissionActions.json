@@ -1,4 +1,7 @@
 {
+  "permissions": [
+    { "key": "edit_delete_request", "name": "Edit/Delete Request" }
+  ],
   "forms": {
     "finance_transactions": {
       "name": "Finance Transactions",

@@ -343,10 +343,12 @@ export async function getUserLevelActions(userLevelId) {
       const raw = await fs.readFile(actionsPath, 'utf8');
       const registry = JSON.parse(raw);
       const forms = registry.forms || {};
-      if (Object.keys(forms).length) {
+      const permissions = registry.permissions || [];
+      if (Object.keys(forms).length || permissions.length) {
         perms.buttons = {};
         perms.functions = {};
         perms.api = {};
+        perms.permissions = {};
         for (const form of Object.values(forms)) {
           form.buttons?.forEach((b) => {
             const key = typeof b === 'string' ? b : b.key;
@@ -358,6 +360,10 @@ export async function getUserLevelActions(userLevelId) {
             perms.api[key] = true;
           });
         }
+        permissions.forEach((p) => {
+          const key = typeof p === 'string' ? p : p.key;
+          perms.permissions[key] = true;
+        });
       }
     } catch {}
     return perms;
@@ -378,6 +384,8 @@ export async function getUserLevelActions(userLevelId) {
       (perms.functions ||= {})[key] = true;
     } else if (action === 'API' && key) {
       (perms.api ||= {})[key] = true;
+    } else if (action === 'permission' && key) {
+      (perms.permissions ||= {})[key] = true;
     }
   }
   return perms;
@@ -389,22 +397,33 @@ export async function listActionGroups() {
        FROM code_userlevel_settings
        WHERE action IS NOT NULL`,
   );
-  const groups = { modules: new Set(), buttons: new Set(), functions: new Set(), api: new Set() };
+  const groups = {
+    modules: new Set(),
+    buttons: new Set(),
+    functions: new Set(),
+    api: new Set(),
+    permissions: new Set(),
+  };
   for (const { action, action_key: key } of rows) {
     if (action === 'module_key' && key) groups.modules.add(key);
     else if (action === 'button' && key) groups.buttons.add(key);
     else if (action === 'function' && key) groups.functions.add(key);
     else if (action === 'API' && key) groups.api.add(key);
+    else if (action === 'permission' && key) groups.permissions.add(key);
   }
   return {
     modules: Array.from(groups.modules),
     buttons: Array.from(groups.buttons),
     functions: Array.from(groups.functions),
     api: Array.from(groups.api),
+    permissions: Array.from(groups.permissions),
   };
 }
 
-export async function setUserLevelActions(userLevelId, { modules = [], buttons = [], functions = [], api = [] }) {
+export async function setUserLevelActions(
+  userLevelId,
+  { modules = [], buttons = [], functions = [], api = [], permissions = [] },
+) {
   if (Number(userLevelId) === 1) return;
   await pool.query(
     'DELETE FROM user_level_permissions WHERE userlevel_id = ? AND action IS NOT NULL',
@@ -428,6 +447,10 @@ export async function setUserLevelActions(userLevelId, { modules = [], buttons =
     values.push('(?,\'API\',?)');
     params.push(userLevelId, a);
   }
+  for (const p of permissions) {
+    values.push('(?,\'permission\',?)');
+    params.push(userLevelId, p);
+  }
   if (values.length) {
     const sql =
       'INSERT INTO user_level_permissions (userlevel_id, action, action_key) VALUES ' +
@@ -436,7 +459,7 @@ export async function setUserLevelActions(userLevelId, { modules = [], buttons =
   }
 }
 
-export async function populateMissingPermissions(allow = false) {
+export async function populateMissingPermissions(allow = false, extraPermissions = []) {
   if (!allow) return;
   const raw = await fs.readFile(actionsPath, 'utf8');
   const registry = JSON.parse(raw);
@@ -454,6 +477,11 @@ export async function populateMissingPermissions(allow = false) {
       const key = typeof a === 'string' ? a : a.key;
       actions.push(['API', key]);
     });
+  }
+  const perms = [...(registry.permissions || []), ...extraPermissions];
+  for (const p of perms) {
+    const key = typeof p === 'string' ? p : p.key;
+    actions.push(['permission', key]);
   }
   for (const [action, key] of actions) {
     await pool.query(

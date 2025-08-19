@@ -27,6 +27,7 @@ export async function listGroups(req, res, next) {
     const forms = Object.fromEntries(
       Object.entries(allForms).filter(([, f]) => f.scope !== 'system'),
     );
+    const permissions = registry.permissions || [];
     const rawModules = await listModules();
     const nodes = new Map();
     for (const m of rawModules) {
@@ -53,7 +54,7 @@ export async function listGroups(req, res, next) {
       name: n.name,
       children: n.children.map(strip),
     });
-    res.json({ modules: roots.map(strip), forms });
+    res.json({ modules: roots.map(strip), forms, permissions });
   } catch (err) {
     next(err);
   }
@@ -77,8 +78,14 @@ export async function updateActions(req, res, next) {
         .status(400)
         .json({ message: 'System admin permissions cannot be modified' });
     }
-    const { modules, buttons, functions, api } = req.body;
-    await setUserLevelActions(id, { modules, buttons, functions, api });
+    const { modules, buttons, functions, api, permissions } = req.body;
+    await setUserLevelActions(id, {
+      modules,
+      buttons,
+      functions,
+      api,
+      permissions,
+    });
     res.sendStatus(200);
   } catch (err) {
     next(err);
@@ -97,7 +104,8 @@ export async function listUserLevelsController(req, res, next) {
 export async function populateMissing(req, res, next) {
   try {
     const allow = !!req.body?.allow;
-    await populateMissingPermissions(allow);
+    const permissions = req.body?.permissions || [];
+    await populateMissingPermissions(allow, permissions);
     res.sendStatus(200);
   } catch (err) {
     next(err);
