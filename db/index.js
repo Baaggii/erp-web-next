@@ -1057,7 +1057,7 @@ export async function listTableRows(
 /**
  * Update a table row by id
  */
-export async function updateTableRow(tableName, id, updates) {
+export async function updateTableRow(tableName, id, updates, conn = pool) {
   const columns = await getTableColumnsSafe(tableName);
   const keys = Object.keys(updates);
   await ensureValidColumns(tableName, columns, keys);
@@ -1067,7 +1067,7 @@ export async function updateTableRow(tableName, id, updates) {
 
   if (tableName === 'company_module_licenses') {
     const [companyId, moduleKey] = String(id).split('-');
-    await pool.query(
+    await conn.query(
       `UPDATE company_module_licenses SET ${setClause} WHERE company_id = ? AND module_key = ?`,
       [...values, companyId, moduleKey],
     );
@@ -1076,7 +1076,7 @@ export async function updateTableRow(tableName, id, updates) {
 
   if (tableName === 'user_companies') {
     const [empId, companyId] = String(id).split('-');
-    await pool.query(
+    await conn.query(
       `UPDATE user_companies SET ${setClause} WHERE empid = ? AND company_id = ?`,
       [...values, empId, companyId],
     );
@@ -1094,7 +1094,7 @@ export async function updateTableRow(tableName, id, updates) {
   if (pkCols.length === 1) {
     const col = pkCols[0];
     const where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
-    await pool.query(
+    await conn.query(
       `UPDATE ?? SET ${setClause} WHERE ${where}`,
       [tableName, ...values, id],
     );
@@ -1103,7 +1103,7 @@ export async function updateTableRow(tableName, id, updates) {
 
   const parts = String(id).split('-');
   const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
-  await pool.query(
+  await conn.query(
     `UPDATE ?? SET ${setClause} WHERE ${where}`,
     [tableName, ...values, ...parts],
   );
