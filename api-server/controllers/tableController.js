@@ -73,6 +73,20 @@ export async function getTableColumnsMeta(req, res, next) {
 
 export async function updateRow(req, res, next) {
   try {
+    let original;
+    try {
+      const pkCols = await getPrimaryKeyColumns(req.params.table);
+      if (pkCols.length > 0) {
+        const parts = String(req.params.id).split('-');
+        const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
+        const [rows] = await pool.query(
+          `SELECT * FROM \`${req.params.table}\` WHERE ${where} LIMIT 1`,
+          parts,
+        );
+        original = rows[0];
+      }
+    } catch {}
+    if (original) res.locals.logDetails = original;
     const updates = { ...req.body };
     delete updates.created_by;
     delete updates.created_at;
@@ -131,6 +145,7 @@ export async function deleteRow(req, res, next) {
         row = rows[0];
       }
     } catch {}
+    if (row) res.locals.logDetails = row;
     if (req.query.cascade === 'true') {
       await deleteTableRowCascade(table, id);
     } else {

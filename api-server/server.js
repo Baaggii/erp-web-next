@@ -41,6 +41,7 @@ import { requireAuth } from "./middlewares/auth.js";
 import featureToggle from "./middlewares/featureToggle.js";
 import reportBuilderRoutes from "./routes/report_builder.js";
 import pendingRequestRoutes from "./routes/pending_request.js";
+import activityLogRoutes from "./routes/user_activity_log.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -107,6 +108,7 @@ app.use("/api/tables", requireAuth, tableRoutes);
 app.use("/api/general_config", requireAuth, generalConfigRoutes);
 app.use("/api/permissions", permissionsRoutes);
 app.use("/api/pending_request", pendingRequestRoutes);
+app.use("/api/user_activity_log", activityLogRoutes);
 
 // Serve static React build and fallback to index.html
 // NOTE: adjust this path to where your SPA build actually lives.

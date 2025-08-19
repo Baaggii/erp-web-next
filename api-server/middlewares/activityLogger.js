@@ -25,13 +25,16 @@ export function activityLogger(req, res, next) {
       res.locals.logRecordId ||
       res.locals.insertId;
     if (!table || !recordId) return;
+    const details =
+      res.locals.logDetails ||
+      (req.method === 'POST' ? req.body || null : null);
     try {
       await logUserAction({
         emp_id: user,
         table_name: table,
         record_id: recordId,
         action: actionMap[req.method],
-        details: req.body || null,
+        details,
       });
     } catch (err) {
       console.error('Failed to log user activity:', err);
