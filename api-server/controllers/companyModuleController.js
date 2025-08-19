@@ -24,8 +24,6 @@ export async function updateLicense(req, res, next) {
       return res.sendStatus(403);
     }
     const { companyId, moduleKey, licensed } = req.body;
-    res.locals.logTable = 'company_module_licenses';
-    res.locals.logRecordId = `${companyId}-${moduleKey}`;
     await setCompanyModuleLicense(companyId, moduleKey, licensed);
     res.sendStatus(200);
   } catch (err) {

@@ -6,7 +6,6 @@ import {
   listAllUserCompanies,
   getEmploymentSession,
 } from '../../db/index.js';
-import { requireAuth } from '../middlewares/auth.js';
 
 export async function listAssignments(req, res, next) {
   try {
@@ -36,8 +35,6 @@ export async function assignCompany(req, res, next) {
       return res.sendStatus(403);
     }
     const { empid, companyId, positionId, branchId } = req.body;
-    res.locals.logTable = 'user_companies';
-    res.locals.logRecordId = `${empid}-${companyId}`;
     await assignCompanyToUser(empid, companyId, positionId, branchId, req.user.empid);
     res.sendStatus(201);
   } catch (err) {
@@ -58,8 +55,6 @@ export async function updateAssignment(req, res, next) {
       return res.sendStatus(403);
     }
     const { empid, companyId, positionId, branchId } = req.body;
-    res.locals.logTable = 'user_companies';
-    res.locals.logRecordId = `${empid}-${companyId}`;
     await updateCompanyAssignment(empid, companyId, positionId, branchId);
     res.sendStatus(200);
   } catch (err) {
@@ -77,8 +72,6 @@ export async function removeAssignment(req, res, next) {
       return res.sendStatus(403);
     }
     const { empid, companyId } = req.body;
-    res.locals.logTable = 'user_companies';
-    res.locals.logRecordId = `${empid}-${companyId}`;
     await removeCompanyAssignment(empid, companyId);
     res.sendStatus(204);
   } catch (err) {

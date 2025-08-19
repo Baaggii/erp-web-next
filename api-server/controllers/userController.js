@@ -6,7 +6,6 @@ import {
   updateUser as dbUpdateUser,
   deleteUserById as dbDeleteUser
 } from '../../db/index.js';
-import { requireAuth } from '../middlewares/auth.js';
 
 export async function listUsers(req, res, next) {
   try {
@@ -32,7 +31,6 @@ export async function getUser(req, res, next) {
 
 export async function createUser(req, res, next) {
   try {
-    res.locals.logTable = 'users';
     const newUser = await dbCreateUser({
       empid: req.body.empid,
       password: req.body.password,
@@ -47,8 +45,6 @@ export async function createUser(req, res, next) {
 
 export async function updateUser(req, res, next) {
   try {
-    res.locals.logTable = 'users';
-    res.locals.logRecordId = req.params.id;
     const updated = await dbUpdateUser(req.params.id);
     res.json(updated);
   } catch (err) {
@@ -58,8 +54,6 @@ export async function updateUser(req, res, next) {
 
 export async function deleteUser(req, res, next) {
   try {
-    res.locals.logTable = 'users';
-    res.locals.logRecordId = req.params.id;
     await dbDeleteUser(req.params.id);
     res.sendStatus(204);
   } catch (err) {
