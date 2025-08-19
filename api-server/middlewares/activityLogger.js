@@ -18,12 +18,12 @@ export function activityLogger(req, res, next) {
   res.on('finish', async () => {
     if (!user) return;
     const actionMap = { POST: 'create', PUT: 'update', DELETE: 'delete' };
-    const table = res.locals.logTable || req.params?.table;
+    const table = req.params?.table || res.locals.logTable;
     const recordId =
-      res.locals.logRecordId ||
-      res.locals.insertId ||
       req.params?.id ||
-      req.body?.id;
+      req.body?.id ||
+      res.locals.logRecordId ||
+      res.locals.insertId;
     if (!table || !recordId) return;
     try {
       await logUserAction({

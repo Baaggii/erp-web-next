@@ -9,7 +9,33 @@ import { requireAuth } from '../middlewares/auth.js';
 
 const router = express.Router();
 router.get('/', requireAuth, listUsers);
-router.post('/', requireAuth, createUser);
-router.put('/:id', requireAuth, updateUser);
-router.delete('/:id', requireAuth, deleteUser);
+router.post(
+  '/',
+  requireAuth,
+  (req, res, next) => {
+    res.locals.logTable = 'users';
+    next();
+  },
+  createUser,
+);
+router.put(
+  '/:id',
+  requireAuth,
+  (req, res, next) => {
+    res.locals.logTable = 'users';
+    res.locals.logRecordId = req.params.id;
+    next();
+  },
+  updateUser,
+);
+router.delete(
+  '/:id',
+  requireAuth,
+  (req, res, next) => {
+    res.locals.logTable = 'users';
+    res.locals.logRecordId = req.params.id;
+    next();
+  },
+  deleteUser,
+);
 export default router;
