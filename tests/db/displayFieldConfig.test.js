@@ -36,6 +36,18 @@ await test('set and get display fields', async (t) => {
   await restore();
 });
 
+await test('table name lookup is case-sensitive', async () => {
+  const { orig, restore } = await withTempFile();
+  await fs.writeFile(filePath, '{}');
+  await setDisplayFields('MiXeD', { idField: 'id', displayFields: ['x'] });
+  const wrong = await getDisplayFields('mixed');
+  assert.deepEqual(wrong, { idField: null, displayFields: [] });
+  await removeDisplayFields('mixed');
+  const still = await getDisplayFields('MiXeD');
+  assert.deepEqual(still, { idField: 'id', displayFields: ['x'] });
+  await restore();
+});
+
 await test('removeDisplayFields deletes config', async (t) => {
   const { orig, restore } = await withTempFile();
   await fs.writeFile(filePath, '{}');

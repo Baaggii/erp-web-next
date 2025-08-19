@@ -588,8 +588,14 @@ const TableManager = forwardRef(function TableManager({
             if (rows.length > 0) {
               rowMap[col] = {};
               dataMap[col] = rows.map((row) => {
+                const keyMap = {};
+                Object.keys(row).forEach((k) => {
+                  keyMap[k.toLowerCase()] = k;
+                });
                 const parts = [];
-                if (row[rel.column] !== undefined) parts.push(row[rel.column]);
+                const valKey = keyMap[rel.column.toLowerCase()];
+                const val = valKey ? row[valKey] : undefined;
+                if (val !== undefined) parts.push(val);
 
                 let displayFields = [];
                 if (
@@ -606,7 +612,10 @@ const TableManager = forwardRef(function TableManager({
 
                 parts.push(
                   ...displayFields
-                    .map((f) => row[f])
+                    .map((f) => {
+                      const rk = keyMap[f.toLowerCase()];
+                      return rk ? row[rk] : undefined;
+                    })
                     .filter((v) => v !== undefined),
                 );
 
@@ -615,8 +624,9 @@ const TableManager = forwardRef(function TableManager({
                     ? parts.join(' - ')
                     : Object.values(row).slice(0, 2).join(' - ');
 
-                const val = row[rel.column];
-                rowMap[col][val] = row;
+                if (val !== undefined) {
+                  rowMap[col][val] = row;
+                }
                 return {
                   value: val,
                   label,
@@ -965,10 +975,15 @@ const TableManager = forwardRef(function TableManager({
         }
         if (conf && conf.displayFields && refRows[field]?.[value]) {
           const row = refRows[field][value];
+          const rowKeyMap = {};
+          Object.keys(row).forEach((k) => {
+            rowKeyMap[k.toLowerCase()] = k;
+          });
           conf.displayFields.forEach((df) => {
             const key = columnCaseMap[df.toLowerCase()];
-            if (key && row[df] !== undefined) {
-              next[key] = row[df];
+            const rk = rowKeyMap[df.toLowerCase()];
+            if (key && rk && row[rk] !== undefined) {
+              next[key] = row[rk];
             }
           });
         }
