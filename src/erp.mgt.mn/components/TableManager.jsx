@@ -357,6 +357,11 @@ const TableManager = forwardRef(function TableManager({
     } else {
       setTypeFilter('');
     }
+    if (company !== undefined && companyIdFields.length > 0) {
+      companyIdFields.forEach((f) => {
+        if (validCols.has(f)) newFilters[f] = company;
+      });
+    }
     if (branch !== undefined && branchIdFields.length > 0) {
       branchIdFields.forEach((f) => {
         if (validCols.has(f)) newFilters[f] = branch;
@@ -375,7 +380,7 @@ const TableManager = forwardRef(function TableManager({
     if (Object.keys(newFilters).length > 0) {
       setFilters((f) => ({ ...f, ...newFilters }));
     }
-  }, [formConfig, validCols, user, company]);
+  }, [formConfig, validCols, user, company, branch, department]);
 
   useEffect(() => {
     if (!formConfig?.transactionTypeField) {
@@ -1587,12 +1592,27 @@ const TableManager = forwardRef(function TableManager({
                 </option>
               ))}
             </select>
-          ) : (
-            <span style={{ marginRight: '0.5rem' }}>{typeFilter || 'All'}</span>
-          )}
+            ) : (
+              <span style={{ marginRight: '0.5rem' }}>{typeFilter || 'All'}</span>
+            )}
           {typeFilter && buttonPerms['Clear Transaction Type Filter'] && (
             <button onClick={() => setTypeFilter('')}>
               Clear Transaction Type Filter
+            </button>
+          )}
+        </div>
+      )}
+      {companyIdFields.length > 0 && company !== undefined && (
+        <div style={{ backgroundColor: '#ffddff', padding: '0.25rem', textAlign: 'left' }}>
+          Company:{' '}
+          <span style={{ marginRight: '0.5rem' }}>{company}</span>
+          {buttonPerms['Clear Company Filter'] && (
+            <button
+              onClick={() =>
+                companyIdFields.forEach((f) => handleFilterChange(f, ''))
+              }
+            >
+              Clear Company Filter
             </button>
           )}
         </div>
