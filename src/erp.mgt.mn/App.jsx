@@ -35,6 +35,7 @@ import useHeaderMappings from './hooks/useHeaderMappings.js';
 import InventoryPage from './pages/InventoryPage.jsx';
 import ImageManagementPage from './pages/ImageManagement.jsx';
 import FinanceTransactionsPage from './pages/FinanceTransactions.jsx';
+import RequestsPage from './pages/Requests.jsx';
 import { useModules } from './hooks/useModules.js';
 import { useTxnModules } from './hooks/useTxnModules.js';
 import useGeneralConfig from './hooks/useGeneralConfig.js';
@@ -108,6 +109,7 @@ function AuthedApp() {
     general_configuration: <GeneralConfigurationPage />,
     image_management: <ImageManagementPage />,
     change_password: <ChangePasswordPage />,
+    requests: <RequestsPage />,
     sales: <TabbedWindows />,
   };
 

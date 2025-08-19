@@ -19,6 +19,7 @@ export default [
   { moduleKey: 'change_password', label: 'Нууц үг солих', parentKey: 'settings', showInSidebar: true, showInHeader: false },
   { moduleKey: 'pos_transaction_management', label: 'POS Transactions', parentKey: 'developer', showInSidebar: true, showInHeader: false },
   { moduleKey: 'pos_transactions', label: 'POS POS', parentKey: null, showInSidebar: true, showInHeader: false },
+  { moduleKey: 'requests', label: 'Requests', parentKey: null, showInSidebar: false, showInHeader: true },
   { moduleKey: 'gl', label: 'Ерөнхий журнал', parentKey: null, showInSidebar: false, showInHeader: true },
   { moduleKey: 'po', label: 'Худалдан авалтын захиалга', parentKey: null, showInSidebar: false, showInHeader: true },
   { moduleKey: 'sales', label: 'Борлуулалтын самбар', parentKey: null, showInSidebar: false, showInHeader: true }
