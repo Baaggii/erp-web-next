@@ -6,13 +6,14 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import usePendingRequestCount from '../hooks/usePendingRequestCount.js';
 import modulePath from '../utils/modulePath.js';
+import filterHeaderModules from '../utils/filterHeaderModules.js';
 
 export default function HeaderMenu({ onOpen }) {
   const { permissions: perms, user } = useContext(AuthContext);
   const modules = useModules();
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
-  const items = modules.filter((r) => r.show_in_header);
+  const items = filterHeaderModules(modules, perms, txnModules);
   const headerMap = useHeaderMappings(items.map((m) => m.module_key));
   const pendingCount = usePendingRequestCount(user?.empid);
 
@@ -27,9 +28,6 @@ export default function HeaderMenu({ onOpen }) {
   return (
     <nav style={styles.menu}>
       {items.map((m) => {
-        const isTxn = txnModules && txnModules.keys.has(m.module_key);
-        if (!isTxn && !perms[m.module_key]) return null;
-
         const label =
           generalConfig.general?.procLabels?.[m.module_key] ||
           headerMap[m.module_key] ||
