@@ -20,6 +20,13 @@ function renderValue(val) {
   return <span style={style}>{String(val ?? '')}</span>;
 }
 
+function normalizeEmpId(id) {
+  return String(id ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/^0+/, '');
+}
+
 export default function RequestsPage() {
   const { user } = useAuth();
   const [requests, setRequests] = useState([]);
