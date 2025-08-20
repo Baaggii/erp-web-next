@@ -44,10 +44,10 @@ export async function login({ empid, password, companyId }) {
   if (data?.session) {
     try {
       const stored = JSON.parse(localStorage.getItem('erp_session_ids') || '{}');
-      if (data.session.employment_senior_empid) {
-        stored.employment_senior_empid = data.session.employment_senior_empid;
+      if (data.session.senior_empid) {
+        stored.senior_empid = data.session.senior_empid;
       } else {
-        delete stored.employment_senior_empid;
+        delete stored.senior_empid;
       }
       localStorage.setItem('erp_session_ids', JSON.stringify(stored));
     } catch {
@@ -78,10 +78,10 @@ export async function fetchProfile() {
   if (data?.session) {
     try {
       const stored = JSON.parse(localStorage.getItem('erp_session_ids') || '{}');
-      if (data.session.employment_senior_empid) {
-        stored.employment_senior_empid = data.session.employment_senior_empid;
+      if (data.session.senior_empid) {
+        stored.senior_empid = data.session.senior_empid;
       } else {
-        delete stored.employment_senior_empid;
+        delete stored.senior_empid;
       }
       localStorage.setItem('erp_session_ids', JSON.stringify(stored));
     } catch {

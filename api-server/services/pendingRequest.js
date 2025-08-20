@@ -65,7 +65,7 @@ export async function createRequest({ tableName, recordId, empId, requestType, p
       finalProposed = currentRow;
     }
     const [result] = await conn.query(
-      `INSERT INTO pending_request (table_name, record_id, emp_id, employment_senior_empid, request_type, proposed_data)
+      `INSERT INTO pending_request (table_name, record_id, emp_id, senior_empid, request_type, proposed_data)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [
         tableName,
@@ -96,7 +96,7 @@ export async function createRequest({ tableName, recordId, empId, requestType, p
       );
     }
     await conn.query('COMMIT');
-    return { request_id: requestId, employment_senior_empid: senior };
+    return { request_id: requestId, senior_empid: senior };
   } catch (err) {
     await conn.query('ROLLBACK');
     throw err;
@@ -108,7 +108,7 @@ export async function createRequest({ tableName, recordId, empId, requestType, p
 export async function listRequests(filters) {
   const {
     status,
-    employment_senior_empid,
+    senior_empid,
     requested_empid,
     table_name,
     date_from,
@@ -122,9 +122,9 @@ export async function listRequests(filters) {
     conditions.push('LOWER(TRIM(status)) = ?');
     params.push(String(status).trim().toLowerCase());
   }
-  if (employment_senior_empid) {
-    conditions.push('UPPER(TRIM(employment_senior_empid)) = ?');
-    params.push(String(employment_senior_empid).trim().toUpperCase());
+  if (senior_empid) {
+    conditions.push('UPPER(TRIM(senior_empid)) = ?');
+    params.push(String(senior_empid).trim().toUpperCase());
   }
   if (requested_empid) {
     conditions.push('UPPER(TRIM(emp_id)) = ?');
@@ -204,7 +204,7 @@ export async function respondRequest(
     const req = rows[0];
     if (!req) throw new Error('Request not found');
     if (
-      String(req.employment_senior_empid).trim().toUpperCase() !==
+      String(req.senior_empid).trim().toUpperCase() !==
       String(responseEmpid).trim().toUpperCase()
     )
       throw new Error('Forbidden');

@@ -9,7 +9,7 @@ function setupRequest(overrides = {}) {
     table_name: 't',
     record_id: 1,
     emp_id: 'E1',
-    employment_senior_empid: 'S1',
+    senior_empid: 'S1',
     request_type: 'edit',
     proposed_data: null,
     ...overrides,
@@ -58,9 +58,9 @@ await test('listRequests normalizes empids in filters', async () => {
     queries.push({ sql, params });
     return [[]];
   };
-  await service.listRequests({ employment_senior_empid: 's1 ', requested_empid: ' e2 ' });
+  await service.listRequests({ senior_empid: 's1 ', requested_empid: ' e2 ' });
   db.pool.query = origQuery;
-  assert.ok(queries[0].sql.includes('UPPER(TRIM(employment_senior_empid))'));
+  assert.ok(queries[0].sql.includes('UPPER(TRIM(senior_empid))'));
   assert.ok(queries[0].sql.includes('UPPER(TRIM(emp_id))'));
   assert.deepEqual(queries[0].params, ['S1', 'E2']);
 });

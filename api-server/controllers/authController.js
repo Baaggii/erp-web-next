@@ -43,7 +43,7 @@ export async function login(req, res, next) {
       department_id: department,
       position_id,
       position,
-      employment_senior_empid,
+      senior_empid,
     } = session || {};
 
     const payload = {
@@ -80,7 +80,7 @@ export async function login(req, res, next) {
       department,
       position_id,
       position,
-      employment_senior_empid,
+      senior_empid,
       session,
       permissions,
     });
@@ -111,7 +111,7 @@ export async function getProfile(req, res) {
     department_id: department,
     position_id,
     position,
-    employment_senior_empid,
+    senior_empid,
   } = session || {};
   res.json({
     id: req.user.id,
@@ -125,7 +125,7 @@ export async function getProfile(req, res) {
     department,
     position_id,
     position,
-    employment_senior_empid,
+    senior_empid,
     session,
     permissions,
   });
@@ -164,7 +164,7 @@ export async function refresh(req, res) {
       department_id: department,
       position_id,
       position,
-      employment_senior_empid,
+      senior_empid,
     } = session || {};
     const newPayload = {
       id: user.id,
@@ -199,7 +199,7 @@ export async function refresh(req, res) {
       department,
       position_id,
       position,
-      employment_senior_empid,
+      senior_empid,
       session,
       permissions,
     });
