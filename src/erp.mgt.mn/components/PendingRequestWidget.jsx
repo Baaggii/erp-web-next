@@ -9,8 +9,11 @@ export default function PendingRequestWidget({ filters = {} }) {
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (!user?.empid) return undefined;
+
+    let cancelled = false;
+
     async function load() {
-      if (!user?.empid) return;
       setLoading(true);
       try {
         const params = new URLSearchParams({
@@ -25,25 +28,27 @@ export default function PendingRequestWidget({ filters = {} }) {
           credentials: 'include',
         });
         if (res.ok) {
-          const data = await res.json();
-          if (typeof data === 'number') {
-            setCount(data);
-          } else if (Array.isArray(data)) {
-            setCount(data.length);
-          } else {
-            setCount(Number(data?.count) || 0);
-          }
+          const data = await res.json().catch(() => 0);
+          if (typeof data === 'number') setCount(data);
+          else if (Array.isArray(data)) setCount(data.length);
+          else setCount(Number(data?.count) || 0);
         } else {
           setCount(0);
         }
       } catch {
         setCount(0);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
 
     load();
+    const handle = () => load();
+    window.addEventListener('pending-request-refresh', handle);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('pending-request-refresh', handle);
+    };
   }, [user?.empid, filters]);
 
   if (!user?.empid) return null;
