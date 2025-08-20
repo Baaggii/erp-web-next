@@ -1,8 +1,10 @@
 // src/erp.mgt.mn/pages/Requests.jsx
 import React, { useEffect, useState } from 'react';
+import jsondiffpatch from 'jsondiffpatch';
 import { useAuth } from '../context/AuthContext.jsx';
 import { debugLog } from '../utils/debug.js';
 import { API_BASE } from '../utils/apiBase.js';
+import 'jsondiffpatch/dist/formatters-styles/html.css';
 
 let jsondiffpatch;
 (async () => {
