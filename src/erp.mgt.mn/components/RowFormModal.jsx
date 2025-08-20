@@ -1262,7 +1262,11 @@ const RowFormModal = function RowFormModal({
           >
             Cancel
           </button>
-          <button type="submit" className="px-3 py-1 bg-blue-600 text-white rounded">
+          <button
+            type="button"
+            onClick={submitForm}
+            className="px-3 py-1 bg-blue-600 text-white rounded"
+          >
             Post
           </button>
         </div>

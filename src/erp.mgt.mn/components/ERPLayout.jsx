@@ -14,6 +14,8 @@ import { useTabs } from "../context/TabContext.jsx";
 import { useIsLoading } from "../context/LoadingContext.jsx";
 import Spinner from "./Spinner.jsx";
 import useHeaderMappings from "../hooks/useHeaderMappings.js";
+import usePendingRequestCount from "../hooks/usePendingRequestCount.js";
+import { PendingRequestContext } from "../context/PendingRequestContext.jsx";
 
 /**
  * A desktop‐style “ERPLayout” with:
@@ -22,7 +24,7 @@ import useHeaderMappings from "../hooks/useHeaderMappings.js";
  *  - Main content area (faux window container)
  */
 export default function ERPLayout() {
-  const { user, setUser } = useContext(AuthContext);
+  const { user, setUser, session } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const renderCount = useRef(0);
   useEffect(() => {
@@ -48,7 +50,7 @@ export default function ERPLayout() {
   const modules = useModules();
   const headerMap = useHeaderMappings(modules.map((m) => m.module_key));
   const titleMap = {
-    "/": "Blue Link демо",
+    "/": "Dashboard",
     "/forms": "Маягтууд",
     "/reports": "Тайлан",
     "/settings": "Тохиргоо",
@@ -82,6 +84,13 @@ export default function ERPLayout() {
   const { tabs, activeKey, openTab, closeTab, switchTab, setTabContent, cache } = useTabs();
   const txnModules = useTxnModules();
 
+  const seniorEmpId = !session?.senior_empid ? user?.empid : null;
+  const {
+    count: pendingCount,
+    hasNew: pendingHasNew,
+    markSeen: markPendingSeen,
+  } = usePendingRequestCount(seniorEmpId);
+
   useEffect(() => {
     const title = titleForPath(location.pathname);
     openTab({ key: location.pathname, label: title });
@@ -108,31 +117,35 @@ export default function ERPLayout() {
   }
 
   return (
-    <div style={styles.container}>
-      <Header
-        user={user}
-        onLogout={handleLogout}
-        onHome={handleHome}
-        isMobile={isMobile}
-        onToggleSidebar={() => setSidebarOpen((o) => !o)}
-        onOpen={handleOpen}
-      />
-      <div style={styles.body(isMobile)}>
-        {isMobile && sidebarOpen && (
-          <div
-            className="sidebar-overlay"
-            onClick={() => setSidebarOpen(false)}
-          />
-        )}
-        <Sidebar
-          open={isMobile ? sidebarOpen : true}
-          onOpen={handleOpen}
+    <PendingRequestContext.Provider
+      value={{ count: pendingCount, hasNew: pendingHasNew, markSeen: markPendingSeen }}
+    >
+      <div style={styles.container}>
+        <Header
+          user={user}
+          onLogout={handleLogout}
+          onHome={handleHome}
           isMobile={isMobile}
+          onToggleSidebar={() => setSidebarOpen((o) => !o)}
+          onOpen={handleOpen}
         />
-        <MainWindow title={windowTitle} />
+        <div style={styles.body(isMobile)}>
+          {isMobile && sidebarOpen && (
+            <div
+              className="sidebar-overlay"
+              onClick={() => setSidebarOpen(false)}
+            />
+          )}
+          <Sidebar
+            open={isMobile ? sidebarOpen : true}
+            onOpen={handleOpen}
+            isMobile={isMobile}
+          />
+          <MainWindow title={windowTitle} />
+        </div>
+        {generalConfig.general?.aiApiEnabled && <AskAIFloat />}
       </div>
-      {generalConfig.general?.aiApiEnabled && <AskAIFloat />}
-    </div>
+    </PendingRequestContext.Provider>
   );
 }
 
@@ -188,6 +201,7 @@ function Sidebar({ onOpen, open, isMobile }) {
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
   const headerMap = useHeaderMappings(modules.map((m) => m.module_key));
+  const { hasNew } = useContext(PendingRequestContext);
 
   if (!perms) return null;
 
@@ -272,6 +286,9 @@ function Sidebar({ onOpen, open, isMobile }) {
               className="menu-item"
               style={styles.menuItem({ isActive: location.pathname === modulePath(m, allMap) })}
             >
+              {m.module_key === 'dashboard' && hasNew && (
+                <span style={styles.badge} />
+              )}
               {m.label}
             </button>
           ),
@@ -283,10 +300,12 @@ function Sidebar({ onOpen, open, isMobile }) {
 
 function SidebarGroup({ mod, map, allMap, level, onOpen }) {
   const [open, setOpen] = useState(false);
+  const { hasNew } = useContext(PendingRequestContext);
   const groupClass = level === 0 ? 'menu-group' : level === 1 ? 'menu-group submenu' : 'menu-group subsubmenu';
   return (
     <div className={groupClass} style={{ ...styles.menuGroup, paddingLeft: level ? '1rem' : 0 }}>
       <button className="menu-item" style={styles.groupBtn} onClick={() => setOpen((o) => !o)}>
+        {mod.module_key === 'dashboard' && hasNew && <span style={styles.badge} />}
         {mod.label} {open ? '▾' : '▸'}
       </button>
       {open &&
@@ -303,6 +322,9 @@ function SidebarGroup({ mod, map, allMap, level, onOpen }) {
               }}
               className="menu-item"
             >
+              {c.module_key === 'dashboard' && hasNew && (
+                <span style={styles.badge} />
+              )}
               {c.label}
             </button>
           ),
@@ -319,6 +341,7 @@ function MainWindow({ title }) {
   const outlet = useOutlet();
   const navigate = useNavigate();
   const { tabs, activeKey, switchTab, closeTab, setTabContent, cache } = useTabs();
+  const { hasNew } = useContext(PendingRequestContext);
 
   // Store rendered outlet by path once the route changes. Avoid tracking
   // the `outlet` object itself to prevent endless updates caused by React
@@ -351,8 +374,9 @@ function MainWindow({ title }) {
             style={activeKey === t.key ? styles.activeTab : styles.tab}
             onClick={() => handleSwitch(t.key)}
           >
+            {t.key === '/' && hasNew && <span style={styles.badge} />}
             <span>{t.label}</span>
-            {tabs.length > 1 && (
+            {tabs.length > 1 && t.key !== '/' && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -584,6 +608,14 @@ const styles = {
     background: "transparent",
     border: "none",
     cursor: "pointer",
+  },
+  badge: {
+    backgroundColor: "red",
+    borderRadius: "50%",
+    width: "8px",
+    height: "8px",
+    display: "inline-block",
+    marginRight: "4px",
   },
   windowContent: {
     flexGrow: 1,

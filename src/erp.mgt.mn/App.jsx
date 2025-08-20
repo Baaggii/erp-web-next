@@ -30,7 +30,7 @@ import GeneralConfigurationPage from './pages/GeneralConfiguration.jsx';
 import UserLevelActionsPage from './pages/UserLevelActions.jsx';
 import SettingsPage, { GeneralSettings } from './pages/Settings.jsx';
 import ChangePasswordPage from './pages/ChangePassword.jsx';
-import BlueLinkPage from './pages/BlueLinkPage.jsx';
+import DashboardPage from './pages/DashboardPage.jsx';
 import useHeaderMappings from './hooks/useHeaderMappings.js';
 import InventoryPage from './pages/InventoryPage.jsx';
 import ImageManagementPage from './pages/ImageManagement.jsx';
@@ -89,7 +89,7 @@ function AuthedApp() {
   });
 
   const componentMap = {
-    dashboard: <BlueLinkPage />,
+    dashboard: <DashboardPage />,
     forms: <FormsPage />,
     reports: <ReportsPage />,
     settings: <SettingsPage />,

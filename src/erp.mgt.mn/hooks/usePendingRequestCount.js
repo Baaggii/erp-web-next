@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
  * @param {string|number} seniorEmpId Employee ID of the supervisor
  * @param {object} [filters] Optional filters (requested_empid, table_name, date_from, date_to)
  * @param {number} [interval=30000] Polling interval in milliseconds
- * @returns {number} Count of pending requests
+ * @returns {{count:number, hasNew:boolean, markSeen:()=>void}}
  */
 export default function usePendingRequestCount(
   seniorEmpId,
@@ -13,6 +13,15 @@ export default function usePendingRequestCount(
   interval = 30000,
 ) {
   const [count, setCount] = useState(0);
+  const [seen, setSeen] = useState(() =>
+    Number(localStorage.getItem('pendingSeen') || 0),
+  );
+
+  const markSeen = () => {
+    localStorage.setItem('pendingSeen', String(count));
+    setSeen(count);
+    window.dispatchEvent(new Event('pending-request-seen'));
+  };
 
   useEffect(() => {
     if (!seniorEmpId) {
@@ -35,6 +44,7 @@ export default function usePendingRequestCount(
       try {
         const res = await fetch(`/api/pending_request?${params.toString()}`, {
           credentials: 'include',
+          skipLoader: true,
         });
         if (!res.ok) {
           if (!cancelled) setCount(0);
@@ -53,14 +63,19 @@ export default function usePendingRequestCount(
 
     fetchCount();
     const timer = setInterval(fetchCount, interval);
+    function handleSeen() {
+      setSeen(Number(localStorage.getItem('pendingSeen') || 0));
+    }
     window.addEventListener('pending-request-refresh', fetchCount);
+    window.addEventListener('pending-request-seen', handleSeen);
     return () => {
       cancelled = true;
       clearInterval(timer);
       window.removeEventListener('pending-request-refresh', fetchCount);
+      window.removeEventListener('pending-request-seen', handleSeen);
     };
   }, [seniorEmpId, interval, filters]);
 
-  return count;
+  return { count, hasNew: count > seen, markSeen };
 }
 
