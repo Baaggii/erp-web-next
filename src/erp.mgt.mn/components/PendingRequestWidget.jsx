@@ -6,8 +6,7 @@ import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 export default function PendingRequestWidget() {
   const { session } = useContext(AuthContext);
   const navigate = useNavigate();
-  const isSenior =
-    !session?.senior_empid || Number(session.senior_empid) <= 0;
+  const isSenior = Number(session?.senior_empid) > 0;
   const { count } = usePendingRequests();
 
   if (!isSenior) return null;
