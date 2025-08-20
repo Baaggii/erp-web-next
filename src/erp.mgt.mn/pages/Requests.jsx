@@ -157,6 +157,8 @@ export default function RequestsPage() {
         body: JSON.stringify({
           status: respStatus,
           response_notes: reqItem?.notes || undefined,
+          response_empid: user.empid,
+          senior_empid: reqItem?.senior_empid || user.empid,
         }),
       });
       if (!res.ok) throw new Error('Failed to respond');
@@ -271,46 +273,46 @@ export default function RequestsPage() {
           <h4>
             {req.table_name} #{req.record_id} ({req.request_type})
           </h4>
-          {req.request_type === 'delete' ? (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  <th style={{ border: '1px solid #ccc', padding: '0.25em' }}>Field</th>
-                  <th style={{ border: '1px solid #ccc', padding: '0.25em' }}>Original</th>
-                </tr>
-              </thead>
-              <tbody>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={{ border: '1px solid #ccc', padding: '0.25em' }}></th>
                 {req.fields.map((f) => (
-                  <tr key={f.name}>
-                    <td style={{ border: '1px solid #ccc', padding: '0.25em' }}>{f.name}</td>
-                    <td style={{ border: '1px solid #ccc', padding: '0.25em' }}>{renderValue(f.before)}</td>
-                  </tr>
+                  <th
+                    key={f.name}
+                    style={{ border: '1px solid #ccc', padding: '0.25em' }}
+                  >
+                    {f.name}
+                  </th>
                 ))}
-              </tbody>
-            </table>
-          ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  <th style={{ border: '1px solid #ccc', padding: '0.25em' }}>Field</th>
-                  <th style={{ border: '1px solid #ccc', padding: '0.25em' }}>Original</th>
-                  <th style={{ border: '1px solid #ccc', padding: '0.25em' }}>Proposed</th>
-                </tr>
-              </thead>
-              <tbody>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th style={{ border: '1px solid #ccc', padding: '0.25em' }}>
+                  Original
+                </th>
                 {req.fields.map((f) => (
-                  <tr key={f.name}>
-                    <td style={{ border: '1px solid #ccc', padding: '0.25em' }}>{f.name}</td>
+                  <td
+                    key={f.name}
+                    style={{
+                      border: '1px solid #ccc',
+                      padding: '0.25em',
+                      background: f.changed ? '#ffe6e6' : undefined,
+                    }}
+                  >
+                    {renderValue(f.before)}
+                  </td>
+                ))}
+              </tr>
+              {req.request_type !== 'delete' && (
+                <tr>
+                  <th style={{ border: '1px solid #ccc', padding: '0.25em' }}>
+                    Proposed
+                  </th>
+                  {req.fields.map((f) => (
                     <td
-                      style={{
-                        border: '1px solid #ccc',
-                        padding: '0.25em',
-                        background: f.changed ? '#ffe6e6' : undefined,
-                      }}
-                    >
-                      {renderValue(f.before)}
-                    </td>
-                    <td
+                      key={f.name}
                       style={{
                         border: '1px solid #ccc',
                         padding: '0.25em',
@@ -319,11 +321,11 @@ export default function RequestsPage() {
                     >
                       {renderValue(f.after)}
                     </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+                  ))}
+                </tr>
+              )}
+            </tbody>
+          </table>
           {req.response_status ? (
             <p>Request {req.response_status}</p>
           ) : (
