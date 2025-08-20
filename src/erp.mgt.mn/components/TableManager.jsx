@@ -174,10 +174,10 @@ const TableManager = forwardRef(function TableManager({
     [requestIdSet],
   );
   const { user, company, branch, department, session } = useContext(AuthContext);
+  const isSubordinate = Boolean(session?.senior_empid);
   const generalConfig = useGeneralConfig();
   const { addToast } = useToast();
-  const canRequestStatus =
-    session?.permissions?.edit_delete_request || session?.permissions?.supervisor;
+  const canRequestStatus = isSubordinate || session?.permissions?.supervisor;
 
   useEffect(() => {
     function hideMenu() {
@@ -2115,25 +2115,28 @@ const TableManager = forwardRef(function TableManager({
                       >
                         ➕ Add Img
                       </button>
-                      {buttonPerms['Edit transaction'] && (
-                        <button
-                          onClick={() => openEdit(r)}
-                          disabled={rid === undefined}
-                          style={actionBtnStyle}
-                        >
-                          🖉 Edit
-                        </button>
-                      )}
-                      {buttonPerms['Delete transaction'] && (
-                        <button
-                          onClick={() => handleDelete(r)}
-                          disabled={rid === undefined}
-                          style={deleteBtnStyle}
-                        >
-                          ❌ Delete
-                        </button>
-                      )}
-                      {session?.permissions?.edit_delete_request && (
+                      {!isSubordinate ? (
+                        <>
+                          {buttonPerms['Edit transaction'] && (
+                            <button
+                              onClick={() => openEdit(r)}
+                              disabled={rid === undefined}
+                              style={actionBtnStyle}
+                            >
+                              🖉 Edit
+                            </button>
+                          )}
+                          {buttonPerms['Delete transaction'] && (
+                            <button
+                              onClick={() => handleDelete(r)}
+                              disabled={rid === undefined}
+                              style={deleteBtnStyle}
+                            >
+                              ❌ Delete
+                            </button>
+                          )}
+                        </>
+                      ) : (
                         <>
                           <button
                             onClick={() => openRequestEdit(r)}
