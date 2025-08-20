@@ -1,8 +1,35 @@
 // src/erp.mgt.mn/pages/Requests.jsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
+import { diff } from 'jsondiffpatch';
 import { useAuth } from '../context/AuthContext.jsx';
-import { debugLog } from '../utils/debug.js';
 import { API_BASE } from '../utils/apiBase.js';
+import { debugLog } from '../utils/debug.js';
+import useHeaderMappings from '../hooks/useHeaderMappings.js';
+import { translateToMn } from '../utils/translateToMn.js';
+
+function ch(n) {
+  return Math.round(n * 8);
+}
+
+const MAX_WIDTH = ch(40);
+
+function getAverageLength(values) {
+  const list = values
+    .filter((v) => v !== null && v !== undefined)
+    .map((v) =>
+      typeof v === 'object' ? JSON.stringify(v) : String(v),
+    )
+    .slice(0, 20);
+  if (list.length === 0) return 0;
+  return Math.round(list.reduce((s, v) => s + v.length, 0) / list.length);
+}
+
+function renderValue(val) {
+  if (typeof val === 'object' && val !== null) {
+    return <pre>{JSON.stringify(val, null, 2)}</pre>;
+  }
+  return String(val ?? '');
+}
 
 export default function RequestsPage() {
   const { user } = useAuth();
@@ -10,23 +37,23 @@ export default function RequestsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  function computeDiff(original, proposed) {
-    if (original && proposed) {
-      const changes = {};
-      const keys = new Set([...Object.keys(original), ...Object.keys(proposed)]);
-      for (const key of keys) {
-        const before = original[key];
-        const after = proposed[key];
-        if (JSON.stringify(before) !== JSON.stringify(after)) {
-          changes[key] = { before, after };
-        }
-      }
-      if (Object.keys(changes).length) {
-        return `<pre>${JSON.stringify(changes, null, 2)}</pre>`;
-      }
-    }
-    return '';
-  }
+  // filters
+  const [requestedEmpid, setRequestedEmpid] = useState('');
+  const [tableName, setTableName] = useState('');
+  const [status, setStatus] = useState('pending');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const configCache = useRef({});
+
+  const allFields = useMemo(() => {
+    const set = new Set();
+    requests.forEach((r) => r.fields?.forEach((f) => set.add(f.name)));
+    return Array.from(set);
+  }, [requests]);
+
+  const headerMap = useHeaderMappings(allFields);
 
   useEffect(() => {
     async function load() {
@@ -39,15 +66,20 @@ export default function RequestsPage() {
       setError(null);
       try {
         const params = new URLSearchParams({
-          status: 'pending',
           senior_empid: user.empid,
         });
+        if (status) params.append('status', status);
+        if (requestedEmpid) params.append('requested_empid', requestedEmpid);
+        if (tableName) params.append('table_name', tableName);
+        if (dateFrom) params.append('date_from', dateFrom);
+        if (dateTo) params.append('date_to', dateTo);
         const res = await fetch(
           `${API_BASE}/pending_request?${params.toString()}`,
           { credentials: 'include' },
         );
         if (!res.ok) throw new Error('Failed to load requests');
         const data = await res.json();
+
         const enriched = await Promise.all(
           data.map(async (req) => {
             let original = null;
@@ -73,18 +105,68 @@ export default function RequestsPage() {
             } catch (err) {
               console.error('Failed to fetch original record', err);
             }
-            const html = computeDiff(original, req.proposed_data);
+
+            let cfg = configCache.current[req.table_name];
+            if (!cfg) {
+              try {
+                const cfgRes = await fetch(
+                  `${API_BASE}/display_fields?table=${req.table_name}`,
+                  { credentials: 'include' },
+                );
+                if (cfgRes.ok) cfg = await cfgRes.json();
+              } catch {
+                cfg = null;
+              }
+              configCache.current[req.table_name] = cfg || {
+                displayFields: [],
+              };
+            }
+            cfg = cfg || { displayFields: [] };
+            const visible = cfg.displayFields?.length
+              ? cfg.displayFields
+              : Array.from(
+                  new Set([
+                    ...Object.keys(original || {}),
+                    ...Object.keys(req.proposed_data || {}),
+                  ]),
+                );
+
+            const fields = visible
+              .map((name) => {
+                const before = original ? original[name] : undefined;
+                const after = req.proposed_data ? req.proposed_data[name] : undefined;
+                const isComplex =
+                  (before && typeof before === 'object') ||
+                  (after && typeof after === 'object');
+                let changed = false;
+                if (isComplex) {
+                  changed = !!diff(before, after);
+                } else {
+                  changed = JSON.stringify(before) !== JSON.stringify(after);
+                }
+                return { name, before, after, changed, isComplex };
+              })
+              .filter((f) => {
+                const emptyBefore = f.before === undefined || f.before === null || f.before === '';
+                const emptyAfter = f.after === undefined || f.after === null || f.after === '';
+                return !(emptyBefore && emptyAfter);
+              });
+
             return {
               ...req,
               original,
-              html,
+              fields,
               notes: '',
               response_status: null,
               error: null,
             };
           }),
         );
-        setRequests(enriched);
+        const visibleRequests = enriched.filter(
+          (r) =>
+            String(r.senior_empid).trim() === String(user.empid).trim(),
+        );
+        setRequests(visibleRequests);
       } catch (err) {
         console.error(err);
         setError('Failed to load requests');
@@ -94,7 +176,7 @@ export default function RequestsPage() {
     }
 
     load();
-  }, [user?.empid]);
+  }, [user?.empid, reloadKey, status, requestedEmpid, tableName, dateFrom, dateTo]);
 
   const updateNotes = (id, value) => {
     setRequests((reqs) =>
@@ -102,23 +184,44 @@ export default function RequestsPage() {
     );
   };
 
-  const respond = async (id, status) => {
+  const respond = async (id, respStatus) => {
     const reqItem = requests.find((r) => r.request_id === id);
+    if (
+      !reqItem ||
+      String(reqItem.senior_empid).trim() !== String(user.empid).trim()
+    ) {
+      setRequests((reqs) =>
+        reqs.map((r) =>
+          r.request_id === id
+            ? { ...r, error: 'You are not authorized to respond.' }
+            : r,
+        ),
+      );
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE}/pending_request/${id}/respond`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          status,
+          status: respStatus,
           response_notes: reqItem?.notes || undefined,
         }),
       });
-      if (!res.ok) throw new Error('Failed to respond');
+      if (!res.ok) {
+        if (res.status === 403) throw new Error('Forbidden');
+        throw new Error('Failed to respond');
+      }
       setRequests((reqs) =>
         reqs.map((r) =>
           r.request_id === id
-            ? { ...r, response_status: status, error: null }
+            ? {
+                ...r,
+                response_status: respStatus,
+                status: respStatus,
+                error: null,
+              }
             : r,
         ),
       );
@@ -138,63 +241,235 @@ export default function RequestsPage() {
   return (
     <div>
       <h2>Requests</h2>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          setReloadKey((k) => k + 1);
+        }}
+        style={{ marginBottom: '1em' }}
+      >
+        <label style={{ marginRight: '0.5em' }}>
+          Requester:
+          <input
+            value={requestedEmpid}
+            onChange={(e) => setRequestedEmpid(e.target.value)}
+            style={{ marginLeft: '0.25em' }}
+          />
+        </label>
+        <label style={{ marginRight: '0.5em' }}>
+          Transaction Type:
+          <input
+            value={tableName}
+            onChange={(e) => setTableName(e.target.value)}
+            style={{ marginLeft: '0.25em' }}
+          />
+        </label>
+        <label style={{ marginRight: '0.5em' }}>
+          Status:
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            style={{ marginLeft: '0.25em' }}
+          >
+            <option value="">Any</option>
+            <option value="pending">Pending</option>
+            <option value="accepted">Accepted</option>
+            <option value="declined">Declined</option>
+          </select>
+        </label>
+        <label style={{ marginRight: '0.5em' }}>
+          From:
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            style={{ marginLeft: '0.25em' }}
+          />
+        </label>
+        <label style={{ marginRight: '0.5em' }}>
+          To:
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            style={{ marginLeft: '0.25em' }}
+          />
+        </label>
+        <button type="submit">Apply</button>
+      </form>
       {loading && <p>Loading...</p>}
       {error && <p style={{ color: 'red' }}>{error}</p>}
-      {requests.map((req) => (
-        <div
-          key={req.request_id}
-          style={{
-            border: '1px solid #ccc',
-            margin: '1em 0',
-            padding: '1em',
-            background:
-              req.response_status === 'accepted'
-                ? '#e6ffed'
-                : req.response_status === 'declined'
-                ? '#ffe6e6'
-                : 'transparent',
-          }}
-        >
-          <h4>
-            {req.table_name} #{req.record_id} ({req.request_type})
-          </h4>
-          {req.html ? (
-            <div
-              className="diff"
-              dangerouslySetInnerHTML={{ __html: req.html }}
-            />
-          ) : (
-            <pre>{JSON.stringify(req.proposed_data, null, 2)}</pre>
-          )}
-          {req.response_status ? (
-            <p>Request {req.response_status}</p>
-          ) : (
-            <>
-              <textarea
-                placeholder="Notes (optional)"
-                value={req.notes}
-                onChange={(e) =>
-                  updateNotes(req.request_id, e.target.value)
-                }
-                style={{ width: '100%', minHeight: '4em' }}
-              />
-              <div style={{ marginTop: '0.5em' }}>
-                <button onClick={() => respond(req.request_id, 'accepted')}>
-                  Accept
-                </button>
-                <button
-                  onClick={() => respond(req.request_id, 'declined')}
-                  style={{ marginLeft: '0.5em' }}
-                >
-                  Decline
-                </button>
-              </div>
-            </>
-          )}
-          {req.error && <p style={{ color: 'red' }}>{req.error}</p>}
-        </div>
-      ))}
+      {requests.map((req) => {
+        const columns = req.fields.map((f) => f.name);
+        const fieldMap = {};
+        req.fields.forEach((f) => {
+          fieldMap[f.name] = f;
+        });
+        const placeholders = {};
+        columns.forEach((c) => {
+          const lower = c.toLowerCase();
+          if (lower.includes('time') && !lower.includes('date'))
+            placeholders[c] = 'HH:MM:SS';
+          else if (lower.includes('timestamp') || lower.includes('date'))
+            placeholders[c] = 'YYYY-MM-DD';
+        });
+        const columnAlign = {};
+        columns.forEach((c) => {
+          const sample =
+            fieldMap[c].before !== undefined && fieldMap[c].before !== null
+              ? fieldMap[c].before
+              : fieldMap[c].after;
+          columnAlign[c] = typeof sample === 'number' ? 'right' : 'left';
+        });
+        const columnWidths = {};
+        columns.forEach((c) => {
+          const f = fieldMap[c];
+          const avg = getAverageLength([f.before, f.after]);
+          let w;
+          if (avg <= 4) w = ch(Math.max(avg + 1, 5));
+          else if (placeholders[c] && placeholders[c].includes('YYYY-MM-DD'))
+            w = ch(12);
+          else if (avg <= 10) w = ch(12);
+          else w = ch(20);
+          columnWidths[c] = Math.min(w, MAX_WIDTH);
+        });
+
+        const requestStatus = req.status || req.response_status;
+        const canRespond =
+          (requestStatus === 'pending' || !requestStatus) &&
+          String(req.senior_empid).trim() === String(user.empid).trim();
+
+        return (
+          <div
+            key={req.request_id}
+            style={{
+              border: '1px solid #ccc',
+              margin: '1em 0',
+              padding: '1em',
+              background:
+                requestStatus === 'accepted'
+                  ? '#e6ffed'
+                  : requestStatus === 'declined'
+                  ? '#ffe6e6'
+                  : 'transparent',
+            }}
+          >
+            <h4>
+              {req.table_name} #{req.record_id} ({req.request_type})
+            </h4>
+            <table
+              style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                tableLayout: 'fixed',
+              }}
+            >
+              <thead>
+                <tr>
+                  <th style={{ border: '1px solid #ccc', padding: '0.25em' }}></th>
+                  {columns.map((c) => (
+                    <th
+                      key={c}
+                      style={{
+                        border: '1px solid #ccc',
+                        padding: '0.25em',
+                        textAlign: columnAlign[c],
+                        width: columnWidths[c],
+                        minWidth: columnWidths[c],
+                        maxWidth: MAX_WIDTH,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {headerMap[c] || translateToMn(c)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th style={{ border: '1px solid #ccc', padding: '0.25em' }}>
+                    Original
+                  </th>
+                  {columns.map((c) => (
+                    <td
+                      key={c}
+                      style={{
+                        border: '1px solid #ccc',
+                        padding: '0.25em',
+                        background: fieldMap[c].changed ? '#ffe6e6' : undefined,
+                        textAlign: columnAlign[c],
+                        width: columnWidths[c],
+                        minWidth: columnWidths[c],
+                        maxWidth: MAX_WIDTH,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {renderValue(fieldMap[c].before)}
+                    </td>
+                  ))}
+                </tr>
+                {req.request_type !== 'delete' && (
+                  <tr>
+                    <th style={{ border: '1px solid #ccc', padding: '0.25em' }}>
+                      Proposed
+                    </th>
+                    {columns.map((c) => (
+                      <td
+                        key={c}
+                        style={{
+                          border: '1px solid #ccc',
+                          padding: '0.25em',
+                          background: fieldMap[c].changed
+                            ? '#e6ffe6'
+                            : undefined,
+                          textAlign: columnAlign[c],
+                          width: columnWidths[c],
+                          minWidth: columnWidths[c],
+                          maxWidth: MAX_WIDTH,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {renderValue(fieldMap[c].after)}
+                      </td>
+                    ))}
+                  </tr>
+                )}
+              </tbody>
+            </table>
+            {requestStatus && requestStatus !== 'pending' ? (
+              <p>Request {requestStatus}</p>
+            ) : canRespond ? (
+              <>
+                <textarea
+                  placeholder="Notes (optional)"
+                  value={req.notes}
+                  onChange={(e) => updateNotes(req.request_id, e.target.value)}
+                  style={{ width: '100%', minHeight: '4em' }}
+                />
+                <div style={{ marginTop: '0.5em' }}>
+                  <button onClick={() => respond(req.request_id, 'accepted')}>
+                    Accept
+                  </button>
+                  <button
+                    onClick={() => respond(req.request_id, 'declined')}
+                    style={{ marginLeft: '0.5em' }}
+                  >
+                    Decline
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p>You are not authorized to respond.</p>
+            )}
+            {req.error && <p style={{ color: 'red' }}>{req.error}</p>}
+          </div>
+        );
+      })}
       {!loading && requests.length === 0 && <p>No pending requests.</p>}
     </div>
   );
 }
+
