@@ -87,7 +87,12 @@ export default function RequestsPage() {
                 `${API_BASE}/tables/${req.table_name}/${req.record_id}`,
                 { credentials: 'include' },
               );
-              if (res2.ok) {
+              if (
+                res2.ok &&
+                res2.headers
+                  .get('content-type')
+                  ?.includes('application/json')
+              ) {
                 original = await res2.json();
               } else {
                 const res3 = await fetch(
@@ -96,13 +101,18 @@ export default function RequestsPage() {
                   )}&perPage=1`,
                   { credentials: 'include' },
                 );
-                if (res3.ok) {
+                if (
+                  res3.ok &&
+                  res3.headers
+                    .get('content-type')
+                    ?.includes('application/json')
+                ) {
                   const json = await res3.json();
                   original = json.rows?.[0] || null;
                 }
               }
             } catch (err) {
-              console.error('Failed to fetch original record', err);
+              debugLog('Failed to fetch original record', err);
             }
 
             let cfg = configCache.current[req.table_name];
@@ -319,10 +329,15 @@ export default function RequestsPage() {
         });
 
         const requestStatus = req.status || req.response_status;
+        const requestStatusLower = requestStatus
+          ? String(requestStatus).trim().toLowerCase()
+          : undefined;
         const canRespond =
-          (requestStatus === 'pending' || !requestStatus) &&
+          (!requestStatusLower || requestStatusLower === 'pending') &&
           req.senior_empid &&
           String(req.senior_empid).trim() === String(user.empid).trim();
+        const isRequester =
+          String(req.emp_id).trim() === String(user.empid).trim();
 
         return (
           <div
@@ -424,7 +439,7 @@ export default function RequestsPage() {
                 )}
               </tbody>
             </table>
-            {requestStatus && requestStatus !== 'pending' ? (
+            {requestStatus && requestStatusLower !== 'pending' ? (
               <p>Request {requestStatus}</p>
             ) : canRespond ? (
               <>
@@ -446,9 +461,9 @@ export default function RequestsPage() {
                   </button>
                 </div>
               </>
-            ) : (
-              <p>You are not authorized to respond.</p>
-            )}
+            ) : isRequester ? (
+              <p>Awaiting senior response…</p>
+            ) : null}
             {req.error && <p style={{ color: 'red' }}>{req.error}</p>}
           </div>
         );
