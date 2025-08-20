@@ -41,7 +41,10 @@ export default function RequestsPage() {
   useEffect(() => {
     (async () => {
       try {
-        const mod = await import('jsondiffpatch' /* @vite-ignore */);
+        const mod = await import(
+          /* @vite-ignore */
+          'https://cdn.jsdelivr.net/npm/jsondiffpatch/dist/jsondiffpatch.esm.js'
+        );
         setJsonDiffPatch(mod.default || mod);
         const linkId = 'jsondiffpatch-styles';
         if (!document.getElementById(linkId)) {
