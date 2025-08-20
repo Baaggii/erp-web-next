@@ -1,6 +1,31 @@
 import { pool, getPrimaryKeyColumns } from '../../db/index.js';
 import { logUserAction } from '../services/userActivityLog.js';
 
+export async function listActivityLogs(req, res, next) {
+  try {
+    const { emp_id, record_id } = req.query;
+    const params = [];
+    const where = [];
+    if (emp_id) {
+      where.push('emp_id = ?');
+      params.push(emp_id);
+    }
+    if (record_id) {
+      where.push('record_id = ?');
+      params.push(record_id);
+    }
+    let sql = 'SELECT * FROM user_activity_log';
+    if (where.length) {
+      sql += ' WHERE ' + where.join(' AND ');
+    }
+    sql += ' ORDER BY timestamp DESC LIMIT 200';
+    const [rows] = await pool.query(sql, params);
+    res.json(rows);
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function restoreLogEntry(req, res, next) {
   try {
     const { id } = req.params;
