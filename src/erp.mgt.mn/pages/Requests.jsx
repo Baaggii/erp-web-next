@@ -25,10 +25,15 @@ function getAverageLength(values) {
 }
 
 function renderValue(val) {
+  const style = { whiteSpace: 'pre-wrap', wordBreak: 'break-word' };
   if (typeof val === 'object' && val !== null) {
-    return <pre>{JSON.stringify(val, null, 2)}</pre>;
+    return (
+      <pre style={{ ...style, margin: 0 }}>
+        {JSON.stringify(val, null, 2)}
+      </pre>
+    );
   }
-  return String(val ?? '');
+  return <span style={style}>{String(val ?? '')}</span>;
 }
 
 export default function RequestsPage() {
@@ -87,7 +92,12 @@ export default function RequestsPage() {
                 `${API_BASE}/tables/${req.table_name}/${req.record_id}`,
                 { credentials: 'include' },
               );
-              if (res2.ok) {
+              if (
+                res2.ok &&
+                res2.headers
+                  .get('content-type')
+                  ?.includes('application/json')
+              ) {
                 original = await res2.json();
               } else {
                 const res3 = await fetch(
@@ -96,13 +106,18 @@ export default function RequestsPage() {
                   )}&perPage=1`,
                   { credentials: 'include' },
                 );
-                if (res3.ok) {
+                if (
+                  res3.ok &&
+                  res3.headers
+                    .get('content-type')
+                    ?.includes('application/json')
+                ) {
                   const json = await res3.json();
                   original = json.rows?.[0] || null;
                 }
               }
             } catch (err) {
-              console.error('Failed to fetch original record', err);
+              debugLog('Failed to fetch original record', err);
             }
 
             let cfg = configCache.current[req.table_name];
@@ -319,10 +334,18 @@ export default function RequestsPage() {
         });
 
         const requestStatus = req.status || req.response_status;
+        const requestStatusLower = requestStatus
+          ? String(requestStatus).trim().toLowerCase()
+          : undefined;
+        const isRequester =
+          String(req.emp_id).trim() === String(user.empid).trim();
+        const assignedSenior = req.senior_empid
+          ? String(req.senior_empid).trim()
+          : null;
         const canRespond =
-          (requestStatus === 'pending' || !requestStatus) &&
-          req.senior_empid &&
-          String(req.senior_empid).trim() === String(user.empid).trim();
+          !isRequester &&
+          (!requestStatusLower || requestStatusLower === 'pending') &&
+          (!assignedSenior || assignedSenior === String(user.empid).trim());
 
         return (
           <div
@@ -362,8 +385,8 @@ export default function RequestsPage() {
                         width: columnWidths[c],
                         minWidth: columnWidths[c],
                         maxWidth: MAX_WIDTH,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
                       }}
                     >
                       {headerMap[c] || translateToMn(c)}
@@ -387,8 +410,8 @@ export default function RequestsPage() {
                         width: columnWidths[c],
                         minWidth: columnWidths[c],
                         maxWidth: MAX_WIDTH,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
                       }}
                     >
                       {renderValue(fieldMap[c].before)}
@@ -413,8 +436,8 @@ export default function RequestsPage() {
                           width: columnWidths[c],
                           minWidth: columnWidths[c],
                           maxWidth: MAX_WIDTH,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
                         }}
                       >
                         {renderValue(fieldMap[c].after)}
@@ -424,7 +447,7 @@ export default function RequestsPage() {
                 )}
               </tbody>
             </table>
-            {requestStatus && requestStatus !== 'pending' ? (
+            {requestStatus && requestStatusLower !== 'pending' ? (
               <p>Request {requestStatus}</p>
             ) : canRespond ? (
               <>
@@ -446,9 +469,9 @@ export default function RequestsPage() {
                   </button>
                 </div>
               </>
-            ) : (
-              <p>You are not authorized to respond.</p>
-            )}
+            ) : isRequester ? (
+              <p>Awaiting senior response…</p>
+            ) : null}
             {req.error && <p style={{ color: 'red' }}>{req.error}</p>}
           </div>
         );
