@@ -6,6 +6,7 @@ import { API_BASE } from '../utils/apiBase.js';
 import { debugLog } from '../utils/debug.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import { translateToMn } from '../utils/translateToMn.js';
+import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -33,6 +34,7 @@ function renderValue(val) {
 
 export default function RequestsPage() {
   const { user } = useAuth();
+  const { markSeen } = usePendingRequests();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -55,6 +57,7 @@ export default function RequestsPage() {
 
   const headerMap = useHeaderMappings(allFields);
   useEffect(() => {
+    markSeen();
     async function load() {
       if (!user?.empid) {
         setLoading(false);
