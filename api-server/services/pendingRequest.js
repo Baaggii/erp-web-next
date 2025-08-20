@@ -123,12 +123,12 @@ export async function listRequests(filters) {
     params.push(status);
   }
   if (senior_empid) {
-    conditions.push('senior_empid = ?');
-    params.push(senior_empid);
+    conditions.push('TRIM(senior_empid) = ?');
+    params.push(String(senior_empid).trim());
   }
   if (requested_empid) {
-    conditions.push('emp_id = ?');
-    params.push(requested_empid);
+    conditions.push('TRIM(emp_id) = ?');
+    params.push(String(requested_empid).trim());
   }
   if (table_name) {
     conditions.push('table_name = ?');
@@ -193,7 +193,6 @@ export async function respondRequest(
   responseEmpid,
   status,
   notes,
-  isSupervisor = false,
 ) {
   const conn = await pool.getConnection();
   try {
@@ -205,7 +204,6 @@ export async function respondRequest(
     const req = rows[0];
     if (!req) throw new Error('Request not found');
     if (
-      !isSupervisor &&
       String(req.senior_empid).trim() !== String(responseEmpid).trim()
     )
       throw new Error('Forbidden');
