@@ -9,23 +9,125 @@ export default function RequestsPage() {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [requestedEmpid, setRequestedEmpid] = useState('');
+  const [tableFilter, setTableFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('pending');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [jsonDiffPatch, setJsonDiffPatch] = useState(null);
 
-  function computeDiff(original, proposed) {
-    if (original && proposed) {
-      const changes = {};
-      const keys = new Set([...Object.keys(original), ...Object.keys(proposed)]);
-      for (const key of keys) {
-        const before = original[key];
-        const after = proposed[key];
-        if (JSON.stringify(before) !== JSON.stringify(after)) {
-          changes[key] = { before, after };
+  useEffect(() => {
+    (async () => {
+      try {
+        const mod = await import('jsondiffpatch' /* @vite-ignore */);
+        setJsonDiffPatch(mod.default || mod);
+        const linkId = 'jsondiffpatch-styles';
+        if (!document.getElementById(linkId)) {
+          const link = document.createElement('link');
+          link.id = linkId;
+          link.rel = 'stylesheet';
+          link.href =
+            'https://cdn.jsdelivr.net/npm/jsondiffpatch/dist/formatters-styles/html.css';
+          document.head.appendChild(link);
         }
+      } catch (err) {
+        console.warn('jsondiffpatch not loaded', err);
       }
-      if (Object.keys(changes).length) {
-        return `<pre>${JSON.stringify(changes, null, 2)}</pre>`;
-      }
+    })();
+  }, []);
+
+  function renderValue(v) {
+    if (v === null || v === undefined) return '';
+    if (typeof v === 'object') {
+      return <pre style={{ margin: 0 }}>{JSON.stringify(v, null, 2)}</pre>;
     }
-    return '';
+    return String(v);
+  }
+
+  function renderDiffTable(req) {
+    const fields = req.visibleFields || [];
+    const isDelete = req.request_type === 'delete';
+    return (
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr>
+            <th style={{ border: '1px solid #ccc', padding: '0.25em' }}>
+              Field
+            </th>
+            <th style={{ border: '1px solid #ccc', padding: '0.25em' }}>
+              Original
+            </th>
+            {!isDelete && (
+              <th style={{ border: '1px solid #ccc', padding: '0.25em' }}>
+                Proposed
+              </th>
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {fields.map((f) => {
+            const before = req.original?.[f];
+            const after = req.proposed_data?.[f];
+            const complex =
+              typeof before === 'object' || typeof after === 'object';
+            let delta = null;
+            let diffHtml = null;
+            if (complex && jsonDiffPatch) {
+              try {
+                delta = jsonDiffPatch.diff(before, after);
+                if (delta) {
+                  diffHtml = jsonDiffPatch.formatters.html.format(
+                    delta,
+                    before,
+                  );
+                }
+              } catch (err) {
+                console.error('jsondiffpatch failed', err);
+              }
+            }
+            const changed = isDelete
+              ? true
+              : complex
+              ? jsonDiffPatch
+                ? Boolean(delta)
+                : JSON.stringify(before) !== JSON.stringify(after)
+              : JSON.stringify(before) !== JSON.stringify(after);
+            const style = changed
+              ? { background: isDelete ? '#ffe6e6' : '#fff3cd' }
+              : {};
+            return (
+              <tr key={f}>
+                <td style={{ border: '1px solid #ccc', padding: '0.25em' }}>
+                  {f}
+                </td>
+                <td
+                  style={{ border: '1px solid #ccc', padding: '0.25em', ...style }}
+                >
+                  {renderValue(before)}
+                </td>
+                {!isDelete && (
+                  <td
+                    style={{
+                      border: '1px solid #ccc',
+                      padding: '0.25em',
+                      ...style,
+                    }}
+                  >
+                    {complex && diffHtml ? (
+                      <div
+                        dangerouslySetInnerHTML={{ __html: diffHtml }}
+                      />
+                    ) : (
+                      renderValue(after)
+                    )}
+                  </td>
+                )}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    );
   }
 
   useEffect(() => {
@@ -39,15 +141,20 @@ export default function RequestsPage() {
       setError(null);
       try {
         const params = new URLSearchParams({
-          status: 'pending',
+          status: statusFilter || 'pending',
           senior_empid: user.empid,
         });
+        if (requestedEmpid) params.append('requested_empid', requestedEmpid);
+        if (tableFilter) params.append('table_name', tableFilter);
+        if (dateFrom) params.append('date_from', dateFrom);
+        if (dateTo) params.append('date_to', dateTo);
         const res = await fetch(
           `${API_BASE}/pending_request?${params.toString()}`,
           { credentials: 'include' },
         );
         if (!res.ok) throw new Error('Failed to load requests');
         const data = await res.json();
+        const cache = {};
         const enriched = await Promise.all(
           data.map(async (req) => {
             let original = null;
@@ -73,11 +180,36 @@ export default function RequestsPage() {
             } catch (err) {
               console.error('Failed to fetch original record', err);
             }
-            const html = computeDiff(original, req.proposed_data);
+            let visibleFields = [];
+            try {
+              if (!cache[req.table_name]) {
+                const cfgRes = await fetch(
+                  `${API_BASE}/display_fields?table=${encodeURIComponent(
+                    req.table_name,
+                  )}`,
+                  { credentials: 'include' },
+                );
+                cache[req.table_name] = cfgRes.ok
+                  ? await cfgRes.json()
+                  : null;
+              }
+              const cfg = cache[req.table_name];
+              if (cfg && Array.isArray(cfg.displayFields)) {
+                visibleFields = cfg.displayFields;
+              }
+            } catch (err) {
+              console.error('Failed to fetch config', err);
+            }
+            if (!visibleFields.length) {
+              visibleFields = Object.keys({
+                ...(original || {}),
+                ...(req.proposed_data || {}),
+              });
+            }
             return {
               ...req,
               original,
-              html,
+              visibleFields,
               notes: '',
               response_status: null,
               error: null,
@@ -94,7 +226,14 @@ export default function RequestsPage() {
     }
 
     load();
-  }, [user?.empid]);
+  }, [
+    user?.empid,
+    requestedEmpid,
+    tableFilter,
+    statusFilter,
+    dateFrom,
+    dateTo,
+  ]);
 
   const updateNotes = (id, value) => {
     setRequests((reqs) =>
@@ -138,6 +277,55 @@ export default function RequestsPage() {
   return (
     <div>
       <h2>Requests</h2>
+      <div style={{ marginBottom: '1em' }}>
+        <label>
+          Requester:
+          <input
+            value={requestedEmpid}
+            onChange={(e) => setRequestedEmpid(e.target.value)}
+            style={{ marginLeft: '0.5em' }}
+          />
+        </label>
+        <label style={{ marginLeft: '1em' }}>
+          Transaction Type:
+          <input
+            value={tableFilter}
+            onChange={(e) => setTableFilter(e.target.value)}
+            style={{ marginLeft: '0.5em' }}
+          />
+        </label>
+        <label style={{ marginLeft: '1em' }}>
+          Status:
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            style={{ marginLeft: '0.5em' }}
+          >
+            <option value="">All</option>
+            <option value="pending">Pending</option>
+            <option value="accepted">Accepted</option>
+            <option value="declined">Declined</option>
+          </select>
+        </label>
+        <label style={{ marginLeft: '1em' }}>
+          From:
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            style={{ marginLeft: '0.5em' }}
+          />
+        </label>
+        <label style={{ marginLeft: '1em' }}>
+          To:
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            style={{ marginLeft: '0.5em' }}
+          />
+        </label>
+      </div>
       {loading && <p>Loading...</p>}
       {error && <p style={{ color: 'red' }}>{error}</p>}
       {requests.map((req) => (
@@ -158,14 +346,7 @@ export default function RequestsPage() {
           <h4>
             {req.table_name} #{req.record_id} ({req.request_type})
           </h4>
-          {req.html ? (
-            <div
-              className="diff"
-              dangerouslySetInnerHTML={{ __html: req.html }}
-            />
-          ) : (
-            <pre>{JSON.stringify(req.proposed_data, null, 2)}</pre>
-          )}
+          {renderDiffTable(req)}
           {req.response_status ? (
             <p>Request {req.response_status}</p>
           ) : (
