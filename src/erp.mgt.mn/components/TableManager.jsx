@@ -174,7 +174,7 @@ const TableManager = forwardRef(function TableManager({
     [requestIdSet],
   );
   const { user, company, branch, department, session } = useContext(AuthContext);
-  const isSubordinate = Boolean(session?.senior_empid);
+  const isSubordinate = Boolean(session?.employment_senior_empid);
   const generalConfig = useGeneralConfig();
   const { addToast } = useToast();
   const canRequestStatus = isSubordinate;
@@ -488,7 +488,7 @@ const TableManager = forwardRef(function TableManager({
       try {
         const params = new URLSearchParams({
           status: requestStatus,
-          senior_empid: user?.empid,
+          employment_senior_empid: user?.empid,
           table_name: table,
         });
         const res = await fetch(

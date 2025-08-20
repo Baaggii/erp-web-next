@@ -65,7 +65,7 @@ export default function RequestsPage() {
       setError(null);
       try {
         const params = new URLSearchParams({
-          senior_empid: user.empid,
+          employment_senior_empid: user.empid,
         });
         if (status) params.append('status', status);
         if (requestedEmpid) params.append('requested_empid', requestedEmpid);
@@ -190,7 +190,7 @@ export default function RequestsPage() {
           status: respStatus,
           response_notes: reqItem?.notes || undefined,
           response_empid: user.empid,
-          senior_empid: reqItem?.senior_empid || user.empid,
+          employment_senior_empid: reqItem?.employment_senior_empid || user.empid,
         }),
       });
       if (!res.ok) {
@@ -321,8 +321,9 @@ export default function RequestsPage() {
         const requestStatus = req.status || req.response_status;
         const canRespond =
           (requestStatus === 'pending' || !requestStatus) &&
-          req.senior_empid &&
-          String(req.senior_empid).trim() === String(user.empid).trim();
+          req.employment_senior_empid &&
+          String(req.employment_senior_empid).trim() ===
+            String(user.empid).trim();
 
         return (
           <div

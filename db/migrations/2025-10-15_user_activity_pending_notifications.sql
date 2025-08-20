@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS pending_request (
   table_name      VARCHAR(100) NOT NULL,
   record_id       BIGINT NOT NULL,
   emp_id          VARCHAR(10) NOT NULL,
-  senior_empid    VARCHAR(10) NOT NULL,
+  employment_senior_empid    VARCHAR(10) NOT NULL,
   request_type    ENUM('edit','delete') NOT NULL,
   proposed_data   JSON NULL,
   status          ENUM('pending','accepted','declined') NOT NULL DEFAULT 'pending',
@@ -28,10 +28,10 @@ CREATE TABLE IF NOT EXISTS pending_request (
   responded_at    TIMESTAMP NULL,
   response_empid  VARCHAR(10) NULL,
   response_notes  TEXT NULL,
-  KEY idx_pending_status_senior (status, senior_empid),
+  KEY idx_pending_status_senior (status, employment_senior_empid),
   KEY idx_pending_emp (emp_id),
   CONSTRAINT fk_pending_emp FOREIGN KEY (emp_id) REFERENCES tbl_employment(employment_emp_id),
-  CONSTRAINT fk_pending_senior FOREIGN KEY (senior_empid) REFERENCES tbl_employment(employment_emp_id)
+  CONSTRAINT fk_pending_senior FOREIGN KEY (employment_senior_empid) REFERENCES tbl_employment(employment_emp_id)
 );
 
 -- 3. Notifications table for dashboard alerts
