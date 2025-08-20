@@ -3,6 +3,7 @@ import {
   updateTableRow,
   deleteTableRow,
   listTableColumns,
+  getPrimaryKeyColumns,
 } from '../../db/index.js';
 import { logUserAction } from './userActivityLog.js';
 
@@ -40,10 +41,40 @@ export async function createRequest({ tableName, recordId, empId, requestType, p
     );
     const seniorRaw = rows[0]?.employment_senior_empid;
     const senior = seniorRaw ? String(seniorRaw).trim() : null;
+    let finalProposed = proposedData;
+    if (requestType === 'delete') {
+      const pkCols = await getPrimaryKeyColumns(tableName);
+      let currentRow = null;
+      if (pkCols.length === 1) {
+        const col = pkCols[0];
+        const where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
+        const [r] = await conn.query(
+          `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
+          [tableName, recordId],
+        );
+        currentRow = r[0] || null;
+      } else if (pkCols.length > 1) {
+        const parts = String(recordId).split('-');
+        const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
+        const [r] = await conn.query(
+          `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
+          [tableName, ...parts],
+        );
+        currentRow = r[0] || null;
+      }
+      finalProposed = currentRow;
+    }
     const [result] = await conn.query(
       `INSERT INTO pending_request (table_name, record_id, emp_id, senior_empid, request_type, proposed_data)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [tableName, recordId, empId, senior, requestType, proposedData ? JSON.stringify(proposedData) : null],
+      [
+        tableName,
+        recordId,
+        empId,
+        senior,
+        requestType,
+        finalProposed ? JSON.stringify(finalProposed) : null,
+      ],
     );
     const requestId = result.insertId;
     await logUserAction(
@@ -52,7 +83,7 @@ export async function createRequest({ tableName, recordId, empId, requestType, p
         table_name: tableName,
         record_id: recordId,
         action: requestType === 'edit' ? 'request_edit' : 'request_delete',
-        details: proposedData || null,
+        details: finalProposed || null,
         request_id: requestId,
       },
       conn,
