@@ -51,25 +51,6 @@ export default function RequestsPage() {
   const [statusFilter, setStatusFilter] = useState('pending');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [jsonDiffPatch, setJsonDiffPatch] = useState(null);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const mod = await import('jsondiffpatch' /* @vite-ignore */);
-        setJsonDiffPatch(mod.default || mod);
-        try {
-          await import(
-            'jsondiffpatch/dist/formatters-styles/html.css' /* @vite-ignore */
-          );
-        } catch {
-          /* ignore */
-        }
-      } catch (err) {
-        console.warn('jsondiffpatch not loaded', err);
-      }
-    })();
-  }, []);
 
   function renderValue(v) {
     if (v === null || v === undefined) return '';
