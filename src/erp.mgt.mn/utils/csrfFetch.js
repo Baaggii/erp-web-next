@@ -26,19 +26,20 @@ async function getToken() {
 
 const originalFetch = window.fetch.bind(window);
 window.fetch = async (url, options = {}, _retry) => {
-  const key = currentKey();
-  dispatchStart(key);
-  const method = (options.method || 'GET').toUpperCase();
+  const { skipLoader, ...opts } = options || {};
+  const key = skipLoader ? null : currentKey();
+  if (key) dispatchStart(key);
+  const method = (opts.method || 'GET').toUpperCase();
   if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
     const token = await getToken();
-    options.headers = { ...(options.headers || {}), 'X-CSRF-Token': token };
-    options.credentials = options.credentials || 'include';
+    opts.headers = { ...(opts.headers || {}), 'X-CSRF-Token': token };
+    opts.credentials = opts.credentials || 'include';
   }
   let res;
   try {
-    res = await originalFetch(url, options);
+    res = await originalFetch(url, opts);
   } finally {
-    dispatchEnd(key);
+    if (key) dispatchEnd(key);
   }
   if (res.status === 401 && !_retry) {
     let msg;
@@ -53,7 +54,7 @@ window.fetch = async (url, options = {}, _retry) => {
         headers: { 'X-CSRF-Token': await getToken() },
       });
       if (refreshRes.ok) {
-        return window.fetch(url, options, true);
+        return window.fetch(url, { ...opts, skipLoader }, true);
       }
     }
     if (!url.toString().includes('/auth/login')) {

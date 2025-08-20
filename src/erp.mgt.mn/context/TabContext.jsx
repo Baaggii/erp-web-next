@@ -43,6 +43,7 @@ export function TabProvider({ children }) {
   }, []);
 
   const closeTab = useCallback((key) => {
+    if (key === '/') return;
     trackSetState('TabProvider.setTabs');
     setTabs((t) => t.filter((tab) => tab.key !== key));
     trackSetState('TabProvider.setCache');
