@@ -1,6 +1,6 @@
 // src/erp.mgt.mn/pages/Requests.jsx
 import React, { useEffect, useState, useRef } from 'react';
-import jsondiffpatch from 'jsondiffpatch';
+import { diff } from 'jsondiffpatch';
 import { useAuth } from '../context/AuthContext.jsx';
 import { API_BASE } from '../utils/apiBase.js';
 import { debugLog } from '../utils/debug.js';
@@ -112,7 +112,7 @@ export default function RequestsPage() {
                 (after && typeof after === 'object');
               let changed = false;
               if (isComplex) {
-                changed = !!jsondiffpatch.diff(before, after);
+                changed = !!diff(before, after);
               } else {
                 changed = JSON.stringify(before) !== JSON.stringify(after);
               }
