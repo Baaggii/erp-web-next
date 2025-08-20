@@ -4,12 +4,13 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 
 export default function PendingRequestWidget() {
-  const { user, session } = useContext(AuthContext);
+  const { session } = useContext(AuthContext);
   const navigate = useNavigate();
-  const seniorEmpId = Number(session?.senior_empid) > 0 ? null : user?.empid;
+  const isSenior =
+    !session?.senior_empid || Number(session.senior_empid) <= 0;
   const { count } = usePendingRequests();
 
-  if (!seniorEmpId) return null;
+  if (!isSenior) return null;
 
   const badgeStyle = {
     display: 'inline-block',
