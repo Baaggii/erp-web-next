@@ -55,9 +55,11 @@ export default function usePendingRequestCount(
 
     fetchCount();
     const timer = setInterval(fetchCount, interval);
+    window.addEventListener('pending-request-refresh', fetchCount);
     return () => {
       cancelled = true;
       clearInterval(timer);
+      window.removeEventListener('pending-request-refresh', fetchCount);
     };
   }, [seniorEmpId, interval, filters]);
 
