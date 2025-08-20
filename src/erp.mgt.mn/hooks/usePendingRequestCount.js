@@ -3,10 +3,15 @@ import { useEffect, useState } from 'react';
 /**
  * Polls the pending request endpoint for a supervisor and returns the count.
  * @param {string|number} seniorEmpId Employee ID of the supervisor
+ * @param {object} [filters] Optional filters (requested_empid, table_name, date_from, date_to)
  * @param {number} [interval=30000] Polling interval in milliseconds
  * @returns {number} Count of pending requests
  */
-export default function usePendingRequestCount(seniorEmpId, interval = 30000) {
+export default function usePendingRequestCount(
+  seniorEmpId,
+  filters = {},
+  interval = 30000,
+) {
   const [count, setCount] = useState(0);
 
   useEffect(() => {
@@ -15,15 +20,22 @@ export default function usePendingRequestCount(seniorEmpId, interval = 30000) {
       return undefined;
     }
 
+    const params = new URLSearchParams({
+      status: 'pending',
+      senior_empid: String(seniorEmpId),
+    });
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') {
+        params.append(k, v);
+      }
+    });
+
     let cancelled = false;
     async function fetchCount() {
       try {
-        const res = await fetch(
-          `/api/pending_request?status=pending&senior_empid=${encodeURIComponent(
-            seniorEmpId,
-          )}`,
-          { credentials: 'include' },
-        );
+        const res = await fetch(`/api/pending_request?${params.toString()}`, {
+          credentials: 'include',
+        });
         if (!res.ok) {
           if (!cancelled) setCount(0);
           return;
@@ -45,7 +57,7 @@ export default function usePendingRequestCount(seniorEmpId, interval = 30000) {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [seniorEmpId, interval]);
+  }, [seniorEmpId, interval, filters]);
 
   return count;
 }

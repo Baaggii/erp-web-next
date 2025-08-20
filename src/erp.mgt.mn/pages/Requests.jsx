@@ -38,10 +38,12 @@ export default function RequestsPage() {
       setLoading(true);
       setError(null);
       try {
+        const params = new URLSearchParams({
+          status: 'pending',
+          senior_empid: user.empid,
+        });
         const res = await fetch(
-          `${API_BASE}/pending_request?status=pending&senior_empid=${encodeURIComponent(
-            user.empid,
-          )}`,
+          `${API_BASE}/pending_request?${params.toString()}`,
           { credentials: 'include' },
         );
         if (!res.ok) throw new Error('Failed to load requests');
