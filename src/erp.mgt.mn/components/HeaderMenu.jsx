@@ -4,18 +4,16 @@ import { useModules } from '../hooks/useModules.js';
 import { useTxnModules } from '../hooks/useTxnModules.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
-import usePendingRequestCount from '../hooks/usePendingRequestCount.js';
 import modulePath from '../utils/modulePath.js';
 import filterHeaderModules from '../utils/filterHeaderModules.js';
 
-export default function HeaderMenu({ onOpen }) {
-  const { permissions: perms, user } = useContext(AuthContext);
+export default function HeaderMenu({ onOpen, pendingCount = 0 }) {
+  const { permissions: perms } = useContext(AuthContext);
   const modules = useModules();
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
   const items = filterHeaderModules(modules, perms, txnModules);
   const headerMap = useHeaderMappings(items.map((m) => m.module_key));
-  const pendingCount = usePendingRequestCount(user?.empid);
 
   // Build a quick lookup map so we can resolve module paths
   const moduleMap = {};
@@ -43,7 +41,7 @@ export default function HeaderMenu({ onOpen }) {
           >
             {label}
             {m.module_key === 'dashboard' && pendingCount > 0 && (
-              <span style={styles.badge}>{pendingCount}</span>
+              <span style={styles.badge} />
             )}
           </button>
         );
@@ -66,9 +64,9 @@ const styles = {
   badge: {
     background: 'red',
     borderRadius: '50%',
-    color: '#fff',
-    fontSize: '0.7rem',
-    marginLeft: '4px',
-    padding: '0 6px'
+    width: '8px',
+    height: '8px',
+    display: 'inline-block',
+    marginLeft: '4px'
   }
 };
