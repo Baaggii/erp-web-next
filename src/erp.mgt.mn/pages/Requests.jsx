@@ -6,6 +6,21 @@ import { debugLog } from '../utils/debug.js';
 import { API_BASE } from '../utils/apiBase.js';
 import 'jsondiffpatch/dist/formatters-styles/html.css';
 
+let jsondiffpatch;
+(async () => {
+  try {
+    const mod = await import('jsondiffpatch' /* @vite-ignore */);
+    jsondiffpatch = mod.default || mod;
+    try {
+      await import('jsondiffpatch/dist/formatters-styles/html.css' /* @vite-ignore */);
+    } catch {
+      /* ignore */
+    }
+  } catch (err) {
+    console.warn('jsondiffpatch not loaded', err);
+  }
+})();
+
 export default function RequestsPage() {
   const { user } = useAuth();
   const [requests, setRequests] = useState([]);
@@ -53,7 +68,7 @@ export default function RequestsPage() {
               typeof before === 'object' || typeof after === 'object';
             let delta = null;
             let diffHtml = null;
-            if (complex) {
+            if (complex && jsondiffpatch) {
               try {
                 delta = jsondiffpatch.diff(before, after);
                 if (delta) {
@@ -66,7 +81,9 @@ export default function RequestsPage() {
             const changed = isDelete
               ? true
               : complex
-              ? Boolean(delta)
+              ? jsondiffpatch
+                ? Boolean(delta)
+                : JSON.stringify(before) !== JSON.stringify(after)
               : JSON.stringify(before) !== JSON.stringify(after);
             const style = changed
               ? { background: isDelete ? '#ffe6e6' : '#fff3cd' }
