@@ -7,10 +7,11 @@ export default function DashboardPage() {
   const { user, session } = useContext(AuthContext);
   const { hasNew, markSeen } = usePendingRequests();
   const [active, setActive] = useState('general');
+  const showActivity = Number(session?.senior_empid) <= 0;
 
   useEffect(() => {
-    if (active === 'activity') markSeen();
-  }, [active, markSeen]);
+    if (showActivity && active === 'activity') markSeen();
+  }, [active, markSeen, showActivity]);
 
   const badgeStyle = {
     background: 'red',
@@ -52,7 +53,7 @@ export default function DashboardPage() {
     <div style={{ padding: '1rem' }}>
       <div style={{ display: 'flex', borderBottom: '1px solid #ddd', marginBottom: '1rem' }}>
         {tabButton('general', 'General')}
-        {tabButton('activity', 'Activity', hasNew)}
+        {showActivity && tabButton('activity', 'Activity', hasNew)}
         {tabButton('plans', 'Plans')}
       </div>
 
@@ -79,7 +80,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {active === 'activity' && (
+      {showActivity && active === 'activity' && (
         <div>
           <PendingRequestWidget />
         </div>
