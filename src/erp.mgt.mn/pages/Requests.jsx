@@ -160,6 +160,18 @@ export default function RequestsPage() {
         }),
       });
       if (!res.ok) throw new Error('Failed to respond');
+      const data = await res.json().catch(() => ({}));
+      const messages = [];
+      if (Array.isArray(data?.messages)) messages.push(...data.messages);
+      if (data?.message) messages.push(data.message);
+      messages.forEach((m) =>
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: { message: m, type: 'success' },
+          })
+        )
+      );
+      window.dispatchEvent(new Event('pending-request-refresh'));
       setRequests((reqs) =>
         reqs.map((r) =>
           r.request_id === id
