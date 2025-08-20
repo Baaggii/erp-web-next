@@ -6,7 +6,7 @@ import usePendingRequestCount from '../hooks/usePendingRequestCount.js';
 export default function PendingRequestWidget({ filters = {} }) {
   const { user, session } = useContext(AuthContext);
   const navigate = useNavigate();
-  const seniorEmpId = !session?.senior_empid ? user?.empid : null;
+  const seniorEmpId = Number(session?.senior_empid) > 0 ? null : user?.empid;
   const count = usePendingRequestCount(seniorEmpId, filters);
 
   if (!seniorEmpId) return null;
@@ -19,12 +19,22 @@ export default function PendingRequestWidget({ filters = {} }) {
     padding: '0.25rem 0.5rem',
     minWidth: '1.5rem',
     textAlign: 'center',
+    marginLeft: '0.5rem',
   };
 
   return (
     <div>
-      <h3>Pending Requests</h3>
-      {count > 0 && <span style={badgeStyle}>{count}</span>}
+      <h3>
+        Pending Requests
+        {count > 0 && <span style={badgeStyle}>{count}</span>}
+      </h3>
+      {count > 0 ? (
+        <p>
+          {count} pending request{count === 1 ? '' : 's'}
+        </p>
+      ) : (
+        <p>No pending requests</p>
+      )}
       <button onClick={() => navigate('/requests')}>View Requests</button>
     </div>
   );
