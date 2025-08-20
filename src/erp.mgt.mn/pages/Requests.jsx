@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { debugLog } from '../utils/debug.js';
+import { API_BASE } from '../utils/apiBase.js';
 
 export default function RequestsPage() {
   const { user } = useAuth();
@@ -9,29 +10,19 @@ export default function RequestsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  async function computeDiff(original, proposed) {
-    try {
-      const mod = await import('jsondiffpatch');
-      await import('jsondiffpatch/dist/formatters-styles/html.css');
-      const delta = mod.diff(original, proposed);
-      if (delta) {
-        return mod.formatters.html.format(delta, original);
+  function computeDiff(original, proposed) {
+    if (original && proposed) {
+      const changes = {};
+      const keys = new Set([...Object.keys(original), ...Object.keys(proposed)]);
+      for (const key of keys) {
+        const before = original[key];
+        const after = proposed[key];
+        if (JSON.stringify(before) !== JSON.stringify(after)) {
+          changes[key] = { before, after };
+        }
       }
-    } catch {
-      // Fallback simple diff
-      if (original && proposed) {
-        const changes = {};
-        const keys = new Set([...Object.keys(original), ...Object.keys(proposed)]);
-        for (const key of keys) {
-          const before = original[key];
-          const after = proposed[key];
-          if (JSON.stringify(before) !== JSON.stringify(after)) {
-            changes[key] = { before, after };
-          }
-        }
-        if (Object.keys(changes).length) {
-          return `<pre>${JSON.stringify(changes, null, 2)}</pre>`;
-        }
+      if (Object.keys(changes).length) {
+        return `<pre>${JSON.stringify(changes, null, 2)}</pre>`;
       }
     }
     return '';
@@ -48,7 +39,7 @@ export default function RequestsPage() {
       setError(null);
       try {
         const res = await fetch(
-          `/api/pending_request?status=pending&senior_empid=${encodeURIComponent(
+          `${API_BASE}/pending_request?status=pending&senior_empid=${encodeURIComponent(
             user.empid,
           )}`,
           { credentials: 'include' },
@@ -60,14 +51,14 @@ export default function RequestsPage() {
             let original = null;
             try {
               const res2 = await fetch(
-                `/api/tables/${req.table_name}/${req.record_id}`,
+                `${API_BASE}/tables/${req.table_name}/${req.record_id}`,
                 { credentials: 'include' },
               );
               if (res2.ok) {
                 original = await res2.json();
               } else {
                 const res3 = await fetch(
-                  `/api/tables/${req.table_name}?id=${encodeURIComponent(
+                  `${API_BASE}/tables/${req.table_name}?id=${encodeURIComponent(
                     req.record_id,
                   )}&perPage=1`,
                   { credentials: 'include' },
@@ -80,7 +71,7 @@ export default function RequestsPage() {
             } catch (err) {
               console.error('Failed to fetch original record', err);
             }
-            const html = await computeDiff(original, req.proposed_data);
+            const html = computeDiff(original, req.proposed_data);
             return {
               ...req,
               original,
@@ -112,7 +103,7 @@ export default function RequestsPage() {
   const respond = async (id, status) => {
     const reqItem = requests.find((r) => r.request_id === id);
     try {
-      const res = await fetch(`/api/pending_request/${id}/respond`, {
+      const res = await fetch(`${API_BASE}/pending_request/${id}/respond`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
