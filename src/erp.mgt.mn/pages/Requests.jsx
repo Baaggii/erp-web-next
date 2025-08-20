@@ -11,8 +11,8 @@ export default function RequestsPage() {
 
   async function computeDiff(original, proposed) {
     try {
-      const mod = await import(/* @vite-ignore */ 'jsondiffpatch');
-      await import(/* @vite-ignore */ 'jsondiffpatch/dist/formatters-styles/html.css');
+      const mod = await import('jsondiffpatch');
+      await import('jsondiffpatch/dist/formatters-styles/html.css');
       const delta = mod.diff(original, proposed);
       if (delta) {
         return mod.formatters.html.format(delta, original);
