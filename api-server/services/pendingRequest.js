@@ -38,7 +38,8 @@ export async function createRequest({ tableName, recordId, empId, requestType, p
       'SELECT employment_senior_empid FROM tbl_employment WHERE employment_emp_id = ? LIMIT 1',
       [empId],
     );
-    const senior = rows[0]?.employment_senior_empid || null;
+    const seniorRaw = rows[0]?.employment_senior_empid;
+    const senior = seniorRaw ? String(seniorRaw).trim() : null;
     const [result] = await conn.query(
       `INSERT INTO pending_request (table_name, record_id, emp_id, senior_empid, request_type, proposed_data)
        VALUES (?, ?, ?, ?, ?, ?)`,
@@ -100,7 +101,10 @@ export async function respondRequest(
     );
     const req = rows[0];
     if (!req) throw new Error('Request not found');
-    if (!isSupervisor && String(req.senior_empid) !== String(responseEmpid))
+    if (
+      !isSupervisor &&
+      String(req.senior_empid).trim() !== String(responseEmpid).trim()
+    )
       throw new Error('Forbidden');
 
     if (status === 'accepted') {
