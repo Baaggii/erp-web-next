@@ -64,3 +64,16 @@ await test('listRequests normalizes empids in filters', async () => {
   assert.ok(queries[0].sql.includes('UPPER(TRIM(emp_id))'));
   assert.deepEqual(queries[0].params, ['S1', 'E2']);
 });
+
+await test('listRequests matches status case-insensitively', async () => {
+  const origQuery = db.pool.query;
+  const queries = [];
+  db.pool.query = async (sql, params) => {
+    queries.push({ sql, params });
+    return [[]];
+  };
+  await service.listRequests({ status: 'Pending' });
+  db.pool.query = origQuery;
+  assert.ok(queries[0].sql.includes('LOWER(TRIM(status)) = ?'));
+  assert.deepEqual(queries[0].params, ['pending']);
+});

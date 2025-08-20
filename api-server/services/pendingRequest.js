@@ -119,8 +119,8 @@ export async function listRequests(filters) {
   const params = [];
 
   if (status) {
-    conditions.push('status = ?');
-    params.push(status);
+    conditions.push('LOWER(TRIM(status)) = ?');
+    params.push(String(status).trim().toLowerCase());
   }
   if (senior_empid) {
     conditions.push('UPPER(TRIM(senior_empid)) = ?');
