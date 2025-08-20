@@ -20,6 +20,7 @@ import formatTimestamp from '../utils/formatTimestamp.js';
 import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import { API_BASE } from '../utils/apiBase.js';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -1103,7 +1104,7 @@ const TableManager = forwardRef(function TableManager({
 
     if (requestType === 'edit') {
       try {
-        const res = await fetch('/api/pending_request', {
+        const res = await fetch(`${API_BASE}/pending_request`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -1311,7 +1312,13 @@ const TableManager = forwardRef(function TableManager({
     }
     if (!window.confirm('Request delete?')) return;
     try {
-      const res = await fetch('/api/pending_request', {
+      const cleaned = {};
+      const skipFields = new Set([...autoCols, ...generatedCols, 'id']);
+      Object.entries(row).forEach(([k, v]) => {
+        if (skipFields.has(k) || k.startsWith('_')) return;
+        if (v !== '') cleaned[k] = v;
+      });
+      const res = await fetch(`${API_BASE}/pending_request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1319,6 +1326,7 @@ const TableManager = forwardRef(function TableManager({
           table_name: table,
           record_id: id,
           request_type: 'delete',
+          proposed_data: cleaned,
         }),
       });
       if (res.ok) addToast('Delete request submitted', 'success');
