@@ -184,6 +184,8 @@ export default function RequestsPage() {
         body: JSON.stringify({
           status: respStatus,
           response_notes: reqItem?.notes || undefined,
+          response_empid: user.empid,
+          senior_empid: reqItem?.senior_empid || user.empid,
         }),
       });
       if (!res.ok) {
@@ -271,7 +273,7 @@ export default function RequestsPage() {
       </form>
       {loading && <p>Loading...</p>}
       {error && <p style={{ color: 'red' }}>{error}</p>}
-      {requests.map((req) => {
+     {requests.map((req) => {
         const columns = req.fields.map((f) => f.name);
         const fieldMap = {};
         req.fields.forEach((f) => {
