@@ -21,26 +21,6 @@ let jsondiffpatch;
   }
 })();
 
-// Lazily load jsondiffpatch so the build doesn't require it and to avoid
-// declaring a symbol that may already exist from a static import.  The module
-// and its accompanying stylesheet are fetched only in the browser at runtime.
-let jsonDiffPatch;
-(async () => {
-  try {
-    const mod = await import('jsondiffpatch' /* @vite-ignore */);
-    jsonDiffPatch = mod.default || mod;
-    try {
-      await import(
-        'jsondiffpatch/dist/formatters-styles/html.css' /* @vite-ignore */
-      );
-    } catch {
-      /* ignore */
-    }
-  } catch (err) {
-    console.warn('jsondiffpatch not loaded', err);
-  }
-})();
-
 export default function RequestsPage() {
   const { user } = useAuth();
   const [requests, setRequests] = useState([]);
@@ -88,14 +68,11 @@ export default function RequestsPage() {
               typeof before === 'object' || typeof after === 'object';
             let delta = null;
             let diffHtml = null;
-            if (complex && jsonDiffPatch) {
+            if (complex && jsondiffpatch) {
               try {
-                delta = jsonDiffPatch.diff(before, after);
+                delta = jsondiffpatch.diff(before, after);
                 if (delta) {
-                  diffHtml = jsonDiffPatch.formatters.html.format(
-                    delta,
-                    before,
-                  );
+                  diffHtml = jsondiffpatch.formatters.html.format(delta, before);
                 }
               } catch (err) {
                 console.error('jsondiffpatch failed', err);
@@ -104,7 +81,7 @@ export default function RequestsPage() {
             const changed = isDelete
               ? true
               : complex
-              ? jsonDiffPatch
+              ? jsondiffpatch
                 ? Boolean(delta)
                 : JSON.stringify(before) !== JSON.stringify(after)
               : JSON.stringify(before) !== JSON.stringify(after);
