@@ -191,6 +191,8 @@ export default function RequestsPage() {
         body: JSON.stringify({
           status: respStatus,
           response_notes: reqItem?.notes || undefined,
+          response_empid: user.empid,
+          senior_empid: reqItem?.senior_empid || user.empid,
         }),
       });
       if (!res.ok) {
