@@ -177,7 +177,7 @@ const TableManager = forwardRef(function TableManager({
   const isSubordinate = Boolean(session?.senior_empid);
   const generalConfig = useGeneralConfig();
   const { addToast } = useToast();
-  const canRequestStatus = isSubordinate || session?.permissions?.supervisor;
+  const canRequestStatus = isSubordinate;
 
   useEffect(() => {
     function hideMenu() {

@@ -32,7 +32,7 @@ function renderValue(val) {
 }
 
 export default function RequestsPage() {
-  const { user, session, permissions } = useAuth();
+  const { user } = useAuth();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -54,10 +54,6 @@ export default function RequestsPage() {
   }, [requests]);
 
   const headerMap = useHeaderMappings(allFields);
-  const isSupervisor = !!(
-    session?.permissions?.supervisor || permissions?.supervisor
-  );
-
   useEffect(() => {
     async function load() {
       if (!user?.empid) {
@@ -325,9 +321,8 @@ export default function RequestsPage() {
         const requestStatus = req.status || req.response_status;
         const canRespond =
           (requestStatus === 'pending' || !requestStatus) &&
-          (isSupervisor ||
-            (req.senior_empid &&
-              String(req.senior_empid).trim() === String(user.empid).trim()));
+          req.senior_empid &&
+          String(req.senior_empid).trim() === String(user.empid).trim();
 
         return (
           <div
