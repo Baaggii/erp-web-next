@@ -50,3 +50,17 @@ await test('direct senior can decline request', async () => {
   const upd = conn.queries.find((q) => q.sql.includes("status = 'declined'"));
   assert.ok(upd, 'should update status to declined');
 });
+
+await test('listRequests trims empids in filters', async () => {
+  const origQuery = db.pool.query;
+  const queries = [];
+  db.pool.query = async (sql, params) => {
+    queries.push({ sql, params });
+    return [[]];
+  };
+  await service.listRequests({ senior_empid: 'S1 ', requested_empid: ' E2 ' });
+  db.pool.query = origQuery;
+  assert.ok(queries[0].sql.includes('TRIM(senior_empid)'));
+  assert.ok(queries[0].sql.includes('TRIM(emp_id)'));
+  assert.deepEqual(queries[0].params, ['S1', 'E2']);
+});

@@ -44,9 +44,10 @@ router.get('/', requireAuth, async (req, res, next) => {
   try {
     const { status, requested_empid, table_name, date_from, date_to } = req.query;
 
+    const empid = String(req.user.empid).trim();
     const [rows] = await pool.query(
-      'SELECT 1 FROM tbl_employment WHERE employment_senior_empid = ? LIMIT 1',
-      [req.user.empid],
+      'SELECT 1 FROM tbl_employment WHERE TRIM(employment_senior_empid) = ? LIMIT 1',
+      [empid],
     );
     if (rows.length === 0) {
       return res.sendStatus(403);
@@ -54,7 +55,7 @@ router.get('/', requireAuth, async (req, res, next) => {
 
     const requests = await listRequests({
       status,
-      senior_empid: req.user.empid,
+      senior_empid: empid,
       requested_empid,
       table_name,
       date_from,
