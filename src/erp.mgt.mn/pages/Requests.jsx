@@ -39,6 +39,8 @@ export default function RequestsPage() {
 
   useEffect(() => {
     async function load() {
+      // Wait for auth context to resolve
+      if (user === undefined) return;
       if (!user?.empid) {
         setLoading(false);
         return;
@@ -55,8 +57,9 @@ export default function RequestsPage() {
         );
         if (!res.ok) throw new Error('Failed to load requests');
         const data = await res.json();
+        const list = Array.isArray(data) ? data : data?.rows || [];
         const enriched = await Promise.all(
-          data.map(async (req) => {
+          list.map(async (req) => {
             let original = null;
             try {
               const res2 = await fetch(
@@ -101,7 +104,7 @@ export default function RequestsPage() {
     }
 
     load();
-  }, [user?.empid]);
+  }, [user]);
 
   const updateNotes = (id, value) => {
     setRequests((reqs) =>
@@ -138,9 +141,8 @@ export default function RequestsPage() {
     }
   };
 
-  if (!user?.empid) {
-    return <p>Login required</p>;
-  }
+  if (user === undefined) return <p>Loading...</p>;
+  if (!user?.empid) return <p>Login required</p>;
 
   return (
     <div>
