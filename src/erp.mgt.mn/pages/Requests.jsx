@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { API_BASE } from '../utils/apiBase.js';
 import { debugLog } from '../utils/debug.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
+import { translateToMn } from '../utils/translateToMn.js';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -131,20 +132,26 @@ export default function RequestsPage() {
                   ]),
                 );
 
-            const fields = visible.map((name) => {
-              const before = original ? original[name] : undefined;
-              const after = req.proposed_data ? req.proposed_data[name] : undefined;
-              const isComplex =
-                (before && typeof before === 'object') ||
-                (after && typeof after === 'object');
-              let changed = false;
-              if (isComplex) {
-                changed = !!diff(before, after);
-              } else {
-                changed = JSON.stringify(before) !== JSON.stringify(after);
-              }
-              return { name, before, after, changed, isComplex };
-            });
+            const fields = visible
+              .map((name) => {
+                const before = original ? original[name] : undefined;
+                const after = req.proposed_data ? req.proposed_data[name] : undefined;
+                const isComplex =
+                  (before && typeof before === 'object') ||
+                  (after && typeof after === 'object');
+                let changed = false;
+                if (isComplex) {
+                  changed = !!diff(before, after);
+                } else {
+                  changed = JSON.stringify(before) !== JSON.stringify(after);
+                }
+                return { name, before, after, changed, isComplex };
+              })
+              .filter((f) => {
+                const emptyBefore = f.before === undefined || f.before === null || f.before === '';
+                const emptyAfter = f.after === undefined || f.after === null || f.after === '';
+                return !(emptyBefore && emptyAfter);
+              });
 
             return {
               ...req,
@@ -195,7 +202,12 @@ export default function RequestsPage() {
       setRequests((reqs) =>
         reqs.map((r) =>
           r.request_id === id
-            ? { ...r, response_status: respStatus, error: null }
+            ? {
+                ...r,
+                response_status: respStatus,
+                status: respStatus,
+                error: null,
+              }
             : r,
         ),
       );
@@ -273,7 +285,7 @@ export default function RequestsPage() {
       </form>
       {loading && <p>Loading...</p>}
       {error && <p style={{ color: 'red' }}>{error}</p>}
-     {requests.map((req) => {
+      {requests.map((req) => {
         const columns = req.fields.map((f) => f.name);
         const fieldMap = {};
         req.fields.forEach((f) => {
@@ -308,10 +320,12 @@ export default function RequestsPage() {
           columnWidths[c] = Math.min(w, MAX_WIDTH);
         });
 
+        const requestStatus = req.status || req.response_status;
         const canRespond =
-          isSupervisor ||
-          (req.senior_empid &&
-            String(req.senior_empid).trim() === String(user.empid).trim());
+          (requestStatus === 'pending' || !requestStatus) &&
+          (isSupervisor ||
+            (req.senior_empid &&
+              String(req.senior_empid).trim() === String(user.empid).trim()));
 
         return (
           <div
@@ -321,9 +335,9 @@ export default function RequestsPage() {
               margin: '1em 0',
               padding: '1em',
               background:
-                req.response_status === 'accepted'
+                requestStatus === 'accepted'
                   ? '#e6ffed'
-                  : req.response_status === 'declined'
+                  : requestStatus === 'declined'
                   ? '#ffe6e6'
                   : 'transparent',
             }}
@@ -355,7 +369,7 @@ export default function RequestsPage() {
                         textOverflow: 'ellipsis',
                       }}
                     >
-                      {headerMap[c] || c}
+                      {headerMap[c] || translateToMn(c)}
                     </th>
                   ))}
                 </tr>
@@ -413,8 +427,8 @@ export default function RequestsPage() {
                 )}
               </tbody>
             </table>
-            {req.response_status ? (
-              <p>Request {req.response_status}</p>
+            {requestStatus && requestStatus !== 'pending' ? (
+              <p>Request {requestStatus}</p>
             ) : canRespond ? (
               <>
                 <textarea
