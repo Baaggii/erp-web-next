@@ -150,7 +150,7 @@ export default function ERPLayout() {
 }
 
 /** Top header bar **/
-function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, onOpen }) {
+function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, onOpen, pendingCount }) {
   const { session } = useContext(AuthContext);
 
   return (
@@ -177,7 +177,7 @@ function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, onOpen }) {
         <button style={styles.iconBtn}>🗗 Цонхнууд</button>
         <button style={styles.iconBtn}>❔ Тусламж</button>
       </nav>
-      <HeaderMenu onOpen={onOpen} />
+      <HeaderMenu onOpen={onOpen} pendingCount={pendingCount} />
       {session && (
         <span style={styles.locationInfo}>
           🏢 {session.company_name}
@@ -336,7 +336,7 @@ function SidebarGroup({ mod, map, allMap, level, onOpen }) {
 
 
 /** A faux “window” wrapper around the main content **/
-function MainWindow({ title }) {
+function MainWindow({ title, pendingCount }) {
   const location = useLocation();
   const outlet = useOutlet();
   const navigate = useNavigate();
