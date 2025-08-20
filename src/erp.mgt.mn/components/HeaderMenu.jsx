@@ -6,14 +6,16 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import modulePath from '../utils/modulePath.js';
 import filterHeaderModules from '../utils/filterHeaderModules.js';
+import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 
-export default function HeaderMenu({ onOpen, pendingCount = 0 }) {
+export default function HeaderMenu({ onOpen }) {
   const { permissions: perms } = useContext(AuthContext);
   const modules = useModules();
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
   const items = filterHeaderModules(modules, perms, txnModules);
   const headerMap = useHeaderMappings(items.map((m) => m.module_key));
+  const { hasNew } = usePendingRequests();
 
   // Build a quick lookup map so we can resolve module paths
   const moduleMap = {};
@@ -39,10 +41,10 @@ export default function HeaderMenu({ onOpen, pendingCount = 0 }) {
               onOpen(modulePath(m, moduleMap), label, m.module_key)
             }
           >
-            {label}
-            {m.module_key === 'dashboard' && pendingCount > 0 && (
+            {m.module_key === 'dashboard' && hasNew && (
               <span style={styles.badge} />
             )}
+            {label}
           </button>
         );
       })}
@@ -67,6 +69,6 @@ const styles = {
     width: '8px',
     height: '8px',
     display: 'inline-block',
-    marginLeft: '4px'
+    marginRight: '4px'
   }
 };

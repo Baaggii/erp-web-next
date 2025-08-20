@@ -1,12 +1,27 @@
-import React, { useContext, useState } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import PendingRequestWidget from '../components/PendingRequestWidget.jsx';
+import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 
 export default function DashboardPage() {
   const { user, session } = useContext(AuthContext);
+  const { hasNew, markSeen } = usePendingRequests();
   const [active, setActive] = useState('general');
 
-  const tabButton = (key, label) => (
+  useEffect(() => {
+    if (active === 'activity') markSeen();
+  }, [active, markSeen]);
+
+  const badgeStyle = {
+    background: 'red',
+    borderRadius: '50%',
+    width: '8px',
+    height: '8px',
+    display: 'inline-block',
+    marginRight: '4px',
+  };
+
+  const tabButton = (key, label, showBadge = false) => (
     <button
       key={key}
       onClick={() => setActive(key)}
@@ -16,8 +31,11 @@ export default function DashboardPage() {
         borderBottom: active === key ? '2px solid #2563eb' : '2px solid transparent',
         background: 'none',
         cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
       }}
     >
+      {showBadge && <span style={badgeStyle} />}
       {label}
     </button>
   );
@@ -34,7 +52,7 @@ export default function DashboardPage() {
     <div style={{ padding: '1rem' }}>
       <div style={{ display: 'flex', borderBottom: '1px solid #ddd', marginBottom: '1rem' }}>
         {tabButton('general', 'General')}
-        {tabButton('activity', 'Activity')}
+        {tabButton('activity', 'Activity', hasNew)}
         {tabButton('plans', 'Plans')}
       </div>
 

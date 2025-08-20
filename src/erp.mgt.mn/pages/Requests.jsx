@@ -6,7 +6,24 @@ import { API_BASE } from '../utils/apiBase.js';
 import { debugLog } from '../utils/debug.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import { translateToMn } from '../utils/translateToMn.js';
-import CustomDatePicker from '../components/CustomDatePicker.jsx';
+import { usePendingRequests } from '../context/PendingRequestContext.jsx';
+
+function ch(n) {
+  return Math.round(n * 8);
+}
+
+const MAX_WIDTH = ch(40);
+
+function getAverageLength(values) {
+  const list = values
+    .filter((v) => v !== null && v !== undefined)
+    .map((v) =>
+      typeof v === 'object' ? JSON.stringify(v) : String(v),
+    )
+    .slice(0, 20);
+  if (list.length === 0) return 0;
+  return Math.round(list.reduce((s, v) => s + v.length, 0) / list.length);
+}
 
 function renderValue(val) {
   const style = { whiteSpace: 'pre-wrap', wordBreak: 'break-word' };
@@ -29,6 +46,7 @@ function normalizeEmpId(id) {
 
 export default function RequestsPage() {
   const { user } = useAuth();
+  const { markSeen } = usePendingRequests();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -63,6 +81,7 @@ export default function RequestsPage() {
 
   const headerMap = useHeaderMappings(allFields);
   useEffect(() => {
+    markSeen();
     async function load() {
       if (!user?.empid) {
         setLoading(false);
