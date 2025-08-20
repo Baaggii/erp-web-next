@@ -44,10 +44,6 @@ function normalizeEmpId(id) {
     .replace(/^0+/, '');
 }
 
-
-
-
-
 // Fallback date picker used by bundlers that replace native date inputs
 // with a custom component. It simply renders a standard date input.
 function CustomDatePicker(props) {

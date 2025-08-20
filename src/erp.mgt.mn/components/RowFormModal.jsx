@@ -693,23 +693,15 @@ const RowFormModal = function RowFormModal({
 
       {
         const failedRows = [];
-        let anySuccess = false;
         for (let i = 0; i < cleanedRows.length; i++) {
           const r = cleanedRows[i];
           try {
             const res = await Promise.resolve(onSubmit(r));
-            if (res === false) {
-              failedRows.push(rows[rowIndices[i]]);
-            } else {
-              anySuccess = true;
-            }
+            if (res === false) failedRows.push(rows[rowIndices[i]]);
           } catch (err) {
             console.error('Submit failed', err);
             failedRows.push(rows[rowIndices[i]]);
           }
-        }
-        if (anySuccess) {
-          window.dispatchEvent(new Event('pending-request-refresh'));
         }
         if (failedRows.length === 0) {
           tableRef.current.clearRows();
@@ -747,7 +739,6 @@ const RowFormModal = function RowFormModal({
           return;
         }
         procCache.current = {};
-        window.dispatchEvent(new Event('pending-request-refresh'));
       } catch (err) {
         console.error('Submit failed', err);
         setSubmitLocked(false);
@@ -1242,10 +1233,10 @@ const RowFormModal = function RowFormModal({
           style={{ transform: `scale(${zoom})`, transformOrigin: '0 0', padding: fitted ? 0 : undefined }}
           onSubmit={(e) => {
             e.preventDefault();
-            submitForm();
-          }}
-          className={fitted ? 'p-4 space-y-2' : 'p-4 space-y-4'}
-        >
+          submitForm();
+        }}
+        className={fitted ? 'p-4 space-y-2' : 'p-4 space-y-4'}
+      >
         {renderHeaderTable(headerCols)}
         {renderMainTable(mainCols)}
         {renderSection('Footer', footerCols)}
@@ -1272,7 +1263,8 @@ const RowFormModal = function RowFormModal({
             Cancel
           </button>
           <button
-            type="submit"
+            type="button"
+            onClick={submitForm}
             className="px-3 py-1 bg-blue-600 text-white rounded"
           >
             Post

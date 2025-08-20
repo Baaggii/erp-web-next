@@ -1,10 +1,15 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { AuthContext } from '../context/AuthContext.jsx';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 
 export default function PendingRequestWidget() {
+  const { user, session } = useContext(AuthContext);
   const navigate = useNavigate();
+  const seniorEmpId = Number(session?.senior_empid) > 0 ? null : user?.empid;
   const { count } = usePendingRequests();
+
+  if (!seniorEmpId) return null;
 
   const badgeStyle = {
     display: 'inline-block',
