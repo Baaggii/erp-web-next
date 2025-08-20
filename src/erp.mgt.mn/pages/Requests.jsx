@@ -1,8 +1,16 @@
 // src/erp.mgt.mn/pages/Requests.jsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import { diff } from 'jsondiffpatch';
 import { useAuth } from '../context/AuthContext.jsx';
-import { debugLog } from '../utils/debug.js';
 import { API_BASE } from '../utils/apiBase.js';
+import { debugLog } from '../utils/debug.js';
+
+function renderValue(val) {
+  if (typeof val === 'object' && val !== null) {
+    return <pre>{JSON.stringify(val, null, 2)}</pre>;
+  }
+  return String(val ?? '');
+}
 
 export default function RequestsPage() {
   const { user } = useAuth();
@@ -10,23 +18,15 @@ export default function RequestsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  function computeDiff(original, proposed) {
-    if (original && proposed) {
-      const changes = {};
-      const keys = new Set([...Object.keys(original), ...Object.keys(proposed)]);
-      for (const key of keys) {
-        const before = original[key];
-        const after = proposed[key];
-        if (JSON.stringify(before) !== JSON.stringify(after)) {
-          changes[key] = { before, after };
-        }
-      }
-      if (Object.keys(changes).length) {
-        return `<pre>${JSON.stringify(changes, null, 2)}</pre>`;
-      }
-    }
-    return '';
-  }
+  // filters
+  const [requestedEmpid, setRequestedEmpid] = useState('');
+  const [tableName, setTableName] = useState('');
+  const [status, setStatus] = useState('pending');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const configCache = useRef({});
 
   useEffect(() => {
     async function load() {
@@ -39,15 +39,20 @@ export default function RequestsPage() {
       setError(null);
       try {
         const params = new URLSearchParams({
-          status: 'pending',
           senior_empid: user.empid,
         });
+        if (status) params.append('status', status);
+        if (requestedEmpid) params.append('requested_empid', requestedEmpid);
+        if (tableName) params.append('table_name', tableName);
+        if (dateFrom) params.append('date_from', dateFrom);
+        if (dateTo) params.append('date_to', dateTo);
         const res = await fetch(
           `${API_BASE}/pending_request?${params.toString()}`,
           { credentials: 'include' },
         );
         if (!res.ok) throw new Error('Failed to load requests');
         const data = await res.json();
+
         const enriched = await Promise.all(
           data.map(async (req) => {
             let original = null;
@@ -73,11 +78,51 @@ export default function RequestsPage() {
             } catch (err) {
               console.error('Failed to fetch original record', err);
             }
-            const html = computeDiff(original, req.proposed_data);
+
+            let cfg = configCache.current[req.table_name];
+            if (!cfg) {
+              try {
+                const cfgRes = await fetch(
+                  `${API_BASE}/display_fields?table=${req.table_name}`,
+                  { credentials: 'include' },
+                );
+                if (cfgRes.ok) cfg = await cfgRes.json();
+              } catch {
+                cfg = null;
+              }
+              configCache.current[req.table_name] = cfg || {
+                displayFields: [],
+              };
+            }
+            cfg = cfg || { displayFields: [] };
+            const visible = cfg.displayFields?.length
+              ? cfg.displayFields
+              : Array.from(
+                  new Set([
+                    ...Object.keys(original || {}),
+                    ...Object.keys(req.proposed_data || {}),
+                  ]),
+                );
+
+            const fields = visible.map((name) => {
+              const before = original ? original[name] : undefined;
+              const after = req.proposed_data ? req.proposed_data[name] : undefined;
+              const isComplex =
+                (before && typeof before === 'object') ||
+                (after && typeof after === 'object');
+              let changed = false;
+              if (isComplex) {
+                changed = !!diff(before, after);
+              } else {
+                changed = JSON.stringify(before) !== JSON.stringify(after);
+              }
+              return { name, before, after, changed, isComplex };
+            });
+
             return {
               ...req,
               original,
-              html,
+              fields,
               notes: '',
               response_status: null,
               error: null,
@@ -94,7 +139,7 @@ export default function RequestsPage() {
     }
 
     load();
-  }, [user?.empid]);
+  }, [user?.empid, reloadKey, status, requestedEmpid, tableName, dateFrom, dateTo]);
 
   const updateNotes = (id, value) => {
     setRequests((reqs) =>
@@ -102,7 +147,7 @@ export default function RequestsPage() {
     );
   };
 
-  const respond = async (id, status) => {
+  const respond = async (id, respStatus) => {
     const reqItem = requests.find((r) => r.request_id === id);
     try {
       const res = await fetch(`${API_BASE}/pending_request/${id}/respond`, {
@@ -110,7 +155,7 @@ export default function RequestsPage() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          status,
+          status: respStatus,
           response_notes: reqItem?.notes || undefined,
         }),
       });
@@ -118,7 +163,7 @@ export default function RequestsPage() {
       setRequests((reqs) =>
         reqs.map((r) =>
           r.request_id === id
-            ? { ...r, response_status: status, error: null }
+            ? { ...r, response_status: respStatus, error: null }
             : r,
         ),
       );
@@ -138,6 +183,62 @@ export default function RequestsPage() {
   return (
     <div>
       <h2>Requests</h2>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          setReloadKey((k) => k + 1);
+        }}
+        style={{ marginBottom: '1em' }}
+      >
+        <label style={{ marginRight: '0.5em' }}>
+          Requester:
+          <input
+            value={requestedEmpid}
+            onChange={(e) => setRequestedEmpid(e.target.value)}
+            style={{ marginLeft: '0.25em' }}
+          />
+        </label>
+        <label style={{ marginRight: '0.5em' }}>
+          Transaction Type:
+          <input
+            value={tableName}
+            onChange={(e) => setTableName(e.target.value)}
+            style={{ marginLeft: '0.25em' }}
+          />
+        </label>
+        <label style={{ marginRight: '0.5em' }}>
+          Status:
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            style={{ marginLeft: '0.25em' }}
+          >
+            <option value="">Any</option>
+            <option value="pending">Pending</option>
+            <option value="accepted">Accepted</option>
+            <option value="declined">Declined</option>
+          </select>
+        </label>
+        <label style={{ marginRight: '0.5em' }}>
+          From:
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            style={{ marginLeft: '0.25em' }}
+          />
+        </label>
+        <label style={{ marginRight: '0.5em' }}>
+          To:
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            style={{ marginLeft: '0.25em' }}
+          />
+        </label>
+        <button type="submit">Apply</button>
+      </form>
       {loading && <p>Loading...</p>}
       {error && <p style={{ color: 'red' }}>{error}</p>}
       {requests.map((req) => (
@@ -158,13 +259,58 @@ export default function RequestsPage() {
           <h4>
             {req.table_name} #{req.record_id} ({req.request_type})
           </h4>
-          {req.html ? (
-            <div
-              className="diff"
-              dangerouslySetInnerHTML={{ __html: req.html }}
-            />
+          {req.request_type === 'delete' ? (
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{ border: '1px solid #ccc', padding: '0.25em' }}>Field</th>
+                  <th style={{ border: '1px solid #ccc', padding: '0.25em' }}>Original</th>
+                </tr>
+              </thead>
+              <tbody>
+                {req.fields.map((f) => (
+                  <tr key={f.name}>
+                    <td style={{ border: '1px solid #ccc', padding: '0.25em' }}>{f.name}</td>
+                    <td style={{ border: '1px solid #ccc', padding: '0.25em' }}>{renderValue(f.before)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           ) : (
-            <pre>{JSON.stringify(req.proposed_data, null, 2)}</pre>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{ border: '1px solid #ccc', padding: '0.25em' }}>Field</th>
+                  <th style={{ border: '1px solid #ccc', padding: '0.25em' }}>Original</th>
+                  <th style={{ border: '1px solid #ccc', padding: '0.25em' }}>Proposed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {req.fields.map((f) => (
+                  <tr key={f.name}>
+                    <td style={{ border: '1px solid #ccc', padding: '0.25em' }}>{f.name}</td>
+                    <td
+                      style={{
+                        border: '1px solid #ccc',
+                        padding: '0.25em',
+                        background: f.changed ? '#ffe6e6' : undefined,
+                      }}
+                    >
+                      {renderValue(f.before)}
+                    </td>
+                    <td
+                      style={{
+                        border: '1px solid #ccc',
+                        padding: '0.25em',
+                        background: f.changed ? '#e6ffe6' : undefined,
+                      }}
+                    >
+                      {renderValue(f.after)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
           {req.response_status ? (
             <p>Request {req.response_status}</p>
@@ -173,9 +319,7 @@ export default function RequestsPage() {
               <textarea
                 placeholder="Notes (optional)"
                 value={req.notes}
-                onChange={(e) =>
-                  updateNotes(req.request_id, e.target.value)
-                }
+                onChange={(e) => updateNotes(req.request_id, e.target.value)}
                 style={{ width: '100%', minHeight: '4em' }}
               />
               <div style={{ marginTop: '0.5em' }}>
@@ -198,3 +342,4 @@ export default function RequestsPage() {
     </div>
   );
 }
+
