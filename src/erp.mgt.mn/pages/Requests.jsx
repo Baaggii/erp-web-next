@@ -1,8 +1,25 @@
 // src/erp.mgt.mn/pages/Requests.jsx
 import React, { useEffect, useState } from 'react';
+import jsondiffpatch from 'jsondiffpatch';
 import { useAuth } from '../context/AuthContext.jsx';
 import { debugLog } from '../utils/debug.js';
 import { API_BASE } from '../utils/apiBase.js';
+import 'jsondiffpatch/dist/formatters-styles/html.css';
+
+let jsondiffpatch;
+(async () => {
+  try {
+    const mod = await import('jsondiffpatch' /* @vite-ignore */);
+    jsondiffpatch = mod.default || mod;
+    try {
+      await import('jsondiffpatch/dist/formatters-styles/html.css' /* @vite-ignore */);
+    } catch {
+      /* ignore */
+    }
+  } catch (err) {
+    console.warn('jsondiffpatch not loaded', err);
+  }
+})();
 
 // Lazily load jsondiffpatch so the build doesn't require it and to avoid
 // declaring a symbol that may already exist from a static import.  The module
