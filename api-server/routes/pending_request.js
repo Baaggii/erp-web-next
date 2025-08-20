@@ -6,7 +6,7 @@ import {
   respondRequest,
   ALLOWED_REQUEST_TYPES,
 } from '../services/pendingRequest.js';
-import { getEmploymentSession } from '../../db/index.js';
+import { getEmploymentSession, pool } from '../../db/index.js';
 
 const router = express.Router();
 
@@ -42,30 +42,20 @@ router.post('/', requireAuth, async (req, res, next) => {
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
-    const {
-      status,
-      senior_empid,
-      requested_empid,
-      table_name,
-      date_from,
-      date_to,
-    } = req.query;
-    if (!status || !senior_empid) {
-      return res
-        .status(400)
-        .json({ message: 'status and senior_empid are required' });
-    }
+    const { status, requested_empid, table_name, date_from, date_to } = req.query;
 
-    const session = await getEmploymentSession(req.user.empid, req.user.companyId);
-    const isSelf = String(req.user.empid) === String(senior_empid);
-    const isSupervisor = !!session?.permissions?.supervisor;
-    if (!isSelf && !isSupervisor) {
+    const empid = String(req.user.empid).trim().toUpperCase();
+    const [rows] = await pool.query(
+      'SELECT 1 FROM tbl_employment WHERE UPPER(TRIM(employment_senior_empid)) = ? LIMIT 1',
+      [empid],
+    );
+    if (rows.length === 0) {
       return res.sendStatus(403);
     }
 
     const requests = await listRequests({
       status,
-      senior_empid,
+      senior_empid: empid,
       requested_empid,
       table_name,
       date_from,
@@ -83,14 +73,11 @@ router.put('/:id/respond', requireAuth, async (req, res, next) => {
     if (!['accepted', 'declined'].includes(status)) {
       return res.status(400).json({ message: 'invalid status' });
     }
-    const session = await getEmploymentSession(req.user.empid, req.user.companyId);
-    const isSupervisor = !!session?.permissions?.supervisor;
     await respondRequest(
       req.params.id,
       req.user.empid,
       status,
       response_notes,
-      isSupervisor,
     );
     res.sendStatus(204);
   } catch (err) {
