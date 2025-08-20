@@ -14,6 +14,7 @@ import { useTabs } from "../context/TabContext.jsx";
 import { useIsLoading } from "../context/LoadingContext.jsx";
 import Spinner from "./Spinner.jsx";
 import useHeaderMappings from "../hooks/useHeaderMappings.js";
+import usePendingRequestCount from "../hooks/usePendingRequestCount.js";
 
 /**
  * A desktop‐style “ERPLayout” with:
@@ -22,7 +23,7 @@ import useHeaderMappings from "../hooks/useHeaderMappings.js";
  *  - Main content area (faux window container)
  */
 export default function ERPLayout() {
-  const { user, setUser } = useContext(AuthContext);
+  const { user, setUser, session } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const renderCount = useRef(0);
   useEffect(() => {
@@ -82,6 +83,9 @@ export default function ERPLayout() {
   const { tabs, activeKey, openTab, closeTab, switchTab, setTabContent, cache } = useTabs();
   const txnModules = useTxnModules();
 
+  const seniorEmpId = !session?.senior_empid ? user?.empid : null;
+  const pendingCount = usePendingRequestCount(seniorEmpId);
+
   useEffect(() => {
     const title = titleForPath(location.pathname);
     openTab({ key: location.pathname, label: title });
@@ -111,6 +115,7 @@ export default function ERPLayout() {
     <div style={styles.container}>
       <Header
         user={user}
+        pendingCount={pendingCount}
         onLogout={handleLogout}
         onHome={handleHome}
         isMobile={isMobile}
@@ -129,7 +134,7 @@ export default function ERPLayout() {
           onOpen={handleOpen}
           isMobile={isMobile}
         />
-        <MainWindow title={windowTitle} />
+        <MainWindow title={windowTitle} pendingCount={pendingCount} />
       </div>
       {generalConfig.general?.aiApiEnabled && <AskAIFloat />}
     </div>
@@ -137,7 +142,7 @@ export default function ERPLayout() {
 }
 
 /** Top header bar **/
-function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, onOpen }) {
+function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, onOpen, pendingCount }) {
   const { session } = useContext(AuthContext);
 
   return (
@@ -164,7 +169,7 @@ function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, onOpen }) {
         <button style={styles.iconBtn}>🗗 Цонхнууд</button>
         <button style={styles.iconBtn}>❔ Тусламж</button>
       </nav>
-      <HeaderMenu onOpen={onOpen} />
+      <HeaderMenu onOpen={onOpen} pendingCount={pendingCount} />
       {session && (
         <span style={styles.locationInfo}>
           🏢 {session.company_name}
@@ -314,7 +319,7 @@ function SidebarGroup({ mod, map, allMap, level, onOpen }) {
 
 
 /** A faux “window” wrapper around the main content **/
-function MainWindow({ title }) {
+function MainWindow({ title, pendingCount }) {
   const location = useLocation();
   const outlet = useOutlet();
   const navigate = useNavigate();
@@ -352,6 +357,9 @@ function MainWindow({ title }) {
             onClick={() => handleSwitch(t.key)}
           >
             <span>{t.label}</span>
+            {t.key === '/' && pendingCount > 0 && (
+              <span style={styles.badge} />
+            )}
             {tabs.length > 1 && (
               <button
                 onClick={(e) => {
@@ -584,6 +592,14 @@ const styles = {
     background: "transparent",
     border: "none",
     cursor: "pointer",
+  },
+  badge: {
+    backgroundColor: "red",
+    borderRadius: "50%",
+    width: "8px",
+    height: "8px",
+    display: "inline-block",
+    marginLeft: "4px",
   },
   windowContent: {
     flexGrow: 1,
