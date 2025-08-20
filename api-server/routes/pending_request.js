@@ -44,9 +44,9 @@ router.get('/', requireAuth, async (req, res, next) => {
   try {
     const { status, requested_empid, table_name, date_from, date_to } = req.query;
 
-    const empid = String(req.user.empid).trim();
+    const empid = String(req.user.empid).trim().toUpperCase();
     const [rows] = await pool.query(
-      'SELECT 1 FROM tbl_employment WHERE TRIM(employment_senior_empid) = ? LIMIT 1',
+      'SELECT 1 FROM tbl_employment WHERE UPPER(TRIM(employment_senior_empid)) = ? LIMIT 1',
       [empid],
     );
     if (rows.length === 0) {

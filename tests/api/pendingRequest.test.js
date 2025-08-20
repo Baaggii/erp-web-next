@@ -37,7 +37,7 @@ function setupRequest(overrides = {}) {
 
 await test('direct senior can approve request', async () => {
   const { conn, restore } = setupRequest();
-  await service.respondRequest(1, 'S1', 'accepted', null);
+  await service.respondRequest(1, 's1', 'accepted', null);
   restore();
   const upd = conn.queries.find((q) => q.sql.includes("status = 'accepted'"));
   assert.ok(upd, 'should update status to accepted');
@@ -45,22 +45,22 @@ await test('direct senior can approve request', async () => {
 
 await test('direct senior can decline request', async () => {
   const { conn, restore } = setupRequest();
-  await service.respondRequest(1, 'S1', 'declined', null);
+  await service.respondRequest(1, 's1', 'declined', null);
   restore();
   const upd = conn.queries.find((q) => q.sql.includes("status = 'declined'"));
   assert.ok(upd, 'should update status to declined');
 });
 
-await test('listRequests trims empids in filters', async () => {
+await test('listRequests normalizes empids in filters', async () => {
   const origQuery = db.pool.query;
   const queries = [];
   db.pool.query = async (sql, params) => {
     queries.push({ sql, params });
     return [[]];
   };
-  await service.listRequests({ senior_empid: 'S1 ', requested_empid: ' E2 ' });
+  await service.listRequests({ senior_empid: 's1 ', requested_empid: ' e2 ' });
   db.pool.query = origQuery;
-  assert.ok(queries[0].sql.includes('TRIM(senior_empid)'));
-  assert.ok(queries[0].sql.includes('TRIM(emp_id)'));
+  assert.ok(queries[0].sql.includes('UPPER(TRIM(senior_empid))'));
+  assert.ok(queries[0].sql.includes('UPPER(TRIM(emp_id))'));
   assert.deepEqual(queries[0].params, ['S1', 'E2']);
 });

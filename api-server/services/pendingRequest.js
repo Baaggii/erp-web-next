@@ -40,7 +40,7 @@ export async function createRequest({ tableName, recordId, empId, requestType, p
       [empId],
     );
     const seniorRaw = rows[0]?.employment_senior_empid;
-    const senior = seniorRaw ? String(seniorRaw).trim() : null;
+    const senior = seniorRaw ? String(seniorRaw).trim().toUpperCase() : null;
     let finalProposed = proposedData;
     if (requestType === 'delete') {
       const pkCols = await getPrimaryKeyColumns(tableName);
@@ -70,7 +70,7 @@ export async function createRequest({ tableName, recordId, empId, requestType, p
       [
         tableName,
         recordId,
-        empId,
+        String(empId).trim().toUpperCase(),
         senior,
         requestType,
         finalProposed ? JSON.stringify(finalProposed) : null,
@@ -123,12 +123,12 @@ export async function listRequests(filters) {
     params.push(status);
   }
   if (senior_empid) {
-    conditions.push('TRIM(senior_empid) = ?');
-    params.push(String(senior_empid).trim());
+    conditions.push('UPPER(TRIM(senior_empid)) = ?');
+    params.push(String(senior_empid).trim().toUpperCase());
   }
   if (requested_empid) {
-    conditions.push('TRIM(emp_id) = ?');
-    params.push(String(requested_empid).trim());
+    conditions.push('UPPER(TRIM(emp_id)) = ?');
+    params.push(String(requested_empid).trim().toUpperCase());
   }
   if (table_name) {
     conditions.push('table_name = ?');
@@ -204,7 +204,8 @@ export async function respondRequest(
     const req = rows[0];
     if (!req) throw new Error('Request not found');
     if (
-      String(req.senior_empid).trim() !== String(responseEmpid).trim()
+      String(req.senior_empid).trim().toUpperCase() !==
+      String(responseEmpid).trim().toUpperCase()
     )
       throw new Error('Forbidden');
 
