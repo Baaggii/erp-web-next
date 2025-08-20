@@ -49,7 +49,7 @@ export default function ERPLayout() {
   const modules = useModules();
   const headerMap = useHeaderMappings(modules.map((m) => m.module_key));
   const titleMap = {
-    "/": "Blue Link демо",
+    "/": "Dashboard",
     "/forms": "Маягтууд",
     "/reports": "Тайлан",
     "/settings": "Тохиргоо",
@@ -360,7 +360,7 @@ function MainWindow({ title, pendingCount }) {
             {t.key === '/' && pendingCount > 0 && (
               <span style={styles.badge} />
             )}
-            {tabs.length > 1 && (
+            {tabs.length > 1 && t.key !== '/' && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
