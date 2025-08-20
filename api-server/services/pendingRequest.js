@@ -193,7 +193,6 @@ export async function respondRequest(
   responseEmpid,
   status,
   notes,
-  isSupervisor = false,
 ) {
   const conn = await pool.getConnection();
   try {
@@ -205,7 +204,6 @@ export async function respondRequest(
     const req = rows[0];
     if (!req) throw new Error('Request not found');
     if (
-      !isSupervisor &&
       String(req.senior_empid).trim() !== String(responseEmpid).trim()
     )
       throw new Error('Forbidden');

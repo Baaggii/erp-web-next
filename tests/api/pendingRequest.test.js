@@ -37,7 +37,7 @@ function setupRequest(overrides = {}) {
 
 await test('direct senior can approve request', async () => {
   const { conn, restore } = setupRequest();
-  await service.respondRequest(1, 'S1', 'accepted', null, false);
+  await service.respondRequest(1, 'S1', 'accepted', null);
   restore();
   const upd = conn.queries.find((q) => q.sql.includes("status = 'accepted'"));
   assert.ok(upd, 'should update status to accepted');
@@ -45,24 +45,8 @@ await test('direct senior can approve request', async () => {
 
 await test('direct senior can decline request', async () => {
   const { conn, restore } = setupRequest();
-  await service.respondRequest(1, 'S1', 'declined', null, false);
+  await service.respondRequest(1, 'S1', 'declined', null);
   restore();
   const upd = conn.queries.find((q) => q.sql.includes("status = 'declined'"));
   assert.ok(upd, 'should update status to declined');
-});
-
-await test('supervisor can approve request', async () => {
-  const { conn, restore } = setupRequest();
-  await service.respondRequest(1, 'SUP', 'accepted', null, true);
-  restore();
-  const upd = conn.queries.find((q) => q.sql.includes("status = 'accepted'"));
-  assert.ok(upd, 'supervisor should update status to accepted');
-});
-
-await test('supervisor can decline request', async () => {
-  const { conn, restore } = setupRequest();
-  await service.respondRequest(1, 'SUP', 'declined', null, true);
-  restore();
-  const upd = conn.queries.find((q) => q.sql.includes("status = 'declined'"));
-  assert.ok(upd, 'supervisor should update status to declined');
 });
