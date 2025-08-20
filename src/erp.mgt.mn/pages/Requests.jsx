@@ -6,29 +6,18 @@ import { API_BASE } from '../utils/apiBase.js';
 import { debugLog } from '../utils/debug.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import { translateToMn } from '../utils/translateToMn.js';
-
-function ch(n) {
-  return Math.round(n * 8);
-}
-
-const MAX_WIDTH = ch(40);
-
-function getAverageLength(values) {
-  const list = values
-    .filter((v) => v !== null && v !== undefined)
-    .map((v) =>
-      typeof v === 'object' ? JSON.stringify(v) : String(v),
-    )
-    .slice(0, 20);
-  if (list.length === 0) return 0;
-  return Math.round(list.reduce((s, v) => s + v.length, 0) / list.length);
-}
+import CustomDatePicker from '../components/CustomDatePicker.jsx';
 
 function renderValue(val) {
+  const style = { whiteSpace: 'pre-wrap', wordBreak: 'break-word' };
   if (typeof val === 'object' && val !== null) {
-    return <pre>{JSON.stringify(val, null, 2)}</pre>;
+    return (
+      <pre style={{ ...style, margin: 0 }}>
+        {JSON.stringify(val, null, 2)}
+      </pre>
+    );
   }
-  return String(val ?? '');
+  return <span style={style}>{String(val ?? '')}</span>;
 }
 
 function normalizeEmpId(id) {
@@ -53,6 +42,18 @@ export default function RequestsPage() {
   const [reloadKey, setReloadKey] = useState(0);
 
   const configCache = useRef({});
+
+  const requesterOptions = useMemo(() => {
+    const set = new Set();
+    requests.forEach((r) => set.add(String(r.emp_id).trim()));
+    return Array.from(set);
+  }, [requests]);
+
+  const tableOptions = useMemo(() => {
+    const set = new Set();
+    requests.forEach((r) => set.add(r.table_name));
+    return Array.from(set);
+  }, [requests]);
 
   const allFields = useMemo(() => {
     const set = new Set();
@@ -251,19 +252,33 @@ export default function RequestsPage() {
       >
         <label style={{ marginRight: '0.5em' }}>
           Requester:
-          <input
+          <select
             value={requestedEmpid}
             onChange={(e) => setRequestedEmpid(e.target.value)}
             style={{ marginLeft: '0.25em' }}
-          />
+          >
+            <option value="">Any</option>
+            {requesterOptions.map((id) => (
+              <option key={id} value={id}>
+                {id}
+              </option>
+            ))}
+          </select>
         </label>
         <label style={{ marginRight: '0.5em' }}>
           Transaction Type:
-          <input
+          <select
             value={tableName}
             onChange={(e) => setTableName(e.target.value)}
             style={{ marginLeft: '0.25em' }}
-          />
+          >
+            <option value="">Any</option>
+            {tableOptions.map((tbl) => (
+              <option key={tbl} value={tbl}>
+                {tbl}
+              </option>
+            ))}
+          </select>
         </label>
         <label style={{ marginRight: '0.5em' }}>
           Status:
@@ -280,19 +295,17 @@ export default function RequestsPage() {
         </label>
         <label style={{ marginRight: '0.5em' }}>
           From:
-          <input
-            type="date"
+          <CustomDatePicker
             value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
+            onChange={setDateFrom}
             style={{ marginLeft: '0.25em' }}
           />
         </label>
         <label style={{ marginRight: '0.5em' }}>
           To:
-          <input
-            type="date"
+          <CustomDatePicker
             value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
+            onChange={setDateTo}
             style={{ marginLeft: '0.25em' }}
           />
         </label>
@@ -306,14 +319,6 @@ export default function RequestsPage() {
         req.fields.forEach((f) => {
           fieldMap[f.name] = f;
         });
-        const placeholders = {};
-        columns.forEach((c) => {
-          const lower = c.toLowerCase();
-          if (lower.includes('time') && !lower.includes('date'))
-            placeholders[c] = 'HH:MM:SS';
-          else if (lower.includes('timestamp') || lower.includes('date'))
-            placeholders[c] = 'YYYY-MM-DD';
-        });
         const columnAlign = {};
         columns.forEach((c) => {
           const sample =
@@ -322,32 +327,26 @@ export default function RequestsPage() {
               : fieldMap[c].after;
           columnAlign[c] = typeof sample === 'number' ? 'right' : 'left';
         });
-        const columnWidths = {};
-        columns.forEach((c) => {
-          const f = fieldMap[c];
-          const avg = getAverageLength([f.before, f.after]);
-          let w;
-          if (avg <= 4) w = ch(Math.max(avg + 1, 5));
-          else if (placeholders[c] && placeholders[c].includes('YYYY-MM-DD'))
-            w = ch(12);
-          else if (avg <= 10) w = ch(12);
-          else w = ch(20);
-          columnWidths[c] = Math.min(w, MAX_WIDTH);
-        });
-
+        const userEmp = String(user.empid).trim();
         const requestStatus = req.status || req.response_status;
         const requestStatusLower = requestStatus
           ? String(requestStatus).trim().toLowerCase()
           : undefined;
-        const normalizedUserId = normalizeEmpId(user.empid);
+        const isRequester = String(req.emp_id).trim() === userEmp;
+
+        const seniorStr = String(req.senior_empid ?? '').trim();
+        const seniorNorm = seniorStr.toLowerCase();
         const assignedSenior =
-          req.senior_empid &&
-          normalizeEmpId(req.senior_empid) === normalizedUserId;
-        const isRequester =
-          normalizeEmpId(req.emp_id) === normalizedUserId;
+          seniorStr && !['0', 'null', 'undefined'].includes(seniorNorm)
+            ? seniorStr
+            : null;
+
+        const isPending =
+          !requestStatusLower || requestStatusLower === 'pending';
         const canRespond =
-          (!requestStatusLower || requestStatusLower === 'pending') &&
-          assignedSenior;
+          !isRequester &&
+          isPending &&
+          (!assignedSenior || assignedSenior === userEmp);
 
         return (
           <div
@@ -368,15 +367,18 @@ export default function RequestsPage() {
               {req.table_name} #{req.record_id} ({req.request_type})
             </h4>
             <table
-              style={{
-                width: '100%',
-                borderCollapse: 'collapse',
-                tableLayout: 'fixed',
-              }}
+              style={{ width: '100%', borderCollapse: 'collapse' }}
             >
               <thead>
                 <tr>
-                  <th style={{ border: '1px solid #ccc', padding: '0.25em' }}></th>
+                  <th
+                    style={{
+                      border: '1px solid #ccc',
+                      padding: '0.25em',
+                      whiteSpace: 'nowrap',
+                      width: '1%',
+                    }}
+                  />
                   {columns.map((c) => (
                     <th
                       key={c}
@@ -384,11 +386,7 @@ export default function RequestsPage() {
                         border: '1px solid #ccc',
                         padding: '0.25em',
                         textAlign: columnAlign[c],
-                        width: columnWidths[c],
-                        minWidth: columnWidths[c],
-                        maxWidth: MAX_WIDTH,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
                       }}
                     >
                       {headerMap[c] || translateToMn(c)}
@@ -398,7 +396,16 @@ export default function RequestsPage() {
               </thead>
               <tbody>
                 <tr>
-                  <th style={{ border: '1px solid #ccc', padding: '0.25em' }}>
+                  <th
+                    style={{
+                      border: '1px solid #ccc',
+                      padding: '0.25em',
+                      whiteSpace: 'nowrap',
+                      width: '1%',
+                      textAlign: 'left',
+                      verticalAlign: 'top',
+                    }}
+                  >
                     Original
                   </th>
                   {columns.map((c) => (
@@ -407,13 +414,13 @@ export default function RequestsPage() {
                       style={{
                         border: '1px solid #ccc',
                         padding: '0.25em',
-                        background: fieldMap[c].changed ? '#ffe6e6' : undefined,
+                        background: fieldMap[c].changed
+                          ? '#ffe6e6'
+                          : undefined,
                         textAlign: columnAlign[c],
-                        width: columnWidths[c],
-                        minWidth: columnWidths[c],
-                        maxWidth: MAX_WIDTH,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
+                        verticalAlign: 'top',
                       }}
                     >
                       {renderValue(fieldMap[c].before)}
@@ -422,7 +429,16 @@ export default function RequestsPage() {
                 </tr>
                 {req.request_type !== 'delete' && (
                   <tr>
-                    <th style={{ border: '1px solid #ccc', padding: '0.25em' }}>
+                    <th
+                      style={{
+                        border: '1px solid #ccc',
+                        padding: '0.25em',
+                        whiteSpace: 'nowrap',
+                        width: '1%',
+                        textAlign: 'left',
+                        verticalAlign: 'top',
+                      }}
+                    >
                       Proposed
                     </th>
                     {columns.map((c) => (
@@ -435,11 +451,9 @@ export default function RequestsPage() {
                             ? '#e6ffe6'
                             : undefined,
                           textAlign: columnAlign[c],
-                          width: columnWidths[c],
-                          minWidth: columnWidths[c],
-                          maxWidth: MAX_WIDTH,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
+                          verticalAlign: 'top',
                         }}
                       >
                         {renderValue(fieldMap[c].after)}
@@ -449,7 +463,7 @@ export default function RequestsPage() {
                 )}
               </tbody>
             </table>
-            {requestStatus && requestStatusLower !== 'pending' ? (
+            {!isPending ? (
               <p>Request {requestStatus}</p>
             ) : canRespond ? (
               <>
