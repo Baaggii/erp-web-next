@@ -32,7 +32,7 @@ function renderValue(val) {
 }
 
 export default function RequestsPage() {
-  const { user, session } = useAuth();
+  const { user, session, permissions } = useAuth();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -54,7 +54,9 @@ export default function RequestsPage() {
   }, [requests]);
 
   const headerMap = useHeaderMappings(allFields);
-  const isSupervisor = !!session?.permissions?.supervisor;
+  const isSupervisor = !!(
+    session?.permissions?.supervisor || permissions?.supervisor
+  );
 
   useEffect(() => {
     async function load() {
