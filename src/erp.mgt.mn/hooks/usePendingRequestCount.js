@@ -35,7 +35,6 @@ export default function usePendingRequestCount(
       try {
         const res = await fetch(`/api/pending_request?${params.toString()}`, {
           credentials: 'include',
-          skipLoader: true,
         });
         if (!res.ok) {
           if (!cancelled) setCount(0);

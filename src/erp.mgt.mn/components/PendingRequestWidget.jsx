@@ -1,30 +1,70 @@
-import React, { useContext } from 'react';
+import React, { useEffect, useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
-import usePendingRequestCount from '../hooks/usePendingRequestCount.js';
 
 export default function PendingRequestWidget({ filters = {} }) {
-  const { user, session } = useContext(AuthContext);
+  const { user } = useContext(AuthContext);
+  const [count, setCount] = useState(0);
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
-  const seniorEmpId = !session?.senior_empid ? user?.empid : null;
-  const count = usePendingRequestCount(seniorEmpId, filters);
 
-  if (!seniorEmpId) return null;
+  useEffect(() => {
+    if (!user?.empid) return undefined;
 
-  const badgeStyle = {
-    display: 'inline-block',
-    backgroundColor: 'red',
-    color: 'white',
-    borderRadius: '50%',
-    padding: '0.25rem 0.5rem',
-    minWidth: '1.5rem',
-    textAlign: 'center',
-  };
+    let cancelled = false;
+
+    async function load() {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams({
+          status: 'pending',
+          senior_empid: String(user.empid),
+        });
+        Object.entries(filters).forEach(([k, v]) => {
+          if (v !== undefined && v !== null && v !== '') params.append(k, v);
+        });
+
+        const res = await fetch(`/api/pending_request?${params.toString()}`, {
+          credentials: 'include',
+        });
+        if (res.ok) {
+          const data = await res.json().catch(() => 0);
+          if (typeof data === 'number') setCount(data);
+          else if (Array.isArray(data)) setCount(data.length);
+          else setCount(Number(data?.count) || 0);
+        } else {
+          setCount(0);
+        }
+      } catch {
+        setCount(0);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    const handle = () => load();
+    window.addEventListener('pending-request-refresh', handle);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('pending-request-refresh', handle);
+    };
+  }, [user?.empid, filters]);
+
+  if (!user?.empid) return null;
 
   return (
     <div>
       <h3>Pending Requests</h3>
-      {count > 0 && <span style={badgeStyle}>{count}</span>}
+      {loading ? (
+        <p>Loading...</p>
+      ) : count > 0 ? (
+        <p>
+          {count} pending request{count === 1 ? '' : 's'}
+        </p>
+      ) : (
+        <p>No pending requests</p>
+      )}
       <button onClick={() => navigate('/requests')}>View Requests</button>
     </div>
   );
