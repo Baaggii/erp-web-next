@@ -36,10 +36,10 @@ export async function createRequest({ tableName, recordId, empId, requestType, p
   try {
     await conn.query('BEGIN');
     const [rows] = await conn.query(
-      'SELECT employment_senior_empid FROM tbl_employment WHERE employment_emp_id = ? LIMIT 1',
+      'SELECT senior_empid FROM tbl_employment WHERE employment_emp_id = ? LIMIT 1',
       [empId],
     );
-    const seniorRaw = rows[0]?.employment_senior_empid;
+    const seniorRaw = rows[0]?.senior_empid;
     const senior = seniorRaw ? String(seniorRaw).trim().toUpperCase() : null;
     let finalProposed = proposedData;
     if (requestType === 'delete') {
