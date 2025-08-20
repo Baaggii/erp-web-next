@@ -6,7 +6,7 @@ import { debugLog } from '../utils/debug.js';
 export default function RequestsPage() {
   const { user } = useAuth();
   const [requests, setRequests] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   async function computeDiff(original, proposed) {
@@ -39,7 +39,10 @@ export default function RequestsPage() {
 
   useEffect(() => {
     async function load() {
-      if (!user?.empid) return;
+      if (!user?.empid) {
+        setLoading(false);
+        return;
+      }
       debugLog('Loading pending requests');
       setLoading(true);
       setError(null);

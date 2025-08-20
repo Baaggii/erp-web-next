@@ -155,7 +155,10 @@ function AuthedApp() {
 
   return (
     <Routes>
-      <Route path="/" element={<ERPLayout />}>{roots.map(renderRoute)}</Route>
+      <Route path="/" element={<ERPLayout />}>
+        <Route path="requests" element={<RequestsPage />} />
+        {roots.map(renderRoute)}
+      </Route>
       <Route
         path="inventory-demo"
         element={
