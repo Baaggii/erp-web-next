@@ -8,21 +8,21 @@ import { useEffect, useState } from 'react';
  * @returns {number} Count of pending requests
  */
 export default function usePendingRequestCount(
-  seniorEmpId,
+  employmentSeniorEmpId,
   filters = {},
   interval = 30000,
 ) {
   const [count, setCount] = useState(0);
 
   useEffect(() => {
-    if (!seniorEmpId) {
+    if (!employmentSeniorEmpId) {
       setCount(0);
       return undefined;
     }
 
     const params = new URLSearchParams({
       status: 'pending',
-      senior_empid: String(seniorEmpId),
+      employment_senior_empid: String(employmentSeniorEmpId),
     });
     Object.entries(filters).forEach(([k, v]) => {
       if (v !== undefined && v !== null && v !== '') {
@@ -59,7 +59,7 @@ export default function usePendingRequestCount(
       clearInterval(timer);
       window.removeEventListener('pending-request-refresh', fetchCount);
     };
-  }, [seniorEmpId, interval, filters]);
+  }, [employmentSeniorEmpId, interval, filters]);
 
   return count;
 }

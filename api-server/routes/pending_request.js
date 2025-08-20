@@ -55,7 +55,7 @@ router.get('/', requireAuth, async (req, res, next) => {
 
     const requests = await listRequests({
       status,
-      senior_empid: empid,
+      employment_senior_empid: empid,
       requested_empid,
       table_name,
       date_from,
