@@ -47,6 +47,10 @@ export default function AuthContextProvider({ children }) {
         setDepartment(data.department ?? null);
         trackSetState('AuthContext.setPosition');
         setPosition(data.position ?? null);
+        if (data.senior_empid) {
+          trackSetState('AuthContext.setSession');
+          setSession((s) => ({ ...(s || {}), senior_empid: data.senior_empid }));
+        }
       } catch {
         // ignore parse errors
       }
@@ -55,13 +59,19 @@ export default function AuthContextProvider({ children }) {
 
   useEffect(() => {
     debugLog('AuthContext: persist ids');
-    const data = { company, branch, department, position };
-    if (company || branch || department || position) {
+    const data = {
+      company,
+      branch,
+      department,
+      position,
+      senior_empid: session?.senior_empid,
+    };
+    if (company || branch || department || position || session?.senior_empid) {
       localStorage.setItem('erp_session_ids', JSON.stringify(data));
     } else {
       localStorage.removeItem('erp_session_ids');
     }
-  }, [company, branch, department, position]);
+  }, [company, branch, department, position, session?.senior_empid]);
 
   // On mount, attempt to load the current profile (if a cookie is present)
   useEffect(() => {
