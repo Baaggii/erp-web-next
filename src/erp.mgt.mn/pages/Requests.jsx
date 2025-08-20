@@ -31,6 +31,13 @@ function renderValue(val) {
   return String(val ?? '');
 }
 
+function normalizeEmpId(id) {
+  return String(id ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/^0+/, '');
+}
+
 export default function RequestsPage() {
   const { user } = useAuth();
   const [requests, setRequests] = useState([]);
@@ -332,12 +339,15 @@ export default function RequestsPage() {
         const requestStatusLower = requestStatus
           ? String(requestStatus).trim().toLowerCase()
           : undefined;
+        const normalizedUserId = normalizeEmpId(user.empid);
+        const assignedSenior =
+          req.senior_empid &&
+          normalizeEmpId(req.senior_empid) === normalizedUserId;
+        const isRequester =
+          normalizeEmpId(req.emp_id) === normalizedUserId;
         const canRespond =
           (!requestStatusLower || requestStatusLower === 'pending') &&
-          req.senior_empid &&
-          String(req.senior_empid).trim() === String(user.empid).trim();
-        const isRequester =
-          String(req.emp_id).trim() === String(user.empid).trim();
+          assignedSenior;
 
         return (
           <div
