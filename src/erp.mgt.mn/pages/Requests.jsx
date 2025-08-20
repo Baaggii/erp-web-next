@@ -25,10 +25,15 @@ function getAverageLength(values) {
 }
 
 function renderValue(val) {
+  const style = { whiteSpace: 'pre-wrap', wordBreak: 'break-word' };
   if (typeof val === 'object' && val !== null) {
-    return <pre>{JSON.stringify(val, null, 2)}</pre>;
+    return (
+      <pre style={{ ...style, margin: 0 }}>
+        {JSON.stringify(val, null, 2)}
+      </pre>
+    );
   }
-  return String(val ?? '');
+  return <span style={style}>{String(val ?? '')}</span>;
 }
 
 export default function RequestsPage() {
@@ -332,12 +337,15 @@ export default function RequestsPage() {
         const requestStatusLower = requestStatus
           ? String(requestStatus).trim().toLowerCase()
           : undefined;
-        const canRespond =
-          (!requestStatusLower || requestStatusLower === 'pending') &&
-          req.senior_empid &&
-          String(req.senior_empid).trim() === String(user.empid).trim();
         const isRequester =
           String(req.emp_id).trim() === String(user.empid).trim();
+        const assignedSenior = req.senior_empid
+          ? String(req.senior_empid).trim()
+          : null;
+        const canRespond =
+          !isRequester &&
+          (!requestStatusLower || requestStatusLower === 'pending') &&
+          (!assignedSenior || assignedSenior === String(user.empid).trim());
 
         return (
           <div
@@ -377,8 +385,8 @@ export default function RequestsPage() {
                         width: columnWidths[c],
                         minWidth: columnWidths[c],
                         maxWidth: MAX_WIDTH,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
                       }}
                     >
                       {headerMap[c] || translateToMn(c)}
@@ -402,8 +410,8 @@ export default function RequestsPage() {
                         width: columnWidths[c],
                         minWidth: columnWidths[c],
                         maxWidth: MAX_WIDTH,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
                       }}
                     >
                       {renderValue(fieldMap[c].before)}
@@ -428,8 +436,8 @@ export default function RequestsPage() {
                           width: columnWidths[c],
                           minWidth: columnWidths[c],
                           maxWidth: MAX_WIDTH,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
                         }}
                       >
                         {renderValue(fieldMap[c].after)}
