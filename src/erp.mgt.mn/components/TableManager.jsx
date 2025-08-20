@@ -486,8 +486,13 @@ const TableManager = forwardRef(function TableManager({
         return;
       }
       try {
+        const params = new URLSearchParams({
+          status: requestStatus,
+          senior_empid: user?.empid,
+          table_name: table,
+        });
         const res = await fetch(
-          `/api/pending_request?status=${encodeURIComponent(requestStatus)}&senior_empid=${user?.empid}`,
+          `/api/pending_request?${params.toString()}`,
           { credentials: 'include' },
         );
         if (res.ok) {

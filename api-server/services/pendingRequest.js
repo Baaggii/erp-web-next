@@ -105,15 +105,87 @@ export async function createRequest({ tableName, recordId, empId, requestType, p
   }
 }
 
-export async function listRequests(status, seniorEmpid) {
+export async function listRequests(filters) {
+  const {
+    status,
+    senior_empid,
+    requested_empid,
+    table_name,
+    date_from,
+    date_to,
+  } = filters || {};
+
+  const conditions = [];
+  const params = [];
+
+  if (status) {
+    conditions.push('status = ?');
+    params.push(status);
+  }
+  if (senior_empid) {
+    conditions.push('senior_empid = ?');
+    params.push(senior_empid);
+  }
+  if (requested_empid) {
+    conditions.push('emp_id = ?');
+    params.push(requested_empid);
+  }
+  if (table_name) {
+    conditions.push('table_name = ?');
+    params.push(table_name);
+  }
+  if (date_from) {
+    conditions.push('created_at >= ?');
+    params.push(date_from);
+  }
+  if (date_to) {
+    conditions.push('created_at <= ?');
+    params.push(date_to);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const [rows] = await pool.query(
-    `SELECT * FROM pending_request WHERE status = ? AND senior_empid = ?`,
-    [status, seniorEmpid],
+    `SELECT * FROM pending_request ${where}`,
+    params,
   );
-  return rows.map((row) => ({
-    ...row,
-    proposed_data: parseProposedData(row.proposed_data),
-  }));
+
+  const result = [];
+  for (const row of rows) {
+    const parsed = parseProposedData(row.proposed_data);
+    let original = null;
+    try {
+      const pkCols = await getPrimaryKeyColumns(row.table_name);
+      if (pkCols.length === 1) {
+        const col = pkCols[0];
+        const whereClause = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
+        const [r] = await pool.query(
+          `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
+          [row.table_name, row.record_id],
+        );
+        original = r[0] || null;
+      } else if (pkCols.length > 1) {
+        const parts = String(row.record_id).split('-');
+        const whereClause = pkCols
+          .map((c) => `\`${c}\` = ?`)
+          .join(' AND ');
+        const [r] = await pool.query(
+          `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
+          [row.table_name, ...parts],
+        );
+        original = r[0] || null;
+      }
+    } catch {
+      original = null;
+    }
+
+    result.push({
+      ...row,
+      proposed_data: parsed,
+      original,
+    });
+  }
+
+  return result;
 }
 
 export async function respondRequest(

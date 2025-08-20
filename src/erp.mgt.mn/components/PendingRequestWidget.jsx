@@ -2,7 +2,7 @@ import React, { useEffect, useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 
-export default function PendingRequestWidget() {
+export default function PendingRequestWidget({ filters = {} }) {
   const { user } = useContext(AuthContext);
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -13,12 +13,17 @@ export default function PendingRequestWidget() {
       if (!user?.empid) return;
       setLoading(true);
       try {
-        const res = await fetch(
-          `/api/pending_request?status=pending&senior_empid=${encodeURIComponent(
-            user.empid,
-          )}`,
-          { credentials: 'include' },
-        );
+        const params = new URLSearchParams({
+          status: 'pending',
+          senior_empid: String(user.empid),
+        });
+        Object.entries(filters).forEach(([k, v]) => {
+          if (v !== undefined && v !== null && v !== '') params.append(k, v);
+        });
+
+        const res = await fetch(`/api/pending_request?${params.toString()}`, {
+          credentials: 'include',
+        });
         if (res.ok) {
           const data = await res.json();
           if (typeof data === 'number') {
@@ -39,7 +44,7 @@ export default function PendingRequestWidget() {
     }
 
     load();
-  }, [user?.empid]);
+  }, [user?.empid, filters]);
 
   if (!user?.empid) return null;
 

@@ -42,17 +42,35 @@ router.post('/', requireAuth, async (req, res, next) => {
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
-    const { status, senior_empid } = req.query;
+    const {
+      status,
+      senior_empid,
+      requested_empid,
+      table_name,
+      date_from,
+      date_to,
+    } = req.query;
     if (!status || !senior_empid) {
-      return res.status(400).json({ message: 'status and senior_empid are required' });
+      return res
+        .status(400)
+        .json({ message: 'status and senior_empid are required' });
     }
+
     const session = await getEmploymentSession(req.user.empid, req.user.companyId);
     const isSelf = String(req.user.empid) === String(senior_empid);
-    if (!isSelf && !session?.permissions?.supervisor) {
+    const isSupervisor = !!session?.permissions?.supervisor;
+    if (!isSelf && !isSupervisor) {
       return res.sendStatus(403);
     }
 
-    const requests = await listRequests(status, senior_empid);
+    const requests = await listRequests({
+      status,
+      senior_empid,
+      requested_empid,
+      table_name,
+      date_from,
+      date_to,
+    });
     res.json(requests);
   } catch (err) {
     next(err);
