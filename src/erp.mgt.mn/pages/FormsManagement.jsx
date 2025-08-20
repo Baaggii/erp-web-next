@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { useModules } from '../hooks/useModules.js';
+import { useModules, refreshModules } from '../hooks/useModules.js';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { debugLog } from '../utils/debug.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
@@ -439,6 +439,7 @@ export default function FormsManagement() {
       }),
     });
     refreshTxnModules();
+    refreshModules();
     alert('Saved');
     if (!names.includes(name)) setNames((n) => [...n, name]);
   }
@@ -451,6 +452,7 @@ export default function FormsManagement() {
       credentials: 'include',
     });
     refreshTxnModules();
+    refreshModules();
     setNames((n) => n.filter((x) => x !== name));
     setName('');
     setConfig({
