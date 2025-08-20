@@ -7,16 +7,28 @@ import { debugLog } from '../utils/debug.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import { translateToMn } from '../utils/translateToMn.js';
 
+function ch(n) {
+  return Math.round(n * 8);
+}
+
+const MAX_WIDTH = ch(40);
+
+function getAverageLength(values) {
+  const list = values
+    .filter((v) => v !== null && v !== undefined)
+    .map((v) =>
+      typeof v === 'object' ? JSON.stringify(v) : String(v),
+    )
+    .slice(0, 20);
+  if (list.length === 0) return 0;
+  return Math.round(list.reduce((s, v) => s + v.length, 0) / list.length);
+}
+
 function renderValue(val) {
-  const style = { whiteSpace: 'pre-wrap', wordBreak: 'break-word' };
   if (typeof val === 'object' && val !== null) {
-    return (
-      <pre style={{ ...style, margin: 0 }}>
-        {JSON.stringify(val, null, 2)}
-      </pre>
-    );
+    return <pre>{JSON.stringify(val, null, 2)}</pre>;
   }
-  return <span style={style}>{String(val ?? '')}</span>;
+  return String(val ?? '');
 }
 
 export default function RequestsPage() {
@@ -287,6 +299,14 @@ export default function RequestsPage() {
         req.fields.forEach((f) => {
           fieldMap[f.name] = f;
         });
+        const placeholders = {};
+        columns.forEach((c) => {
+          const lower = c.toLowerCase();
+          if (lower.includes('time') && !lower.includes('date'))
+            placeholders[c] = 'HH:MM:SS';
+          else if (lower.includes('timestamp') || lower.includes('date'))
+            placeholders[c] = 'YYYY-MM-DD';
+        });
         const columnAlign = {};
         columns.forEach((c) => {
           const sample =
@@ -295,23 +315,29 @@ export default function RequestsPage() {
               : fieldMap[c].after;
           columnAlign[c] = typeof sample === 'number' ? 'right' : 'left';
         });
+        const columnWidths = {};
+        columns.forEach((c) => {
+          const f = fieldMap[c];
+          const avg = getAverageLength([f.before, f.after]);
+          let w;
+          if (avg <= 4) w = ch(Math.max(avg + 1, 5));
+          else if (placeholders[c] && placeholders[c].includes('YYYY-MM-DD'))
+            w = ch(12);
+          else if (avg <= 10) w = ch(12);
+          else w = ch(20);
+          columnWidths[c] = Math.min(w, MAX_WIDTH);
+        });
+
         const requestStatus = req.status || req.response_status;
         const requestStatusLower = requestStatus
           ? String(requestStatus).trim().toLowerCase()
           : undefined;
+        const canRespond =
+          (!requestStatusLower || requestStatusLower === 'pending') &&
+          req.senior_empid &&
+          String(req.senior_empid).trim() === String(user.empid).trim();
         const isRequester =
           String(req.emp_id).trim() === String(user.empid).trim();
-        const assignedSenior =
-          req.senior_empid !== undefined && req.senior_empid !== null &&
-          String(req.senior_empid).trim() !== '0'
-            ? String(req.senior_empid).trim()
-            : null;
-        const isPending =
-          !requestStatusLower || requestStatusLower === 'pending';
-        const canRespond =
-          !isRequester &&
-          isPending &&
-          (!assignedSenior || assignedSenior === String(user.empid).trim());
 
         return (
           <div
@@ -335,6 +361,7 @@ export default function RequestsPage() {
               style={{
                 width: '100%',
                 borderCollapse: 'collapse',
+                tableLayout: 'fixed',
               }}
             >
               <thead>
@@ -347,9 +374,11 @@ export default function RequestsPage() {
                         border: '1px solid #ccc',
                         padding: '0.25em',
                         textAlign: columnAlign[c],
-                        whiteSpace: 'pre-wrap',
-                        wordBreak: 'break-word',
-                        verticalAlign: 'top',
+                        width: columnWidths[c],
+                        minWidth: columnWidths[c],
+                        maxWidth: MAX_WIDTH,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
                       }}
                     >
                       {headerMap[c] || translateToMn(c)}
@@ -370,9 +399,11 @@ export default function RequestsPage() {
                         padding: '0.25em',
                         background: fieldMap[c].changed ? '#ffe6e6' : undefined,
                         textAlign: columnAlign[c],
-                        whiteSpace: 'pre-wrap',
-                        wordBreak: 'break-word',
-                        verticalAlign: 'top',
+                        width: columnWidths[c],
+                        minWidth: columnWidths[c],
+                        maxWidth: MAX_WIDTH,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
                       }}
                     >
                       {renderValue(fieldMap[c].before)}
@@ -394,9 +425,11 @@ export default function RequestsPage() {
                             ? '#e6ffe6'
                             : undefined,
                           textAlign: columnAlign[c],
-                          whiteSpace: 'pre-wrap',
-                          wordBreak: 'break-word',
-                          verticalAlign: 'top',
+                          width: columnWidths[c],
+                          minWidth: columnWidths[c],
+                          maxWidth: MAX_WIDTH,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
                         }}
                       >
                         {renderValue(fieldMap[c].after)}
@@ -406,7 +439,7 @@ export default function RequestsPage() {
                 )}
               </tbody>
             </table>
-            {!isPending ? (
+            {requestStatus && requestStatusLower !== 'pending' ? (
               <p>Request {requestStatus}</p>
             ) : canRespond ? (
               <>
