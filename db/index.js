@@ -244,7 +244,7 @@ export async function getEmploymentSessions(empid) {
         e.employment_department_id AS department_id,
         ${deptName} AS department_name,
         e.employment_position_id AS position_id,
-        e.senior_empid AS senior_empid,
+        e.employment_senior_empid AS senior_empid,
         ${empName} AS employee_name,
         e.employment_user_level AS user_level,
         ul.name AS user_level_name,
@@ -261,7 +261,7 @@ export async function getEmploymentSessions(empid) {
               e.employment_branch_id, branch_name,
               e.employment_department_id, department_name,
               e.employment_position_id,
-              e.senior_empid,
+              e.employment_senior_empid,
               employee_name, e.employment_user_level, ul.name
     ORDER BY company_name, department_name, branch_name, user_level_name`,
     [empid],
@@ -301,7 +301,7 @@ export async function getEmploymentSession(empid, companyId) {
           e.employment_department_id AS department_id,
           ${deptName} AS department_name,
           e.employment_position_id AS position_id,
-          e.senior_empid AS senior_empid,
+          e.employment_senior_empid AS senior_empid,
           ${empName} AS employee_name,
           e.employment_user_level AS user_level,
           ul.name AS user_level_name,
@@ -318,7 +318,7 @@ export async function getEmploymentSession(empid, companyId) {
                 e.employment_branch_id, branch_name,
                 e.employment_department_id, department_name,
                 e.employment_position_id,
-                e.senior_empid,
+                e.employment_senior_empid,
                 employee_name, e.employment_user_level, ul.name
        ORDER BY company_name, department_name, branch_name, user_level_name
        LIMIT 1`,
