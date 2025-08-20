@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 
 /**
- * Polls the pending request endpoint for a supervisor and returns the count.
- * @param {string|number} seniorEmpId Employee ID of the supervisor
- * @param {object} [filters] Optional filters (requested_empid, table_name, date_from, date_to)
+ * Polls the pending request endpoint for a senior employee and returns the
+ * count.
+ * @param {string|number} seniorEmpId Employee ID of the senior
+ * @param {object} [filters] Optional filters (requested_empid, table_name,
+ * date_from, date_to)
  * @param {number} [interval=30000] Polling interval in milliseconds
  * @returns {number} Count of pending requests
  */

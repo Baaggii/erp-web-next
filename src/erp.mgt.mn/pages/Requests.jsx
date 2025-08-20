@@ -54,9 +54,6 @@ export default function RequestsPage() {
   }, [requests]);
 
   const headerMap = useHeaderMappings(allFields);
-  const isSupervisor = !!(
-    session?.permissions?.supervisor || permissions?.supervisor
-  );
 
   useEffect(() => {
     async function load() {
@@ -165,7 +162,11 @@ export default function RequestsPage() {
             };
           }),
         );
-        setRequests(enriched);
+        const visibleRequests = enriched.filter(
+          (r) =>
+            String(r.senior_empid).trim() === String(user.empid).trim(),
+        );
+        setRequests(visibleRequests);
       } catch (err) {
         console.error(err);
         setError('Failed to load requests');
@@ -185,6 +186,19 @@ export default function RequestsPage() {
 
   const respond = async (id, respStatus) => {
     const reqItem = requests.find((r) => r.request_id === id);
+    if (
+      !reqItem ||
+      String(reqItem.senior_empid).trim() !== String(user.empid).trim()
+    ) {
+      setRequests((reqs) =>
+        reqs.map((r) =>
+          r.request_id === id
+            ? { ...r, error: 'You are not authorized to respond.' }
+            : r,
+        ),
+      );
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE}/pending_request/${id}/respond`, {
         method: 'PUT',
@@ -325,9 +339,7 @@ export default function RequestsPage() {
         const requestStatus = req.status || req.response_status;
         const canRespond =
           (requestStatus === 'pending' || !requestStatus) &&
-          (isSupervisor ||
-            (req.senior_empid &&
-              String(req.senior_empid).trim() === String(user.empid).trim()));
+          String(req.senior_empid).trim() === String(user.empid).trim();
 
         return (
           <div
