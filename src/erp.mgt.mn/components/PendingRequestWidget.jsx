@@ -18,7 +18,7 @@ export default function PendingRequestWidget({ filters = {} }) {
       try {
         const params = new URLSearchParams({
           status: 'pending',
-          employment_senior_empid: String(user.empid),
+          senior_empid: String(user.empid),
         });
         Object.entries(filters).forEach(([k, v]) => {
           if (v !== undefined && v !== null && v !== '') params.append(k, v);
