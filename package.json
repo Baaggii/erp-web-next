@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-    "scripts": {
+  "scripts": {
     "dev": "vite",
     "build:homepage": "vite build --config vite.home.config.js",
     "build:erp": "vite build --config vite.config.js",
@@ -11,27 +11,27 @@
     "test": "node --test"
   },
   "dependencies": {
-    "express": "^4.21.2",
     "bcryptjs": "^2.4.3",
-    "mysql2": "^3.9.0",
-    "dotenv": "^16.4.6",
     "cookie-parser": "^1.4.6",
     "csurf": "^1.11.0",
-    "react-mosaic-component": "^6.0.0",
-    "jsonwebtoken": "^9.0.0",
-    "multer": "^1.4.5-lts.1",
-    "xlsx": "^0.18.5",
-    "openai": "^4.24.0",
+    "dotenv": "^16.4.6",
+    "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
-    "sharp": "^0.33.2",
+    "jsondiffpatch": "^0.7.3",
+    "jsonwebtoken": "^9.0.0",
     "mime-types": "^2.1.35",
-    "jsondiffpatch": "^1.1.1"
+    "multer": "^1.4.5-lts.1",
+    "mysql2": "^3.9.0",
+    "openai": "^4.24.0",
+    "react-mosaic-component": "^6.0.0",
+    "sharp": "^0.33.2",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "vite": "^6.3.5",
     "@vitejs/plugin-react": "^4.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.30.1"
+    "react-router-dom": "^6.30.1",
+    "vite": "^6.3.5"
   }
 }
