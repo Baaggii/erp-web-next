@@ -319,10 +319,13 @@ export default function RequestsPage() {
         });
 
         const requestStatus = req.status || req.response_status;
+        const requestStatusLower = requestStatus?.toLowerCase();
         const canRespond =
-          (requestStatus === 'pending' || !requestStatus) &&
+          (!requestStatusLower || requestStatusLower === 'pending') &&
           req.senior_empid &&
           String(req.senior_empid).trim() === String(user.empid).trim();
+        const isRequester =
+          String(req.emp_id).trim() === String(user.empid).trim();
 
         return (
           <div
@@ -424,7 +427,7 @@ export default function RequestsPage() {
                 )}
               </tbody>
             </table>
-            {requestStatus && requestStatus !== 'pending' ? (
+            {requestStatus && requestStatusLower !== 'pending' ? (
               <p>Request {requestStatus}</p>
             ) : canRespond ? (
               <>
@@ -446,9 +449,9 @@ export default function RequestsPage() {
                   </button>
                 </div>
               </>
-            ) : (
-              <p>You are not authorized to respond.</p>
-            )}
+            ) : isRequester ? (
+              <p>Awaiting senior response…</p>
+            ) : null}
             {req.error && <p style={{ color: 'red' }}>{req.error}</p>}
           </div>
         );
