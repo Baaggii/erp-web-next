@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
-import { refreshTxnModules } from '../hooks/useTxnModules.js';
 
 const emptyConfig = {
   label: '',
@@ -279,7 +278,6 @@ export default function PosTxnConfig() {
       credentials: 'include',
       body: JSON.stringify({ name, config: saveCfg }),
     });
-    refreshTxnModules();
     addToast('Saved', 'success');
     fetch('/api/pos_txn_config', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
@@ -294,7 +292,6 @@ export default function PosTxnConfig() {
       method: 'DELETE',
       credentials: 'include',
     });
-    refreshTxnModules();
     addToast('Deleted', 'success');
     setName('');
     setConfig({ ...emptyConfig });
