@@ -40,7 +40,21 @@ export async function login({ empid, password, companyId }) {
     throw new Error(message);
   }
 
-  return res.json();
+  const data = await res.json();
+  if (data?.session) {
+    try {
+      const stored = JSON.parse(localStorage.getItem('erp_session_ids') || '{}');
+      if (data.session.senior_empid) {
+        stored.senior_empid = data.session.senior_empid;
+      } else {
+        delete stored.senior_empid;
+      }
+      localStorage.setItem('erp_session_ids', JSON.stringify(stored));
+    } catch {
+      /* ignore storage errors */
+    }
+  }
+  return data;
 }
 
 /**
@@ -60,6 +74,20 @@ export async function logout() {
 export async function fetchProfile() {
   const res = await fetch(`${API_BASE}/auth/me`, { credentials: 'include' });
   if (!res.ok) throw new Error('Not authenticated');
-  return res.json();
+  const data = await res.json();
+  if (data?.session) {
+    try {
+      const stored = JSON.parse(localStorage.getItem('erp_session_ids') || '{}');
+      if (data.session.senior_empid) {
+        stored.senior_empid = data.session.senior_empid;
+      } else {
+        delete stored.senior_empid;
+      }
+      localStorage.setItem('erp_session_ids', JSON.stringify(stored));
+    } catch {
+      /* ignore storage errors */
+    }
+  }
+  return data;
 }
 
