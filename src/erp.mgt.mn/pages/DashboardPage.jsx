@@ -8,15 +8,10 @@ export default function DashboardPage() {
   const { user, session } = useContext(AuthContext);
   const { hasNew, markSeen } = usePendingRequests();
   const [active, setActive] = useState('general');
-  const seniorEmpId =
-    session && user?.empid && !(Number(session.senior_empid) > 0)
-      ? user.empid
-      : null;
-  const isSenior = Boolean(seniorEmpId);
 
   useEffect(() => {
-    if (isSenior && active === 'audition') markSeen();
-  }, [active, markSeen, isSenior]);
+    if (active === 'audition') markSeen();
+  }, [active, markSeen]);
 
   const badgeStyle = {
     background: 'red',
@@ -59,7 +54,7 @@ export default function DashboardPage() {
       <div style={{ display: 'flex', borderBottom: '1px solid #ddd', marginBottom: '1rem' }}>
         {tabButton('general', 'General')}
         {tabButton('activity', 'Activity')}
-        {tabButton('audition', 'Audition', isSenior && hasNew)}
+        {tabButton('audition', 'Audition', hasNew)}
         {tabButton('plans', 'Plans')}
       </div>
 
@@ -94,11 +89,9 @@ export default function DashboardPage() {
 
       {active === 'audition' && (
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-          {isSenior && (
-            <div style={{ ...cardStyle, flex: '1 1 300px' }}>
-              <PendingRequestWidget />
-            </div>
-          )}
+          <div style={{ ...cardStyle, flex: '1 1 300px' }}>
+            <PendingRequestWidget />
+          </div>
           <div style={{ ...cardStyle, flex: '1 1 300px' }}>
             <OutgoingRequestWidget />
           </div>
