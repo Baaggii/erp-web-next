@@ -51,13 +51,8 @@ function CustomDatePicker(props) {
 }
 
 export default function RequestsPage() {
-  const { user, session } = useAuth();
+  const { user } = useAuth();
   const { markSeen } = usePendingRequests();
-  const seniorEmpId =
-    session && user?.empid && !(Number(session.senior_empid) > 0)
-      ? user.empid
-      : null;
-  const isSenior = Boolean(seniorEmpId);
 
   // Always default to the user's own outgoing requests. Seniors can
   // still switch to the incoming tab manually.
@@ -200,10 +195,6 @@ export default function RequestsPage() {
 
   useEffect(() => {
     if (activeTab !== 'incoming') return;
-    if (!isSenior) {
-      setIncomingLoading(false);
-      return;
-    }
     markSeen();
     async function load() {
       debugLog('Loading pending requests');
@@ -211,7 +202,7 @@ export default function RequestsPage() {
       setIncomingError(null);
       try {
         const params = new URLSearchParams({
-          senior_empid: seniorEmpId,
+          senior_empid: user.empid,
         });
         if (status) params.append('status', status);
         if (requestedEmpid) params.append('requested_empid', requestedEmpid);
@@ -237,9 +228,8 @@ export default function RequestsPage() {
     load();
   }, [
     activeTab,
-    isSenior,
     markSeen,
-    seniorEmpId,
+    user?.empid,
     status,
     requestedEmpid,
     tableName,
@@ -427,9 +417,6 @@ export default function RequestsPage() {
         </label>
         <button type="submit">Apply</button>
       </form>
-      {activeTab === 'incoming' && !isSenior && (
-        <p>Pending requests are only available for senior users.</p>
-      )}
       {loading && <p>Loading...</p>}
       {error && <p style={{ color: 'red' }}>{error}</p>}
       {requests.map((req) => {
