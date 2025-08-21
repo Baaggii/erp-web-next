@@ -94,10 +94,18 @@ export default function useRequestNotificationCounts(
               else if (Array.isArray(data)) c = data.length;
               else c = Number(data?.count) || 0;
             }
-            const seen = Number(
-              localStorage.getItem(`outgoing-${status}-seen`) || 0,
-            );
-            newOutgoing[status] = { count: c, hasNew: c > seen };
+            const seenKey = `outgoing-${status}-seen`;
+            const seen =
+              status === 'pending'
+                ? c
+                : Number(localStorage.getItem(seenKey) || 0);
+            if (status === 'pending') {
+              // Requesters shouldn't get "new" badges for their own submissions
+              localStorage.setItem(seenKey, String(c));
+              newOutgoing[status] = { count: c, hasNew: false };
+            } else {
+              newOutgoing[status] = { count: c, hasNew: c > seen };
+            }
           } catch {
             newOutgoing[status] = { count: 0, hasNew: false };
           }
@@ -120,7 +128,7 @@ export default function useRequestNotificationCounts(
 
   const hasNew =
     STATUSES.some((s) => incoming[s].hasNew) ||
-    STATUSES.some((s) => outgoing[s].hasNew);
+    ['accepted', 'declined'].some((s) => outgoing[s].hasNew);
 
   return { incoming, outgoing, hasNew, markSeen };
 }
