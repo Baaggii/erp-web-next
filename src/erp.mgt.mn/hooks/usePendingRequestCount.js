@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 
 /**
- * Polls the pending request endpoint for a supervisor and returns the count.
- * @param {string|number} seniorEmpId Employee ID of the supervisor
+ * Polls the pending request endpoint for an employee and returns the count.
+ * Always hits the server using the provided empId.
+ * @param {string|number} empId Employee ID to check for incoming requests
  * @param {object} [filters] Optional filters (requested_empid, table_name, date_from, date_to)
  * @param {number} [interval=30000] Polling interval in milliseconds
  * @returns {{count:number, hasNew:boolean, markSeen:()=>void}}
  */
 export default function usePendingRequestCount(
-  seniorEmpId,
+  empId,
   filters = {},
   interval = 30000,
 ) {
@@ -26,15 +27,13 @@ export default function usePendingRequestCount(
   };
 
   useEffect(() => {
-    if (!seniorEmpId) {
-      setCount(0);
-      return undefined;
+    const params = new URLSearchParams({ status: 'pending' });
+    if (empId !== undefined && empId !== null && empId !== '') {
+      // Include both senior and requested empid so non-senior users
+      // receive their incoming request counts as well
+      params.append('senior_empid', String(empId));
+      params.append('requested_empid', String(empId));
     }
-
-    const params = new URLSearchParams({
-      status: 'pending',
-      senior_empid: String(seniorEmpId),
-    });
     Object.entries(filters).forEach(([k, v]) => {
       if (v !== undefined && v !== null && v !== '') {
         params.append(k, v);
@@ -92,7 +91,7 @@ export default function usePendingRequestCount(
       window.removeEventListener('pending-request-seen', handleSeen);
       window.removeEventListener('pending-request-new', handleNew);
     };
-  }, [seniorEmpId, interval, filters]);
+  }, [empId, interval, filters]);
 
   return { count, hasNew, markSeen };
 }
