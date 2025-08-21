@@ -84,7 +84,11 @@ export default function ERPLayout() {
   const { tabs, activeKey, openTab, closeTab, switchTab, setTabContent, cache } = useTabs();
   const txnModules = useTxnModules();
 
-  const seniorEmpId = Number(session?.senior_empid) > 0 ? null : user?.empid;
+  const seniorEmpId =
+    session && user?.empid && !(Number(session.senior_empid) > 0)
+      ? user.empid
+      : null;
+  const isSenior = Boolean(seniorEmpId);
   const {
     count: pendingCount,
     hasNew: pendingHasNew,
@@ -116,10 +120,12 @@ export default function ERPLayout() {
     navigate('/');
   }
 
+  const pendingContextValue = isSenior
+    ? { count: pendingCount, hasNew: pendingHasNew, markSeen: markPendingSeen }
+    : { count: 0, hasNew: false, markSeen: () => {} };
+
   return (
-    <PendingRequestContext.Provider
-      value={{ count: pendingCount, hasNew: pendingHasNew, markSeen: markPendingSeen }}
-    >
+    <PendingRequestContext.Provider value={pendingContextValue}>
       <div style={styles.container}>
         <Header
           user={user}
@@ -150,7 +156,7 @@ export default function ERPLayout() {
 }
 
 /** Top header bar **/
-function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, onOpen, pendingCount }) {
+function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, onOpen }) {
   const { session } = useContext(AuthContext);
 
   return (
@@ -177,7 +183,7 @@ function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, onOpen, pen
         <button style={styles.iconBtn}>🗗 Цонхнууд</button>
         <button style={styles.iconBtn}>❔ Тусламж</button>
       </nav>
-      <HeaderMenu onOpen={onOpen} pendingCount={pendingCount} />
+      <HeaderMenu onOpen={onOpen} />
       {session && (
         <span style={styles.locationInfo}>
           🏢 {session.company_name}
