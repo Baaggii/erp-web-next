@@ -53,9 +53,21 @@ function CustomDatePicker(props) {
 export default function RequestsPage() {
   const { user, session } = useAuth();
   const { markSeen } = usePendingRequests();
-  const [requests, setRequests] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const seniorEmpId =
+    session && user?.empid && !(Number(session.senior_empid) > 0)
+      ? user.empid
+      : null;
+  const isSenior = Boolean(seniorEmpId);
+
+  const [activeTab, setActiveTab] = useState(
+    isSenior ? 'incoming' : 'outgoing',
+  );
+  const [incomingRequests, setIncomingRequests] = useState([]);
+  const [outgoingRequests, setOutgoingRequests] = useState([]);
+  const [incomingLoading, setIncomingLoading] = useState(true);
+  const [outgoingLoading, setOutgoingLoading] = useState(false);
+  const [incomingError, setIncomingError] = useState(null);
+  const [outgoingError, setOutgoingError] = useState(null);
 
   // filters
   const [requestedEmpid, setRequestedEmpid] = useState('');
@@ -63,15 +75,22 @@ export default function RequestsPage() {
   const [status, setStatus] = useState('pending');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [reloadKey, setReloadKey] = useState(0);
+  const [incomingReloadKey, setIncomingReloadKey] = useState(0);
+  const [outgoingReloadKey, setOutgoingReloadKey] = useState(0);
 
   const configCache = useRef({});
 
+  const requests =
+    activeTab === 'incoming' ? incomingRequests : outgoingRequests;
+  const loading =
+    activeTab === 'incoming' ? incomingLoading : outgoingLoading;
+  const error = activeTab === 'incoming' ? incomingError : outgoingError;
+
   const requesterOptions = useMemo(() => {
     const set = new Set();
-    requests.forEach((r) => set.add(String(r.emp_id).trim()));
+    incomingRequests.forEach((r) => set.add(String(r.emp_id).trim()));
     return Array.from(set);
-  }, [requests]);
+  }, [incomingRequests]);
 
   const tableOptions = useMemo(() => {
     const set = new Set();
@@ -86,23 +105,110 @@ export default function RequestsPage() {
   }, [requests]);
 
   const headerMap = useHeaderMappings(allFields);
+  async function enrichRequests(data) {
+    return Promise.all(
+      data.map(async (req) => {
+        let original = null;
+        try {
+          const res2 = await fetch(
+            `${API_BASE}/tables/${req.table_name}/${req.record_id}`,
+            { credentials: 'include' },
+          );
+          if (
+            res2.ok &&
+            res2.headers.get('content-type')?.includes('application/json')
+          ) {
+            original = await res2.json();
+          } else {
+            const res3 = await fetch(
+              `${API_BASE}/tables/${req.table_name}?id=${encodeURIComponent(
+                req.record_id,
+              )}&perPage=1`,
+              { credentials: 'include' },
+            );
+            if (
+              res3.ok &&
+              res3.headers.get('content-type')?.includes('application/json')
+            ) {
+              const json = await res3.json();
+              original = json.rows?.[0] || null;
+            }
+          }
+        } catch (err) {
+          debugLog('Failed to fetch original record', err);
+        }
 
-  const seniorEmpId =
-    session && user?.empid && !(Number(session.senior_empid) > 0)
-      ? user.empid
-      : null;
-  const isSenior = Boolean(seniorEmpId);
+        let cfg = configCache.current[req.table_name];
+        if (!cfg) {
+          try {
+            const cfgRes = await fetch(
+              `${API_BASE}/display_fields?table=${req.table_name}`,
+              { credentials: 'include' },
+            );
+            if (cfgRes.ok) cfg = await cfgRes.json();
+          } catch {
+            cfg = null;
+          }
+          configCache.current[req.table_name] = cfg || {
+            displayFields: [],
+          };
+        }
+        cfg = cfg || { displayFields: [] };
+        const visible = cfg.displayFields?.length
+          ? cfg.displayFields
+          : Array.from(
+              new Set([
+                ...Object.keys(original || {}),
+                ...Object.keys(req.proposed_data || {}),
+              ]),
+            );
+
+        const fields = visible
+          .map((name) => {
+            const before = original ? original[name] : undefined;
+            const after = req.proposed_data ? req.proposed_data[name] : undefined;
+            const isComplex =
+              (before && typeof before === 'object') ||
+              (after && typeof after === 'object');
+            let changed = false;
+            if (isComplex) {
+              changed = !!diff(before, after);
+            } else {
+              changed = JSON.stringify(before) !== JSON.stringify(after);
+            }
+            return { name, before, after, changed, isComplex };
+          })
+          .filter((f) => {
+            const emptyBefore =
+              f.before === undefined || f.before === null || f.before === '';
+            const emptyAfter =
+              f.after === undefined || f.after === null || f.after === '';
+            return !(emptyBefore && emptyAfter);
+          });
+
+        return {
+          ...req,
+          original,
+          fields,
+          notes: '',
+          response_status: null,
+          error: null,
+        };
+      }),
+    );
+  }
 
   useEffect(() => {
+    if (activeTab !== 'incoming') return;
     if (!isSenior) {
-      setLoading(false);
+      setIncomingLoading(false);
       return;
     }
     markSeen();
     async function load() {
       debugLog('Loading pending requests');
-      setLoading(true);
-      setError(null);
+      setIncomingLoading(true);
+      setIncomingError(null);
       try {
         const params = new URLSearchParams({
           senior_empid: seniorEmpId,
@@ -118,119 +224,77 @@ export default function RequestsPage() {
         );
         if (!res.ok) throw new Error('Failed to load requests');
         const data = await res.json();
-
-        const enriched = await Promise.all(
-          data.map(async (req) => {
-            let original = null;
-            try {
-              const res2 = await fetch(
-                `${API_BASE}/tables/${req.table_name}/${req.record_id}`,
-                { credentials: 'include' },
-              );
-              if (
-                res2.ok &&
-                res2.headers
-                  .get('content-type')
-                  ?.includes('application/json')
-              ) {
-                original = await res2.json();
-              } else {
-                const res3 = await fetch(
-                  `${API_BASE}/tables/${req.table_name}?id=${encodeURIComponent(
-                    req.record_id,
-                  )}&perPage=1`,
-                  { credentials: 'include' },
-                );
-                if (
-                  res3.ok &&
-                  res3.headers
-                    .get('content-type')
-                    ?.includes('application/json')
-                ) {
-                  const json = await res3.json();
-                  original = json.rows?.[0] || null;
-                }
-              }
-            } catch (err) {
-              debugLog('Failed to fetch original record', err);
-            }
-
-            let cfg = configCache.current[req.table_name];
-            if (!cfg) {
-              try {
-                const cfgRes = await fetch(
-                  `${API_BASE}/display_fields?table=${req.table_name}`,
-                  { credentials: 'include' },
-                );
-                if (cfgRes.ok) cfg = await cfgRes.json();
-              } catch {
-                cfg = null;
-              }
-              configCache.current[req.table_name] = cfg || {
-                displayFields: [],
-              };
-            }
-            cfg = cfg || { displayFields: [] };
-            const visible = cfg.displayFields?.length
-              ? cfg.displayFields
-              : Array.from(
-                  new Set([
-                    ...Object.keys(original || {}),
-                    ...Object.keys(req.proposed_data || {}),
-                  ]),
-                );
-
-            const fields = visible
-              .map((name) => {
-                const before = original ? original[name] : undefined;
-                const after = req.proposed_data ? req.proposed_data[name] : undefined;
-                const isComplex =
-                  (before && typeof before === 'object') ||
-                  (after && typeof after === 'object');
-                let changed = false;
-                if (isComplex) {
-                  changed = !!diff(before, after);
-                } else {
-                  changed = JSON.stringify(before) !== JSON.stringify(after);
-                }
-                return { name, before, after, changed, isComplex };
-              })
-              .filter((f) => {
-                const emptyBefore = f.before === undefined || f.before === null || f.before === '';
-                const emptyAfter = f.after === undefined || f.after === null || f.after === '';
-                return !(emptyBefore && emptyAfter);
-              });
-
-            return {
-              ...req,
-              original,
-              fields,
-              notes: '',
-              response_status: null,
-              error: null,
-            };
-          }),
-        );
-        setRequests(enriched);
+        const enriched = await enrichRequests(data);
+        setIncomingRequests(enriched);
       } catch (err) {
         console.error(err);
-        setError('Failed to load requests');
+        setIncomingError('Failed to load requests');
       } finally {
-        setLoading(false);
+        setIncomingLoading(false);
       }
     }
 
     load();
-  }, [isSenior, markSeen, seniorEmpId, reloadKey, status, requestedEmpid, tableName, dateFrom, dateTo]);
+  }, [
+    activeTab,
+    isSenior,
+    markSeen,
+    seniorEmpId,
+    status,
+    requestedEmpid,
+    tableName,
+    dateFrom,
+    dateTo,
+    incomingReloadKey,
+  ]);
+
+  useEffect(() => {
+    if (activeTab !== 'outgoing') return;
+    async function load() {
+      setOutgoingLoading(true);
+      setOutgoingError(null);
+      try {
+        const params = new URLSearchParams({
+          requested_empid: user.empid,
+        });
+        if (status) params.append('status', status);
+        if (tableName) params.append('table_name', tableName);
+        if (dateFrom) params.append('date_from', dateFrom);
+        if (dateTo) params.append('date_to', dateTo);
+        const res = await fetch(
+          `${API_BASE}/pending_request?${params.toString()}`,
+          { credentials: 'include' },
+        );
+        if (!res.ok) throw new Error('Failed to load requests');
+        const data = await res.json();
+        const enriched = await enrichRequests(data);
+        setOutgoingRequests(enriched);
+      } catch (err) {
+        console.error(err);
+        setOutgoingError('Failed to load requests');
+      } finally {
+        setOutgoingLoading(false);
+      }
+    }
+    load();
+  }, [
+    activeTab,
+    user?.empid,
+    status,
+    tableName,
+    dateFrom,
+    dateTo,
+    outgoingReloadKey,
+  ]);
 
   const updateNotes = (id, value) => {
-    setRequests((reqs) =>
+    setIncomingRequests((reqs) =>
       reqs.map((r) => (r.request_id === id ? { ...r, notes: value } : r)),
     );
   };
 
   const respond = async (id, respStatus) => {
-    const reqItem = requests.find((r) => r.request_id === id);
+    const reqItem = incomingRequests.find((r) => r.request_id === id);
     try {
       const res = await fetch(`${API_BASE}/pending_request/${id}/respond`, {
         method: 'PUT',
@@ -247,7 +311,7 @@ export default function RequestsPage() {
         if (res.status === 403) throw new Error('Forbidden');
         throw new Error('Failed to respond');
       }
-      setRequests((reqs) =>
+      setIncomingRequests((reqs) =>
         reqs.map((r) =>
           r.request_id === id
             ? {
@@ -260,47 +324,65 @@ export default function RequestsPage() {
         ),
       );
     } catch (err) {
-      setRequests((reqs) =>
+      setIncomingRequests((reqs) =>
         reqs.map((r) =>
           r.request_id === id ? { ...r, error: err.message } : r,
         ),
       );
     }
   };
-
   if (!user?.empid) {
     return <p>Login required</p>;
-  }
-
-  if (!isSenior) {
-    return <p>Pending requests are only available for senior users.</p>;
   }
 
   return (
     <div>
       <h2>Requests</h2>
+      <div style={{ marginBottom: '1em' }}>
+        <button
+          onClick={() => setActiveTab('incoming')}
+          style={{
+            marginRight: '0.5em',
+            fontWeight: activeTab === 'incoming' ? 'bold' : 'normal',
+          }}
+        >
+          Incoming requests ({incomingRequests.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('outgoing')}
+          style={{ fontWeight: activeTab === 'outgoing' ? 'bold' : 'normal' }}
+        >
+          Outgoing requests ({outgoingRequests.length})
+        </button>
+      </div>
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          setReloadKey((k) => k + 1);
+          if (activeTab === 'incoming') {
+            setIncomingReloadKey((k) => k + 1);
+          } else {
+            setOutgoingReloadKey((k) => k + 1);
+          }
         }}
         style={{ marginBottom: '1em' }}
       >
-        <label style={{ marginRight: '0.5em' }}>
-          Requester:
-          <select
-            value={requestedEmpid}
-            onChange={(e) => setRequestedEmpid(e.target.value)}
-            style={{ marginLeft: '0.25em' }}
-          >
-            <option value="">Any</option>
-            {requesterOptions.map((id) => (
-              <option key={id} value={id}>
-                {id}
-              </option>
-            ))}
-          </select>
-        </label>
+        {activeTab === 'incoming' && (
+          <label style={{ marginRight: '0.5em' }}>
+            Requester:
+            <select
+              value={requestedEmpid}
+              onChange={(e) => setRequestedEmpid(e.target.value)}
+              style={{ marginLeft: '0.25em' }}
+            >
+              <option value="">Any</option>
+              {requesterOptions.map((id) => (
+                <option key={id} value={id}>
+                  {id}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label style={{ marginRight: '0.5em' }}>
           Transaction Type:
           <select
@@ -347,6 +429,9 @@ export default function RequestsPage() {
         </label>
         <button type="submit">Apply</button>
       </form>
+      {activeTab === 'incoming' && !isSenior && (
+        <p>Pending requests are only available for senior users.</p>
+      )}
       {loading && <p>Loading...</p>}
       {error && <p style={{ color: 'red' }}>{error}</p>}
       {requests.map((req) => {
