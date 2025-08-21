@@ -216,10 +216,12 @@ export async function respondRequest(
     );
     const req = rows[0];
     if (!req) throw new Error('Request not found');
-    if (
-      String(req.senior_empid).trim().toUpperCase() !==
-      String(responseEmpid).trim().toUpperCase()
-    )
+    const responder = String(responseEmpid).trim().toUpperCase();
+    const senior = req.senior_empid
+      ? String(req.senior_empid).trim().toUpperCase()
+      : null;
+    const requester = String(req.emp_id).trim().toUpperCase();
+    if (responder !== requester && responder !== senior)
       throw new Error('Forbidden');
 
     if (status === 'accepted') {

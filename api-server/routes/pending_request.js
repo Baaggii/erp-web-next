@@ -7,14 +7,12 @@ import {
   respondRequest,
   ALLOWED_REQUEST_TYPES,
 } from '../services/pendingRequest.js';
-import { getEmploymentSession, pool } from '../../db/index.js';
+
 
 const router = express.Router();
 
 router.post('/', requireAuth, async (req, res, next) => {
   try {
-    const session = await getEmploymentSession(req.user.empid, req.user.companyId);
-    if (!session?.permissions?.edit_delete_request) return res.sendStatus(403);
     const { table_name, record_id, request_type, proposed_data } = req.body;
     if (!table_name || !record_id || !request_type) {
       return res
@@ -43,14 +41,6 @@ router.post('/', requireAuth, async (req, res, next) => {
 
 router.get('/outgoing', requireAuth, async (req, res, next) => {
   try {
-    const session = await getEmploymentSession(
-      req.user.empid,
-      req.user.companyId,
-    );
-    if (!session?.permissions?.edit_delete_request) {
-      return res.sendStatus(403);
-    }
-
     const { status, table_name, date_from, date_to } = req.query;
     const requests = await listRequestsByEmp(req.user.empid, {
       status,
@@ -69,13 +59,6 @@ router.get('/', requireAuth, async (req, res, next) => {
     const { status, requested_empid, table_name, date_from, date_to } = req.query;
 
     const empid = String(req.user.empid).trim().toUpperCase();
-    const [rows] = await pool.query(
-      'SELECT 1 FROM tbl_employment WHERE UPPER(TRIM(employment_senior_empid)) = ? LIMIT 1',
-      [empid],
-    );
-    if (rows.length === 0) {
-      return res.sendStatus(403);
-    }
 
     const requests = await listRequests({
       status,
