@@ -14,7 +14,7 @@ import { useTabs } from "../context/TabContext.jsx";
 import { useIsLoading } from "../context/LoadingContext.jsx";
 import Spinner from "./Spinner.jsx";
 import useHeaderMappings from "../hooks/useHeaderMappings.js";
-import usePendingRequestCount from "../hooks/usePendingRequestCount.js";
+import useRequestNotificationCounts from "../hooks/useRequestNotificationCounts.js";
 import { PendingRequestContext } from "../context/PendingRequestContext.jsx";
 
 /**
@@ -88,12 +88,7 @@ export default function ERPLayout() {
     session && user?.empid && !(Number(session.senior_empid) > 0)
       ? user.empid
       : null;
-  const isSenior = Boolean(seniorEmpId);
-  const {
-    count: pendingCount,
-    hasNew: pendingHasNew,
-    markSeen: markPendingSeen,
-  } = usePendingRequestCount(seniorEmpId);
+  const requestNotifications = useRequestNotificationCounts(seniorEmpId);
 
   useEffect(() => {
     const title = titleForPath(location.pathname);
@@ -120,12 +115,8 @@ export default function ERPLayout() {
     navigate('/');
   }
 
-  const pendingContextValue = isSenior
-    ? { count: pendingCount, hasNew: pendingHasNew, markSeen: markPendingSeen }
-    : { count: 0, hasNew: false, markSeen: () => {} };
-
   return (
-    <PendingRequestContext.Provider value={pendingContextValue}>
+    <PendingRequestContext.Provider value={requestNotifications}>
       <div style={styles.container}>
         <Header
           user={user}
@@ -275,6 +266,15 @@ function Sidebar({ onOpen, open, isMobile }) {
     });
   }
 
+  const badgeKeys = new Set();
+  if (hasNew && allMap['requests']) {
+    let cur = allMap['requests'];
+    while (cur) {
+      badgeKeys.add(cur.module_key);
+      cur = cur.parent_key ? allMap[cur.parent_key] : null;
+    }
+  }
+
   return (
     <aside
       id="sidebar"
@@ -284,7 +284,15 @@ function Sidebar({ onOpen, open, isMobile }) {
       <nav className="menu-container">
         {roots.map((m) =>
           m.children.length > 0 ? (
-            <SidebarGroup key={m.module_key} mod={m} map={map} allMap={allMap} level={0} onOpen={onOpen} />
+            <SidebarGroup
+              key={m.module_key}
+              mod={m}
+              map={map}
+              allMap={allMap}
+              level={0}
+              onOpen={onOpen}
+              badgeKeys={badgeKeys}
+            />
           ) : (
             <button
               key={m.module_key}
@@ -292,9 +300,7 @@ function Sidebar({ onOpen, open, isMobile }) {
               className="menu-item"
               style={styles.menuItem({ isActive: location.pathname === modulePath(m, allMap) })}
             >
-              {m.module_key === 'dashboard' && hasNew && (
-                <span style={styles.badge} />
-              )}
+              {badgeKeys.has(m.module_key) && <span style={styles.badge} />}
               {m.label}
             </button>
           ),
@@ -304,20 +310,27 @@ function Sidebar({ onOpen, open, isMobile }) {
   );
 }
 
-function SidebarGroup({ mod, map, allMap, level, onOpen }) {
+function SidebarGroup({ mod, map, allMap, level, onOpen, badgeKeys }) {
   const [open, setOpen] = useState(false);
-  const { hasNew } = useContext(PendingRequestContext);
   const groupClass = level === 0 ? 'menu-group' : level === 1 ? 'menu-group submenu' : 'menu-group subsubmenu';
   return (
     <div className={groupClass} style={{ ...styles.menuGroup, paddingLeft: level ? '1rem' : 0 }}>
       <button className="menu-item" style={styles.groupBtn} onClick={() => setOpen((o) => !o)}>
-        {mod.module_key === 'dashboard' && hasNew && <span style={styles.badge} />}
+        {badgeKeys.has(mod.module_key) && <span style={styles.badge} />}
         {mod.label} {open ? '▾' : '▸'}
       </button>
       {open &&
         mod.children.map((c) =>
           c.children.length > 0 ? (
-            <SidebarGroup key={c.module_key} mod={c} map={map} allMap={allMap} level={level + 1} onOpen={onOpen} />
+            <SidebarGroup
+              key={c.module_key}
+              mod={c}
+              map={map}
+              allMap={allMap}
+              level={level + 1}
+              onOpen={onOpen}
+              badgeKeys={badgeKeys}
+            />
           ) : (
             <button
               key={c.module_key}
@@ -328,9 +341,7 @@ function SidebarGroup({ mod, map, allMap, level, onOpen }) {
               }}
               className="menu-item"
             >
-              {c.module_key === 'dashboard' && hasNew && (
-                <span style={styles.badge} />
-              )}
+              {badgeKeys.has(c.module_key) && <span style={styles.badge} />}
               {c.label}
             </button>
           ),
@@ -342,12 +353,13 @@ function SidebarGroup({ mod, map, allMap, level, onOpen }) {
 
 
 /** A faux “window” wrapper around the main content **/
-function MainWindow({ title, pendingCount }) {
+function MainWindow({ title }) {
   const location = useLocation();
   const outlet = useOutlet();
   const navigate = useNavigate();
   const { tabs, activeKey, switchTab, closeTab, setTabContent, cache } = useTabs();
   const { hasNew } = useContext(PendingRequestContext);
+  const badgePaths = hasNew ? new Set(['/', '/requests']) : new Set();
 
   // Store rendered outlet by path once the route changes. Avoid tracking
   // the `outlet` object itself to prevent endless updates caused by React
@@ -380,7 +392,7 @@ function MainWindow({ title, pendingCount }) {
             style={activeKey === t.key ? styles.activeTab : styles.tab}
             onClick={() => handleSwitch(t.key)}
           >
-            {t.key === '/' && hasNew && <span style={styles.badge} />}
+            {badgePaths.has(t.key) && <span style={styles.badge} />}
             <span>{t.label}</span>
             {tabs.length > 1 && t.key !== '/' && (
               <button

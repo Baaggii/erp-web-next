@@ -23,6 +23,15 @@ export default function HeaderMenu({ onOpen }) {
     moduleMap[m.module_key] = m;
   });
 
+  const badgeKeys = new Set();
+  if (hasNew && moduleMap['requests']) {
+    let cur = moduleMap['requests'];
+    while (cur) {
+      badgeKeys.add(cur.module_key);
+      cur = cur.parent_key ? moduleMap[cur.parent_key] : null;
+    }
+  }
+
   if (!perms) return null;
 
   return (
@@ -41,9 +50,7 @@ export default function HeaderMenu({ onOpen }) {
               onOpen(modulePath(m, moduleMap), label, m.module_key)
             }
           >
-            {m.module_key === 'dashboard' && hasNew && (
-              <span style={styles.badge} />
-            )}
+            {badgeKeys.has(m.module_key) && <span style={styles.badge} />}
             {label}
           </button>
         );

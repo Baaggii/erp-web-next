@@ -4,7 +4,8 @@ import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 
 export default function PendingRequestWidget() {
   const navigate = useNavigate();
-  const { count } = usePendingRequests();
+  const { incoming } = usePendingRequests();
+  const count = incoming.pending.count;
 
   const badgeStyle = {
     display: 'inline-block',
