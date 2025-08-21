@@ -51,7 +51,7 @@ function CustomDatePicker(props) {
 }
 
 export default function RequestsPage() {
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const { markSeen } = usePendingRequests();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -86,19 +86,26 @@ export default function RequestsPage() {
   }, [requests]);
 
   const headerMap = useHeaderMappings(allFields);
+
+  const seniorEmpId =
+    session && user?.empid && !(Number(session.senior_empid) > 0)
+      ? user.empid
+      : null;
+  const isSenior = Boolean(seniorEmpId);
+
   useEffect(() => {
+    if (!isSenior) {
+      setLoading(false);
+      return;
+    }
     markSeen();
     async function load() {
-      if (!user?.empid) {
-        setLoading(false);
-        return;
-      }
       debugLog('Loading pending requests');
       setLoading(true);
       setError(null);
       try {
         const params = new URLSearchParams({
-          senior_empid: user.empid,
+          senior_empid: seniorEmpId,
         });
         if (status) params.append('status', status);
         if (requestedEmpid) params.append('requested_empid', requestedEmpid);
@@ -214,7 +221,7 @@ export default function RequestsPage() {
     }
 
     load();
-  }, [user?.empid, reloadKey, status, requestedEmpid, tableName, dateFrom, dateTo]);
+  }, [isSenior, markSeen, seniorEmpId, reloadKey, status, requestedEmpid, tableName, dateFrom, dateTo]);
 
   const updateNotes = (id, value) => {
     setRequests((reqs) =>
@@ -263,6 +270,10 @@ export default function RequestsPage() {
 
   if (!user?.empid) {
     return <p>Login required</p>;
+  }
+
+  if (!isSenior) {
+    return <p>Pending requests are only available for senior users.</p>;
   }
 
   return (
