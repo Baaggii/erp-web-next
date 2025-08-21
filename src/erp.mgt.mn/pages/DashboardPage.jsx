@@ -1,6 +1,7 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import PendingRequestWidget from '../components/PendingRequestWidget.jsx';
+import OutgoingRequestWidget from '../components/OutgoingRequestWidget.jsx';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 
 export default function DashboardPage() {
@@ -14,7 +15,7 @@ export default function DashboardPage() {
   const isSenior = Boolean(seniorEmpId);
 
   useEffect(() => {
-    if (isSenior && active === 'activity') markSeen();
+    if (isSenior && active === 'audition') markSeen();
   }, [active, markSeen, isSenior]);
 
   const badgeStyle = {
@@ -57,7 +58,8 @@ export default function DashboardPage() {
     <div style={{ padding: '1rem' }}>
       <div style={{ display: 'flex', borderBottom: '1px solid #ddd', marginBottom: '1rem' }}>
         {tabButton('general', 'General')}
-        {tabButton('activity', 'Activity', isSenior && hasNew)}
+        {tabButton('activity', 'Activity')}
+        {tabButton('audition', 'Audition', isSenior && hasNew)}
         {tabButton('plans', 'Plans')}
       </div>
 
@@ -86,7 +88,20 @@ export default function DashboardPage() {
 
       {active === 'activity' && (
         <div>
-          {isSenior ? <PendingRequestWidget /> : <p>No activity to display.</p>}
+          <p>No activity to display.</p>
+        </div>
+      )}
+
+      {active === 'audition' && (
+        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+          {isSenior && (
+            <div style={{ ...cardStyle, flex: '1 1 300px' }}>
+              <PendingRequestWidget />
+            </div>
+          )}
+          <div style={{ ...cardStyle, flex: '1 1 300px' }}>
+            <OutgoingRequestWidget />
+          </div>
         </div>
       )}
 

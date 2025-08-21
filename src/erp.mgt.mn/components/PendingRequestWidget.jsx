@@ -29,17 +29,17 @@ export default function PendingRequestWidget() {
   return (
     <div>
       <h3>
-        Pending Requests
+        Incoming requests
         {count > 0 && <span style={badgeStyle}>{count}</span>}
       </h3>
       {count > 0 ? (
         <p>
-          {count} pending request{count === 1 ? '' : 's'}
+          {count} incoming request{count === 1 ? '' : 's'}
         </p>
       ) : (
-        <p>No pending requests</p>
+        <p>No incoming requests</p>
       )}
-      <button onClick={() => navigate('/requests')}>View Requests</button>
+      <button onClick={() => navigate('/requests')}>View requests</button>
     </div>
   );
 }
