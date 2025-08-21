@@ -9,13 +9,14 @@ import filterHeaderModules from '../utils/filterHeaderModules.js';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 
 export default function HeaderMenu({ onOpen }) {
-  const { permissions: perms } = useContext(AuthContext);
+  const { permissions: perms, session } = useContext(AuthContext);
   const modules = useModules();
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
   const items = filterHeaderModules(modules, perms, txnModules);
   const headerMap = useHeaderMappings(items.map((m) => m.module_key));
   const { hasNew } = usePendingRequests();
+  const isSenior = session ? !(Number(session.senior_empid) > 0) : false;
 
   // Build a quick lookup map so we can resolve module paths
   const moduleMap = {};
@@ -41,7 +42,7 @@ export default function HeaderMenu({ onOpen }) {
               onOpen(modulePath(m, moduleMap), label, m.module_key)
             }
           >
-            {m.module_key === 'dashboard' && hasNew && (
+            {m.module_key === 'dashboard' && isSenior && hasNew && (
               <span style={styles.badge} />
             )}
             {label}
