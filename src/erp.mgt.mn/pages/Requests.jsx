@@ -51,8 +51,14 @@ function CustomDatePicker(props) {
 }
 
 export default function RequestsPage() {
-  const { user } = useAuth();
-  const { markSeen } = usePendingRequests();
+  const { user, session } = useAuth();
+  const { incoming: incomingCounts, outgoing: outgoingCounts, markSeen } =
+    usePendingRequests();
+
+  const seniorEmpId =
+    session && user?.empid && !(Number(session.senior_empid) > 0)
+      ? user.empid
+      : null;
 
   // Always default to the user's own outgoing requests. Seniors can
   // still switch to the incoming tab manually.
@@ -194,7 +200,7 @@ export default function RequestsPage() {
   }
 
   useEffect(() => {
-    if (activeTab !== 'incoming') return;
+    if (activeTab !== 'incoming' || !seniorEmpId) return;
     markSeen();
     async function load() {
       debugLog('Loading pending requests');
@@ -202,7 +208,7 @@ export default function RequestsPage() {
       setIncomingError(null);
       try {
         const params = new URLSearchParams({
-          senior_empid: user.empid,
+          senior_empid: seniorEmpId,
         });
         if (status) params.append('status', status);
         if (requestedEmpid) params.append('requested_empid', requestedEmpid);
@@ -229,7 +235,7 @@ export default function RequestsPage() {
   }, [
     activeTab,
     markSeen,
-    user?.empid,
+    seniorEmpId,
     status,
     requestedEmpid,
     tableName,
@@ -334,13 +340,13 @@ export default function RequestsPage() {
             fontWeight: activeTab === 'incoming' ? 'bold' : 'normal',
           }}
         >
-          Incoming requests ({incomingRequests.length})
+          {`Incoming requests (${incomingCounts[status]?.count ?? 0})`}
         </button>
         <button
           onClick={() => setActiveTab('outgoing')}
           style={{ fontWeight: activeTab === 'outgoing' ? 'bold' : 'normal' }}
         >
-          Outgoing requests ({outgoingRequests.length})
+          {`Outgoing requests (${outgoingCounts[status]?.count ?? 0})`}
         </button>
       </div>
       <form

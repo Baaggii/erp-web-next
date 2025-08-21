@@ -1,52 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 
 export default function OutgoingRequestWidget() {
   const navigate = useNavigate();
-  const [counts, setCounts] = useState({ pending: 0, accepted: 0, declined: 0 });
-
-  useEffect(() => {
-    let cancelled = false;
-    const statuses = ['pending', 'accepted', 'declined'];
-
-    async function fetchCounts() {
-      try {
-        const results = await Promise.all(
-          statuses.map(async (status) => {
-            const params = new URLSearchParams({ status });
-            const res = await fetch(
-              `/api/pending_request/outgoing?${params.toString()}`,
-              {
-                credentials: 'include',
-                skipLoader: true,
-              },
-            );
-            if (!res.ok) return 0;
-            const data = await res.json().catch(() => 0);
-            if (typeof data === 'number') return data;
-            if (Array.isArray(data)) return data.length;
-            return Number(data?.count) || 0;
-          }),
-        );
-        if (!cancelled) {
-          setCounts({
-            pending: results[0],
-            accepted: results[1],
-            declined: results[2],
-          });
-        }
-      } catch {
-        if (!cancelled) {
-          setCounts({ pending: 0, accepted: 0, declined: 0 });
-        }
-      }
-    }
-
-    fetchCounts();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { outgoing } = usePendingRequests();
+  const counts = {
+    pending: outgoing.pending.count,
+    accepted: outgoing.accepted.count,
+    declined: outgoing.declined.count,
+  };
 
   return (
     <div>
