@@ -31,7 +31,9 @@ export default function PendingRequestWidget() {
       ) : (
         <p>No incoming requests</p>
       )}
-      <button onClick={() => navigate('/requests')}>View requests</button>
+      <button onClick={() => navigate('/requests?tab=incoming')}>
+        View requests
+      </button>
     </div>
   );
 }

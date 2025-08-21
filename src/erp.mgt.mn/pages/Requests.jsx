@@ -7,6 +7,7 @@ import { debugLog } from '../utils/debug.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import { translateToMn } from '../utils/translateToMn.js';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
+import { useSearchParams } from 'react-router-dom';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -60,9 +61,15 @@ export default function RequestsPage() {
       ? user.empid
       : null;
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab');
+  const initialStatus = searchParams.get('status');
+
   // Always default to the user's own outgoing requests. Seniors can
   // still switch to the incoming tab manually.
-  const [activeTab, setActiveTab] = useState('outgoing');
+  const [activeTab, setActiveTab] = useState(
+    initialTab === 'incoming' ? 'incoming' : 'outgoing',
+  );
   const [incomingRequests, setIncomingRequests] = useState([]);
   const [outgoingRequests, setOutgoingRequests] = useState([]);
   const [incomingLoading, setIncomingLoading] = useState(true);
@@ -73,7 +80,7 @@ export default function RequestsPage() {
   // filters
   const [requestedEmpid, setRequestedEmpid] = useState('');
   const [tableName, setTableName] = useState('');
-  const [status, setStatus] = useState('pending');
+  const [status, setStatus] = useState(initialStatus || 'pending');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [incomingReloadKey, setIncomingReloadKey] = useState(0);
@@ -106,6 +113,23 @@ export default function RequestsPage() {
   }, [requests]);
 
   const headerMap = useHeaderMappings(allFields);
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && tab !== activeTab) {
+      setActiveTab(tab === 'incoming' ? 'incoming' : 'outgoing');
+    }
+    const spStatus = searchParams.get('status');
+    if (spStatus && spStatus !== status) {
+      setStatus(spStatus);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    params.set('tab', activeTab);
+    params.set('status', status);
+    setSearchParams(params, { replace: true });
+  }, [activeTab, status, setSearchParams]);
   async function enrichRequests(data) {
     return Promise.all(
       data.map(async (req) => {
@@ -246,6 +270,7 @@ export default function RequestsPage() {
 
   useEffect(() => {
     if (activeTab !== 'outgoing') return;
+    markSeen();
     async function load() {
       setOutgoingLoading(true);
       setOutgoingError(null);
@@ -273,6 +298,7 @@ export default function RequestsPage() {
     load();
   }, [
     activeTab,
+    markSeen,
     user?.empid,
     status,
     tableName,
@@ -332,7 +358,14 @@ export default function RequestsPage() {
   return (
     <div>
       <h2>Requests</h2>
-      <div style={{ marginBottom: '1em' }}>
+      <div
+        style={{
+          marginBottom: '1em',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5em',
+        }}
+      >
         <button
           onClick={() => setActiveTab('incoming')}
           style={{
@@ -348,6 +381,16 @@ export default function RequestsPage() {
         >
           {`Outgoing requests (${outgoingCounts[status]?.count ?? 0})`}
         </button>
+        {activeTab === 'incoming' && (
+          <button onClick={() => setIncomingReloadKey((k) => k + 1)}>
+            Refresh
+          </button>
+        )}
+        {activeTab === 'outgoing' && (
+          <button onClick={() => setOutgoingReloadKey((k) => k + 1)}>
+            Refresh
+          </button>
+        )}
       </div>
       <form
         onSubmit={(e) => {
