@@ -43,6 +43,14 @@ router.post('/', requireAuth, async (req, res, next) => {
 
 router.get('/outgoing', requireAuth, async (req, res, next) => {
   try {
+    const session = await getEmploymentSession(
+      req.user.empid,
+      req.user.companyId,
+    );
+    if (!session?.permissions?.edit_delete_request) {
+      return res.sendStatus(403);
+    }
+
     const { status, table_name, date_from, date_to } = req.query;
     const requests = await listRequestsByEmp(req.user.empid, {
       status,

@@ -1,14 +1,11 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AuthContext } from '../context/AuthContext.jsx';
 
 export default function OutgoingRequestWidget() {
-  const { user } = useContext(AuthContext);
   const navigate = useNavigate();
   const [counts, setCounts] = useState({ pending: 0, accepted: 0, declined: 0 });
 
   useEffect(() => {
-    if (!user?.empid) return;
     let cancelled = false;
     const statuses = ['pending', 'accepted', 'declined'];
 
@@ -49,7 +46,7 @@ export default function OutgoingRequestWidget() {
     return () => {
       cancelled = true;
     };
-  }, [user?.empid]);
+  }, []);
 
   return (
     <div>
