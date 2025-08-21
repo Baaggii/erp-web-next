@@ -12,7 +12,7 @@ export default function PendingRequestWidget() {
       : null;
   const { count } = usePendingRequests();
 
-  if (!seniorEmpId) return null;
+  if (!isSenior || !seniorEmpId) return null;
 
   const badgeStyle = {
     display: 'inline-block',
