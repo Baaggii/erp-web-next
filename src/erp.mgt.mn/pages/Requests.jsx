@@ -59,9 +59,9 @@ export default function RequestsPage() {
       : null;
   const isSenior = Boolean(seniorEmpId);
 
-  const [activeTab, setActiveTab] = useState(
-    isSenior ? 'incoming' : 'outgoing',
-  );
+  // Always default to the user's own outgoing requests. Seniors can
+  // still switch to the incoming tab manually.
+  const [activeTab, setActiveTab] = useState('outgoing');
   const [incomingRequests, setIncomingRequests] = useState([]);
   const [outgoingRequests, setOutgoingRequests] = useState([]);
   const [incomingLoading, setIncomingLoading] = useState(true);
