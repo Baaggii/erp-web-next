@@ -16,7 +16,6 @@ import Spinner from "./Spinner.jsx";
 import useHeaderMappings from "../hooks/useHeaderMappings.js";
 import usePendingRequestCount from "../hooks/usePendingRequestCount.js";
 import { PendingRequestContext } from "../context/PendingRequestContext.jsx";
-import useOutgoingRequestCount from "../hooks/useOutgoingRequestCount.js";
 
 /**
  * A desktop‐style “ERPLayout” with:
@@ -91,18 +90,6 @@ export default function ERPLayout() {
     markSeen: markPendingSeen,
   } = usePendingRequestCount(user?.empid);
 
-  const {
-    counts: outgoingCounts,
-    hasNew: outgoingHasNewObj,
-    markSeen: markOutgoingSeen,
-  } = useOutgoingRequestCount();
-
-  const outgoingHasNew =
-    outgoingHasNewObj.pending ||
-    outgoingHasNewObj.accepted ||
-    outgoingHasNewObj.declined;
-  const combinedHasNew = pendingHasNew || outgoingHasNew;
-
   useEffect(() => {
     const title = titleForPath(location.pathname);
     openTab({ key: location.pathname, label: title });
@@ -130,19 +117,7 @@ export default function ERPLayout() {
 
   return (
     <PendingRequestContext.Provider
-      value={{
-        count: pendingCount,
-        hasNew: combinedHasNew,
-        markSeen: () => {
-          markPendingSeen();
-          markOutgoingSeen();
-        },
-        outgoing: {
-          counts: outgoingCounts,
-          hasNew: outgoingHasNew,
-          markSeen: markOutgoingSeen,
-        },
-      }}
+      value={{ count: pendingCount, hasNew: pendingHasNew, markSeen: markPendingSeen }}
     >
       <div style={styles.container}>
         <Header
