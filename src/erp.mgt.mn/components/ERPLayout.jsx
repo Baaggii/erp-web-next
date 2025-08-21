@@ -84,16 +84,11 @@ export default function ERPLayout() {
   const { tabs, activeKey, openTab, closeTab, switchTab, setTabContent, cache } = useTabs();
   const txnModules = useTxnModules();
 
-  const seniorEmpId =
-    session && user?.empid && !(Number(session.senior_empid) > 0)
-      ? user.empid
-      : null;
-  const isSenior = Boolean(seniorEmpId);
   const {
     count: pendingCount,
     hasNew: pendingHasNew,
     markSeen: markPendingSeen,
-  } = usePendingRequestCount(seniorEmpId);
+  } = usePendingRequestCount(user?.empid);
 
   useEffect(() => {
     const title = titleForPath(location.pathname);
@@ -120,12 +115,10 @@ export default function ERPLayout() {
     navigate('/');
   }
 
-  const pendingContextValue = isSenior
-    ? { count: pendingCount, hasNew: pendingHasNew, markSeen: markPendingSeen }
-    : { count: 0, hasNew: false, markSeen: () => {} };
-
   return (
-    <PendingRequestContext.Provider value={pendingContextValue}>
+    <PendingRequestContext.Provider
+      value={{ count: pendingCount, hasNew: pendingHasNew, markSeen: markPendingSeen }}
+    >
       <div style={styles.container}>
         <Header
           user={user}
