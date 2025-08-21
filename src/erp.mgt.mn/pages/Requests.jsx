@@ -254,15 +254,13 @@ export default function RequestsPage() {
       setOutgoingLoading(true);
       setOutgoingError(null);
       try {
-        const params = new URLSearchParams({
-          requested_empid: user.empid,
-        });
+        const params = new URLSearchParams();
         if (status) params.append('status', status);
         if (tableName) params.append('table_name', tableName);
         if (dateFrom) params.append('date_from', dateFrom);
         if (dateTo) params.append('date_to', dateTo);
         const res = await fetch(
-          `${API_BASE}/pending_request?${params.toString()}`,
+          `${API_BASE}/pending_request/outgoing?${params.toString()}`,
           { credentials: 'include' },
         );
         if (!res.ok) throw new Error('Failed to load requests');

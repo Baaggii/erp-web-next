@@ -3,6 +3,7 @@ import { requireAuth } from '../middlewares/auth.js';
 import {
   createRequest,
   listRequests,
+  listRequestsByEmp,
   respondRequest,
   ALLOWED_REQUEST_TYPES,
 } from '../services/pendingRequest.js';
@@ -36,6 +37,21 @@ router.post('/', requireAuth, async (req, res, next) => {
     if (err.status === 400 && err.message === 'invalid table_name') {
       return res.status(400).json({ message: 'invalid table_name' });
     }
+    next(err);
+  }
+});
+
+router.get('/outgoing', requireAuth, async (req, res, next) => {
+  try {
+    const { status, table_name, date_from, date_to } = req.query;
+    const requests = await listRequestsByEmp(req.user.empid, {
+      status,
+      table_name,
+      date_from,
+      date_to,
+    });
+    res.json(requests);
+  } catch (err) {
     next(err);
   }
 });

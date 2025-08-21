@@ -16,14 +16,14 @@ export default function OutgoingRequestWidget() {
       try {
         const results = await Promise.all(
           statuses.map(async (status) => {
-            const params = new URLSearchParams({
-              status,
-              requested_empid: user.empid,
-            });
-            const res = await fetch(`/api/pending_request?${params.toString()}`, {
-              credentials: 'include',
-              skipLoader: true,
-            });
+            const params = new URLSearchParams({ status });
+            const res = await fetch(
+              `/api/pending_request/outgoing?${params.toString()}`,
+              {
+                credentials: 'include',
+                skipLoader: true,
+              },
+            );
             if (!res.ok) return 0;
             const data = await res.json().catch(() => 0);
             if (typeof data === 'number') return data;
