@@ -77,3 +77,16 @@ await test('listRequests matches status case-insensitively', async () => {
   assert.ok(queries[0].sql.includes('LOWER(TRIM(status)) = ?'));
   assert.deepEqual(queries[0].params, ['pending']);
 });
+
+await test('listRequestsByEmp filters by requester', async () => {
+  const origQuery = db.pool.query;
+  const queries = [];
+  db.pool.query = async (sql, params) => {
+    queries.push({ sql, params });
+    return [[]];
+  };
+  await service.listRequestsByEmp(' e1 ', { status: 'pending' });
+  db.pool.query = origQuery;
+  assert.ok(queries[0].sql.includes('UPPER(TRIM(emp_id)) = ?'));
+  assert.deepEqual(queries[0].params, ['pending', 'E1']);
+});

@@ -188,6 +188,19 @@ export async function listRequests(filters) {
   return result;
 }
 
+export async function listRequestsByEmp(
+  emp_id,
+  { status, table_name, date_from, date_to } = {},
+) {
+  return listRequests({
+    requested_empid: emp_id,
+    status,
+    table_name,
+    date_from,
+    date_to,
+  });
+}
+
 export async function respondRequest(
   id,
   responseEmpid,
