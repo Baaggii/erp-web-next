@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 
 const STATUSES = ['pending', 'accepted', 'declined'];
 
@@ -18,14 +18,11 @@ export default function useRequestNotificationCounts(
   const [incoming, setIncoming] = useState(createInitial);
   const [outgoing, setOutgoing] = useState(createInitial);
 
-  const markSeen = () => {
+  const markSeen = useCallback(() => {
     setIncoming((prev) => {
       const next = { ...prev };
       STATUSES.forEach((s) => {
-        localStorage.setItem(
-          `incoming-${s}-seen`,
-          String(prev[s].count),
-        );
+        localStorage.setItem(`incoming-${s}-seen`, String(prev[s].count));
         next[s] = { ...prev[s], hasNew: false };
       });
       return next;
@@ -33,15 +30,12 @@ export default function useRequestNotificationCounts(
     setOutgoing((prev) => {
       const next = { ...prev };
       STATUSES.forEach((s) => {
-        localStorage.setItem(
-          `outgoing-${s}-seen`,
-          String(prev[s].count),
-        );
+        localStorage.setItem(`outgoing-${s}-seen`, String(prev[s].count));
         next[s] = { ...prev[s], hasNew: false };
       });
       return next;
     });
-  };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
