@@ -201,14 +201,6 @@ export async function listRequestsByEmp(
   });
 }
 
-export async function getRequestById(id) {
-  const [rows] = await pool.query(
-    'SELECT * FROM pending_request WHERE request_id = ?',
-    [id],
-  );
-  return rows[0] || null;
-}
-
 export async function respondRequest(
   id,
   responseEmpid,

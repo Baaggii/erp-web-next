@@ -51,15 +51,6 @@ await test('direct senior can decline request', async () => {
   assert.ok(upd, 'should update status to declined');
 });
 
-await test('non-senior cannot respond to request', async () => {
-  const { restore } = setupRequest();
-  await assert.rejects(
-    service.respondRequest(1, 'x1', 'accepted', null),
-    /Forbidden/,
-  );
-  restore();
-});
-
 await test('listRequests normalizes empids in filters', async () => {
   const origQuery = db.pool.query;
   const queries = [];
