@@ -10,9 +10,10 @@ export default function PendingRequestWidget() {
     session && user?.empid && !(Number(session.senior_empid) > 0)
       ? user.empid
       : null;
+  const isSenior = Boolean(seniorEmpId);
   const { count } = usePendingRequests();
 
-  if (!isSenior || !seniorEmpId) return null;
+  if (!isSenior) return null;
 
   const badgeStyle = {
     display: 'inline-block',
