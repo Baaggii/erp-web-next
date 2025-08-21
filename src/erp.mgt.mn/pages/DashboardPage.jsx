@@ -7,7 +7,7 @@ export default function DashboardPage() {
   const { user, session } = useContext(AuthContext);
   const { hasNew, markSeen } = usePendingRequests();
   const [active, setActive] = useState('general');
-  const isSenior = session ? !(Number(session.senior_empid) > 0) : false;
+  const isSenior = !(Number(session?.senior_empid) > 0);
 
   useEffect(() => {
     if (isSenior && active === 'activity') markSeen();

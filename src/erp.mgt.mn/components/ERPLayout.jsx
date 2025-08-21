@@ -84,8 +84,7 @@ export default function ERPLayout() {
   const { tabs, activeKey, openTab, closeTab, switchTab, setTabContent, cache } = useTabs();
   const txnModules = useTxnModules();
 
-  const seniorEmpId =
-    session && !(Number(session.senior_empid) > 0) ? user?.empid : null;
+  const seniorEmpId = Number(session?.senior_empid) > 0 ? null : user?.empid;
   const {
     count: pendingCount,
     hasNew: pendingHasNew,
