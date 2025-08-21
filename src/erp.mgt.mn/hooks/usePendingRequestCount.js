@@ -16,10 +16,12 @@ export default function usePendingRequestCount(
   const [seen, setSeen] = useState(() =>
     Number(localStorage.getItem('pendingSeen') || 0),
   );
+  const [hasNew, setHasNew] = useState(false);
 
   const markSeen = () => {
     localStorage.setItem('pendingSeen', String(count));
     setSeen(count);
+    setHasNew(false);
     window.dispatchEvent(new Event('pending-request-seen'));
   };
 
@@ -55,27 +57,43 @@ export default function usePendingRequestCount(
         if (typeof data === 'number') c = data;
         else if (Array.isArray(data)) c = data.length;
         else c = Number(data?.count) || 0;
-        if (!cancelled) setCount(c);
+        if (!cancelled) {
+          setCount(c);
+          const storedSeen = Number(localStorage.getItem('pendingSeen') || 0);
+          const newHasNew = c > storedSeen;
+          setHasNew(newHasNew);
+          if (newHasNew) window.dispatchEvent(new Event('pending-request-new'));
+        }
       } catch {
-        if (!cancelled) setCount(0);
+        if (!cancelled) {
+          setCount(0);
+          setHasNew(false);
+        }
       }
     }
 
     fetchCount();
     const timer = setInterval(fetchCount, interval);
     function handleSeen() {
-      setSeen(Number(localStorage.getItem('pendingSeen') || 0));
+      const s = Number(localStorage.getItem('pendingSeen') || 0);
+      setSeen(s);
+      setHasNew(count > s);
+    }
+    function handleNew() {
+      setHasNew(true);
     }
     window.addEventListener('pending-request-refresh', fetchCount);
     window.addEventListener('pending-request-seen', handleSeen);
+    window.addEventListener('pending-request-new', handleNew);
     return () => {
       cancelled = true;
       clearInterval(timer);
       window.removeEventListener('pending-request-refresh', fetchCount);
       window.removeEventListener('pending-request-seen', handleSeen);
+      window.removeEventListener('pending-request-new', handleNew);
     };
   }, [seniorEmpId, interval, filters]);
 
-  return { count, hasNew: count > seen, markSeen };
+  return { count, hasNew, markSeen };
 }
 
