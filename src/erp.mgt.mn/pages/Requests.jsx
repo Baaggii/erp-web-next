@@ -7,6 +7,7 @@ import { debugLog } from '../utils/debug.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import { translateToMn } from '../utils/translateToMn.js';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
+import useResponseNotifications from '../hooks/useResponseNotifications.js';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -54,6 +55,7 @@ export default function RequestsPage() {
   const { user, session } = useAuth();
   const { incoming: incomingCounts, outgoing: outgoingCounts, markSeen } =
     usePendingRequests();
+  const { markSeen: markResponsesSeen } = useResponseNotifications();
 
   const seniorEmpId =
     session && user?.empid && !(Number(session.senior_empid) > 0)
@@ -198,6 +200,11 @@ export default function RequestsPage() {
       }),
     );
   }
+
+  useEffect(() => {
+    markSeen();
+    markResponsesSeen();
+  }, [markSeen, markResponsesSeen]);
 
   useEffect(() => {
     if (activeTab !== 'incoming' || !seniorEmpId) return;
@@ -477,6 +484,23 @@ export default function RequestsPage() {
           >
             <h4>
               {req.table_name} #{req.record_id} ({req.request_type})
+              {requestStatus && (
+                <span
+                  style={{
+                    marginLeft: '0.5em',
+                    fontWeight: 'bold',
+                    color:
+                      requestStatus === 'accepted'
+                        ? 'green'
+                        : requestStatus === 'declined'
+                        ? 'red'
+                        : '#555',
+                  }}
+                >
+                  {requestStatus.charAt(0).toUpperCase() +
+                    requestStatus.slice(1)}
+                </span>
+              )}
             </h4>
             <table
               style={{ width: '100%', borderCollapse: 'collapse' }}
