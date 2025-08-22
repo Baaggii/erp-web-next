@@ -120,7 +120,7 @@ export default function useRequestNotificationCounts(
     }
 
     fetchCounts();
-    let timer;
+    let timer = null;
 
     function startPolling() {
       if (!timer) timer = setInterval(fetchCounts, interval);
@@ -130,7 +130,7 @@ export default function useRequestNotificationCounts(
     const handleConnect = () => {
       if (timer) {
         clearInterval(timer);
-        timer = undefined;
+        timer = null;
       }
     };
     try {
