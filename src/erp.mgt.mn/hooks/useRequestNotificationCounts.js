@@ -123,8 +123,12 @@ export default function useRequestNotificationCounts(
     let timer = null;
 
     function startPolling() {
-      if (!timer) timer = setInterval(fetchCounts, interval);
+      timer = setInterval(fetchCounts, interval);
     }
+
+    const restartPolling = () => {
+      if (!timer) startPolling();
+    };
 
     let socket;
     const handleConnect = () => {
@@ -137,10 +141,10 @@ export default function useRequestNotificationCounts(
       socket = connectSocket();
       socket.on('newRequest', fetchCounts);
       socket.on('connect', handleConnect);
-      socket.on('connect_error', startPolling);
-      socket.on('disconnect', startPolling);
+      socket.on('connect_error', restartPolling);
+      socket.on('disconnect', restartPolling);
     } catch {
-      startPolling();
+      restartPolling();
     }
 
     return () => {
@@ -148,8 +152,8 @@ export default function useRequestNotificationCounts(
       if (socket) {
         socket.off('newRequest', fetchCounts);
         socket.off('connect', handleConnect);
-        socket.off('connect_error', startPolling);
-        socket.off('disconnect', startPolling);
+        socket.off('connect_error', restartPolling);
+        socket.off('disconnect', restartPolling);
         disconnectSocket();
       }
       if (timer) clearInterval(timer);
