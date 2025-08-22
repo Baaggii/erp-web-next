@@ -30,6 +30,15 @@ router.post('/', requireAuth, async (req, res, next) => {
       requestType: request_type,
       proposedData: proposed_data,
     });
+    const io = req.app.get('io');
+    if (io && result.senior_empid) {
+      io.to(`user:${result.senior_empid}`).emit('newRequest', {
+        requestId: result.request_id,
+        tableName: table_name,
+        recordId: record_id,
+        requestType: request_type,
+      });
+    }
     res.status(201).json(result);
   } catch (err) {
     if (err.status === 400 && err.message === 'invalid table_name') {
