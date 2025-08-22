@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { connectSocket, disconnectSocket } from '../utils/socket.js';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 /**
  * Polls the pending request endpoint for a supervisor and returns the count.
@@ -18,6 +19,8 @@ export default function usePendingRequestCount(
     Number(localStorage.getItem('pendingSeen') || 0),
   );
   const [hasNew, setHasNew] = useState(false);
+  const cfg = useGeneralConfig();
+  const pollingEnabled = !!cfg?.general?.requestPollingEnabled;
 
   const markSeen = () => {
     localStorage.setItem('pendingSeen', String(count));
@@ -91,11 +94,13 @@ export default function usePendingRequestCount(
     try {
       socket = connectSocket();
       socket.on('newRequest', fetchCount);
-      socket.on('connect_error', startPolling);
-      socket.on('disconnect', startPolling);
-      socket.on('connect', stopPolling);
+      if (pollingEnabled) {
+        socket.on('connect_error', startPolling);
+        socket.on('disconnect', startPolling);
+        socket.on('connect', stopPolling);
+      }
     } catch {
-      startPolling();
+      if (pollingEnabled) startPolling();
     }
     function handleSeen() {
       const s = Number(localStorage.getItem('pendingSeen') || 0);
@@ -112,9 +117,11 @@ export default function usePendingRequestCount(
       cancelled = true;
       if (socket) {
         socket.off('newRequest', fetchCount);
-        socket.off('connect_error', startPolling);
-        socket.off('disconnect', startPolling);
-        socket.off('connect', stopPolling);
+        if (pollingEnabled) {
+          socket.off('connect_error', startPolling);
+          socket.off('disconnect', startPolling);
+          socket.off('connect', stopPolling);
+        }
         disconnectSocket();
       }
       stopPolling();
@@ -122,7 +129,7 @@ export default function usePendingRequestCount(
       window.removeEventListener('pending-request-seen', handleSeen);
       window.removeEventListener('pending-request-new', handleNew);
     };
-  }, [seniorEmpId, interval, filters]);
+  }, [seniorEmpId, interval, filters, pollingEnabled]);
 
   return { count, hasNew, markSeen };
 }

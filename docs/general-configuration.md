@@ -20,7 +20,8 @@
     "boxMaxHeight": 150
   },
   "general": {
-    "aiApiEnabled": false
+    "aiApiEnabled": false,
+    "requestPollingEnabled": false
   },
   "images": {
     "basePath": "uploads"
@@ -34,6 +35,10 @@ up to `boxMaxWidth`/`boxMaxHeight` as text is entered and wrap when necessary.
 
 The **POS** section provides the same options specifically for POS transactions.
 Here `boxWidth` defines the initial grid box width of a POS transaction.
+
+The **General** section hosts feature toggles. `requestPollingEnabled` controls
+whether the client falls back to periodic API polling when a Socket.IO
+connection cannot be established. It is disabled by default.
 
 The **Images** tab exposes `basePath`, `cleanupDays` and an `ignoreOnSearch` list.
 `basePath` sets the root directory for uploaded transaction images. The default

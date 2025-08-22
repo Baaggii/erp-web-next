@@ -343,6 +343,17 @@ export default function GeneralConfiguration() {
               />
             </label>
           </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <label>
+              Enable Request Polling{' '}
+              <input
+                name="requestPollingEnabled"
+                type="checkbox"
+                checked={active.requestPollingEnabled ?? false}
+                onChange={handleChange}
+              />
+            </label>
+          </div>
         </>
       )}
       <button onClick={handleSave} disabled={saving}>

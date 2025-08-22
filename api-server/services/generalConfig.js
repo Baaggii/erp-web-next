@@ -29,6 +29,7 @@ const defaults = {
     debugLoggingEnabled: false,
     editLabelsEnabled: false,
     showReportParams: false,
+    requestPollingEnabled: false,
     procLabels: {},
     procFieldLabels: {},
     reportProcPrefix: '',
