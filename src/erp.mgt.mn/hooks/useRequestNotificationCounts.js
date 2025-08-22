@@ -130,6 +130,12 @@ export default function useRequestNotificationCounts(
     try {
       socket = connectSocket();
       socket.on('newRequest', fetchCounts);
+      socket.on('connect', () => {
+        if (timer) {
+          clearInterval(timer);
+          timer = undefined;
+        }
+      });
       socket.on('connect_error', startPolling);
       socket.on('disconnect', startPolling);
     } catch {
