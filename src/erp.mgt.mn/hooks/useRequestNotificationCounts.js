@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { connectSocket, disconnectSocket } from '../utils/socket.js';
+import socket from '../utils/socket.js';
 
 const STATUSES = ['pending', 'accepted', 'declined'];
 
@@ -130,7 +130,7 @@ export default function useRequestNotificationCounts(
       if (!timer) startPolling();
     };
 
-    let socket;
+    let acquired = false;
     const handleConnect = () => {
       if (timer) {
         clearInterval(timer);
@@ -138,7 +138,8 @@ export default function useRequestNotificationCounts(
       }
     };
     try {
-      socket = connectSocket();
+      socket.acquire();
+      acquired = true;
       socket.on('newRequest', fetchCounts);
       socket.on('connect', handleConnect);
       socket.on('connect_error', restartPolling);
@@ -149,12 +150,12 @@ export default function useRequestNotificationCounts(
 
     return () => {
       cancelled = true;
-      if (socket) {
+      if (acquired) {
         socket.off('newRequest', fetchCounts);
         socket.off('connect', handleConnect);
         socket.off('connect_error', restartPolling);
         socket.off('disconnect', restartPolling);
-        disconnectSocket();
+        socket.release();
       }
       if (timer) clearInterval(timer);
     };
