@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
+import { connectSocket, disconnectSocket } from '../utils/socket.js';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 const STATUSES = ['pending', 'accepted', 'declined'];
 
@@ -17,6 +19,8 @@ export default function useRequestNotificationCounts(
 ) {
   const [incoming, setIncoming] = useState(createInitial);
   const [outgoing, setOutgoing] = useState(createInitial);
+  const cfg = useGeneralConfig();
+  const pollingEnabled = !!cfg?.general?.requestPollingEnabled;
 
   const markSeen = useCallback(() => {
     setIncoming((prev) => {
@@ -119,12 +123,46 @@ export default function useRequestNotificationCounts(
     }
 
     fetchCounts();
-    const timer = setInterval(fetchCounts, interval);
+    let timer;
+
+    function startPolling() {
+      if (!timer) timer = setInterval(fetchCounts, interval);
+    }
+
+    function stopPolling() {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    }
+
+    let socket;
+    try {
+      socket = connectSocket();
+      socket.on('newRequest', fetchCounts);
+      if (pollingEnabled) {
+        socket.on('connect_error', startPolling);
+        socket.on('disconnect', startPolling);
+        socket.on('connect', stopPolling);
+      }
+    } catch {
+      if (pollingEnabled) startPolling();
+    }
+
     return () => {
       cancelled = true;
-      clearInterval(timer);
+      if (socket) {
+        socket.off('newRequest', fetchCounts);
+        if (pollingEnabled) {
+          socket.off('connect_error', startPolling);
+          socket.off('disconnect', startPolling);
+          socket.off('connect', stopPolling);
+        }
+        disconnectSocket();
+      }
+      stopPolling();
     };
-  }, [seniorEmpId, interval, filters]);
+  }, [seniorEmpId, interval, filters, pollingEnabled]);
 
   const hasNew =
     STATUSES.some((s) => incoming[s].hasNew) ||

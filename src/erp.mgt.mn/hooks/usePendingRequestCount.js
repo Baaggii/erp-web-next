@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { connectSocket, disconnectSocket } from '../utils/socket.js';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 /**
  * Polls the pending request endpoint for a supervisor and returns the count.
@@ -17,6 +19,8 @@ export default function usePendingRequestCount(
     Number(localStorage.getItem('pendingSeen') || 0),
   );
   const [hasNew, setHasNew] = useState(false);
+  const cfg = useGeneralConfig();
+  const pollingEnabled = !!cfg?.general?.requestPollingEnabled;
 
   const markSeen = () => {
     localStorage.setItem('pendingSeen', String(count));
@@ -73,7 +77,31 @@ export default function usePendingRequestCount(
     }
 
     fetchCount();
-    const timer = setInterval(fetchCount, interval);
+    let timer;
+
+    function startPolling() {
+      if (!timer) timer = setInterval(fetchCount, interval);
+    }
+
+    function stopPolling() {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    }
+
+    let socket;
+    try {
+      socket = connectSocket();
+      socket.on('newRequest', fetchCount);
+      if (pollingEnabled) {
+        socket.on('connect_error', startPolling);
+        socket.on('disconnect', startPolling);
+        socket.on('connect', stopPolling);
+      }
+    } catch {
+      if (pollingEnabled) startPolling();
+    }
     function handleSeen() {
       const s = Number(localStorage.getItem('pendingSeen') || 0);
       setSeen(s);
@@ -87,12 +115,21 @@ export default function usePendingRequestCount(
     window.addEventListener('pending-request-new', handleNew);
     return () => {
       cancelled = true;
-      clearInterval(timer);
+      if (socket) {
+        socket.off('newRequest', fetchCount);
+        if (pollingEnabled) {
+          socket.off('connect_error', startPolling);
+          socket.off('disconnect', startPolling);
+          socket.off('connect', stopPolling);
+        }
+        disconnectSocket();
+      }
+      stopPolling();
       window.removeEventListener('pending-request-refresh', fetchCount);
       window.removeEventListener('pending-request-seen', handleSeen);
       window.removeEventListener('pending-request-new', handleNew);
     };
-  }, [seniorEmpId, interval, filters]);
+  }, [seniorEmpId, interval, filters, pollingEnabled]);
 
   return { count, hasNew, markSeen };
 }
