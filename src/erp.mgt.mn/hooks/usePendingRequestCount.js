@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { connectSocket, disconnectSocket } from '../utils/socket.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
@@ -10,10 +10,7 @@ const DEFAULT_POLL_INTERVAL_SECONDS = 30;
  * @param {object} [filters] Optional filters (requested_empid, table_name, date_from, date_to)
  * @returns {{count:number, hasNew:boolean, markSeen:()=>void}}
  */
-export default function usePendingRequestCount(
-  seniorEmpId,
-  filters = {},
-) {
+export default function usePendingRequestCount(seniorEmpId, filters) {
   const [count, setCount] = useState(0);
   const [seen, setSeen] = useState(() =>
     Number(localStorage.getItem('pendingSeen') || 0),
@@ -32,6 +29,8 @@ export default function usePendingRequestCount(
     window.dispatchEvent(new Event('pending-request-seen'));
   };
 
+  const memoFilters = useMemo(() => filters || {}, [filters]);
+
   useEffect(() => {
     if (!seniorEmpId) {
       setCount(0);
@@ -42,7 +41,7 @@ export default function usePendingRequestCount(
       status: 'pending',
       senior_empid: String(seniorEmpId),
     });
-    Object.entries(filters).forEach(([k, v]) => {
+    Object.entries(memoFilters).forEach(([k, v]) => {
       if (v !== undefined && v !== null && v !== '') {
         params.append(k, v);
       }
@@ -132,7 +131,7 @@ export default function usePendingRequestCount(
       window.removeEventListener('pending-request-seen', handleSeen);
       window.removeEventListener('pending-request-new', handleNew);
     };
-  }, [seniorEmpId, filters, pollingEnabled, intervalSeconds]);
+  }, [seniorEmpId, memoFilters, pollingEnabled, intervalSeconds]);
 
   return { count, hasNew, markSeen };
 }
