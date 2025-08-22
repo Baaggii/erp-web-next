@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { connectSocket, disconnectSocket } from '../utils/socket.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
+const DEFAULT_POLL_INTERVAL_SECONDS = 30;
 const STATUSES = ['pending', 'accepted', 'declined'];
 
 function createInitial() {
@@ -15,12 +16,14 @@ function createInitial() {
 export default function useRequestNotificationCounts(
   seniorEmpId,
   filters = {},
-  interval = 30000,
 ) {
   const [incoming, setIncoming] = useState(createInitial);
   const [outgoing, setOutgoing] = useState(createInitial);
   const cfg = useGeneralConfig();
   const pollingEnabled = !!cfg?.general?.requestPollingEnabled;
+  const intervalSeconds =
+    Number(cfg?.general?.requestPollingIntervalSeconds) ||
+    DEFAULT_POLL_INTERVAL_SECONDS;
 
   const markSeen = useCallback(() => {
     setIncoming((prev) => {
@@ -126,7 +129,7 @@ export default function useRequestNotificationCounts(
     let timer;
 
     function startPolling() {
-      if (!timer) timer = setInterval(fetchCounts, interval);
+      if (!timer) timer = setInterval(fetchCounts, intervalSeconds * 1000);
     }
 
     function stopPolling() {
@@ -162,7 +165,7 @@ export default function useRequestNotificationCounts(
       }
       stopPolling();
     };
-  }, [seniorEmpId, interval, filters, pollingEnabled]);
+  }, [seniorEmpId, filters, pollingEnabled, intervalSeconds]);
 
   const hasNew =
     STATUSES.some((s) => incoming[s].hasNew) ||

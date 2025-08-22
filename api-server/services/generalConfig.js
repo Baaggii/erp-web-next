@@ -30,6 +30,7 @@ const defaults = {
     editLabelsEnabled: false,
     showReportParams: false,
     requestPollingEnabled: false,
+    requestPollingIntervalSeconds: 30,
     procLabels: {},
     procFieldLabels: {},
     reportProcPrefix: '',

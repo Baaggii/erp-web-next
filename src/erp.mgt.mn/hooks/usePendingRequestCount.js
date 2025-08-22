@@ -2,17 +2,17 @@ import { useEffect, useState } from 'react';
 import { connectSocket, disconnectSocket } from '../utils/socket.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
+const DEFAULT_POLL_INTERVAL_SECONDS = 30;
+
 /**
  * Polls the pending request endpoint for a supervisor and returns the count.
  * @param {string|number} seniorEmpId Employee ID of the supervisor
  * @param {object} [filters] Optional filters (requested_empid, table_name, date_from, date_to)
- * @param {number} [interval=30000] Polling interval in milliseconds
  * @returns {{count:number, hasNew:boolean, markSeen:()=>void}}
  */
 export default function usePendingRequestCount(
   seniorEmpId,
   filters = {},
-  interval = 30000,
 ) {
   const [count, setCount] = useState(0);
   const [seen, setSeen] = useState(() =>
@@ -21,6 +21,9 @@ export default function usePendingRequestCount(
   const [hasNew, setHasNew] = useState(false);
   const cfg = useGeneralConfig();
   const pollingEnabled = !!cfg?.general?.requestPollingEnabled;
+  const intervalSeconds =
+    Number(cfg?.general?.requestPollingIntervalSeconds) ||
+    DEFAULT_POLL_INTERVAL_SECONDS;
 
   const markSeen = () => {
     localStorage.setItem('pendingSeen', String(count));
@@ -80,7 +83,7 @@ export default function usePendingRequestCount(
     let timer;
 
     function startPolling() {
-      if (!timer) timer = setInterval(fetchCount, interval);
+      if (!timer) timer = setInterval(fetchCount, intervalSeconds * 1000);
     }
 
     function stopPolling() {
@@ -129,7 +132,7 @@ export default function usePendingRequestCount(
       window.removeEventListener('pending-request-seen', handleSeen);
       window.removeEventListener('pending-request-new', handleNew);
     };
-  }, [seniorEmpId, interval, filters, pollingEnabled]);
+  }, [seniorEmpId, filters, pollingEnabled, intervalSeconds]);
 
   return { count, hasNew, markSeen };
 }

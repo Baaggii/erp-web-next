@@ -21,7 +21,8 @@
   },
   "general": {
     "aiApiEnabled": false,
-    "requestPollingEnabled": false
+    "requestPollingEnabled": false,
+    "requestPollingIntervalSeconds": 30
   },
   "images": {
     "basePath": "uploads"
@@ -38,7 +39,8 @@ Here `boxWidth` defines the initial grid box width of a POS transaction.
 
 The **General** section hosts feature toggles. `requestPollingEnabled` controls
 whether the client falls back to periodic API polling when a Socket.IO
-connection cannot be established. It is disabled by default.
+connection cannot be established. `requestPollingIntervalSeconds` sets the
+polling cadence (default 30&nbsp;seconds).
 
 The **Images** tab exposes `basePath`, `cleanupDays` and an `ignoreOnSearch` list.
 `basePath` sets the root directory for uploaded transaction images. The default

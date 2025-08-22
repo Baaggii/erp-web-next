@@ -15,8 +15,9 @@ receives the update.
 
 React hooks connect to the Socket.IO server on mount and listen for
 `newRequest` events. Counts and badges update immediately when events arrive.
-If the WebSocket connection cannot be established the hooks fall back to the
-previous polling behaviour.
+If the WebSocket connection cannot be established the hooks fall back to polling
+the API at the configured interval (`requestPollingIntervalSeconds`, default
+30&nbsp;seconds).
 
 Set the WebSocket endpoint with the `VITE_SOCKET_URL` environment variable. If
 undefined the client connects to the same origin as the page.
