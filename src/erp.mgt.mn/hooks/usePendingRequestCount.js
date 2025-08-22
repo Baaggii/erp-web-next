@@ -74,7 +74,7 @@ export default function usePendingRequestCount(
     }
 
     fetchCount();
-    let timer;
+    let timer = null;
 
     function startPolling() {
       if (!timer) timer = setInterval(fetchCount, interval);
@@ -84,7 +84,7 @@ export default function usePendingRequestCount(
     const handleConnect = () => {
       if (timer) {
         clearInterval(timer);
-        timer = undefined;
+        timer = null;
       }
     };
     try {
