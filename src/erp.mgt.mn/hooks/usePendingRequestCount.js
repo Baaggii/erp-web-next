@@ -77,8 +77,12 @@ export default function usePendingRequestCount(
     let timer = null;
 
     function startPolling() {
-      if (!timer) timer = setInterval(fetchCount, interval);
+      timer = setInterval(fetchCount, interval);
     }
+
+    const restartPolling = () => {
+      if (!timer) startPolling();
+    };
 
     let socket;
     const handleConnect = () => {
@@ -91,10 +95,10 @@ export default function usePendingRequestCount(
       socket = connectSocket();
       socket.on('newRequest', fetchCount);
       socket.on('connect', handleConnect);
-      socket.on('connect_error', startPolling);
-      socket.on('disconnect', startPolling);
+      socket.on('connect_error', restartPolling);
+      socket.on('disconnect', restartPolling);
     } catch {
-      startPolling();
+      restartPolling();
     }
     function handleSeen() {
       const s = Number(localStorage.getItem('pendingSeen') || 0);
@@ -112,8 +116,8 @@ export default function usePendingRequestCount(
       if (socket) {
         socket.off('newRequest', fetchCount);
         socket.off('connect', handleConnect);
-        socket.off('connect_error', startPolling);
-        socket.off('disconnect', startPolling);
+        socket.off('connect_error', restartPolling);
+        socket.off('disconnect', restartPolling);
         disconnectSocket();
       }
       if (timer) clearInterval(timer);
