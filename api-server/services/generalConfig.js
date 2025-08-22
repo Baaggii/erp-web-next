@@ -29,6 +29,8 @@ const defaults = {
     debugLoggingEnabled: false,
     editLabelsEnabled: false,
     showReportParams: false,
+    requestPollingEnabled: false,
+    requestPollingIntervalSeconds: 30,
     procLabels: {},
     procFieldLabels: {},
     reportProcPrefix: '',

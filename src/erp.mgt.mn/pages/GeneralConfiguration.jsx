@@ -343,6 +343,30 @@ export default function GeneralConfiguration() {
               />
             </label>
           </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <label>
+              Enable Request Polling{' '}
+              <input
+                name="requestPollingEnabled"
+                type="checkbox"
+                checked={active.requestPollingEnabled ?? false}
+                onChange={handleChange}
+              />
+            </label>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <label>
+              Request Polling Interval (seconds){' '}
+              <input
+                name="requestPollingIntervalSeconds"
+                type="number"
+                min={1}
+                value={active.requestPollingIntervalSeconds ?? 30}
+                onChange={handleChange}
+                style={{ width: '4rem' }}
+              />
+            </label>
+          </div>
         </>
       )}
       <button onClick={handleSave} disabled={saving}>
