@@ -2,8 +2,12 @@ import "dotenv/config";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import http from "http";
 import express from "express";
 import cookieParser from "cookie-parser";
+import { Server as SocketIOServer } from "socket.io";
+import * as jwtService from "./services/jwtService.js";
+import { getCookieName } from "./utils/cookieNames.js";
 import { testConnection } from "../db/index.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
 import { logger } from "./middlewares/logging.js";
@@ -54,6 +58,35 @@ app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 app.use(cookieParser());
 app.use(logger);
 app.use(activityLogger);
+
+// Create HTTP server and attach Socket.IO
+const server = http.createServer(app);
+const io = new SocketIOServer(server, {
+  cors: { origin: true, credentials: true },
+});
+
+// Authenticate sockets via JWT cookie and join per-user room
+io.use((socket, next) => {
+  try {
+    const raw = socket.request.headers.cookie || "";
+    const cookies = Object.fromEntries(
+      raw.split(";").map((c) => {
+        const [k, ...v] = c.trim().split("=");
+        return [k, decodeURIComponent(v.join("="))];
+      }),
+    );
+    const token = cookies[getCookieName()];
+    if (!token) return next(new Error("Authentication error"));
+    const user = jwtService.verify(token);
+    socket.user = user;
+    socket.join(`user:${user.empid}`);
+    return next();
+  } catch {
+    return next(new Error("Authentication error"));
+  }
+});
+
+app.set("io", io);
 
 // Serve uploaded images statically
 const imgCfg = await getGeneralConfig();
@@ -121,6 +154,6 @@ app.get("*", (req, res) => res.sendFile(path.join(buildDir, "index.html")));
 app.use(errorHandler);
 
 const port = process.env.PORT || 3002;
-app.listen(port, () =>
+server.listen(port, () =>
   console.log(`✅ ERP API & SPA listening on port ${port}`),
 );
