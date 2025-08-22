@@ -84,6 +84,12 @@ export default function usePendingRequestCount(
     try {
       socket = connectSocket();
       socket.on('newRequest', fetchCount);
+      socket.on('connect', () => {
+        if (timer) {
+          clearInterval(timer);
+          timer = undefined;
+        }
+      });
       socket.on('connect_error', startPolling);
       socket.on('disconnect', startPolling);
     } catch {
