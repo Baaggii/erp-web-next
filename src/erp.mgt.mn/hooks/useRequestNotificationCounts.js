@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { connectSocket, disconnectSocket } from '../utils/socket.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
@@ -13,10 +13,7 @@ function createInitial() {
   };
 }
 
-export default function useRequestNotificationCounts(
-  seniorEmpId,
-  filters = {},
-) {
+export default function useRequestNotificationCounts(seniorEmpId, filters) {
   const [incoming, setIncoming] = useState(createInitial);
   const [outgoing, setOutgoing] = useState(createInitial);
   const cfg = useGeneralConfig();
@@ -44,6 +41,8 @@ export default function useRequestNotificationCounts(
     });
   }, []);
 
+  const memoFilters = useMemo(() => filters || {}, [filters]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -60,7 +59,7 @@ export default function useRequestNotificationCounts(
                 status,
                 senior_empid: String(seniorEmpId),
               });
-              Object.entries(filters).forEach(([k, v]) => {
+              Object.entries(memoFilters).forEach(([k, v]) => {
                 if (v !== undefined && v !== null && v !== '') {
                   params.append(k, v);
                 }
@@ -165,7 +164,7 @@ export default function useRequestNotificationCounts(
       }
       stopPolling();
     };
-  }, [seniorEmpId, filters, pollingEnabled, intervalSeconds]);
+  }, [seniorEmpId, memoFilters, pollingEnabled, intervalSeconds]);
 
   const hasNew =
     STATUSES.some((s) => incoming[s].hasNew) ||
