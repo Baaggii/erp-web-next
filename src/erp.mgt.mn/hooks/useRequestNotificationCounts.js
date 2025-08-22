@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import socket from '../utils/socket.js';
+import { connectSocket, disconnectSocket } from '../utils/socket.js';
 
 const STATUSES = ['pending', 'accepted', 'declined'];
 
@@ -120,44 +120,40 @@ export default function useRequestNotificationCounts(
     }
 
     fetchCounts();
-    let timer = null;
+    let timer;
 
     function startPolling() {
-      timer = setInterval(fetchCounts, interval);
+      if (!timer) timer = setInterval(fetchCounts, interval);
     }
 
-    const restartPolling = () => {
-      if (!timer) startPolling();
-    };
-
-    let acquired = false;
-    const handleConnect = () => {
+    function stopPolling() {
       if (timer) {
         clearInterval(timer);
         timer = null;
       }
-    };
+    }
+
+    let socket;
     try {
-      socket.acquire();
-      acquired = true;
+      socket = connectSocket();
       socket.on('newRequest', fetchCounts);
-      socket.on('connect', handleConnect);
-      socket.on('connect_error', restartPolling);
-      socket.on('disconnect', restartPolling);
+      socket.on('connect_error', startPolling);
+      socket.on('disconnect', startPolling);
+      socket.on('connect', stopPolling);
     } catch {
-      restartPolling();
+      startPolling();
     }
 
     return () => {
       cancelled = true;
-      if (acquired) {
+      if (socket) {
         socket.off('newRequest', fetchCounts);
-        socket.off('connect', handleConnect);
-        socket.off('connect_error', restartPolling);
-        socket.off('disconnect', restartPolling);
-        socket.release();
+        socket.off('connect_error', startPolling);
+        socket.off('disconnect', startPolling);
+        socket.off('connect', stopPolling);
+        disconnectSocket();
       }
-      if (timer) clearInterval(timer);
+      stopPolling();
     };
   }, [seniorEmpId, interval, filters]);
 

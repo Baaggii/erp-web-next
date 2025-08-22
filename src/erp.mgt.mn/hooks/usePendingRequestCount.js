@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import socket from '../utils/socket.js';
+import { connectSocket, disconnectSocket } from '../utils/socket.js';
 
 /**
  * Polls the pending request endpoint for a supervisor and returns the count.
@@ -74,32 +74,28 @@ export default function usePendingRequestCount(
     }
 
     fetchCount();
-    let timer = null;
+    let timer;
 
     function startPolling() {
-      timer = setInterval(fetchCount, interval);
+      if (!timer) timer = setInterval(fetchCount, interval);
     }
 
-    const restartPolling = () => {
-      if (!timer) startPolling();
-    };
-
-    let acquired = false;
-    const handleConnect = () => {
+    function stopPolling() {
       if (timer) {
         clearInterval(timer);
         timer = null;
       }
-    };
+    }
+
+    let socket;
     try {
-      socket.acquire();
-      acquired = true;
+      socket = connectSocket();
       socket.on('newRequest', fetchCount);
-      socket.on('connect', handleConnect);
-      socket.on('connect_error', restartPolling);
-      socket.on('disconnect', restartPolling);
+      socket.on('connect_error', startPolling);
+      socket.on('disconnect', startPolling);
+      socket.on('connect', stopPolling);
     } catch {
-      restartPolling();
+      startPolling();
     }
     function handleSeen() {
       const s = Number(localStorage.getItem('pendingSeen') || 0);
@@ -114,14 +110,14 @@ export default function usePendingRequestCount(
     window.addEventListener('pending-request-new', handleNew);
     return () => {
       cancelled = true;
-      if (acquired) {
+      if (socket) {
         socket.off('newRequest', fetchCount);
-        socket.off('connect', handleConnect);
-        socket.off('connect_error', restartPolling);
-        socket.off('disconnect', restartPolling);
-        socket.release();
+        socket.off('connect_error', startPolling);
+        socket.off('disconnect', startPolling);
+        socket.off('connect', stopPolling);
+        disconnectSocket();
       }
-      if (timer) clearInterval(timer);
+      stopPolling();
       window.removeEventListener('pending-request-refresh', fetchCount);
       window.removeEventListener('pending-request-seen', handleSeen);
       window.removeEventListener('pending-request-new', handleNew);

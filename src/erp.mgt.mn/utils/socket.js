@@ -1,27 +1,22 @@
 import { io } from 'socket.io-client';
 
-/**
- * Shared socket.io instance with reference counting.
- * Hooks call {@link socket.acquire} and {@link socket.release}
- * to manage the underlying connection.
- */
-const url = import.meta.env.VITE_SOCKET_URL || '';
-const socket = io(url, { withCredentials: true, autoConnect: false });
+let socket;
+let refs = 0;
 
-let refCount = 0;
-
-socket.acquire = () => {
-  refCount += 1;
-  if (!socket.connected) socket.connect();
-  return socket;
-};
-
-socket.release = () => {
-  if (refCount > 0) {
-    refCount -= 1;
-    if (refCount === 0) socket.disconnect();
+export function connectSocket() {
+  if (!socket) {
+    const url = import.meta.env.VITE_SOCKET_URL || '';
+    socket = io(url, { withCredentials: true });
   }
-};
+  refs += 1;
+  return socket;
+}
 
-export default socket;
-
+export function disconnectSocket() {
+  refs -= 1;
+  if (refs <= 0 && socket) {
+    socket.disconnect();
+    socket = undefined;
+    refs = 0;
+  }
+}
