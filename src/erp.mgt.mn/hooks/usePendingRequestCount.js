@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { connectSocket } from '../utils/socket.js';
+import { connectSocket, disconnectSocket } from '../utils/socket.js';
 
 /**
  * Polls the pending request endpoint for a supervisor and returns the count.
@@ -81,15 +81,16 @@ export default function usePendingRequestCount(
     }
 
     let socket;
+    const handleConnect = () => {
+      if (timer) {
+        clearInterval(timer);
+        timer = undefined;
+      }
+    };
     try {
       socket = connectSocket();
       socket.on('newRequest', fetchCount);
-      socket.on('connect', () => {
-        if (timer) {
-          clearInterval(timer);
-          timer = undefined;
-        }
-      });
+      socket.on('connect', handleConnect);
       socket.on('connect_error', startPolling);
       socket.on('disconnect', startPolling);
     } catch {
@@ -108,7 +109,13 @@ export default function usePendingRequestCount(
     window.addEventListener('pending-request-new', handleNew);
     return () => {
       cancelled = true;
-      if (socket) socket.disconnect();
+      if (socket) {
+        socket.off('newRequest', fetchCount);
+        socket.off('connect', handleConnect);
+        socket.off('connect_error', startPolling);
+        socket.off('disconnect', startPolling);
+        disconnectSocket();
+      }
       if (timer) clearInterval(timer);
       window.removeEventListener('pending-request-refresh', fetchCount);
       window.removeEventListener('pending-request-seen', handleSeen);
