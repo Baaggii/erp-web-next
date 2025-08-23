@@ -51,6 +51,13 @@ await test('direct senior can decline request', async () => {
   assert.ok(upd, 'should update status to declined');
 });
 
+await test('respondRequest returns requester and status', async () => {
+  const { restore } = setupRequest();
+  const result = await service.respondRequest(1, 's1', 'accepted', null);
+  restore();
+  assert.deepEqual(result, { requester: 'E1', status: 'accepted' });
+});
+
 await test('listRequests normalizes empids in filters', async () => {
   const origQuery = db.pool.query;
   const queries = [];

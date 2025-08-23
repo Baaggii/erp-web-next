@@ -142,6 +142,7 @@ export default function useRequestNotificationCounts(seniorEmpId, filters) {
     try {
       socket = connectSocket();
       socket.on('newRequest', fetchCounts);
+      socket.on('requestResolved', fetchCounts);
       if (pollingEnabled) {
         socket.on('connect_error', startPolling);
         socket.on('disconnect', startPolling);
@@ -155,6 +156,7 @@ export default function useRequestNotificationCounts(seniorEmpId, filters) {
       cancelled = true;
       if (socket) {
         socket.off('newRequest', fetchCounts);
+        socket.off('requestResolved', fetchCounts);
         if (pollingEnabled) {
           socket.off('connect_error', startPolling);
           socket.off('disconnect', startPolling);
