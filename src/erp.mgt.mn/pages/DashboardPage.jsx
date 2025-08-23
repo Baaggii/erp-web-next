@@ -6,7 +6,7 @@ import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 
 export default function DashboardPage() {
   const { user, session } = useContext(AuthContext);
-  const { hasNew, markSeen } = usePendingRequests();
+  const { hasNew, markSeen, outgoing } = usePendingRequests();
   const [active, setActive] = useState('general');
 
   const prevTab = useRef('general');
@@ -21,7 +21,7 @@ export default function DashboardPage() {
     if (prevTab.current === 'audition') markSeen();
   }, [markSeen]);
 
-  const badgeStyle = {
+  const dotBadgeStyle = {
     background: 'red',
     borderRadius: '50%',
     width: '8px',
@@ -29,8 +29,17 @@ export default function DashboardPage() {
     display: 'inline-block',
     marginRight: '4px',
   };
+  const numBadgeStyle = {
+    display: 'inline-block',
+    background: 'red',
+    color: 'white',
+    borderRadius: '999px',
+    padding: '0 0.4rem',
+    fontSize: '0.75rem',
+    marginRight: '4px',
+  };
 
-  const tabButton = (key, label, showBadge = false) => (
+  const tabButton = (key, label, badgeCount = 0, showDot = false) => (
     <button
       key={key}
       onClick={() => setActive(key)}
@@ -44,7 +53,11 @@ export default function DashboardPage() {
         alignItems: 'center',
       }}
     >
-      {showBadge && <span style={badgeStyle} />}
+      {badgeCount > 0 ? (
+        <span style={numBadgeStyle}>{badgeCount}</span>
+      ) : (
+        showDot && <span style={dotBadgeStyle} />
+      )}
       {label}
     </button>
   );
@@ -62,7 +75,12 @@ export default function DashboardPage() {
       <div style={{ display: 'flex', borderBottom: '1px solid #ddd', marginBottom: '1rem' }}>
         {tabButton('general', 'General')}
         {tabButton('activity', 'Activity')}
-        {tabButton('audition', 'Audition', hasNew)}
+        {tabButton(
+          'audition',
+          'Audition',
+          outgoing.accepted.newCount + outgoing.declined.newCount,
+          hasNew,
+        )}
         {tabButton('plans', 'Plans')}
       </div>
 

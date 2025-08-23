@@ -30,7 +30,7 @@ export default function OutgoingRequestWidget() {
           <div style={{ fontSize: '0.9rem', color: '#555' }}>
             Accepted
             {outgoing.accepted.hasNew && (
-              <span style={badgeStyle}>{outgoing.accepted.count}</span>
+              <span style={badgeStyle}>{outgoing.accepted.newCount}</span>
             )}
           </div>
           <div style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>
@@ -41,7 +41,7 @@ export default function OutgoingRequestWidget() {
           <div style={{ fontSize: '0.9rem', color: '#555' }}>
             Declined
             {outgoing.declined.hasNew && (
-              <span style={badgeStyle}>{outgoing.declined.count}</span>
+              <span style={badgeStyle}>{outgoing.declined.newCount}</span>
             )}
           </div>
           <div style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>

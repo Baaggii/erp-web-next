@@ -7,9 +7,9 @@ const STATUSES = ['pending', 'accepted', 'declined'];
 
 function createInitial() {
   return {
-    pending: { count: 0, hasNew: false },
-    accepted: { count: 0, hasNew: false },
-    declined: { count: 0, hasNew: false },
+    pending: { count: 0, hasNew: false, newCount: 0 },
+    accepted: { count: 0, hasNew: false, newCount: 0 },
+    declined: { count: 0, hasNew: false, newCount: 0 },
   };
 }
 
@@ -27,7 +27,7 @@ export default function useRequestNotificationCounts(seniorEmpId, filters) {
       const next = { ...prev };
       STATUSES.forEach((s) => {
         localStorage.setItem(`incoming-${s}-seen`, String(prev[s].count));
-        next[s] = { ...prev[s], hasNew: false };
+        next[s] = { ...prev[s], hasNew: false, newCount: 0 };
       });
       return next;
     });
@@ -35,7 +35,7 @@ export default function useRequestNotificationCounts(seniorEmpId, filters) {
       const next = { ...prev };
       STATUSES.forEach((s) => {
         localStorage.setItem(`outgoing-${s}-seen`, String(prev[s].count));
-        next[s] = { ...prev[s], hasNew: false };
+        next[s] = { ...prev[s], hasNew: false, newCount: 0 };
       });
       return next;
     });
@@ -78,12 +78,17 @@ export default function useRequestNotificationCounts(seniorEmpId, filters) {
               const seen = Number(
                 localStorage.getItem(`incoming-${status}-seen`) || 0,
               );
-              newIncoming[status] = { count: c, hasNew: c > seen };
+              const delta = Math.max(0, c - seen);
+              newIncoming[status] = {
+                count: c,
+                hasNew: delta > 0,
+                newCount: delta,
+              };
             } catch {
-              newIncoming[status] = { count: 0, hasNew: false };
+              newIncoming[status] = { count: 0, hasNew: false, newCount: 0 };
             }
           } else {
-            newIncoming[status] = { count: 0, hasNew: false };
+            newIncoming[status] = { count: 0, hasNew: false, newCount: 0 };
           }
 
           // Outgoing requests (always for current user)
@@ -108,12 +113,17 @@ export default function useRequestNotificationCounts(seniorEmpId, filters) {
             if (status === 'pending') {
               // Requesters shouldn't get "new" badges for their own submissions
               localStorage.setItem(seenKey, String(c));
-              newOutgoing[status] = { count: c, hasNew: false };
+              newOutgoing[status] = { count: c, hasNew: false, newCount: 0 };
             } else {
-              newOutgoing[status] = { count: c, hasNew: c > seen };
+              const delta = Math.max(0, c - seen);
+              newOutgoing[status] = {
+                count: c,
+                hasNew: delta > 0,
+                newCount: delta,
+              };
             }
           } catch {
-            newOutgoing[status] = { count: 0, hasNew: false };
+            newOutgoing[status] = { count: 0, hasNew: false, newCount: 0 };
           }
         }),
       );
