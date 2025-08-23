@@ -1,18 +1,22 @@
-# File: public_html/erp/.htaccess
-
 <IfModule mod_rewrite.c>
-
   RewriteEngine On
-  RewriteBase /erp/
 
-  # 1) Proxy API calls
+  # 1) Proxy Socket.IO WebSocket upgrades
+  RewriteCond %{HTTP:Upgrade} websocket [NC]
+  RewriteCond %{HTTP:Connection} upgrade [NC]
+  RewriteRule ^/?socket\.io(/.*)?$ ws://127.0.0.1:3002/socket.io$1 [P,L]
+
+  # 2) Proxy Socket.IO long‑polling and other HTTP calls
+  RewriteRule ^/?socket\.io(/.*)?$ http://127.0.0.1:3002/socket.io$1 [P,L]
+
+  # 3) Proxy API calls to the backend
   RewriteRule ^api/(.*)$ http://127.0.0.1:3002/api/$1 [P,L]
 
-  # 2) If request maps to an actual file or directory, serve it directly
+  # 4) Serve files directly if they exist (for /assets, /favicon.ico, etc.)
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]
 
-  # 3) Otherwise, serve our SPA shell
-  RewriteRule . /erp/index.html [L]
+  # 5) Otherwise serve the SPA shell
+  RewriteRule . /index.html [L]
 </IfModule>
