@@ -21,11 +21,5 @@ If the WebSocket connection cannot be established the hooks fall back to polling
 the API at the configured interval (`requestPollingIntervalSeconds`, default
 30&nbsp;seconds).
 
-Each user’s last-seen request counts are stored server-side in a
-`request_seen_counts` table. When a requester logs out and back in, badges
-only appear for requests accepted or declined since their most recent visit.
-Clients flush their counts to the server via `POST /api/pending_request/seen`
-before logging out.
-
 Set the WebSocket endpoint with the `VITE_SOCKET_URL` environment variable. If
 undefined the client connects to the same origin as the page.

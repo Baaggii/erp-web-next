@@ -61,7 +61,6 @@ export async function login({ empid, password, companyId }) {
  * Calls logout endpoint to clear the JWT cookie.
  */
 export async function logout() {
-  window.dispatchEvent(new Event('notifications:flush'));
   await fetch(`${API_BASE}/auth/logout`, {
     method: 'POST',
     credentials: 'include',

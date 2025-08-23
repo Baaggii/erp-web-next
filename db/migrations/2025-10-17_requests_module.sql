@@ -1,6 +1,6 @@
 -- Add Requests module
 INSERT INTO modules (module_key, label, parent_key, show_in_sidebar, show_in_header)
-VALUES ('requests', 'Requests', NULL, 1, 1)
+VALUES ('requests', 'Requests', NULL, 0, 1)
 ON DUPLICATE KEY UPDATE
   label=VALUES(label),
   parent_key=VALUES(parent_key),
