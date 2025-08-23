@@ -5,6 +5,8 @@ import {
   listRequests,
   listRequestsByEmp,
   respondRequest,
+  getSeenCounts,
+  markSeenCounts,
   ALLOWED_REQUEST_TYPES,
 } from '../services/pendingRequest.js';
 
@@ -58,6 +60,24 @@ router.get('/outgoing', requireAuth, async (req, res, next) => {
       date_to,
     });
     res.json(requests);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/seen', requireAuth, async (req, res, next) => {
+  try {
+    const counts = await getSeenCounts(req.user.empid);
+    res.json(counts);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/seen', requireAuth, async (req, res, next) => {
+  try {
+    await markSeenCounts(req.user.empid, req.body);
+    res.sendStatus(204);
   } catch (err) {
     next(err);
   }

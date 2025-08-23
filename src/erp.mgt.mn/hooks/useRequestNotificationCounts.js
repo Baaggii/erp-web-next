@@ -13,20 +13,47 @@ function createInitial() {
   };
 }
 
+function createInitialSeen() {
+  return {
+    incoming: { pending: 0, accepted: 0, declined: 0 },
+    outgoing: { accepted: 0, declined: 0 },
+  };
+}
+
 export default function useRequestNotificationCounts(seniorEmpId, filters) {
   const [incoming, setIncoming] = useState(createInitial);
   const [outgoing, setOutgoing] = useState(createInitial);
+  const [seen, setSeen] = useState(createInitialSeen);
   const cfg = useGeneralConfig();
   const pollingEnabled = !!cfg?.general?.requestPollingEnabled;
   const intervalSeconds =
     Number(cfg?.general?.requestPollingIntervalSeconds) ||
     DEFAULT_POLL_INTERVAL_SECONDS;
 
-  const markSeen = useCallback(() => {
+  const markSeen = useCallback(async () => {
+    const payload = {
+      incoming: {
+        pending: incoming.pending.count,
+        accepted: incoming.accepted.count,
+        declined: incoming.declined.count,
+      },
+      outgoing: {
+        accepted: outgoing.accepted.count,
+        declined: outgoing.declined.count,
+      },
+    };
+    try {
+      await fetch('/api/pending_request/seen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+    } catch {}
+    setSeen(payload);
     setIncoming((prev) => {
       const next = { ...prev };
       STATUSES.forEach((s) => {
-        localStorage.setItem(`incoming-${s}-seen`, String(prev[s].count));
         next[s] = { ...prev[s], hasNew: false, newCount: 0 };
       });
       return next;
@@ -34,12 +61,11 @@ export default function useRequestNotificationCounts(seniorEmpId, filters) {
     setOutgoing((prev) => {
       const next = { ...prev };
       STATUSES.forEach((s) => {
-        localStorage.setItem(`outgoing-${s}-seen`, String(prev[s].count));
         next[s] = { ...prev[s], hasNew: false, newCount: 0 };
       });
       return next;
     });
-  }, []);
+  }, [incoming, outgoing]);
 
   const memoFilters = useMemo(() => filters || {}, [filters]);
 
@@ -49,6 +75,17 @@ export default function useRequestNotificationCounts(seniorEmpId, filters) {
     async function fetchCounts() {
       const newIncoming = createInitial();
       const newOutgoing = createInitial();
+
+      let seenData = createInitialSeen();
+      try {
+        const res = await fetch('/api/pending_request/seen', {
+          credentials: 'include',
+          skipLoader: true,
+        });
+        if (res.ok) {
+          seenData = await res.json().catch(() => createInitialSeen());
+        }
+      } catch {}
 
       await Promise.all(
         STATUSES.map(async (status) => {
@@ -75,9 +112,7 @@ export default function useRequestNotificationCounts(seniorEmpId, filters) {
                 else if (Array.isArray(data)) c = data.length;
                 else c = Number(data?.count) || 0;
               }
-              const seen = Number(
-                localStorage.getItem(`incoming-${status}-seen`) || 0,
-              );
+              const seen = seenData.incoming[status] || 0;
               const delta = Math.max(0, c - seen);
               newIncoming[status] = {
                 count: c,
@@ -105,16 +140,10 @@ export default function useRequestNotificationCounts(seniorEmpId, filters) {
               else if (Array.isArray(data)) c = data.length;
               else c = Number(data?.count) || 0;
             }
-            const seenKey = `outgoing-${status}-seen`;
-            const seen =
-              status === 'pending'
-                ? c
-                : Number(localStorage.getItem(seenKey) || 0);
             if (status === 'pending') {
-              // Requesters shouldn't get "new" badges for their own submissions
-              localStorage.setItem(seenKey, String(c));
               newOutgoing[status] = { count: c, hasNew: false, newCount: 0 };
             } else {
+              const seen = seenData.outgoing[status] || 0;
               const delta = Math.max(0, c - seen);
               newOutgoing[status] = {
                 count: c,
@@ -131,6 +160,7 @@ export default function useRequestNotificationCounts(seniorEmpId, filters) {
       if (!cancelled) {
         setIncoming(newIncoming);
         setOutgoing(newOutgoing);
+        setSeen(seenData);
       }
     }
 
@@ -177,6 +207,14 @@ export default function useRequestNotificationCounts(seniorEmpId, filters) {
       stopPolling();
     };
   }, [seniorEmpId, memoFilters, pollingEnabled, intervalSeconds]);
+
+  useEffect(() => {
+    function handleFlush() {
+      markSeen();
+    }
+    window.addEventListener('notifications:flush', handleFlush);
+    return () => window.removeEventListener('notifications:flush', handleFlush);
+  }, [markSeen]);
 
   const hasNew =
     STATUSES.some((s) => incoming[s].hasNew) ||

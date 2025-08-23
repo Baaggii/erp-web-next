@@ -301,3 +301,54 @@ export async function respondRequest(
     conn.release();
   }
 }
+
+export async function getSeenCounts(empId) {
+  const [rows] = await pool.query(
+    `SELECT incoming_pending, incoming_accepted, incoming_declined,
+            outgoing_accepted, outgoing_declined
+       FROM request_seen_counts WHERE emp_id = ? LIMIT 1`,
+    [empId],
+  );
+  const row = rows[0] || {};
+  return {
+    incoming: {
+      pending: row.incoming_pending || 0,
+      accepted: row.incoming_accepted || 0,
+      declined: row.incoming_declined || 0,
+    },
+    outgoing: {
+      accepted: row.outgoing_accepted || 0,
+      declined: row.outgoing_declined || 0,
+    },
+  };
+}
+
+export async function markSeenCounts(empId, { incoming = {}, outgoing = {} } = {}) {
+  const data = [
+    Number(incoming.pending) || 0,
+    Number(incoming.accepted) || 0,
+    Number(incoming.declined) || 0,
+    Number(outgoing.accepted) || 0,
+    Number(outgoing.declined) || 0,
+    empId,
+    Number(incoming.pending) || 0,
+    Number(incoming.accepted) || 0,
+    Number(incoming.declined) || 0,
+    Number(outgoing.accepted) || 0,
+    Number(outgoing.declined) || 0,
+  ];
+  await pool.query(
+    `INSERT INTO request_seen_counts
+       (incoming_pending, incoming_accepted, incoming_declined,
+        outgoing_accepted, outgoing_declined, emp_id)
+     VALUES (?,?,?,?,?,?)
+     ON DUPLICATE KEY UPDATE
+       incoming_pending = ?,
+       incoming_accepted = ?,
+       incoming_declined = ?,
+       outgoing_accepted = ?,
+       outgoing_declined = ?,
+       updated_at = CURRENT_TIMESTAMP`,
+    data,
+  );
+}
