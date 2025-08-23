@@ -37,7 +37,7 @@ export function useModules() {
             label: txnModules.labels[key] || key,
             parent_key: 'forms',
             show_in_sidebar: true,
-            show_in_header: false,
+            show_in_header: true,
           });
         }
       });

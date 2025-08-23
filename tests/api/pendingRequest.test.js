@@ -51,6 +51,43 @@ await test('direct senior can decline request', async () => {
   assert.ok(upd, 'should update status to declined');
 });
 
+await test('respondRequest returns requester and status', async () => {
+  const { restore } = setupRequest();
+  const result = await service.respondRequest(1, 's1', 'accepted', null);
+  restore();
+  assert.deepEqual(result, { requester: 'E1', status: 'accepted' });
+});
+
+await test('getSeenCounts returns zeros when no row', async () => {
+  const origQuery = db.pool.query;
+  db.pool.query = async () => [[]];
+  const counts = await service.getSeenCounts('E1');
+  db.pool.query = origQuery;
+  assert.deepEqual(counts, {
+    incoming: { pending: 0, accepted: 0, declined: 0 },
+    outgoing: { accepted: 0, declined: 0 },
+  });
+});
+
+await test('markSeenCounts upserts counts', async () => {
+  const origQuery = db.pool.query;
+  const queries = [];
+  db.pool.query = async (sql, params) => {
+    queries.push({ sql, params });
+    return [{}];
+  };
+  await service.markSeenCounts('E1', {
+    incoming: { pending: 1, accepted: 2, declined: 3 },
+    outgoing: { accepted: 4, declined: 5 },
+  });
+  db.pool.query = origQuery;
+  const insert = queries.find((q) =>
+    q.sql.includes('INSERT INTO request_seen_counts'),
+  );
+  assert.ok(insert, 'should insert into request_seen_counts');
+  assert.deepEqual(insert.params.slice(0, 6), [1, 2, 3, 4, 5, 'E1']);
+});
+
 await test('listRequests normalizes empids in filters', async () => {
   const origQuery = db.pool.query;
   const queries = [];

@@ -5,6 +5,8 @@ import {
   listRequests,
   listRequestsByEmp,
   respondRequest,
+  getSeenCounts,
+  markSeenCounts,
   ALLOWED_REQUEST_TYPES,
 } from '../services/pendingRequest.js';
 
@@ -63,6 +65,24 @@ router.get('/outgoing', requireAuth, async (req, res, next) => {
   }
 });
 
+router.get('/seen', requireAuth, async (req, res, next) => {
+  try {
+    const counts = await getSeenCounts(req.user.empid);
+    res.json(counts);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/seen', requireAuth, async (req, res, next) => {
+  try {
+    await markSeenCounts(req.user.empid, req.body);
+    res.sendStatus(204);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const { status, requested_empid, table_name, date_from, date_to } = req.query;
@@ -89,12 +109,19 @@ router.put('/:id/respond', requireAuth, async (req, res, next) => {
     if (!['accepted', 'declined'].includes(status)) {
       return res.status(400).json({ message: 'invalid status' });
     }
-    await respondRequest(
+    const result = await respondRequest(
       req.params.id,
       req.user.empid,
       status,
       response_notes,
     );
+    const io = req.app.get('io');
+    if (io && result?.requester) {
+      io.to(`user:${result.requester}`).emit('requestResolved', {
+        requestId: req.params.id,
+        status,
+      });
+    }
     res.sendStatus(204);
   } catch (err) {
     if (err.message === 'Forbidden') return res.sendStatus(403);

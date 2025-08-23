@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react';
 
-const defaultStatus = { count: 0, hasNew: false };
+const defaultStatus = { count: 0, hasNew: false, newCount: 0 };
 
 export const PendingRequestContext = createContext({
   incoming: {
