@@ -293,6 +293,7 @@ export async function respondRequest(
       );
     }
     await conn.query('COMMIT');
+    return { requester, status };
   } catch (err) {
     await conn.query('ROLLBACK');
     throw err;
