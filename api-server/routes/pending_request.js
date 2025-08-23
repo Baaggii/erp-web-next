@@ -89,12 +89,19 @@ router.put('/:id/respond', requireAuth, async (req, res, next) => {
     if (!['accepted', 'declined'].includes(status)) {
       return res.status(400).json({ message: 'invalid status' });
     }
-    await respondRequest(
+    const result = await respondRequest(
       req.params.id,
       req.user.empid,
       status,
       response_notes,
     );
+    const io = req.app.get('io');
+    if (io && result?.requester) {
+      io.to(`user:${result.requester}`).emit('requestResolved', {
+        requestId: req.params.id,
+        status,
+      });
+    }
     res.sendStatus(204);
   } catch (err) {
     if (err.message === 'Forbidden') return res.sendStatus(403);

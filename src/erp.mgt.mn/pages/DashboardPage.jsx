@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect } from 'react';
+import React, { useContext, useState, useEffect, useRef } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import PendingRequestWidget from '../components/PendingRequestWidget.jsx';
 import OutgoingRequestWidget from '../components/OutgoingRequestWidget.jsx';
@@ -9,9 +9,17 @@ export default function DashboardPage() {
   const { hasNew, markSeen } = usePendingRequests();
   const [active, setActive] = useState('general');
 
+  const prevTab = useRef('general');
   useEffect(() => {
-    if (active === 'audition') markSeen();
+    if (prevTab.current === 'audition' && active !== 'audition') {
+      markSeen();
+    }
+    prevTab.current = active;
   }, [active, markSeen]);
+
+  useEffect(() => () => {
+    if (prevTab.current === 'audition') markSeen();
+  }, [markSeen]);
 
   const badgeStyle = {
     background: 'red',

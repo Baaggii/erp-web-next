@@ -10,3 +10,13 @@ test('includes requests when permitted', () => {
   const result = filterHeaderModules(modules, perms, { keys: new Set() });
   assert.ok(result.find((m) => m.module_key === 'requests'));
 });
+
+test('includes txn module without explicit permission', () => {
+  const modules = [
+    { module_key: 'finance_transactions', label: 'Finance', show_in_header: 1 },
+  ];
+  const perms = {};
+  const txn = { keys: new Set(['finance_transactions']) };
+  const result = filterHeaderModules(modules, perms, txn);
+  assert.ok(result.find((m) => m.module_key === 'finance_transactions'));
+});
