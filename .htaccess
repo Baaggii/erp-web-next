@@ -1,22 +1,7 @@
-<IfModule mod_rewrite.c>
-  RewriteEngine On
+RewriteEngine On
 
-  # Proxy WebSocket upgrade requests for Socket.IO
-  RewriteCond %{HTTP:Upgrade} websocket [NC]
-  RewriteCond %{HTTP:Connection} upgrade [NC]
-  RewriteRule ^/?socket\.io(/.*)?$ ws://127.0.0.1:3002/socket.io$1 [P,L]
+# Proxy /api/* to Express backend
+ProxyPass "/api/" "http://127.0.0.1:3002/api/"
+ProxyPassReverse "/api/" "http://127.0.0.1:3002/api/"
 
-  # Proxy HTTP polling requests for Socket.IO
-  RewriteRule ^/?socket\.io(/.*)?$ http://127.0.0.1:3002/socket.io$1 [P,L]
-
-  # Proxy API calls to the backend
-  RewriteRule ^api/(.*)$ http://127.0.0.1:3002/api/$1 [P,L]
-
-  # Serve files directly if they exist
-  RewriteCond %{REQUEST_FILENAME} -f [OR]
-  RewriteCond %{REQUEST_FILENAME} -d
-  RewriteRule ^ - [L]
-
-  # Otherwise, serve the SPA’s index.html
-  RewriteRule . /index.html [L]
-</IfModule>
+# Serve assets from /assets
