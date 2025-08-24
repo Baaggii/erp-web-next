@@ -225,7 +225,7 @@ export async function listRequests(filters) {
   const total = countRows[0]?.count || 0;
 
   const [rows] = await pool.query(
-    `SELECT * FROM pending_request ${where} LIMIT ? OFFSET ?`,
+    `SELECT *, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at_fmt, DATE_FORMAT(responded_at, '%Y-%m-%d %H:%i:%s') AS responded_at_fmt FROM pending_request ${where} LIMIT ? OFFSET ?`,
     [...params, limit, offset],
   );
 
@@ -260,8 +260,11 @@ export async function listRequests(filters) {
           }
         }
 
+        const { created_at_fmt, responded_at_fmt, ...rest } = row;
         return {
-          ...row,
+          ...rest,
+          created_at: created_at_fmt || null,
+          responded_at: responded_at_fmt || null,
           proposed_data: parsed,
           original,
         };

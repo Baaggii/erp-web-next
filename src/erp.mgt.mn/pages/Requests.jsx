@@ -37,6 +37,15 @@ function renderValue(val) {
       </pre>
     );
   }
+  if (
+    typeof val === 'string' &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(val)
+  ) {
+    const d = new Date(val);
+    if (!Number.isNaN(d.getTime())) {
+      val = formatTimestamp(d);
+    }
+  }
   return <span style={style}>{String(val ?? '')}</span>;
 }
 
