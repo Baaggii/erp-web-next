@@ -115,3 +115,40 @@ await test('listRequests filters by date range', async () => {
   assert.ok(queries[1].sql.includes('LIMIT ? OFFSET ?'));
   assert.deepEqual(queries[1].params, ['2024-01-01', '2024-01-31', 2, 0]);
 });
+
+await test('createRequest throws 409 on duplicate', async () => {
+  const conn = {
+    async query(sql, params) {
+      if (sql.startsWith('SELECT employment_senior_empid')) {
+        return [[{ employment_senior_empid: null }]];
+      }
+      if (sql.startsWith('SELECT request_id, proposed_data FROM pending_request')) {
+        return [[{ request_id: 1, proposed_data: JSON.stringify({ a: 1 }) }]];
+      }
+      return [[]];
+    },
+    release() {},
+  };
+  const origGet = db.pool.getConnection;
+  db.pool.getConnection = async () => conn;
+  const origQuery = db.pool.query;
+  db.pool.query = async (sql) => {
+    if (sql.includes('information_schema')) return [[{ COLUMN_NAME: 'id' }]];
+    return [[]];
+  };
+  try {
+    await assert.rejects(
+      service.createRequest({
+        tableName: 't',
+        recordId: 1,
+        empId: 'e1',
+        requestType: 'edit',
+        proposedData: { a: 1 },
+      }),
+      (err) => err.status === 409,
+    );
+  } finally {
+    db.pool.getConnection = origGet;
+    db.pool.query = origQuery;
+  }
+});
