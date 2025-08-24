@@ -491,14 +491,16 @@ const TableManager = forwardRef(function TableManager({
           senior_empid: user?.empid,
           table_name: table,
         });
+        params.set('per_page', '1000');
         const res = await fetch(
           `/api/pending_request?${params.toString()}`,
           { credentials: 'include' },
         );
         if (res.ok) {
-          const data = await res.json().catch(() => []);
+          const data = await res.json().catch(() => ({ rows: [] }));
+          const list = Array.isArray(data) ? data : data.rows || [];
           const ids = new Set(
-            data
+            list
               .filter((r) => r.table_name === table)
               .map((r) => String(r.record_id)),
           );
