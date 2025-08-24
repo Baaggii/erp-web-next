@@ -6,6 +6,17 @@ import formatTimestamp from '../utils/formatTimestamp.js';
 import ReportTable from '../components/ReportTable.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
+import CustomDatePicker from '../components/CustomDatePicker.jsx';
+
+function normalizeDateInput(value, format) {
+  if (typeof value !== 'string') return value;
+  let v = value.trim().replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
+  if (/^\d{4}-\d{2}-\d{2}T/.test(v) && !isNaN(Date.parse(v))) {
+    const local = formatTimestamp(new Date(v));
+    return format === 'HH:MM:SS' ? local.slice(11, 19) : local.slice(0, 10);
+  }
+  return v;
+}
 
 export default function Reports() {
   const { company, branch, user } = useContext(AuthContext);
@@ -130,8 +141,8 @@ export default function Reports() {
     }
     const fmt = (d) =>
       d instanceof Date ? formatTimestamp(d).slice(0, 10) : '';
-    setStartDate(fmt(start));
-    setEndDate(fmt(end));
+    setStartDate(normalizeDateInput(fmt(start), 'YYYY-MM-DD'));
+    setEndDate(normalizeDateInput(fmt(end), 'YYYY-MM-DD'));
   }
 
   async function runReport() {
@@ -209,37 +220,54 @@ export default function Reports() {
                 <option value="quarter">This quarter</option>
                 <option value="year">This year</option>
               </select>
-              <input
-                type="date"
+              <CustomDatePicker
                 value={startDate}
-                onChange={(e) => {
-                  setStartDate(e.target.value);
+                onChange={(v) => {
+                  setStartDate(normalizeDateInput(v, 'YYYY-MM-DD'));
                   setDatePreset('custom');
                 }}
               />
-              <input
-                type="date"
+              <CustomDatePicker
                 value={endDate}
-                onChange={(e) => {
-                  setEndDate(e.target.value);
+                onChange={(v) => {
+                  setEndDate(normalizeDateInput(v, 'YYYY-MM-DD'));
                   setDatePreset('custom');
                 }}
                 style={{ marginLeft: '0.5rem' }}
               />
-              {procParams.map((p, i) =>
-                autoParams[i] === null ? (
+              {procParams.map((p, i) => {
+                if (autoParams[i] !== null) return null;
+                const lower = p.toLowerCase();
+                const val = manualParams[p] || '';
+                if (lower.includes('date')) {
+                  return (
+                    <CustomDatePicker
+                      key={p}
+                      value={val}
+                      onChange={(v) =>
+                        setManualParams((m) => ({
+                          ...m,
+                          [p]: normalizeDateInput(v, 'YYYY-MM-DD'),
+                        }))
+                      }
+                      placeholder={p}
+                      style={{ marginLeft: '0.5rem' }}
+                    />
+                  );
+                }
+                return (
                   <input
                     key={p}
                     type="text"
                     placeholder={p}
-                    value={manualParams[p] || ''}
+                    value={val}
                     onChange={(e) =>
                       setManualParams((m) => ({ ...m, [p]: e.target.value }))
                     }
                     style={{ marginLeft: '0.5rem' }}
                   />
-                ) : null,
-              )}
+                );
+              })}
               <button
                 onClick={runReport}
                 style={{ marginLeft: '0.5rem' }}
