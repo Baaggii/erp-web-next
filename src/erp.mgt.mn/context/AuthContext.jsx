@@ -139,6 +139,17 @@ export default function AuthContextProvider({ children }) {
 
   useEffect(() => {
     function handleLogout() {
+      const empid = user?.empid;
+      if (empid) {
+        try {
+          const pattern = new RegExp(`\\b${empid}-.*-seen$`);
+          for (const key of Object.keys(localStorage)) {
+            if (pattern.test(key)) localStorage.removeItem(key);
+          }
+        } catch {
+          /* ignore storage errors */
+        }
+      }
       trackSetState('AuthContext.setUser');
       setUser(null);
       trackSetState('AuthContext.setSession');
@@ -156,7 +167,7 @@ export default function AuthContextProvider({ children }) {
     }
     window.addEventListener('auth:logout', handleLogout);
     return () => window.removeEventListener('auth:logout', handleLogout);
-  }, []);
+  }, [user]);
 
   const value = useMemo(
     () => ({
