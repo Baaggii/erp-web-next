@@ -8,6 +8,8 @@ import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import { translateToMn } from '../utils/translateToMn.js';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import { useSearchParams } from 'react-router-dom';
+import CustomDatePicker from '../components/CustomDatePicker.jsx';
+import formatTimestamp from '../utils/formatTimestamp.js';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -46,11 +48,7 @@ function normalizeEmpId(id) {
     .replace(/^0+/, '');
 }
 
-// Fallback date picker used by bundlers that replace native date inputs
-// with a custom component. It simply renders a standard date input.
-function CustomDatePicker(props) {
-  return <input type="date" {...props} />;
-}
+const today = formatTimestamp(new Date()).slice(0, 10);
 
 export default function RequestsPage() {
   const { user, session } = useAuth();
@@ -82,8 +80,8 @@ export default function RequestsPage() {
   const [requestedEmpid, setRequestedEmpid] = useState('');
   const [tableName, setTableName] = useState('');
   const [status, setStatus] = useState(initialStatus || 'pending');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(today);
+  const [dateTo, setDateTo] = useState(today);
   const [incomingReloadKey, setIncomingReloadKey] = useState(0);
   const [outgoingReloadKey, setOutgoingReloadKey] = useState(0);
   const [incomingPage, setIncomingPage] = useState(1);
