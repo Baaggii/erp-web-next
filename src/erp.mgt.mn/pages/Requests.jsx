@@ -131,96 +131,68 @@ export default function RequestsPage() {
     setSearchParams(params, { replace: true });
   }, [activeTab, status, setSearchParams]);
   async function enrichRequests(data) {
-    return Promise.all(
-      data.map(async (req) => {
-        let original = null;
-        try {
-          const res2 = await fetch(
-            `${API_BASE}/tables/${req.table_name}/${req.record_id}`,
-            { credentials: 'include' },
-          );
-          if (
-            res2.ok &&
-            res2.headers.get('content-type')?.includes('application/json')
-          ) {
-            original = await res2.json();
-          } else {
-            const res3 = await fetch(
-              `${API_BASE}/tables/${req.table_name}?id=${encodeURIComponent(
-                req.record_id,
-              )}&perPage=1`,
-              { credentials: 'include' },
-            );
-            if (
-              res3.ok &&
-              res3.headers.get('content-type')?.includes('application/json')
-            ) {
-              const json = await res3.json();
-              original = json.rows?.[0] || null;
-            }
-          }
-        } catch (err) {
-          debugLog('Failed to fetch original record', err);
-        }
-
-        let cfg = configCache.current[req.table_name];
-        if (!cfg) {
+    const tables = Array.from(new Set(data.map((r) => r.table_name)));
+    await Promise.all(
+      tables
+        .filter((t) => !configCache.current[t])
+        .map(async (t) => {
           try {
-            const cfgRes = await fetch(
-              `${API_BASE}/display_fields?table=${req.table_name}`,
-              { credentials: 'include' },
-            );
-            if (cfgRes.ok) cfg = await cfgRes.json();
+            const res = await fetch(`${API_BASE}/display_fields?table=${t}`, {
+              credentials: 'include',
+            });
+            configCache.current[t] = res.ok
+              ? await res.json()
+              : { displayFields: [] };
           } catch {
-            cfg = null;
+            configCache.current[t] = { displayFields: [] };
           }
-          configCache.current[req.table_name] = cfg || {
-            displayFields: [],
-          };
-        }
-        cfg = cfg || { displayFields: [] };
-        const visible = cfg.displayFields?.length
-          ? cfg.displayFields
-          : Array.from(
-              new Set([
-                ...Object.keys(original || {}),
-                ...Object.keys(req.proposed_data || {}),
-              ]),
-            );
-
-        const fields = visible
-          .map((name) => {
-            const before = original ? original[name] : undefined;
-            const after = req.proposed_data ? req.proposed_data[name] : undefined;
-            const isComplex =
-              (before && typeof before === 'object') ||
-              (after && typeof after === 'object');
-            let changed = false;
-            if (isComplex) {
-              changed = !!diff(before, after);
-            } else {
-              changed = JSON.stringify(before) !== JSON.stringify(after);
-            }
-            return { name, before, after, changed, isComplex };
-          })
-          .filter((f) => {
-            const emptyBefore =
-              f.before === undefined || f.before === null || f.before === '';
-            const emptyAfter =
-              f.after === undefined || f.after === null || f.after === '';
-            return !(emptyBefore && emptyAfter);
-          });
-
-        return {
-          ...req,
-          original,
-          fields,
-          notes: '',
-          response_status: null,
-          error: null,
-        };
-      }),
+        }),
     );
+
+    return data.map((req) => {
+      const original = req.original || null;
+      const cfg = configCache.current[req.table_name] || { displayFields: [] };
+      const visible = cfg.displayFields?.length
+        ? cfg.displayFields
+        : Array.from(
+            new Set([
+              ...Object.keys(original || {}),
+              ...Object.keys(req.proposed_data || {}),
+            ]),
+          );
+
+      const fields = visible
+        .map((name) => {
+          const before = original ? original[name] : undefined;
+          const after = req.proposed_data ? req.proposed_data[name] : undefined;
+          const isComplex =
+            (before && typeof before === 'object') ||
+            (after && typeof after === 'object');
+          let changed = false;
+          if (isComplex) {
+            changed = !!diff(before, after);
+          } else {
+            changed = JSON.stringify(before) !== JSON.stringify(after);
+          }
+          return { name, before, after, changed, isComplex };
+        })
+        .filter((f) => {
+          const emptyBefore =
+            f.before === undefined || f.before === null || f.before === '';
+          const emptyAfter =
+            f.after === undefined || f.after === null || f.after === '';
+          return !(emptyBefore && emptyAfter);
+        });
+
+      return {
+        ...req,
+        original,
+        fields,
+        notes: '',
+        response_status: null,
+        error: null,
+      };
+    });
   }
 
   useEffect(() => {
