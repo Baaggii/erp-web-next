@@ -174,3 +174,33 @@ await test('createRequest throws 409 on duplicate', async () => {
     db.pool.query = origQuery;
   }
 });
+
+await test('accepted edit requests show original data', async () => {
+  const origQuery = db.pool.query;
+  const queries = [];
+  db.pool.query = async (sql, params) => {
+    queries.push({ sql, params });
+    if (sql.includes('COUNT')) return [[{ count: 1 }]];
+    if (sql.includes('FROM pending_request')) {
+      return [
+        [
+          {
+            request_id: 1,
+            table_name: 't',
+            record_id: 1,
+            request_type: 'edit',
+            proposed_data: JSON.stringify({ name: 'new' }),
+            original_data: JSON.stringify({ name: 'old' }),
+            status: 'accepted',
+          },
+        ],
+      ];
+    }
+    throw new Error('unexpected query');
+  };
+  const result = await service.listRequests({ status: 'accepted' });
+  db.pool.query = origQuery;
+  assert.equal(result.rows.length, 1);
+  assert.deepEqual(result.rows[0].original, { name: 'old' });
+  assert.equal(queries.length, 2);
+});
