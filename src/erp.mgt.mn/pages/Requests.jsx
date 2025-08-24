@@ -567,9 +567,9 @@ export default function RequestsPage() {
             <h4>
               {req.table_name} #{req.record_id} ({req.request_type})
             </h4>
-            <div style={{ overflow: 'auto' }}>
+            <div style={{ overflowX: 'auto' }}>
               <table
-                style={{ minWidth: 'max-content', borderCollapse: 'collapse' }}
+                style={{ width: '100%', borderCollapse: 'collapse' }}
               >
                 <thead>
                 <tr>
