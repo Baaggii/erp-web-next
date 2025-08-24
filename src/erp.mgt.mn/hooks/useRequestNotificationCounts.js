@@ -13,7 +13,11 @@ function createInitial() {
   };
 }
 
-export default function useRequestNotificationCounts(seniorEmpId, filters) {
+export default function useRequestNotificationCounts(
+  seniorEmpId,
+  filters,
+  empid,
+) {
   const [incoming, setIncoming] = useState(createInitial);
   const [outgoing, setOutgoing] = useState(createInitial);
   const cfg = useGeneralConfig();
@@ -22,11 +26,16 @@ export default function useRequestNotificationCounts(seniorEmpId, filters) {
     Number(cfg?.general?.requestPollingIntervalSeconds) ||
     DEFAULT_POLL_INTERVAL_SECONDS;
 
+  const storageKey = useCallback(
+    (type, status) => `${empid}-${type}-${status}-seen`,
+    [empid],
+  );
+
   const markSeen = useCallback(() => {
     setIncoming((prev) => {
       const next = { ...prev };
       STATUSES.forEach((s) => {
-        localStorage.setItem(`incoming-${s}-seen`, String(prev[s].count));
+        localStorage.setItem(storageKey('incoming', s), String(prev[s].count));
         next[s] = { ...prev[s], hasNew: false, newCount: 0 };
       });
       return next;
@@ -34,12 +43,12 @@ export default function useRequestNotificationCounts(seniorEmpId, filters) {
     setOutgoing((prev) => {
       const next = { ...prev };
       STATUSES.forEach((s) => {
-        localStorage.setItem(`outgoing-${s}-seen`, String(prev[s].count));
+        localStorage.setItem(storageKey('outgoing', s), String(prev[s].count));
         next[s] = { ...prev[s], hasNew: false, newCount: 0 };
       });
       return next;
     });
-  }, []);
+  }, [storageKey]);
 
   const memoFilters = useMemo(() => filters || {}, [filters]);
 
@@ -76,7 +85,7 @@ export default function useRequestNotificationCounts(seniorEmpId, filters) {
                 else c = Number(data?.count) || 0;
               }
               const seen = Number(
-                localStorage.getItem(`incoming-${status}-seen`) || 0,
+                localStorage.getItem(storageKey('incoming', status)) || 0,
               );
               const delta = Math.max(0, c - seen);
               newIncoming[status] = {
@@ -105,7 +114,7 @@ export default function useRequestNotificationCounts(seniorEmpId, filters) {
               else if (Array.isArray(data)) c = data.length;
               else c = Number(data?.count) || 0;
             }
-            const seenKey = `outgoing-${status}-seen`;
+            const seenKey = storageKey('outgoing', status);
             const seen =
               status === 'pending'
                 ? c
@@ -176,7 +185,7 @@ export default function useRequestNotificationCounts(seniorEmpId, filters) {
       }
       stopPolling();
     };
-  }, [seniorEmpId, memoFilters, pollingEnabled, intervalSeconds]);
+  }, [seniorEmpId, memoFilters, pollingEnabled, intervalSeconds, storageKey]);
 
   const hasNew =
     STATUSES.some((s) => incoming[s].hasNew) ||

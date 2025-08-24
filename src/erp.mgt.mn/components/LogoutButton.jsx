@@ -11,7 +11,7 @@ export default function LogoutButton() {
 
   async function handleLogout() {
     try {
-      await logout();
+      await logout(user?.empid);
       setUser(null);
     } catch (err) {
       console.error('Logout failed:', err);
