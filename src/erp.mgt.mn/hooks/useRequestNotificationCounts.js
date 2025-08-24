@@ -84,9 +84,12 @@ export default function useRequestNotificationCounts(
                 else if (Array.isArray(data)) c = data.length;
                 else c = Number(data?.count) || 0;
               }
-              const seen = Number(
-                localStorage.getItem(storageKey('incoming', status)) || 0,
-              );
+              const seenKey = storageKey('incoming', status);
+              const storedSeen = localStorage.getItem(seenKey);
+              const seen = storedSeen === null ? c : Number(storedSeen);
+              if (storedSeen === null) {
+                localStorage.setItem(seenKey, String(c));
+              }
               const delta = Math.max(0, c - seen);
               newIncoming[status] = {
                 count: c,
@@ -115,15 +118,16 @@ export default function useRequestNotificationCounts(
               else c = Number(data?.count) || 0;
             }
             const seenKey = storageKey('outgoing', status);
-            const seen =
-              status === 'pending'
-                ? c
-                : Number(localStorage.getItem(seenKey) || 0);
             if (status === 'pending') {
               // Requesters shouldn't get "new" badges for their own submissions
               localStorage.setItem(seenKey, String(c));
               newOutgoing[status] = { count: c, hasNew: false, newCount: 0 };
             } else {
+              const storedSeen = localStorage.getItem(seenKey);
+              const seen = storedSeen === null ? c : Number(storedSeen);
+              if (storedSeen === null) {
+                localStorage.setItem(seenKey, String(c));
+              }
               const delta = Math.max(0, c - seen);
               newOutgoing[status] = {
                 count: c,
