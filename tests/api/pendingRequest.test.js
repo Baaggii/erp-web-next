@@ -37,7 +37,7 @@ function setupRequest(overrides = {}) {
 
 await test('direct senior can approve request', async () => {
   const { conn, restore } = setupRequest();
-  await service.respondRequest(1, 's1', 'accepted', null);
+  await service.respondRequest(1, 's1', 'accepted', 'ok');
   restore();
   const upd = conn.queries.find((q) => q.sql.includes("status = 'accepted'"));
   assert.ok(upd, 'should update status to accepted');
@@ -45,7 +45,7 @@ await test('direct senior can approve request', async () => {
 
 await test('direct senior can decline request', async () => {
   const { conn, restore } = setupRequest();
-  await service.respondRequest(1, 's1', 'declined', null);
+  await service.respondRequest(1, 's1', 'declined', 'no');
   restore();
   const upd = conn.queries.find((q) => q.sql.includes("status = 'declined'"));
   assert.ok(upd, 'should update status to declined');
@@ -53,7 +53,7 @@ await test('direct senior can decline request', async () => {
 
 await test('respondRequest returns requester and status', async () => {
   const { restore } = setupRequest();
-  const result = await service.respondRequest(1, 's1', 'accepted', null);
+  const result = await service.respondRequest(1, 's1', 'accepted', 'yes');
   restore();
   assert.deepEqual(result, { requester: 'E1', status: 'accepted' });
 });
@@ -144,6 +144,7 @@ await test('createRequest throws 409 on duplicate', async () => {
         empId: 'e1',
         requestType: 'edit',
         proposedData: { a: 1 },
+        requestReason: 'test',
       }),
       (err) => err.status === 409,
     );
