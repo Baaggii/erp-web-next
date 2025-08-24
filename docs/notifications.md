@@ -23,3 +23,12 @@ the API at the configured interval (`requestPollingIntervalSeconds`, default
 
 Set the WebSocket endpoint with the `VITE_SOCKET_URL` environment variable. If
 undefined the client connects to the same origin as the page.
+
+## Local storage keys
+
+Hooks that track notification counts store "seen" markers in `localStorage`
+using a key that includes the employee ID and ends with `-seen`, for example
+`${empid}-incoming-pending-seen`. The `logout()` helper and the AuthContext's
+`auth:logout` handler remove any entries matching `/\b${empid}-.*-seen$/` during
+logout so that counts do not leak between users. New hooks should follow the
+same naming pattern to benefit from the automatic cleanup.
