@@ -523,18 +523,24 @@ const TableManager = forwardRef(function TableManager({
           { credentials: 'include' },
         );
         if (res.ok) {
-          const data = await res.json().catch(() => []);
+          const data = await res
+            .json()
+            .catch(() => ({ rows: [], total: 0 }));
+          const rows = data.rows || [];
           const ids = new Set(
-            data
+            rows
               .filter((r) => r.table_name === table)
               .map((r) => String(r.record_id)),
           );
           setRequestIdSet(ids);
+          setCount(data.total || ids.size);
         } else {
           setRequestIdSet(new Set());
+          setCount(0);
         }
       } catch {
         setRequestIdSet(new Set());
+        setCount(0);
       }
     }
     loadRequests();
@@ -718,7 +724,9 @@ const TableManager = forwardRef(function TableManager({
           rows = rows.filter((r) => requestIdSet.has(String(getRowId(r))));
         }
         setRows(rows);
-        setCount(requestStatus ? rows.length : data.count || 0);
+        if (!requestStatus) {
+          setCount(data.count || 0);
+        }
         // clear selections when data changes
         setSelectedRows(new Set());
         logRowsMemory(rows);
