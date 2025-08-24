@@ -17,6 +17,7 @@ import RowImageViewModal from './RowImageViewModal.jsx';
 import RowImageUploadModal from './RowImageUploadModal.jsx';
 import ImageSearchModal from './ImageSearchModal.jsx';
 import Modal from './Modal.jsx';
+import CustomDatePicker from './CustomDatePicker.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
@@ -1753,16 +1754,18 @@ const TableManager = forwardRef(function TableManager({
           </select>
           {datePreset === 'custom' && (
             <>
-              <input
-                type="date"
+              <CustomDatePicker
                 value={customStartDate}
-                onChange={(e) => setCustomStartDate(e.target.value)}
+                onChange={(v) =>
+                  setCustomStartDate(normalizeDateInput(v, 'YYYY-MM-DD'))
+                }
                 style={{ marginRight: '0.25rem' }}
               />
-              <input
-                type="date"
+              <CustomDatePicker
                 value={customEndDate}
-                onChange={(e) => setCustomEndDate(e.target.value)}
+                onChange={(v) =>
+                  setCustomEndDate(normalizeDateInput(v, 'YYYY-MM-DD'))
+                }
                 style={{ marginRight: '0.5rem' }}
               />
             </>
