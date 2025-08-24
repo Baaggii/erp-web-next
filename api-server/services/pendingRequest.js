@@ -136,13 +136,17 @@ export async function listRequests(filters) {
     conditions.push('table_name = ?');
     params.push(table_name);
   }
-  if (date_from) {
-    conditions.push('created_at >= ?');
-    params.push(date_from);
-  }
-  if (date_to) {
-    conditions.push('created_at <= ?');
-    params.push(date_to);
+  if (date_from || date_to) {
+    if (date_from) {
+      conditions.push('created_at >= ?');
+      params.push(date_from);
+    }
+    if (date_to) {
+      conditions.push('created_at <= ?');
+      params.push(date_to);
+    }
+  } else {
+    conditions.push('created_at >= CURDATE()');
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';

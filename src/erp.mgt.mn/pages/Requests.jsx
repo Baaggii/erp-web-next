@@ -48,8 +48,6 @@ function normalizeEmpId(id) {
     .replace(/^0+/, '');
 }
 
-const today = formatTimestamp(new Date()).slice(0, 10);
-
 export default function RequestsPage() {
   const { user, session } = useAuth();
   const { incoming: incomingCounts, outgoing: outgoingCounts, markSeen } =
@@ -80,8 +78,8 @@ export default function RequestsPage() {
   const [requestedEmpid, setRequestedEmpid] = useState('');
   const [tableName, setTableName] = useState('');
   const [status, setStatus] = useState(initialStatus || 'pending');
-  const [dateFrom, setDateFrom] = useState(today);
-  const [dateTo, setDateTo] = useState(today);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [incomingReloadKey, setIncomingReloadKey] = useState(0);
   const [outgoingReloadKey, setOutgoingReloadKey] = useState(0);
   const [incomingPage, setIncomingPage] = useState(1);
@@ -115,6 +113,11 @@ export default function RequestsPage() {
   }, [requests]);
 
   const headerMap = useHeaderMappings(allFields);
+  useEffect(() => {
+    const today = formatTimestamp(new Date()).slice(0, 10);
+    setDateFrom(today);
+    setDateTo(today);
+  }, []);
   useEffect(() => {
     const tab = searchParams.get('tab');
     if (tab && tab !== activeTab) {
@@ -204,7 +207,8 @@ export default function RequestsPage() {
   }
 
   useEffect(() => {
-    if (activeTab !== 'incoming' || !seniorEmpId) return;
+    if (activeTab !== 'incoming' || !seniorEmpId || !dateFrom || !dateTo)
+      return;
     markSeen();
     async function load() {
       debugLog('Loading pending requests');
@@ -252,7 +256,7 @@ export default function RequestsPage() {
   ]);
 
   useEffect(() => {
-    if (activeTab !== 'outgoing') return;
+    if (activeTab !== 'outgoing' || !dateFrom || !dateTo) return;
     markSeen();
     async function load() {
       setOutgoingLoading(true);
