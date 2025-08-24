@@ -115,11 +115,11 @@ await test('listRequests filters by date range', async () => {
   assert.ok(queries[1].sql.includes('LIMIT ? OFFSET ?'));
   assert.deepEqual(
     queries[1].params,
-    ['2024-01-01 00:00:00', '2024-01-31 23:59:59', 2, 0],
+    ['2024-01-01', '2024-01-31', 2, 0],
   );
 });
 
-await test('listRequests covers entire day when date_from and date_to match', async () => {
+await test('listRequests accepts single-day ranges as provided', async () => {
   const origQuery = db.pool.query;
   const queries = [];
   db.pool.query = async (sql, params) => {
@@ -133,8 +133,35 @@ await test('listRequests covers entire day when date_from and date_to match', as
   assert.equal(result.rows[0].request_id, 1);
   assert.deepEqual(
     queries[1].params,
-    ['2024-06-06 00:00:00', '2024-06-06 23:59:59', 2, 0],
+    ['2024-06-06', '2024-06-06', 2, 0],
   );
+});
+
+await test('listRequests returns old requests when no date range specified', async () => {
+  const origQuery = db.pool.query;
+  const queries = [];
+  db.pool.query = async (sql, params) => {
+    queries.push({ sql, params });
+    if (sql.includes('COUNT')) return [[{ count: 1 }]];
+    return [
+      [
+        {
+          request_id: 1,
+          proposed_data: null,
+          original_data: null,
+          created_at_fmt: '2020-01-01 12:00:00',
+          responded_at_fmt: null,
+        },
+      ],
+    ];
+  };
+  const result = await service.listRequests();
+  db.pool.query = origQuery;
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.rows[0].request_id, 1);
+  assert.equal(result.rows[0].created_at, '2020-01-01 12:00:00');
+  assert.ok(!queries[1].sql.includes('CURDATE()'));
+  assert.deepEqual(queries[1].params, [2, 0]);
 });
 
 await test('createRequest throws 409 on duplicate', async () => {
