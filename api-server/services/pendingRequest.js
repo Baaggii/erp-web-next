@@ -6,6 +6,7 @@ import {
   getPrimaryKeyColumns,
 } from '../../db/index.js';
 import { logUserAction } from './userActivityLog.js';
+import { isDeepStrictEqual } from 'util';
 
 export const ALLOWED_REQUEST_TYPES = new Set(['edit', 'delete']);
 
@@ -27,10 +28,22 @@ function parseProposedData(value) {
   }
 }
 
-export async function createRequest({ tableName, recordId, empId, requestType, proposedData }) {
+export async function createRequest({
+  tableName,
+  recordId,
+  empId,
+  requestType,
+  proposedData,
+  requestReason,
+}) {
   await ensureValidTableName(tableName);
   if (!ALLOWED_REQUEST_TYPES.has(requestType)) {
     throw new Error('Invalid request type');
+  }
+  if (!requestReason || !String(requestReason).trim()) {
+    const err = new Error('request_reason required');
+    err.status = 400;
+    throw err;
   }
   const conn = await pool.getConnection();
   try {
@@ -42,7 +55,29 @@ export async function createRequest({ tableName, recordId, empId, requestType, p
     const seniorRaw = rows[0]?.employment_senior_empid;
     const senior = seniorRaw ? String(seniorRaw).trim().toUpperCase() : null;
     let finalProposed = proposedData;
-    if (requestType === 'delete') {
+    let originalData = null;
+    if (requestType === 'edit') {
+      const pkCols = await getPrimaryKeyColumns(tableName);
+      let currentRow = null;
+      if (pkCols.length === 1) {
+        const col = pkCols[0];
+        const where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
+        const [r] = await conn.query(
+          `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
+          [tableName, recordId],
+        );
+        currentRow = r[0] || null;
+      } else if (pkCols.length > 1) {
+        const parts = String(recordId).split('-');
+        const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
+        const [r] = await conn.query(
+          `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
+          [tableName, ...parts],
+        );
+        currentRow = r[0] || null;
+      }
+      originalData = currentRow;
+    } else if (requestType === 'delete') {
       const pkCols = await getPrimaryKeyColumns(tableName);
       let currentRow = null;
       if (pkCols.length === 1) {
@@ -64,16 +99,34 @@ export async function createRequest({ tableName, recordId, empId, requestType, p
       }
       finalProposed = currentRow;
     }
+    const normalizedEmp = String(empId).trim().toUpperCase();
+    const [existing] = await conn.query(
+      `SELECT request_id, proposed_data FROM pending_request
+       WHERE table_name = ? AND record_id = ? AND emp_id = ?
+         AND request_type = ? AND status = 'pending'
+       LIMIT 1`,
+      [tableName, recordId, normalizedEmp, requestType],
+    );
+    if (existing.length) {
+      const existingData = parseProposedData(existing[0].proposed_data);
+      if (isDeepStrictEqual(existingData, finalProposed || null)) {
+        const err = new Error('Duplicate pending request');
+        err.status = 409;
+        throw err;
+      }
+    }
     const [result] = await conn.query(
-      `INSERT INTO pending_request (table_name, record_id, emp_id, senior_empid, request_type, proposed_data)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO pending_request (table_name, record_id, emp_id, senior_empid, request_type, request_reason, proposed_data, original_data)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         tableName,
         recordId,
-        String(empId).trim().toUpperCase(),
+        normalizedEmp,
         senior,
         requestType,
+        requestReason,
         finalProposed ? JSON.stringify(finalProposed) : null,
+        originalData ? JSON.stringify(originalData) : null,
       ],
     );
     const requestId = result.insertId;
@@ -167,46 +220,51 @@ export async function listRequests(filters) {
   const total = countRows[0]?.count || 0;
 
   const [rows] = await pool.query(
-    `SELECT * FROM pending_request ${where} LIMIT ? OFFSET ?`,
+    `SELECT *, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at_fmt, DATE_FORMAT(responded_at, '%Y-%m-%d %H:%i:%s') AS responded_at_fmt FROM pending_request ${where} ORDER BY ${dateColumn} DESC LIMIT ? OFFSET ?`,
     [...params, limit, offset],
   );
 
-  const result = await Promise.all(
-    rows.map(async (row) => {
-      const parsed = parseProposedData(row.proposed_data);
-      let original = null;
-      try {
-        const pkCols = await getPrimaryKeyColumns(row.table_name);
-        if (pkCols.length === 1) {
-          const col = pkCols[0];
-          const whereClause = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
-          const [r] = await pool.query(
-            `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
-            [row.table_name, row.record_id],
-          );
-          original = r[0] || null;
-        } else if (pkCols.length > 1) {
-          const parts = String(row.record_id).split('-');
-          const whereClause = pkCols
-            .map((c) => `\`${c}\` = ?`)
-            .join(' AND ');
-          const [r] = await pool.query(
-            `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
-            [row.table_name, ...parts],
-          );
-          original = r[0] || null;
+    const result = await Promise.all(
+      rows.map(async (row) => {
+        const parsed = parseProposedData(row.proposed_data);
+        let original = parseProposedData(row.original_data);
+        if (!original) {
+          try {
+            const pkCols = await getPrimaryKeyColumns(row.table_name);
+            if (pkCols.length === 1) {
+              const col = pkCols[0];
+              const whereClause = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
+              const [r] = await pool.query(
+                `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
+                [row.table_name, row.record_id],
+              );
+              original = r[0] || null;
+            } else if (pkCols.length > 1) {
+              const parts = String(row.record_id).split('-');
+              const whereClause = pkCols
+                .map((c) => `\`${c}\` = ?`)
+                .join(' AND ');
+              const [r] = await pool.query(
+                `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
+                [row.table_name, ...parts],
+              );
+              original = r[0] || null;
+            }
+          } catch {
+            original = null;
+          }
         }
-      } catch {
-        original = null;
-      }
 
-      return {
-        ...row,
-        proposed_data: parsed,
-        original,
-      };
-    }),
-  );
+        const { created_at_fmt, responded_at_fmt, ...rest } = row;
+        return {
+          ...rest,
+          created_at: created_at_fmt || null,
+          responded_at: responded_at_fmt || null,
+          proposed_data: parsed,
+          original,
+        };
+      }),
+    );
 
   return { rows: result, total };
 }
@@ -234,6 +292,11 @@ export async function respondRequest(
   status,
   notes,
 ) {
+  if (!notes || !String(notes).trim()) {
+    const err = new Error('response_notes required');
+    err.status = 400;
+    throw err;
+  }
   const conn = await pool.getConnection();
   try {
     await conn.query('BEGIN');
@@ -251,8 +314,10 @@ export async function respondRequest(
     if (responder !== requester && responder !== senior)
       throw new Error('Forbidden');
 
+    const proposedData = parseProposedData(req.proposed_data);
+
     if (status === 'accepted') {
-      const data = parseProposedData(req.proposed_data);
+      const data = proposedData;
       if (req.request_type === 'edit' && data) {
         await updateTableRow(req.table_name, req.record_id, data, conn);
         await logUserAction(
@@ -281,7 +346,7 @@ export async function respondRequest(
       }
       await conn.query(
         `UPDATE pending_request SET status = 'accepted', responded_at = NOW(), response_empid = ?, response_notes = ? WHERE request_id = ?`,
-        [responseEmpid, notes || null, id],
+        [responseEmpid, notes, id],
       );
       await logUserAction(
         {
@@ -289,6 +354,7 @@ export async function respondRequest(
           table_name: req.table_name,
           record_id: req.record_id,
           action: 'approve',
+          details: { proposed_data: proposedData, notes },
           request_id: id,
         },
         conn,
@@ -301,7 +367,7 @@ export async function respondRequest(
     } else {
       await conn.query(
         `UPDATE pending_request SET status = 'declined', responded_at = NOW(), response_empid = ?, response_notes = ? WHERE request_id = ?`,
-        [responseEmpid, notes || null, id],
+        [responseEmpid, notes, id],
       );
       await logUserAction(
         {
@@ -309,6 +375,7 @@ export async function respondRequest(
           table_name: req.table_name,
           record_id: req.record_id,
           action: 'decline',
+          details: { proposed_data: proposedData, notes },
           request_id: id,
         },
         conn,

@@ -37,7 +37,7 @@ function setupRequest(overrides = {}) {
 
 await test('direct senior can approve request', async () => {
   const { conn, restore } = setupRequest();
-  await service.respondRequest(1, 's1', 'accepted', null);
+  await service.respondRequest(1, 's1', 'accepted', 'ok');
   restore();
   const upd = conn.queries.find((q) => q.sql.includes("status = 'accepted'"));
   assert.ok(upd, 'should update status to accepted');
@@ -45,7 +45,7 @@ await test('direct senior can approve request', async () => {
 
 await test('direct senior can decline request', async () => {
   const { conn, restore } = setupRequest();
-  await service.respondRequest(1, 's1', 'declined', null);
+  await service.respondRequest(1, 's1', 'declined', 'no');
   restore();
   const upd = conn.queries.find((q) => q.sql.includes("status = 'declined'"));
   assert.ok(upd, 'should update status to declined');
@@ -53,7 +53,7 @@ await test('direct senior can decline request', async () => {
 
 await test('respondRequest returns requester and status', async () => {
   const { restore } = setupRequest();
-  const result = await service.respondRequest(1, 's1', 'accepted', null);
+  const result = await service.respondRequest(1, 's1', 'accepted', 'yes');
   restore();
   assert.deepEqual(result, { requester: 'E1', status: 'accepted' });
 });
@@ -113,5 +113,188 @@ await test('listRequests filters by date range', async () => {
   assert.ok(queries[1].sql.includes('created_at >= ?'));
   assert.ok(queries[1].sql.includes('created_at <= ?'));
   assert.ok(queries[1].sql.includes('LIMIT ? OFFSET ?'));
-  assert.deepEqual(queries[1].params, ['2024-01-01', '2024-01-31', 2, 0]);
+  assert.deepEqual(
+    queries[1].params,
+    ['2024-01-01 00:00:00', '2024-01-31 23:59:59', 2, 0],
+  );
+});
+
+await test('listRequests covers entire day when date_from and date_to match', async () => {
+  const origQuery = db.pool.query;
+  const queries = [];
+  db.pool.query = async (sql, params) => {
+    queries.push({ sql, params });
+    if (sql.includes('COUNT')) return [[{ count: 1 }]];
+    return [[{ request_id: 1, created_at: '2024-06-06 12:00:00' }]];
+  };
+  const result = await service.listRequests({ date_from: '2024-06-06', date_to: '2024-06-06' });
+  db.pool.query = origQuery;
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.rows[0].request_id, 1);
+  assert.deepEqual(
+    queries[1].params,
+    ['2024-06-06 00:00:00', '2024-06-06 23:59:59', 2, 0],
+  );
+});
+
+await test('createRequest throws 409 on duplicate', async () => {
+  const conn = {
+    async query(sql, params) {
+      if (sql.startsWith('SELECT employment_senior_empid')) {
+        return [[{ employment_senior_empid: null }]];
+      }
+      if (sql.startsWith('SELECT request_id, proposed_data FROM pending_request')) {
+        return [[{ request_id: 1, proposed_data: JSON.stringify({ a: 1 }) }]];
+      }
+      return [[]];
+    },
+    release() {},
+  };
+  const origGet = db.pool.getConnection;
+  db.pool.getConnection = async () => conn;
+  const origQuery = db.pool.query;
+  db.pool.query = async (sql) => {
+    if (sql.includes('information_schema')) return [[{ COLUMN_NAME: 'id' }]];
+    return [[]];
+  };
+  try {
+    await assert.rejects(
+      service.createRequest({
+        tableName: 't',
+        recordId: 1,
+        empId: 'e1',
+        requestType: 'edit',
+        proposedData: { a: 1 },
+        requestReason: 'test',
+      }),
+      (err) => err.status === 409,
+    );
+  } finally {
+    db.pool.getConnection = origGet;
+    db.pool.query = origQuery;
+  }
+});
+
+await test('accepted edit requests show original data', async () => {
+  const origQuery = db.pool.query;
+  const queries = [];
+  db.pool.query = async (sql, params) => {
+    queries.push({ sql, params });
+    if (sql.includes('COUNT')) return [[{ count: 1 }]];
+    if (sql.includes('FROM pending_request')) {
+      return [
+        [
+          {
+            request_id: 1,
+            table_name: 't',
+            record_id: 1,
+            request_type: 'edit',
+            proposed_data: JSON.stringify({ name: 'new' }),
+            original_data: JSON.stringify({ name: 'old' }),
+            status: 'accepted',
+          },
+        ],
+      ];
+    }
+    throw new Error('unexpected query');
+  };
+  const result = await service.listRequests({ status: 'accepted' });
+  db.pool.query = origQuery;
+  assert.equal(result.rows.length, 1);
+  assert.deepEqual(result.rows[0].original, { name: 'old' });
+  assert.equal(queries.length, 2);
+});
+
+await test('respondRequest succeeds with prior non-pending entries', async () => {
+  const rows = [
+    {
+      request_id: 1,
+      table_name: 't',
+      record_id: 1,
+      emp_id: 'E1',
+      senior_empid: 'S1',
+      request_type: 'edit',
+      status: 'accepted',
+      proposed_data: null,
+    },
+    {
+      request_id: 2,
+      table_name: 't',
+      record_id: 1,
+      emp_id: 'E1',
+      senior_empid: 'S1',
+      request_type: 'edit',
+      status: 'pending',
+      proposed_data: null,
+    },
+  ];
+  const conn = {
+    queries: [],
+    async query(sql, params) {
+      this.queries.push({ sql, params });
+      if (sql.startsWith('SELECT')) {
+        const row = rows.find((r) => r.request_id === params[0]);
+        return [[row]];
+      }
+      if (sql.startsWith("UPDATE pending_request SET status = 'accepted'")) {
+        const row = rows.find((r) => r.request_id === params[2]);
+        row.status = 'accepted';
+        return [{}];
+      }
+      return [{}];
+    },
+    release() {},
+  };
+  const origGet = db.pool.getConnection;
+  db.pool.getConnection = async () => conn;
+  try {
+    await service.respondRequest(2, 's1', 'accepted', 'ok');
+  } finally {
+    db.pool.getConnection = origGet;
+  }
+  const accepted = rows.filter((r) => r.status === 'accepted');
+  assert.equal(accepted.length, 2);
+});
+
+await test('second pending request for same record is rejected', async () => {
+  const conn = {
+    async query(sql, params) {
+      if (sql.startsWith('SELECT employment_senior_empid')) {
+        return [[{ employment_senior_empid: null }]];
+      }
+      if (sql.startsWith('SELECT request_id, proposed_data FROM pending_request')) {
+        return [[{ request_id: 1, proposed_data: JSON.stringify({ a: 1 }) }]];
+      }
+      if (sql.startsWith('INSERT INTO pending_request')) {
+        const err = new Error('Duplicate entry');
+        err.code = 'ER_DUP_ENTRY';
+        throw err;
+      }
+      return [{}];
+    },
+    release() {},
+  };
+  const origGet = db.pool.getConnection;
+  const origQuery = db.pool.query;
+  db.pool.getConnection = async () => conn;
+  db.pool.query = async (sql) => {
+    if (sql.includes('information_schema')) return [[{ COLUMN_NAME: 'id' }]];
+    return [[]];
+  };
+  try {
+    await assert.rejects(
+      service.createRequest({
+        tableName: 't',
+        recordId: 1,
+        empId: 'e1',
+        requestType: 'edit',
+        proposedData: { a: 2 },
+        requestReason: 'test',
+      }),
+      (err) => err.code === 'ER_DUP_ENTRY',
+    );
+  } finally {
+    db.pool.getConnection = origGet;
+    db.pool.query = origQuery;
+  }
 });

@@ -16,6 +16,8 @@ import RowDetailModal from './RowDetailModal.jsx';
 import RowImageViewModal from './RowImageViewModal.jsx';
 import RowImageUploadModal from './RowImageUploadModal.jsx';
 import ImageSearchModal from './ImageSearchModal.jsx';
+import Modal from './Modal.jsx';
+import CustomDatePicker from './CustomDatePicker.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
@@ -95,6 +97,12 @@ const deleteBtnStyle = {
   color: '#b91c1c',
 };
 
+const requestStatusColors = {
+  pending: '#fef9c3',
+  accepted: '#d1fae5',
+  declined: '#fee2e2',
+};
+
 const TableManager = forwardRef(function TableManager({
   table,
   refreshId = 0,
@@ -161,6 +169,9 @@ const TableManager = forwardRef(function TableManager({
   const [labelEdits, setLabelEdits] = useState({});
   const [isAdding, setIsAdding] = useState(false);
   const [requestType, setRequestType] = useState(null);
+  const [showReasonModal, setShowReasonModal] = useState(false);
+  const [requestReason, setRequestReason] = useState('');
+  const reasonResolveRef = useRef(null);
   const [dateFilter, setDateFilter] = useState('');
   const [datePreset, setDatePreset] = useState('custom');
   const [customStartDate, setCustomStartDate] = useState('');
@@ -178,6 +189,28 @@ const TableManager = forwardRef(function TableManager({
   const generalConfig = useGeneralConfig();
   const { addToast } = useToast();
   const canRequestStatus = isSubordinate;
+
+  function promptRequestReason() {
+    return new Promise((resolve) => {
+      reasonResolveRef.current = resolve;
+      setRequestReason('');
+      setShowReasonModal(true);
+    });
+  }
+
+  function submitRequestReason() {
+    if (!requestReason.trim()) {
+      addToast('Request reason is required', 'error');
+      return;
+    }
+    reasonResolveRef.current(requestReason);
+    setShowReasonModal(false);
+  }
+
+  function cancelRequestReason() {
+    reasonResolveRef.current(null);
+    setShowReasonModal(false);
+  }
 
   useEffect(() => {
     function hideMenu() {
@@ -505,11 +538,16 @@ const TableManager = forwardRef(function TableManager({
               .map((r) => String(r.record_id)),
           );
           setRequestIdSet(ids);
+          setCount(
+            Array.isArray(data) ? ids.size : data.total || ids.size,
+          );
         } else {
           setRequestIdSet(new Set());
+          setCount(0);
         }
       } catch {
         setRequestIdSet(new Set());
+        setCount(0);
       }
     }
     loadRequests();
@@ -693,7 +731,9 @@ const TableManager = forwardRef(function TableManager({
           rows = rows.filter((r) => requestIdSet.has(String(getRowId(r))));
         }
         setRows(rows);
-        setCount(requestStatus ? rows.length : data.count || 0);
+        if (!requestStatus) {
+          setCount(data.total || 0);
+        }
         // clear selections when data changes
         setSelectedRows(new Set());
         logRowsMemory(rows);
@@ -1110,6 +1150,11 @@ const TableManager = forwardRef(function TableManager({
     });
 
     if (requestType === 'edit') {
+      const reason = await promptRequestReason();
+      if (!reason || !reason.trim()) {
+        addToast('Request reason is required', 'error');
+        return;
+      }
       try {
         const res = await fetch(`${API_BASE}/pending_request`, {
           method: 'POST',
@@ -1119,6 +1164,7 @@ const TableManager = forwardRef(function TableManager({
             table_name: table,
             record_id: getRowId(editing),
             request_type: 'edit',
+            request_reason: reason,
             proposed_data: cleaned,
           }),
         });
@@ -1129,6 +1175,8 @@ const TableManager = forwardRef(function TableManager({
           setIsAdding(false);
           setGridRows([]);
           setRequestType(null);
+        } else if (res.status === 409) {
+          addToast('A similar request is already pending', 'error');
         } else {
           addToast('Edit request failed', 'error');
         }
@@ -1172,7 +1220,7 @@ const TableManager = forwardRef(function TableManager({
         }).then((r) => r.json());
         const rows = data.rows || [];
         setRows(rows);
-        setCount(data.count || 0);
+        setCount(data.total || 0);
         logRowsMemory(rows);
         setSelectedRows(new Set());
         setShowForm(false);
@@ -1263,7 +1311,7 @@ const TableManager = forwardRef(function TableManager({
       ).then((r) => r.json());
       const rows = data.rows || [];
       setRows(rows);
-      setCount(data.count || 0);
+      setCount(data.total || 0);
       logRowsMemory(rows);
       setSelectedRows(new Set());
       addToast('Deleted', 'success');
@@ -1318,6 +1366,11 @@ const TableManager = forwardRef(function TableManager({
       return;
     }
     if (!window.confirm('Request delete?')) return;
+    const reason = await promptRequestReason();
+    if (!reason || !reason.trim()) {
+      addToast('Request reason is required', 'error');
+      return;
+    }
     try {
       const cleaned = {};
       const skipFields = new Set([...autoCols, ...generatedCols, 'id']);
@@ -1333,10 +1386,13 @@ const TableManager = forwardRef(function TableManager({
           table_name: table,
           record_id: id,
           request_type: 'delete',
+          request_reason: reason,
           proposed_data: cleaned,
         }),
       });
       if (res.ok) addToast('Delete request submitted', 'success');
+      else if (res.status === 409)
+        addToast('A similar request is already pending', 'error');
       else addToast('Delete request failed', 'error');
     } catch {
       addToast('Delete request failed', 'error');
@@ -1434,7 +1490,7 @@ const TableManager = forwardRef(function TableManager({
     }
     const rows = data.rows || [];
     setRows(rows);
-    setCount(data.count || 0);
+    setCount(data.total || 0);
     logRowsMemory(rows);
     setSelectedRows(new Set());
     addToast('Deleted', 'success');
@@ -1713,16 +1769,18 @@ const TableManager = forwardRef(function TableManager({
           </select>
           {datePreset === 'custom' && (
             <>
-              <input
-                type="date"
+              <CustomDatePicker
                 value={customStartDate}
-                onChange={(e) => setCustomStartDate(e.target.value)}
+                onChange={(v) =>
+                  setCustomStartDate(normalizeDateInput(v, 'YYYY-MM-DD'))
+                }
                 style={{ marginRight: '0.25rem' }}
               />
-              <input
-                type="date"
+              <CustomDatePicker
                 value={customEndDate}
-                onChange={(e) => setCustomEndDate(e.target.value)}
+                onChange={(v) =>
+                  setCustomEndDate(normalizeDateInput(v, 'YYYY-MM-DD'))
+                }
                 style={{ marginRight: '0.5rem' }}
               />
             </>
@@ -2038,7 +2096,12 @@ const TableManager = forwardRef(function TableManager({
                   openDetail(r);
                 }
               }}
-              style={{ cursor: 'pointer' }}
+              style={{
+                cursor: 'pointer',
+                ...(requestStatusColors[requestStatus]
+                  ? { backgroundColor: requestStatusColors[requestStatus] }
+                  : {}),
+              }}
             >
               <td style={{ padding: '0.5rem', border: '1px solid #d1d5db', width: 60, textAlign: 'center' }}>
                 {(() => {
@@ -2483,6 +2546,24 @@ const TableManager = forwardRef(function TableManager({
           </div>
         </div>
       )}
+      <Modal
+        visible={showReasonModal}
+        title="Request Reason"
+        onClose={cancelRequestReason}
+        width="400px"
+      >
+        <textarea
+          value={requestReason}
+          onChange={(e) => setRequestReason(e.target.value)}
+          style={{ width: '100%', minHeight: '6em' }}
+        />
+        <div style={{ marginTop: '0.5rem', textAlign: 'right' }}>
+          <button onClick={cancelRequestReason} style={{ marginRight: '0.5rem' }}>
+            Cancel
+          </button>
+          <button onClick={submitRequestReason}>Submit</button>
+        </div>
+      </Modal>
     </div>
   );
 });
