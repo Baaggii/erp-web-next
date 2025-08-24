@@ -205,8 +205,6 @@ export async function listRequests(filters) {
       conditions.push(`${dateColumn} <= ?`);
       params.push(date_to);
     }
-  } else {
-    conditions.push(`${dateColumn} >= CURDATE()`);
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
