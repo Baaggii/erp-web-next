@@ -60,11 +60,21 @@ export async function login({ empid, password, companyId }) {
 /**
  * Calls logout endpoint to clear the JWT cookie.
  */
-export async function logout() {
+export async function logout(empid, { clearSeen = false } = {}) {
   await fetch(`${API_BASE}/auth/logout`, {
     method: 'POST',
     credentials: 'include',
   });
+  if (clearSeen && empid) {
+    try {
+      const prefix = `${empid}-`;
+      for (const key of Object.keys(localStorage)) {
+        if (key.startsWith(prefix)) localStorage.removeItem(key);
+      }
+    } catch {
+      /* ignore storage errors */
+    }
+  }
 }
 
 /**

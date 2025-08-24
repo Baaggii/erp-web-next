@@ -32,7 +32,7 @@ export default function ERPLayout() {
   const windowTitle = titleMap[location.pathname] || 'ERP';
 
   async function handleLogout() {
-    await logout();
+    await logout(user?.empid);
     setUser(null);
     navigate('/login');
   }

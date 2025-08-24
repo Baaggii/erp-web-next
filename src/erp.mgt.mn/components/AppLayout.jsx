@@ -12,7 +12,7 @@ export default function AppLayout({ children, title }) {
   }, []);
 
   async function handleLogout() {
-    await logout();
+    await logout(user?.empid);
     navigate('/login');
   }
 

@@ -88,7 +88,11 @@ export default function ERPLayout() {
     session && user?.empid && !(Number(session.senior_empid) > 0)
       ? user.empid
       : null;
-  const requestNotifications = useRequestNotificationCounts(seniorEmpId);
+  const requestNotifications = useRequestNotificationCounts(
+    seniorEmpId,
+    undefined,
+    user?.empid,
+  );
 
   useEffect(() => {
     const title = titleForPath(location.pathname);
@@ -106,7 +110,7 @@ export default function ERPLayout() {
   }
 
   async function handleLogout() {
-    await logout();
+    await logout(user?.empid);
     setUser(null);
     navigate("/login");
   }

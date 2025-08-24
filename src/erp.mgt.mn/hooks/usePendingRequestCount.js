@@ -8,12 +8,14 @@ const DEFAULT_POLL_INTERVAL_SECONDS = 30;
  * Polls the pending request endpoint for a supervisor and returns the count.
  * @param {string|number} seniorEmpId Employee ID of the supervisor
  * @param {object} [filters] Optional filters (requested_empid, table_name, date_from, date_to)
+ * @param {string|number} empid Current user's employee ID
  * @returns {{count:number, hasNew:boolean, markSeen:()=>void}}
  */
-export default function usePendingRequestCount(seniorEmpId, filters) {
+export default function usePendingRequestCount(seniorEmpId, filters, empid) {
+  const storageKey = useMemo(() => `${empid}-pendingSeen`, [empid]);
   const [count, setCount] = useState(0);
   const [seen, setSeen] = useState(() =>
-    Number(localStorage.getItem('pendingSeen') || 0),
+    Number(localStorage.getItem(storageKey) || 0),
   );
   const [hasNew, setHasNew] = useState(false);
   const cfg = useGeneralConfig();
@@ -23,7 +25,7 @@ export default function usePendingRequestCount(seniorEmpId, filters) {
     DEFAULT_POLL_INTERVAL_SECONDS;
 
   const markSeen = () => {
-    localStorage.setItem('pendingSeen', String(count));
+    localStorage.setItem(storageKey, String(count));
     setSeen(count);
     setHasNew(false);
     window.dispatchEvent(new Event('pending-request-seen'));
@@ -65,7 +67,7 @@ export default function usePendingRequestCount(seniorEmpId, filters) {
         else c = Number(data?.count) || 0;
         if (!cancelled) {
           setCount(c);
-          const storedSeen = Number(localStorage.getItem('pendingSeen') || 0);
+          const storedSeen = Number(localStorage.getItem(storageKey) || 0);
           const newHasNew = c > storedSeen;
           setHasNew(newHasNew);
           if (newHasNew) window.dispatchEvent(new Event('pending-request-new'));
@@ -105,7 +107,7 @@ export default function usePendingRequestCount(seniorEmpId, filters) {
       if (pollingEnabled) startPolling();
     }
     function handleSeen() {
-      const s = Number(localStorage.getItem('pendingSeen') || 0);
+      const s = Number(localStorage.getItem(storageKey) || 0);
       setSeen(s);
       setHasNew(count > s);
     }
@@ -131,7 +133,7 @@ export default function usePendingRequestCount(seniorEmpId, filters) {
       window.removeEventListener('pending-request-seen', handleSeen);
       window.removeEventListener('pending-request-new', handleNew);
     };
-  }, [seniorEmpId, memoFilters, pollingEnabled, intervalSeconds]);
+  }, [seniorEmpId, memoFilters, pollingEnabled, intervalSeconds, storageKey]);
 
   return { count, hasNew, markSeen };
 }
