@@ -530,9 +530,7 @@ const TableManager = forwardRef(function TableManager({
           { credentials: 'include' },
         );
         if (res.ok) {
-          const data = await res
-            .json()
-            .catch(() => ({ rows: [], total: 0 }));
+          const data = await res.json();
           const rows = Array.isArray(data) ? data : data.rows || [];
           const ids = new Set(
             rows
