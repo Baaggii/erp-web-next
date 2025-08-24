@@ -173,14 +173,19 @@ export async function listRequests(filters) {
     params.push(request_type);
   }
   const dateColumn = date_field === 'responded' ? 'responded_at' : 'created_at';
-  if (date_from || date_to) {
-    if (date_from) {
+  let from = date_from;
+  let to = date_to;
+  if (from && from.length === 10) from = `${from} 00:00:00`;
+  if (to && to.length === 10) to = `${to} 23:59:59`;
+
+  if (from || to) {
+    if (from) {
       conditions.push(`${dateColumn} >= ?`);
-      params.push(date_from);
+      params.push(from);
     }
-    if (date_to) {
+    if (to) {
       conditions.push(`${dateColumn} <= ?`);
-      params.push(date_to);
+      params.push(to);
     }
   } else {
     conditions.push(`${dateColumn} >= CURDATE()`);
