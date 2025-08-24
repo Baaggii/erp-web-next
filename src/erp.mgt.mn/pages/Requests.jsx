@@ -16,7 +16,6 @@ function ch(n) {
 }
 
 const MAX_WIDTH = ch(40);
-const PER_PAGE = 20;
 
 function getAverageLength(values) {
   const list = values
@@ -85,6 +84,10 @@ export default function RequestsPage() {
   const [incomingPage, setIncomingPage] = useState(1);
   const [outgoingPage, setOutgoingPage] = useState(1);
 
+  const [perPage, setPerPage] = useState(2);
+  const [incomingTotal, setIncomingTotal] = useState(0);
+  const [outgoingTotal, setOutgoingTotal] = useState(0);
+
   const configCache = useRef({});
 
   const requests =
@@ -93,6 +96,8 @@ export default function RequestsPage() {
     activeTab === 'incoming' ? incomingLoading : outgoingLoading;
   const error = activeTab === 'incoming' ? incomingError : outgoingError;
   const currentPage = activeTab === 'incoming' ? incomingPage : outgoingPage;
+  const total = activeTab === 'incoming' ? incomingTotal : outgoingTotal;
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
 
   const requesterOptions = useMemo(() => {
     const set = new Set();
@@ -218,7 +223,7 @@ export default function RequestsPage() {
         const params = new URLSearchParams({
           senior_empid: seniorEmpId,
           page: incomingPage,
-          per_page: PER_PAGE,
+          per_page: perPage,
         });
         if (status) params.append('status', status);
         if (requestedEmpid) params.append('requested_empid', requestedEmpid);
@@ -231,8 +236,9 @@ export default function RequestsPage() {
         );
         if (!res.ok) throw new Error('Failed to load requests');
         const data = await res.json();
-        const enriched = await enrichRequests(data);
+        const enriched = await enrichRequests(data.rows || []);
         setIncomingRequests(enriched);
+        setIncomingTotal(data.total || 0);
       } catch (err) {
         console.error(err);
         setIncomingError('Failed to load requests');
@@ -253,6 +259,7 @@ export default function RequestsPage() {
     dateTo,
     incomingReloadKey,
     incomingPage,
+    perPage,
   ]);
 
   useEffect(() => {
@@ -264,7 +271,7 @@ export default function RequestsPage() {
       try {
         const params = new URLSearchParams({
           page: outgoingPage,
-          per_page: PER_PAGE,
+          per_page: perPage,
         });
         if (status) params.append('status', status);
         if (tableName) params.append('table_name', tableName);
@@ -276,8 +283,9 @@ export default function RequestsPage() {
         );
         if (!res.ok) throw new Error('Failed to load requests');
         const data = await res.json();
-        const enriched = await enrichRequests(data);
+        const enriched = await enrichRequests(data.rows || []);
         setOutgoingRequests(enriched);
+        setOutgoingTotal(data.total || 0);
       } catch (err) {
         console.error(err);
         setOutgoingError('Failed to load requests');
@@ -296,6 +304,7 @@ export default function RequestsPage() {
     dateTo,
     outgoingReloadKey,
     outgoingPage,
+    perPage,
   ]);
 
   const updateNotes = (id, value) => {
@@ -634,8 +643,42 @@ export default function RequestsPage() {
           </div>
         );
       })}
-      {(requests.length > 0 || currentPage > 1) && (
-        <div style={{ marginTop: '1em' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'flex-start',
+          alignItems: 'center',
+          marginTop: '1em',
+          gap: '1rem',
+        }}
+      >
+        <div>
+          Rows per page:
+          <input
+            type="number"
+            value={perPage}
+            onChange={(e) => {
+              const val = Number(e.target.value) || 1;
+              setIncomingPage(1);
+              setOutgoingPage(1);
+              setPerPage(val);
+            }}
+            min="1"
+            style={{ marginLeft: '0.25rem', width: '4rem' }}
+          />
+        </div>
+        <div>
+          <button
+            onClick={() =>
+              activeTab === 'incoming'
+                ? setIncomingPage(1)
+                : setOutgoingPage(1)
+            }
+            disabled={currentPage === 1 || loading}
+            style={{ marginRight: '0.25rem' }}
+          >
+            {'<<'}
+          </button>
           <button
             onClick={() =>
               activeTab === 'incoming'
@@ -643,22 +686,53 @@ export default function RequestsPage() {
                 : setOutgoingPage((p) => Math.max(1, p - 1))
             }
             disabled={currentPage === 1 || loading}
+            style={{ marginRight: '0.25rem' }}
           >
-            Previous
+            {'<'}
           </button>
-          <span style={{ margin: '0 0.5em' }}>Page {currentPage}</span>
+          <span>
+            Page
+            <input
+              type="number"
+              value={currentPage}
+              onChange={(e) => {
+                let val = Number(e.target.value) || 1;
+                if (val < 1) val = 1;
+                if (val > totalPages) val = totalPages;
+                activeTab === 'incoming'
+                  ? setIncomingPage(val)
+                  : setOutgoingPage(val);
+              }}
+              style={{ width: '3rem', margin: '0 0.25rem', textAlign: 'center' }}
+              min="1"
+              max={totalPages}
+            />
+            {` of ${totalPages}`}
+          </span>
           <button
             onClick={() =>
               activeTab === 'incoming'
-                ? setIncomingPage((p) => p + 1)
-                : setOutgoingPage((p) => p + 1)
+                ? setIncomingPage((p) => Math.min(totalPages, p + 1))
+                : setOutgoingPage((p) => Math.min(totalPages, p + 1))
             }
-            disabled={requests.length < PER_PAGE || loading}
+            disabled={currentPage >= totalPages || loading}
+            style={{ marginLeft: '0.25rem' }}
           >
-            Next
+            {'>'}
+          </button>
+          <button
+            onClick={() =>
+              activeTab === 'incoming'
+                ? setIncomingPage(totalPages)
+                : setOutgoingPage(totalPages)
+            }
+            disabled={currentPage >= totalPages || loading}
+            style={{ marginLeft: '0.25rem' }}
+          >
+            {'>>'}
           </button>
         </div>
-      )}
+      </div>
       {!loading && requests.length === 0 && <p>No pending requests.</p>}
     </div>
   );
