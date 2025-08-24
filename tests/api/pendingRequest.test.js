@@ -113,7 +113,28 @@ await test('listRequests filters by date range', async () => {
   assert.ok(queries[1].sql.includes('created_at >= ?'));
   assert.ok(queries[1].sql.includes('created_at <= ?'));
   assert.ok(queries[1].sql.includes('LIMIT ? OFFSET ?'));
-  assert.deepEqual(queries[1].params, ['2024-01-01', '2024-01-31', 2, 0]);
+  assert.deepEqual(
+    queries[1].params,
+    ['2024-01-01 00:00:00', '2024-01-31 23:59:59', 2, 0],
+  );
+});
+
+await test('listRequests covers entire day when date_from and date_to match', async () => {
+  const origQuery = db.pool.query;
+  const queries = [];
+  db.pool.query = async (sql, params) => {
+    queries.push({ sql, params });
+    if (sql.includes('COUNT')) return [[{ count: 1 }]];
+    return [[{ request_id: 1, created_at: '2024-06-06 12:00:00' }]];
+  };
+  const result = await service.listRequests({ date_from: '2024-06-06', date_to: '2024-06-06' });
+  db.pool.query = origQuery;
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.rows[0].request_id, 1);
+  assert.deepEqual(
+    queries[1].params,
+    ['2024-06-06 00:00:00', '2024-06-06 23:59:59', 2, 0],
+  );
 });
 
 await test('createRequest throws 409 on duplicate', async () => {
