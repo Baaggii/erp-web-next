@@ -100,3 +100,18 @@ await test('listRequestsByEmp filters by requester', async () => {
   assert.ok(queries[0].sql.includes('LIMIT ? OFFSET ?'));
   assert.deepEqual(queries[0].params, ['pending', 'E1', 20, 0]);
 });
+
+await test('listRequests filters by date range', async () => {
+  const origQuery = db.pool.query;
+  const queries = [];
+  db.pool.query = async (sql, params) => {
+    queries.push({ sql, params });
+    return [[]];
+  };
+  await service.listRequests({ date_from: '2024-01-01', date_to: '2024-01-31' });
+  db.pool.query = origQuery;
+  assert.ok(queries[0].sql.includes('created_at >= ?'));
+  assert.ok(queries[0].sql.includes('created_at <= ?'));
+  assert.ok(queries[0].sql.includes('LIMIT ? OFFSET ?'));
+  assert.deepEqual(queries[0].params, ['2024-01-01', '2024-01-31', 20, 0]);
+});
