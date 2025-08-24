@@ -58,23 +58,21 @@ export async function login({ empid, password, companyId }) {
 }
 
 /**
- * Calls logout endpoint to clear the JWT cookie and related notification
- * markers in `localStorage`.
+ * Calls the logout endpoint to clear the JWT cookie. Any additional cleanup
+ * is handled by the `auth:logout` event listener in `AuthContext` so that the
+ * logic remains centralised.
  */
 export async function logout(empid) {
   await fetch(`${API_BASE}/auth/logout`, {
     method: 'POST',
     credentials: 'include',
   });
-  if (empid) {
-    try {
-      const pattern = new RegExp(`\\b${empid}-.*-seen$`);
-      for (const key of Object.keys(localStorage)) {
-        if (pattern.test(key)) localStorage.removeItem(key);
-      }
-    } catch {
-      /* ignore storage errors */
-    }
+  // Notify the AuthContext that a logout occurred so that it can reset state.
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    const evt = typeof CustomEvent === 'function'
+      ? new CustomEvent('auth:logout')
+      : { type: 'auth:logout' };
+    window.dispatchEvent(evt);
   }
 }
 
