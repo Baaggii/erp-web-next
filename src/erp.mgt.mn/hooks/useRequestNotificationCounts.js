@@ -82,7 +82,7 @@ export default function useRequestNotificationCounts(
                 const data = await res.json().catch(() => 0);
                 if (typeof data === 'number') c = data;
                 else if (Array.isArray(data)) c = data.length;
-                else c = Number(data?.count) || 0;
+                else c = Number(data?.count ?? data?.total) || 0;
               }
               const seenKey = storageKey('incoming', status);
               const storedSeen = localStorage.getItem(seenKey);
@@ -115,7 +115,7 @@ export default function useRequestNotificationCounts(
               const data = await res.json().catch(() => 0);
               if (typeof data === 'number') c = data;
               else if (Array.isArray(data)) c = data.length;
-              else c = Number(data?.count) || 0;
+              else c = Number(data?.count ?? data?.total) || 0;
             }
             const seenKey = storageKey('outgoing', status);
             if (status === 'pending') {
