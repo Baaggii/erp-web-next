@@ -55,7 +55,29 @@ export async function createRequest({
     const seniorRaw = rows[0]?.employment_senior_empid;
     const senior = seniorRaw ? String(seniorRaw).trim().toUpperCase() : null;
     let finalProposed = proposedData;
-    if (requestType === 'delete') {
+    let originalData = null;
+    if (requestType === 'edit') {
+      const pkCols = await getPrimaryKeyColumns(tableName);
+      let currentRow = null;
+      if (pkCols.length === 1) {
+        const col = pkCols[0];
+        const where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
+        const [r] = await conn.query(
+          `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
+          [tableName, recordId],
+        );
+        currentRow = r[0] || null;
+      } else if (pkCols.length > 1) {
+        const parts = String(recordId).split('-');
+        const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
+        const [r] = await conn.query(
+          `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
+          [tableName, ...parts],
+        );
+        currentRow = r[0] || null;
+      }
+      originalData = currentRow;
+    } else if (requestType === 'delete') {
       const pkCols = await getPrimaryKeyColumns(tableName);
       let currentRow = null;
       if (pkCols.length === 1) {
@@ -94,8 +116,8 @@ export async function createRequest({
       }
     }
     const [result] = await conn.query(
-      `INSERT INTO pending_request (table_name, record_id, emp_id, senior_empid, request_type, request_reason, proposed_data)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO pending_request (table_name, record_id, emp_id, senior_empid, request_type, request_reason, proposed_data, original_data)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         tableName,
         recordId,
@@ -104,6 +126,7 @@ export async function createRequest({
         requestType,
         requestReason,
         finalProposed ? JSON.stringify(finalProposed) : null,
+        originalData ? JSON.stringify(originalData) : null,
       ],
     );
     const requestId = result.insertId;
@@ -206,42 +229,44 @@ export async function listRequests(filters) {
     [...params, limit, offset],
   );
 
-  const result = await Promise.all(
-    rows.map(async (row) => {
-      const parsed = parseProposedData(row.proposed_data);
-      let original = null;
-      try {
-        const pkCols = await getPrimaryKeyColumns(row.table_name);
-        if (pkCols.length === 1) {
-          const col = pkCols[0];
-          const whereClause = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
-          const [r] = await pool.query(
-            `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
-            [row.table_name, row.record_id],
-          );
-          original = r[0] || null;
-        } else if (pkCols.length > 1) {
-          const parts = String(row.record_id).split('-');
-          const whereClause = pkCols
-            .map((c) => `\`${c}\` = ?`)
-            .join(' AND ');
-          const [r] = await pool.query(
-            `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
-            [row.table_name, ...parts],
-          );
-          original = r[0] || null;
+    const result = await Promise.all(
+      rows.map(async (row) => {
+        const parsed = parseProposedData(row.proposed_data);
+        let original = parseProposedData(row.original_data);
+        if (!original) {
+          try {
+            const pkCols = await getPrimaryKeyColumns(row.table_name);
+            if (pkCols.length === 1) {
+              const col = pkCols[0];
+              const whereClause = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
+              const [r] = await pool.query(
+                `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
+                [row.table_name, row.record_id],
+              );
+              original = r[0] || null;
+            } else if (pkCols.length > 1) {
+              const parts = String(row.record_id).split('-');
+              const whereClause = pkCols
+                .map((c) => `\`${c}\` = ?`)
+                .join(' AND ');
+              const [r] = await pool.query(
+                `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
+                [row.table_name, ...parts],
+              );
+              original = r[0] || null;
+            }
+          } catch {
+            original = null;
+          }
         }
-      } catch {
-        original = null;
-      }
 
-      return {
-        ...row,
-        proposed_data: parsed,
-        original,
-      };
-    }),
-  );
+        return {
+          ...row,
+          proposed_data: parsed,
+          original,
+        };
+      }),
+    );
 
   return { rows: result, total };
 }
