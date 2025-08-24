@@ -524,6 +524,19 @@ const TableManager = forwardRef(function TableManager({
           senior_empid: user?.empid,
           table_name: table,
         });
+        // Parse date filter into date_from/date_to if provided
+        if (dateFilter) {
+          const rangeMatch = dateFilter.match(
+            /^(\d{4}-\d{2}-\d{2})-(\d{4}-\d{2}-\d{2})$/,
+          );
+          if (rangeMatch) {
+            params.set('date_from', rangeMatch[1]);
+            params.set('date_to', rangeMatch[2]);
+          } else if (/^\d{4}-\d{2}-\d{2}$/.test(dateFilter)) {
+            params.set('date_from', dateFilter);
+            params.set('date_to', dateFilter);
+          }
+        }
         params.set('per_page', '1000');
         const res = await fetch(
           `/api/pending_request?${params.toString()}`,
@@ -551,7 +564,7 @@ const TableManager = forwardRef(function TableManager({
       }
     }
     loadRequests();
-  }, [requestStatus, table, user?.empid]);
+  }, [requestStatus, table, user?.empid, dateFilter]);
 
   useEffect(() => {
     if (!table) return;
