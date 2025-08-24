@@ -65,10 +65,16 @@ if (!haveReact) {
       const u = new URL(url, 'http://example.com');
       const status = u.searchParams.get('status');
       if (u.pathname === '/api/pending_request') {
-        return { ok: true, json: async () => counts.incoming[status] };
+        return {
+          ok: true,
+          json: async () => ({ rows: [], total: counts.incoming[status] }),
+        };
       }
       if (u.pathname === '/api/pending_request/outgoing') {
-        return { ok: true, json: async () => counts.outgoing[status] };
+        return {
+          ok: true,
+          json: async () => ({ rows: [], total: counts.outgoing[status] }),
+        };
       }
       if (u.pathname === '/api/auth/logout') {
         return { ok: true, json: async () => ({}) };
@@ -128,6 +134,7 @@ if (!haveReact) {
 
     unmount2();
     counts.incoming.pending = 3;
+    counts.outgoing.accepted = 1;
 
     const { value: value3, unmount: unmount3 } = renderHook(() =>
       useRequestNotificationCounts(5, undefined, 'u1'),
@@ -140,6 +147,8 @@ if (!haveReact) {
     });
 
     assert.equal(value3.incoming.pending.hasNew, true);
+    assert.equal(value3.outgoing.accepted.hasNew, true);
+    assert.equal(value3.hasNew, true);
     unmount3();
   });
 
