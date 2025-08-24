@@ -8,7 +8,7 @@ import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import { translateToMn } from '../utils/translateToMn.js';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import { useSearchParams } from 'react-router-dom';
-import CustomDatePicker from '../components/CustomDatePicker.jsx';
+import DateRangePicker from '../components/DateRangePicker.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
 function ch(n) {
@@ -436,18 +436,14 @@ export default function RequestsPage() {
           </select>
         </label>
         <label style={{ marginRight: '0.5em' }}>
-          From:
-          <CustomDatePicker
-            value={dateFrom}
-            onChange={setDateFrom}
-            style={{ marginLeft: '0.25em' }}
-          />
-        </label>
-        <label style={{ marginRight: '0.5em' }}>
-          To:
-          <CustomDatePicker
-            value={dateTo}
-            onChange={setDateTo}
+          Date:
+          <DateRangePicker
+            start={dateFrom}
+            end={dateTo}
+            onChange={({ start, end }) => {
+              setDateFrom(start);
+              setDateTo(end);
+            }}
             style={{ marginLeft: '0.25em' }}
           />
         </label>
