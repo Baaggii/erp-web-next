@@ -52,7 +52,7 @@ router.get('/outgoing', requireAuth, async (req, res, next) => {
   try {
     const { status, table_name, date_from, date_to, page, per_page } =
       req.query;
-    const requests = await listRequestsByEmp(req.user.empid, {
+    const { rows, total } = await listRequestsByEmp(req.user.empid, {
       status,
       table_name,
       date_from,
@@ -60,7 +60,9 @@ router.get('/outgoing', requireAuth, async (req, res, next) => {
       page,
       per_page,
     });
-    res.json(requests);
+    const pageNum = Number(page) > 0 ? Number(page) : 1;
+    const perPageNum = Number(per_page) > 0 ? Number(per_page) : 2;
+    res.json({ rows, total, page: pageNum, per_page: perPageNum });
   } catch (err) {
     next(err);
   }
@@ -80,7 +82,7 @@ router.get('/', requireAuth, async (req, res, next) => {
 
     const empid = String(req.user.empid).trim().toUpperCase();
 
-    const requests = await listRequests({
+    const { rows, total } = await listRequests({
       status,
       senior_empid: empid,
       requested_empid,
@@ -90,7 +92,9 @@ router.get('/', requireAuth, async (req, res, next) => {
       page,
       per_page,
     });
-    res.json(requests);
+    const pageNum = Number(page) > 0 ? Number(page) : 1;
+    const perPageNum = Number(per_page) > 0 ? Number(per_page) : 2;
+    res.json({ rows, total, page: pageNum, per_page: perPageNum });
   } catch (err) {
     next(err);
   }
