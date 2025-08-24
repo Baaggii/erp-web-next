@@ -28,10 +28,22 @@ function parseProposedData(value) {
   }
 }
 
-export async function createRequest({ tableName, recordId, empId, requestType, proposedData }) {
+export async function createRequest({
+  tableName,
+  recordId,
+  empId,
+  requestType,
+  proposedData,
+  requestReason,
+}) {
   await ensureValidTableName(tableName);
   if (!ALLOWED_REQUEST_TYPES.has(requestType)) {
     throw new Error('Invalid request type');
+  }
+  if (!requestReason || !String(requestReason).trim()) {
+    const err = new Error('request_reason required');
+    err.status = 400;
+    throw err;
   }
   const conn = await pool.getConnection();
   try {
@@ -82,14 +94,15 @@ export async function createRequest({ tableName, recordId, empId, requestType, p
       }
     }
     const [result] = await conn.query(
-      `INSERT INTO pending_request (table_name, record_id, emp_id, senior_empid, request_type, proposed_data)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO pending_request (table_name, record_id, emp_id, senior_empid, request_type, request_reason, proposed_data)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         tableName,
         recordId,
         normalizedEmp,
         senior,
         requestType,
+        requestReason,
         finalProposed ? JSON.stringify(finalProposed) : null,
       ],
     );
@@ -251,6 +264,11 @@ export async function respondRequest(
   status,
   notes,
 ) {
+  if (!notes || !String(notes).trim()) {
+    const err = new Error('response_notes required');
+    err.status = 400;
+    throw err;
+  }
   const conn = await pool.getConnection();
   try {
     await conn.query('BEGIN');
@@ -300,7 +318,7 @@ export async function respondRequest(
       }
       await conn.query(
         `UPDATE pending_request SET status = 'accepted', responded_at = NOW(), response_empid = ?, response_notes = ? WHERE request_id = ?`,
-        [responseEmpid, notes || null, id],
+        [responseEmpid, notes, id],
       );
       await logUserAction(
         {
@@ -308,7 +326,7 @@ export async function respondRequest(
           table_name: req.table_name,
           record_id: req.record_id,
           action: 'approve',
-          details: { proposed_data: proposedData, notes: notes || null },
+          details: { proposed_data: proposedData, notes },
           request_id: id,
         },
         conn,
@@ -321,7 +339,7 @@ export async function respondRequest(
     } else {
       await conn.query(
         `UPDATE pending_request SET status = 'declined', responded_at = NOW(), response_empid = ?, response_notes = ? WHERE request_id = ?`,
-        [responseEmpid, notes || null, id],
+        [responseEmpid, notes, id],
       );
       await logUserAction(
         {
@@ -329,7 +347,7 @@ export async function respondRequest(
           table_name: req.table_name,
           record_id: req.record_id,
           action: 'decline',
-          details: { proposed_data: proposedData, notes: notes || null },
+          details: { proposed_data: proposedData, notes },
           request_id: id,
         },
         conn,

@@ -325,6 +325,14 @@ export default function RequestsPage() {
 
   const respond = async (id, respStatus) => {
     const reqItem = incomingRequests.find((r) => r.request_id === id);
+    if (!reqItem?.notes?.trim()) {
+      setIncomingRequests((reqs) =>
+        reqs.map((r) =>
+          r.request_id === id ? { ...r, error: 'Response notes required' } : r,
+        ),
+      );
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE}/pending_request/${id}/respond`, {
         method: 'PUT',
@@ -332,7 +340,7 @@ export default function RequestsPage() {
         credentials: 'include',
         body: JSON.stringify({
           status: respStatus,
-          response_notes: reqItem?.notes || undefined,
+          response_notes: reqItem.notes,
           response_empid: user.empid,
           senior_empid: reqItem?.senior_empid || user.empid,
         }),
@@ -654,18 +662,22 @@ export default function RequestsPage() {
             ) : canRespond ? (
               <>
                 <textarea
-                  placeholder="Notes (optional)"
+                  placeholder="Response Notes"
                   value={req.notes}
                   onChange={(e) => updateNotes(req.request_id, e.target.value)}
                   style={{ width: '100%', minHeight: '4em' }}
                 />
                 <div style={{ marginTop: '0.5em' }}>
-                  <button onClick={() => respond(req.request_id, 'accepted')}>
+                  <button
+                    onClick={() => respond(req.request_id, 'accepted')}
+                    disabled={!req.notes?.trim()}
+                  >
                     Accept
                   </button>
                   <button
                     onClick={() => respond(req.request_id, 'declined')}
                     style={{ marginLeft: '0.5em' }}
+                    disabled={!req.notes?.trim()}
                   >
                     Decline
                   </button>

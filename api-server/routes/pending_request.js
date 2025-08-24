@@ -13,11 +13,14 @@ const router = express.Router();
 
 router.post('/', requireAuth, async (req, res, next) => {
   try {
-    const { table_name, record_id, request_type, proposed_data } = req.body;
+    const { table_name, record_id, request_type, proposed_data, request_reason } = req.body;
     if (!table_name || !record_id || !request_type) {
       return res
         .status(400)
         .json({ message: 'table_name, record_id and request_type are required' });
+    }
+    if (!request_reason || !String(request_reason).trim()) {
+      return res.status(400).json({ message: 'request_reason is required' });
     }
 
     if (!ALLOWED_REQUEST_TYPES.has(request_type)) {
@@ -29,6 +32,7 @@ router.post('/', requireAuth, async (req, res, next) => {
       empId: req.user.empid,
       requestType: request_type,
       proposedData: proposed_data,
+      requestReason: request_reason,
     });
     const io = req.app.get('io');
     if (io && result.senior_empid) {
@@ -119,6 +123,9 @@ router.put('/:id/respond', requireAuth, async (req, res, next) => {
     const { status, response_notes } = req.body;
     if (!['accepted', 'declined'].includes(status)) {
       return res.status(400).json({ message: 'invalid status' });
+    }
+    if (!response_notes || !String(response_notes).trim()) {
+      return res.status(400).json({ message: 'response_notes is required' });
     }
     const result = await respondRequest(
       req.params.id,

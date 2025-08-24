@@ -16,6 +16,7 @@ import RowDetailModal from './RowDetailModal.jsx';
 import RowImageViewModal from './RowImageViewModal.jsx';
 import RowImageUploadModal from './RowImageUploadModal.jsx';
 import ImageSearchModal from './ImageSearchModal.jsx';
+import Modal from './Modal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
@@ -161,6 +162,9 @@ const TableManager = forwardRef(function TableManager({
   const [labelEdits, setLabelEdits] = useState({});
   const [isAdding, setIsAdding] = useState(false);
   const [requestType, setRequestType] = useState(null);
+  const [showReasonModal, setShowReasonModal] = useState(false);
+  const [requestReason, setRequestReason] = useState('');
+  const reasonResolveRef = useRef(null);
   const [dateFilter, setDateFilter] = useState('');
   const [datePreset, setDatePreset] = useState('custom');
   const [customStartDate, setCustomStartDate] = useState('');
@@ -178,6 +182,28 @@ const TableManager = forwardRef(function TableManager({
   const generalConfig = useGeneralConfig();
   const { addToast } = useToast();
   const canRequestStatus = isSubordinate;
+
+  function promptRequestReason() {
+    return new Promise((resolve) => {
+      reasonResolveRef.current = resolve;
+      setRequestReason('');
+      setShowReasonModal(true);
+    });
+  }
+
+  function submitRequestReason() {
+    if (!requestReason.trim()) {
+      addToast('Request reason is required', 'error');
+      return;
+    }
+    reasonResolveRef.current(requestReason);
+    setShowReasonModal(false);
+  }
+
+  function cancelRequestReason() {
+    reasonResolveRef.current(null);
+    setShowReasonModal(false);
+  }
 
   useEffect(() => {
     function hideMenu() {
@@ -1108,6 +1134,11 @@ const TableManager = forwardRef(function TableManager({
     });
 
     if (requestType === 'edit') {
+      const reason = await promptRequestReason();
+      if (!reason || !reason.trim()) {
+        addToast('Request reason is required', 'error');
+        return;
+      }
       try {
         const res = await fetch(`${API_BASE}/pending_request`, {
           method: 'POST',
@@ -1117,6 +1148,7 @@ const TableManager = forwardRef(function TableManager({
             table_name: table,
             record_id: getRowId(editing),
             request_type: 'edit',
+            request_reason: reason,
             proposed_data: cleaned,
           }),
         });
@@ -1318,6 +1350,11 @@ const TableManager = forwardRef(function TableManager({
       return;
     }
     if (!window.confirm('Request delete?')) return;
+    const reason = await promptRequestReason();
+    if (!reason || !reason.trim()) {
+      addToast('Request reason is required', 'error');
+      return;
+    }
     try {
       const cleaned = {};
       const skipFields = new Set([...autoCols, ...generatedCols, 'id']);
@@ -1333,6 +1370,7 @@ const TableManager = forwardRef(function TableManager({
           table_name: table,
           record_id: id,
           request_type: 'delete',
+          request_reason: reason,
           proposed_data: cleaned,
         }),
       });
@@ -2485,6 +2523,24 @@ const TableManager = forwardRef(function TableManager({
           </div>
         </div>
       )}
+      <Modal
+        visible={showReasonModal}
+        title="Request Reason"
+        onClose={cancelRequestReason}
+        width="400px"
+      >
+        <textarea
+          value={requestReason}
+          onChange={(e) => setRequestReason(e.target.value)}
+          style={{ width: '100%', minHeight: '6em' }}
+        />
+        <div style={{ marginTop: '0.5rem', textAlign: 'right' }}>
+          <button onClick={cancelRequestReason} style={{ marginRight: '0.5rem' }}>
+            Cancel
+          </button>
+          <button onClick={submitRequestReason}>Submit</button>
+        </div>
+      </Modal>
     </div>
   );
 });
