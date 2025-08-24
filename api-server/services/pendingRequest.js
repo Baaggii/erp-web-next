@@ -251,8 +251,10 @@ export async function respondRequest(
     if (responder !== requester && responder !== senior)
       throw new Error('Forbidden');
 
+    const proposedData = parseProposedData(req.proposed_data);
+
     if (status === 'accepted') {
-      const data = parseProposedData(req.proposed_data);
+      const data = proposedData;
       if (req.request_type === 'edit' && data) {
         await updateTableRow(req.table_name, req.record_id, data, conn);
         await logUserAction(
@@ -289,6 +291,7 @@ export async function respondRequest(
           table_name: req.table_name,
           record_id: req.record_id,
           action: 'approve',
+          details: { proposed_data: proposedData, notes: notes || null },
           request_id: id,
         },
         conn,
@@ -309,6 +312,7 @@ export async function respondRequest(
           table_name: req.table_name,
           record_id: req.record_id,
           action: 'decline',
+          details: { proposed_data: proposedData, notes: notes || null },
           request_id: id,
         },
         conn,
