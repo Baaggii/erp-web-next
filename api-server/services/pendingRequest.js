@@ -6,6 +6,7 @@ import {
   getPrimaryKeyColumns,
 } from '../../db/index.js';
 import { logUserAction } from './userActivityLog.js';
+import { isDeepStrictEqual } from 'util';
 
 export const ALLOWED_REQUEST_TYPES = new Set(['edit', 'delete']);
 
@@ -64,13 +65,29 @@ export async function createRequest({ tableName, recordId, empId, requestType, p
       }
       finalProposed = currentRow;
     }
+    const normalizedEmp = String(empId).trim().toUpperCase();
+    const [existing] = await conn.query(
+      `SELECT request_id, proposed_data FROM pending_request
+       WHERE table_name = ? AND record_id = ? AND emp_id = ?
+         AND request_type = ? AND status = 'pending'
+       LIMIT 1`,
+      [tableName, recordId, normalizedEmp, requestType],
+    );
+    if (existing.length) {
+      const existingData = parseProposedData(existing[0].proposed_data);
+      if (isDeepStrictEqual(existingData, finalProposed || null)) {
+        const err = new Error('Duplicate pending request');
+        err.status = 409;
+        throw err;
+      }
+    }
     const [result] = await conn.query(
       `INSERT INTO pending_request (table_name, record_id, emp_id, senior_empid, request_type, proposed_data)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [
         tableName,
         recordId,
-        String(empId).trim().toUpperCase(),
+        normalizedEmp,
         senior,
         requestType,
         finalProposed ? JSON.stringify(finalProposed) : null,

@@ -1127,6 +1127,8 @@ const TableManager = forwardRef(function TableManager({
           setIsAdding(false);
           setGridRows([]);
           setRequestType(null);
+        } else if (res.status === 409) {
+          addToast('A similar request is already pending', 'error');
         } else {
           addToast('Edit request failed', 'error');
         }
@@ -1335,6 +1337,8 @@ const TableManager = forwardRef(function TableManager({
         }),
       });
       if (res.ok) addToast('Delete request submitted', 'success');
+      else if (res.status === 409)
+        addToast('A similar request is already pending', 'error');
       else addToast('Delete request failed', 'error');
     } catch {
       addToast('Delete request failed', 'error');
