@@ -531,8 +531,8 @@ const TableManager = forwardRef(function TableManager({
         );
         if (res.ok) {
           const data = await res.json();
-          const list = Array.isArray(data) ? data : data.rows || [];
-          const ids = new Set(list.map((r) => String(r.record_id)));
+          const rows = Array.isArray(data) ? data : data.rows || [];
+          const ids = new Set(rows.map((r) => String(r.record_id)));
           setRequestIdSet(ids);
           setCount(
             Array.isArray(data) ? ids.size : data.total || ids.size,
