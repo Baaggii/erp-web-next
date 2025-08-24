@@ -149,41 +149,42 @@ export async function listRequests(filters) {
     params,
   );
 
-  const result = [];
-  for (const row of rows) {
-    const parsed = parseProposedData(row.proposed_data);
-    let original = null;
-    try {
-      const pkCols = await getPrimaryKeyColumns(row.table_name);
-      if (pkCols.length === 1) {
-        const col = pkCols[0];
-        const whereClause = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
-        const [r] = await pool.query(
-          `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
-          [row.table_name, row.record_id],
-        );
-        original = r[0] || null;
-      } else if (pkCols.length > 1) {
-        const parts = String(row.record_id).split('-');
-        const whereClause = pkCols
-          .map((c) => `\`${c}\` = ?`)
-          .join(' AND ');
-        const [r] = await pool.query(
-          `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
-          [row.table_name, ...parts],
-        );
-        original = r[0] || null;
+  const result = await Promise.all(
+    rows.map(async (row) => {
+      const parsed = parseProposedData(row.proposed_data);
+      let original = null;
+      try {
+        const pkCols = await getPrimaryKeyColumns(row.table_name);
+        if (pkCols.length === 1) {
+          const col = pkCols[0];
+          const whereClause = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
+          const [r] = await pool.query(
+            `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
+            [row.table_name, row.record_id],
+          );
+          original = r[0] || null;
+        } else if (pkCols.length > 1) {
+          const parts = String(row.record_id).split('-');
+          const whereClause = pkCols
+            .map((c) => `\`${c}\` = ?`)
+            .join(' AND ');
+          const [r] = await pool.query(
+            `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
+            [row.table_name, ...parts],
+          );
+          original = r[0] || null;
+        }
+      } catch {
+        original = null;
       }
-    } catch {
-      original = null;
-    }
 
-    result.push({
-      ...row,
-      proposed_data: parsed,
-      original,
-    });
-  }
+      return {
+        ...row,
+        proposed_data: parsed,
+        original,
+      };
+    }),
+  );
 
   return result;
 }
