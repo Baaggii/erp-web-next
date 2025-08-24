@@ -113,6 +113,8 @@ export async function listRequests(filters) {
     table_name,
     date_from,
     date_to,
+    page = 1,
+    per_page = 20,
   } = filters || {};
 
   const conditions = [];
@@ -144,9 +146,11 @@ export async function listRequests(filters) {
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const limit = Number(per_page) > 0 ? Number(per_page) : 20;
+  const offset = (Number(page) > 0 ? Number(page) - 1 : 0) * limit;
   const [rows] = await pool.query(
-    `SELECT * FROM pending_request ${where}`,
-    params,
+    `SELECT * FROM pending_request ${where} LIMIT ? OFFSET ?`,
+    [...params, limit, offset],
   );
 
   const result = await Promise.all(
@@ -191,7 +195,7 @@ export async function listRequests(filters) {
 
 export async function listRequestsByEmp(
   emp_id,
-  { status, table_name, date_from, date_to } = {},
+  { status, table_name, date_from, date_to, page, per_page } = {},
 ) {
   return listRequests({
     requested_empid: emp_id,
@@ -199,6 +203,8 @@ export async function listRequestsByEmp(
     table_name,
     date_from,
     date_to,
+    page,
+    per_page,
   });
 }
 

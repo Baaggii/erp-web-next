@@ -50,12 +50,15 @@ router.post('/', requireAuth, async (req, res, next) => {
 
 router.get('/outgoing', requireAuth, async (req, res, next) => {
   try {
-    const { status, table_name, date_from, date_to } = req.query;
+    const { status, table_name, date_from, date_to, page, per_page } =
+      req.query;
     const requests = await listRequestsByEmp(req.user.empid, {
       status,
       table_name,
       date_from,
       date_to,
+      page,
+      per_page,
     });
     res.json(requests);
   } catch (err) {
@@ -65,7 +68,15 @@ router.get('/outgoing', requireAuth, async (req, res, next) => {
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
-    const { status, requested_empid, table_name, date_from, date_to } = req.query;
+    const {
+      status,
+      requested_empid,
+      table_name,
+      date_from,
+      date_to,
+      page,
+      per_page,
+    } = req.query;
 
     const empid = String(req.user.empid).trim().toUpperCase();
 
@@ -76,6 +87,8 @@ router.get('/', requireAuth, async (req, res, next) => {
       table_name,
       date_from,
       date_to,
+      page,
+      per_page,
     });
     res.json(requests);
   } catch (err) {

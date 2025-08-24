@@ -14,6 +14,7 @@ function ch(n) {
 }
 
 const MAX_WIDTH = ch(40);
+const PER_PAGE = 20;
 
 function getAverageLength(values) {
   const list = values
@@ -85,6 +86,8 @@ export default function RequestsPage() {
   const [dateTo, setDateTo] = useState('');
   const [incomingReloadKey, setIncomingReloadKey] = useState(0);
   const [outgoingReloadKey, setOutgoingReloadKey] = useState(0);
+  const [incomingPage, setIncomingPage] = useState(1);
+  const [outgoingPage, setOutgoingPage] = useState(1);
 
   const configCache = useRef({});
 
@@ -93,6 +96,7 @@ export default function RequestsPage() {
   const loading =
     activeTab === 'incoming' ? incomingLoading : outgoingLoading;
   const error = activeTab === 'incoming' ? incomingError : outgoingError;
+  const currentPage = activeTab === 'incoming' ? incomingPage : outgoingPage;
 
   const requesterOptions = useMemo(() => {
     const set = new Set();
@@ -130,6 +134,12 @@ export default function RequestsPage() {
     params.set('status', status);
     setSearchParams(params, { replace: true });
   }, [activeTab, status, setSearchParams]);
+  useEffect(() => {
+    setIncomingPage(1);
+  }, [status, requestedEmpid, tableName, dateFrom, dateTo]);
+  useEffect(() => {
+    setOutgoingPage(1);
+  }, [status, tableName, dateFrom, dateTo]);
   async function enrichRequests(data) {
     const tables = Array.from(new Set(data.map((r) => r.table_name)));
     await Promise.all(
@@ -205,6 +215,8 @@ export default function RequestsPage() {
       try {
         const params = new URLSearchParams({
           senior_empid: seniorEmpId,
+          page: incomingPage,
+          per_page: PER_PAGE,
         });
         if (status) params.append('status', status);
         if (requestedEmpid) params.append('requested_empid', requestedEmpid);
@@ -238,6 +250,7 @@ export default function RequestsPage() {
     dateFrom,
     dateTo,
     incomingReloadKey,
+    incomingPage,
   ]);
 
   useEffect(() => {
@@ -247,7 +260,10 @@ export default function RequestsPage() {
       setOutgoingLoading(true);
       setOutgoingError(null);
       try {
-        const params = new URLSearchParams();
+        const params = new URLSearchParams({
+          page: outgoingPage,
+          per_page: PER_PAGE,
+        });
         if (status) params.append('status', status);
         if (tableName) params.append('table_name', tableName);
         if (dateFrom) params.append('date_from', dateFrom);
@@ -277,6 +293,7 @@ export default function RequestsPage() {
     dateFrom,
     dateTo,
     outgoingReloadKey,
+    outgoingPage,
   ]);
 
   const updateNotes = (id, value) => {
@@ -619,6 +636,31 @@ export default function RequestsPage() {
           </div>
         );
       })}
+      {(requests.length > 0 || currentPage > 1) && (
+        <div style={{ marginTop: '1em' }}>
+          <button
+            onClick={() =>
+              activeTab === 'incoming'
+                ? setIncomingPage((p) => Math.max(1, p - 1))
+                : setOutgoingPage((p) => Math.max(1, p - 1))
+            }
+            disabled={currentPage === 1 || loading}
+          >
+            Previous
+          </button>
+          <span style={{ margin: '0 0.5em' }}>Page {currentPage}</span>
+          <button
+            onClick={() =>
+              activeTab === 'incoming'
+                ? setIncomingPage((p) => p + 1)
+                : setOutgoingPage((p) => p + 1)
+            }
+            disabled={requests.length < PER_PAGE || loading}
+          >
+            Next
+          </button>
+        </div>
+      )}
       {!loading && requests.length === 0 && <p>No pending requests.</p>}
     </div>
   );

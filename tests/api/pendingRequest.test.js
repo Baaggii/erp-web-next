@@ -69,7 +69,8 @@ await test('listRequests normalizes empids in filters', async () => {
   db.pool.query = origQuery;
   assert.ok(queries[0].sql.includes('UPPER(TRIM(senior_empid))'));
   assert.ok(queries[0].sql.includes('UPPER(TRIM(emp_id))'));
-  assert.deepEqual(queries[0].params, ['S1', 'E2']);
+  assert.ok(queries[0].sql.includes('LIMIT ? OFFSET ?'));
+  assert.deepEqual(queries[0].params, ['S1', 'E2', 20, 0]);
 });
 
 await test('listRequests matches status case-insensitively', async () => {
@@ -82,7 +83,8 @@ await test('listRequests matches status case-insensitively', async () => {
   await service.listRequests({ status: 'Pending' });
   db.pool.query = origQuery;
   assert.ok(queries[0].sql.includes('LOWER(TRIM(status)) = ?'));
-  assert.deepEqual(queries[0].params, ['pending']);
+  assert.ok(queries[0].sql.includes('LIMIT ? OFFSET ?'));
+  assert.deepEqual(queries[0].params, ['pending', 20, 0]);
 });
 
 await test('listRequestsByEmp filters by requester', async () => {
@@ -95,5 +97,6 @@ await test('listRequestsByEmp filters by requester', async () => {
   await service.listRequestsByEmp(' e1 ', { status: 'pending' });
   db.pool.query = origQuery;
   assert.ok(queries[0].sql.includes('UPPER(TRIM(emp_id)) = ?'));
-  assert.deepEqual(queries[0].params, ['pending', 'E1']);
+  assert.ok(queries[0].sql.includes('LIMIT ? OFFSET ?'));
+  assert.deepEqual(queries[0].params, ['pending', 'E1', 20, 0]);
 });
