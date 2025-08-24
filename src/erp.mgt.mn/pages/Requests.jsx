@@ -79,6 +79,8 @@ export default function RequestsPage() {
   const [status, setStatus] = useState(initialStatus || 'pending');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [requestType, setRequestType] = useState('');
+  const [dateField, setDateField] = useState('created');
   const [incomingReloadKey, setIncomingReloadKey] = useState(0);
   const [outgoingReloadKey, setOutgoingReloadKey] = useState(0);
   const [incomingPage, setIncomingPage] = useState(1);
@@ -142,10 +144,10 @@ export default function RequestsPage() {
   }, [activeTab, status, setSearchParams]);
   useEffect(() => {
     setIncomingPage(1);
-  }, [status, requestedEmpid, tableName, dateFrom, dateTo]);
+  }, [status, requestedEmpid, tableName, requestType, dateFrom, dateTo, dateField]);
   useEffect(() => {
     setOutgoingPage(1);
-  }, [status, tableName, dateFrom, dateTo]);
+  }, [status, tableName, requestType, dateFrom, dateTo, dateField]);
   async function enrichRequests(data) {
     const tables = Array.from(new Set(data.map((r) => r.table_name)));
     await Promise.all(
@@ -228,8 +230,10 @@ export default function RequestsPage() {
         if (status) params.append('status', status);
         if (requestedEmpid) params.append('requested_empid', requestedEmpid);
         if (tableName) params.append('table_name', tableName);
+        if (requestType) params.append('request_type', requestType);
         if (dateFrom) params.append('date_from', dateFrom);
         if (dateTo) params.append('date_to', dateTo);
+        if (dateField) params.append('date_field', dateField);
         const res = await fetch(
           `${API_BASE}/pending_request?${params.toString()}`,
           { credentials: 'include' },
@@ -247,20 +251,22 @@ export default function RequestsPage() {
       }
     }
 
-    load();
-  }, [
-    activeTab,
-    markSeen,
-    seniorEmpId,
-    status,
-    requestedEmpid,
-    tableName,
-    dateFrom,
-    dateTo,
-    incomingReloadKey,
-    incomingPage,
-    perPage,
-  ]);
+      load();
+    }, [
+      activeTab,
+      markSeen,
+      seniorEmpId,
+      status,
+      requestedEmpid,
+      tableName,
+      requestType,
+      dateFrom,
+      dateTo,
+      dateField,
+      incomingReloadKey,
+      incomingPage,
+      perPage,
+    ]);
 
   useEffect(() => {
     if (activeTab !== 'outgoing' || !dateFrom || !dateTo) return;
@@ -275,8 +281,10 @@ export default function RequestsPage() {
         });
         if (status) params.append('status', status);
         if (tableName) params.append('table_name', tableName);
+        if (requestType) params.append('request_type', requestType);
         if (dateFrom) params.append('date_from', dateFrom);
         if (dateTo) params.append('date_to', dateTo);
+        if (dateField) params.append('date_field', dateField);
         const res = await fetch(
           `${API_BASE}/pending_request/outgoing?${params.toString()}`,
           { credentials: 'include' },
@@ -293,19 +301,21 @@ export default function RequestsPage() {
         setOutgoingLoading(false);
       }
     }
-    load();
-  }, [
-    activeTab,
-    markSeen,
-    user?.empid,
-    status,
-    tableName,
-    dateFrom,
-    dateTo,
-    outgoingReloadKey,
-    outgoingPage,
-    perPage,
-  ]);
+      load();
+    }, [
+      activeTab,
+      markSeen,
+      user?.empid,
+      status,
+      tableName,
+      requestType,
+      dateFrom,
+      dateTo,
+      dateField,
+      outgoingReloadKey,
+      outgoingPage,
+      perPage,
+    ]);
 
   const updateNotes = (id, value) => {
     setIncomingRequests((reqs) =>
@@ -436,6 +446,18 @@ export default function RequestsPage() {
           </select>
         </label>
         <label style={{ marginRight: '0.5em' }}>
+          Request Type:
+          <select
+            value={requestType}
+            onChange={(e) => setRequestType(e.target.value)}
+            style={{ marginLeft: '0.25em' }}
+          >
+            <option value="">Any</option>
+            <option value="edit">Edit Request</option>
+            <option value="delete">Delete Request</option>
+          </select>
+        </label>
+        <label style={{ marginRight: '0.5em' }}>
           Status:
           <select
             value={status}
@@ -446,6 +468,17 @@ export default function RequestsPage() {
             <option value="pending">Pending</option>
             <option value="accepted">Accepted</option>
             <option value="declined">Declined</option>
+          </select>
+        </label>
+        <label style={{ marginRight: '0.5em' }}>
+          Date Field:
+          <select
+            value={dateField}
+            onChange={(e) => setDateField(e.target.value)}
+            style={{ marginLeft: '0.25em' }}
+          >
+            <option value="created">Created</option>
+            <option value="responded">Responded</option>
           </select>
         </label>
         <label style={{ marginRight: '0.5em' }}>
@@ -517,10 +550,11 @@ export default function RequestsPage() {
             <h4>
               {req.table_name} #{req.record_id} ({req.request_type})
             </h4>
-            <table
-              style={{ width: '100%', borderCollapse: 'collapse' }}
-            >
-              <thead>
+            <div style={{ overflowX: 'auto' }}>
+              <table
+                style={{ width: '100%', borderCollapse: 'collapse' }}
+              >
+                <thead>
                 <tr>
                   <th
                     style={{
@@ -613,7 +647,8 @@ export default function RequestsPage() {
                   </tr>
                 )}
               </tbody>
-            </table>
+              </table>
+            </div>
             {!isPending ? (
               <p>Request {requestStatus}</p>
             ) : canRespond ? (

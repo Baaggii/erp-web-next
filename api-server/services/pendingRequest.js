@@ -111,8 +111,10 @@ export async function listRequests(filters) {
     senior_empid,
     requested_empid,
     table_name,
+    request_type,
     date_from,
     date_to,
+    date_field = 'created',
     page = 1,
     per_page = 2,
   } = filters || {};
@@ -136,17 +138,22 @@ export async function listRequests(filters) {
     conditions.push('table_name = ?');
     params.push(table_name);
   }
+  if (request_type) {
+    conditions.push('request_type = ?');
+    params.push(request_type);
+  }
+  const dateColumn = date_field === 'responded' ? 'responded_at' : 'created_at';
   if (date_from || date_to) {
     if (date_from) {
-      conditions.push('created_at >= ?');
+      conditions.push(`${dateColumn} >= ?`);
       params.push(date_from);
     }
     if (date_to) {
-      conditions.push('created_at <= ?');
+      conditions.push(`${dateColumn} <= ?`);
       params.push(date_to);
     }
   } else {
-    conditions.push('created_at >= CURDATE()');
+    conditions.push(`${dateColumn} >= CURDATE()`);
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -206,14 +213,16 @@ export async function listRequests(filters) {
 
 export async function listRequestsByEmp(
   emp_id,
-  { status, table_name, date_from, date_to, page, per_page } = {},
+  { status, table_name, request_type, date_from, date_to, date_field, page, per_page } = {},
 ) {
   return listRequests({
     requested_empid: emp_id,
     status,
     table_name,
+    request_type,
     date_from,
     date_to,
+    date_field,
     page,
     per_page,
   });
