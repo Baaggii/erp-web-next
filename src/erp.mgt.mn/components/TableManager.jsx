@@ -531,12 +531,8 @@ const TableManager = forwardRef(function TableManager({
         );
         if (res.ok) {
           const data = await res.json();
-          const rows = Array.isArray(data) ? data : data.rows || [];
-          const ids = new Set(
-            rows
-              .filter((r) => r.table_name === table)
-              .map((r) => String(r.record_id)),
-          );
+          const list = Array.isArray(data) ? data : data.rows || [];
+          const ids = new Set(list.map((r) => String(r.record_id)));
           setRequestIdSet(ids);
           setCount(
             Array.isArray(data) ? ids.size : data.total || ids.size,
@@ -732,7 +728,7 @@ const TableManager = forwardRef(function TableManager({
         }
         setRows(rows);
         if (!requestStatus) {
-          setCount(data.count || 0);
+          setCount(data.total || 0);
         }
         // clear selections when data changes
         setSelectedRows(new Set());
@@ -1220,7 +1216,7 @@ const TableManager = forwardRef(function TableManager({
         }).then((r) => r.json());
         const rows = data.rows || [];
         setRows(rows);
-        setCount(data.count || 0);
+        setCount(data.total || 0);
         logRowsMemory(rows);
         setSelectedRows(new Set());
         setShowForm(false);
@@ -1311,7 +1307,7 @@ const TableManager = forwardRef(function TableManager({
       ).then((r) => r.json());
       const rows = data.rows || [];
       setRows(rows);
-      setCount(data.count || 0);
+      setCount(data.total || 0);
       logRowsMemory(rows);
       setSelectedRows(new Set());
       addToast('Deleted', 'success');
@@ -1490,7 +1486,7 @@ const TableManager = forwardRef(function TableManager({
     }
     const rows = data.rows || [];
     setRows(rows);
-    setCount(data.count || 0);
+    setCount(data.total || 0);
     logRowsMemory(rows);
     setSelectedRows(new Set());
     addToast('Deleted', 'success');
