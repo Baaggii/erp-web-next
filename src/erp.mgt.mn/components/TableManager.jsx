@@ -524,6 +524,7 @@ const TableManager = forwardRef(function TableManager({
           senior_empid: user?.empid,
           table_name: table,
         });
+        params.set('per_page', '1000');
         const res = await fetch(
           `/api/pending_request?${params.toString()}`,
           { credentials: 'include' },
@@ -532,14 +533,16 @@ const TableManager = forwardRef(function TableManager({
           const data = await res
             .json()
             .catch(() => ({ rows: [], total: 0 }));
-          const rows = data.rows || [];
+          const rows = Array.isArray(data) ? data : data.rows || [];
           const ids = new Set(
             rows
               .filter((r) => r.table_name === table)
               .map((r) => String(r.record_id)),
           );
           setRequestIdSet(ids);
-          setCount(data.total || ids.size);
+          setCount(
+            Array.isArray(data) ? ids.size : data.total || ids.size,
+          );
         } else {
           setRequestIdSet(new Set());
           setCount(0);
