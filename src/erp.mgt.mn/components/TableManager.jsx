@@ -97,6 +97,12 @@ const deleteBtnStyle = {
   color: '#b91c1c',
 };
 
+const requestStatusColors = {
+  pending: '#fef9c3',
+  accepted: '#d1fae5',
+  declined: '#fee2e2',
+};
+
 const TableManager = forwardRef(function TableManager({
   table,
   refreshId = 0,
@@ -2089,7 +2095,12 @@ const TableManager = forwardRef(function TableManager({
                   openDetail(r);
                 }
               }}
-              style={{ cursor: 'pointer' }}
+              style={{
+                cursor: 'pointer',
+                ...(requestStatusColors[requestStatus]
+                  ? { backgroundColor: requestStatusColors[requestStatus] }
+                  : {}),
+              }}
             >
               <td style={{ padding: '0.5rem', border: '1px solid #d1d5db', width: 60, textAlign: 'center' }}>
                 {(() => {
