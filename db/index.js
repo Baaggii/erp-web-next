@@ -959,6 +959,33 @@ export async function getTenantTableFlags(tableName) {
   };
 }
 
+export async function seedTenantTables(companyId) {
+  const [tables] = await pool.query(
+    `SELECT table_name, is_shared FROM tenant_tables WHERE seed_on_create = 1`,
+  );
+  for (const { table_name, is_shared } of tables) {
+    if (is_shared) continue;
+    const meta = await listTableColumnMeta(table_name);
+    const otherCols = meta
+      .filter(
+        (c) =>
+          c.name !== 'company_id' &&
+          !/auto_increment/i.test(c.extra),
+      )
+      .map((c) => c.name);
+    const colsClause = ['company_id', ...otherCols]
+      .map((c) => `\`${c}\``)
+      .join(', ');
+    const selectClause = ['? AS company_id', ...otherCols.map((c) => `\`${c}\``)].join(
+      ', ',
+    );
+    await pool.query(
+      `INSERT INTO ?? (${colsClause}) SELECT ${selectClause} FROM ?? WHERE company_id = 0`,
+      [table_name, companyId, table_name],
+    );
+  }
+}
+
 export async function saveStoredProcedure(sql) {
   const cleaned = sql
     .replace(/^DELIMITER \$\$/gm, '')
@@ -1245,6 +1272,9 @@ export async function insertTableRow(tableName, row) {
     `INSERT INTO ?? (${cols}) VALUES (${placeholders})`,
     [tableName, ...values],
   );
+  if (tableName === 'companies') {
+    await seedTenantTables(result.insertId);
+  }
   return { id: result.insertId };
 }
 
