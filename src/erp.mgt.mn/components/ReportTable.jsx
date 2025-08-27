@@ -86,6 +86,14 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
   const headerMap = useHeaderMappings([procedure]);
   const general = generalConfig.general || {};
 
+  function rowToast(message, type = 'info') {
+    if (general.reportRowToastEnabled) {
+      window.dispatchEvent(
+        new CustomEvent('toast', { detail: { message, type } }),
+      );
+    }
+  }
+
   const columns = rows && rows.length ? Object.keys(rows[0]) : [];
   const columnHeaderMap = useHeaderMappings(columns);
 
@@ -225,11 +233,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
 
   useEffect(() => {
     if (procedure) {
-      window.dispatchEvent(
-        new CustomEvent('toast', {
-          detail: { message: `Selected procedure: ${procedure}`, type: 'info' },
-        }),
-      );
+      rowToast(`Selected procedure: ${procedure}`, 'info');
     }
   }, [procedure]);
 
@@ -250,11 +254,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
   function handleCellClick(col, value, row) {
     const num = Number(String(value).replace(',', '.'));
     if (!procedure || Number.isNaN(num) || num <= 0) return;
-    window.dispatchEvent(
-      new CustomEvent('toast', {
-        detail: { message: `Procedure: ${procedure}`, type: 'info' },
-      }),
-    );
+    rowToast(`Procedure: ${procedure}`, 'info');
     let displayValue = value;
     if (placeholders[col]) {
       displayValue = formatCellValue(value, placeholders[col]);
@@ -381,46 +381,26 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
             data.original.length > 200
               ? `${data.original.slice(0, 200)}…`
               : data.original;
-          window.dispatchEvent(
-            new CustomEvent('toast', {
-              detail: {
-                message: `Procedure SQL saved to ${data.file || ''}: ${preview}`,
-                type: 'info',
-              },
-            }),
+          rowToast(
+            `Procedure SQL saved to ${data.file || ''}: ${preview}`,
+            'info',
           );
         } else {
-          window.dispatchEvent(
-            new CustomEvent('toast', {
-              detail: { message: 'Procedure SQL not found', type: 'error' },
-            }),
-          );
+          rowToast('Procedure SQL not found', 'error');
         }
         if (data.sql && data.sql !== data.original) {
           const preview =
             data.sql.length > 200 ? `${data.sql.slice(0, 200)}…` : data.sql;
-          window.dispatchEvent(
-            new CustomEvent('toast', {
-              detail: {
-                message: `Transformed SQL saved to ${data.file || ''}: ${preview}`,
-                type: 'info',
-              },
-            }),
+          rowToast(
+            `Transformed SQL saved to ${data.file || ''}: ${preview}`,
+            'info',
           );
         } else {
-          window.dispatchEvent(
-            new CustomEvent('toast', {
-              detail: { message: 'SQL transformation failed', type: 'error' },
-            }),
-          );
+          rowToast('SQL transformation failed', 'error');
         }
-        window.dispatchEvent(
-          new CustomEvent('toast', {
-            detail: {
-              message: `Rows fetched: ${data.rows ? data.rows.length : 0}`,
-              type: data.rows && data.rows.length ? 'success' : 'error',
-            },
-          }),
+        rowToast(
+          `Rows fetched: ${data.rows ? data.rows.length : 0}`,
+          data.rows && data.rows.length ? 'success' : 'error',
         );
       })
       .catch((err) => {
@@ -429,28 +409,13 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
         setTxnInfo({ loading: false, col, value, data: [], sql, displayFields: [] });
         if (sql) {
           const preview = sql.length > 200 ? `${sql.slice(0, 200)}…` : sql;
-          window.dispatchEvent(
-            new CustomEvent('toast', {
-              detail: {
-                message: `SQL saved to ${file}: ${preview}`,
-                type: 'info',
-              },
-            }),
-          );
+          rowToast(`SQL saved to ${file}: ${preview}`, 'info');
         } else {
-          window.dispatchEvent(
-            new CustomEvent('toast', {
-              detail: { message: 'No SQL generated', type: 'error' },
-            }),
-          );
+          rowToast('No SQL generated', 'error');
         }
-        window.dispatchEvent(
-          new CustomEvent('toast', {
-            detail: {
-              message: err && err.message ? err.message : 'Row fetch failed',
-              type: 'error',
-            },
-          }),
+        rowToast(
+          err && err.message ? err.message : 'Row fetch failed',
+          'error',
         );
       });
   }
