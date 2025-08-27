@@ -81,7 +81,16 @@ export default function ERPLayout() {
 
   const windowTitle = titleForPath(location.pathname);
 
-  const { tabs, activeKey, openTab, closeTab, switchTab, setTabContent, cache } = useTabs();
+  const {
+    tabs,
+    activeKey,
+    openTab,
+    closeTab,
+    switchTab,
+    setTabContent,
+    cache,
+    resetTabs,
+  } = useTabs();
   const txnModules = useTxnModules();
 
   const seniorEmpId =
@@ -111,6 +120,7 @@ export default function ERPLayout() {
 
   async function handleLogout() {
     await logout(user?.empid);
+    resetTabs();
     setUser(null);
     navigate("/login");
   }

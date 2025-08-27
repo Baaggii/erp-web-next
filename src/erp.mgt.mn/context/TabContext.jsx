@@ -68,9 +68,34 @@ export function TabProvider({ children }) {
     });
   }, []);
 
+  const resetTabs = useCallback(() => {
+    trackSetState('TabProvider.setTabs');
+    setTabs([]);
+    trackSetState('TabProvider.setActiveKey');
+    setActiveKey(null);
+    trackSetState('TabProvider.setCache');
+    setCache({});
+    window.__activeTabKey = 'global';
+  }, []);
+
+  useEffect(() => {
+    const handleLogout = () => resetTabs();
+    window.addEventListener('auth:logout', handleLogout);
+    return () => window.removeEventListener('auth:logout', handleLogout);
+  }, [resetTabs]);
+
   const value = useMemo(
-    () => ({ tabs, activeKey, openTab, closeTab, switchTab, setTabContent, cache }),
-    [tabs, activeKey, openTab, closeTab, switchTab, setTabContent, cache]
+    () => ({
+      tabs,
+      activeKey,
+      openTab,
+      closeTab,
+      switchTab,
+      setTabContent,
+      cache,
+      resetTabs,
+    }),
+    [tabs, activeKey, openTab, closeTab, switchTab, setTabContent, cache, resetTabs]
   );
 
   return (
