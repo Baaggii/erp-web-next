@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 import Spinner from '../components/Spinner.jsx';
+import { API_BASE } from '../utils/apiBase.js';
 
 export default function TenantTablesRegistry() {
   const [tables, setTables] = useState([]);
@@ -15,7 +16,7 @@ export default function TenantTablesRegistry() {
   async function loadTables() {
     setLoading(true);
     try {
-      const res = await fetch('/api/tenant_tables', {
+      const res = await fetch(`${API_BASE}/tenant_tables`, {
         credentials: 'include',
       });
       if (!res.ok) throw new Error('Failed to fetch');
@@ -31,13 +32,6 @@ export default function TenantTablesRegistry() {
 
   function handleChange(idx, field, value) {
     setTables((ts) => ts.map((t, i) => (i === idx ? { ...t, [field]: value } : t)));
-  }
-
-  function handleAdd() {
-    setTables((ts) => [
-      ...ts,
-      { table_name: '', is_shared: false, seed_on_create: false, isNew: true },
-    ]);
   }
 
   async function handleSave(row) {
@@ -62,9 +56,6 @@ export default function TenantTablesRegistry() {
       });
       if (!res.ok) throw new Error('Failed to save');
       addToast('Saved', 'success');
-      if (row.isNew) {
-        loadTables();
-      }
     } catch (err) {
       console.error('Failed to save tenant table', err);
       addToast('Failed to save tenant table', 'error');
@@ -76,11 +67,10 @@ export default function TenantTablesRegistry() {
   return (
     <div>
       <h2>Tenant Tables Registry</h2>
-      <button onClick={handleAdd} style={{ marginTop: '0.5rem' }}>
-        Add Table
-      </button>
       {loading ? (
         <Spinner />
+      ) : tables.length === 0 ? (
+        <p>No tenant tables.</p>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.5rem' }}>
           <thead>
@@ -92,51 +82,33 @@ export default function TenantTablesRegistry() {
             </tr>
           </thead>
           <tbody>
-            {tables.length === 0 ? (
-              <tr>
-                <td style={styles.td} colSpan="4">
-                  No tenant tables configured.
+            {tables.map((t, idx) => (
+              <tr key={t.table_name}>
+                <td style={styles.td}>{t.table_name}</td>
+                <td style={styles.td}>
+                  <input
+                    type="checkbox"
+                    checked={!!t.is_shared}
+                    onChange={(e) => handleChange(idx, 'is_shared', e.target.checked)}
+                  />
+                </td>
+                <td style={styles.td}>
+                  <input
+                    type="checkbox"
+                    checked={!!t.seed_on_create}
+                    onChange={(e) => handleChange(idx, 'seed_on_create', e.target.checked)}
+                  />
+                </td>
+                <td style={styles.td}>
+                  <button
+                    onClick={() => handleSave(t)}
+                    disabled={saving[t.table_name]}
+                  >
+                    Save
+                  </button>
                 </td>
               </tr>
-            ) : (
-              tables.map((t, idx) => (
-                <tr key={t.table_name || idx}>
-                  <td style={styles.td}>
-                    {t.isNew ? (
-                      <input
-                        type="text"
-                        value={t.table_name}
-                        onChange={(e) => handleChange(idx, 'table_name', e.target.value)}
-                      />
-                    ) : (
-                      t.table_name
-                    )}
-                  </td>
-                  <td style={styles.td}>
-                    <input
-                      type="checkbox"
-                      checked={!!t.is_shared}
-                      onChange={(e) => handleChange(idx, 'is_shared', e.target.checked)}
-                    />
-                  </td>
-                  <td style={styles.td}>
-                    <input
-                      type="checkbox"
-                      checked={!!t.seed_on_create}
-                      onChange={(e) => handleChange(idx, 'seed_on_create', e.target.checked)}
-                    />
-                  </td>
-                  <td style={styles.td}>
-                    <button
-                      onClick={() => handleSave(t)}
-                      disabled={saving[t.table_name]}
-                    >
-                      Save
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
+            ))}
           </tbody>
         </table>
       )}
