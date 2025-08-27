@@ -196,13 +196,16 @@ export async function listRequests(filters) {
     params.push(request_type);
   }
   const dateColumn = date_field === 'responded' ? 'responded_at' : 'created_at';
-  if (date_from || date_to) {
+  if (date_from && date_to) {
+    conditions.push(`DATE(${dateColumn}) BETWEEN ? AND ?`);
+    params.push(date_from, date_to);
+  } else {
     if (date_from) {
       conditions.push(`${dateColumn} >= ?`);
       params.push(date_from);
     }
     if (date_to) {
-      conditions.push(`${dateColumn} <= ?`);
+      conditions.push(`${dateColumn} < DATE_ADD(?, INTERVAL 1 DAY)`);
       params.push(date_to);
     }
   }

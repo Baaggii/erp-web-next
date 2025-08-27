@@ -110,8 +110,7 @@ await test('listRequests filters by date range', async () => {
   };
   await service.listRequests({ date_from: '2024-01-01', date_to: '2024-01-31' });
   db.pool.query = origQuery;
-  assert.ok(queries[1].sql.includes('created_at >= ?'));
-  assert.ok(queries[1].sql.includes('created_at <= ?'));
+  assert.ok(queries[1].sql.includes('DATE(created_at) BETWEEN ? AND ?'));
   assert.ok(queries[1].sql.includes('LIMIT ? OFFSET ?'));
   assert.deepEqual(
     queries[1].params,
@@ -119,18 +118,19 @@ await test('listRequests filters by date range', async () => {
   );
 });
 
-await test('listRequests accepts single-day ranges as provided', async () => {
+await test('listRequests returns requests from entire day when date range is single day', async () => {
   const origQuery = db.pool.query;
   const queries = [];
   db.pool.query = async (sql, params) => {
     queries.push({ sql, params });
     if (sql.includes('COUNT')) return [[{ count: 1 }]];
-    return [[{ request_id: 1, created_at: '2024-06-06 12:00:00' }]];
+    return [[{ request_id: 1, created_at: '2024-06-06 23:59:00' }]];
   };
   const result = await service.listRequests({ date_from: '2024-06-06', date_to: '2024-06-06' });
   db.pool.query = origQuery;
   assert.equal(result.rows.length, 1);
   assert.equal(result.rows[0].request_id, 1);
+  assert.ok(queries[1].sql.includes('DATE(created_at) BETWEEN ? AND ?'));
   assert.deepEqual(
     queries[1].params,
     ['2024-06-06', '2024-06-06', 2, 0],

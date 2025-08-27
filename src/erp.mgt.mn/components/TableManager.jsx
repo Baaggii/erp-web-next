@@ -530,11 +530,11 @@ const TableManager = forwardRef(function TableManager({
             /^(\d{4}-\d{2}-\d{2})-(\d{4}-\d{2}-\d{2})$/,
           );
           if (rangeMatch) {
-            params.set('date_from', rangeMatch[1]);
-            params.set('date_to', rangeMatch[2]);
+            params.set('date_from', `${rangeMatch[1]} 00:00:00`);
+            params.set('date_to', `${rangeMatch[2]} 23:59:59`);
           } else if (/^\d{4}-\d{2}-\d{2}$/.test(dateFilter)) {
-            params.set('date_from', dateFilter);
-            params.set('date_to', dateFilter);
+            params.set('date_from', `${dateFilter} 00:00:00`);
+            params.set('date_to', `${dateFilter} 23:59:59`);
           }
         }
         params.set('per_page', '1000');
