@@ -164,6 +164,40 @@ await test('listRequests returns old requests when no date range specified', asy
   assert.deepEqual(queries[1].params, [2, 0]);
 });
 
+await test(
+  "'Today' and 'This Month' filters return same count when data is only from today",
+  async () => {
+    const origQuery = db.pool.query;
+    db.pool.query = async (sql, params) => {
+      if (sql.includes('COUNT')) return [[{ count: 1 }]];
+      return [
+        [
+          {
+            request_id: 1,
+            proposed_data: null,
+            original_data: null,
+            created_at_fmt: '2024-06-15 10:00:00',
+            responded_at_fmt: null,
+          },
+        ],
+      ];
+    };
+    const today = '2024-06-15';
+    const resToday = await service.listRequests({
+      date_from: today,
+      date_to: today,
+    });
+    const resMonth = await service.listRequests({
+      date_from: '2024-06-01',
+      date_to: '2024-06-30',
+    });
+    db.pool.query = origQuery;
+    assert.equal(resToday.total, 1);
+    assert.equal(resMonth.total, 1);
+    assert.equal(resToday.total, resMonth.total);
+  },
+);
+
 await test('createRequest throws 409 on duplicate', async () => {
   const conn = {
     async query(sql, params) {

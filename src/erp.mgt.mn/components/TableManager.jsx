@@ -74,6 +74,20 @@ function normalizeDateInput(value, format) {
   return v;
 }
 
+function applyDateParams(params, filter) {
+  if (!filter) return;
+  const rangeMatch = filter.match(
+    /^(\d{4}-\d{2}-\d{2})-(\d{4}-\d{2}-\d{2})$/,
+  );
+  if (rangeMatch) {
+    params.set('date_from', `${rangeMatch[1]} 00:00:00`);
+    params.set('date_to', `${rangeMatch[2]} 23:59:59`);
+  } else if (/^\d{4}-\d{2}-\d{2}$/.test(filter)) {
+    params.set('date_from', `${filter} 00:00:00`);
+    params.set('date_to', `${filter} 23:59:59`);
+  }
+}
+
 const actionCellStyle = {
   padding: '0.5rem',
   border: '1px solid #d1d5db',
@@ -525,18 +539,7 @@ const TableManager = forwardRef(function TableManager({
           table_name: table,
         });
         // Parse date filter into date_from/date_to if provided
-        if (dateFilter) {
-          const rangeMatch = dateFilter.match(
-            /^(\d{4}-\d{2}-\d{2})-(\d{4}-\d{2}-\d{2})$/,
-          );
-          if (rangeMatch) {
-            params.set('date_from', `${rangeMatch[1]} 00:00:00`);
-            params.set('date_to', `${rangeMatch[2]} 23:59:59`);
-          } else if (/^\d{4}-\d{2}-\d{2}$/.test(dateFilter)) {
-            params.set('date_from', `${dateFilter} 00:00:00`);
-            params.set('date_to', `${dateFilter} 23:59:59`);
-          }
-        }
+        applyDateParams(params, dateFilter);
         params.set('per_page', '1000');
         const res = await fetch(
           `/api/pending_request?${params.toString()}`,
