@@ -51,10 +51,9 @@ export default function TenantTablesRegistry() {
     }
     setSaving((s) => ({ ...s, [row.table_name]: true }));
     try {
-      const res = await fetch('/api/tenant_tables', {
+      const res = await fetch(`${API_BASE}/tenant_tables`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           table_name: row.table_name,
           is_shared: row.is_shared,
