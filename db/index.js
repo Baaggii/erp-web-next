@@ -346,7 +346,7 @@ export async function getUserLevelActions(userLevelId) {
        WHERE userlevel_id = ? AND action IS NOT NULL`,
     [userLevelId],
   );
-  if (id === 1 && rows.length === 0) {
+  if (id === 1) {
     const perms = {};
     const [mods] = await pool.query('SELECT module_key FROM modules');
     for (const { module_key } of mods) perms[module_key] = true;
