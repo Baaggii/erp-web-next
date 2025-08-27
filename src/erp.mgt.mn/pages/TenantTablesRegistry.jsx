@@ -37,16 +37,18 @@ export default function TenantTablesRegistry() {
     }
     setSaving((s) => ({ ...s, [row.table_name]: true }));
     try {
-      const res = await fetch('/api/tenant_tables', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          table_name: row.table_name,
-          is_shared: row.is_shared,
-          seed_on_create: row.seed_on_create,
-        }),
-      });
+      const res = await fetch(
+        `/api/tenant_tables/${encodeURIComponent(row.table_name)}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            isShared: row.is_shared,
+            seedOnCreate: row.seed_on_create,
+          }),
+        }
+      );
       if (!res.ok) throw new Error('Failed to save');
       addToast('Saved', 'success');
     } catch (err) {
