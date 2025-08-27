@@ -440,7 +440,6 @@ export async function setUserLevelActions(
   userLevelId,
   { modules = [], buttons = [], functions = [], api = [], permissions = [] },
 ) {
-  if (Number(userLevelId) === 1) return;
   await pool.query(
     'DELETE FROM user_level_permissions WHERE userlevel_id = ? AND action IS NOT NULL',
     [userLevelId],
