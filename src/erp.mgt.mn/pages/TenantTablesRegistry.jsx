@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
+import Spinner from '../components/Spinner.jsx';
+import { API_BASE } from '../utils/apiBase.js';
 
 export default function TenantTablesRegistry() {
   const [tables, setTables] = useState([]);
   const [saving, setSaving] = useState({});
+  const [loading, setLoading] = useState(true);
   const { addToast } = useToast();
 
   useEffect(() => {
@@ -11,14 +14,19 @@ export default function TenantTablesRegistry() {
   }, []);
 
   async function loadTables() {
+    setLoading(true);
     try {
-      const res = await fetch('/api/tenant_tables', { credentials: 'include' });
+      const res = await fetch(`${API_BASE}/tenant_tables`, {
+        credentials: 'include',
+      });
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
-      setTables(data);
+      setTables(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Failed to load tenant tables', err);
       addToast('Failed to load tenant tables', 'error');
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -37,10 +45,9 @@ export default function TenantTablesRegistry() {
     }
     setSaving((s) => ({ ...s, [row.table_name]: true }));
     try {
-      const res = await fetch('/api/tenant_tables', {
+      const res = await fetch(`${API_BASE}/tenant_tables`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           table_name: row.table_name,
           is_shared: row.is_shared,
@@ -60,7 +67,9 @@ export default function TenantTablesRegistry() {
   return (
     <div>
       <h2>Tenant Tables Registry</h2>
-      {tables.length === 0 ? (
+      {loading ? (
+        <Spinner />
+      ) : tables.length === 0 ? (
         <p>No tenant tables.</p>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.5rem' }}>
