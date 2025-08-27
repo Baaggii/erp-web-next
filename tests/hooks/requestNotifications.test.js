@@ -152,6 +152,68 @@ if (!haveReact) {
     unmount3();
   });
 
+  test('stale counts cleared when server reports zero', async (t) => {
+    const store = {};
+    global.localStorage = {
+      getItem: (k) => (k in store ? store[k] : null),
+      setItem: (k, v) => {
+        store[k] = String(v);
+      },
+      removeItem: (k) => {
+        delete store[k];
+      },
+      clear: () => {
+        for (const k in store) delete store[k];
+      },
+    };
+    localStorage.clear();
+    localStorage.setItem('u1-incoming-pending-seen', '5');
+    localStorage.setItem('u1-outgoing-accepted-seen', '3');
+
+    global.fetch = async (url) => {
+      const u = new URL(url, 'http://example.com');
+      if (
+        u.pathname === '/api/pending_request' ||
+        u.pathname === '/api/pending_request/outgoing'
+      ) {
+        return { ok: true, json: async () => ({ rows: [], total: 0 }) };
+      }
+      return { ok: true, json: async () => ({}) };
+    };
+
+    const { default: useRequestNotificationCounts } = await t.mock.import(
+      '../../src/erp.mgt.mn/hooks/useRequestNotificationCounts.js',
+      {
+        '../utils/socket.js': {
+          connectSocket: () => ({ on: () => {}, off: () => {} }),
+          disconnectSocket: () => {},
+        },
+        '../hooks/useGeneralConfig.js': {
+          default: () => ({ general: { requestPollingEnabled: false } }),
+        },
+      },
+    );
+
+    const { value, unmount } = renderHook(() =>
+      useRequestNotificationCounts(5, undefined, 'u1'),
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    assert.equal(value.incoming.pending.hasNew, false);
+    assert.equal(value.incoming.pending.newCount, 0);
+    assert.equal(value.outgoing.accepted.hasNew, false);
+    assert.equal(value.outgoing.accepted.newCount, 0);
+    assert.equal(localStorage.getItem('u1-incoming-pending-seen'), '0');
+    assert.equal(localStorage.getItem('u1-outgoing-accepted-seen'), '0');
+
+    unmount();
+  });
+
   test('pending request count persists across sessions', async (t) => {
     const store = {};
     global.localStorage = {
