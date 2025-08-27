@@ -552,7 +552,9 @@ const TableManager = forwardRef(function TableManager({
           );
           setRequestIdSet(ids);
           setCount(
-            Array.isArray(data) ? ids.size : data.total || ids.size,
+            Array.isArray(data)
+              ? ids.size
+              : data.total ?? data.count ?? ids.size,
           );
         } else {
           setRequestIdSet(new Set());
@@ -745,7 +747,7 @@ const TableManager = forwardRef(function TableManager({
         }
         setRows(rows);
         if (!requestStatus) {
-          setCount(data.total || 0);
+          setCount(data.total ?? data.count ?? 0);
         }
         // clear selections when data changes
         setSelectedRows(new Set());
@@ -993,7 +995,7 @@ const TableManager = forwardRef(function TableManager({
         const data = await res.json().catch(() => ({}));
         setSearchImages(data.files || []);
         setSearchPage(data.page || pg);
-        setSearchTotal(data.total || 0);
+        setSearchTotal(data.total ?? data.count ?? 0);
         setSearchTerm(term);
         setShowSearch(true);
       } else {
@@ -1233,7 +1235,7 @@ const TableManager = forwardRef(function TableManager({
         }).then((r) => r.json());
         const rows = data.rows || [];
         setRows(rows);
-        setCount(data.total || 0);
+        setCount(data.total ?? data.count ?? 0);
         logRowsMemory(rows);
         setSelectedRows(new Set());
         setShowForm(false);
@@ -1324,7 +1326,7 @@ const TableManager = forwardRef(function TableManager({
       ).then((r) => r.json());
       const rows = data.rows || [];
       setRows(rows);
-      setCount(data.total || 0);
+      setCount(data.total ?? data.count ?? 0);
       logRowsMemory(rows);
       setSelectedRows(new Set());
       addToast('Deleted', 'success');
@@ -1503,7 +1505,7 @@ const TableManager = forwardRef(function TableManager({
     }
     const rows = data.rows || [];
     setRows(rows);
-    setCount(data.total || 0);
+    setCount(data.total ?? data.count ?? 0);
     logRowsMemory(rows);
     setSelectedRows(new Set());
     addToast('Deleted', 'success');
