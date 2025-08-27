@@ -920,6 +920,45 @@ export async function listTableColumnsDetailed(tableName) {
   }));
 }
 
+export async function listTenantTables() {
+  const [rows] = await pool.query(
+    `SELECT table_name, is_shared, seed_on_create FROM tenant_tables`,
+  );
+  return rows.map((r) => ({
+    tableName: r.table_name,
+    isShared: !!r.is_shared,
+    seedOnCreate: !!r.seed_on_create,
+  }));
+}
+
+export async function upsertTenantTable(
+  tableName,
+  isShared = 0,
+  seedOnCreate = 0,
+) {
+  await pool.query(
+    `INSERT INTO tenant_tables (table_name, is_shared, seed_on_create)
+     VALUES (?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       is_shared = VALUES(is_shared),
+       seed_on_create = VALUES(seed_on_create)`,
+    [tableName, isShared ? 1 : 0, seedOnCreate ? 1 : 0],
+  );
+  return { tableName, isShared: !!isShared, seedOnCreate: !!seedOnCreate };
+}
+
+export async function getTenantTableFlags(tableName) {
+  const [rows] = await pool.query(
+    `SELECT is_shared, seed_on_create FROM tenant_tables WHERE table_name = ?`,
+    [tableName],
+  );
+  if (rows.length === 0) return null;
+  return {
+    isShared: !!rows[0].is_shared,
+    seedOnCreate: !!rows[0].seed_on_create,
+  };
+}
+
 export async function saveStoredProcedure(sql) {
   const cleaned = sql
     .replace(/^DELIMITER \$\$/gm, '')
