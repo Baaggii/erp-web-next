@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 import Spinner from '../components/Spinner.jsx';
+import { API_BASE } from '../utils/apiBase.js';
 
 export default function TenantTablesRegistry() {
   const [tables, setTables] = useState([]);
@@ -16,8 +17,8 @@ export default function TenantTablesRegistry() {
     setLoading(true);
     try {
       const [tablesRes, registryRes] = await Promise.all([
-        fetch('/api/tables', { credentials: 'include' }),
-        fetch('/api/tenant_tables', { credentials: 'include' }),
+        fetch(`${API_BASE}/tables`, { credentials: 'include' }),
+        fetch(`${API_BASE}/tenant_tables`, { credentials: 'include' }),
       ]);
       if (!tablesRes.ok || !registryRes.ok) throw new Error('Failed to fetch');
       const allTables = await tablesRes.json();
@@ -60,7 +61,7 @@ export default function TenantTablesRegistry() {
     setSaving((s) => ({ ...s, [row.tableName]: true }));
     try {
       const res = await fetch(
-        `/api/tenant_tables/${encodeURIComponent(row.tableName)}`,
+        `${API_BASE}/tenant_tables/${encodeURIComponent(row.tableName)}`,
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
