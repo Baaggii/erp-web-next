@@ -19,7 +19,7 @@ function normalizeDateInput(value, format) {
 }
 
 export default function Reports() {
-  const { company, branch, user } = useContext(AuthContext);
+  const { company, branch, user, permissions: perms } = useContext(AuthContext);
   const { addToast } = useToast();
   const generalConfig = useGeneralConfig();
   const [procedures, setProcedures] = useState([]);
@@ -283,6 +283,7 @@ export default function Reports() {
           procedure={result.name}
           params={result.params}
           rows={result.rows}
+          buttonPerms={perms?.buttons || {}}
         />
       )}
     </div>

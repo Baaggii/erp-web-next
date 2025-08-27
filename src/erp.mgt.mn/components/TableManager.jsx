@@ -2511,7 +2511,7 @@ const TableManager = forwardRef(function TableManager({
           </li>
         </ul>
       )}
-      {session?.permissions?.system_settings && generalConfig.general?.editLabelsEnabled && (
+      {buttonPerms['Edit Field Labels'] && generalConfig.general?.editLabelsEnabled && (
         <button onClick={() => {
           const map = {};
           columnMeta.forEach((c) => { map[c.name] = c.label || ''; });

@@ -16,6 +16,7 @@
         { "key": "Delete", "group": "Transactions" },
         { "key": "POST", "group": "Transactions" },
         { "key": "Run", "group": "Transactions" },
+        { "key": "Edit Field Labels", "group": "Transactions" },
         { "key": "Clear Date Filter", "group": "Filters" },
         { "key": "Clear Transaction Type Filter", "group": "Filters" },
         { "key": "Clear Branch Filter", "group": "Filters" },
@@ -35,7 +36,9 @@
       "scope": "app",
       "buttons": [
         { "key": "Run", "group": "Reports" },
-        { "key": "Export", "group": "Reports" }
+        { "key": "Export", "group": "Reports" },
+        { "key": "Edit Field Labels", "group": "Reports" },
+        { "key": "Edit label", "group": "Reports" }
       ],
       "functions": [],
       "api": [
