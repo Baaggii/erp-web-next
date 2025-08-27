@@ -1156,14 +1156,28 @@ export async function listTableRows(
   const params = [tableName];
   for (const [field, value] of Object.entries(filters)) {
     if (value !== undefined && value !== '') {
-      await ensureValidColumns(tableName, columns, [field]);
-      const range = String(value).match(/^(\d{4}[-.]\d{2}[-.]\d{2})\s*-\s*(\d{4}[-.]\d{2}[-.]\d{2})$/);
-      if (range) {
-        filterClauses.push(`\`${field}\` BETWEEN ? AND ?`);
-        params.push(range[1], range[2]);
+      if (field === 'company_id') {
+        const flags = await getTenantTableFlags(tableName);
+        if (!flags) continue; // global table, no scoping
+        // ensure column exists when scoping
+        await ensureValidColumns(tableName, columns, [field]);
+        if (flags.isShared) {
+          filterClauses.push('`company_id` IN (0, ?)');
+          params.push(value);
+        } else {
+          filterClauses.push('`company_id` = ?');
+          params.push(value);
+        }
       } else {
-        filterClauses.push(`\`${field}\` = ?`);
-        params.push(value);
+        await ensureValidColumns(tableName, columns, [field]);
+        const range = String(value).match(/^(\d{4}[-.]\d{2}[-.]\d{2})\s*-\s*(\d{4}[-.]\d{2}[-.]\d{2})$/);
+        if (range) {
+          filterClauses.push(`\`${field}\` BETWEEN ? AND ?`);
+          params.push(range[1], range[2]);
+        } else {
+          filterClauses.push(`\`${field}\` = ?`);
+          params.push(value);
+        }
       }
     }
   }

@@ -2,13 +2,22 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as db from '../../db/index.js';
 
-function mockPool() {
+function mockPool(flagsMap = {}) {
   const original = db.pool.query;
   const calls = [];
   db.pool.query = async (sql, params) => {
     calls.push({ sql, params });
+    if (sql.includes('tenant_tables')) {
+      const table = params?.[0];
+      const flags = flagsMap[table];
+      return [flags ? [flags] : []];
+    }
     if (sql.includes('information_schema.COLUMNS')) {
-      return [[{ COLUMN_NAME: 'id' }, { COLUMN_NAME: 'name' }]];
+      return [[
+        { COLUMN_NAME: 'company_id' },
+        { COLUMN_NAME: 'id' },
+        { COLUMN_NAME: 'name' },
+      ]];
     }
     return [[{ id: 1, name: 'A' }]];
   };
@@ -54,4 +63,24 @@ test('listTableRows allows search across multiple columns', async () => {
   assert.ok(main.sql.includes('OR'));
   assert.ok(main.sql.includes('id'));
   assert.ok(main.sql.includes('name'));
+});
+
+test('listTableRows scopes company_id with shared tables', async () => {
+  const restore = mockPool({ shared: { is_shared: 1, seed_on_create: 0 } });
+  await db.listTableRows('shared', {
+    filters: { company_id: 5 },
+  });
+  const calls = restore();
+  const count = calls.find((c) => c.sql.includes('COUNT(*)'));
+  assert.ok(/`company_id`\s+IN\s*\(0,\s*\?\)/i.test(count.sql));
+});
+
+test('listTableRows skips company_id for global tables', async () => {
+  const restore = mockPool({});
+  await db.listTableRows('global', {
+    filters: { company_id: 7 },
+  });
+  const calls = restore();
+  const count = calls.find((c) => c.sql.includes('COUNT(*)'));
+  assert.ok(!/company_id/i.test(count.sql));
 });
