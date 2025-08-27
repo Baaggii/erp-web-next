@@ -44,6 +44,9 @@ export function GeneralSettings() {
       <p style={{ marginTop: '1rem' }}>
         <Link to="/settings/role-permissions">Эрхийн тохиргоо засах</Link>
       </p>
+      <p style={{ marginTop: '0.5rem' }}>
+        <Link to="/settings/tenant-tables-registry">Tenant Tables Registry</Link>
+      </p>
     </div>
   );
 }

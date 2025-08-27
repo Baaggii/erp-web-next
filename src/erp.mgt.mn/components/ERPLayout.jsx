@@ -63,6 +63,7 @@ export default function ERPLayout() {
     "/settings/forms-management": "Маягтын удирдлага",
     "/settings/report-management": "Тайлангийн удирдлага",
     "/settings/change-password": "Нууц үг солих",
+    "/settings/tenant-tables-registry": "Tenant Tables Registry",
   };
 
   function titleForPath(path) {
