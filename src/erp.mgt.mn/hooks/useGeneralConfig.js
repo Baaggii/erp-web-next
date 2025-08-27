@@ -19,17 +19,20 @@ export default function useGeneralConfig() {
       if (cache.data.general) {
         window.erpDebug = !!cache.data.general.debugLoggingEnabled;
       }
-      return;
+    } else {
+      fetch('/api/general_config', { credentials: 'include' })
+        .then(res => (res.ok ? res.json() : {}))
+        .then(data => {
+          updateCache(data);
+          setCfg(data);
+        })
+        .catch(() => setCfg({}));
     }
-    fetch('/api/general_config', { credentials: 'include' })
-      .then(res => (res.ok ? res.json() : {}))
-      .then(data => {
-        updateCache(data);
-        setCfg(data);
-      })
-      .catch(() => setCfg({}));
     const handler = e => {
       setCfg(e.detail);
+      if (e.detail?.general) {
+        window.erpDebug = !!e.detail.general.debugLoggingEnabled;
+      }
     };
     window.addEventListener('generalConfigUpdated', handler);
     return () => window.removeEventListener('generalConfigUpdated', handler);
