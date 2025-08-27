@@ -49,6 +49,13 @@ export default function TenantTablesRegistry() {
     setTables((ts) => ts.map((t, i) => (i === idx ? { ...t, [field]: value } : t)));
   }
 
+  function handleAdd() {
+    setTables((ts) => [
+      ...ts,
+      { table_name: '', is_shared: false, seed_on_create: false, isNew: true },
+    ]);
+  }
+
   async function handleSave(row) {
     setSaving((s) => ({ ...s, [row.tableName]: true }));
     try {
