@@ -5,6 +5,9 @@ SET @json = LOAD_FILE('configs/permissionActions.json');
 DELETE FROM user_level_permissions WHERE userlevel_id = 1;
 
 INSERT INTO user_level_permissions (userlevel_id, action, action_key)
+VALUES (1, 'permission', 'system_settings');
+
+INSERT INTO user_level_permissions (userlevel_id, action, action_key)
 SELECT ul.userlevel_id, a.action, a.action_key
   FROM user_levels ul
   JOIN (

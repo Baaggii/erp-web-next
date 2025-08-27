@@ -1,6 +1,7 @@
 {
   "permissions": [
-    { "key": "edit_delete_request", "name": "Edit/Delete Request" }
+    { "key": "edit_delete_request", "name": "Edit/Delete Request" },
+    { "key": "system_settings", "name": "System Settings" }
   ],
   "forms": {
     "finance_transactions": {
