@@ -801,7 +801,6 @@ export async function populateDefaultModules() {
       m.showInHeader,
     );
   }
-  await populateTenantTableModules();
 }
 
 
@@ -964,20 +963,6 @@ export async function getTenantTableFlags(tableName) {
     isShared: !!rows[0].is_shared,
     seedOnCreate: !!rows[0].seed_on_create,
   };
-}
-
-export async function populateTenantTableModules() {
-  const [rows] = await pool.query(
-    `SELECT table_name FROM tenant_tables`,
-  );
-  for (const r of rows) {
-    await upsertModule(r.table_name, r.table_name, 'tenant_tables', false, false);
-    await pool.query(
-      `INSERT IGNORE INTO company_module_licenses (company_id, module_key, licensed)
-       SELECT c.id, ?, 0 FROM companies c`,
-      [r.table_name],
-    );
-  }
 }
 
 export async function saveStoredProcedure(sql) {
