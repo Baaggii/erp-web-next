@@ -625,6 +625,7 @@ useEffect(() => {
           procedure={reportResult.name}
           params={reportResult.params}
           rows={reportResult.rows}
+          buttonPerms={perms?.buttons || {}}
         />
       )}
       {transactionNames.length === 0 && (

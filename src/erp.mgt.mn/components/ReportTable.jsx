@@ -64,8 +64,8 @@ function isCountColumn(name) {
   return f === 'count' || f === 'count()' || f.startsWith('count(');
 }
 
-export default function ReportTable({ procedure = '', params = {}, rows = [] }) {
-  const { user, company, branch, department, session } = useContext(AuthContext);
+export default function ReportTable({ procedure = '', params = {}, rows = [], buttonPerms = {} }) {
+  const { user, company, branch, department } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
@@ -473,7 +473,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
       <div>
         <h4>
           {procLabel}
-          {session?.permissions?.system_settings && generalConfig.general?.editLabelsEnabled && (
+          {buttonPerms['Edit label'] && generalConfig.general?.editLabelsEnabled && (
             <button
               onClick={handleEditProcLabel}
               style={{ marginLeft: '0.5rem' }}
@@ -492,7 +492,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
     <div style={{ marginTop: '1rem' }}>
       <h4>
         {procLabel}
-        {session?.permissions?.system_settings && generalConfig.general?.editLabelsEnabled && (
+        {buttonPerms['Edit label'] && generalConfig.general?.editLabelsEnabled && (
           <button onClick={handleEditProcLabel} style={{ marginLeft: '0.5rem' }}>
             Edit label
           </button>
@@ -754,7 +754,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [] }) 
           )}
         </Modal>
       )}
-      {session?.permissions?.system_settings && generalConfig.general?.editLabelsEnabled && (
+      {buttonPerms['Edit Field Labels'] && generalConfig.general?.editLabelsEnabled && (
         <button
           onClick={() => {
             const map = {};
