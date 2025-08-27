@@ -15,12 +15,28 @@ export default function TenantTablesRegistry() {
   async function loadTables() {
     setLoading(true);
     try {
-      const res = await fetch('/api/tenant_tables', {
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('Failed to fetch');
-      const data = await res.json();
-      setTables(Array.isArray(data) ? data : []);
+      const [tablesRes, registryRes] = await Promise.all([
+        fetch('/api/tables', { credentials: 'include' }),
+        fetch('/api/tenant_tables', { credentials: 'include' }),
+      ]);
+      if (!tablesRes.ok || !registryRes.ok) throw new Error('Failed to fetch');
+      const allTables = await tablesRes.json();
+      const registry = await registryRes.json();
+      const map = new Map(
+        Array.isArray(registry)
+          ? registry.map((r) => [r.tableName, r])
+          : [],
+      );
+      const merged = Array.isArray(allTables)
+        ? allTables.map((name) =>
+            map.get(name) || {
+              tableName: name,
+              isShared: false,
+              seedOnCreate: false,
+            },
+          )
+        : [];
+      setTables(merged);
     } catch (err) {
       console.error('Failed to load tenant tables', err);
       addToast('Failed to load tenant tables', 'error');
@@ -41,48 +57,40 @@ export default function TenantTablesRegistry() {
   }
 
   async function handleSave(row) {
-    if (!row.table_name) {
-      addToast('Missing table name', 'error');
-      return;
-    }
-    if (typeof row.is_shared !== 'boolean' || typeof row.seed_on_create !== 'boolean') {
-      addToast('Invalid values', 'error');
-      return;
-    }
-    setSaving((s) => ({ ...s, [row.table_name]: true }));
+    setSaving((s) => ({ ...s, [row.tableName]: true }));
     try {
-      const res = await fetch(`${API_BASE}/tenant_tables`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          table_name: row.table_name,
-          is_shared: row.is_shared,
-          seed_on_create: row.seed_on_create,
-        }),
-      });
+      const res = await fetch(
+        `/api/tenant_tables/${encodeURIComponent(row.tableName)}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            isShared: row.isShared,
+            seedOnCreate: row.seedOnCreate,
+          }),
+        },
+      );
       if (!res.ok) throw new Error('Failed to save');
       addToast('Saved', 'success');
-      if (row.isNew) {
-        loadTables();
-      }
+      loadTables();
     } catch (err) {
       console.error('Failed to save tenant table', err);
       addToast('Failed to save tenant table', 'error');
     } finally {
-      setSaving((s) => ({ ...s, [row.table_name]: false }));
+      setSaving((s) => ({ ...s, [row.tableName]: false }));
     }
   }
 
   return (
     <div>
       <h2>Tenant Tables Registry</h2>
-      <button onClick={handleAdd} style={{ marginTop: '0.5rem' }}>
-        Add Table
-      </button>
       {loading ? (
         <Spinner />
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.5rem' }}>
+        <table
+          style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.5rem' }}
+        >
           <thead>
             <tr style={{ backgroundColor: '#e5e7eb' }}>
               <th style={styles.th}>Table</th>
@@ -95,41 +103,33 @@ export default function TenantTablesRegistry() {
             {tables.length === 0 ? (
               <tr>
                 <td style={styles.td} colSpan="4">
-                  No tenant tables configured.
+                  No tables found.
                 </td>
               </tr>
             ) : (
               tables.map((t, idx) => (
-                <tr key={t.table_name || idx}>
-                  <td style={styles.td}>
-                    {t.isNew ? (
-                      <input
-                        type="text"
-                        value={t.table_name}
-                        onChange={(e) => handleChange(idx, 'table_name', e.target.value)}
-                      />
-                    ) : (
-                      t.table_name
-                    )}
-                  </td>
+                <tr key={t.tableName || idx}>
+                  <td style={styles.td}>{t.tableName}</td>
                   <td style={styles.td}>
                     <input
                       type="checkbox"
-                      checked={!!t.is_shared}
-                      onChange={(e) => handleChange(idx, 'is_shared', e.target.checked)}
+                      checked={!!t.isShared}
+                      onChange={(e) => handleChange(idx, 'isShared', e.target.checked)}
                     />
                   </td>
                   <td style={styles.td}>
                     <input
                       type="checkbox"
-                      checked={!!t.seed_on_create}
-                      onChange={(e) => handleChange(idx, 'seed_on_create', e.target.checked)}
+                      checked={!!t.seedOnCreate}
+                      onChange={(e) =>
+                        handleChange(idx, 'seedOnCreate', e.target.checked)
+                      }
                     />
                   </td>
                   <td style={styles.td}>
                     <button
                       onClick={() => handleSave(t)}
-                      disabled={saving[t.table_name]}
+                      disabled={saving[t.tableName]}
                     >
                       Save
                     </button>
