@@ -31,7 +31,7 @@ export default [
   { moduleKey: 'settings', label: 'Тохиргоо', parentKey: null, showInSidebar: true, showInHeader: false },
   { moduleKey: 'system_configurations', label: 'Системийн тохиргоо', parentKey: null, showInSidebar: true, showInHeader: false },
   { moduleKey: 'tables_management', label: 'Хүснэгтийн удирдлага', parentKey: 'developer', showInSidebar: true, showInHeader: false },
-  { moduleKey: 'tenant_tables', label: 'Tenant tables', parentKey: 'developer', showInSidebar: true, showInHeader: false },
+  { moduleKey: 'tenant_tables', label: 'Tenant tables', parentKey: null, showInSidebar: false, showInHeader: false },
   { moduleKey: 'transactions_contract', label: 'Гэрээ', parentKey: 'forms', showInSidebar: true, showInHeader: false },
   { moduleKey: 'user_companies', label: 'Хэрэглэгчийн компаниуд', parentKey: 'system_configurations', showInSidebar: true, showInHeader: false },
   { moduleKey: 'user_level_actions', label: 'User Level Actions', parentKey: 'developer', showInSidebar: true, showInHeader: false },
