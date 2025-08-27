@@ -3,6 +3,7 @@ import {
   setCompanyModuleLicense,
   getEmploymentSession,
 } from '../../db/index.js';
+import { hasAction } from '../utils/hasAction.js';
 
 export async function listLicenses(req, res, next) {
   try {
@@ -16,11 +17,10 @@ export async function listLicenses(req, res, next) {
 
 export async function updateLicense(req, res, next) {
   try {
-    const session = await getEmploymentSession(
-      req.user.empid,
-      req.user.companyId,
-    );
-    if (!session?.permissions?.license_settings) {
+    const session =
+      req.session ||
+      (await getEmploymentSession(req.user.empid, req.user.companyId));
+    if (!(await hasAction(session, 'license_settings'))) {
       return res.sendStatus(403);
     }
     const { companyId, moduleKey, licensed } = req.body;

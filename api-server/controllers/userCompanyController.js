@@ -6,6 +6,7 @@ import {
   listAllUserCompanies,
   getEmploymentSession,
 } from '../../db/index.js';
+import { hasAction } from '../utils/hasAction.js';
 
 export async function listAssignments(req, res, next) {
   try {
@@ -31,7 +32,7 @@ export async function assignCompany(req, res, next) {
       req.user.empid,
       req.user.companyId,
     );
-    if (!session?.permissions?.system_settings) {
+    if (!(await hasAction(session, 'system_settings'))) {
       return res.sendStatus(403);
     }
     const { empid, companyId, positionId, branchId } = req.body;
@@ -51,7 +52,7 @@ export async function updateAssignment(req, res, next) {
       req.user.empid,
       req.user.companyId,
     );
-    if (!session?.permissions?.system_settings) {
+    if (!(await hasAction(session, 'system_settings'))) {
       return res.sendStatus(403);
     }
     const { empid, companyId, positionId, branchId } = req.body;
@@ -68,7 +69,7 @@ export async function removeAssignment(req, res, next) {
       req.user.empid,
       req.user.companyId,
     );
-    if (!session?.permissions?.system_settings) {
+    if (!(await hasAction(session, 'system_settings'))) {
       return res.sendStatus(403);
     }
     const { empid, companyId } = req.body;
