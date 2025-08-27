@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useContext } from 'react';
 import useGeneralConfig, { updateCache } from '../hooks/useGeneralConfig.js';
 import { useToast } from '../context/ToastContext.jsx';
+import { AuthContext } from '../context/AuthContext.jsx';
+import { Navigate } from 'react-router-dom';
 
 export default function GeneralConfiguration() {
   const initial = useGeneralConfig();
@@ -8,6 +10,10 @@ export default function GeneralConfiguration() {
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState('forms');
   const { addToast } = useToast();
+  const { session } = useContext(AuthContext);
+  if (!session?.permissions?.system_settings) {
+    return <Navigate to="/" replace />;
+  }
 
   useEffect(() => {
     if (initial && Object.keys(initial).length) setCfg(initial);
