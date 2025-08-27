@@ -1,34 +1,30 @@
-import express from 'express';
-import { requireAuth } from '../middlewares/auth.js';
-import { getGeneralConfig, updateGeneralConfig } from '../services/generalConfig.js';
+import * as cfgSvc from '../services/generalConfig.js';
 import { getEmploymentSession } from '../../db/index.js';
 
-const router = express.Router();
-
-router.get('/', requireAuth, async (req, res, next) => {
+export async function fetchGeneralConfig(req, res, next) {
   try {
     const session =
       req.session ||
       (await getEmploymentSession(req.user.empid, req.user.companyId));
     if (!session?.permissions?.system_settings) return res.sendStatus(403);
-    const cfg = await getGeneralConfig();
+    const getter = req.getGeneralConfig || cfgSvc.getGeneralConfig;
+    const cfg = await getter();
     res.json(cfg);
   } catch (err) {
     next(err);
   }
-});
+}
 
-router.put('/', requireAuth, async (req, res, next) => {
+export async function saveGeneralConfig(req, res, next) {
   try {
     const session =
       req.session ||
       (await getEmploymentSession(req.user.empid, req.user.companyId));
     if (!session?.permissions?.system_settings) return res.sendStatus(403);
-    const cfg = await updateGeneralConfig(req.body || {});
+    const updater = req.updateGeneralConfig || cfgSvc.updateGeneralConfig;
+    const cfg = await updater(req.body || {});
     res.json(cfg);
   } catch (err) {
     next(err);
   }
-});
-
-export default router;
+}
