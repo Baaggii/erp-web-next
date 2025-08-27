@@ -83,7 +83,10 @@ function Header({ user, onLogout }) {
 
 /** Left sidebar with “menu groups” and “pinned items” **/
 function Sidebar() {
-  const { user } = useContext(AuthContext);
+  const { session, permissions } = useContext(AuthContext);
+  const hasAdmin =
+    permissions?.permissions?.system_settings ||
+    session?.permissions?.system_settings;
 
   // You can expand/collapse these groups if you like; this is a static example
   return (
@@ -108,7 +111,7 @@ function Sidebar() {
         <NavLink to="/settings" className="menu-item" style={styles.menuItem} end>
           General
         </NavLink>
-        {session?.permissions?.system_settings && (
+        {hasAdmin && (
           <>
             <NavLink to="/settings/users" className="menu-item" style={styles.menuItem}>
               Users
