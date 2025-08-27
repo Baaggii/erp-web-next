@@ -7,6 +7,7 @@ import {
   getEmploymentSession,
 } from "../../db/index.js";
 import { logActivity } from "../utils/activityLog.js";
+import { hasAction } from "../utils/hasAction.js";
 
 export async function listModules(req, res, next) {
   try {
@@ -37,7 +38,7 @@ export async function saveModule(req, res, next) {
       req.user.empid,
       req.user.companyId,
     );
-    if (!session?.permissions?.system_settings) return res.sendStatus(403);
+    if (!(await hasAction(session, "system_settings"))) return res.sendStatus(403);
     const label = req.body.label;
     const parentKey = req.body.parentKey || null;
     const showInSidebar = req.body.showInSidebar ?? true;
@@ -63,7 +64,7 @@ export async function populatePermissions(req, res, next) {
       req.user.empid,
       req.user.companyId,
     );
-    if (!session?.permissions?.system_settings) return res.sendStatus(403);
+    if (!(await hasAction(session, "system_settings"))) return res.sendStatus(403);
     await populateDefaultModules();
     await populateCompanyModuleLicenses();
     await populateUserLevelModulePermissions();

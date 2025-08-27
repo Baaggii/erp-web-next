@@ -15,6 +15,7 @@ import {
 } from '../../db/index.js';
 import { moveImagesToDeleted } from '../services/transactionImageService.js';
 import { addMappings } from '../services/headerMappings.js';
+import { hasAction } from '../utils/hasAction.js';
 let bcrypt;
 try {
   const mod = await import('bcryptjs');
@@ -177,7 +178,7 @@ export async function saveColumnLabels(req, res, next) {
       req.user.empid,
       req.user.companyId,
     );
-    if (!session?.permissions?.system_settings) return res.sendStatus(403);
+    if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
     const labels = req.body.labels || {};
     await addMappings(labels);
     res.sendStatus(204);

@@ -56,3 +56,19 @@ test('saveGeneralConfig allows update with permission', async () => {
   await saveGeneralConfig(req, res, () => {});
   assert.deepEqual(res.body, { general: { aiApiEnabled: true } });
 });
+
+test('saveGeneralConfig allows update with user-level permission', async () => {
+  const req = {
+    user: { empid: 1, companyId: 1 },
+    body: { general: { aiApiEnabled: true } },
+    session: {
+      permissions: { system_settings: 0 },
+      user_level: 3,
+      __userLevelActions: { permissions: { system_settings: true } },
+    },
+    updateGeneralConfig: async (body) => body,
+  };
+  const res = createRes();
+  await saveGeneralConfig(req, res, () => {});
+  assert.deepEqual(res.body, { general: { aiApiEnabled: true } });
+});

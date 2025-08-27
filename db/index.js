@@ -339,11 +339,16 @@ export async function listUserLevels() {
 }
 
 export async function getUserLevelActions(userLevelId) {
-  if (Number(userLevelId) === 1) {
+  const id = Number(userLevelId);
+  const [rows] = await pool.query(
+    `SELECT action, action_key
+       FROM user_level_permissions
+       WHERE userlevel_id = ? AND action IS NOT NULL`,
+    [userLevelId],
+  );
+  if (id === 1 && rows.length === 0) {
     const perms = {};
-    const [mods] = await pool.query(
-      'SELECT module_key FROM modules',
-    );
+    const [mods] = await pool.query('SELECT module_key FROM modules');
     for (const { module_key } of mods) perms[module_key] = true;
     try {
       const raw = await fs.readFile(actionsPath, 'utf8');
@@ -374,12 +379,6 @@ export async function getUserLevelActions(userLevelId) {
     } catch {}
     return perms;
   }
-  const [rows] = await pool.query(
-    `SELECT action, action_key
-       FROM user_level_permissions
-       WHERE userlevel_id = ? AND action IS NOT NULL`,
-    [userLevelId],
-  );
   const perms = {};
   for (const { action, action_key: key } of rows) {
     if (action === 'module_key' && key) {
