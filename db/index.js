@@ -944,6 +944,12 @@ export async function upsertTenantTable(
        seed_on_create = VALUES(seed_on_create)`,
     [tableName, isShared ? 1 : 0, seedOnCreate ? 1 : 0],
   );
+  await upsertModule(tableName, tableName, 'tenant_tables', false, false);
+  await pool.query(
+    `INSERT IGNORE INTO company_module_licenses (company_id, module_key, licensed)
+     SELECT c.id, ?, 0 FROM companies c`,
+    [tableName],
+  );
   return { tableName, isShared: !!isShared, seedOnCreate: !!seedOnCreate };
 }
 
