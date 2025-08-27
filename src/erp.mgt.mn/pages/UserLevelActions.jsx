@@ -86,18 +86,6 @@ export default function UserLevelActions() {
       addToast("User Level ID required", "error");
       return;
     }
-    if (userLevelId === "1") {
-      const sel = {
-        modules: flattenModules(groups.modules),
-        buttons: allActions.buttons,
-        functions: allActions.functions,
-        api: allActions.api,
-        permissions: allActions.permissions,
-      };
-      setSelected(sel);
-      addToast("System admin has access to all actions", "info");
-      return;
-    }
     fetch(`/api/permissions/actions/${userLevelId}`, { credentials: "include" })
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load current actions");
@@ -147,10 +135,6 @@ export default function UserLevelActions() {
   async function handleSave() {
     if (!userLevelId) {
       addToast("User Level ID required", "error");
-      return;
-    }
-    if (userLevelId === "1") {
-      addToast("System admin permissions cannot be modified", "error");
       return;
     }
     try {
@@ -331,7 +315,7 @@ export default function UserLevelActions() {
       </button>
       <button
         onClick={handleSave}
-        disabled={userLevelId === "1"}
+        disabled={!userLevelId}
         style={{ marginRight: "0.5rem" }}
       >
         Save
