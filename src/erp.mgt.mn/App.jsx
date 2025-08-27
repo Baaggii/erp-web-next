@@ -40,6 +40,7 @@ import { useModules } from './hooks/useModules.js';
 import { useTxnModules } from './hooks/useTxnModules.js';
 import useGeneralConfig from './hooks/useGeneralConfig.js';
 import TabbedWindows from './components/TabbedWindows.jsx';
+import TenantTablesRegistryPage from './pages/TenantTablesRegistry.jsx';
 
 export default function App() {
   useEffect(() => {
@@ -111,6 +112,7 @@ function AuthedApp() {
     change_password: <ChangePasswordPage />,
     requests: <RequestsPage />,
     sales: <TabbedWindows />,
+    tenant_tables_registry: <TenantTablesRegistryPage />,
   };
 
   modules.forEach((m) => {
