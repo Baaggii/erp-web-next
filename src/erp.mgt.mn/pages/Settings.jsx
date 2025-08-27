@@ -10,11 +10,15 @@ export default function SettingsPage() {
 }
 
 export function GeneralSettings() {
-  const { permissions: perms } = useContext(AuthContext);
+  const { session, permissions } = useContext(AuthContext);
+  const perms = permissions;
+  const hasAdmin =
+    permissions?.permissions?.system_settings ||
+    session?.permissions?.system_settings;
   if (!perms) {
     return <p>Уншиж байна…</p>;
   }
-  if (!perms.settings) {
+  if (!hasAdmin && !perms.settings) {
     return <p>Хандалт хориглолоо.</p>;
   }
   const [settings, setSettings] = useState(null);

@@ -10,8 +10,11 @@ export default function GeneralConfiguration() {
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState('forms');
   const { addToast } = useToast();
-  const { session } = useContext(AuthContext);
-  if (!session?.permissions?.system_settings) {
+  const { session, permissions } = useContext(AuthContext);
+  const hasAdmin =
+    permissions?.permissions?.system_settings ||
+    session?.permissions?.system_settings;
+  if (!hasAdmin) {
     return <Navigate to="/" replace />;
   }
 
