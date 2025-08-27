@@ -85,17 +85,22 @@ export default function useRequestNotificationCounts(
                 else c = Number(data?.count ?? data?.total) || 0;
               }
               const seenKey = storageKey('incoming', status);
-              const storedSeen = localStorage.getItem(seenKey);
-              const seen = storedSeen === null ? c : Number(storedSeen);
-              if (storedSeen === null) {
-                localStorage.setItem(seenKey, String(c));
+              if (c === 0) {
+                localStorage.setItem(seenKey, '0');
+                newIncoming[status] = { count: 0, hasNew: false, newCount: 0 };
+              } else {
+                const storedSeen = localStorage.getItem(seenKey);
+                const seen = storedSeen === null ? c : Number(storedSeen);
+                if (storedSeen === null) {
+                  localStorage.setItem(seenKey, String(c));
+                }
+                const delta = Math.max(0, c - seen);
+                newIncoming[status] = {
+                  count: c,
+                  hasNew: delta > 0,
+                  newCount: delta,
+                };
               }
-              const delta = Math.max(0, c - seen);
-              newIncoming[status] = {
-                count: c,
-                hasNew: delta > 0,
-                newCount: delta,
-              };
             } catch {
               newIncoming[status] = { count: 0, hasNew: false, newCount: 0 };
             }
@@ -122,6 +127,9 @@ export default function useRequestNotificationCounts(
               // Requesters shouldn't get "new" badges for their own submissions
               localStorage.setItem(seenKey, String(c));
               newOutgoing[status] = { count: c, hasNew: false, newCount: 0 };
+            } else if (c === 0) {
+              localStorage.setItem(seenKey, '0');
+              newOutgoing[status] = { count: 0, hasNew: false, newCount: 0 };
             } else {
               const storedSeen = localStorage.getItem(seenKey);
               const seen = storedSeen === null ? c : Number(storedSeen);
