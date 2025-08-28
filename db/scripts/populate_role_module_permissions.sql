@@ -33,4 +33,4 @@ ON DUPLICATE KEY UPDATE allowed = vals.allowed;
 INSERT IGNORE INTO role_module_permissions (company_id, position_id, module_key, allowed)
 SELECT c.id, rdm.role_id, rdm.module_key, rdm.allowed
   FROM companies c
-  CROSS JOIN role_default_modules rdm;
+  JOIN role_default_modules rdm ON rdm.company_id IN (0, c.id);
