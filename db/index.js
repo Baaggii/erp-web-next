@@ -253,10 +253,10 @@ export async function getEmploymentSessions(empid) {
      FROM tbl_employment e
      LEFT JOIN companies c ON e.employment_company_id = c.id
      LEFT JOIN code_branches b ON e.employment_branch_id = b.id AND b.company_id = e.employment_company_id
-     LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol} AND d.company_id IN (0, e.employment_company_id)
+    LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol} AND d.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
      LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
      LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
-     LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (0, e.employment_company_id)
+    LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
      WHERE e.employment_emp_id = ?
     GROUP BY e.employment_company_id, company_name,
               e.employment_branch_id, branch_name,
@@ -310,10 +310,10 @@ export async function getEmploymentSession(empid, companyId) {
        FROM tbl_employment e
        LEFT JOIN companies c ON e.employment_company_id = c.id
        LEFT JOIN code_branches b ON e.employment_branch_id = b.id AND b.company_id = e.employment_company_id
-       LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol} AND d.company_id IN (0, e.employment_company_id)
+       LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol} AND d.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
        LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
        LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
-       LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (0, e.employment_company_id)
+       LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
        WHERE e.employment_emp_id = ? AND e.employment_company_id = ?
        GROUP BY e.employment_company_id, company_name,
                 e.employment_branch_id, branch_name,
@@ -344,7 +344,7 @@ export async function getUserLevelActions(userLevelId) {
   const [rows] = await pool.query(
     `SELECT action, action_key
        FROM user_level_permissions
-       WHERE userlevel_id = ? AND action IS NOT NULL AND company_id = 0`,
+       WHERE userlevel_id = ? AND action IS NOT NULL AND company_id = ${GLOBAL_COMPANY_ID}`,
     [userLevelId],
   );
   if (id === 1) {
@@ -441,29 +441,29 @@ export async function setUserLevelActions(
   { modules = [], buttons = [], functions = [], api = [], permissions = [] },
 ) {
   await pool.query(
-    'DELETE FROM user_level_permissions WHERE userlevel_id = ? AND action IS NOT NULL AND company_id = 0',
+    `DELETE FROM user_level_permissions WHERE userlevel_id = ? AND action IS NOT NULL AND company_id = ${GLOBAL_COMPANY_ID}`,
     [userLevelId],
   );
   const values = [];
   const params = [];
   for (const m of modules) {
-    values.push('(0, ?,\'module_key\',?)');
+    values.push(`(${GLOBAL_COMPANY_ID}, ?,'module_key',?)`);
     params.push(userLevelId, m);
   }
   for (const b of buttons) {
-    values.push('(0, ?,\'button\',?)');
+    values.push(`(${GLOBAL_COMPANY_ID}, ?,'button',?)`);
     params.push(userLevelId, b);
   }
   for (const f of functions) {
-    values.push('(0, ?,\'function\',?)');
+    values.push(`(${GLOBAL_COMPANY_ID}, ?,'function',?)`);
     params.push(userLevelId, f);
   }
   for (const a of api) {
-    values.push('(0, ?,\'API\',?)');
+    values.push(`(${GLOBAL_COMPANY_ID}, ?,'API',?)`);
     params.push(userLevelId, a);
   }
   for (const p of permissions) {
-    values.push('(0, ?,\'permission\',?)');
+    values.push(`(${GLOBAL_COMPANY_ID}, ?,'permission',?)`);
     params.push(userLevelId, p);
   }
   if (values.length) {
@@ -501,7 +501,7 @@ export async function populateMissingPermissions(allow = false, extraPermissions
   for (const [action, key] of actions) {
     await pool.query(
       `INSERT INTO user_level_permissions (company_id, userlevel_id, action, action_key)
-       SELECT 0, ul.userlevel_id, ?, ?
+       SELECT ${GLOBAL_COMPANY_ID}, ul.userlevel_id, ?, ?
          FROM user_levels ul
          WHERE ul.userlevel_id <> 1
            AND NOT EXISTS (
@@ -509,7 +509,7 @@ export async function populateMissingPermissions(allow = false, extraPermissions
               WHERE up.userlevel_id = ul.userlevel_id
                 AND up.action = ?
                 AND up.action_key = ?
-                AND up.company_id = 0
+                AND up.company_id = ${GLOBAL_COMPANY_ID}
            )`,
       [action, key, action, key],
     );
@@ -775,14 +775,14 @@ export async function upsertModule(
   );
   await pool.query(
     `INSERT INTO user_level_permissions (company_id, userlevel_id, action, action_key)
-     SELECT 0, ul.userlevel_id, 'module_key', ?
+     SELECT ${GLOBAL_COMPANY_ID}, ul.userlevel_id, 'module_key', ?
        FROM user_levels ul
        WHERE NOT EXISTS (
          SELECT 1 FROM user_level_permissions up
           WHERE up.userlevel_id = ul.userlevel_id
             AND up.action = 'module_key'
             AND up.action_key = ?
-            AND up.company_id = 0
+            AND up.company_id = ${GLOBAL_COMPANY_ID}
        )`,
     [moduleKey, moduleKey],
   );
@@ -819,7 +819,7 @@ export async function populateCompanyModuleLicenses() {
 export async function populateUserLevelModulePermissions() {
   await pool.query(
     `INSERT INTO user_level_permissions (company_id, userlevel_id, action, action_key)
-     SELECT 0, ul.userlevel_id, 'module_key', m.module_key
+     SELECT ${GLOBAL_COMPANY_ID}, ul.userlevel_id, 'module_key', m.module_key
        FROM user_levels ul
        CROSS JOIN modules m
        WHERE m.module_key NOT LIKE 'transactions\\_%'
@@ -828,7 +828,7 @@ export async function populateUserLevelModulePermissions() {
             WHERE up.userlevel_id = ul.userlevel_id
               AND up.action = 'module_key'
               AND up.action_key = m.module_key
-              AND up.company_id = 0
+              AND up.company_id = ${GLOBAL_COMPANY_ID}
          )`,
   );
 }

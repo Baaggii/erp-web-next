@@ -8,6 +8,7 @@ const mysql = require('mysql2/promise');
     const configPath = path.join(process.cwd(), 'config', 'userLevelActions.json');
     const raw = await fs.readFile(configPath, 'utf8');
     const actions = JSON.parse(raw);
+    const { GLOBAL_COMPANY_ID } = await import('../config/constants.js');
 
     const pool = mysql.createPool({
       host: process.env.DB_HOST,
@@ -22,14 +23,14 @@ const mysql = require('mysql2/promise');
       for (const key of keys) {
         await pool.query(
           `INSERT INTO user_level_permissions (company_id, userlevel_id, action, action_key)
-           SELECT 0, ul.userlevel_id, ?, ?
+           SELECT ${GLOBAL_COMPANY_ID}, ul.userlevel_id, ?, ?
              FROM user_levels ul
              WHERE NOT EXISTS (
                SELECT 1 FROM user_level_permissions up
                 WHERE up.userlevel_id = ul.userlevel_id
                   AND up.action = ?
                   AND up.action_key = ?
-                  AND up.company_id = 0
+                  AND up.company_id = ${GLOBAL_COMPANY_ID}
              )`,
           [type, key, type, key]
         );
