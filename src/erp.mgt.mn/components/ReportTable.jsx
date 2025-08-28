@@ -65,7 +65,7 @@ function isCountColumn(name) {
 }
 
 export default function ReportTable({ procedure = '', params = {}, rows = [], buttonPerms = {} }) {
-  const { user, company, branch, department } = useContext(AuthContext);
+  const { user, branch, department } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
@@ -339,7 +339,6 @@ export default function ReportTable({ procedure = '', params = {}, rows = [], bu
       extraConditions,
       session: {
         empid: user?.empid,
-        company_id: company,
         branch_id: branch,
         department_id: department,
       },

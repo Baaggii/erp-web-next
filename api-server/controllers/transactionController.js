@@ -21,6 +21,7 @@ export async function getTransactions(req, res, next) {
       perPage: Number(perPage) || 50,
       refCol,
       refVal,
+      company_id: req.user.companyId,
     });
     res.json(result);
   } catch (err) {
