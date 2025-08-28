@@ -126,6 +126,9 @@ export async function addRow(req, res, next) {
     if (columns.includes('created_at')) {
       row.created_at = formatDateForDb(new Date());
     }
+    if (columns.includes('company_id')) {
+      row.company_id = req.user.companyId;
+    }
     if (req.params.table === 'users' && row.password) {
       row.password = await bcrypt.hash(row.password, 10);
     }
