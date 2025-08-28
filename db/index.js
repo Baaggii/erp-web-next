@@ -445,8 +445,8 @@ export async function setUserLevelActions(
   companyId = GLOBAL_COMPANY_ID,
 ) {
   await pool.query(
-    `DELETE FROM user_level_permissions WHERE userlevel_id = ? AND action IS NOT NULL AND company_id = ${companyId}`,
-    [userLevelId],
+    'DELETE FROM user_level_permissions WHERE userlevel_id = ? AND action IS NOT NULL AND company_id = ?',
+    [userLevelId, companyId],
   );
   const values = [];
   const params = [];
