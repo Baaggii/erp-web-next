@@ -3,6 +3,7 @@ import {
   upsertTenantTable,
   getEmploymentSession,
   listAllTenantTableOptions,
+  zeroSharedTenantKeys,
 } from '../../db/index.js';
 import { hasAction } from '../utils/hasAction.js';
 
@@ -51,6 +52,16 @@ export async function updateTenantTable(req, res, next) {
     const { isShared, seedOnCreate } = req.body || {};
     const result = await upsertTenantTable(tableName, isShared, seedOnCreate);
     res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function resetSharedTenantKeys(req, res, next) {
+  try {
+    if (!(await ensureAdmin(req))) return res.sendStatus(403);
+    await zeroSharedTenantKeys();
+    res.sendStatus(204);
   } catch (err) {
     next(err);
   }

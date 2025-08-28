@@ -18,6 +18,7 @@ async function parseErrorBody(res) {
 export default function TenantTablesRegistry() {
   const [tables, setTables] = useState(null);
   const [saving, setSaving] = useState({});
+  const [resetting, setResetting] = useState(false);
   const { addToast } = useToast();
 
   useEffect(() => {
@@ -76,6 +77,26 @@ export default function TenantTablesRegistry() {
     }
   }
 
+  async function handleResetTenantKeys() {
+    setResetting(true);
+    try {
+      const res = await fetch('/api/tenant_tables/zero-keys', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const msg = await parseErrorBody(res);
+        throw new Error(msg || 'Failed to reset');
+      }
+      addToast('Reset shared tenant table keys', 'success');
+      await loadTables();
+    } catch (err) {
+      addToast(`Failed to reset tenant keys: ${err.message}`, 'error');
+    } finally {
+      setResetting(false);
+    }
+  }
+
   function handleChange(idx, field, value) {
     setTables((ts) => ts.map((t, i) => (i === idx ? { ...t, [field]: value } : t)));
   }
@@ -125,7 +146,12 @@ export default function TenantTablesRegistry() {
 
   return (
     <div>
-      <h2>Tenant Tables Registry</h2>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <h2>Tenant Tables Registry</h2>
+        <button onClick={handleResetTenantKeys} disabled={resetting}>
+          Reset Shared Table Tenant Keys
+        </button>
+      </div>
       {tables === null ? null : tables.length === 0 ? (
         <p>No tenant tables.</p>
       ) : (
