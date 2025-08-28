@@ -1,8 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
+function parseErrorBody(res) {
+  return res
+    .json()
+    .catch(() => res.text())
+    .catch(() => '')
+    .then((msg) => (typeof msg === 'string' ? msg : msg?.message || ''));
+}
+
 export default function TenantTablesRegistry() {
-  const [tables, setTables] = useState([]);
+  const [tables, setTables] = useState(null);
   const [saving, setSaving] = useState({});
   const { addToast } = useToast();
 
@@ -11,26 +19,48 @@ export default function TenantTablesRegistry() {
   }, []);
 
   async function loadTables() {
+    let options = [];
+    let registered = [];
+    let optionsErr = '';
+    let registeredErr = '';
+
     try {
-      const [optionsRes, registeredRes] = await Promise.all([
-        fetch('/api/tenant_tables/options', { credentials: 'include' }),
-        fetch('/api/tenant_tables', { credentials: 'include' }),
-      ]);
-      if (!optionsRes.ok || !registeredRes.ok)
-        throw new Error('Failed to fetch');
-      const [options, registered] = await Promise.all([
-        optionsRes.json(),
-        registeredRes.json(),
-      ]);
-      const regMap = new Map(registered.map((r) => [r.tableName, true]));
-      const combined = options.map((t) => ({
-        ...t,
-        isRegistered: regMap.has(t.tableName),
-      }));
-      setTables(combined);
+      const res = await fetch('/api/tenant_tables/options', {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        optionsErr = await parseErrorBody(res);
+      } else {
+        options = await res.json();
+      }
     } catch (err) {
-      console.error('Failed to load tenant tables', err);
-      addToast('Failed to load tenant tables', 'error');
+      optionsErr = err.message;
+    }
+    if (optionsErr) addToast(`Failed to load table options: ${optionsErr}`, 'error');
+
+    try {
+      const res = await fetch('/api/tenant_tables', { credentials: 'include' });
+      if (!res.ok) {
+        registeredErr = await parseErrorBody(res);
+      } else {
+        registered = await res.json();
+      }
+    } catch (err) {
+      registeredErr = err.message;
+    }
+    if (registeredErr)
+      addToast(`Failed to load registered tables: ${registeredErr}`, 'error');
+
+    if (options.length) {
+      const regMap = new Map(registered.map((r) => [r.tableName, true]));
+      setTables(
+        options.map((t) => ({
+          ...t,
+          isRegistered: regMap.has(t.tableName),
+        })),
+      );
+    } else {
+      setTables([]);
     }
   }
 
@@ -67,12 +97,15 @@ export default function TenantTablesRegistry() {
         credentials: 'include',
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error('Failed to save');
+      if (!res.ok) {
+        const msg = await parseErrorBody(res);
+        throw new Error(msg || 'Failed to save');
+      }
       addToast('Saved', 'success');
       await loadTables();
     } catch (err) {
       console.error('Failed to save tenant table', err);
-      addToast('Failed to save tenant table', 'error');
+      addToast(`Failed to save tenant table: ${err.message}`, 'error');
     } finally {
       setSaving((s) => ({ ...s, [row.tableName]: false }));
     }
@@ -81,7 +114,7 @@ export default function TenantTablesRegistry() {
   return (
     <div>
       <h2>Tenant Tables Registry</h2>
-      {tables.length === 0 ? (
+      {tables === null ? null : tables.length === 0 ? (
         <p>No tenant tables.</p>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.5rem' }}>

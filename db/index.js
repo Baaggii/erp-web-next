@@ -921,14 +921,19 @@ export async function listTableColumnsDetailed(tableName) {
 }
 
 export async function listTenantTables() {
-  const [rows] = await pool.query(
-    `SELECT table_name, is_shared, seed_on_create FROM tenant_tables`,
-  );
-  return rows.map((r) => ({
-    tableName: r.table_name,
-    isShared: !!r.is_shared,
-    seedOnCreate: !!r.seed_on_create,
-  }));
+  try {
+    const [rows] = await pool.query(
+      `SELECT table_name, is_shared, seed_on_create FROM tenant_tables`,
+    );
+    return rows.map((r) => ({
+      tableName: r.table_name,
+      isShared: !!r.is_shared,
+      seedOnCreate: !!r.seed_on_create,
+    }));
+  } catch (err) {
+    if (err?.code === 'ER_NO_SUCH_TABLE') return [];
+    throw err;
+  }
 }
 
 export async function listAllTenantTableOptions() {
@@ -964,15 +969,20 @@ export async function upsertTenantTable(
 }
 
 export async function getTenantTableFlags(tableName) {
-  const [rows] = await pool.query(
-    `SELECT is_shared, seed_on_create FROM tenant_tables WHERE table_name = ?`,
-    [tableName],
-  );
-  if (rows.length === 0) return null;
-  return {
-    isShared: !!rows[0].is_shared,
-    seedOnCreate: !!rows[0].seed_on_create,
-  };
+  try {
+    const [rows] = await pool.query(
+      `SELECT is_shared, seed_on_create FROM tenant_tables WHERE table_name = ?`,
+      [tableName],
+    );
+    if (rows.length === 0) return null;
+    return {
+      isShared: !!rows[0].is_shared,
+      seedOnCreate: !!rows[0].seed_on_create,
+    };
+  } catch (err) {
+    if (err?.code === 'ER_NO_SUCH_TABLE') return null;
+    throw err;
+  }
 }
 
 export async function seedTenantTables(companyId) {
