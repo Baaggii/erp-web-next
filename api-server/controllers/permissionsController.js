@@ -28,7 +28,10 @@ export async function listGroups(req, res, next) {
       Object.entries(allForms).filter(([, f]) => f.scope !== 'system'),
     );
     const permissions = registry.permissions || [];
-    const rawModules = await listModules();
+    const rawModules = await listModules(
+      req.user.userLevel,
+      req.user.companyId,
+    );
     const nodes = new Map();
     for (const m of rawModules) {
       if (m.show_in_sidebar || m.show_in_header) {
