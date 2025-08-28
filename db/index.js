@@ -44,6 +44,7 @@ import { existsSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { getDisplayFields as getDisplayCfg } from "../api-server/services/displayFieldConfig.js";
+import { GLOBAL_COMPANY_ID } from "../config/constants.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const actionsPath = (() => {
@@ -1006,7 +1007,7 @@ export async function seedTenantTables(companyId) {
       ', ',
     );
     await pool.query(
-      `INSERT INTO ?? (${colsClause}) SELECT ${selectClause} FROM ?? WHERE company_id = 0`,
+      `INSERT INTO ?? (${colsClause}) SELECT ${selectClause} FROM ?? WHERE company_id = ${GLOBAL_COMPANY_ID}`,
       [table_name, companyId, table_name],
     );
   }
@@ -1188,7 +1189,7 @@ export async function listTableRows(
         // ensure column exists when scoping
         await ensureValidColumns(tableName, columns, [field]);
         if (flags.isShared) {
-          filterClauses.push('`company_id` IN (0, ?)');
+          filterClauses.push('`company_id` IN (' + GLOBAL_COMPANY_ID + ', ?)');
           params.push(value);
         } else {
           filterClauses.push('`company_id` = ?');
