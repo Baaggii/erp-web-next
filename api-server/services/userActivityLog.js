@@ -1,4 +1,5 @@
 import { pool } from '../../db/index.js';
+import { GLOBAL_COMPANY_ID } from '../../config/constants.js';
 
 export async function logUserAction(
   {
@@ -8,7 +9,7 @@ export async function logUserAction(
     action,
     details = null,
     request_id = null,
-    company_id = 0,
+    company_id = GLOBAL_COMPANY_ID,
   },
   conn = pool,
 ) {
