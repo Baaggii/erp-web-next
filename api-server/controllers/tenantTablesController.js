@@ -4,6 +4,8 @@ import {
   getEmploymentSession,
   listAllTenantTableOptions,
   zeroSharedTenantKeys,
+  seedDefaultsForSeedTables,
+  seedSeedTablesForCompanies,
 } from '../../db/index.js';
 import { hasAction } from '../utils/hasAction.js';
 
@@ -61,6 +63,26 @@ export async function resetSharedTenantKeys(req, res, next) {
   try {
     if (!(await ensureAdmin(req))) return res.sendStatus(403);
     await zeroSharedTenantKeys();
+    res.sendStatus(204);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function seedDefaults(req, res, next) {
+  try {
+    if (!(await ensureAdmin(req))) return res.sendStatus(403);
+    await seedDefaultsForSeedTables();
+    res.sendStatus(204);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function seedExistingCompanies(req, res, next) {
+  try {
+    if (!(await ensureAdmin(req))) return res.sendStatus(403);
+    await seedSeedTablesForCompanies();
     res.sendStatus(204);
   } catch (err) {
     next(err);
