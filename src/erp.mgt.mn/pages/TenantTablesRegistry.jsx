@@ -60,45 +60,49 @@ export default function TenantTablesRegistry() {
   return (
     <div>
       <h2>Tenant Tables Registry</h2>
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.5rem' }}>
-        <thead>
-          <tr style={{ backgroundColor: '#e5e7eb' }}>
-            <th style={styles.th}>Table</th>
-            <th style={styles.th}>Shared</th>
-            <th style={styles.th}>Seed on Create</th>
-            <th style={styles.th}>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tables.map((t, idx) => (
-            <tr key={t.table_name}>
-              <td style={styles.td}>{t.table_name}</td>
-              <td style={styles.td}>
-                <input
-                  type="checkbox"
-                  checked={!!t.is_shared}
-                  onChange={(e) => handleChange(idx, 'is_shared', e.target.checked)}
-                />
-              </td>
-              <td style={styles.td}>
-                <input
-                  type="checkbox"
-                  checked={!!t.seed_on_create}
-                  onChange={(e) => handleChange(idx, 'seed_on_create', e.target.checked)}
-                />
-              </td>
-              <td style={styles.td}>
-                <button
-                  onClick={() => handleSave(t)}
-                  disabled={saving[t.table_name]}
-                >
-                  Save
-                </button>
-              </td>
+      {tables.length === 0 ? (
+        <p>No tenant tables.</p>
+      ) : (
+        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.5rem' }}>
+          <thead>
+            <tr style={{ backgroundColor: '#e5e7eb' }}>
+              <th style={styles.th}>Table</th>
+              <th style={styles.th}>Shared</th>
+              <th style={styles.th}>Seed on Create</th>
+              <th style={styles.th}>Action</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {tables.map((t, idx) => (
+              <tr key={t.table_name}>
+                <td style={styles.td}>{t.table_name}</td>
+                <td style={styles.td}>
+                  <input
+                    type="checkbox"
+                    checked={!!t.is_shared}
+                    onChange={(e) => handleChange(idx, 'is_shared', e.target.checked)}
+                  />
+                </td>
+                <td style={styles.td}>
+                  <input
+                    type="checkbox"
+                    checked={!!t.seed_on_create}
+                    onChange={(e) => handleChange(idx, 'seed_on_create', e.target.checked)}
+                  />
+                </td>
+                <td style={styles.td}>
+                  <button
+                    onClick={() => handleSave(t)}
+                    disabled={saving[t.table_name]}
+                  >
+                    Save
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

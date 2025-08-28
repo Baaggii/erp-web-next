@@ -2,30 +2,13 @@ import {
   listTenantTables as listTenantTablesDb,
   upsertTenantTable,
   getEmploymentSession,
-  listDatabaseTables,
 } from '../../db/index.js';
 import { hasAction } from '../utils/hasAction.js';
 
 export async function listTenantTables(req, res, next) {
   try {
     const tables = await listTenantTablesDb();
-    if (!tables.length) {
-      const dbTables = await listDatabaseTables();
-      const mapped = dbTables
-        .filter((t) => t !== 'tenant_tables')
-        .map((table_name) => ({
-          table_name,
-          is_shared: false,
-          seed_on_create: false,
-        }));
-      return res.json(mapped);
-    }
-    const mappedExisting = tables.map((t) => ({
-      table_name: t.table_name ?? t.tableName,
-      is_shared: t.is_shared ?? t.isShared,
-      seed_on_create: t.seed_on_create ?? t.seedOnCreate,
-    }));
-    res.json(mappedExisting);
+    res.json(tables);
   } catch (err) {
     next(err);
   }
