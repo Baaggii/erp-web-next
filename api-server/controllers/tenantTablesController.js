@@ -10,20 +10,15 @@ export async function listTenantTables(req, res, next) {
   try {
     const tables = await listTenantTablesDb();
     if (!tables.length) {
-      try {
-        const dbTables = await listDatabaseTables();
-        const mapped = dbTables
-          .filter((t) => t !== 'tenant_tables')
-          .map((table_name) => ({
-            table_name,
-            is_shared: false,
-            seed_on_create: false,
-          }));
-        return res.json(mapped);
-      } catch (err) {
-        // If listing database tables fails, fall back to empty list
-        return res.json([]);
-      }
+      const dbTables = await listDatabaseTables();
+      const mapped = dbTables
+        .filter((t) => t !== 'tenant_tables')
+        .map((table_name) => ({
+          table_name,
+          is_shared: false,
+          seed_on_create: false,
+        }));
+      return res.json(mapped);
     }
     const mappedExisting = tables.map((t) => ({
       table_name: t.table_name ?? t.tableName,
