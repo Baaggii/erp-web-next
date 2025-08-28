@@ -881,6 +881,7 @@ const RowFormModal = function RowFormModal({
         }}
         inputRef={(el) => (inputRefs.current[c] = el)}
         inputStyle={inputStyle}
+        companyId={company}
       />
     ) : viewSource[c] && !Array.isArray(relations[c]) ? (
       <AsyncSearchSelect
@@ -917,6 +918,7 @@ const RowFormModal = function RowFormModal({
         }}
         inputRef={(el) => (inputRefs.current[c] = el)}
         inputStyle={inputStyle}
+        companyId={company}
       />
     ) : Array.isArray(relations[c]) ? (
       <select
