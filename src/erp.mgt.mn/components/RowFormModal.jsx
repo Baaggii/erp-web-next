@@ -157,6 +157,7 @@ const RowFormModal = function RowFormModal({
   const wrapRef = useRef(null);
   const [zoom, setZoom] = useState(1);
   const [previewRow, setPreviewRow] = useState(null);
+  const [seedOptions, setSeedOptions] = useState([]);
 
   useEffect(() => {
     if (useGrid) {
@@ -215,6 +216,32 @@ const RowFormModal = function RowFormModal({
     });
     setExtraVals(extras);
   }, [row, columns, placeholders]);
+
+  useEffect(() => {
+    if (table !== 'companies' || row) return;
+    fetch('/api/tenant_tables', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        const opts = (data || []).filter(
+          (t) => t.seedOnCreate && !t.isShared,
+        );
+        setSeedOptions(opts);
+        setExtraVals((e) => ({
+          ...e,
+          seedTables: opts.map((o) => o.tableName),
+        }));
+      })
+      .catch(() => {});
+  }, [table, row]);
+
+  function toggleSeedTable(name) {
+    setExtraVals((e) => {
+      const set = new Set(e.seedTables || []);
+      if (set.has(name)) set.delete(name);
+      else set.add(name);
+      return { ...e, seedTables: Array.from(set) };
+    });
+  }
 
   function normalizeDateInput(value, format) {
     if (typeof value !== 'string') return value;
@@ -1249,6 +1276,23 @@ const RowFormModal = function RowFormModal({
         {renderHeaderTable(headerCols)}
         {renderMainTable(mainCols)}
         {renderSection('Footer', footerCols)}
+        {table === 'companies' && !row && seedOptions.length > 0 && (
+          <div className="mt-4">
+            <h3 className="font-semibold mb-2">Seed Tables</h3>
+            <div className="grid grid-cols-2 gap-2">
+              {seedOptions.map((t) => (
+                <label key={t.tableName} className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={(extraVals.seedTables || []).includes(t.tableName)}
+                    onChange={() => toggleSeedTable(t.tableName)}
+                  />
+                  <span>{t.tableName}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="mt-2 text-right space-x-2">
           <button
             type="button"
