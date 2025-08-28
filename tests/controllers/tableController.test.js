@@ -18,12 +18,40 @@ test('getTableRows forwards error for invalid column', async () => {
     }
     throw new Error('unexpected query');
   });
-  const req = { params: { table: 'badtable' }, query: { bad: 'x' } };
+  const req = {
+    params: { table: 'badtable' },
+    query: { bad: 'x' },
+    user: { companyId: 1 },
+  };
   let err;
   await controller.getTableRows(req, {}, (e) => { err = e; });
   restore();
   assert.ok(err);
   assert.match(err.message, /Invalid column name/);
+});
+
+test('getTableRows scopes to user companyId', async () => {
+  const restore = mockPool(async (sql, params) => {
+    if (sql.includes('tenant_tables')) {
+      return [[{ is_shared: 1, seed_on_create: 0 }]];
+    }
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'company_id' }]];
+    }
+    if (sql.includes('COUNT(*)')) {
+      assert.deepEqual(params, ['shared', 7]);
+      return [[{ count: 1 }]];
+    }
+    return [[{ id: 1 }]];
+  });
+  const req = {
+    params: { table: 'shared' },
+    query: { company_id: 5 },
+    user: { companyId: 7 },
+  };
+  const res = { json() {} };
+  await controller.getTableRows(req, res, (e) => { if (e) throw e; });
+  restore();
 });
 
 test('addRow forwards db error when required id missing', async () => {
