@@ -7,6 +7,10 @@ Data-access helpers that accept `company_id` filters now consult the `tenant_tab
 
 This ensures queries return tenant-specific data while still honoring shared or global records.
 
+## Global tenant row
+
+The `companies` table reserves `id=0` for a `Global Defaults` tenant. Migration `2025-10-29_global_defaults_company.sql` seeds this row and future migrations may assume it exists. Use `company_id=0` when inserting records intended to be shared across all tenants.
+
 ## Listing tenant table options
 
 Administrators can fetch a full list of database tables and their `tenant_tables`
