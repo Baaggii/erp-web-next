@@ -1482,12 +1482,17 @@ export async function listTransactions({
   perPage = 50,
   refCol,
   refVal,
+  company_id,
 } = {}) {
   if (!table || !/^[a-zA-Z0-9_]+$/.test(table)) {
     throw new Error('Invalid table');
   }
   const clauses = [];
   const params = [];
+  if (company_id !== undefined && company_id !== '') {
+    clauses.push('company_id = ?');
+    params.push(company_id);
+  }
   if (branchId !== undefined && branchId !== '') {
     clauses.push('branch_id = ?');
     params.push(branchId);
