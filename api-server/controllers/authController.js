@@ -36,7 +36,10 @@ export async function login(req, res, next) {
       }
     }
 
-    const permissions = await getUserLevelActions(session.user_level);
+    const permissions = await getUserLevelActions(
+      session.user_level,
+      session.company_id,
+    );
     const {
       company_id: company,
       branch_id: branch,
@@ -103,7 +106,7 @@ export async function logout(req, res) {
 export async function getProfile(req, res) {
   const session = await getEmploymentSession(req.user.empid, req.user.companyId);
   const permissions = session?.user_level
-    ? await getUserLevelActions(session.user_level)
+    ? await getUserLevelActions(session.user_level, session.company_id)
     : {};
   const {
     company_id: company,
@@ -156,7 +159,7 @@ export async function refresh(req, res) {
     if (!user) throw new Error('User not found');
     const session = await getEmploymentSession(user.empid, payload.companyId);
     const permissions = session?.user_level
-      ? await getUserLevelActions(session.user_level)
+      ? await getUserLevelActions(session.user_level, session.company_id)
       : {};
     const {
       company_id: company,

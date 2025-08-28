@@ -63,7 +63,7 @@ export async function listGroups(req, res, next) {
 export async function getActions(req, res, next) {
   try {
     const id = req.params.userLevelId;
-    const actions = await getUserLevelActions(id);
+    const actions = await getUserLevelActions(id, req.user.companyId);
     res.json(actions);
   } catch (err) {
     next(err);
@@ -80,7 +80,7 @@ export async function updateActions(req, res, next) {
       functions,
       api,
       permissions,
-    });
+    }, req.user.companyId);
     res.sendStatus(200);
   } catch (err) {
     next(err);

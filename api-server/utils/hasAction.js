@@ -4,7 +4,10 @@ export async function hasAction(session, action) {
   if (session?.permissions?.[action]) return true;
   if (!session?.user_level) return false;
   if (!session.__userLevelActions) {
-    session.__userLevelActions = await getUserLevelActions(session.user_level);
+    session.__userLevelActions = await getUserLevelActions(
+      session.user_level,
+      session.company_id,
+    );
   }
   return !!session.__userLevelActions?.permissions?.[action];
 }
