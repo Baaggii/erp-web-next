@@ -1,18 +1,18 @@
 import {
-  listUsers as dbListUsers,
   listUsersByCompany,
   getUserById,
   createUser as dbCreateUser,
   updateUser as dbUpdateUser,
-  deleteUserById as dbDeleteUser
+  deleteUserById as dbDeleteUser,
+  getEmploymentSession,
 } from '../../db/index.js';
 
 export async function listUsers(req, res, next) {
   try {
-    const companyId = req.query.companyId;
-    const users = companyId
-      ? await listUsersByCompany(companyId)
-      : await dbListUsers();
+    const companyId = req.query.companyId || req.user.companyId;
+    const session = await getEmploymentSession(req.user.empid, companyId);
+    if (!session) return res.sendStatus(403);
+    const users = await listUsersByCompany(companyId);
     res.json(users);
   } catch (err) {
     next(err);
