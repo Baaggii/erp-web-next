@@ -26,5 +26,8 @@ SELECT c.id, s.z_num, s.z_barimt, s.z_tosov_code, s.z_tosov_zuil,
   s.userid
 FROM SZardal s CROSS JOIN companies c;
 
+-- Ensure existing forms are scoped to the global company
+UPDATE forms SET company_id = 0 WHERE company_id IS NULL;
+
 -- Repeat similar INSERT ... SELECT for tusuv, BMBurtgel, MMorder, SGereeJ, form_submissions
 -- ensuring company_id is included
