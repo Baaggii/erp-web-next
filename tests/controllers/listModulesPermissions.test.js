@@ -30,4 +30,5 @@ await test('listModules filters by license and permission', async () => {
   assert.deepEqual(queries[0].params, [1, 2, 1]);
   assert.ok(/company_module_licenses/.test(queries[0].sql));
   assert.ok(/user_level_permissions/.test(queries[0].sql));
+  assert.ok(/up.company_id = \?/.test(queries[0].sql));
 });

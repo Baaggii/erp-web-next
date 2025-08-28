@@ -347,8 +347,8 @@ export async function getUserLevelActions(
   const [rows] = await pool.query(
     `SELECT action, action_key
        FROM user_level_permissions
-       WHERE userlevel_id = ? AND action IS NOT NULL AND company_id IN (${GLOBAL_COMPANY_ID}, ?)`,
-    [userLevelId, companyId],
+       WHERE company_id = ? AND userlevel_id = ? AND action IS NOT NULL`,
+    [companyId, userLevelId],
   );
   if (id === 1) {
     const perms = {};
@@ -762,7 +762,7 @@ export async function listModules(userLevelId, companyId) {
          ON up.action_key = m.module_key
         AND up.action = 'module_key'
         AND up.userlevel_id = ?
-        AND up.company_id IN (${GLOBAL_COMPANY_ID}, ?)
+        AND up.company_id = ?
       ORDER BY m.module_key`,
     [companyId, userLevelId, companyId],
   );
@@ -1047,6 +1047,15 @@ export async function seedTenantTables(companyId, selectedTables = null) {
       [table_name, companyId, table_name],
     );
   }
+
+  await pool.query(
+    `INSERT INTO user_level_permissions (company_id, userlevel_id, action, action_key)
+     SELECT ?, userlevel_id, action, action_key
+       FROM user_level_permissions
+       WHERE company_id = ${GLOBAL_COMPANY_ID}
+     ON DUPLICATE KEY UPDATE action = VALUES(action)`,
+    [companyId],
+  );
 }
 
 export async function saveStoredProcedure(sql) {
