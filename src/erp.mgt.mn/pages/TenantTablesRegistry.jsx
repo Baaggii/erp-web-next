@@ -19,6 +19,8 @@ export default function TenantTablesRegistry() {
   const [tables, setTables] = useState(null);
   const [saving, setSaving] = useState({});
   const [resetting, setResetting] = useState(false);
+  const [seedingDefaults, setSeedingDefaults] = useState(false);
+  const [seedingCompanies, setSeedingCompanies] = useState(false);
   const { addToast } = useToast();
 
   useEffect(() => {
@@ -97,6 +99,46 @@ export default function TenantTablesRegistry() {
     }
   }
 
+  async function handleSeedDefaults() {
+    setSeedingDefaults(true);
+    try {
+      const res = await fetch('/api/tenant_tables/seed-defaults', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const msg = await parseErrorBody(res);
+        throw new Error(msg || 'Failed to seed defaults');
+      }
+      addToast('Populated defaults (tenant key 0)', 'success');
+      await loadTables();
+    } catch (err) {
+      addToast(`Failed to seed defaults: ${err.message}`, 'error');
+    } finally {
+      setSeedingDefaults(false);
+    }
+  }
+
+  async function handleSeedCompanies() {
+    setSeedingCompanies(true);
+    try {
+      const res = await fetch('/api/tenant_tables/seed-companies', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const msg = await parseErrorBody(res);
+        throw new Error(msg || 'Failed to seed companies');
+      }
+      addToast('Populated defaults for existing companies', 'success');
+      await loadTables();
+    } catch (err) {
+      addToast(`Failed to seed companies: ${err.message}`, 'error');
+    } finally {
+      setSeedingCompanies(false);
+    }
+  }
+
   function handleChange(idx, field, value) {
     setTables((ts) => ts.map((t, i) => (i === idx ? { ...t, [field]: value } : t)));
   }
@@ -146,8 +188,21 @@ export default function TenantTablesRegistry() {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        <h2>Tenant Tables Registry</h2>
+      <h2>Tenant Tables Registry</h2>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          flexWrap: 'wrap',
+        }}
+      >
+        <button onClick={handleSeedDefaults} disabled={seedingDefaults}>
+          Populate defaults (tenant key 0)
+        </button>
+        <button onClick={handleSeedCompanies} disabled={seedingCompanies}>
+          Populate defaults for existing companies
+        </button>
         <button onClick={handleResetTenantKeys} disabled={resetting}>
           Reset Shared Table Tenant Keys
         </button>
