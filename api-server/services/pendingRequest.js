@@ -35,6 +35,7 @@ export async function createRequest({
   requestType,
   proposedData,
   requestReason,
+  companyId = 0,
 }) {
   await ensureValidTableName(tableName);
   if (!ALLOWED_REQUEST_TYPES.has(requestType)) {
@@ -102,10 +103,10 @@ export async function createRequest({
     const normalizedEmp = String(empId).trim().toUpperCase();
     const [existing] = await conn.query(
       `SELECT request_id, proposed_data FROM pending_request
-       WHERE table_name = ? AND record_id = ? AND emp_id = ?
+       WHERE company_id = ? AND table_name = ? AND record_id = ? AND emp_id = ?
          AND request_type = ? AND status = 'pending'
        LIMIT 1`,
-      [tableName, recordId, normalizedEmp, requestType],
+      [companyId, tableName, recordId, normalizedEmp, requestType],
     );
     if (existing.length) {
       const existingData = parseProposedData(existing[0].proposed_data);
@@ -116,9 +117,10 @@ export async function createRequest({
       }
     }
     const [result] = await conn.query(
-      `INSERT INTO pending_request (table_name, record_id, emp_id, senior_empid, request_type, request_reason, proposed_data, original_data)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO pending_request (company_id, table_name, record_id, emp_id, senior_empid, request_type, request_reason, proposed_data, original_data)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
+        companyId,
         tableName,
         recordId,
         normalizedEmp,
@@ -138,14 +140,20 @@ export async function createRequest({
         action: requestType === 'edit' ? 'request_edit' : 'request_delete',
         details: finalProposed || null,
         request_id: requestId,
+        company_id: companyId,
       },
       conn,
     );
     if (senior) {
       await conn.query(
-        `INSERT INTO notifications (recipient_empid, type, related_id, message)
-         VALUES (?, 'request', ?, ?)`,
-        [senior, requestId, `Pending ${requestType} request for ${tableName}#${recordId}`],
+        `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message)
+         VALUES (?, ?, 'request', ?, ?)`,
+        [
+          companyId,
+          senior,
+          requestId,
+          `Pending ${requestType} request for ${tableName}#${recordId}`,
+        ],
       );
     }
     await conn.query('COMMIT');
@@ -332,6 +340,7 @@ export async function respondRequest(
             action: 'update',
             details: data,
             request_id: id,
+            company_id: req.company_id,
           },
           conn,
         );
@@ -344,6 +353,7 @@ export async function respondRequest(
             record_id: req.record_id,
             action: 'delete',
             request_id: id,
+            company_id: req.company_id,
           },
           conn,
         );
@@ -360,13 +370,14 @@ export async function respondRequest(
           action: 'approve',
           details: { proposed_data: proposedData, notes },
           request_id: id,
+          company_id: req.company_id,
         },
         conn,
       );
       await conn.query(
-        `INSERT INTO notifications (recipient_empid, type, related_id, message)
-         VALUES (?, 'response', ?, ?)`,
-        [req.emp_id, id, 'Request approved'],
+        `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message)
+         VALUES (?, ?, 'response', ?, ?)`,
+        [req.company_id, req.emp_id, id, 'Request approved'],
       );
     } else {
       await conn.query(
@@ -381,13 +392,14 @@ export async function respondRequest(
           action: 'decline',
           details: { proposed_data: proposedData, notes },
           request_id: id,
+          company_id: req.company_id,
         },
         conn,
       );
       await conn.query(
-        `INSERT INTO notifications (recipient_empid, type, related_id, message)
-         VALUES (?, 'response', ?, ?)`,
-        [req.emp_id, id, 'Request declined'],
+        `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message)
+         VALUES (?, ?, 'response', ?, ?)`,
+        [req.company_id, req.emp_id, id, 'Request declined'],
       );
     }
     await conn.query('COMMIT');

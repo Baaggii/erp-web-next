@@ -1,7 +1,15 @@
 import { pool } from '../../db/index.js';
 
 export async function logUserAction(
-  { emp_id, table_name, record_id, action, details = null, request_id = null },
+  {
+    emp_id,
+    table_name,
+    record_id,
+    action,
+    details = null,
+    request_id = null,
+    company_id = 0,
+  },
   conn = pool,
 ) {
   const formattedDetails =
@@ -12,8 +20,16 @@ export async function logUserAction(
       : JSON.stringify(details);
 
   await conn.query(
-    `INSERT INTO user_activity_log (emp_id, table_name, record_id, action, details, request_id)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [emp_id, table_name, record_id, action, formattedDetails, request_id]
+    `INSERT INTO user_activity_log (company_id, emp_id, table_name, record_id, action, details, request_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      company_id,
+      emp_id,
+      table_name,
+      record_id,
+      action,
+      formattedDetails,
+      request_id,
+    ],
   );
 }
