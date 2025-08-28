@@ -36,13 +36,22 @@ export async function getTables(req, res, next) {
 
 export async function getTableRows(req, res, next) {
   try {
-    const { page, perPage, sort, dir, debug, search, searchColumns, ...filters } =
-      req.query;
+    const {
+      page,
+      perPage,
+      sort,
+      dir,
+      debug,
+      search,
+      searchColumns,
+      company_id, // eslint-disable-line camelcase
+      ...filters
+    } = req.query;
     const rowsPerPage = Math.min(Number(perPage) || 50, 500);
     const result = await listTableRows(req.params.table, {
       page: Number(page) || 1,
       perPage: rowsPerPage,
-      filters,
+      filters: { ...filters, company_id: req.user?.companyId },
       search: search || '',
       searchColumns: typeof searchColumns === 'string' ? searchColumns.split(',') : [],
       sort: { column: sort, dir },
