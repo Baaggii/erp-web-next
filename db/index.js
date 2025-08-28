@@ -252,8 +252,8 @@ export async function getEmploymentSessions(empid) {
         GROUP_CONCAT(DISTINCT up.action_key) AS permission_list
      FROM tbl_employment e
      LEFT JOIN companies c ON e.employment_company_id = c.id
-     LEFT JOIN code_branches b ON e.employment_branch_id = b.id
-     LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol}
+     LEFT JOIN code_branches b ON e.employment_branch_id = b.id AND b.company_id = e.employment_company_id
+     LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol} AND d.company_id IN (0, e.employment_company_id)
      LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
      LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
      LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission'
@@ -309,8 +309,8 @@ export async function getEmploymentSession(empid, companyId) {
           GROUP_CONCAT(DISTINCT up.action_key) AS permission_list
        FROM tbl_employment e
        LEFT JOIN companies c ON e.employment_company_id = c.id
-       LEFT JOIN code_branches b ON e.employment_branch_id = b.id
-       LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol}
+       LEFT JOIN code_branches b ON e.employment_branch_id = b.id AND b.company_id = e.employment_company_id
+       LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol} AND d.company_id IN (0, e.employment_company_id)
        LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
        LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
        LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission'
@@ -624,7 +624,7 @@ export async function listUserCompanies(empid) {
             uc.branch_id, b.name AS branch_name
      FROM user_companies uc
      JOIN companies c ON uc.company_id = c.id
-     LEFT JOIN code_branches b ON uc.branch_id = b.id
+     LEFT JOIN code_branches b ON uc.branch_id = b.id AND b.company_id = uc.company_id
      WHERE uc.empid = ?`,
     [empid],
   );
@@ -668,7 +668,7 @@ export async function listAllUserCompanies(companyId) {
             uc.branch_id, b.name AS branch_name
      FROM user_companies uc
      JOIN companies c ON uc.company_id = c.id
-     LEFT JOIN code_branches b ON uc.branch_id = b.id
+     LEFT JOIN code_branches b ON uc.branch_id = b.id AND b.company_id = uc.company_id
      ${where}`,
     params,
   );
