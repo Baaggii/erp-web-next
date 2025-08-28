@@ -1,12 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 
-function parseErrorBody(res) {
-  return res
-    .json()
-    .catch(() => res.text())
-    .catch(() => '')
-    .then((msg) => (typeof msg === 'string' ? msg : msg?.message || ''));
+async function parseErrorBody(res) {
+  const ct = res.headers.get('content-type') || '';
+  try {
+    if (ct.includes('application/json')) {
+      const data = await res.json();
+      return typeof data === 'string' ? data : data.message || '';
+    }
+    const text = await res.text();
+    return text.startsWith('<') ? '' : text;
+  } catch {
+    return '';
+  }
 }
 
 export default function TenantTablesRegistry() {
@@ -28,8 +34,11 @@ export default function TenantTablesRegistry() {
       const res = await fetch('/api/tenant_tables/options', {
         credentials: 'include',
       });
+      const ct = res.headers.get('content-type') || '';
       if (!res.ok) {
-        optionsErr = await parseErrorBody(res);
+        optionsErr = await parseErrorBody(res) || `${res.status} ${res.statusText}`;
+      } else if (!ct.includes('application/json')) {
+        optionsErr = `Unexpected response: ${ct || 'unknown content-type'}`;
       } else {
         options = await res.json();
       }
@@ -40,8 +49,11 @@ export default function TenantTablesRegistry() {
 
     try {
       const res = await fetch('/api/tenant_tables', { credentials: 'include' });
+      const ct = res.headers.get('content-type') || '';
       if (!res.ok) {
-        registeredErr = await parseErrorBody(res);
+        registeredErr = await parseErrorBody(res) || `${res.status} ${res.statusText}`;
+      } else if (!ct.includes('application/json')) {
+        registeredErr = `Unexpected response: ${ct || 'unknown content-type'}`;
       } else {
         registered = await res.json();
       }
