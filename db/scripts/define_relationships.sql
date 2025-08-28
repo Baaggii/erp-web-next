@@ -12,12 +12,17 @@ SELECT e.*, u.*
                 ELSE e.emp_num
               END;
 
--- 2. role_default_modules.role_id references code_position.position_id
+-- 2. role_default_modules.company_id references companies.id
+ALTER TABLE role_default_modules
+  ADD CONSTRAINT fk_rdm_company
+  FOREIGN KEY (company_id) REFERENCES companies(id);
+
+-- 3. role_default_modules.role_id references code_position.position_id
 ALTER TABLE role_default_modules
   ADD CONSTRAINT fk_rdm_role
   FOREIGN KEY (role_id) REFERENCES code_position(position_id);
 
--- 3. role_module_permissions.position_id references code_position.position_id
+-- 4. role_module_permissions.position_id references code_position.position_id
 ALTER TABLE role_module_permissions
   ADD CONSTRAINT fk_rmp_role
   FOREIGN KEY (position_id) REFERENCES code_position(position_id);
