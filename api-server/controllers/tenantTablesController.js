@@ -22,15 +22,10 @@ export async function listTenantTables(req, res, next) {
       seed_on_create: t.seed_on_create ?? t.seedOnCreate,
     }));
 
-    let dbTables = [];
-    try {
-      dbTables = await listDatabaseTables();
-    } catch (err) {
-      dbTables = [];
-    }
+    const dbTables = await listDatabaseTables();
 
     const existingNames = new Set(mappedExisting.map((t) => t.table_name));
-    const unmapped = dbTables
+    const unmapped = (dbTables ?? [])
       .filter((t) => t !== 'tenant_tables' && !existingNames.has(t))
       .map((table_name) => ({
         table_name,
