@@ -1063,7 +1063,13 @@ export async function zeroSharedTenantKeys() {
     `SELECT table_name FROM tenant_tables WHERE is_shared = 1`,
   );
   for (const { table_name } of rows) {
-    await pool.query(`UPDATE ?? SET company_id = 0`, [table_name]);
+    const cols = await getTableColumnsSafe(table_name);
+    if (cols.some((c) => c.toLowerCase() === "company_id")) {
+      await pool.query(`UPDATE ?? SET company_id = ?`, [
+        table_name,
+        GLOBAL_COMPANY_ID,
+      ]);
+    }
   }
 }
 
