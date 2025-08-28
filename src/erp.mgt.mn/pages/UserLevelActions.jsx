@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useToast } from "../context/ToastContext.jsx";
+import { collectModuleKeys, toggleModuleGroupSelection } from "./moduleTreeHelpers.js";
 
 export default function UserLevelActions() {
   const [groups, setGroups] = useState({ modules: [], forms: {}, permissions: [] });
@@ -202,6 +203,13 @@ export default function UserLevelActions() {
     });
   }
 
+  function toggleModuleGroup(keys, checked) {
+    setSelected((prev) => ({
+      ...prev,
+      modules: toggleModuleGroupSelection(prev.modules, keys, checked),
+    }));
+  }
+
   function renderTree(node, type, depth = 0, path = []) {
     const elements = [];
     const currentPath = node.name ? [...path, node.name] : path;
@@ -257,19 +265,23 @@ export default function UserLevelActions() {
   }
 
   function renderModuleTree(items, depth = 0) {
-    return items.map((m) => (
-      <div key={m.key} style={{ marginLeft: depth * 20 }}>
-        <label>
-          <input
-            type="checkbox"
-            checked={selected.modules.includes(m.key)}
-            onChange={(e) => toggle("modules", m.key, e.target.checked)}
-          />
-          {m.name}
-        </label>
-        {m.children?.length ? renderModuleTree(m.children, depth + 1) : null}
-      </div>
-    ));
+    return items.map((m) => {
+      const keys = collectModuleKeys(m);
+      const groupChecked = keys.every((k) => selected.modules.includes(k));
+      return (
+        <div key={m.key} style={{ marginLeft: depth * 20 }}>
+          <label>
+            <input
+              type="checkbox"
+              checked={groupChecked}
+              onChange={(e) => toggleModuleGroup(keys, e.target.checked)}
+            />
+            {m.name}
+          </label>
+          {m.children?.length ? renderModuleTree(m.children, depth + 1) : null}
+        </div>
+      );
+    });
   }
 
   async function handlePopulate() {
