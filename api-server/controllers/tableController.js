@@ -51,7 +51,13 @@ export async function getTableRows(req, res, next) {
     const result = await listTableRows(req.params.table, {
       page: Number(page) || 1,
       perPage: rowsPerPage,
-      filters: { ...filters, company_id: req.user?.companyId },
+      filters: {
+        ...filters,
+        company_id:
+          company_id !== undefined && company_id !== ''
+            ? company_id
+            : req.user?.companyId,
+      },
       search: search || '',
       searchColumns: typeof searchColumns === 'string' ? searchColumns.split(',') : [],
       sort: { column: sort, dir },

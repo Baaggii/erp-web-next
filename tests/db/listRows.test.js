@@ -75,6 +75,16 @@ test('listTableRows scopes company_id with shared tables', async () => {
   assert.ok(/`company_id`\s+IN\s*\(0,\s*\?\)/i.test(count.sql));
 });
 
+test('listTableRows scopes company_id with tenant tables', async () => {
+  const restore = mockPool({ tenant: { is_shared: 0, seed_on_create: 0 } });
+  await db.listTableRows('tenant', {
+    filters: { company_id: 9 },
+  });
+  const calls = restore();
+  const count = calls.find((c) => c.sql.includes('COUNT(*)'));
+  assert.ok(/`company_id`\s*=\s*\?/i.test(count.sql));
+});
+
 test('listTableRows skips company_id for global tables', async () => {
   const restore = mockPool({});
   await db.listTableRows('global', {

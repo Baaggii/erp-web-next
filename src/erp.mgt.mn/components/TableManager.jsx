@@ -622,6 +622,7 @@ const TableManager = forwardRef(function TableManager({
             }
             while (true) {
               const params = new URLSearchParams({ page, perPage });
+              if (company != null) params.set('company_id', company);
               const refRes = await fetch(
                 `/api/tables/${encodeURIComponent(rel.table)}?${params.toString()}`,
                 { credentials: 'include' },
@@ -721,6 +722,7 @@ const TableManager = forwardRef(function TableManager({
     if (!table || columnMeta.length === 0) return;
     let canceled = false;
     const params = new URLSearchParams({ page, perPage });
+    if (company != null) params.set('company_id', company);
     if (sort.column && validCols.has(sort.column)) {
       params.set('sort', sort.column);
       params.set('dir', sort.dir);
@@ -1060,6 +1062,7 @@ const TableManager = forwardRef(function TableManager({
       const view = viewSourceMap[field];
       if (!view || val === '') return;
       const params = new URLSearchParams({ perPage: 1, debug: 1 });
+      if (company != null) params.set('company_id', company);
       const cols = viewColumns[view] || [];
       Object.entries(viewSourceMap).forEach(([f, v]) => {
         if (v !== view) return;
@@ -1226,6 +1229,7 @@ const TableManager = forwardRef(function TableManager({
       const savedRow = res.ok ? await res.json().catch(() => ({})) : {};
       if (res.ok) {
         const params = new URLSearchParams({ page, perPage });
+        if (company != null) params.set('company_id', company);
         if (sort.column) {
           params.set('sort', sort.column);
           params.set('dir', sort.dir);
@@ -1316,6 +1320,7 @@ const TableManager = forwardRef(function TableManager({
     );
     if (res.ok) {
       const params = new URLSearchParams({ page, perPage });
+      if (company != null) params.set('company_id', company);
       if (sort.column) {
         params.set('sort', sort.column);
         params.set('dir', sort.dir);
@@ -1483,6 +1488,7 @@ const TableManager = forwardRef(function TableManager({
       }
     }
     const params = new URLSearchParams({ page, perPage });
+    if (company != null) params.set('company_id', company);
     if (sort.column) {
       params.set('sort', sort.column);
       params.set('dir', sort.dir);
