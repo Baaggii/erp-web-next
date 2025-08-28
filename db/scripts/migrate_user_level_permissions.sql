@@ -1,6 +1,6 @@
 -- Populate action entries in user_level_permissions based on existing settings
-INSERT INTO user_level_permissions (userlevel_id, action, action_key)
-SELECT DISTINCT p.userlevel_id, s.action,
+INSERT INTO user_level_permissions (company_id, userlevel_id, action, action_key)
+SELECT DISTINCT 0, p.userlevel_id, s.action,
        COALESCE(s.ul_module_key, s.function_name) AS action_key
 FROM code_userlevel_settings s
 JOIN user_level_permissions p ON (
@@ -20,8 +20,8 @@ JOIN user_level_permissions p ON (
   (s.license_settings = 1 AND p.action = 'permission' AND p.action_key = 'license_settings') OR
   (s.ai = 1 AND p.action = 'permission' AND p.action_key = 'ai') OR
   (s.dashboard = 1 AND p.action = 'permission' AND p.action_key = 'dashboard') OR
-  (s.ai_dashboard = 1 AND p.action = 'permission' AND p.action_key = 'ai_dashboard')
-);
+   (s.ai_dashboard = 1 AND p.action = 'permission' AND p.action_key = 'ai_dashboard')
+ ) AND p.company_id = 0;
 
 -- Remove legacy settings table
 DROP TABLE code_userlevel_settings;

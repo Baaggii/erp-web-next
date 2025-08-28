@@ -2,13 +2,13 @@ SET collation_connection = 'utf8mb4_unicode_ci';
 SET @json = LOAD_FILE('configs/permissionActions.json');
 
 -- Ensure system admin remains unrestricted
-DELETE FROM user_level_permissions WHERE userlevel_id = 1;
+DELETE FROM user_level_permissions WHERE userlevel_id = 1 AND company_id = 0;
 
-INSERT INTO user_level_permissions (userlevel_id, action, action_key)
-VALUES (1, 'permission', 'system_settings');
+INSERT INTO user_level_permissions (company_id, userlevel_id, action, action_key)
+VALUES (0, 1, 'permission', 'system_settings');
 
-INSERT INTO user_level_permissions (userlevel_id, action, action_key)
-SELECT ul.userlevel_id, a.action, a.action_key
+INSERT INTO user_level_permissions (company_id, userlevel_id, action, action_key)
+SELECT 0, ul.userlevel_id, a.action, a.action_key
   FROM user_levels ul
   JOIN (
     SELECT 'module_key' AS action, m.module_key AS action_key
@@ -27,5 +27,6 @@ SELECT ul.userlevel_id, a.action, a.action_key
     ON up.userlevel_id = ul.userlevel_id
    AND up.action = a.action
    AND up.action_key = a.action_key
+   AND up.company_id = 0
  WHERE up.userlevel_id IS NULL
    AND ul.userlevel_id <> 1;

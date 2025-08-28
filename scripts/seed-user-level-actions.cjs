@@ -21,14 +21,15 @@ const mysql = require('mysql2/promise');
     async function insert(type, keys) {
       for (const key of keys) {
         await pool.query(
-          `INSERT INTO user_level_permissions (userlevel_id, action, action_key)
-           SELECT ul.userlevel_id, ?, ?
+          `INSERT INTO user_level_permissions (company_id, userlevel_id, action, action_key)
+           SELECT 0, ul.userlevel_id, ?, ?
              FROM user_levels ul
              WHERE NOT EXISTS (
                SELECT 1 FROM user_level_permissions up
                 WHERE up.userlevel_id = ul.userlevel_id
                   AND up.action = ?
                   AND up.action_key = ?
+                  AND up.company_id = 0
              )`,
           [type, key, type, key]
         );
