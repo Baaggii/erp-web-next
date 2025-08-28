@@ -30,7 +30,31 @@ test('getTableRows forwards error for invalid column', async () => {
   assert.match(err.message, /Invalid column name/);
 });
 
-test('getTableRows scopes to user companyId', async () => {
+test('getTableRows uses provided company_id param', async () => {
+  const restore = mockPool(async (sql, params) => {
+    if (sql.includes('tenant_tables')) {
+      return [[{ is_shared: 1, seed_on_create: 0 }]];
+    }
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'company_id' }]];
+    }
+    if (sql.includes('COUNT(*)')) {
+      assert.deepEqual(params, ['shared', 5]);
+      return [[{ count: 1 }]];
+    }
+    return [[{ id: 1 }]];
+  });
+  const req = {
+    params: { table: 'shared' },
+    query: { company_id: 5 },
+    user: { companyId: 7 },
+  };
+  const res = { json() {} };
+  await controller.getTableRows(req, res, (e) => { if (e) throw e; });
+  restore();
+});
+
+test('getTableRows falls back to user companyId when missing', async () => {
   const restore = mockPool(async (sql, params) => {
     if (sql.includes('tenant_tables')) {
       return [[{ is_shared: 1, seed_on_create: 0 }]];
@@ -46,7 +70,7 @@ test('getTableRows scopes to user companyId', async () => {
   });
   const req = {
     params: { table: 'shared' },
-    query: { company_id: 5 },
+    query: {},
     user: { companyId: 7 },
   };
   const res = { json() {} };
