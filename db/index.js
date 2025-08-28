@@ -931,6 +931,22 @@ export async function listTenantTables() {
   }));
 }
 
+export async function listAllTenantTableOptions() {
+  const [tables, tenantFlags] = await Promise.all([
+    listDatabaseTables(),
+    listTenantTables(),
+  ]);
+  const flagMap = new Map(tenantFlags.map((t) => [t.tableName, t]));
+  return tables.map((tableName) => {
+    const info = flagMap.get(tableName) || {};
+    return {
+      tableName,
+      isShared: info.isShared ?? false,
+      seedOnCreate: info.seedOnCreate ?? false,
+    };
+  });
+}
+
 export async function upsertTenantTable(
   tableName,
   isShared = 0,
