@@ -986,10 +986,27 @@ export async function getTenantTableFlags(tableName) {
   }
 }
 
-export async function seedTenantTables(companyId) {
-  const [tables] = await pool.query(
-    `SELECT table_name, is_shared FROM tenant_tables WHERE seed_on_create = 1`,
-  );
+export async function seedTenantTables(companyId, selectedTables = null) {
+  let tables;
+  if (Array.isArray(selectedTables)) {
+    if (selectedTables.length === 0) return;
+    const placeholders = selectedTables.map(() => '?').join(', ');
+    const [rows] = await pool.query(
+      `SELECT table_name, is_shared FROM tenant_tables WHERE seed_on_create = 1 AND table_name IN (${placeholders})`,
+      selectedTables,
+    );
+    const valid = new Set(rows.map((r) => r.table_name));
+    const invalid = selectedTables.filter((t) => !valid.has(t));
+    if (invalid.length > 0) {
+      throw new Error(`Invalid seed tables: ${invalid.join(', ')}`);
+    }
+    tables = rows;
+  } else {
+    const [rows] = await pool.query(
+      `SELECT table_name, is_shared FROM tenant_tables WHERE seed_on_create = 1`,
+    );
+    tables = rows;
+  }
   for (const { table_name, is_shared } of tables) {
     if (is_shared) continue;
     const meta = await listTableColumnMeta(table_name);
@@ -1300,7 +1317,7 @@ export async function updateTableRow(tableName, id, updates, conn = pool) {
   return result;
 }
 
-export async function insertTableRow(tableName, row) {
+export async function insertTableRow(tableName, row, seedTables = []) {
   const columns = await getTableColumnsSafe(tableName);
   const keys = Object.keys(row);
   logDb(`insertTableRow(${tableName}) columns=${keys.join(', ')}`);
@@ -1314,7 +1331,7 @@ export async function insertTableRow(tableName, row) {
     [tableName, ...values],
   );
   if (tableName === 'companies') {
-    await seedTenantTables(result.insertId);
+    await seedTenantTables(result.insertId, seedTables);
   }
   return { id: result.insertId };
 }
