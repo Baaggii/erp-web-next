@@ -16,6 +16,7 @@ import {
 import { moveImagesToDeleted } from '../services/transactionImageService.js';
 import { addMappings } from '../services/headerMappings.js';
 import { hasAction } from '../utils/hasAction.js';
+import { createCompanyHandler } from './companyController.js';
 let bcrypt;
 try {
   const mod = await import('bcryptjs');
@@ -121,13 +122,11 @@ export async function updateRow(req, res, next) {
 
 export async function addRow(req, res, next) {
   try {
+    if (req.params.table === 'companies') {
+      return createCompanyHandler(req, res, next);
+    }
     const columns = await listTableColumns(req.params.table);
     const row = { ...req.body };
-    let seedTables;
-    if (req.params.table === 'companies') {
-      seedTables = Array.isArray(row.seedTables) ? row.seedTables : [];
-      delete row.seedTables;
-    }
     if (columns.includes('created_by')) row.created_by = req.user?.empid;
     if (columns.includes('created_at')) {
       row.created_at = formatDateForDb(new Date());
@@ -141,7 +140,7 @@ export async function addRow(req, res, next) {
     if (columns.includes('g_burtgel_id') && row.g_burtgel_id == null) {
       row.g_burtgel_id = row.g_id ?? 0;
     }
-    const result = await insertTableRow(req.params.table, row, seedTables);
+    const result = await insertTableRow(req.params.table, row);
     res.locals.insertId = result?.id;
     res.status(201).json(result);
   } catch (err) {
