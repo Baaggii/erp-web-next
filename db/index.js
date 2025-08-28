@@ -746,13 +746,25 @@ export async function setTenantFlags(companyId, flags) {
 }
 
 /**
- * List available modules
+ * List available modules for a user level within a company.
+ * Only modules that are both licensed for the company and permitted for the
+ * user level are returned.
  */
-export async function listModules() {
+export async function listModules(userLevelId, companyId) {
   const [rows] = await pool.query(
-    `SELECT module_key, label, parent_key, show_in_sidebar, show_in_header
-       FROM modules
-      ORDER BY module_key`,
+    `SELECT DISTINCT m.module_key, m.label, m.parent_key, m.show_in_sidebar, m.show_in_header
+       FROM modules m
+       JOIN company_module_licenses cml
+         ON cml.module_key = m.module_key
+        AND cml.company_id IN (${GLOBAL_COMPANY_ID}, ?)
+        AND cml.licensed = 1
+       JOIN user_level_permissions up
+         ON up.action_key = m.module_key
+        AND up.action = 'module_key'
+        AND up.userlevel_id = ?
+        AND up.company_id IN (${GLOBAL_COMPANY_ID}, ?)
+      ORDER BY m.module_key`,
+    [companyId, userLevelId, companyId],
   );
   return rows;
 }

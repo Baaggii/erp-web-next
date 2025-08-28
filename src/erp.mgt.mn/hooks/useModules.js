@@ -9,7 +9,6 @@ const cache = {
   branchId: undefined,
   departmentId: undefined,
   prefix: undefined,
-  txnKeyCount: undefined,
 };
 const emitter = new EventTarget();
 
@@ -26,6 +25,7 @@ export function useModules() {
 
   async function fetchModules() {
     try {
+      // Server returns modules already filtered by license and permission.
       const res = await fetch('/api/modules', { credentials: 'include' });
       const rows = res.ok ? await res.json() : [];
       // Ensure dynamic transaction modules exist in the module list so users
@@ -77,7 +77,6 @@ export function useModules() {
       cache.branchId = branch;
       cache.departmentId = department;
       cache.prefix = generalConfig?.general?.reportProcPrefix;
-      cache.txnKeyCount = txnModules.keys.size;
       setModules(rows);
     } catch (err) {
       console.error('Failed to load modules', err);
@@ -87,17 +86,16 @@ export function useModules() {
 
   useEffect(() => {
     debugLog('useModules effect: initial fetch');
-    const prefix = generalConfig?.general?.reportProcPrefix;
-    if (
-      !cache.data ||
-      cache.branchId !== branch ||
-      cache.departmentId !== department ||
-      cache.prefix !== prefix ||
-      cache.txnKeyCount !== txnModules.keys.size
-    ) {
-      fetchModules();
-    }
-  }, [branch, department, generalConfig?.general?.reportProcPrefix, txnModules]);
+      const prefix = generalConfig?.general?.reportProcPrefix;
+      if (
+        !cache.data ||
+        cache.branchId !== branch ||
+        cache.departmentId !== department ||
+        cache.prefix !== prefix
+      ) {
+        fetchModules();
+      }
+    }, [branch, department, generalConfig?.general?.reportProcPrefix, txnModules]);
 
   useEffect(() => {
     debugLog('useModules effect: refresh listener');
