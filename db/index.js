@@ -339,13 +339,16 @@ export async function listUserLevels() {
   return rows;
 }
 
-export async function getUserLevelActions(userLevelId) {
+export async function getUserLevelActions(
+  userLevelId,
+  companyId = GLOBAL_COMPANY_ID,
+) {
   const id = Number(userLevelId);
   const [rows] = await pool.query(
     `SELECT action, action_key
        FROM user_level_permissions
-       WHERE userlevel_id = ? AND action IS NOT NULL AND company_id = ${GLOBAL_COMPANY_ID}`,
-    [userLevelId],
+       WHERE userlevel_id = ? AND action IS NOT NULL AND company_id IN (${GLOBAL_COMPANY_ID}, ?)`,
+    [userLevelId, companyId],
   );
   if (id === 1) {
     const perms = {};
@@ -439,31 +442,32 @@ export async function listActionGroups() {
 export async function setUserLevelActions(
   userLevelId,
   { modules = [], buttons = [], functions = [], api = [], permissions = [] },
+  companyId = GLOBAL_COMPANY_ID,
 ) {
   await pool.query(
-    `DELETE FROM user_level_permissions WHERE userlevel_id = ? AND action IS NOT NULL AND company_id = ${GLOBAL_COMPANY_ID}`,
+    `DELETE FROM user_level_permissions WHERE userlevel_id = ? AND action IS NOT NULL AND company_id = ${companyId}`,
     [userLevelId],
   );
   const values = [];
   const params = [];
   for (const m of modules) {
-    values.push(`(${GLOBAL_COMPANY_ID}, ?,'module_key',?)`);
+    values.push(`(${companyId}, ?,'module_key',?)`);
     params.push(userLevelId, m);
   }
   for (const b of buttons) {
-    values.push(`(${GLOBAL_COMPANY_ID}, ?,'button',?)`);
+    values.push(`(${companyId}, ?,'button',?)`);
     params.push(userLevelId, b);
   }
   for (const f of functions) {
-    values.push(`(${GLOBAL_COMPANY_ID}, ?,'function',?)`);
+    values.push(`(${companyId}, ?,'function',?)`);
     params.push(userLevelId, f);
   }
   for (const a of api) {
-    values.push(`(${GLOBAL_COMPANY_ID}, ?,'API',?)`);
+    values.push(`(${companyId}, ?,'API',?)`);
     params.push(userLevelId, a);
   }
   for (const p of permissions) {
-    values.push(`(${GLOBAL_COMPANY_ID}, ?,'permission',?)`);
+    values.push(`(${companyId}, ?,'permission',?)`);
     params.push(userLevelId, p);
   }
   if (values.length) {

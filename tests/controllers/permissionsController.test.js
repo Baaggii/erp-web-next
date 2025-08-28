@@ -25,6 +25,7 @@ test('updateActions allows modifying level 1', async () => {
   const req = {
     params: { userLevelId: '1' },
     body: { modules: ['m1'], buttons: [], functions: [], api: [], permissions: [] },
+    user: { companyId: 0 },
   };
   const res = createRes();
   const original = db.pool.query;
