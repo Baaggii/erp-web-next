@@ -1058,6 +1058,21 @@ export async function seedTenantTables(companyId, selectedTables = null) {
   );
 }
 
+export async function zeroSharedTenantKeys() {
+  const [rows] = await pool.query(
+    `SELECT table_name FROM tenant_tables WHERE is_shared = 1`,
+  );
+  for (const { table_name } of rows) {
+    const cols = await getTableColumnsSafe(table_name);
+    if (cols.some((c) => c.toLowerCase() === "company_id")) {
+      await pool.query(`UPDATE ?? SET company_id = ?`, [
+        table_name,
+        GLOBAL_COMPANY_ID,
+      ]);
+    }
+  }
+}
+
 export async function saveStoredProcedure(sql) {
   const cleaned = sql
     .replace(/^DELIMITER \$\$/gm, '')
