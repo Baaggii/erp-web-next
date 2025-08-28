@@ -6,6 +6,8 @@ import {
   updateTenantTable,
   listTenantTableOptions,
   resetSharedTenantKeys,
+  seedDefaults,
+  seedExistingCompanies,
 } from '../controllers/tenantTablesController.js';
 
 const router = express.Router();
@@ -15,5 +17,7 @@ router.post('/', requireAuth, createTenantTable);
 router.put('/:table_name', requireAuth, updateTenantTable);
 router.get('/options', requireAuth, listTenantTableOptions);
 router.post('/zero-keys', requireAuth, resetSharedTenantKeys);
+router.post('/seed-defaults', requireAuth, seedDefaults);
+router.post('/seed-companies', requireAuth, seedExistingCompanies);
 
 export default router;
