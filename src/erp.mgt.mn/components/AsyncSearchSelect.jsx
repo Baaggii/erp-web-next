@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useContext } from 'react';
+import { AuthContext } from '../context/AuthContext.jsx';
 
 export default function AsyncSearchSelect({
   table,
@@ -14,8 +15,11 @@ export default function AsyncSearchSelect({
   inputRef,
   onFocus,
   inputStyle = {},
+  companyId,
   ...rest
 }) {
+  const { company } = useContext(AuthContext);
+  const effectiveCompanyId = companyId ?? company;
   const initialVal =
     typeof value === 'object' && value !== null ? value.value : value || '';
   const initialLabel =
@@ -46,6 +50,7 @@ export default function AsyncSearchSelect({
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: p, perPage: 50 });
+      if (effectiveCompanyId != null) params.set('company_id', effectiveCompanyId);
       if (q) {
         params.set('search', q);
         params.set('searchColumns', cols.join(','));
@@ -101,7 +106,7 @@ export default function AsyncSearchSelect({
     fetchPage(1, '', false, controller.signal);
     setPage(1);
     return () => controller.abort();
-  }, [table]);
+  }, [table, effectiveCompanyId]);
 
   useEffect(() => {
     if (disabled || !show) return;
@@ -110,7 +115,17 @@ export default function AsyncSearchSelect({
     setPage(1);
     fetchPage(1, q, false, controller.signal);
     return () => controller.abort();
-  }, [show, input, disabled, table, searchColumn, searchColumns, labelFields, idField]);
+  }, [
+    show,
+    input,
+    disabled,
+    table,
+    searchColumn,
+    searchColumns,
+    labelFields,
+    idField,
+    effectiveCompanyId,
+  ]);
 
   function handleSelectKeyDown(e) {
     if (e.key === 'ArrowDown') {

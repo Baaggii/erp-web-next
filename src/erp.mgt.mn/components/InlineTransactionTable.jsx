@@ -1027,6 +1027,7 @@ export default forwardRef(function InlineTransactionTable({
             onFocus={() => handleFocusField(f)}
             className={invalid ? 'border-red-500 bg-red-100' : ''}
             inputStyle={inputStyle}
+            companyId={company}
           />
         );
       }
@@ -1076,6 +1077,7 @@ export default forwardRef(function InlineTransactionTable({
             onFocus={() => handleFocusField(f)}
             className={invalid ? 'border-red-500 bg-red-100' : ''}
             inputStyle={inputStyle}
+            companyId={company}
           />
       );
     }
