@@ -11,7 +11,10 @@ import { hasAction } from "../utils/hasAction.js";
 
 export async function listModules(req, res, next) {
   try {
-    const modules = await dbListModules();
+    const modules = await dbListModules(
+      req.user.userLevel,
+      req.user.companyId,
+    );
     res.json(modules);
   } catch (err) {
     next(err);
