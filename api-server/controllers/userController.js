@@ -9,7 +9,7 @@ import {
 
 export async function listUsers(req, res, next) {
   try {
-    const companyId = req.query.companyId || req.user.companyId;
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
     const session = await getEmploymentSession(req.user.empid, companyId);
     if (!session) return res.sendStatus(403);
     const users = await listUsersByCompany(companyId);

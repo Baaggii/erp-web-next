@@ -275,7 +275,7 @@ export async function getEmploymentSessions(empid) {
  * Optionally filter by company ID.
  */
 export async function getEmploymentSession(empid, companyId) {
-  if (companyId) {
+  if (companyId !== undefined && companyId !== null) {
     const [companyCfg, branchCfg, deptCfg, empCfg] = await Promise.all([
       getDisplayCfg("companies"),
       getDisplayCfg("code_branches"),

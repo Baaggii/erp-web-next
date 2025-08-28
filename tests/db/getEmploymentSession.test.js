@@ -23,6 +23,27 @@ test('getEmploymentSession populates system_settings permission', async () => {
   assert.equal(session.permissions.system_settings, true);
 });
 
+test('getEmploymentSession accepts companyId=0', async () => {
+  const orig = db.pool.query;
+  db.pool.query = async () => [[{
+    company_id: 0,
+    company_name: 'Comp',
+    branch_id: 1,
+    branch_name: 'Branch',
+    department_id: 1,
+    department_name: 'Dept',
+    position_id: 1,
+    senior_empid: null,
+    employee_name: 'Emp',
+    user_level: 1,
+    user_level_name: 'Admin',
+    permission_list: 'system_settings',
+  }]];
+  const session = await db.getEmploymentSession(1, 0);
+  db.pool.query = orig;
+  assert.equal(session.permissions.system_settings, true);
+});
+
 test('getEmploymentSession joins branch and department with company scope', async () => {
   const orig = db.pool.query;
   let capturedSql = '';
