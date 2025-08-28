@@ -5,9 +5,11 @@ import {
   populateCompanyModuleLicenses,
   populateUserLevelModulePermissions,
   getEmploymentSession,
+  setCompanyModuleLicense,
 } from "../../db/index.js";
 import { logActivity } from "../utils/activityLog.js";
 import { hasAction } from "../utils/hasAction.js";
+import { GLOBAL_COMPANY_ID } from "../../config/constants.js";
 
 export async function listModules(req, res, next) {
   try {
@@ -57,6 +59,8 @@ export async function saveModule(req, res, next) {
       showInSidebar,
       showInHeader,
     );
+    await setCompanyModuleLicense(GLOBAL_COMPANY_ID, moduleKey, true);
+    await setCompanyModuleLicense(req.user.companyId, moduleKey, true);
     res.json(result);
   } catch (err) {
     next(err);

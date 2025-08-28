@@ -762,7 +762,7 @@ export async function listModules(userLevelId, companyId) {
          ON up.action_key = m.module_key
         AND up.action = 'module_key'
         AND up.userlevel_id = ?
-        AND up.company_id = ?
+        AND up.company_id IN (${GLOBAL_COMPANY_ID}, ?)
       ORDER BY m.module_key`,
     [companyId, userLevelId, companyId],
   );

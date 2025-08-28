@@ -60,6 +60,8 @@ test('saveModule allows update with system_settings permission', async () => {
     [[]],
     [{}],
     [{}],
+    [{}],
+    [{}],
   ]);
   const req = {
     params: { moduleKey: 'x' },
