@@ -605,6 +605,7 @@ const TableManager = forwardRef(function TableManager({
             let page = 1;
             const perPage = 500;
             let rows = [];
+
             const cfgRes = await fetch(
               `/api/display_fields?table=${encodeURIComponent(rel.table)}`,
               { credentials: 'include' },
@@ -620,9 +621,27 @@ const TableManager = forwardRef(function TableManager({
             } else {
               addToast('Failed to load display fields', 'error');
             }
+
+            let hasCompanyId = false;
+            try {
+              const colRes = await fetch(
+                `/api/tables/${encodeURIComponent(rel.table)}/columns`,
+                { credentials: 'include' },
+              );
+              if (colRes.ok) {
+                const cols = await colRes.json().catch(() => []);
+                hasCompanyId = Array.isArray(cols)
+                  ? cols.some((c) => c.name === 'company_id')
+                  : false;
+              }
+            } catch {
+              /* ignore column fetch errors */
+            }
+
             while (true) {
               const params = new URLSearchParams({ page, perPage });
-              if (company != null) params.set('company_id', company);
+              if (company != null && hasCompanyId)
+                params.set('company_id', company);
               const refRes = await fetch(
                 `/api/tables/${encodeURIComponent(rel.table)}?${params.toString()}`,
                 { credentials: 'include' },
@@ -637,7 +656,10 @@ const TableManager = forwardRef(function TableManager({
               });
               if (Array.isArray(json.rows)) {
                 rows = rows.concat(json.rows);
-                if (rows.length >= (json.count || rows.length) || json.rows.length < perPage) {
+                if (
+                  rows.length >= (json.count || rows.length) ||
+                  json.rows.length < perPage
+                ) {
                   break;
                 }
               } else {
@@ -722,7 +744,8 @@ const TableManager = forwardRef(function TableManager({
     if (!table || columnMeta.length === 0) return;
     let canceled = false;
     const params = new URLSearchParams({ page, perPage });
-    if (company != null) params.set('company_id', company);
+    if (company != null && validCols.has('company_id'))
+      params.set('company_id', company);
     if (sort.column && validCols.has(sort.column)) {
       params.set('sort', sort.column);
       params.set('dir', sort.dir);
@@ -1062,8 +1085,9 @@ const TableManager = forwardRef(function TableManager({
       const view = viewSourceMap[field];
       if (!view || val === '') return;
       const params = new URLSearchParams({ perPage: 1, debug: 1 });
-      if (company != null) params.set('company_id', company);
       const cols = viewColumns[view] || [];
+      if (company != null && cols.includes('company_id'))
+        params.set('company_id', company);
       Object.entries(viewSourceMap).forEach(([f, v]) => {
         if (v !== view) return;
         if (!cols.includes(f)) return;
@@ -1229,7 +1253,8 @@ const TableManager = forwardRef(function TableManager({
       const savedRow = res.ok ? await res.json().catch(() => ({})) : {};
       if (res.ok) {
         const params = new URLSearchParams({ page, perPage });
-        if (company != null) params.set('company_id', company);
+        if (company != null && columns.has('company_id'))
+          params.set('company_id', company);
         if (sort.column) {
           params.set('sort', sort.column);
           params.set('dir', sort.dir);
@@ -1320,7 +1345,8 @@ const TableManager = forwardRef(function TableManager({
     );
     if (res.ok) {
       const params = new URLSearchParams({ page, perPage });
-      if (company != null) params.set('company_id', company);
+      if (company != null && validCols.has('company_id'))
+        params.set('company_id', company);
       if (sort.column) {
         params.set('sort', sort.column);
         params.set('dir', sort.dir);
@@ -1488,7 +1514,8 @@ const TableManager = forwardRef(function TableManager({
       }
     }
     const params = new URLSearchParams({ page, perPage });
-    if (company != null) params.set('company_id', company);
+    if (company != null && validCols.has('company_id'))
+      params.set('company_id', company);
     if (sort.column) {
       params.set('sort', sort.column);
       params.set('dir', sort.dir);
