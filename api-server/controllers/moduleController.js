@@ -5,9 +5,11 @@ import {
   populateCompanyModuleLicenses,
   populateUserLevelModulePermissions,
   getEmploymentSession,
+  setCompanyModuleLicense,
 } from "../../db/index.js";
 import { logActivity } from "../utils/activityLog.js";
 import { hasAction } from "../utils/hasAction.js";
+import { GLOBAL_COMPANY_ID } from "../../config/constants.js";
 
 export async function listModules(req, res, next) {
   try {
@@ -37,10 +39,12 @@ export async function saveModule(req, res, next) {
     logActivity(
       `saveModule attempt: ${req.user.email || req.user.id} -> ${moduleKey} origin=${origin}`,
     );
-    const session = await getEmploymentSession(
-      req.user.empid,
-      req.user.companyId,
-    );
+    const session =
+      req.session ||
+      (await getEmploymentSession(req.user.empid, req.user.companyId)) || {
+        user_level: req.user.userLevel,
+        company_id: req.user.companyId,
+      };
     if (!(await hasAction(session, "system_settings"))) return res.sendStatus(403);
     const label = req.body.label;
     const parentKey = req.body.parentKey || null;
@@ -55,6 +59,8 @@ export async function saveModule(req, res, next) {
       showInSidebar,
       showInHeader,
     );
+    await setCompanyModuleLicense(GLOBAL_COMPANY_ID, moduleKey, true);
+    await setCompanyModuleLicense(req.user.companyId, moduleKey, true);
     res.json(result);
   } catch (err) {
     next(err);
@@ -63,10 +69,12 @@ export async function saveModule(req, res, next) {
 
 export async function populatePermissions(req, res, next) {
   try {
-    const session = await getEmploymentSession(
-      req.user.empid,
-      req.user.companyId,
-    );
+    const session =
+      req.session ||
+      (await getEmploymentSession(req.user.empid, req.user.companyId)) || {
+        user_level: req.user.userLevel,
+        company_id: req.user.companyId,
+      };
     if (!(await hasAction(session, "system_settings"))) return res.sendStatus(403);
     await populateDefaultModules();
     await populateCompanyModuleLicenses();
