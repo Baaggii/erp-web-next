@@ -18,3 +18,14 @@ GET /api/tenant_tables/options
 
 The response is an array with each table's `tableName`, `isShared`, and
 `seedOnCreate` flags (defaulting to `false` when not configured).
+
+## Default shared tables
+
+The following tables are preconfigured as shared (`is_shared=1`) so that global rows
+(company_id 0) are visible to every tenant. They do not seed tenant-specific copies
+when a new company is created (`seed_on_create=0`):
+
+- `code_position`
+- `code_branches`
+- `code_department`
+
