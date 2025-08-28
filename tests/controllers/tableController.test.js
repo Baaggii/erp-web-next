@@ -101,3 +101,52 @@ test('addRow defaults g_burtgel_id from g_id when missing', async () => {
   await controller.addRow(req, res, (e) => { if (e) throw e; });
   restore();
 });
+
+test('addRow scopes company_id to user and overrides body value', async () => {
+  const restore = mockPool(async (sql, params) => {
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[
+        { COLUMN_NAME: 'name' },
+        { COLUMN_NAME: 'company_id' },
+      ]];
+    }
+    if (sql.startsWith('INSERT INTO')) {
+      assert.ok(sql.includes('`name`') && sql.includes('`company_id`'));
+      assert.deepEqual(params, ['test', 'Alice', 7]);
+      return [{ insertId: 1 }];
+    }
+    return [{}];
+  });
+  const req = {
+    params: { table: 'test' },
+    body: { name: 'Alice', company_id: 5 },
+    user: { companyId: 7 },
+  };
+  const res = { locals: {}, status() { return this; }, json() {} };
+  await controller.addRow(req, res, (e) => { if (e) throw e; });
+  restore();
+});
+
+test('addRow sets company_id from user when missing in body', async () => {
+  const restore = mockPool(async (sql, params) => {
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[
+        { COLUMN_NAME: 'company_id' },
+      ]];
+    }
+    if (sql.startsWith('INSERT INTO')) {
+      assert.ok(sql.includes('`company_id`'));
+      assert.deepEqual(params, ['test', 7]);
+      return [{ insertId: 1 }];
+    }
+    return [{}];
+  });
+  const req = {
+    params: { table: 'test' },
+    body: {},
+    user: { companyId: 7 },
+  };
+  const res = { locals: {}, status() { return this; }, json() {} };
+  await controller.addRow(req, res, (e) => { if (e) throw e; });
+  restore();
+});
