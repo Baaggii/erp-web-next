@@ -22,11 +22,12 @@ export async function listTenantTables(req, res, next) {
       seed_on_create: t.seed_on_create ?? t.seedOnCreate,
     }));
 
-    let dbTables = [];
+    let dbTables;
     try {
       dbTables = await listDatabaseTables();
     } catch (err) {
-      dbTables = [];
+      console.warn('Failed to list database tables', err);
+      throw err;
     }
 
     const existingNames = new Set(mappedExisting.map((t) => t.table_name));
