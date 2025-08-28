@@ -52,53 +52,21 @@ test('saveModule blocks updates from form-management origin', async () => {
   assert.equal(called, false);
 });
 
-test.skip('saveModule allows update with permission', async () => {
+test('saveModule allows update with system_settings permission', async () => {
   const controller = await import('../../api-server/controllers/moduleController.js?test=2');
-  const responses = [
+  const restore = mockPoolSequential([
     [[]],
+    [[{ action: 'permission', action_key: 'system_settings' }]],
     [[]],
-    [[]],
-    [[]],
-    [
-      [
-        {
-          company_id: 1,
-          branch_id: 1,
-          department_id: 1,
-          position_id: 1,
-          position: 'admin',
-          employee_name: 'Emp',
-          user_level: 1,
-          new_records: 0,
-          edit_delete_request: 0,
-          edit_records: 0,
-          delete_records: 0,
-          image_handler: 0,
-          audition: 0,
-          supervisor: 0,
-          companywide: 0,
-          branchwide: 0,
-          departmentwide: 0,
-          developer: 0,
-          common_settings: 0,
-          system_settings: 1,
-          license_settings: 0,
-          ai: 0,
-          dashboard: 0,
-          ai_dashboard: 0,
-        },
-      ],
-    ],
-    [[{}]],
-  ];
-  let callCount = 0;
-  const restore = mockPoolSequential(responses.map((r) => (typeof r === 'function' ? r : () => { callCount++; return r; })));
+    [{}],
+    [{}],
+  ]);
   const req = {
     params: { moduleKey: 'x' },
     body: { label: 'X' },
     headers: {},
     get(name) { return this.headers[name.toLowerCase()]; },
-    user: { empid: 1, companyId: 1, email: 'b@example.com' },
+    user: { empid: 1, companyId: 0, userLevel: 1, email: 'b@example.com' },
   };
   const res = createRes();
   await controller.saveModule(req, res, () => {});
