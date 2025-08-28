@@ -14,8 +14,8 @@ test('getUserLevelActions includes company-specific permissions', async () => {
   const perms = await db.getUserLevelActions(2, 5);
   db.pool.query = orig;
   assert.equal(perms.m1, true);
-  assert.match(capturedSql, /company_id IN \(0, \?\)/);
-  assert.deepEqual(capturedParams, [2, 5]);
+  assert.match(capturedSql, /company_id = \? AND userlevel_id = \?/);
+  assert.deepEqual(capturedParams, [5, 2]);
 });
 
 test('setUserLevelActions uses provided company id', async () => {
