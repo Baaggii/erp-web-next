@@ -2,12 +2,23 @@ import {
   listTenantTables as listTenantTablesDb,
   upsertTenantTable,
   getEmploymentSession,
+  listAllTenantTableOptions,
 } from '../../db/index.js';
 import { hasAction } from '../utils/hasAction.js';
 
 export async function listTenantTables(req, res, next) {
   try {
     const tables = await listTenantTablesDb();
+    res.json(tables);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function listTenantTableOptions(req, res, next) {
+  try {
+    if (!(await ensureAdmin(req))) return res.sendStatus(403);
+    const tables = await listAllTenantTableOptions();
     res.json(tables);
   } catch (err) {
     next(err);
