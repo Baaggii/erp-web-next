@@ -13,7 +13,7 @@ import LoginPage from './pages/Login.jsx';
 import FormsPage from './pages/Forms.jsx';
 import ReportsPage from './pages/Reports.jsx';
 import UsersPage from './pages/Users.jsx';
-import UserCompaniesPage from './pages/UserCompanies.jsx';
+import CompaniesPage from './pages/Companies.jsx';
 import RolePermissionsPage from './pages/RolePermissions.jsx';
 import ActionPermissionsPage from './pages/ActionPermissions.jsx';
 import CompanyLicensesPage from './pages/CompanyLicenses.jsx';
@@ -95,7 +95,8 @@ function AuthedApp() {
     reports: <ReportsPage />,
     settings: <SettingsPage />,
     users: <UsersPage />,
-    user_companies: <UserCompaniesPage />,
+    companies: <CompaniesPage />,
+    user_companies: <CompaniesPage />,
     role_permissions: <RolePermissionsPage />,
     user_level_actions: <UserLevelActionsPage />,
     modules: <ModulesPage />,
