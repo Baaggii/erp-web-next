@@ -174,3 +174,32 @@ test('addRow sets company_id from user when missing in body', async () => {
   await controller.addRow(req, res, (e) => { if (e) throw e; });
   restore();
 });
+
+test('addRow populates created_by and created_at when absent', async () => {
+  const restore = mockPool(async (sql, params) => {
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[
+        { COLUMN_NAME: 'name' },
+        { COLUMN_NAME: 'created_by' },
+        { COLUMN_NAME: 'created_at' },
+      ]];
+    }
+    if (sql.startsWith('INSERT INTO')) {
+      assert.ok(sql.includes('`created_by`') && sql.includes('`created_at`'));
+      assert.strictEqual(params[0], 'test');
+      assert.strictEqual(params[1], 'Alice');
+      assert.strictEqual(params[2], 'E1');
+      assert.match(params[3], /\d{4}-\d{2}-\d{2}/);
+      return [{ insertId: 1 }];
+    }
+    return [{}];
+  });
+  const req = {
+    params: { table: 'test' },
+    body: { name: 'Alice' },
+    user: { empid: 'E1', companyId: 1 },
+  };
+  const res = { locals: {}, status() { return this; }, json() {} };
+  await controller.addRow(req, res, (e) => { if (e) throw e; });
+  restore();
+});
