@@ -19,7 +19,7 @@ export default function FormsIndex() {
   const moduleMap = {};
   modules.forEach((m) => {
     const label =
-      generalConfig.general?.procLabels?.[m.module_key] ||
+      generalConfig.general?.procLabels?.[m.module_key]?.mn ||
       headerMap[m.module_key] ||
       m.label;
     moduleMap[m.module_key] = { ...m, label };
@@ -87,7 +87,7 @@ export default function FormsIndex() {
         groups.map(([key]) => {
           const mod = modules.find((m) => m.module_key === key);
           const label = mod
-            ? generalConfig.general?.procLabels?.[mod.module_key] ||
+            ? generalConfig.general?.procLabels?.[mod.module_key]?.mn ||
               headerMap[mod.module_key] ||
               mod.label
             : key;

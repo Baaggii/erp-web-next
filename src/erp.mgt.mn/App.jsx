@@ -78,7 +78,7 @@ function AuthedApp() {
   const moduleMap = {};
   modules.forEach((m) => {
     const label =
-      generalConfig.general?.procLabels?.[m.module_key] ||
+      generalConfig.general?.procLabels?.[m.module_key]?.mn ||
       headerMap[m.module_key] ||
       m.label;
     moduleMap[m.module_key] = { ...m, label, children: [] };
