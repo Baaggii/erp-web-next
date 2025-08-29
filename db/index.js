@@ -1021,6 +1021,8 @@ export async function seedTenantTables(
   selectedTables = null,
   recordMap = {},
   overwrite = false,
+  createdBy = null,
+  updatedBy = createdBy,
 ) {
   let tables;
   if (Array.isArray(selectedTables)) {
@@ -1088,12 +1090,25 @@ export async function seedTenantTables(
     const colsClause = ['company_id', ...otherCols]
       .map((c) => `\`${c}\``)
       .join(', ');
-    const selectClause = ['? AS company_id', ...otherCols.map((c) => `\`${c}\``)].join(
-      ', ',
-    );
+    const selectParts = ['? AS company_id'];
+    const params = [table_name, companyId];
+    for (const col of otherCols) {
+      if (col === 'created_by') {
+        selectParts.push('?');
+        params.push(createdBy);
+      } else if (col === 'updated_by') {
+        selectParts.push('?');
+        params.push(updatedBy ?? createdBy);
+      } else if (col === 'created_at' || col === 'updated_at') {
+        selectParts.push('NOW()');
+      } else {
+        selectParts.push(`\`${col}\``);
+      }
+    }
+    const selectClause = selectParts.join(', ');
     let sql =
       `INSERT INTO ?? (${colsClause}) SELECT ${selectClause} FROM ?? WHERE company_id = ${GLOBAL_COMPANY_ID}`;
-    const params = [table_name, companyId, table_name];
+    params.push(table_name);
 
     const ids = Array.isArray(records) ? records : null;
     if (Array.isArray(ids) && ids.length > 0) {
@@ -1448,6 +1463,7 @@ export async function insertTableRow(
   seedTables = [],
   seedRecords = null,
   overwrite = false,
+  userId = null,
 ) {
   const columns = await getTableColumnsSafe(tableName);
   const keys = Object.keys(row);
@@ -1462,7 +1478,13 @@ export async function insertTableRow(
     [tableName, ...values],
   );
   if (tableName === 'companies') {
-    await seedTenantTables(result.insertId, seedTables, seedRecords, overwrite);
+    await seedTenantTables(
+      result.insertId,
+      seedTables,
+      seedRecords,
+      overwrite,
+      userId,
+    );
   }
   return { id: result.insertId };
 }
