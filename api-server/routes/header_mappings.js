@@ -8,7 +8,7 @@ const router = express.Router();
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const headers = req.query.headers ? req.query.headers.split(',') : [];
-    const map = await getMappings(headers);
+    const map = await getMappings(headers, req.query.lang);
     res.json(map);
   } catch (err) {
     next(err);
