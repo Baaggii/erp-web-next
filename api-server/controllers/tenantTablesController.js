@@ -101,3 +101,34 @@ export async function seedExistingCompanies(req, res, next) {
     next(err);
   }
 }
+
+export async function seedCompany(req, res, next) {
+  try {
+    if (!(await ensureAdmin(req))) return res.sendStatus(403);
+    const { companyId, tables = null, records = [], overwrite = false } =
+      req.body || {};
+    if (!companyId) {
+      return res.status(400).json({ message: 'companyId is required' });
+    }
+    const recordMap = {};
+    for (const rec of records || []) {
+      if (
+        rec?.table &&
+        Array.isArray(rec.rows) &&
+        rec.rows.length > 0
+      ) {
+        recordMap[rec.table] = rec.rows;
+      } else if (
+        rec?.table &&
+        Array.isArray(rec.ids) &&
+        rec.ids.length > 0
+      ) {
+        recordMap[rec.table] = rec.ids;
+      }
+    }
+    await seedTenantTables(companyId, tables, recordMap, overwrite);
+    res.sendStatus(204);
+  } catch (err) {
+    next(err);
+  }
+}

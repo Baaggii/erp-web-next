@@ -16,7 +16,12 @@ export async function listCompaniesHandler(req, res, next) {
 export async function createCompanyHandler(req, res, next) {
   try {
     res.locals.logTable = 'companies';
-    const { seedTables = null, seedRecords = null, ...company } = req.body || {};
+    const {
+      seedTables = null,
+      seedRecords = null,
+      overwrite = false,
+      ...company
+    } = req.body || {};
     const session =
       req.session ||
       (await getEmploymentSession(req.user.empid, req.user.companyId));
@@ -26,6 +31,7 @@ export async function createCompanyHandler(req, res, next) {
       company,
       seedTables,
       seedRecords,
+      overwrite,
     );
     res.locals.insertId = result?.id;
     res.status(201).json(result);

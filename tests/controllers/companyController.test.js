@@ -61,9 +61,10 @@ test('createCompanyHandler allows system admin with companyId=0', async () => {
   assert.deepEqual(res.body, { id: 5 });
 });
 
-test('createCompanyHandler forwards seedRecords', async () => {
+test('createCompanyHandler forwards seedRecords and overwrite', async () => {
   const orig = db.pool.query;
-  let captured;
+  const inserts = [];
+  let deleteCalled = false;
   db.pool.query = async (sql, params) => {
     if (/information_schema\.COLUMNS/.test(sql) && params[0] === 'companies') {
       return [[{ COLUMN_NAME: 'name' }]];
@@ -80,8 +81,12 @@ test('createCompanyHandler forwards seedRecords', async () => {
     if (/table_column_labels/.test(sql)) {
       return [[]];
     }
+    if (sql.startsWith('DELETE FROM ??') && params[0] === 'posts') {
+      deleteCalled = true;
+      return [{}];
+    }
     if (sql.startsWith('INSERT INTO ??') && params[0] === 'posts') {
-      captured = params;
+      inserts.push(params);
       return [{}];
     }
     if (/INSERT INTO user_level_permissions/.test(sql)) {
@@ -93,7 +98,8 @@ test('createCompanyHandler forwards seedRecords', async () => {
     body: {
       name: 'SeedCo',
       seedTables: ['posts'],
-      seedRecords: { posts: [1, 2] },
+      seedRecords: { posts: [{ id: 1 }, { id: 2 }] },
+      overwrite: true,
     },
     user: { empid: 1, companyId: 0 },
     session: { permissions: { system_settings: true } },
@@ -101,7 +107,11 @@ test('createCompanyHandler forwards seedRecords', async () => {
   const res = createRes();
   await createCompanyHandler(req, res, () => {});
   db.pool.query = orig;
-  assert.deepEqual(captured.slice(-2), [1, 2]);
+  assert.equal(deleteCalled, true);
+  assert.deepEqual(inserts, [
+    ['posts', 9, 1],
+    ['posts', 9, 2],
+  ]);
   assert.equal(res.code, 201);
   assert.deepEqual(res.body, { id: 9 });
 });
