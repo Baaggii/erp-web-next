@@ -1008,7 +1008,8 @@ export async function getTenantTableFlags(tableName) {
 export async function seedTenantTables(
   companyId,
   selectedTables = null,
-  recordMap = null,
+  recordMap = {},
+  overwrite = false,
 ) {
   let tables;
   if (Array.isArray(selectedTables)) {
@@ -1033,6 +1034,7 @@ export async function seedTenantTables(
   for (const { table_name, is_shared } of tables) {
     if (is_shared) continue;
     const meta = await listTableColumnMeta(table_name);
+    const columns = meta.map((c) => c.name);
     const otherCols = meta
       .filter(
         (c) =>
@@ -1040,6 +1042,29 @@ export async function seedTenantTables(
           !/auto_increment/i.test(c.extra),
       )
       .map((c) => c.name);
+
+    const records = recordMap?.[table_name];
+
+    if (overwrite) {
+      await pool.query('DELETE FROM ?? WHERE company_id = ?', [
+        table_name,
+        companyId,
+      ]);
+    }
+
+    if (Array.isArray(records) && records.length > 0 && typeof records[0] === 'object' && records[0] !== null) {
+      for (const row of records) {
+        const rowCols = Object.keys(row).filter((c) => c !== 'company_id');
+        await ensureValidColumns(table_name, columns, rowCols);
+        const colNames = ['company_id', ...rowCols];
+        const colsClause = colNames.map((c) => `\`${c}\``).join(', ');
+        const placeholders = colNames.map(() => '?').join(', ');
+        const params = [table_name, ...colNames.map((c) => (c === 'company_id' ? companyId : row[c]))];
+        await pool.query(`INSERT INTO ?? (${colsClause}) VALUES (${placeholders})`, params);
+      }
+      continue;
+    }
+
     const colsClause = ['company_id', ...otherCols]
       .map((c) => `\`${c}\``)
       .join(', ');
@@ -1050,7 +1075,7 @@ export async function seedTenantTables(
       `INSERT INTO ?? (${colsClause}) SELECT ${selectClause} FROM ?? WHERE company_id = ${GLOBAL_COMPANY_ID}`;
     const params = [table_name, companyId, table_name];
 
-    const ids = recordMap?.[table_name];
+    const ids = Array.isArray(records) ? records : null;
     if (Array.isArray(ids) && ids.length > 0) {
       const pkCols = meta.filter((m) => m.key === 'PRI').map((m) => m.name);
       if (pkCols.length === 1) {
@@ -1402,6 +1427,7 @@ export async function insertTableRow(
   row,
   seedTables = [],
   seedRecords = null,
+  overwrite = false,
 ) {
   const columns = await getTableColumnsSafe(tableName);
   const keys = Object.keys(row);
@@ -1416,7 +1442,7 @@ export async function insertTableRow(
     [tableName, ...values],
   );
   if (tableName === 'companies') {
-    await seedTenantTables(result.insertId, seedTables, seedRecords);
+    await seedTenantTables(result.insertId, seedTables, seedRecords, overwrite);
   }
   return { id: result.insertId };
 }
