@@ -855,7 +855,7 @@ export async function populateUserLevelModulePermissions() {
 export async function listCompanyModuleLicenses(companyId) {
   const params = [];
   let where = '';
-  if (companyId) {
+  if (companyId != null) {
     where = 'WHERE c.id = ?';
     params.push(companyId);
   }
