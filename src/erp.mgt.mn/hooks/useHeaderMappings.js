@@ -1,11 +1,11 @@
 import { useContext, useEffect, useState } from 'react';
-import LangContext from '../context/LangContext.jsx';
+import I18nContext from '../context/I18nContext.jsx';
 
 // Cache translations by "locale|header" so different locales don't collide
 const cache = {};
 
 export default function useHeaderMappings(headers = [], locale) {
-  const { lang } = useContext(LangContext);
+  const { lang } = useContext(I18nContext);
   const currentLang = locale || lang;
   const [map, setMap] = useState({});
 

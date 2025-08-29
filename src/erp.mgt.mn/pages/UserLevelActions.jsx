@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from "react";
 import { useToast } from "../context/ToastContext.jsx";
 import { collectModuleKeys, toggleModuleGroupSelection } from "./moduleTreeHelpers.js";
-import LangContext from "../context/LangContext.jsx";
+import I18nContext from "../context/I18nContext.jsx";
 
 export default function UserLevelActions() {
   const [groups, setGroups] = useState({ modules: [], forms: {}, permissions: [] });
@@ -21,7 +21,7 @@ export default function UserLevelActions() {
   const [userLevelId, setUserLevelId] = useState("");
   const [userLevels, setUserLevels] = useState([]);
   const { addToast } = useToast();
-  const { t } = useContext(LangContext);
+  const { t } = useContext(I18nContext);
 
   const loadGroups = async () => {
     try {
