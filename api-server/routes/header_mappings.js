@@ -5,10 +5,13 @@ import rateLimit from 'express-rate-limit';
 
 const router = express.Router();
 
+// GET /api/header_mappings?headers=a,b&lang=en
+// "lang" selects a localized value when available.
 router.get('/', requireAuth, async (req, res, next) => {
   try {
-    const headers = req.query.headers ? req.query.headers.split(',') : [];
-    const map = await getMappings(headers, req.query.lang);
+    const { headers: headersParam, lang } = req.query;
+    const headers = headersParam ? headersParam.split(',') : [];
+    const map = await getMappings(headers, lang);
     res.json(map);
   } catch (err) {
     next(err);
@@ -21,10 +24,11 @@ const postRateLimiter = rateLimit({
   message: 'Too many requests, please try again later.',
 });
 
+// POST /api/header_mappings
+// Body: { "sales": { "en": "Sales Dashboard" } }
 router.post('/', requireAuth, postRateLimiter, async (req, res, next) => {
   try {
-    const mappings = req.body.mappings || {};
-    await addMappings(mappings);
+    await addMappings(req.body || {});
     res.sendStatus(204);
   } catch (err) {
     next(err);
