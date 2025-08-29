@@ -292,10 +292,19 @@ export default function TenantTablesRegistry() {
       }
       const cols = await colsRes.json();
       const rowsData = await rowsRes.json();
-      setColumns((prev) => ({ ...prev, [table]: cols.map((c) => c.name) }));
+      const colNames = cols.map((c) => c.name);
+      const rows = (rowsData.rows || []).map((r) => {
+        const obj = {};
+        colNames.forEach((name, idx) => {
+          obj[name] =
+            r[name] !== undefined ? r[name] : Array.isArray(r) ? r[idx] : undefined;
+        });
+        return obj;
+      });
+      setColumns((prev) => ({ ...prev, [table]: colNames }));
       setDefaultRows((prev) => ({
         ...prev,
-        [table]: { loading: false, error: '', rows: rowsData.rows || [] },
+        [table]: { loading: false, error: '', rows },
       }));
     } catch (err) {
       addToast(`Failed to load defaults for ${table}: ${err.message}`, 'error');
