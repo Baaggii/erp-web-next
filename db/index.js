@@ -1005,7 +1005,11 @@ export async function getTenantTableFlags(tableName) {
   }
 }
 
-export async function seedTenantTables(companyId, selectedTables = null) {
+export async function seedTenantTables(
+  companyId,
+  selectedTables = null,
+  recordMap = null,
+) {
   let tables;
   if (Array.isArray(selectedTables)) {
     if (selectedTables.length === 0) return;
@@ -1042,10 +1046,21 @@ export async function seedTenantTables(companyId, selectedTables = null) {
     const selectClause = ['? AS company_id', ...otherCols.map((c) => `\`${c}\``)].join(
       ', ',
     );
-    await pool.query(
-      `INSERT INTO ?? (${colsClause}) SELECT ${selectClause} FROM ?? WHERE company_id = ${GLOBAL_COMPANY_ID}`,
-      [table_name, companyId, table_name],
-    );
+    let sql =
+      `INSERT INTO ?? (${colsClause}) SELECT ${selectClause} FROM ?? WHERE company_id = ${GLOBAL_COMPANY_ID}`;
+    const params = [table_name, companyId, table_name];
+
+    const ids = recordMap?.[table_name];
+    if (Array.isArray(ids) && ids.length > 0) {
+      const pkCols = meta.filter((m) => m.key === 'PRI').map((m) => m.name);
+      if (pkCols.length === 1) {
+        const placeholders = ids.map(() => '?').join(', ');
+        sql += ` AND \`${pkCols[0]}\` IN (${placeholders})`;
+        params.push(...ids);
+      }
+    }
+
+    await pool.query(sql, params);
   }
 
   await pool.query(
@@ -1382,7 +1397,12 @@ export async function updateTableRow(tableName, id, updates, conn = pool) {
   return result;
 }
 
-export async function insertTableRow(tableName, row, seedTables = []) {
+export async function insertTableRow(
+  tableName,
+  row,
+  seedTables = [],
+  seedRecords = null,
+) {
   const columns = await getTableColumnsSafe(tableName);
   const keys = Object.keys(row);
   logDb(`insertTableRow(${tableName}) columns=${keys.join(', ')}`);
@@ -1396,7 +1416,7 @@ export async function insertTableRow(tableName, row, seedTables = []) {
     [tableName, ...values],
   );
   if (tableName === 'companies') {
-    await seedTenantTables(result.insertId, seedTables);
+    await seedTenantTables(result.insertId, seedTables, seedRecords);
   }
   return { id: result.insertId };
 }
