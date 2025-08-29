@@ -27,6 +27,7 @@ import { PendingRequestContext } from "../context/PendingRequestContext.jsx";
 export default function ERPLayout() {
   const { user, setUser, session } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
+  const { t } = useContext(LangContext);
   const renderCount = useRef(0);
   useEffect(() => {
   renderCount.current++;
@@ -51,21 +52,48 @@ export default function ERPLayout() {
   const modules = useModules();
   const headerMap = useHeaderMappings(modules.map((m) => m.module_key));
   const titleMap = {
-    "/": "Dashboard",
-    "/forms": "Маягтууд",
-    "/reports": "Тайлан",
-    "/settings": "Тохиргоо",
-    "/settings/users": "Хэрэглэгчид",
-    "/settings/user-companies": "Хэрэглэгчийн компаниуд",
-    "/settings/role-permissions": "Эрхийн тохиргоо",
-    "/settings/modules": "Модуль",
-    "/settings/company-licenses": "Лиценз",
-    "/settings/tables-management": "Хүснэгтийн удирдлага",
-    "/settings/forms-management": "Маягтын удирдлага",
-    "/settings/report-management": "Тайлангийн удирдлага",
-    "/settings/change-password": "Нууц үг солих",
-    "/settings/tenant-tables-registry": "Tenant Tables Registry",
-    "/settings/edit-translations": "Edit Translations",
+    "/": t("dashboard", "Dashboard"),
+    "/forms": t("forms", "Forms"),
+    "/reports": t("reports", "Reports"),
+    "/settings": t("settings", "Settings"),
+    "/settings/users": t("settings_users", "Users"),
+    "/settings/user-companies": t(
+      "settings_user_companies",
+      "User Companies",
+    ),
+    "/settings/role-permissions": t(
+      "settings_role_permissions",
+      "Role Permissions",
+    ),
+    "/settings/modules": t("settings_modules", "Modules"),
+    "/settings/company-licenses": t(
+      "settings_company_licenses",
+      "Company Licenses",
+    ),
+    "/settings/tables-management": t(
+      "settings_tables_management",
+      "Tables Management",
+    ),
+    "/settings/forms-management": t(
+      "settings_forms_management",
+      "Forms Management",
+    ),
+    "/settings/report-management": t(
+      "settings_report_management",
+      "Report Management",
+    ),
+    "/settings/change-password": t(
+      "settings_change_password",
+      "Change Password",
+    ),
+    "/settings/tenant-tables-registry": t(
+      "settings_tenant_tables_registry",
+      "Tenant Tables Registry",
+    ),
+    "/settings/translations": t(
+      "settings_translations",
+      "Edit Translations",
+    ),
   };
 
   function titleForPath(path) {
@@ -74,7 +102,7 @@ export default function ERPLayout() {
     const mod = modules.find(
       (m) => m.module_key.replace(/_/g, '-') === seg,
     );
-    if (!mod) return 'ERP';
+    if (!mod) return t('appName', 'ERP');
     return (
       generalConfig.general?.procLabels?.[mod.module_key] ||
       headerMap[mod.module_key] ||
@@ -182,10 +210,10 @@ function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, onOpen }) {
       <div style={styles.logoSection}>
         <img
           src="/assets/logo‐small.png"
-          alt="ERP Logo"
+          alt={t('erp_logo', 'ERP Logo')}
           style={styles.logoImage}
         />
-        <span style={styles.logoText}>MyERP</span>
+        <span style={styles.logoText}>{t('appName', 'MyERP')}</span>
       </div>
       <nav style={styles.headerNav}>
         <button style={styles.iconBtn} onClick={onHome}>
@@ -233,6 +261,7 @@ function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, onOpen }) {
 /** Left sidebar with “menu groups” and “pinned items” **/
 function Sidebar({ onOpen, open, isMobile }) {
   const { permissions: perms } = useContext(AuthContext);
+  const { t } = useContext(LangContext);
   const location = useLocation();
   const modules = useModules();
   const txnModules = useTxnModules();
@@ -301,7 +330,7 @@ function Sidebar({ onOpen, open, isMobile }) {
   if (orphans.length > 0) {
     roots.push({
       module_key: '__orphan__',
-      label: 'Other',
+      label: t('other', 'Other'),
       children: orphans,
     });
   }
