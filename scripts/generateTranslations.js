@@ -30,9 +30,27 @@ async function main() {
   }
 
   for (const key of Object.keys(base)) {
-    const mnText = base[key];
-    const baseText = locales.en[key] || mnText;
-    const baseLang = locales.en[key] ? 'en' : 'mn';
+    const value = base[key];
+    let sourceText;
+    let sourceLang;
+    if (value && typeof value === 'object') {
+      sourceText = value.mn || value.en;
+      sourceLang = value.mn ? 'mn' : 'en';
+    } else {
+      sourceText = value;
+      sourceLang = 'mn';
+    }
+
+    if (
+      typeof sourceText !== 'string' ||
+      !/[\u0400-\u04FF]/.test(sourceText) ||
+      sourceText.trim().toLowerCase() === key.toLowerCase()
+    ) {
+      continue;
+    }
+
+    const baseText = locales.en[key] || sourceText;
+    const baseLang = locales.en[key] ? 'en' : sourceLang;
 
     for (const lang of languages) {
       if (!locales[lang][key]) {
@@ -42,7 +60,7 @@ async function main() {
           const translation = await translate(baseText, lang, baseLang);
           locales[lang][key] = translation;
           if (translation === baseText) untranslated[lang].push(key);
-          console.log(`Translated ${key} -> ${lang}`);
+          console.log(`Translated ${key}: "${baseText}" -> ${lang}`);
         }
       }
     }
