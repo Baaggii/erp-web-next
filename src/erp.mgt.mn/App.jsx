@@ -43,6 +43,7 @@ import useGeneralConfig from './hooks/useGeneralConfig.js';
 import TabbedWindows from './components/TabbedWindows.jsx';
 import TenantTablesRegistryPage from './pages/TenantTablesRegistry.jsx';
 import TranslationEditorPage from './pages/TranslationEditor.jsx';
+import UserManualExportPage from './pages/UserManualExport.jsx';
 
 export default function App() {
   useEffect(() => {
@@ -119,6 +120,7 @@ function AuthedApp() {
     sales: <TabbedWindows />,
     tenant_tables_registry: <TenantTablesRegistryPage />,
     edit_translations: <TranslationEditorPage />,
+    user_manual_export: <UserManualExportPage />,
   };
 
   modules.forEach((m) => {
