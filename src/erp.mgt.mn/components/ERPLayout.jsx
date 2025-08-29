@@ -20,7 +20,9 @@ import { PendingRequestContext } from "../context/PendingRequestContext.jsx";
 import Joyride, { STATUS } from "react-joyride";
 // Import Joyride's compiled styles so bundlers like Vite can resolve them
 // See: https://github.com/gilbarbara/react-joyride#styling
-import "react-joyride/lib/react-joyride-compiled.css";
+// Use the public "dist" path for Joyride's compiled CSS to avoid the
+// package exports error thrown by bundlers like Vite.
+import "react-joyride/dist/react-joyride-compiled.css";
 import { guideSteps as dashboardSteps } from "../pages/DashboardPage.jsx";
 import { guideSteps as formsSteps } from "../pages/Forms.jsx";
 
