@@ -7,6 +7,7 @@ import {
 } from '../../db/index.js';
 import { logUserAction } from './userActivityLog.js';
 import { isDeepStrictEqual } from 'util';
+import { formatDateForDb } from '../utils/formatDate.js';
 
 export const ALLOWED_REQUEST_TYPES = new Set(['edit', 'delete']);
 
@@ -333,6 +334,10 @@ export async function respondRequest(
     if (status === 'accepted') {
       const data = proposedData;
       if (req.request_type === 'edit' && data) {
+        const columns = await listTableColumns(req.table_name);
+        if (columns.includes('updated_by')) data.updated_by = responseEmpid;
+        if (columns.includes('updated_at'))
+          data.updated_at = formatDateForDb(new Date());
         await updateTableRow(req.table_name, req.record_id, data, conn);
         await logUserAction(
           {
@@ -347,7 +352,12 @@ export async function respondRequest(
           conn,
         );
       } else if (req.request_type === 'delete') {
-        await deleteTableRow(req.table_name, req.record_id, conn);
+        await deleteTableRow(
+          req.table_name,
+          req.record_id,
+          conn,
+          responseEmpid,
+        );
         await logUserAction(
           {
             emp_id: responseEmpid,
@@ -361,8 +371,8 @@ export async function respondRequest(
         );
       }
       await conn.query(
-        `UPDATE pending_request SET status = 'accepted', responded_at = NOW(), response_empid = ?, response_notes = ? WHERE request_id = ?`,
-        [responseEmpid, notes, id],
+        `UPDATE pending_request SET status = 'accepted', responded_at = NOW(), response_empid = ?, response_notes = ?, updated_by = ?, updated_at = NOW() WHERE request_id = ?`,
+        [responseEmpid, notes, responseEmpid, id],
       );
       await logUserAction(
         {
@@ -383,8 +393,8 @@ export async function respondRequest(
       );
     } else {
       await conn.query(
-        `UPDATE pending_request SET status = 'declined', responded_at = NOW(), response_empid = ?, response_notes = ? WHERE request_id = ?`,
-        [responseEmpid, notes, id],
+        `UPDATE pending_request SET status = 'declined', responded_at = NOW(), response_empid = ?, response_notes = ?, updated_by = ?, updated_at = NOW() WHERE request_id = ?`,
+        [responseEmpid, notes, responseEmpid, id],
       );
       await logUserAction(
         {

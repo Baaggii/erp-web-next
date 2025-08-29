@@ -298,7 +298,7 @@ await test('respondRequest succeeds with prior non-pending entries', async () =>
         return [[row]];
       }
       if (sql.startsWith("UPDATE pending_request SET status = 'accepted'")) {
-        const row = rows.find((r) => r.request_id === params[2]);
+        const row = rows.find((r) => r.request_id === params[3]);
         row.status = 'accepted';
         return [{}];
       }
