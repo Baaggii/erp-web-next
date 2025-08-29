@@ -5,9 +5,11 @@ import {
   listAllTenantTableOptions,
   zeroSharedTenantKeys,
   seedDefaultsForSeedTables,
-  seedSeedTablesForCompanies,
+  seedTenantTables,
+  listCompanies,
 } from '../../db/index.js';
 import { hasAction } from '../utils/hasAction.js';
+import { GLOBAL_COMPANY_ID } from '../../config/constants.js';
 
 export async function listTenantTables(req, res, next) {
   try {
@@ -82,7 +84,18 @@ export async function seedDefaults(req, res, next) {
 export async function seedExistingCompanies(req, res, next) {
   try {
     if (!(await ensureAdmin(req))) return res.sendStatus(403);
-    await seedSeedTablesForCompanies();
+    const { tables = null, records = [] } = req.body || {};
+    const recordMap = {};
+    for (const rec of records || []) {
+      if (rec?.table && Array.isArray(rec.ids) && rec.ids.length > 0) {
+        recordMap[rec.table] = rec.ids;
+      }
+    }
+    const companies = await listCompanies();
+    for (const { id } of companies) {
+      if (id === GLOBAL_COMPANY_ID) continue;
+      await seedTenantTables(id, tables, recordMap);
+    }
     res.sendStatus(204);
   } catch (err) {
     next(err);

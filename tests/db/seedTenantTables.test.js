@@ -23,6 +23,27 @@ await test('seedTenantTables copies user level permissions', async () => {
   );
 });
 
+await test('seedTenantTables filters by record ids', async () => {
+  const orig = db.pool.query;
+  const calls = [];
+  db.pool.query = async (sql, params) => {
+    calls.push({ sql, params });
+    if (sql.startsWith('SELECT table_name, is_shared FROM tenant_tables')) {
+      return [[{ table_name: 'posts', is_shared: 0 }]];
+    }
+    if (sql.startsWith('SELECT COLUMN_NAME')) {
+      return [[{ COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' }]];
+    }
+    return [[], []];
+  };
+  await db.seedTenantTables(7, null, { posts: [1, 2] });
+  db.pool.query = orig;
+  const insertCall = calls.find((c) => c.sql.startsWith('INSERT INTO ??'));
+  assert.ok(insertCall);
+  assert.match(insertCall.sql, /IN \(\?, \?\)/);
+  assert.deepEqual(insertCall.params, ['posts', 7, 'posts', 1, 2]);
+});
+
 await test('seedDefaultsForSeedTables updates company ids to 0', async () => {
   const orig = db.pool.query;
   const calls = [];
