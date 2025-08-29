@@ -19,7 +19,7 @@ export function useCompanyModules(companyId) {
       const rows = res.ok ? await res.json() : [];
       const map = {};
       rows.forEach((r) => {
-        if (r.licensed) {
+        if (Number(r.company_id) === Number(id) && r.licensed) {
           map[r.module_key] = true;
         }
       });
