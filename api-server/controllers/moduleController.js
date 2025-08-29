@@ -79,7 +79,7 @@ export async function populatePermissions(req, res, next) {
     if (!(await hasAction(session, "system_settings"))) return res.sendStatus(403);
     await populateDefaultModules();
     await populateCompanyModuleLicenses();
-    await populateUserLevelModulePermissions();
+    await populateUserLevelModulePermissions(req.user.empid);
     res.sendStatus(204);
   } catch (err) {
     next(err);

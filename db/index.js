@@ -843,20 +843,15 @@ export async function populateCompanyModuleLicenses() {
   );
 }
 
-export async function populateUserLevelModulePermissions() {
+export async function populateUserLevelModulePermissions(createdBy) {
   await pool.query(
-    `INSERT INTO user_level_permissions (company_id, userlevel_id, action, action_key)
-     SELECT ${GLOBAL_COMPANY_ID}, ul.userlevel_id, 'module_key', m.module_key
+    `INSERT INTO user_level_permissions (company_id, userlevel_id, action, action_key, created_by)
+     SELECT ${GLOBAL_COMPANY_ID}, ul.userlevel_id, 'module_key', m.module_key, ?
        FROM user_levels ul
        CROSS JOIN modules m
        WHERE m.module_key NOT LIKE 'transactions\\_%'
-         AND NOT EXISTS (
-           SELECT 1 FROM user_level_permissions up
-            WHERE up.userlevel_id = ul.userlevel_id
-              AND up.action = 'module_key'
-              AND up.action_key = m.module_key
-              AND up.company_id = ${GLOBAL_COMPANY_ID}
-         )`,
+     ON DUPLICATE KEY UPDATE action = VALUES(action), updated_by = VALUES(created_by), updated_at = NOW()`,
+    [createdBy],
   );
 }
 
