@@ -1,9 +1,4 @@
-diff --git a/src/erp.mgt.mn/locales/mn.json b/src/erp.mgt.mn/locales/mn.json
-index bafa995cb01e14874894bdab0ffc68fe588787f9..408642be01250a8c1a79977d8d3ed7fee0f31b73 100644
---- a/src/erp.mgt.mn/locales/mn.json
-+++ b/src/erp.mgt.mn/locales/mn.json
-@@ -1,33 +1,486 @@
- {
+{
 -  "welcome": "Тавтай морилно уу",
 -  "home": "Нүүр",
 -  "windows": "Цонхнууд",
