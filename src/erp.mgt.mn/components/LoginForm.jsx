@@ -6,6 +6,7 @@ import { refreshCompanyModules } from '../hooks/useCompanyModules.js';
 import { refreshModules } from '../hooks/useModules.js';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { useNavigate } from 'react-router-dom';
+import LangContext from '../context/LangContext.jsx';
 
 export default function LoginForm() {
   // login using employee ID only
@@ -25,6 +26,7 @@ export default function LoginForm() {
     setPosition,
     setPermissions,
   } = useContext(AuthContext);
+  const { t } = useContext(LangContext);
   const navigate = useNavigate();
 
   async function handleSubmit(e) {
@@ -36,7 +38,7 @@ export default function LoginForm() {
       const payload = isCompanyStep
         ? { ...storedCreds, companyId: Number(companyId) }
         : { empid, password };
-      const loggedIn = await login(payload);
+      const loggedIn = await login(payload, t);
 
       if (loggedIn.needsCompany) {
         setStoredCreds({ empid, password });
@@ -63,18 +65,18 @@ export default function LoginForm() {
       navigate('/');
     } catch (err) {
       console.error('Login failed:', err);
-      setError(err.message || 'Login error');
+      setError(err.message || t('loginError', 'Login error'));
     }
   }
 
   if (isCompanyStep) {
     return (
       <div style={{ maxWidth: '320px' }}>
-        <h1>Компани сонгох</h1>
+        <h1>{t('selectCompany', 'Компани сонгох')}</h1>
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: '0.75rem' }}>
             <label htmlFor="company" style={{ display: 'block', marginBottom: '0.25rem' }}>
-              Компани
+              {t('company', 'Компани')}
             </label>
             <select
               id="company"
@@ -83,7 +85,7 @@ export default function LoginForm() {
               required
               style={{ width: '100%', padding: '0.5rem', borderRadius: '3px', border: '1px solid #ccc' }}
             >
-              <option value="">Компани сонгох</option>
+              <option value="">{t('selectCompany', 'Компани сонгох')}</option>
               {companyOptions.map((c) => (
                 <option key={c.company_id} value={c.company_id}>
                   {c.company_name}
@@ -107,7 +109,7 @@ export default function LoginForm() {
               cursor: 'pointer',
             }}
           >
-            Сонгох
+            {t('choose', 'Сонгох')}
           </button>
         </form>
       </div>
@@ -115,13 +117,13 @@ export default function LoginForm() {
   }
 
   return (
-    <div style={{ maxWidth: '320px' }}>
-      <h1>Нэвтрэх</h1>
-      <form onSubmit={handleSubmit}>
-        <div style={{ marginBottom: '0.75rem' }}>
-          <label htmlFor="empid" style={{ display: 'block', marginBottom: '0.25rem' }}>
-            Ажилтны ID
-          </label>
+      <div style={{ maxWidth: '320px' }}>
+        <h1>{t('login', 'Нэвтрэх')}</h1>
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: '0.75rem' }}>
+            <label htmlFor="empid" style={{ display: 'block', marginBottom: '0.25rem' }}>
+              {t('employeeId', 'Ажилтны ID')}
+            </label>
           <input
             id="empid"
             type="text"
@@ -132,10 +134,10 @@ export default function LoginForm() {
           />
         </div>
 
-        <div style={{ marginBottom: '0.75rem' }}>
-          <label htmlFor="password" style={{ display: 'block', marginBottom: '0.25rem' }}>
-            Нууц үг
-          </label>
+          <div style={{ marginBottom: '0.75rem' }}>
+            <label htmlFor="password" style={{ display: 'block', marginBottom: '0.25rem' }}>
+              {t('password', 'Нууц үг')}
+            </label>
           <input
             id="password"
             type="password"
@@ -150,20 +152,20 @@ export default function LoginForm() {
           <p style={{ color: 'red', marginBottom: '0.75rem' }}>{error}</p>
         )}
 
-        <button
-          type="submit"
-          style={{
-            backgroundColor: '#2563eb',
+          <button
+            type="submit"
+            style={{
+              backgroundColor: '#2563eb',
             color: '#fff',
             padding: '0.5rem 1rem',
             border: '1px solid #2563eb',
             borderRadius: '3px',
             cursor: 'pointer',
           }}
-        >
-          Нэвтрэх
-        </button>
-      </form>
-    </div>
+          >
+            {t('login', 'Нэвтрэх')}
+          </button>
+        </form>
+      </div>
   );
 }

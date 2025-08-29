@@ -5,7 +5,7 @@ import translations from './translations.json';
 export const LangContext = createContext({
   lang: 'en',
   setLang: () => {},
-  t: (key) => key,
+  t: (key, fallback) => fallback || key,
 });
 
 export function LangProvider({ children }) {
@@ -16,10 +16,10 @@ export function LangProvider({ children }) {
   }, [lang]);
 
   const t = useMemo(() => {
-    return (key) => {
+    return (key, fallback = key) => {
       const entry = translations[key];
-      if (!entry) return key;
-      return entry[lang] || entry.en || key;
+      if (!entry) return fallback;
+      return entry[lang] || entry.en || fallback;
     };
   }, [lang]);
 

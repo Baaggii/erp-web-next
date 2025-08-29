@@ -13,6 +13,7 @@ import { LangContext } from '../context/LangContext.jsx';
  */
 export default function ERPLayout() {
   const { user, session, setUser } = useContext(AuthContext);
+  const { t } = useContext(LangContext);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -21,16 +22,16 @@ export default function ERPLayout() {
   }, []);
 
   const titleMap = {
-    '/': 'Dashboard',
-    '/forms': 'Forms',
-    '/reports': 'Reports',
-    '/settings': 'Settings',
-    '/settings/users': 'Users',
-    '/settings/user-companies': 'User Companies',
-    '/settings/role-permissions': 'Role Permissions',
-    '/settings/change-password': 'Change Password',
+    '/': t('dashboard', 'Dashboard'),
+    '/forms': t('forms', 'Forms'),
+    '/reports': t('reports', 'Reports'),
+    '/settings': t('settings', 'Settings'),
+    '/settings/users': t('users', 'Users'),
+    '/settings/user-companies': t('userCompanies', 'User Companies'),
+    '/settings/role-permissions': t('rolePermissions', 'Role Permissions'),
+    '/settings/change-password': t('changePassword', 'Change Password'),
   };
-  const windowTitle = titleMap[location.pathname] || 'ERP';
+  const windowTitle = titleMap[location.pathname] || t('erp', 'ERP');
 
   async function handleLogout() {
     await logout(user?.empid);
@@ -66,9 +67,9 @@ function Header({ user, onLogout }) {
         <span style={styles.logoText}>MyERP</span>
       </div>
       <nav style={styles.headerNav}>
-        <button style={styles.iconBtn}>🗔 {t('home')}</button>
-        <button style={styles.iconBtn}>🗗 {t('windows')}</button>
-        <button style={styles.iconBtn}>❔ {t('help')}</button>
+        <button style={styles.iconBtn}>🗔 {t('home', 'Home')}</button>
+        <button style={styles.iconBtn}>🗗 {t('windows', 'Windows')}</button>
+        <button style={styles.iconBtn}>❔ {t('help', 'Help')}</button>
       </nav>
       <div style={styles.userSection}>
         <select
@@ -87,11 +88,11 @@ function Header({ user, onLogout }) {
           <option value="ru">ru</option>
         </select>
         <span style={{ marginRight: '0.5rem' }}>
-          {user ? `${t('welcome')}, ${user.empid}` : ''}
+          {user ? `${t('welcome', 'Welcome')}, ${user.empid}` : ''}
         </span>
         {user && (
           <button style={styles.logoutBtn} onClick={onLogout}>
-            {t('logout')}
+            {t('logout', 'Logout')}
           </button>
         )}
       </div>
@@ -111,43 +112,43 @@ function Sidebar() {
   return (
     <aside className="sidebar menu-container" style={styles.sidebar}>
       <div className="menu-group" style={styles.menuGroup}>
-        <div style={styles.groupTitle}>📌 {t('pinned')}</div>
+        <div style={styles.groupTitle}>📌 {t('pinned', 'Pinned')}</div>
         <NavLink to="/" className="menu-item" style={styles.menuItem}>
-          {t('dashboard')}
+          {t('dashboard', 'Dashboard')}
         </NavLink>
         <NavLink to="/forms" className="menu-item" style={styles.menuItem}>
-          {t('forms')}
+          {t('forms', 'Forms')}
         </NavLink>
         <NavLink to="/reports" className="menu-item" style={styles.menuItem}>
-          {t('reports')}
+          {t('reports', 'Reports')}
         </NavLink>
       </div>
 
       <hr style={styles.divider} />
 
       <div className="menu-group" style={styles.menuGroup}>
-        <div style={styles.groupTitle}>⚙ {t('settings')}</div>
+        <div style={styles.groupTitle}>⚙ {t('settings', 'Settings')}</div>
         <NavLink to="/settings" className="menu-item" style={styles.menuItem} end>
-          {t('general')}
+          {t('general', 'General')}
         </NavLink>
         {hasAdmin && (
           <>
             <NavLink to="/settings/users" className="menu-item" style={styles.menuItem}>
-              {t('users')}
+              {t('users', 'Users')}
             </NavLink>
             <NavLink to="/settings/user-companies" className="menu-item" style={styles.menuItem}>
-              {t('userCompanies')}
+              {t('userCompanies', 'User Companies')}
             </NavLink>
             <NavLink to="/settings/role-permissions" className="menu-item" style={styles.menuItem}>
-              {t('rolePermissions')}
+              {t('rolePermissions', 'Role Permissions')}
             </NavLink>
             <NavLink to="/settings/modules" className="menu-item" style={styles.menuItem}>
-              {t('modules')}
+              {t('modules', 'Modules')}
             </NavLink>
           </>
         )}
         <NavLink to="/settings/change-password" className="menu-item" style={styles.menuItem}>
-          {t('changePassword')}
+          {t('changePassword', 'Change Password')}
         </NavLink>
       </div>
     </aside>
