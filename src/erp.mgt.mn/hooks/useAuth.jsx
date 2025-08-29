@@ -1,6 +1,4 @@
 // src/erp.mgt.mn/hooks/useAuth.jsx
-import { useContext } from 'react';
-import { AuthContext } from '../context/AuthContext.jsx';
 import { API_BASE } from '../utils/apiBase.js';
 
 // src/erp.mgt.mn/hooks/useAuth.jsx
@@ -12,7 +10,7 @@ import { API_BASE } from '../utils/apiBase.js';
  * @param {{empid: string, password: string, companyId?: number}} credentials
  * @returns {Promise<any>}
 */
-export async function login({ empid, password, companyId }) {
+export async function login({ empid, password, companyId }, t = (key, fallback) => fallback || key) {
   let res;
   try {
     res = await fetch(`${API_BASE}/auth/login`, {
@@ -23,17 +21,17 @@ export async function login({ empid, password, companyId }) {
     });
   } catch (err) {
     // Network errors (e.g. server unreachable)
-    throw new Error('Login request failed');
+    throw new Error(t('loginRequestFailed', 'Login request failed'));
   }
 
   if (!res.ok) {
     const contentType = res.headers.get('content-type') || '';
-    let message = 'Login failed';
+    let message = t('loginFailed', 'Login failed');
     if (contentType.includes('application/json')) {
       const data = await res.json().catch(() => ({}));
       if (data && data.message) message = data.message;
     } else if (res.status === 503) {
-      message = 'Service unavailable';
+      message = t('serviceUnavailable', 'Service unavailable');
     } else {
       message = res.statusText || message;
     }
@@ -80,9 +78,9 @@ export async function logout(empid) {
  * Fetches current user profile if authenticated.
  * @returns {Promise<{id: number, empid: string, position: string}>}
 */
-export async function fetchProfile() {
+export async function fetchProfile(t = (key, fallback) => fallback || key) {
   const res = await fetch(`${API_BASE}/auth/me`, { credentials: 'include' });
-  if (!res.ok) throw new Error('Not authenticated');
+  if (!res.ok) throw new Error(t('notAuthenticated', 'Not authenticated'));
   const data = await res.json();
   if (data?.session) {
     try {
