@@ -58,6 +58,7 @@ export async function saveModule(req, res, next) {
       parentKey,
       showInSidebar,
       showInHeader,
+      req.user.empid,
     );
     await setCompanyModuleLicense(GLOBAL_COMPANY_ID, moduleKey, true);
     await setCompanyModuleLicense(req.user.companyId, moduleKey, true);

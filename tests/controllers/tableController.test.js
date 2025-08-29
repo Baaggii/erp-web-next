@@ -203,3 +203,42 @@ test('addRow populates created_by and created_at when absent', async () => {
   await controller.addRow(req, res, (e) => { if (e) throw e; });
   restore();
 });
+
+test('updateRow populates updated_by and updated_at when absent', async () => {
+  const restore = mockPool(async (sql, params) => {
+    if (sql.startsWith('SHOW KEYS FROM')) {
+      return [[{ Column_name: 'id' }]];
+    }
+    if (sql.startsWith('SELECT * FROM `test`')) {
+      return [[{ id: 1 }]];
+    }
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[
+        { COLUMN_NAME: 'id' },
+        { COLUMN_NAME: 'name' },
+        { COLUMN_NAME: 'updated_by' },
+        { COLUMN_NAME: 'updated_at' },
+      ]];
+    }
+    if (sql.startsWith('UPDATE')) {
+      assert.ok(sql.includes('`updated_by` = ?'));
+      assert.ok(sql.includes('`updated_at` = ?'));
+      assert.strictEqual(params[0], 'test');
+      assert.strictEqual(params[1], 'Alice');
+      assert.strictEqual(params[2], 'E1');
+      assert.match(params[3], /\d{4}-\d{2}-\d{2}/);
+      assert.strictEqual(params[4], '1');
+      return [{}];
+    }
+    throw new Error('unexpected query ' + sql);
+  });
+  const req = {
+    params: { table: 'test', id: '1' },
+    body: { name: 'Alice' },
+    user: { empid: 'E1' },
+  };
+  const res = { locals: {}, sendStatus(c) { this.code = c; } };
+  await controller.updateRow(req, res, (e) => { if (e) throw e; });
+  restore();
+  assert.equal(res.code, 204);
+});
