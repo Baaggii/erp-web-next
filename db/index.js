@@ -982,14 +982,19 @@ export async function upsertTenantTable(
   tableName,
   isShared = 0,
   seedOnCreate = 0,
+  createdBy = null,
+  updatedBy = null,
 ) {
+  const userId = createdBy ?? updatedBy;
   await pool.query(
-    `INSERT INTO tenant_tables (table_name, is_shared, seed_on_create)
-     VALUES (?, ?, ?)
+    `INSERT INTO tenant_tables (table_name, is_shared, seed_on_create, created_by, created_at)
+     VALUES (?, ?, ?, ?, NOW())
      ON DUPLICATE KEY UPDATE
        is_shared = VALUES(is_shared),
-       seed_on_create = VALUES(seed_on_create)`,
-    [tableName, isShared ? 1 : 0, seedOnCreate ? 1 : 0],
+       seed_on_create = VALUES(seed_on_create),
+       updated_by = VALUES(created_by),
+       updated_at = NOW()`,
+    [tableName, isShared ? 1 : 0, seedOnCreate ? 1 : 0, userId],
   );
   return { tableName, isShared: !!isShared, seedOnCreate: !!seedOnCreate };
 }
