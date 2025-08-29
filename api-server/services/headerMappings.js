@@ -20,12 +20,24 @@ export async function getMappings(headers = [], lang) {
   const map = await readMappings();
   const result = {};
   headers.forEach((h) => {
-    if (map[h]) {
-      if (lang && typeof map[h] === 'object') {
-        result[h] = map[h][lang] ?? map[h];
+    const entry = map[h];
+    if (entry == null) {
+      // No mapping found; fall back to the original key
+      result[h] = h;
+      return;
+    }
+    if (typeof entry === 'object' && entry !== null) {
+      // Prefer the requested language, then English, then the key itself
+      if (lang && entry[lang]) {
+        result[h] = entry[lang];
+      } else if (entry.en) {
+        result[h] = entry.en;
       } else {
-        result[h] = map[h];
+        result[h] = h;
       }
+    } else {
+      // Primitive mapping string
+      result[h] = entry;
     }
   });
   return result;
