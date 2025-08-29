@@ -24,7 +24,7 @@ export async function login(req, res, next) {
     }
 
     let session;
-    if (!companyId) {
+    if (companyId == null) {
       if (sessions.length > 1) {
         return res.json({ needsCompany: true, sessions });
       }
