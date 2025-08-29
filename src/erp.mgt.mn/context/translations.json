@@ -1,0 +1,46 @@
+{
+  "welcome": {
+    "mn": "Тавтай морилно уу",
+    "en": "Welcome",
+    "ja": "ようこそ",
+    "ko": "환영합니다",
+    "zh": "欢迎",
+    "es": "Bienvenido",
+    "de": "Willkommen",
+    "fr": "Bienvenue",
+    "ru": "Добро пожаловать"
+  },
+  "home": {
+    "mn": "Нүүр",
+    "en": "Home",
+    "ja": "ホーム",
+    "ko": "홈",
+    "zh": "首页",
+    "es": "Inicio",
+    "de": "Startseite",
+    "fr": "Accueil",
+    "ru": "Домой"
+  },
+  "windows": {
+    "mn": "Цонхнууд",
+    "en": "Windows",
+    "ja": "ウィンドウ",
+    "ko": "창",
+    "zh": "窗口",
+    "es": "Ventanas",
+    "de": "Fenster",
+    "fr": "Fenêtres",
+    "ru": "Окна"
+  },
+  "help": {
+    "mn": "Тусламж",
+    "en": "Help",
+    "ja": "ヘルプ",
+    "ko": "도움말",
+    "zh": "帮助",
+    "es": "Ayuda",
+    "de": "Hilfe",
+    "fr": "Aide",
+    "ru": "Справка"
+  }
+}
