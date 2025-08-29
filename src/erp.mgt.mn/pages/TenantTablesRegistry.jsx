@@ -214,34 +214,42 @@ export default function TenantTablesRegistry() {
       setSeedModalOpen(false);
       return;
     }
+    const records = tables
+      .map((t) => ({ table: t, ids: Array.from(tableRecords[t]?.selected || []) }))
+      .filter((r) => r.ids.length > 0);
     setSeedingCompany(true);
-    try {
-      const records = tables
-        .map((t) => ({ table: t, ids: Array.from(tableRecords[t]?.selected || []) }))
-        .filter((r) => r.ids.length > 0);
+    async function send(flag) {
       const res = await fetch('/api/tenant_tables/seed-company', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          companyId,
-          tables,
-          records,
-          overwrite,
-        }),
+        body: JSON.stringify({ companyId, tables, records, overwrite: flag }),
       });
       if (!res.ok) {
         const msg = await parseErrorBody(res);
         throw new Error(msg || 'Failed to seed company');
       }
       addToast(
-        overwrite ? 'Repopulated company defaults' : 'Populated company defaults',
+        flag ? 'Repopulated company defaults' : 'Populated company defaults',
         'success',
       );
       setSeedModalOpen(false);
       await loadTables();
+    }
+    try {
+      await send(overwrite);
     } catch (err) {
-      addToast(`Failed to seed company: ${err.message}`, 'error');
+      if (!overwrite && /already contains data/i.test(err.message)) {
+        if (window.confirm(`${err.message}. Overwrite?`)) {
+          try {
+            await send(true);
+          } catch (err2) {
+            addToast(`Failed to seed company: ${err2.message}`, 'error');
+          }
+        }
+      } else {
+        addToast(`Failed to seed company: ${err.message}`, 'error');
+      }
     } finally {
       setSeedingCompany(false);
     }

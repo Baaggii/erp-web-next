@@ -1033,6 +1033,22 @@ export async function seedTenantTables(
   }
   for (const { table_name, is_shared } of tables) {
     if (is_shared) continue;
+    const [[{ cnt }]] = await pool.query(
+      'SELECT COUNT(*) AS cnt FROM ?? WHERE company_id = ?',
+      [table_name, companyId],
+    );
+    if (cnt > 0) {
+      if (!overwrite) {
+        const err = new Error(`Table ${table_name} already contains data`);
+        err.status = 400;
+        throw err;
+      }
+      await pool.query('DELETE FROM ?? WHERE company_id = ?', [
+        table_name,
+        companyId,
+      ]);
+    }
+
     const meta = await listTableColumnMeta(table_name);
     const columns = meta.map((c) => c.name);
     const otherCols = meta
@@ -1044,13 +1060,6 @@ export async function seedTenantTables(
       .map((c) => c.name);
 
     const records = recordMap?.[table_name];
-
-    if (overwrite) {
-      await pool.query('DELETE FROM ?? WHERE company_id = ?', [
-        table_name,
-        companyId,
-      ]);
-    }
 
     if (Array.isArray(records) && records.length > 0 && typeof records[0] === 'object' && records[0] !== null) {
       for (const row of records) {
