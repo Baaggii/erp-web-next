@@ -350,7 +350,7 @@ export async function uploadCodingTable(req, res, next) {
       )${autoOpt}`;
     await pool.query(createSql);
     for (const [col, label] of Object.entries(headerMap)) {
-      if (label) await setTableColumnLabel(cleanTable, cleanIdentifier(col), label);
+      if (label) await setTableColumnLabel(cleanTable, cleanIdentifier(col), label, req.user.empid);
     }
     let count = 0;
     const errors = [];

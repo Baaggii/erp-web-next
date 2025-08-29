@@ -1204,19 +1204,19 @@ export async function getTableColumnLabels(tableName) {
   return map;
 }
 
-export async function setTableColumnLabel(tableName, columnName, label) {
+export async function setTableColumnLabel(tableName, columnName, label, createdBy) {
   await pool.query(
-    `INSERT INTO table_column_labels (table_name, column_name, mn_label)
-     VALUES (?, ?, ?)
-     ON DUPLICATE KEY UPDATE mn_label = VALUES(mn_label)`,
-    [tableName, columnName, label],
+    `INSERT INTO table_column_labels (table_name, column_name, mn_label, created_by, created_at)
+     VALUES (?, ?, ?, ?, NOW())
+     ON DUPLICATE KEY UPDATE mn_label = VALUES(mn_label), updated_by = VALUES(created_by), updated_at = NOW()`,
+    [tableName, columnName, label, createdBy],
   );
   return { tableName, columnName, label };
 }
 
-export async function saveTableColumnLabels(tableName, labels) {
+export async function saveTableColumnLabels(tableName, labels, createdBy) {
   for (const [col, lab] of Object.entries(labels)) {
-    await setTableColumnLabel(tableName, col, lab);
+    await setTableColumnLabel(tableName, col, lab, createdBy);
   }
 }
 
