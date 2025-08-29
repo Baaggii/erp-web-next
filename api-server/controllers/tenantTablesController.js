@@ -84,7 +84,7 @@ export async function seedDefaults(req, res, next) {
 export async function seedExistingCompanies(req, res, next) {
   try {
     if (!(await ensureAdmin(req))) return res.sendStatus(403);
-    const { tables = null, records = [] } = req.body || {};
+    const { tables = null, records = [], overwrite = false } = req.body || {};
     const recordMap = {};
     for (const rec of records || []) {
       if (rec?.table && Array.isArray(rec.ids) && rec.ids.length > 0) {
@@ -94,7 +94,7 @@ export async function seedExistingCompanies(req, res, next) {
     const companies = await listCompanies();
     for (const { id } of companies) {
       if (id === GLOBAL_COMPANY_ID) continue;
-      await seedTenantTables(id, tables, recordMap);
+      await seedTenantTables(id, tables, recordMap, overwrite);
     }
     res.sendStatus(204);
   } catch (err) {

@@ -75,6 +75,9 @@ test('createCompanyHandler forwards seedRecords and overwrite', async () => {
     if (/FROM tenant_tables/.test(sql)) {
       return [[{ table_name: 'posts', is_shared: 0 }]];
     }
+    if (sql.startsWith('SELECT COUNT(*)') && params[0] === 'posts') {
+      return [[{ cnt: 2 }]];
+    }
     if (/information_schema\.COLUMNS/.test(sql) && params[0] === 'posts') {
       return [[{ COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' }]];
     }
