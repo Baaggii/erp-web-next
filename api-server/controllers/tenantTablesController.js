@@ -42,7 +42,14 @@ export async function createTenantTable(req, res, next) {
     if (!tableName) {
       return res.status(400).json({ message: 'tableName is required' });
     }
-    const result = await upsertTenantTable(tableName, isShared, seedOnCreate);
+    const userId = req.user?.empid;
+    const result = await upsertTenantTable(
+      tableName,
+      isShared,
+      seedOnCreate,
+      userId,
+      userId,
+    );
     res.status(201).json(result);
   } catch (err) {
     next(err);
@@ -54,7 +61,14 @@ export async function updateTenantTable(req, res, next) {
     if (!(await ensureAdmin(req))) return res.sendStatus(403);
     const tableName = req.params.table_name;
     const { isShared, seedOnCreate } = req.body || {};
-    const result = await upsertTenantTable(tableName, isShared, seedOnCreate);
+    const userId = req.user?.empid;
+    const result = await upsertTenantTable(
+      tableName,
+      isShared,
+      seedOnCreate,
+      null,
+      userId,
+    );
     res.json(result);
   } catch (err) {
     next(err);
