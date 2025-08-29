@@ -2,6 +2,7 @@ import {
   listCompanies,
   insertTableRow,
   getEmploymentSession,
+  getEmploymentSessions,
 } from '../../db/index.js';
 
 export async function listCompaniesHandler(req, res, next) {
@@ -25,7 +26,12 @@ export async function createCompanyHandler(req, res, next) {
     const session =
       req.session ||
       (await getEmploymentSession(req.user.empid, req.user.companyId));
-    if (!session?.permissions?.system_settings) return res.sendStatus(403);
+    if (!session?.permissions?.system_settings) {
+      const sessions = await getEmploymentSessions(req.user.empid);
+      if (!sessions.some((s) => s.permissions?.system_settings)) {
+        return res.sendStatus(403);
+      }
+    }
     const result = await insertTableRow(
       'companies',
       company,
