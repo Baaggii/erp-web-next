@@ -361,6 +361,7 @@ export async function uploadCodingTable(req, res, next) {
       const placeholders = [];
       const values = [];
       const updates = [];
+      const updateValues = [];
       let hasData = false;
       if (cleanNameCol) {
         const nameVal = r[cleanNameCol];
@@ -386,10 +387,9 @@ export async function uploadCodingTable(req, res, next) {
         hasData = true;
       }
       for (const c of cleanUniqueOnly) {
-        cols.push(`\`${c}\``);
-        placeholders.push('?');
         let val = normalizeExcelError(r[c], columnTypes[c]);
         val = normalizeSpecialChars(val, columnTypes[c]);
+        let placeholder = '?';
         const blank =
           val === undefined ||
           val === null ||
@@ -397,25 +397,42 @@ export async function uploadCodingTable(req, res, next) {
           (typeof val === 'string' && val.trim() === '') ||
           val === 0;
         if (blank) {
-          val =
-            defaultValues[c] !== undefined && defaultValues[c] !== ''
-              ? defaultValues[c]
-              : defaultValForType(columnTypes[c]);
+          if (c === 'created_by' || c === 'updated_by') {
+            val = req.user.empid;
+          } else if (c === 'created_at' || c === 'updated_at') {
+            placeholder = 'NOW()';
+          } else {
+            val =
+              defaultValues[c] !== undefined && defaultValues[c] !== ''
+                ? defaultValues[c]
+                : defaultValForType(columnTypes[c]);
+          }
         } else if (columnTypes[c] === 'DATE') {
           const d = parseExcelDate(val);
           val = d || null;
         }
         val = normalizeNumeric(val, columnTypes[c]);
         val = sanitizeValue(val);
-        values.push(val);
-        updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
-        hasData = true;
+        cols.push(`\`${c}\``);
+        placeholders.push(placeholder);
+        if (placeholder === '?') values.push(val);
+        if (c !== 'created_by' && c !== 'created_at') {
+          if (c === 'updated_by') {
+            updates.push('`updated_by` = ?');
+            updateValues.push(req.user.empid);
+          } else if (c === 'updated_at') {
+            updates.push('`updated_at` = NOW()');
+          } else {
+            updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
+          }
+        }
+        if (val !== undefined && val !== null && val !== '' && val !== 0)
+          hasData = true;
       }
       for (const c of cleanExtraFiltered) {
-        cols.push(`\`${c}\``);
-        placeholders.push('?');
         let val = normalizeExcelError(r[c], columnTypes[c]);
         val = normalizeSpecialChars(val, columnTypes[c]);
+        let placeholder = '?';
         const blank =
           val === undefined ||
           val === null ||
@@ -423,7 +440,11 @@ export async function uploadCodingTable(req, res, next) {
           (typeof val === 'string' && val.trim() === '') ||
           val === 0;
         if (blank) {
-          if (defaultValues[c] !== undefined && defaultValues[c] !== '') {
+          if (c === 'created_by' || c === 'updated_by') {
+            val = req.user.empid;
+          } else if (c === 'created_at' || c === 'updated_at') {
+            placeholder = 'NOW()';
+          } else if (defaultValues[c] !== undefined && defaultValues[c] !== '') {
             val = defaultValues[c];
           } else if (notNullMap[c]) {
             val = defaultValForType(columnTypes[c]);
@@ -438,14 +459,24 @@ export async function uploadCodingTable(req, res, next) {
           hasData = true;
         val = normalizeNumeric(val, columnTypes[c]);
         val = sanitizeValue(val);
-        values.push(val);
-        updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
+        cols.push(`\`${c}\``);
+        placeholders.push(placeholder);
+        if (placeholder === '?') values.push(val);
+        if (c !== 'created_by' && c !== 'created_at') {
+          if (c === 'updated_by') {
+            updates.push('`updated_by` = ?');
+            updateValues.push(req.user.empid);
+          } else if (c === 'updated_at') {
+            updates.push('`updated_at` = NOW()');
+          } else {
+            updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
+          }
+        }
       }
       for (const c of cleanExtraFieldsFiltered) {
-        cols.push(`\`${c}\``);
-        placeholders.push('?');
         let val = normalizeExcelError(r[c], columnTypes[c]);
         val = normalizeSpecialChars(val, columnTypes[c]);
+        let placeholder = '?';
         const blank =
           val === undefined ||
           val === null ||
@@ -453,7 +484,11 @@ export async function uploadCodingTable(req, res, next) {
           (typeof val === 'string' && val.trim() === '') ||
           val === 0;
         if (blank) {
-          if (defaultValues[c] !== undefined && defaultValues[c] !== '') {
+          if (c === 'created_by' || c === 'updated_by') {
+            val = req.user.empid;
+          } else if (c === 'created_at' || c === 'updated_at') {
+            placeholder = 'NOW()';
+          } else if (defaultValues[c] !== undefined && defaultValues[c] !== '') {
             val = defaultValues[c];
           } else if (notNullMap[c]) {
             val = defaultValForType(columnTypes[c]);
@@ -468,8 +503,19 @@ export async function uploadCodingTable(req, res, next) {
           hasData = true;
         val = normalizeNumeric(val, columnTypes[c]);
         val = sanitizeValue(val);
-        values.push(val);
-        updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
+        cols.push(`\`${c}\``);
+        placeholders.push(placeholder);
+        if (placeholder === '?') values.push(val);
+        if (c !== 'created_by' && c !== 'created_at') {
+          if (c === 'updated_by') {
+            updates.push('`updated_by` = ?');
+            updateValues.push(req.user.empid);
+          } else if (c === 'updated_at') {
+            updates.push('`updated_at` = NOW()');
+          } else {
+            updates.push(`\`${c}\` = VALUES(\`${c}\`)`);
+          }
+        }
       }
       if (!hasData) continue;
       if (req.body.populateRange === 'true' && values.some((v) => v === 0 || v === null))
@@ -477,7 +523,7 @@ export async function uploadCodingTable(req, res, next) {
       try {
         await pool.query(
           `INSERT INTO \`${cleanTable}\` (${cols.join(', ')}) VALUES (${placeholders.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')}`,
-          values
+          [...values, ...updateValues]
         );
         count++;
       } catch (err) {
