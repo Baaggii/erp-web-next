@@ -118,6 +118,7 @@ function AuthedApp() {
     requests: <RequestsPage />,
     sales: <TabbedWindows />,
     tenant_tables_registry: <TenantTablesRegistryPage />,
+    edit_translations: <TranslationEditorPage />,
   };
 
   modules.forEach((m) => {
@@ -165,7 +166,6 @@ function AuthedApp() {
       <Route path="/" element={<ERPLayout />}>
         <Route path="requests" element={<RequestsPage />} />
         {roots.map(renderRoute)}
-        <Route path="settings/translations" element={<TranslationEditorPage />} />
       </Route>
       <Route
         path="inventory-demo"
