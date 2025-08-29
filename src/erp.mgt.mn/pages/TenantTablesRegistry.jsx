@@ -27,6 +27,9 @@ export default function TenantTablesRegistry() {
   const [tableRecords, setTableRecords] = useState({});
   const [companies, setCompanies] = useState([]);
   const [companyId, setCompanyId] = useState('');
+  const [expandedTable, setExpandedTable] = useState(null);
+  const [defaultRows, setDefaultRows] = useState({});
+  const [columns, setColumns] = useState({});
   const { addToast } = useToast();
 
   useEffect(() => {
@@ -255,6 +258,54 @@ export default function TenantTablesRegistry() {
     }
   }
 
+  function handleToggleExpand(table) {
+    if (expandedTable === table) {
+      setExpandedTable(null);
+    } else {
+      setExpandedTable(table);
+      loadDefaultRows(table);
+    }
+  }
+
+  async function loadDefaultRows(table) {
+    setDefaultRows((prev) => ({
+      ...prev,
+      [table]: { loading: true, error: '', rows: [] },
+    }));
+    setColumns((prev) => ({ ...prev, [table]: [] }));
+    try {
+      const [colsRes, rowsRes] = await Promise.all([
+        fetch(`/api/tables/${encodeURIComponent(table)}/columns`, {
+          credentials: 'include',
+        }),
+        fetch(`/api/tables/${encodeURIComponent(table)}?company_id=0&perPage=100`, {
+          credentials: 'include',
+        }),
+      ]);
+      if (!colsRes.ok) {
+        const msg = await parseErrorBody(colsRes);
+        throw new Error(msg || 'Failed to load columns');
+      }
+      if (!rowsRes.ok) {
+        const msg = await parseErrorBody(rowsRes);
+        throw new Error(msg || 'Failed to load rows');
+      }
+      const cols = await colsRes.json();
+      const rowsData = await rowsRes.json();
+      setColumns((prev) => ({ ...prev, [table]: cols.map((c) => c.name) }));
+      setDefaultRows((prev) => ({
+        ...prev,
+        [table]: { loading: false, error: '', rows: rowsData.rows || [] },
+      }));
+    } catch (err) {
+      addToast(`Failed to load defaults for ${table}: ${err.message}`, 'error');
+      setDefaultRows((prev) => ({
+        ...prev,
+        [table]: { loading: false, error: err.message, rows: [] },
+      }));
+    }
+  }
+
   function handleChange(idx, field, value) {
     setTables((ts) => ts.map((t, i) => (i === idx ? { ...t, [field]: value } : t)));
   }
@@ -337,31 +388,82 @@ export default function TenantTablesRegistry() {
           </thead>
           <tbody>
             {tables.map((t, idx) => (
-              <tr key={t.tableName}>
-                <td style={styles.td}>{t.tableName}</td>
-                <td style={styles.td}>
-                  <input
-                    type="checkbox"
-                    checked={!!t.isShared}
-                    onChange={(e) => handleChange(idx, 'isShared', e.target.checked)}
-                  />
-                </td>
-                <td style={styles.td}>
-                  <input
-                    type="checkbox"
-                    checked={!!t.seedOnCreate}
-                    onChange={(e) => handleChange(idx, 'seedOnCreate', e.target.checked)}
-                  />
-                </td>
-                <td style={styles.td}>
-                  <button
-                    onClick={() => handleSave(t)}
-                    disabled={saving[t.tableName]}
-                  >
-                    Save
-                  </button>
-                </td>
-              </tr>
+              <React.Fragment key={t.tableName}>
+                <tr>
+                  <td style={styles.td}>{t.tableName}</td>
+                  <td style={styles.td}>
+                    <input
+                      type="checkbox"
+                      checked={!!t.isShared}
+                      onChange={(e) => handleChange(idx, 'isShared', e.target.checked)}
+                    />
+                  </td>
+                  <td style={styles.td}>
+                    <input
+                      type="checkbox"
+                      checked={!!t.seedOnCreate}
+                      onChange={(e) => handleChange(idx, 'seedOnCreate', e.target.checked)}
+                    />
+                  </td>
+                  <td style={styles.td}>
+                    <button
+                      onClick={() => handleSave(t)}
+                      disabled={saving[t.tableName]}
+                    >
+                      Save
+                    </button>{' '}
+                    <button onClick={() => handleToggleExpand(t.tableName)}>
+                      {expandedTable === t.tableName ? 'Collapse' : 'Expand'}
+                    </button>
+                  </td>
+                </tr>
+                {expandedTable === t.tableName && (
+                  <tr>
+                    <td colSpan={4} style={{ padding: '0.5rem' }}>
+                      {defaultRows[t.tableName]?.loading ? (
+                        <p>Loading...</p>
+                      ) : defaultRows[t.tableName]?.error ? (
+                        <p>Error: {defaultRows[t.tableName].error}</p>
+                      ) : defaultRows[t.tableName]?.rows.length ? (
+                        <div>
+                          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                              <tr style={{ backgroundColor: '#f3f4f6' }}>
+                                {columns[t.tableName]?.map((c) => (
+                                  <th key={c} style={styles.th}>
+                                    {c}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {defaultRows[t.tableName].rows.map((r, i) => (
+                                <tr key={i}>
+                                  {columns[t.tableName]?.map((c) => (
+                                    <td key={c} style={styles.td}>
+                                      {String(r[c])}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          <div style={{ marginTop: '0.5rem', textAlign: 'right' }}>
+                            <button onClick={() => setExpandedTable(null)}>Collapse</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <p>No records</p>
+                          <div style={{ marginTop: '0.5rem', textAlign: 'right' }}>
+                            <button onClick={() => setExpandedTable(null)}>Collapse</button>
+                          </div>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
             ))}
           </tbody>
         </table>
