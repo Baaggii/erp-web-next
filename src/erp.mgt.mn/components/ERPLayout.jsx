@@ -17,6 +17,14 @@ import Spinner from "./Spinner.jsx";
 import useHeaderMappings from "../hooks/useHeaderMappings.js";
 import useRequestNotificationCounts from "../hooks/useRequestNotificationCounts.js";
 import { PendingRequestContext } from "../context/PendingRequestContext.jsx";
+import Joyride, { STATUS } from "react-joyride";
+// Import Joyride's compiled styles so bundlers like Vite can resolve them
+// See: https://github.com/gilbarbara/react-joyride#styling
+// Use the public "dist" path for Joyride's compiled CSS to avoid the
+// package exports error thrown by bundlers like Vite.
+import "react-joyride/dist/react-joyride-compiled.css";
+import { guideSteps as dashboardSteps } from "../pages/DashboardPage.jsx";
+import { guideSteps as formsSteps } from "../pages/Forms.jsx";
 
 /**
  * A desktop‐style “ERPLayout” with:
@@ -43,6 +51,8 @@ export default function ERPLayout() {
 
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [tourSteps, setTourSteps] = useState([]);
+  const [runTour, setRunTour] = useState(false);
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handler);
@@ -112,6 +122,35 @@ export default function ERPLayout() {
 
   const windowTitle = titleForPath(location.pathname);
 
+  useEffect(() => {
+    const path = location.pathname;
+    let pageKey = "dashboard";
+    if (path.startsWith("/forms")) pageKey = "forms";
+    const stepsMap = { dashboard: dashboardSteps, forms: formsSteps };
+    const steps = stepsMap[pageKey] || [];
+    setTourSteps(steps);
+    const seenKey = `erpGuideSeen-${pageKey}`;
+    setRunTour(!localStorage.getItem(seenKey) && steps.length > 0);
+  }, [location.pathname]);
+
+  const handleTourCallback = ({ status }) => {
+    if ([STATUS.FINISHED, STATUS.SKIPPED].includes(status)) {
+      const path = location.pathname;
+      let pageKey = "dashboard";
+      if (path.startsWith("/forms")) pageKey = "forms";
+      localStorage.setItem(`erpGuideSeen-${pageKey}`, "1");
+      setRunTour(false);
+    }
+  };
+
+  const resetGuide = () => {
+    const path = location.pathname;
+    let pageKey = "dashboard";
+    if (path.startsWith("/forms")) pageKey = "forms";
+    localStorage.removeItem(`erpGuideSeen-${pageKey}`);
+    setRunTour(tourSteps.length > 0);
+  };
+
   const {
     tabs,
     activeKey,
@@ -163,6 +202,15 @@ export default function ERPLayout() {
   return (
     <PendingRequestContext.Provider value={requestNotifications}>
       <div style={styles.container}>
+        <Joyride
+          steps={tourSteps}
+          run={runTour && tourSteps.length > 0}
+          continuous
+          showSkipButton
+          disableOverlayClose
+          disableKeyboardNavigation={false}
+          callback={handleTourCallback}
+        />
         <Header
           user={user}
           onLogout={handleLogout}
@@ -170,6 +218,7 @@ export default function ERPLayout() {
           isMobile={isMobile}
           onToggleSidebar={() => setSidebarOpen((o) => !o)}
           onOpen={handleOpen}
+          onResetGuide={tourSteps.length > 0 ? resetGuide : undefined}
         />
         <div style={styles.body(isMobile)}>
           {isMobile && sidebarOpen && (
@@ -192,7 +241,7 @@ export default function ERPLayout() {
 }
 
 /** Top header bar **/
-function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, onOpen }) {
+function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, onOpen, onResetGuide }) {
   const { session } = useContext(AuthContext);
   const { lang, setLang, t } = useContext(LangContext);
 
@@ -252,7 +301,7 @@ function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, onOpen }) {
           <option value="fr">fr</option>
           <option value="ru">ru</option>
         </select>
-        <UserMenu user={user} onLogout={onLogout} />
+        <UserMenu user={user} onLogout={onLogout} onResetGuide={onResetGuide} />
       </div>
     </header>
   );
