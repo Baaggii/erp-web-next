@@ -4,6 +4,7 @@ import HeaderMenu from "./HeaderMenu.jsx";
 import UserMenu from "./UserMenu.jsx";
 import { useOutlet, useNavigate, useLocation } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext.jsx";
+import LangContext from "../context/I18nContext.jsx";
 import { logout } from "../hooks/useAuth.jsx";
 import { useModules } from "../hooks/useModules.js";
 import { useTxnModules } from "../hooks/useTxnModules.js";
@@ -165,6 +166,7 @@ export default function ERPLayout() {
 /** Top header bar **/
 function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, onOpen }) {
   const { session } = useContext(AuthContext);
+  const { lang, setLang, t } = useContext(LangContext);
 
   return (
     <header className="sticky-header" style={styles.header(isMobile)}>
@@ -186,9 +188,11 @@ function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, onOpen }) {
         <span style={styles.logoText}>MyERP</span>
       </div>
       <nav style={styles.headerNav}>
-        <button style={styles.iconBtn} onClick={onHome}>🗔 Нүүр</button>
-        <button style={styles.iconBtn}>🗗 Цонхнууд</button>
-        <button style={styles.iconBtn}>❔ Тусламж</button>
+        <button style={styles.iconBtn} onClick={onHome}>
+          🗔 {t("home")}
+        </button>
+        <button style={styles.iconBtn}>🗗 {t("windows")}</button>
+        <button style={styles.iconBtn}>❔ {t("help")}</button>
       </nav>
       <HeaderMenu onOpen={onOpen} />
       {session && (
@@ -200,6 +204,21 @@ function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, onOpen }) {
         </span>
       )}
       <div style={styles.userSection}>
+        <select
+          value={lang}
+          onChange={(e) => setLang(e.target.value)}
+          style={{ marginRight: '0.5rem' }}
+        >
+          <option value="en">en</option>
+          <option value="mn">mn</option>
+          <option value="ja">ja</option>
+          <option value="ko">ko</option>
+          <option value="zh">zh</option>
+          <option value="es">es</option>
+          <option value="de">de</option>
+          <option value="fr">fr</option>
+          <option value="ru">ru</option>
+        </select>
         <UserMenu user={user} onLogout={onLogout} />
       </div>
     </header>
