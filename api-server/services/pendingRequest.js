@@ -117,8 +117,8 @@ export async function createRequest({
       }
     }
     const [result] = await conn.query(
-      `INSERT INTO pending_request (company_id, table_name, record_id, emp_id, senior_empid, request_type, request_reason, proposed_data, original_data)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO pending_request (company_id, table_name, record_id, emp_id, senior_empid, request_type, request_reason, proposed_data, original_data, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         companyId,
         tableName,
@@ -129,6 +129,7 @@ export async function createRequest({
         requestReason,
         finalProposed ? JSON.stringify(finalProposed) : null,
         originalData ? JSON.stringify(originalData) : null,
+        normalizedEmp,
       ],
     );
     const requestId = result.insertId;
@@ -146,14 +147,15 @@ export async function createRequest({
     );
     if (senior) {
       await conn.query(
-        `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message)
-         VALUES (?, ?, 'request', ?, ?)`,
+        `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message, created_by)
+         VALUES (?, ?, 'request', ?, ?, ?)`,
         [
           companyId,
-          senior,
-          requestId,
-          `Pending ${requestType} request for ${tableName}#${recordId}`,
-        ],
+            senior,
+            requestId,
+            `Pending ${requestType} request for ${tableName}#${recordId}`,
+            normalizedEmp,
+          ],
       );
     }
     await conn.query('COMMIT');
@@ -375,9 +377,9 @@ export async function respondRequest(
         conn,
       );
       await conn.query(
-        `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message)
-         VALUES (?, ?, 'response', ?, ?)`,
-        [req.company_id, req.emp_id, id, 'Request approved'],
+        `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message, created_by)
+         VALUES (?, ?, 'response', ?, ?, ?)`,
+        [req.company_id, req.emp_id, id, 'Request approved', responseEmpid],
       );
     } else {
       await conn.query(
@@ -397,9 +399,9 @@ export async function respondRequest(
         conn,
       );
       await conn.query(
-        `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message)
-         VALUES (?, ?, 'response', ?, ?)`,
-        [req.company_id, req.emp_id, id, 'Request declined'],
+        `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message, created_by)
+         VALUES (?, ?, 'response', ?, ?, ?)`,
+        [req.company_id, req.emp_id, id, 'Request declined', responseEmpid],
       );
     }
     await conn.query('COMMIT');

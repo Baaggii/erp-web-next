@@ -21,8 +21,8 @@ export async function logUserAction(
       : JSON.stringify(details);
 
   await conn.query(
-    `INSERT INTO user_activity_log (company_id, emp_id, table_name, record_id, action, details, request_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO user_activity_log (company_id, emp_id, table_name, record_id, action, details, request_id, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       company_id,
       emp_id,
@@ -31,6 +31,7 @@ export async function logUserAction(
       action,
       formattedDetails,
       request_id,
-    ],
+        emp_id,
+      ],
   );
 }
