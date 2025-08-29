@@ -11,7 +11,7 @@ export default function FormsPage() {
 
 export const guideSteps = [
   {
-    target: 'body',
+    target: '#new-transaction-button',
     content: i18next.t('guide.newTransaction'),
   },
 ];

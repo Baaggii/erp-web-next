@@ -18,7 +18,6 @@ import useHeaderMappings from "../hooks/useHeaderMappings.js";
 import useRequestNotificationCounts from "../hooks/useRequestNotificationCounts.js";
 import { PendingRequestContext } from "../context/PendingRequestContext.jsx";
 import Joyride, { STATUS } from "react-joyride";
-import "react-joyride/lib/styles.css";
 import { guideSteps as dashboardSteps } from "../pages/DashboardPage.jsx";
 import { guideSteps as formsSteps } from "../pages/Forms.jsx";
 
@@ -123,10 +122,13 @@ export default function ERPLayout() {
     let pageKey = "dashboard";
     if (path.startsWith("/forms")) pageKey = "forms";
     const stepsMap = { dashboard: dashboardSteps, forms: formsSteps };
-    const steps = stepsMap[pageKey] || [];
-    setTourSteps(steps);
+    setTourSteps(stepsMap[pageKey] || []);
     const seenKey = `erpGuideSeen-${pageKey}`;
-    setRunTour(!localStorage.getItem(seenKey) && steps.length > 0);
+    if (!localStorage.getItem(seenKey) && (stepsMap[pageKey] || []).length) {
+      setRunTour(true);
+    } else {
+      setRunTour(false);
+    }
   }, [location.pathname]);
 
   const handleTourCallback = ({ status }) => {
@@ -144,7 +146,7 @@ export default function ERPLayout() {
     let pageKey = "dashboard";
     if (path.startsWith("/forms")) pageKey = "forms";
     localStorage.removeItem(`erpGuideSeen-${pageKey}`);
-    setRunTour(tourSteps.length > 0);
+    setRunTour(true);
   };
 
   const {
@@ -200,7 +202,7 @@ export default function ERPLayout() {
       <div style={styles.container}>
         <Joyride
           steps={tourSteps}
-          run={runTour && tourSteps.length > 0}
+          run={runTour}
           continuous
           showSkipButton
           disableOverlayClose
@@ -214,7 +216,7 @@ export default function ERPLayout() {
           isMobile={isMobile}
           onToggleSidebar={() => setSidebarOpen((o) => !o)}
           onOpen={handleOpen}
-          onResetGuide={tourSteps.length > 0 ? resetGuide : undefined}
+          onResetGuide={resetGuide}
         />
         <div style={styles.body(isMobile)}>
           {isMobile && sidebarOpen && (
