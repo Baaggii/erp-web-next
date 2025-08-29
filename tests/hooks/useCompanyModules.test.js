@@ -88,5 +88,26 @@ if (!haveReact) {
     assert.equal(container.textContent, 'loaded');
     root.unmount();
   });
-}
 
+  test('useCompanyModules filters licenses by companyId', async () => {
+    global.fetch = async () => ({
+      ok: true,
+      json: async () => [
+        { company_id: 0, module_key: 'finance_transactions', licensed: 1 },
+        { company_id: 1, module_key: 'finance_reports', licensed: 1 },
+      ],
+    });
+
+    function TestComponent() {
+      const licensed = useCompanyModules(0);
+      return React.createElement('p', null, licensed ? JSON.stringify(licensed) : '');
+    }
+
+    const { container, root } = render(React.createElement(TestComponent));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    assert.equal(container.textContent, JSON.stringify({ finance_transactions: true }));
+    root.unmount();
+  });
+}
