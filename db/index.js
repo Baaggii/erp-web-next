@@ -839,6 +839,7 @@ export async function populateCompanyModuleLicenses() {
      SELECT c.id AS company_id, m.module_key, 0, NULL
        FROM companies c
        CROSS JOIN modules m
+       WHERE 1
      ON DUPLICATE KEY UPDATE licensed = VALUES(licensed), updated_by = VALUES(created_by), updated_at = NOW()`,
   );
 }
