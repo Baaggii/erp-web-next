@@ -159,6 +159,7 @@ const RowFormModal = function RowFormModal({
   const [previewRow, setPreviewRow] = useState(null);
   const [seedOptions, setSeedOptions] = useState([]);
   const [seedRecordOptions, setSeedRecordOptions] = useState({});
+  const [openSeed, setOpenSeed] = useState({});
 
   useEffect(() => {
     if (useGrid) {
@@ -248,7 +249,7 @@ const RowFormModal = function RowFormModal({
   async function loadSeedRecords(name) {
     setSeedRecordOptions((prev) => ({
       ...prev,
-      [name]: { loading: true, rows: [] },
+      [name]: { loading: true, columns: [], pk: null },
     }));
     try {
       const [rowsRes, colsRes] = await Promise.all([
@@ -263,37 +264,85 @@ const RowFormModal = function RowFormModal({
       const rowsData = await rowsRes.json();
       const cols = await colsRes.json();
       const pk = cols.find((c) => c.key === 'PRI')?.name;
-      const recs = (rowsData.rows || [])
-        .filter((r) => pk && r[pk] !== undefined)
-        .map((r) => ({ id: r[pk] }));
+      const recs = {};
+      (rowsData.rows || []).forEach((r) => {
+        if (pk && r[pk] !== undefined) recs[r[pk]] = r;
+      });
       setSeedRecordOptions((prev) => ({
         ...prev,
-        [name]: { loading: false, rows: recs },
+        [name]: { loading: false, columns: cols.map((c) => c.name), pk },
       }));
       setExtraVals((e) => ({
         ...e,
         seedRecords: {
           ...(e.seedRecords || {}),
-          [name]: recs.map((r) => r.id),
+          [name]: recs,
         },
       }));
     } catch {
       setSeedRecordOptions((prev) => ({
         ...prev,
-        [name]: { loading: false, rows: [] },
+        [name]: { loading: false, columns: [], pk: null },
       }));
     }
   }
 
-  function toggleSeedRecord(tableName, id) {
+  function toggleSeedOpen(name) {
+    setOpenSeed((o) => ({ ...o, [name]: !o[name] }));
+  }
+
+  function handleSeedRecordChange(tableName, id, column, value) {
     setExtraVals((e) => {
-      const map = { ...(e.seedRecords || {}) };
-      const set = new Set(map[tableName] || []);
-      if (set.has(id)) set.delete(id);
-      else set.add(id);
-      map[tableName] = Array.from(set);
-      return { ...e, seedRecords: map };
+      const tables = { ...(e.seedRecords || {}) };
+      const recs = { ...(tables[tableName] || {}) };
+      const row = { ...(recs[id] || {}) };
+      row[column] = value;
+      recs[id] = row;
+      tables[tableName] = recs;
+      return { ...e, seedRecords: tables };
     });
+  }
+
+  function renderSeedTable(name) {
+    const opt = seedRecordOptions[name];
+    if (!opt) return null;
+    const columns = opt.columns || [];
+    const pk = opt.pk;
+    const recs = (extraVals.seedRecords || {})[name] || {};
+    if (Object.keys(recs).length === 0) {
+      return <div className="p-2 text-sm text-gray-500">No records</div>;
+    }
+    return (
+      <div className="p-2 overflow-x-auto">
+        <table className="min-w-full text-sm border">
+          <thead>
+            <tr>
+              {columns.map((c) => (
+                <th key={c} className="border px-1">
+                  {c}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(recs).map(([id, row]) => (
+              <tr key={id}>
+                {columns.map((c) => (
+                  <td key={c} className="border px-1">
+                    <input
+                      className="border px-1 w-full"
+                      value={row[c] ?? ''}
+                      readOnly={c === pk}
+                      onChange={(e) => handleSeedRecordChange(name, id, c, e.target.value)}
+                    />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
   }
 
   function normalizeDateInput(value, format) {
@@ -776,8 +825,17 @@ const RowFormModal = function RowFormModal({
         let anySuccess = false;
         for (let i = 0; i < cleanedRows.length; i++) {
           const r = cleanedRows[i];
+          const extra = { ...extraVals };
+          if (extra.seedRecords && extra.seedTables) {
+            const set = new Set(extra.seedTables);
+            const filtered = {};
+            Object.entries(extra.seedRecords).forEach(([t, recs]) => {
+              if (set.has(t)) filtered[t] = recs;
+            });
+            extra.seedRecords = filtered;
+          }
           try {
-            const res = await Promise.resolve(onSubmit(r));
+            const res = await Promise.resolve(onSubmit({ ...extra, ...r }));
             if (res === false) {
               failedRows.push(rows[rowIndices[i]]);
             } else {
@@ -812,8 +870,17 @@ const RowFormModal = function RowFormModal({
     });
     setErrors(errs);
     if (Object.keys(errs).length === 0) {
+      const merged = { ...extraVals, ...formVals };
+      if (merged.seedRecords && merged.seedTables) {
+        const set = new Set(merged.seedTables);
+        const filtered = {};
+        Object.entries(merged.seedRecords).forEach(([t, recs]) => {
+          if (set.has(t)) filtered[t] = recs;
+        });
+        merged.seedRecords = filtered;
+      }
       const normalized = {};
-      Object.entries({ ...extraVals, ...formVals }).forEach(([k, v]) => {
+      Object.entries(merged).forEach(([k, v]) => {
         let val = normalizeDateInput(v, placeholders[k]);
         if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
           val = normalizeNumberInput(val);
@@ -1336,36 +1403,31 @@ const RowFormModal = function RowFormModal({
             <h3 className="font-semibold mb-2">Seed Tables</h3>
             <div className="space-y-2">
               {seedOptions.map((t) => (
-                <div key={t.tableName}>
-                  <label className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      checked={(extraVals.seedTables || []).includes(t.tableName)}
-                      onChange={() => toggleSeedTable(t.tableName)}
-                    />
-                    <span>{t.tableName}</span>
-                  </label>
-                  {seedRecordOptions[t.tableName]?.loading ? (
-                    <div className="pl-6 text-sm text-gray-500">Loading...</div>
-                  ) : seedRecordOptions[t.tableName]?.rows.length ? (
-                    <div className="pl-6 mt-1 space-y-1">
-                      {seedRecordOptions[t.tableName].rows.map((r) => (
-                        <label key={r.id} className="flex items-center space-x-2">
-                          <input
-                            type="checkbox"
-                            checked={
-                              ((extraVals.seedRecords || {})[t.tableName] || []).includes(
-                                r.id,
-                              )
-                            }
-                            onChange={() => toggleSeedRecord(t.tableName, r.id)}
-                          />
-                          <span>{String(r.id)}</span>
-                        </label>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="pl-6 text-sm text-gray-500">No records</div>
+                <div key={t.tableName} className="border rounded">
+                  <button
+                    type="button"
+                    onClick={() => toggleSeedOpen(t.tableName)}
+                    className="w-full flex items-center justify-between p-2 bg-gray-100"
+                  >
+                    <label
+                      className="flex items-center space-x-2"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={(extraVals.seedTables || []).includes(t.tableName)}
+                        onChange={() => toggleSeedTable(t.tableName)}
+                      />
+                      <span>{t.tableName}</span>
+                    </label>
+                    <span>{openSeed[t.tableName] ? '▾' : '▸'}</span>
+                  </button>
+                  {openSeed[t.tableName] && (
+                    seedRecordOptions[t.tableName]?.loading ? (
+                      <div className="p-2 text-sm text-gray-500">Loading...</div>
+                    ) : (
+                      renderSeedTable(t.tableName)
+                    )
                   )}
                 </div>
               ))}
