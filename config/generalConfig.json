@@ -22,14 +22,14 @@
     "reportRowToastEnabled": false,
     "imageToastEnabled": false,
     "debugLoggingEnabled": false,
-    "editLabelsEnabled": false,
+    "editLabelsEnabled": true,
     "showReportParams": false,
     "requestPollingEnabled": false,
     "requestPollingIntervalSeconds": 30,
     "procLabels": {},
     "procFieldLabels": {},
-    "reportProcPrefix": "",
-    "reportViewPrefix": "",
+    "reportProcPrefix": "dynrep_",
+    "reportViewPrefix": "dynview_",
     "imageDir": "txn_images"
   },
   "images": {

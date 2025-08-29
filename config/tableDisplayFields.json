@@ -42,5 +42,26 @@
       "pm_unit_id",
       "manufacturer_id"
     ]
+  },
+  "user_levels": {
+    "idField": "userlevel_id",
+    "displayFields": [
+      "name",
+      "Description"
+    ]
+  },
+  "companies": {
+    "idField": "id",
+    "displayFields": [
+      "name",
+      "company_id"
+    ]
+  },
+  "code_branches": {
+    "idField": "branch_id",
+    "displayFields": [
+      "name",
+      "company_id"
+    ]
   }
 }
