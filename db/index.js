@@ -1463,7 +1463,12 @@ export async function insertTableRow(
   return { id: result.insertId };
 }
 
-export async function deleteTableRow(tableName, id, conn = pool) {
+export async function deleteTableRow(
+  tableName,
+  id,
+  conn = pool,
+  userId = null,
+) {
   if (tableName === 'company_module_licenses') {
     const [companyId, moduleKey] = String(id).split('-');
     await conn.query(
@@ -1491,12 +1496,16 @@ export async function deleteTableRow(tableName, id, conn = pool) {
   }
 
   const softCol = await getSoftDeleteColumn(tableName);
+  const now = formatDateForDb(new Date());
 
   if (pkCols.length === 1) {
     const col = pkCols[0];
     const where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
     if (softCol) {
-      await conn.query(`UPDATE ?? SET \`${softCol}\` = 1 WHERE ${where}`, [tableName, id]);
+      await conn.query(
+        `UPDATE ?? SET \`${softCol}\` = 1, \`deleted_by\` = ?, \`deleted_at\` = ? WHERE ${where}`,
+        [tableName, userId, now, id],
+      );
     } else {
       await conn.query(`DELETE FROM ?? WHERE ${where}`, [tableName, id]);
     }
@@ -1506,7 +1515,10 @@ export async function deleteTableRow(tableName, id, conn = pool) {
   const parts = String(id).split('-');
   const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
   if (softCol) {
-    await conn.query(`UPDATE ?? SET \`${softCol}\` = 1 WHERE ${where}`, [tableName, ...parts]);
+    await conn.query(
+      `UPDATE ?? SET \`${softCol}\` = 1, \`deleted_by\` = ?, \`deleted_at\` = ? WHERE ${where}`,
+      [tableName, userId, now, ...parts],
+    );
   } else {
     await conn.query(`DELETE FROM ?? WHERE ${where}`, [tableName, ...parts]);
   }

@@ -73,11 +73,17 @@ test('deleteTableRow uses soft delete column when configured', async () => {
       return [[{ COLUMN_NAME: 'id' }, { COLUMN_NAME: 'is_deleted' }]];
     }
     called = true;
-    assert.equal(sql, 'UPDATE ?? SET `is_deleted` = 1 WHERE id = ?');
-    assert.deepEqual(params, ['softdelete', '5']);
+    assert.equal(
+      sql,
+      'UPDATE ?? SET `is_deleted` = 1, `deleted_by` = ?, `deleted_at` = ? WHERE id = ?',
+    );
+    assert.equal(params[0], 'softdelete');
+    assert.equal(params[1], 'EMP1');
+    assert.match(params[2], /^\d{4}-\d{2}-\d{2} /);
+    assert.equal(params[3], '5');
     return [{}];
   };
-  await db.deleteTableRow('softdelete', '5');
+  await db.deleteTableRow('softdelete', '5', undefined, 'EMP1');
   db.pool.query = original;
   assert.ok(called);
 });
