@@ -32,7 +32,8 @@
     "socket.io": "^4.7.5",
     "socket.io-client": "^4.7.5",
     "xlsx": "^0.18.5",
-    "jspdf": "^2.5.2"
+    "jspdf": "^2.5.2",
+    "react-joyride": "^2.9.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.0.0",
