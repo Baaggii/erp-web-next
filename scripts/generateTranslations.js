@@ -1,9 +1,14 @@
+import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
+import OpenAI from 'openai';
 
 const languages = ['mn','en','ja','ko','zh','es','de','fr','ru'];
 const headerMappingsPath = path.resolve('config/headerMappings.json');
 const localesDir = path.resolve('src/erp.mgt.mn/locales');
+
+const openai =
+  process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
 async function translate(text, to, from = 'mn') {
   const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${from}&tl=${to}&dt=t&q=${encodeURIComponent(text)}`;
@@ -13,8 +18,33 @@ async function translate(text, to, from = 'mn') {
     const data = await res.json();
     return data[0].map((t) => t[0]).join('');
   } catch (e) {
-    console.warn(`Translation service unavailable for ${to}, using source text`);
-    return text;
+    console.warn(`Google translation failed (${from} -> ${to}) for "${text}": ${e.message}`);
+
+    if (openai) {
+      try {
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: `You are a translation engine. Translate the user text from ${from} to ${to}. Return only the translation.`,
+            },
+            { role: 'user', content: text },
+          ],
+        });
+        const translation = completion.choices?.[0]?.message?.content?.trim();
+        if (!translation) throw new Error('Empty translation from OpenAI');
+        return translation;
+      } catch (e2) {
+        console.warn(
+          `OpenAI translation failed (${from} -> ${to}) for "${text}": ${e2.message}, using source text`
+        );
+        return text;
+      }
+    } else {
+      console.warn('OpenAI API key missing; using source text');
+      return text;
+    }
   }
 }
 
