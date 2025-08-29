@@ -835,11 +835,10 @@ export async function populateDefaultModules() {
 
 export async function populateCompanyModuleLicenses() {
   await pool.query(
-    `INSERT INTO company_module_licenses (company_id, module_key, licensed, created_by)
+    `INSERT IGNORE INTO company_module_licenses (company_id, module_key, licensed, created_by)
      SELECT c.id AS company_id, m.module_key, 0, NULL
        FROM companies c
-       CROSS JOIN modules m
-     ON DUPLICATE KEY UPDATE licensed = VALUES(licensed), updated_by = VALUES(created_by), updated_at = NOW()`,
+       CROSS JOIN modules m`,
   );
 }
 
