@@ -18,7 +18,7 @@ export async function getSettings(req, res, next) {
 
 export async function updateSettings(req, res, next) {
   try {
-    const updated = await dbUpdateSettings(req.body);
+    const updated = await dbUpdateSettings(req.body, req.user.empid);
     res.json(updated);
   } catch (err) {
     next(err);

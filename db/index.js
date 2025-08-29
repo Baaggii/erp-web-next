@@ -711,11 +711,14 @@ export async function getSettings() {
 /**
  * Update application settings
  */
-export async function updateSettings(updates) {
+export async function updateSettings(updates, updatedBy) {
   const keys = Object.keys(updates);
   const values = Object.values(updates);
   const setClause = keys.map((k) => `\`${k}\` = ?`).join(", ");
-  await pool.query(`UPDATE settings SET ${setClause}`, values);
+  await pool.query(
+    `UPDATE settings SET ${setClause}, updated_by = ?, updated_at = NOW()`,
+    [...values, updatedBy],
+  );
   return getSettings();
 }
 
