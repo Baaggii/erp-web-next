@@ -23,7 +23,9 @@ export default function FormsManagement() {
   const modules = useModules();
   const procMap = useHeaderMappings(procedureOptions);
   function getProcLabel(name) {
-    return generalConfig.general?.procLabels?.[name] || procMap[name] || name;
+    return (
+      generalConfig.general?.procLabels?.[name]?.mn || procMap[name] || name
+    );
   }
   useEffect(() => {
     debugLog('Component mounted: FormsManagement');
