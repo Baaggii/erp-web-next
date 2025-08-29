@@ -72,3 +72,30 @@ test('saveGeneralConfig allows update with user-level permission', async () => {
   await saveGeneralConfig(req, res, () => {});
   assert.deepEqual(res.body, { general: { aiApiEnabled: true } });
 });
+
+test('fetchGeneralConfig forbids system admin', async () => {
+  const req = {
+    user: { empid: 1, companyId: 0 },
+    session: { permissions: { system_settings: 1 }, company_id: 0 },
+    getGeneralConfig: async () => {
+      throw new Error('should not fetch');
+    },
+  };
+  const res = createRes();
+  await fetchGeneralConfig(req, res, () => {});
+  assert.equal(res.code, 403);
+});
+
+test('saveGeneralConfig forbids system admin', async () => {
+  const req = {
+    user: { empid: 1, companyId: 0 },
+    body: { general: { aiApiEnabled: true } },
+    session: { permissions: { system_settings: 1 }, company_id: 0 },
+    updateGeneralConfig: async () => {
+      throw new Error('should not update');
+    },
+  };
+  const res = createRes();
+  await saveGeneralConfig(req, res, () => {});
+  assert.equal(res.code, 403);
+});

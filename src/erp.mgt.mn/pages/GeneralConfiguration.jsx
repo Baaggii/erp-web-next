@@ -12,8 +12,9 @@ export default function GeneralConfiguration() {
   const { addToast } = useToast();
   const { session, permissions } = useContext(AuthContext);
   const hasAdmin =
-    permissions?.permissions?.system_settings ||
-    session?.permissions?.system_settings;
+    (permissions?.permissions?.system_settings ||
+      session?.permissions?.system_settings) &&
+    session?.company_id !== 0;
   if (!hasAdmin) {
     return <Navigate to="/" replace />;
   }
