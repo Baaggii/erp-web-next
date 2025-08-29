@@ -10,7 +10,7 @@ export default function RolePermissions() {
   function loadPerms(positionId) {
     const params = [];
     if (positionId) params.push(`positionId=${encodeURIComponent(positionId)}`);
-    if (company) params.push(`companyId=${encodeURIComponent(company)}`);
+    if (company != null) params.push(`companyId=${encodeURIComponent(company)}`);
     const url = params.length ? `/api/role_permissions?${params.join("&")}` : "/api/role_permissions";
     fetch(url, { credentials: "include" })
       .then((res) => {
