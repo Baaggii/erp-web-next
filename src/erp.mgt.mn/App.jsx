@@ -5,6 +5,7 @@ import { TabProvider } from './context/TabContext.jsx';
 import { TxnSessionProvider } from './context/TxnSessionContext.jsx';
 import { ToastProvider } from './context/ToastContext.jsx';
 import { LoadingProvider } from './context/LoadingContext.jsx';
+import { LangProvider } from './context/LangContext.jsx';
 import { debugLog } from './utils/debug.js';
 import RequireAuth from './components/RequireAuth.jsx';
 import ERPLayout from './components/ERPLayout.jsx';
@@ -48,24 +49,26 @@ export default function App() {
   }, []);
 
   return (
-    <ToastProvider>
-      <AuthContextProvider>
-        <TxnSessionProvider>
-          <LoadingProvider>
-            <TabProvider>
-              <HashRouter>
-                <Routes>
-                  <Route path="/login" element={<LoginPage />} />
-                  <Route element={<RequireAuth />}>
-                    <Route path="/*" element={<AuthedApp />} />
-                  </Route>
-                </Routes>
-              </HashRouter>
-            </TabProvider>
-          </LoadingProvider>
-        </TxnSessionProvider>
-      </AuthContextProvider>
-    </ToastProvider>
+    <LangProvider>
+      <ToastProvider>
+        <AuthContextProvider>
+          <TxnSessionProvider>
+            <LoadingProvider>
+              <TabProvider>
+                <HashRouter>
+                  <Routes>
+                    <Route path="/login" element={<LoginPage />} />
+                    <Route element={<RequireAuth />}>
+                      <Route path="/*" element={<AuthedApp />} />
+                    </Route>
+                  </Routes>
+                </HashRouter>
+              </TabProvider>
+            </LoadingProvider>
+          </TxnSessionProvider>
+        </AuthContextProvider>
+      </ToastProvider>
+    </LangProvider>
   );
 }
 

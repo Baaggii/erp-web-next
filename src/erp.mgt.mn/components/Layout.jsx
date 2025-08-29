@@ -3,6 +3,7 @@ import React, { useContext, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { logout } from '../hooks/useAuth.jsx';
+import { LangContext } from '../context/LangContext.jsx';
 
 /**
  * A desktop‐style “ERPLayout” with:
@@ -52,6 +53,8 @@ export default function ERPLayout() {
 
 /** Top header bar **/
 function Header({ user, onLogout }) {
+  const { lang, setLang, t } = useContext(LangContext);
+
   return (
     <header style={styles.header}>
       <div style={styles.logoSection}>
@@ -63,17 +66,32 @@ function Header({ user, onLogout }) {
         <span style={styles.logoText}>MyERP</span>
       </div>
       <nav style={styles.headerNav}>
-        <button style={styles.iconBtn}>🗔 Home</button>
-        <button style={styles.iconBtn}>🗗 Windows</button>
-        <button style={styles.iconBtn}>❔ Help</button>
+        <button style={styles.iconBtn}>🗔 {t('home')}</button>
+        <button style={styles.iconBtn}>🗗 {t('windows')}</button>
+        <button style={styles.iconBtn}>❔ {t('help')}</button>
       </nav>
       <div style={styles.userSection}>
+        <select
+          value={lang}
+          onChange={(e) => setLang(e.target.value)}
+          style={{ marginRight: '0.5rem' }}
+        >
+          <option value="en">en</option>
+          <option value="mn">mn</option>
+          <option value="ja">ja</option>
+          <option value="ko">ko</option>
+          <option value="zh">zh</option>
+          <option value="es">es</option>
+          <option value="de">de</option>
+          <option value="fr">fr</option>
+          <option value="ru">ru</option>
+        </select>
         <span style={{ marginRight: '0.5rem' }}>
-          {user ? `Welcome, ${user.empid}` : ''}
+          {user ? `${t('welcome')}, ${user.empid}` : ''}
         </span>
         {user && (
           <button style={styles.logoutBtn} onClick={onLogout}>
-            Logout
+            {t('logout')}
           </button>
         )}
       </div>
@@ -84,6 +102,7 @@ function Header({ user, onLogout }) {
 /** Left sidebar with “menu groups” and “pinned items” **/
 function Sidebar() {
   const { session, permissions } = useContext(AuthContext);
+  const { t } = useContext(LangContext);
   const hasAdmin =
     permissions?.permissions?.system_settings ||
     session?.permissions?.system_settings;
@@ -92,43 +111,43 @@ function Sidebar() {
   return (
     <aside className="sidebar menu-container" style={styles.sidebar}>
       <div className="menu-group" style={styles.menuGroup}>
-        <div style={styles.groupTitle}>📌 Pinned</div>
+        <div style={styles.groupTitle}>📌 {t('pinned')}</div>
         <NavLink to="/" className="menu-item" style={styles.menuItem}>
-          Dashboard
+          {t('dashboard')}
         </NavLink>
         <NavLink to="/forms" className="menu-item" style={styles.menuItem}>
-          Forms
+          {t('forms')}
         </NavLink>
         <NavLink to="/reports" className="menu-item" style={styles.menuItem}>
-          Reports
+          {t('reports')}
         </NavLink>
       </div>
 
       <hr style={styles.divider} />
 
       <div className="menu-group" style={styles.menuGroup}>
-        <div style={styles.groupTitle}>⚙ Settings</div>
+        <div style={styles.groupTitle}>⚙ {t('settings')}</div>
         <NavLink to="/settings" className="menu-item" style={styles.menuItem} end>
-          General
+          {t('general')}
         </NavLink>
         {hasAdmin && (
           <>
             <NavLink to="/settings/users" className="menu-item" style={styles.menuItem}>
-              Users
+              {t('users')}
             </NavLink>
             <NavLink to="/settings/user-companies" className="menu-item" style={styles.menuItem}>
-              User Companies
+              {t('userCompanies')}
             </NavLink>
             <NavLink to="/settings/role-permissions" className="menu-item" style={styles.menuItem}>
-              Role Permissions
+              {t('rolePermissions')}
             </NavLink>
             <NavLink to="/settings/modules" className="menu-item" style={styles.menuItem}>
-              Modules
+              {t('modules')}
             </NavLink>
           </>
         )}
         <NavLink to="/settings/change-password" className="menu-item" style={styles.menuItem}>
-          Change Password
+          {t('changePassword')}
         </NavLink>
       </div>
     </aside>
