@@ -78,7 +78,7 @@ export async function updateTenantTable(req, res, next) {
 export async function resetSharedTenantKeys(req, res, next) {
   try {
     if (!(await ensureAdmin(req))) return res.sendStatus(403);
-    await zeroSharedTenantKeys();
+    await zeroSharedTenantKeys(req.user.empid);
     res.sendStatus(204);
   } catch (err) {
     next(err);
@@ -88,7 +88,7 @@ export async function resetSharedTenantKeys(req, res, next) {
 export async function seedDefaults(req, res, next) {
   try {
     if (!(await ensureAdmin(req))) return res.sendStatus(403);
-    await seedDefaultsForSeedTables();
+    await seedDefaultsForSeedTables(req.user.empid);
     res.sendStatus(204);
   } catch (err) {
     next(err);

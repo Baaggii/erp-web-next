@@ -1133,15 +1133,22 @@ export async function seedTenantTables(
   );
 }
 
-export async function seedDefaultsForSeedTables() {
+export async function seedDefaultsForSeedTables(userId) {
   const [rows] = await pool.query(
     `SELECT table_name FROM tenant_tables WHERE seed_on_create = 1`,
   );
   for (const { table_name } of rows) {
-    await pool.query(`UPDATE ?? SET company_id = ?`, [
-      table_name,
-      GLOBAL_COMPANY_ID,
-    ]);
+    const cols = await getTableColumnsSafe(table_name);
+    const sets = ["company_id = ?"];
+    const params = [table_name, GLOBAL_COMPANY_ID];
+    if (cols.some((c) => c.toLowerCase() === "updated_by")) {
+      sets.push("updated_by = ?");
+      params.push(userId);
+    }
+    if (cols.some((c) => c.toLowerCase() === "updated_at")) {
+      sets.push("updated_at = NOW()");
+    }
+    await pool.query(`UPDATE ?? SET ${sets.join(", ")}`, params);
   }
 }
 
@@ -1155,17 +1162,23 @@ export async function seedSeedTablesForCompanies() {
   }
 }
 
-export async function zeroSharedTenantKeys() {
+export async function zeroSharedTenantKeys(userId) {
   const [rows] = await pool.query(
     `SELECT table_name FROM tenant_tables WHERE is_shared = 1`,
   );
   for (const { table_name } of rows) {
     const cols = await getTableColumnsSafe(table_name);
     if (cols.some((c) => c.toLowerCase() === "company_id")) {
-      await pool.query(`UPDATE ?? SET company_id = ?`, [
-        table_name,
-        GLOBAL_COMPANY_ID,
-      ]);
+      const sets = ["company_id = ?"];
+      const params = [table_name, GLOBAL_COMPANY_ID];
+      if (cols.some((c) => c.toLowerCase() === "updated_by")) {
+        sets.push("updated_by = ?");
+        params.push(userId);
+      }
+      if (cols.some((c) => c.toLowerCase() === "updated_at")) {
+        sets.push("updated_at = NOW()");
+      }
+      await pool.query(`UPDATE ?? SET ${sets.join(", ")}`, params);
     }
   }
 }
