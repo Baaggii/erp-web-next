@@ -151,6 +151,7 @@ INSERT INTO modules (module_key, label, parent_key, show_in_sidebar, show_in_hea
   ('ai_inventory', 'AI Inventory Review', NULL, 1, 0),
   ('ai-inventory', 'ai-inventory', NULL, 1, 0),
   ('change_password', 'Нууц үг солих', 'settings', 1, 0),
+  ('edit_translations', 'Edit Translations', 'settings', 1, 0),
   ('coding_tables', 'Кодын хүснэгтүүд', 'developer', 1, 0),
   ('company_licenses', 'Лиценз', 'system_configurations', 1, 0),
   ('dashboard', 'Самбар', NULL, 1, 0),

@@ -3,6 +3,7 @@ export default [
   { moduleKey: 'ai_inventory', label: 'AI Inventory Review', parentKey: null, showInSidebar: true, showInHeader: false },
   { moduleKey: 'ai-inventory', label: 'ai-inventory', parentKey: null, showInSidebar: true, showInHeader: false },
   { moduleKey: 'change_password', label: 'Нууц үг солих', parentKey: 'settings', showInSidebar: true, showInHeader: false },
+  { moduleKey: 'edit_translations', label: 'Edit Translations', parentKey: 'settings', showInSidebar: true, showInHeader: false },
   { moduleKey: 'coding_tables', label: 'Кодын хүснэгтүүд', parentKey: 'developer', showInSidebar: true, showInHeader: false },
   { moduleKey: 'company_licenses', label: 'Лиценз', parentKey: 'system_configurations', showInSidebar: true, showInHeader: false },
   { moduleKey: 'dashboard', label: 'Самбар', parentKey: null, showInSidebar: true, showInHeader: false },

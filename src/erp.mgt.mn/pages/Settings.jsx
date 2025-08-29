@@ -48,7 +48,7 @@ export function GeneralSettings() {
         <Link to="/settings/tenant-tables-registry">Tenant Tables Registry</Link>
       </p>
       <p style={{ marginTop: '0.5rem' }}>
-        <Link to="/settings/translations">Edit Translations</Link>
+        <Link to="/settings/edit-translations">Edit Translations</Link>
       </p>
     </div>
   );
