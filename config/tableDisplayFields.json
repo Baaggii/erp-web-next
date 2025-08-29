@@ -4,7 +4,11 @@
     "displayFields": [
       "emp_fname",
       "emp_lname"
-    ]
+    ],
+    "tooltips": {
+      "emp_fname": "tooltip.firstName",
+      "emp_lname": "tooltip.lastName"
+    }
   },
   "code_department": {
     "idField": "department_id",

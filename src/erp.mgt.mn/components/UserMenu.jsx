@@ -2,7 +2,7 @@ import React, { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 
-export default function UserMenu({ user, onLogout }) {
+export default function UserMenu({ user, onLogout, onResetGuide }) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const { session } = useContext(AuthContext);
@@ -32,6 +32,15 @@ export default function UserMenu({ user, onLogout }) {
         <div style={styles.menu}>
           <button style={styles.menuItem} onClick={handleChangePassword}>
             Нууц үг солих
+          </button>
+          <button
+            style={styles.menuItem}
+            onClick={() => {
+              setOpen(false);
+              onResetGuide && onResetGuide();
+            }}
+          >
+            Show page guide
           </button>
           <button style={styles.menuItem} onClick={handleLogout}>Гарах</button>
         </div>
