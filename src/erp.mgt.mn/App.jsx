@@ -42,6 +42,7 @@ import { useTxnModules } from './hooks/useTxnModules.js';
 import useGeneralConfig from './hooks/useGeneralConfig.js';
 import TabbedWindows from './components/TabbedWindows.jsx';
 import TenantTablesRegistryPage from './pages/TenantTablesRegistry.jsx';
+import TranslationEditorPage from './pages/TranslationEditor.jsx';
 
 export default function App() {
   useEffect(() => {
@@ -164,6 +165,7 @@ function AuthedApp() {
       <Route path="/" element={<ERPLayout />}>
         <Route path="requests" element={<RequestsPage />} />
         {roots.map(renderRoute)}
+        <Route path="settings/translations" element={<TranslationEditorPage />} />
       </Route>
       <Route
         path="inventory-demo"
