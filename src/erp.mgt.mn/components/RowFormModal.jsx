@@ -158,6 +158,7 @@ const RowFormModal = function RowFormModal({
   const [zoom, setZoom] = useState(1);
   const [previewRow, setPreviewRow] = useState(null);
   const [seedOptions, setSeedOptions] = useState([]);
+  const [seedRecordOptions, setSeedRecordOptions] = useState({});
 
   useEffect(() => {
     if (useGrid) {
@@ -230,6 +231,7 @@ const RowFormModal = function RowFormModal({
           ...e,
           seedTables: opts.map((o) => o.tableName),
         }));
+        opts.forEach((o) => loadSeedRecords(o.tableName));
       })
       .catch(() => {});
   }, [table, row]);
@@ -240,6 +242,57 @@ const RowFormModal = function RowFormModal({
       if (set.has(name)) set.delete(name);
       else set.add(name);
       return { ...e, seedTables: Array.from(set) };
+    });
+  }
+
+  async function loadSeedRecords(name) {
+    setSeedRecordOptions((prev) => ({
+      ...prev,
+      [name]: { loading: true, rows: [] },
+    }));
+    try {
+      const [rowsRes, colsRes] = await Promise.all([
+        fetch(`/api/tables/${encodeURIComponent(name)}?company_id=0&perPage=500`, {
+          credentials: 'include',
+        }),
+        fetch(`/api/tables/${encodeURIComponent(name)}/columns`, {
+          credentials: 'include',
+        }),
+      ]);
+      if (!rowsRes.ok || !colsRes.ok) throw new Error('Failed to load');
+      const rowsData = await rowsRes.json();
+      const cols = await colsRes.json();
+      const pk = cols.find((c) => c.key === 'PRI')?.name;
+      const recs = (rowsData.rows || [])
+        .filter((r) => pk && r[pk] !== undefined)
+        .map((r) => ({ id: r[pk] }));
+      setSeedRecordOptions((prev) => ({
+        ...prev,
+        [name]: { loading: false, rows: recs },
+      }));
+      setExtraVals((e) => ({
+        ...e,
+        seedRecords: {
+          ...(e.seedRecords || {}),
+          [name]: recs.map((r) => r.id),
+        },
+      }));
+    } catch {
+      setSeedRecordOptions((prev) => ({
+        ...prev,
+        [name]: { loading: false, rows: [] },
+      }));
+    }
+  }
+
+  function toggleSeedRecord(tableName, id) {
+    setExtraVals((e) => {
+      const map = { ...(e.seedRecords || {}) };
+      const set = new Set(map[tableName] || []);
+      if (set.has(id)) set.delete(id);
+      else set.add(id);
+      map[tableName] = Array.from(set);
+      return { ...e, seedRecords: map };
     });
   }
 
@@ -1281,16 +1334,40 @@ const RowFormModal = function RowFormModal({
         {table === 'companies' && !row && seedOptions.length > 0 && (
           <div className="mt-4">
             <h3 className="font-semibold mb-2">Seed Tables</h3>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-2">
               {seedOptions.map((t) => (
-                <label key={t.tableName} className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={(extraVals.seedTables || []).includes(t.tableName)}
-                    onChange={() => toggleSeedTable(t.tableName)}
-                  />
-                  <span>{t.tableName}</span>
-                </label>
+                <div key={t.tableName}>
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={(extraVals.seedTables || []).includes(t.tableName)}
+                      onChange={() => toggleSeedTable(t.tableName)}
+                    />
+                    <span>{t.tableName}</span>
+                  </label>
+                  {seedRecordOptions[t.tableName]?.loading ? (
+                    <div className="pl-6 text-sm text-gray-500">Loading...</div>
+                  ) : seedRecordOptions[t.tableName]?.rows.length ? (
+                    <div className="pl-6 mt-1 space-y-1">
+                      {seedRecordOptions[t.tableName].rows.map((r) => (
+                        <label key={r.id} className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            checked={
+                              ((extraVals.seedRecords || {})[t.tableName] || []).includes(
+                                r.id,
+                              )
+                            }
+                            onChange={() => toggleSeedRecord(t.tableName, r.id)}
+                          />
+                          <span>{String(r.id)}</span>
+                        </label>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="pl-6 text-sm text-gray-500">No records</div>
+                  )}
+                </div>
               ))}
             </div>
           </div>
