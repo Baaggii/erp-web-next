@@ -18,9 +18,7 @@ import useHeaderMappings from "../hooks/useHeaderMappings.js";
 import useRequestNotificationCounts from "../hooks/useRequestNotificationCounts.js";
 import { PendingRequestContext } from "../context/PendingRequestContext.jsx";
 import Joyride, { STATUS } from "react-joyride";
-// Import Joyride's compiled styles so bundlers like Vite can resolve them
-// See: https://github.com/gilbarbara/react-joyride#styling
-import "react-joyride/lib/react-joyride-compiled.css";
+import "react-joyride/lib/styles.css";
 import { guideSteps as dashboardSteps } from "../pages/DashboardPage.jsx";
 import { guideSteps as formsSteps } from "../pages/Forms.jsx";
 
