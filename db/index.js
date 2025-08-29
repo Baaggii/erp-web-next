@@ -1124,12 +1124,12 @@ export async function seedTenantTables(
   }
 
   await pool.query(
-    `INSERT INTO user_level_permissions (company_id, userlevel_id, action, action_key)
-     SELECT ?, userlevel_id, action, action_key
+    `INSERT INTO user_level_permissions (company_id, userlevel_id, action, action_key, created_by, created_at)
+     SELECT ?, userlevel_id, action, action_key, ?, NOW()
        FROM user_level_permissions
        WHERE company_id = ${GLOBAL_COMPANY_ID}
      ON DUPLICATE KEY UPDATE action = VALUES(action)`,
-    [companyId],
+    [companyId, createdBy],
   );
 }
 
@@ -1152,13 +1152,13 @@ export async function seedDefaultsForSeedTables(userId) {
   }
 }
 
-export async function seedSeedTablesForCompanies() {
+export async function seedSeedTablesForCompanies(userId = null) {
   const [companies] = await pool.query(
     `SELECT id FROM companies WHERE id > ?`,
     [GLOBAL_COMPANY_ID],
   );
   for (const { id } of companies) {
-    await seedTenantTables(id);
+    await seedTenantTables(id, null, {}, false, userId);
   }
 }
 
