@@ -29,5 +29,12 @@
   "low_stock": "Low Stock",
   "new_orders": "New Orders",
   "no_activity": "No activity to display.",
-  "plans_coming_soon": "Plans content coming soon."
+  "plans_coming_soon": "Plans content coming soon.",
+  "settings_enable_tooltips": "Enable tooltips",
+  "tooltip": {
+    "organization": "Select organization",
+    "date": "Transaction date",
+    "firstName": "First name",
+    "lastName": "Last name"
+  }
 }

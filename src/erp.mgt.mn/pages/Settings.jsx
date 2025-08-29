@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { Outlet, Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 export default function SettingsPage() {
   // Just render the nested route content. The left sidebar already
@@ -22,6 +23,11 @@ export function GeneralSettings() {
     return <p>Хандалт хориглолоо.</p>;
   }
   const [settings, setSettings] = useState(null);
+  const { t } = useTranslation();
+  const [tooltipsEnabled, setTooltipsEnabled] = useState(() => {
+    const val = localStorage.getItem('tooltipsEnabled');
+    return val !== 'false';
+  });
 
   useEffect(() => {
     fetch('/api/settings', { credentials: 'include' })
@@ -41,6 +47,20 @@ export function GeneralSettings() {
       ) : (
         <p>Тохиргоо ачааллаж байна…</p>
       )}
+      <div style={{ marginTop: '1rem' }}>
+        <label>
+          <input
+            type="checkbox"
+            checked={tooltipsEnabled}
+            onChange={(e) => {
+              const v = e.target.checked;
+              setTooltipsEnabled(v);
+              localStorage.setItem('tooltipsEnabled', String(v));
+            }}
+          />{' '}
+          {t('settings_enable_tooltips')}
+        </label>
+      </div>
       <p style={{ marginTop: '1rem' }}>
         <Link to="/settings/role-permissions">Эрхийн тохиргоо засах</Link>
       </p>

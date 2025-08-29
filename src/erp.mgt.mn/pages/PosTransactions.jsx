@@ -997,6 +997,7 @@ export default function PosTransactionsPage() {
                       disabledFields={disabled}
                       requiredFields={fc.requiredFields || []}
                       labels={labels}
+                      tooltips={fc.tooltips || {}}
                       row={values[t.table]}
                       rows={t.type === 'multi' ? values[t.table] : undefined}
                       headerFields={headerFields}

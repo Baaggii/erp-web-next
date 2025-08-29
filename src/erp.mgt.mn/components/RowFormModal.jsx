@@ -3,6 +3,8 @@ import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import Modal from './Modal.jsx';
 import InlineTransactionTable from './InlineTransactionTable.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
+import TooltipWrapper from './TooltipWrapper.jsx';
+import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
@@ -55,6 +57,7 @@ const RowFormModal = function RowFormModal({
   viewColumns = {},
   procTriggers = {},
   autoFillSession = true,
+  tooltips = {},
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -63,6 +66,7 @@ const RowFormModal = function RowFormModal({
   const generalConfig = useGeneralConfig();
   const cfg = generalConfig[scope] || {};
   const general = generalConfig.general || {};
+  const { t } = useTranslation();
   labelFontSize = labelFontSize ?? cfg.labelFontSize ?? 14;
   boxWidth = boxWidth ?? cfg.boxWidth ?? 60;
   boxHeight = boxHeight ?? cfg.boxHeight ?? 30;
@@ -908,6 +912,7 @@ const RowFormModal = function RowFormModal({
     const inputClass = `w-full border rounded ${err ? 'border-red-500' : 'border-gray-300'}`;
     const isColumn = columns.includes(c);
     const disabled = disabledSet.has(c.toLowerCase()) || !isColumn;
+    const tip = tooltips[c] ? t(tooltips[c]) : labels[c] || c;
 
     if (disabled) {
       const raw = isColumn ? formVals[c] : extraVals[c];
@@ -944,7 +949,7 @@ const RowFormModal = function RowFormModal({
         maxWidth: `${boxMaxWidth}px`,
       };
       const content = (
-        <div className="flex items-center space-x-1" title={display}>
+        <div className="flex items-center space-x-1">
           <div
             className="border rounded bg-gray-100 px-2 py-1"
             style={readonlyStyle}
@@ -954,22 +959,25 @@ const RowFormModal = function RowFormModal({
           </div>
         </div>
       );
-      if (!withLabel) return content;
+      const wrapped = <TooltipWrapper title={tip}>{content}</TooltipWrapper>;
+      if (!withLabel) return wrapped;
       return (
-        <div key={c} className={fitted ? 'mb-1' : 'mb-3'}>
-          <div className="flex items-center space-x-1">
-            <label className="font-medium" style={labelStyle}>
-              {labels[c] || c}
-            </label>
-            {content}
+        <TooltipWrapper key={c} title={tip}>
+          <div className={fitted ? 'mb-1' : 'mb-3'}>
+            <div className="flex items-center space-x-1">
+              <label className="font-medium" style={labelStyle}>
+                {labels[c] || c}
+              </label>
+              {content}
+            </div>
           </div>
-        </div>
+        </TooltipWrapper>
       );
     }
 
     const control = relationConfigs[c] ? (
       <AsyncSearchSelect
-        title={labels[c] || c}
+        title={tip}
         table={relationConfigs[c].table}
         searchColumn={relationConfigs[c].idField || relationConfigs[c].column}
         searchColumns={[
@@ -1005,7 +1013,7 @@ const RowFormModal = function RowFormModal({
       />
     ) : viewSource[c] && !Array.isArray(relations[c]) ? (
       <AsyncSearchSelect
-        title={labels[c] || c}
+        title={tip}
         table={viewSource[c]}
         searchColumn={viewDisplays[viewSource[c]]?.idField || c}
         searchColumns={[
@@ -1042,7 +1050,7 @@ const RowFormModal = function RowFormModal({
       />
     ) : Array.isArray(relations[c]) ? (
       <select
-        title={formVals[c]}
+        title={tip}
         ref={(el) => (inputRefs.current[c] = el)}
         value={formVals[c]}
         onFocus={() => handleFocusField(c)}
@@ -1070,7 +1078,7 @@ const RowFormModal = function RowFormModal({
       </select>
     ) : (
       <input
-        title={formVals[c]}
+        title={tip}
         ref={(el) => (inputRefs.current[c] = el)}
         type={(() => {
           if (placeholders[c] === 'YYYY-MM-DD') return 'date';
@@ -1116,19 +1124,21 @@ const RowFormModal = function RowFormModal({
       />
     );
 
-    if (!withLabel) return <>{control}</>;
+    if (!withLabel) return <TooltipWrapper title={tip}>{control}</TooltipWrapper>;
 
     return (
-      <div key={c} className={fitted ? 'mb-1' : 'mb-3'}>
-        <label className="block mb-1 font-medium" style={labelStyle}>
-          {labels[c] || c}
-          {requiredFields.includes(c) && (
-            <span className="text-red-500">*</span>
-          )}
-        </label>
-        {control}
-        {err && <div className="text-red-500 text-sm">{err}</div>}
-      </div>
+      <TooltipWrapper key={c} title={tip}>
+        <div className={fitted ? 'mb-1' : 'mb-3'}>
+          <label className="block mb-1 font-medium" style={labelStyle}>
+            {labels[c] || c}
+            {requiredFields.includes(c) && (
+              <span className="text-red-500">*</span>
+            )}
+          </label>
+          {control}
+          {err && <div className="text-red-500 text-sm">{err}</div>}
+        </div>
+      </TooltipWrapper>
     );
   }
 
