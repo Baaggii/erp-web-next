@@ -3,10 +3,12 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import PendingRequestWidget from '../components/PendingRequestWidget.jsx';
 import OutgoingRequestWidget from '../components/OutgoingRequestWidget.jsx';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
+import LangContext from '../context/I18nContext.jsx';
 
 export default function DashboardPage() {
   const { user, session } = useContext(AuthContext);
   const { hasNew, markSeen, outgoing } = usePendingRequests();
+  const { t } = useContext(LangContext);
   const [active, setActive] = useState('general');
 
   const prevTab = useRef('general');
@@ -73,34 +75,40 @@ export default function DashboardPage() {
   return (
     <div style={{ padding: '1rem' }}>
       <div style={{ display: 'flex', borderBottom: '1px solid #ddd', marginBottom: '1rem' }}>
-        {tabButton('general', 'General')}
-        {tabButton('activity', 'Activity')}
+        {tabButton('general', t('general', 'General'))}
+        {tabButton('activity', t('activity', 'Activity'))}
         {tabButton(
           'audition',
-          'Audition',
+          t('audition', 'Audition'),
           outgoing.accepted.newCount + outgoing.declined.newCount,
           hasNew,
         )}
-        {tabButton('plans', 'Plans')}
+        {tabButton('plans', t('plans', 'Plans'))}
       </div>
 
       {active === 'general' && (
         <div>
           <h2 style={{ marginTop: 0 }}>
-            Welcome, {user?.full_name || user?.username}
+            {t('welcome', 'Welcome')}, {user?.full_name || user?.username}
             {session && ` (${session.company_name})`}
           </h2>
           <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
             <div style={cardStyle}>
-              <div style={{ fontSize: '0.9rem', color: '#555' }}>Today's Income</div>
+              <div style={{ fontSize: '0.9rem', color: '#555' }}>
+                {t('todays_income', "Today's Income")}
+              </div>
               <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>$0</div>
             </div>
             <div style={cardStyle}>
-              <div style={{ fontSize: '0.9rem', color: '#555' }}>Low Stock</div>
+              <div style={{ fontSize: '0.9rem', color: '#555' }}>
+                {t('low_stock', 'Low Stock')}
+              </div>
               <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>0 items</div>
             </div>
             <div style={cardStyle}>
-              <div style={{ fontSize: '0.9rem', color: '#555' }}>New Orders</div>
+              <div style={{ fontSize: '0.9rem', color: '#555' }}>
+                {t('new_orders', 'New Orders')}
+              </div>
               <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>0</div>
             </div>
           </div>
@@ -109,7 +117,7 @@ export default function DashboardPage() {
 
       {active === 'activity' && (
         <div>
-          <p>No activity to display.</p>
+          <p>{t('no_activity', 'No activity to display.')}</p>
         </div>
       )}
 
@@ -126,7 +134,7 @@ export default function DashboardPage() {
 
       {active === 'plans' && (
         <div>
-          <p>Plans content coming soon.</p>
+          <p>{t('plans_coming_soon', 'Plans content coming soon.')}</p>
         </div>
       )}
     </div>
