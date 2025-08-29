@@ -613,9 +613,9 @@ export async function assignCompanyToUser(
   createdBy,
 ) {
   const [result] = await pool.query(
-    `INSERT INTO user_companies (empid, company_id, position_id, branch_id, created_by)
-     VALUES (?, ?, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE position_id = VALUES(position_id), branch_id = VALUES(branch_id)`,
+    `INSERT INTO user_companies (empid, company_id, position_id, branch_id, created_by, created_at)
+     VALUES (?, ?, ?, ?, ?, NOW())
+     ON DUPLICATE KEY UPDATE position_id = VALUES(position_id), branch_id = VALUES(branch_id), updated_by = VALUES(created_by), updated_at = NOW()`,
     [empid, companyId, position_id, branchId, createdBy],
   );
   return { affectedRows: result.affectedRows };
@@ -651,10 +651,10 @@ export async function removeCompanyAssignment(empid, companyId) {
 /**
  * Update a user's company assignment role
  */
-export async function updateCompanyAssignment(empid, companyId, position_id, branchId) {
+export async function updateCompanyAssignment(empid, companyId, position_id, branchId, updatedBy) {
   const [result] = await pool.query(
-    "UPDATE user_companies SET position_id = ?, branch_id = ? WHERE empid = ? AND company_id = ?",
-    [position_id, branchId, empid, companyId],
+    "UPDATE user_companies SET position_id = ?, branch_id = ?, updated_by = ?, updated_at = NOW() WHERE empid = ? AND company_id = ?",
+    [position_id, branchId, updatedBy, empid, companyId],
   );
   return result;
 }
