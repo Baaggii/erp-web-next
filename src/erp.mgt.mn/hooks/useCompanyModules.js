@@ -4,7 +4,7 @@ const cache = {};
 const emitter = new EventTarget();
 
 export function refreshCompanyModules(companyId) {
-  if (companyId) delete cache[companyId];
+  if (companyId != null) delete cache[companyId];
   emitter.dispatchEvent(new Event('refresh'));
 }
 
@@ -32,7 +32,7 @@ export function useCompanyModules(companyId) {
   }
 
   useEffect(() => {
-    if (!companyId) {
+    if (companyId == null) {
       setModules(null);
       return;
     }
@@ -44,7 +44,7 @@ export function useCompanyModules(companyId) {
   }, [companyId]);
 
   useEffect(() => {
-    if (!companyId) return;
+    if (companyId == null) return;
     const handler = () => fetchModules(companyId);
     emitter.addEventListener('refresh', handler);
     return () => emitter.removeEventListener('refresh', handler);
