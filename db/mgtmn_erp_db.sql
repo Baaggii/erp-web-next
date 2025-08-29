@@ -1899,6 +1899,7 @@ INSERT INTO `modules` (`module_key`, `label`, `parent_key`, `show_in_sidebar`, `
 ('image_management', 'Image Management', 'system_configurations', 1, 0),
 ('inventory_transaction', 'БАРАА МАТЕРИАЛ', 'forms', 1, 0),
 ('manuals', 'Гарын авлага', NULL, 0, 1),
+('user_manual_export', 'User Manual Export', 'manuals', 1, 0),
 ('modules', 'Модуль', 'developer', 1, 0),
 ('planning_transactions', 'АЖЛЫН ТӨЛӨВЛӨЛӨЛТ', 'forms', 1, 0),
 ('po', 'Худалдан авалтын захиалга', NULL, 0, 1),

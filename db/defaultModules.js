@@ -17,6 +17,7 @@ export default [
   { moduleKey: 'image_management', label: 'Image Management', parentKey: 'system_configurations', showInSidebar: true, showInHeader: false },
   { moduleKey: 'inventory_transaction', label: 'БАРАА МАТЕРИАЛ', parentKey: 'forms', showInSidebar: true, showInHeader: false },
   { moduleKey: 'manuals', label: 'Гарын авлага', parentKey: null, showInSidebar: false, showInHeader: true },
+  { moduleKey: 'user_manual_export', label: 'User Manual Export', parentKey: 'manuals', showInSidebar: true, showInHeader: false },
   { moduleKey: 'modules', label: 'Модуль', parentKey: 'developer', showInSidebar: true, showInHeader: false },
   { moduleKey: 'planning_transactions', label: 'АЖЛЫН ТӨЛӨВЛӨЛӨЛТ', parentKey: 'forms', showInSidebar: true, showInHeader: false },
   { moduleKey: 'po', label: 'Худалдан авалтын захиалга', parentKey: null, showInSidebar: false, showInHeader: true },
