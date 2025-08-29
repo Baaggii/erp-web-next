@@ -47,6 +47,10 @@
         "or_o_barimt": "0",
         "company_id": ""
       },
+      "tooltips": {
+        "or_g_id": "tooltip.organization",
+        "or_date": "tooltip.date"
+      },
       "editableDefaultFields": [
         "or_av_now",
         "or_g_id",
