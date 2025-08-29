@@ -207,7 +207,12 @@ function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, onOpen }) {
         <select
           value={lang}
           onChange={(e) => setLang(e.target.value)}
-          style={{ marginRight: '0.5rem' }}
+          style={{
+            marginRight: '0.5rem',
+            color: '#fff',
+            backgroundColor: '#1f2937',
+            border: '1px solid #fff',
+          }}
         >
           <option value="en">en</option>
           <option value="mn">mn</option>
