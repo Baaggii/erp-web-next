@@ -172,7 +172,7 @@ export default function TenantTablesRegistry() {
   async function loadTableRecords(table) {
     setTableRecords((prev) => ({
       ...prev,
-      [table]: { loading: true, rows: [], selected: new Set() },
+      [table]: { loading: true, columns: [], rows: [], selected: new Set() },
     }));
     try {
       const [rowsRes, colsRes] = await Promise.all([
@@ -193,19 +193,27 @@ export default function TenantTablesRegistry() {
       }
       const rowsData = await rowsRes.json();
       const cols = await colsRes.json();
+      const colNames = cols.map((c) => c.name);
       const pk = cols.find((c) => c.key === 'PRI')?.name;
       const recs = (rowsData.rows || [])
-        .filter((r) => pk && r[pk] !== undefined)
-        .map((r) => ({ id: r[pk] }));
+        .map((r) => {
+          const obj = {};
+          colNames.forEach((name, idx) => {
+            obj[name] =
+              r[name] !== undefined ? r[name] : Array.isArray(r) ? r[idx] : undefined;
+          });
+          return { ...obj, id: pk !== undefined ? obj[pk] : undefined };
+        })
+        .filter((r) => r.id !== undefined);
       const selected = new Set(recs.map((r) => r.id));
       setTableRecords((prev) => ({
         ...prev,
-        [table]: { loading: false, rows: recs, selected },
+        [table]: { loading: false, columns: colNames, rows: recs, selected },
       }));
     } catch (err) {
       setTableRecords((prev) => ({
         ...prev,
-        [table]: { loading: false, rows: [], selected: new Set() },
+        [table]: { loading: false, columns: [], rows: [], selected: new Set() },
       }));
       addToast(`Failed to load records for ${table}: ${err.message}`, 'error');
     }
@@ -518,18 +526,38 @@ export default function TenantTablesRegistry() {
                       {tableRecords[t.tableName]?.loading ? (
                         <p>Loading...</p>
                       ) : tableRecords[t.tableName]?.rows.length ? (
-                        tableRecords[t.tableName].rows.map((r) => (
-                          <label key={r.id} style={{ display: 'block' }}>
-                            <input
-                              type="checkbox"
-                              checked={tableRecords[t.tableName].selected.has(r.id)}
-                              onChange={(e) =>
-                                handleRecordSelect(t.tableName, r.id, e.target.checked)
-                              }
-                            />{' '}
-                            {String(r.id)}
-                          </label>
-                        ))
+                        <table style={{ borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr>
+                              <th style={styles.th}></th>
+                              {tableRecords[t.tableName].columns.map((c) => (
+                                <th key={c} style={styles.th}>
+                                  {c}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {tableRecords[t.tableName].rows.map((r) => (
+                              <tr key={r.id}>
+                                <td style={styles.td}>
+                                  <input
+                                    type="checkbox"
+                                    checked={tableRecords[t.tableName].selected.has(r.id)}
+                                    onChange={(e) =>
+                                      handleRecordSelect(t.tableName, r.id, e.target.checked)
+                                    }
+                                  />
+                                </td>
+                                {tableRecords[t.tableName].columns.map((c) => (
+                                  <td key={c} style={styles.td}>
+                                    {String(r[c])}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       ) : (
                         <p>No records</p>
                       )}
