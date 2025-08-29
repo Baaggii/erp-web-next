@@ -45,6 +45,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { getDisplayFields as getDisplayCfg } from "../api-server/services/displayFieldConfig.js";
 import { GLOBAL_COMPANY_ID } from "../config/constants.js";
+import { formatDateForDb } from "../api-server/utils/formatDate.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const actionsPath = (() => {
@@ -735,11 +736,12 @@ export async function getTenantFlags(companyId) {
 /**
  * Update tenant-specific feature flags
  */
-export async function setTenantFlags(companyId, flags) {
+export async function setTenantFlags(companyId, flags, empid = null) {
+  const now = formatDateForDb(new Date());
   for (const [key, value] of Object.entries(flags)) {
     await pool.query(
-      "INSERT INTO tenant_feature_flags (company_id, flag_key, flag_value) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE flag_value = ?",
-      [companyId, key, value ? 1 : 0, value ? 1 : 0],
+      "INSERT INTO tenant_feature_flags (company_id, flag_key, flag_value, updated_by, updated_at) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE flag_value = VALUES(flag_value), updated_by = VALUES(updated_by), updated_at = VALUES(updated_at)",
+      [companyId, key, value ? 1 : 0, empid, now],
     );
   }
   return getTenantFlags(companyId);
@@ -775,19 +777,23 @@ export async function upsertModule(
   parentKey = null,
   showInSidebar = true,
   showInHeader = false,
+  empid = null,
 ) {
   logDb(
     `upsertModule ${moduleKey} label=${label} parent=${parentKey} sidebar=${showInSidebar} header=${showInHeader}`,
   );
+  const now = formatDateForDb(new Date());
   await pool.query(
-    `INSERT INTO modules (module_key, label, parent_key, show_in_sidebar, show_in_header)
-     VALUES (?, ?, ?, ?, ?)
+    `INSERT INTO modules (module_key, label, parent_key, show_in_sidebar, show_in_header, updated_by, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        label = VALUES(label),
        parent_key = VALUES(parent_key),
        show_in_sidebar = VALUES(show_in_sidebar),
-       show_in_header = VALUES(show_in_header)`,
-    [moduleKey, label, parentKey, showInSidebar ? 1 : 0, showInHeader ? 1 : 0],
+       show_in_header = VALUES(show_in_header),
+       updated_by = VALUES(updated_by),
+       updated_at = VALUES(updated_at)`,
+    [moduleKey, label, parentKey, showInSidebar ? 1 : 0, showInHeader ? 1 : 0, empid, now],
   );
   await pool.query(
     `INSERT INTO user_level_permissions (company_id, userlevel_id, action, action_key)
@@ -818,6 +824,7 @@ export async function populateDefaultModules() {
       m.parentKey,
       m.showInSidebar,
       m.showInHeader,
+      null,
     );
   }
 }

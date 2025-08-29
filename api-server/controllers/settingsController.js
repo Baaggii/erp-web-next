@@ -39,7 +39,11 @@ export async function getTenantFlagsHandler(req, res, next) {
 export async function setTenantFlagsHandler(req, res, next) {
   try {
     const companyId = req.user.company_id || req.body.companyId;
-    const updatedFlags = await setTenantFlags(companyId, req.body.flags);
+    const updatedFlags = await setTenantFlags(
+      companyId,
+      req.body.flags,
+      req.user.empid,
+    );
     res.json(updatedFlags);
   } catch (err) {
     next(err);

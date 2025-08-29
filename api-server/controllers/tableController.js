@@ -107,6 +107,11 @@ export async function updateRow(req, res, next) {
     const updates = { ...req.body };
     delete updates.created_by;
     delete updates.created_at;
+    const columns = await listTableColumns(req.params.table);
+    if (columns.includes('updated_by')) updates.updated_by = req.user.empid;
+    if (columns.includes('updated_at')) {
+      updates.updated_at = formatDateForDb(new Date());
+    }
     if (req.params.table === 'users' && updates.password) {
       updates.password = await bcrypt.hash(updates.password, 10);
     }
