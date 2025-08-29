@@ -29,5 +29,12 @@
   "low_stock": "Бараа дуусаж байна",
   "new_orders": "Шинэ захиалга",
   "no_activity": "Үйл ажиллагаа байхгүй.",
-  "plans_coming_soon": "Төлөвлөгөө тун удахгүй."
+  "plans_coming_soon": "Төлөвлөгөө тун удахгүй.",
+  "settings_enable_tooltips": "Тайлбарыг идэвхжүүлэх",
+  "tooltip": {
+    "organization": "Байгууллага сонгох",
+    "date": "Огноо",
+    "firstName": "Нэр",
+    "lastName": "Овог"
+  }
 }

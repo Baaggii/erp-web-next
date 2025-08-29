@@ -109,52 +109,118 @@ export default function UserManualExport() {
       if (!mod.forms.length) continue;
       md += `### ${translate(mKey)}\n`;
       for (const form of mod.forms) {
-        md += `- **${translate(form.key)}**\n`;
+        md += `#### ${translate(form.key)}\n`;
+        md += `${t(
+          "formIntro",
+          `This form enables authorised users to manage records related to ${translate(
+            form.key,
+          )}.`,
+        )}\n`;
+        const reqFields = (form.fields || [])
+          .filter((f) => f.required)
+          .map((f) => translate(f.key || f));
         if (form.buttons?.length) {
-          md += `  - ${t("buttons", "Buttons")}: ${form.buttons
-            .map((b) => translate(typeof b === "string" ? b : b.key))
-            .join(", ")}\n`;
+          md += `${t(
+            "formButtonsIntro",
+            "The form exposes the following buttons and their prerequisites:",
+          )}\n`;
+          for (const btn of form.buttons) {
+            const bKey = typeof btn === "string" ? btn : btn.key;
+            const fieldsList = reqFields.length
+              ? reqFields.join(", ")
+              : t("noFields", "no specific fields");
+            const sentence = t(
+              "buttonPurposeDetail",
+              `The ${translate(
+                bKey,
+              )} button initiates the ${translate(
+                bKey,
+              )} operation within this form, and it cannot proceed until the following fields have been supplied: ${fieldsList}.`,
+            );
+            md += `- ${sentence}\n`;
+          }
         }
       }
     }
+
     md += `\n## ${t("reports", "Reports")}\n`;
     for (const [mKey, mod] of Object.entries(manual)) {
       if (!mod.reports.length) continue;
       md += `### ${translate(mKey)}\n`;
       for (const r of mod.reports) {
         const k = typeof r === "string" ? r : r.key;
-        md += `- **${translate(k)}**\n`;
+        const sentence = t(
+          "reportPurposeDetail",
+          `The ${translate(k)} report provides a comprehensive overview of the associated data set, presenting information in a structured and readable manner for further analysis.`,
+        );
+        md += `- ${sentence}\n`;
       }
     }
+
     md += `\n## ${t("settings", "Settings")}\n`;
     for (const [mKey, mod] of Object.entries(manual)) {
       if (!mod.buttons.length && !mod.functions.length) continue;
       md += `### ${translate(mKey)}\n`;
       if (mod.buttons.length) {
-        md += `- ${t("buttons", "Buttons")}: ${mod.buttons
-          .map((b) => translate(b))
-          .join(", ")}\n`;
+        md += `${t(
+          "settingsButtonsIntro",
+          "The following buttons influence configuration and require careful handling:",
+        )}\n`;
+        mod.buttons.forEach((b) => {
+          const sentence = t(
+            "settingsButtonDetail",
+            `The ${translate(
+              b,
+            )} button allows administrators to execute the ${translate(
+              b,
+            )} operation, applying the current configuration without additional mandatory fields.`,
+          );
+          md += `- ${sentence}\n`;
+        });
       }
       if (mod.functions.length) {
-        md += `- ${t("functions", "Functions")}: ${mod.functions
-          .map((fn) => translate(fn))
-          .join(", ")}\n`;
+        md += `${t(
+          "settingsFunctionsIntro",
+          "These functions adjust system behaviour and should be used with understanding of their effects:",
+        )}\n`;
+        mod.functions.forEach((fn) => {
+          const sentence = t(
+            "settingsFunctionDetail",
+            `The ${translate(
+              fn,
+            )} function performs the ${translate(
+              fn,
+            )} process, leveraging the active settings to modify how the application operates.`,
+          );
+          md += `- ${sentence}\n`;
+        });
       }
     }
+
     md += `\n## ${t("quickReference", "Quick Reference")}\n`;
     md += `| ${t("userLevel", "User Level")} | ${t(
       "modules",
       "Modules",
-    )} | ${t("buttons", "Buttons")} | ${t("functions", "Functions")} |\n`;
-    md += `| --- | --- | --- | --- |\n`;
+    )} | ${t("forms", "Forms")} | ${t("reports", "Reports")} | ${t(
+      "buttons",
+      "Buttons",
+    )} | ${t("functions", "Functions")} |\n`;
+    md += `| --- | --- | --- | --- | --- | --- |\n`;
     userLevels.forEach((lvl) => {
       const acts = levelActions[lvl.id] || {};
-      const moduleCount = Object.keys(acts).filter(
-        (k) => !["buttons", "functions", "api", "permissions"].includes(k),
-      ).length;
+      const moduleEntries = Object.entries(acts).filter(
+        ([k]) => !["buttons", "functions", "api", "permissions"].includes(k),
+      );
+      const moduleCount = moduleEntries.length;
+      let formsCount = 0;
+      let reportsCount = 0;
+      moduleEntries.forEach(([, val]) => {
+        formsCount += Object.keys(val.forms || {}).length;
+        reportsCount += Object.keys(val.reports || {}).length;
+      });
       const buttonCount = Object.keys(acts.buttons || {}).length;
       const fnCount = Object.keys(acts.functions || {}).length;
-      md += `| ${lvl.name || lvl.id} | ${moduleCount} | ${buttonCount} | ${fnCount} |\n`;
+      md += `| ${lvl.name || lvl.id} | ${moduleCount} | ${formsCount} | ${reportsCount} | ${buttonCount} | ${fnCount} |\n`;
     });
     return md;
   }
