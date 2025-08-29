@@ -177,7 +177,7 @@ export async function deleteRow(req, res, next) {
     if (req.query.cascade === 'true') {
       await deleteTableRowCascade(table, id);
     } else {
-      await deleteTableRow(table, id);
+      await deleteTableRow(table, id, undefined, req.user?.empid);
     }
     if (row) {
       try {
