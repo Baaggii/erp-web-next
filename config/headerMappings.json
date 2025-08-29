@@ -1,746 +1,2978 @@
 {
-  "1": "1",
-  "2": "2",
-  "3": "3",
-  "4": "4",
-  "5": "5",
-  "6": "6",
-  "7": "7",
-  "8": "8",
-  "9": "9",
-  "10": "10",
-  "11": "11",
-  "30": "30",
-  "year": "он",
-  "month": "сар",
-  "name": "нэр",
-  "id": "Нэгдсэн дугаар",
-  "orUnique_id": "orunique дугаар",
-  "or_sel": "or sel",
-  "or_num": "Гүйлгээний код",
-  "or_o_barimt": "БМЭХ баримтын дугаар",
-  "or_h_id": "Хэрэглээний код",
-  "or_g_id": "Гэрээний дугаар",
-  "or_burtgel": "Ажлын хуваарийн дугаар",
-  "or_unique_id": "or unique дугаар",
-  "or_lname": "Овог",
-  "or_fname": "Нэр",
-  "or_chig": "Чиглэлийн код",
-  "or_chig_name": "Чиглэл",
-  "or_torol": "Төрлийн код",
-  "or_torol_name": "Төрөл",
-  "or_h_b": "Хариуцсан ажилтын код",
-  "or_h_b_name": "Хариуцсан ажилтан",
-  "or_av_baragduulsan": "Авлага барагдуусан эсэх",
-  "or_type_id": "Орлогын төрлийн код",
-  "or_type": "Орлогын төрөл",
-  "or_av_now": "Авлага эсэх код",
-  "or_av_name": "Авлага",
-  "or_av_time": "Авлагын огноо",
-  "or_quart": "Улирал",
-  "or_month": "Сар",
-  "or_day": "Өдөр",
-  "or_date": "Огноо",
-  "orcash_or_id": "Касс/Харилцах код",
-  "orcash_or_ner": "Касс/Харилцах",
-  "or_or": "Орлогын дүн",
-  "or_vallut_id": "Валютын код",
-  "or_valut_name": "Валют",
-  "or_valut_choice": "Ханшийн сонголт",
-  "or_valut_rate": "Ханш",
-  "or_Valut_tugrug": "Төгрөгөөр",
-  "or_bar_suu": "Барьцаа суутгасан эсэх",
-  "or_bcode": "БМЭХ код",
-  "or_orderid": "Захиалгын дугаар",
-  "or_tailbar1": "Тайлбар1",
-  "orBurtgel_rd": "Регистрийн дугаар",
-  "or_eb": "НӨАТ-н төлөв код",
-  "or_bank": "Банк",
-  "or_Noatgui": "НӨАТ-гүй дүн",
-  "Or_Noat": "НӨАТ-н дүн",
-  "or_uglug_id": "Өглөгийн дугаар",
-  "or_emp_receiver": "Тушаасан ажилтны код",
-  "or_emp_ner": "Тушаасан ажилтан",
-  "or_tur_receiver": "Тушаасан харилцагчийн код",
-  "or_tur_receiver_name": "Тушаасан харилцагч",
-  "or_other_receiver": "Тушаасан бусад",
-  "or_org_id": "Тушаасан байгууллагын дугаар",
-  "or_org": "Тушаасан байгууллага",
-  "Column2": "column2",
-  "Column3": "column3",
-  "Column4": "column4",
-  "Column5": "column5",
-  "Column6": "column6",
-  "Column7": "column7",
-  "Column8": "column8",
-  "Column9": "column9",
-  "Column10": "column10",
-  "Column11": "column11",
-  "Column12": "column12",
-  "Column13": "column13",
-  "Column14": "column14",
-  "Column15": "column15",
-  "Column16": "column16",
-  "Column17": "column17",
-  "Column18": "column18",
-  "Delivery": "Хүргэлт",
-  "Assembly": "Угсралт",
-  "Comments1": "comments1",
-  "prodday": "Үйлдвэрлэх хоног",
-  "width": "Өргөн",
-  "thickness": "Зузаан",
-  "Column1": "column1",
-  "BARCODE2": "barcode2",
-  "BARCODE3": "barcode3",
-  "SIGNATURE1": "signature1",
-  "SIGNATURE2": "signature2",
-  "SIGNATURE3": "signature3",
-  "IMAGE": "image",
-  "IMAGE2": "image2",
-  "IMAGE3": "image3",
-  "IMAGE4": "image4",
-  "IMAGE5": "image5",
-  "TRTYPENAME": "Гүйлгээний тайлбар",
-  "trtype": "Гүйлгээний үсгэн код",
-  "UITransTypeName": "Гүйлгээний тоон код",
-  "ORGANIZATION": "Байгууллага",
-  "ROOMID": "Өрөөний дугаар",
-  "USERID": "Эзэмшигчийн дугаар",
-  "PRINT": "print",
-  "LOCATION": "Байршил",
-  "rawdata": "rawdata",
-  "deviceid": "Төхөөрөмжийн код",
-  "devicename": "Төхөөрөмжийн нэр",
-  "actime": "Бүртгэсэн огноо",
-  "rectime": "Илгээсэн огноо",
-  "UUID": "uuid",
-  "Column19": "column19",
-  "ortr_state": "Гүйлгээний төлөв",
-  "ortr_transbranch": "Гүйлгээ хийсэн салбар",
-  "ortr_id": "Гүйлгээний нийлмэл код",
-  "ortr_confirm": "Гүйлгээ байталгаажуулалт",
-  "ortr_confirm_date": "Гүйлгээ баталгаажуулсан огноо",
-  "ortr_confirm_emp": "Гүйлгээ баталгаажуулсан ажилтын код",
-  "ortr_edit_date": "Гүйлгээ зассан огноо",
-  "ortr_edit_emp": "Гүйлгээ зассан ажилтны код",
-  "ortr_edit_cause": "Гүйлгээ зассан шалтгаан",
-  "ortr_del_date": "Гүйлгээ устгасан огноо",
-  "ortr_del_emp": "Гүйлгээ устгасан ажилтны код",
-  "ortr_del_cause": "Гүйлгээ устгасан шалтгаан",
-  "ortr_check_date": "Хянасан огноо",
-  "ortr_checkyn": "Хянасан эсэх",
-  "ortr_check_emp": "Хянасан ахлахын код",
-  "ortr_check_cause": "Хянасан шалтгаан",
-  "ortr_Transtype": "Гүйлгээний төрөл",
-  "Column20": "column20",
-  "orgz_sample": "orgz sample",
-  "orgz_sample_name": "orgz sample нэр",
-  "orgz_type_name": "orgz type нэр",
-  "orgz_ta": "orgz ta",
-  "orgz_branch": "orgz branch",
-  "orgz_deposit_account": "orgz deposit account",
-  "orgz_eb": "orgz eb",
-  "orgz_prod": "orgz prod",
-  "orgz_hariltsagch": "orgz hariltsagch",
-  "orgz_valut": "orgz valut",
-  "orgz_dt1": "orgz dt1",
-  "orgz_kt1": "orgz kt1",
-  "orgz_k1": "orgz k1",
-  "orgz_dt2": "orgz dt2",
-  "orgz_kt2": "orgz kt2",
-  "orgz_k2": "orgz k2",
-  "orgz_dt3": "orgz dt3",
-  "orgz_kt3": "orgz kt3",
-  "orgz_k3": "orgz k3",
-  "orgz_dt4": "orgz dt4",
-  "orgz_kt4": "orgz kt4",
-  "orgz_k4": "orgz k4",
-  "orgz_k5": "orgz k5",
-  "orCustomerId": "orcustomerid",
-  "orJournalDate": "orjournaldate",
-  "orJournalDesc": "orjournaldesc",
-  "orJournalNumber": "orjournalnumber",
-  "orAmount": "oramount",
-  "orJournalTemplateId": "orjournaltemplateid",
-  "zUnique_id": "zunique дугаар",
-  "z_num": "Гүйлгээний код",
-  "z_barimt": "БМЭХ баримтын дугаар",
-  "z_tosov_code": "Төсвийн дугаар",
-  "z_tosov_zuil": "Төсвийн зүйл",
-  "z_taibar": "Тайлбар",
-  "z_angilal_b": "Салбарын код",
-  "z_angilal_b_name": "Салбар",
-  "z_angilal": "Зардлын ангиллын код",
-  "z_angilal_name": "Зардлын ангилал",
-  "z_torol": "Зардлын төрлийн код",
-  "z_torol_name": "Зардлын төрөл",
-  "z_utga": "Зардлын утгын код",
-  "z_utga_name": "Зардлын утга",
-  "z_from": "Касс/Харилцах-с код",
-  "z_from_name": "Касс/Харилцах-с",
-  "z_emp_receiver": "Хүлээн авсан ажилтны код",
-  "zemp_ner": "Хүлээн авсан ажилтан",
-  "z_tur_receiver": "Хүлээн авсан харилцагчийн код",
-  "z_tur_receiver_name": "Хүлээн авсан харилцагч",
-  "z_other_receiver": "Хүлээн авсан бусад",
-  "z_org_id": "Хүлээн авсан байгууллагын код",
-  "z_org": "Хүлээн авсан байгууллага",
-  "z_date": "Огноо",
-  "z_valut_id": "Валютын код",
-  "z_valut_name": "Валют",
-  "z_valut_choice": "Ханшийн сонголт",
-  "z_curr_rate": "Ханш",
-  "z_valut_tugrug": "Төгрөгөөр",
-  "z_mat_code": "БМЭХ код",
-  "z_tailbar1": "Тайлбар 1",
-  "z_eb": "НӨАТ-н төлөв",
-  "z_NOATgui": "НӨАТ-гүй дүн",
-  "z_NOAT": "НӨАТ-ийн дүн",
-  "z_ndts": "ндц",
-  "z_ndguits": "ндгүйц",
-  "Z_tailan_angilal": "Тайлангийн ангилал",
-  "z_orderid": "Захиалгын дугаар",
-  "z_month": "Сар",
-  "z_noat_oor_month": "НӨАТ өөр сар",
-  "z_noat_month": "НӨАТ сар",
-  "zar_uglug_eseh_code": "Өглөг эсэх код",
-  "zar_uglug_eseh": "Өглөг эсэх",
-  "Z_urtug": "Тайлангийн ангилал 1",
-  "zar_uglug_month": "Нэхэмжлэлийн сар",
-  "Column21": "column21",
-  "Column22": "column22",
-  "Column23": "column23",
-  "Column24": "column24",
-  "ztr_state": "Гүйлгээний төлөв",
-  "ztr_transbranch": "Гүйлгээ хийсэн салбар",
-  "ztr_id": "Гүйлгээний нийлмэл код",
-  "ztr_confirm": "Гүйлгээ баталгаажуулалт",
-  "ztr_confirm_date": "Гүйлгээ баталгаажуулсан огноо",
-  "ztr_confirm_emp": "ГҮйлгээ баталгаажуулсан ажилтны код",
-  "ztr_edit_date": "Гүйлгээ зассан огноо",
-  "ztr_edit_emp": "Гүйлгээ зассан ажилтны код",
-  "ztr_edit_cause": "Гүйлгээ зассан шалтгаан",
-  "ztr_del_date": "Гүйлгээ устгасан огноо",
-  "ztr_del_emp": "ГҮйлгээ устгасан ажилтны код",
-  "ztr_del_cause": "ГҮйлгээ устгасан шалтгаан",
-  "ztr_check_date": "Хянасан огноо",
-  "ztr_checkyn": "Хянасан эсэх",
-  "ztr_check_emp": "Хянасан ахлахын код",
-  "ztr_check_cause": "Хянасан шалтгаан",
-  "ztr_Transtype": "Гүйлгээний төрөл",
-  "Column25": "column25",
-  "Column26": "column26",
-  "zgz_sample": "zgz sample",
-  "zgz_sample_name": "zgz sample нэр",
-  "zgz_type_name": "zgz type нэр",
-  "zgz_ta": "zgz ta",
-  "zgz_branch": "zgz branch",
-  "zgz_deposit_account": "zgz deposit account",
-  "zgz_eb": "zgz eb",
-  "zgz_prod": "zgz prod",
-  "zgz_hariltsagch": "zgz hariltsagch",
-  "zgz_valut": "zgz valut",
-  "zgz_dt1": "zgz dt1",
-  "zgz_kt1": "zgz kt1",
-  "zgz_k1": "zgz k1",
-  "zgz_dt2": "zgz dt2",
-  "zgz_kt2": "zgz kt2",
-  "zgz_k2": "zgz k2",
-  "zgz_dt3": "zgz dt3",
-  "zgz_kt3": "zgz kt3",
-  "zgz_k3": "zgz k3",
-  "zgz_dt4": "zgz dt4",
-  "zgz_kt4": "zgz kt4",
-  "zgz_k4": "zgz k4",
-  "zgz_k5": "zgz k5",
-  "zCustomerId": "zcustomerid",
-  "zJournalDate": "zjournaldate",
-  "zJournalDesc": "zjournaldesc",
-  "zJournalNumber": "zjournalnumber",
-  "zAmount": "zamount",
-  "zJournalTemplateId": "zjournaltemplateid",
-  "bmUnique_id": "bmunique дугаар",
-  "bmtr_num": "Гүйлгээний код",
-  "bmtr_pid": "Санхүүгийн баримтын дугаар",
-  "bmtr_cid": "Төсвийн дугаар",
-  "bmtr_tid": "Төсвийн зүйл",
-  "bmtr_pmid": "БМЭХ код",
-  "bmtr_idname": "БМЭХ нэр",
-  "bmtr_mu": "нэгж",
-  "bmtr_cc": "bmtr cc",
-  "bmtr_left": "үлдэгдэл",
-  "Plan_day": "Гүйцэтгэх хоног",
-  "Source": "Эх үүсвэр",
-  "req": "Шаардлагатай",
-  "payment": "Төлбөр",
-  "bmtr_acc": "тоо",
-  "bmtr_sub": "хэмжээ",
-  "bmtr_up": "Нэгжийн үнэ",
-  "bmtr_ap": "Нийт үнэ",
-  "bmtr_prod": "Үйлдвэрлэл",
-  "bmtr_annot": "Тайлбар",
-  "bmtr_date": "Огноо",
-  "bmtr_sellerid": "Ажилтаас код",
-  "bmtr_seller": "Ажилтнаас",
-  "bmtr_empid": "Ажилтанд",
-  "bmtr_empname": "Ажилтанд",
-  "bmtr_orderedp": "БМЭХ нэр бичих",
-  "bmtr_prodid": "bmtr prodid",
-  "bmtr_prodname": "bmtr prodname",
-  "bmtr_orderid": "Захиалгын дугаар",
-  "bmtr_orderdid": "Захиалгын дэд дугаар",
-  "bmtr_orderedprod": "Захиалгын бүтээгдэхүүн",
-  "bmtr_customerid": "Харилцагч",
-  "bmtr_customername": "Харилцагч",
-  "bmtr_branchid": "Салбар руу",
-  "bmtr_branchname": "Салбар руу",
-  "bmtr_consumerid": "Үйлчлүүлэгч",
-  "bmtr_consumername": "Үйлчлүүлэгч",
-  "bmtr_repid": "Тайлангийн ангилал",
-  "bmtr_repidname": "Тайлангийн ангилал",
-  "bmtr_costid": "Өртгийн кодчлол",
-  "bmtr_manuf": "Үйлдвэрлэгч",
-  "bmtr_primcode": "Барааны код",
-  "bmtr_coupcode": "Купон код",
-  "bmtr_coup2": "bmtr coup2",
-  "bmtr_coup3": "bmtr coup3",
-  "bmtr_coup4": "bmtr coup4",
-  "bmtr_coup5": "bmtr coup5",
-  "bmtr_coup6": "bmtr coup6",
-  "bmtr_coup7": "bmtr coup7",
-  "bmtr_coup8": "bmtr coup8",
-  "bmtr_return": "Буцаалт",
-  "bmtr_frombranchid": "Салбараас",
-  "bmtr_frombranch": "Салбараас",
-  "bmtr_Type": "БМЭХ төрлийн код",
-  "bmtr_tkkod": "Материалын анхдагч код /5/",
-  "bmtr_eb": "Барааны өртгийн код",
-  "bmtr_xmkod": "Материалын өртгийн код",
-  "bmtr_AvUg": "1 - Авлага/1 -Өглөг/ -1 Хөрөнгө",
-  "bmtr_MM_sale": "Мод маркетын хямдрал",
-  "bmtr_BN_sale": "Бэлтгэн нийлүүлэгчийн хямдрал",
-  "bmtr_Codecheck": "bmtr codecheck",
-  "bmtr_tkkodup": "Өртгийн дүн",
-  "bmtr_Saleap": "Нийт хямдрал",
-  "bmtr_Dupercent": "Дуусаагүй үйлдвэрлэлийн хувь",
-  "bmtr_Ibarcode_mat": "Баркод материалын",
-  "bmtr_tkkod1": "Нэгдсэн код",
-  "bmtr_Ibarcode_baraa": "Баркод барааны",
-  "bmtr_frombranch_barimt": "Бусад салбарын гүйлгээний код",
-  "bmtr_count": "bmtr count",
-  "bmtr_state": "Гүйлгээний төлөв",
-  "bmtr_transbranch": "Гүйлгээ хийсэн салбар",
-  "bmtr_id": "Гүйлгээний нийлмэл код",
-  "bmtr_confirm": "Гүйлгээний баталгаажуулалт",
-  "bmtr_confirm_date": "Гүйлгээ баталгаажуулсан огнгоо",
-  "bmtr_confirm_emp": "Гүйлгээ баталгаажуулсан ажилтны код",
-  "bmtr_edit_date": "Гүйлгээ зассан огноо",
-  "bmtr_edit_emp": "Гүйлгээ зассан ажилтан",
-  "bmtr_edit_cause": "Гүйлгээ зассан шалтгаан",
-  "bmtr_del_date": "Гүйлгээ устгасан огноо",
-  "bmtr_del_emp": "Гүйлгээ устгасан ажилтан",
-  "bmtr_del_cause": "Гүйлгээ устгасан шалтгаан",
-  "bmtr_check_date": "Хянасан огноо",
-  "bmtr_checkyn": "Хянасан эсэх",
-  "bmtr_check_emp": "Хянасан ахлах",
-  "bmtr_check_cause": "Хянасан шалтгаан",
-  "bmtr_transtype": "гүйлгээний төрөл",
-  "bmColumn18": "bmcolumn18",
-  "bmColumn1810": "bmcolumn1810",
-  "bmgz_sample": "bmgz sample",
-  "bmgz_sample_name": "bmgz sample нэр",
-  "bmgz_type_name": "bmgz type нэр",
-  "bmgz_ta": "bmgz ta",
-  "bm": "bm",
-  "bm2": "bm2",
-  "bm3": "bm3",
-  "bm4": "bm4",
-  "bm5": "bm5",
-  "bm6": "bm6",
-  "bm7": "bm7",
-  "bm8": "bm8",
-  "bmgz_branch": "bmgz branch",
-  "bmgz_deposit_account": "bmgz deposit account",
-  "bmgz_eb3": "bmgz eb3",
-  "bmgz_prod4": "bmgz prod4",
-  "bmgz_hariltsagch": "bmgz hariltsagch",
-  "bmgz_valut": "bmgz valut",
-  "bmgz_dt1": "bmgz dt1",
-  "bmgz_kt1": "bmgz kt1",
-  "bmgz_k1": "bmgz k1",
-  "bmgz_dt2": "bmgz dt2",
-  "bmgz_kt2": "bmgz kt2",
-  "bmgz_k2": "bmgz k2",
-  "bmgz_dt3": "bmgz dt3",
-  "bmgz_kt3": "bmgz kt3",
-  "bmgz_k3": "bmgz k3",
-  "bmgz_dt4": "bmgz dt4",
-  "bmgz_kt4": "bmgz kt4",
-  "bmgz_k4": "bmgz k4",
-  "bm9": "bm9",
-  "bmCustomerId": "bmcustomerid",
-  "bmJournalDate": "bmjournaldate",
-  "bmJournalDesc": "bmjournaldesc",
-  "bmJournalNumber": "bmjournalnumber",
-  "bmAmount": "bmamount",
-  "bmJournalTemplateId": "bmjournaltemplateid",
-  "num": "num",
-  "pid": "Ажлын дугаар",
-  "cid": "Төсвийн дугаар",
-  "tid": "Төсвийн зүйл",
-  "pmid": "БМЭХ код",
-  "idname": "БМЭХ нэр",
-  "mu": "нэгж",
-  "cc": "cc",
-  "left": "үлдэгдэл",
-  "acc": "тоо",
-  "sub": "хэмжээ",
-  "up": "Нэгжийн үнэ",
-  "ap": "Нийт үнэ",
-  "prod": "Үйлдвэрлэл",
-  "annot": "Ажлын талаар дэлгэрэнгүй",
-  "date": "Огноо",
-  "sellerid": "Гүйцэтгэх ажилтны код",
-  "seller": "Гүйцэтгэх ажилтан",
-  "empid": "Туслах ажилтны код",
-  "empname": "Туслах ажилтан",
-  "orderedp": "БМЭХ бичих",
-  "prodid": "prodid",
-  "prodname": "prodname",
-  "orderid": "Захиалгын дугаар",
-  "orderdid": "Захиалгын дэд дугаар",
-  "orderedprod": "orderedprod",
-  "customerid": "Үйлчлүүлэгчийн код",
-  "customername": "Үйлчлүүлэгчийн нэр",
-  "branchid": "Гүйцэтгэх салбарын код",
-  "branchname": "Гүйцэтгэх салбар",
-  "consumerid": "Харилцагчийн код",
-  "consumername": "Харилцагч",
-  "repid": "repid",
-  "repidname": "repidname",
-  "costid": "costid",
-  "manuf": "manuf",
-  "primcode": "primcode",
-  "coupcode": "coupcode",
-  "coup2": "coup2",
-  "coup3": "coup3",
-  "coup4": "coup4",
-  "coup5": "coup5",
-  "coup6": "coup6",
-  "coup7": "coup7",
-  "coup8": "coup8",
-  "return": "return",
-  "frombranchid": "Ажлын салбарын код",
-  "frombranch": "Ажлын салбар",
-  "Type": "type",
-  "tkkod": "tkkod",
-  "eb": "eb",
-  "xmkod": "xmkod",
-  "AvUg": "1-Авлага/1-Өглөг/-1-Хөрөнгө",
-  "MMsale": "Байгууллагын хямдрал",
-  "BNsale": "Бэлтгэн нийлүүлэгчийн хямдрал",
-  "Codecheck": "codecheck",
-  "tkkodup": "tkkodup",
-  "Saleap": "Нийт хямдрал",
-  "Dupercent": "Дуусаагүй үйлдвэрлэлийн хувь",
-  "Ibarcode_mat": "Материалын баркод",
-  "tkkod1": "tkkod1",
-  "Ibarcode_baraa": "Барааны баркод",
-  "frombranch_barimt": "frombranch barimt",
-  "zorchil_type": "Зөрчлийн код",
-  "zorchil_type_name": "Зөрчил",
-  "zorchilgargasan_id": "Зөрчил гаргасан этгээдийн код",
-  "zorchilgargasan_name": "Зөрчил гаргасан",
-  "freq_id": "Давтамжийн код",
-  "freq_name": "Давтамж",
-  "position_id": "Албан тушаалын код",
-  "position_name": "Албан тушаал",
-  "count": "count",
-  "state": "state",
-  "transbranch": "transbranch",
-  "confirm": "Гүйлгээ баталгаажуулалт",
-  "confirm_date": "Гүйлгээ баталгаажуулсан огноо",
-  "confirm_emp": "Гүйлгээ баталгаажуулсан ажилтан",
-  "edit_date": "Гүйлгээ зассан огноо",
-  "edit_emp": "Гүйлгээ зассан ажилтан",
-  "edit_cause": "Гүйлгээ зассан шалтгаан",
-  "del_date": "Гүйлгээ устгасан огноо",
-  "del_emp": "Гүйлгээ устгасан ажилтан",
-  "del_cause": "Гүйлгээ устгасан шалтгаан",
-  "check_date": "Хянасан огноо",
-  "checkyn": "Хянасан эсэх",
-  "check_emp": "Хянасан ахлах",
-  "check_cause": "Хянасан шалтгаан",
-  "transtype": "гүйлгээний төрөл",
-  "Column1810": "column1810",
-  "gz_sample": "gz sample",
-  "gz_sample_name": "gz sample нэр",
-  "gz_type_name": "gz type нэр",
-  "gz_ta": "gz ta",
-  "gz_branch": "gz branch",
-  "gz_deposit_account": "gz deposit account",
-  "gz_eb3": "gz eb3",
-  "gz_prod4": "gz prod4",
-  "gz_hariltsagch": "gz hariltsagch",
-  "gz_valut": "gz valut",
-  "gz_dt1": "gz dt1",
-  "gz_kt1": "gz kt1",
-  "gz_k1": "gz k1",
-  "gz_dt2": "gz dt2",
-  "gz_kt2": "gz kt2",
-  "gz_k2": "gz k2",
-  "gz_dt3": "gz dt3",
-  "gz_kt3": "gz kt3",
-  "gz_k3": "gz k3",
-  "gz_dt4": "gz dt4",
-  "gz_kt4": "gz kt4",
-  "gz_k4": "gz k4",
-  "CustomerId6": "customerid6",
-  "JournalDate": "journaldate",
-  "JournalDesc": "journaldesc",
-  "JournalNumber": "journalnumber",
-  "Amount": "дүн",
-  "JournalTemplateId": "journaltemplateid",
-  "ordrUnique_id": "ordrunique дугаар",
-  "ordrnum": "Захиалгын",
-  "ordrbranch": "Захиалсан салбар",
-  "ordrid": "Захиалгын дугаар",
-  "ordrdid": "Захиалгын дэд дугаар",
-  "ordrcustomerid": "Захиалсан харилцагч",
-  "ordrcustomername": "Захиалсан харилцагч",
-  "ordrrd": "Харилцагчийн регистрийн дугаар",
-  "ordradd": "Харилцагчийн хаяг",
-  "ordrphone": "Харилцагчийн утас",
-  "ordrdate": "Захиалсан огноо",
-  "ordrsource": "Захиалсан газар",
-  "ordrtooutdate": "Захиалга олгох огноо",
-  "ordrpayment": "Төлбөрийн хэлбэр",
-  "ordrprodid": "Үйлдвэрлэгчийн код",
-  "ordrprodname": "Үйлдвэрлэгч",
-  "ordrbname": "Захиалсан барааны нэр",
-  "ordrsub": "тоо",
-  "ordrbsize": "хэмжээ",
-  "ordrmu": "нэгж",
-  "ordrsize": "Газар дээрээс авсан хэмжээ",
-  "ordrlen": "Урт",
-  "ordrwidth": "Өргөн",
-  "ordrthick": "Зузаан",
-  "ordrmat": "Материал",
-  "ordrpaint": "Будаг",
-  "ordrcolor": "Өнгө",
-  "ordrcarving": "Сийлбэр",
-  "ordraccs": "Тоноглол",
-  "ordrbkod": "Барааны код",
-  "ordrbkodname": "ordrbkodname",
-  "ordrbkodmu": "ordrbkodmu",
-  "ordrbkodsub": "ordrbkodsub",
-  "ordrbkodmat": "ordrbkodmat",
-  "ordrbkodlen": "ordrbkodlen",
-  "ordrbkodwidth": "ordrbkodwidth",
-  "ordrbkodthick": "ordrbkodthick",
-  "ordrColumn1": "ordrcolumn1",
-  "ordrbkodspec": "ordrbkodspec",
-  "ordrbkodcarv": "ordrbkodcarv",
-  "ordrbkodcolor": "ordrbkodcolor",
-  "ordrpriceoffer": "ordrpriceoffer",
-  "ordrretailsel": "Жижиглэнгийн үнэ сонгох",
-  "ordrretailup": "Жижиглэнгийн нэгжийн үнэ",
-  "ordrretailap": "Жижиглэнгийн нийт үнэ",
-  "ordrwholesalesel": "Бөөний үнэ сонгох",
-  "ordrwholesaleup": "Бөөний нэгжийн үнэ",
-  "ordrwholesaleap": "Бөөний нийт үнэ",
-  "ordrprodsel": "Үйлдвэрийн үнэ сонгох",
-  "ordrprodup": "Үйлдвэрийн нэгжийн үнэ",
-  "ordrprodap": "Үйлдвэрийн нийт үнэ",
-  "ordrunitprice": "Худалдах нэгжийн үнэ",
-  "ordrsalepercent": "Хямдралын хувь",
-  "ordrsaleap": "Захиалгын дүн",
-  "ordraftersaleap": "Хямдралын дараах дүн",
-  "ordrap": "Нийт дүн",
-  "ordrnoatyn": "НӨАТ-ийн хувь",
-  "ordrnoatgui": "НӨАТ-гүй дүн",
-  "ordrpriceofferdate": "Үнийн саналын огноо",
-  "ordrpriceaccdate": "Үнийн санал хүлээн зөвшөөрсөн огноо",
-  "ordrordrconfirmed": "Захиалга баталгаажуулсан эсэх",
-  "ordrconfirmdate": "Захиалга баталгаажуулсан огноо",
-  "ordrproddays": "Үйлдвэрлэх хоног",
-  "ordrreceivedid": "Захиалга хүлээн авсан ажилтны код",
-  "ordrreiceivedname": "Захиалга хүлээн авсан ажилтан",
-  "ordrtoproddate": "Үйлдвэрлэж дууссан огноо",
-  "ordrout": "Захиалга хүлээлгэн өгсөн эсэх",
-  "ordroutdate": "Захиалга хүлээлгэн өгсөн огноо",
-  "ordrtransportprice": "Тээврийн үнэ",
-  "ordrassemblyprice": "Угсралтын үнэ",
-  "ordrcomments": "Тайлбар",
-  "ordrproddate": "Үйлдвэрлэсэн огноо",
-  "ordrtr_state": "Гүйлгээний төлөв",
-  "ordrtr_transbranch": "Гүйлгээ хийсэн салбар",
-  "ordrtr_id": "Гүйлгээний нийлмэл код",
-  "ordrtr_confirm": "Гүйлгээ баталгаажуулалт",
-  "ordrtr_confirm_date": "Гүйлгээ баталгаажуулсан огноо",
-  "ordrtr_confirm_emp": "Гүйлгээ баталгаажуулсан ажилтан",
-  "ordrtr_edit_date": "Гүйлгээ зассан огноо",
-  "ordrtr_edit_emp": "Гүйлгээ зассан ажилтан",
-  "ordrtr_edit_cause": "Гүйлгээ зассан шалтгаан",
-  "ordrtr_del_date": "Гүйлгээ устгасан огноо",
-  "ordrtr_del_emp": "Гүйлгээ устгасан ажилтан",
-  "ordrtr_del_cause": "Гүйлгээ устгасан шалтгаан",
-  "ordrtr_check_date": "Хянасан огноо",
-  "ordrtr_checkyn": "Хянасан эсэх",
-  "ordrtr_check_emp": "Хянасан ахлах",
-  "ordrtr_check_cause": "Хянасан шалтгаан",
-  "ordrtr_transtype": "гүйлгээний төрөл",
-  "ordrColumn18": "ordrcolumn18",
-  "ordrColumn1810": "ordrcolumn1810",
-  "ordrgz_sample": "ordrgz sample",
-  "ordrgz_sample_name": "ordrgz sample нэр",
-  "ordrgz_type_name": "ordrgz type нэр",
-  "ordrgz_ta": "ordrgz ta",
-  "ordrColumn183": "ordrcolumn183",
-  "ordrColumn19": "ordrcolumn19",
-  "ordrColumn20": "ordrcolumn20",
-  "ordrColumn21": "ordrcolumn21",
-  "ordrColumn22": "ordrcolumn22",
-  "ordrColumn23": "ordrcolumn23",
-  "ordrColumn24": "ordrcolumn24",
-  "ordrColumn25": "ordrcolumn25",
-  "ordrgz_branch": "ordrgz branch",
-  "ordrgz_deposit_account": "ordrgz deposit account",
-  "ordrgz_eb3": "ordrgz eb3",
-  "ordrgz_prod4": "ordrgz prod4",
-  "ordrgz_hariltsagch": "ordrgz hariltsagch",
-  "ordrgz_valut": "ordrgz valut",
-  "ordrgz_dt1": "ordrgz dt1",
-  "ordrgz_kt1": "ordrgz kt1",
-  "ordrgz_k1": "ordrgz k1",
-  "ordrgz_dt2": "ordrgz dt2",
-  "ordrgz_kt2": "ordrgz kt2",
-  "ordrgz_k2": "ordrgz k2",
-  "ordrgz_dt3": "ordrgz dt3",
-  "ordrgz_kt3": "ordrgz kt3",
-  "ordrgz_k3": "ordrgz k3",
-  "ordrgz_dt4": "ordrgz dt4",
-  "ordrgz_kt4": "ordrgz kt4",
-  "ordrgz_k4": "ordrgz k4",
-  "ordrgz_k5": "ordrgz k5",
-  "ordrCustomerId4": "ordrcustomerid4",
-  "ordrJournalDate": "ordrjournaldate",
-  "ordrJournalDesc": "ordrjournaldesc",
-  "ordrJournalNumber": "ordrjournalnumber",
-  "ordrAmount": "ordramount",
-  "ordrJournalTemplateId": "ordrjournaltemplateid",
-  "gUnique_id": "gunique дугаар",
-  "g_num": "Гүйлгээний код",
-  "g_id": "Гэрээний дугаар",
-  "g_burtgel_id": "Бүртгэлийн дугаар",
-  "g_lname": "Овог",
-  "g_fname": "Нэр",
-  "g_chig": "Чиглэл",
-  "g_torol": "Төрөл",
-  "g_daatgah": "Даатгах дүн",
-  "g_baritsaa_must": "Барьцаалах дүн",
-  "g_ab_tur": "Байгууллагын ажлын байр",
-  "g_ab_huviin": "Хувийн ажлын байр",
-  "g_sq": "Талбайн хэмжээ",
-  "g_first_date": "Гэрээ анх байгуулсан огноо",
-  "g_start": "Гэрээ эхлэх огноо",
-  "g_end": "Гэрээ дуусах огноо",
-  "g_cancel": "Гэрээ цуцалсан огноо",
-  "g_desc": "Тайлбар",
-  "baitsaagch_id": "Хариуцсан ажилтан",
-  "MM_sale": "mm sale",
-  "BN_sale": "bn sale",
-  "gendugaar": "gendugaar",
-  "Col99": "col99",
-  "rownum": "rownum",
-  "Column172": "column172",
-  "Column173": "column173",
-  "Column174": "column174",
-  "Column175": "column175",
-  "Column176": "column176",
-  "Column177": "column177",
-  "Column178": "column178",
-  "Column179": "column179",
-  "Column180": "column180",
-  "Column181": "column181",
-  "Column182": "column182",
-  "Column183": "column183",
-  "Column184": "column184",
-  "Column185": "column185",
-  "Column186": "column186",
-  "Column187": "column187",
-  "Column188": "column188",
-  "Column189": "column189",
-  "Column190": "column190",
-  "company_id": "Байгууллага",
-  "branch_id": "Салбар",
-  "z": "Зардлын дүн",
-  "hkod": "Барааны код",
-  "hname": "Барааны нэр",
-  "hprodup": "Нийлүүлсэн үнэ",
-  "hsalep": "Худалдах үнэ",
-  "hmu": "Нэгж",
-  "hstartmmdate": "ММ Хямдралын эхлэх огноо",
-  "hendmmdate": "ММ Хямдралын дуусах огноо",
-  "hsalemmp": "ММ Хямдралын дүн",
-  "hsaleperap": "ММ Хямдралын хувийн дүн",
-  "hsalepermm": "ММ Хямдралын хувь",
-  "hstartbndate": "Бэлтгэн нийлүүлэгчийн хямдралын эхлэх огноо",
-  "hendbndate": "Бэлтгэн нийлүүлэгчийн хямдралын дуусах огноо",
-  "hsalepbn": "Бэлтгэн нийлүүлэгчийн хямдралын дүн",
-  "hsaleperbn": "Бэлтгэн нийлүүлэгчийн хямдралын хувь",
-  "hprodid": "Үйлдвэрлэгчийн код",
-  "hproname": "Үйлдвэрлэгчийн нэр",
-  "hseller": "Нийлүүлэгчтэй зөвшилцсөн ажилтны код",
-  "hreason": "Хямдруулах шалтгаан, Хямдралын төлөвлөгөөний нэр",
-  "hannot": "Тайлбар",
-  "hcoupon": "Купон код",
-  "SWPUIOUB": "swpuioub",
-  "department_id": "Хэлтэс",
-  "inventory_code": "Барааны код",
-  "inventory_name": "Барааны нэр",
-  "inventory_cost": "Нийлүүлсэн үнэ",
-  "inventory_saleprice": "Худалдах үнэ",
-  "inventory_mu": "Нэгж",
-  "start_date": "Хямдралын эхлэх огноо",
-  "end_date": "Хямдралын дуусах огноо",
-  "discount_amount": "Хямдралын дүн",
-  "discount_percent_amount": "Хямдралын хувийн дүн",
-  "discount_percent": "Хямдралын хувь",
-  "manufacturer_id": "Үйлдвэрлэгчийн код",
-  "manufacturer_name": "Үйлдвэрлэгчийн нэр",
-  "agreed_empid": "Нийлүүлэгчтэй зөвшилцсөн ажилтны код",
-  "discount_campain": "Хямдралын аян",
-  "description": "Тайлбар",
-  "coupon_code": "Купон код",
-  "start_date1": "Хямдралын эхлэх огноо",
-  "end_date1": "Хямдралын дуусах огноо",
-  "discount_amount1": "Хямдралын дүн",
-  "discount_percent1": "Хямдралын хувь",
-  "discount_reason": "Хямдруулах шалтгаан",
-  "bmtr_actid": "bmtr_actid",
-  "TransType": "TransType",
-  "pos_session_id": "pos_session_id",
-  "sp_primary_code": "Нэгдсэн код",
-  "sp_selling_code": "Худалдах код",
-  "sp_pm_name": "БМЭХ нэр",
-  "sp_pm_unit_id": "Нэгжийн код",
-  "sp_categories": "Категори",
-  "sp_manufacturer_id": "Үйлдвэрлэгчийн код",
-  "sp_cost": "Өртөг",
-  "sp_cost_date": "Өртгийн огноо",
-  "sp_source_table": "sp_source_table",
-  "sp_current_stock": "Үлдэгдэл",
-  "sp_total_cost": "Нийт өртөг",
-  "sp_selling_price": "Худалдан үнэ",
-  "sp_company_discount": "ММ хямдрал",
-  "sp_supplier_discount": "БН хямдрал",
-  "sp_coupon_discount": "Купон хямдрал",
-  "sp_total_discount": "Нийт хямдрал",
-  "sp_current_company_stock": "Байгууллагын үлдэгдэл",
-  "sp_current_branch_stock": "Салбарын үлдэгдэл",
-  "transaction_datetime": "transaction_datetime",
-  "fest_year": "Жил",
-  "fest_month": "Сар",
-  "fest_day": "Амралтын хоног"
+  "1": {
+    "en": "1",
+    "mn": "1"
+  },
+  "2": {
+    "en": "2",
+    "mn": "2"
+  },
+  "3": {
+    "en": "3",
+    "mn": "3"
+  },
+  "4": {
+    "en": "4",
+    "mn": "4"
+  },
+  "5": {
+    "en": "5",
+    "mn": "5"
+  },
+  "6": {
+    "en": "6",
+    "mn": "6"
+  },
+  "7": {
+    "en": "7",
+    "mn": "7"
+  },
+  "8": {
+    "en": "8",
+    "mn": "8"
+  },
+  "9": {
+    "en": "9",
+    "mn": "9"
+  },
+  "10": {
+    "en": "10",
+    "mn": "10"
+  },
+  "11": {
+    "en": "11",
+    "mn": "11"
+  },
+  "30": {
+    "en": "30",
+    "mn": "30"
+  },
+  "year": {
+    "en": "он",
+    "mn": "он"
+  },
+  "month": {
+    "en": "сар",
+    "mn": "сар"
+  },
+  "name": {
+    "en": "нэр",
+    "mn": "нэр"
+  },
+  "id": {
+    "en": "Нэгдсэн дугаар",
+    "mn": "Нэгдсэн дугаар"
+  },
+  "orUnique_id": {
+    "en": "orunique дугаар",
+    "mn": "orunique дугаар"
+  },
+  "or_sel": {
+    "en": "or sel",
+    "mn": "or sel"
+  },
+  "or_num": {
+    "en": "Гүйлгээний код",
+    "mn": "Гүйлгээний код"
+  },
+  "or_o_barimt": {
+    "en": "БМЭХ баримтын дугаар",
+    "mn": "БМЭХ баримтын дугаар"
+  },
+  "or_h_id": {
+    "en": "Хэрэглээний код",
+    "mn": "Хэрэглээний код"
+  },
+  "or_g_id": {
+    "en": "Гэрээний дугаар",
+    "mn": "Гэрээний дугаар"
+  },
+  "or_burtgel": {
+    "en": "Ажлын хуваарийн дугаар",
+    "mn": "Ажлын хуваарийн дугаар"
+  },
+  "or_unique_id": {
+    "en": "or unique дугаар",
+    "mn": "or unique дугаар"
+  },
+  "or_lname": {
+    "en": "Овог",
+    "mn": "Овог"
+  },
+  "or_fname": {
+    "en": "Нэр",
+    "mn": "Нэр"
+  },
+  "or_chig": {
+    "en": "Чиглэлийн код",
+    "mn": "Чиглэлийн код"
+  },
+  "or_chig_name": {
+    "en": "Чиглэл",
+    "mn": "Чиглэл"
+  },
+  "or_torol": {
+    "en": "Төрлийн код",
+    "mn": "Төрлийн код"
+  },
+  "or_torol_name": {
+    "en": "Төрөл",
+    "mn": "Төрөл"
+  },
+  "or_h_b": {
+    "en": "Хариуцсан ажилтын код",
+    "mn": "Хариуцсан ажилтын код"
+  },
+  "or_h_b_name": {
+    "en": "Хариуцсан ажилтан",
+    "mn": "Хариуцсан ажилтан"
+  },
+  "or_av_baragduulsan": {
+    "en": "Авлага барагдуусан эсэх",
+    "mn": "Авлага барагдуусан эсэх"
+  },
+  "or_type_id": {
+    "en": "Орлогын төрлийн код",
+    "mn": "Орлогын төрлийн код"
+  },
+  "or_type": {
+    "en": "Орлогын төрөл",
+    "mn": "Орлогын төрөл"
+  },
+  "or_av_now": {
+    "en": "Авлага эсэх код",
+    "mn": "Авлага эсэх код"
+  },
+  "or_av_name": {
+    "en": "Авлага",
+    "mn": "Авлага"
+  },
+  "or_av_time": {
+    "en": "Авлагын огноо",
+    "mn": "Авлагын огноо"
+  },
+  "or_quart": {
+    "en": "Улирал",
+    "mn": "Улирал"
+  },
+  "or_month": {
+    "en": "Сар",
+    "mn": "Сар"
+  },
+  "or_day": {
+    "en": "Өдөр",
+    "mn": "Өдөр"
+  },
+  "or_date": {
+    "en": "Огноо",
+    "mn": "Огноо"
+  },
+  "orcash_or_id": {
+    "en": "Касс/Харилцах код",
+    "mn": "Касс/Харилцах код"
+  },
+  "orcash_or_ner": {
+    "en": "Касс/Харилцах",
+    "mn": "Касс/Харилцах"
+  },
+  "or_or": {
+    "en": "Орлогын дүн",
+    "mn": "Орлогын дүн"
+  },
+  "or_vallut_id": {
+    "en": "Валютын код",
+    "mn": "Валютын код"
+  },
+  "or_valut_name": {
+    "en": "Валют",
+    "mn": "Валют"
+  },
+  "or_valut_choice": {
+    "en": "Ханшийн сонголт",
+    "mn": "Ханшийн сонголт"
+  },
+  "or_valut_rate": {
+    "en": "Ханш",
+    "mn": "Ханш"
+  },
+  "or_Valut_tugrug": {
+    "en": "Төгрөгөөр",
+    "mn": "Төгрөгөөр"
+  },
+  "or_bar_suu": {
+    "en": "Барьцаа суутгасан эсэх",
+    "mn": "Барьцаа суутгасан эсэх"
+  },
+  "or_bcode": {
+    "en": "БМЭХ код",
+    "mn": "БМЭХ код"
+  },
+  "or_orderid": {
+    "en": "Захиалгын дугаар",
+    "mn": "Захиалгын дугаар"
+  },
+  "or_tailbar1": {
+    "en": "Тайлбар1",
+    "mn": "Тайлбар1"
+  },
+  "orBurtgel_rd": {
+    "en": "Регистрийн дугаар",
+    "mn": "Регистрийн дугаар"
+  },
+  "or_eb": {
+    "en": "НӨАТ-н төлөв код",
+    "mn": "НӨАТ-н төлөв код"
+  },
+  "or_bank": {
+    "en": "Банк",
+    "mn": "Банк"
+  },
+  "or_Noatgui": {
+    "en": "НӨАТ-гүй дүн",
+    "mn": "НӨАТ-гүй дүн"
+  },
+  "Or_Noat": {
+    "en": "НӨАТ-н дүн",
+    "mn": "НӨАТ-н дүн"
+  },
+  "or_uglug_id": {
+    "en": "Өглөгийн дугаар",
+    "mn": "Өглөгийн дугаар"
+  },
+  "or_emp_receiver": {
+    "en": "Тушаасан ажилтны код",
+    "mn": "Тушаасан ажилтны код"
+  },
+  "or_emp_ner": {
+    "en": "Тушаасан ажилтан",
+    "mn": "Тушаасан ажилтан"
+  },
+  "or_tur_receiver": {
+    "en": "Тушаасан харилцагчийн код",
+    "mn": "Тушаасан харилцагчийн код"
+  },
+  "or_tur_receiver_name": {
+    "en": "Тушаасан харилцагч",
+    "mn": "Тушаасан харилцагч"
+  },
+  "or_other_receiver": {
+    "en": "Тушаасан бусад",
+    "mn": "Тушаасан бусад"
+  },
+  "or_org_id": {
+    "en": "Тушаасан байгууллагын дугаар",
+    "mn": "Тушаасан байгууллагын дугаар"
+  },
+  "or_org": {
+    "en": "Тушаасан байгууллага",
+    "mn": "Тушаасан байгууллага"
+  },
+  "Column2": {
+    "en": "column2",
+    "mn": "column2"
+  },
+  "Column3": {
+    "en": "column3",
+    "mn": "column3"
+  },
+  "Column4": {
+    "en": "column4",
+    "mn": "column4"
+  },
+  "Column5": {
+    "en": "column5",
+    "mn": "column5"
+  },
+  "Column6": {
+    "en": "column6",
+    "mn": "column6"
+  },
+  "Column7": {
+    "en": "column7",
+    "mn": "column7"
+  },
+  "Column8": {
+    "en": "column8",
+    "mn": "column8"
+  },
+  "Column9": {
+    "en": "column9",
+    "mn": "column9"
+  },
+  "Column10": {
+    "en": "column10",
+    "mn": "column10"
+  },
+  "Column11": {
+    "en": "column11",
+    "mn": "column11"
+  },
+  "Column12": {
+    "en": "column12",
+    "mn": "column12"
+  },
+  "Column13": {
+    "en": "column13",
+    "mn": "column13"
+  },
+  "Column14": {
+    "en": "column14",
+    "mn": "column14"
+  },
+  "Column15": {
+    "en": "column15",
+    "mn": "column15"
+  },
+  "Column16": {
+    "en": "column16",
+    "mn": "column16"
+  },
+  "Column17": {
+    "en": "column17",
+    "mn": "column17"
+  },
+  "Column18": {
+    "en": "column18",
+    "mn": "column18"
+  },
+  "Delivery": {
+    "en": "Хүргэлт",
+    "mn": "Хүргэлт"
+  },
+  "Assembly": {
+    "en": "Угсралт",
+    "mn": "Угсралт"
+  },
+  "Comments1": {
+    "en": "comments1",
+    "mn": "comments1"
+  },
+  "prodday": {
+    "en": "Үйлдвэрлэх хоног",
+    "mn": "Үйлдвэрлэх хоног"
+  },
+  "width": {
+    "en": "Өргөн",
+    "mn": "Өргөн"
+  },
+  "thickness": {
+    "en": "Зузаан",
+    "mn": "Зузаан"
+  },
+  "Column1": {
+    "en": "column1",
+    "mn": "column1"
+  },
+  "BARCODE2": {
+    "en": "barcode2",
+    "mn": "barcode2"
+  },
+  "BARCODE3": {
+    "en": "barcode3",
+    "mn": "barcode3"
+  },
+  "SIGNATURE1": {
+    "en": "signature1",
+    "mn": "signature1"
+  },
+  "SIGNATURE2": {
+    "en": "signature2",
+    "mn": "signature2"
+  },
+  "SIGNATURE3": {
+    "en": "signature3",
+    "mn": "signature3"
+  },
+  "IMAGE": {
+    "en": "image",
+    "mn": "image"
+  },
+  "IMAGE2": {
+    "en": "image2",
+    "mn": "image2"
+  },
+  "IMAGE3": {
+    "en": "image3",
+    "mn": "image3"
+  },
+  "IMAGE4": {
+    "en": "image4",
+    "mn": "image4"
+  },
+  "IMAGE5": {
+    "en": "image5",
+    "mn": "image5"
+  },
+  "TRTYPENAME": {
+    "en": "Гүйлгээний тайлбар",
+    "mn": "Гүйлгээний тайлбар"
+  },
+  "trtype": {
+    "en": "Гүйлгээний үсгэн код",
+    "mn": "Гүйлгээний үсгэн код"
+  },
+  "UITransTypeName": {
+    "en": "Гүйлгээний тоон код",
+    "mn": "Гүйлгээний тоон код"
+  },
+  "ORGANIZATION": {
+    "en": "Байгууллага",
+    "mn": "Байгууллага"
+  },
+  "ROOMID": {
+    "en": "Өрөөний дугаар",
+    "mn": "Өрөөний дугаар"
+  },
+  "USERID": {
+    "en": "Эзэмшигчийн дугаар",
+    "mn": "Эзэмшигчийн дугаар"
+  },
+  "PRINT": {
+    "en": "print",
+    "mn": "print"
+  },
+  "LOCATION": {
+    "en": "Байршил",
+    "mn": "Байршил"
+  },
+  "rawdata": {
+    "en": "rawdata",
+    "mn": "rawdata"
+  },
+  "deviceid": {
+    "en": "Төхөөрөмжийн код",
+    "mn": "Төхөөрөмжийн код"
+  },
+  "devicename": {
+    "en": "Төхөөрөмжийн нэр",
+    "mn": "Төхөөрөмжийн нэр"
+  },
+  "actime": {
+    "en": "Бүртгэсэн огноо",
+    "mn": "Бүртгэсэн огноо"
+  },
+  "rectime": {
+    "en": "Илгээсэн огноо",
+    "mn": "Илгээсэн огноо"
+  },
+  "UUID": {
+    "en": "uuid",
+    "mn": "uuid"
+  },
+  "Column19": {
+    "en": "column19",
+    "mn": "column19"
+  },
+  "ortr_state": {
+    "en": "Гүйлгээний төлөв",
+    "mn": "Гүйлгээний төлөв"
+  },
+  "ortr_transbranch": {
+    "en": "Гүйлгээ хийсэн салбар",
+    "mn": "Гүйлгээ хийсэн салбар"
+  },
+  "ortr_id": {
+    "en": "Гүйлгээний нийлмэл код",
+    "mn": "Гүйлгээний нийлмэл код"
+  },
+  "ortr_confirm": {
+    "en": "Гүйлгээ байталгаажуулалт",
+    "mn": "Гүйлгээ байталгаажуулалт"
+  },
+  "ortr_confirm_date": {
+    "en": "Гүйлгээ баталгаажуулсан огноо",
+    "mn": "Гүйлгээ баталгаажуулсан огноо"
+  },
+  "ortr_confirm_emp": {
+    "en": "Гүйлгээ баталгаажуулсан ажилтын код",
+    "mn": "Гүйлгээ баталгаажуулсан ажилтын код"
+  },
+  "ortr_edit_date": {
+    "en": "Гүйлгээ зассан огноо",
+    "mn": "Гүйлгээ зассан огноо"
+  },
+  "ortr_edit_emp": {
+    "en": "Гүйлгээ зассан ажилтны код",
+    "mn": "Гүйлгээ зассан ажилтны код"
+  },
+  "ortr_edit_cause": {
+    "en": "Гүйлгээ зассан шалтгаан",
+    "mn": "Гүйлгээ зассан шалтгаан"
+  },
+  "ortr_del_date": {
+    "en": "Гүйлгээ устгасан огноо",
+    "mn": "Гүйлгээ устгасан огноо"
+  },
+  "ortr_del_emp": {
+    "en": "Гүйлгээ устгасан ажилтны код",
+    "mn": "Гүйлгээ устгасан ажилтны код"
+  },
+  "ortr_del_cause": {
+    "en": "Гүйлгээ устгасан шалтгаан",
+    "mn": "Гүйлгээ устгасан шалтгаан"
+  },
+  "ortr_check_date": {
+    "en": "Хянасан огноо",
+    "mn": "Хянасан огноо"
+  },
+  "ortr_checkyn": {
+    "en": "Хянасан эсэх",
+    "mn": "Хянасан эсэх"
+  },
+  "ortr_check_emp": {
+    "en": "Хянасан ахлахын код",
+    "mn": "Хянасан ахлахын код"
+  },
+  "ortr_check_cause": {
+    "en": "Хянасан шалтгаан",
+    "mn": "Хянасан шалтгаан"
+  },
+  "ortr_Transtype": {
+    "en": "Гүйлгээний төрөл",
+    "mn": "Гүйлгээний төрөл"
+  },
+  "Column20": {
+    "en": "column20",
+    "mn": "column20"
+  },
+  "orgz_sample": {
+    "en": "orgz sample",
+    "mn": "orgz sample"
+  },
+  "orgz_sample_name": {
+    "en": "orgz sample нэр",
+    "mn": "orgz sample нэр"
+  },
+  "orgz_type_name": {
+    "en": "orgz type нэр",
+    "mn": "orgz type нэр"
+  },
+  "orgz_ta": {
+    "en": "orgz ta",
+    "mn": "orgz ta"
+  },
+  "orgz_branch": {
+    "en": "orgz branch",
+    "mn": "orgz branch"
+  },
+  "orgz_deposit_account": {
+    "en": "orgz deposit account",
+    "mn": "orgz deposit account"
+  },
+  "orgz_eb": {
+    "en": "orgz eb",
+    "mn": "orgz eb"
+  },
+  "orgz_prod": {
+    "en": "orgz prod",
+    "mn": "orgz prod"
+  },
+  "orgz_hariltsagch": {
+    "en": "orgz hariltsagch",
+    "mn": "orgz hariltsagch"
+  },
+  "orgz_valut": {
+    "en": "orgz valut",
+    "mn": "orgz valut"
+  },
+  "orgz_dt1": {
+    "en": "orgz dt1",
+    "mn": "orgz dt1"
+  },
+  "orgz_kt1": {
+    "en": "orgz kt1",
+    "mn": "orgz kt1"
+  },
+  "orgz_k1": {
+    "en": "orgz k1",
+    "mn": "orgz k1"
+  },
+  "orgz_dt2": {
+    "en": "orgz dt2",
+    "mn": "orgz dt2"
+  },
+  "orgz_kt2": {
+    "en": "orgz kt2",
+    "mn": "orgz kt2"
+  },
+  "orgz_k2": {
+    "en": "orgz k2",
+    "mn": "orgz k2"
+  },
+  "orgz_dt3": {
+    "en": "orgz dt3",
+    "mn": "orgz dt3"
+  },
+  "orgz_kt3": {
+    "en": "orgz kt3",
+    "mn": "orgz kt3"
+  },
+  "orgz_k3": {
+    "en": "orgz k3",
+    "mn": "orgz k3"
+  },
+  "orgz_dt4": {
+    "en": "orgz dt4",
+    "mn": "orgz dt4"
+  },
+  "orgz_kt4": {
+    "en": "orgz kt4",
+    "mn": "orgz kt4"
+  },
+  "orgz_k4": {
+    "en": "orgz k4",
+    "mn": "orgz k4"
+  },
+  "orgz_k5": {
+    "en": "orgz k5",
+    "mn": "orgz k5"
+  },
+  "orCustomerId": {
+    "en": "orcustomerid",
+    "mn": "orcustomerid"
+  },
+  "orJournalDate": {
+    "en": "orjournaldate",
+    "mn": "orjournaldate"
+  },
+  "orJournalDesc": {
+    "en": "orjournaldesc",
+    "mn": "orjournaldesc"
+  },
+  "orJournalNumber": {
+    "en": "orjournalnumber",
+    "mn": "orjournalnumber"
+  },
+  "orAmount": {
+    "en": "oramount",
+    "mn": "oramount"
+  },
+  "orJournalTemplateId": {
+    "en": "orjournaltemplateid",
+    "mn": "orjournaltemplateid"
+  },
+  "zUnique_id": {
+    "en": "zunique дугаар",
+    "mn": "zunique дугаар"
+  },
+  "z_num": {
+    "en": "Гүйлгээний код",
+    "mn": "Гүйлгээний код"
+  },
+  "z_barimt": {
+    "en": "БМЭХ баримтын дугаар",
+    "mn": "БМЭХ баримтын дугаар"
+  },
+  "z_tosov_code": {
+    "en": "Төсвийн дугаар",
+    "mn": "Төсвийн дугаар"
+  },
+  "z_tosov_zuil": {
+    "en": "Төсвийн зүйл",
+    "mn": "Төсвийн зүйл"
+  },
+  "z_taibar": {
+    "en": "Тайлбар",
+    "mn": "Тайлбар"
+  },
+  "z_angilal_b": {
+    "en": "Салбарын код",
+    "mn": "Салбарын код"
+  },
+  "z_angilal_b_name": {
+    "en": "Салбар",
+    "mn": "Салбар"
+  },
+  "z_angilal": {
+    "en": "Зардлын ангиллын код",
+    "mn": "Зардлын ангиллын код"
+  },
+  "z_angilal_name": {
+    "en": "Зардлын ангилал",
+    "mn": "Зардлын ангилал"
+  },
+  "z_torol": {
+    "en": "Зардлын төрлийн код",
+    "mn": "Зардлын төрлийн код"
+  },
+  "z_torol_name": {
+    "en": "Зардлын төрөл",
+    "mn": "Зардлын төрөл"
+  },
+  "z_utga": {
+    "en": "Зардлын утгын код",
+    "mn": "Зардлын утгын код"
+  },
+  "z_utga_name": {
+    "en": "Зардлын утга",
+    "mn": "Зардлын утга"
+  },
+  "z_from": {
+    "en": "Касс/Харилцах-с код",
+    "mn": "Касс/Харилцах-с код"
+  },
+  "z_from_name": {
+    "en": "Касс/Харилцах-с",
+    "mn": "Касс/Харилцах-с"
+  },
+  "z_emp_receiver": {
+    "en": "Хүлээн авсан ажилтны код",
+    "mn": "Хүлээн авсан ажилтны код"
+  },
+  "zemp_ner": {
+    "en": "Хүлээн авсан ажилтан",
+    "mn": "Хүлээн авсан ажилтан"
+  },
+  "z_tur_receiver": {
+    "en": "Хүлээн авсан харилцагчийн код",
+    "mn": "Хүлээн авсан харилцагчийн код"
+  },
+  "z_tur_receiver_name": {
+    "en": "Хүлээн авсан харилцагч",
+    "mn": "Хүлээн авсан харилцагч"
+  },
+  "z_other_receiver": {
+    "en": "Хүлээн авсан бусад",
+    "mn": "Хүлээн авсан бусад"
+  },
+  "z_org_id": {
+    "en": "Хүлээн авсан байгууллагын код",
+    "mn": "Хүлээн авсан байгууллагын код"
+  },
+  "z_org": {
+    "en": "Хүлээн авсан байгууллага",
+    "mn": "Хүлээн авсан байгууллага"
+  },
+  "z_date": {
+    "en": "Огноо",
+    "mn": "Огноо"
+  },
+  "z_valut_id": {
+    "en": "Валютын код",
+    "mn": "Валютын код"
+  },
+  "z_valut_name": {
+    "en": "Валют",
+    "mn": "Валют"
+  },
+  "z_valut_choice": {
+    "en": "Ханшийн сонголт",
+    "mn": "Ханшийн сонголт"
+  },
+  "z_curr_rate": {
+    "en": "Ханш",
+    "mn": "Ханш"
+  },
+  "z_valut_tugrug": {
+    "en": "Төгрөгөөр",
+    "mn": "Төгрөгөөр"
+  },
+  "z_mat_code": {
+    "en": "БМЭХ код",
+    "mn": "БМЭХ код"
+  },
+  "z_tailbar1": {
+    "en": "Тайлбар 1",
+    "mn": "Тайлбар 1"
+  },
+  "z_eb": {
+    "en": "НӨАТ-н төлөв",
+    "mn": "НӨАТ-н төлөв"
+  },
+  "z_NOATgui": {
+    "en": "НӨАТ-гүй дүн",
+    "mn": "НӨАТ-гүй дүн"
+  },
+  "z_NOAT": {
+    "en": "НӨАТ-ийн дүн",
+    "mn": "НӨАТ-ийн дүн"
+  },
+  "z_ndts": {
+    "en": "ндц",
+    "mn": "ндц"
+  },
+  "z_ndguits": {
+    "en": "ндгүйц",
+    "mn": "ндгүйц"
+  },
+  "Z_tailan_angilal": {
+    "en": "Тайлангийн ангилал",
+    "mn": "Тайлангийн ангилал"
+  },
+  "z_orderid": {
+    "en": "Захиалгын дугаар",
+    "mn": "Захиалгын дугаар"
+  },
+  "z_month": {
+    "en": "Сар",
+    "mn": "Сар"
+  },
+  "z_noat_oor_month": {
+    "en": "НӨАТ өөр сар",
+    "mn": "НӨАТ өөр сар"
+  },
+  "z_noat_month": {
+    "en": "НӨАТ сар",
+    "mn": "НӨАТ сар"
+  },
+  "zar_uglug_eseh_code": {
+    "en": "Өглөг эсэх код",
+    "mn": "Өглөг эсэх код"
+  },
+  "zar_uglug_eseh": {
+    "en": "Өглөг эсэх",
+    "mn": "Өглөг эсэх"
+  },
+  "Z_urtug": {
+    "en": "Тайлангийн ангилал 1",
+    "mn": "Тайлангийн ангилал 1"
+  },
+  "zar_uglug_month": {
+    "en": "Нэхэмжлэлийн сар",
+    "mn": "Нэхэмжлэлийн сар"
+  },
+  "Column21": {
+    "en": "column21",
+    "mn": "column21"
+  },
+  "Column22": {
+    "en": "column22",
+    "mn": "column22"
+  },
+  "Column23": {
+    "en": "column23",
+    "mn": "column23"
+  },
+  "Column24": {
+    "en": "column24",
+    "mn": "column24"
+  },
+  "ztr_state": {
+    "en": "Гүйлгээний төлөв",
+    "mn": "Гүйлгээний төлөв"
+  },
+  "ztr_transbranch": {
+    "en": "Гүйлгээ хийсэн салбар",
+    "mn": "Гүйлгээ хийсэн салбар"
+  },
+  "ztr_id": {
+    "en": "Гүйлгээний нийлмэл код",
+    "mn": "Гүйлгээний нийлмэл код"
+  },
+  "ztr_confirm": {
+    "en": "Гүйлгээ баталгаажуулалт",
+    "mn": "Гүйлгээ баталгаажуулалт"
+  },
+  "ztr_confirm_date": {
+    "en": "Гүйлгээ баталгаажуулсан огноо",
+    "mn": "Гүйлгээ баталгаажуулсан огноо"
+  },
+  "ztr_confirm_emp": {
+    "en": "ГҮйлгээ баталгаажуулсан ажилтны код",
+    "mn": "ГҮйлгээ баталгаажуулсан ажилтны код"
+  },
+  "ztr_edit_date": {
+    "en": "Гүйлгээ зассан огноо",
+    "mn": "Гүйлгээ зассан огноо"
+  },
+  "ztr_edit_emp": {
+    "en": "Гүйлгээ зассан ажилтны код",
+    "mn": "Гүйлгээ зассан ажилтны код"
+  },
+  "ztr_edit_cause": {
+    "en": "Гүйлгээ зассан шалтгаан",
+    "mn": "Гүйлгээ зассан шалтгаан"
+  },
+  "ztr_del_date": {
+    "en": "Гүйлгээ устгасан огноо",
+    "mn": "Гүйлгээ устгасан огноо"
+  },
+  "ztr_del_emp": {
+    "en": "ГҮйлгээ устгасан ажилтны код",
+    "mn": "ГҮйлгээ устгасан ажилтны код"
+  },
+  "ztr_del_cause": {
+    "en": "ГҮйлгээ устгасан шалтгаан",
+    "mn": "ГҮйлгээ устгасан шалтгаан"
+  },
+  "ztr_check_date": {
+    "en": "Хянасан огноо",
+    "mn": "Хянасан огноо"
+  },
+  "ztr_checkyn": {
+    "en": "Хянасан эсэх",
+    "mn": "Хянасан эсэх"
+  },
+  "ztr_check_emp": {
+    "en": "Хянасан ахлахын код",
+    "mn": "Хянасан ахлахын код"
+  },
+  "ztr_check_cause": {
+    "en": "Хянасан шалтгаан",
+    "mn": "Хянасан шалтгаан"
+  },
+  "ztr_Transtype": {
+    "en": "Гүйлгээний төрөл",
+    "mn": "Гүйлгээний төрөл"
+  },
+  "Column25": {
+    "en": "column25",
+    "mn": "column25"
+  },
+  "Column26": {
+    "en": "column26",
+    "mn": "column26"
+  },
+  "zgz_sample": {
+    "en": "zgz sample",
+    "mn": "zgz sample"
+  },
+  "zgz_sample_name": {
+    "en": "zgz sample нэр",
+    "mn": "zgz sample нэр"
+  },
+  "zgz_type_name": {
+    "en": "zgz type нэр",
+    "mn": "zgz type нэр"
+  },
+  "zgz_ta": {
+    "en": "zgz ta",
+    "mn": "zgz ta"
+  },
+  "zgz_branch": {
+    "en": "zgz branch",
+    "mn": "zgz branch"
+  },
+  "zgz_deposit_account": {
+    "en": "zgz deposit account",
+    "mn": "zgz deposit account"
+  },
+  "zgz_eb": {
+    "en": "zgz eb",
+    "mn": "zgz eb"
+  },
+  "zgz_prod": {
+    "en": "zgz prod",
+    "mn": "zgz prod"
+  },
+  "zgz_hariltsagch": {
+    "en": "zgz hariltsagch",
+    "mn": "zgz hariltsagch"
+  },
+  "zgz_valut": {
+    "en": "zgz valut",
+    "mn": "zgz valut"
+  },
+  "zgz_dt1": {
+    "en": "zgz dt1",
+    "mn": "zgz dt1"
+  },
+  "zgz_kt1": {
+    "en": "zgz kt1",
+    "mn": "zgz kt1"
+  },
+  "zgz_k1": {
+    "en": "zgz k1",
+    "mn": "zgz k1"
+  },
+  "zgz_dt2": {
+    "en": "zgz dt2",
+    "mn": "zgz dt2"
+  },
+  "zgz_kt2": {
+    "en": "zgz kt2",
+    "mn": "zgz kt2"
+  },
+  "zgz_k2": {
+    "en": "zgz k2",
+    "mn": "zgz k2"
+  },
+  "zgz_dt3": {
+    "en": "zgz dt3",
+    "mn": "zgz dt3"
+  },
+  "zgz_kt3": {
+    "en": "zgz kt3",
+    "mn": "zgz kt3"
+  },
+  "zgz_k3": {
+    "en": "zgz k3",
+    "mn": "zgz k3"
+  },
+  "zgz_dt4": {
+    "en": "zgz dt4",
+    "mn": "zgz dt4"
+  },
+  "zgz_kt4": {
+    "en": "zgz kt4",
+    "mn": "zgz kt4"
+  },
+  "zgz_k4": {
+    "en": "zgz k4",
+    "mn": "zgz k4"
+  },
+  "zgz_k5": {
+    "en": "zgz k5",
+    "mn": "zgz k5"
+  },
+  "zCustomerId": {
+    "en": "zcustomerid",
+    "mn": "zcustomerid"
+  },
+  "zJournalDate": {
+    "en": "zjournaldate",
+    "mn": "zjournaldate"
+  },
+  "zJournalDesc": {
+    "en": "zjournaldesc",
+    "mn": "zjournaldesc"
+  },
+  "zJournalNumber": {
+    "en": "zjournalnumber",
+    "mn": "zjournalnumber"
+  },
+  "zAmount": {
+    "en": "zamount",
+    "mn": "zamount"
+  },
+  "zJournalTemplateId": {
+    "en": "zjournaltemplateid",
+    "mn": "zjournaltemplateid"
+  },
+  "bmUnique_id": {
+    "en": "bmunique дугаар",
+    "mn": "bmunique дугаар"
+  },
+  "bmtr_num": {
+    "en": "Гүйлгээний код",
+    "mn": "Гүйлгээний код"
+  },
+  "bmtr_pid": {
+    "en": "Санхүүгийн баримтын дугаар",
+    "mn": "Санхүүгийн баримтын дугаар"
+  },
+  "bmtr_cid": {
+    "en": "Төсвийн дугаар",
+    "mn": "Төсвийн дугаар"
+  },
+  "bmtr_tid": {
+    "en": "Төсвийн зүйл",
+    "mn": "Төсвийн зүйл"
+  },
+  "bmtr_pmid": {
+    "en": "БМЭХ код",
+    "mn": "БМЭХ код"
+  },
+  "bmtr_idname": {
+    "en": "БМЭХ нэр",
+    "mn": "БМЭХ нэр"
+  },
+  "bmtr_mu": {
+    "en": "нэгж",
+    "mn": "нэгж"
+  },
+  "bmtr_cc": {
+    "en": "bmtr cc",
+    "mn": "bmtr cc"
+  },
+  "bmtr_left": {
+    "en": "үлдэгдэл",
+    "mn": "үлдэгдэл"
+  },
+  "Plan_day": {
+    "en": "Гүйцэтгэх хоног",
+    "mn": "Гүйцэтгэх хоног"
+  },
+  "Source": {
+    "en": "Эх үүсвэр",
+    "mn": "Эх үүсвэр"
+  },
+  "req": {
+    "en": "Шаардлагатай",
+    "mn": "Шаардлагатай"
+  },
+  "payment": {
+    "en": "Төлбөр",
+    "mn": "Төлбөр"
+  },
+  "bmtr_acc": {
+    "en": "тоо",
+    "mn": "тоо"
+  },
+  "bmtr_sub": {
+    "en": "хэмжээ",
+    "mn": "хэмжээ"
+  },
+  "bmtr_up": {
+    "en": "Нэгжийн үнэ",
+    "mn": "Нэгжийн үнэ"
+  },
+  "bmtr_ap": {
+    "en": "Нийт үнэ",
+    "mn": "Нийт үнэ"
+  },
+  "bmtr_prod": {
+    "en": "Үйлдвэрлэл",
+    "mn": "Үйлдвэрлэл"
+  },
+  "bmtr_annot": {
+    "en": "Тайлбар",
+    "mn": "Тайлбар"
+  },
+  "bmtr_date": {
+    "en": "Огноо",
+    "mn": "Огноо"
+  },
+  "bmtr_sellerid": {
+    "en": "Ажилтаас код",
+    "mn": "Ажилтаас код"
+  },
+  "bmtr_seller": {
+    "en": "Ажилтнаас",
+    "mn": "Ажилтнаас"
+  },
+  "bmtr_empid": {
+    "en": "Ажилтанд",
+    "mn": "Ажилтанд"
+  },
+  "bmtr_empname": {
+    "en": "Ажилтанд",
+    "mn": "Ажилтанд"
+  },
+  "bmtr_orderedp": {
+    "en": "БМЭХ нэр бичих",
+    "mn": "БМЭХ нэр бичих"
+  },
+  "bmtr_prodid": {
+    "en": "bmtr prodid",
+    "mn": "bmtr prodid"
+  },
+  "bmtr_prodname": {
+    "en": "bmtr prodname",
+    "mn": "bmtr prodname"
+  },
+  "bmtr_orderid": {
+    "en": "Захиалгын дугаар",
+    "mn": "Захиалгын дугаар"
+  },
+  "bmtr_orderdid": {
+    "en": "Захиалгын дэд дугаар",
+    "mn": "Захиалгын дэд дугаар"
+  },
+  "bmtr_orderedprod": {
+    "en": "Захиалгын бүтээгдэхүүн",
+    "mn": "Захиалгын бүтээгдэхүүн"
+  },
+  "bmtr_customerid": {
+    "en": "Харилцагч",
+    "mn": "Харилцагч"
+  },
+  "bmtr_customername": {
+    "en": "Харилцагч",
+    "mn": "Харилцагч"
+  },
+  "bmtr_branchid": {
+    "en": "Салбар руу",
+    "mn": "Салбар руу"
+  },
+  "bmtr_branchname": {
+    "en": "Салбар руу",
+    "mn": "Салбар руу"
+  },
+  "bmtr_consumerid": {
+    "en": "Үйлчлүүлэгч",
+    "mn": "Үйлчлүүлэгч"
+  },
+  "bmtr_consumername": {
+    "en": "Үйлчлүүлэгч",
+    "mn": "Үйлчлүүлэгч"
+  },
+  "bmtr_repid": {
+    "en": "Тайлангийн ангилал",
+    "mn": "Тайлангийн ангилал"
+  },
+  "bmtr_repidname": {
+    "en": "Тайлангийн ангилал",
+    "mn": "Тайлангийн ангилал"
+  },
+  "bmtr_costid": {
+    "en": "Өртгийн кодчлол",
+    "mn": "Өртгийн кодчлол"
+  },
+  "bmtr_manuf": {
+    "en": "Үйлдвэрлэгч",
+    "mn": "Үйлдвэрлэгч"
+  },
+  "bmtr_primcode": {
+    "en": "Барааны код",
+    "mn": "Барааны код"
+  },
+  "bmtr_coupcode": {
+    "en": "Купон код",
+    "mn": "Купон код"
+  },
+  "bmtr_coup2": {
+    "en": "bmtr coup2",
+    "mn": "bmtr coup2"
+  },
+  "bmtr_coup3": {
+    "en": "bmtr coup3",
+    "mn": "bmtr coup3"
+  },
+  "bmtr_coup4": {
+    "en": "bmtr coup4",
+    "mn": "bmtr coup4"
+  },
+  "bmtr_coup5": {
+    "en": "bmtr coup5",
+    "mn": "bmtr coup5"
+  },
+  "bmtr_coup6": {
+    "en": "bmtr coup6",
+    "mn": "bmtr coup6"
+  },
+  "bmtr_coup7": {
+    "en": "bmtr coup7",
+    "mn": "bmtr coup7"
+  },
+  "bmtr_coup8": {
+    "en": "bmtr coup8",
+    "mn": "bmtr coup8"
+  },
+  "bmtr_return": {
+    "en": "Буцаалт",
+    "mn": "Буцаалт"
+  },
+  "bmtr_frombranchid": {
+    "en": "Салбараас",
+    "mn": "Салбараас"
+  },
+  "bmtr_frombranch": {
+    "en": "Салбараас",
+    "mn": "Салбараас"
+  },
+  "bmtr_Type": {
+    "en": "БМЭХ төрлийн код",
+    "mn": "БМЭХ төрлийн код"
+  },
+  "bmtr_tkkod": {
+    "en": "Материалын анхдагч код /5/",
+    "mn": "Материалын анхдагч код /5/"
+  },
+  "bmtr_eb": {
+    "en": "Барааны өртгийн код",
+    "mn": "Барааны өртгийн код"
+  },
+  "bmtr_xmkod": {
+    "en": "Материалын өртгийн код",
+    "mn": "Материалын өртгийн код"
+  },
+  "bmtr_AvUg": {
+    "en": "1 - Авлага/1 -Өглөг/ -1 Хөрөнгө",
+    "mn": "1 - Авлага/1 -Өглөг/ -1 Хөрөнгө"
+  },
+  "bmtr_MM_sale": {
+    "en": "Мод маркетын хямдрал",
+    "mn": "Мод маркетын хямдрал"
+  },
+  "bmtr_BN_sale": {
+    "en": "Бэлтгэн нийлүүлэгчийн хямдрал",
+    "mn": "Бэлтгэн нийлүүлэгчийн хямдрал"
+  },
+  "bmtr_Codecheck": {
+    "en": "bmtr codecheck",
+    "mn": "bmtr codecheck"
+  },
+  "bmtr_tkkodup": {
+    "en": "Өртгийн дүн",
+    "mn": "Өртгийн дүн"
+  },
+  "bmtr_Saleap": {
+    "en": "Нийт хямдрал",
+    "mn": "Нийт хямдрал"
+  },
+  "bmtr_Dupercent": {
+    "en": "Дуусаагүй үйлдвэрлэлийн хувь",
+    "mn": "Дуусаагүй үйлдвэрлэлийн хувь"
+  },
+  "bmtr_Ibarcode_mat": {
+    "en": "Баркод материалын",
+    "mn": "Баркод материалын"
+  },
+  "bmtr_tkkod1": {
+    "en": "Нэгдсэн код",
+    "mn": "Нэгдсэн код"
+  },
+  "bmtr_Ibarcode_baraa": {
+    "en": "Баркод барааны",
+    "mn": "Баркод барааны"
+  },
+  "bmtr_frombranch_barimt": {
+    "en": "Бусад салбарын гүйлгээний код",
+    "mn": "Бусад салбарын гүйлгээний код"
+  },
+  "bmtr_count": {
+    "en": "bmtr count",
+    "mn": "bmtr count"
+  },
+  "bmtr_state": {
+    "en": "Гүйлгээний төлөв",
+    "mn": "Гүйлгээний төлөв"
+  },
+  "bmtr_transbranch": {
+    "en": "Гүйлгээ хийсэн салбар",
+    "mn": "Гүйлгээ хийсэн салбар"
+  },
+  "bmtr_id": {
+    "en": "Гүйлгээний нийлмэл код",
+    "mn": "Гүйлгээний нийлмэл код"
+  },
+  "bmtr_confirm": {
+    "en": "Гүйлгээний баталгаажуулалт",
+    "mn": "Гүйлгээний баталгаажуулалт"
+  },
+  "bmtr_confirm_date": {
+    "en": "Гүйлгээ баталгаажуулсан огнгоо",
+    "mn": "Гүйлгээ баталгаажуулсан огнгоо"
+  },
+  "bmtr_confirm_emp": {
+    "en": "Гүйлгээ баталгаажуулсан ажилтны код",
+    "mn": "Гүйлгээ баталгаажуулсан ажилтны код"
+  },
+  "bmtr_edit_date": {
+    "en": "Гүйлгээ зассан огноо",
+    "mn": "Гүйлгээ зассан огноо"
+  },
+  "bmtr_edit_emp": {
+    "en": "Гүйлгээ зассан ажилтан",
+    "mn": "Гүйлгээ зассан ажилтан"
+  },
+  "bmtr_edit_cause": {
+    "en": "Гүйлгээ зассан шалтгаан",
+    "mn": "Гүйлгээ зассан шалтгаан"
+  },
+  "bmtr_del_date": {
+    "en": "Гүйлгээ устгасан огноо",
+    "mn": "Гүйлгээ устгасан огноо"
+  },
+  "bmtr_del_emp": {
+    "en": "Гүйлгээ устгасан ажилтан",
+    "mn": "Гүйлгээ устгасан ажилтан"
+  },
+  "bmtr_del_cause": {
+    "en": "Гүйлгээ устгасан шалтгаан",
+    "mn": "Гүйлгээ устгасан шалтгаан"
+  },
+  "bmtr_check_date": {
+    "en": "Хянасан огноо",
+    "mn": "Хянасан огноо"
+  },
+  "bmtr_checkyn": {
+    "en": "Хянасан эсэх",
+    "mn": "Хянасан эсэх"
+  },
+  "bmtr_check_emp": {
+    "en": "Хянасан ахлах",
+    "mn": "Хянасан ахлах"
+  },
+  "bmtr_check_cause": {
+    "en": "Хянасан шалтгаан",
+    "mn": "Хянасан шалтгаан"
+  },
+  "bmtr_transtype": {
+    "en": "гүйлгээний төрөл",
+    "mn": "гүйлгээний төрөл"
+  },
+  "bmColumn18": {
+    "en": "bmcolumn18",
+    "mn": "bmcolumn18"
+  },
+  "bmColumn1810": {
+    "en": "bmcolumn1810",
+    "mn": "bmcolumn1810"
+  },
+  "bmgz_sample": {
+    "en": "bmgz sample",
+    "mn": "bmgz sample"
+  },
+  "bmgz_sample_name": {
+    "en": "bmgz sample нэр",
+    "mn": "bmgz sample нэр"
+  },
+  "bmgz_type_name": {
+    "en": "bmgz type нэр",
+    "mn": "bmgz type нэр"
+  },
+  "bmgz_ta": {
+    "en": "bmgz ta",
+    "mn": "bmgz ta"
+  },
+  "bm": {
+    "en": "bm",
+    "mn": "bm"
+  },
+  "bm2": {
+    "en": "bm2",
+    "mn": "bm2"
+  },
+  "bm3": {
+    "en": "bm3",
+    "mn": "bm3"
+  },
+  "bm4": {
+    "en": "bm4",
+    "mn": "bm4"
+  },
+  "bm5": {
+    "en": "bm5",
+    "mn": "bm5"
+  },
+  "bm6": {
+    "en": "bm6",
+    "mn": "bm6"
+  },
+  "bm7": {
+    "en": "bm7",
+    "mn": "bm7"
+  },
+  "bm8": {
+    "en": "bm8",
+    "mn": "bm8"
+  },
+  "bmgz_branch": {
+    "en": "bmgz branch",
+    "mn": "bmgz branch"
+  },
+  "bmgz_deposit_account": {
+    "en": "bmgz deposit account",
+    "mn": "bmgz deposit account"
+  },
+  "bmgz_eb3": {
+    "en": "bmgz eb3",
+    "mn": "bmgz eb3"
+  },
+  "bmgz_prod4": {
+    "en": "bmgz prod4",
+    "mn": "bmgz prod4"
+  },
+  "bmgz_hariltsagch": {
+    "en": "bmgz hariltsagch",
+    "mn": "bmgz hariltsagch"
+  },
+  "bmgz_valut": {
+    "en": "bmgz valut",
+    "mn": "bmgz valut"
+  },
+  "bmgz_dt1": {
+    "en": "bmgz dt1",
+    "mn": "bmgz dt1"
+  },
+  "bmgz_kt1": {
+    "en": "bmgz kt1",
+    "mn": "bmgz kt1"
+  },
+  "bmgz_k1": {
+    "en": "bmgz k1",
+    "mn": "bmgz k1"
+  },
+  "bmgz_dt2": {
+    "en": "bmgz dt2",
+    "mn": "bmgz dt2"
+  },
+  "bmgz_kt2": {
+    "en": "bmgz kt2",
+    "mn": "bmgz kt2"
+  },
+  "bmgz_k2": {
+    "en": "bmgz k2",
+    "mn": "bmgz k2"
+  },
+  "bmgz_dt3": {
+    "en": "bmgz dt3",
+    "mn": "bmgz dt3"
+  },
+  "bmgz_kt3": {
+    "en": "bmgz kt3",
+    "mn": "bmgz kt3"
+  },
+  "bmgz_k3": {
+    "en": "bmgz k3",
+    "mn": "bmgz k3"
+  },
+  "bmgz_dt4": {
+    "en": "bmgz dt4",
+    "mn": "bmgz dt4"
+  },
+  "bmgz_kt4": {
+    "en": "bmgz kt4",
+    "mn": "bmgz kt4"
+  },
+  "bmgz_k4": {
+    "en": "bmgz k4",
+    "mn": "bmgz k4"
+  },
+  "bm9": {
+    "en": "bm9",
+    "mn": "bm9"
+  },
+  "bmCustomerId": {
+    "en": "bmcustomerid",
+    "mn": "bmcustomerid"
+  },
+  "bmJournalDate": {
+    "en": "bmjournaldate",
+    "mn": "bmjournaldate"
+  },
+  "bmJournalDesc": {
+    "en": "bmjournaldesc",
+    "mn": "bmjournaldesc"
+  },
+  "bmJournalNumber": {
+    "en": "bmjournalnumber",
+    "mn": "bmjournalnumber"
+  },
+  "bmAmount": {
+    "en": "bmamount",
+    "mn": "bmamount"
+  },
+  "bmJournalTemplateId": {
+    "en": "bmjournaltemplateid",
+    "mn": "bmjournaltemplateid"
+  },
+  "num": {
+    "en": "num",
+    "mn": "num"
+  },
+  "pid": {
+    "en": "Ажлын дугаар",
+    "mn": "Ажлын дугаар"
+  },
+  "cid": {
+    "en": "Төсвийн дугаар",
+    "mn": "Төсвийн дугаар"
+  },
+  "tid": {
+    "en": "Төсвийн зүйл",
+    "mn": "Төсвийн зүйл"
+  },
+  "pmid": {
+    "en": "БМЭХ код",
+    "mn": "БМЭХ код"
+  },
+  "idname": {
+    "en": "БМЭХ нэр",
+    "mn": "БМЭХ нэр"
+  },
+  "mu": {
+    "en": "нэгж",
+    "mn": "нэгж"
+  },
+  "cc": {
+    "en": "cc",
+    "mn": "cc"
+  },
+  "left": {
+    "en": "үлдэгдэл",
+    "mn": "үлдэгдэл"
+  },
+  "acc": {
+    "en": "тоо",
+    "mn": "тоо"
+  },
+  "sub": {
+    "en": "хэмжээ",
+    "mn": "хэмжээ"
+  },
+  "up": {
+    "en": "Нэгжийн үнэ",
+    "mn": "Нэгжийн үнэ"
+  },
+  "ap": {
+    "en": "Нийт үнэ",
+    "mn": "Нийт үнэ"
+  },
+  "prod": {
+    "en": "Үйлдвэрлэл",
+    "mn": "Үйлдвэрлэл"
+  },
+  "annot": {
+    "en": "Ажлын талаар дэлгэрэнгүй",
+    "mn": "Ажлын талаар дэлгэрэнгүй"
+  },
+  "date": {
+    "en": "Огноо",
+    "mn": "Огноо"
+  },
+  "sellerid": {
+    "en": "Гүйцэтгэх ажилтны код",
+    "mn": "Гүйцэтгэх ажилтны код"
+  },
+  "seller": {
+    "en": "Гүйцэтгэх ажилтан",
+    "mn": "Гүйцэтгэх ажилтан"
+  },
+  "empid": {
+    "en": "Туслах ажилтны код",
+    "mn": "Туслах ажилтны код"
+  },
+  "empname": {
+    "en": "Туслах ажилтан",
+    "mn": "Туслах ажилтан"
+  },
+  "orderedp": {
+    "en": "БМЭХ бичих",
+    "mn": "БМЭХ бичих"
+  },
+  "prodid": {
+    "en": "prodid",
+    "mn": "prodid"
+  },
+  "prodname": {
+    "en": "prodname",
+    "mn": "prodname"
+  },
+  "orderid": {
+    "en": "Захиалгын дугаар",
+    "mn": "Захиалгын дугаар"
+  },
+  "orderdid": {
+    "en": "Захиалгын дэд дугаар",
+    "mn": "Захиалгын дэд дугаар"
+  },
+  "orderedprod": {
+    "en": "orderedprod",
+    "mn": "orderedprod"
+  },
+  "customerid": {
+    "en": "Үйлчлүүлэгчийн код",
+    "mn": "Үйлчлүүлэгчийн код"
+  },
+  "customername": {
+    "en": "Үйлчлүүлэгчийн нэр",
+    "mn": "Үйлчлүүлэгчийн нэр"
+  },
+  "branchid": {
+    "en": "Гүйцэтгэх салбарын код",
+    "mn": "Гүйцэтгэх салбарын код"
+  },
+  "branchname": {
+    "en": "Гүйцэтгэх салбар",
+    "mn": "Гүйцэтгэх салбар"
+  },
+  "consumerid": {
+    "en": "Харилцагчийн код",
+    "mn": "Харилцагчийн код"
+  },
+  "consumername": {
+    "en": "Харилцагч",
+    "mn": "Харилцагч"
+  },
+  "repid": {
+    "en": "repid",
+    "mn": "repid"
+  },
+  "repidname": {
+    "en": "repidname",
+    "mn": "repidname"
+  },
+  "costid": {
+    "en": "costid",
+    "mn": "costid"
+  },
+  "manuf": {
+    "en": "manuf",
+    "mn": "manuf"
+  },
+  "primcode": {
+    "en": "primcode",
+    "mn": "primcode"
+  },
+  "coupcode": {
+    "en": "coupcode",
+    "mn": "coupcode"
+  },
+  "coup2": {
+    "en": "coup2",
+    "mn": "coup2"
+  },
+  "coup3": {
+    "en": "coup3",
+    "mn": "coup3"
+  },
+  "coup4": {
+    "en": "coup4",
+    "mn": "coup4"
+  },
+  "coup5": {
+    "en": "coup5",
+    "mn": "coup5"
+  },
+  "coup6": {
+    "en": "coup6",
+    "mn": "coup6"
+  },
+  "coup7": {
+    "en": "coup7",
+    "mn": "coup7"
+  },
+  "coup8": {
+    "en": "coup8",
+    "mn": "coup8"
+  },
+  "return": {
+    "en": "return",
+    "mn": "return"
+  },
+  "frombranchid": {
+    "en": "Ажлын салбарын код",
+    "mn": "Ажлын салбарын код"
+  },
+  "frombranch": {
+    "en": "Ажлын салбар",
+    "mn": "Ажлын салбар"
+  },
+  "Type": {
+    "en": "type",
+    "mn": "type"
+  },
+  "tkkod": {
+    "en": "tkkod",
+    "mn": "tkkod"
+  },
+  "eb": {
+    "en": "eb",
+    "mn": "eb"
+  },
+  "xmkod": {
+    "en": "xmkod",
+    "mn": "xmkod"
+  },
+  "AvUg": {
+    "en": "1-Авлага/1-Өглөг/-1-Хөрөнгө",
+    "mn": "1-Авлага/1-Өглөг/-1-Хөрөнгө"
+  },
+  "MMsale": {
+    "en": "Байгууллагын хямдрал",
+    "mn": "Байгууллагын хямдрал"
+  },
+  "BNsale": {
+    "en": "Бэлтгэн нийлүүлэгчийн хямдрал",
+    "mn": "Бэлтгэн нийлүүлэгчийн хямдрал"
+  },
+  "Codecheck": {
+    "en": "codecheck",
+    "mn": "codecheck"
+  },
+  "tkkodup": {
+    "en": "tkkodup",
+    "mn": "tkkodup"
+  },
+  "Saleap": {
+    "en": "Нийт хямдрал",
+    "mn": "Нийт хямдрал"
+  },
+  "Dupercent": {
+    "en": "Дуусаагүй үйлдвэрлэлийн хувь",
+    "mn": "Дуусаагүй үйлдвэрлэлийн хувь"
+  },
+  "Ibarcode_mat": {
+    "en": "Материалын баркод",
+    "mn": "Материалын баркод"
+  },
+  "tkkod1": {
+    "en": "tkkod1",
+    "mn": "tkkod1"
+  },
+  "Ibarcode_baraa": {
+    "en": "Барааны баркод",
+    "mn": "Барааны баркод"
+  },
+  "frombranch_barimt": {
+    "en": "frombranch barimt",
+    "mn": "frombranch barimt"
+  },
+  "zorchil_type": {
+    "en": "Зөрчлийн код",
+    "mn": "Зөрчлийн код"
+  },
+  "zorchil_type_name": {
+    "en": "Зөрчил",
+    "mn": "Зөрчил"
+  },
+  "zorchilgargasan_id": {
+    "en": "Зөрчил гаргасан этгээдийн код",
+    "mn": "Зөрчил гаргасан этгээдийн код"
+  },
+  "zorchilgargasan_name": {
+    "en": "Зөрчил гаргасан",
+    "mn": "Зөрчил гаргасан"
+  },
+  "freq_id": {
+    "en": "Давтамжийн код",
+    "mn": "Давтамжийн код"
+  },
+  "freq_name": {
+    "en": "Давтамж",
+    "mn": "Давтамж"
+  },
+  "position_id": {
+    "en": "Албан тушаалын код",
+    "mn": "Албан тушаалын код"
+  },
+  "position_name": {
+    "en": "Албан тушаал",
+    "mn": "Албан тушаал"
+  },
+  "count": {
+    "en": "count",
+    "mn": "count"
+  },
+  "state": {
+    "en": "state",
+    "mn": "state"
+  },
+  "transbranch": {
+    "en": "transbranch",
+    "mn": "transbranch"
+  },
+  "confirm": {
+    "en": "Гүйлгээ баталгаажуулалт",
+    "mn": "Гүйлгээ баталгаажуулалт"
+  },
+  "confirm_date": {
+    "en": "Гүйлгээ баталгаажуулсан огноо",
+    "mn": "Гүйлгээ баталгаажуулсан огноо"
+  },
+  "confirm_emp": {
+    "en": "Гүйлгээ баталгаажуулсан ажилтан",
+    "mn": "Гүйлгээ баталгаажуулсан ажилтан"
+  },
+  "edit_date": {
+    "en": "Гүйлгээ зассан огноо",
+    "mn": "Гүйлгээ зассан огноо"
+  },
+  "edit_emp": {
+    "en": "Гүйлгээ зассан ажилтан",
+    "mn": "Гүйлгээ зассан ажилтан"
+  },
+  "edit_cause": {
+    "en": "Гүйлгээ зассан шалтгаан",
+    "mn": "Гүйлгээ зассан шалтгаан"
+  },
+  "del_date": {
+    "en": "Гүйлгээ устгасан огноо",
+    "mn": "Гүйлгээ устгасан огноо"
+  },
+  "del_emp": {
+    "en": "Гүйлгээ устгасан ажилтан",
+    "mn": "Гүйлгээ устгасан ажилтан"
+  },
+  "del_cause": {
+    "en": "Гүйлгээ устгасан шалтгаан",
+    "mn": "Гүйлгээ устгасан шалтгаан"
+  },
+  "check_date": {
+    "en": "Хянасан огноо",
+    "mn": "Хянасан огноо"
+  },
+  "checkyn": {
+    "en": "Хянасан эсэх",
+    "mn": "Хянасан эсэх"
+  },
+  "check_emp": {
+    "en": "Хянасан ахлах",
+    "mn": "Хянасан ахлах"
+  },
+  "check_cause": {
+    "en": "Хянасан шалтгаан",
+    "mn": "Хянасан шалтгаан"
+  },
+  "transtype": {
+    "en": "гүйлгээний төрөл",
+    "mn": "гүйлгээний төрөл"
+  },
+  "Column1810": {
+    "en": "column1810",
+    "mn": "column1810"
+  },
+  "gz_sample": {
+    "en": "gz sample",
+    "mn": "gz sample"
+  },
+  "gz_sample_name": {
+    "en": "gz sample нэр",
+    "mn": "gz sample нэр"
+  },
+  "gz_type_name": {
+    "en": "gz type нэр",
+    "mn": "gz type нэр"
+  },
+  "gz_ta": {
+    "en": "gz ta",
+    "mn": "gz ta"
+  },
+  "gz_branch": {
+    "en": "gz branch",
+    "mn": "gz branch"
+  },
+  "gz_deposit_account": {
+    "en": "gz deposit account",
+    "mn": "gz deposit account"
+  },
+  "gz_eb3": {
+    "en": "gz eb3",
+    "mn": "gz eb3"
+  },
+  "gz_prod4": {
+    "en": "gz prod4",
+    "mn": "gz prod4"
+  },
+  "gz_hariltsagch": {
+    "en": "gz hariltsagch",
+    "mn": "gz hariltsagch"
+  },
+  "gz_valut": {
+    "en": "gz valut",
+    "mn": "gz valut"
+  },
+  "gz_dt1": {
+    "en": "gz dt1",
+    "mn": "gz dt1"
+  },
+  "gz_kt1": {
+    "en": "gz kt1",
+    "mn": "gz kt1"
+  },
+  "gz_k1": {
+    "en": "gz k1",
+    "mn": "gz k1"
+  },
+  "gz_dt2": {
+    "en": "gz dt2",
+    "mn": "gz dt2"
+  },
+  "gz_kt2": {
+    "en": "gz kt2",
+    "mn": "gz kt2"
+  },
+  "gz_k2": {
+    "en": "gz k2",
+    "mn": "gz k2"
+  },
+  "gz_dt3": {
+    "en": "gz dt3",
+    "mn": "gz dt3"
+  },
+  "gz_kt3": {
+    "en": "gz kt3",
+    "mn": "gz kt3"
+  },
+  "gz_k3": {
+    "en": "gz k3",
+    "mn": "gz k3"
+  },
+  "gz_dt4": {
+    "en": "gz dt4",
+    "mn": "gz dt4"
+  },
+  "gz_kt4": {
+    "en": "gz kt4",
+    "mn": "gz kt4"
+  },
+  "gz_k4": {
+    "en": "gz k4",
+    "mn": "gz k4"
+  },
+  "CustomerId6": {
+    "en": "customerid6",
+    "mn": "customerid6"
+  },
+  "JournalDate": {
+    "en": "journaldate",
+    "mn": "journaldate"
+  },
+  "JournalDesc": {
+    "en": "journaldesc",
+    "mn": "journaldesc"
+  },
+  "JournalNumber": {
+    "en": "journalnumber",
+    "mn": "journalnumber"
+  },
+  "Amount": {
+    "en": "дүн",
+    "mn": "дүн"
+  },
+  "JournalTemplateId": {
+    "en": "journaltemplateid",
+    "mn": "journaltemplateid"
+  },
+  "ordrUnique_id": {
+    "en": "ordrunique дугаар",
+    "mn": "ordrunique дугаар"
+  },
+  "ordrnum": {
+    "en": "Захиалгын",
+    "mn": "Захиалгын"
+  },
+  "ordrbranch": {
+    "en": "Захиалсан салбар",
+    "mn": "Захиалсан салбар"
+  },
+  "ordrid": {
+    "en": "Захиалгын дугаар",
+    "mn": "Захиалгын дугаар"
+  },
+  "ordrdid": {
+    "en": "Захиалгын дэд дугаар",
+    "mn": "Захиалгын дэд дугаар"
+  },
+  "ordrcustomerid": {
+    "en": "Захиалсан харилцагч",
+    "mn": "Захиалсан харилцагч"
+  },
+  "ordrcustomername": {
+    "en": "Захиалсан харилцагч",
+    "mn": "Захиалсан харилцагч"
+  },
+  "ordrrd": {
+    "en": "Харилцагчийн регистрийн дугаар",
+    "mn": "Харилцагчийн регистрийн дугаар"
+  },
+  "ordradd": {
+    "en": "Харилцагчийн хаяг",
+    "mn": "Харилцагчийн хаяг"
+  },
+  "ordrphone": {
+    "en": "Харилцагчийн утас",
+    "mn": "Харилцагчийн утас"
+  },
+  "ordrdate": {
+    "en": "Захиалсан огноо",
+    "mn": "Захиалсан огноо"
+  },
+  "ordrsource": {
+    "en": "Захиалсан газар",
+    "mn": "Захиалсан газар"
+  },
+  "ordrtooutdate": {
+    "en": "Захиалга олгох огноо",
+    "mn": "Захиалга олгох огноо"
+  },
+  "ordrpayment": {
+    "en": "Төлбөрийн хэлбэр",
+    "mn": "Төлбөрийн хэлбэр"
+  },
+  "ordrprodid": {
+    "en": "Үйлдвэрлэгчийн код",
+    "mn": "Үйлдвэрлэгчийн код"
+  },
+  "ordrprodname": {
+    "en": "Үйлдвэрлэгч",
+    "mn": "Үйлдвэрлэгч"
+  },
+  "ordrbname": {
+    "en": "Захиалсан барааны нэр",
+    "mn": "Захиалсан барааны нэр"
+  },
+  "ordrsub": {
+    "en": "тоо",
+    "mn": "тоо"
+  },
+  "ordrbsize": {
+    "en": "хэмжээ",
+    "mn": "хэмжээ"
+  },
+  "ordrmu": {
+    "en": "нэгж",
+    "mn": "нэгж"
+  },
+  "ordrsize": {
+    "en": "Газар дээрээс авсан хэмжээ",
+    "mn": "Газар дээрээс авсан хэмжээ"
+  },
+  "ordrlen": {
+    "en": "Урт",
+    "mn": "Урт"
+  },
+  "ordrwidth": {
+    "en": "Өргөн",
+    "mn": "Өргөн"
+  },
+  "ordrthick": {
+    "en": "Зузаан",
+    "mn": "Зузаан"
+  },
+  "ordrmat": {
+    "en": "Материал",
+    "mn": "Материал"
+  },
+  "ordrpaint": {
+    "en": "Будаг",
+    "mn": "Будаг"
+  },
+  "ordrcolor": {
+    "en": "Өнгө",
+    "mn": "Өнгө"
+  },
+  "ordrcarving": {
+    "en": "Сийлбэр",
+    "mn": "Сийлбэр"
+  },
+  "ordraccs": {
+    "en": "Тоноглол",
+    "mn": "Тоноглол"
+  },
+  "ordrbkod": {
+    "en": "Барааны код",
+    "mn": "Барааны код"
+  },
+  "ordrbkodname": {
+    "en": "ordrbkodname",
+    "mn": "ordrbkodname"
+  },
+  "ordrbkodmu": {
+    "en": "ordrbkodmu",
+    "mn": "ordrbkodmu"
+  },
+  "ordrbkodsub": {
+    "en": "ordrbkodsub",
+    "mn": "ordrbkodsub"
+  },
+  "ordrbkodmat": {
+    "en": "ordrbkodmat",
+    "mn": "ordrbkodmat"
+  },
+  "ordrbkodlen": {
+    "en": "ordrbkodlen",
+    "mn": "ordrbkodlen"
+  },
+  "ordrbkodwidth": {
+    "en": "ordrbkodwidth",
+    "mn": "ordrbkodwidth"
+  },
+  "ordrbkodthick": {
+    "en": "ordrbkodthick",
+    "mn": "ordrbkodthick"
+  },
+  "ordrColumn1": {
+    "en": "ordrcolumn1",
+    "mn": "ordrcolumn1"
+  },
+  "ordrbkodspec": {
+    "en": "ordrbkodspec",
+    "mn": "ordrbkodspec"
+  },
+  "ordrbkodcarv": {
+    "en": "ordrbkodcarv",
+    "mn": "ordrbkodcarv"
+  },
+  "ordrbkodcolor": {
+    "en": "ordrbkodcolor",
+    "mn": "ordrbkodcolor"
+  },
+  "ordrpriceoffer": {
+    "en": "ordrpriceoffer",
+    "mn": "ordrpriceoffer"
+  },
+  "ordrretailsel": {
+    "en": "Жижиглэнгийн үнэ сонгох",
+    "mn": "Жижиглэнгийн үнэ сонгох"
+  },
+  "ordrretailup": {
+    "en": "Жижиглэнгийн нэгжийн үнэ",
+    "mn": "Жижиглэнгийн нэгжийн үнэ"
+  },
+  "ordrretailap": {
+    "en": "Жижиглэнгийн нийт үнэ",
+    "mn": "Жижиглэнгийн нийт үнэ"
+  },
+  "ordrwholesalesel": {
+    "en": "Бөөний үнэ сонгох",
+    "mn": "Бөөний үнэ сонгох"
+  },
+  "ordrwholesaleup": {
+    "en": "Бөөний нэгжийн үнэ",
+    "mn": "Бөөний нэгжийн үнэ"
+  },
+  "ordrwholesaleap": {
+    "en": "Бөөний нийт үнэ",
+    "mn": "Бөөний нийт үнэ"
+  },
+  "ordrprodsel": {
+    "en": "Үйлдвэрийн үнэ сонгох",
+    "mn": "Үйлдвэрийн үнэ сонгох"
+  },
+  "ordrprodup": {
+    "en": "Үйлдвэрийн нэгжийн үнэ",
+    "mn": "Үйлдвэрийн нэгжийн үнэ"
+  },
+  "ordrprodap": {
+    "en": "Үйлдвэрийн нийт үнэ",
+    "mn": "Үйлдвэрийн нийт үнэ"
+  },
+  "ordrunitprice": {
+    "en": "Худалдах нэгжийн үнэ",
+    "mn": "Худалдах нэгжийн үнэ"
+  },
+  "ordrsalepercent": {
+    "en": "Хямдралын хувь",
+    "mn": "Хямдралын хувь"
+  },
+  "ordrsaleap": {
+    "en": "Захиалгын дүн",
+    "mn": "Захиалгын дүн"
+  },
+  "ordraftersaleap": {
+    "en": "Хямдралын дараах дүн",
+    "mn": "Хямдралын дараах дүн"
+  },
+  "ordrap": {
+    "en": "Нийт дүн",
+    "mn": "Нийт дүн"
+  },
+  "ordrnoatyn": {
+    "en": "НӨАТ-ийн хувь",
+    "mn": "НӨАТ-ийн хувь"
+  },
+  "ordrnoatgui": {
+    "en": "НӨАТ-гүй дүн",
+    "mn": "НӨАТ-гүй дүн"
+  },
+  "ordrpriceofferdate": {
+    "en": "Үнийн саналын огноо",
+    "mn": "Үнийн саналын огноо"
+  },
+  "ordrpriceaccdate": {
+    "en": "Үнийн санал хүлээн зөвшөөрсөн огноо",
+    "mn": "Үнийн санал хүлээн зөвшөөрсөн огноо"
+  },
+  "ordrordrconfirmed": {
+    "en": "Захиалга баталгаажуулсан эсэх",
+    "mn": "Захиалга баталгаажуулсан эсэх"
+  },
+  "ordrconfirmdate": {
+    "en": "Захиалга баталгаажуулсан огноо",
+    "mn": "Захиалга баталгаажуулсан огноо"
+  },
+  "ordrproddays": {
+    "en": "Үйлдвэрлэх хоног",
+    "mn": "Үйлдвэрлэх хоног"
+  },
+  "ordrreceivedid": {
+    "en": "Захиалга хүлээн авсан ажилтны код",
+    "mn": "Захиалга хүлээн авсан ажилтны код"
+  },
+  "ordrreiceivedname": {
+    "en": "Захиалга хүлээн авсан ажилтан",
+    "mn": "Захиалга хүлээн авсан ажилтан"
+  },
+  "ordrtoproddate": {
+    "en": "Үйлдвэрлэж дууссан огноо",
+    "mn": "Үйлдвэрлэж дууссан огноо"
+  },
+  "ordrout": {
+    "en": "Захиалга хүлээлгэн өгсөн эсэх",
+    "mn": "Захиалга хүлээлгэн өгсөн эсэх"
+  },
+  "ordroutdate": {
+    "en": "Захиалга хүлээлгэн өгсөн огноо",
+    "mn": "Захиалга хүлээлгэн өгсөн огноо"
+  },
+  "ordrtransportprice": {
+    "en": "Тээврийн үнэ",
+    "mn": "Тээврийн үнэ"
+  },
+  "ordrassemblyprice": {
+    "en": "Угсралтын үнэ",
+    "mn": "Угсралтын үнэ"
+  },
+  "ordrcomments": {
+    "en": "Тайлбар",
+    "mn": "Тайлбар"
+  },
+  "ordrproddate": {
+    "en": "Үйлдвэрлэсэн огноо",
+    "mn": "Үйлдвэрлэсэн огноо"
+  },
+  "ordrtr_state": {
+    "en": "Гүйлгээний төлөв",
+    "mn": "Гүйлгээний төлөв"
+  },
+  "ordrtr_transbranch": {
+    "en": "Гүйлгээ хийсэн салбар",
+    "mn": "Гүйлгээ хийсэн салбар"
+  },
+  "ordrtr_id": {
+    "en": "Гүйлгээний нийлмэл код",
+    "mn": "Гүйлгээний нийлмэл код"
+  },
+  "ordrtr_confirm": {
+    "en": "Гүйлгээ баталгаажуулалт",
+    "mn": "Гүйлгээ баталгаажуулалт"
+  },
+  "ordrtr_confirm_date": {
+    "en": "Гүйлгээ баталгаажуулсан огноо",
+    "mn": "Гүйлгээ баталгаажуулсан огноо"
+  },
+  "ordrtr_confirm_emp": {
+    "en": "Гүйлгээ баталгаажуулсан ажилтан",
+    "mn": "Гүйлгээ баталгаажуулсан ажилтан"
+  },
+  "ordrtr_edit_date": {
+    "en": "Гүйлгээ зассан огноо",
+    "mn": "Гүйлгээ зассан огноо"
+  },
+  "ordrtr_edit_emp": {
+    "en": "Гүйлгээ зассан ажилтан",
+    "mn": "Гүйлгээ зассан ажилтан"
+  },
+  "ordrtr_edit_cause": {
+    "en": "Гүйлгээ зассан шалтгаан",
+    "mn": "Гүйлгээ зассан шалтгаан"
+  },
+  "ordrtr_del_date": {
+    "en": "Гүйлгээ устгасан огноо",
+    "mn": "Гүйлгээ устгасан огноо"
+  },
+  "ordrtr_del_emp": {
+    "en": "Гүйлгээ устгасан ажилтан",
+    "mn": "Гүйлгээ устгасан ажилтан"
+  },
+  "ordrtr_del_cause": {
+    "en": "Гүйлгээ устгасан шалтгаан",
+    "mn": "Гүйлгээ устгасан шалтгаан"
+  },
+  "ordrtr_check_date": {
+    "en": "Хянасан огноо",
+    "mn": "Хянасан огноо"
+  },
+  "ordrtr_checkyn": {
+    "en": "Хянасан эсэх",
+    "mn": "Хянасан эсэх"
+  },
+  "ordrtr_check_emp": {
+    "en": "Хянасан ахлах",
+    "mn": "Хянасан ахлах"
+  },
+  "ordrtr_check_cause": {
+    "en": "Хянасан шалтгаан",
+    "mn": "Хянасан шалтгаан"
+  },
+  "ordrtr_transtype": {
+    "en": "гүйлгээний төрөл",
+    "mn": "гүйлгээний төрөл"
+  },
+  "ordrColumn18": {
+    "en": "ordrcolumn18",
+    "mn": "ordrcolumn18"
+  },
+  "ordrColumn1810": {
+    "en": "ordrcolumn1810",
+    "mn": "ordrcolumn1810"
+  },
+  "ordrgz_sample": {
+    "en": "ordrgz sample",
+    "mn": "ordrgz sample"
+  },
+  "ordrgz_sample_name": {
+    "en": "ordrgz sample нэр",
+    "mn": "ordrgz sample нэр"
+  },
+  "ordrgz_type_name": {
+    "en": "ordrgz type нэр",
+    "mn": "ordrgz type нэр"
+  },
+  "ordrgz_ta": {
+    "en": "ordrgz ta",
+    "mn": "ordrgz ta"
+  },
+  "ordrColumn183": {
+    "en": "ordrcolumn183",
+    "mn": "ordrcolumn183"
+  },
+  "ordrColumn19": {
+    "en": "ordrcolumn19",
+    "mn": "ordrcolumn19"
+  },
+  "ordrColumn20": {
+    "en": "ordrcolumn20",
+    "mn": "ordrcolumn20"
+  },
+  "ordrColumn21": {
+    "en": "ordrcolumn21",
+    "mn": "ordrcolumn21"
+  },
+  "ordrColumn22": {
+    "en": "ordrcolumn22",
+    "mn": "ordrcolumn22"
+  },
+  "ordrColumn23": {
+    "en": "ordrcolumn23",
+    "mn": "ordrcolumn23"
+  },
+  "ordrColumn24": {
+    "en": "ordrcolumn24",
+    "mn": "ordrcolumn24"
+  },
+  "ordrColumn25": {
+    "en": "ordrcolumn25",
+    "mn": "ordrcolumn25"
+  },
+  "ordrgz_branch": {
+    "en": "ordrgz branch",
+    "mn": "ordrgz branch"
+  },
+  "ordrgz_deposit_account": {
+    "en": "ordrgz deposit account",
+    "mn": "ordrgz deposit account"
+  },
+  "ordrgz_eb3": {
+    "en": "ordrgz eb3",
+    "mn": "ordrgz eb3"
+  },
+  "ordrgz_prod4": {
+    "en": "ordrgz prod4",
+    "mn": "ordrgz prod4"
+  },
+  "ordrgz_hariltsagch": {
+    "en": "ordrgz hariltsagch",
+    "mn": "ordrgz hariltsagch"
+  },
+  "ordrgz_valut": {
+    "en": "ordrgz valut",
+    "mn": "ordrgz valut"
+  },
+  "ordrgz_dt1": {
+    "en": "ordrgz dt1",
+    "mn": "ordrgz dt1"
+  },
+  "ordrgz_kt1": {
+    "en": "ordrgz kt1",
+    "mn": "ordrgz kt1"
+  },
+  "ordrgz_k1": {
+    "en": "ordrgz k1",
+    "mn": "ordrgz k1"
+  },
+  "ordrgz_dt2": {
+    "en": "ordrgz dt2",
+    "mn": "ordrgz dt2"
+  },
+  "ordrgz_kt2": {
+    "en": "ordrgz kt2",
+    "mn": "ordrgz kt2"
+  },
+  "ordrgz_k2": {
+    "en": "ordrgz k2",
+    "mn": "ordrgz k2"
+  },
+  "ordrgz_dt3": {
+    "en": "ordrgz dt3",
+    "mn": "ordrgz dt3"
+  },
+  "ordrgz_kt3": {
+    "en": "ordrgz kt3",
+    "mn": "ordrgz kt3"
+  },
+  "ordrgz_k3": {
+    "en": "ordrgz k3",
+    "mn": "ordrgz k3"
+  },
+  "ordrgz_dt4": {
+    "en": "ordrgz dt4",
+    "mn": "ordrgz dt4"
+  },
+  "ordrgz_kt4": {
+    "en": "ordrgz kt4",
+    "mn": "ordrgz kt4"
+  },
+  "ordrgz_k4": {
+    "en": "ordrgz k4",
+    "mn": "ordrgz k4"
+  },
+  "ordrgz_k5": {
+    "en": "ordrgz k5",
+    "mn": "ordrgz k5"
+  },
+  "ordrCustomerId4": {
+    "en": "ordrcustomerid4",
+    "mn": "ordrcustomerid4"
+  },
+  "ordrJournalDate": {
+    "en": "ordrjournaldate",
+    "mn": "ordrjournaldate"
+  },
+  "ordrJournalDesc": {
+    "en": "ordrjournaldesc",
+    "mn": "ordrjournaldesc"
+  },
+  "ordrJournalNumber": {
+    "en": "ordrjournalnumber",
+    "mn": "ordrjournalnumber"
+  },
+  "ordrAmount": {
+    "en": "ordramount",
+    "mn": "ordramount"
+  },
+  "ordrJournalTemplateId": {
+    "en": "ordrjournaltemplateid",
+    "mn": "ordrjournaltemplateid"
+  },
+  "gUnique_id": {
+    "en": "gunique дугаар",
+    "mn": "gunique дугаар"
+  },
+  "g_num": {
+    "en": "Гүйлгээний код",
+    "mn": "Гүйлгээний код"
+  },
+  "g_id": {
+    "en": "Гэрээний дугаар",
+    "mn": "Гэрээний дугаар"
+  },
+  "g_burtgel_id": {
+    "en": "Бүртгэлийн дугаар",
+    "mn": "Бүртгэлийн дугаар"
+  },
+  "g_lname": {
+    "en": "Овог",
+    "mn": "Овог"
+  },
+  "g_fname": {
+    "en": "Нэр",
+    "mn": "Нэр"
+  },
+  "g_chig": {
+    "en": "Чиглэл",
+    "mn": "Чиглэл"
+  },
+  "g_torol": {
+    "en": "Төрөл",
+    "mn": "Төрөл"
+  },
+  "g_daatgah": {
+    "en": "Даатгах дүн",
+    "mn": "Даатгах дүн"
+  },
+  "g_baritsaa_must": {
+    "en": "Барьцаалах дүн",
+    "mn": "Барьцаалах дүн"
+  },
+  "g_ab_tur": {
+    "en": "Байгууллагын ажлын байр",
+    "mn": "Байгууллагын ажлын байр"
+  },
+  "g_ab_huviin": {
+    "en": "Хувийн ажлын байр",
+    "mn": "Хувийн ажлын байр"
+  },
+  "g_sq": {
+    "en": "Талбайн хэмжээ",
+    "mn": "Талбайн хэмжээ"
+  },
+  "g_first_date": {
+    "en": "Гэрээ анх байгуулсан огноо",
+    "mn": "Гэрээ анх байгуулсан огноо"
+  },
+  "g_start": {
+    "en": "Гэрээ эхлэх огноо",
+    "mn": "Гэрээ эхлэх огноо"
+  },
+  "g_end": {
+    "en": "Гэрээ дуусах огноо",
+    "mn": "Гэрээ дуусах огноо"
+  },
+  "g_cancel": {
+    "en": "Гэрээ цуцалсан огноо",
+    "mn": "Гэрээ цуцалсан огноо"
+  },
+  "g_desc": {
+    "en": "Тайлбар",
+    "mn": "Тайлбар"
+  },
+  "baitsaagch_id": {
+    "en": "Хариуцсан ажилтан",
+    "mn": "Хариуцсан ажилтан"
+  },
+  "MM_sale": {
+    "en": "mm sale",
+    "mn": "mm sale"
+  },
+  "BN_sale": {
+    "en": "bn sale",
+    "mn": "bn sale"
+  },
+  "gendugaar": {
+    "en": "gendugaar",
+    "mn": "gendugaar"
+  },
+  "Col99": {
+    "en": "col99",
+    "mn": "col99"
+  },
+  "rownum": {
+    "en": "rownum",
+    "mn": "rownum"
+  },
+  "Column172": {
+    "en": "column172",
+    "mn": "column172"
+  },
+  "Column173": {
+    "en": "column173",
+    "mn": "column173"
+  },
+  "Column174": {
+    "en": "column174",
+    "mn": "column174"
+  },
+  "Column175": {
+    "en": "column175",
+    "mn": "column175"
+  },
+  "Column176": {
+    "en": "column176",
+    "mn": "column176"
+  },
+  "Column177": {
+    "en": "column177",
+    "mn": "column177"
+  },
+  "Column178": {
+    "en": "column178",
+    "mn": "column178"
+  },
+  "Column179": {
+    "en": "column179",
+    "mn": "column179"
+  },
+  "Column180": {
+    "en": "column180",
+    "mn": "column180"
+  },
+  "Column181": {
+    "en": "column181",
+    "mn": "column181"
+  },
+  "Column182": {
+    "en": "column182",
+    "mn": "column182"
+  },
+  "Column183": {
+    "en": "column183",
+    "mn": "column183"
+  },
+  "Column184": {
+    "en": "column184",
+    "mn": "column184"
+  },
+  "Column185": {
+    "en": "column185",
+    "mn": "column185"
+  },
+  "Column186": {
+    "en": "column186",
+    "mn": "column186"
+  },
+  "Column187": {
+    "en": "column187",
+    "mn": "column187"
+  },
+  "Column188": {
+    "en": "column188",
+    "mn": "column188"
+  },
+  "Column189": {
+    "en": "column189",
+    "mn": "column189"
+  },
+  "Column190": {
+    "en": "column190",
+    "mn": "column190"
+  },
+  "company_id": {
+    "en": "Байгууллага",
+    "mn": "Байгууллага"
+  },
+  "branch_id": {
+    "en": "Салбар",
+    "mn": "Салбар"
+  },
+  "z": {
+    "en": "Зардлын дүн",
+    "mn": "Зардлын дүн"
+  },
+  "hkod": {
+    "en": "Барааны код",
+    "mn": "Барааны код"
+  },
+  "hname": {
+    "en": "Барааны нэр",
+    "mn": "Барааны нэр"
+  },
+  "hprodup": {
+    "en": "Нийлүүлсэн үнэ",
+    "mn": "Нийлүүлсэн үнэ"
+  },
+  "hsalep": {
+    "en": "Худалдах үнэ",
+    "mn": "Худалдах үнэ"
+  },
+  "hmu": {
+    "en": "Нэгж",
+    "mn": "Нэгж"
+  },
+  "hstartmmdate": {
+    "en": "ММ Хямдралын эхлэх огноо",
+    "mn": "ММ Хямдралын эхлэх огноо"
+  },
+  "hendmmdate": {
+    "en": "ММ Хямдралын дуусах огноо",
+    "mn": "ММ Хямдралын дуусах огноо"
+  },
+  "hsalemmp": {
+    "en": "ММ Хямдралын дүн",
+    "mn": "ММ Хямдралын дүн"
+  },
+  "hsaleperap": {
+    "en": "ММ Хямдралын хувийн дүн",
+    "mn": "ММ Хямдралын хувийн дүн"
+  },
+  "hsalepermm": {
+    "en": "ММ Хямдралын хувь",
+    "mn": "ММ Хямдралын хувь"
+  },
+  "hstartbndate": {
+    "en": "Бэлтгэн нийлүүлэгчийн хямдралын эхлэх огноо",
+    "mn": "Бэлтгэн нийлүүлэгчийн хямдралын эхлэх огноо"
+  },
+  "hendbndate": {
+    "en": "Бэлтгэн нийлүүлэгчийн хямдралын дуусах огноо",
+    "mn": "Бэлтгэн нийлүүлэгчийн хямдралын дуусах огноо"
+  },
+  "hsalepbn": {
+    "en": "Бэлтгэн нийлүүлэгчийн хямдралын дүн",
+    "mn": "Бэлтгэн нийлүүлэгчийн хямдралын дүн"
+  },
+  "hsaleperbn": {
+    "en": "Бэлтгэн нийлүүлэгчийн хямдралын хувь",
+    "mn": "Бэлтгэн нийлүүлэгчийн хямдралын хувь"
+  },
+  "hprodid": {
+    "en": "Үйлдвэрлэгчийн код",
+    "mn": "Үйлдвэрлэгчийн код"
+  },
+  "hproname": {
+    "en": "Үйлдвэрлэгчийн нэр",
+    "mn": "Үйлдвэрлэгчийн нэр"
+  },
+  "hseller": {
+    "en": "Нийлүүлэгчтэй зөвшилцсөн ажилтны код",
+    "mn": "Нийлүүлэгчтэй зөвшилцсөн ажилтны код"
+  },
+  "hreason": {
+    "en": "Хямдруулах шалтгаан, Хямдралын төлөвлөгөөний нэр",
+    "mn": "Хямдруулах шалтгаан, Хямдралын төлөвлөгөөний нэр"
+  },
+  "hannot": {
+    "en": "Тайлбар",
+    "mn": "Тайлбар"
+  },
+  "hcoupon": {
+    "en": "Купон код",
+    "mn": "Купон код"
+  },
+  "SWPUIOUB": {
+    "en": "swpuioub",
+    "mn": "swpuioub"
+  },
+  "department_id": {
+    "en": "Хэлтэс",
+    "mn": "Хэлтэс"
+  },
+  "inventory_code": {
+    "en": "Барааны код",
+    "mn": "Барааны код"
+  },
+  "inventory_name": {
+    "en": "Барааны нэр",
+    "mn": "Барааны нэр"
+  },
+  "inventory_cost": {
+    "en": "Нийлүүлсэн үнэ",
+    "mn": "Нийлүүлсэн үнэ"
+  },
+  "inventory_saleprice": {
+    "en": "Худалдах үнэ",
+    "mn": "Худалдах үнэ"
+  },
+  "inventory_mu": {
+    "en": "Нэгж",
+    "mn": "Нэгж"
+  },
+  "start_date": {
+    "en": "Хямдралын эхлэх огноо",
+    "mn": "Хямдралын эхлэх огноо"
+  },
+  "end_date": {
+    "en": "Хямдралын дуусах огноо",
+    "mn": "Хямдралын дуусах огноо"
+  },
+  "discount_amount": {
+    "en": "Хямдралын дүн",
+    "mn": "Хямдралын дүн"
+  },
+  "discount_percent_amount": {
+    "en": "Хямдралын хувийн дүн",
+    "mn": "Хямдралын хувийн дүн"
+  },
+  "discount_percent": {
+    "en": "Хямдралын хувь",
+    "mn": "Хямдралын хувь"
+  },
+  "manufacturer_id": {
+    "en": "Үйлдвэрлэгчийн код",
+    "mn": "Үйлдвэрлэгчийн код"
+  },
+  "manufacturer_name": {
+    "en": "Үйлдвэрлэгчийн нэр",
+    "mn": "Үйлдвэрлэгчийн нэр"
+  },
+  "agreed_empid": {
+    "en": "Нийлүүлэгчтэй зөвшилцсөн ажилтны код",
+    "mn": "Нийлүүлэгчтэй зөвшилцсөн ажилтны код"
+  },
+  "discount_campain": {
+    "en": "Хямдралын аян",
+    "mn": "Хямдралын аян"
+  },
+  "description": {
+    "en": "Тайлбар",
+    "mn": "Тайлбар"
+  },
+  "coupon_code": {
+    "en": "Купон код",
+    "mn": "Купон код"
+  },
+  "start_date1": {
+    "en": "Хямдралын эхлэх огноо",
+    "mn": "Хямдралын эхлэх огноо"
+  },
+  "end_date1": {
+    "en": "Хямдралын дуусах огноо",
+    "mn": "Хямдралын дуусах огноо"
+  },
+  "discount_amount1": {
+    "en": "Хямдралын дүн",
+    "mn": "Хямдралын дүн"
+  },
+  "discount_percent1": {
+    "en": "Хямдралын хувь",
+    "mn": "Хямдралын хувь"
+  },
+  "discount_reason": {
+    "en": "Хямдруулах шалтгаан",
+    "mn": "Хямдруулах шалтгаан"
+  },
+  "bmtr_actid": {
+    "en": "bmtr_actid",
+    "mn": "bmtr_actid"
+  },
+  "TransType": {
+    "en": "TransType",
+    "mn": "TransType"
+  },
+  "pos_session_id": {
+    "en": "pos_session_id",
+    "mn": "pos_session_id"
+  },
+  "sp_primary_code": {
+    "en": "Нэгдсэн код",
+    "mn": "Нэгдсэн код"
+  },
+  "sp_selling_code": {
+    "en": "Худалдах код",
+    "mn": "Худалдах код"
+  },
+  "sp_pm_name": {
+    "en": "БМЭХ нэр",
+    "mn": "БМЭХ нэр"
+  },
+  "sp_pm_unit_id": {
+    "en": "Нэгжийн код",
+    "mn": "Нэгжийн код"
+  },
+  "sp_categories": {
+    "en": "Категори",
+    "mn": "Категори"
+  },
+  "sp_manufacturer_id": {
+    "en": "Үйлдвэрлэгчийн код",
+    "mn": "Үйлдвэрлэгчийн код"
+  },
+  "sp_cost": {
+    "en": "Өртөг",
+    "mn": "Өртөг"
+  },
+  "sp_cost_date": {
+    "en": "Өртгийн огноо",
+    "mn": "Өртгийн огноо"
+  },
+  "sp_source_table": {
+    "en": "sp_source_table",
+    "mn": "sp_source_table"
+  },
+  "sp_current_stock": {
+    "en": "Үлдэгдэл",
+    "mn": "Үлдэгдэл"
+  },
+  "sp_total_cost": {
+    "en": "Нийт өртөг",
+    "mn": "Нийт өртөг"
+  },
+  "sp_selling_price": {
+    "en": "Худалдан үнэ",
+    "mn": "Худалдан үнэ"
+  },
+  "sp_company_discount": {
+    "en": "ММ хямдрал",
+    "mn": "ММ хямдрал"
+  },
+  "sp_supplier_discount": {
+    "en": "БН хямдрал",
+    "mn": "БН хямдрал"
+  },
+  "sp_coupon_discount": {
+    "en": "Купон хямдрал",
+    "mn": "Купон хямдрал"
+  },
+  "sp_total_discount": {
+    "en": "Нийт хямдрал",
+    "mn": "Нийт хямдрал"
+  },
+  "sp_current_company_stock": {
+    "en": "Байгууллагын үлдэгдэл",
+    "mn": "Байгууллагын үлдэгдэл"
+  },
+  "sp_current_branch_stock": {
+    "en": "Салбарын үлдэгдэл",
+    "mn": "Салбарын үлдэгдэл"
+  },
+  "transaction_datetime": {
+    "en": "transaction_datetime",
+    "mn": "transaction_datetime"
+  },
+  "fest_year": {
+    "en": "Жил",
+    "mn": "Жил"
+  },
+  "fest_month": {
+    "en": "Сар",
+    "mn": "Сар"
+  },
+  "fest_day": {
+    "en": "Амралтын хоног",
+    "mn": "Амралтын хоног"
+  }
 }

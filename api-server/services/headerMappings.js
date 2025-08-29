@@ -27,13 +27,14 @@ export async function getMappings(headers = [], lang) {
       return;
     }
     if (typeof entry === 'object' && entry !== null) {
-      // Prefer the requested language, then English, then the key itself
+      // Prefer the requested language, then English, then first available value
       if (lang && entry[lang]) {
         result[h] = entry[lang];
       } else if (entry.en) {
         result[h] = entry.en;
       } else {
-        result[h] = h;
+        const first = Object.values(entry)[0];
+        result[h] = first != null ? first : h;
       }
     } else {
       // Primitive mapping string
@@ -47,13 +48,19 @@ export async function addMappings(newMap) {
   const map = await readMappings();
   for (const [k, v] of Object.entries(newMap)) {
     if (v == null) continue;
-    if (
-      typeof v === 'object' &&
-      !Array.isArray(v) &&
-      typeof map[k] === 'object' &&
-      map[k] !== null
-    ) {
-      map[k] = { ...map[k], ...v };
+    if (typeof v === 'object' && !Array.isArray(v)) {
+      if (typeof map[k] === 'object' && map[k] !== null) {
+        map[k] = { ...map[k], ...v };
+      } else {
+        map[k] = v;
+      }
+    } else if (typeof v === 'string') {
+      // Treat plain strings as English mappings for backward compatibility
+      if (typeof map[k] === 'object' && map[k] !== null) {
+        map[k] = { ...map[k], en: v };
+      } else {
+        map[k] = { en: v };
+      }
     } else {
       map[k] = v;
     }
