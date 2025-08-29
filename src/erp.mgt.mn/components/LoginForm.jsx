@@ -6,7 +6,7 @@ import { refreshCompanyModules } from '../hooks/useCompanyModules.js';
 import { refreshModules } from '../hooks/useModules.js';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { useNavigate } from 'react-router-dom';
-import LangContext from '../context/LangContext.jsx';
+import I18nContext from '../context/I18nContext.jsx';
 
 export default function LoginForm() {
   // login using employee ID only
@@ -26,7 +26,7 @@ export default function LoginForm() {
     setPosition,
     setPermissions,
   } = useContext(AuthContext);
-  const { t } = useContext(LangContext);
+  const { t } = useContext(I18nContext);
   const navigate = useNavigate();
 
   async function handleSubmit(e) {

@@ -5,7 +5,7 @@ import { TabProvider } from './context/TabContext.jsx';
 import { TxnSessionProvider } from './context/TxnSessionContext.jsx';
 import { ToastProvider } from './context/ToastContext.jsx';
 import { LoadingProvider } from './context/LoadingContext.jsx';
-import { LangProvider } from './context/LangContext.jsx';
+import { I18nProvider } from './context/I18nContext.jsx';
 import { debugLog } from './utils/debug.js';
 import RequireAuth from './components/RequireAuth.jsx';
 import ERPLayout from './components/ERPLayout.jsx';
@@ -49,7 +49,7 @@ export default function App() {
   }, []);
 
   return (
-    <LangProvider>
+    <I18nProvider>
       <ToastProvider>
         <AuthContextProvider>
           <TxnSessionProvider>
@@ -68,7 +68,7 @@ export default function App() {
           </TxnSessionProvider>
         </AuthContextProvider>
       </ToastProvider>
-    </LangProvider>
+    </I18nProvider>
   );
 }
 

@@ -3,7 +3,7 @@ import React, { useContext, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { logout } from '../hooks/useAuth.jsx';
-import { LangContext } from '../context/LangContext.jsx';
+import { I18nContext } from '../context/I18nContext.jsx';
 
 /**
  * A desktop‐style “ERPLayout” with:
@@ -13,7 +13,7 @@ import { LangContext } from '../context/LangContext.jsx';
  */
 export default function ERPLayout() {
   const { user, session, setUser } = useContext(AuthContext);
-  const { t } = useContext(LangContext);
+  const { t } = useContext(I18nContext);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -54,7 +54,7 @@ export default function ERPLayout() {
 
 /** Top header bar **/
 function Header({ user, onLogout }) {
-  const { lang, setLang, t } = useContext(LangContext);
+  const { lang, setLang, t } = useContext(I18nContext);
 
   return (
     <header style={styles.header}>
@@ -103,7 +103,7 @@ function Header({ user, onLogout }) {
 /** Left sidebar with “menu groups” and “pinned items” **/
 function Sidebar() {
   const { session, permissions } = useContext(AuthContext);
-  const { t } = useContext(LangContext);
+  const { t } = useContext(I18nContext);
   const hasAdmin =
     permissions?.permissions?.system_settings ||
     session?.permissions?.system_settings;
