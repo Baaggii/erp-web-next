@@ -60,3 +60,48 @@ test('createCompanyHandler allows system admin with companyId=0', async () => {
   assert.equal(res.code, 201);
   assert.deepEqual(res.body, { id: 5 });
 });
+
+test('createCompanyHandler forwards seedRecords', async () => {
+  const orig = db.pool.query;
+  let captured;
+  db.pool.query = async (sql, params) => {
+    if (/information_schema\.COLUMNS/.test(sql) && params[0] === 'companies') {
+      return [[{ COLUMN_NAME: 'name' }]];
+    }
+    if (sql.startsWith('INSERT INTO ??') && params[0] === 'companies') {
+      return [{ insertId: 9 }];
+    }
+    if (/FROM tenant_tables/.test(sql)) {
+      return [[{ table_name: 'posts', is_shared: 0 }]];
+    }
+    if (/information_schema\.COLUMNS/.test(sql) && params[0] === 'posts') {
+      return [[{ COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' }]];
+    }
+    if (/table_column_labels/.test(sql)) {
+      return [[]];
+    }
+    if (sql.startsWith('INSERT INTO ??') && params[0] === 'posts') {
+      captured = params;
+      return [{}];
+    }
+    if (/INSERT INTO user_level_permissions/.test(sql)) {
+      return [[]];
+    }
+    return [[]];
+  };
+  const req = {
+    body: {
+      name: 'SeedCo',
+      seedTables: ['posts'],
+      seedRecords: { posts: [1, 2] },
+    },
+    user: { empid: 1, companyId: 0 },
+    session: { permissions: { system_settings: true } },
+  };
+  const res = createRes();
+  await createCompanyHandler(req, res, () => {});
+  db.pool.query = orig;
+  assert.deepEqual(captured.slice(-2), [1, 2]);
+  assert.equal(res.code, 201);
+  assert.deepEqual(res.body, { id: 9 });
+});
