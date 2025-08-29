@@ -35,7 +35,9 @@ function createRes() {
   };
 }
 
-test('allows creation when any session has system_settings', async () => {
+// A user may hold multiple employment sessions. Ensure that having the
+// `system_settings` permission on any session allows company creation.
+test('allows POST /api/companies when any session has system_settings', async () => {
   const restore = mockPoolSequential([
     [[
       {
@@ -82,7 +84,8 @@ test('allows creation when any session has system_settings', async () => {
   assert.deepEqual(res.body, { id: 1 });
 });
 
-test('returns 403 when no session has system_settings', async () => {
+// If none of the user's sessions include `system_settings`, creation is denied.
+test('returns 403 for POST /api/companies when no session has system_settings', async () => {
   const restore = mockPoolSequential([
     [[
       {

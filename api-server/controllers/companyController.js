@@ -26,6 +26,9 @@ export async function createCompanyHandler(req, res, next) {
     const session =
       req.session ||
       (await getEmploymentSession(req.user.empid, req.user.companyId));
+    // A user might belong to multiple employment sessions across companies.
+    // If the current session lacks `system_settings`, allow the request when
+    // *any* of the user's sessions grants that permission.
     if (!session?.permissions?.system_settings) {
       const sessions = await getEmploymentSessions(req.user.empid);
       if (!sessions.some((s) => s.permissions?.system_settings)) {
