@@ -3,15 +3,18 @@ import fs from 'fs';
 import path from 'path';
 import OpenAI from 'openai';
 
-const languages = ['mn', 'en', 'ja', 'ko', 'zh', 'es', 'de', 'fr', 'ru'];
+const languages = ['en', 'mn', 'ja', 'ko', 'zh', 'es', 'de', 'fr', 'ru'];
 const headerMappingsPath = path.resolve('config/headerMappings.json');
 const localesDir = path.resolve('src/erp.mgt.mn/locales');
+const TIMEOUT_MS = 7000;
 
 const openai = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   : null;
 
-async function translateWithGoogle(text, to, from) {
+/* ------------------------- Providers ------------------------- */
+
+async function translateWithGoogle(text, to, from, key) {
   const params = new URLSearchParams({
     client: 'gtx',
     sl: from,
@@ -22,76 +25,114 @@ async function translateWithGoogle(text, to, from) {
   const url = `https://translate.googleapis.com/translate_a/single?${params.toString()}`;
 
   for (let attempt = 0; attempt < 2; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     try {
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        return data[0].map((t) => t[0]).join('');
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timer);
+
+      if (!res.ok) {
+        const status = res.status;
+        if (
+          attempt === 0 &&
+          (status === 400 || status === 429 || status >= 500)
+        ) {
+          console.warn(`[gen-i18n] Google HTTP ${status}; retrying`);
+          continue;
+        }
+        throw new Error(`HTTP ${status}`);
       }
-      const status = res.status;
-      if (attempt === 0 && (status === 400 || status === 429 || status >= 500)) {
-        console.warn(`Google HTTP ${status}; retrying`);
-        continue;
+
+      let data;
+      try {
+        data = await res.json();
+      } catch (err) {
+        throw new Error(
+          `parse error for key="${key}" (${from}->${to}): ${err.message}`,
+        );
       }
-      throw new Error(`HTTP ${status}`);
+      if (!Array.isArray(data) || !Array.isArray(data[0])) {
+        throw new Error(
+          `unexpected response for key="${key}" (${from}->${to})`,
+        );
+      }
+      return data[0].map((seg) => seg[0]).join('');
     } catch (err) {
-      if (attempt === 0) {
-        console.warn(`Google request failed; retrying (${err.message})`);
+      clearTimeout(timer);
+      if (attempt === 0 && err.name === 'AbortError') {
+        console.warn('[gen-i18n] Google request timeout; retrying');
         continue;
       }
       throw err;
     }
   }
-  throw new Error('Google Translate failed');
+  throw new Error(
+    `Google translate failed for key="${key}" (${from}->${to})`,
+  );
 }
 
-async function translateWithOpenAI(text, to, from) {
-  if (!openai) throw new Error('Missing OpenAI API key');
+async function translateWithOpenAI(text, to, from, key) {
+  if (!openai) throw new Error('missing OpenAI API key');
 
-  const completion = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [
-      {
-        role: 'system',
-        content: `You are a translation engine. Translate the user text from ${from} to ${to}. Return only the translation.`,
-      },
-      { role: 'user', content: text },
-    ],
-  });
-
-  const translation = completion.choices?.[0]?.message?.content?.trim();
-  if (!translation) throw new Error('Empty translation from OpenAI');
-  return translation;
-}
-
-async function translate(text, to, from) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const translated = await translateWithGoogle(text, to, from);
-    console.log('    using Google');
-    return translated;
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `You are a translation engine. Translate the user text from ${from} to ${to}. Return only the translation.`,
+        },
+        { role: 'user', content: text },
+      ],
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    const translation = completion.choices?.[0]?.message?.content?.trim();
+    if (!translation) throw new Error('empty response');
+    return translation;
   } catch (err) {
-    console.warn(`Google translation failed (${from} -> ${to}) for "${text}": ${err.message}`);
+    clearTimeout(timer);
+    throw new Error(
+      `OpenAI error for key="${key}" (${from}->${to}): ${err.message}`,
+    );
+  }
+}
+
+/* ---------------------- Translate wrapper -------------------- */
+
+async function translate(text, to, from, key) {
+  try {
+    const t = await translateWithGoogle(text, to, from, key);
+    console.log('    using Google');
+    return t;
+  } catch (err) {
+    console.warn(
+      `[gen-i18n] Google failed key="${key}" (${from}->${to}): ${err.message}`,
+    );
     try {
-      const translated = await translateWithOpenAI(text, to, from);
+      const t = await translateWithOpenAI(text, to, from, key);
       console.log('    using OpenAI');
-      return translated;
+      return t;
     } catch (err2) {
-      console.warn(`OpenAI translation failed (${from} -> ${to}) for "${text}": ${err2.message}`);
+      console.warn(
+        `[gen-i18n] FAILED key="${key}" (${from}->${to}): ${err2.message}`,
+      );
+      console.warn('    falling back to source');
       return text;
     }
   }
 }
 
-async function main() {
-  const base = JSON.parse(fs.readFileSync(headerMappingsPath, 'utf8'));
+/* --------------------------- Main ---------------------------- */
 
-  const locales = {};
-  const untranslated = {};
-  for (const lang of languages) {
-    const file = path.join(localesDir, `${lang}.json`);
-    locales[lang] = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
-    untranslated[lang] = [];
-  }
+async function main() {
+  console.log('[gen-i18n] START');
+
+  const base = JSON.parse(fs.readFileSync(headerMappingsPath, 'utf8'));
+  const entries = [];
 
   for (const key of Object.keys(base)) {
     const value = base[key];
@@ -112,41 +153,55 @@ async function main() {
     ) {
       continue;
     }
-
-    const baseText = locales.en[key] || sourceText;
-    const baseLang = locales.en[key] ? 'en' : sourceLang;
-
-    for (const lang of languages) {
-      if (!locales[lang][key]) {
-        if (lang === baseLang) {
-          locales[lang][key] = baseText;
-        } else {
-          console.log(`Translating "${baseText}" (${baseLang} -> ${lang})`);
-          const translation = await translate(baseText, lang, baseLang);
-          locales[lang][key] = translation;
-          if (translation === baseText) untranslated[lang].push(key);
-        }
-      }
-    }
+    entries.push({ key, sourceText, sourceLang });
   }
 
+  await fs.promises.mkdir(localesDir, { recursive: true });
+  const locales = {};
+
   for (const lang of languages) {
+    const file = path.join(localesDir, `${lang}.json`);
+    locales[lang] = fs.existsSync(file)
+      ? JSON.parse(fs.readFileSync(file, 'utf8'))
+      : {};
+
+    for (const { key, sourceText, sourceLang } of entries) {
+      if (locales[lang][key]) continue;
+
+      if (lang === sourceLang) {
+        locales[lang][key] = sourceText;
+        continue;
+      }
+
+      let baseText = sourceText;
+      let fromLang = sourceLang;
+      if (lang !== 'en' && locales.en && locales.en[key]) {
+        baseText = locales.en[key];
+        fromLang = 'en';
+      }
+
+      console.log(`Translating "${baseText}" (${fromLang} -> ${lang})`);
+      const translated = await translate(baseText, lang, fromLang, key);
+      locales[lang][key] = translated;
+    }
+
     const ordered = Object.keys(locales[lang])
       .sort()
       .reduce((acc, k) => {
         acc[k] = locales[lang][k];
         return acc;
       }, {});
-    const file = path.join(localesDir, `${lang}.json`);
-    fs.writeFileSync(file, JSON.stringify(ordered, null, 2));
-    if (untranslated[lang].length) {
-      console.log(`Untranslated keys for ${lang}: ${untranslated[lang].join(', ')}`);
-    }
+    await fs.promises.writeFile(file, JSON.stringify(ordered, null, 2));
+    console.log(
+      `[gen-i18n] wrote ${lang}.json (${Object.keys(ordered).length} keys)`,
+    );
   }
+
+  console.log('[gen-i18n] DONE');
 }
 
-main().catch((e) => {
-  console.error(e);
+main().catch((err) => {
+  console.error(err);
   process.exit(1);
 });
 
