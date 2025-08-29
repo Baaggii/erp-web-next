@@ -1,4 +1,8 @@
-import { pool, getPrimaryKeyColumns } from '../../db/index.js';
+import {
+  pool,
+  getPrimaryKeyColumns,
+  listTableColumns,
+} from '../../db/index.js';
 import { logUserAction } from '../services/userActivityLog.js';
 
 export async function listActivityLogs(req, res, next) {
@@ -47,23 +51,59 @@ export async function restoreLogEntry(req, res, next) {
     if (!data) return res.status(400).json({ message: 'No details to restore' });
     const table = entry.table_name;
     const pkCols = await getPrimaryKeyColumns(table);
+    const tableCols = await listTableColumns(table);
+    const lowerCols = tableCols.map((c) => c.toLowerCase());
 
     if (entry.action === 'delete') {
-      const cols = Object.keys(data);
-      const placeholders = cols.map(() => '?').join(', ');
-      const sql = `INSERT INTO \`${table}\` (${cols
-        .map((c) => `\`${c}\``)
-        .join(', ')}) VALUES (${placeholders})`;
-      await pool.query(sql, cols.map((c) => data[c]));
+      const colNames = [];
+      const placeholders = [];
+      const values = [];
+
+      for (const c of Object.keys(data)) {
+        colNames.push(`\`${c}\``);
+        placeholders.push('?');
+        values.push(data[c]);
+      }
+
+      if (lowerCols.includes('created_by') && data.created_by === undefined) {
+        colNames.push('`created_by`');
+        placeholders.push('?');
+        values.push(req.user.empid);
+      }
+      if (lowerCols.includes('created_at') && data.created_at === undefined) {
+        colNames.push('`created_at`');
+        placeholders.push('NOW()');
+      }
+
+      const sql = `INSERT INTO \`${table}\` (${colNames.join(', ')}) VALUES (${placeholders.join(', ')})`;
+      await pool.query(sql, values);
     } else if (entry.action === 'update') {
       if (!pkCols.length)
         return res.status(400).json({ message: 'No primary key for table' });
-      const setCols = Object.keys(data).filter((c) => !pkCols.includes(c));
-      const setSql = setCols.map((c) => `\`${c}\` = ?`).join(', ');
+
+      const setParts = [];
+      const values = [];
+
+      for (const c of Object.keys(data)) {
+        if (pkCols.includes(c)) continue;
+        const lower = c.toLowerCase();
+        if (lower === 'updated_by' || lower === 'updated_at') continue;
+        setParts.push(`\`${c}\` = ?`);
+        values.push(data[c]);
+      }
+
+      if (lowerCols.includes('updated_by')) {
+        setParts.push('`updated_by` = ?');
+        values.push(req.user.empid);
+      }
+      if (lowerCols.includes('updated_at')) {
+        setParts.push('`updated_at` = NOW()');
+      }
+
       const whereSql = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
       await pool.query(
-        `UPDATE \`${table}\` SET ${setSql} WHERE ${whereSql}`,
-        [...setCols.map((c) => data[c]), ...pkCols.map((c) => data[c])],
+        `UPDATE \`${table}\` SET ${setParts.join(', ')} WHERE ${whereSql}`,
+        [...values, ...pkCols.map((c) => data[c])],
       );
     } else {
       return res.status(400).json({ message: 'Unsupported action' });
