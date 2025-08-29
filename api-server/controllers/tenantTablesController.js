@@ -108,7 +108,7 @@ export async function seedExistingCompanies(req, res, next) {
     const companies = await listCompanies();
     for (const { id } of companies) {
       if (id === GLOBAL_COMPANY_ID) continue;
-      await seedTenantTables(id, tables, recordMap, overwrite);
+      await seedTenantTables(id, tables, recordMap, overwrite, req.user.empid);
     }
     res.sendStatus(204);
   } catch (err) {
@@ -140,7 +140,7 @@ export async function seedCompany(req, res, next) {
         recordMap[rec.table] = rec.ids;
       }
     }
-    await seedTenantTables(companyId, tables, recordMap, overwrite);
+    await seedTenantTables(companyId, tables, recordMap, overwrite, req.user.empid);
     res.sendStatus(204);
   } catch (err) {
     next(err);

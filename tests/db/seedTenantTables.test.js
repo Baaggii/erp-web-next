@@ -12,7 +12,7 @@ await test('seedTenantTables copies user level permissions', async () => {
     }
     return [[], []];
   };
-  await db.seedTenantTables(7);
+  await db.seedTenantTables(7, null, {}, false, 1);
   db.pool.query = orig;
   const insertCall = calls.find((c) => /INSERT INTO user_level_permissions/.test(c.sql));
   assert.ok(insertCall);
@@ -39,12 +39,45 @@ await test('seedTenantTables filters by record ids', async () => {
     }
     return [[], []];
   };
-  await db.seedTenantTables(7, null, { posts: [1, 2] });
+  await db.seedTenantTables(7, null, { posts: [1, 2] }, false, 1);
   db.pool.query = orig;
   const insertCall = calls.find((c) => c.sql.startsWith('INSERT INTO ??'));
   assert.ok(insertCall);
   assert.match(insertCall.sql, /IN \(\?, \?\)/);
   assert.deepEqual(insertCall.params, ['posts', 7, 'posts', 1, 2]);
+});
+
+await test('seedTenantTables overrides audit columns', async () => {
+  const orig = db.pool.query;
+  const calls = [];
+  db.pool.query = async (sql, params) => {
+    calls.push({ sql, params });
+    if (sql.startsWith('SELECT table_name, is_shared FROM tenant_tables')) {
+      return [[{ table_name: 'posts', is_shared: 0 }]];
+    }
+    if (sql.startsWith('SELECT COUNT(*)')) {
+      return [[{ cnt: 0 }]];
+    }
+    if (sql.startsWith('SELECT COLUMN_NAME')) {
+      return [[
+        { COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' },
+        { COLUMN_NAME: 'created_by', COLUMN_KEY: '', EXTRA: '' },
+        { COLUMN_NAME: 'created_at', COLUMN_KEY: '', EXTRA: '' },
+        { COLUMN_NAME: 'updated_by', COLUMN_KEY: '', EXTRA: '' },
+        { COLUMN_NAME: 'updated_at', COLUMN_KEY: '', EXTRA: '' },
+      ]];
+    }
+    return [[], []];
+  };
+  await db.seedTenantTables(7, ['posts'], {}, false, 123, 456);
+  db.pool.query = orig;
+  const insertCall = calls.find((c) => c.sql.startsWith('INSERT INTO ??'));
+  assert.ok(insertCall);
+  assert.match(
+    insertCall.sql,
+    /SELECT \? AS company_id, `id`, \?, NOW\(\), \?, NOW\(\)/,
+  );
+  assert.deepEqual(insertCall.params, ['posts', 7, 123, 456, 'posts']);
 });
 
 await test('seedTenantTables throws when table has data and overwrite false', async () => {
@@ -58,7 +91,7 @@ await test('seedTenantTables throws when table has data and overwrite false', as
     }
     return [[], []];
   };
-  await assert.rejects(() => db.seedTenantTables(7), /already contains data/);
+  await assert.rejects(() => db.seedTenantTables(7, null, {}, false, 1), /already contains data/);
   db.pool.query = orig;
 });
 

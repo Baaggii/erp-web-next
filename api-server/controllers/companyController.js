@@ -41,6 +41,7 @@ export async function createCompanyHandler(req, res, next) {
       seedTables,
       seedRecords,
       overwrite,
+      req.user.empid,
     );
     res.locals.insertId = result?.id;
     res.status(201).json(result);
