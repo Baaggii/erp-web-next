@@ -836,7 +836,7 @@ export async function populateDefaultModules() {
 export async function populateCompanyModuleLicenses() {
   await pool.query(
     `INSERT IGNORE INTO company_module_licenses (company_id, module_key, licensed, created_by)
-     SELECT c.id AS company_id, m.module_key, 0, NULL
+     SELECT c.id AS company_id, m.module_key, 1, NULL
        FROM companies c
        CROSS JOIN modules m`,
   );
