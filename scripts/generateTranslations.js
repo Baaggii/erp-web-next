@@ -1,3 +1,4 @@
+// scripts/generateTranslations.js
 import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
@@ -12,7 +13,19 @@ const openai = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   : null;
 
-/* ------------------------- Providers ------------------------- */
+/* ---------------- Utilities ---------------- */
+function sortObj(o) {
+  return Object.keys(o).sort().reduce((acc, k) => (acc[k] = o[k], acc), {});
+}
+
+function writeLocaleFile(lang, obj) {
+  const file = path.join(localesDir, `${lang}.json`);
+  const ordered = sortObj(obj);
+  fs.writeFileSync(file, JSON.stringify(ordered, null, 2));
+  console.log(`[gen-i18n] wrote ${file} (${Object.keys(ordered).length} keys)`);
+}
+
+/* ---------------- Providers ---------------- */
 
 async function translateWithGoogle(text, to, from, key) {
   const params = new URLSearchParams({
@@ -101,7 +114,7 @@ async function translateWithOpenAI(text, to, from, key) {
   }
 }
 
-/* ---------------------- Translate wrapper -------------------- */
+/* ---------------- Wrapper ---------------- */
 
 async function translate(text, to, from, key) {
   try {
@@ -126,7 +139,7 @@ async function translate(text, to, from, key) {
   }
 }
 
-/* --------------------------- Main ---------------------------- */
+/* ---------------- Main ---------------- */
 
 async function main() {
   console.log('[gen-i18n] START');
@@ -165,43 +178,52 @@ async function main() {
       ? JSON.parse(fs.readFileSync(file, 'utf8'))
       : {};
 
+    let counter = 0;
+
     for (const { key, sourceText, sourceLang } of entries) {
       if (locales[lang][key]) continue;
 
       if (lang === sourceLang) {
         locales[lang][key] = sourceText;
-        continue;
+      } else {
+        let baseText = sourceText;
+        let fromLang = sourceLang;
+        if (lang !== 'en' && locales.en && locales.en[key]) {
+          baseText = locales.en[key];
+          fromLang = 'en';
+        }
+
+        console.log(`Translating "${baseText}" (${fromLang} -> ${lang})`);
+        const translated = await translate(baseText, lang, fromLang, key);
+        locales[lang][key] = translated;
       }
 
-      let baseText = sourceText;
-      let fromLang = sourceLang;
-      if (lang !== 'en' && locales.en && locales.en[key]) {
-        baseText = locales.en[key];
-        fromLang = 'en';
+      counter++;
+      // flush every 10 keys
+      if (counter % 10 === 0) {
+        writeLocaleFile(lang, locales[lang]);
       }
-
-      console.log(`Translating "${baseText}" (${fromLang} -> ${lang})`);
-      const translated = await translate(baseText, lang, fromLang, key);
-      locales[lang][key] = translated;
     }
 
-    const ordered = Object.keys(locales[lang])
-      .sort()
-      .reduce((acc, k) => {
-        acc[k] = locales[lang][k];
-        return acc;
-      }, {});
-    await fs.promises.writeFile(file, JSON.stringify(ordered, null, 2));
-    console.log(
-      `[gen-i18n] wrote ${lang}.json (${Object.keys(ordered).length} keys)`,
-    );
+    // final flush for this language
+    writeLocaleFile(lang, locales[lang]);
   }
 
   console.log('[gen-i18n] DONE');
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
+/* ---------------- Error Guards ---------------- */
+
+process.on('unhandledRejection', (err) => {
+  console.error('[gen-i18n] UNHANDLED REJECTION', err);
+  process.exit(2);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[gen-i18n] UNCAUGHT EXCEPTION', err);
+  process.exit(3);
 });
 
+main().catch((err) => {
+  console.error('[gen-i18n] FATAL', err);
+  process.exit(1);
+});
