@@ -141,7 +141,7 @@ export async function changePassword(req, res, next) {
       return res.status(400).json({ message: 'Password required' });
     }
     const hashed = await hash(password);
-    await updateUserPassword(req.user.id, hashed);
+    await updateUserPassword(req.user.id, hashed, req.user.id);
     res.sendStatus(204);
   } catch (err) {
     next(err);
