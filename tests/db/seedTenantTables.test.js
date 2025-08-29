@@ -16,10 +16,14 @@ await test('seedTenantTables copies user level permissions', async () => {
   db.pool.query = orig;
   const insertCall = calls.find((c) => /INSERT INTO user_level_permissions/.test(c.sql));
   assert.ok(insertCall);
-  assert.deepEqual(insertCall.params, [7]);
+  assert.deepEqual(insertCall.params, [7, 1]);
   assert.match(
     insertCall.sql,
-    /SELECT \?,\s*userlevel_id, action, action_key\s+FROM user_level_permissions\s+WHERE company_id = 0/,
+    /user_level_permissions \(company_id, userlevel_id, action, action_key, created_by, created_at\)/,
+  );
+  assert.match(
+    insertCall.sql,
+    /SELECT \?,\s*userlevel_id, action, action_key, \?, NOW\(\)\s+FROM user_level_permissions\s+WHERE company_id = 0/,
   );
 });
 
@@ -150,18 +154,21 @@ await test('zeroSharedTenantKeys updates audit columns when present', async () =
 
 await test('seedSeedTablesForCompanies seeds all companies', async () => {
   const origQuery = db.pool.query;
-  const companyIds = [];
+  const inserts = [];
   db.pool.query = async (sql, params) => {
     if (sql.startsWith('SELECT id FROM companies')) {
       return [[{ id: 1 }, { id: 2 }]];
     }
     if (sql.startsWith('INSERT INTO user_level_permissions')) {
-      companyIds.push(params[0]);
+      inserts.push(params);
     }
     return [[], []];
   };
-  await db.seedSeedTablesForCompanies();
+  await db.seedSeedTablesForCompanies(55);
   db.pool.query = origQuery;
-  assert.deepEqual(companyIds, [1, 2]);
+  assert.deepEqual(inserts, [
+    [1, 55],
+    [2, 55],
+  ]);
 });
 
