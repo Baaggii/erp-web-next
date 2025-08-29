@@ -26,13 +26,7 @@
     "showReportParams": false,
     "requestPollingEnabled": false,
     "requestPollingIntervalSeconds": 30,
-    "procLabels": {
-      "sales": {
-        "mn": "Борлуулалтын самбар",
-        "en": "Sales Dashboard",
-        "ru": "Панель продаж"
-      }
-    },
+    "procLabels": {},
     "procFieldLabels": {},
     "reportProcPrefix": "",
     "reportViewPrefix": "",
