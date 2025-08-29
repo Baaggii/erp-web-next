@@ -86,7 +86,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
 
   function getProcLabel(name) {
     return (
-      generalConfig.general?.procLabels?.[name]?.mn || procMap[name] || name
+      generalConfig.general?.procLabels?.[name] || procMap[name] || name
     );
   }
 

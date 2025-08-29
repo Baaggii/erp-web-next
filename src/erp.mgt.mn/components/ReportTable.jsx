@@ -442,18 +442,11 @@ export default function ReportTable({ procedure = '', params = {}, rows = [], bu
   }
 
   function handleEditProcLabel() {
-    const current = procLabels[procedure]?.mn || '';
+    const current = procLabels[procedure] || '';
     const next = window.prompt('Enter label', current);
     if (next === null) return;
     const existing = generalConfig.general?.procLabels || {};
-    const payload = {
-      general: {
-        procLabels: {
-          ...existing,
-          [procedure]: { ...(existing[procedure] || {}), mn: next },
-        },
-      },
-    };
+    const payload = { general: { procLabels: { ...existing, [procedure]: next } } };
     fetch('/api/general_config', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -464,7 +457,7 @@ export default function ReportTable({ procedure = '', params = {}, rows = [], bu
       .then((data) => data && updateCache(data));
   }
 
-  const procLabel = procLabels[procedure]?.mn || headerMap[procedure] || procedure;
+  const procLabel = procLabels[procedure] || headerMap[procedure] || procedure;
   const paramText =
     generalConfig.general?.showReportParams &&
     params &&

@@ -38,7 +38,7 @@ export default function HeaderMenu({ onOpen }) {
     <nav style={styles.menu}>
       {items.map((m) => {
         const label =
-          generalConfig.general?.procLabels?.[m.module_key]?.mn ||
+          generalConfig.general?.procLabels?.[m.module_key] ||
           headerMap[m.module_key] ||
           m.label;
 

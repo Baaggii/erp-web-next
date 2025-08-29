@@ -74,7 +74,7 @@ export default function ERPLayout() {
     );
     if (!mod) return 'ERP';
     return (
-      generalConfig.general?.procLabels?.[mod.module_key]?.mn ||
+      generalConfig.general?.procLabels?.[mod.module_key] ||
       headerMap[mod.module_key] ||
       mod.label
     );
@@ -220,7 +220,7 @@ function Sidebar({ onOpen, open, isMobile }) {
   const allMap = {};
   modules.forEach((m) => {
     const label =
-      generalConfig.general?.procLabels?.[m.module_key]?.mn ||
+      generalConfig.general?.procLabels?.[m.module_key] ||
       headerMap[m.module_key] ||
       m.label;
     allMap[m.module_key] = { ...m, label };
@@ -243,7 +243,7 @@ function Sidebar({ onOpen, open, isMobile }) {
     if (!m.show_in_sidebar) return;
     if (!isTxn && !perms[m.module_key]) return;
     const label =
-      generalConfig.general?.procLabels?.[m.module_key]?.mn ||
+      generalConfig.general?.procLabels?.[m.module_key] ||
       headerMap[m.module_key] ||
       m.label;
     map[m.module_key] = { ...m, label, children: [] };
