@@ -48,6 +48,30 @@ function collectPhrasesFromPages(dir) {
   return pairs;
 }
 
+async function fetchModules() {
+  try {
+    const db = await import('../db/index.js');
+    try {
+      const [rows] = await db.pool.query(
+        'SELECT module_key AS moduleKey, label FROM modules',
+      );
+      await db.pool.end();
+      return rows.map((r) => ({ moduleKey: r.moduleKey, label: r.label }));
+    } catch (err) {
+      console.warn(
+        `[gen-i18n] DB query failed; falling back to defaults: ${err.message}`,
+      );
+      try { await db.pool.end(); } catch {}
+    }
+  } catch (err) {
+    console.warn(
+      `[gen-i18n] Failed to load DB modules; falling back: ${err.message}`,
+    );
+  }
+  const fallback = await import('../db/defaultModules.js');
+  return fallback.default.map(({ moduleKey, label }) => ({ moduleKey, label }));
+}
+
 /* ---------------- Providers ---------------- */
 
 async function translateWithGoogle(text, to, from, key) {
@@ -151,6 +175,7 @@ async function translateWithOpenAI(text, from, to) {
 async function main() {
   console.log('[gen-i18n] START');
   const base = JSON.parse(fs.readFileSync(headerMappingsPath, 'utf8'));
+  const modules = await fetchModules();
   let headerMappingsUpdated = false;
   const entryMap = new Map();
 
@@ -164,6 +189,13 @@ async function main() {
       return;
     }
     entryMap.set(key, { key, sourceText, sourceLang });
+  }
+
+  for (const { moduleKey, label } of modules) {
+    if (base[moduleKey] === undefined) {
+      base[moduleKey] = label;
+      headerMappingsUpdated = true;
+    }
   }
 
   for (const key of Object.keys(base)) {
