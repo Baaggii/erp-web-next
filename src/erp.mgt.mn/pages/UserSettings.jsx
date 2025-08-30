@@ -89,7 +89,7 @@ function PrinterSettingsTab() {
   const { userSettings, updateUserSettings } = useAuth();
   const [printers, setPrinters] = useState([]);
   useEffect(() => {
-    fetch('/api/printers', { credentials: 'include' })
+    fetch(`${API_BASE}/printers`, { credentials: 'include' })
       .then((r) => r.json())
       .then(setPrinters)
       .catch(() => setPrinters([]));

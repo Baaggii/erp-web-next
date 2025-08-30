@@ -9,6 +9,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import { API_BASE } from '../utils/apiBase.js';
 
 const RowFormModal = function RowFormModal({
   visible,
@@ -1369,7 +1370,7 @@ const RowFormModal = function RowFormModal({
     if (f.length) html += `<h3>Footer</h3><table>${rowHtml(f, true)}</table>`;
     html += '</body></html>';
     if (userSettings?.printerId) {
-      fetch('/api/print', {
+      fetch(`${API_BASE}/print`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

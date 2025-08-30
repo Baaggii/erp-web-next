@@ -102,7 +102,7 @@ export default function AuthContextProvider({ children }) {
           trackSetState('AuthContext.setPermissions');
           setPermissions(data.permissions || null);
           try {
-            const resSettings = await fetch(`/api/user/settings`, {
+            const resSettings = await fetch(`${API_BASE}/user/settings`, {
               credentials: 'include',
             });
             if (resSettings.ok) {
@@ -185,7 +185,7 @@ export default function AuthContextProvider({ children }) {
 
   const saveUserSettings = async (next) => {
     try {
-      await fetch('/api/user/settings', {
+      await fetch(`${API_BASE}/user/settings`, {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
