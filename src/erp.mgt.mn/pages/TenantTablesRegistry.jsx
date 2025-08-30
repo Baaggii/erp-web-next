@@ -521,12 +521,14 @@ export default function TenantTablesRegistry() {
             ))}
           </select>
         </div>
-        {tables && tables.filter((t) => t.seedOnCreate).length === 0 ? (
+        {tables === null ? (
+          <p>{t('loading', 'Loading...')}</p>
+        ) : (tables ?? []).filter((t) => t.seedOnCreate).length === 0 ? (
           <p>{t('noSeedOnCreateTables', 'No seed_on_create tables.')}</p>
         ) : (
           <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-            {tables
-              ?.filter((t) => t.seedOnCreate)
+            {(tables ?? [])
+              .filter((t) => t.seedOnCreate)
               .map((table) => (
                 <div key={table.tableName} style={{ marginBottom: '0.5rem' }}>
                   <label>
