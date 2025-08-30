@@ -269,6 +269,12 @@ async function main() {
 
       const existing = locales[lang][key];
 
+      if (lang !== sourceLang && existing && existing.trim()) {
+        const prefix = `[gen-i18n]${origin ? `[${origin}]` : ''}`;
+        console.log(`${prefix} Skipping ${lang}.${key}, already translated`);
+        continue;
+      }
+
       if (lang === 'mn' && sourceLang === 'en') {
         const prefix = `[gen-i18n]${origin ? `[${origin}]` : ''}`;
         console.log(`${prefix} Translating "${sourceText}" (en -> mn)`);
