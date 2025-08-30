@@ -20,6 +20,7 @@ import { PendingRequestContext } from "../context/PendingRequestContext.jsx";
 import Joyride, { STATUS } from "react-joyride";
 import { getGuideSteps as getDashboardGuideSteps } from "../pages/DashboardPage.jsx";
 import { getGuideSteps as getFormsGuideSteps } from "../pages/Forms.jsx";
+import ErrorBoundary from "../components/ErrorBoundary.jsx";
 
 /**
  * A desktop‐style “ERPLayout” with:
@@ -528,7 +529,9 @@ function MainWindow({ title }) {
       <div style={styles.windowContent}>
         {tabs.map((t) => (
           <TabPanel key={t.key} tabKey={t.key} active={t.key === activeKey}>
-            {t.key === location.pathname ? elements[t.key] : cache[t.key]}
+            <ErrorBoundary>
+              {t.key === location.pathname ? elements[t.key] : cache[t.key]}
+            </ErrorBoundary>
           </TabPanel>
         ))}
       </div>
