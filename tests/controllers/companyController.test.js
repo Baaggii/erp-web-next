@@ -48,9 +48,11 @@ test('createCompanyHandler allows system admin with companyId=0', async () => {
       permission_list: 'system_settings',
       }]];
     },
-    [[{ COLUMN_NAME: 'name' }]],
+    [[{ COLUMN_NAME: 'name' }, { COLUMN_NAME: 'created_by' }]],
     [{ insertId: 5 }],
     [[]],
+    [[]],
+    [{ affectedRows: 1 }],
   ]);
   const req = { body: { name: 'NewCo' }, user: { empid: 1, companyId: 0 } };
   const res = createRes();
@@ -67,7 +69,7 @@ test('createCompanyHandler forwards seedRecords and overwrite', async () => {
   let deleteCalled = false;
   db.pool.query = async (sql, params) => {
     if (/information_schema\.COLUMNS/.test(sql) && params[0] === 'companies') {
-      return [[{ COLUMN_NAME: 'name' }]];
+      return [[{ COLUMN_NAME: 'name' }, { COLUMN_NAME: 'created_by' }]];
     }
     if (sql.startsWith('INSERT INTO ??') && params[0] === 'companies') {
       return [{ insertId: 9 }];
@@ -94,6 +96,9 @@ test('createCompanyHandler forwards seedRecords and overwrite', async () => {
     }
     if (/INSERT INTO user_level_permissions/.test(sql)) {
       return [[]];
+    }
+    if (/INSERT INTO user_companies/.test(sql)) {
+      return [{ affectedRows: 1 }];
     }
     return [[]];
   };
