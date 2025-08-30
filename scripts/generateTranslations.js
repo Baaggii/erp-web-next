@@ -2,6 +2,8 @@
 import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
+import fetch from 'node-fetch';
+globalThis.fetch = fetch;
 import OpenAI from '../api-server/utils/openaiClient.js';
 import { slugify } from '../api-server/utils/slugify.js';
 
