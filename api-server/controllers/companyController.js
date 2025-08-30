@@ -3,8 +3,9 @@ import {
   insertTableRow,
   assignCompanyToUser,
   getEmploymentSession,
-  getEmploymentSessions,
+  getUserLevelActions,
 } from '../../db/index.js';
+import { hasAction } from '../utils/hasAction.js';
 
 export async function listCompaniesHandler(req, res, next) {
   try {
@@ -28,12 +29,9 @@ export async function createCompanyHandler(req, res, next) {
     const session =
       req.session ||
       (await getEmploymentSession(req.user.empid, req.user.companyId));
-    // A user might belong to multiple employment sessions across companies.
-    // If the current session lacks `system_settings`, allow the request when
-    // *any* of the user's sessions grants that permission.
-    if (!session?.permissions?.system_settings) {
-      const sessions = await getEmploymentSessions(req.user.empid);
-      if (!sessions.some((s) => s.permissions?.system_settings)) {
+    if (!(await hasAction(session, 'system_settings'))) {
+      const actions = await getUserLevelActions(req.user.userLevel);
+      if (!actions?.permissions?.system_settings) {
         return res.sendStatus(403);
       }
     }
