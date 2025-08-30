@@ -38,7 +38,6 @@
     "/api/transaction_images/upload_check",
     "/api/transaction_images/upload_commit",
     "/api/transaction_images/upload_scan",
-    "/api/user_companies",
     "/api/users"
   ]
 }

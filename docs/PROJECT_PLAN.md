@@ -18,7 +18,6 @@ This document outlines the roadmap, scope, architecture, milestones, and deliver
    - `/erp/api/users`: GET|POST  
    - `/erp/api/users/:id`: PUT|DELETE  
    - `/erp/api/users/:id/password`: PUT (old/new/confirm)  
-   - `/erp/api/user_companies`: GET|POST|PUT|DELETE
 
 2. **Dynamic Forms**
    - `/erp/api/transaction_forms`: configuration endpoints.
@@ -57,7 +56,6 @@ This document outlines the roadmap, scope, architecture, milestones, and deliver
   - `code_position(position_id PK, position_name)`
   - `users(id PK, empid, password, created_by, created_at)`
   - `companies(id PK, name, created_at)`
-  - `user_companies(empid FK→users.empid, company_id FK→companies.id, position_id FK→code_position.position_id, created_by, created_at)`
   - Single-database multi-tenant (company_id discriminator)
 
 ## 5. Milestones & Timeline
