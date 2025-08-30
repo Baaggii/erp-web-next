@@ -26,7 +26,7 @@ async function getToken() {
 
 const originalFetch = window.fetch.bind(window);
 window.fetch = async (url, options = {}, _retry) => {
-  const { skipLoader, ...opts } = options || {};
+  const { skipLoader, skipErrorToast, ...opts } = options || {};
   const key = skipLoader ? null : currentKey();
   if (key) dispatchStart(key);
   const method = (opts.method || 'GET').toUpperCase();
@@ -65,7 +65,7 @@ window.fetch = async (url, options = {}, _retry) => {
     }
     return res;
   }
-  if (!res.ok) {
+  if (!res.ok && !skipErrorToast) {
     let errorMsg = res.statusText;
     try {
       const data = await res.clone().json();
