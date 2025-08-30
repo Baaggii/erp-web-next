@@ -1,5 +1,38 @@
 import React from 'react';
 import Form from '@rjsf/core';
-export default function FormRenderer({ schema, onSubmit }) {
-  return <Form schema={schema} onSubmit={onSubmit} />;
+import TooltipWrapper from '../components/TooltipWrapper.jsx';
+import { useTranslation } from 'react-i18next';
+
+export default function FormRenderer({ schema, uiSchema = {}, formData, onSubmit, tooltips = {} }) {
+  const { t } = useTranslation();
+
+  const FieldTemplate = (props) => {
+    const { id, label, required, children, errors, help, description, name } = props;
+    const tipKey = tooltips[name];
+    const title = tipKey ? t(tipKey) : label;
+    return (
+      <TooltipWrapper title={title}>
+        <div className="mb-3">
+          <label htmlFor={id} className="block font-medium">
+            {label}
+            {required && <span className="text-red-500">*</span>}
+          </label>
+          {description}
+          {children}
+          {errors}
+          {help}
+        </div>
+      </TooltipWrapper>
+    );
+  };
+
+  return (
+    <Form
+      schema={schema}
+      uiSchema={uiSchema}
+      formData={formData}
+      onSubmit={onSubmit}
+      templates={{ FieldTemplate }}
+    />
+  );
 }

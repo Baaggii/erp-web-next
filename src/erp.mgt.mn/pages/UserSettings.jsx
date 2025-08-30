@@ -4,6 +4,7 @@ import { useTour } from '../components/ERPLayout.jsx';
 import userSettingsSteps from '../tours/UserSettings.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import LangContext from '../context/I18nContext.jsx';
+import TooltipWrapper from '../components/TooltipWrapper.jsx';
 
 export default function UserSettingsPage() {
   const { t } = useTranslation();
@@ -50,14 +51,16 @@ function GeneralSettingsTab() {
   const tooltipsEnabled = userSettings.tooltipsEnabled ?? true;
   return (
     <div>
-      <label>
-        <input
-          type="checkbox"
-          checked={tooltipsEnabled}
-          onChange={(e) => updateUserSettings({ tooltipsEnabled: e.target.checked })}
-        />{' '}
-        {t('settings_enable_tooltips', 'Enable tooltips')}
-      </label>
+      <TooltipWrapper title={t('tooltip.enable_tooltips')}>
+        <label>
+          <input
+            type="checkbox"
+            checked={tooltipsEnabled}
+            onChange={(e) => updateUserSettings({ tooltipsEnabled: e.target.checked })}
+          />{' '}
+          {t('settings_enable_tooltips', 'Enable tooltips')}
+        </label>
+      </TooltipWrapper>
     </div>
   );
 }

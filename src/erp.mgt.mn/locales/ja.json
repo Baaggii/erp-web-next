@@ -35,6 +35,8 @@
     "date": "取引日",
     "firstName": "名",
     "lastName": "姓",
+    "cashback": "キャッシュバック額",
+    "remarks": "追加の備考",
     "enable_tooltips": "ツールチップの表示を切り替え"
   }
 }
