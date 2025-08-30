@@ -1,1 +1,9 @@
-{}
+{
+  "organization": "Sélectionner l'organisation",
+  "date": "Date de transaction",
+  "firstName": "Prénom",
+  "lastName": "Nom de famille",
+  "cashback": "Montant de cashback",
+  "remarks": "Remarques supplémentaires",
+  "enable_tooltips": "Basculer pour afficher ou masquer les info-bulles"
+}

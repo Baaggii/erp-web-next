@@ -8,7 +8,7 @@ import TooltipWrapper from '../components/TooltipWrapper.jsx';
 import { API_BASE } from '../utils/apiBase.js';
 
 export default function UserSettingsPage() {
-  const { t } = useTranslation();
+  const { t } = useTranslation(['translation', 'tooltip']);
   const steps = useMemo(() => userSettingsSteps(t), [t]);
   useTour('user-settings', steps);
   const tabs = [
@@ -67,7 +67,7 @@ function GeneralSettingsTab() {
 }
 
 function UserManualTab() {
-  const { t } = useTranslation();
+  const { t } = useTranslation(['translation', 'tooltip']);
   const { userSettings, updateUserSettings } = useAuth();
   const toursEnabled = userSettings.settings_enable_tours ?? false;
   return (
@@ -86,7 +86,7 @@ function UserManualTab() {
 }
 
 function PrinterSettingsTab() {
-  const { t } = useTranslation();
+  const { t } = useTranslation(['translation', 'tooltip']);
   const { userSettings, updateUserSettings } = useAuth();
   const [printers, setPrinters] = useState([]);
   useEffect(() => {
@@ -116,7 +116,7 @@ function PrinterSettingsTab() {
 }
 
 function ProfileSettingsTab() {
-  const { t } = useTranslation();
+  const { t } = useTranslation(['translation', 'tooltip']);
   const { lang, setLang } = useContext(LangContext);
   return (
     <div>

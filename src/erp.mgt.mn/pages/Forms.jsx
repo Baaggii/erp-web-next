@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next';
 
 export default function FormsPage() {
   const outlet = useOutlet();
-  const { t } = useTranslation();
+  const { t } = useTranslation(['translation', 'tooltip']);
   const steps = useMemo(() => formsSteps(t), [t]);
   useTour('forms', steps);
   return outlet || <FormsIndex />;

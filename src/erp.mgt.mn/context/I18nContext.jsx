@@ -95,7 +95,11 @@ export function I18nProvider({ children }) {
       lang,
       setLang: changeLang,
       fallbackLangs,
-      t: (key, fallback) => i18n.t(key, { defaultValue: fallback ?? key }),
+      t: (key, fallback, options = {}) =>
+        i18n.t(key, {
+          ns: options.ns || ['translation', 'tooltip'],
+          defaultValue: fallback ?? key,
+        }),
     }),
     [lang, changeLang, fallbackLangs, tick]
   );

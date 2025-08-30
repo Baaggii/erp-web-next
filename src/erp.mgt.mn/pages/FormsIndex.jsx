@@ -7,6 +7,8 @@ import { useTxnModules } from '../hooks/useTxnModules.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import I18nContext from '../context/I18nContext.jsx';
+import { useTranslation } from 'react-i18next';
+import TooltipWrapper from '../components/TooltipWrapper.jsx';
 
 export default function FormsIndex() {
   const [transactions, setTransactions] = useState({});
@@ -16,6 +18,7 @@ export default function FormsIndex() {
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
   const { t } = useContext(I18nContext);
+  const { t: tTip } = useTranslation('tooltip');
 
   const headerMap = useHeaderMappings(modules.map((m) => m.module_key));
   const moduleMap = {};
@@ -82,9 +85,13 @@ export default function FormsIndex() {
 
   return (
     <div>
-      <h2>{t('forms', 'Forms')}</h2>
+      <TooltipWrapper title={tTip('forms_header', { defaultValue: 'Available forms' })}>
+        <h2>{t('forms', 'Forms')}</h2>
+      </TooltipWrapper>
       {groups.length === 0 ? (
-        <p>{t('formsNone', 'No forms found.')}</p>
+        <TooltipWrapper title={tTip('forms_none', { defaultValue: 'No matching forms available' })}>
+          <p>{t('formsNone', 'No forms found.')}</p>
+        </TooltipWrapper>
       ) : (
         groups.map(([key]) => {
           const mod = modules.find((m) => m.module_key === key);
