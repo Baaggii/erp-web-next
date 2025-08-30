@@ -9,6 +9,7 @@
   "serviceUnavailable": "Service unavailable",
   "dashboard": "Dashboard",
   "forms": "Forms",
+  "formsNone": "No forms found.",
   "reports": "Reports",
   "settings": "Settings",
   "settings_users": "Users",

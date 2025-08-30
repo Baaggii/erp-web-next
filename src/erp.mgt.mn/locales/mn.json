@@ -9,6 +9,7 @@
    "serviceUnavailable": "Үйлчилгээ боломжгүй",
    "dashboard": "Дашбоард",
    "forms": "Маягтууд",
+   "formsNone": "Маягт олдсонгүй.",
    "reports": "Тайлан",
    "settings": "Тохиргоо",
    "settings_users": "Хэрэглэгчид",
