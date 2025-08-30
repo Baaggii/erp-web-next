@@ -24,6 +24,7 @@ import slugify from '../utils/slugify.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
 import { useTranslation } from 'react-i18next';
+import TooltipWrapper from './TooltipWrapper.jsx';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -129,7 +130,7 @@ const TableManager = forwardRef(function TableManager({
   buttonPerms = {},
   autoFillSession = true,
 }, ref) {
-  const { t } = useTranslation();
+  const { t } = useTranslation(['translation', 'tooltip']);
   const mounted = useRef(false);
   const renderCount = useRef(0);
   const warned = useRef(false);
@@ -1891,21 +1892,31 @@ const TableManager = forwardRef(function TableManager({
         }}
       >
         {buttonPerms['New transaction'] && (
-          <button onClick={openAdd} style={{ marginRight: '0.5rem' }}>
-            {addLabel}
-          </button>
+          <TooltipWrapper title={t('add_row', { ns: 'tooltip', defaultValue: 'Add new row' })}>
+            <button onClick={openAdd} style={{ marginRight: '0.5rem' }}>
+              {addLabel}
+            </button>
+          </TooltipWrapper>
         )}
-        <button onClick={selectCurrentPage} style={{ marginRight: '0.5rem' }}>
-          Select All
-        </button>
-        <button onClick={deselectAll} style={{ marginRight: '0.5rem' }}>
-          Deselect All
-        </button>
-        <button onClick={refreshRows} style={{ marginRight: '0.5rem' }}>
-          Refresh Table
-        </button>
+        <TooltipWrapper title={t('select_all', { ns: 'tooltip', defaultValue: 'Select all rows' })}>
+          <button onClick={selectCurrentPage} style={{ marginRight: '0.5rem' }}>
+            Select All
+          </button>
+        </TooltipWrapper>
+        <TooltipWrapper title={t('deselect_all', { ns: 'tooltip', defaultValue: 'Clear selected rows' })}>
+          <button onClick={deselectAll} style={{ marginRight: '0.5rem' }}>
+            Deselect All
+          </button>
+        </TooltipWrapper>
+        <TooltipWrapper title={t('refresh_table', { ns: 'tooltip', defaultValue: 'Reload data' })}>
+          <button onClick={refreshRows} style={{ marginRight: '0.5rem' }}>
+            Refresh Table
+          </button>
+        </TooltipWrapper>
         {selectedRows.size > 0 && buttonPerms['Delete transaction'] && (
-          <button onClick={handleDeleteSelected}>Delete Selected</button>
+          <TooltipWrapper title={t('delete_selected', { ns: 'tooltip', defaultValue: 'Remove selected rows' })}>
+            <button onClick={handleDeleteSelected}>Delete Selected</button>
+          </TooltipWrapper>
         )}
       </div>
       <div

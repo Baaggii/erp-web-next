@@ -1,1 +1,9 @@
-{}
+{
+  "organization": "Seleccionar organización",
+  "date": "Fecha de transacción",
+  "firstName": "Nombre",
+  "lastName": "Apellido",
+  "cashback": "Monto de devolución",
+  "remarks": "Observaciones adicionales",
+  "enable_tooltips": "Alternar para mostrar u ocultar tooltips"
+}

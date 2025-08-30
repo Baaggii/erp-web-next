@@ -4,6 +4,7 @@ import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import TooltipWrapper from '../components/TooltipWrapper.jsx';
 
 export default function GeneralConfiguration() {
   const initial = useGeneralConfig();
@@ -12,7 +13,7 @@ export default function GeneralConfiguration() {
   const [tab, setTab] = useState('forms');
   const { addToast } = useToast();
   const { session, permissions } = useContext(AuthContext);
-  const { t } = useTranslation();
+  const { t } = useTranslation(['translation', 'tooltip']);
   const hasAdmin =
     permissions?.permissions?.system_settings ||
     session?.permissions?.system_settings;
@@ -64,32 +65,42 @@ export default function GeneralConfiguration() {
 
   return (
     <div>
-      <h2>{t('generalConfiguration', 'General Configuration')}</h2>
+      <TooltipWrapper title={t('general_configuration', { ns: 'tooltip', defaultValue: 'Configure global settings' })}>
+        <h2>{t('generalConfiguration', 'General Configuration')}</h2>
+      </TooltipWrapper>
       <div className="tab-button-group" style={{ marginBottom: '0.5rem' }}>
-        <button
-          className={`tab-button ${tab === 'forms' ? 'active' : ''}`}
-          onClick={() => setTab('forms')}
-        >
-          Forms
-        </button>
-        <button
-          className={`tab-button ${tab === 'pos' ? 'active' : ''}`}
-          onClick={() => setTab('pos')}
-        >
-          POS
-        </button>
-        <button
-          className={`tab-button ${tab === 'general' ? 'active' : ''}`}
-          onClick={() => setTab('general')}
-        >
-          General
-        </button>
-        <button
-          className={`tab-button ${tab === 'images' ? 'active' : ''}`}
-          onClick={() => setTab('images')}
-        >
-          Images
-        </button>
+        <TooltipWrapper title={t('tab_forms', { ns: 'tooltip', defaultValue: 'Form options' })}>
+          <button
+            className={`tab-button ${tab === 'forms' ? 'active' : ''}`}
+            onClick={() => setTab('forms')}
+          >
+            Forms
+          </button>
+        </TooltipWrapper>
+        <TooltipWrapper title={t('tab_pos', { ns: 'tooltip', defaultValue: 'Point of sale settings' })}>
+          <button
+            className={`tab-button ${tab === 'pos' ? 'active' : ''}`}
+            onClick={() => setTab('pos')}
+          >
+            POS
+          </button>
+        </TooltipWrapper>
+        <TooltipWrapper title={t('tab_general', { ns: 'tooltip', defaultValue: 'Miscellaneous settings' })}>
+          <button
+            className={`tab-button ${tab === 'general' ? 'active' : ''}`}
+            onClick={() => setTab('general')}
+          >
+            General
+          </button>
+        </TooltipWrapper>
+        <TooltipWrapper title={t('tab_images', { ns: 'tooltip', defaultValue: 'Image options' })}>
+          <button
+            className={`tab-button ${tab === 'images' ? 'active' : ''}`}
+            onClick={() => setTab('images')}
+          >
+            Images
+          </button>
+        </TooltipWrapper>
       </div>
       <div style={{ marginBottom: '0.5rem' }}>
         <button onClick={() => setTab('forms')} disabled={tab === 'forms'}>
@@ -108,28 +119,32 @@ export default function GeneralConfiguration() {
       {tab === 'forms' || tab === 'pos' ? (
         <>
           <div style={{ marginBottom: '0.5rem' }}>
-            <label>
-              Label Font Size{' '}
-              <input
-                name="labelFontSize"
-                type="number"
-                inputMode="decimal"
-                value={active.labelFontSize ?? ''}
-                onChange={handleChange}
-              />
-            </label>
+            <TooltipWrapper title={t('label_font_size', { ns: 'tooltip', defaultValue: 'Font size for labels' })}>
+              <label>
+                Label Font Size{' '}
+                <input
+                  name="labelFontSize"
+                  type="number"
+                  inputMode="decimal"
+                  value={active.labelFontSize ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <label>
-              Box Width{' '}
-              <input
-                name="boxWidth"
-                type="number"
-                inputMode="decimal"
-                value={active.boxWidth ?? ''}
-                onChange={handleChange}
-              />
-            </label>
+            <TooltipWrapper title={t('box_width', { ns: 'tooltip', defaultValue: 'Input box width' })}>
+              <label>
+                Box Width{' '}
+                <input
+                  name="boxWidth"
+                  type="number"
+                  inputMode="decimal"
+                  value={active.boxWidth ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
             <label>

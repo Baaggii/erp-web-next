@@ -8,7 +8,7 @@ import TooltipWrapper from '../components/TooltipWrapper.jsx';
 import { API_BASE } from '../utils/apiBase.js';
 
 export default function UserSettingsPage() {
-  const { t } = useTranslation();
+  const { t } = useTranslation(['translation', 'tooltip']);
   const steps = useMemo(() => userSettingsSteps(t), [t]);
   useTour('user-settings', steps);
   const tabs = [
@@ -47,12 +47,12 @@ export default function UserSettingsPage() {
 }
 
 function GeneralSettingsTab() {
-  const { t } = useTranslation();
+  const { t } = useTranslation(['translation', 'tooltip']);
   const { userSettings, updateUserSettings } = useAuth();
   const tooltipsEnabled = userSettings.tooltipsEnabled ?? true;
   return (
     <div>
-      <TooltipWrapper title={t('tooltip.enable_tooltips')}>
+      <TooltipWrapper title={t('enable_tooltips', { ns: 'tooltip' })}>
         <label>
           <input
             type="checkbox"
@@ -67,7 +67,7 @@ function GeneralSettingsTab() {
 }
 
 function UserManualTab() {
-  const { t } = useTranslation();
+  const { t } = useTranslation(['translation', 'tooltip']);
   const { userSettings, updateUserSettings } = useAuth();
   const toursEnabled = userSettings.settings_enable_tours ?? false;
   return (
@@ -86,7 +86,7 @@ function UserManualTab() {
 }
 
 function PrinterSettingsTab() {
-  const { t } = useTranslation();
+  const { t } = useTranslation(['translation', 'tooltip']);
   const { userSettings, updateUserSettings } = useAuth();
   const [printers, setPrinters] = useState([]);
   useEffect(() => {
@@ -116,7 +116,7 @@ function PrinterSettingsTab() {
 }
 
 function ProfileSettingsTab() {
-  const { t } = useTranslation();
+  const { t } = useTranslation(['translation', 'tooltip']);
   const { lang, setLang } = useContext(LangContext);
   return (
     <div>
