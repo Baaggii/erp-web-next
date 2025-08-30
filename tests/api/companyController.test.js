@@ -69,8 +69,9 @@ test('allows POST /api/companies when any session has system_settings', async ()
         permission_list: 'system_settings',
       },
     ]],
-    [[{ COLUMN_NAME: 'name' }]],
+    [[{ COLUMN_NAME: 'name' }, { COLUMN_NAME: 'created_by' }]],
     [{ insertId: 1 }],
+    [{ affectedRows: 1 }],
   ]);
   const req = {
     body: { name: 'NewCo', seedTables: [] },
