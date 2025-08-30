@@ -101,7 +101,6 @@ function AuthedApp() {
     settings: <SettingsPage />,
     users: <UsersPage />,
     companies: <CompaniesPage />,
-    user_companies: <CompaniesPage />,
     role_permissions: <RolePermissionsPage />,
     user_level_actions: <UserLevelActionsPage />,
     modules: <ModulesPage />,
