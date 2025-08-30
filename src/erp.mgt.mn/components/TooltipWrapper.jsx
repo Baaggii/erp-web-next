@@ -7,12 +7,14 @@ export default function TooltipWrapper({ title, children }) {
   if (!title) {
     return children;
   }
-  const child = React.isValidElement(children)
-    ? React.cloneElement(children, { title })
-    : children;
   return (
-    <span className="tooltip-wrapper" title={title} data-tooltip={enabled ? title : undefined}>
-      {child}
+    <span
+      className="tooltip-wrapper"
+      title={enabled ? title : undefined}
+      aria-label={enabled ? title : undefined}
+      data-tooltip={enabled ? title : undefined}
+    >
+      {children}
     </span>
   );
 }
