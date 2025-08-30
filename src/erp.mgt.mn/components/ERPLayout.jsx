@@ -1,5 +1,5 @@
 // src/erp.mgt.mn/components/ERPLayout.jsx
-import React, { useContext, useState, useEffect, useRef } from "react";
+import React, { useContext, useState, useEffect, useRef, useMemo } from "react";
 import HeaderMenu from "./HeaderMenu.jsx";
 import UserMenu from "./UserMenu.jsx";
 import { useOutlet, useNavigate, useLocation } from "react-router-dom";
@@ -21,6 +21,7 @@ import Joyride, { STATUS } from "react-joyride";
 import { getGuideSteps as getDashboardGuideSteps } from "../pages/DashboardPage.jsx";
 import { getGuideSteps as getFormsGuideSteps } from "../pages/Forms.jsx";
 import ErrorBoundary from "../components/ErrorBoundary.jsx";
+import { useToast } from "../context/ToastContext.jsx";
 
 /**
  * A desktop‐style “ERPLayout” with:
@@ -56,47 +57,74 @@ export default function ERPLayout() {
   }, []);
 
   const modules = useModules();
+  const moduleMap = useMemo(() => {
+    const map = {};
+    modules.forEach((m) => {
+      map[m.module_key] = m;
+    });
+    return map;
+  }, [modules]);
   const headerMap = useHeaderMappings(modules.map((m) => m.module_key));
-  const titleMap = {
-    "/": t("dashboard", "Dashboard"),
-    "/forms": t("forms", "Forms"),
-    "/reports": t("reports", "Reports"),
-    "/settings": t("settings", "Settings"),
-    "/settings/users": t("settings_users", "Users"),
-    "/settings/role-permissions": t(
-      "settings_role_permissions",
-      "Role Permissions",
-    ),
-    "/settings/modules": t("settings_modules", "Modules"),
-    "/settings/company-licenses": t(
-      "settings_company_licenses",
-      "Company Licenses",
-    ),
-    "/settings/tables-management": t(
-      "settings_tables_management",
-      "Tables Management",
-    ),
-    "/settings/forms-management": t(
-      "settings_forms_management",
-      "Forms Management",
-    ),
-    "/settings/report-management": t(
-      "settings_report_management",
-      "Report Management",
-    ),
-    "/settings/change-password": t(
-      "settings_change_password",
-      "Change Password",
-    ),
-    "/settings/tenant-tables-registry": t(
-      "settings_tenant_tables_registry",
-      "Tenant Tables Registry",
-    ),
-    "/settings/translations": t(
-      "settings_translations",
-      "Edit Translations",
-    ),
-  };
+  const titleMap = useMemo(() => {
+    const map = { "/": t("dashboard", "Dashboard") };
+    if (moduleMap.forms) map[modulePath(moduleMap.forms, moduleMap)] = t("forms", "Forms");
+    if (moduleMap.reports) map[modulePath(moduleMap.reports, moduleMap)] = t("reports", "Reports");
+    if (moduleMap.settings)
+      map[modulePath(moduleMap.settings, moduleMap)] = t("settings", "Settings");
+    if (moduleMap.users)
+      map[modulePath(moduleMap.users, moduleMap)] = t("settings_users", "Users");
+    if (moduleMap.role_permissions)
+      map[modulePath(moduleMap.role_permissions, moduleMap)] = t(
+        "settings_role_permissions",
+        "Role Permissions",
+      );
+    if (moduleMap.modules)
+      map[modulePath(moduleMap.modules, moduleMap)] = t("settings_modules", "Modules");
+    if (moduleMap.company_licenses)
+      map[modulePath(moduleMap.company_licenses, moduleMap)] = t(
+        "settings_company_licenses",
+        "Company Licenses",
+      );
+    if (moduleMap.tables_management)
+      map[modulePath(moduleMap.tables_management, moduleMap)] = t(
+        "settings_tables_management",
+        "Tables Management",
+      );
+    if (moduleMap.forms_management)
+      map[modulePath(moduleMap.forms_management, moduleMap)] = t(
+        "settings_forms_management",
+        "Forms Management",
+      );
+    if (moduleMap.report_management)
+      map[modulePath(moduleMap.report_management, moduleMap)] = t(
+        "settings_report_management",
+        "Report Management",
+      );
+    if (moduleMap.change_password)
+      map[modulePath(moduleMap.change_password, moduleMap)] = t(
+        "settings_change_password",
+        "Change Password",
+      );
+    if (moduleMap.tenant_tables_registry)
+      map[modulePath(moduleMap.tenant_tables_registry, moduleMap)] = t(
+        "settings_tenant_tables_registry",
+        "Tenant Tables Registry",
+      );
+    if (moduleMap.edit_translations)
+      map[modulePath(moduleMap.edit_translations, moduleMap)] = t(
+        "settings_translations",
+        "Edit Translations",
+      );
+    return map;
+  }, [moduleMap, t]);
+  const validPaths = useMemo(() => {
+    const paths = new Set(["/"]);
+    modules.forEach((m) => {
+      paths.add(modulePath(m, moduleMap));
+    });
+    return paths;
+  }, [modules, moduleMap]);
+  const { addToast } = useToast();
 
   function titleForPath(path) {
     if (titleMap[path]) return titleMap[path];
@@ -113,6 +141,13 @@ export default function ERPLayout() {
   }
 
   const windowTitle = titleForPath(location.pathname);
+  useEffect(() => {
+    if (!modules.length) return;
+    if (!validPaths.has(location.pathname)) {
+      addToast(t("route_disabled", "This route is disabled"), "error");
+      navigate("/");
+    }
+  }, [modules, validPaths, location.pathname, navigate, addToast, t]);
 
   useEffect(() => {
     const path = location.pathname;
