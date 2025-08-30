@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createCompanyHandler } from '../../api-server/controllers/companyController.js';
+import { createCompanyHandler, deleteCompanyHandler } from '../../api-server/controllers/companyController.js';
 import * as db from '../../db/index.js';
 
 function mockPoolSequential(responses = []) {
@@ -14,6 +14,23 @@ function mockPoolSequential(responses = []) {
   };
   return () => {
     db.pool.query = orig;
+  };
+}
+
+function mockPool(handler) {
+  const originalQuery = db.pool.query;
+  const originalGet = db.pool.getConnection;
+  db.pool.query = handler;
+  db.pool.getConnection = async () => ({
+    beginTransaction: async () => {},
+    commit: async () => {},
+    rollback: async () => {},
+    release: () => {},
+    query: handler,
+  });
+  return () => {
+    db.pool.query = originalQuery;
+    db.pool.getConnection = originalGet;
   };
 }
 
@@ -141,4 +158,54 @@ test('createCompanyHandler forwards seedRecords and overwrite', async () => {
   ]);
   assert.equal(res.code, 201);
   assert.deepEqual(res.body, { id: 9 });
+});
+
+test('deleteCompanyHandler deletes company with cascade', async () => {
+  const calls = [];
+  const restore = mockPool(async (sql, params) => {
+    calls.push({ sql, params });
+    if (sql.startsWith('SHOW KEYS')) {
+      return [[{ Column_name: 'id' }]];
+    }
+    if (sql.includes('information_schema.KEY_COLUMN_USAGE')) {
+      return [[{ TABLE_NAME: 'orders', COLUMN_NAME: 'company_id', REFERENCED_COLUMN_NAME: 'id' }]];
+    }
+    if (sql.startsWith('SELECT COUNT(*)')) {
+      return [[{ count: 1 }]];
+    }
+    if (sql.startsWith('SELECT `id` FROM')) {
+      return [[{ id: 3 }]];
+    }
+    if (sql.startsWith('DELETE FROM')) {
+      return [{}];
+    }
+    throw new Error('unexpected query');
+  });
+  const req = {
+    params: { id: '5' },
+    user: { empid: 1, companyId: 0 },
+    session: { permissions: { system_settings: true } },
+  };
+  const res = createRes();
+  await deleteCompanyHandler(req, res, () => {});
+  restore();
+  const deletes = calls.filter(c => c.sql.startsWith('DELETE FROM'));
+  assert.equal(deletes.length, 2);
+  assert.equal(res.code, 204);
+});
+
+test('deleteCompanyHandler forwards error messages', async () => {
+  const restore = mockPool(async () => {
+    throw new Error('boom');
+  });
+  const req = {
+    params: { id: '5' },
+    user: { empid: 1, companyId: 0 },
+    session: { permissions: { system_settings: true } },
+  };
+  const res = createRes();
+  await deleteCompanyHandler(req, res, () => {});
+  restore();
+  assert.equal(res.code, 500);
+  assert.deepEqual(res.body, { message: 'boom' });
 });
