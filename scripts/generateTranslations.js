@@ -269,7 +269,64 @@ async function main() {
       const existing = locales[lang][key];
       const existingTooltip = locales[lang].tooltip[key];
 
-      if (lang === sourceLang) {
+      if (lang === 'mn' && sourceLang === 'en') {
+        console.log(`Translating "${sourceText}" (en -> mn)`);
+        let translation;
+        let tooltip;
+        let provider = 'OpenAI';
+        try {
+          ({ translation, tooltip } = await translateWithOpenAI(
+            sourceText,
+            'en',
+            'mn',
+          ));
+        } catch (err) {
+          console.warn(
+            `[gen-i18n] OpenAI failed key="${key}" (en->mn): ${err.message}`,
+          );
+          provider = undefined;
+        }
+
+        if (!translation) {
+          try {
+            translation = await translateWithGoogle(sourceText, 'mn', 'en', key);
+            provider = provider || 'Google';
+          } catch (err) {
+            console.warn(
+              `[gen-i18n] Google failed key="${key}" (en->mn): ${err.message}`,
+            );
+            translation = sourceText;
+          }
+        }
+
+        if (!existing) {
+          locales.mn[key] = translation;
+        } else if (translation.trim() !== existing.trim()) {
+          console.log(
+            `[gen-i18n] replaced mn.${key}: "${existing}" -> "${translation}"`,
+          );
+          locales.mn[key] = translation;
+        }
+        if (tooltip) {
+          if (!existingTooltip) {
+            locales.mn.tooltip[key] = tooltip;
+          } else if (tooltip.trim() !== existingTooltip.trim()) {
+            console.log(
+              `[gen-i18n] replaced tooltip for mn.${key}: "${existingTooltip}" -> "${tooltip}"`,
+            );
+            locales.mn.tooltip[key] = tooltip;
+          }
+        }
+        if (translation === sourceText) {
+          console.log(
+            `[gen-i18n] Mongolian translation for ${key} fell back to English`,
+          );
+        } else {
+          console.log(
+            `[gen-i18n] Mongolian translation for ${key} succeeded`,
+          );
+        }
+      } else if (lang === sourceLang) {
         locales[lang][key] = sourceText;
       } else {
         let baseText = sourceText;
