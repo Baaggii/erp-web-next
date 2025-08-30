@@ -543,10 +543,9 @@ export async function listUsers() {
 
 export async function listUsersByCompany(companyId) {
   const [rows] = await pool.query(
-    `SELECT u.id, u.empid, uc.position_id, u.created_at
-       FROM users u
-       JOIN user_companies uc ON u.empid = uc.empid
-      WHERE uc.company_id = ?`,
+    `SELECT id, empid, created_at
+       FROM users
+      WHERE company_id = ?`,
     [companyId],
   );
   return rows;
@@ -605,86 +604,6 @@ export async function deleteUserById(id) {
 /**
  * Assign a user to a company with a specific role
  */
-export async function assignCompanyToUser(
-  empid,
-  companyId,
-  position_id,
-  branchId,
-  createdBy,
-) {
-  const [result] = await pool.query(
-    `INSERT INTO user_companies (empid, company_id, position_id, branch_id, created_by, created_at)
-     VALUES (?, ?, ?, ?, ?, NOW())
-     ON DUPLICATE KEY UPDATE position_id = VALUES(position_id), branch_id = VALUES(branch_id), updated_by = VALUES(created_by), updated_at = NOW()`,
-    [empid, companyId, position_id, branchId, createdBy],
-  );
-  return { affectedRows: result.affectedRows };
-}
-
-/**
- * List company assignments for a given user
- */
-export async function listUserCompanies(empid) {
-  const [rows] = await pool.query(
-    `SELECT uc.empid, uc.company_id, c.name AS company_name, uc.position_id,
-            uc.branch_id, b.name AS branch_name
-     FROM user_companies uc
-     JOIN companies c ON uc.company_id = c.id
-     LEFT JOIN code_branches b ON uc.branch_id = b.id AND b.company_id = uc.company_id
-     WHERE uc.empid = ?`,
-    [empid],
-  );
-  return rows;
-}
-
-/**
- * Remove a user-company assignment
- */
-export async function removeCompanyAssignment(empid, companyId) {
-  const [result] = await pool.query(
-    "DELETE FROM user_companies WHERE empid = ? AND company_id = ?",
-    [empid, companyId],
-  );
-  return result;
-}
-
-/**
- * Update a user's company assignment role
- */
-export async function updateCompanyAssignment(empid, companyId, position_id, branchId, updatedBy) {
-  const [result] = await pool.query(
-    "UPDATE user_companies SET position_id = ?, branch_id = ?, updated_by = ?, updated_at = NOW() WHERE empid = ? AND company_id = ?",
-    [position_id, branchId, updatedBy, empid, companyId],
-  );
-  return result;
-}
-
-/**
- * List all user-company assignments
- */
-export async function listAllUserCompanies(companyId, createdBy = null) {
-  const params = [];
-  const clauses = [];
-  if (companyId) {
-    clauses.push('uc.company_id = ?');
-    params.push(companyId);
-  }
-  if (createdBy) {
-    clauses.push('c.created_by = ?');
-    params.push(createdBy);
-  }
-  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-  const [rows] = await pool.query(
-    `SELECT uc.empid, uc.company_id, c.name AS company_name, uc.position_id,
-            uc.branch_id, b.name AS branch_name
-     FROM user_companies uc
-     JOIN companies c ON uc.company_id = c.id
-     LEFT JOIN code_branches b ON uc.branch_id = b.id AND b.company_id = uc.company_id
-     ${where}`,
-    params,
-  );
-  return rows;
-}
 
 /**
  * List all companies
@@ -1449,15 +1368,6 @@ export async function updateTableRow(tableName, id, updates, conn = pool) {
     return { company_id: companyId, module_key: moduleKey };
   }
 
-  if (tableName === 'user_companies') {
-    const [empId, companyId] = String(id).split('-');
-    await conn.query(
-      `UPDATE user_companies SET ${setClause} WHERE empid = ? AND company_id = ?`,
-      [...values, empId, companyId],
-    );
-    return { empid: empId, company_id: companyId };
-  }
-
   const pkCols = await getPrimaryKeyColumns(tableName);
   logDb(`updateTableRow(${tableName}, id=${id}) using keys: ${pkCols.join(', ')}`);
   if (pkCols.length === 0) {
@@ -1534,15 +1444,6 @@ export async function deleteTableRow(
       [companyId, moduleKey],
     );
     return { company_id: companyId, module_key: moduleKey };
-  }
-
-  if (tableName === 'user_companies') {
-    const [empId, companyId] = String(id).split('-');
-    await conn.query(
-      'DELETE FROM user_companies WHERE empid = ? AND company_id = ?',
-      [empId, companyId],
-    );
-    return { empid: empId, company_id: companyId };
   }
 
   const pkCols = await getPrimaryKeyColumns(tableName);
