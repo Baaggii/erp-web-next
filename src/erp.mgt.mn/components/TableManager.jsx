@@ -2626,7 +2626,6 @@ const TableManager = forwardRef(function TableManager({
         viewSource={viewSourceMap}
         viewDisplays={viewDisplayMap}
         viewColumns={viewColumns}
-        tooltips={formConfig?.tooltips || {}}
         onRowsChange={setGridRows}
         autoFillSession={autoFillSession}
         scope="forms"
