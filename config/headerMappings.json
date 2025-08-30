@@ -742,5 +742,9 @@
   "transaction_datetime": "transaction_datetime",
   "fest_year": "Жил",
   "fest_month": "Сар",
-  "fest_day": "Амралтын хоног"
+  "fest_day": "Амралтын хоног",
+  "saved": "Saved",
+  "failedToSave": "Failed to save",
+  "loading": "Loading…",
+  "generalConfiguration": "General Configuration"
 }
