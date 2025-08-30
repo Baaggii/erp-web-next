@@ -36,7 +36,7 @@ export default function GenerateTranslationsTab() {
       es.close();
       setSource(null);
       setStatus(
-        t('generationFailed', 'Generation failed') + ': ' + (e.data || 'Unknown error')
+        `${t('generationFailed', 'Generation failed')}: ${e.data}`
       );
     });
     setSource(es);
