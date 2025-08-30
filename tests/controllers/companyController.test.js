@@ -48,13 +48,27 @@ test('createCompanyHandler allows system admin with companyId=0', async () => {
       permission_list: 'system_settings',
       }]];
     },
-    [[{ COLUMN_NAME: 'name' }, { COLUMN_NAME: 'created_by' }]],
+    [[
+      { COLUMN_NAME: 'name' },
+      { COLUMN_NAME: 'Gov_Registration_number' },
+      { COLUMN_NAME: 'Address' },
+      { COLUMN_NAME: 'Telephone' },
+      { COLUMN_NAME: 'created_by' }
+    ]],
     [{ insertId: 5 }],
     [[]],
     [[]],
     [{ affectedRows: 1 }],
   ]);
-  const req = { body: { name: 'NewCo' }, user: { empid: 1, companyId: 0 } };
+  const req = {
+    body: {
+      name: 'NewCo',
+      Gov_Registration_number: '123',
+      Address: 'Addr',
+      Telephone: '555'
+    },
+    user: { empid: 1, companyId: 0 }
+  };
   const res = createRes();
   await createCompanyHandler(req, res, () => {});
   restore();
@@ -69,7 +83,13 @@ test('createCompanyHandler forwards seedRecords and overwrite', async () => {
   let deleteCalled = false;
   db.pool.query = async (sql, params) => {
     if (/information_schema\.COLUMNS/.test(sql) && params[0] === 'companies') {
-      return [[{ COLUMN_NAME: 'name' }, { COLUMN_NAME: 'created_by' }]];
+      return [[
+        { COLUMN_NAME: 'name' },
+        { COLUMN_NAME: 'Gov_Registration_number' },
+        { COLUMN_NAME: 'Address' },
+        { COLUMN_NAME: 'Telephone' },
+        { COLUMN_NAME: 'created_by' }
+      ]];
     }
     if (sql.startsWith('INSERT INTO ??') && params[0] === 'companies') {
       return [{ insertId: 9 }];
@@ -105,6 +125,9 @@ test('createCompanyHandler forwards seedRecords and overwrite', async () => {
   const req = {
     body: {
       name: 'SeedCo',
+      Gov_Registration_number: '123',
+      Address: 'Addr',
+      Telephone: '555',
       seedTables: ['posts'],
       seedRecords: { posts: [{ id: 1 }, { id: 2 }] },
       overwrite: true,
