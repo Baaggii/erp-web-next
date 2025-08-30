@@ -2,16 +2,23 @@
 import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
-import OpenAI from 'openai';
+import OpenAI from '../api-server/utils/openaiClient.js';
 
 const languages = ['en', 'mn', 'ja', 'ko', 'zh', 'es', 'de', 'fr', 'ru'];
+const languageNames = {
+  en: 'English',
+  mn: 'Mongolian',
+  ja: 'Japanese',
+  ko: 'Korean',
+  zh: 'Chinese',
+  es: 'Spanish',
+  de: 'German',
+  fr: 'French',
+  ru: 'Russian',
+};
 const headerMappingsPath = path.resolve('config/headerMappings.json');
 const localesDir = path.resolve('src/erp.mgt.mn/locales');
 const TIMEOUT_MS = 7000;
-
-const openai = process.env.OPENAI_API_KEY
-  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-  : null;
 
 /* ---------------- Utilities ---------------- */
 function sortObj(o) {
@@ -132,46 +139,24 @@ async function translateWithGoogle(text, to, from, key) {
 }
 
 async function translateWithOpenAI(text, from, to) {
-  if (!openai) throw new Error('missing OpenAI API key');
-
+  if (!OpenAI) throw new Error('missing OpenAI API key');
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const sourceLang = from === 'mn' ? 'Mongolian' : 'English';
+  const targetLang = languageNames[to] || to;
+  const prompt = `Translate this ${sourceLang} ERP term into ${targetLang}. The text is ${sourceLang}, not Russian.\n\n${text}`;
   try {
-    const completion = await openai.chat.completions.create(
+    const completion = await OpenAI.chat.completions.create(
       {
         model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You are translating phrases for an ERP application; keep field names professional and domain-specific.',
-          },
-          {
-            role: 'system',
-            content:
-              'You are a translation assistant. Respond with a JSON object { "translation": "...", "tooltip": "..." }.',
-          },
-          {
-            role: 'user',
-            content: `Translate the following ${from}-language ERP system term into ${to}. Use ERP terminology.\n\n${text}`,
-          },
-        ],
-        response_format: { type: 'json_object' },
+        messages: [{ role: 'user', content: prompt }],
       },
       { signal: controller.signal }
     );
     clearTimeout(timer);
-
-    const content = completion.choices?.[0]?.message?.content?.trim();
-    if (!content) throw new Error('empty response');
-    let data;
-    try {
-      data = JSON.parse(content);
-    } catch (err) {
-      throw new Error(`Invalid JSON response: ${err.message}`);
-    }
-    if (!data.translation) throw new Error('missing translation field');
-    return { translation: data.translation, tooltip: data.tooltip };
+    const translation = completion.choices?.[0]?.message?.content?.trim();
+    if (!translation) throw new Error('empty response');
+    return translation;
   } catch (err) {
     clearTimeout(timer);
     throw err;
@@ -246,7 +231,6 @@ async function main() {
     locales[lang] = fs.existsSync(file)
       ? JSON.parse(fs.readFileSync(file, 'utf8'))
       : {};
-    if (!locales[lang].tooltip) locales[lang].tooltip = {};
   }
 
   for (const { key, sourceText, sourceLang } of entries) {
@@ -267,19 +251,17 @@ async function main() {
       if (sourceLang === 'en' && !/[A-Za-z]/.test(sourceText)) continue;
 
       const existing = locales[lang][key];
-      const existingTooltip = locales[lang].tooltip[key];
 
       if (lang === 'mn' && sourceLang === 'en') {
         console.log(`Translating "${sourceText}" (en -> mn)`);
         let translation;
-        let tooltip;
         let provider = 'OpenAI';
         try {
-          ({ translation, tooltip } = await translateWithOpenAI(
+          translation = await translateWithOpenAI(
             sourceText,
             'en',
             'mn',
-          ));
+          );
         } catch (err) {
           console.warn(
             `[gen-i18n] OpenAI failed key="${key}" (en->mn): ${err.message}`,
@@ -290,7 +272,7 @@ async function main() {
         if (!translation) {
           try {
             translation = await translateWithGoogle(sourceText, 'mn', 'en', key);
-            provider = provider || 'Google';
+            provider = 'Google';
           } catch (err) {
             console.warn(
               `[gen-i18n] Google failed key="${key}" (en->mn): ${err.message}`,
@@ -306,16 +288,6 @@ async function main() {
             `[gen-i18n] replaced mn.${key}: "${existing}" -> "${translation}"`,
           );
           locales.mn[key] = translation;
-        }
-        if (tooltip) {
-          if (!existingTooltip) {
-            locales.mn.tooltip[key] = tooltip;
-          } else if (tooltip.trim() !== existingTooltip.trim()) {
-            console.log(
-              `[gen-i18n] replaced tooltip for mn.${key}: "${existingTooltip}" -> "${tooltip}"`,
-            );
-            locales.mn.tooltip[key] = tooltip;
-          }
         }
         if (translation === sourceText) {
           console.log(
@@ -338,8 +310,9 @@ async function main() {
 
         console.log(`Translating "${baseText}" (${fromLang} -> ${lang})`);
         let provider = 'OpenAI';
+        let translation;
         try {
-          const { translation, tooltip } = await translateWithOpenAI(
+          translation = await translateWithOpenAI(
             baseText,
             fromLang,
             lang,
@@ -351,16 +324,6 @@ async function main() {
               `[gen-i18n] replaced ${lang}.${key}: "${existing}" -> "${translation}"`,
             );
             locales[lang][key] = translation;
-          }
-          if (tooltip) {
-            if (!existingTooltip) {
-              locales[lang].tooltip[key] = tooltip;
-            } else if (tooltip.trim() !== existingTooltip.trim()) {
-              console.log(
-                `[gen-i18n] replaced tooltip for ${lang}.${key}: "${existingTooltip}" -> "${tooltip}"`,
-              );
-              locales[lang].tooltip[key] = tooltip;
-            }
           }
         } catch (err) {
           console.warn(

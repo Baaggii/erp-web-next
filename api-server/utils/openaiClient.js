@@ -3,10 +3,15 @@ import OpenAI from 'openai';
 
 dotenv.config();
 
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const client = process.env.OPENAI_API_KEY
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : null;
+
+export default client;
 
 export async function getResponse(prompt) {
   if (!prompt) throw new Error('Prompt is required');
+  if (!client) throw new Error('OpenAI client not configured');
   const completion = await client.chat.completions.create({
     model: 'gpt-3.5-turbo',
     messages: [{ role: 'user', content: prompt }],
@@ -16,6 +21,7 @@ export async function getResponse(prompt) {
 
 export async function getResponseWithFile(prompt, fileBuffer, mimeType) {
   if (!prompt) throw new Error('Prompt is required');
+  if (!client) throw new Error('OpenAI client not configured');
 
   const messages = [
     {
