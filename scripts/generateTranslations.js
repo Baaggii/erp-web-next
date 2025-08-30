@@ -28,6 +28,9 @@ function sortObj(o) {
 function writeLocaleFile(lang, obj) {
   const file = path.join(localesDir, `${lang}.json`);
   const ordered = sortObj(obj);
+  if (ordered.tooltip) {
+    ordered.tooltip = sortObj(ordered.tooltip);
+  }
   fs.writeFileSync(file, JSON.stringify(ordered, null, 2));
   console.log(`[gen-i18n] wrote ${file} (${Object.keys(ordered).length} keys)`);
 }
@@ -144,7 +147,7 @@ async function translateWithOpenAI(text, from, to) {
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   const sourceLang = from === 'mn' ? 'Mongolian' : 'English';
   const targetLang = languageNames[to] || to;
-  const prompt = `Translate this ${sourceLang} ERP term into ${targetLang}. The text is ${sourceLang}, not Russian.\n\n${text}`;
+  const prompt = `Translate this ${sourceLang} ERP term into ${targetLang}. Respond only with a JSON object like {"translation":"...", "tooltip":"..."} and no additional commentary. The text is ${sourceLang}, not Russian.\n\n${text}`;
   try {
     const completion = await OpenAI.chat.completions.create(
       {
@@ -154,9 +157,20 @@ async function translateWithOpenAI(text, from, to) {
       { signal: controller.signal }
     );
     clearTimeout(timer);
-    const translation = completion.choices?.[0]?.message?.content?.trim();
-    if (!translation) throw new Error('empty response');
-    return translation;
+    const content = completion.choices?.[0]?.message?.content?.trim();
+    if (!content) throw new Error('empty response');
+    let parsed;
+    try {
+      const json = content.replace(/```json|```/g, '').trim();
+      parsed = JSON.parse(json);
+    } catch (err) {
+      throw new Error(`invalid JSON response: ${err.message}`);
+    }
+    const { translation, tooltip } = parsed;
+    if (typeof translation !== 'string' || typeof tooltip !== 'string') {
+      throw new Error('missing fields in response');
+    }
+    return { translation: translation.trim(), tooltip: tooltip.trim() };
   } catch (err) {
     clearTimeout(timer);
     throw err;
@@ -233,6 +247,7 @@ async function main() {
     locales[lang] = fs.existsSync(file)
       ? JSON.parse(fs.readFileSync(file, 'utf8'))
       : {};
+    if (!locales[lang].tooltip) locales[lang].tooltip = {};
   }
 
   for (const { key, sourceText, sourceLang } of entries) {
@@ -258,13 +273,16 @@ async function main() {
         const prefix = `[gen-i18n]${origin ? `[${origin}]` : ''}`;
         console.log(`${prefix} Translating "${sourceText}" (en -> mn)`);
         let translation;
+        let tooltip;
         let provider = 'OpenAI';
         try {
-          translation = await translateWithOpenAI(
+          const result = await translateWithOpenAI(
             sourceText,
             'en',
             'mn',
           );
+          translation = result.translation;
+          tooltip = result.tooltip;
         } catch (err) {
           console.warn(
             `${prefix} OpenAI failed key="${key}" (en->mn): ${err.message}`,
@@ -292,6 +310,19 @@ async function main() {
           );
           locales.mn[key] = translation;
         }
+
+        if (tooltip) {
+          const existingTip = locales.mn.tooltip[key];
+          if (!existingTip) {
+            locales.mn.tooltip[key] = tooltip;
+          } else if (tooltip.trim() !== existingTip.trim()) {
+            console.log(
+              `${prefix} replaced mn.tooltip.${key}: "${existingTip}" -> "${tooltip}"`,
+            );
+            locales.mn.tooltip[key] = tooltip;
+          }
+        }
+
         if (translation === sourceText) {
           console.log(
             `${prefix} Mongolian translation for ${key} fell back to English`,
@@ -314,12 +345,15 @@ async function main() {
         console.log(`Translating "${baseText}" (${fromLang} -> ${lang})`);
         let provider = 'OpenAI';
         let translation;
+        let tooltip;
         try {
-          translation = await translateWithOpenAI(
+          const result = await translateWithOpenAI(
             baseText,
             fromLang,
             lang,
           );
+          translation = result.translation;
+          tooltip = result.tooltip;
           if (!existing) {
             locales[lang][key] = translation;
           } else if (translation.trim() !== existing.trim()) {
@@ -327,6 +361,17 @@ async function main() {
               `[gen-i18n] replaced ${lang}.${key}: "${existing}" -> "${translation}"`,
             );
             locales[lang][key] = translation;
+          }
+          if (tooltip) {
+            const existingTip = locales[lang].tooltip[key];
+            if (!existingTip) {
+              locales[lang].tooltip[key] = tooltip;
+            } else if (tooltip.trim() !== existingTip.trim()) {
+              console.log(
+                `[gen-i18n] replaced ${lang}.tooltip.${key}: "${existingTip}" -> "${tooltip}"`,
+              );
+              locales[lang].tooltip[key] = tooltip;
+            }
           }
         } catch (err) {
           console.warn(
