@@ -33,11 +33,19 @@ export function GeneralSettings() {
   useEffect(() => {
     fetch('/api/settings', { credentials: 'include' })
       .then((res) => {
-        if (!res.ok) throw new Error('Failed to fetch settings');
+        if (!res.ok)
+          throw new Error(
+            t('settings_fetch_failed', 'Failed to fetch settings'),
+          );
         return res.json();
       })
       .then((json) => setSettings(json))
-      .catch((err) => console.error('Error fetching settings:', err));
+      .catch((err) =>
+        console.error(
+          t('settings_fetch_error', 'Error fetching settings:'),
+          err,
+        ),
+      );
   }, []);
 
   return (
@@ -49,29 +57,31 @@ export function GeneralSettings() {
         <p>Тохиргоо ачааллаж байна…</p>
       )}
       <div style={{ marginTop: '1rem' }}>
-        <TooltipWrapper title={t('tooltip.enable_tooltips')}>
-          <label>
-            <input
-              type="checkbox"
-              checked={tooltipsEnabled}
-              onChange={(e) => {
-                const v = e.target.checked;
-                setTooltipsEnabled(v);
-                localStorage.setItem('tooltipsEnabled', String(v));
-              }}
-            />{' '}
-            {t('settings_enable_tooltips')}
-          </label>
-        </TooltipWrapper>
+        <label>
+          <input
+            type="checkbox"
+            checked={tooltipsEnabled}
+            onChange={(e) => {
+              const v = e.target.checked;
+              setTooltipsEnabled(v);
+              localStorage.setItem('tooltipsEnabled', String(v));
+            }}
+          />{' '}
+          {t('settings_enable_tooltips', 'Enable tooltips')}
+        </label>
       </div>
       <p style={{ marginTop: '1rem' }}>
         <Link to="/settings/role-permissions">Эрхийн тохиргоо засах</Link>
       </p>
       <p style={{ marginTop: '0.5rem' }}>
-        <Link to="/settings/tenant-tables-registry">Tenant Tables Registry</Link>
+        <Link to="/settings/tenant-tables-registry">
+          {t('settings_tenant_tables_registry', 'Tenant Tables Registry')}
+        </Link>
       </p>
       <p style={{ marginTop: '0.5rem' }}>
-        <Link to="/settings/edit-translations">Edit Translations</Link>
+        <Link to="/settings/edit-translations">
+          {t('settings_translations', 'Edit Translations')}
+        </Link>
       </p>
     </div>
   );
