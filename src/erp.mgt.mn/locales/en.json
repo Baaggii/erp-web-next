@@ -72,14 +72,5 @@
   "delete_request_submitted": "Delete request submitted",
   "delete_request_failed": "Delete request failed",
   "delete_failed_for": "Delete failed for {{id}}",
-  "cannot_edit_without_pk": "Cannot edit rows without a primary key",
-  "tooltip": {
-    "organization": "Select organization",
-    "date": "Transaction date",
-    "firstName": "First name",
-    "lastName": "Last name",
-    "cashback": "Cashback amount",
-    "remarks": "Additional remarks",
-    "enable_tooltips": "Toggle to show or hide tooltips"
-  }
+  "cannot_edit_without_pk": "Cannot edit rows without a primary key"
 }
