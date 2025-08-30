@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useContext } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Modal from '../components/Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import I18nContext from '../context/I18nContext.jsx';
@@ -33,10 +34,23 @@ export default function TenantTablesRegistry() {
   const [columns, setColumns] = useState({});
   const { addToast } = useToast();
   const { t } = useContext(I18nContext);
+  const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     loadTables();
     loadCompanies();
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const seed = params.get('seed');
+    const cid = params.get('companyId');
+    if (seed === '1') {
+      if (cid) setCompanyId(cid);
+      openSeedCompanyModal();
+      navigate(location.pathname, { replace: true });
+    }
   }, []);
 
   async function loadCompanies() {

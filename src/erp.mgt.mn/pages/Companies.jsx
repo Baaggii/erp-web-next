@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 export default function CompaniesPage() {
   const [companies, setCompanies] = useState([]);
   const [filter, setFilter] = useState('');
+  const navigate = useNavigate();
 
   function loadCompanies() {
     fetch('/api/companies', { credentials: 'include' })
@@ -39,6 +41,7 @@ export default function CompaniesPage() {
         Telephone: tel
       })
     });
+    const data = await res.json().catch(() => ({}));
     if (res.status === 403) {
       window.dispatchEvent(
         new CustomEvent('toast', {
@@ -51,17 +54,24 @@ export default function CompaniesPage() {
       return;
     }
     if (!res.ok) {
-      const { message } = await res
-        .json()
-        .catch(() => ({ message: 'Failed to add company' }));
       window.dispatchEvent(
         new CustomEvent('toast', {
-          detail: { message: message || 'Failed to add company', type: 'error' }
+          detail: {
+            message: data.message || 'Failed to add company',
+            type: 'error'
+          }
         })
       );
       return;
     }
     loadCompanies();
+    const id = data.id;
+    if (
+      id != null &&
+      window.confirm('Populate seed table records now?')
+    ) {
+      navigate('/tenant-tables-registry?seed=1&companyId=' + id);
+    }
   }
 
   const visibleCompanies = companies.filter((c) =>
