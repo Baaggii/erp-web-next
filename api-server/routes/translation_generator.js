@@ -32,9 +32,22 @@ router.get('/', requireAuth, async (req, res, next) => {
     const __dirname = path.dirname(__filename);
     const scriptPath = path.resolve(__dirname, '../../scripts/generateTranslations.js');
 
-    const child = spawn(process.execPath, [scriptPath], {
-      signal: controller.signal,
-    });
+    const sendError = (err) => {
+      res.write(`event: error\ndata: ${err.message}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
+      if (currentController === controller) currentController = null;
+    };
+
+    let child;
+    try {
+      child = spawn(process.execPath, [scriptPath], {
+        signal: controller.signal,
+      });
+    } catch (err) {
+      sendError(err);
+      return;
+    }
 
     const send = (chunk) => {
       const lines = chunk.toString().split(/\r?\n/);
@@ -46,7 +59,13 @@ router.get('/', requireAuth, async (req, res, next) => {
     child.stdout.on('data', send);
     child.stderr.on('data', send);
 
-    child.on('close', () => {
+    child.on('error', sendError);
+
+    child.on('close', (code) => {
+      if (code !== 0) {
+        sendError(new Error(`Process exited with code ${code}`));
+        return;
+      }
       res.write('data: [DONE]\n\n');
       res.end();
       if (currentController === controller) currentController = null;
