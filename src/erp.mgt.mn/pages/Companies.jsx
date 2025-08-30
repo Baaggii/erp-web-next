@@ -25,13 +25,29 @@ export default function CompaniesPage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
+      skipErrorToast: true,
       body: JSON.stringify({ name })
     });
+    if (res.status === 403) {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: 'You need System Settings permission to add a company.',
+            type: 'error'
+          }
+        })
+      );
+      return;
+    }
     if (!res.ok) {
       const { message } = await res
         .json()
         .catch(() => ({ message: 'Failed to add company' }));
-      alert(message || 'Failed to add company');
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message: message || 'Failed to add company', type: 'error' }
+        })
+      );
       return;
     }
     loadCompanies();
