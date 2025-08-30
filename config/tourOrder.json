@@ -1,5 +1,6 @@
 {
   "DashboardPage": ["#new-transaction-button"],
   "Forms": ["#new-transaction-button"],
-  "UserSettings": ["#show-page-guide-toggle"]
+  "UserSettings": ["#show-page-guide-toggle"],
+  "ChangePassword": ["#newpwd", "#confirm"]
 }
