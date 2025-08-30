@@ -35,6 +35,8 @@
     "date": "交易日期",
     "firstName": "名",
     "lastName": "姓",
+    "cashback": "返现金额",
+    "remarks": "附加备注",
     "enable_tooltips": "切换以显示或隐藏提示"
   }
 }

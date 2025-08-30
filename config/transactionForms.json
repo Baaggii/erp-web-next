@@ -1558,6 +1558,10 @@
         "assembly_price"
       ],
       "editableFields": [],
+      "tooltips": {
+        "cashback": "tooltip.cashback",
+        "remarks": "tooltip.remarks"
+      },
       "userIdFields": [
         "emp_id"
       ],

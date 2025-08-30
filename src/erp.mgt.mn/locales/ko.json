@@ -35,6 +35,8 @@
     "date": "거래 날짜",
     "firstName": "이름",
     "lastName": "성",
+    "cashback": "캐시백 금액",
+    "remarks": "추가 비고",
     "enable_tooltips": "툴팁 표시를 켜거나 끕니다"
   }
 }
