@@ -312,6 +312,8 @@ th {
 /* Tooltip styles */
 .tooltip-wrapper[data-tooltip] {
   position: relative;
+  display: inline-block;
+  overflow: visible;
 }
 
 .tooltip-wrapper[data-tooltip]:hover::after {
