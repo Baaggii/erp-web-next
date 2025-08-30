@@ -44,6 +44,9 @@ export default function CompaniesPage() {
   return (
     <div>
       <h2>Компаниуд</h2>
+      <p style={{ fontSize: '0.875rem', color: '#4b5563' }}>
+        Зөвхөн таны үүсгэсэн компаниудыг харуулна.
+      </p>
       <input
         type="text"
         placeholder="Компанийн нэр шүүх"
@@ -53,7 +56,10 @@ export default function CompaniesPage() {
       />
       <button onClick={handleAdd}>Компани нэмэх</button>
       {visibleCompanies.length === 0 ? (
-        <p>Компани олдсонгүй.</p>
+        <p>
+          Таны үүсгэсэн компани олдсонгүй. Компани нэмэх товчийг ашиглан шинэ
+          компани үүсгэнэ үү.
+        </p>
       ) : (
         <div className="table-container overflow-x-auto" style={{ maxHeight: '70vh' }}>
           <table

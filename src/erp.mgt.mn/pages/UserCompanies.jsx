@@ -109,6 +109,9 @@ export default function UserCompanies() {
   return (
     <div>
       <h2>Хэрэглэгчийн компаниуд</h2>
+      <p style={{ fontSize: '0.875rem', color: '#4b5563' }}>
+        Зөвхөн таны үүсгэсэн компаниудад хийсэн хуваарилалтыг харуулна.
+      </p>
       <input
         type="text"
         placeholder="EmpID-р шүүх"
@@ -121,7 +124,10 @@ export default function UserCompanies() {
       </button>
       <button onClick={handleAdd}>Хуваарилалт нэмэх</button>
       {assignments.length === 0 ? (
-        <p>Хуваарилалт алга.</p>
+        <p>
+          Хуваарилалт олдсонгүй. Өөрийн үүсгэсэн компанид хэрэглэгч
+          хуваарилагдаагүй байна.
+        </p>
       ) : (
         <div className="table-container overflow-x-auto" style={{ maxHeight: '70vh' }}>
         <table
