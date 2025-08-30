@@ -9,7 +9,7 @@
     "build:erp": "vite build --config vite.config.js",
     "serve": "node api-server/server.js",
     "test": "node --test",
-    "generate:translations": "node scripts/generateTranslations.js"
+    "generate:translations": "node scripts/generateTranslations.cli.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
