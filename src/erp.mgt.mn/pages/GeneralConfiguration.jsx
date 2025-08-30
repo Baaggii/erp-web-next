@@ -3,6 +3,7 @@ import useGeneralConfig, { updateCache } from '../hooks/useGeneralConfig.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { Navigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 export default function GeneralConfiguration() {
   const initial = useGeneralConfig();
@@ -11,6 +12,7 @@ export default function GeneralConfiguration() {
   const [tab, setTab] = useState('forms');
   const { addToast } = useToast();
   const { session, permissions } = useContext(AuthContext);
+  const { t } = useTranslation();
   const hasAdmin =
     permissions?.permissions?.system_settings ||
     session?.permissions?.system_settings;
@@ -49,20 +51,20 @@ export default function GeneralConfiguration() {
       const data = await res.json();
       setCfg(data);
       updateCache(data);
-      addToast('Saved', 'success');
+      addToast(t('saved', 'Saved'), 'success');
     } else {
-      addToast('Failed to save', 'error');
+      addToast(t('failedToSave', 'Failed to save'), 'error');
     }
     setSaving(false);
   }
 
-  if (!cfg) return <p>Loading…</p>;
+  if (!cfg) return <p>{t('loading', 'Loading…')}</p>;
 
   const active = cfg?.[tab] || {};
 
   return (
     <div>
-      <h2>General Configuration</h2>
+      <h2>{t('generalConfiguration', 'General Configuration')}</h2>
       <div className="tab-button-group" style={{ marginBottom: '0.5rem' }}>
         <button
           className={`tab-button ${tab === 'forms' ? 'active' : ''}`}
