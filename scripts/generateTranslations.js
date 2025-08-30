@@ -5,6 +5,8 @@ import path from 'path';
 import OpenAI from '../api-server/utils/openaiClient.js';
 import { slugify } from '../api-server/utils/slugify.js';
 
+let log = console.log;
+
 const languages = ['en', 'mn', 'ja', 'ko', 'zh', 'es', 'de', 'fr', 'ru'];
 const languageNames = {
   en: 'English',
@@ -34,7 +36,7 @@ function writeLocaleFile(lang, obj) {
     ordered.tooltip = sortObj(ordered.tooltip);
   }
   fs.writeFileSync(file, JSON.stringify(ordered, null, 2));
-  console.log(`[gen-i18n] wrote ${file} (${Object.keys(ordered).length} keys)`);
+  log(`[gen-i18n] wrote ${file} (${Object.keys(ordered).length} keys)`);
 }
 
 function collectPhrasesFromPages(dir) {
@@ -181,8 +183,13 @@ async function translateWithOpenAI(text, from, to) {
 
 /* ---------------- Main ---------------- */
 
-async function main() {
-  console.log('[gen-i18n] START');
+export async function generateTranslations({ onLog = console.log, signal } = {}) {
+  log = onLog;
+  const checkAbort = () => {
+    if (signal?.aborted) throw new Error('Aborted');
+  };
+
+  log('[gen-i18n] START');
   const base = JSON.parse(fs.readFileSync(headerMappingsPath, 'utf8'));
   const modules = await fetchModules();
   let headerMappingsUpdated = false;
@@ -201,6 +208,7 @@ async function main() {
   }
 
   for (const { moduleKey, label } of modules) {
+    checkAbort();
     if (base[moduleKey] === undefined) {
       base[moduleKey] = label;
       headerMappingsUpdated = true;
@@ -210,6 +218,7 @@ async function main() {
   }
 
   for (const key of Object.keys(base)) {
+    checkAbort();
     const value = base[key];
     let sourceText;
     let sourceLang;
@@ -225,6 +234,7 @@ async function main() {
 
   const tPairs = collectPhrasesFromPages(path.resolve('src/erp.mgt.mn'));
   for (const { key, text } of tPairs) {
+    checkAbort();
     const sourceLang = /[\u0400-\u04FF]/.test(text) ? 'mn' : 'en';
     if (base[key] === undefined) {
       base[key] = text;
@@ -238,8 +248,10 @@ async function main() {
       fs.readFileSync(transactionFormsPath, 'utf8'),
     );
     for (const forms of Object.values(formConfigs)) {
+      checkAbort();
       if (!forms || typeof forms !== 'object') continue;
       for (const [formName, config] of Object.entries(forms)) {
+        checkAbort();
         const formSlug = slugify(formName);
         const sourceLang = /[\u0400-\u04FF]/.test(formName) ? 'mn' : 'en';
         addEntry(`form.${formSlug}`, formName, sourceLang, 'form');
@@ -281,7 +293,7 @@ async function main() {
   if (headerMappingsUpdated) {
     const ordered = sortObj(base);
     fs.writeFileSync(headerMappingsPath, JSON.stringify(ordered, null, 2));
-    console.log(`[gen-i18n] updated ${headerMappingsPath}`);
+    log(`[gen-i18n] updated ${headerMappingsPath}`);
   }
 
   const entries = Array.from(entryMap.values());
@@ -308,9 +320,11 @@ async function main() {
   });
 
   for (const lang of languages) {
+    checkAbort();
     let counter = 0;
 
     for (const { key, sourceText, sourceLang, origin } of entries) {
+      checkAbort();
       if (sourceLang === 'mn' && !/[\u0400-\u04FF]/.test(sourceText)) continue;
       if (sourceLang === 'en' && !/[A-Za-z]/.test(sourceText)) continue;
 
@@ -318,13 +332,13 @@ async function main() {
 
       if (lang !== sourceLang && existing && existing.trim()) {
         const prefix = `[gen-i18n]${origin ? `[${origin}]` : ''}`;
-        console.log(`${prefix} Skipping ${lang}.${key}, already translated`);
+        log(`${prefix} Skipping ${lang}.${key}, already translated`);
         continue;
       }
 
       if (lang === 'mn' && sourceLang === 'en') {
         const prefix = `[gen-i18n]${origin ? `[${origin}]` : ''}`;
-        console.log(`${prefix} Translating "${sourceText}" (en -> mn)`);
+        log(`${prefix} Translating "${sourceText}" (en -> mn)`);
         let translation;
         let tooltip;
         let provider = 'OpenAI';
@@ -358,7 +372,7 @@ async function main() {
         if (!existing) {
           locales.mn[key] = translation;
         } else if (translation.trim() !== existing.trim()) {
-          console.log(
+          log(
             `${prefix} replaced mn.${key}: "${existing}" -> "${translation}"`,
           );
           locales.mn[key] = translation;
@@ -369,7 +383,7 @@ async function main() {
           if (!existingTip) {
             locales.mn.tooltip[key] = tooltip;
           } else if (tooltip.trim() !== existingTip.trim()) {
-            console.log(
+            log(
               `${prefix} replaced mn.tooltip.${key}: "${existingTip}" -> "${tooltip}"`,
             );
             locales.mn.tooltip[key] = tooltip;
@@ -377,11 +391,11 @@ async function main() {
         }
 
         if (translation === sourceText) {
-          console.log(
+          log(
             `${prefix} Mongolian translation for ${key} fell back to English`,
           );
         } else {
-          console.log(
+          log(
             `${prefix} Mongolian translation for ${key} succeeded`,
           );
         }
@@ -395,7 +409,7 @@ async function main() {
           fromLang = 'en';
         }
 
-        console.log(`Translating "${baseText}" (${fromLang} -> ${lang})`);
+        log(`Translating "${baseText}" (${fromLang} -> ${lang})`);
         let provider = 'OpenAI';
         let translation;
         let tooltip;
@@ -410,7 +424,7 @@ async function main() {
           if (!existing) {
             locales[lang][key] = translation;
           } else if (translation.trim() !== existing.trim()) {
-            console.log(
+            log(
               `[gen-i18n] replaced ${lang}.${key}: "${existing}" -> "${translation}"`,
             );
             locales[lang][key] = translation;
@@ -420,7 +434,7 @@ async function main() {
             if (!existingTip) {
               locales[lang].tooltip[key] = tooltip;
             } else if (tooltip.trim() !== existingTip.trim()) {
-              console.log(
+              log(
                 `[gen-i18n] replaced ${lang}.tooltip.${key}: "${existingTip}" -> "${tooltip}"`,
               );
               locales[lang].tooltip[key] = tooltip;
@@ -438,14 +452,14 @@ async function main() {
           if (!existing) {
             locales[lang][key] = t;
           } else if (t.trim() !== existing.trim()) {
-            console.log(
+            log(
               `[gen-i18n] replaced ${lang}.${key}: "${existing}" -> "${t}"`,
             );
             locales[lang][key] = t;
           }
           provider = 'Google';
         }
-        console.log(`    using ${provider}`);
+        log(`    using ${provider}`);
       }
 
       counter++;
@@ -457,21 +471,6 @@ async function main() {
     writeLocaleFile(lang, locales[lang]);
   }
 
-  console.log('[gen-i18n] DONE');
+  log('[gen-i18n] DONE');
 }
 
-/* ---------------- Error Guards ---------------- */
-
-process.on('unhandledRejection', (err) => {
-  console.error('[gen-i18n] UNHANDLED REJECTION', err);
-  process.exit(2);
-});
-process.on('uncaughtException', (err) => {
-  console.error('[gen-i18n] UNCAUGHT EXCEPTION', err);
-  process.exit(3);
-});
-
-main().catch((err) => {
-  console.error('[gen-i18n] FATAL', err);
-  process.exit(1);
-});
