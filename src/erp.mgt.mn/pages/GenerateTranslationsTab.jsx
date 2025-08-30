@@ -17,7 +17,7 @@ export default function GenerateTranslationsTab() {
     if (source) return;
     setLogs([]);
     setStatus(t('generationStarted', 'Generation started'));
-    const es = new EventSource('/api/generate-translations');
+    const es = new EventSource('/api/translations/generate');
     es.onmessage = (e) => {
       if (e.data === '[DONE]') {
         setStatus(t('generationCompleted', 'Generation completed'));
@@ -38,7 +38,7 @@ export default function GenerateTranslationsTab() {
   async function cancel() {
     if (!source) return;
     try {
-      await fetch('/api/generate-translations/stop', { method: 'POST' });
+      await fetch('/api/translations/generate/stop', { method: 'POST' });
     } catch {}
     source.close();
     setSource(null);

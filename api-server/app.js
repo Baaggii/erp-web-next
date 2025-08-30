@@ -22,6 +22,7 @@ import generatedSqlRoutes from "./routes/generated_sql.js";
 import generalConfigRoutes from "./routes/general_config.js";
 import permissionsRoutes from "./routes/permissions.js";
 import tenantTablesRoutes from "./routes/tenant_tables.js";
+import translationGeneratorRoutes from "./routes/translation_generator.js";
 import { getGeneralConfig } from "./services/generalConfig.js";
 
 // Polyfill for __dirname in ES modules
@@ -82,6 +83,7 @@ app.use("/api/generated_sql", generatedSqlRoutes);
 app.use("/api/general_config", generalConfigRoutes);
 app.use("/api/permissions", permissionsRoutes);
 app.use("/api/tenant_tables", tenantTablesRoutes);
+app.use("/api/translations/generate", translationGeneratorRoutes);
 
 // Serve static React build and fallback to index.html
 // NOTE: adjust this path to where your SPA build actually lives.
