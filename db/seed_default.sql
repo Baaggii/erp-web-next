@@ -189,7 +189,6 @@ INSERT INTO modules (module_key, label, parent_key, show_in_sidebar, show_in_hea
   ('system_configurations', 'Системийн тохиргоо', NULL, 1, 0),
   ('tables_management', 'Хүснэгтийн удирдлага', 'developer', 1, 0),
   ('transactions_contract', 'Гэрээ', 'forms', 1, 0),
-  ('user_companies', 'Хэрэглэгчийн компаниуд', 'system_configurations', 1, 0),
   ('user_level_actions', 'User Level Actions', 'developer', 1, 0),
   ('user_settings', 'Хэрэглэгчийн удирдлага', 'system_configurations', 1, 0),
   ('users', 'Хэрэглэгчид', 'system_configurations', 1, 0)
@@ -215,7 +214,6 @@ INSERT INTO role_default_modules (role_id, module_key, allowed, company_id) VALU
   (1, 'reports', 1, 0),
   (1, 'settings', 1, 0),
   (1, 'users', 1, 0),
-  (1, 'user_companies', 1, 0),
   (1, 'role_permissions', 1, 0),
   (1, 'change_password', 1, 0),
   (1, 'gl', 1, 0),
@@ -226,7 +224,6 @@ INSERT INTO role_default_modules (role_id, module_key, allowed, company_id) VALU
   (2, 'reports', 1, 0),
   (2, 'settings', 0, 0),
   (2, 'users', 0, 0),
-  (2, 'user_companies', 0, 0),
   (2, 'role_permissions', 0, 0),
   (2, 'change_password', 1, 0),
   (2, 'gl', 1, 0),

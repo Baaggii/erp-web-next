@@ -34,7 +34,6 @@ export default [
   { moduleKey: 'system_configurations', label: 'Системийн тохиргоо', parentKey: null, showInSidebar: true, showInHeader: false },
   { moduleKey: 'tables_management', label: 'Хүснэгтийн удирдлага', parentKey: 'developer', showInSidebar: true, showInHeader: false },
   { moduleKey: 'transactions_contract', label: 'Гэрээ', parentKey: 'forms', showInSidebar: true, showInHeader: false },
-  { moduleKey: 'user_companies', label: 'Хэрэглэгчийн компаниуд', parentKey: 'system_configurations', showInSidebar: true, showInHeader: false },
   { moduleKey: 'user_level_actions', label: 'User Level Actions', parentKey: 'developer', showInSidebar: true, showInHeader: false },
   { moduleKey: 'user_settings', label: 'Хэрэглэгчийн удирдлага', parentKey: 'system_configurations', showInSidebar: true, showInHeader: false },
   { moduleKey: 'users', label: 'Хэрэглэгчид', parentKey: 'system_configurations', showInSidebar: true, showInHeader: false },
