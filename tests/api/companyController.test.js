@@ -35,37 +35,40 @@ function createRes() {
   };
 }
 
-// Allow company creation when the user's level grants `system_settings`.
-test('allows POST /api/companies when user level has system_settings', async () => {
-  let insertArgs;
-  let assignArgs;
-  const restore = mockPoolSequential([
-    [[{ action: 'permission', action_key: 'system_settings' }]],
-    [[{ COLUMN_NAME: 'name' }, { COLUMN_NAME: 'created_by' }]],
-    (sql, params) => {
-      insertArgs = [sql, params];
-      return [{ insertId: 1 }];
-    },
-    (sql, params) => {
-      assignArgs = [sql, params];
-      return [{ affectedRows: 1 }];
-    },
-  ]);
-  const req = {
-    body: { name: 'NewCo', seedTables: [] },
-    user: { empid: 1, companyId: 1, userLevel: 2 },
-    session: { permissions: { system_settings: false } },
-  };
-  const res = createRes();
-  await createCompanyHandler(req, res, () => {});
-  restore();
-  assert.equal(res.code, 201);
-  assert.deepEqual(res.body, { id: 1 });
-  assert.ok(insertArgs[0].includes('`created_by`'));
-  assert.deepEqual(insertArgs[1], ['companies', 'NewCo', 1]);
-  assert.ok(assignArgs[0].startsWith('INSERT INTO user_companies'));
-  assert.deepEqual(assignArgs[1], [1, 1, null, null, 1]);
-});
+// Allow company creation when no employment session exists but the user's level grants `system_settings`.
+test(
+  'allows POST /api/companies when employment session missing but user level has system_settings',
+  async () => {
+    let insertArgs;
+    let assignArgs;
+    const restore = mockPoolSequential([
+      [[]],
+      [[{ action: 'permission', action_key: 'system_settings' }]],
+      [[{ COLUMN_NAME: 'name' }, { COLUMN_NAME: 'created_by' }]],
+      (sql, params) => {
+        insertArgs = [sql, params];
+        return [{ insertId: 1 }];
+      },
+      (sql, params) => {
+        assignArgs = [sql, params];
+        return [{ affectedRows: 1 }];
+      },
+    ]);
+    const req = {
+      body: { name: 'NewCo', seedTables: [] },
+      user: { empid: 1, userLevel: 2 },
+    };
+    const res = createRes();
+    await createCompanyHandler(req, res, () => {});
+    restore();
+    assert.equal(res.code, 201);
+    assert.deepEqual(res.body, { id: 1 });
+    assert.ok(insertArgs[0].includes('`created_by`'));
+    assert.deepEqual(insertArgs[1], ['companies', 'NewCo', 1]);
+    assert.ok(assignArgs[0].startsWith('INSERT INTO user_companies'));
+    assert.deepEqual(assignArgs[1], [1, 1, null, null, 1]);
+  },
+);
 
 // Deny creation when the user's level lacks `system_settings`.
 test('returns 403 for POST /api/companies when user level lacks system_settings', async () => {
