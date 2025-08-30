@@ -32,8 +32,9 @@ export default function GenerateTranslationsTab() {
       setSource(null);
       setStatus(t('generationFailed', 'Generation failed'));
     };
-    es.addEventListener('error', (e) => {
-      es.onerror();
+    es.addEventListener('generator_error', (e) => {
+      es.close();
+      setSource(null);
       setStatus(
         t('generationFailed', 'Generation failed') + ': ' + (e.data || 'Unknown error')
       );

@@ -33,7 +33,7 @@ router.get('/', requireAuth, async (req, res, next) => {
     const scriptPath = path.resolve(__dirname, '../../scripts/generateTranslations.js');
 
     const sendError = (err) => {
-      res.write(`event: error\ndata: ${err.message}\n\n`);
+      res.write(`event: generator_error\ndata: ${err.message}\n\n`);
       res.write('data: [DONE]\n\n');
       res.end();
       if (currentController === controller) currentController = null;
