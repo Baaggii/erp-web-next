@@ -113,14 +113,17 @@ async function translateWithOpenAI(text, from, to) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const prompt =
-      `Translate this ${from}-language ERP system term into ${to}. Use ERP terminology. ` +
-      'Respond with `{ "translation": "...", "tooltip": "..." }`.\n\n' +
-      text;
+    const systemPrompt =
+      'You are a translation assistant. Respond with a JSON object { "translation": "...", "tooltip": "..." }.';
+    const userPrompt =
+      `Translate the following ${from}-language ERP system term into ${to}. Use ERP terminology.\n\n${text}`;
     const completion = await openai.chat.completions.create(
       {
         model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
         response_format: { type: 'json_object' },
       },
       { signal: controller.signal }
