@@ -1107,11 +1107,12 @@ export default function PosTransactionsPage() {
                       relations={relationsMap[t.table] || {}}
                       relationConfigs={relationConfigs[t.table] || {}}
                       relationData={relationData[t.table] || {}}
-                    procTriggers={procTriggersMap[t.table] || {}}
-                    viewSource={fc.viewSource || {}}
-                    viewDisplays={viewDisplaysMap[t.table] || {}}
-                    viewColumns={viewColumnsMap[t.table] || {}}
-                    user={user}
+                      tooltips={fc.tooltips || {}}
+                      procTriggers={procTriggersMap[t.table] || {}}
+                      viewSource={fc.viewSource || {}}
+                      viewDisplays={viewDisplaysMap[t.table] || {}}
+                      viewColumns={viewColumnsMap[t.table] || {}}
+                      user={user}
                     
                     columnCaseMap={(columnMeta[t.table] || []).reduce((m,c)=>{m[c.name.toLowerCase()] = c.name;return m;}, {})}
                     onChange={(changes) => handleChange(t.table, changes)}

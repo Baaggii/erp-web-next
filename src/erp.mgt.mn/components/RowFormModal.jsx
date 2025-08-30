@@ -58,6 +58,7 @@ const RowFormModal = function RowFormModal({
   viewColumns = {},
   procTriggers = {},
   autoFillSession = true,
+  tooltips = {},
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -912,7 +913,8 @@ const RowFormModal = function RowFormModal({
     const inputClass = `w-full border rounded ${err ? 'border-red-500' : 'border-gray-300'}`;
     const isColumn = columns.includes(c);
     const disabled = disabledSet.has(c.toLowerCase()) || !isColumn;
-    const tip = t(`tooltip.${c}`, { defaultValue: labels[c] || c });
+    const key = tooltips[c] || `tooltip.${c}`;
+    const tip = t(key, { defaultValue: labels[c] || c });
 
     if (disabled) {
       const raw = isColumn ? formVals[c] : extraVals[c];
