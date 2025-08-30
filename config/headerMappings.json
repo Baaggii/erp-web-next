@@ -761,5 +761,9 @@
   "selectCompany": "Select company",
   "noSeedOnCreateTables": "No seed_on_create tables.",
   "noRecords": "No records",
+  "loginRequestFailed": "Login request failed",
+  "loginFailed": "Login failed",
+  "serviceUnavailable": "Service unavailable",
+  "notAuthenticated": "Not authenticated",
   "collapse": "Collapse"
 }
