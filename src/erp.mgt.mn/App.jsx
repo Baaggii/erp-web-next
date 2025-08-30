@@ -44,6 +44,7 @@ import TabbedWindows from './components/TabbedWindows.jsx';
 import TenantTablesRegistryPage from './pages/TenantTablesRegistry.jsx';
 import TranslationEditorPage from './pages/TranslationEditor.jsx';
 import UserManualExportPage from './pages/UserManualExport.jsx';
+import ErrorBoundary from './components/ErrorBoundary.jsx';
 
 export default function App() {
   useEffect(() => {
@@ -58,12 +59,14 @@ export default function App() {
             <LoadingProvider>
               <TabProvider>
                 <HashRouter>
-                  <Routes>
-                    <Route path="/login" element={<LoginPage />} />
-                    <Route element={<RequireAuth />}>
-                      <Route path="/*" element={<AuthedApp />} />
-                    </Route>
-                  </Routes>
+                  <ErrorBoundary>
+                    <Routes>
+                      <Route path="/login" element={<LoginPage />} />
+                      <Route element={<RequireAuth />}>
+                        <Route path="/*" element={<AuthedApp />} />
+                      </Route>
+                    </Routes>
+                  </ErrorBoundary>
                 </HashRouter>
               </TabProvider>
             </LoadingProvider>
@@ -163,19 +166,21 @@ function AuthedApp() {
     .map((m) => moduleMap[m.module_key]);
 
   return (
-    <Routes>
-      <Route path="/" element={<ERPLayout />}>
-        <Route path="requests" element={<RequestsPage />} />
-        {roots.map(renderRoute)}
-      </Route>
-      <Route
-        path="inventory-demo"
-        element={
-          <AppLayout title="Inventory">
-            <InventoryPage />
-          </AppLayout>
-        }
-      />
-    </Routes>
+    <ErrorBoundary>
+      <Routes>
+        <Route path="/" element={<ERPLayout />}>
+          <Route path="requests" element={<RequestsPage />} />
+          {roots.map(renderRoute)}
+        </Route>
+        <Route
+          path="inventory-demo"
+          element={
+            <AppLayout title="Inventory">
+              <InventoryPage />
+            </AppLayout>
+          }
+        />
+      </Routes>
+    </ErrorBoundary>
   );
 }
