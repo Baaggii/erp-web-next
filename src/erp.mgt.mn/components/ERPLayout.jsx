@@ -18,8 +18,8 @@ import useHeaderMappings from "../hooks/useHeaderMappings.js";
 import useRequestNotificationCounts from "../hooks/useRequestNotificationCounts.js";
 import { PendingRequestContext } from "../context/PendingRequestContext.jsx";
 import Joyride, { STATUS } from "react-joyride";
-import { guideSteps as dashboardSteps } from "../pages/DashboardPage.jsx";
-import { guideSteps as formsSteps } from "../pages/Forms.jsx";
+import { getGuideSteps as getDashboardGuideSteps } from "../pages/DashboardPage.jsx";
+import { getGuideSteps as getFormsGuideSteps } from "../pages/Forms.jsx";
 
 /**
  * A desktop‐style “ERPLayout” with:
@@ -117,15 +117,20 @@ export default function ERPLayout() {
     const path = location.pathname;
     let pageKey = "dashboard";
     if (path.startsWith("/forms")) pageKey = "forms";
-    const stepsMap = { dashboard: dashboardSteps, forms: formsSteps };
-    setTourSteps(stepsMap[pageKey] || []);
+    const stepsMap = {
+      dashboard: getDashboardGuideSteps,
+      forms: getFormsGuideSteps,
+    };
+    const stepsFn = stepsMap[pageKey];
+    const steps = stepsFn ? stepsFn(t) : [];
+    setTourSteps(steps);
     const seenKey = `erpGuideSeen-${pageKey}`;
-    if (!localStorage.getItem(seenKey) && (stepsMap[pageKey] || []).length) {
+    if (!localStorage.getItem(seenKey) && steps.length) {
       setRunTour(true);
     } else {
       setRunTour(false);
     }
-  }, [location.pathname]);
+  }, [location.pathname, t]);
 
   const handleTourCallback = ({ status }) => {
     if ([STATUS.FINISHED, STATUS.SKIPPED].includes(status)) {
