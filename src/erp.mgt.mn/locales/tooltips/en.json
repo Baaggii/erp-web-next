@@ -1,0 +1,9 @@
+{
+  "organization": "Select organization",
+  "date": "Transaction date",
+  "firstName": "First name",
+  "lastName": "Last name",
+  "cashback": "Cashback amount",
+  "remarks": "Additional remarks",
+  "enable_tooltips": "Toggle to show or hide tooltips"
+}

@@ -72,14 +72,5 @@
    "delete_request_submitted": "Устгах хүсэлт илгээгдлээ",
    "delete_request_failed": "Устгах хүсэлт амжилтгүй",
    "delete_failed_for": "Устгах амжилтгүй: {{id}}",
-   "cannot_edit_without_pk": "Анхдагч түлхүүргүй мөрийг засах боломжгүй",
-   "tooltip": {
-     "organization": "Байгууллага сонгох",
-     "date": "Гүйлгээний огноо",
-     "firstName": "Нэр",
-     "lastName": "Овог",
-     "cashback": "Буцаан олголтын дүн",
-     "remarks": "Нэмэлт тайлбар",
-     "enable_tooltips": "Тайлбаруудыг харуулах эсэхийг сольж тохируулна"
-   }
- }
+   "cannot_edit_without_pk": "Анхдагч түлхүүргүй мөрийг засах боломжгүй"
+}
