@@ -18,6 +18,7 @@ export const I18nContext = createContext({
 export function I18nProvider({ children }) {
   const allLangs = ['en', 'mn'];
   const [lang, setLang] = useState(() => localStorage.getItem('lang') || 'en');
+  const [tick, setTick] = useState(0);
   // Define a fallback order for languages, excluding the active language.
   const fallbackLangs = useMemo(
     () => allLangs.filter((l) => l !== lang),
@@ -45,12 +46,13 @@ export function I18nProvider({ children }) {
         true,
         true
       );
-      i18n.changeLanguage(newLang);
+      await i18n.changeLanguage(newLang);
       i18n.options.fallbackLng = newFallback;
     }
 
     localStorage.setItem('lang', newLang);
     setLang(newLang);
+    setTick((t) => t + 1);
   }, []);
 
   useEffect(() => {
@@ -64,7 +66,7 @@ export function I18nProvider({ children }) {
       fallbackLangs,
       t: (key, fallback) => i18n.t(key, { defaultValue: fallback ?? key }),
     }),
-    [lang, changeLang, fallbackLangs]
+    [lang, changeLang, fallbackLangs, tick]
   );
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
