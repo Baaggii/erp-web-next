@@ -33,7 +33,14 @@ export default function AuthContextProvider({ children }) {
   const [department, setDepartment] = useState(null);
   const [position, setPosition] = useState(null);
   const [permissions, setPermissions] = useState(null);
-  const [userSettings, setUserSettings] = useState({});
+  const [userSettings, setUserSettings] = useState(() => {
+    try {
+      const stored = localStorage.getItem('erp_user_settings');
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  });
 
   // Persist employment IDs across reloads
   useEffect(() => {
@@ -104,18 +111,24 @@ export default function AuthContextProvider({ children }) {
           try {
             const resSettings = await fetch(`${API_BASE}/user/settings`, {
               credentials: 'include',
+              skipErrorToast: true,
             });
             if (resSettings.ok) {
               const s = await resSettings.json();
               trackSetState('AuthContext.setUserSettings');
               setUserSettings(s);
+              try {
+                localStorage.setItem('erp_user_settings', JSON.stringify(s));
+              } catch {}
             } else {
+              const stored = localStorage.getItem('erp_user_settings');
               trackSetState('AuthContext.setUserSettings');
-              setUserSettings({});
+              setUserSettings(stored ? JSON.parse(stored) : {});
             }
           } catch {
+            const stored = localStorage.getItem('erp_user_settings');
             trackSetState('AuthContext.setUserSettings');
-            setUserSettings({});
+            setUserSettings(stored ? JSON.parse(stored) : {});
           }
         } else {
           // Not logged in or token expired
@@ -178,6 +191,9 @@ export default function AuthContextProvider({ children }) {
       setPermissions(null);
       trackSetState('AuthContext.setUserSettings');
       setUserSettings({});
+      try {
+        localStorage.removeItem('erp_user_settings');
+      } catch {}
     }
     window.addEventListener('auth:logout', handleLogout);
     return () => window.removeEventListener('auth:logout', handleLogout);
@@ -185,14 +201,18 @@ export default function AuthContextProvider({ children }) {
 
   const saveUserSettings = async (next) => {
     try {
+      localStorage.setItem('erp_user_settings', JSON.stringify(next));
+    } catch {}
+    try {
       await fetch(`${API_BASE}/user/settings`, {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(next),
+        skipErrorToast: true,
       });
     } catch (err) {
-      console.error('Failed to save user settings', err);
+      console.warn('Failed to save user settings', err);
     }
   };
 
