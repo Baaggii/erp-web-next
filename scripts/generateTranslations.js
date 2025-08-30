@@ -113,19 +113,30 @@ async function translateWithOpenAI(text, from, to) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const prompt = `Translate this ${from}-language ERP system term into ${to}. Use ERP terminology.\n\n${text}`;
+    const prompt =
+      `Translate this ${from}-language ERP system term into ${to}. Use ERP terminology. ` +
+      'Respond with `{ "translation": "...", "tooltip": "..." }`.\n\n' +
+      text;
     const completion = await openai.chat.completions.create(
       {
         model: 'gpt-4o-mini',
         messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' },
       },
       { signal: controller.signal }
     );
     clearTimeout(timer);
 
-    const translation = completion.choices?.[0]?.message?.content?.trim();
-    if (!translation) throw new Error('empty response');
-    return translation;
+    const content = completion.choices?.[0]?.message?.content?.trim();
+    if (!content) throw new Error('empty response');
+    let data;
+    try {
+      data = JSON.parse(content);
+    } catch (err) {
+      throw new Error(`Invalid JSON response: ${err.message}`);
+    }
+    if (!data.translation) throw new Error('missing translation field');
+    return { translation: data.translation, tooltip: data.tooltip };
   } catch (err) {
     clearTimeout(timer);
     throw err;
@@ -192,6 +203,7 @@ async function main() {
     locales[lang] = fs.existsSync(file)
       ? JSON.parse(fs.readFileSync(file, 'utf8'))
       : {};
+    if (!locales[lang].tooltip) locales[lang].tooltip = {};
   }
 
   for (const { key, sourceText, sourceLang } of entries) {
@@ -209,6 +221,7 @@ async function main() {
 
     for (const { key, sourceText, sourceLang } of entries) {
       const existing = locales[lang][key];
+      const existingTooltip = locales[lang].tooltip[key];
 
       if (lang === sourceLang) {
         locales[lang][key] = sourceText;
@@ -223,11 +236,20 @@ async function main() {
         console.log(`Translating "${baseText}" (${fromLang} -> ${lang})`);
         let provider;
         try {
-          const t = await translateWithOpenAI(baseText, fromLang, lang);
-          if (!existing || t !== existing) {
-            locales[lang][key] = t;
+          const { translation, tooltip } = await translateWithOpenAI(
+            baseText,
+            fromLang,
+            lang,
+          );
+          if (!existing || translation !== existing) {
+            locales[lang][key] = translation;
             provider = 'OpenAI';
-          } else {
+          }
+          if (tooltip && (!existingTooltip || tooltip !== existingTooltip)) {
+            locales[lang].tooltip[key] = tooltip;
+            provider = 'OpenAI';
+          }
+          if (!provider) {
             provider = 'Google';
           }
         } catch (err) {
