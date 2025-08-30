@@ -662,13 +662,18 @@ export async function updateCompanyAssignment(empid, companyId, position_id, bra
 /**
  * List all user-company assignments
  */
-export async function listAllUserCompanies(companyId) {
+export async function listAllUserCompanies(companyId, createdBy = null) {
   const params = [];
-  let where = '';
+  const clauses = [];
   if (companyId) {
-    where = 'WHERE uc.company_id = ?';
+    clauses.push('uc.company_id = ?');
     params.push(companyId);
   }
+  if (createdBy) {
+    clauses.push('c.created_by = ?');
+    params.push(createdBy);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   const [rows] = await pool.query(
     `SELECT uc.empid, uc.company_id, c.name AS company_name, uc.position_id,
             uc.branch_id, b.name AS branch_name

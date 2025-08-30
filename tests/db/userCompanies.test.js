@@ -31,3 +31,18 @@ test('listAllUserCompanies joins branch with company scope', async () => {
     /LEFT JOIN code_branches b ON uc\.branch_id = b\.id AND b\.company_id = uc\.company_id/
   );
 });
+
+test('listAllUserCompanies filters by created_by when provided', async () => {
+  const orig = db.pool.query;
+  let capturedSql = '';
+  let capturedParams;
+  db.pool.query = async (sql, params) => {
+    capturedSql = sql;
+    capturedParams = params;
+    return [[]];
+  };
+  await db.listAllUserCompanies(null, 5);
+  db.pool.query = orig;
+  assert.match(capturedSql, /WHERE c\.created_by = \?/);
+  assert.equal(capturedParams[0], 5);
+});
