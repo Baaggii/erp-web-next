@@ -16,8 +16,12 @@ export const I18nContext = createContext({
 });
 
 export function I18nProvider({ children }) {
-  const allLangs = ['en', 'mn'];
-  const [lang, setLang] = useState(() => localStorage.getItem('lang') || 'en');
+  const allLangs = ['en', 'mn', 'ja', 'ko', 'zh', 'es', 'de', 'fr', 'ru'];
+  const getInitialLang = () => {
+    const stored = localStorage.getItem('lang');
+    return allLangs.includes(stored) ? stored : 'en';
+  };
+  const [lang, setLang] = useState(getInitialLang);
   const [tick, setTick] = useState(0);
   // Define a fallback order for languages, excluding the active language.
   const fallbackLangs = useMemo(
@@ -26,6 +30,8 @@ export function I18nProvider({ children }) {
   );
 
   const changeLang = useCallback(async (newLang) => {
+    if (!allLangs.includes(newLang)) return;
+
     const translations = await import(`../locales/${newLang}.json`);
     const newFallback = allLangs.filter((l) => l !== newLang);
 
