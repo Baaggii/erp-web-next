@@ -172,7 +172,7 @@ async function main() {
   let headerMappingsUpdated = false;
   const entryMap = new Map();
 
-  function addEntry(key, sourceText, sourceLang) {
+  function addEntry(key, sourceText, sourceLang, origin) {
     if (
       typeof sourceText !== 'string' ||
       (!/[\u0400-\u04FF]/.test(sourceText) && !/[A-Za-z]/.test(sourceText)) ||
@@ -181,7 +181,7 @@ async function main() {
     ) {
       return;
     }
-    entryMap.set(key, { key, sourceText, sourceLang });
+    entryMap.set(key, { key, sourceText, sourceLang, origin });
   }
 
   for (const { moduleKey, label } of modules) {
@@ -189,6 +189,8 @@ async function main() {
       base[moduleKey] = label;
       headerMappingsUpdated = true;
     }
+    const sourceLang = /[\u0400-\u04FF]/.test(label) ? 'mn' : 'en';
+    addEntry(moduleKey, label, sourceLang, 'module');
   }
 
   for (const key of Object.keys(base)) {
@@ -202,7 +204,7 @@ async function main() {
       sourceText = value;
       sourceLang = /[\u0400-\u04FF]/.test(sourceText) ? 'mn' : 'en';
     }
-    addEntry(key, sourceText, sourceLang);
+    addEntry(key, sourceText, sourceLang, 'table');
   }
 
   const tPairs = collectPhrasesFromPages(path.resolve('src/erp.mgt.mn'));
@@ -212,7 +214,7 @@ async function main() {
       base[key] = text;
       headerMappingsUpdated = true;
     }
-    addEntry(key, text, sourceLang);
+    addEntry(key, text, sourceLang, 'page');
   }
 
   if (headerMappingsUpdated) {
@@ -246,14 +248,15 @@ async function main() {
   for (const lang of languages) {
     let counter = 0;
 
-    for (const { key, sourceText, sourceLang } of entries) {
+    for (const { key, sourceText, sourceLang, origin } of entries) {
       if (sourceLang === 'mn' && !/[\u0400-\u04FF]/.test(sourceText)) continue;
       if (sourceLang === 'en' && !/[A-Za-z]/.test(sourceText)) continue;
 
       const existing = locales[lang][key];
 
       if (lang === 'mn' && sourceLang === 'en') {
-        console.log(`Translating "${sourceText}" (en -> mn)`);
+        const prefix = `[gen-i18n]${origin ? `[${origin}]` : ''}`;
+        console.log(`${prefix} Translating "${sourceText}" (en -> mn)`);
         let translation;
         let provider = 'OpenAI';
         try {
@@ -264,7 +267,7 @@ async function main() {
           );
         } catch (err) {
           console.warn(
-            `[gen-i18n] OpenAI failed key="${key}" (en->mn): ${err.message}`,
+            `${prefix} OpenAI failed key="${key}" (en->mn): ${err.message}`,
           );
           provider = undefined;
         }
@@ -275,7 +278,7 @@ async function main() {
             provider = 'Google';
           } catch (err) {
             console.warn(
-              `[gen-i18n] Google failed key="${key}" (en->mn): ${err.message}`,
+              `${prefix} Google failed key="${key}" (en->mn): ${err.message}`,
             );
             translation = sourceText;
           }
@@ -285,17 +288,17 @@ async function main() {
           locales.mn[key] = translation;
         } else if (translation.trim() !== existing.trim()) {
           console.log(
-            `[gen-i18n] replaced mn.${key}: "${existing}" -> "${translation}"`,
+            `${prefix} replaced mn.${key}: "${existing}" -> "${translation}"`,
           );
           locales.mn[key] = translation;
         }
         if (translation === sourceText) {
           console.log(
-            `[gen-i18n] Mongolian translation for ${key} fell back to English`,
+            `${prefix} Mongolian translation for ${key} fell back to English`,
           );
         } else {
           console.log(
-            `[gen-i18n] Mongolian translation for ${key} succeeded`,
+            `${prefix} Mongolian translation for ${key} succeeded`,
           );
         }
       } else if (lang === sourceLang) {
