@@ -106,8 +106,9 @@ export async function seedExistingCompanies(req, res, next) {
       }
     }
     const companies = await listCompanies(req.user.empid);
-    for (const { id } of companies) {
+    for (const { id, created_by } of companies) {
       if (id === GLOBAL_COMPANY_ID) continue;
+      if (created_by !== req.user.empid) continue;
       await seedTenantTables(id, tables, recordMap, overwrite, req.user.empid);
     }
     res.sendStatus(204);
@@ -140,6 +141,13 @@ export async function seedCompany(req, res, next) {
         recordMap[rec.table] = rec.ids;
       }
     }
+
+    const companies = await listCompanies(req.user.empid);
+    const company = companies.find((c) => c.id === Number(companyId));
+    if (!company || company.created_by !== req.user.empid) {
+      return res.sendStatus(403);
+    }
+
     await seedTenantTables(companyId, tables, recordMap, overwrite, req.user.empid);
     res.sendStatus(204);
   } catch (err) {
