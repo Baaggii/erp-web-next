@@ -690,10 +690,10 @@ export async function listAllUserCompanies(companyId, createdBy = null) {
  * List all companies
  */
 export async function listCompanies(createdBy = null) {
-  let sql = "SELECT id, name, created_at, created_by FROM companies";
+  let sql = 'SELECT * FROM companies';
   const params = [];
   if (createdBy) {
-    sql += " WHERE created_by = ?";
+    sql += ' WHERE created_by = ?';
     params.push(createdBy);
   }
   const [rows] = await pool.query(sql, params);

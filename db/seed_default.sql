@@ -1,6 +1,13 @@
 -- Global company for shared defaults
-INSERT INTO companies (id, name)
-VALUES (0, 'Global Defaults')
+INSERT INTO companies (
+  id,
+  name,
+  company_id,
+  Gov_Registration_number,
+  Address,
+  Telephone
+)
+VALUES (0, 'Global Defaults', 0, '0', '', '')
 ON DUPLICATE KEY UPDATE name = VALUES(name);
 
 -- Shared code tables
