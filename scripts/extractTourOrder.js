@@ -2,7 +2,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import parser from '@babel/parser';
-import traverse from '@babel/traverse';
+import _traverse from '@babel/traverse';
+const traverse = _traverse.default ?? _traverse; // works for ESM or CJS
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
