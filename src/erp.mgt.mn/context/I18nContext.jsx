@@ -30,37 +30,53 @@ export function I18nProvider({ children }) {
     [lang]
   );
 
-  const changeLang = useCallback(async (newLang) => {
-    if (!allLangs.includes(newLang)) return;
+  const changeLang = useCallback(
+    async (newLang) => {
+      if (!allLangs.includes(newLang)) return;
 
-    const translations = await import(`../locales/${newLang}.json`);
-    const newFallback = allLangs.filter((l) => l !== newLang);
+      const [translations, tooltipFile] = await Promise.all([
+        import(`../locales/${newLang}.json`),
+        import(`../locales/tooltips/${newLang}.json`),
+      ]);
+      const newFallback = allLangs.filter((l) => l !== newLang);
 
-    if (!i18n.isInitialized) {
-      await i18n.use(initReactI18next).init({
-        resources: {
-          [newLang]: { translation: translations.default },
-        },
-        lng: newLang,
-        fallbackLng: newFallback,
-        interpolation: { escapeValue: false },
-      });
-    } else {
-      i18n.addResourceBundle(
-        newLang,
-        'translation',
-        translations.default,
-        true,
-        true
-      );
-      await i18n.changeLanguage(newLang);
-      i18n.options.fallbackLng = newFallback;
-    }
+      if (!i18n.isInitialized) {
+        await i18n.use(initReactI18next).init({
+          resources: {
+            [newLang]: {
+              translation: translations.default,
+              tooltip: tooltipFile.default,
+            },
+          },
+          lng: newLang,
+          fallbackLng: newFallback,
+          interpolation: { escapeValue: false },
+        });
+      } else {
+        i18n.addResourceBundle(
+          newLang,
+          'translation',
+          translations.default,
+          true,
+          true
+        );
+        i18n.addResourceBundle(
+          newLang,
+          'tooltip',
+          tooltipFile.default,
+          true,
+          true
+        );
+        await i18n.changeLanguage(newLang);
+        i18n.options.fallbackLng = newFallback;
+      }
 
-    updateUserSettings({ lang: newLang });
-    setLang(newLang);
-    setTick((t) => t + 1);
-  }, [updateUserSettings]);
+      updateUserSettings({ lang: newLang });
+      setLang(newLang);
+      setTick((t) => t + 1);
+    },
+    [updateUserSettings]
+  );
 
   useEffect(() => {
     changeLang(lang);
