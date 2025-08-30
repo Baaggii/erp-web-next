@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useContext } from 'react';
 import Modal from '../components/Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
+import I18nContext from '../context/I18nContext.jsx';
 
 async function parseErrorBody(res) {
   const ct = res.headers.get('content-type') || '';
@@ -31,6 +32,7 @@ export default function TenantTablesRegistry() {
   const [defaultRows, setDefaultRows] = useState({});
   const [columns, setColumns] = useState({});
   const { addToast } = useToast();
+  const { t } = useContext(I18nContext);
 
   useEffect(() => {
     loadTables();
@@ -116,7 +118,7 @@ export default function TenantTablesRegistry() {
         const msg = await parseErrorBody(res);
         throw new Error(msg || 'Failed to reset');
       }
-      addToast('Reset shared tenant table keys', 'success');
+      addToast(t('resetSharedTenantTableKeys', 'Reset shared tenant table keys'), 'success');
       await loadTables();
     } catch (err) {
       addToast(`Failed to reset tenant keys: ${err.message}`, 'error');
@@ -136,7 +138,7 @@ export default function TenantTablesRegistry() {
         const msg = await parseErrorBody(res);
         throw new Error(msg || 'Failed to seed defaults');
       }
-      addToast('Populated defaults (tenant key 0)', 'success');
+      addToast(t('populatedDefaultsTenantKey0', 'Populated defaults (tenant key 0)'), 'success');
       await loadTables();
     } catch (err) {
       addToast(`Failed to seed defaults: ${err.message}`, 'error');
@@ -329,11 +331,11 @@ export default function TenantTablesRegistry() {
 
   async function handleSave(row) {
     if (!row.tableName) {
-      addToast('Missing table name', 'error');
+      addToast(t('missingTableName', 'Missing table name'), 'error');
       return;
     }
     if (typeof row.isShared !== 'boolean' || typeof row.seedOnCreate !== 'boolean') {
-      addToast('Invalid values', 'error');
+      addToast(t('invalidValues', 'Invalid values'), 'error');
       return;
     }
     setSaving((s) => ({ ...s, [row.tableName]: true }));
@@ -360,7 +362,7 @@ export default function TenantTablesRegistry() {
         const msg = await parseErrorBody(res);
         throw new Error(msg || 'Failed to save');
       }
-      addToast('Saved', 'success');
+      addToast(t('saved', 'Saved'), 'success');
       await loadTables();
     } catch (err) {
       console.error('Failed to save tenant table', err);
@@ -372,7 +374,7 @@ export default function TenantTablesRegistry() {
 
   return (
     <div>
-      <h2>Tenant Tables Registry</h2>
+      <h2>{t('tenantTablesRegistry', 'Tenant Tables Registry')}</h2>
       <div
         style={{
           display: 'flex',
@@ -392,15 +394,15 @@ export default function TenantTablesRegistry() {
         </button>
       </div>
       {tables === null ? null : tables.length === 0 ? (
-        <p>No tenant tables.</p>
+        <p>{t('noTenantTables', 'No tenant tables.')}</p>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.5rem' }}>
           <thead>
             <tr style={{ backgroundColor: '#e5e7eb' }}>
-              <th style={styles.th}>Table</th>
-              <th style={styles.th}>Shared</th>
-              <th style={styles.th}>Seed on Create</th>
-              <th style={styles.th}>Action</th>
+              <th style={styles.th}>{t('table', 'Table')}</th>
+              <th style={styles.th}>{t('shared', 'Shared')}</th>
+              <th style={styles.th}>{t('seedOnCreate', 'Seed on Create')}</th>
+              <th style={styles.th}>{t('action', 'Action')}</th>
             </tr>
           </thead>
           <tbody>
@@ -438,7 +440,7 @@ export default function TenantTablesRegistry() {
                   <tr>
                     <td colSpan={4} style={{ padding: '0.5rem' }}>
                       {defaultRows[t.tableName]?.loading ? (
-                        <p>Loading...</p>
+                        <p>{t('loading', 'Loading...')}</p>
                       ) : defaultRows[t.tableName]?.error ? (
                         <p>Error: {defaultRows[t.tableName].error}</p>
                       ) : defaultRows[t.tableName]?.rows.length ? (
@@ -466,14 +468,14 @@ export default function TenantTablesRegistry() {
                             </tbody>
                           </table>
                           <div style={{ marginTop: '0.5rem', textAlign: 'right' }}>
-                            <button onClick={() => setExpandedTable(null)}>Collapse</button>
+                            <button onClick={() => setExpandedTable(null)}>{t('collapse', 'Collapse')}</button>
                           </div>
                         </div>
                       ) : (
                         <div>
-                          <p>No records</p>
+                          <p>{t('noRecords', 'No records')}</p>
                           <div style={{ marginTop: '0.5rem', textAlign: 'right' }}>
-                            <button onClick={() => setExpandedTable(null)}>Collapse</button>
+                            <button onClick={() => setExpandedTable(null)}>{t('collapse', 'Collapse')}</button>
                           </div>
                         </div>
                       )}
@@ -497,7 +499,7 @@ export default function TenantTablesRegistry() {
             onChange={(e) => setCompanyId(e.target.value)}
             style={{ width: '100%' }}
           >
-            <option value="">Select company</option>
+            <option value="">{t('selectCompany', 'Select company')}</option>
             {companies.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -506,7 +508,7 @@ export default function TenantTablesRegistry() {
           </select>
         </div>
         {tables && tables.filter((t) => t.seedOnCreate).length === 0 ? (
-          <p>No seed_on_create tables.</p>
+          <p>{t('noSeedOnCreateTables', 'No seed_on_create tables.')}</p>
         ) : (
           <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
             {tables
@@ -524,7 +526,7 @@ export default function TenantTablesRegistry() {
                   {selectedTables[t.tableName] && (
                     <div style={{ marginLeft: '1rem', marginTop: '0.25rem' }}>
                       {tableRecords[t.tableName]?.loading ? (
-                        <p>Loading...</p>
+                        <p>{t('loading', 'Loading...')}</p>
                       ) : tableRecords[t.tableName]?.rows.length ? (
                         <table style={{ borderCollapse: 'collapse' }}>
                           <thead>
@@ -559,7 +561,7 @@ export default function TenantTablesRegistry() {
                           </tbody>
                         </table>
                       ) : (
-                        <p>No records</p>
+                        <p>{t('noRecords', 'No records')}</p>
                       )}
                     </div>
                   )}

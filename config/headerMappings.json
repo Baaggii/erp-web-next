@@ -746,5 +746,20 @@
   "saved": "Saved",
   "failedToSave": "Failed to save",
   "loading": "Loading…",
-  "generalConfiguration": "General Configuration"
+  "generalConfiguration": "General Configuration",
+  "dashboard": "Dashboard",
+  "tenantTablesRegistry": "Tenant Tables Registry",
+  "resetSharedTenantTableKeys": "Reset shared tenant table keys",
+  "populatedDefaultsTenantKey0": "Populated defaults (tenant key 0)",
+  "missingTableName": "Missing table name",
+  "invalidValues": "Invalid values",
+  "noTenantTables": "No tenant tables.",
+  "table": "Table",
+  "shared": "Shared",
+  "seedOnCreate": "Seed on Create",
+  "action": "Action",
+  "selectCompany": "Select company",
+  "noSeedOnCreateTables": "No seed_on_create tables.",
+  "noRecords": "No records",
+  "collapse": "Collapse"
 }
