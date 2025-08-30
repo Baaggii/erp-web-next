@@ -1,10 +1,12 @@
 import React, { useContext, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
+import I18nContext from '../context/I18nContext.jsx';
 import { logout } from '../hooks/useAuth.jsx';
 
 export default function AppLayout({ children, title }) {
   const { user, session } = useContext(AuthContext);
+  const { t } = useContext(I18nContext);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -26,7 +28,7 @@ export default function AppLayout({ children, title }) {
               `block px-3 py-2 rounded hover:bg-gray-700 ${isActive ? 'bg-gray-700' : ''}`
             }
           >
-            Самбар
+            {t('dashboard', 'Dashboard')}
           </NavLink>
           <NavLink
             to="/finance-transactions"
@@ -34,7 +36,7 @@ export default function AppLayout({ children, title }) {
               `block px-3 py-2 rounded hover:bg-gray-700 ${isActive ? 'bg-gray-700' : ''}`
             }
           >
-            Санхүүгийн гүйлгээ
+            {t('financeTransactions', 'Finance Transactions')}
           </NavLink>
           <NavLink
             to="/reports"
@@ -42,13 +44,13 @@ export default function AppLayout({ children, title }) {
               `block px-3 py-2 rounded hover:bg-gray-700 ${isActive ? 'bg-gray-700' : ''}`
             }
           >
-            Тайлан
+            {t('reports', 'Reports')}
           </NavLink>
         </nav>
       </aside>
       <div className="flex flex-col flex-grow min-w-0 ml-64">
         <header className="sticky top-0 z-10 bg-white shadow-md flex items-center justify-between px-4 py-2">
-          <h1 className="text-lg font-semibold">{title || 'ERP'}</h1>
+          <h1 className="text-lg font-semibold">{title || t('erp', 'ERP')}</h1>
           <div className="flex items-center space-x-3 text-sm">
             {session && (
               <span>
@@ -67,7 +69,7 @@ export default function AppLayout({ children, title }) {
                       onClick={handleLogout}
                       className="block w-full text-left px-4 py-2"
                     >
-                      Logout
+                      {t('logout', 'Logout')}
                     </button>
                   </li>
                 </ul>
