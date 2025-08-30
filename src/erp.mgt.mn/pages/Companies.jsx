@@ -74,6 +74,86 @@ export default function CompaniesPage() {
     }
   }
 
+  async function handleEdit(c) {
+    const name = prompt('Company name?', c.name);
+    if (!name) return;
+    const reg = prompt('Gov registration number?', c.Gov_Registration_number);
+    if (reg == null) return;
+    const addr = prompt('Address?', c.Address);
+    if (addr == null) return;
+    const tel = prompt('Telephone?', c.Telephone);
+    if (tel == null) return;
+    const res = await fetch('/api/companies/' + c.id, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      skipErrorToast: true,
+      body: JSON.stringify({
+        name,
+        Gov_Registration_number: reg,
+        Address: addr,
+        Telephone: tel
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 403) {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: 'You need System Settings permission to edit a company.',
+            type: 'error'
+          }
+        })
+      );
+      return;
+    }
+    if (!res.ok) {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: data.message || 'Failed to update company',
+            type: 'error'
+          }
+        })
+      );
+      return;
+    }
+    loadCompanies();
+  }
+
+  async function handleDelete(id) {
+    if (!window.confirm('Are you sure you want to delete this company?')) return;
+    const res = await fetch('/api/companies/' + id, {
+      method: 'DELETE',
+      credentials: 'include',
+      skipErrorToast: true
+    });
+    await res.json().catch(() => ({}));
+    if (res.status === 403) {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: 'You need System Settings permission to delete a company.',
+            type: 'error'
+          }
+        })
+      );
+      return;
+    }
+    if (!res.ok) {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: 'Failed to delete company',
+            type: 'error'
+          }
+        })
+      );
+      return;
+    }
+    loadCompanies();
+  }
+
   const visibleCompanies = companies.filter((c) =>
     (c.name || '').toLowerCase().includes(filter.toLowerCase())
   );
@@ -124,6 +204,9 @@ export default function CompaniesPage() {
                     {col}
                   </th>
                 ))}
+                <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                  Action
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -140,6 +223,21 @@ export default function CompaniesPage() {
                       {c[col] != null ? c[col] : ''}
                     </td>
                   ))}
+                  <td
+                    style={{
+                      padding: '0.5rem',
+                      border: '1px solid #d1d5db',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    <button
+                      onClick={() => handleEdit(c)}
+                      style={{ marginRight: '0.25rem' }}
+                    >
+                      Edit
+                    </button>
+                    <button onClick={() => handleDelete(c.id)}>Delete</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
