@@ -35,6 +35,7 @@
     "organization": "조직 선택",
     "date": "거래 날짜",
     "firstName": "이름",
-    "lastName": "성"
+    "lastName": "성",
+    "enable_tooltips": "툴팁 표시를 켜거나 끕니다"
   }
 }
