@@ -38,6 +38,8 @@ function createRes() {
 // A user may hold multiple employment sessions. Ensure that having the
 // `system_settings` permission on any session allows company creation.
 test('allows POST /api/companies when any session has system_settings', async () => {
+  let insertArgs;
+  let assignArgs;
   const restore = mockPoolSequential([
     [[
       {
@@ -70,8 +72,14 @@ test('allows POST /api/companies when any session has system_settings', async ()
       },
     ]],
     [[{ COLUMN_NAME: 'name' }, { COLUMN_NAME: 'created_by' }]],
-    [{ insertId: 1 }],
-    [{ affectedRows: 1 }],
+    (sql, params) => {
+      insertArgs = [sql, params];
+      return [{ insertId: 1 }];
+    },
+    (sql, params) => {
+      assignArgs = [sql, params];
+      return [{ affectedRows: 1 }];
+    },
   ]);
   const req = {
     body: { name: 'NewCo', seedTables: [] },
@@ -83,6 +91,10 @@ test('allows POST /api/companies when any session has system_settings', async ()
   restore();
   assert.equal(res.code, 201);
   assert.deepEqual(res.body, { id: 1 });
+  assert.ok(insertArgs[0].includes('`created_by`'));
+  assert.deepEqual(insertArgs[1], ['companies', 'NewCo', 1]);
+  assert.ok(assignArgs[0].startsWith('INSERT INTO user_companies'));
+  assert.deepEqual(assignArgs[1], [1, 1, null, null, 1]);
 });
 
 // If none of the user's sessions include `system_settings`, creation is denied.
