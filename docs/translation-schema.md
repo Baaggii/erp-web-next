@@ -1,28 +1,22 @@
-# Translation Schema
+# Translation Workflow
 
-Translations live in `src/erp.mgt.mn/context/translations.json` and use the following structure:
+All UI strings are stored per language under `src/erp.mgt.mn/locales/<lang>.json`.
+These locale files are generated automatically and should **not** be edited or
+committed manually.
 
-```json
-{
-  "translationKey": {
-    "mn": "Mongolian text",
-    "en": "English text",
-    "ja": "Japanese text",
-    "ko": "Korean text",
-    "zh": "Chinese text",
-    "es": "Spanish text",
-    "de": "German text",
-    "fr": "French text",
-    "ru": "Russian text"
-  }
-}
-```
+To add or update translations:
 
-An automated helper script can prefill missing languages using machine translation:
+1. Reference a key in code using `t('my.key', 'Fallback text')`.
+2. Run the translation generator which fetches the latest phrases and fills in
+   missing languages:
 
 ```bash
-node scripts/prefillTranslations.js
+npm run generate:translations
 ```
 
-The script attempts to translate from the existing English (or Mongolian) values and
-falls back to the source text if an external translation service is unreachable.
+The script retrieves translations from the service and falls back to machine
+translation when necessary. New locale files will be written under the
+`locales` directory.
+
+Because the files are generated, avoid committing changes to them. CI or
+release builds will regenerate the locales as needed.

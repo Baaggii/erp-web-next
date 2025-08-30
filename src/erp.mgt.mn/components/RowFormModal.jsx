@@ -9,6 +9,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import { API_BASE } from '../utils/apiBase.js';
 
 const RowFormModal = function RowFormModal({
   visible,
@@ -103,7 +104,7 @@ const RowFormModal = function RowFormModal({
     () => new Set(disabledFields.map((f) => f.toLowerCase())),
     [disabledFields],
   );
-  const { user, company, branch, department } = useContext(AuthContext);
+  const { user, company, branch, department, userSettings } = useContext(AuthContext);
   const [formVals, setFormVals] = useState(() => {
     const init = {};
     const now = new Date();
@@ -1368,11 +1369,20 @@ const RowFormModal = function RowFormModal({
     if (m.length) html += `<h3>Main</h3>${mainTableHtml()}`;
     if (f.length) html += `<h3>Footer</h3><table>${rowHtml(f, true)}</table>`;
     html += '</body></html>';
-    const w = window.open('', '_blank');
-    w.document.write(html);
-    w.document.close();
-    w.focus();
-    w.print();
+    if (userSettings?.printerId) {
+      fetch(`${API_BASE}/print`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ printerId: userSettings.printerId, content: html }),
+      }).catch((err) => console.error('Print failed', err));
+    } else {
+      const w = window.open('', '_blank');
+      w.document.write(html);
+      w.document.close();
+      w.focus();
+      w.print();
+    }
   }
 
   if (inline) {

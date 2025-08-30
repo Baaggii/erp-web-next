@@ -1,5 +1,5 @@
 // src/erp.mgt.mn/components/ERPLayout.jsx
-import React, { useContext, useState, useEffect, useRef, useMemo } from "react";
+import React, { useContext, useState, useEffect, useRef, useMemo, useCallback } from "react";
 import HeaderMenu from "./HeaderMenu.jsx";
 import UserMenu from "./UserMenu.jsx";
 import { useOutlet, useNavigate, useLocation } from "react-router-dom";
@@ -18,10 +18,17 @@ import useHeaderMappings from "../hooks/useHeaderMappings.js";
 import useRequestNotificationCounts from "../hooks/useRequestNotificationCounts.js";
 import { PendingRequestContext } from "../context/PendingRequestContext.jsx";
 import Joyride, { STATUS } from "react-joyride";
-import { getGuideSteps as getDashboardGuideSteps } from "../pages/DashboardPage.jsx";
-import { getGuideSteps as getFormsGuideSteps } from "../pages/Forms.jsx";
 import ErrorBoundary from "../components/ErrorBoundary.jsx";
 import { useToast } from "../context/ToastContext.jsx";
+
+const TourContext = React.createContext(() => {});
+export const useTour = (pageKey, steps) => {
+  const startTour = useContext(TourContext);
+  const { userSettings } = useContext(AuthContext);
+  useEffect(() => {
+    startTour(pageKey, steps);
+  }, [startTour, pageKey, steps, userSettings]);
+};
 
 /**
  * A desktop‐style “ERPLayout” with:
@@ -30,7 +37,7 @@ import { useToast } from "../context/ToastContext.jsx";
  *  - Main content area (faux window container)
  */
 export default function ERPLayout() {
-  const { user, setUser, session } = useContext(AuthContext);
+  const { user, setUser, session, userSettings, updateUserSettings } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const { t } = useContext(LangContext);
   const renderCount = useRef(0);
@@ -50,11 +57,22 @@ export default function ERPLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [tourSteps, setTourSteps] = useState([]);
   const [runTour, setRunTour] = useState(false);
+  const [currentTourPage, setCurrentTourPage] = useState('');
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
   }, []);
+
+  const startTour = useCallback((pageKey, steps) => {
+    if (!userSettings?.settings_enable_tours) return;
+    const seen = userSettings?.toursSeen || {};
+    if (!seen[pageKey] && steps && steps.length) {
+      setTourSteps(steps);
+      setCurrentTourPage(pageKey);
+      setRunTour(true);
+    }
+  }, [userSettings]);
 
   const modules = useModules();
   const moduleMap = useMemo(() => {
@@ -73,6 +91,11 @@ export default function ERPLayout() {
       map[modulePath(moduleMap.settings, moduleMap)] = t("settings", "Settings");
     if (moduleMap.users)
       map[modulePath(moduleMap.users, moduleMap)] = t("settings_users", "Users");
+    if (moduleMap.user_settings)
+      map[modulePath(moduleMap.user_settings, moduleMap)] = t(
+        "settings_user_settings",
+        "User Settings",
+      );
     if (moduleMap.role_permissions)
       map[modulePath(moduleMap.role_permissions, moduleMap)] = t(
         "settings_role_permissions",
@@ -149,40 +172,21 @@ export default function ERPLayout() {
     }
   }, [modules, validPaths, location.pathname, navigate, addToast, t]);
 
-  useEffect(() => {
-    const path = location.pathname;
-    let pageKey = "dashboard";
-    if (path.startsWith("/forms")) pageKey = "forms";
-    const stepsMap = {
-      dashboard: getDashboardGuideSteps,
-      forms: getFormsGuideSteps,
-    };
-    const stepsFn = stepsMap[pageKey];
-    const steps = stepsFn ? stepsFn(t) : [];
-    setTourSteps(steps);
-    const seenKey = `erpGuideSeen-${pageKey}`;
-    if (!localStorage.getItem(seenKey) && steps.length) {
-      setRunTour(true);
-    } else {
-      setRunTour(false);
-    }
-  }, [location.pathname, t]);
-
   const handleTourCallback = ({ status }) => {
     if ([STATUS.FINISHED, STATUS.SKIPPED].includes(status)) {
-      const path = location.pathname;
-      let pageKey = "dashboard";
-      if (path.startsWith("/forms")) pageKey = "forms";
-      localStorage.setItem(`erpGuideSeen-${pageKey}`, "1");
+      if (currentTourPage) {
+        const seen = { ...(userSettings?.toursSeen || {}), [currentTourPage]: true };
+        updateUserSettings({ toursSeen: seen });
+      }
       setRunTour(false);
     }
   };
 
   const resetGuide = () => {
-    const path = location.pathname;
-    let pageKey = "dashboard";
-    if (path.startsWith("/forms")) pageKey = "forms";
-    localStorage.removeItem(`erpGuideSeen-${pageKey}`);
+    const key = currentTourPage || location.pathname.split('/').filter(Boolean)[0] || 'dashboard';
+    const seen = { ...(userSettings?.toursSeen || {}) };
+    delete seen[key];
+    updateUserSettings({ toursSeen: seen });
     setRunTour(true);
   };
 
@@ -235,43 +239,45 @@ export default function ERPLayout() {
   }
 
   return (
-    <PendingRequestContext.Provider value={requestNotifications}>
-      <div style={styles.container}>
-        <Joyride
-          steps={tourSteps}
-          run={runTour}
-          continuous
-          showSkipButton
-          disableOverlayClose
-          disableKeyboardNavigation={false}
-          callback={handleTourCallback}
-        />
-        <Header
-          user={user}
-          onLogout={handleLogout}
-          onHome={handleHome}
-          isMobile={isMobile}
-          onToggleSidebar={() => setSidebarOpen((o) => !o)}
-          onOpen={handleOpen}
-          onResetGuide={resetGuide}
-        />
-        <div style={styles.body(isMobile)}>
-          {isMobile && sidebarOpen && (
-            <div
-              className="sidebar-overlay"
-              onClick={() => setSidebarOpen(false)}
-            />
-          )}
-          <Sidebar
-            open={isMobile ? sidebarOpen : true}
-            onOpen={handleOpen}
-            isMobile={isMobile}
+    <TourContext.Provider value={startTour}>
+      <PendingRequestContext.Provider value={requestNotifications}>
+        <div style={styles.container}>
+          <Joyride
+            steps={tourSteps}
+            run={runTour}
+            continuous
+            showSkipButton
+            disableOverlayClose
+            disableKeyboardNavigation={false}
+            callback={handleTourCallback}
           />
-          <MainWindow title={windowTitle} />
+          <Header
+            user={user}
+            onLogout={handleLogout}
+            onHome={handleHome}
+            isMobile={isMobile}
+            onToggleSidebar={() => setSidebarOpen((o) => !o)}
+            onOpen={handleOpen}
+            onResetGuide={resetGuide}
+          />
+          <div style={styles.body(isMobile)}>
+            {isMobile && sidebarOpen && (
+              <div
+                className="sidebar-overlay"
+                onClick={() => setSidebarOpen(false)}
+              />
+            )}
+            <Sidebar
+              open={isMobile ? sidebarOpen : true}
+              onOpen={handleOpen}
+              isMobile={isMobile}
+            />
+            <MainWindow title={windowTitle} />
+          </div>
+          {generalConfig.general?.aiApiEnabled && <AskAIFloat />}
         </div>
-        {generalConfig.general?.aiApiEnabled && <AskAIFloat />}
-      </div>
-    </PendingRequestContext.Provider>
+      </PendingRequestContext.Provider>
+    </TourContext.Provider>
   );
 }
 

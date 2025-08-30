@@ -24,6 +24,9 @@ import permissionsRoutes from "./routes/permissions.js";
 import tenantTablesRoutes from "./routes/tenant_tables.js";
 import translationGeneratorRoutes from "./routes/translation_generator.js";
 import { getGeneralConfig } from "./services/generalConfig.js";
+import userSettingsRoutes from "./routes/user_settings.js";
+import printerRoutes from "./routes/printers.js";
+import printRoutes from "./routes/print.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -74,6 +77,9 @@ app.use("/api/auth", userActionRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/companies", companyRoutes);
 app.use("/api/settings", settingsRoutes);
+app.use("/api/user/settings", userSettingsRoutes);
+app.use("/api/printers", printerRoutes);
+app.use("/api/print", printRoutes);
 app.use("/api/modules", moduleRoutes);
 app.use("/api/header_mappings", headerMappingRoutes);
 app.use("/api/openai", openaiRoutes);

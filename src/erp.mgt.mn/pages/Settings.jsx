@@ -3,7 +3,6 @@ import React, { useEffect, useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { Outlet, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import TooltipWrapper from '../components/TooltipWrapper.jsx';
 
 export default function SettingsPage() {
   // Just render the nested route content. The left sidebar already
@@ -25,10 +24,6 @@ export function GeneralSettings() {
   }
   const [settings, setSettings] = useState(null);
   const { t } = useTranslation();
-  const [tooltipsEnabled, setTooltipsEnabled] = useState(() => {
-    const val = localStorage.getItem('tooltipsEnabled');
-    return val !== 'false';
-  });
 
   useEffect(() => {
     fetch('/api/settings', { credentials: 'include' })
@@ -56,20 +51,6 @@ export function GeneralSettings() {
       ) : (
         <p>Тохиргоо ачааллаж байна…</p>
       )}
-      <div style={{ marginTop: '1rem' }}>
-        <label>
-          <input
-            type="checkbox"
-            checked={tooltipsEnabled}
-            onChange={(e) => {
-              const v = e.target.checked;
-              setTooltipsEnabled(v);
-              localStorage.setItem('tooltipsEnabled', String(v));
-            }}
-          />{' '}
-          {t('settings_enable_tooltips', 'Enable tooltips')}
-        </label>
-      </div>
       <p style={{ marginTop: '1rem' }}>
         <Link to="/settings/role-permissions">Эрхийн тохиргоо засах</Link>
       </p>
