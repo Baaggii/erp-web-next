@@ -62,10 +62,6 @@ export default function ERPLayout() {
     "/reports": t("reports", "Reports"),
     "/settings": t("settings", "Settings"),
     "/settings/users": t("settings_users", "Users"),
-    "/settings/user-companies": t(
-      "settings_user_companies",
-      "User Companies",
-    ),
     "/settings/role-permissions": t(
       "settings_role_permissions",
       "Role Permissions",
