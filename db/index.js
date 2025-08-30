@@ -685,7 +685,7 @@ export async function listAllUserCompanies(companyId) {
  * List all companies
  */
 export async function listCompanies(createdBy = null) {
-  let sql = "SELECT id, name, created_at FROM companies";
+  let sql = "SELECT id, name, created_at, created_by FROM companies";
   const params = [];
   if (createdBy) {
     sql += " WHERE created_by = ?";
