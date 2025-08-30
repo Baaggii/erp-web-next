@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-import { generateTranslations } from './generateTranslations.js';
+import {
+  generateTranslations,
+  generateTooltipTranslations,
+} from './generateTranslations.js';
 
 const controller = new AbortController();
 process.on('SIGINT', () => controller.abort());
@@ -13,7 +16,14 @@ process.on('uncaughtException', (err) => {
   process.exit(3);
 });
 
-generateTranslations({ onLog: console.log, signal: controller.signal }).catch((err) => {
-  console.error('[gen-i18n] FATAL', err);
-  process.exit(1);
-});
+async function main() {
+  try {
+    await generateTranslations({ onLog: console.log, signal: controller.signal });
+    await generateTooltipTranslations({ onLog: console.log, signal: controller.signal });
+  } catch (err) {
+    console.error('[gen-i18n] FATAL', err);
+    process.exit(1);
+  }
+}
+
+main();

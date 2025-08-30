@@ -484,3 +484,76 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
   log('[gen-i18n] DONE');
 }
 
+export async function generateTooltipTranslations({ onLog = console.log, signal } = {}) {
+  log = onLog;
+  const checkAbort = () => {
+    if (signal?.aborted) throw new Error('Aborted');
+  };
+
+  const tooltipDir = path.resolve('src/erp.mgt.mn/locales/tooltips');
+  const enPath = path.join(tooltipDir, 'en.json');
+  const mnPath = path.join(tooltipDir, 'mn.json');
+
+  await fs.promises.mkdir(tooltipDir, { recursive: true });
+
+  if (!fs.existsSync(enPath) || !fs.existsSync(mnPath)) {
+    throw new Error('English and Mongolian tooltip files must exist');
+  }
+
+  const enTips = JSON.parse(fs.readFileSync(enPath, 'utf8'));
+  const mnTips = JSON.parse(fs.readFileSync(mnPath, 'utf8'));
+  const allKeys = Array.from(
+    new Set([...Object.keys(enTips), ...Object.keys(mnTips)])
+  );
+
+  for (const lang of languages) {
+    if (lang === 'en' || lang === 'mn') continue;
+    checkAbort();
+
+    const langPath = path.join(tooltipDir, `${lang}.json`);
+    const current = fs.existsSync(langPath)
+      ? JSON.parse(fs.readFileSync(langPath, 'utf8'))
+      : {};
+    let updated = false;
+
+    for (const key of allKeys) {
+      if (current[key]) continue;
+      checkAbort();
+      const sourceText = enTips[key] || mnTips[key];
+      const sourceLang = enTips[key] ? 'en' : 'mn';
+      let translation;
+      try {
+        const res = await translateWithOpenAI(
+          sourceText,
+          sourceLang,
+          lang
+        );
+        translation = res.translation;
+      } catch (err) {
+        try {
+          translation = await translateWithGoogle(
+            sourceText,
+            lang,
+            sourceLang,
+            key
+          );
+        } catch (err2) {
+          console.warn(
+            `[gen-tooltips] failed ${sourceLang}->${lang} for key="${key}": ${err2.message}`
+          );
+          translation = sourceText;
+        }
+      }
+      current[key] = translation;
+      updated = true;
+    }
+
+    if (updated) {
+      const ordered = sortObj(current);
+      fs.writeFileSync(langPath, JSON.stringify(ordered, null, 2));
+      log(`[gen-tooltips] wrote ${langPath}`);
+    }
+  }
+  log('[gen-tooltips] DONE');
+}
+
