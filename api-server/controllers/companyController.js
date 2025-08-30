@@ -1,6 +1,8 @@
 import {
   listCompanies,
   insertTableRow,
+  updateTableRow,
+  deleteTableRow,
   getEmploymentSession,
   getUserLevelActions,
 } from '../../db/index.js';
@@ -44,6 +46,47 @@ export async function createCompanyHandler(req, res, next) {
     );
     res.locals.insertId = result?.id;
     res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateCompanyHandler(req, res, next) {
+  try {
+    res.locals.logTable = 'companies';
+    const updates = { ...req.body };
+    delete updates.created_by;
+    delete updates.created_at;
+    const session =
+      req.session ||
+      (await getEmploymentSession(req.user.empid, req.user.companyId));
+    if (!(await hasAction(session, 'system_settings'))) {
+      const actions = await getUserLevelActions(req.user.userLevel);
+      if (!actions?.permissions?.system_settings) {
+        return res.sendStatus(403);
+      }
+    }
+    await updateTableRow('companies', req.params.id, updates);
+    res.sendStatus(204);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function deleteCompanyHandler(req, res, next) {
+  try {
+    res.locals.logTable = 'companies';
+    const session =
+      req.session ||
+      (await getEmploymentSession(req.user.empid, req.user.companyId));
+    if (!(await hasAction(session, 'system_settings'))) {
+      const actions = await getUserLevelActions(req.user.userLevel);
+      if (!actions?.permissions?.system_settings) {
+        return res.sendStatus(403);
+      }
+    }
+    await deleteTableRow('companies', req.params.id, undefined, req.user.empid);
+    res.sendStatus(204);
   } catch (err) {
     next(err);
   }
