@@ -4,7 +4,6 @@ import PendingRequestWidget from '../components/PendingRequestWidget.jsx';
 import OutgoingRequestWidget from '../components/OutgoingRequestWidget.jsx';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import LangContext from '../context/I18nContext.jsx';
-import i18next from 'i18next';
 
 export default function DashboardPage() {
   const { user, session } = useContext(AuthContext);
@@ -142,10 +141,10 @@ export default function DashboardPage() {
   );
 }
 
-export const guideSteps = [
+export const getGuideSteps = (t) => [
   {
     target: '#new-transaction-button',
-    content: i18next.t('guide.newTransaction'),
+    content: t('guide.newTransaction'),
   },
 ];
 
