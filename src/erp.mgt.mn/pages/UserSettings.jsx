@@ -4,6 +4,7 @@ import { useTour } from '../components/ERPLayout.jsx';
 import userSettingsSteps from '../tours/UserSettings.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import LangContext from '../context/I18nContext.jsx';
+import { API_BASE } from '../utils/apiBase.js';
 
 export default function UserSettingsPage() {
   const { t } = useTranslation();
@@ -86,7 +87,7 @@ function PrinterSettingsTab() {
   const { userSettings, updateUserSettings } = useAuth();
   const [printers, setPrinters] = useState([]);
   useEffect(() => {
-    fetch('/api/printers', { credentials: 'include' })
+    fetch(`${API_BASE}/printers`, { credentials: 'include' })
       .then((r) => r.json())
       .then(setPrinters)
       .catch(() => setPrinters([]));

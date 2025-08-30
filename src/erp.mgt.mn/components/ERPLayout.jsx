@@ -24,9 +24,10 @@ import { useToast } from "../context/ToastContext.jsx";
 const TourContext = React.createContext(() => {});
 export const useTour = (pageKey, steps) => {
   const startTour = useContext(TourContext);
+  const { userSettings } = useContext(AuthContext);
   useEffect(() => {
     startTour(pageKey, steps);
-  }, [startTour, pageKey, steps]);
+  }, [startTour, pageKey, steps, userSettings]);
 };
 
 /**
