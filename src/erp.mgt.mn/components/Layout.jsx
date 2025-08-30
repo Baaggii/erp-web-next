@@ -27,7 +27,6 @@ export default function ERPLayout() {
     '/reports': t('reports', 'Reports'),
     '/settings': t('settings', 'Settings'),
     '/settings/users': t('users', 'Users'),
-    '/settings/user-companies': t('userCompanies', 'User Companies'),
     '/settings/role-permissions': t('rolePermissions', 'Role Permissions'),
     '/settings/change-password': t('changePassword', 'Change Password'),
   };
@@ -135,9 +134,6 @@ function Sidebar() {
           <>
             <NavLink to="/settings/users" className="menu-item" style={styles.menuItem}>
               {t('users', 'Users')}
-            </NavLink>
-            <NavLink to="/settings/user-companies" className="menu-item" style={styles.menuItem}>
-              {t('userCompanies', 'User Companies')}
             </NavLink>
             <NavLink to="/settings/role-permissions" className="menu-item" style={styles.menuItem}>
               {t('rolePermissions', 'Role Permissions')}
