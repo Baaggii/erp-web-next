@@ -47,12 +47,12 @@ export default function UserSettingsPage() {
 }
 
 function GeneralSettingsTab() {
-  const { t } = useTranslation();
+  const { t } = useTranslation(['translation', 'tooltip']);
   const { userSettings, updateUserSettings } = useAuth();
   const tooltipsEnabled = userSettings.tooltipsEnabled ?? true;
   return (
     <div>
-      <TooltipWrapper title={t('tooltip.enable_tooltips')}>
+      <TooltipWrapper title={t('enable_tooltips', { ns: 'tooltip' })}>
         <label>
           <input
             type="checkbox"
