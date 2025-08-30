@@ -16,41 +16,42 @@ export const I18nContext = createContext({
 });
 
 export function I18nProvider({ children }) {
+  const allLangs = ['en', 'mn'];
   const [lang, setLang] = useState(() => localStorage.getItem('lang') || 'en');
-  // Define a fallback order for languages. If a translation is missing in the
-  // active language, we will try these in order.
-  const fallbackLangs = ['mn', 'en'];
-
-  const changeLang = useCallback(
-    async (newLang) => {
-      const translations = await import(`../locales/${newLang}.json`);
-
-      if (!i18n.isInitialized) {
-        await i18n.use(initReactI18next).init({
-          resources: {
-            [newLang]: { translation: translations.default },
-          },
-          lng: newLang,
-          fallbackLng: fallbackLangs,
-          interpolation: { escapeValue: false },
-        });
-      } else {
-        i18n.addResourceBundle(
-          newLang,
-          'translation',
-          translations.default,
-          true,
-          true
-        );
-        i18n.changeLanguage(newLang);
-        i18n.options.fallbackLng = fallbackLangs;
-      }
-
-      localStorage.setItem('lang', newLang);
-      setLang(newLang);
-    },
-    [fallbackLangs]
+  // Define a fallback order for languages, excluding the active language.
+  const fallbackLangs = useMemo(
+    () => allLangs.filter((l) => l !== lang),
+    [lang]
   );
+
+  const changeLang = useCallback(async (newLang) => {
+    const translations = await import(`../locales/${newLang}.json`);
+    const newFallback = allLangs.filter((l) => l !== newLang);
+
+    if (!i18n.isInitialized) {
+      await i18n.use(initReactI18next).init({
+        resources: {
+          [newLang]: { translation: translations.default },
+        },
+        lng: newLang,
+        fallbackLng: newFallback,
+        interpolation: { escapeValue: false },
+      });
+    } else {
+      i18n.addResourceBundle(
+        newLang,
+        'translation',
+        translations.default,
+        true,
+        true
+      );
+      i18n.changeLanguage(newLang);
+      i18n.options.fallbackLng = newFallback;
+    }
+
+    localStorage.setItem('lang', newLang);
+    setLang(newLang);
+  }, []);
 
   useEffect(() => {
     changeLang(lang);
@@ -63,7 +64,7 @@ export function I18nProvider({ children }) {
       fallbackLangs,
       t: (key, fallback) => i18n.t(key, { defaultValue: fallback ?? key }),
     }),
-    [lang, changeLang]
+    [lang, changeLang, fallbackLangs]
   );
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;

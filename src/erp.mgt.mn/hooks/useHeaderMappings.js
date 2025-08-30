@@ -37,10 +37,7 @@ export default function useHeaderMappings(headers = [], locale) {
       return;
     }
 
-    const langsToTry = [
-      currentLang,
-      ...((fallbackLangs || []).filter((l) => l !== currentLang)),
-    ];
+    const langsToTry = [currentLang, ...(fallbackLangs || [])];
 
     const result = {};
 
