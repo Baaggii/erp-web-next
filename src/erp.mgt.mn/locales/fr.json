@@ -35,6 +35,7 @@
     "organization": "Sélectionner l'organisation",
     "date": "Date de transaction",
     "firstName": "Prénom",
-    "lastName": "Nom de famille"
+    "lastName": "Nom de famille",
+    "enable_tooltips": "Basculer pour afficher ou masquer les info-bulles"
   }
 }
