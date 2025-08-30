@@ -25,7 +25,7 @@ function writeLocaleFile(lang, obj) {
   console.log(`[gen-i18n] wrote ${file} (${Object.keys(ordered).length} keys)`);
 }
 
-function collectTPairs(dir) {
+function collectPhrasesFromPages(dir) {
   const files = [];
   function walk(d) {
     for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
@@ -36,13 +36,13 @@ function collectTPairs(dir) {
   }
   walk(dir);
 
-  const regex = /\bt\(\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]\s*\)/g;
+  const regex = /\bt\(\s*['"]([^'"]+)['"]\s*(?:,\s*['"]([^'"]+)['"])?\s*\)/g;
   const pairs = [];
   for (const file of files) {
     const content = fs.readFileSync(file, 'utf8');
     let match;
     while ((match = regex.exec(content))) {
-      pairs.push({ key: match[1], text: match[2] });
+      pairs.push({ key: match[1], text: match[2] || match[1] });
     }
   }
   return pairs;
@@ -135,6 +135,7 @@ async function translateWithOpenAI(text, from, to) {
 async function main() {
   console.log('[gen-i18n] START');
   const base = JSON.parse(fs.readFileSync(headerMappingsPath, 'utf8'));
+  let headerMappingsUpdated = false;
   const entryMap = new Map();
 
   function addEntry(key, sourceText, sourceLang) {
@@ -163,10 +164,20 @@ async function main() {
     addEntry(key, sourceText, sourceLang);
   }
 
-  const tPairs = collectTPairs(path.resolve('src'));
+  const tPairs = collectPhrasesFromPages(path.resolve('src/erp.mgt.mn'));
   for (const { key, text } of tPairs) {
     const sourceLang = /[\u0400-\u04FF]/.test(text) ? 'mn' : 'en';
+    if (base[key] === undefined) {
+      base[key] = text;
+      headerMappingsUpdated = true;
+    }
     addEntry(key, text, sourceLang);
+  }
+
+  if (headerMappingsUpdated) {
+    const ordered = sortObj(base);
+    fs.writeFileSync(headerMappingsPath, JSON.stringify(ordered, null, 2));
+    console.log(`[gen-i18n] updated ${headerMappingsPath}`);
   }
 
   const entries = Array.from(entryMap.values());
@@ -179,7 +190,19 @@ async function main() {
     locales[lang] = fs.existsSync(file)
       ? JSON.parse(fs.readFileSync(file, 'utf8'))
       : {};
+  }
 
+  for (const { key, sourceText, sourceLang } of entries) {
+    if (!locales[sourceLang][key]) {
+      locales[sourceLang][key] = sourceText;
+    }
+  }
+
+  ['en', 'mn'].forEach((lng) => {
+    if (locales[lng]) writeLocaleFile(lng, locales[lng]);
+  });
+
+  for (const lang of languages) {
     let counter = 0;
 
     for (const { key, sourceText, sourceLang } of entries) {
@@ -223,13 +246,11 @@ async function main() {
       }
 
       counter++;
-      // flush every 10 keys
       if (counter % 10 === 0) {
         writeLocaleFile(lang, locales[lang]);
       }
     }
 
-    // final flush for this language
     writeLocaleFile(lang, locales[lang]);
   }
 
