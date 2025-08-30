@@ -23,6 +23,7 @@ import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
+import { useTranslation } from 'react-i18next';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -128,6 +129,7 @@ const TableManager = forwardRef(function TableManager({
   buttonPerms = {},
   autoFillSession = true,
 }, ref) {
+  const { t } = useTranslation();
   const mounted = useRef(false);
   const renderCount = useRef(0);
   const warned = useRef(false);
@@ -214,7 +216,10 @@ const TableManager = forwardRef(function TableManager({
 
   function submitRequestReason() {
     if (!requestReason.trim()) {
-      addToast('Request reason is required', 'error');
+      addToast(
+        t('request_reason_required', 'Request reason is required'),
+        'error',
+      );
       return;
     }
     reasonResolveRef.current(requestReason);
@@ -325,11 +330,17 @@ const TableManager = forwardRef(function TableManager({
     })
       .then((res) => {
         if (!res.ok) {
-          addToast('Failed to load table columns', 'error');
+          addToast(
+            t('failed_load_table_columns', 'Failed to load table columns'),
+            'error',
+          );
           return [];
         }
         return res.json().catch(() => {
-          addToast('Failed to parse table columns', 'error');
+          addToast(
+            t('failed_parse_table_columns', 'Failed to parse table columns'),
+            'error',
+          );
           return [];
         });
       })
@@ -341,7 +352,10 @@ const TableManager = forwardRef(function TableManager({
         }
       })
       .catch(() => {
-        addToast('Failed to load table columns', 'error');
+        addToast(
+          t('failed_load_table_columns', 'Failed to load table columns'),
+          'error',
+        );
       });
     return () => {
       canceled = true;
@@ -463,11 +477,17 @@ const TableManager = forwardRef(function TableManager({
     fetch('/api/tables/code_transaction?perPage=500', { credentials: 'include' })
       .then((res) => {
         if (!res.ok) {
-          addToast('Failed to load transaction types', 'error');
+          addToast(
+            t('failed_load_transaction_types', 'Failed to load transaction types'),
+            'error',
+          );
           return { rows: [] };
         }
         return res.json().catch(() => {
-          addToast('Failed to parse transaction types', 'error');
+          addToast(
+            t('failed_parse_transaction_types', 'Failed to parse transaction types'),
+            'error',
+          );
           return { rows: [] };
         });
       })
@@ -484,7 +504,10 @@ const TableManager = forwardRef(function TableManager({
       })
       .catch(() => {
         if (!canceled) {
-          addToast('Failed to load transaction types', 'error');
+          addToast(
+            t('failed_load_transaction_types', 'Failed to load transaction types'),
+            'error',
+          );
           setTypeOptions([]);
         }
       });
@@ -581,11 +604,17 @@ const TableManager = forwardRef(function TableManager({
           { credentials: 'include' },
         );
         if (!res.ok) {
-          addToast('Failed to load table relations', 'error');
+          addToast(
+            t('failed_load_table_relations', 'Failed to load table relations'),
+            'error',
+          );
           return;
         }
         const rels = await res.json().catch(() => {
-          addToast('Failed to parse table relations', 'error');
+          addToast(
+            t('failed_parse_table_relations', 'Failed to parse table relations'),
+            'error',
+          );
           return [];
         });
         if (canceled) return;
@@ -615,11 +644,17 @@ const TableManager = forwardRef(function TableManager({
               try {
                 cfg = await cfgRes.json();
               } catch {
-                addToast('Failed to parse display fields', 'error');
+                addToast(
+                  t('failed_parse_display_fields', 'Failed to parse display fields'),
+                  'error',
+                );
                 cfg = null;
               }
             } else {
-              addToast('Failed to load display fields', 'error');
+              addToast(
+                t('failed_load_display_fields', 'Failed to load display fields'),
+                'error',
+              );
             }
 
             let hasCompanyId = false;
@@ -647,11 +682,17 @@ const TableManager = forwardRef(function TableManager({
                 { credentials: 'include' },
               );
               if (!refRes.ok) {
-                addToast('Failed to load reference data', 'error');
+                addToast(
+                  t('failed_load_reference_data', 'Failed to load reference data'),
+                  'error',
+                );
                 break;
               }
               const json = await refRes.json().catch(() => {
-                addToast('Failed to parse reference data', 'error');
+                addToast(
+                  t('failed_parse_reference_data', 'Failed to parse reference data'),
+                  'error',
+                );
                 return {};
               });
               if (Array.isArray(json.rows)) {
@@ -731,7 +772,10 @@ const TableManager = forwardRef(function TableManager({
         }
       } catch (err) {
         console.error('Failed to load table relations', err);
-        addToast('Failed to load table relations', 'error');
+        addToast(
+          t('failed_load_table_relations', 'Failed to load table relations'),
+          'error',
+        );
       }
     }
     load();
@@ -759,11 +803,18 @@ const TableManager = forwardRef(function TableManager({
       .then((res) => {
         if (canceled) return { rows: [], count: 0 };
         if (!res.ok) {
-          addToast('Failed to load table data', 'error');
+          addToast(
+            t('failed_load_table_data', 'Failed to load table data'),
+            'error',
+          );
           return { rows: [], count: 0 };
         }
         return res.json().catch(() => {
-          if (!canceled) addToast('Failed to parse table data', 'error');
+          if (!canceled)
+            addToast(
+              t('failed_parse_table_data', 'Failed to parse table data'),
+              'error',
+            );
           return { rows: [], count: 0 };
         });
       })
@@ -782,7 +833,11 @@ const TableManager = forwardRef(function TableManager({
         logRowsMemory(rows);
       })
       .catch(() => {
-        if (!canceled) addToast('Failed to load table data', 'error');
+        if (!canceled)
+          addToast(
+            t('failed_load_table_data', 'Failed to load table data'),
+            'error',
+          );
       });
     return () => {
       canceled = true;
@@ -888,14 +943,23 @@ const TableManager = forwardRef(function TableManager({
             setAutoInc(computeAutoInc(cols));
           }
         } catch {
-          addToast('Failed to parse table columns', 'error');
+          addToast(
+            t('failed_parse_table_columns', 'Failed to parse table columns'),
+            'error',
+          );
         }
       } else {
-        addToast('Failed to load table columns', 'error');
+        addToast(
+          t('failed_load_table_columns', 'Failed to load table columns'),
+          'error',
+        );
       }
     } catch (err) {
       console.error('Failed to fetch column metadata', err);
-      addToast('Failed to load table columns', 'error');
+      addToast(
+        t('failed_load_table_columns', 'Failed to load table columns'),
+        'error',
+      );
     }
   }
 
@@ -940,7 +1004,10 @@ const TableManager = forwardRef(function TableManager({
 
   async function openEdit(row) {
     if (getRowId(row) === undefined) {
-      addToast('Cannot edit rows without a primary key', 'error');
+      addToast(
+        t('cannot_edit_without_pk', 'Cannot edit rows without a primary key'),
+        'error',
+      );
       return;
     }
     await ensureColumnMeta();
@@ -952,7 +1019,10 @@ const TableManager = forwardRef(function TableManager({
 
   async function openRequestEdit(row) {
     if (getRowId(row) === undefined) {
-      addToast('Cannot edit rows without a primary key', 'error');
+      addToast(
+        t('cannot_edit_without_pk', 'Cannot edit rows without a primary key'),
+        'error',
+      );
       return;
     }
     await ensureColumnMeta();
@@ -981,15 +1051,24 @@ const TableManager = forwardRef(function TableManager({
             const refs = await res.json();
             setDetailRefs(Array.isArray(refs) ? refs : []);
           } catch {
-            addToast('Failed to parse reference info', 'error');
+            addToast(
+              t('failed_parse_reference_info', 'Failed to parse reference info'),
+              'error',
+            );
             setDetailRefs([]);
           }
         } else {
-          addToast('Failed to load reference info', 'error');
+          addToast(
+            t('failed_load_reference_info', 'Failed to load reference info'),
+            'error',
+          );
           setDetailRefs([]);
         }
       } catch {
-        addToast('Failed to load reference info', 'error');
+        addToast(
+          t('failed_load_reference_info', 'Failed to load reference info'),
+          'error',
+        );
         setDetailRefs([]);
       }
     } else {
@@ -1027,10 +1106,16 @@ const TableManager = forwardRef(function TableManager({
         setSearchTerm(term);
         setShowSearch(true);
       } else {
-        addToast('Failed to search images', 'error');
+        addToast(
+          t('failed_search_images', 'Failed to search images'),
+          'error',
+        );
       }
     } catch {
-      addToast('Failed to search images', 'error');
+      addToast(
+        t('failed_search_images', 'Failed to search images'),
+        'error',
+      );
     }
   }
 
@@ -1098,17 +1183,34 @@ const TableManager = forwardRef(function TableManager({
         params.set(f, pv);
       });
       const url = `/api/tables/${encodeURIComponent(view)}?${params.toString()}`;
-      addToast(`Lookup ${view}: ${params.toString()}`, 'info');
+      addToast(
+        t('lookup_params', 'Lookup {{view}}: {{params}}', {
+          view,
+          params: params.toString(),
+        }),
+        'info',
+      );
       fetch(url, { credentials: 'include' })
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
           if (!data || !Array.isArray(data.rows) || data.rows.length === 0) {
-            addToast('No view rows found', 'error');
+            addToast(
+              t('no_view_rows_found', 'No view rows found'),
+              'error',
+            );
             return;
           }
-          addToast(`SQL: ${data.sql}`, 'info');
+          addToast(
+            t('sql_query', 'SQL: {{query}}', { query: data.sql }),
+            'info',
+          );
           const row = data.rows[0];
-          addToast(`Result: ${JSON.stringify(row)}`, 'info');
+          addToast(
+            t('sql_result', 'Result: {{result}}', {
+              result: JSON.stringify(row),
+            }),
+            'info',
+          );
           setEditing((e) => {
             if (!e) return e;
             const updated = { ...e };
@@ -1122,7 +1224,12 @@ const TableManager = forwardRef(function TableManager({
           });
         })
         .catch((err) => {
-          addToast(`View lookup failed: ${err.message}`, 'error');
+          addToast(
+            t('view_lookup_failed', 'View lookup failed: {{message}}', {
+              message: err.message,
+            }),
+            'error',
+          );
         });
     });
   }
@@ -1179,7 +1286,12 @@ const TableManager = forwardRef(function TableManager({
     const required = formConfig?.requiredFields || [];
     for (const f of required) {
       if (merged[f] === undefined || merged[f] === '') {
-        addToast('Please fill ' + (labels[f] || f), 'error');
+        addToast(
+          t('please_fill_field', 'Please fill {{field}}', {
+            field: labels[f] || f,
+          }),
+          'error',
+        );
         return;
       }
     }
@@ -1197,7 +1309,10 @@ const TableManager = forwardRef(function TableManager({
     if (requestType === 'edit') {
       const reason = await promptRequestReason();
       if (!reason || !reason.trim()) {
-        addToast('Request reason is required', 'error');
+        addToast(
+          t('request_reason_required', 'Request reason is required'),
+          'error',
+        );
         return;
       }
       try {
@@ -1214,19 +1329,25 @@ const TableManager = forwardRef(function TableManager({
           }),
         });
         if (res.ok) {
-          addToast('Edit request submitted', 'success');
+          addToast(
+            t('edit_request_submitted', 'Edit request submitted'),
+            'success',
+          );
           setShowForm(false);
           setEditing(null);
           setIsAdding(false);
           setGridRows([]);
           setRequestType(null);
         } else if (res.status === 409) {
-          addToast('A similar request is already pending', 'error');
+          addToast(
+            t('similar_request_pending', 'A similar request is already pending'),
+            'error',
+          );
         } else {
-          addToast('Edit request failed', 'error');
+          addToast(t('edit_request_failed', 'Edit request failed'), 'error');
         }
       } catch {
-        addToast('Edit request failed', 'error');
+        addToast(t('edit_request_failed', 'Edit request failed'), 'error');
       }
       return;
     }
@@ -1363,9 +1484,9 @@ const TableManager = forwardRef(function TableManager({
       setCount(data.total ?? data.count ?? 0);
       logRowsMemory(rows);
       setSelectedRows(new Set());
-      addToast('Deleted', 'success');
+      addToast(t('deleted', 'Deleted'), 'success');
     } else {
-      let message = 'Delete failed';
+      let message = t('delete_failed', 'Delete failed');
       try {
         const data = await res.json();
         if (data && data.message) message += `: ${data.message}`;
@@ -1379,7 +1500,10 @@ const TableManager = forwardRef(function TableManager({
   async function handleDelete(row) {
     const id = getRowId(row);
     if (id === undefined) {
-      addToast('Delete failed: table has no primary key', 'error');
+      addToast(
+        t('delete_failed_no_primary_key', 'Delete failed: table has no primary key'),
+        'error',
+      );
       return;
     }
     try {
@@ -1397,27 +1521,42 @@ const TableManager = forwardRef(function TableManager({
           setShowCascade(true);
           return;
         }
-        if (!window.confirm('Delete row?')) return;
+        if (!window.confirm(t('delete_row_question', 'Delete row?')))
+          return;
         await executeDeleteRow(id, false);
         return;
       }
     } catch {
-      addToast('Failed to check references', 'error');
+      addToast(
+        t('failed_check_references', 'Failed to check references'),
+        'error',
+      );
     }
-    if (!window.confirm('Delete row and related records?')) return;
+    if (
+      !window.confirm(
+        t('delete_row_related_question', 'Delete row and related records?'),
+      )
+    )
+      return;
     await executeDeleteRow(id, true);
   }
 
   async function handleRequestDelete(row) {
     const id = getRowId(row);
     if (id === undefined) {
-      addToast('Delete request failed: table has no primary key', 'error');
+      addToast(
+        t('delete_request_failed_no_primary_key', 'Delete request failed: table has no primary key'),
+        'error',
+      );
       return;
     }
-    if (!window.confirm('Request delete?')) return;
+    if (!window.confirm(t('request_delete_question', 'Request delete?'))) return;
     const reason = await promptRequestReason();
     if (!reason || !reason.trim()) {
-      addToast('Request reason is required', 'error');
+      addToast(
+        t('request_reason_required', 'Request reason is required'),
+        'error',
+      );
       return;
     }
     try {
@@ -1439,12 +1578,20 @@ const TableManager = forwardRef(function TableManager({
           proposed_data: cleaned,
         }),
       });
-      if (res.ok) addToast('Delete request submitted', 'success');
+      if (res.ok)
+        addToast(
+          t('delete_request_submitted', 'Delete request submitted'),
+          'success',
+        );
       else if (res.status === 409)
-        addToast('A similar request is already pending', 'error');
-      else addToast('Delete request failed', 'error');
+        addToast(
+          t('similar_request_pending', 'A similar request is already pending'),
+          'error',
+        );
+      else
+        addToast(t('delete_request_failed', 'Delete request failed'), 'error');
     } catch {
-      addToast('Delete request failed', 'error');
+      addToast(t('delete_request_failed', 'Delete request failed'), 'error');
     }
   }
 
@@ -1461,7 +1608,10 @@ const TableManager = forwardRef(function TableManager({
     let hasRelated = false;
     for (const id of selectedRows) {
       if (id === undefined) {
-        addToast('Delete failed: table has no primary key', 'error');
+        addToast(
+          t('delete_failed_no_primary_key', 'Delete failed: table has no primary key'),
+          'error',
+        );
         return;
       }
       try {
@@ -1481,7 +1631,10 @@ const TableManager = forwardRef(function TableManager({
           hasRelated = true;
         }
       } catch {
-        addToast('Failed to check references', 'error');
+        addToast(
+          t('failed_check_references', 'Failed to check references'),
+          'error',
+        );
         cascadeMap.set(id, true);
         hasRelated = true;
       }
@@ -1489,8 +1642,16 @@ const TableManager = forwardRef(function TableManager({
 
     const count = selectedRows.size;
     const confirmMsg = hasRelated
-      ? `Delete ${count} selected rows and related records?`
-      : `Delete ${count} selected rows?`;
+      ? t(
+          'delete_selected_rows_related_question',
+          'Delete {{count}} selected rows and related records?',
+          { count },
+        )
+      : t(
+          'delete_selected_rows_question',
+          'Delete {{count}} selected rows?',
+          { count },
+        );
     if (!window.confirm(confirmMsg)) return;
 
     for (const id of selectedRows) {
@@ -1502,7 +1663,7 @@ const TableManager = forwardRef(function TableManager({
         { method: 'DELETE', credentials: 'include' }
       );
       if (!res.ok) {
-        let message = `Delete failed for ${id}`;
+        let message = t('delete_failed_for', 'Delete failed for {{id}}', { id });
         try {
           const data = await res.json();
           if (data && data.message) message += `: ${data.message}`;
@@ -1534,17 +1695,23 @@ const TableManager = forwardRef(function TableManager({
       try {
         data = await dataRes.json();
       } catch {
-        addToast('Failed to parse table data', 'error');
+        addToast(
+          t('failed_parse_table_data', 'Failed to parse table data'),
+          'error',
+        );
       }
     } else {
-      addToast('Failed to load table data', 'error');
+      addToast(
+        t('failed_load_table_data', 'Failed to load table data'),
+        'error',
+      );
     }
     const rows = data.rows || [];
     setRows(rows);
     setCount(data.total ?? data.count ?? 0);
     logRowsMemory(rows);
     setSelectedRows(new Set());
-    addToast('Deleted', 'success');
+    addToast(t('deleted', 'Deleted'), 'success');
   }
 
   function refreshRows() {
