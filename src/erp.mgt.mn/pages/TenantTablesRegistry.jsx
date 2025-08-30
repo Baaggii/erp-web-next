@@ -527,41 +527,51 @@ export default function TenantTablesRegistry() {
                     <div style={{ marginLeft: '1rem', marginTop: '0.25rem' }}>
                       {tableRecords[t.tableName]?.loading ? (
                         <p>{t('loading', 'Loading...')}</p>
-                      ) : tableRecords[t.tableName]?.rows.length ? (
-                        <table style={{ borderCollapse: 'collapse' }}>
-                          <thead>
-                            <tr>
-                              <th style={styles.th}></th>
-                              {tableRecords[t.tableName].columns.map((c) => (
-                                <th key={c} style={styles.th}>
-                                  {c}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {tableRecords[t.tableName].rows.map((r) => (
-                              <tr key={r.id}>
-                                <td style={styles.td}>
-                                  <input
-                                    type="checkbox"
-                                    checked={tableRecords[t.tableName].selected.has(r.id)}
-                                    onChange={(e) =>
-                                      handleRecordSelect(t.tableName, r.id, e.target.checked)
-                                    }
-                                  />
-                                </td>
-                                {tableRecords[t.tableName].columns.map((c) => (
-                                  <td key={c} style={styles.td}>
-                                    {String(r[c])}
-                                  </td>
+                      ) : tableRecords[t.tableName]?.columns &&
+                        tableRecords[t.tableName]?.rows ? (
+                        tableRecords[t.tableName].rows.length ? (
+                          <table style={{ borderCollapse: 'collapse' }}>
+                            <thead>
+                              <tr>
+                                <th style={styles.th}></th>
+                                {(tableRecords[t.tableName]?.columns ?? []).map((c) => (
+                                  <th key={c} style={styles.th}>
+                                    {c}
+                                  </th>
                                 ))}
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                            </thead>
+                            <tbody>
+                              {(tableRecords[t.tableName]?.rows ?? []).map((r) => (
+                                <tr key={r.id}>
+                                  <td style={styles.td}>
+                                    <input
+                                      type="checkbox"
+                                      checked={!!tableRecords[t.tableName]?.selected?.has(r.id)}
+                                      onChange={(e) =>
+                                        handleRecordSelect(t.tableName, r.id, e.target.checked)
+                                      }
+                                    />
+                                  </td>
+                                  {(tableRecords[t.tableName]?.columns ?? []).map((c) => (
+                                    <td key={c} style={styles.td}>
+                                      {String(r[c])}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        ) : (
+                          <p>{t('noRecords', 'No records')}</p>
+                        )
                       ) : (
-                        <p>{t('noRecords', 'No records')}</p>
+                        <p>
+                          {t(
+                            'loadFailed',
+                            `Failed to load records for ${t.tableName}`
+                          )}
+                        </p>
                       )}
                     </div>
                   )}
