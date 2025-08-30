@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useContext } from 'react';
 import MosaicLayout from '../components/MosaicLayout.jsx';
+import I18nContext from '../context/I18nContext.jsx';
 
 const initialLayout = {
   direction: 'row',
@@ -19,12 +20,13 @@ const initialLayout = {
 };
 
 export default function Dashboard() {
+  const { t } = useContext(I18nContext);
   useEffect(() => {
     if (window.erpDebug) console.warn('Mounted: Dashboard');
   }, []);
   return (
     <div>
-      <h2>Самбар</h2>
+      <h2>{t('dashboard', 'Dashboard')}</h2>
       <MosaicLayout initialLayout={initialLayout} />
     </div>
   );
