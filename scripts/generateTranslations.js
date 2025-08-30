@@ -3,6 +3,7 @@ import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
 import OpenAI from '../api-server/utils/openaiClient.js';
+import { slugify } from '../api-server/utils/slugify.js';
 
 const languages = ['en', 'mn', 'ja', 'ko', 'zh', 'es', 'de', 'fr', 'ru'];
 const languageNames = {
@@ -17,6 +18,7 @@ const languageNames = {
   ru: 'Russian',
 };
 const headerMappingsPath = path.resolve('config/headerMappings.json');
+const transactionFormsPath = path.resolve('config/transactionForms.json');
 const localesDir = path.resolve('src/erp.mgt.mn/locales');
 const TIMEOUT_MS = 7000;
 
@@ -229,6 +231,51 @@ async function main() {
       headerMappingsUpdated = true;
     }
     addEntry(key, text, sourceLang, 'page');
+  }
+
+  try {
+    const formConfigs = JSON.parse(
+      fs.readFileSync(transactionFormsPath, 'utf8'),
+    );
+    for (const forms of Object.values(formConfigs)) {
+      if (!forms || typeof forms !== 'object') continue;
+      for (const [formName, config] of Object.entries(forms)) {
+        const formSlug = slugify(formName);
+        const sourceLang = /[\u0400-\u04FF]/.test(formName) ? 'mn' : 'en';
+        addEntry(`form.${formSlug}`, formName, sourceLang, 'form');
+
+        function walk(obj, pathSegs) {
+          if (!obj || typeof obj !== 'object') return;
+          for (const [k, v] of Object.entries(obj)) {
+            const segs = [...pathSegs, slugify(k)];
+            if (typeof v === 'string') {
+              if (/^[a-z0-9_.]+$/.test(v)) continue;
+              const lang = /[\u0400-\u04FF]/.test(v) ? 'mn' : 'en';
+              addEntry(`form.${segs.join('.')}`, v, lang, 'form');
+            } else if (Array.isArray(v)) {
+              for (const item of v) {
+                if (item && typeof item === 'object') {
+                  walk(item, segs);
+                } else if (typeof item === 'string' && !/^[a-z0-9_.]+$/.test(item)) {
+                  const lang = /[\u0400-\u04FF]/.test(item) ? 'mn' : 'en';
+                  addEntry(
+                    `form.${segs.join('.')}.${slugify(item)}`,
+                    item,
+                    lang,
+                    'form',
+                  );
+                }
+              }
+            } else {
+              walk(v, segs);
+            }
+          }
+        }
+        walk(config, [formSlug]);
+      }
+    }
+  } catch (err) {
+    console.warn(`[gen-i18n] Failed to load forms: ${err.message}`);
   }
 
   if (headerMappingsUpdated) {
