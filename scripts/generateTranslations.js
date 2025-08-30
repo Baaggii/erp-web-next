@@ -25,6 +25,29 @@ function writeLocaleFile(lang, obj) {
   console.log(`[gen-i18n] wrote ${file} (${Object.keys(ordered).length} keys)`);
 }
 
+function collectTPairs(dir) {
+  const files = [];
+  function walk(d) {
+    for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+      const full = path.join(d, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.(jsx?|tsx?)$/.test(entry.name)) files.push(full);
+    }
+  }
+  walk(dir);
+
+  const regex = /\bt\(\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]\s*\)/g;
+  const pairs = [];
+  for (const file of files) {
+    const content = fs.readFileSync(file, 'utf8');
+    let match;
+    while ((match = regex.exec(content))) {
+      pairs.push({ key: match[1], text: match[2] });
+    }
+  }
+  return pairs;
+}
+
 /* ---------------- Providers ---------------- */
 
 async function translateWithGoogle(text, to, from, key) {
@@ -143,9 +166,20 @@ async function translate(text, to, from, key) {
 
 async function main() {
   console.log('[gen-i18n] START');
-
   const base = JSON.parse(fs.readFileSync(headerMappingsPath, 'utf8'));
-  const entries = [];
+  const entryMap = new Map();
+
+  function addEntry(key, sourceText, sourceLang) {
+    if (
+      typeof sourceText !== 'string' ||
+      (!/[\u0400-\u04FF]/.test(sourceText) && !/[A-Za-z]/.test(sourceText)) ||
+      sourceText.trim().toLowerCase() === key.toLowerCase() ||
+      entryMap.has(key)
+    ) {
+      return;
+    }
+    entryMap.set(key, { key, sourceText, sourceLang });
+  }
 
   for (const key of Object.keys(base)) {
     const value = base[key];
@@ -158,16 +192,16 @@ async function main() {
       sourceText = value;
       sourceLang = /[\u0400-\u04FF]/.test(sourceText) ? 'mn' : 'en';
     }
-
-    if (
-      typeof sourceText !== 'string' ||
-      (!/[\u0400-\u04FF]/.test(sourceText) && !/[A-Za-z]/.test(sourceText)) ||
-      sourceText.trim().toLowerCase() === key.toLowerCase()
-    ) {
-      continue;
-    }
-    entries.push({ key, sourceText, sourceLang });
+    addEntry(key, sourceText, sourceLang);
   }
+
+  const tPairs = collectTPairs(path.resolve('src'));
+  for (const { key, text } of tPairs) {
+    const sourceLang = /[\u0400-\u04FF]/.test(text) ? 'mn' : 'en';
+    addEntry(key, text, sourceLang);
+  }
+
+  const entries = Array.from(entryMap.values());
 
   await fs.promises.mkdir(localesDir, { recursive: true });
   const locales = {};
