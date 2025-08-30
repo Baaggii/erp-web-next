@@ -105,7 +105,7 @@ export async function seedExistingCompanies(req, res, next) {
         recordMap[rec.table] = rec.ids;
       }
     }
-    const companies = await listCompanies();
+    const companies = await listCompanies(req.user.empid);
     for (const { id } of companies) {
       if (id === GLOBAL_COMPANY_ID) continue;
       await seedTenantTables(id, tables, recordMap, overwrite, req.user.empid);

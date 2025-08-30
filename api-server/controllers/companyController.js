@@ -8,7 +8,7 @@ import {
 
 export async function listCompaniesHandler(req, res, next) {
   try {
-    const companies = await listCompanies();
+    const companies = await listCompanies(req.user.empid);
     res.json(companies);
   } catch (err) {
     next(err);
