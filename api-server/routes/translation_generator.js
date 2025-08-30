@@ -30,7 +30,7 @@ router.get('/', requireAuth, async (req, res, next) => {
 
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
-    const scriptPath = path.resolve(__dirname, '../../scripts/generateTranslations.js');
+    const scriptPath = path.resolve(__dirname, '../../scripts/generateTranslations.cli.js');
 
     const sendError = (err) => {
       res.write(`event: generator_error\ndata: ${err.message}\n\n`);
