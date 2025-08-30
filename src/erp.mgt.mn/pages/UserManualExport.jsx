@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useContext } from "react";
 import { marked } from "marked";
-import { jsPDF } from "jspdf";
+import PDFDocument from "pdfkit";
+import blobStream from "blob-stream";
 import I18nContext from "../context/I18nContext.jsx";
 import { AuthContext } from "../context/AuthContext.jsx";
 import { useToast } from "../context/ToastContext.jsx";
@@ -18,6 +19,8 @@ export default function UserManualExport() {
   const [userLevels, setUserLevels] = useState([]);
   const [levelActions, setLevelActions] = useState({});
   const [markdown, setMarkdown] = useState("");
+  const [selectedLevel, setSelectedLevel] = useState("");
+  const [manualSections, setManualSections] = useState({});
 
   useEffect(() => {
     async function load() {
@@ -84,6 +87,27 @@ export default function UserManualExport() {
           "error",
         );
       }
+
+      try {
+        const res = await fetch("/manuals/manifest.json");
+        if (res.ok) {
+          const manifest = await res.json();
+          const sections = {};
+          for (const [mKey, entry] of Object.entries(manifest || {})) {
+            if (entry.markdown) {
+              try {
+                const mdRes = await fetch(`/manuals/${entry.markdown}`);
+                if (mdRes.ok) sections[mKey] = await mdRes.text();
+              } catch {
+                /* ignore */
+              }
+            }
+          }
+          setManualSections(sections);
+        }
+      } catch (err) {
+        console.error(err);
+      }
     }
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -91,24 +115,40 @@ export default function UserManualExport() {
 
   useEffect(() => {
     setMarkdown(buildMarkdown());
-  }, [manual, userLevels, levelActions]);
+  }, [manual, userLevels, levelActions, selectedLevel, manualSections]);
 
   if (!hasAdmin) {
     return <p>{t("accessDenied", "Access denied")}</p>;
   }
 
+  function describeKey(key) {
+    return key
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
   function translate(key) {
     const mapped = headerMappings[key] || key;
-    return t(mapped, mapped);
+    const lbl = t(mapped);
+    return lbl === mapped ? describeKey(mapped) : lbl;
   }
 
   function buildMarkdown() {
+    const allowed = selectedLevel ? levelActions[selectedLevel] || {} : null;
     let md = `# ${t("userManual", "User Manual")}\n\n`;
     md += `## ${t("forms", "Forms")}\n`;
     for (const [mKey, mod] of Object.entries(manual)) {
-      if (!mod.forms.length) continue;
+      if (allowed && !allowed[mKey]) continue;
+      const allowedForms = allowed
+        ? Object.keys(allowed[mKey]?.forms || {})
+        : mod.forms.map((f) => f.key);
+      const forms = mod.forms.filter((f) => allowedForms.includes(f.key));
+      if (!forms.length && !manualSections[mKey]) continue;
       md += `### ${translate(mKey)}\n`;
-      for (const form of mod.forms) {
+      if (manualSections[mKey]) {
+        md += `${manualSections[mKey]}\n`;
+      }
+      for (const form of forms) {
         md += `#### ${translate(form.key)}\n`;
         md += `${t(
           "formIntro",
@@ -145,9 +185,16 @@ export default function UserManualExport() {
 
     md += `\n## ${t("reports", "Reports")}\n`;
     for (const [mKey, mod] of Object.entries(manual)) {
-      if (!mod.reports.length) continue;
+      if (allowed && !allowed[mKey]) continue;
+      const allowedReports = allowed
+        ? Object.keys(allowed[mKey]?.reports || {})
+        : mod.reports.map((r) => (typeof r === "string" ? r : r.key));
+      const reports = mod.reports.filter((r) =>
+        allowedReports.includes(typeof r === "string" ? r : r.key),
+      );
+      if (!reports.length) continue;
       md += `### ${translate(mKey)}\n`;
-      for (const r of mod.reports) {
+      for (const r of reports) {
         const k = typeof r === "string" ? r : r.key;
         const sentence = t(
           "reportPurposeDetail",
@@ -159,14 +206,32 @@ export default function UserManualExport() {
 
     md += `\n## ${t("settings", "Settings")}\n`;
     for (const [mKey, mod] of Object.entries(manual)) {
-      if (!mod.buttons.length && !mod.functions.length) continue;
+      if (allowed && !allowed[mKey]) continue;
+      const allowedBtns = new Set();
+      const allowedFns = new Set();
+      if (allowed) {
+        const modAllowed = allowed[mKey] || {};
+        Object.values(modAllowed.forms || {}).forEach((f) => {
+          Object.keys(f.buttons || {}).forEach((b) => allowedBtns.add(b));
+          Object.keys(f.functions || {}).forEach((fn) => allowedFns.add(fn));
+        });
+        Object.keys(allowed.buttons || {}).forEach((b) => allowedBtns.add(b));
+        Object.keys(allowed.functions || {}).forEach((fn) => allowedFns.add(fn));
+      }
+      const buttons = mod.buttons.filter((b) =>
+        allowed ? allowedBtns.has(b) : true,
+      );
+      const functions = mod.functions.filter((fn) =>
+        allowed ? allowedFns.has(fn) : true,
+      );
+      if (!buttons.length && !functions.length) continue;
       md += `### ${translate(mKey)}\n`;
-      if (mod.buttons.length) {
+      if (buttons.length) {
         md += `${t(
           "settingsButtonsIntro",
           "The following buttons influence configuration and require careful handling:",
         )}\n`;
-        mod.buttons.forEach((b) => {
+        buttons.forEach((b) => {
           const sentence = t(
             "settingsButtonDetail",
             `The ${translate(
@@ -178,12 +243,12 @@ export default function UserManualExport() {
           md += `- ${sentence}\n`;
         });
       }
-      if (mod.functions.length) {
+      if (functions.length) {
         md += `${t(
           "settingsFunctionsIntro",
           "These functions adjust system behaviour and should be used with understanding of their effects:",
         )}\n`;
-        mod.functions.forEach((fn) => {
+        functions.forEach((fn) => {
           const sentence = t(
             "settingsFunctionDetail",
             `The ${translate(
@@ -206,7 +271,10 @@ export default function UserManualExport() {
       "Buttons",
     )} | ${t("functions", "Functions")} |\n`;
     md += `| --- | --- | --- | --- | --- | --- |\n`;
-    userLevels.forEach((lvl) => {
+    const levels = selectedLevel
+      ? userLevels.filter((l) => l.id === selectedLevel)
+      : userLevels;
+    levels.forEach((lvl) => {
       const acts = levelActions[lvl.id] || {};
       const moduleEntries = Object.entries(acts).filter(
         ([k]) => !["buttons", "functions", "api", "permissions"].includes(k),
@@ -236,18 +304,19 @@ export default function UserManualExport() {
   }
 
   function exportPdf() {
-    const doc = new jsPDF();
+    const doc = new PDFDocument();
+    const stream = doc.pipe(blobStream());
     const lines = markdown.split("\n");
-    let y = 10;
-    for (const line of lines) {
-      doc.text(line, 10, y);
-      y += 8;
-      if (y > 280) {
-        doc.addPage();
-        y = 10;
-      }
-    }
-    doc.save("user-manual.pdf");
+    lines.forEach((line) => doc.text(line));
+    doc.end();
+    stream.on("finish", () => {
+      const url = stream.toBlobURL("application/pdf");
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "user-manual.pdf";
+      a.click();
+      URL.revokeObjectURL(url);
+    });
   }
 
   const html = marked.parse(markdown);
@@ -255,6 +324,23 @@ export default function UserManualExport() {
   return (
     <div>
       <h2>{t("userManual", "User Manual")}</h2>
+      <div style={{ marginBottom: "1rem" }}>
+        <label>
+          {t("userLevel", "User Level")}: 
+          <select
+            value={selectedLevel}
+            onChange={(e) => setSelectedLevel(e.target.value)}
+            style={{ marginLeft: "0.5rem" }}
+          >
+            <option value="">{t("all", "All")}</option>
+            {userLevels.map((lvl) => (
+              <option key={lvl.id} value={lvl.id}>
+                {lvl.name || lvl.id}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       <div style={{ marginBottom: "1rem" }}>
         <button onClick={exportMarkdown}>{t("exportMarkdown", "Export Markdown")}</button>
         <button onClick={exportPdf} style={{ marginLeft: "0.5rem" }}>
