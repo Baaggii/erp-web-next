@@ -91,6 +91,11 @@ export default function ERPLayout() {
       map[modulePath(moduleMap.settings, moduleMap)] = t("settings", "Settings");
     if (moduleMap.users)
       map[modulePath(moduleMap.users, moduleMap)] = t("settings_users", "Users");
+    if (moduleMap.user_settings)
+      map[modulePath(moduleMap.user_settings, moduleMap)] = t(
+        "settings_user_settings",
+        "User Settings",
+      );
     if (moduleMap.role_permissions)
       map[modulePath(moduleMap.role_permissions, moduleMap)] = t(
         "settings_role_permissions",
