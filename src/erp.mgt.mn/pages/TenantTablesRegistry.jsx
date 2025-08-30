@@ -406,49 +406,49 @@ export default function TenantTablesRegistry() {
             </tr>
           </thead>
           <tbody>
-            {tables.map((t, idx) => (
-              <React.Fragment key={t.tableName}>
+            {tables.map((table, idx) => (
+              <React.Fragment key={table.tableName}>
                 <tr>
-                  <td style={styles.td}>{t.tableName}</td>
+                  <td style={styles.td}>{table.tableName}</td>
                   <td style={styles.td}>
                     <input
                       type="checkbox"
-                      checked={!!t.isShared}
+                      checked={!!table.isShared}
                       onChange={(e) => handleChange(idx, 'isShared', e.target.checked)}
                     />
                   </td>
                   <td style={styles.td}>
                     <input
                       type="checkbox"
-                      checked={!!t.seedOnCreate}
+                      checked={!!table.seedOnCreate}
                       onChange={(e) => handleChange(idx, 'seedOnCreate', e.target.checked)}
                     />
                   </td>
                   <td style={styles.td}>
                     <button
-                      onClick={() => handleSave(t)}
-                      disabled={saving[t.tableName]}
+                      onClick={() => handleSave(table)}
+                      disabled={saving[table.tableName]}
                     >
                       Save
                     </button>{' '}
-                    <button onClick={() => handleToggleExpand(t.tableName)}>
-                      {expandedTable === t.tableName ? 'Collapse' : 'Expand'}
+                    <button onClick={() => handleToggleExpand(table.tableName)}>
+                      {expandedTable === table.tableName ? 'Collapse' : 'Expand'}
                     </button>
                   </td>
                 </tr>
-                {expandedTable === t.tableName && (
+                {expandedTable === table.tableName && (
                   <tr>
                     <td colSpan={4} style={{ padding: '0.5rem' }}>
-                      {defaultRows[t.tableName]?.loading ? (
+                      {defaultRows[table.tableName]?.loading ? (
                         <p>{t('loading', 'Loading...')}</p>
-                      ) : defaultRows[t.tableName]?.error ? (
-                        <p>Error: {defaultRows[t.tableName].error}</p>
-                      ) : defaultRows[t.tableName]?.rows.length ? (
+                      ) : defaultRows[table.tableName]?.error ? (
+                        <p>Error: {defaultRows[table.tableName].error}</p>
+                      ) : defaultRows[table.tableName]?.rows.length ? (
                         <div>
                           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                             <thead>
                               <tr style={{ backgroundColor: '#f3f4f6' }}>
-                                {columns[t.tableName]?.map((c) => (
+                                {columns[table.tableName]?.map((c) => (
                                   <th key={c} style={styles.th}>
                                     {c}
                                   </th>
@@ -456,9 +456,9 @@ export default function TenantTablesRegistry() {
                               </tr>
                             </thead>
                             <tbody>
-                              {defaultRows[t.tableName].rows.map((r, i) => (
+                              {defaultRows[table.tableName].rows.map((r, i) => (
                                 <tr key={i}>
-                                  {columns[t.tableName]?.map((c) => (
+                                  {columns[table.tableName]?.map((c) => (
                                     <td key={c} style={styles.td}>
                                       {String(r[c])}
                                     </td>
@@ -513,28 +513,28 @@ export default function TenantTablesRegistry() {
           <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
             {tables
               ?.filter((t) => t.seedOnCreate)
-              .map((t) => (
-                <div key={t.tableName} style={{ marginBottom: '0.5rem' }}>
+              .map((table) => (
+                <div key={table.tableName} style={{ marginBottom: '0.5rem' }}>
                   <label>
                     <input
                       type="checkbox"
-                      checked={!!selectedTables[t.tableName]}
-                      onChange={(e) => handleTableSelect(t.tableName, e.target.checked)}
+                      checked={!!selectedTables[table.tableName]}
+                      onChange={(e) => handleTableSelect(table.tableName, e.target.checked)}
                     />{' '}
-                    {t.tableName}
+                    {table.tableName}
                   </label>
-                  {selectedTables[t.tableName] && (
+                  {selectedTables[table.tableName] && (
                     <div style={{ marginLeft: '1rem', marginTop: '0.25rem' }}>
-                      {tableRecords[t.tableName]?.loading ? (
+                      {tableRecords[table.tableName]?.loading ? (
                         <p>{t('loading', 'Loading...')}</p>
-                      ) : tableRecords[t.tableName]?.columns &&
-                        tableRecords[t.tableName]?.rows ? (
-                        tableRecords[t.tableName].rows.length ? (
+                      ) : tableRecords[table.tableName]?.columns &&
+                        tableRecords[table.tableName]?.rows ? (
+                        tableRecords[table.tableName].rows.length ? (
                           <table style={{ borderCollapse: 'collapse' }}>
                             <thead>
                               <tr>
                                 <th style={styles.th}></th>
-                                {(tableRecords[t.tableName]?.columns ?? []).map((c) => (
+                                {(tableRecords[table.tableName]?.columns ?? []).map((c) => (
                                   <th key={c} style={styles.th}>
                                     {c}
                                   </th>
@@ -542,18 +542,18 @@ export default function TenantTablesRegistry() {
                               </tr>
                             </thead>
                             <tbody>
-                              {(tableRecords[t.tableName]?.rows ?? []).map((r) => (
+                              {(tableRecords[table.tableName]?.rows ?? []).map((r) => (
                                 <tr key={r.id}>
                                   <td style={styles.td}>
                                     <input
                                       type="checkbox"
-                                      checked={!!tableRecords[t.tableName]?.selected?.has(r.id)}
+                                      checked={!!tableRecords[table.tableName]?.selected?.has(r.id)}
                                       onChange={(e) =>
-                                        handleRecordSelect(t.tableName, r.id, e.target.checked)
+                                        handleRecordSelect(table.tableName, r.id, e.target.checked)
                                       }
                                     />
                                   </td>
-                                  {(tableRecords[t.tableName]?.columns ?? []).map((c) => (
+                                  {(tableRecords[table.tableName]?.columns ?? []).map((c) => (
                                     <td key={c} style={styles.td}>
                                       {String(r[c])}
                                     </td>
@@ -569,7 +569,7 @@ export default function TenantTablesRegistry() {
                         <p>
                           {t(
                             'loadFailed',
-                            `Failed to load records for ${t.tableName}`
+                            `Failed to load records for ${table.tableName}`
                           )}
                         </p>
                       )}
