@@ -38,7 +38,6 @@ function createRes() {
 // Allow company creation when the user's level grants `system_settings`.
 test('allows POST /api/companies when user level has system_settings', async () => {
   let insertArgs;
-  let assignArgs;
   const restore = mockPoolSequential([
     [[{ action: 'permission', action_key: 'system_settings' }]],
     [[
@@ -51,10 +50,6 @@ test('allows POST /api/companies when user level has system_settings', async () 
     (sql, params) => {
       insertArgs = [sql, params];
       return [{ insertId: 1 }];
-    },
-    (sql, params) => {
-      assignArgs = [sql, params];
-      return [{ affectedRows: 1 }];
     },
   ]);
   const req = {
@@ -78,8 +73,6 @@ test('allows POST /api/companies when user level has system_settings', async () 
   assert.ok(insertArgs[0].includes('`Address`'));
   assert.ok(insertArgs[0].includes('`Telephone`'));
   assert.deepEqual(insertArgs[1], ['companies', 'NewCo', '123', 'Addr', '555', 1]);
-  assert.ok(assignArgs[0].startsWith('INSERT INTO user_companies'));
-  assert.deepEqual(assignArgs[1], [1, 1, null, null, 1]);
 });
 
 // Deny creation when the user's level lacks `system_settings`.

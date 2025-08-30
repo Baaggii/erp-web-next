@@ -58,7 +58,6 @@ test('createCompanyHandler allows system admin with companyId=0', async () => {
     [{ insertId: 5 }],
     [[]],
     [[]],
-    [{ affectedRows: 1 }],
   ]);
   const req = {
     body: {
@@ -116,9 +115,6 @@ test('createCompanyHandler forwards seedRecords and overwrite', async () => {
     }
     if (/INSERT INTO user_level_permissions/.test(sql)) {
       return [[]];
-    }
-    if (/INSERT INTO user_companies/.test(sql)) {
-      return [{ affectedRows: 1 }];
     }
     return [[]];
   };

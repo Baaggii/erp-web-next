@@ -1,7 +1,6 @@
 import {
   listCompanies,
   insertTableRow,
-  assignCompanyToUser,
   getEmploymentSession,
   getUserLevelActions,
 } from '../../db/index.js';
@@ -44,9 +43,6 @@ export async function createCompanyHandler(req, res, next) {
       req.user.empid,
     );
     res.locals.insertId = result?.id;
-    if (result?.id) {
-      await assignCompanyToUser(req.user.empid, result.id, null, null, req.user.empid);
-    }
     res.status(201).json(result);
   } catch (err) {
     next(err);
