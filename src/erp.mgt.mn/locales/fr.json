@@ -29,5 +29,12 @@
   "low_stock": "Stock faible",
   "new_orders": "Nouvelles commandes",
   "no_activity": "Aucune activité à afficher.",
-  "plans_coming_soon": "Contenu des plans à venir."
+  "plans_coming_soon": "Contenu des plans à venir.",
+  "settings_enable_tooltips": "Activer les info-bulles",
+  "tooltip": {
+    "organization": "Sélectionner l'organisation",
+    "date": "Date de transaction",
+    "firstName": "Prénom",
+    "lastName": "Nom de famille"
+  }
 }

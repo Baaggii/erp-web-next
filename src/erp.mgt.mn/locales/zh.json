@@ -29,5 +29,12 @@
   "low_stock": "库存不足",
   "new_orders": "新订单",
   "no_activity": "没有可显示的活动。",
-  "plans_coming_soon": "计划内容即将推出。"
+  "plans_coming_soon": "计划内容即将推出。",
+  "settings_enable_tooltips": "启用提示",
+  "tooltip": {
+    "organization": "选择组织",
+    "date": "交易日期",
+    "firstName": "名",
+    "lastName": "姓"
+  }
 }

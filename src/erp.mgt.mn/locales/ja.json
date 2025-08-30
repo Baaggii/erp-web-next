@@ -29,5 +29,12 @@
   "low_stock": "在庫不足",
   "new_orders": "新規注文",
   "no_activity": "表示する活動がありません。",
-  "plans_coming_soon": "計画の内容は近日公開予定です。"
+  "plans_coming_soon": "計画の内容は近日公開予定です。",
+  "settings_enable_tooltips": "ツールチップを有効にする",
+  "tooltip": {
+    "organization": "組織を選択",
+    "date": "取引日",
+    "firstName": "名",
+    "lastName": "姓"
+  }
 }

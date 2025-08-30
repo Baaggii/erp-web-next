@@ -29,5 +29,12 @@
   "low_stock": "재고 부족",
   "new_orders": "신규 주문",
   "no_activity": "표시할 활동이 없습니다.",
-  "plans_coming_soon": "계획 콘텐츠는 곧 제공됩니다."
+  "plans_coming_soon": "계획 콘텐츠는 곧 제공됩니다.",
+  "settings_enable_tooltips": "툴팁 활성화",
+  "tooltip": {
+    "organization": "조직 선택",
+    "date": "거래 날짜",
+    "firstName": "이름",
+    "lastName": "성"
+  }
 }
