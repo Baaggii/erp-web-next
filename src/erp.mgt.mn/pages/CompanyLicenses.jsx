@@ -47,6 +47,9 @@ export default function CompanyLicenses() {
   return (
     <div>
       <h2>Лиценз</h2>
+      <p style={{ fontSize: '0.875rem', color: '#4b5563' }}>
+        Зөвхөн таны үүсгэсэн компаниудын лицензүүдийг харуулна.
+      </p>
       <input
         type="text"
         placeholder="Компанийн ID-р шүүх"
@@ -56,7 +59,10 @@ export default function CompanyLicenses() {
       />
       <button onClick={handleFilter}>Шүүх</button>
       {licenses.length === 0 ? (
-        <p>Лиценз алга.</p>
+        <p>
+          Лиценз олдсонгүй. Таны үүсгэсэн компаниудад лиценз тохируулаагүй
+          байна.
+        </p>
       ) : (
         <div className="table-container overflow-x-auto" style={{ maxHeight: '70vh' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.5rem' }}>
