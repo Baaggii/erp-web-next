@@ -1,11 +1,13 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useContext } from 'react';
 import { useModules, refreshModules } from '../hooks/useModules.js';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { debugLog } from '../utils/debug.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
+import I18nContext from '../context/I18nContext.jsx';
 
 export default function FormsManagement() {
+  const { t } = useContext(I18nContext);
   const [tables, setTables] = useState([]);
   const [table, setTable] = useState('');
   const [names, setNames] = useState([]);
@@ -489,7 +491,7 @@ export default function FormsManagement() {
 
   return (
     <div>
-      <h2>Маягтын удирдлага</h2>
+      <h2>{t('settings_forms_management', 'Forms Management')}</h2>
       <div style={{ marginBottom: '1rem' }}>
         <label>
           Module:
