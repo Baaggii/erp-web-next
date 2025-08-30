@@ -29,6 +29,9 @@ export function GeneralSettings() {
     const val = localStorage.getItem('tooltipsEnabled');
     return val !== 'false';
   });
+  const [toursEnabled, setToursEnabled] = useState(() => {
+    return localStorage.getItem('settings_enable_tours') === 'true';
+  });
 
   useEffect(() => {
     fetch('/api/settings', { credentials: 'include' })
@@ -68,6 +71,20 @@ export function GeneralSettings() {
             }}
           />{' '}
           {t('settings_enable_tooltips', 'Enable tooltips')}
+        </label>
+      </div>
+      <div style={{ marginTop: '0.5rem' }}>
+        <label>
+          <input
+            type="checkbox"
+            checked={toursEnabled}
+            onChange={(e) => {
+              const v = e.target.checked;
+              setToursEnabled(v);
+              localStorage.setItem('settings_enable_tours', String(v));
+            }}
+          />{' '}
+          {t('settings_enable_tours', 'Show page guide')}
         </label>
       </div>
       <p style={{ marginTop: '1rem' }}>
