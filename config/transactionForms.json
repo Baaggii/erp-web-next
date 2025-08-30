@@ -49,6 +49,7 @@
       },
       "tooltips": {
         "or_g_id": "tooltip.organization",
+        "or_org_id": "tooltip.organization",
         "or_date": "tooltip.date"
       },
       "editableDefaultFields": [
@@ -211,6 +212,11 @@
         "or_chig": "1",
         "or_torol": "",
         "or_type_id": ""
+      },
+      "tooltips": {
+        "or_g_id": "tooltip.organization",
+        "or_org_id": "tooltip.organization",
+        "or_date": "tooltip.date"
       },
       "editableDefaultFields": [
         "or_date",
@@ -439,6 +445,10 @@
         "z_valut_id": "1",
         "TransType": "2122",
         "z_barimt": "0"
+      },
+      "tooltips": {
+        "z_org_id": "tooltip.organization",
+        "z_date": "tooltip.date"
       },
       "editableDefaultFields": [
         "z_valut_id",
@@ -1056,6 +1066,9 @@
       "defaultValues": {
         "TransType": "2005"
       },
+      "tooltips": {
+        "bmtr_date": "tooltip.date"
+      },
       "editableDefaultFields": [
         "bmtr_pmid",
         "bmtr_acc",
@@ -1181,6 +1194,9 @@
       "defaultValues": {
         "TransType": "1001"
       },
+      "tooltips": {
+        "bmtr_date": "tooltip.date"
+      },
       "editableDefaultFields": [
         "bmtr_pmid",
         "bmtr_acc",
@@ -1278,6 +1294,9 @@
       "defaultValues": {
         "TransType": "4001",
         "bmtr_annot": "Тооллого"
+      },
+      "tooltips": {
+        "bmtr_date": "tooltip.date"
       },
       "editableDefaultFields": [
         "bmtr_pmid",
@@ -1408,6 +1427,9 @@
         "TransType": "8041",
         "bmtr_annot": "АКТын талаар дэлгэрэнгүй",
         "bmtr_orderedp": "БМЭХ талаар"
+      },
+      "tooltips": {
+        "bmtr_date": "tooltip.date"
       },
       "editableDefaultFields": [
         "bmtr_pmid",
@@ -1559,6 +1581,7 @@
       ],
       "editableFields": [],
       "tooltips": {
+        "pos_date": "tooltip.date",
         "cashback": "tooltip.cashback",
         "remarks": "tooltip.remarks"
       },

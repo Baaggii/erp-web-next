@@ -23,7 +23,12 @@
       "manuf_lname",
       "manuf_orgname",
       "brandname"
-    ]
+    ],
+    "tooltips": {
+      "manuf_fname": "tooltip.firstName",
+      "manuf_lname": "tooltip.lastName",
+      "manuf_orgname": "tooltip.organization"
+    }
   },
   "code_transaction": {
     "idField": "UITransType",
