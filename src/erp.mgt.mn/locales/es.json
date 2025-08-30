@@ -35,6 +35,7 @@
     "organization": "Seleccionar organización",
     "date": "Fecha de transacción",
     "firstName": "Nombre",
-    "lastName": "Apellido"
+    "lastName": "Apellido",
+    "enable_tooltips": "Alternar para mostrar u ocultar tooltips"
   }
 }

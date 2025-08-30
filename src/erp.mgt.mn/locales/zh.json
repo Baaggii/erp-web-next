@@ -35,6 +35,7 @@
     "organization": "选择组织",
     "date": "交易日期",
     "firstName": "名",
-    "lastName": "姓"
+    "lastName": "姓",
+    "enable_tooltips": "切换以显示或隐藏提示"
   }
 }

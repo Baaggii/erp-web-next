@@ -48,6 +48,30 @@ function collectPhrasesFromPages(dir) {
   return pairs;
 }
 
+async function fetchModules() {
+  try {
+    const db = await import('../db/index.js');
+    try {
+      const [rows] = await db.pool.query(
+        'SELECT module_key AS moduleKey, label FROM modules',
+      );
+      await db.pool.end();
+      return rows.map((r) => ({ moduleKey: r.moduleKey, label: r.label }));
+    } catch (err) {
+      console.warn(
+        `[gen-i18n] DB query failed; falling back to defaults: ${err.message}`,
+      );
+      try { await db.pool.end(); } catch {}
+    }
+  } catch (err) {
+    console.warn(
+      `[gen-i18n] Failed to load DB modules; falling back: ${err.message}`,
+    );
+  }
+  const fallback = await import('../db/defaultModules.js');
+  return fallback.default.map(({ moduleKey, label }) => ({ moduleKey, label }));
+}
+
 /* ---------------- Providers ---------------- */
 
 async function translateWithGoogle(text, to, from, key) {
@@ -113,14 +137,25 @@ async function translateWithOpenAI(text, from, to) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const prompt =
-      `Translate this ${from}-language ERP system term into ${to}. Use ERP terminology. ` +
-      'Respond with `{ "translation": "...", "tooltip": "..." }`.\n\n' +
-      text;
     const completion = await openai.chat.completions.create(
       {
         model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are translating phrases for an ERP application; keep field names professional and domain-specific.',
+          },
+          {
+            role: 'system',
+            content:
+              'You are a translation assistant. Respond with a JSON object { "translation": "...", "tooltip": "..." }.',
+          },
+          {
+            role: 'user',
+            content: `Translate the following ${from}-language ERP system term into ${to}. Use ERP terminology.\n\n${text}`,
+          },
+        ],
         response_format: { type: 'json_object' },
       },
       { signal: controller.signal }
@@ -148,6 +183,7 @@ async function translateWithOpenAI(text, from, to) {
 async function main() {
   console.log('[gen-i18n] START');
   const base = JSON.parse(fs.readFileSync(headerMappingsPath, 'utf8'));
+  const modules = await fetchModules();
   let headerMappingsUpdated = false;
   const entryMap = new Map();
 
@@ -161,6 +197,13 @@ async function main() {
       return;
     }
     entryMap.set(key, { key, sourceText, sourceLang });
+  }
+
+  for (const { moduleKey, label } of modules) {
+    if (base[moduleKey] === undefined) {
+      base[moduleKey] = label;
+      headerMappingsUpdated = true;
+    }
   }
 
   for (const key of Object.keys(base)) {
@@ -234,36 +277,48 @@ async function main() {
         }
 
         console.log(`Translating "${baseText}" (${fromLang} -> ${lang})`);
-        let provider;
+        let provider = 'OpenAI';
         try {
           const { translation, tooltip } = await translateWithOpenAI(
             baseText,
             fromLang,
             lang,
           );
-          if (!existing || translation !== existing) {
+          if (!existing) {
             locales[lang][key] = translation;
-            provider = 'OpenAI';
+          } else if (translation.trim() !== existing.trim()) {
+            console.log(
+              `[gen-i18n] replaced ${lang}.${key}: "${existing}" -> "${translation}"`,
+            );
+            locales[lang][key] = translation;
           }
-          if (tooltip && (!existingTooltip || tooltip !== existingTooltip)) {
-            locales[lang].tooltip[key] = tooltip;
-            provider = 'OpenAI';
-          }
-          if (!provider) {
-            provider = 'Google';
+          if (tooltip) {
+            if (!existingTooltip) {
+              locales[lang].tooltip[key] = tooltip;
+            } else if (tooltip.trim() !== existingTooltip.trim()) {
+              console.log(
+                `[gen-i18n] replaced tooltip for ${lang}.${key}: "${existingTooltip}" -> "${tooltip}"`,
+              );
+              locales[lang].tooltip[key] = tooltip;
+            }
           }
         } catch (err) {
           console.warn(
             `[gen-i18n] OpenAI failed key="${key}" (${fromLang}->${lang}): ${err.message}`,
           );
-          if (existing) {
-            provider = 'Google';
-          }
+          provider = undefined;
         }
 
         if (!provider) {
           const t = await translateWithGoogle(baseText, lang, fromLang, key);
-          locales[lang][key] = t;
+          if (!existing) {
+            locales[lang][key] = t;
+          } else if (t.trim() !== existing.trim()) {
+            console.log(
+              `[gen-i18n] replaced ${lang}.${key}: "${existing}" -> "${t}"`,
+            );
+            locales[lang][key] = t;
+          }
           provider = 'Google';
         }
         console.log(`    using ${provider}`);

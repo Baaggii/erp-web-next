@@ -3,6 +3,7 @@ import React, { useEffect, useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { Outlet, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import TooltipWrapper from '../components/TooltipWrapper.jsx';
 
 export default function SettingsPage() {
   // Just render the nested route content. The left sidebar already

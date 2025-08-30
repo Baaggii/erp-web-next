@@ -78,6 +78,7 @@
     "organization": "Select organization",
     "date": "Transaction date",
     "firstName": "First name",
-    "lastName": "Last name"
+    "lastName": "Last name",
+    "enable_tooltips": "Toggle to show or hide tooltips"
   }
 }
