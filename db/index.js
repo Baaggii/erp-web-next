@@ -866,15 +866,22 @@ export async function populateUserLevelModulePermissions(createdBy) {
 }
 
 /**
- * List module licenses for a company. If companyId is omitted, list for all companies.
+ * List module licenses for a company. If companyId is omitted, list for all
+ * companies. Results can optionally be filtered by the employee who created
+ * the company.
  */
-export async function listCompanyModuleLicenses(companyId) {
+export async function listCompanyModuleLicenses(companyId, createdBy = null) {
   const params = [];
-  let where = '';
+  const clauses = [];
   if (companyId != null) {
-    where = 'WHERE c.id = ?';
+    clauses.push('c.id = ?');
     params.push(companyId);
   }
+  if (createdBy != null) {
+    clauses.push('c.created_by = ?');
+    params.push(createdBy);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   const [rows] = await pool.query(
     `SELECT c.id AS company_id, c.name AS company_name, m.module_key, m.label,
             COALESCE(cml.licensed, 0) AS licensed
