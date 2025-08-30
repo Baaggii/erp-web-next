@@ -1,0 +1,5 @@
+{
+  "DashboardPage": ["#new-transaction-button"],
+  "Forms": ["#new-transaction-button"],
+  "UserSettings": ["#show-page-guide-toggle"]
+}
