@@ -684,8 +684,14 @@ export async function listAllUserCompanies(companyId) {
 /**
  * List all companies
  */
-export async function listCompanies() {
-  const [rows] = await pool.query("SELECT id, name, created_at FROM companies");
+export async function listCompanies(createdBy = null) {
+  let sql = "SELECT id, name, created_at FROM companies";
+  const params = [];
+  if (createdBy) {
+    sql += " WHERE created_by = ?";
+    params.push(createdBy);
+  }
+  const [rows] = await pool.query(sql, params);
   return rows;
 }
 
