@@ -35,42 +35,12 @@ function createRes() {
   };
 }
 
-// A user may hold multiple employment sessions. Ensure that having the
-// `system_settings` permission on any session allows company creation.
-test('allows POST /api/companies when any session has system_settings', async () => {
+// Allow company creation when the user's level grants `system_settings`.
+test('allows POST /api/companies when user level has system_settings', async () => {
   let insertArgs;
   let assignArgs;
   const restore = mockPoolSequential([
-    [[
-      {
-        company_id: 1,
-        company_name: 'Comp1',
-        branch_id: 1,
-        branch_name: 'Br',
-        department_id: 1,
-        department_name: 'Dept',
-        position_id: 1,
-        senior_empid: null,
-        employee_name: 'Emp',
-        user_level: 1,
-        user_level_name: 'Admin',
-        permission_list: '',
-      },
-      {
-        company_id: 2,
-        company_name: 'Comp2',
-        branch_id: 1,
-        branch_name: 'Br',
-        department_id: 1,
-        department_name: 'Dept',
-        position_id: 1,
-        senior_empid: null,
-        employee_name: 'Emp',
-        user_level: 1,
-        user_level_name: 'Admin',
-        permission_list: 'system_settings',
-      },
-    ]],
+    [[{ action: 'permission', action_key: 'system_settings' }]],
     [[{ COLUMN_NAME: 'name' }, { COLUMN_NAME: 'created_by' }]],
     (sql, params) => {
       insertArgs = [sql, params];
@@ -83,7 +53,7 @@ test('allows POST /api/companies when any session has system_settings', async ()
   ]);
   const req = {
     body: { name: 'NewCo', seedTables: [] },
-    user: { empid: 1, companyId: 1 },
+    user: { empid: 1, companyId: 1, userLevel: 2 },
     session: { permissions: { system_settings: false } },
   };
   const res = createRes();
@@ -97,29 +67,12 @@ test('allows POST /api/companies when any session has system_settings', async ()
   assert.deepEqual(assignArgs[1], [1, 1, null, null, 1]);
 });
 
-// If none of the user's sessions include `system_settings`, creation is denied.
-test('returns 403 for POST /api/companies when no session has system_settings', async () => {
-  const restore = mockPoolSequential([
-    [[
-      {
-        company_id: 1,
-        company_name: 'Comp1',
-        branch_id: 1,
-        branch_name: 'Br',
-        department_id: 1,
-        department_name: 'Dept',
-        position_id: 1,
-        senior_empid: null,
-        employee_name: 'Emp',
-        user_level: 1,
-        user_level_name: 'Admin',
-        permission_list: '',
-      },
-    ]],
-  ]);
+// Deny creation when the user's level lacks `system_settings`.
+test('returns 403 for POST /api/companies when user level lacks system_settings', async () => {
+  const restore = mockPoolSequential([[[]]]);
   const req = {
     body: { name: 'NewCo', seedTables: [] },
-    user: { empid: 1, companyId: 1 },
+    user: { empid: 1, companyId: 1, userLevel: 2 },
     session: { permissions: { system_settings: false } },
   };
   const res = createRes();
