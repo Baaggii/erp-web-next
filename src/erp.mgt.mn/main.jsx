@@ -5,6 +5,7 @@ import './utils/csrfFetch.js';
 import './utils/debug.js';
 import { setupDebugHooks } from './utils/debugHooks.js';
 import './index.css';
+import 'react-joyride/lib/react-joyride.css';
 import './legacyModals.js';
 
 setupDebugHooks();
