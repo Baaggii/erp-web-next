@@ -5,6 +5,7 @@ import userSettingsSteps from '../tours/UserSettings.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import LangContext from '../context/I18nContext.jsx';
 import TooltipWrapper from '../components/TooltipWrapper.jsx';
+import { API_BASE } from '../utils/apiBase.js';
 
 export default function UserSettingsPage() {
   const { t } = useTranslation();
@@ -89,7 +90,7 @@ function PrinterSettingsTab() {
   const { userSettings, updateUserSettings } = useAuth();
   const [printers, setPrinters] = useState([]);
   useEffect(() => {
-    fetch(`${API_BASE}/printers`, { credentials: 'include' })
+    fetch(`${API_BASE}/printers`, { credentials: 'include', skipErrorToast: true })
       .then((r) => r.json())
       .then(setPrinters)
       .catch(() => setPrinters([]));
