@@ -4,6 +4,7 @@ import {
   removeCompanyAssignment,
   updateCompanyAssignment,
   listAllUserCompanies,
+  listCompanies,
   getEmploymentSession,
 } from '../../db/index.js';
 import { hasAction } from '../utils/hasAction.js';
@@ -26,11 +27,18 @@ export async function listAssignments(req, res, next) {
       }
     }
 
+    if (!empid) {
+      const companies = await listCompanies(req.user.empid);
+      if (!companies.some((c) => c.id === Number(companyId))) {
+        return res.sendStatus(403);
+      }
+    }
+
     let assignments;
     if (empid) {
       assignments = await listUserCompanies(empid);
     } else {
-      assignments = await listAllUserCompanies(companyId);
+      assignments = await listAllUserCompanies(companyId, req.user.empid);
     }
     res.json(assignments);
   } catch (err) {
@@ -48,7 +56,17 @@ export async function assignCompany(req, res, next) {
       return res.sendStatus(403);
     }
     const { empid, companyId, positionId, branchId } = req.body;
-    await assignCompanyToUser(empid, companyId, positionId, branchId, req.user.empid);
+    const companies = await listCompanies(req.user.empid);
+    if (!companies.some((c) => c.id === Number(companyId))) {
+      return res.sendStatus(403);
+    }
+    await assignCompanyToUser(
+      empid,
+      companyId,
+      positionId,
+      branchId,
+      req.user.empid,
+    );
     res.sendStatus(201);
   } catch (err) {
     if (err.code === 'ER_NO_REFERENCED_ROW_2') {
@@ -68,7 +86,16 @@ export async function updateAssignment(req, res, next) {
       return res.sendStatus(403);
     }
     const { empid, companyId, positionId, branchId } = req.body;
-    await updateCompanyAssignment(empid, companyId, positionId, branchId);
+    const companies = await listCompanies(req.user.empid);
+    if (!companies.some((c) => c.id === Number(companyId))) {
+      return res.sendStatus(403);
+    }
+    await updateCompanyAssignment(
+      empid,
+      companyId,
+      positionId,
+      branchId,
+    );
     res.sendStatus(200);
   } catch (err) {
     next(err);
@@ -85,6 +112,10 @@ export async function removeAssignment(req, res, next) {
       return res.sendStatus(403);
     }
     const { empid, companyId } = req.body;
+    const companies = await listCompanies(req.user.empid);
+    if (!companies.some((c) => c.id === Number(companyId))) {
+      return res.sendStatus(403);
+    }
     await removeCompanyAssignment(empid, companyId);
     res.sendStatus(204);
   } catch (err) {
