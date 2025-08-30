@@ -6,11 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build:homepage": "vite build --config vite.home.config.js",
-    "build:erp": "vite build --config vite.config.js",
+    "build:erp": "node scripts/extractTourOrder.js && vite build --config vite.config.js",
     "serve": "node api-server/server.js",
     "test": "node --test",
     "generate:translations": "node scripts/generateTranslations.cli.js",
-    "generate:manuals": "node scripts/generateManuals.js"
+    "generate:manuals": "node scripts/extractTourOrder.js && node scripts/generateManuals.js",
+    "generate:tours": "node scripts/extractTourOrder.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -38,6 +39,8 @@
     "react-joyride": "^2.9.0"
   },
   "devDependencies": {
+    "@babel/parser": "^7.26.2",
+    "@babel/traverse": "^7.26.0",
     "@vitejs/plugin-react": "^4.0.0",
     "html2canvas": "^1.4.1",
     "puppeteer": "^23.5.0",
