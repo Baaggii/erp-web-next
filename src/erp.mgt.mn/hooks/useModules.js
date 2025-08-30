@@ -41,6 +41,15 @@ export function useModules() {
           });
         }
       });
+      if (!rows.some((m) => m.module_key === 'user_settings')) {
+        rows.push({
+          module_key: 'user_settings',
+          label: 'User Settings',
+          parent_key: 'settings',
+          show_in_sidebar: true,
+          show_in_header: true,
+        });
+      }
       try {
         const params = new URLSearchParams();
         if (branch) params.set('branchId', branch);

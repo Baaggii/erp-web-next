@@ -4,9 +4,11 @@ import React, {
   useEffect,
   useMemo,
   useCallback,
+  useContext,
 } from 'react';
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
+import { AuthContext } from './AuthContext.jsx';
 
 export const I18nContext = createContext({
   lang: 'en',
@@ -16,11 +18,10 @@ export const I18nContext = createContext({
 });
 
 export function I18nProvider({ children }) {
+  const { userSettings, updateUserSettings } = useContext(AuthContext);
   const allLangs = ['en', 'mn', 'ja', 'ko', 'zh', 'es', 'de', 'fr', 'ru'];
-  const getInitialLang = () => {
-    const stored = localStorage.getItem('lang');
-    return allLangs.includes(stored) ? stored : 'en';
-  };
+  const getInitialLang = () =>
+    allLangs.includes(userSettings?.lang) ? userSettings.lang : 'en';
   const [lang, setLang] = useState(getInitialLang);
   const [tick, setTick] = useState(0);
   // Define a fallback order for languages, excluding the active language.
@@ -56,14 +57,22 @@ export function I18nProvider({ children }) {
       i18n.options.fallbackLng = newFallback;
     }
 
-    localStorage.setItem('lang', newLang);
+    updateUserSettings({ lang: newLang });
     setLang(newLang);
     setTick((t) => t + 1);
-  }, []);
+  }, [updateUserSettings]);
 
   useEffect(() => {
     changeLang(lang);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (userSettings?.lang && userSettings.lang !== lang) {
+      setLang(userSettings.lang);
+      changeLang(userSettings.lang);
+    }
+  }, [userSettings?.lang, lang, changeLang]);
 
   const value = useMemo(
     () => ({
