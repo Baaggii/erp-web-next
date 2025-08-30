@@ -56,8 +56,16 @@ router.get('/', requireAuth, async (req, res, next) => {
       }
     };
 
+    const sendErrorLine = (chunk) => {
+      const lines = chunk.toString().split(/\r?\n/);
+      for (const line of lines) {
+        if (line)
+          res.write(`event: generator_error\ndata: ${line}\n\n`);
+      }
+    };
+
     child.stdout.on('data', send);
-    child.stderr.on('data', send);
+    child.stderr.on('data', sendErrorLine);
 
     child.on('error', sendError);
 
