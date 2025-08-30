@@ -142,6 +142,8 @@ export default function PosTransactionsPage() {
   const masterIdRef = useRef(null);
   const refs = useRef({});
   const dragInfo = useRef(null);
+  const loadedViewsRef = useRef(new Set());
+  const loadingViewsRef = useRef(new Set());
 
   useEffect(() => {
     const check = () => setIsNarrow(window.innerWidth < 768);
@@ -323,28 +325,43 @@ export default function PosTransactionsPage() {
     Object.entries(formConfigs).forEach(([tbl, fc]) => {
       const views = Object.values(fc.viewSource || {});
       views.forEach((v) => {
-        fetch(`/api/display_fields?table=${encodeURIComponent(v)}`, {
-          credentials: 'include',
-        })
-          .then((res) => (res.ok ? res.json() : null))
-          .then((cfg) => {
+        if (!v) return;
+        const key = `${tbl}:${v}`;
+        if (
+          loadedViewsRef.current.has(key) ||
+          loadingViewsRef.current.has(key)
+        ) {
+          return;
+        }
+        loadingViewsRef.current.add(key);
+        Promise.all([
+          fetch(`/api/display_fields?table=${encodeURIComponent(v)}`, {
+            credentials: 'include',
+          }).then((res) => (res.ok ? res.json() : null)),
+          fetch(`/api/tables/${encodeURIComponent(v)}/columns`, {
+            credentials: 'include',
+          }).then((res) => (res.ok ? res.json() : [])),
+        ])
+          .then(([cfg, cols]) => {
             setViewDisplaysMap((m) => ({
               ...m,
               [tbl]: { ...(m[tbl] || {}), [v]: cfg || {} },
             }));
-          })
-          .catch(() => {});
-        fetch(`/api/tables/${encodeURIComponent(v)}/columns`, {
-          credentials: 'include',
-        })
-          .then((res) => (res.ok ? res.json() : []))
-          .then((cols) => {
             setViewColumnsMap((m) => ({
               ...m,
-              [tbl]: { ...(m[tbl] || {}), [v]: cols.map((c) => c.name) },
+              [tbl]: {
+                ...(m[tbl] || {}),
+                [v]: (cols || []).map((c) => c.name),
+              },
             }));
+            loadedViewsRef.current.add(key);
           })
-          .catch(() => {});
+          .catch(() => {
+            // ignore errors to allow retry
+          })
+          .finally(() => {
+            loadingViewsRef.current.delete(key);
+          });
       });
     });
   }, [formConfigs]);
