@@ -761,12 +761,13 @@ const RowFormModal = function RowFormModal({
     if (submitLocked) return;
     setSubmitLocked(true);
     if (useGrid && tableRef.current) {
-      if (tableRef.current.hasInvalid && tableRef.current.hasInvalid()) {
+      const grid = tableRef.current;
+      if (grid.hasInvalid && grid.hasInvalid()) {
         alert('Тэмдэглэсэн талбаруудыг засна уу.');
         setSubmitLocked(false);
         return;
       }
-      const rows = tableRef.current.getRows();
+      const rows = grid.getRows();
       const cleanedRows = [];
       const rowIndices = [];
       let hasMissing = false;
@@ -854,9 +855,9 @@ const RowFormModal = function RowFormModal({
           window.dispatchEvent(new Event('pending-request-refresh'));
         }
         if (failedRows.length === 0) {
-          tableRef.current.clearRows();
-        } else if (tableRef.current.replaceRows) {
-          tableRef.current.replaceRows(failedRows);
+          grid?.clearRows?.();
+        } else if (grid?.replaceRows) {
+          grid.replaceRows(failedRows);
         }
       }
       procCache.current = {};
