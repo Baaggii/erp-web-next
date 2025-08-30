@@ -376,6 +376,95 @@ export default function PosTransactionsPage() {
     });
   }, [masterSessionValue, config, sessionFields]);
 
+  function syncCalcFields(vals, mapConfig) {
+    if (!Array.isArray(mapConfig)) return vals;
+    let next = { ...vals };
+    for (const map of mapConfig) {
+      const cells = Array.isArray(map.cells) ? map.cells : [];
+      if (!cells.length) continue;
+      let value;
+      for (const cell of cells) {
+        const { table, field } = cell;
+        if (!table || !field) continue;
+        const data = next[table];
+        if (Array.isArray(data)) {
+          for (const row of data) {
+            const v = row?.[field];
+            if (v !== undefined && v !== null) {
+              value = v;
+              break;
+            }
+          }
+        } else if (data && data[field] !== undefined && data[field] !== null) {
+          value = data[field];
+        }
+        if (value !== undefined) break;
+      }
+      if (value === undefined) continue;
+      for (const cell of cells) {
+        const { table, field } = cell;
+        if (!table || !field) continue;
+        const data = next[table];
+        if (Array.isArray(data)) {
+          next[table] = data.map((r) => ({ ...r, [field]: value }));
+        } else {
+          next[table] = { ...(data || {}), [field]: value };
+        }
+      }
+    }
+    return next;
+  }
+
+  function applyPosFields(vals, posFieldConfig) {
+    if (!Array.isArray(posFieldConfig)) return vals;
+    let next = { ...vals };
+    for (const pf of posFieldConfig) {
+      const parts = Array.isArray(pf.parts) ? pf.parts : [];
+      if (parts.length < 2) continue;
+      const [target, ...calc] = parts;
+      let val = 0;
+      let init = false;
+      for (const p of calc) {
+        if (!p.table || !p.field) continue;
+        const data = next[p.table];
+        let num = 0;
+        if (Array.isArray(data)) {
+          if (p.agg === 'SUM' || p.agg === 'AVG') {
+            const sum = data.reduce((s, r) => s + (Number(r?.[p.field]) || 0), 0);
+            num = p.agg === 'AVG' ? (data.length ? sum / data.length : 0) : sum;
+          } else {
+            num = Number(data[0]?.[p.field]) || 0;
+          }
+        } else {
+          num = Number(data?.[p.field]) || 0;
+        }
+        if (p.agg === '=' && !init) {
+          val = num;
+          init = true;
+        } else if (p.agg === '+') {
+          val += num;
+        } else if (p.agg === '-') {
+          val -= num;
+        } else if (p.agg === '*') {
+          val *= num;
+        } else if (p.agg === '/') {
+          val /= num;
+        } else {
+          val = num;
+          init = true;
+        }
+      }
+      if (!target.table || !target.field) continue;
+      const tgt = next[target.table];
+      if (Array.isArray(tgt)) {
+        next[target.table] = tgt.map((r) => ({ ...r, [target.field]: val }));
+      } else {
+        next[target.table] = { ...(tgt || {}), [target.field]: val };
+      }
+    }
+    return next;
+  }
+
   function recalcTotals(vals) {
     if (!config || !config.masterTable) return vals;
     const totals = { total_quantity: 0, total_amount: 0, total_discount: 0 };
@@ -393,10 +482,11 @@ export default function PosTransactionsPage() {
       });
     }
     const masterTbl = config.masterTable;
-    return {
+    const next = {
       ...vals,
       [masterTbl]: { ...(vals[masterTbl] || {}), ...totals },
     };
+    return applyPosFields(next, config.posFields);
   }
 
   const hasData = React.useMemo(() => {
@@ -407,15 +497,19 @@ export default function PosTransactionsPage() {
   }, [values]);
 
   function handleChange(tbl, changes) {
-    setValues(v => {
-      const next = { ...v, [tbl]: { ...v[tbl], ...changes } };
+    setValues((v) => {
+      let next = { ...v, [tbl]: { ...v[tbl], ...changes } };
+      next = syncCalcFields(next, config?.calcFields);
+      next = applyPosFields(next, config?.posFields);
       return recalcTotals(next);
     });
   }
 
   function handleRowsChange(tbl, rows) {
-    setValues(v => {
-      const next = { ...v, [tbl]: Array.isArray(rows) ? rows : [] };
+    setValues((v) => {
+      let next = { ...v, [tbl]: Array.isArray(rows) ? rows : [] };
+      next = syncCalcFields(next, config?.calcFields);
+      next = applyPosFields(next, config?.posFields);
       return recalcTotals(next);
     });
   }
