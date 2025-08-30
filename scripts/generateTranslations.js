@@ -107,21 +107,16 @@ async function translateWithGoogle(text, to, from, key) {
   );
 }
 
-async function translateWithOpenAI(text, to, from, key) {
+async function translateWithOpenAI(text, from, to) {
   if (!openai) throw new Error('missing OpenAI API key');
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
+    const prompt = `Translate this ${from}-language ERP system term into ${to}. Use ERP terminology.\n\n${text}`;
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: `You are a translation engine. Translate the user text from ${from} to ${to}. Return only the translation.`,
-        },
-        { role: 'user', content: text },
-      ],
+      messages: [{ role: 'user', content: prompt }],
       signal: controller.signal,
     });
     clearTimeout(timer);
@@ -131,34 +126,7 @@ async function translateWithOpenAI(text, to, from, key) {
     return translation;
   } catch (err) {
     clearTimeout(timer);
-    throw new Error(
-      `OpenAI error for key="${key}" (${from}->${to}): ${err.message}`,
-    );
-  }
-}
-
-/* ---------------- Wrapper ---------------- */
-
-async function translate(text, to, from, key) {
-  try {
-    const t = await translateWithGoogle(text, to, from, key);
-    console.log('    using Google');
-    return t;
-  } catch (err) {
-    console.warn(
-      `[gen-i18n] Google failed key="${key}" (${from}->${to}): ${err.message}`,
-    );
-    try {
-      const t = await translateWithOpenAI(text, to, from, key);
-      console.log('    using OpenAI');
-      return t;
-    } catch (err2) {
-      console.warn(
-        `[gen-i18n] FAILED key="${key}" (${from}->${to}): ${err2.message}`,
-      );
-      console.warn('    falling back to source');
-      return text;
-    }
+    throw err;
   }
 }
 
@@ -215,7 +183,7 @@ async function main() {
     let counter = 0;
 
     for (const { key, sourceText, sourceLang } of entries) {
-      if (locales[lang][key]) continue;
+      const existing = locales[lang][key];
 
       if (lang === sourceLang) {
         locales[lang][key] = sourceText;
@@ -228,8 +196,30 @@ async function main() {
         }
 
         console.log(`Translating "${baseText}" (${fromLang} -> ${lang})`);
-        const translated = await translate(baseText, lang, fromLang, key);
-        locales[lang][key] = translated;
+        let provider;
+        try {
+          const t = await translateWithOpenAI(baseText, fromLang, lang);
+          if (!existing || t !== existing) {
+            locales[lang][key] = t;
+            provider = 'OpenAI';
+          } else {
+            provider = 'Google';
+          }
+        } catch (err) {
+          console.warn(
+            `[gen-i18n] OpenAI failed key="${key}" (${fromLang}->${lang}): ${err.message}`,
+          );
+          if (existing) {
+            provider = 'Google';
+          }
+        }
+
+        if (!provider) {
+          const t = await translateWithGoogle(baseText, lang, fromLang, key);
+          locales[lang][key] = t;
+          provider = 'Google';
+        }
+        console.log(`    using ${provider}`);
       }
 
       counter++;
