@@ -448,7 +448,15 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
         }
 
         if (!provider) {
-          const t = await translateWithGoogle(baseText, lang, fromLang, key);
+          let t;
+          try {
+            t = await translateWithGoogle(baseText, lang, fromLang, key);
+          } catch (err) {
+            console.warn(
+              `[gen-i18n] Google failed key="${key}" (${fromLang}->${lang}): ${err.message}`,
+            );
+            t = baseText;
+          }
           if (!existing) {
             locales[lang][key] = t;
           } else if (t.trim() !== existing.trim()) {
