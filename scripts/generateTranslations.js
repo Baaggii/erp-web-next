@@ -137,16 +137,24 @@ async function translateWithOpenAI(text, from, to) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const systemPrompt =
-      'You are a translation assistant. Respond with a JSON object { "translation": "...", "tooltip": "..." }.';
-    const userPrompt =
-      `Translate the following ${from}-language ERP system term into ${to}. Use ERP terminology.\n\n${text}`;
     const completion = await openai.chat.completions.create(
       {
         model: 'gpt-4o-mini',
         messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
+          {
+            role: 'system',
+            content:
+              'You are translating phrases for an ERP application; keep field names professional and domain-specific.',
+          },
+          {
+            role: 'system',
+            content:
+              'You are a translation assistant. Respond with a JSON object { "translation": "...", "tooltip": "..." }.',
+          },
+          {
+            role: 'user',
+            content: `Translate the following ${from}-language ERP system term into ${to}. Use ERP terminology.\n\n${text}`,
+          },
         ],
         response_format: { type: 'json_object' },
       },
@@ -269,36 +277,48 @@ async function main() {
         }
 
         console.log(`Translating "${baseText}" (${fromLang} -> ${lang})`);
-        let provider;
+        let provider = 'OpenAI';
         try {
           const { translation, tooltip } = await translateWithOpenAI(
             baseText,
             fromLang,
             lang,
           );
-          if (!existing || translation !== existing) {
+          if (!existing) {
             locales[lang][key] = translation;
-            provider = 'OpenAI';
+          } else if (translation.trim() !== existing.trim()) {
+            console.log(
+              `[gen-i18n] replaced ${lang}.${key}: "${existing}" -> "${translation}"`,
+            );
+            locales[lang][key] = translation;
           }
-          if (tooltip && (!existingTooltip || tooltip !== existingTooltip)) {
-            locales[lang].tooltip[key] = tooltip;
-            provider = 'OpenAI';
-          }
-          if (!provider) {
-            provider = 'Google';
+          if (tooltip) {
+            if (!existingTooltip) {
+              locales[lang].tooltip[key] = tooltip;
+            } else if (tooltip.trim() !== existingTooltip.trim()) {
+              console.log(
+                `[gen-i18n] replaced tooltip for ${lang}.${key}: "${existingTooltip}" -> "${tooltip}"`,
+              );
+              locales[lang].tooltip[key] = tooltip;
+            }
           }
         } catch (err) {
           console.warn(
             `[gen-i18n] OpenAI failed key="${key}" (${fromLang}->${lang}): ${err.message}`,
           );
-          if (existing) {
-            provider = 'Google';
-          }
+          provider = undefined;
         }
 
         if (!provider) {
           const t = await translateWithGoogle(baseText, lang, fromLang, key);
-          locales[lang][key] = t;
+          if (!existing) {
+            locales[lang][key] = t;
+          } else if (t.trim() !== existing.trim()) {
+            console.log(
+              `[gen-i18n] replaced ${lang}.${key}: "${existing}" -> "${t}"`,
+            );
+            locales[lang][key] = t;
+          }
           provider = 'Google';
         }
         console.log(`    using ${provider}`);
