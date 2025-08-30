@@ -263,6 +263,9 @@ async function main() {
     let counter = 0;
 
     for (const { key, sourceText, sourceLang } of entries) {
+      if (sourceLang === 'mn' && !/[\u0400-\u04FF]/.test(sourceText)) continue;
+      if (sourceLang === 'en' && !/[A-Za-z]/.test(sourceText)) continue;
+
       const existing = locales[lang][key];
       const existingTooltip = locales[lang].tooltip[key];
 
