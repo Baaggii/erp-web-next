@@ -3,12 +3,19 @@ import Form from '@rjsf/core';
 import TooltipWrapper from '../components/TooltipWrapper.jsx';
 import { useTranslation } from 'react-i18next';
 
-export default function FormRenderer({ schema, uiSchema = {}, formData, onSubmit }) {
+export default function FormRenderer({
+  schema,
+  uiSchema = {},
+  formData,
+  onSubmit,
+  tooltips = {},
+}) {
   const { t } = useTranslation();
 
   const FieldTemplate = (props) => {
     const { id, label, required, children, errors, help, description, name } = props;
-    const title = t(`tooltip.${name}`, { defaultValue: label });
+    const key = tooltips[name] || `tooltip.${name}`;
+    const title = t(key, { defaultValue: label });
     return (
       <TooltipWrapper title={title}>
         <div className="mb-3">
