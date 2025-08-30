@@ -29,5 +29,12 @@
   "low_stock": "Bajo inventario",
   "new_orders": "Nuevos pedidos",
   "no_activity": "No hay actividad para mostrar.",
-  "plans_coming_soon": "Contenido de planes próximamente."
+  "plans_coming_soon": "Contenido de planes próximamente.",
+  "settings_enable_tooltips": "Habilitar tooltips",
+  "tooltip": {
+    "organization": "Seleccionar organización",
+    "date": "Fecha de transacción",
+    "firstName": "Nombre",
+    "lastName": "Apellido"
+  }
 }

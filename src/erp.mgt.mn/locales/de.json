@@ -29,5 +29,12 @@
   "low_stock": "Niedriger Bestand",
   "new_orders": "Neue Bestellungen",
   "no_activity": "Keine Aktivitäten verfügbar.",
-  "plans_coming_soon": "Planinhalte folgen bald."
+  "plans_coming_soon": "Planinhalte folgen bald.",
+  "settings_enable_tooltips": "Tooltips aktivieren",
+  "tooltip": {
+    "organization": "Organisation auswählen",
+    "date": "Transaktionsdatum",
+    "firstName": "Vorname",
+    "lastName": "Nachname"
+  }
 }

@@ -29,5 +29,12 @@
   "low_stock": "Мало на складе",
   "new_orders": "Новые заказы",
   "no_activity": "Нет активности для отображения.",
-  "plans_coming_soon": "Содержание планов скоро появится."
+  "plans_coming_soon": "Содержание планов скоро появится.",
+  "settings_enable_tooltips": "Включить подсказки",
+  "tooltip": {
+    "organization": "Выберите организацию",
+    "date": "Дата операции",
+    "firstName": "Имя",
+    "lastName": "Фамилия"
+  }
 }
