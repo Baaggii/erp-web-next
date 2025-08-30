@@ -131,8 +131,6 @@ export default function PosTransactionsPage() {
   const [relationData, setRelationData] = useState({});
   const [viewDisplaysMap, setViewDisplaysMap] = useState({});
   const [viewColumnsMap, setViewColumnsMap] = useState({});
-  const loadedViewsRef = useRef(new Set());
-  const viewCacheRef = useRef({});
   const [procTriggersMap, setProcTriggersMap] = useState({});
   const [pendingId, setPendingId] = useState(null);
   const [sessionFields, setSessionFields] = useState([]);
@@ -322,55 +320,33 @@ export default function PosTransactionsPage() {
   }, [config, formConfigs, name]);
 
   useEffect(() => {
-    const controllers = [];
     Object.entries(formConfigs).forEach(([tbl, fc]) => {
       const views = Object.values(fc.viewSource || {});
       views.forEach((v) => {
-        if (loadedViewsRef.current.has(v)) {
-          const cached = viewCacheRef.current[v];
-          if (cached) {
+        fetch(`/api/display_fields?table=${encodeURIComponent(v)}`, {
+          credentials: 'include',
+        })
+          .then((res) => (res.ok ? res.json() : null))
+          .then((cfg) => {
             setViewDisplaysMap((m) => ({
               ...m,
-              [tbl]: { ...(m[tbl] || {}), [v]: cached.display },
+              [tbl]: { ...(m[tbl] || {}), [v]: cfg || {} },
             }));
+          })
+          .catch(() => {});
+        fetch(`/api/tables/${encodeURIComponent(v)}/columns`, {
+          credentials: 'include',
+        })
+          .then((res) => (res.ok ? res.json() : []))
+          .then((cols) => {
             setViewColumnsMap((m) => ({
               ...m,
-              [tbl]: { ...(m[tbl] || {}), [v]: cached.columns },
-            }));
-          }
-          return;
-        }
-        loadedViewsRef.current.add(v);
-        const controller = new AbortController();
-        controllers.push(controller);
-        const displayPromise = fetch(`/api/display_fields?table=${encodeURIComponent(v)}`, {
-          credentials: 'include',
-          signal: controller.signal,
-        }).then((res) => (res.ok ? res.json() : null));
-        const columnsPromise = fetch(`/api/tables/${encodeURIComponent(v)}/columns`, {
-          credentials: 'include',
-          signal: controller.signal,
-        }).then((res) => (res.ok ? res.json() : []));
-        Promise.all([displayPromise, columnsPromise])
-          .then(([cfg, cols]) => {
-            const data = {
-              display: cfg || {},
-              columns: (cols || []).map((c) => c.name),
-            };
-            viewCacheRef.current[v] = data;
-            setViewDisplaysMap((m) => ({
-              ...m,
-              [tbl]: { ...(m[tbl] || {}), [v]: data.display },
-            }));
-            setViewColumnsMap((m) => ({
-              ...m,
-              [tbl]: { ...(m[tbl] || {}), [v]: data.columns },
+              [tbl]: { ...(m[tbl] || {}), [v]: cols.map((c) => c.name) },
             }));
           })
           .catch(() => {});
       });
     });
-    return () => controllers.forEach((c) => c.abort());
   }, [formConfigs]);
 
   useEffect(() => {
