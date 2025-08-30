@@ -1,11 +1,9 @@
 import React from 'react';
+import { useAuth } from '../context/AuthContext.jsx';
 
 export default function TooltipWrapper({ title, children }) {
-  const [enabled, setEnabled] = React.useState(true);
-  React.useEffect(() => {
-    const val = localStorage.getItem('tooltipsEnabled');
-    setEnabled(val !== 'false');
-  }, []);
+  const { userSettings } = useAuth();
+  const enabled = userSettings.tooltipsEnabled !== false;
   if (!title) {
     return children;
   }

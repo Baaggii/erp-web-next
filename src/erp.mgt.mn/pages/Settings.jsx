@@ -24,13 +24,6 @@ export function GeneralSettings() {
   }
   const [settings, setSettings] = useState(null);
   const { t } = useTranslation();
-  const [tooltipsEnabled, setTooltipsEnabled] = useState(() => {
-    const val = localStorage.getItem('tooltipsEnabled');
-    return val !== 'false';
-  });
-  const [toursEnabled, setToursEnabled] = useState(() => {
-    return localStorage.getItem('settings_enable_tours') === 'true';
-  });
 
   useEffect(() => {
     fetch('/api/settings', { credentials: 'include' })
@@ -58,34 +51,6 @@ export function GeneralSettings() {
       ) : (
         <p>Тохиргоо ачааллаж байна…</p>
       )}
-      <div style={{ marginTop: '1rem' }}>
-        <label>
-          <input
-            type="checkbox"
-            checked={tooltipsEnabled}
-            onChange={(e) => {
-              const v = e.target.checked;
-              setTooltipsEnabled(v);
-              localStorage.setItem('tooltipsEnabled', String(v));
-            }}
-          />{' '}
-          {t('settings_enable_tooltips', 'Enable tooltips')}
-        </label>
-      </div>
-      <div style={{ marginTop: '0.5rem' }}>
-        <label>
-          <input
-            type="checkbox"
-            checked={toursEnabled}
-            onChange={(e) => {
-              const v = e.target.checked;
-              setToursEnabled(v);
-              localStorage.setItem('settings_enable_tours', String(v));
-            }}
-          />{' '}
-          {t('settings_enable_tours', 'Show page guide')}
-        </label>
-      </div>
       <p style={{ marginTop: '1rem' }}>
         <Link to="/settings/role-permissions">Эрхийн тохиргоо засах</Link>
       </p>

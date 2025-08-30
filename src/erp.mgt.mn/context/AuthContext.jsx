@@ -19,6 +19,8 @@ export const AuthContext = createContext({
   setPosition: () => {},
   permissions: null,
   setPermissions: () => {},
+  userSettings: {},
+  updateUserSettings: () => {},
 });
 
 export default function AuthContextProvider({ children }) {
@@ -31,6 +33,7 @@ export default function AuthContextProvider({ children }) {
   const [department, setDepartment] = useState(null);
   const [position, setPosition] = useState(null);
   const [permissions, setPermissions] = useState(null);
+  const [userSettings, setUserSettings] = useState({});
 
   // Persist employment IDs across reloads
   useEffect(() => {
@@ -98,6 +101,22 @@ export default function AuthContextProvider({ children }) {
           setPosition(data.position ?? data.session?.position_id ?? null);
           trackSetState('AuthContext.setPermissions');
           setPermissions(data.permissions || null);
+          try {
+            const resSettings = await fetch(`/api/user/settings`, {
+              credentials: 'include',
+            });
+            if (resSettings.ok) {
+              const s = await resSettings.json();
+              trackSetState('AuthContext.setUserSettings');
+              setUserSettings(s);
+            } else {
+              trackSetState('AuthContext.setUserSettings');
+              setUserSettings({});
+            }
+          } catch {
+            trackSetState('AuthContext.setUserSettings');
+            setUserSettings({});
+          }
         } else {
           // Not logged in or token expired
           trackSetState('AuthContext.setUser');
@@ -114,6 +133,8 @@ export default function AuthContextProvider({ children }) {
           setPosition(null);
           trackSetState('AuthContext.setPermissions');
           setPermissions(null);
+          trackSetState('AuthContext.setUserSettings');
+          setUserSettings({});
         }
       } catch (err) {
         console.error('Unable to fetch profile:', err);
@@ -129,8 +150,10 @@ export default function AuthContextProvider({ children }) {
         setDepartment(null);
         trackSetState('AuthContext.setPosition');
         setPosition(null);
-        trackSetState('AuthContext.setPermissions');
-        setPermissions(null);
+          trackSetState('AuthContext.setPermissions');
+          setPermissions(null);
+          trackSetState('AuthContext.setUserSettings');
+          setUserSettings({});
       }
     }
 
@@ -153,10 +176,33 @@ export default function AuthContextProvider({ children }) {
       setPosition(null);
       trackSetState('AuthContext.setPermissions');
       setPermissions(null);
+      trackSetState('AuthContext.setUserSettings');
+      setUserSettings({});
     }
     window.addEventListener('auth:logout', handleLogout);
     return () => window.removeEventListener('auth:logout', handleLogout);
   }, []);
+
+  const saveUserSettings = async (next) => {
+    try {
+      await fetch('/api/user/settings', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(next),
+      });
+    } catch (err) {
+      console.error('Failed to save user settings', err);
+    }
+  };
+
+  const updateUserSettings = (updates) => {
+    setUserSettings((prev) => {
+      const next = { ...(prev || {}), ...updates };
+      saveUserSettings(next);
+      return next;
+    });
+  };
 
   const value = useMemo(
     () => ({
@@ -174,6 +220,8 @@ export default function AuthContextProvider({ children }) {
       setPosition,
       permissions,
       setPermissions,
+      userSettings,
+      updateUserSettings,
     }),
     [
       user,
@@ -183,6 +231,7 @@ export default function AuthContextProvider({ children }) {
       department,
       position,
       permissions,
+      userSettings,
     ],
   );
 

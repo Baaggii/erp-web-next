@@ -36,7 +36,7 @@ export const useTour = (pageKey, steps) => {
  *  - Main content area (faux window container)
  */
 export default function ERPLayout() {
-  const { user, setUser, session } = useContext(AuthContext);
+  const { user, setUser, session, userSettings, updateUserSettings } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const { t } = useContext(LangContext);
   const renderCount = useRef(0);
@@ -64,15 +64,14 @@ export default function ERPLayout() {
   }, []);
 
   const startTour = useCallback((pageKey, steps) => {
-    const enabled = localStorage.getItem('settings_enable_tours') === 'true';
-    if (!enabled) return;
-    const seenKey = `erpGuideSeen-${pageKey}`;
-    if (!localStorage.getItem(seenKey) && steps && steps.length) {
+    if (!userSettings?.settings_enable_tours) return;
+    const seen = userSettings?.toursSeen || {};
+    if (!seen[pageKey] && steps && steps.length) {
       setTourSteps(steps);
       setCurrentTourPage(pageKey);
       setRunTour(true);
     }
-  }, []);
+  }, [userSettings]);
 
   const modules = useModules();
   const moduleMap = useMemo(() => {
@@ -175,7 +174,8 @@ export default function ERPLayout() {
   const handleTourCallback = ({ status }) => {
     if ([STATUS.FINISHED, STATUS.SKIPPED].includes(status)) {
       if (currentTourPage) {
-        localStorage.setItem(`erpGuideSeen-${currentTourPage}`, "1");
+        const seen = { ...(userSettings?.toursSeen || {}), [currentTourPage]: true };
+        updateUserSettings({ toursSeen: seen });
       }
       setRunTour(false);
     }
@@ -183,7 +183,9 @@ export default function ERPLayout() {
 
   const resetGuide = () => {
     const key = currentTourPage || location.pathname.split('/').filter(Boolean)[0] || 'dashboard';
-    localStorage.removeItem(`erpGuideSeen-${key}`);
+    const seen = { ...(userSettings?.toursSeen || {}) };
+    delete seen[key];
+    updateUserSettings({ toursSeen: seen });
     setRunTour(true);
   };
 
