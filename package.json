@@ -28,6 +28,7 @@
     "i18next": "^25.4.2",
     "react-i18next": "^15.4.5",
     "openai": "^4.24.0",
+    "node-fetch": "^3.3.2",
     "react-mosaic-component": "^6.0.0",
     "sharp": "^0.33.2",
     "socket.io": "^4.7.5",

@@ -2,6 +2,8 @@
 import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
+import fetch from 'node-fetch';
+globalThis.fetch = fetch;
 import OpenAI from '../api-server/utils/openaiClient.js';
 import { slugify } from '../api-server/utils/slugify.js';
 
@@ -448,7 +450,15 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
         }
 
         if (!provider) {
-          const t = await translateWithGoogle(baseText, lang, fromLang, key);
+          let t;
+          try {
+            t = await translateWithGoogle(baseText, lang, fromLang, key);
+          } catch (err) {
+            console.warn(
+              `[gen-i18n] Google failed key="${key}" (${fromLang}->${lang}): ${err.message}; using source text`,
+            );
+            t = sourceText;
+          }
           if (!existing) {
             locales[lang][key] = t;
           } else if (t.trim() !== existing.trim()) {
