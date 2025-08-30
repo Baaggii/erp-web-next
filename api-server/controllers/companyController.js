@@ -2,7 +2,7 @@ import {
   listCompanies,
   insertTableRow,
   updateTableRow,
-  deleteTableRow,
+  deleteTableRowCascade,
   getEmploymentSession,
   getUserLevelActions,
 } from '../../db/index.js';
@@ -85,9 +85,9 @@ export async function deleteCompanyHandler(req, res, next) {
         return res.sendStatus(403);
       }
     }
-    await deleteTableRow('companies', req.params.id, undefined, req.user.empid);
+    await deleteTableRowCascade('companies', req.params.id);
     res.sendStatus(204);
   } catch (err) {
-    next(err);
+    res.status(err.status || 500).json({ message: err.message });
   }
 }
