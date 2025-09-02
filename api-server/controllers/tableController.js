@@ -115,7 +115,12 @@ export async function updateRow(req, res, next) {
     if (req.params.table === 'users' && updates.password) {
       updates.password = await bcrypt.hash(updates.password, 10);
     }
-    await updateTableRow(req.params.table, req.params.id, updates);
+    await updateTableRow(
+      req.params.table,
+      req.params.id,
+      updates,
+      req.user.companyId,
+    );
     res.sendStatus(204);
   } catch (err) {
     if (/Can't update table .* in stored function\/trigger/i.test(err.message)) {
@@ -175,9 +180,15 @@ export async function deleteRow(req, res, next) {
     } catch {}
     if (row) res.locals.logDetails = row;
     if (req.query.cascade === 'true') {
-      await deleteTableRowCascade(table, id);
+      await deleteTableRowCascade(table, id, req.user.companyId);
     } else {
-      await deleteTableRow(table, id, undefined, req.user?.empid);
+      await deleteTableRow(
+        table,
+        id,
+        req.user.companyId,
+        undefined,
+        req.user?.empid,
+      );
     }
     if (row) {
       try {

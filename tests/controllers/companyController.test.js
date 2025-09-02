@@ -170,6 +170,9 @@ test('deleteCompanyHandler deletes company with cascade', async () => {
     if (sql.includes('information_schema.KEY_COLUMN_USAGE')) {
       return [[{ TABLE_NAME: 'orders', COLUMN_NAME: 'company_id', REFERENCED_COLUMN_NAME: 'id' }]];
     }
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'id' }, { COLUMN_NAME: 'company_id' }]];
+    }
     if (sql.startsWith('SELECT COUNT(*)')) {
       return [[{ count: 1 }]];
     }

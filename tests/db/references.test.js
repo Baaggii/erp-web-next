@@ -57,6 +57,9 @@ test('deleteTableRowCascade deletes related rows first', async () => {
     if (sql.includes('information_schema.KEY_COLUMN_USAGE')) {
       return [[{ TABLE_NAME: 'orders', COLUMN_NAME: 'user_id', REFERENCED_COLUMN_NAME: 'id' }]];
     }
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'id' }]];
+    }
     if (sql.startsWith('SELECT COUNT(*)')) {
       return [[{ count: 1 }]];
     }

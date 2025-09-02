@@ -52,6 +52,9 @@ test('deleteTableRow uses primary key when no id column', async () => {
     if (sql.startsWith('SHOW KEYS')) {
       return [[{ Column_name: 'module_key' }]];
     }
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'module_key' }]];
+    }
     called = true;
     assert.equal(sql, 'DELETE FROM ?? WHERE `module_key` = ?');
     assert.deepEqual(params, ['modules', 'sales']);
@@ -83,7 +86,7 @@ test('deleteTableRow uses soft delete column when configured', async () => {
     assert.equal(params[3], '5');
     return [{}];
   };
-  await db.deleteTableRow('softdelete', '5', undefined, 'EMP1');
+  await db.deleteTableRow('softdelete', '5', undefined, undefined, 'EMP1');
   db.pool.query = original;
   assert.ok(called);
 });
@@ -224,6 +227,52 @@ test('deleteTableRow uses unique key combination', async () => {
     return [{}];
   };
   await db.deleteTableRow('assign', 'E1-C1');
+  db.pool.query = original;
+  assert.ok(called);
+});
+
+test('updateTableRow restricts by company_id when not in primary key', async () => {
+  const original = db.pool.query;
+  let called = false;
+  db.pool.query = async (sql, params) => {
+    if (sql.startsWith('SHOW KEYS')) {
+      return [[{ Column_name: 'id' }]];
+    }
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'id' }, { COLUMN_NAME: 'name' }, { COLUMN_NAME: 'company_id' }]];
+    }
+    called = true;
+    assert.equal(
+      sql,
+      'UPDATE ?? SET `name` = ? WHERE id = ? AND `company_id` = ?',
+    );
+    assert.deepEqual(params, ['tenant_update', 'Alice', 1, 2]);
+    return [{}];
+  };
+  await db.updateTableRow('tenant_update', 1, { name: 'Alice' }, 2);
+  db.pool.query = original;
+  assert.ok(called);
+});
+
+test('deleteTableRow restricts by company_id when not in primary key', async () => {
+  const original = db.pool.query;
+  let called = false;
+  db.pool.query = async (sql, params) => {
+    if (sql.startsWith('SHOW KEYS')) {
+      return [[{ Column_name: 'id' }]];
+    }
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'id' }, { COLUMN_NAME: 'company_id' }]];
+    }
+    called = true;
+    assert.equal(
+      sql,
+      'DELETE FROM ?? WHERE id = ? AND `company_id` = ?',
+    );
+    assert.deepEqual(params, ['tenant_delete', '5', 3]);
+    return [{}];
+  };
+  await db.deleteTableRow('tenant_delete', '5', 3);
   db.pool.query = original;
   assert.ok(called);
 });
