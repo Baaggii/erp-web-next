@@ -4,7 +4,6 @@ import React, {
   useImperativeHandle,
   useRef,
   useEffect,
-  useMemo,
 } from 'react';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
@@ -1012,20 +1011,12 @@ export default forwardRef(function InlineTransactionTable({
       if (relationConfigs[f]) {
         const conf = relationConfigs[f];
         const inputVal = typeof val === 'object' ? val.value : val;
-        const labelFields = useMemo(
-          () => conf.displayFields || [],
-          [conf.displayFields],
-        );
-        const searchColumns = useMemo(
-          () => [conf.idField || conf.column, ...labelFields],
-          [conf.idField, conf.column, labelFields],
-        );
         return (
           <AsyncSearchSelect
             table={conf.table}
             searchColumn={conf.idField || conf.column}
-            searchColumns={searchColumns}
-            labelFields={labelFields}
+            searchColumns={[conf.idField || conf.column, ...(conf.displayFields || [])]}
+            labelFields={conf.displayFields || []}
             value={inputVal}
             onChange={(v, label) =>
               handleChange(idx, f, label ? { value: v, label } : v)
@@ -1068,19 +1059,12 @@ export default forwardRef(function InlineTransactionTable({
       const cfg = viewDisplays[view] || {};
       const inputVal = typeof val === 'object' ? val.value : val;
       const idField = cfg.idField || f;
-      const labelFields = useMemo(
-        () => cfg.displayFields || [],
-        [cfg.displayFields],
-      );
-      const searchColumns = useMemo(
-        () => [idField, ...labelFields],
-        [idField, labelFields],
-      );
+      const labelFields = cfg.displayFields || [];
       return (
           <AsyncSearchSelect
             table={view}
             searchColumn={idField}
-            searchColumns={searchColumns}
+            searchColumns={[idField, ...labelFields]}
             labelFields={labelFields}
             idField={idField}
             value={inputVal}

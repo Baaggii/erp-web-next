@@ -38,9 +38,6 @@ export default function AsyncSearchSelect({
   const displayLabel = match ? match.label : label;
   const internalRef = useRef(null);
   const chosenRef = useRef(null);
-  const cacheRef = useRef({});
-  const searchColsKey = (searchColumns || []).join(',');
-  const labelFieldsKey = (labelFields || []).join(',');
 
   async function fetchPage(p = 1, q = '', append = false, signal) {
     const cols =
@@ -50,15 +47,6 @@ export default function AsyncSearchSelect({
         ? [searchColumn]
         : [];
     if (!table || cols.length === 0) return;
-
-    const cacheKey = `${table}|${searchColsKey}|${q}|${p}`;
-    const cached = cacheRef.current[cacheKey];
-    if (cached) {
-      setHasMore(cached.hasMore);
-      setOptions((o) => (append ? [...o, ...cached.options] : cached.options));
-      return;
-    }
-
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: p, perPage: 50 });
@@ -89,9 +77,7 @@ export default function AsyncSearchSelect({
         }
         return { value: val, label: parts.join(' - ') };
       });
-      const newHasMore = rows.length >= 50 && p * 50 < (json.count || Infinity);
-      cacheRef.current[cacheKey] = { options: opts, hasMore: newHasMore };
-      setHasMore(newHasMore);
+      setHasMore(rows.length >= 50 && p * 50 < (json.count || Infinity));
       setOptions((o) => (append ? [...o, ...opts] : opts));
     } catch (err) {
       if (err.name !== 'AbortError') setOptions(append ? [] : []);
@@ -117,17 +103,10 @@ export default function AsyncSearchSelect({
   useEffect(() => {
     if (disabled) return;
     const controller = new AbortController();
-    const key = `${table}|${searchColsKey}||1`;
-    const cached = cacheRef.current[key];
-    if (cached) {
-      setOptions(cached.options);
-      setHasMore(cached.hasMore);
-    } else {
-      fetchPage(1, '', false, controller.signal);
-    }
+    fetchPage(1, '', false, controller.signal);
     setPage(1);
     return () => controller.abort();
-  }, [table, effectiveCompanyId, searchColsKey, disabled]);
+  }, [table, effectiveCompanyId]);
 
   useEffect(() => {
     if (disabled || !show) return;
@@ -142,8 +121,8 @@ export default function AsyncSearchSelect({
     disabled,
     table,
     searchColumn,
-    searchColsKey,
-    labelFieldsKey,
+    searchColumns,
+    labelFields,
     idField,
     effectiveCompanyId,
   ]);

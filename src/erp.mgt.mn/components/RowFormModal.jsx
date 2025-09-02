@@ -1,11 +1,4 @@
-import React, {
-  useState,
-  useEffect,
-  useRef,
-  useContext,
-  memo,
-  useMemo,
-} from 'react';
+import React, { useState, useEffect, useRef, useContext, memo } from 'react';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import Modal from './Modal.jsx';
 import InlineTransactionTable from './InlineTransactionTable.jsx';
@@ -982,119 +975,80 @@ const RowFormModal = function RowFormModal({
       );
     }
 
-    const control = relationConfigs[c]
-      ? (() => {
-          const labelFields = useMemo(
-            () => relationConfigs[c].displayFields || [],
-            [relationConfigs[c].displayFields],
-          );
-          const searchColumns = useMemo(
-            () => [
-              relationConfigs[c].idField || relationConfigs[c].column,
-              ...labelFields,
-            ],
-            [relationConfigs[c].idField, relationConfigs[c].column, labelFields],
-          );
-          return (
-            <AsyncSearchSelect
-              title={tip}
-              table={relationConfigs[c].table}
-              searchColumn={
-                relationConfigs[c].idField || relationConfigs[c].column
-              }
-              searchColumns={searchColumns}
-              labelFields={labelFields}
-              value={
-                typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]
-              }
-              onChange={(val) => {
-                setFormVals((v) => ({ ...v, [c]: val }));
-                setErrors((er) => ({ ...er, [c]: undefined }));
-                onChange({ [c]: val });
-              }}
-              onSelect={(opt) => {
-                const el = inputRefs.current[c];
-                if (el) {
-                  const fake = {
-                    key: 'Enter',
-                    preventDefault: () => {},
-                    target: el,
-                    selectedOption: opt,
-                  };
-                  handleKeyDown(fake, c);
-                }
-              }}
-              disabled={disabled}
-              onKeyDown={(e) => handleKeyDown(e, c)}
-              onFocus={(e) => {
-                e.target.select();
-                handleFocusField(c);
-                e.target.style.width = 'auto';
-                const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
-                e.target.style.width = `${Math.max(boxWidth, w)}px`;
-              }}
-              inputRef={(el) => (inputRefs.current[c] = el)}
-              inputStyle={inputStyle}
-              companyId={company}
-            />
-          );
-        })()
-      : viewSource[c] && !Array.isArray(relations[c])
-      ? (() => {
-          const cfg = viewDisplays[viewSource[c]] || {};
-          const idField = cfg.idField || c;
-          const labelFields = useMemo(
-            () => cfg.displayFields || [],
-            [cfg.displayFields],
-          );
-          const searchColumns = useMemo(
-            () => [idField, ...labelFields],
-            [idField, labelFields],
-          );
-          return (
-            <AsyncSearchSelect
-              title={tip}
-              table={viewSource[c]}
-              searchColumn={idField}
-              searchColumns={searchColumns}
-              labelFields={labelFields}
-              idField={idField}
-              value={
-                typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]
-              }
-              onChange={(val) => {
-                setFormVals((v) => ({ ...v, [c]: val }));
-                setErrors((er) => ({ ...er, [c]: undefined }));
-                onChange({ [c]: val });
-              }}
-              onSelect={(opt) => {
-                const el = inputRefs.current[c];
-                if (el) {
-                  const fake = {
-                    key: 'Enter',
-                    preventDefault: () => {},
-                    target: el,
-                    selectedOption: opt,
-                  };
-                  handleKeyDown(fake, c);
-                }
-              }}
-              disabled={disabled}
-              onKeyDown={(e) => handleKeyDown(e, c)}
-              onFocus={(e) => {
-                e.target.select();
-                handleFocusField(c);
-                e.target.style.width = 'auto';
-                const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
-                e.target.style.width = `${Math.max(boxWidth, w)}px`;
-              }}
-              inputRef={(el) => (inputRefs.current[c] = el)}
-              inputStyle={inputStyle}
-              companyId={company}
-            />
-          );
-        })()
-      : Array.isArray(relations[c]) ? (
+    const control = relationConfigs[c] ? (
+      <AsyncSearchSelect
+        title={tip}
+        table={relationConfigs[c].table}
+        searchColumn={relationConfigs[c].idField || relationConfigs[c].column}
+        searchColumns={[
+          relationConfigs[c].idField || relationConfigs[c].column,
+          ...(relationConfigs[c].displayFields || []),
+        ]}
+        labelFields={relationConfigs[c].displayFields || []}
+        value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
+        onChange={(val) => {
+          setFormVals((v) => ({ ...v, [c]: val }));
+          setErrors((er) => ({ ...er, [c]: undefined }));
+          onChange({ [c]: val });
+        }}
+        onSelect={(opt) => {
+          const el = inputRefs.current[c];
+          if (el) {
+            const fake = { key: 'Enter', preventDefault: () => {}, target: el, selectedOption: opt };
+            handleKeyDown(fake, c);
+          }
+        }}
+        disabled={disabled}
+        onKeyDown={(e) => handleKeyDown(e, c)}
+        onFocus={(e) => {
+          e.target.select();
+          handleFocusField(c);
+          e.target.style.width = 'auto';
+          const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
+          e.target.style.width = `${Math.max(boxWidth, w)}px`;
+        }}
+        inputRef={(el) => (inputRefs.current[c] = el)}
+        inputStyle={inputStyle}
+        companyId={company}
+      />
+    ) : viewSource[c] && !Array.isArray(relations[c]) ? (
+      <AsyncSearchSelect
+        title={tip}
+        table={viewSource[c]}
+        searchColumn={viewDisplays[viewSource[c]]?.idField || c}
+        searchColumns={[
+          viewDisplays[viewSource[c]]?.idField || c,
+          ...(viewDisplays[viewSource[c]]?.displayFields || []),
+        ]}
+        labelFields={viewDisplays[viewSource[c]]?.displayFields || []}
+        idField={viewDisplays[viewSource[c]]?.idField || c}
+        value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
+        onChange={(val) => {
+          setFormVals((v) => ({ ...v, [c]: val }));
+          setErrors((er) => ({ ...er, [c]: undefined }));
+          onChange({ [c]: val });
+        }}
+        onSelect={(opt) => {
+          const el = inputRefs.current[c];
+          if (el) {
+            const fake = { key: 'Enter', preventDefault: () => {}, target: el, selectedOption: opt };
+            handleKeyDown(fake, c);
+          }
+        }}
+        disabled={disabled}
+        onKeyDown={(e) => handleKeyDown(e, c)}
+        onFocus={(e) => {
+          e.target.select();
+          handleFocusField(c);
+          e.target.style.width = 'auto';
+          const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
+          e.target.style.width = `${Math.max(boxWidth, w)}px`;
+        }}
+        inputRef={(el) => (inputRefs.current[c] = el)}
+        inputStyle={inputStyle}
+        companyId={company}
+      />
+    ) : Array.isArray(relations[c]) ? (
       <select
         title={tip}
         ref={(el) => (inputRefs.current[c] = el)}
