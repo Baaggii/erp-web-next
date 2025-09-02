@@ -1219,7 +1219,7 @@ export async function listTableColumnMeta(tableName) {
 
 export async function getPrimaryKeyColumns(tableName) {
   const [keyRows] = await pool.query(
-    'SHOW KEYS FROM ?? WHERE Key_name = "PRIMARY"',
+    'SHOW KEYS FROM ?? WHERE Key_name = "PRIMARY" ORDER BY Seq_in_index',
     [tableName],
   );
   let pks = keyRows.map((r) => r.Column_name);
