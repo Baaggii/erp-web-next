@@ -2,52 +2,73 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as db from '../../db/index.js';
 
-test('getEmploymentSession populates system_settings permission', async () => {
+function mockQueries(handler) {
   const orig = db.pool.query;
-  db.pool.query = async () => [[{
-    company_id: 1,
-    company_name: 'Comp',
-    branch_id: 1,
-    branch_name: 'Branch',
-    department_id: 1,
-    department_name: 'Dept',
-    position_id: 1,
-    senior_empid: null,
-    employee_name: 'Emp',
-    user_level: 1,
-    user_level_name: 'Admin',
-    permission_list: 'system_settings',
-  }]];
+  db.pool.query = handler;
+  return () => {
+    db.pool.query = orig;
+  };
+}
+
+test('getEmploymentSession populates system_settings permission', async () => {
+  const restore = mockQueries(async (sql) => {
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' }]];
+    }
+    if (sql.includes('table_column_labels')) return [[]];
+    return [[{
+      company_id: 1,
+      company_name: 'Comp',
+      branch_id: 1,
+      branch_name: 'Branch',
+      department_id: 1,
+      department_name: 'Dept',
+      position_id: 1,
+      senior_empid: null,
+      employee_name: 'Emp',
+      user_level: 1,
+      user_level_name: 'Admin',
+      permission_list: 'system_settings',
+    }]];
+  });
   const session = await db.getEmploymentSession(1, 1);
-  db.pool.query = orig;
+  restore();
   assert.equal(session.permissions.system_settings, true);
 });
 
 test('getEmploymentSession accepts companyId=0', async () => {
-  const orig = db.pool.query;
-  db.pool.query = async () => [[{
-    company_id: 0,
-    company_name: 'Comp',
-    branch_id: 1,
-    branch_name: 'Branch',
-    department_id: 1,
-    department_name: 'Dept',
-    position_id: 1,
-    senior_empid: null,
-    employee_name: 'Emp',
-    user_level: 1,
-    user_level_name: 'Admin',
-    permission_list: 'system_settings',
-  }]];
+  const restore = mockQueries(async (sql) => {
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' }]];
+    }
+    if (sql.includes('table_column_labels')) return [[]];
+    return [[{
+      company_id: 0,
+      company_name: 'Comp',
+      branch_id: 1,
+      branch_name: 'Branch',
+      department_id: 1,
+      department_name: 'Dept',
+      position_id: 1,
+      senior_empid: null,
+      employee_name: 'Emp',
+      user_level: 1,
+      user_level_name: 'Admin',
+      permission_list: 'system_settings',
+    }]];
+  });
   const session = await db.getEmploymentSession(1, 0);
-  db.pool.query = orig;
+  restore();
   assert.equal(session.permissions.system_settings, true);
 });
 
 test('getEmploymentSession joins branch and department with company scope', async () => {
-  const orig = db.pool.query;
   let capturedSql = '';
-  db.pool.query = async (sql) => {
+  const restore = mockQueries(async (sql) => {
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' }]];
+    }
+    if (sql.includes('table_column_labels')) return [[]];
     capturedSql = sql;
     return [[{
       company_id: 1,
@@ -63,9 +84,9 @@ test('getEmploymentSession joins branch and department with company scope', asyn
       user_level_name: 'Admin',
       permission_list: 'system_settings',
     }]];
-  };
+  });
   await db.getEmploymentSession(1, 1);
-  db.pool.query = orig;
+  restore();
   assert.match(
     capturedSql,
     /LEFT JOIN code_branches b ON e\.employment_branch_id = b\.id AND b\.company_id = e\.employment_company_id/,
