@@ -1775,15 +1775,15 @@ ALTER TABLE `code_bkodprim`
   ADD UNIQUE KEY `uniq_1ab68fd7` (`bkod_Tk`,`bkod_Tk_name`,`bkod_Tk_muid`,`bkod_tk_tkkod`,`bkod_Tk_SKU`,`bkod_Tk_date`,`bkod_Tk_prod`,`bkod_Tk_size`,`bkod_tk_length`,`bkod_tk_width`,`bkod_tk_thick`),
   ADD KEY `bkod_Tk_muid` (`bkod_Tk_muid`);
 ALTER TABLE `code_branches`
-  ADD PRIMARY KEY (`branch_id`);
+  ADD PRIMARY KEY (`company_id`,`branch_id`);
 ALTER TABLE `code_cashier`
   ADD PRIMARY KEY (`id`);
 ALTER TABLE `code_chiglel`
   ADD PRIMARY KEY (`id`);
 ALTER TABLE `code_department`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `department_id` (`department_id`),
-  ADD KEY `department_id_2` (`department_id`);
+  ADD PRIMARY KEY (`company_id`,`id`),
+  ADD UNIQUE KEY `uniq_company_department_id` (`company_id`,`department_id`),
+  ADD KEY `idx_company_department_id` (`company_id`,`department_id`);
 ALTER TABLE `code_edhorongo`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `uniq_ehkod_company_id` (`ehkod`,`company_id`);
@@ -1823,9 +1823,9 @@ ALTER TABLE `code_materialprim`
   ADD UNIQUE KEY `uniq_53ccf867` (`xmkodtk`,`xmkodtk_name`,`xmkodtk_muid`,`xmkodtk_type`,`xmkodtk_tkkod`),
   ADD KEY `xmkodtk_muid` (`xmkodtk_muid`);
 ALTER TABLE `code_position`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_position_id` (`position_id`),
-  ADD UNIQUE KEY `position_name` (`position_name`);
+  ADD PRIMARY KEY (`company_id`,`id`),
+  ADD UNIQUE KEY `uniq_company_position_id` (`company_id`,`position_id`),
+  ADD UNIQUE KEY `uniq_company_position_name` (`company_id`,`position_name`);
 ALTER TABLE `code_position_other`
   ADD PRIMARY KEY (`id`);
 ALTER TABLE `code_room`
@@ -1891,8 +1891,8 @@ ALTER TABLE `report_definitions`
 ALTER TABLE `request_seen_counts`
   ADD PRIMARY KEY (`emp_id`);
 ALTER TABLE `role_default_modules`
-  ADD PRIMARY KEY (`role_id`,`module_key`),
-  ADD KEY `module_key` (`module_key`);
+  ADD PRIMARY KEY (`company_id`,`role_id`,`module_key`),
+  ADD KEY `idx_company_module_key` (`company_id`,`module_key`);
 ALTER TABLE `role_module_permissions`
   ADD PRIMARY KEY (`company_id`,`position_id`,`module_key`),
   ADD KEY `module_key` (`module_key`),
@@ -2006,13 +2006,12 @@ ALTER TABLE `users`
 ALTER TABLE `user_activity_log`
   ADD PRIMARY KEY (`log_id`);
 ALTER TABLE `user_levels`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `userlever_id_2` (`userlevel_id`),
-  ADD KEY `userlever_id` (`userlevel_id`);
+  ADD PRIMARY KEY (`company_id`,`id`),
+  ADD UNIQUE KEY `uniq_company_userlevel_id` (`company_id`,`userlevel_id`),
+  ADD KEY `idx_company_userlevel_id` (`company_id`,`userlevel_id`);
 ALTER TABLE `user_level_permissions`
-  ADD PRIMARY KEY (`id`),
-  ADD KEY `user_level_id` (`userlevel_id`),
-  ADD KEY `company_id` (`company_id`);
+  ADD PRIMARY KEY (`company_id`,`id`),
+  ADD KEY `idx_company_userlevel_id` (`company_id`,`userlevel_id`);
 ALTER TABLE `audit_log`
   MODIFY `id` int NOT NULL AUTO_INCREMENT;
 ALTER TABLE `code_abhuvaari`
