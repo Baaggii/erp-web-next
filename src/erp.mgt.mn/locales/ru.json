@@ -29,14 +29,5 @@
   "new_orders": "Новые заказы",
   "no_activity": "Нет активности для отображения.",
   "plans_coming_soon": "Содержание планов скоро появится.",
-  "settings_enable_tooltips": "Включить подсказки",
-  "tooltip": {
-    "organization": "Выберите организацию",
-    "date": "Дата операции",
-    "firstName": "Имя",
-    "lastName": "Фамилия",
-    "cashback": "Сумма кэшбэка",
-    "remarks": "Дополнительные замечания",
-    "enable_tooltips": "Переключить отображение подсказок"
-  }
+  "settings_enable_tooltips": "Включить подсказки"
 }
