@@ -741,7 +741,10 @@
         100,
         102,
         110
-      ]
+      ],
+      "tooltips": {
+        "annot": "tooltip.annot"
+      }
     },
     "Посын гүйлгээний ажил": {
       "visibleFields": [
@@ -1559,8 +1562,24 @@
       ],
       "editableFields": [],
       "tooltips": {
+        "session_id": "tooltip.session_id",
+        "company_id": "tooltip.company_id",
+        "branch_id": "tooltip.branch_id",
+        "department_id": "tooltip.department_id",
+        "emp_id": "tooltip.emp_id",
+        "pos_date": "tooltip.pos_date",
+        "total_amount": "tooltip.total_amount",
+        "total_discount": "tooltip.total_discount",
         "cashback": "tooltip.cashback",
-        "remarks": "tooltip.remarks"
+        "payable_amount": "tooltip.payable_amount",
+        "deposit_amount": "tooltip.deposit_amount",
+        "payment_type": "tooltip.payment_type",
+        "remarks": "tooltip.remarks",
+        "status": "tooltip.status",
+        "total_quantity": "tooltip.total_quantity",
+        "cashback_payment_type": "tooltip.cashback_payment_type",
+        "transport_price": "tooltip.transport_price",
+        "assembly_price": "tooltip.assembly_price"
       },
       "userIdFields": [
         "emp_id"

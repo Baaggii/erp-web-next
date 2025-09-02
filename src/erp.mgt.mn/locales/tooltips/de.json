@@ -1,1 +1,19 @@
-{}
+{
+  "session_id": "Session identifier",
+  "emp_id": "Employee identifier",
+  "pos_date": "POS date",
+  "total_amount": "Total amount",
+  "total_discount": "Total discount",
+  "payable_amount": "Payable amount",
+  "deposit_amount": "Deposit amount",
+  "payment_type": "Payment type",
+  "status": "Status",
+  "total_quantity": "Total quantity",
+  "cashback_payment_type": "Cashback payment type",
+  "transport_price": "Transport price",
+  "assembly_price": "Assembly price",
+  "reports": "Reports",
+  "user_level_actions": "User level actions",
+  "edit_delete_request": "Edit or delete request",
+  "system_settings": "System settings"
+}

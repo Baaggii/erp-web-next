@@ -1,68 +1,180 @@
 {
   "permissions": [
-    { "key": "edit_delete_request", "name": "Edit/Delete Request" },
-    { "key": "system_settings", "name": "System Settings" }
+    {
+      "key": "edit_delete_request",
+      "name": "Edit/Delete Request"
+    },
+    {
+      "key": "system_settings",
+      "name": "System Settings"
+    }
   ],
   "forms": {
     "finance_transactions": {
       "name": "Finance Transactions",
       "scope": "app",
       "buttons": [
-        { "key": "New transaction", "group": "Transactions" },
-        { "key": "Edit transaction", "group": "Transactions" },
-        { "key": "Delete transaction", "group": "Transactions" },
-        { "key": "New", "group": "Transactions" },
-        { "key": "Save", "group": "Transactions" },
-        { "key": "Load", "group": "Transactions" },
-        { "key": "Delete", "group": "Transactions" },
-        { "key": "POST", "group": "Transactions" },
-        { "key": "Run", "group": "Transactions" },
-        { "key": "Edit Field Labels", "group": "Transactions" },
-        { "key": "Clear Date Filter", "group": "Filters" },
-        { "key": "Clear Transaction Type Filter", "group": "Filters" },
-        { "key": "Clear Branch Filter", "group": "Filters" },
-        { "key": "Clear Department Filter", "group": "Filters" },
-        { "key": "Clear User Filter", "group": "Filters" }
+        {
+          "key": "New transaction",
+          "group": "Transactions"
+        },
+        {
+          "key": "Edit transaction",
+          "group": "Transactions"
+        },
+        {
+          "key": "Delete transaction",
+          "group": "Transactions"
+        },
+        {
+          "key": "New",
+          "group": "Transactions"
+        },
+        {
+          "key": "Save",
+          "group": "Transactions"
+        },
+        {
+          "key": "Load",
+          "group": "Transactions"
+        },
+        {
+          "key": "Delete",
+          "group": "Transactions"
+        },
+        {
+          "key": "POST",
+          "group": "Transactions"
+        },
+        {
+          "key": "Run",
+          "group": "Transactions"
+        },
+        {
+          "key": "Edit Field Labels",
+          "group": "Transactions"
+        },
+        {
+          "key": "Clear Date Filter",
+          "group": "Filters"
+        },
+        {
+          "key": "Clear Transaction Type Filter",
+          "group": "Filters"
+        },
+        {
+          "key": "Clear Branch Filter",
+          "group": "Filters"
+        },
+        {
+          "key": "Clear Department Filter",
+          "group": "Filters"
+        },
+        {
+          "key": "Clear User Filter",
+          "group": "Filters"
+        }
       ],
       "functions": [],
       "api": [
-        { "key": "/api/transaction_forms", "group": "Transactions" },
-        { "key": "/api/pos_txn_pending", "group": "Transactions" },
-        { "key": "/api/pos_txn_post", "group": "Transactions" },
-        { "key": "/api/pos_txn_layout", "group": "Transactions" }
+        {
+          "key": "/api/transaction_forms",
+          "group": "Transactions"
+        },
+        {
+          "key": "/api/pos_txn_pending",
+          "group": "Transactions"
+        },
+        {
+          "key": "/api/pos_txn_post",
+          "group": "Transactions"
+        },
+        {
+          "key": "/api/pos_txn_layout",
+          "group": "Transactions"
+        }
       ]
     },
     "reports": {
       "name": "Reports",
       "scope": "app",
       "buttons": [
-        { "key": "Run", "group": "Reports" },
-        { "key": "Export", "group": "Reports" },
-        { "key": "Edit Field Labels", "group": "Reports" },
-        { "key": "Edit label", "group": "Reports" }
+        {
+          "key": "Run",
+          "group": "Reports"
+        },
+        {
+          "key": "Export",
+          "group": "Reports"
+        },
+        {
+          "key": "Edit Field Labels",
+          "group": "Reports"
+        },
+        {
+          "key": "Edit label",
+          "group": "Reports"
+        }
       ],
       "functions": [],
       "api": [
-        { "key": "/api/procedures", "group": "Reports" },
-        { "key": "/api/procedures/:name/params", "group": "Reports" }
+        {
+          "key": "/api/procedures",
+          "group": "Reports"
+        },
+        {
+          "key": "/api/procedures/:name/params",
+          "group": "Reports"
+        }
       ]
     },
     "user_level_actions": {
       "name": "User Level Actions",
       "scope": "developer",
       "buttons": [
-        { "key": "Load", "group": "User Level Actions" },
-        { "key": "Save", "group": "User Level Actions" },
-        { "key": "Refresh", "group": "User Level Actions" },
-        { "key": "Batch Populate", "group": "User Level Actions" }
+        {
+          "key": "Load",
+          "group": "User Level Actions"
+        },
+        {
+          "key": "Save",
+          "group": "User Level Actions"
+        },
+        {
+          "key": "Refresh",
+          "group": "User Level Actions"
+        },
+        {
+          "key": "Batch Populate",
+          "group": "User Level Actions"
+        }
       ],
       "functions": [],
       "api": [
-        { "key": "/api/permissions/actions", "group": "User Level Actions" },
-        { "key": "/api/permissions/actions/:userLevelId", "group": "User Level Actions" },
-        { "key": "/api/permissions/user-levels", "group": "User Level Actions" },
-        { "key": "/api/permissions/actions/populate", "group": "User Level Actions" }
+        {
+          "key": "/api/permissions/actions",
+          "group": "User Level Actions"
+        },
+        {
+          "key": "/api/permissions/actions/:userLevelId",
+          "group": "User Level Actions"
+        },
+        {
+          "key": "/api/permissions/user-levels",
+          "group": "User Level Actions"
+        },
+        {
+          "key": "/api/permissions/actions/populate",
+          "group": "User Level Actions"
+        }
       ]
     }
+  },
+  "tooltips": {
+    "edit_delete_request": "tooltip.edit_delete_request",
+    "system_settings": "tooltip.system_settings",
+    "finance_transactions": "tooltip.finance_transactions",
+    "reports": "tooltip.reports",
+    "user_level_actions": "tooltip.user_level_actions"
   }
 }

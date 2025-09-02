@@ -8,7 +8,7 @@ export default function FormRenderer({ schema, uiSchema = {}, formData, onSubmit
 
   const FieldTemplate = (props) => {
     const { id, label, required, children, errors, help, description, name } = props;
-    const title = t(name, { ns: 'tooltip', defaultValue: label });
+    const title = t(name.toLowerCase(), { ns: 'tooltip', defaultValue: label });
     return (
       <TooltipWrapper title={title}>
         <div className="mb-3">
