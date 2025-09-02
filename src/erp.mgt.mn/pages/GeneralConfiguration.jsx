@@ -147,251 +147,388 @@ export default function GeneralConfiguration() {
             </TooltipWrapper>
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <label>
-              Box Height{' '}
-              <input
-                name="boxHeight"
-                type="number"
-                inputMode="decimal"
-                value={active.boxHeight ?? ''}
-                onChange={handleChange}
-              />
-            </label>
+            <TooltipWrapper
+              title={t('box_height', { ns: 'tooltip', defaultValue: 'Input box height' })}
+            >
+              <label>
+                Box Height{' '}
+                <input
+                  name="boxHeight"
+                  type="number"
+                  inputMode="decimal"
+                  value={active.boxHeight ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <label>
-              Box Max Width{' '}
-              <input
-                name="boxMaxWidth"
-                type="number"
-                inputMode="decimal"
-                value={active.boxMaxWidth ?? ''}
-                onChange={handleChange}
-              />
-            </label>
+            <TooltipWrapper
+              title={t('box_max_width', {
+                ns: 'tooltip',
+                defaultValue: 'Max input box width',
+              })}
+            >
+              <label>
+                Box Max Width{' '}
+                <input
+                  name="boxMaxWidth"
+                  type="number"
+                  inputMode="decimal"
+                  value={active.boxMaxWidth ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <label>
-              Box Max Height{' '}
-              <input
-                name="boxMaxHeight"
-                type="number"
-                inputMode="decimal"
-                value={active.boxMaxHeight ?? ''}
-                onChange={handleChange}
-              />
-            </label>
+            <TooltipWrapper
+              title={t('box_max_height', {
+                ns: 'tooltip',
+                defaultValue: 'Max input box height',
+              })}
+            >
+              <label>
+                Box Max Height{' '}
+                <input
+                  name="boxMaxHeight"
+                  type="number"
+                  inputMode="decimal"
+                  value={active.boxMaxHeight ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
           </div>
         </>
       ) : tab === 'images' ? (
         <>
           <div style={{ marginBottom: '0.5rem' }}>
-            <label>
-              Base Path{' '}
-              <input
-                name="basePath"
-                type="text"
-                value={active.basePath ?? ''}
-                onChange={handleChange}
-              />
-            </label>
+            <TooltipWrapper
+              title={t('base_path', {
+                ns: 'tooltip',
+                defaultValue: 'Base path for images',
+              })}
+            >
+              <label>
+                Base Path{' '}
+                <input
+                  name="basePath"
+                  type="text"
+                  value={active.basePath ?? ''}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <label>
-              Cleanup Days{' '}
-              <input
-                name="cleanupDays"
-                type="number"
-                inputMode="decimal"
-                value={active.cleanupDays ?? ''}
-                onChange={handleChange}
-                style={{ width: '4rem' }}
-              />
-            </label>
+            <TooltipWrapper
+              title={t('cleanup_days', {
+                ns: 'tooltip',
+                defaultValue: 'Days to retain images',
+              })}
+            >
+              <label>
+                Cleanup Days{' '}
+                <input
+                  name="cleanupDays"
+                  type="number"
+                  inputMode="decimal"
+                  value={active.cleanupDays ?? ''}
+                  onChange={handleChange}
+                  style={{ width: '4rem' }}
+                />
+              </label>
+            </TooltipWrapper>
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <label>
-              Ignore on Search
-              <textarea
-                name="ignoreOnSearch"
-                value={(active.ignoreOnSearch || []).join('\n')}
-                onChange={(e) => {
-                  const list = e.target.value
-                    .split('\n')
-                    .map((s) => s.trim())
-                    .filter(Boolean);
-                  setCfg((c) => ({
-                    ...c,
-                    images: { ...(c.images || {}), ignoreOnSearch: list },
-                  }));
-                }}
-                rows={3}
-                style={{ display: 'block', width: '100%', marginTop: '0.25rem' }}
-              />
-            </label>
+            <TooltipWrapper
+              title={t('ignore_on_search', {
+                ns: 'tooltip',
+                defaultValue: 'Images to ignore during search',
+              })}
+            >
+              <label>
+                Ignore on Search
+                <textarea
+                  name="ignoreOnSearch"
+                  value={(active.ignoreOnSearch || []).join('\n')}
+                  onChange={(e) => {
+                    const list = e.target.value
+                      .split('\n')
+                      .map((s) => s.trim())
+                      .filter(Boolean);
+                    setCfg((c) => ({
+                      ...c,
+                      images: { ...(c.images || {}), ignoreOnSearch: list },
+                    }));
+                  }}
+                  rows={3}
+                  style={{ display: 'block', width: '100%', marginTop: '0.25rem' }}
+                />
+              </label>
+            </TooltipWrapper>
           </div>
         </>
       ) : (
         <>
           <div style={{ marginBottom: '0.5rem' }}>
-            <label>
-              Stored Procedure Prefix{' '}
-              <input
-                name="reportProcPrefix"
-                type="text"
-                value={active.reportProcPrefix ?? ''}
-                onChange={handleChange}
-                style={{ width: '8rem' }}
-              />
-            </label>
+            <TooltipWrapper
+              title={t('report_proc_prefix', {
+                ns: 'tooltip',
+                defaultValue: 'Prefix for report stored procedures',
+              })}
+            >
+              <label>
+                Stored Procedure Prefix{' '}
+                <input
+                  name="reportProcPrefix"
+                  type="text"
+                  value={active.reportProcPrefix ?? ''}
+                  onChange={handleChange}
+                  style={{ width: '8rem' }}
+                />
+              </label>
+            </TooltipWrapper>
             <div style={{ fontSize: '0.8rem' }}>Prepended to report stored procedure names</div>
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <label>
-              View Prefix{' '}
-              <input
-                name="reportViewPrefix"
-                type="text"
-                value={active.reportViewPrefix ?? ''}
-                onChange={handleChange}
-                style={{ width: '8rem' }}
-              />
-            </label>
+            <TooltipWrapper
+              title={t('report_view_prefix', {
+                ns: 'tooltip',
+                defaultValue: 'Prefix for report views',
+              })}
+            >
+              <label>
+                View Prefix{' '}
+                <input
+                  name="reportViewPrefix"
+                  type="text"
+                  value={active.reportViewPrefix ?? ''}
+                  onChange={handleChange}
+                  style={{ width: '8rem' }}
+                />
+              </label>
+            </TooltipWrapper>
             <div style={{ fontSize: '0.8rem' }}>Prepended to report view names</div>
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <label>
-              Enable AI API{' '}
-              <input
-                name="aiApiEnabled"
-                type="checkbox"
-                checked={active.aiApiEnabled ?? false}
-                onChange={handleChange}
-              />
-            </label>
+            <TooltipWrapper
+              title={t('ai_api_enabled', {
+                ns: 'tooltip',
+                defaultValue: 'Enable AI API',
+              })}
+            >
+              <label>
+                Enable AI API{' '}
+                <input
+                  name="aiApiEnabled"
+                  type="checkbox"
+                  checked={active.aiApiEnabled ?? false}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <label>
-              Enable AI Inventory API{' '}
-              <input
-                name="aiInventoryApiEnabled"
-                type="checkbox"
-                checked={active.aiInventoryApiEnabled ?? false}
-                onChange={handleChange}
-              />
-            </label>
+            <TooltipWrapper
+              title={t('ai_inventory_api_enabled', {
+                ns: 'tooltip',
+                defaultValue: 'Enable AI inventory API',
+              })}
+            >
+              <label>
+                Enable AI Inventory API{' '}
+                <input
+                  name="aiInventoryApiEnabled"
+                  type="checkbox"
+                  checked={active.aiInventoryApiEnabled ?? false}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <label>
-              Show Trigger Toasts{' '}
-              <input
-                name="triggerToastEnabled"
-                type="checkbox"
-                checked={active.triggerToastEnabled ?? false}
-                onChange={handleChange}
-              />
-            </label>
+            <TooltipWrapper
+              title={t('trigger_toast_enabled', {
+                ns: 'tooltip',
+                defaultValue: 'Display trigger messages as toasts',
+              })}
+            >
+              <label>
+                Show Trigger Toasts{' '}
+                <input
+                  name="triggerToastEnabled"
+                  type="checkbox"
+                  checked={active.triggerToastEnabled ?? false}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <label>
-              Show Procedure Toasts{' '}
-              <input
-                name="procToastEnabled"
-                type="checkbox"
-                checked={active.procToastEnabled ?? false}
-                onChange={handleChange}
-              />
-            </label>
+            <TooltipWrapper
+              title={t('proc_toast_enabled', {
+                ns: 'tooltip',
+                defaultValue: 'Display procedure messages as toasts',
+              })}
+            >
+              <label>
+                Show Procedure Toasts{' '}
+                <input
+                  name="procToastEnabled"
+                  type="checkbox"
+                  checked={active.procToastEnabled ?? false}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <label>
-              Show View Lookup Toasts{' '}
-              <input
-                name="viewToastEnabled"
-                type="checkbox"
-                checked={active.viewToastEnabled ?? false}
-                onChange={handleChange}
-              />
-            </label>
+            <TooltipWrapper
+              title={t('view_toast_enabled', {
+                ns: 'tooltip',
+                defaultValue: 'Display view lookup toasts',
+              })}
+            >
+              <label>
+                Show View Lookup Toasts{' '}
+                <input
+                  name="viewToastEnabled"
+                  type="checkbox"
+                  checked={active.viewToastEnabled ?? false}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <label>
-              Show Report Row Toasts{' '}
-              <input
-                name="reportRowToastEnabled"
-                type="checkbox"
-                checked={active.reportRowToastEnabled ?? false}
-                onChange={handleChange}
-              />
-            </label>
+            <TooltipWrapper
+              title={t('report_row_toast_enabled', {
+                ns: 'tooltip',
+                defaultValue: 'Display report row toasts',
+              })}
+            >
+              <label>
+                Show Report Row Toasts{' '}
+                <input
+                  name="reportRowToastEnabled"
+                  type="checkbox"
+                  checked={active.reportRowToastEnabled ?? false}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <label>
-              Show Image Toasts{' '}
-              <input
-                name="imageToastEnabled"
-                type="checkbox"
-                checked={active.imageToastEnabled ?? false}
-                onChange={handleChange}
-              />
-            </label>
+            <TooltipWrapper
+              title={t('image_toast_enabled', {
+                ns: 'tooltip',
+                defaultValue: 'Display image toasts',
+              })}
+            >
+              <label>
+                Show Image Toasts{' '}
+                <input
+                  name="imageToastEnabled"
+                  type="checkbox"
+                  checked={active.imageToastEnabled ?? false}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <label>
-              Enable Field Label Editing{' '}
-              <input
-                name="editLabelsEnabled"
-                type="checkbox"
-                checked={active.editLabelsEnabled ?? false}
-                onChange={handleChange}
-              />
-            </label>
+            <TooltipWrapper
+              title={t('edit_labels_enabled', {
+                ns: 'tooltip',
+                defaultValue: 'Allow editing field labels',
+              })}
+            >
+              <label>
+                Enable Field Label Editing{' '}
+                <input
+                  name="editLabelsEnabled"
+                  type="checkbox"
+                  checked={active.editLabelsEnabled ?? false}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <label>
-              Show Report Parameters{' '}
-              <input
-                name="showReportParams"
-                type="checkbox"
-                checked={active.showReportParams ?? false}
-                onChange={handleChange}
-              />
-            </label>
+            <TooltipWrapper
+              title={t('show_report_params', {
+                ns: 'tooltip',
+                defaultValue: 'Display report parameters',
+              })}
+            >
+              <label>
+                Show Report Parameters{' '}
+                <input
+                  name="showReportParams"
+                  type="checkbox"
+                  checked={active.showReportParams ?? false}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <label>
-              Enable Debug Logging{' '}
-              <input
-                name="debugLoggingEnabled"
-                type="checkbox"
-                checked={active.debugLoggingEnabled ?? false}
-                onChange={handleChange}
-              />
-            </label>
+            <TooltipWrapper
+              title={t('debug_logging_enabled', {
+                ns: 'tooltip',
+                defaultValue: 'Enable debug logging',
+              })}
+            >
+              <label>
+                Enable Debug Logging{' '}
+                <input
+                  name="debugLoggingEnabled"
+                  type="checkbox"
+                  checked={active.debugLoggingEnabled ?? false}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <label>
-              Enable Request Polling{' '}
-              <input
-                name="requestPollingEnabled"
-                type="checkbox"
-                checked={active.requestPollingEnabled ?? false}
-                onChange={handleChange}
-              />
-            </label>
+            <TooltipWrapper
+              title={t('request_polling_enabled', {
+                ns: 'tooltip',
+                defaultValue: 'Periodically fetch pending requests',
+              })}
+            >
+              <label>
+                Enable Request Polling{' '}
+                <input
+                  name="requestPollingEnabled"
+                  type="checkbox"
+                  checked={active.requestPollingEnabled ?? false}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <label>
-              Request Polling Interval (seconds){' '}
-              <input
-                name="requestPollingIntervalSeconds"
-                type="number"
-                min={1}
-                value={active.requestPollingIntervalSeconds ?? 30}
-                onChange={handleChange}
-                style={{ width: '4rem' }}
-              />
-            </label>
+            <TooltipWrapper
+              title={t('request_polling_interval', {
+                ns: 'tooltip',
+                defaultValue: 'Seconds between request polls',
+              })}
+            >
+              <label>
+                Request Polling Interval (seconds){' '}
+                <input
+                  name="requestPollingIntervalSeconds"
+                  type="number"
+                  min={1}
+                  value={active.requestPollingIntervalSeconds ?? 30}
+                  onChange={handleChange}
+                  style={{ width: '4rem' }}
+                />
+              </label>
+            </TooltipWrapper>
           </div>
         </>
       )}
