@@ -175,6 +175,11 @@ export default function AuthContextProvider({ children }) {
 
   useEffect(() => {
     function handleLogout() {
+      let lang;
+      try {
+        const stored = localStorage.getItem('erp_user_settings');
+        lang = stored ? JSON.parse(stored).lang : undefined;
+      } catch {}
       trackSetState('AuthContext.setUser');
       setUser(null);
       trackSetState('AuthContext.setSession');
@@ -190,9 +195,13 @@ export default function AuthContextProvider({ children }) {
       trackSetState('AuthContext.setPermissions');
       setPermissions(null);
       trackSetState('AuthContext.setUserSettings');
-      setUserSettings({});
+      setUserSettings(lang ? { lang } : {});
       try {
-        localStorage.removeItem('erp_user_settings');
+        if (lang) {
+          localStorage.setItem('erp_user_settings', JSON.stringify({ lang }));
+        } else {
+          localStorage.removeItem('erp_user_settings');
+        }
       } catch {}
     }
     window.addEventListener('auth:logout', handleLogout);
