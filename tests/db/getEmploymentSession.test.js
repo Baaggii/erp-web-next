@@ -89,7 +89,7 @@ test('getEmploymentSession joins branch and department with company scope', asyn
   restore();
   assert.match(
     capturedSql,
-    /LEFT JOIN code_branches b ON e\.employment_branch_id = b\.id AND b\.company_id = e\.employment_company_id/,
+    /LEFT JOIN code_branches b ON e\.employment_branch_id = b\.branch_id AND b\.company_id = e\.employment_company_id/,
   );
   assert.match(
     capturedSql,

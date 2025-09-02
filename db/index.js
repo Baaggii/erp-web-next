@@ -253,7 +253,7 @@ export async function getEmploymentSessions(empid) {
         GROUP_CONCAT(DISTINCT up.action_key) AS permission_list
      FROM tbl_employment e
      LEFT JOIN companies c ON e.employment_company_id = c.id
-     LEFT JOIN code_branches b ON e.employment_branch_id = b.id AND b.company_id = e.employment_company_id
+     LEFT JOIN code_branches b ON e.employment_branch_id = b.branch_id AND b.company_id = e.employment_company_id
     LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol} AND d.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
      LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
      LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
@@ -310,7 +310,7 @@ export async function getEmploymentSession(empid, companyId) {
           GROUP_CONCAT(DISTINCT up.action_key) AS permission_list
        FROM tbl_employment e
        LEFT JOIN companies c ON e.employment_company_id = c.id
-       LEFT JOIN code_branches b ON e.employment_branch_id = b.id AND b.company_id = e.employment_company_id
+       LEFT JOIN code_branches b ON e.employment_branch_id = b.branch_id AND b.company_id = e.employment_company_id
        LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol} AND d.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
        LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
        LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
