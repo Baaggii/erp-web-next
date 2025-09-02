@@ -338,7 +338,13 @@ export async function respondRequest(
         if (columns.includes('updated_by')) data.updated_by = responseEmpid;
         if (columns.includes('updated_at'))
           data.updated_at = formatDateForDb(new Date());
-        await updateTableRow(req.table_name, req.record_id, data, conn);
+        await updateTableRow(
+          req.table_name,
+          req.record_id,
+          data,
+          req.company_id,
+          conn,
+        );
         await logUserAction(
           {
             emp_id: responseEmpid,
@@ -355,6 +361,7 @@ export async function respondRequest(
         await deleteTableRow(
           req.table_name,
           req.record_id,
+          req.company_id,
           conn,
           responseEmpid,
         );

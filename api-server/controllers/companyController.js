@@ -85,7 +85,7 @@ export async function deleteCompanyHandler(req, res, next) {
         return res.sendStatus(403);
       }
     }
-    await deleteTableRowCascade('companies', req.params.id);
+    await deleteTableRowCascade('companies', req.params.id, req.params.id);
     res.sendStatus(204);
   } catch (err) {
     res.status(err.status || 500).json({ message: err.message });

@@ -1351,7 +1351,13 @@ export async function listTableRows(
 /**
  * Update a table row by id
  */
-export async function updateTableRow(tableName, id, updates, conn = pool) {
+export async function updateTableRow(
+  tableName,
+  id,
+  updates,
+  companyId,
+  conn = pool,
+) {
   const columns = await getTableColumnsSafe(tableName);
   const keys = Object.keys(updates);
   await ensureValidColumns(tableName, columns, keys);
@@ -1369,6 +1375,12 @@ export async function updateTableRow(tableName, id, updates, conn = pool) {
   }
 
   const pkCols = await getPrimaryKeyColumns(tableName);
+  const pkLower = pkCols.map((c) => c.toLowerCase());
+  const hasCompanyId = columns.some(
+    (c) => c.toLowerCase() === 'company_id',
+  );
+  const addCompanyFilter =
+    companyId !== undefined && hasCompanyId && !pkLower.includes('company_id');
   logDb(`updateTableRow(${tableName}, id=${id}) using keys: ${pkCols.join(', ')}`);
   if (pkCols.length === 0) {
     const err = new Error(`Table ${tableName} has no primary or unique key`);
@@ -1378,19 +1390,29 @@ export async function updateTableRow(tableName, id, updates, conn = pool) {
 
   if (pkCols.length === 1) {
     const col = pkCols[0];
-    const where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
+    let where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
+    const whereParams = [id];
+    if (addCompanyFilter) {
+      where += ' AND `company_id` = ?';
+      whereParams.push(companyId);
+    }
     await conn.query(
       `UPDATE ?? SET ${setClause} WHERE ${where}`,
-      [tableName, ...values, id],
+      [tableName, ...values, ...whereParams],
     );
     return { [col]: id };
   }
 
   const parts = String(id).split('-');
-  const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
+  let where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
+  const whereParams = [...parts];
+  if (addCompanyFilter) {
+    where += ' AND `company_id` = ?';
+    whereParams.push(companyId);
+  }
   await conn.query(
     `UPDATE ?? SET ${setClause} WHERE ${where}`,
-    [tableName, ...values, ...parts],
+    [tableName, ...values, ...whereParams],
   );
   const result = {};
   pkCols.forEach((c, i) => {
@@ -1434,6 +1456,7 @@ export async function insertTableRow(
 export async function deleteTableRow(
   tableName,
   id,
+  companyId,
   conn = pool,
   userId = null,
 ) {
@@ -1446,7 +1469,14 @@ export async function deleteTableRow(
     return { company_id: companyId, module_key: moduleKey };
   }
 
+  const columns = await getTableColumnsSafe(tableName);
   const pkCols = await getPrimaryKeyColumns(tableName);
+  const pkLower = pkCols.map((c) => c.toLowerCase());
+  const hasCompanyId = columns.some(
+    (c) => c.toLowerCase() === 'company_id',
+  );
+  const addCompanyFilter =
+    companyId !== undefined && hasCompanyId && !pkLower.includes('company_id');
   logDb(`deleteTableRow(${tableName}, id=${id}) using keys: ${pkCols.join(', ')}`);
   if (pkCols.length === 0) {
     const err = new Error(`Table ${tableName} has no primary or unique key`);
@@ -1459,27 +1489,37 @@ export async function deleteTableRow(
 
   if (pkCols.length === 1) {
     const col = pkCols[0];
-    const where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
+    let where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
+    const whereParams = [id];
+    if (addCompanyFilter) {
+      where += ' AND `company_id` = ?';
+      whereParams.push(companyId);
+    }
     if (softCol) {
       await conn.query(
         `UPDATE ?? SET \`${softCol}\` = 1, \`deleted_by\` = ?, \`deleted_at\` = ? WHERE ${where}`,
-        [tableName, userId, now, id],
+        [tableName, userId, now, ...whereParams],
       );
     } else {
-      await conn.query(`DELETE FROM ?? WHERE ${where}`, [tableName, id]);
+      await conn.query(`DELETE FROM ?? WHERE ${where}`, [tableName, ...whereParams]);
     }
     return { [col]: id };
   }
 
   const parts = String(id).split('-');
-  const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
+  let where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
+  const whereParams = [...parts];
+  if (addCompanyFilter) {
+    where += ' AND `company_id` = ?';
+    whereParams.push(companyId);
+  }
   if (softCol) {
     await conn.query(
       `UPDATE ?? SET \`${softCol}\` = 1, \`deleted_by\` = ?, \`deleted_at\` = ? WHERE ${where}`,
-      [tableName, userId, now, ...parts],
+      [tableName, userId, now, ...whereParams],
     );
   } else {
-    await conn.query(`DELETE FROM ?? WHERE ${where}`, [tableName, ...parts]);
+    await conn.query(`DELETE FROM ?? WHERE ${where}`, [tableName, ...whereParams]);
   }
   const result = {};
   pkCols.forEach((c, i) => {
@@ -1519,7 +1559,7 @@ export async function listRowReferences(tableName, id, conn = pool) {
   return results;
 }
 
-async function deleteCascade(conn, tableName, id, visited) {
+async function deleteCascade(conn, tableName, id, visited, companyId) {
   const key = `${tableName}:${id}`;
   if (visited.has(key)) return;
   visited.add(key);
@@ -1548,17 +1588,17 @@ async function deleteCascade(conn, tableName, id, visited) {
         pkCols.length === 1
           ? row[pkCols[0]]
           : pkCols.map((c) => row[c]).join('-');
-      await deleteCascade(conn, r.table, refId, visited);
+      await deleteCascade(conn, r.table, refId, visited, companyId);
     }
   }
-  await deleteTableRow(tableName, id, conn);
+  await deleteTableRow(tableName, id, companyId, conn);
 }
-
-export async function deleteTableRowCascade(tableName, id) {
+ 
+export async function deleteTableRowCascade(tableName, id, companyId) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    await deleteCascade(conn, tableName, id, new Set());
+    await deleteCascade(conn, tableName, id, new Set(), companyId);
     await conn.commit();
   } catch (err) {
     await conn.rollback();
