@@ -2257,7 +2257,14 @@ const TableManager = forwardRef(function TableManager({
                     : {}),
                 }}
               >
-                {labels[c] || c}
+                <TooltipWrapper
+                  title={t(c.toLowerCase(), {
+                    ns: 'tooltip',
+                    defaultValue: labels[c] || c,
+                  })}
+                >
+                  {labels[c] || c}
+                </TooltipWrapper>
                 {sort.column === c ? (sort.dir === 'asc' ? ' \u2191' : ' \u2193') : ''}
               </th>
             ))}

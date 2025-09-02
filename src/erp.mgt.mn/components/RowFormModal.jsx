@@ -912,7 +912,7 @@ const RowFormModal = function RowFormModal({
     const inputClass = `w-full border rounded ${err ? 'border-red-500' : 'border-gray-300'}`;
     const isColumn = columns.includes(c);
     const disabled = disabledSet.has(c.toLowerCase()) || !isColumn;
-    const tip = t(c, { ns: 'tooltip', defaultValue: labels[c] || c });
+    const tip = t(c.toLowerCase(), { ns: 'tooltip', defaultValue: labels[c] || c });
 
     if (disabled) {
       const raw = isColumn ? formVals[c] : extraVals[c];
