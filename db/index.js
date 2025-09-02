@@ -529,14 +529,16 @@ export async function listUsers() {
     `SELECT u.id, u.empid, e.employment_position_id AS position_id, u.created_at
        FROM users u
        LEFT JOIN (
-         SELECT t1.employment_emp_id, t1.employment_position_id
+         SELECT t1.employment_company_id, t1.employment_emp_id, t1.employment_position_id
            FROM tbl_employment t1
            JOIN (
-             SELECT employment_emp_id, MAX(id) AS max_id
+             SELECT employment_company_id, employment_emp_id, MAX(id) AS max_id
                FROM tbl_employment
-               GROUP BY employment_emp_id
-           ) t2 ON t1.employment_emp_id = t2.employment_emp_id AND t1.id = t2.max_id
-       ) e ON u.empid = e.employment_emp_id`,
+               GROUP BY employment_company_id, employment_emp_id
+           ) t2 ON t1.employment_company_id = t2.employment_company_id
+                AND t1.employment_emp_id = t2.employment_emp_id
+                AND t1.id = t2.max_id
+       ) e ON u.company_id = e.employment_company_id AND u.empid = e.employment_emp_id`,
   );
   return rows;
 }

@@ -23631,37 +23631,37 @@ CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW 
 -- Constraints for table `code_abhuvaari`
 --
 ALTER TABLE `code_abhuvaari`
-  ADD CONSTRAINT `code_abhuvaari_ibfk_1` FOREIGN KEY (`HBChig_id2`) REFERENCES `code_chiglel` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT `code_abhuvaari_ibfk_2` FOREIGN KEY (`HBTorol_id2`) REFERENCES `code_torol` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT `code_abhuvaari_ibfk_3` FOREIGN KEY (`Hbaitsaagch_id2`) REFERENCES `code_huvaari` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+  ADD CONSTRAINT `code_abhuvaari_ibfk_1` FOREIGN KEY (`company_id`, `HBChig_id2`) REFERENCES `code_chiglel` (`company_id`, `id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `code_abhuvaari_ibfk_2` FOREIGN KEY (`company_id`, `HBTorol_id2`) REFERENCES `code_torol` (`company_id`, `id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `code_abhuvaari_ibfk_3` FOREIGN KEY (`company_id`, `Hbaitsaagch_id2`) REFERENCES `code_huvaari` (`company_id`, `id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 --
 -- Constraints for table `code_bkodprim`
 --
 ALTER TABLE `code_bkodprim`
-  ADD CONSTRAINT `code_bkodprim_ibfk_1` FOREIGN KEY (`bkod_Tk_muid`) REFERENCES `code_unit` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+  ADD CONSTRAINT `code_bkodprim_ibfk_1` FOREIGN KEY (`company_id`, `bkod_Tk_muid`) REFERENCES `code_unit` (`company_id`, `id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 --
 -- Constraints for table `code_expensebaltype`
 --
 ALTER TABLE `code_expensebaltype`
-  ADD CONSTRAINT `code_expensebaltype_ibfk_2` FOREIGN KEY (`k2`) REFERENCES `code_expenseangilal` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT `code_expensebaltype_ibfk_3` FOREIGN KEY (`k3`) REFERENCES `code_expensetype` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT `code_expensebaltype_ibfk_4` FOREIGN KEY (`k4`) REFERENCES `code_expenseutga` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT `code_expensebaltype_ibfk_5` FOREIGN KEY (`k5`) REFERENCES `code_expensebalancetype` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT `code_expensebaltype_ibfk_6` FOREIGN KEY (`k6_`) REFERENCES `code_expensebalancetype` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+  ADD CONSTRAINT `code_expensebaltype_ibfk_2` FOREIGN KEY (`company_id`, `k2`) REFERENCES `code_expenseangilal` (`company_id`, `id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `code_expensebaltype_ibfk_3` FOREIGN KEY (`company_id`, `k3`) REFERENCES `code_expensetype` (`company_id`, `id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `code_expensebaltype_ibfk_4` FOREIGN KEY (`company_id`, `k4`) REFERENCES `code_expenseutga` (`company_id`, `id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `code_expensebaltype_ibfk_5` FOREIGN KEY (`company_id`, `k5`) REFERENCES `code_expensebalancetype` (`company_id`, `id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `code_expensebaltype_ibfk_6` FOREIGN KEY (`company_id`, `k6_`) REFERENCES `code_expensebalancetype` (`company_id`, `id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 --
 -- Constraints for table `code_materialprim`
 --
 ALTER TABLE `code_materialprim`
-  ADD CONSTRAINT `code_materialprim_ibfk_1` FOREIGN KEY (`xmkodtk_muid`) REFERENCES `code_unit` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+  ADD CONSTRAINT `code_materialprim_ibfk_1` FOREIGN KEY (`company_id`, `xmkodtk_muid`) REFERENCES `code_unit` (`company_id`, `id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 --
 -- Constraints for table `code_workplace`
 --
 ALTER TABLE `code_workplace`
-  ADD CONSTRAINT `code_workplace_ibfk_1` FOREIGN KEY (`workplace_position_id`) REFERENCES `code_position` (`position_id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+  ADD CONSTRAINT `code_workplace_ibfk_1` FOREIGN KEY (`company_id`, `workplace_position_id`) REFERENCES `code_position` (`company_id`, `position_id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 --
 -- Constraints for table `company_module_licenses`
@@ -23680,7 +23680,7 @@ ALTER TABLE `modules`
 -- Constraints for table `request_seen_counts`
 --
 ALTER TABLE `request_seen_counts`
-  ADD CONSTRAINT `fk_seen_emp` FOREIGN KEY (`emp_id`) REFERENCES `tbl_employment` (`employment_emp_id`);
+  ADD CONSTRAINT `fk_seen_emp` FOREIGN KEY (`company_id`, `emp_id`) REFERENCES `tbl_employment` (`employment_company_id`, `employment_emp_id`);
 
 --
 -- Constraints for table `role_default_modules`
@@ -23699,42 +23699,42 @@ ALTER TABLE `role_module_permissions`
 -- Constraints for table `tbl_beltgenniiluulegch`
 --
 ALTER TABLE `tbl_beltgenniiluulegch`
-  ADD CONSTRAINT `tbl_beltgenniiluulegch_ibfk_1` FOREIGN KEY (`manuf_id`) REFERENCES `tbl_contracter` (`manuf_id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+  ADD CONSTRAINT `tbl_beltgenniiluulegch_ibfk_1` FOREIGN KEY (`company_id`, `manuf_id`) REFERENCES `tbl_contracter` (`company_id`, `manuf_id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 --
 -- Constraints for table `tbl_currate`
 --
 ALTER TABLE `tbl_currate`
-  ADD CONSTRAINT `tbl_currate_ibfk_1` FOREIGN KEY (`Valutid`) REFERENCES `code_valut` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+  ADD CONSTRAINT `tbl_currate_ibfk_1` FOREIGN KEY (`company_id`, `Valutid`) REFERENCES `code_valut` (`company_id`, `id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 --
 -- Constraints for table `tbl_discount`
 --
 ALTER TABLE `tbl_discount`
-  ADD CONSTRAINT `tbl_discount_ibfk_1` FOREIGN KEY (`branchid`) REFERENCES `code_branches` (`branch_id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+  ADD CONSTRAINT `tbl_discount_ibfk_1` FOREIGN KEY (`company_id`, `branchid`) REFERENCES `code_branches` (`company_id`, `branch_id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 --
 -- Constraints for table `tbl_employment`
 --
 ALTER TABLE `tbl_employment`
   ADD CONSTRAINT `tbl_employment_ibfk_1` FOREIGN KEY (`employment_company_id`) REFERENCES `companies` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT `tbl_employment_ibfk_2` FOREIGN KEY (`employment_emp_id`) REFERENCES `tbl_employee` (`emp_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT `tbl_employment_ibfk_3` FOREIGN KEY (`employment_branch_id`) REFERENCES `code_branches` (`branch_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT `tbl_employment_ibfk_4` FOREIGN KEY (`employment_department_id`) REFERENCES `code_department` (`department_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `tbl_employment_ibfk_2` FOREIGN KEY (`employment_company_id`, `employment_emp_id`) REFERENCES `tbl_employee` (`Company_id`, `emp_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `tbl_employment_ibfk_3` FOREIGN KEY (`employment_company_id`, `employment_branch_id`) REFERENCES `code_branches` (`company_id`, `branch_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `tbl_employment_ibfk_4` FOREIGN KEY (`employment_company_id`, `employment_department_id`) REFERENCES `code_department` (`company_id`, `department_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `tbl_employment_ibfk_5` FOREIGN KEY (`employment_user_level`) REFERENCES `user_levels` (`userlevel_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT `tbl_employment_ibfk_6` FOREIGN KEY (`employment_senior_empid`) REFERENCES `tbl_employee` (`emp_id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+  ADD CONSTRAINT `tbl_employment_ibfk_6` FOREIGN KEY (`employment_company_id`, `employment_senior_empid`) REFERENCES `tbl_employee` (`Company_id`, `emp_id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 --
 -- Constraints for table `tbl_expenseorg`
 --
 ALTER TABLE `tbl_expenseorg`
-  ADD CONSTRAINT `tbl_expenseorg_ibfk_1` FOREIGN KEY (`z_org_id`) REFERENCES `tbl_contracter` (`manuf_id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+  ADD CONSTRAINT `tbl_expenseorg_ibfk_1` FOREIGN KEY (`company_id`, `z_org_id`) REFERENCES `tbl_contracter` (`company_id`, `manuf_id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 --
 -- Constraints for table `tbl_workplace_schedule`
 --
 ALTER TABLE `tbl_workplace_schedule`
-  ADD CONSTRAINT `tbl_workplace_schedule_ibfk_1` FOREIGN KEY (`ws_emp_id`) REFERENCES `tbl_employee` (`emp_id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+  ADD CONSTRAINT `tbl_workplace_schedule_ibfk_1` FOREIGN KEY (`company_id`, `ws_emp_id`) REFERENCES `tbl_employee` (`Company_id`, `emp_id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 --
 -- Constraints for table `transactions_contract`
@@ -23746,10 +23746,10 @@ ALTER TABLE `transactions_contract`
 -- Constraints for table `transactions_expense`
 --
 ALTER TABLE `transactions_expense`
-  ADD CONSTRAINT `transactions_expense_ibfk_1` FOREIGN KEY (`branch_id`) REFERENCES `code_branches` (`branch_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT `transactions_expense_ibfk_2` FOREIGN KEY (`z_angilal_b`) REFERENCES `code_branches` (`branch_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `transactions_expense_ibfk_1` FOREIGN KEY (`company_id`, `branch_id`) REFERENCES `code_branches` (`company_id`, `branch_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `transactions_expense_ibfk_2` FOREIGN KEY (`company_id`, `z_angilal_b`) REFERENCES `code_branches` (`company_id`, `branch_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `transactions_expense_ibfk_3` FOREIGN KEY (`company_id`) REFERENCES `companies` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT `transactions_expense_ibfk_4` FOREIGN KEY (`z_from`) REFERENCES `code_cashier` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `transactions_expense_ibfk_4` FOREIGN KEY (`company_id`, `z_from`) REFERENCES `code_cashier` (`company_id`, `id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `transactions_expense_ibfk_5` FOREIGN KEY (`TransType`) REFERENCES `code_transaction` (`UITransType`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 --
@@ -23763,14 +23763,14 @@ ALTER TABLE `transactions_income`
 --
 ALTER TABLE `transactions_inventory`
   ADD CONSTRAINT `transactions_inventory_ibfk_1` FOREIGN KEY (`company_id`) REFERENCES `companies` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT `transactions_inventory_ibfk_2` FOREIGN KEY (`sp_pm_unit_id`) REFERENCES `code_unit` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+  ADD CONSTRAINT `transactions_inventory_ibfk_2` FOREIGN KEY (`company_id`, `sp_pm_unit_id`) REFERENCES `code_unit` (`company_id`, `id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 --
 -- Constraints for table `transactions_order`
 --
 ALTER TABLE `transactions_order`
   ADD CONSTRAINT `transactions_order_ibfk_1` FOREIGN KEY (`company_id`) REFERENCES `companies` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT `transactions_order_ibfk_2` FOREIGN KEY (`sp_pm_unit_id`) REFERENCES `code_unit` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+  ADD CONSTRAINT `transactions_order_ibfk_2` FOREIGN KEY (`company_id`, `sp_pm_unit_id`) REFERENCES `code_unit` (`company_id`, `id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 --
 -- Constraints for table `transactions_plan`
@@ -23782,19 +23782,19 @@ ALTER TABLE `transactions_plan`
 -- Constraints for table `transactions_pos`
 --
 ALTER TABLE `transactions_pos`
-  ADD CONSTRAINT `transactions_pos_ibfk_1` FOREIGN KEY (`branch_id`) REFERENCES `code_branches` (`branch_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `transactions_pos_ibfk_1` FOREIGN KEY (`company_id`, `branch_id`) REFERENCES `code_branches` (`company_id`, `branch_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `transactions_pos_ibfk_2` FOREIGN KEY (`company_id`) REFERENCES `companies` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT `transactions_pos_ibfk_3` FOREIGN KEY (`emp_id`) REFERENCES `tbl_employee` (`emp_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT `transactions_pos_ibfk_5` FOREIGN KEY (`status`) REFERENCES `code_status` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT `transactions_pos_ibfk_6` FOREIGN KEY (`payment_type`) REFERENCES `code_cashier` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT `transactions_pos_ibfk_8` FOREIGN KEY (`cashback_payment_type`) REFERENCES `code_cashier` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+  ADD CONSTRAINT `transactions_pos_ibfk_3` FOREIGN KEY (`company_id`, `emp_id`) REFERENCES `tbl_employee` (`Company_id`, `emp_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `transactions_pos_ibfk_5` FOREIGN KEY (`company_id`, `status`) REFERENCES `code_status` (`company_id`, `id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `transactions_pos_ibfk_6` FOREIGN KEY (`company_id`, `payment_type`) REFERENCES `code_cashier` (`company_id`, `id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `transactions_pos_ibfk_8` FOREIGN KEY (`company_id`, `cashback_payment_type`) REFERENCES `code_cashier` (`company_id`, `id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 --
 -- Constraints for table `users`
 --
 ALTER TABLE `users`
-  ADD CONSTRAINT `users_ibfk_1` FOREIGN KEY (`empid`) REFERENCES `tbl_employment` (`employment_emp_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT `users_ibfk_2` FOREIGN KEY (`empid`) REFERENCES `tbl_employee` (`emp_id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+  ADD CONSTRAINT `users_ibfk_1` FOREIGN KEY (`company_id`, `empid`) REFERENCES `tbl_employment` (`employment_company_id`, `employment_emp_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `users_ibfk_2` FOREIGN KEY (`company_id`, `empid`) REFERENCES `tbl_employee` (`Company_id`, `emp_id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 --
 -- Constraints for table `user_level_permissions`
