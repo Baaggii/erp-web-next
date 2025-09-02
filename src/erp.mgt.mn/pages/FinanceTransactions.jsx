@@ -16,6 +16,7 @@ import formatTimestamp from '../utils/formatTimestamp.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import CustomDatePicker from '../components/CustomDatePicker.jsx';
+import useButtonPerms from '../hooks/useButtonPerms.js';
 
 function normalizeDateInput(value, format) {
   if (typeof value !== 'string') return value;
@@ -66,6 +67,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const [reportResult, setReportResult] = useState(null);
   const [manualParams, setManualParams] = useState({});
   const { company, branch, department, user, permissions: perms } = useContext(AuthContext);
+  const buttonPerms = useButtonPerms();
   const generalConfig = useGeneralConfig();
   const licensed = useCompanyModules(company);
   const tableRef = useRef(null);
@@ -594,7 +596,7 @@ useEffect(() => {
       {table && config && (
         <>
           <div style={{ marginBottom: '0.5rem' }}>
-            {perms?.buttons?.['New transaction'] && (
+            {buttonPerms['New transaction'] && (
               <button
                 onClick={() => tableRef.current?.openAdd()}
                 style={{ marginRight: '0.5rem' }}
@@ -616,7 +618,7 @@ useEffect(() => {
             initialPerPage={10}
             addLabel="Гүйлгээ нэмэх"
             showTable={showTable}
-            buttonPerms={perms?.buttons || {}}
+            buttonPerms={buttonPerms}
           />
         </>
       )}
@@ -625,7 +627,7 @@ useEffect(() => {
           procedure={reportResult.name}
           params={reportResult.params}
           rows={reportResult.rows}
-          buttonPerms={perms?.buttons || {}}
+          buttonPerms={buttonPerms}
         />
       )}
       {transactionNames.length === 0 && (
