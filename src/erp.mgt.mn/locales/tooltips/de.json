@@ -1,9 +1,1 @@
-{
-  "organization": "Organisation auswählen",
-  "date": "Transaktionsdatum",
-  "firstName": "Vorname",
-  "lastName": "Nachname",
-  "cashback": "Cashback-Betrag",
-  "remarks": "Zusätzliche Anmerkungen",
-  "enable_tooltips": "Zum Anzeigen oder Ausblenden von Tooltips umschalten"
-}
+{}
