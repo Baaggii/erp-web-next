@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import Modal from './Modal.jsx';
+import { useTranslation } from 'react-i18next';
 
 export default function CascadeDeleteModal({ visible, references = [], onCancel, onConfirm }) {
+  const { t } = useTranslation();
   const [rowsByTable, setRowsByTable] = useState({});
 
   useEffect(() => {
@@ -31,7 +33,7 @@ export default function CascadeDeleteModal({ visible, references = [], onCancel,
   if (!visible) return null;
 
   return (
-    <Modal visible={visible} title="Delete Related Records?" onClose={onCancel}>
+    <Modal visible={visible} title={t('delete_related_records', 'Delete Related Records?')} onClose={onCancel}>
         {references.map((r) => (
           <div key={`${r.table}-${r.column}-${r.value}`} style={{ marginBottom: '1rem' }}>
             <strong>{r.table}</strong> ({r.count})
@@ -50,9 +52,9 @@ export default function CascadeDeleteModal({ visible, references = [], onCancel,
         ))}
         <div style={{ textAlign: 'right' }}>
           <button type="button" onClick={onCancel} style={{ marginRight: '0.5rem' }}>
-            Cancel
+            {t('cancel', 'Cancel')}
           </button>
-          <button type="button" onClick={onConfirm}>Delete All</button>
+          <button type="button" onClick={onConfirm}>{t('delete_all', 'Delete All')}</button>
         </div>
     </Modal>
   );

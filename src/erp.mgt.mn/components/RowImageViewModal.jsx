@@ -5,6 +5,7 @@ import buildImageName from '../utils/buildImageName.js';
 import { API_BASE, API_ROOT } from '../utils/apiBase.js';
 import { useToast } from '../context/ToastContext.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import { useTranslation } from 'react-i18next';
 
 export default function RowImageViewModal({
   visible,
@@ -20,6 +21,7 @@ export default function RowImageViewModal({
   const [fullscreenIndex, setFullscreenIndex] = useState(null);
   const { addToast } = useToast();
   const generalConfig = useGeneralConfig();
+  const { t } = useTranslation();
   const toast = (msg, type = 'info') => {
     if (type === 'info' && !generalConfig?.general?.imageToastEnabled) return;
     addToast(msg, type);
@@ -295,17 +297,17 @@ export default function RowImageViewModal({
 
   return (
     <>
-      <Modal visible={visible} title="Images" onClose={onClose} width="auto">
-        {files.length === 0 ? <p>No images</p> : listView}
+      <Modal visible={visible} title={t('images', 'Images')} onClose={onClose} width="auto">
+        {files.length === 0 ? <p>{t('no_images', 'No images')}</p> : listView}
         {files.length > 0 && (
           <div style={{ textAlign: 'right', marginTop: '0.5rem' }}>
             <button type="button" onClick={() => setShowGallery(true)} style={{ marginRight: '0.5rem' }}>
-              View all images
+              {t('view_all_images', 'View all images')}
             </button>
           </div>
         )}
         <div style={{ textAlign: 'right', marginTop: '1rem' }}>
-          <button type="button" onClick={onClose}>Close</button>
+          <button type="button" onClick={onClose}>{t('close', 'Close')}</button>
         </div>
       </Modal>
       {showGallery &&
@@ -325,7 +327,7 @@ export default function RowImageViewModal({
             }}
           >
             <div style={{ textAlign: 'right' }}>
-              <button type="button" onClick={() => setShowGallery(false)}>Close</button>
+              <button type="button" onClick={() => setShowGallery(false)}>{t('close', 'Close')}</button>
             </div>
             <div
               style={{
@@ -350,27 +352,27 @@ export default function RowImageViewModal({
                     style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }}
                     onClick={() => handleView(idx)}
                   />
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDelete(f);
-                    }}
-                    style={{
-                      position: 'absolute',
-                      top: '0.25rem',
-                      right: '0.25rem',
-                      background: 'red',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '0.25rem',
-                      padding: '0.25rem 0.5rem',
-                      cursor: 'pointer',
-                      fontSize: '0.75rem',
-                    }}
-                  >
-                    delete
-                  </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(f);
+                      }}
+                      style={{
+                        position: 'absolute',
+                        top: '0.25rem',
+                        right: '0.25rem',
+                        background: 'red',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '0.25rem',
+                        padding: '0.25rem 0.5rem',
+                        cursor: 'pointer',
+                        fontSize: '0.75rem',
+                      }}
+                    >
+                      {t('delete', 'Delete')}
+                    </button>
                 </div>
               ))}
             </div>
@@ -404,7 +406,7 @@ export default function RowImageViewModal({
                 transform: 'translateY(-50%)',
               }}
             >
-              Prev
+              {t('prev', 'Prev')}
             </button>
             <img
               src={files[fullscreenIndex]?.src}
@@ -425,7 +427,7 @@ export default function RowImageViewModal({
                 transform: 'translateY(-50%)',
               }}
             >
-              Next
+              {t('next', 'Next')}
             </button>
           </div>,
           document.body,
