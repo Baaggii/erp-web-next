@@ -72,15 +72,24 @@ function UserManualTab() {
   const toursEnabled = userSettings.settings_enable_tours ?? false;
   return (
     <div>
-      <label>
-        <input
-          id="show-page-guide-toggle"
-          type="checkbox"
-          checked={toursEnabled}
-          onChange={(e) => updateUserSettings({ settings_enable_tours: e.target.checked })}
-        />{' '}
-        {t('settings_enable_tours', 'Show page guide')}
-      </label>
+      <TooltipWrapper
+        title={t('settings_enable_tours', {
+          ns: 'tooltip',
+          defaultValue: 'Show page guide',
+        })}
+      >
+        <label>
+          <input
+            id="show-page-guide-toggle"
+            type="checkbox"
+            checked={toursEnabled}
+            onChange={(e) =>
+              updateUserSettings({ settings_enable_tours: e.target.checked })
+            }
+          />{' '}
+          {t('settings_enable_tours', 'Show page guide')}
+        </label>
+      </TooltipWrapper>
     </div>
   );
 }
@@ -97,20 +106,27 @@ function PrinterSettingsTab() {
   }, []);
   return (
     <div>
-      <label>
-        {t('printer', 'Printer')}: {' '}
-        <select
-          value={userSettings.printerId || ''}
-          onChange={(e) => updateUserSettings({ printerId: e.target.value })}
-        >
-          <option value="">{t('select_printer', 'Select printer')}</option>
-          {printers.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <TooltipWrapper
+        title={t('select_printer', {
+          ns: 'tooltip',
+          defaultValue: 'Select printer',
+        })}
+      >
+        <label>
+          {t('printer', 'Printer')}: {' '}
+          <select
+            value={userSettings.printerId || ''}
+            onChange={(e) => updateUserSettings({ printerId: e.target.value })}
+          >
+            <option value="">{t('select_printer', 'Select printer')}</option>
+            {printers.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </TooltipWrapper>
     </div>
   );
 }
@@ -120,20 +136,27 @@ function ProfileSettingsTab() {
   const { lang, setLang } = useContext(LangContext);
   return (
     <div>
-      <label>
-        {t('language', 'Language')}: {' '}
-        <select value={lang} onChange={(e) => setLang(e.target.value)}>
-          <option value="en">English</option>
-          <option value="mn">Mongolian</option>
-          <option value="ja">Japanese</option>
-          <option value="ko">Korean</option>
-          <option value="zh">Chinese</option>
-          <option value="es">Spanish</option>
-          <option value="de">German</option>
-          <option value="fr">French</option>
-          <option value="ru">Russian</option>
-        </select>
-      </label>
+      <TooltipWrapper
+        title={t('language', {
+          ns: 'tooltip',
+          defaultValue: 'Select language',
+        })}
+      >
+        <label>
+          {t('language', 'Language')}: {' '}
+          <select value={lang} onChange={(e) => setLang(e.target.value)}>
+            <option value="en">English</option>
+            <option value="mn">Mongolian</option>
+            <option value="ja">Japanese</option>
+            <option value="ko">Korean</option>
+            <option value="zh">Chinese</option>
+            <option value="es">Spanish</option>
+            <option value="de">German</option>
+            <option value="fr">French</option>
+            <option value="ru">Russian</option>
+          </select>
+        </label>
+      </TooltipWrapper>
     </div>
   );
 }
