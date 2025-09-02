@@ -451,16 +451,34 @@ function Sidebar({ onOpen, open, isMobile }) {
               level={0}
               onOpen={onOpen}
               badgeKeys={badgeKeys}
+              generalConfig={generalConfig}
+              headerMap={headerMap}
             />
           ) : (
             <button
               key={m.module_key}
-              onClick={() => onOpen(modulePath(m, allMap), m.label, m.module_key)}
+              onClick={() =>
+                onOpen(
+                  modulePath(m, allMap),
+                  t(
+                    m.module_key,
+                    generalConfig.general?.procLabels?.[m.module_key] ||
+                      headerMap[m.module_key] ||
+                      m.label,
+                  ),
+                  m.module_key,
+                )
+              }
               className="menu-item"
               style={styles.menuItem({ isActive: location.pathname === modulePath(m, allMap) })}
             >
               {badgeKeys.has(m.module_key) && <span style={styles.badge} />}
-              {m.label}
+              {t(
+                m.module_key,
+                generalConfig.general?.procLabels?.[m.module_key] ||
+                  headerMap[m.module_key] ||
+                  m.label,
+              )}
             </button>
           ),
         )}
@@ -469,14 +487,22 @@ function Sidebar({ onOpen, open, isMobile }) {
   );
 }
 
-function SidebarGroup({ mod, map, allMap, level, onOpen, badgeKeys }) {
+function SidebarGroup({ mod, map, allMap, level, onOpen, badgeKeys, generalConfig, headerMap }) {
   const [open, setOpen] = useState(false);
-  const groupClass = level === 0 ? 'menu-group' : level === 1 ? 'menu-group submenu' : 'menu-group subsubmenu';
+  const { t } = useContext(LangContext);
+  const groupClass =
+    level === 0 ? 'menu-group' : level === 1 ? 'menu-group submenu' : 'menu-group subsubmenu';
   return (
     <div className={groupClass} style={{ ...styles.menuGroup, paddingLeft: level ? '1rem' : 0 }}>
       <button className="menu-item" style={styles.groupBtn} onClick={() => setOpen((o) => !o)}>
         {badgeKeys.has(mod.module_key) && <span style={styles.badge} />}
-        {mod.label} {open ? '▾' : '▸'}
+        {t(
+          mod.module_key,
+          generalConfig.general?.procLabels?.[mod.module_key] ||
+            headerMap[mod.module_key] ||
+            mod.label,
+        )}{' '}
+        {open ? '▾' : '▸'}
       </button>
       {open &&
         mod.children.map((c) =>
@@ -489,11 +515,24 @@ function SidebarGroup({ mod, map, allMap, level, onOpen, badgeKeys }) {
               level={level + 1}
               onOpen={onOpen}
               badgeKeys={badgeKeys}
+              generalConfig={generalConfig}
+              headerMap={headerMap}
             />
           ) : (
             <button
               key={c.module_key}
-              onClick={() => onOpen(modulePath(c, allMap), c.label, c.module_key)}
+              onClick={() =>
+                onOpen(
+                  modulePath(c, allMap),
+                  t(
+                    c.module_key,
+                    generalConfig.general?.procLabels?.[c.module_key] ||
+                      headerMap[c.module_key] ||
+                      c.label,
+                  ),
+                  c.module_key,
+                )
+              }
               style={{
                 ...styles.menuItem({ isActive: location.pathname === modulePath(c, allMap) }),
                 paddingLeft: `${(level + 1) * 1}rem`,
@@ -501,7 +540,12 @@ function SidebarGroup({ mod, map, allMap, level, onOpen, badgeKeys }) {
               className="menu-item"
             >
               {badgeKeys.has(c.module_key) && <span style={styles.badge} />}
-              {c.label}
+              {t(
+                c.module_key,
+                generalConfig.general?.procLabels?.[c.module_key] ||
+                  headerMap[c.module_key] ||
+                  c.label,
+              )}
             </button>
           ),
         )}
