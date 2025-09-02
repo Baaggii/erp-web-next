@@ -64,7 +64,7 @@ CREATE TABLE `code_bkodprim` (
   `company_id` int NOT NULL DEFAULT '0'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_branches` (
-  `id` int NOT NULL,
+  `branch_id` int NOT NULL,
   `name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
   `company_id` int NOT NULL DEFAULT '0'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -1775,7 +1775,7 @@ ALTER TABLE `code_bkodprim`
   ADD UNIQUE KEY `uniq_1ab68fd7` (`bkod_Tk`,`bkod_Tk_name`,`bkod_Tk_muid`,`bkod_tk_tkkod`,`bkod_Tk_SKU`,`bkod_Tk_date`,`bkod_Tk_prod`,`bkod_Tk_size`,`bkod_tk_length`,`bkod_tk_width`,`bkod_tk_thick`),
   ADD KEY `bkod_Tk_muid` (`bkod_Tk_muid`);
 ALTER TABLE `code_branches`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`branch_id`);
 ALTER TABLE `code_cashier`
   ADD PRIMARY KEY (`id`);
 ALTER TABLE `code_chiglel`
@@ -2024,7 +2024,7 @@ ALTER TABLE `code_bkod`
 ALTER TABLE `code_bkodprim`
   MODIFY `id` int NOT NULL AUTO_INCREMENT;
 ALTER TABLE `code_branches`
-  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=32;
+  MODIFY `branch_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=32;
 ALTER TABLE `code_cashier`
   MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=18;
 ALTER TABLE `code_chiglel`
@@ -2198,11 +2198,11 @@ ALTER TABLE `tbl_beltgenniiluulegch`
 ALTER TABLE `tbl_currate`
   ADD CONSTRAINT `tbl_currate_ibfk_1` FOREIGN KEY (`Valutid`) REFERENCES `code_valut` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 ALTER TABLE `tbl_discount`
-  ADD CONSTRAINT `tbl_discount_ibfk_1` FOREIGN KEY (`branchid`) REFERENCES `code_branches` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+  ADD CONSTRAINT `tbl_discount_ibfk_1` FOREIGN KEY (`branchid`) REFERENCES `code_branches` (`branch_id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 ALTER TABLE `tbl_employment`
   ADD CONSTRAINT `tbl_employment_ibfk_1` FOREIGN KEY (`employment_company_id`) REFERENCES `companies` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `tbl_employment_ibfk_2` FOREIGN KEY (`employment_emp_id`) REFERENCES `tbl_employee` (`emp_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT `tbl_employment_ibfk_3` FOREIGN KEY (`employment_branch_id`) REFERENCES `code_branches` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `tbl_employment_ibfk_3` FOREIGN KEY (`employment_branch_id`) REFERENCES `code_branches` (`branch_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `tbl_employment_ibfk_4` FOREIGN KEY (`employment_department_id`) REFERENCES `code_department` (`department_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `tbl_employment_ibfk_5` FOREIGN KEY (`employment_user_level`) REFERENCES `user_levels` (`userlevel_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `tbl_employment_ibfk_6` FOREIGN KEY (`employment_senior_empid`) REFERENCES `tbl_employee` (`emp_id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
@@ -2213,8 +2213,8 @@ ALTER TABLE `tbl_workplace_schedule`
 ALTER TABLE `transactions_contract`
   ADD CONSTRAINT `transactions_contract_ibfk_1` FOREIGN KEY (`company_id`) REFERENCES `companies` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 ALTER TABLE `transactions_expense`
-  ADD CONSTRAINT `transactions_expense_ibfk_1` FOREIGN KEY (`branch_id`) REFERENCES `code_branches` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT `transactions_expense_ibfk_2` FOREIGN KEY (`z_angilal_b`) REFERENCES `code_branches` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `transactions_expense_ibfk_1` FOREIGN KEY (`branch_id`) REFERENCES `code_branches` (`branch_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `transactions_expense_ibfk_2` FOREIGN KEY (`z_angilal_b`) REFERENCES `code_branches` (`branch_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `transactions_expense_ibfk_3` FOREIGN KEY (`company_id`) REFERENCES `companies` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `transactions_expense_ibfk_4` FOREIGN KEY (`z_from`) REFERENCES `code_cashier` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `transactions_expense_ibfk_5` FOREIGN KEY (`TransType`) REFERENCES `code_transaction` (`UITransType`) ON DELETE RESTRICT ON UPDATE RESTRICT;
@@ -2229,7 +2229,7 @@ ALTER TABLE `transactions_order`
 ALTER TABLE `transactions_plan`
   ADD CONSTRAINT `transactions_plan_ibfk_1` FOREIGN KEY (`company_id`) REFERENCES `companies` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 ALTER TABLE `transactions_pos`
-  ADD CONSTRAINT `transactions_pos_ibfk_1` FOREIGN KEY (`branch_id`) REFERENCES `code_branches` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `transactions_pos_ibfk_1` FOREIGN KEY (`branch_id`) REFERENCES `code_branches` (`branch_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `transactions_pos_ibfk_2` FOREIGN KEY (`company_id`) REFERENCES `companies` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `transactions_pos_ibfk_3` FOREIGN KEY (`emp_id`) REFERENCES `tbl_employee` (`emp_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `transactions_pos_ibfk_5` FOREIGN KEY (`status`) REFERENCES `code_status` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,

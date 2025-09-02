@@ -11,7 +11,7 @@ VALUES (0, 'Global Defaults', 0, '0', '', '')
 ON DUPLICATE KEY UPDATE name = VALUES(name);
 
 -- Shared code tables
-INSERT INTO code_branches (id, name, company_id) VALUES
+INSERT INTO code_branches (branch_id, name, company_id) VALUES
   (0, '0', 0),
   (1, 'ТӨВ САЛБАР', 0),
   (2, 'БАЯНХОШУУ', 0),
