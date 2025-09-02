@@ -41,8 +41,8 @@ export async function restoreLogEntry(req, res, next) {
     if (!entry) return res.sendStatus(404);
 
     const [rows] = await pool.query(
-      'SELECT employment_senior_empid FROM tbl_employment WHERE employment_emp_id = ? LIMIT 1',
-      [entry.emp_id],
+      'SELECT employment_senior_empid FROM tbl_employment WHERE employment_emp_id = ? AND employment_company_id = ? LIMIT 1',
+      [entry.emp_id, entry.company_id],
     );
     const senior = rows[0]?.employment_senior_empid;
     if (senior !== req.user.empid) return res.sendStatus(403);
