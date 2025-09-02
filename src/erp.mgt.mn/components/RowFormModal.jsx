@@ -1459,27 +1459,27 @@ const RowFormModal = function RowFormModal({
             onClick={() => handlePrint('emp')}
             className="px-3 py-1 bg-gray-200 rounded"
           >
-            Print Emp
+            {t('printEmp', 'Print Emp')}
           </button>
           <button
             type="button"
             onClick={() => handlePrint('cust')}
             className="px-3 py-1 bg-gray-200 rounded"
           >
-            Print Cust
+            {t('printCust', 'Print Cust')}
           </button>
           <button
             type="button"
             onClick={onCancel}
             className="px-3 py-1 bg-gray-200 rounded"
           >
-            Cancel
+            {t('cancel', 'Cancel')}
           </button>
           <button
             type="submit"
             className="px-3 py-1 bg-blue-600 text-white rounded"
           >
-            Post
+            {t('post', 'Post')}
           </button>
         </div>
         <div className="text-sm text-gray-600">
