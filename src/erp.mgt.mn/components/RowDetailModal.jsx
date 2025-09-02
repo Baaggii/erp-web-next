@@ -1,8 +1,10 @@
 import React from 'react';
 import Modal from './Modal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
+import { useTranslation } from 'react-i18next';
 
 export default function RowDetailModal({ visible, onClose, row = {}, columns = [], relations = {}, references = [], labels = {} }) {
+  const { t } = useTranslation();
   if (!visible) return null;
 
   const labelMap = {};
@@ -38,7 +40,7 @@ export default function RowDetailModal({ visible, onClose, row = {}, columns = [
   }
 
   return (
-    <Modal visible={visible} title="Row Details" onClose={onClose}>
+    <Modal visible={visible} title={t('row_details', 'Row Details')} onClose={onClose}>
         <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '1rem' }}>
           <tbody>
             {cols.map((c) => (
@@ -74,7 +76,7 @@ export default function RowDetailModal({ visible, onClose, row = {}, columns = [
         </table>
         {references.length > 0 && (
           <div style={{ marginBottom: '1rem' }}>
-            <strong>References</strong>
+            <strong>{t('references', 'References')}</strong>
             {references.map((r, idx) => (
               <div key={idx} style={{ marginTop: '0.25rem' }}>
                 {r.table} ({r.count}) - {r.column} = {r.value}
@@ -83,7 +85,7 @@ export default function RowDetailModal({ visible, onClose, row = {}, columns = [
           </div>
         )}
         <div style={{ textAlign: 'right' }}>
-          <button type="button" onClick={onClose}>Close</button>
+          <button type="button" onClick={onClose}>{t('close', 'Close')}</button>
         </div>
     </Modal>
   );

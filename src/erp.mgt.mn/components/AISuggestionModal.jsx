@@ -1,12 +1,14 @@
 import React from 'react';
 import Modal from './Modal.jsx';
+import { useTranslation } from 'react-i18next';
 
 export default function AISuggestionModal({ visible, items = [], onSelect, onClose }) {
+  const { t } = useTranslation();
   if (!visible) return null;
   return (
-    <Modal visible={visible} title="AI Suggestions" onClose={onClose} width="auto">
+    <Modal visible={visible} title={t('ai_suggestions', 'AI Suggestions')} onClose={onClose} width="auto">
       {items.length === 0 ? (
-        <p>No suggestions.</p>
+        <p>{t('no_suggestions', 'No suggestions.')}</p>
       ) : (
         <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {items.map((it, idx) => (
@@ -17,7 +19,7 @@ export default function AISuggestionModal({ visible, items = [], onSelect, onClo
                 style={{ marginLeft: '0.5rem' }}
                 onClick={() => onSelect && onSelect(it)}
               >
-                Use
+                {t('use', 'Use')}
               </button>
             </li>
           ))}

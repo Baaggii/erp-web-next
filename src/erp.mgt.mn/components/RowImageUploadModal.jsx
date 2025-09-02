@@ -4,6 +4,7 @@ import { useToast } from '../context/ToastContext.jsx';
 import buildImageName from '../utils/buildImageName.js';
 import AISuggestionModal from './AISuggestionModal.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import { useTranslation } from 'react-i18next';
 
 export default function RowImageUploadModal({
   visible,
@@ -24,6 +25,7 @@ export default function RowImageUploadModal({
   const [uploaded, setUploaded] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
   const generalConfig = useGeneralConfig();
+  const { t } = useTranslation();
   const toast = (msg, type = 'info') => {
     if (type === 'info' && !generalConfig?.general?.imageToastEnabled) return;
     addToast(msg, type);
@@ -280,7 +282,7 @@ export default function RowImageUploadModal({
   if (!visible) return null;
 
   return (
-    <Modal visible={visible} title="Upload Images" onClose={onClose} width="auto">
+    <Modal visible={visible} title={t('upload_images', 'Upload Images')} onClose={onClose} width="auto">
       <div style={{ marginBottom: '0.5rem' }}>
         <input
           type="file"
@@ -291,7 +293,7 @@ export default function RowImageUploadModal({
             handleUpload(selected);
           }}
         />
-        {loading && <span style={{ marginLeft: '0.5rem' }}>Uploading...</span>}
+        {loading && <span style={{ marginLeft: '0.5rem' }}>{t('uploading', 'Uploading...')}</span>}
       </div>
       {uploaded.length > 0 && (
         <div style={{ maxHeight: '40vh', overflowY: 'auto' }}>
@@ -301,24 +303,24 @@ export default function RowImageUploadModal({
               <div key={src} style={{ marginBottom: '0.25rem' }}>
                 <img src={src} alt="" style={{ maxWidth: '100px', marginRight: '0.5rem' }} />
                 <span style={{ marginRight: '0.5rem' }}>{name}</span>
-                <button type="button" onClick={() => deleteFile(name)}>Delete</button>
+                <button type="button" onClick={() => deleteFile(name)}>{t('delete', 'Delete')}</button>
               </div>
             );
           })}
           <button type="button" onClick={deleteAll} style={{ marginTop: '0.5rem' }}>
-            Delete All
+            {t('delete_all', 'Delete All')}
           </button>
         </div>
       )}
       {suggestions.length > 0 && (
         <div style={{ marginTop: '0.5rem' }}>
           <button type="button" onClick={() => setShowSuggestModal(true)}>
-            View AI Suggestions ({suggestions.length})
+            {t('view_ai_suggestions', 'View AI Suggestions')} ({suggestions.length})
           </button>
         </div>
       )}
       <div style={{ textAlign: 'right', marginTop: '1rem' }}>
-        <button type="button" onClick={onClose}>Close</button>
+        <button type="button" onClick={onClose}>{t('close', 'Close')}</button>
       </div>
       <AISuggestionModal
         visible={showSuggestModal}
