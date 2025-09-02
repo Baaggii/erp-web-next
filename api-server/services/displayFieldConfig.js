@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { listTableColumnMeta } from '../../db/index.js';
 
 const filePath = path.join(process.cwd(), 'config', 'tableDisplayFields.json');
 
@@ -19,7 +20,23 @@ async function writeConfig(cfg) {
 
 export async function getDisplayFields(table) {
   const cfg = await readConfig();
-  return cfg[table] || { idField: null, displayFields: [] };
+  if (cfg[table]) return cfg[table];
+
+  try {
+    const meta = await listTableColumnMeta(table);
+    if (!Array.isArray(meta) || meta.length === 0) {
+      return { idField: null, displayFields: [] };
+    }
+    const idField =
+      meta.find((c) => String(c.key).toUpperCase() === 'PRI')?.name || meta[0].name;
+    const displayFields = meta
+      .map((c) => c.name)
+      .filter((n) => n !== idField)
+      .slice(0, 3);
+    return { idField, displayFields };
+  } catch {
+    return { idField: null, displayFields: [] };
+  }
 }
 
 export async function getAllDisplayFields() {
