@@ -7,6 +7,7 @@ import ReportTable from '../components/ReportTable.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import CustomDatePicker from '../components/CustomDatePicker.jsx';
+import useButtonPerms from '../hooks/useButtonPerms.js';
 
 function normalizeDateInput(value, format) {
   if (typeof value !== 'string') return value;
@@ -19,7 +20,8 @@ function normalizeDateInput(value, format) {
 }
 
 export default function Reports() {
-  const { company, branch, user, permissions: perms } = useContext(AuthContext);
+  const { company, branch, user } = useContext(AuthContext);
+  const buttonPerms = useButtonPerms();
   const { addToast } = useToast();
   const generalConfig = useGeneralConfig();
   const [procedures, setProcedures] = useState([]);
@@ -283,7 +285,7 @@ export default function Reports() {
           procedure={result.name}
           params={result.params}
           rows={result.rows}
-          buttonPerms={perms?.buttons || {}}
+          buttonPerms={buttonPerms}
         />
       )}
     </div>
