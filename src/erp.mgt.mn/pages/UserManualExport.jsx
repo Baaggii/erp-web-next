@@ -47,6 +47,25 @@ export default function UserManualExport() {
   const [levelActions, setLevelActions] = useState({});
   const [txFormsMap, setTxFormsMap] = useState({});
 
+  const hasContent = Object.values(manual).some(
+    (m) =>
+      m.forms.length ||
+      m.reports.length ||
+      m.buttons.length ||
+      m.functions.length,
+  );
+  const noContentMsg = t(
+    "noManualContent",
+    "No manual content found. Check permissions or backend configuration.",
+    { lng: lang },
+  );
+
+  useEffect(() => {
+    if (Object.keys(manual).length && !hasContent) {
+      addToast(noContentMsg, "warning");
+    }
+  }, [manual, hasContent, noContentMsg, addToast]);
+
   const headerKeys = useMemo(() => {
     const keys = new Set();
     Object.entries(manual || {}).forEach(([mKey, mod]) => {
@@ -320,12 +339,16 @@ export default function UserManualExport() {
   }, [session?.user_level]);
 
   useEffect(() => {
+    if (!hasContent) {
+      setMarkdown("");
+      return;
+    }
     async function build() {
       const md = await buildMarkdown();
       setMarkdown(md);
     }
     build();
-  }, [manual, lang, session]);
+  }, [manual, lang, session, hasContent]);
 
   if (!session) {
     return <p>{t("accessDenied", "Access denied", { lng: lang })}</p>;
@@ -499,7 +522,7 @@ export default function UserManualExport() {
     doc.save("user-manual.pdf");
   }
 
-  const html = marked.parse(markdown);
+  const html = hasContent ? marked.parse(markdown) : "";
 
   return (
     <div>
@@ -519,14 +542,22 @@ export default function UserManualExport() {
             ))}
           </select>
         </label>
-        <button onClick={exportMarkdown}>
-          {t("exportMarkdown", "Export Markdown", { lng: lang })}
-        </button>
-        <button onClick={exportPdf} style={{ marginLeft: "0.5rem" }}>
-          {t("exportPdf", "Export PDF", { lng: lang })}
-        </button>
+        {hasContent && (
+          <>
+            <button onClick={exportMarkdown}>
+              {t("exportMarkdown", "Export Markdown", { lng: lang })}
+            </button>
+            <button onClick={exportPdf} style={{ marginLeft: "0.5rem" }}>
+              {t("exportPdf", "Export PDF", { lng: lang })}
+            </button>
+          </>
+        )}
       </div>
-      <div dangerouslySetInnerHTML={{ __html: html }} />
+      {hasContent ? (
+        <div dangerouslySetInnerHTML={{ __html: html }} />
+      ) : (
+        <p>{noContentMsg}</p>
+      )}
     </div>
   );
 }
