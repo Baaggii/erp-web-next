@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export default function AskAIFloat() {
   const [prompt, setPrompt] = useState('');
@@ -7,6 +8,7 @@ export default function AskAIFloat() {
   const [open, setOpen] = useState(false);
   const barRef = useRef(null);
   const drag = useRef({ active: false, offsetX: 0, offsetY: 0 });
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (!open) return;
@@ -44,12 +46,12 @@ export default function AskAIFloat() {
         method: 'POST',
         body: form,
       });
-      if (!res.ok) throw new Error('Request failed');
+      if (!res.ok) throw new Error(t('ask_ai.request_failed', 'Request failed'));
       const data = await res.json();
       setResponse(data.response);
       setFile(null);
     } catch (err) {
-      setResponse('Error: ' + err.message);
+      setResponse(t('ask_ai.error_prefix', 'Error: ') + err.message);
     }
   }
 
@@ -58,25 +60,27 @@ export default function AskAIFloat() {
       {open ? (
         <div id="openai-bar" ref={barRef}>
           <header onMouseDown={handleMouseDown}>
-            Ask AI
+            {t('ask_ai.title', 'Ask AI')}
             <button onClick={() => setOpen(false)} className="close-btn">✕</button>
           </header>
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Type a prompt..."
+            placeholder={t('ask_ai.prompt_placeholder', 'Type a prompt...')}
           />
           <input
             type="file"
             onChange={(e) => setFile(e.target.files[0])}
             style={{ margin: '4px 0' }}
           />
-          <button onClick={sendPrompt} className="send-btn">Send</button>
+          <button onClick={sendPrompt} className="send-btn">
+            {t('ask_ai.send', 'Send')}
+          </button>
           <div className="response">{response}</div>
         </div>
       ) : (
         <button id="openai-toggle" onClick={() => setOpen(true)}>
-          AI
+          {t('ask_ai.button_label', 'AI')}
         </button>
       )}
     </>
