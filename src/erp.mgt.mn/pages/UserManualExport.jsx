@@ -9,23 +9,19 @@ import translateWithAI from "../utils/translateWithAI.js";
 
 export default function UserManualExport() {
   const { t, lang: uiLang } = useContext(I18nContext);
-  const { permissions, session } = useContext(AuthContext);
+  const { session } = useContext(AuthContext);
   const { addToast } = useToast();
-  const hasAdmin =
-    permissions?.permissions?.system_settings ||
-    session?.permissions?.system_settings;
 
   const [lang, setLang] = useState(uiLang);
   const languages = ["en", "mn", "ja", "ko", "zh", "es", "de", "fr", "ru"];
   const [manual, setManual] = useState({});
-  const [userLevels, setUserLevels] = useState([]);
-  const [levelActions, setLevelActions] = useState({});
   const [markdown, setMarkdown] = useState("");
 
   useEffect(() => {
     async function load() {
+      if (!session?.user_level) return;
       try {
-        const res = await fetch("/api/permissions/actions", {
+        const res = await fetch(`/api/permissions/actions/${session.user_level}`, {
           credentials: "include",
         });
         if (!res.ok) throw new Error("failedActions");
@@ -39,6 +35,7 @@ export default function UserManualExport() {
         const forms = data.forms || {};
         for (const [fKey, f] of Object.entries(forms)) {
           const mKey = f.module || f.moduleKey || "misc";
+          if (!(data.modules || []).some((m) => m.key === mKey)) continue;
           addModule(mKey);
           struct[mKey].forms.push({ key: fKey, ...f });
           (f.buttons || []).forEach((b) =>
@@ -61,34 +58,10 @@ export default function UserManualExport() {
           "error",
         );
       }
-      try {
-        const res = await fetch("/api/permissions/user-levels", {
-          credentials: "include",
-        });
-        if (!res.ok) throw new Error("failedUserLevels");
-        const levels = await res.json();
-        setUserLevels(levels);
-        for (const lvl of levels) {
-          fetch(`/api/permissions/actions/${lvl.id}`, {
-            credentials: "include",
-          })
-            .then((r) => (r.ok ? r.json() : {}))
-            .then((acts) =>
-              setLevelActions((prev) => ({ ...prev, [lvl.id]: acts })),
-            )
-            .catch(() => {});
-        }
-      } catch (err) {
-        console.error(err);
-        addToast(
-          `${t("failedLoadUserLevels", "Failed to load user levels", { lng: lang })}: ${err.message}`,
-          "error",
-        );
-      }
     }
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [session?.user_level]);
 
   useEffect(() => {
     async function build() {
@@ -96,9 +69,9 @@ export default function UserManualExport() {
       setMarkdown(md);
     }
     build();
-  }, [manual, userLevels, levelActions, lang]);
+  }, [manual, lang, session]);
 
-  if (!hasAdmin) {
+  if (!session) {
     return <p>{t("accessDenied", "Access denied", { lng: lang })}</p>;
   }
 
@@ -181,22 +154,18 @@ export default function UserManualExport() {
     md += `\n## ${await translateWithAI(lang, "quickReference", "Quick Reference")}\n`;
     md += `| ${await translateWithAI(lang, "userLevel", "User Level")} | ${await translateWithAI(lang, "modules", "Modules")} | ${await translateWithAI(lang, "forms", "Forms")} | ${await translateWithAI(lang, "reports", "Reports")} | ${await translateWithAI(lang, "buttons", "Buttons")} | ${await translateWithAI(lang, "functions", "Functions")} |\n`;
     md += `| --- | --- | --- | --- | --- | --- |\n`;
-    for (const lvl of userLevels) {
-      const acts = levelActions[lvl.id] || {};
-      const moduleEntries = Object.entries(acts).filter(
-        ([k]) => !["buttons", "functions", "api", "permissions"].includes(k),
-      );
-      const moduleCount = moduleEntries.length;
-      let formsCount = 0;
-      let reportsCount = 0;
-      for (const [, val] of moduleEntries) {
-        formsCount += Object.keys(val.forms || {}).length;
-        reportsCount += Object.keys(val.reports || {}).length;
-      }
-      const buttonCount = Object.keys(acts.buttons || {}).length;
-      const fnCount = Object.keys(acts.functions || {}).length;
-      md += `| ${lvl.name || lvl.id} | ${moduleCount} | ${formsCount} | ${reportsCount} | ${buttonCount} | ${fnCount} |\n`;
+    const moduleCount = Object.keys(manual).length;
+    let formsCount = 0;
+    let reportsCount = 0;
+    let buttonCount = 0;
+    let fnCount = 0;
+    for (const mod of Object.values(manual)) {
+      formsCount += mod.forms.length;
+      reportsCount += mod.reports.length;
+      buttonCount += mod.buttons.length;
+      fnCount += mod.functions.length;
     }
+    md += `| ${session?.user_level_name || session?.user_level || ""} | ${moduleCount} | ${formsCount} | ${reportsCount} | ${buttonCount} | ${fnCount} |\n`;
     return md;
   }
 
