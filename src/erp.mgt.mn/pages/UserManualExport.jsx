@@ -5,15 +5,18 @@ import I18nContext from "../context/I18nContext.jsx";
 import { AuthContext } from "../context/AuthContext.jsx";
 import { useToast } from "../context/ToastContext.jsx";
 import headerMappings from "../../../config/headerMappings.json";
+import translateWithAI from "../utils/translateWithAI.js";
 
 export default function UserManualExport() {
-  const { t } = useContext(I18nContext);
+  const { t, lang: uiLang } = useContext(I18nContext);
   const { permissions, session } = useContext(AuthContext);
   const { addToast } = useToast();
   const hasAdmin =
     permissions?.permissions?.system_settings ||
     session?.permissions?.system_settings;
 
+  const [lang, setLang] = useState(uiLang);
+  const languages = ["en", "mn", "ja", "ko", "zh", "es", "de", "fr", "ru"];
   const [manual, setManual] = useState({});
   const [userLevels, setUserLevels] = useState([]);
   const [levelActions, setLevelActions] = useState({});
@@ -54,7 +57,7 @@ export default function UserManualExport() {
       } catch (err) {
         console.error(err);
         addToast(
-          `${t("failedLoadActions", "Failed to load actions")}: ${err.message}`,
+          `${t("failedLoadActions", "Failed to load actions", { lng: lang })}: ${err.message}`,
           "error",
         );
       }
@@ -78,9 +81,7 @@ export default function UserManualExport() {
       } catch (err) {
         console.error(err);
         addToast(
-          `${t("failedLoadUserLevels", "Failed to load user levels")}: ${
-            err.message
-          }`,
+          `${t("failedLoadUserLevels", "Failed to load user levels", { lng: lang })}: ${err.message}`,
           "error",
         );
       }
@@ -90,123 +91,93 @@ export default function UserManualExport() {
   }, []);
 
   useEffect(() => {
-    setMarkdown(buildMarkdown());
-  }, [manual, userLevels, levelActions]);
+    async function build() {
+      const md = await buildMarkdown();
+      setMarkdown(md);
+    }
+    build();
+  }, [manual, userLevels, levelActions, lang]);
 
   if (!hasAdmin) {
-    return <p>{t("accessDenied", "Access denied")}</p>;
+    return <p>{t("accessDenied", "Access denied", { lng: lang })}</p>;
   }
 
-  function translate(key) {
+  async function translate(key) {
     const mapped = headerMappings[key] || key;
-    return t(mapped, mapped);
+    return await translateWithAI(lang, mapped, mapped);
   }
 
-  function buildMarkdown() {
-    let md = `# ${t("userManual", "User Manual")}\n\n`;
-    md += `## ${t("forms", "Forms")}\n`;
+  async function buildMarkdown() {
+    let md = `# ${await translateWithAI(lang, "userManual", "User Manual")}\n\n`;
+    md += `## ${await translateWithAI(lang, "forms", "Forms")}\n`;
     for (const [mKey, mod] of Object.entries(manual)) {
       if (!mod.forms.length) continue;
-      md += `### ${translate(mKey)}\n`;
+      md += `### ${await translate(mKey)}\n`;
       for (const form of mod.forms) {
-        md += `#### ${translate(form.key)}\n`;
-        md += `${t(
-          "formIntro",
-          `This form enables authorised users to manage records related to ${translate(
-            form.key,
-          )}.`,
-        )}\n`;
-        const reqFields = (form.fields || [])
-          .filter((f) => f.required)
-          .map((f) => translate(f.key || f));
+        md += `#### ${await translate(form.key)}\n`;
+        const intro = `This form enables authorised users to manage records related to ${await translate(form.key)}.`;
+        md += `${await translateWithAI(lang, "formIntro", intro)}\n`;
+        const reqFieldNames = [];
+        for (const f of form.fields || []) {
+          if (f.required) reqFieldNames.push(await translate(f.key || f));
+        }
         if (form.buttons?.length) {
-          md += `${t(
-            "formButtonsIntro",
-            "The form exposes the following buttons and their prerequisites:",
-          )}\n`;
+          md += `${await translateWithAI(lang, "formButtonsIntro", "The form exposes the following buttons and their prerequisites:")}\n`;
           for (const btn of form.buttons) {
             const bKey = typeof btn === "string" ? btn : btn.key;
-            const fieldsList = reqFields.length
-              ? reqFields.join(", ")
-              : t("noFields", "no specific fields");
-            const sentence = t(
-              "buttonPurposeDetail",
-              `The ${translate(
-                bKey,
-              )} button initiates the ${translate(
-                bKey,
-              )} operation within this form, and it cannot proceed until the following fields have been supplied: ${fieldsList}.`,
-            );
+            const fieldsList = reqFieldNames.length
+              ? reqFieldNames.join(", ")
+              : await translateWithAI(lang, "noFields", "no specific fields");
+            const bName = await translate(bKey);
+            const sentenceDefault = `The ${bName} button initiates the ${bName} operation within this form, and it cannot proceed until the following fields have been supplied: ${fieldsList}.`;
+            const sentence = await translateWithAI(lang, "buttonPurposeDetail", sentenceDefault);
             md += `- ${sentence}\n`;
           }
         }
       }
     }
 
-    md += `\n## ${t("reports", "Reports")}\n`;
+    md += `\n## ${await translateWithAI(lang, "reports", "Reports")}\n`;
     for (const [mKey, mod] of Object.entries(manual)) {
       if (!mod.reports.length) continue;
-      md += `### ${translate(mKey)}\n`;
+      md += `### ${await translate(mKey)}\n`;
       for (const r of mod.reports) {
         const k = typeof r === "string" ? r : r.key;
-        const sentence = t(
-          "reportPurposeDetail",
-          `The ${translate(k)} report provides a comprehensive overview of the associated data set, presenting information in a structured and readable manner for further analysis.`,
-        );
+        const reportName = await translate(k);
+        const sentenceDefault = `The ${reportName} report provides a comprehensive overview of the associated data set, presenting information in a structured and readable manner for further analysis.`;
+        const sentence = await translateWithAI(lang, "reportPurposeDetail", sentenceDefault);
         md += `- ${sentence}\n`;
       }
     }
 
-    md += `\n## ${t("settings", "Settings")}\n`;
+    md += `\n## ${await translateWithAI(lang, "settings", "Settings")}\n`;
     for (const [mKey, mod] of Object.entries(manual)) {
       if (!mod.buttons.length && !mod.functions.length) continue;
-      md += `### ${translate(mKey)}\n`;
+      md += `### ${await translate(mKey)}\n`;
       if (mod.buttons.length) {
-        md += `${t(
-          "settingsButtonsIntro",
-          "The following buttons influence configuration and require careful handling:",
-        )}\n`;
-        mod.buttons.forEach((b) => {
-          const sentence = t(
-            "settingsButtonDetail",
-            `The ${translate(
-              b,
-            )} button allows administrators to execute the ${translate(
-              b,
-            )} operation, applying the current configuration without additional mandatory fields.`,
-          );
+        md += `${await translateWithAI(lang, "settingsButtonsIntro", "The following buttons influence configuration and require careful handling:")}\n`;
+        for (const b of mod.buttons) {
+          const bName = await translate(b);
+          const sentenceDefault = `The ${bName} button allows administrators to execute the ${bName} operation, applying the current configuration without additional mandatory fields.`;
+          const sentence = await translateWithAI(lang, "settingsButtonDetail", sentenceDefault);
           md += `- ${sentence}\n`;
-        });
+        }
       }
       if (mod.functions.length) {
-        md += `${t(
-          "settingsFunctionsIntro",
-          "These functions adjust system behaviour and should be used with understanding of their effects:",
-        )}\n`;
-        mod.functions.forEach((fn) => {
-          const sentence = t(
-            "settingsFunctionDetail",
-            `The ${translate(
-              fn,
-            )} function performs the ${translate(
-              fn,
-            )} process, leveraging the active settings to modify how the application operates.`,
-          );
+        md += `${await translateWithAI(lang, "settingsFunctionsIntro", "These functions adjust system behaviour and should be used with understanding of their effects:")}\n`;
+        for (const fn of mod.functions) {
+          const fnName = await translate(fn);
+          const sentenceDefault = `The ${fnName} function performs the ${fnName} process, leveraging the active settings to modify how the application operates.`;
+          const sentence = await translateWithAI(lang, "settingsFunctionDetail", sentenceDefault);
           md += `- ${sentence}\n`;
-        });
+        }
       }
     }
 
-    md += `\n## ${t("quickReference", "Quick Reference")}\n`;
-    md += `| ${t("userLevel", "User Level")} | ${t(
-      "modules",
-      "Modules",
-    )} | ${t("forms", "Forms")} | ${t("reports", "Reports")} | ${t(
-      "buttons",
-      "Buttons",
-    )} | ${t("functions", "Functions")} |\n`;
+    md += `\n## ${await translateWithAI(lang, "quickReference", "Quick Reference")}\n`;
+    md += `| ${await translateWithAI(lang, "userLevel", "User Level")} | ${await translateWithAI(lang, "modules", "Modules")} | ${await translateWithAI(lang, "forms", "Forms")} | ${await translateWithAI(lang, "reports", "Reports")} | ${await translateWithAI(lang, "buttons", "Buttons")} | ${await translateWithAI(lang, "functions", "Functions")} |\n`;
     md += `| --- | --- | --- | --- | --- | --- |\n`;
-    userLevels.forEach((lvl) => {
+    for (const lvl of userLevels) {
       const acts = levelActions[lvl.id] || {};
       const moduleEntries = Object.entries(acts).filter(
         ([k]) => !["buttons", "functions", "api", "permissions"].includes(k),
@@ -214,14 +185,14 @@ export default function UserManualExport() {
       const moduleCount = moduleEntries.length;
       let formsCount = 0;
       let reportsCount = 0;
-      moduleEntries.forEach(([, val]) => {
+      for (const [, val] of moduleEntries) {
         formsCount += Object.keys(val.forms || {}).length;
         reportsCount += Object.keys(val.reports || {}).length;
-      });
+      }
       const buttonCount = Object.keys(acts.buttons || {}).length;
       const fnCount = Object.keys(acts.functions || {}).length;
       md += `| ${lvl.name || lvl.id} | ${moduleCount} | ${formsCount} | ${reportsCount} | ${buttonCount} | ${fnCount} |\n`;
-    });
+    }
     return md;
   }
 
@@ -254,15 +225,30 @@ export default function UserManualExport() {
 
   return (
     <div>
-      <h2>{t("userManual", "User Manual")}</h2>
+      <h2>{t("userManual", "User Manual", { lng: lang })}</h2>
       <div style={{ marginBottom: "1rem" }}>
-        <button onClick={exportMarkdown}>{t("exportMarkdown", "Export Markdown")}</button>
+        <label>
+          Language:
+          <select
+            value={lang}
+            onChange={(e) => setLang(e.target.value)}
+            style={{ marginLeft: "0.5rem", marginRight: "1rem" }}
+          >
+            {languages.map((l) => (
+              <option key={l} value={l}>
+                {l}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button onClick={exportMarkdown}>
+          {t("exportMarkdown", "Export Markdown", { lng: lang })}
+        </button>
         <button onClick={exportPdf} style={{ marginLeft: "0.5rem" }}>
-          {t("exportPdf", "Export PDF")}
+          {t("exportPdf", "Export PDF", { lng: lang })}
         </button>
       </div>
       <div dangerouslySetInnerHTML={{ __html: html }} />
     </div>
   );
 }
-
