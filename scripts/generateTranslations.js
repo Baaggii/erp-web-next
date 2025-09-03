@@ -292,6 +292,103 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
     console.warn(`[gen-i18n] Failed to load forms: ${err.message}`);
   }
 
+  const skipString = /^[a-z0-9_.\/:-]+$/;
+
+  try {
+    const ulaConfig = JSON.parse(
+      fs.readFileSync(path.resolve('config/userLevelActions.json'), 'utf8'),
+    );
+    function walkUla(obj, pathSegs) {
+      if (!obj || typeof obj !== 'object') return;
+      if (Array.isArray(obj)) {
+        for (const item of obj) {
+          if (item && typeof item === 'object') {
+            walkUla(item, pathSegs);
+          } else if (typeof item === 'string' && !skipString.test(item)) {
+            const lang = /[\u0400-\u04FF]/.test(item) ? 'mn' : 'en';
+            const baseKey = pathSegs.length
+              ? `userLevelActions.${pathSegs.join('.')}`
+              : 'userLevelActions';
+            addEntry(
+              `${baseKey}.${slugify(item)}`,
+              item,
+              lang,
+              'userLevelActions',
+            );
+          }
+        }
+      } else {
+        for (const [k, v] of Object.entries(obj)) {
+          const segs = [...pathSegs, slugify(k)];
+          if (typeof v === 'string') {
+            if (skipString.test(v)) continue;
+            const lang = /[\u0400-\u04FF]/.test(v) ? 'mn' : 'en';
+            addEntry(
+              `userLevelActions.${segs.join('.')}`,
+              v,
+              lang,
+              'userLevelActions',
+            );
+          } else {
+            walkUla(v, segs);
+          }
+        }
+      }
+    }
+    walkUla(ulaConfig, []);
+  } catch (err) {
+    console.warn(`[gen-i18n] Failed to load user level actions: ${err.message}`);
+  }
+
+  try {
+    const posConfig = JSON.parse(
+      fs.readFileSync(path.resolve('config/posTransactionConfig.json'), 'utf8'),
+    );
+    function walkPos(obj, pathSegs) {
+      if (!obj || typeof obj !== 'object') return;
+      if (Array.isArray(obj)) {
+        for (const item of obj) {
+          if (item && typeof item === 'object') {
+            const itemSeg = slugify(
+              item.name || item.key || item.id || item.table || item.form || '',
+            );
+            walkPos(item, itemSeg ? [...pathSegs, itemSeg] : pathSegs);
+          } else if (typeof item === 'string' && !skipString.test(item)) {
+            const lang = /[\u0400-\u04FF]/.test(item) ? 'mn' : 'en';
+            const baseKey = pathSegs.length
+              ? `posTransactionConfig.${pathSegs.join('.')}`
+              : 'posTransactionConfig';
+            addEntry(
+              `${baseKey}.${slugify(item)}`,
+              item,
+              lang,
+              'posTransactionConfig',
+            );
+          }
+        }
+      } else {
+        for (const [k, v] of Object.entries(obj)) {
+          const segs = [...pathSegs, slugify(k)];
+          if (typeof v === 'string') {
+            if (skipString.test(v)) continue;
+            const lang = /[\u0400-\u04FF]/.test(v) ? 'mn' : 'en';
+            addEntry(
+              `posTransactionConfig.${segs.join('.')}`,
+              v,
+              lang,
+              'posTransactionConfig',
+            );
+          } else {
+            walkPos(v, segs);
+          }
+        }
+      }
+    }
+    walkPos(posConfig, []);
+  } catch (err) {
+    console.warn(`[gen-i18n] Failed to load POS config: ${err.message}`);
+  }
+
   if (headerMappingsUpdated) {
     const ordered = sortObj(base);
     fs.writeFileSync(headerMappingsPath, JSON.stringify(ordered, null, 2));
