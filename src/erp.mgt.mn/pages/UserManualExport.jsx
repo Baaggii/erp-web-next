@@ -6,6 +6,34 @@ import { AuthContext } from "../context/AuthContext.jsx";
 import { useToast } from "../context/ToastContext.jsx";
 import headerMappings from "../../../config/headerMappings.json";
 import translateWithAI from "../utils/translateWithAI.js";
+import transactionForms from "../../../config/transactionForms.json";
+
+const formDescMap = {};
+const buttonDescMap = {};
+const reportDescMap = {};
+const buttonReqMap = {};
+
+Object.values(transactionForms || {}).forEach((forms) => {
+  Object.entries(forms || {}).forEach(([fKey, cfg]) => {
+    if (cfg.description) formDescMap[fKey] = cfg.description;
+    if (Array.isArray(cfg.buttons)) {
+      cfg.buttons.forEach((b) => {
+        const bKey = typeof b === "string" ? b : b.key;
+        if (!bKey) return;
+        if (b.description) buttonDescMap[bKey] = b.description;
+        const rf = b.requiredFields || b.reqFields;
+        if (rf) buttonReqMap[bKey] = rf;
+      });
+    }
+    if (Array.isArray(cfg.reports)) {
+      cfg.reports.forEach((r) => {
+        const rKey = typeof r === "string" ? r : r.key;
+        if (!rKey) return;
+        if (r.description) reportDescMap[rKey] = r.description;
+      });
+    }
+  });
+});
 
 export default function UserManualExport() {
   const { t, lang: uiLang } = useContext(I18nContext);
@@ -90,9 +118,18 @@ export default function UserManualExport() {
       md += `| --- | --- | --- |\n`;
       for (const form of mod.forms) {
         const formName = await translate(form.key);
-        const intro = `This form enables authorised users to manage records related to ${formName}.`;
-        const desc = await translateWithAI(lang, "formIntro", intro);
-        md += `| ${formName} | ${form.key} | ${desc} |\n`;
+        let formDesc =
+          form.description ||
+          formDescMap[form.key] ||
+          (() => {
+            const tr = t(`manual.${form.key}.description`, "", { lng: lang });
+            return tr && tr !== `manual.${form.key}.description` ? tr : null;
+          })();
+        if (!formDesc) {
+          const intro = `This form enables authorised users to manage records related to ${formName}.`;
+          formDesc = await translateWithAI(lang, "formIntro", intro);
+        }
+        md += `| ${formName} | ${form.key} | ${formDesc} |\n`;
         if (form.buttons?.length) {
           md += `\n#### ${formName} ${await translateWithAI(lang, "buttons", "Buttons")}\n`;
           md += `| ${await translateWithAI(lang, "buttonName", "Button Name")} | ${await translateWithAI(lang, "identifier", "Identifier")} | ${await translateWithAI(lang, "description", "Description")} |\n`;
@@ -100,9 +137,28 @@ export default function UserManualExport() {
           for (const btn of form.buttons) {
             const bKey = typeof btn === "string" ? btn : btn.key;
             const bName = await translate(bKey);
-            const sentenceDefault = `The ${bName} button initiates the ${bName} operation within this form.`;
-            const sentence = await translateWithAI(lang, "buttonPurposeDetail", sentenceDefault);
-            md += `| ${bName} | ${bKey} | ${sentence} |\n`;
+            let reqFields = [];
+            if (typeof btn === "object") {
+              reqFields = btn.requiredFields || btn.reqFields || [];
+            } else if (buttonReqMap[bKey]) {
+              reqFields = buttonReqMap[bKey];
+            }
+            let bDesc =
+              (typeof btn === "object" && btn.description) ||
+              buttonDescMap[bKey] ||
+              (() => {
+                const tr = t(`manual.${bKey}.description`, "", { lng: lang });
+                return tr && tr !== `manual.${bKey}.description` ? tr : null;
+              })();
+            let sentenceDefault = `The ${bName} button initiates the ${bName} operation within this form.`;
+            if (reqFields.length) {
+              const rfNames = await Promise.all(reqFields.map((r) => translate(r)));
+              sentenceDefault += ` Requires: ${rfNames.join(", ")}.`;
+            }
+            if (!bDesc) {
+              bDesc = await translateWithAI(lang, "buttonPurposeDetail", sentenceDefault);
+            }
+            md += `| ${bName} | ${bKey} | ${bDesc} |\n`;
           }
         }
       }
@@ -115,11 +171,20 @@ export default function UserManualExport() {
       md += `| ${await translateWithAI(lang, "reportName", "Report Name")} | ${await translateWithAI(lang, "identifier", "Identifier")} | ${await translateWithAI(lang, "description", "Description")} |\n`;
       md += `| --- | --- | --- |\n`;
       for (const r of mod.reports) {
-        const k = typeof r === "string" ? r : r.key;
-        const reportName = await translate(k);
-        const sentenceDefault = `The ${reportName} report provides a comprehensive overview of the associated data set, presenting information in a structured and readable manner for further analysis.`;
-        const sentence = await translateWithAI(lang, "reportPurposeDetail", sentenceDefault);
-        md += `| ${reportName} | ${k} | ${sentence} |\n`;
+          const k = typeof r === "string" ? r : r.key;
+          const reportName = await translate(k);
+          let rDesc =
+            (typeof r === "object" && r.description) ||
+            reportDescMap[k] ||
+            (() => {
+              const tr = t(`manual.${k}.description`, "", { lng: lang });
+              return tr && tr !== `manual.${k}.description` ? tr : null;
+            })();
+          if (!rDesc) {
+            const sentenceDefault = `The ${reportName} report provides a comprehensive overview of the associated data set, presenting information in a structured and readable manner for further analysis.`;
+            rDesc = await translateWithAI(lang, "reportPurposeDetail", sentenceDefault);
+          }
+          md += `| ${reportName} | ${k} | ${rDesc} |\n`;
       }
     }
 
@@ -133,9 +198,22 @@ export default function UserManualExport() {
         md += `| --- | --- | --- |\n`;
         for (const b of mod.buttons) {
           const bName = await translate(b);
-          const sentenceDefault = `The ${bName} button allows administrators to execute the ${bName} operation, applying the current configuration without additional mandatory fields.`;
-          const sentence = await translateWithAI(lang, "settingsButtonDetail", sentenceDefault);
-          md += `| ${bName} | ${b} | ${sentence} |\n`;
+          let reqFields = buttonReqMap[b] || [];
+          let bDesc =
+            buttonDescMap[b] ||
+            (() => {
+              const tr = t(`manual.${b}.description`, "", { lng: lang });
+              return tr && tr !== `manual.${b}.description` ? tr : null;
+            })();
+          let sentenceDefault = `The ${bName} button allows administrators to execute the ${bName} operation, applying the current configuration without additional mandatory fields.`;
+          if (reqFields.length) {
+            const rfNames = await Promise.all(reqFields.map((r) => translate(r)));
+            sentenceDefault = `The ${bName} button allows administrators to execute the ${bName} operation. Requires: ${rfNames.join(", ")}.`;
+          }
+          if (!bDesc) {
+            bDesc = await translateWithAI(lang, "settingsButtonDetail", sentenceDefault);
+          }
+          md += `| ${bName} | ${b} | ${bDesc} |\n`;
         }
       }
       if (mod.functions.length) {
