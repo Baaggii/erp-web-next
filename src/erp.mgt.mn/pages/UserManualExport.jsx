@@ -111,11 +111,14 @@ export default function UserManualExport() {
           if (!struct[k])
             struct[k] = { buttons: [], functions: [], forms: [], reports: [] };
         };
-        (data.modules || []).forEach((m) => addModule(m.key));
+        const modules = Array.isArray(data.modules)
+          ? data.modules
+          : Object.values(data.modules || {});
+        modules.forEach((m) => addModule(m.key || m));
         const forms = data.forms || {};
         for (const [fKey, f] of Object.entries(forms)) {
           const mKey = f.module || f.moduleKey || "misc";
-          if (!(data.modules || []).some((m) => m.key === mKey)) continue;
+          if (!modules.some((m) => (m.key || m) === mKey)) continue;
           addModule(mKey);
           struct[mKey].forms.push({ key: fKey, ...f });
           (f.buttons || []).forEach((b) =>
