@@ -101,52 +101,91 @@ export default function UserManualExport() {
     async function load() {
       if (!session?.user_level) return;
       try {
-        const res = await fetch(`/api/permissions/actions/${session.user_level}`, {
-          credentials: "include",
-        });
+        const res = await fetch(
+          `/api/permissions/actions/${session.user_level}`,
+          { credentials: "include" },
+        );
         if (!res.ok) throw new Error("failedActions");
         const data = await res.json();
+
         const struct = {};
         const addModule = (k) => {
           if (!struct[k])
             struct[k] = { buttons: [], functions: [], forms: [], reports: [] };
         };
-        const modNodes = Array.isArray(data.modules)
+
+        const modules = Array.isArray(data.modules)
           ? data.modules
           : Object.values(data.modules || {});
-        modNodes.forEach((m) => addModule(m.key));
-        const formNodes = Array.isArray(data.forms)
-          ? data.forms
-          : Object.entries(data.forms || {}).map(([fKey, f]) => ({
-              key: fKey,
-              ...f,
-            }));
-        for (const f of formNodes) {
+        const moduleKeys = new Set(modules.map((m) => m.key || m));
+        modules.forEach((m) => addModule(m.key || m));
+
+        const allowedButtons = new Set(Object.keys(data.buttons || {}));
+        const allowedFunctions = new Set(Object.keys(data.functions || {}));
+        const allowedReports = new Set(Object.keys(data.reports || {}));
+
+        const forms = data.forms || {};
+        for (const [fKey, f] of Object.entries(forms)) {
           const mKey = f.module || f.moduleKey || "misc";
-          if (!modNodes.some((m) => m.key === mKey)) continue;
+          if (!moduleKeys.has(mKey)) continue;
           addModule(mKey);
-          struct[mKey].forms.push(f);
-          const btnNodes = Array.isArray(f.buttons)
-            ? f.buttons
-            : Object.values(f.buttons || {});
-          btnNodes.forEach((b) =>
+
+          const formButtons = (f.buttons || []).filter((b) =>
+            allowedButtons.has(typeof b === "string" ? b : b.key),
+          );
+          const formFunctions = (f.functions || []).filter((fn) =>
+            allowedFunctions.has(typeof fn === "string" ? fn : fn.key),
+          );
+          const formReports = (f.reports || []).filter((r) =>
+            allowedReports.has(typeof r === "string" ? r : r.key),
+          );
+
+          struct[mKey].forms.push({
+            key: fKey,
+            ...f,
+            buttons: formButtons,
+            functions: formFunctions,
+            reports: formReports,
+          });
+
+          formButtons.forEach((b) =>
             struct[mKey].buttons.push(typeof b === "string" ? b : b.key),
           );
-          const fnNodes = Array.isArray(f.functions)
-            ? f.functions
-            : Object.values(f.functions || {});
-          fnNodes.forEach((fn) =>
+          formFunctions.forEach((fn) =>
             struct[mKey].functions.push(
               typeof fn === "string" ? fn : fn.key,
             ),
           );
-          const reportNodes = Array.isArray(f.reports)
-            ? f.reports
-            : Object.values(f.reports || {});
-          reportNodes.forEach((r) =>
+          formReports.forEach((r) =>
             struct[mKey].reports.push(typeof r === "string" ? r : r.key),
           );
         }
+
+        for (const [bKey, bVal] of Object.entries(data.buttons || {})) {
+          const mKey = bVal.module || bVal.moduleKey;
+          if (mKey && moduleKeys.has(mKey)) {
+            addModule(mKey);
+            if (!struct[mKey].buttons.includes(bKey))
+              struct[mKey].buttons.push(bKey);
+          }
+        }
+        for (const [fnKey, fnVal] of Object.entries(data.functions || {})) {
+          const mKey = fnVal.module || fnVal.moduleKey;
+          if (mKey && moduleKeys.has(mKey)) {
+            addModule(mKey);
+            if (!struct[mKey].functions.includes(fnKey))
+              struct[mKey].functions.push(fnKey);
+          }
+        }
+        for (const [rKey, rVal] of Object.entries(data.reports || {})) {
+          const mKey = rVal.module || rVal.moduleKey;
+          if (mKey && moduleKeys.has(mKey)) {
+            addModule(mKey);
+            if (!struct[mKey].reports.includes(rKey))
+              struct[mKey].reports.push(rKey);
+          }
+        }
+
         setManual(struct);
       } catch (err) {
         console.error(err);
