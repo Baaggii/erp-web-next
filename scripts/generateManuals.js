@@ -37,14 +37,9 @@ function moduleSlug(key) {
 
 async function loadLabels(lang = 'en') {
   const headerMap = await loadJSON(path.join(configDir, 'headerMappings.json'));
-  const locale = await loadJSON(
-    path.join(rootDir, 'src', 'erp.mgt.mn', 'locales', `${lang}.json`),
-  );
   const translate = async (key) => {
-    const mapped = headerMap[key] || key;
-    if (locale[mapped]) return locale[mapped];
-    if (lang === 'en') return mapped;
-    return translateWithCache(lang, mapped);
+    const fallback = headerMap[key];
+    return translateWithCache(lang, key, fallback);
   };
   return translate;
 }
@@ -97,6 +92,7 @@ async function captureScreenshot(url, requiredFields) {
 }
 
 async function generateManualForModule(module, translate, configs, options) {
+  const { lang } = options;
   const slug = moduleSlug(module.module_key);
   let md = `# ${await translate(module.module_key)}\n\n`;
 
@@ -108,38 +104,39 @@ async function generateManualForModule(module, translate, configs, options) {
 
   const formsCfg = configs.transactionForms[module.module_key] || {};
   for (const [formName, formCfg] of Object.entries(formsCfg)) {
-    md += `## ${formName}\n`;
+    const fTitle = await translate(formName);
+    md += `## ${fTitle}\n`;
     if (formCfg.visibleFields?.length) {
       const vis = await Promise.all(formCfg.visibleFields.map((f) => translate(f)));
-      md += `- Visible: ${vis.join(', ')}\n`;
+      md += `- ${await translateWithCache(lang, 'visible', 'Visible')}: ${vis.join(', ')}\n`;
     }
     if (formCfg.requiredFields?.length) {
       const req = await Promise.all(formCfg.requiredFields.map((f) => translate(f)));
-      md += `- Required: ${req.join(', ')}\n`;
+      md += `- ${await translateWithCache(lang, 'required', 'Required')}: ${req.join(', ')}\n`;
     }
     if (formCfg.defaultValues && Object.keys(formCfg.defaultValues).length) {
       const defsArr = await Promise.all(
         Object.entries(formCfg.defaultValues).map(async ([k, v]) => `${await translate(k)}=${v}`),
       );
-      md += `- Defaults: ${defsArr.join(', ')}\n`;
+      md += `- ${await translateWithCache(lang, 'defaults', 'Defaults')}: ${defsArr.join(', ')}\n`;
     }
     if (formCfg.conditions && Object.keys(formCfg.conditions).length) {
-      md += `- Conditions: ${JSON.stringify(formCfg.conditions)}\n`;
+      md += `- ${await translateWithCache(lang, 'conditions', 'Conditions')}: ${JSON.stringify(formCfg.conditions)}\n`;
     }
     md += '\n';
   }
 
   const tableCfg = configs.tableDisplayFields[module.module_key];
   if (tableCfg) {
-    md += `### Table Display\n`;
-    md += `- ID Field: ${await translate(tableCfg.idField)}\n`;
+    md += `### ${await translateWithCache(lang, 'tableDisplay', 'Table Display')}\n`;
+    md += `- ${await translateWithCache(lang, 'idField', 'ID Field')}: ${await translate(tableCfg.idField)}\n`;
     const display = await Promise.all(tableCfg.displayFields.map((f) => translate(f)));
-    md += `- Display Fields: ${display.join(', ')}\n`;
+    md += `- ${await translateWithCache(lang, 'displayFields', 'Display Fields')}: ${display.join(', ')}\n`;
     if (tableCfg.tooltips) {
       const tipsArr = await Promise.all(
         Object.entries(tableCfg.tooltips).map(async ([k, v]) => `${await translate(k)}: ${await translate(v)}`),
       );
-      md += `- Tooltips: ${tipsArr.join(', ')}\n`;
+      md += `- ${await translateWithCache(lang, 'tooltips', 'Tooltips')}: ${tipsArr.join(', ')}\n`;
     }
     md += '\n';
   }
@@ -162,9 +159,11 @@ async function generateManualForModule(module, translate, configs, options) {
 
 async function main() {
   const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
-  const capture = process.argv.includes('--capture');
+  const args = process.argv.slice(2);
+  const capture = args.includes('--capture');
+  const lang = args.find((a) => !a.startsWith('--')) || 'en';
 
-  const translate = await loadLabels('en');
+  const translate = await loadLabels(lang);
   const configs = await collectConfigs();
   await fs.mkdir(manualsDir, { recursive: true });
 
@@ -175,6 +174,7 @@ async function main() {
     const manual = await generateManualForModule(mod, translate, configs, {
       capture,
       baseUrl,
+      lang,
     });
     const mdFile = path.join(manualsDir, `${mod.module_key}.md`);
     const htmlFile = path.join(manualsDir, `${mod.module_key}.html`);

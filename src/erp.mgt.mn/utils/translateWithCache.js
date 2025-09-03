@@ -1,5 +1,7 @@
 let nodeCache;
 let nodeCachePath;
+const localeCache = {};
+let aiDisabled = false;
 
 async function loadNodeCache() {
   if (nodeCache) return nodeCache;
@@ -25,6 +27,32 @@ async function saveNodeCache() {
   const path = await import('path');
   await fs.mkdir(path.dirname(nodeCachePath), { recursive: true });
   await fs.writeFile(nodeCachePath, JSON.stringify(nodeCache, null, 2));
+}
+
+async function loadLocale(lang) {
+  if (localeCache[lang]) return localeCache[lang];
+  try {
+    if (typeof process !== 'undefined' && process.versions?.node) {
+      const fs = await import('fs/promises');
+      const path = await import('path');
+      const file = path.join(
+        process.cwd(),
+        'src',
+        'erp.mgt.mn',
+        'locales',
+        `${lang}.json`,
+      );
+      const data = await fs.readFile(file, 'utf8');
+      localeCache[lang] = JSON.parse(data);
+    } else {
+      localeCache[lang] = (
+        await import(`../locales/${lang}.json`)
+      ).default;
+    }
+  } catch {
+    localeCache[lang] = {};
+  }
+  return localeCache[lang];
 }
 
 function getLS(key) {
@@ -84,6 +112,7 @@ async function idbSet(key, val) {
 }
 
 async function requestTranslation(text, lang) {
+  if (aiDisabled) return null;
   try {
     const res = await fetch('/api/openai', {
       method: 'POST',
@@ -92,32 +121,52 @@ async function requestTranslation(text, lang) {
       skipErrorToast: true,
       skipLoader: true,
     });
+    if (res.status === 404) {
+      aiDisabled = true;
+      return null;
+    }
     if (!res.ok) throw new Error('openai request failed');
     const data = await res.json();
-    return data.response?.trim() || text;
+    return data.response?.trim() || null;
   } catch (err) {
     console.error('AI translation failed', err);
-    return text;
+    return null;
   }
 }
 
-export default async function translateWithCache(lang, text) {
-  const key = `${lang}|${text}`;
-  let cached = getLS(key);
-  if (!cached) cached = await idbGet(key);
+function describe(key) {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+export default async function translateWithCache(lang, key, fallback) {
+  const locales = await loadLocale(lang);
+  if (locales[key]) return locales[key];
+
+  const enLocales = await loadLocale('en');
+  const base = enLocales[key] || fallback || describe(key);
+  if (lang === 'en') return base;
+
+  const cacheKey = `${lang}|${base}`;
+  let cached = getLS(cacheKey);
+  if (!cached) cached = await idbGet(cacheKey);
   if (!cached) {
     const cache = await loadNodeCache();
-    cached = cache[key];
+    cached = cache[cacheKey];
   }
   if (cached) {
-    if (!getLS(key)) setLS(key, cached);
+    if (!getLS(cacheKey)) setLS(cacheKey, cached);
     return cached;
   }
-  const translated = await requestTranslation(text, lang);
-  setLS(key, translated);
-  await idbSet(key, translated);
+
+  const translated = await requestTranslation(base, lang);
+  if (!translated) return base;
+
+  setLS(cacheKey, translated);
+  await idbSet(cacheKey, translated);
   const cache = await loadNodeCache();
-  cache[key] = translated;
+  cache[cacheKey] = translated;
   await saveNodeCache();
   return translated;
 }
