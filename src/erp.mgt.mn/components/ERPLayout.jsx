@@ -1,5 +1,6 @@
 // src/erp.mgt.mn/components/ERPLayout.jsx
 import React, { useContext, useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useTranslation } from 'react-i18next';
 import HeaderMenu from "./HeaderMenu.jsx";
 import UserMenu from "./UserMenu.jsx";
 import { useOutlet, useNavigate, useLocation } from "react-router-dom";
@@ -39,7 +40,7 @@ export const useTour = (pageKey, steps) => {
 export default function ERPLayout() {
   const { user, setUser, session, userSettings, updateUserSettings } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
-  const { t } = useContext(LangContext);
+  const { t } = useTranslation();
   const renderCount = useRef(0);
   useEffect(() => {
   renderCount.current++;
@@ -284,7 +285,8 @@ export default function ERPLayout() {
 /** Top header bar **/
 function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, onOpen, onResetGuide }) {
   const { session } = useContext(AuthContext);
-  const { lang, setLang, t } = useContext(LangContext);
+  const { lang, setLang } = useContext(LangContext);
+  const { t } = useTranslation();
 
   return (
     <header className="sticky-header" style={styles.header(isMobile)}>
@@ -351,7 +353,7 @@ function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, onOpen, onR
 /** Left sidebar with “menu groups” and “pinned items” **/
 function Sidebar({ onOpen, open, isMobile }) {
   const { permissions: perms } = useContext(AuthContext);
-  const { t } = useContext(LangContext);
+  const { t } = useTranslation();
   const location = useLocation();
   const modules = useModules();
   const txnModules = useTxnModules();
@@ -489,7 +491,7 @@ function Sidebar({ onOpen, open, isMobile }) {
 
 function SidebarGroup({ mod, map, allMap, level, onOpen, badgeKeys, generalConfig, headerMap }) {
   const [open, setOpen] = useState(false);
-  const { t } = useContext(LangContext);
+  const { t } = useTranslation();
   const groupClass =
     level === 0 ? 'menu-group' : level === 1 ? 'menu-group submenu' : 'menu-group subsubmenu';
   return (

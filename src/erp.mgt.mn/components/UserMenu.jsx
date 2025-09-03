@@ -1,11 +1,13 @@
 import React, { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext.jsx';
 
 export default function UserMenu({ user, onLogout, onResetGuide }) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const { session } = useContext(AuthContext);
+  const { t } = useTranslation();
 
   if (!user) return null;
 
@@ -31,7 +33,7 @@ export default function UserMenu({ user, onLogout, onResetGuide }) {
       {open && (
         <div style={styles.menu}>
           <button style={styles.menuItem} onClick={handleChangePassword}>
-            Нууц үг солих
+            {t('user_menu.change_password', 'Change Password')}
           </button>
           <button
             style={styles.menuItem}
@@ -40,9 +42,11 @@ export default function UserMenu({ user, onLogout, onResetGuide }) {
               onResetGuide && onResetGuide();
             }}
           >
-            Show page guide
+            {t('user_menu.show_page_guide', 'Show page guide')}
           </button>
-          <button style={styles.menuItem} onClick={handleLogout}>Гарах</button>
+          <button style={styles.menuItem} onClick={handleLogout}>
+            {t('logout', 'Logout')}
+          </button>
         </div>
       )}
     </div>

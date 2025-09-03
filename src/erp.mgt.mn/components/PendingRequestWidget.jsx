@@ -1,11 +1,13 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 
 export default function PendingRequestWidget() {
   const navigate = useNavigate();
   const { incoming } = usePendingRequests();
   const count = incoming.pending.count;
+  const { t } = useTranslation();
 
   const badgeStyle = {
     display: 'inline-block',
@@ -21,18 +23,18 @@ export default function PendingRequestWidget() {
   return (
     <div>
       <h3>
-        Incoming requests
+        {t('pending_requests.heading', 'Incoming requests')}
         {count > 0 && <span style={badgeStyle}>{count}</span>}
       </h3>
       {count > 0 ? (
         <p>
-          {count} incoming request{count === 1 ? '' : 's'}
+          {t('pending_requests.count', `${count} incoming request`, { count })}
         </p>
       ) : (
-        <p>No incoming requests</p>
+        <p>{t('pending_requests.none', 'No incoming requests')}</p>
       )}
       <button onClick={() => navigate('/requests?tab=incoming')}>
-        View requests
+        {t('requests.view', 'View requests')}
       </button>
     </div>
   );
