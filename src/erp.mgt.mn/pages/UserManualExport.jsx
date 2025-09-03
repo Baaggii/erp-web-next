@@ -111,25 +111,39 @@ export default function UserManualExport() {
           if (!struct[k])
             struct[k] = { buttons: [], functions: [], forms: [], reports: [] };
         };
-        const modules = Array.isArray(data.modules)
+        const modNodes = Array.isArray(data.modules)
           ? data.modules
           : Object.values(data.modules || {});
-        modules.forEach((m) => addModule(m.key || m));
-        const forms = data.forms || {};
-        for (const [fKey, f] of Object.entries(forms)) {
+        modNodes.forEach((m) => addModule(m.key));
+        const formNodes = Array.isArray(data.forms)
+          ? data.forms
+          : Object.entries(data.forms || {}).map(([fKey, f]) => ({
+              key: fKey,
+              ...f,
+            }));
+        for (const f of formNodes) {
           const mKey = f.module || f.moduleKey || "misc";
-          if (!modules.some((m) => (m.key || m) === mKey)) continue;
+          if (!modNodes.some((m) => m.key === mKey)) continue;
           addModule(mKey);
-          struct[mKey].forms.push({ key: fKey, ...f });
-          (f.buttons || []).forEach((b) =>
+          struct[mKey].forms.push(f);
+          const btnNodes = Array.isArray(f.buttons)
+            ? f.buttons
+            : Object.values(f.buttons || {});
+          btnNodes.forEach((b) =>
             struct[mKey].buttons.push(typeof b === "string" ? b : b.key),
           );
-          (f.functions || []).forEach((fn) =>
+          const fnNodes = Array.isArray(f.functions)
+            ? f.functions
+            : Object.values(f.functions || {});
+          fnNodes.forEach((fn) =>
             struct[mKey].functions.push(
               typeof fn === "string" ? fn : fn.key,
             ),
           );
-          (f.reports || []).forEach((r) =>
+          const reportNodes = Array.isArray(f.reports)
+            ? f.reports
+            : Object.values(f.reports || {});
+          reportNodes.forEach((r) =>
             struct[mKey].reports.push(typeof r === "string" ? r : r.key),
           );
         }
