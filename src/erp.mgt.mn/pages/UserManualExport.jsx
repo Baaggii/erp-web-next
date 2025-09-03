@@ -261,13 +261,23 @@ export default function UserManualExport() {
             const mKey = cfg.moduleKey;
             if (!mKey) return;
             addModule(mKey);
-            if (!struct[mKey].forms.some((f) => f.key === tName)) {
+            const existing = struct[mKey].forms.find((f) => f.key === tName);
+            const fields = {
+              visibleFields: cfg.visibleFields || [],
+              requiredFields: cfg.requiredFields || [],
+            };
+            if (existing) {
+              existing.fields = {
+                ...(existing.fields || {}),
+                ...fields,
+              };
+            } else {
               struct[mKey].forms.push({
                 key: tName,
-                fields: {
-                  visibleFields: cfg.visibleFields || [],
-                  requiredFields: cfg.requiredFields || [],
-                },
+                fields,
+                buttons: [],
+                functions: [],
+                reports: [],
               });
             }
           });
@@ -310,52 +320,24 @@ export default function UserManualExport() {
     for (const [mKey, mod] of Object.entries(manual)) {
       if (!mod.forms.length) continue;
       md += `### ${await translate(mKey)}\n`;
-      md += `| ${await translateWithCache(lang, "formName", "Form Name")} | ${await translateWithCache(lang, "identifier", "Identifier")} | ${await translateWithCache(lang, "description", "Description")} |\n`;
-      md += `| --- | --- | --- |\n`;
       for (const form of mod.forms) {
         const formName = await translate(form.key);
-        let formDesc =
-          form.description ||
-          formDescMap[form.key] ||
-          (() => {
-            const tr = t(`manual.${form.key}.description`, "", { lng: lang });
-            return tr && tr !== `manual.${form.key}.description` ? tr : null;
-          })();
-        if (!formDesc) {
-          const intro = `This form enables authorised users to manage records related to ${formName}.`;
-          formDesc = await translateWithCache(lang, "formIntro", intro);
+        md += `#### ${formName}\n`;
+        const rf = form.fields?.requiredFields || [];
+        if (rf.length) {
+          const rfNames = await Promise.all(rf.map((r) => translate(r)));
+          md += `${await translateWithCache(lang, "requiredFields", "Required Fields")}: ${rfNames.join(", ")}\n`;
         }
-        md += `| ${formName} | ${form.key} | ${formDesc} |\n`;
-        if (form.buttons?.length) {
-          md += `\n#### ${formName} ${await translateWithCache(lang, "buttons", "Buttons")}\n`;
-          md += `| ${await translateWithCache(lang, "buttonName", "Button Name")} | ${await translateWithCache(lang, "identifier", "Identifier")} | ${await translateWithCache(lang, "description", "Description")} |\n`;
-          md += `| --- | --- | --- |\n`;
-          for (const btn of form.buttons) {
-            const bKey = typeof btn === "string" ? btn : btn.key;
-            const bName = await translate(bKey);
-            let reqFields = [];
-            if (typeof btn === "object") {
-              reqFields = btn.requiredFields || btn.reqFields || [];
-            } else if (buttonReqMap[bKey]) {
-              reqFields = buttonReqMap[bKey];
-            }
-            let bDesc =
-              (typeof btn === "object" && btn.description) ||
-              buttonDescMap[bKey] ||
-              (() => {
-                const tr = t(`manual.${bKey}.description`, "", { lng: lang });
-                return tr && tr !== `manual.${bKey}.description` ? tr : null;
-              })();
-            let sentenceDefault = `The ${bName} button initiates the ${bName} operation within this form.`;
-            if (reqFields.length) {
-              const rfNames = await Promise.all(reqFields.map((r) => translate(r)));
-              sentenceDefault += ` Requires: ${rfNames.join(", ")}.`;
-            }
-            if (!bDesc) {
-              bDesc = await translateWithCache(lang, "buttonPurposeDetail", sentenceDefault);
-            }
-            md += `| ${bName} | ${bKey} | ${bDesc} |\n`;
-          }
+        const actions = [];
+        (form.buttons || []).forEach((b) =>
+          actions.push(typeof b === "string" ? b : b.key),
+        );
+        (form.functions || []).forEach((fn) =>
+          actions.push(typeof fn === "string" ? fn : fn.key),
+        );
+        for (const a of actions) {
+          const aName = await translate(a);
+          md += `- ${aName}\n`;
         }
       }
     }
