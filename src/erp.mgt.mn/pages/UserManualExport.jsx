@@ -6,6 +6,7 @@ import { AuthContext } from "../context/AuthContext.jsx";
 import { useToast } from "../context/ToastContext.jsx";
 import useHeaderMappings from "../hooks/useHeaderMappings.js";
 import translateWithAI from "../utils/translateWithAI.js";
+import translateWithCache from "../utils/translateWithCache.js";
 import transactionForms from "../../../config/transactionForms.json";
 
 const formDescMap = {};
@@ -166,7 +167,9 @@ export default function UserManualExport() {
     if (headerMap[key]) return headerMap[key];
     const tr = t(key, "", { lng: lang });
     if (tr && tr !== key) return tr;
-    return describe(key);
+    const desc = describe(key);
+    if (lang === "en") return desc;
+    return translateWithCache(lang, desc);
   }
 
   async function buildMarkdown() {
