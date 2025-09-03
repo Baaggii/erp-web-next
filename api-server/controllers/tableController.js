@@ -203,11 +203,7 @@ export async function deleteRow(req, res, next) {
 
 export async function getRowReferences(req, res, next) {
   try {
-    const table = req.params.table;
-    if (typeof table !== 'string' || table.trim() === '') {
-      return res.status(400).json({ message: 'Table name required' });
-    }
-    const refs = await listRowReferences(table, req.params.id);
+    const refs = await listRowReferences(req.params.table, req.params.id);
     res.json(refs);
   } catch (err) {
     if (err.status === 400) {
