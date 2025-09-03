@@ -119,16 +119,15 @@ export default function UserManualExport() {
             struct[k] = { buttons: [], functions: [], forms: [], reports: [] };
         };
 
-        const modNodes = Array.isArray(data.modules)
+        const modules = Array.isArray(data.modules)
           ? data.modules
           : Object.values(data.modules || {});
-        const collect = (nodes) =>
-          nodes.forEach((m) => {
+        const visit = (ms) =>
+          ms.forEach((m) => {
             addModule(m.key);
-            if (Array.isArray(m.children) && m.children.length)
-              collect(m.children);
+            if (m.children?.length) visit(m.children);
           });
-        collect(modNodes);
+        visit(modules);
 
         const buttonObjs = Array.isArray(data.buttons)
           ? data.buttons
@@ -255,7 +254,10 @@ export default function UserManualExport() {
         }
         tfData = tfData || transactionForms;
         Object.values(tfData || {}).forEach((forms) => {
-          Object.entries(forms || {}).forEach(([tName, cfg]) => {
+          const entries = Array.isArray(forms)
+            ? forms.map((f) => [f.key, f])
+            : Object.entries(forms || {});
+          entries.forEach(([tName, cfg]) => {
             const mKey = cfg.moduleKey;
             if (!mKey) return;
             addModule(mKey);
