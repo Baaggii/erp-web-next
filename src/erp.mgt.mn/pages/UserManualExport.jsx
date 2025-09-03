@@ -44,6 +44,7 @@ export default function UserManualExport() {
   const languages = ["en", "mn", "ja", "ko", "zh", "es", "de", "fr", "ru"];
   const [manual, setManual] = useState({});
   const [markdown, setMarkdown] = useState("");
+  const [levelActions, setLevelActions] = useState({});
 
   const headerKeys = useMemo(() => {
     const keys = new Set();
@@ -107,6 +108,7 @@ export default function UserManualExport() {
         );
         if (!res.ok) throw new Error("failedActions");
         const data = await res.json();
+        setLevelActions((prev) => ({ ...prev, [session.user_level]: data }));
 
         const struct = {};
         const addModule = (k) => {
@@ -341,17 +343,24 @@ export default function UserManualExport() {
     md += `\n## ${await translateWithCache(lang, "quickReference", "Quick Reference")}\n`;
     md += `| ${await translateWithCache(lang, "userLevel", "User Level")} | ${await translateWithCache(lang, "modules", "Modules")} | ${await translateWithCache(lang, "forms", "Forms")} | ${await translateWithCache(lang, "reports", "Reports")} | ${await translateWithCache(lang, "buttons", "Buttons")} | ${await translateWithCache(lang, "functions", "Functions")} |\n`;
     md += `| --- | --- | --- | --- | --- | --- |\n`;
-    const moduleCount = Object.keys(manual).length;
-    let formsCount = 0;
-    let reportsCount = 0;
-    let buttonCount = 0;
-    let fnCount = 0;
-    for (const mod of Object.values(manual)) {
-      formsCount += mod.forms.length;
-      reportsCount += mod.reports.length;
-      buttonCount += mod.buttons.length;
-      fnCount += mod.functions.length;
-    }
+    const lvl = { id: session?.user_level };
+    const acts = levelActions[lvl.id] || {};
+    const moduleKeys = acts.modules
+      ? Object.keys(acts.modules)
+      : Object.keys(acts).filter((k) =>
+          !["buttons", "functions", "api", "permissions"].includes(k),
+        );
+    const moduleCount = moduleKeys.length;
+    const formsCount = moduleKeys.reduce(
+      (n, k) => n + (manual[k]?.forms.length || 0),
+      0,
+    );
+    const reportsCount = moduleKeys.reduce(
+      (n, k) => n + (manual[k]?.reports.length || 0),
+      0,
+    );
+    const buttonCount = Object.keys(acts.buttons || {}).length;
+    const fnCount = Object.keys(acts.functions || {}).length;
     md += `| ${session?.user_level_name || session?.user_level || ""} | ${moduleCount} | ${formsCount} | ${reportsCount} | ${buttonCount} | ${fnCount} |\n`;
     return md;
   }
