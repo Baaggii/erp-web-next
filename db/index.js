@@ -1220,6 +1220,11 @@ export async function listTableColumnMeta(tableName) {
 }
 
 export async function getPrimaryKeyColumns(tableName) {
+  if (typeof tableName !== 'string' || tableName.trim() === '') {
+    const err = new Error('Invalid table');
+    err.status = 400;
+    throw err;
+  }
   const [keyRows] = await pool.query(
     'SHOW KEYS FROM ?? WHERE Key_name = "PRIMARY" ORDER BY Seq_in_index',
     [tableName],
@@ -1531,7 +1536,12 @@ export async function deleteTableRow(
 }
 
 export async function listRowReferences(tableName, id, conn = pool) {
-  const pkCols = await getPrimaryKeyColumns(tableName);
+  let pkCols;
+  try {
+    pkCols = await getPrimaryKeyColumns(tableName);
+  } catch (err) {
+    throw err;
+  }
   const parts = String(id).split('-');
   const [rels] = await conn.query(
     `SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME
