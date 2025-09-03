@@ -119,15 +119,15 @@ export default function UserManualExport() {
             struct[k] = { buttons: [], functions: [], forms: [], reports: [] };
         };
 
-        const modules = Array.isArray(data.modules)
+        const modNodes = Array.isArray(data.modules)
           ? data.modules
           : Object.values(data.modules || {});
-        const visit = (ms) =>
-          ms.forEach((m) => {
+        const visit = (nodes) =>
+          nodes.forEach((m) => {
             addModule(m.key);
             if (m.children?.length) visit(m.children);
           });
-        visit(modules);
+        visit(modNodes);
 
         const buttonObjs = Array.isArray(data.buttons)
           ? data.buttons
@@ -253,6 +253,7 @@ export default function UserManualExport() {
           // ignore, will fall back to local config
         }
         tfData = tfData || transactionForms;
+        // Merge dynamic transaction form configs so they contribute to module forms
         Object.values(tfData || {}).forEach((forms) => {
           const entries = Array.isArray(forms)
             ? forms.map((f) => [f.key, f])
