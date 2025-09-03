@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useContext } from "react";
+import React, { useState, useEffect, useContext, useMemo } from "react";
 import { marked } from "marked";
 import { jsPDF } from "jspdf";
 import I18nContext from "../context/I18nContext.jsx";
 import { AuthContext } from "../context/AuthContext.jsx";
 import { useToast } from "../context/ToastContext.jsx";
-import headerMappings from "../../../config/headerMappings.json";
+import useHeaderMappings from "../hooks/useHeaderMappings.js";
 import translateWithAI from "../utils/translateWithAI.js";
 import transactionForms from "../../../config/transactionForms.json";
 
@@ -44,6 +44,58 @@ export default function UserManualExport() {
   const languages = ["en", "mn", "ja", "ko", "zh", "es", "de", "fr", "ru"];
   const [manual, setManual] = useState({});
   const [markdown, setMarkdown] = useState("");
+
+  const headerKeys = useMemo(() => {
+    const keys = new Set();
+    Object.entries(manual || {}).forEach(([mKey, mod]) => {
+      keys.add(mKey);
+      (mod.forms || []).forEach((form) => {
+        if (form.key) keys.add(form.key);
+        (form.buttons || []).forEach((btn) => {
+          const bKey = typeof btn === "string" ? btn : btn.key;
+          if (bKey) {
+            keys.add(bKey);
+            const rf =
+              (typeof btn === "object" &&
+                (btn.requiredFields || btn.reqFields)) ||
+              buttonReqMap[bKey] ||
+              [];
+            (rf || []).forEach((f) => keys.add(f));
+          }
+        });
+        (form.functions || []).forEach((fn) => {
+          const fKey = typeof fn === "string" ? fn : fn.key;
+          if (fKey) keys.add(fKey);
+        });
+        (form.reports || []).forEach((r) => {
+          const rKey = typeof r === "string" ? r : r.key;
+          if (rKey) keys.add(rKey);
+        });
+      });
+      (mod.buttons || []).forEach((b) => {
+        const bKey = typeof b === "string" ? b : b.key;
+        if (bKey) {
+          keys.add(bKey);
+          const rf =
+            (typeof b === "object" && (b.requiredFields || b.reqFields)) ||
+            buttonReqMap[bKey] ||
+            [];
+          (rf || []).forEach((f) => keys.add(f));
+        }
+      });
+      (mod.functions || []).forEach((fn) => {
+        const fKey = typeof fn === "string" ? fn : fn.key;
+        if (fKey) keys.add(fKey);
+      });
+      (mod.reports || []).forEach((r) => {
+        const rKey = typeof r === "string" ? r : r.key;
+        if (rKey) keys.add(rKey);
+      });
+    });
+    return Array.from(keys);
+  }, [manual]);
+
+  const headerMap = useHeaderMappings(headerKeys, lang);
 
   useEffect(() => {
     async function load() {
@@ -103,9 +155,18 @@ export default function UserManualExport() {
     return <p>{t("accessDenied", "Access denied", { lng: lang })}</p>;
   }
 
+  function describe(key) {
+    return key
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
   async function translate(key) {
-    const mapped = headerMappings[key] || key;
-    return await translateWithAI(lang, mapped, mapped);
+    if (!key) return "";
+    if (headerMap[key]) return headerMap[key];
+    const tr = t(key, "", { lng: lang });
+    if (tr && tr !== key) return tr;
+    return describe(key);
   }
 
   async function buildMarkdown() {
