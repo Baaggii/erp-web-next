@@ -31,14 +31,19 @@ export default function UserLevelActions() {
         throw new Error(msg || t("failedLoadActionGroups", "Failed to load action groups"));
       }
       const data = await res.json();
-      const forms = data.forms || {};
-      const permissions = data.permissions || [];
+      const forms = Array.isArray(data.forms)
+        ? Object.fromEntries(data.forms.map((f) => [f.key, f]))
+        : data.forms || {};
+      const permissions = Array.isArray(data.permissions)
+        ? data.permissions
+        : Object.values(data.permissions || {});
       const buttons = new Set();
       const functions = new Set();
       const api = new Set();
       const collect = (items, set) => {
         if (!items) return;
-        for (const it of items) {
+        const arr = Array.isArray(items) ? items : Object.values(items);
+        for (const it of arr) {
           if (typeof it === "string") set.add(it);
           else if (it && typeof it === "object") set.add(it.key);
         }
@@ -48,7 +53,10 @@ export default function UserLevelActions() {
         collect(form.functions, functions);
         collect(form.api, api);
       }
-      setGroups({ modules: data.modules || [], forms, permissions });
+      const modules = Array.isArray(data.modules)
+        ? data.modules
+        : Object.values(data.modules || {});
+      setGroups({ modules, forms, permissions });
       setAllActions({
         buttons: Array.from(buttons),
         functions: Array.from(functions),
@@ -100,10 +108,18 @@ export default function UserLevelActions() {
             (k) =>
               !["buttons", "functions", "api", "permissions"].includes(k),
           ),
-          buttons: Object.keys(data.buttons || {}),
-          functions: Object.keys(data.functions || {}),
-          api: Object.keys(data.api || {}),
-          permissions: Object.keys(data.permissions || {}),
+          buttons: Array.isArray(data.buttons)
+            ? data.buttons.map((b) => (typeof b === "string" ? b : b.key))
+            : Object.keys(data.buttons || {}),
+          functions: Array.isArray(data.functions)
+            ? data.functions.map((f) => (typeof f === "string" ? f : f.key))
+            : Object.keys(data.functions || {}),
+          api: Array.isArray(data.api)
+            ? data.api.map((a) => (typeof a === "string" ? a : a.key))
+            : Object.keys(data.api || {}),
+          permissions: Array.isArray(data.permissions)
+            ? data.permissions.map((p) => (typeof p === "string" ? p : p.key))
+            : Object.keys(data.permissions || {}),
         };
         const validModules = new Set(flattenModules(groups.modules));
         const validButtons = new Set(allActions.buttons);
