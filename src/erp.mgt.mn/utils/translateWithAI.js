@@ -1,5 +1,6 @@
 const localeCache = {};
 const aiCache = {};
+let aiDisabled = false;
 
 async function loadLocale(lang) {
   if (!localeCache[lang]) {
@@ -29,12 +30,19 @@ function saveCache(lang) {
 }
 
 async function requestAI(text, lang) {
+  if (aiDisabled) return text;
   try {
     const res = await fetch('/api/openai', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt: `Translate the following text to ${lang}: ${text}` }),
+      skipErrorToast: true,
+      skipLoader: true,
     });
+    if (res.status === 404) {
+      aiDisabled = true;
+      return text;
+    }
     if (!res.ok) throw new Error('AI request failed');
     const data = await res.json();
     return data.response?.trim() || text;
