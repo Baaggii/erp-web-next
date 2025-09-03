@@ -25,6 +25,12 @@ The file [`docs/openai-floating-bar.html`](./openai-floating-bar.html) demonstra
 
 The bar adapts to smaller screens and can be reopened via the "AI" button when collapsed.
 
+## Automatic Translation
+
+The front-end utility [`translateWithAI`](../src/erp.mgt.mn/utils/translateWithAI.js) loads strings from the locale files under `src/erp.mgt.mn/locales/`. When a key is missing, it posts the source text to `/api/openai` to request a translation into the desired language. Responses are cached in the browser's `localStorage` using keys of the form `ai-translations-<lang>`. Remove those entries to clear cached translations.
+
+The API route uses the `OPENAI_API_KEY` environment variable shown above; ensure it is set before starting the server so translation requests succeed.
+
 ## Benchmark Image Lookup
 
 Server code also exposes `findBenchmarkCode` for resolving a transaction type code from an uploaded image name. See [Benchmark Image Verification](./benchmark-image-verification.md) for details.
