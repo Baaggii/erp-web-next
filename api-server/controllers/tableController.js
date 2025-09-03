@@ -206,9 +206,6 @@ export async function getRowReferences(req, res, next) {
     const refs = await listRowReferences(req.params.table, req.params.id);
     res.json(refs);
   } catch (err) {
-    if (err.status === 400) {
-      return res.status(400).json({ message: err.message });
-    }
     next(err);
   }
 }
