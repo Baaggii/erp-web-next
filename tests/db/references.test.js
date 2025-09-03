@@ -47,6 +47,13 @@ test('listRowReferences counts referencing rows', async () => {
   ]);
 });
 
+test('listRowReferences rejects invalid table', async () => {
+  await assert.rejects(
+    db.listRowReferences('', '5'),
+    (err) => err.status === 400,
+  );
+});
+
 test('deleteTableRowCascade deletes related rows first', async () => {
   const calls = [];
   const restore = mockPool(async (sql, params) => {
