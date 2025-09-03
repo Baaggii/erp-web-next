@@ -244,6 +244,33 @@ export default function UserManualExport() {
           }
         }
 
+        let tfData;
+        try {
+          const tfRes = await fetch("/api/transaction_forms", {
+            credentials: "include",
+          });
+          if (tfRes.ok) tfData = await tfRes.json();
+        } catch (e) {
+          // ignore, will fall back to local config
+        }
+        tfData = tfData || transactionForms;
+        Object.values(tfData || {}).forEach((forms) => {
+          Object.entries(forms || {}).forEach(([tName, cfg]) => {
+            const mKey = cfg.moduleKey;
+            if (!mKey) return;
+            addModule(mKey);
+            if (!struct[mKey].forms.some((f) => f.key === tName)) {
+              struct[mKey].forms.push({
+                key: tName,
+                fields: {
+                  visibleFields: cfg.visibleFields || [],
+                  requiredFields: cfg.requiredFields || [],
+                },
+              });
+            }
+          });
+        });
+
         setManual(struct);
       } catch (err) {
         console.error(err);
@@ -407,10 +434,15 @@ export default function UserManualExport() {
           !["buttons", "functions", "api", "permissions"].includes(k),
         );
     const moduleCount = moduleKeys.length;
-    const formsCount = moduleKeys.reduce(
-      (n, k) => n + (manual[k]?.forms.length || 0),
-      0,
-    );
+    const formsCount = moduleKeys.reduce((n, k) => {
+      const allowed = acts.modules?.[k]?.forms || acts[k]?.forms || [];
+      const allowedKeys = Array.isArray(allowed)
+        ? allowed.map((f) => (typeof f === "string" ? f : f.key))
+        : Object.keys(allowed);
+      const manualKeys = (manual[k]?.forms || []).map((f) => f.key);
+      const matched = manualKeys.filter((fk) => allowedKeys.includes(fk)).length;
+      return n + matched;
+    }, 0);
     const reportsCount = moduleKeys.reduce(
       (n, k) => n + (manual[k]?.reports.length || 0),
       0,
