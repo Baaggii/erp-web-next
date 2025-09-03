@@ -163,7 +163,8 @@ export default function UserManualExport() {
         const visit = (nodes) =>
           nodes.forEach((m) => {
             addModule(m.key);
-            if (m.children?.length) visit(m.children);
+            if (Array.isArray(m.children) && m.children.length)
+              visit(m.children);
           });
         visit(modNodes);
 
@@ -325,7 +326,18 @@ export default function UserManualExport() {
         });
 
         setTxFormsMap(txMap);
-        setManual(struct);
+        const hasManualContent = Object.values(struct).some(
+          (m) =>
+            m.forms.length ||
+            m.reports.length ||
+            m.buttons.length ||
+            m.functions.length,
+        );
+        if (hasManualContent) {
+          setManual(struct);
+        } else {
+          addToast(noContentMsg, "warning");
+        }
       } catch (err) {
         console.error(err);
         addToast(
