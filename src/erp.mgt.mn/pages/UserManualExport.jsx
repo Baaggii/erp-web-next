@@ -45,6 +45,7 @@ export default function UserManualExport() {
   const [manual, setManual] = useState({});
   const [markdown, setMarkdown] = useState("");
   const [levelActions, setLevelActions] = useState({});
+  const [txFormsMap, setTxFormsMap] = useState({});
 
   const headerKeys = useMemo(() => {
     const keys = new Set();
@@ -107,7 +108,25 @@ export default function UserManualExport() {
           { credentials: "include" },
         );
         if (!res.ok) throw new Error("failedActions");
-        const data = await res.json();
+        const raw = await res.json();
+        const data = { ...raw };
+        Object.entries(data).forEach(([key, val]) => {
+          if (!val || typeof val !== "object") return;
+          if (["buttons", "functions", "api", "permissions", "modules"].includes(key))
+            return;
+          const forms = Array.isArray(val.forms)
+            ? val.forms
+            : Object.keys(val.forms || {});
+          data[key] = { ...val, forms };
+        });
+        if (data.modules) {
+          Object.entries(data.modules).forEach(([mKey, val]) => {
+            const forms = Array.isArray(val.forms)
+              ? val.forms
+              : Object.keys(val.forms || {});
+            data.modules[mKey] = { ...val, forms };
+          });
+        }
         setLevelActions((prev) => ({ ...prev, [session.user_level]: data }));
 
         const struct = {};
@@ -253,6 +272,7 @@ export default function UserManualExport() {
           // ignore, will fall back to local config
         }
         tfData = tfData || transactionForms;
+        const txMap = {};
         // Merge dynamic transaction form configs so they contribute to module forms
         Object.values(tfData || {}).forEach((forms) => {
           const entries = Array.isArray(forms)
@@ -262,6 +282,7 @@ export default function UserManualExport() {
             const mKey = cfg.moduleKey;
             if (!mKey) return;
             addModule(mKey);
+            (txMap[mKey] ||= []).push(tName);
             const existing = struct[mKey].forms.find((f) => f.key === tName);
             const fields = {
               visibleFields: cfg.visibleFields || [],
@@ -284,6 +305,7 @@ export default function UserManualExport() {
           });
         });
 
+        setTxFormsMap(txMap);
         setManual(struct);
       } catch (err) {
         console.error(err);
@@ -418,16 +440,17 @@ export default function UserManualExport() {
       : Object.keys(acts).filter((k) =>
           !["buttons", "functions", "api", "permissions"].includes(k),
         );
-    const moduleCount = moduleKeys.length;
-    const formsCount = moduleKeys.reduce((n, k) => {
-      const allowed = acts.modules?.[k]?.forms || acts[k]?.forms || [];
-      const allowedKeys = Array.isArray(allowed)
-        ? allowed.map((f) => (typeof f === "string" ? f : f.key))
-        : Object.keys(allowed);
-      const manualKeys = (manual[k]?.forms || []).map((f) => f.key);
-      const matched = manualKeys.filter((fk) => allowedKeys.includes(fk)).length;
-      return n + matched;
-    }, 0);
+      const moduleCount = moduleKeys.length;
+      const formsCount = moduleKeys.reduce((n, k) => {
+        const val = acts.modules?.[k] || acts[k] || {};
+        const baseForms = Array.isArray(val.forms)
+          ? val.forms.map((f) => (typeof f === "string" ? f : f.key))
+          : Object.keys(val.forms || {});
+        const forms = Array.from(
+          new Set([...baseForms, ...(txFormsMap[k] || [])]),
+        );
+        return n + forms.length;
+      }, 0);
     const reportsCount = moduleKeys.reduce(
       (n, k) => n + (manual[k]?.reports.length || 0),
       0,
