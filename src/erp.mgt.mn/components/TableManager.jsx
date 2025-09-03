@@ -1039,40 +1039,46 @@ const TableManager = forwardRef(function TableManager({
   }));
 
   async function openDetail(row) {
-    setDetailRow(row);
     const id = getRowId(row);
-    if (id !== undefined) {
-      try {
-        const res = await fetch(
-          `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}/references`,
-          { credentials: 'include' },
-        );
-        if (res.ok) {
-          try {
-            const refs = await res.json();
-            setDetailRefs(Array.isArray(refs) ? refs : []);
-          } catch {
-            addToast(
-              t('failed_parse_reference_info', 'Failed to parse reference info'),
-              'error',
-            );
-            setDetailRefs([]);
-          }
-        } else {
+    if (!table || id === undefined) {
+      addToast(
+        t(
+          'cannot_view_without_pk',
+          'Cannot view rows without a table or primary key',
+        ),
+        'error',
+      );
+      return;
+    }
+    setDetailRow(row);
+    try {
+      const res = await fetch(
+        `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}/references`,
+        { credentials: 'include' },
+      );
+      if (res.ok) {
+        try {
+          const refs = await res.json();
+          setDetailRefs(Array.isArray(refs) ? refs : []);
+        } catch {
           addToast(
-            t('failed_load_reference_info', 'Failed to load reference info'),
+            t('failed_parse_reference_info', 'Failed to parse reference info'),
             'error',
           );
           setDetailRefs([]);
         }
-      } catch {
+      } else {
         addToast(
           t('failed_load_reference_info', 'Failed to load reference info'),
           'error',
         );
         setDetailRefs([]);
       }
-    } else {
+    } catch {
+      addToast(
+        t('failed_load_reference_info', 'Failed to load reference info'),
+        'error',
+      );
       setDetailRefs([]);
     }
     setShowDetail(true);
@@ -2323,35 +2329,46 @@ const TableManager = forwardRef(function TableManager({
               </td>
             </tr>
           )}
-          {rows.map((r) => (
-            <tr
-              key={r.id || JSON.stringify(r)}
-              onClick={(e) => {
-                const t = e.target.tagName;
-                if (t !== 'INPUT' && t !== 'BUTTON' && t !== 'SELECT' && t !== 'A') {
-                  openDetail(r);
-                }
-              }}
-              style={{
-                cursor: 'pointer',
-                ...(requestStatusColors[requestStatus]
-                  ? { backgroundColor: requestStatusColors[requestStatus] }
-                  : {}),
-              }}
-            >
-              <td style={{ padding: '0.5rem', border: '1px solid #d1d5db', width: 60, textAlign: 'center' }}>
-                {(() => {
-                  const rid = getRowId(r);
-                  return (
-                    <input
-                      type="checkbox"
-                      disabled={rid === undefined}
-                      checked={rid !== undefined && selectedRows.has(rid)}
-                      onChange={() => rid !== undefined && toggleRow(rid)}
-                    />
-                  );
-                })()}
-              </td>
+          {rows.map((r) => {
+            const rid = getRowId(r);
+            const canView = table && rid !== undefined;
+            return (
+              <tr
+                key={r.id || JSON.stringify(r)}
+                onClick={(e) => {
+                  const t = e.target.tagName;
+                  if (
+                    canView &&
+                    t !== 'INPUT' &&
+                    t !== 'BUTTON' &&
+                    t !== 'SELECT' &&
+                    t !== 'A'
+                  ) {
+                    openDetail(r);
+                  }
+                }}
+                style={{
+                  cursor: canView ? 'pointer' : 'default',
+                  ...(requestStatusColors[requestStatus]
+                    ? { backgroundColor: requestStatusColors[requestStatus] }
+                    : {}),
+                }}
+              >
+                <td
+                  style={{
+                    padding: '0.5rem',
+                    border: '1px solid #d1d5db',
+                    width: 60,
+                    textAlign: 'center',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    disabled={rid === undefined}
+                    checked={rid !== undefined && selectedRows.has(rid)}
+                    onChange={() => rid !== undefined && toggleRow(rid)}
+                  />
+                </td>
               {columns.map((c) => {
                 const w = columnWidths[c];
                 const style = {
@@ -2394,73 +2411,68 @@ const TableManager = forwardRef(function TableManager({
                 );
               })}
               <td style={actionCellStyle}>
-                {(() => {
-                  const rid = getRowId(r);
-                  return (
-                    <>
+                <button
+                  onClick={() => openDetail(r)}
+                  style={actionBtnStyle}
+                  disabled={!canView}
+                >
+                  👁 View
+                </button>
+                <button
+                  onClick={() => openImages(r)}
+                  style={actionBtnStyle}
+                >
+                  🖼 Images
+                </button>
+                <button
+                  onClick={() => openUpload(r)}
+                  style={actionBtnStyle}
+                >
+                  ➕ Add Img
+                </button>
+                {!isSubordinate ? (
+                  <>
+                    {buttonPerms['Edit transaction'] && (
                       <button
-                        onClick={() => openDetail(r)}
+                        onClick={() => openEdit(r)}
+                        disabled={rid === undefined}
                         style={actionBtnStyle}
                       >
-                        👁 View
+                        🖉 Edit
                       </button>
+                    )}
+                    {buttonPerms['Delete transaction'] && (
                       <button
-                        onClick={() => openImages(r)}
-                        style={actionBtnStyle}
+                        onClick={() => handleDelete(r)}
+                        disabled={rid === undefined}
+                        style={deleteBtnStyle}
                       >
-                        🖼 Images
+                        ❌ Delete
                       </button>
-                      <button
-                        onClick={() => openUpload(r)}
-                        style={actionBtnStyle}
-                      >
-                        ➕ Add Img
-                      </button>
-                      {!isSubordinate ? (
-                        <>
-                          {buttonPerms['Edit transaction'] && (
-                            <button
-                              onClick={() => openEdit(r)}
-                              disabled={rid === undefined}
-                              style={actionBtnStyle}
-                            >
-                              🖉 Edit
-                            </button>
-                          )}
-                          {buttonPerms['Delete transaction'] && (
-                            <button
-                              onClick={() => handleDelete(r)}
-                              disabled={rid === undefined}
-                              style={deleteBtnStyle}
-                            >
-                              ❌ Delete
-                            </button>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => openRequestEdit(r)}
-                            disabled={rid === undefined}
-                            style={actionBtnStyle}
-                          >
-                            📝 Request Edit
-                          </button>
-                          <button
-                            onClick={() => handleRequestDelete(r)}
-                            disabled={rid === undefined}
-                            style={actionBtnStyle}
-                          >
-                            🗑 Request Delete
-                          </button>
-                        </>
-                      )}
-                    </>
-                  );
-                })()}
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => openRequestEdit(r)}
+                      disabled={rid === undefined}
+                      style={actionBtnStyle}
+                    >
+                      📝 Request Edit
+                    </button>
+                    <button
+                      onClick={() => handleRequestDelete(r)}
+                      disabled={rid === undefined}
+                      style={actionBtnStyle}
+                    >
+                      🗑 Request Delete
+                    </button>
+                  </>
+                )}
               </td>
             </tr>
-      ))}
+            );
+          })}
       </tbody>
       {showTotals && (
         <tfoot>
