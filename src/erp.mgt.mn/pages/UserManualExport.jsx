@@ -113,25 +113,23 @@ export default function UserManualExport() {
     for (const [mKey, mod] of Object.entries(manual)) {
       if (!mod.forms.length) continue;
       md += `### ${await translate(mKey)}\n`;
+      md += `| ${await translateWithAI(lang, "formName", "Form Name")} | ${await translateWithAI(lang, "identifier", "Identifier")} | ${await translateWithAI(lang, "description", "Description")} |\n`;
+      md += `| --- | --- | --- |\n`;
       for (const form of mod.forms) {
-        md += `#### ${await translate(form.key)}\n`;
-        const intro = `This form enables authorised users to manage records related to ${await translate(form.key)}.`;
-        md += `${await translateWithAI(lang, "formIntro", intro)}\n`;
-        const reqFieldNames = [];
-        for (const f of form.fields || []) {
-          if (f.required) reqFieldNames.push(await translate(f.key || f));
-        }
+        const formName = await translate(form.key);
+        const intro = `This form enables authorised users to manage records related to ${formName}.`;
+        const desc = await translateWithAI(lang, "formIntro", intro);
+        md += `| ${formName} | ${form.key} | ${desc} |\n`;
         if (form.buttons?.length) {
-          md += `${await translateWithAI(lang, "formButtonsIntro", "The form exposes the following buttons and their prerequisites:")}\n`;
+          md += `\n#### ${formName} ${await translateWithAI(lang, "buttons", "Buttons")}\n`;
+          md += `| ${await translateWithAI(lang, "buttonName", "Button Name")} | ${await translateWithAI(lang, "identifier", "Identifier")} | ${await translateWithAI(lang, "description", "Description")} |\n`;
+          md += `| --- | --- | --- |\n`;
           for (const btn of form.buttons) {
             const bKey = typeof btn === "string" ? btn : btn.key;
-            const fieldsList = reqFieldNames.length
-              ? reqFieldNames.join(", ")
-              : await translateWithAI(lang, "noFields", "no specific fields");
             const bName = await translate(bKey);
-            const sentenceDefault = `The ${bName} button initiates the ${bName} operation within this form, and it cannot proceed until the following fields have been supplied: ${fieldsList}.`;
+            const sentenceDefault = `The ${bName} button initiates the ${bName} operation within this form.`;
             const sentence = await translateWithAI(lang, "buttonPurposeDetail", sentenceDefault);
-            md += `- ${sentence}\n`;
+            md += `| ${bName} | ${bKey} | ${sentence} |\n`;
           }
         }
       }
@@ -141,12 +139,14 @@ export default function UserManualExport() {
     for (const [mKey, mod] of Object.entries(manual)) {
       if (!mod.reports.length) continue;
       md += `### ${await translate(mKey)}\n`;
+      md += `| ${await translateWithAI(lang, "reportName", "Report Name")} | ${await translateWithAI(lang, "identifier", "Identifier")} | ${await translateWithAI(lang, "description", "Description")} |\n`;
+      md += `| --- | --- | --- |\n`;
       for (const r of mod.reports) {
         const k = typeof r === "string" ? r : r.key;
         const reportName = await translate(k);
         const sentenceDefault = `The ${reportName} report provides a comprehensive overview of the associated data set, presenting information in a structured and readable manner for further analysis.`;
         const sentence = await translateWithAI(lang, "reportPurposeDetail", sentenceDefault);
-        md += `- ${sentence}\n`;
+        md += `| ${reportName} | ${k} | ${sentence} |\n`;
       }
     }
 
@@ -155,21 +155,25 @@ export default function UserManualExport() {
       if (!mod.buttons.length && !mod.functions.length) continue;
       md += `### ${await translate(mKey)}\n`;
       if (mod.buttons.length) {
-        md += `${await translateWithAI(lang, "settingsButtonsIntro", "The following buttons influence configuration and require careful handling:")}\n`;
+        md += `#### ${await translateWithAI(lang, "buttons", "Buttons")}\n`;
+        md += `| ${await translateWithAI(lang, "buttonName", "Button Name")} | ${await translateWithAI(lang, "identifier", "Identifier")} | ${await translateWithAI(lang, "description", "Description")} |\n`;
+        md += `| --- | --- | --- |\n`;
         for (const b of mod.buttons) {
           const bName = await translate(b);
           const sentenceDefault = `The ${bName} button allows administrators to execute the ${bName} operation, applying the current configuration without additional mandatory fields.`;
           const sentence = await translateWithAI(lang, "settingsButtonDetail", sentenceDefault);
-          md += `- ${sentence}\n`;
+          md += `| ${bName} | ${b} | ${sentence} |\n`;
         }
       }
       if (mod.functions.length) {
-        md += `${await translateWithAI(lang, "settingsFunctionsIntro", "These functions adjust system behaviour and should be used with understanding of their effects:")}\n`;
+        md += `\n#### ${await translateWithAI(lang, "functions", "Functions")}\n`;
+        md += `| ${await translateWithAI(lang, "functionName", "Function Name")} | ${await translateWithAI(lang, "identifier", "Identifier")} | ${await translateWithAI(lang, "description", "Description")} |\n`;
+        md += `| --- | --- | --- |\n`;
         for (const fn of mod.functions) {
           const fnName = await translate(fn);
           const sentenceDefault = `The ${fnName} function performs the ${fnName} process, leveraging the active settings to modify how the application operates.`;
           const sentence = await translateWithAI(lang, "settingsFunctionDetail", sentenceDefault);
-          md += `- ${sentence}\n`;
+          md += `| ${fnName} | ${fn} | ${sentence} |\n`;
         }
       }
     }
@@ -208,10 +212,23 @@ export default function UserManualExport() {
 
   function exportPdf() {
     const doc = new jsPDF();
+    doc.setFont("courier", "normal");
     const lines = markdown.split("\n");
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 10;
     let y = 10;
     for (const line of lines) {
-      doc.text(line, 10, y);
+      if (line.trim().startsWith("|")) {
+        const cells = line.split("|").slice(1, -1).map((c) => c.trim());
+        const colWidth = (pageWidth - margin * 2) / cells.length;
+        let x = margin;
+        for (const cell of cells) {
+          doc.text(cell, x, y);
+          x += colWidth;
+        }
+      } else {
+        doc.text(line, margin, y);
+      }
       y += 8;
       if (y > 280) {
         doc.addPage();
