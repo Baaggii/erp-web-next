@@ -49,6 +49,35 @@ function syncKeys(targetA, targetB, label) {
   }
 }
 
+function hasRepeatedPunctuation(str) {
+  return /([!?,.])\1{1,}/.test(str);
+}
+
+function hasPlaceholderPhrase(str) {
+  return /translated term is not found/i.test(str);
+}
+
+function hasMixedScripts(str) {
+  let count = 0;
+  if (/[A-Za-z]/.test(str)) count++;
+  if (/[\u0400-\u04FF]/.test(str)) count++;
+  if (/[\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u3040-\u30FF\u31F0-\u31FF\uAC00-\uD7AF]/.test(str))
+    count++;
+  return count > 1;
+}
+
+function isInvalidString(str) {
+  return (
+    hasRepeatedPunctuation(str) ||
+    hasPlaceholderPhrase(str) ||
+    hasMixedScripts(str)
+  );
+}
+
+function getNested(obj, keyPath) {
+  return keyPath.split('.').reduce((o, k) => (o && o[k] !== undefined ? o[k] : undefined), obj);
+}
+
 function writeLocaleFile(lang, obj) {
   const file = path.join(localesDir, `${lang}.json`);
   const ordered = sortObj(obj);
@@ -417,6 +446,7 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
 
   await fs.promises.mkdir(localesDir, { recursive: true });
   const locales = {};
+  const fixedKeys = new Set();
 
   for (const lang of languages) {
     const file = path.join(localesDir, `${lang}.json`);
@@ -432,26 +462,40 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
       if (skip.includes(k)) continue;
       const keyPath = prefix ? `${prefix}.${k}` : k;
       if (typeof v === 'string') {
-        let translated;
-        if (lang === 'mn' && /[A-Za-z]/.test(v)) {
+        const needsFix =
+          (lang === 'mn' && /[A-Za-z]/.test(v)) ||
+          (lang === 'en' && /[\u0400-\u04FF]/.test(v)) ||
+          isInvalidString(v);
+        if (needsFix) {
+          const src =
+            lang !== 'en' && getNested(locales.en, keyPath)
+              ? { text: getNested(locales.en, keyPath), lang: 'en' }
+              : lang !== 'mn' && getNested(locales.mn, keyPath)
+                ? { text: getNested(locales.mn, keyPath), lang: 'mn' }
+                : { text: v, lang };
           try {
-            translated = await translateWithGoogle(v, 'mn', 'en', keyPath);
+            let translated = await translateWithGoogle(
+              src.text,
+              lang,
+              src.lang,
+              keyPath,
+            );
+            if (
+              isInvalidString(translated) ||
+              (lang === 'mn' && /[A-Za-z]/.test(translated)) ||
+              (lang === 'en' && /[\u0400-\u04FF]/.test(translated))
+            ) {
+              translated = src.text;
+              console.warn(
+                `[gen-i18n] WARNING: fallback ${lang}.${keyPath}: "${v}" -> "${translated}"`,
+              );
+            } else {
+              console.warn(
+                `[gen-i18n] WARNING: corrected ${lang}.${keyPath}: "${v}" -> "${translated}"`,
+              );
+            }
             localeObj[k] = translated;
-            console.warn(
-              `[gen-i18n] WARNING: corrected ${lang}.${keyPath}: "${v}" -> "${translated}"`,
-            );
-          } catch (err) {
-            console.warn(
-              `[gen-i18n] ensureLanguage failed for ${lang}.${keyPath}: ${err.message}`,
-            );
-          }
-        } else if (lang === 'en' && /[\u0400-\u04FF]/.test(v)) {
-          try {
-            translated = await translateWithGoogle(v, 'en', 'mn', keyPath);
-            localeObj[k] = translated;
-            console.warn(
-              `[gen-i18n] WARNING: corrected ${lang}.${keyPath}: "${v}" -> "${translated}"`,
-            );
+            fixedKeys.add(`${lang}.${keyPath}`);
           } catch (err) {
             console.warn(
               `[gen-i18n] ensureLanguage failed for ${lang}.${keyPath}: ${err.message}`,
@@ -653,6 +697,12 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
     await saveLocale(lang);
   }
 
+  if (fixedKeys.size) {
+    log('[gen-i18n] corrected invalid translations:');
+    for (const k of fixedKeys) {
+      log(`  - ${k}`);
+    }
+  }
   log('[gen-i18n] DONE');
 }
 
