@@ -537,6 +537,21 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
     if (locales[lng]) await saveLocale(lng);
   }
 
+  // After sanitizing English and Mongolian locales, update tooltip bases
+  const tooltipDir = path.join(localesDir, 'tooltips');
+  await fs.promises.mkdir(tooltipDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(tooltipDir, 'en.json'),
+    JSON.stringify(sortObj(locales.en.tooltip), null, 2),
+  );
+  fs.writeFileSync(
+    path.join(tooltipDir, 'mn.json'),
+    JSON.stringify(sortObj(locales.mn.tooltip), null, 2),
+  );
+
+  // Regenerate other tooltip languages from sanitized bases
+  await generateTooltipTranslations({ onLog: log, signal });
+
   for (const lang of languages) {
     checkAbort();
     let counter = 0;
@@ -784,6 +799,10 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
     checkAbort();
     const langPath = path.join(tooltipDir, `${lang}.json`);
     const current = tipData[lang] || {};
+    // remove keys not in base to keep key counts aligned
+    for (const k of Object.keys(current)) {
+      if (!baseKeys.includes(k)) delete current[k];
+    }
     let updated = lang === 'en' || lang === 'mn';
 
     for (const key of baseKeys) {
@@ -819,8 +838,15 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
       const corrected = await ensureTooltipLanguage(current, lang);
       if (corrected) updated = true;
     }
+    const baseCount = baseKeys.length;
+    const currentCount = Object.keys(current).length;
+    if (currentCount !== baseCount) {
+      console.warn(
+        `[gen-tooltips] WARNING: ${lang} tooltip key count differs (${currentCount} vs ${baseCount})`,
+      );
+    }
 
-    if (updated) {
+    if (updated || currentCount !== baseCount) {
       const ordered = sortObj(current);
       fs.writeFileSync(langPath, JSON.stringify(ordered, null, 2));
       log(`[gen-tooltips] wrote ${langPath}`);
