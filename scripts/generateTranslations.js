@@ -1,10 +1,10 @@
 // scripts/generateTranslations.js
-import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
-import fetch from 'node-fetch';
-globalThis.fetch = fetch;
-import OpenAI from '../api-server/utils/openaiClient.js';
+let OpenAI;
+try {
+  ({ default: OpenAI } = await import('../api-server/utils/openaiClient.js'));
+} catch {}
 import { slugify } from '../api-server/utils/slugify.js';
 
 let log = console.log;
@@ -29,6 +29,24 @@ const TIMEOUT_MS = 7000;
 /* ---------------- Utilities ---------------- */
 function sortObj(o) {
   return Object.keys(o).sort().reduce((acc, k) => (acc[k] = o[k], acc), {});
+}
+
+function syncKeys(targetA, targetB, label) {
+  const allKeys = new Set([
+    ...Object.keys(targetA || {}),
+    ...Object.keys(targetB || {}),
+  ]);
+  for (const key of allKeys) {
+    if (!(key in targetA) && key in targetB) targetA[key] = targetB[key];
+    if (!(key in targetB) && key in targetA) targetB[key] = targetA[key];
+  }
+  const aCount = Object.keys(targetA).length;
+  const bCount = Object.keys(targetB).length;
+  if (aCount !== bCount) {
+    console.warn(
+      `[gen-i18n] WARNING: en and mn ${label} key counts differ (${aCount} vs ${bCount})`,
+    );
+  }
 }
 
 function writeLocaleFile(lang, obj) {
@@ -408,10 +426,21 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
     if (!locales[lang].tooltip) locales[lang].tooltip = {};
   }
 
+  // Ensure English and Mongolian locales contain the same keys
+  if (locales.en && locales.mn) {
+    syncKeys(locales.en, locales.mn, 'locale');
+    syncKeys(locales.en.tooltip, locales.mn.tooltip, 'tooltip');
+  }
+
   for (const { key, sourceText, sourceLang } of entries) {
     if (!locales[sourceLang][key]) {
       locales[sourceLang][key] = sourceText;
     }
+  }
+
+  if (locales.en && locales.mn) {
+    syncKeys(locales.en, locales.mn, 'locale');
+    syncKeys(locales.en.tooltip, locales.mn.tooltip, 'tooltip');
   }
 
   ['en', 'mn'].forEach((lng) => {
@@ -588,43 +617,50 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
   };
 
   const tooltipDir = path.resolve('src/erp.mgt.mn/locales/tooltips');
-  const enPath = path.join(tooltipDir, 'en.json');
-  const mnPath = path.join(tooltipDir, 'mn.json');
-
   await fs.promises.mkdir(tooltipDir, { recursive: true });
 
-  if (!fs.existsSync(enPath) || !fs.existsSync(mnPath)) {
-    throw new Error('English and Mongolian tooltip files must exist');
+  const tipData = {};
+  for (const lang of languages) {
+    const p = path.join(tooltipDir, `${lang}.json`);
+    tipData[lang] = fs.existsSync(p)
+      ? JSON.parse(fs.readFileSync(p, 'utf8'))
+      : {};
   }
 
-  const enTips = JSON.parse(fs.readFileSync(enPath, 'utf8'));
-  const mnTips = JSON.parse(fs.readFileSync(mnPath, 'utf8'));
-  const allKeys = Array.from(
-    new Set([...Object.keys(enTips), ...Object.keys(mnTips)])
+  if (tipData.en && tipData.mn) {
+    syncKeys(tipData.en, tipData.mn, 'tooltip');
+    fs.writeFileSync(
+      path.join(tooltipDir, 'en.json'),
+      JSON.stringify(sortObj(tipData.en), null, 2),
+    );
+    fs.writeFileSync(
+      path.join(tooltipDir, 'mn.json'),
+      JSON.stringify(sortObj(tipData.mn), null, 2),
+    );
+  }
+
+  const baseKeys = Array.from(
+    new Set([
+      ...Object.keys(tipData.en || {}),
+      ...Object.keys(tipData.mn || {}),
+    ]),
   );
 
   for (const lang of languages) {
-    if (lang === 'en' || lang === 'mn') continue;
     checkAbort();
-
     const langPath = path.join(tooltipDir, `${lang}.json`);
-    const current = fs.existsSync(langPath)
-      ? JSON.parse(fs.readFileSync(langPath, 'utf8'))
-      : {};
-    let updated = false;
+    const current = tipData[lang] || {};
+    let updated = lang === 'en' || lang === 'mn';
 
-    for (const key of allKeys) {
+    for (const key of baseKeys) {
       if (current[key]) continue;
       checkAbort();
-      const sourceText = enTips[key] || mnTips[key];
-      const sourceLang = enTips[key] ? 'en' : 'mn';
+      const sourceText =
+        (tipData.en && tipData.en[key]) || (tipData.mn && tipData.mn[key]);
+      const sourceLang = tipData.en && tipData.en[key] ? 'en' : 'mn';
       let translation;
       try {
-        const res = await translateWithOpenAI(
-          sourceText,
-          sourceLang,
-          lang
-        );
+        const res = await translateWithOpenAI(sourceText, sourceLang, lang);
         translation = res.translation;
       } catch (err) {
         try {
@@ -632,11 +668,11 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
             sourceText,
             lang,
             sourceLang,
-            key
+            key,
           );
         } catch (err2) {
           console.warn(
-            `[gen-tooltips] failed ${sourceLang}->${lang} for key="${key}": ${err2.message}`
+            `[gen-tooltips] failed ${sourceLang}->${lang} for key="${key}": ${err2.message}`,
           );
           translation = sourceText;
         }
