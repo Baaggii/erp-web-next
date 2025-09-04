@@ -80,6 +80,11 @@ function isInvalidString(str) {
     hasMixedScripts(str)
   );
 }
+function detectLang(str) {
+  if (/\u0400-\u04FF/.test(str)) return 'mn';
+  if (/[A-Za-z]/.test(str)) return 'en';
+  return undefined;
+}
 
 function getNested(obj, keyPath) {
   return keyPath.split('.').reduce((o, k) => (o && o[k] !== undefined ? o[k] : undefined), obj);
@@ -480,17 +485,15 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
       if (skip.includes(k)) continue;
       const keyPath = prefix ? `${prefix}.${k}` : k;
       if (typeof v === 'string') {
-        const needsFix =
-          (lang === 'mn' && /[A-Za-z]/.test(v)) ||
-          (lang === 'en' && /[\u0400-\u04FF]/.test(v)) ||
-          isInvalidString(v);
+        const sourceLang = detectLang(v);
+        const needsFix = (sourceLang && sourceLang !== lang) || isInvalidString(v);
         if (needsFix) {
           const candidates = [];
           const enVal = lang !== 'en' ? getNested(locales.en, keyPath) : undefined;
           const mnVal = lang !== 'mn' ? getNested(locales.mn, keyPath) : undefined;
           if (enVal) candidates.push({ text: enVal, lang: 'en' });
           if (mnVal) candidates.push({ text: mnVal, lang: 'mn' });
-          candidates.push({ text: v, lang });
+          candidates.push({ text: v, lang: sourceLang || lang });
 
           let translated = null;
           for (const src of candidates) {
@@ -501,11 +504,8 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
                 src.lang,
                 keyPath,
               );
-              if (
-                isInvalidString(res) ||
-                (lang === 'mn' && /[A-Za-z]/.test(res)) ||
-                (lang === 'en' && /[\u0400-\u04FF]/.test(res))
-              ) {
+              const resLang = detectLang(res);
+              if (isInvalidString(res) || (resLang && resLang !== lang)) {
                 continue;
               }
               translated = res;
@@ -803,22 +803,10 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
     let changed = false;
     for (const [k, v] of Object.entries(obj)) {
       if (typeof v !== 'string') continue;
-      if (lang === 'mn' && /[A-Za-z]/.test(v)) {
+      const sourceLang = detectLang(v);
+      if (sourceLang && sourceLang !== lang) {
         try {
-          const translated = await translateWithGoogle(v, 'mn', 'en', k);
-          obj[k] = translated;
-          console.warn(
-            `[gen-tooltips] WARNING: corrected ${lang}.${k}: "${v}" -> "${translated}"`,
-          );
-          changed = true;
-        } catch (err) {
-          console.warn(
-            `[gen-tooltips] ensureLanguage failed for ${lang}.${k}: ${err.message}`,
-          );
-        }
-      } else if (lang === 'en' && /[\u0400-\u04FF]/.test(v)) {
-        try {
-          const translated = await translateWithGoogle(v, 'en', 'mn', k);
+          const translated = await translateWithGoogle(v, lang, sourceLang, k);
           obj[k] = translated;
           console.warn(
             `[gen-tooltips] WARNING: corrected ${lang}.${k}: "${v}" -> "${translated}"`,
