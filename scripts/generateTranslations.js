@@ -26,6 +26,7 @@ const transactionFormsPath = path.resolve('config/transactionForms.json');
 const localesDir = path.resolve('src/erp.mgt.mn/locales');
 const tooltipsDir = path.join(localesDir, 'tooltips');
 const TIMEOUT_MS = 7000;
+const MANUAL_MARK = '@@';
 
 /* ---------------- Utilities ---------------- */
 function sortObj(o) {
@@ -84,6 +85,14 @@ function detectLang(str) {
   if (/\u0400-\u04FF/.test(str)) return 'mn';
   if (/[A-Za-z]/.test(str)) return 'en';
   return undefined;
+}
+
+function isManual(str) {
+  return typeof str === 'string' && str.startsWith(MANUAL_MARK);
+}
+
+function isAbbreviation(str) {
+  return /^[A-Z]{2,5}$/.test(str);
 }
 
 function getNested(obj, keyPath) {
@@ -845,7 +854,7 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
     );
   }
 
-  const baseKeys = Array.from(
+  let baseKeys = Array.from(
     new Set([
       ...Object.keys(tipData.en || {}),
       ...Object.keys(tipData.mn || {}),
@@ -855,15 +864,32 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
   async function ensureTooltipLanguage(obj, lang) {
     let changed = false;
     for (const [k, v] of Object.entries(obj)) {
-      if (typeof v !== 'string') continue;
+      if (typeof v !== 'string' || isManual(v)) continue;
+
+      if (isInvalidString(v) || isAbbreviation(v)) {
+        obj[k] = `${MANUAL_MARK}${tipData.en?.[k] ?? v}`;
+        console.warn(
+          `[gen-tooltips] WARNING: marked ${lang}.${k} for manual review: "${v}"`,
+        );
+        changed = true;
+        continue;
+      }
+
       const sourceLang = detectLang(v);
       if (sourceLang && sourceLang !== lang) {
         try {
           const translated = await translateWithGoogle(v, lang, sourceLang, k);
-          obj[k] = translated;
-          console.warn(
-            `[gen-tooltips] WARNING: corrected ${lang}.${k}: "${v}" -> "${translated}"`,
-          );
+          if (isInvalidString(translated) || translated === v) {
+            obj[k] = `${MANUAL_MARK}${tipData.en?.[k] ?? v}`;
+            console.warn(
+              `[gen-tooltips] WARNING: marked ${lang}.${k} for manual translation: "${v}"`,
+            );
+          } else {
+            obj[k] = translated;
+            console.warn(
+              `[gen-tooltips] WARNING: corrected ${lang}.${k}: "${v}" -> "${translated}"`,
+            );
+          }
           changed = true;
         } catch (err) {
           console.warn(
@@ -877,6 +903,13 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
 
   if (tipData.en) await ensureTooltipLanguage(tipData.en, 'en');
   if (tipData.mn) await ensureTooltipLanguage(tipData.mn, 'mn');
+
+  baseKeys = Array.from(
+    new Set([
+      ...Object.keys(tipData.en || {}),
+      ...Object.keys(tipData.mn || {}),
+    ]),
+  );
 
   for (const lang of languages) {
     checkAbort();
