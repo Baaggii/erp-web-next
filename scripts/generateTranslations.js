@@ -485,40 +485,51 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
           (lang === 'en' && /[\u0400-\u04FF]/.test(v)) ||
           isInvalidString(v);
         if (needsFix) {
-          const src =
-            lang !== 'en' && getNested(locales.en, keyPath)
-              ? { text: getNested(locales.en, keyPath), lang: 'en' }
-              : lang !== 'mn' && getNested(locales.mn, keyPath)
-                ? { text: getNested(locales.mn, keyPath), lang: 'mn' }
-                : { text: v, lang };
-          try {
-            let translated = await translateWithGoogle(
-              src.text,
-              lang,
-              src.lang,
-              keyPath,
-            );
-            if (
-              isInvalidString(translated) ||
-              (lang === 'mn' && /[A-Za-z]/.test(translated)) ||
-              (lang === 'en' && /[\u0400-\u04FF]/.test(translated))
-            ) {
-              translated = src.text;
-              console.warn(
-                `[gen-i18n] WARNING: fallback ${lang}.${keyPath}: "${v}" -> "${translated}"`,
+          const candidates = [];
+          const enVal = lang !== 'en' ? getNested(locales.en, keyPath) : undefined;
+          const mnVal = lang !== 'mn' ? getNested(locales.mn, keyPath) : undefined;
+          if (enVal) candidates.push({ text: enVal, lang: 'en' });
+          if (mnVal) candidates.push({ text: mnVal, lang: 'mn' });
+          candidates.push({ text: v, lang });
+
+          let translated = null;
+          for (const src of candidates) {
+            try {
+              const res = await translateWithGoogle(
+                src.text,
+                lang,
+                src.lang,
+                keyPath,
               );
-            } else {
+              if (
+                isInvalidString(res) ||
+                (lang === 'mn' && /[A-Za-z]/.test(res)) ||
+                (lang === 'en' && /[\u0400-\u04FF]/.test(res))
+              ) {
+                continue;
+              }
+              translated = res;
               console.warn(
                 `[gen-i18n] WARNING: corrected ${lang}.${keyPath}: "${v}" -> "${translated}"`,
               );
+              break;
+            } catch (err) {
+              console.warn(
+                `[gen-i18n] ensureLanguage translation failed ${src.lang}->${lang} for ${keyPath}: ${err.message}`,
+              );
             }
-            localeObj[k] = translated;
-            fixedKeys.add(`${lang}.${keyPath}`);
-          } catch (err) {
+          }
+
+          if (!translated) {
+            const fallback = candidates[0]?.text ?? v;
+            translated = fallback;
             console.warn(
-              `[gen-i18n] ensureLanguage failed for ${lang}.${keyPath}: ${err.message}`,
+              `[gen-i18n] WARNING: fallback ${lang}.${keyPath}: "${v}" -> "${translated}"`,
             );
           }
+
+          localeObj[k] = translated;
+          fixedKeys.add(`${lang}.${keyPath}`);
         }
       } else if (v && typeof v === 'object') {
         await ensureLanguage(v, lang, keyPath);
