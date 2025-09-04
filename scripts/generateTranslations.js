@@ -566,6 +566,59 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
     if (locales[lng]) await saveLocale(lng);
   }
 
+  // Generate missing English and Mongolian tooltips
+  if (locales.en && locales.mn) {
+    const allKeys = new Set([
+      ...Object.keys(locales.en || {}),
+      ...Object.keys(locales.mn || {}),
+    ]);
+    for (const key of allKeys) {
+      checkAbort();
+      // Ensure English tooltip
+      if (!locales.en.tooltip[key]) {
+        try {
+          const { tooltip } = await translateWithOpenAI(
+            locales.en[key] || locales.mn[key],
+            'en',
+            'en',
+          );
+          locales.en.tooltip[key] = tooltip;
+        } catch (err) {
+          console.warn(
+            `[gen-i18n] failed to generate English tooltip for key="${key}": ${err.message}`,
+          );
+        }
+      }
+
+      // Ensure Mongolian tooltip translated from English
+      if (!locales.mn.tooltip[key] && locales.en.tooltip[key]) {
+        try {
+          const { translation } = await translateWithOpenAI(
+            locales.en.tooltip[key],
+            'en',
+            'mn',
+          );
+          locales.mn.tooltip[key] = translation;
+        } catch (err) {
+          try {
+            const t = await translateWithGoogle(
+              locales.en.tooltip[key],
+              'mn',
+              'en',
+              key,
+            );
+            locales.mn.tooltip[key] = t;
+          } catch (err2) {
+            console.warn(
+              `[gen-i18n] failed to generate Mongolian tooltip for key="${key}": ${err2.message}`,
+            );
+            locales.mn.tooltip[key] = locales.en.tooltip[key];
+          }
+        }
+      }
+    }
+  }
+
   // After sanitizing English and Mongolian locales, update tooltip bases
   fs.writeFileSync(
     path.join(tooltipsDir, 'en.json'),
