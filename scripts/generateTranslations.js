@@ -24,6 +24,7 @@ const languageNames = {
 const headerMappingsPath = path.resolve('config/headerMappings.json');
 const transactionFormsPath = path.resolve('config/transactionForms.json');
 const localesDir = path.resolve('src/erp.mgt.mn/locales');
+const tooltipsDir = path.join(localesDir, 'tooltips');
 const TIMEOUT_MS = 7000;
 
 /* ---------------- Utilities ---------------- */
@@ -32,14 +33,20 @@ function sortObj(o) {
 }
 
 function syncKeys(targetA, targetB, label) {
-  const allKeys = new Set([
-    ...Object.keys(targetA || {}),
-    ...Object.keys(targetB || {}),
-  ]);
-  for (const key of allKeys) {
-    if (!(key in targetA) && key in targetB) targetA[key] = targetB[key];
-    if (!(key in targetB) && key in targetA) targetB[key] = targetA[key];
+  const keysA = Object.keys(targetA || {});
+  const keysB = Object.keys(targetB || {});
+  const missingFromA = keysB.filter((k) => !(k in targetA));
+  const missingFromB = keysA.filter((k) => !(k in targetB));
+
+  for (const key of missingFromA) targetA[key] = targetB[key];
+  for (const key of missingFromB) targetB[key] = targetA[key];
+
+  if (missingFromA.length || missingFromB.length) {
+    console.warn(
+      `[gen-i18n] WARNING: en and mn ${label} key sets differ (missing in en: ${missingFromA.length}, missing in mn: ${missingFromB.length})`,
+    );
   }
+
   const aCount = Object.keys(targetA).length;
   const bCount = Object.keys(targetB).length;
   if (aCount !== bCount) {
@@ -445,6 +452,7 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
   const entries = Array.from(entryMap.values());
 
   await fs.promises.mkdir(localesDir, { recursive: true });
+  await fs.promises.mkdir(tooltipsDir, { recursive: true });
   const locales = {};
   const fixedKeys = new Set();
 
@@ -454,6 +462,16 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
       ? JSON.parse(fs.readFileSync(file, 'utf8'))
       : {};
     if (!locales[lang].tooltip) locales[lang].tooltip = {};
+  }
+
+  // Load existing English and Mongolian tooltips before syncing keys
+  const enTipPath = path.join(tooltipsDir, 'en.json');
+  if (locales.en && fs.existsSync(enTipPath)) {
+    locales.en.tooltip = JSON.parse(fs.readFileSync(enTipPath, 'utf8'));
+  }
+  const mnTipPath = path.join(tooltipsDir, 'mn.json');
+  if (locales.mn && fs.existsSync(mnTipPath)) {
+    locales.mn.tooltip = JSON.parse(fs.readFileSync(mnTipPath, 'utf8'));
   }
 
   async function ensureLanguage(localeObj, lang, prefix = '', skip = []) {
@@ -538,14 +556,12 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
   }
 
   // After sanitizing English and Mongolian locales, update tooltip bases
-  const tooltipDir = path.join(localesDir, 'tooltips');
-  await fs.promises.mkdir(tooltipDir, { recursive: true });
   fs.writeFileSync(
-    path.join(tooltipDir, 'en.json'),
+    path.join(tooltipsDir, 'en.json'),
     JSON.stringify(sortObj(locales.en.tooltip), null, 2),
   );
   fs.writeFileSync(
-    path.join(tooltipDir, 'mn.json'),
+    path.join(tooltipsDir, 'mn.json'),
     JSON.stringify(sortObj(locales.mn.tooltip), null, 2),
   );
 
@@ -710,6 +726,21 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
     }
 
     await saveLocale(lang);
+  }
+
+  // Finalize tooltip bases and ensure parity
+  if (locales.en && locales.mn) {
+    syncKeys(locales.en.tooltip, locales.mn.tooltip, 'tooltip');
+    writeLocaleFile('en', locales.en);
+    writeLocaleFile('mn', locales.mn);
+    fs.writeFileSync(
+      path.join(tooltipsDir, 'en.json'),
+      JSON.stringify(sortObj(locales.en.tooltip), null, 2),
+    );
+    fs.writeFileSync(
+      path.join(tooltipsDir, 'mn.json'),
+      JSON.stringify(sortObj(locales.mn.tooltip), null, 2),
+    );
   }
 
   if (fixedKeys.size) {
