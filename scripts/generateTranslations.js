@@ -692,6 +692,44 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
     ]),
   );
 
+  async function ensureTooltipLanguage(obj, lang) {
+    let changed = false;
+    for (const [k, v] of Object.entries(obj)) {
+      if (typeof v !== 'string') continue;
+      if (lang === 'mn' && /[A-Za-z]/.test(v)) {
+        try {
+          const translated = await translateWithGoogle(v, 'mn', 'en', k);
+          obj[k] = translated;
+          console.warn(
+            `[gen-tooltips] WARNING: corrected ${lang}.${k}: "${v}" -> "${translated}"`,
+          );
+          changed = true;
+        } catch (err) {
+          console.warn(
+            `[gen-tooltips] ensureLanguage failed for ${lang}.${k}: ${err.message}`,
+          );
+        }
+      } else if (lang === 'en' && /[\u0400-\u04FF]/.test(v)) {
+        try {
+          const translated = await translateWithGoogle(v, 'en', 'mn', k);
+          obj[k] = translated;
+          console.warn(
+            `[gen-tooltips] WARNING: corrected ${lang}.${k}: "${v}" -> "${translated}"`,
+          );
+          changed = true;
+        } catch (err) {
+          console.warn(
+            `[gen-tooltips] ensureLanguage failed for ${lang}.${k}: ${err.message}`,
+          );
+        }
+      }
+    }
+    return changed;
+  }
+
+  if (tipData.en) await ensureTooltipLanguage(tipData.en, 'en');
+  if (tipData.mn) await ensureTooltipLanguage(tipData.mn, 'mn');
+
   for (const lang of languages) {
     checkAbort();
     const langPath = path.join(tooltipDir, `${lang}.json`);
@@ -725,6 +763,11 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
       }
       current[key] = translation;
       updated = true;
+    }
+
+    if (lang === 'en' || lang === 'mn') {
+      const corrected = await ensureTooltipLanguage(current, lang);
+      if (corrected) updated = true;
     }
 
     if (updated) {
