@@ -426,6 +426,52 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
     if (!locales[lang].tooltip) locales[lang].tooltip = {};
   }
 
+  async function ensureLanguage(localeObj, lang, prefix = '', skip = []) {
+    if (!localeObj || typeof localeObj !== 'object') return;
+    for (const [k, v] of Object.entries(localeObj)) {
+      if (skip.includes(k)) continue;
+      const keyPath = prefix ? `${prefix}.${k}` : k;
+      if (typeof v === 'string') {
+        let translated;
+        if (lang === 'mn' && /[A-Za-z]/.test(v)) {
+          try {
+            translated = await translateWithGoogle(v, 'mn', 'en', keyPath);
+            localeObj[k] = translated;
+            console.warn(
+              `[gen-i18n] WARNING: corrected ${lang}.${keyPath}: "${v}" -> "${translated}"`,
+            );
+          } catch (err) {
+            console.warn(
+              `[gen-i18n] ensureLanguage failed for ${lang}.${keyPath}: ${err.message}`,
+            );
+          }
+        } else if (lang === 'en' && /[\u0400-\u04FF]/.test(v)) {
+          try {
+            translated = await translateWithGoogle(v, 'en', 'mn', keyPath);
+            localeObj[k] = translated;
+            console.warn(
+              `[gen-i18n] WARNING: corrected ${lang}.${keyPath}: "${v}" -> "${translated}"`,
+            );
+          } catch (err) {
+            console.warn(
+              `[gen-i18n] ensureLanguage failed for ${lang}.${keyPath}: ${err.message}`,
+            );
+          }
+        }
+      } else if (v && typeof v === 'object') {
+        await ensureLanguage(v, lang, keyPath);
+      }
+    }
+  }
+
+  async function saveLocale(lang) {
+    await ensureLanguage(locales[lang], lang, '', ['tooltip']);
+    if (locales[lang].tooltip) {
+      await ensureLanguage(locales[lang].tooltip, lang, 'tooltip');
+    }
+    writeLocaleFile(lang, locales[lang]);
+  }
+
   // Ensure English and Mongolian locales contain the same keys
   if (locales.en && locales.mn) {
     syncKeys(locales.en, locales.mn, 'locale');
@@ -443,9 +489,9 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
     syncKeys(locales.en.tooltip, locales.mn.tooltip, 'tooltip');
   }
 
-  ['en', 'mn'].forEach((lng) => {
-    if (locales[lng]) writeLocaleFile(lng, locales[lng]);
-  });
+  for (const lng of ['en', 'mn']) {
+    if (locales[lng]) await saveLocale(lng);
+  }
 
   for (const lang of languages) {
     checkAbort();
@@ -600,11 +646,11 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
 
       counter++;
       if (counter % 10 === 0) {
-        writeLocaleFile(lang, locales[lang]);
+        await saveLocale(lang);
       }
     }
 
-    writeLocaleFile(lang, locales[lang]);
+    await saveLocale(lang);
   }
 
   log('[gen-i18n] DONE');
