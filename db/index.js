@@ -1228,10 +1228,11 @@ export async function getPrimaryKeyColumns(tableName) {
 
   if (pks.length === 0) {
     const [uniqRows] = await pool.query(
-      'SHOW INDEX FROM ?? WHERE Non_unique = 0 ORDER BY Seq_in_index',
+      'SHOW INDEX FROM ?? WHERE Non_unique = 0',
       [tableName],
     );
     if (uniqRows.length > 0) {
+      uniqRows.sort((a, b) => a.Seq_in_index - b.Seq_in_index);
       const groups = new Map();
       for (const row of uniqRows) {
         if (!groups.has(row.Key_name)) groups.set(row.Key_name, []);
