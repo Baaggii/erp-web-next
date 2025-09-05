@@ -1221,25 +1221,34 @@ export async function listTableColumnMeta(tableName) {
 
 export async function getPrimaryKeyColumns(tableName) {
   const [keyRows] = await pool.query(
-    'SHOW KEYS FROM ?? WHERE Key_name = "PRIMARY" ORDER BY Seq_in_index',
+    `SELECT COLUMN_NAME, SEQ_IN_INDEX
+       FROM information_schema.STATISTICS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ?
+        AND INDEX_NAME = 'PRIMARY'
+      ORDER BY SEQ_IN_INDEX`,
     [tableName],
   );
   // Map primary key columns in index order to support composite keys
   let pks = keyRows
-    .sort((a, b) => a.Seq_in_index - b.Seq_in_index)
-    .map((r) => r.Column_name);
+    .sort((a, b) => a.SEQ_IN_INDEX - b.SEQ_IN_INDEX)
+    .map((r) => r.COLUMN_NAME);
 
   if (pks.length === 0) {
     const [uniqRows] = await pool.query(
-      'SHOW INDEX FROM ?? WHERE Non_unique = 0',
+      `SELECT INDEX_NAME, COLUMN_NAME, SEQ_IN_INDEX
+         FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = ?
+          AND NON_UNIQUE = 0
+        ORDER BY INDEX_NAME, SEQ_IN_INDEX`,
       [tableName],
     );
     if (uniqRows.length > 0) {
-      uniqRows.sort((a, b) => a.Seq_in_index - b.Seq_in_index);
       const groups = new Map();
       for (const row of uniqRows) {
-        if (!groups.has(row.Key_name)) groups.set(row.Key_name, []);
-        groups.get(row.Key_name)[row.Seq_in_index - 1] = row.Column_name;
+        if (!groups.has(row.INDEX_NAME)) groups.set(row.INDEX_NAME, []);
+        groups.get(row.INDEX_NAME)[row.SEQ_IN_INDEX - 1] = row.COLUMN_NAME;
       }
       pks = Array.from(groups.values()).sort((a, b) => a.length - b.length)[0];
     }

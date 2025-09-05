@@ -23,8 +23,10 @@ test('listRowReferences counts referencing rows', async () => {
   let step = 0;
   const restore = mockPool(async (sql, params) => {
     step++;
-    if (sql.startsWith('SHOW KEYS')) {
-      return [[{ Column_name: 'id', Seq_in_index: 1 }]];
+    if (
+      sql.includes('information_schema.STATISTICS') && sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
     }
     if (sql.includes('information_schema.KEY_COLUMN_USAGE')) {
       if (params[0] === 'users') {
@@ -61,10 +63,12 @@ test('listRowReferences counts referencing rows', async () => {
 
 test('listRowReferences handles composite foreign keys', async () => {
   const restore = mockPool(async (sql, params) => {
-    if (sql.startsWith('SHOW KEYS')) {
+    if (
+      sql.includes('information_schema.STATISTICS') && sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
       return [[
-        { Column_name: 'company_id', Seq_in_index: 1 },
-        { Column_name: 'id', Seq_in_index: 2 },
+        { COLUMN_NAME: 'company_id', SEQ_IN_INDEX: 1 },
+        { COLUMN_NAME: 'id', SEQ_IN_INDEX: 2 },
       ]];
     }
     if (sql.includes('information_schema.KEY_COLUMN_USAGE')) {
@@ -109,8 +113,10 @@ test('deleteTableRowCascade deletes related rows first', async () => {
   const calls = [];
   const restore = mockPool(async (sql, params) => {
     calls.push({ sql, params });
-    if (sql.startsWith('SHOW KEYS')) {
-      return [[{ Column_name: 'id' }]];
+    if (
+      sql.includes('information_schema.STATISTICS') && sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
     }
     if (sql.includes('information_schema.KEY_COLUMN_USAGE')) {
       return [[{ TABLE_NAME: 'orders', COLUMN_NAME: 'user_id', REFERENCED_COLUMN_NAME: 'id' }]];

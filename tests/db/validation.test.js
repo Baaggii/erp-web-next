@@ -5,8 +5,11 @@ import * as db from '../../db/index.js';
 function mockPool(columns) {
   const original = db.pool.query;
   db.pool.query = async (sql, params) => {
-    if (sql.startsWith('SHOW KEYS')) {
-      return [columns.map((c) => ({ Column_name: c }))];
+    if (
+      sql.includes('information_schema.STATISTICS') &&
+      sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      return [columns.map((c, i) => ({ COLUMN_NAME: c, SEQ_IN_INDEX: i + 1 }))];
     }
     if (sql.includes('information_schema.COLUMNS')) {
       return [columns.map((c) => ({ COLUMN_NAME: c }))];
@@ -49,8 +52,11 @@ test('deleteTableRow uses primary key when no id column', async () => {
   const original = db.pool.query;
   let called = false;
   db.pool.query = async (sql, params) => {
-    if (sql.startsWith('SHOW KEYS')) {
-      return [[{ Column_name: 'module_key' }]];
+    if (
+      sql.includes('information_schema.STATISTICS') &&
+      sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      return [[{ COLUMN_NAME: 'module_key', SEQ_IN_INDEX: 1 }]];
     }
     if (sql.includes('information_schema.COLUMNS')) {
       return [[{ COLUMN_NAME: 'module_key' }]];
@@ -69,8 +75,11 @@ test('deleteTableRow uses soft delete column when configured', async () => {
   const original = db.pool.query;
   let called = false;
   db.pool.query = async (sql, params) => {
-    if (sql.startsWith('SHOW KEYS')) {
-      return [[{ Column_name: 'id' }]];
+    if (
+      sql.includes('information_schema.STATISTICS') &&
+      sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
     }
     if (sql.includes('information_schema.COLUMNS')) {
       return [[{ COLUMN_NAME: 'id' }, { COLUMN_NAME: 'is_deleted' }]];
@@ -94,10 +103,15 @@ test('deleteTableRow uses soft delete column when configured', async () => {
 test('deleteTableRow rejects when no primary or unique key', async () => {
   const original = db.pool.query;
   db.pool.query = async (sql) => {
-    if (sql.startsWith('SHOW KEYS')) {
+    if (
+      sql.includes('information_schema.STATISTICS') && sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
       return [[]];
     }
-    if (sql.startsWith('SHOW INDEX')) {
+    if (
+      sql.includes('information_schema.STATISTICS') &&
+      sql.includes('NON_UNIQUE = 0')
+    ) {
       return [[]];
     }
     if (sql.includes('information_schema.COLUMNS')) {
@@ -115,10 +129,15 @@ test('deleteTableRow rejects when no primary or unique key', async () => {
 test('updateTableRow rejects when no primary or unique key', async () => {
   const original = db.pool.query;
   db.pool.query = async (sql) => {
-    if (sql.startsWith('SHOW KEYS')) {
+    if (
+      sql.includes('information_schema.STATISTICS') && sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
       return [[]];
     }
-    if (sql.startsWith('SHOW INDEX')) {
+    if (
+      sql.includes('information_schema.STATISTICS') &&
+      sql.includes('NON_UNIQUE = 0')
+    ) {
       return [[]];
     }
     if (sql.includes('information_schema.COLUMNS')) {
@@ -137,8 +156,13 @@ test('updateTableRow uses composite primary key', async () => {
   const original = db.pool.query;
   let called = false;
   db.pool.query = async (sql, params) => {
-    if (sql.startsWith('SHOW KEYS')) {
-      return [[{ Column_name: 'empid' }, { Column_name: 'company_id' }]];
+    if (
+      sql.includes('information_schema.STATISTICS') && sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      return [[
+        { COLUMN_NAME: 'empid', SEQ_IN_INDEX: 1 },
+        { COLUMN_NAME: 'company_id', SEQ_IN_INDEX: 2 },
+      ]];
     }
     if (sql.includes('information_schema.COLUMNS')) {
       return [[{ COLUMN_NAME: 'name' }]];
@@ -160,8 +184,13 @@ test('deleteTableRow uses composite primary key', async () => {
   const original = db.pool.query;
   let called = false;
   db.pool.query = async (sql, params) => {
-    if (sql.startsWith('SHOW KEYS')) {
-      return [[{ Column_name: 'empid' }, { Column_name: 'company_id' }]];
+    if (
+      sql.includes('information_schema.STATISTICS') && sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      return [[
+        { COLUMN_NAME: 'empid', SEQ_IN_INDEX: 1 },
+        { COLUMN_NAME: 'company_id', SEQ_IN_INDEX: 2 },
+      ]];
     }
     if (sql.includes('information_schema.COLUMNS')) {
       return [[]];
@@ -183,11 +212,16 @@ test('updateTableRow uses unique key when no primary key', async () => {
   const original = db.pool.query;
   let called = false;
   db.pool.query = async (sql, params) => {
-    if (sql.startsWith('SHOW KEYS')) {
+    if (
+      sql.includes('information_schema.STATISTICS') && sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
       return [[]];
     }
-    if (sql.startsWith('SHOW INDEX')) {
-      return [[{ Key_name: 'u_code', Column_name: 'code', Seq_in_index: 1 }]];
+    if (
+      sql.includes('information_schema.STATISTICS') &&
+      sql.includes('NON_UNIQUE = 0')
+    ) {
+      return [[{ INDEX_NAME: 'u_code', COLUMN_NAME: 'code', SEQ_IN_INDEX: 1 }]];
     }
     if (sql.includes('information_schema.COLUMNS')) {
       return [[{ COLUMN_NAME: 'name' }]];
@@ -206,13 +240,18 @@ test('deleteTableRow uses unique key combination', async () => {
   const original = db.pool.query;
   let called = false;
   db.pool.query = async (sql, params) => {
-    if (sql.startsWith('SHOW KEYS')) {
+    if (
+      sql.includes('information_schema.STATISTICS') && sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
       return [[]];
     }
-    if (sql.startsWith('SHOW INDEX')) {
+    if (
+      sql.includes('information_schema.STATISTICS') &&
+      sql.includes('NON_UNIQUE = 0')
+    ) {
       return [[
-        { Key_name: 'u_emp_comp', Column_name: 'empid', Seq_in_index: 1 },
-        { Key_name: 'u_emp_comp', Column_name: 'company_id', Seq_in_index: 2 },
+        { INDEX_NAME: 'u_emp_comp', COLUMN_NAME: 'empid', SEQ_IN_INDEX: 1 },
+        { INDEX_NAME: 'u_emp_comp', COLUMN_NAME: 'company_id', SEQ_IN_INDEX: 2 },
       ]];
     }
     if (sql.includes('information_schema.COLUMNS')) {
@@ -235,8 +274,10 @@ test('updateTableRow restricts by company_id when not in primary key', async () 
   const original = db.pool.query;
   let called = false;
   db.pool.query = async (sql, params) => {
-    if (sql.startsWith('SHOW KEYS')) {
-      return [[{ Column_name: 'id' }]];
+    if (
+      sql.includes('information_schema.STATISTICS') && sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
     }
     if (sql.includes('information_schema.COLUMNS')) {
       return [[{ COLUMN_NAME: 'id' }, { COLUMN_NAME: 'name' }, { COLUMN_NAME: 'company_id' }]];
@@ -258,8 +299,10 @@ test('deleteTableRow restricts by company_id when not in primary key', async () 
   const original = db.pool.query;
   let called = false;
   db.pool.query = async (sql, params) => {
-    if (sql.startsWith('SHOW KEYS')) {
-      return [[{ Column_name: 'id' }]];
+    if (
+      sql.includes('information_schema.STATISTICS') && sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
     }
     if (sql.includes('information_schema.COLUMNS')) {
       return [[{ COLUMN_NAME: 'id' }, { COLUMN_NAME: 'company_id' }]];
