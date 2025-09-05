@@ -6,6 +6,7 @@ import React, {
   useImperativeHandle,
   forwardRef,
   useRef,
+  useCallback,
   memo,
 } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
@@ -167,6 +168,7 @@ const TableManager = forwardRef(function TableManager({
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [localRefresh, setLocalRefresh] = useState(0);
   const [procTriggers, setProcTriggers] = useState({});
+  const handleRowsChange = useCallback((rs) => setGridRows(rs), []);
   const [deleteInfo, setDeleteInfo] = useState(null); // { id, refs }
   const [showCascade, setShowCascade] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
@@ -2660,7 +2662,7 @@ const TableManager = forwardRef(function TableManager({
         viewSource={viewSourceMap}
         viewDisplays={viewDisplayMap}
         viewColumns={viewColumns}
-        onRowsChange={setGridRows}
+        onRowsChange={handleRowsChange}
         autoFillSession={autoFillSession}
         scope="forms"
       />
