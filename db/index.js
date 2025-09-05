@@ -1386,7 +1386,7 @@ export async function updateTableRow(
     (c) => c.toLowerCase() === 'company_id',
   );
   const addCompanyFilter =
-    companyId !== undefined && hasCompanyId && !pkLower.includes('company_id');
+    companyId != null && hasCompanyId && !pkLower.includes('company_id');
   logDb(`updateTableRow(${tableName}, id=${id}) using keys: ${pkCols.join(', ')}`);
   if (pkCols.length === 0) {
     const err = new Error(`Table ${tableName} has no primary or unique key`);
@@ -1482,7 +1482,7 @@ export async function deleteTableRow(
     (c) => c.toLowerCase() === 'company_id',
   );
   const addCompanyFilter =
-    companyId !== undefined && hasCompanyId && !pkLower.includes('company_id');
+    companyId != null && hasCompanyId && !pkLower.includes('company_id');
   logDb(`deleteTableRow(${tableName}, id=${id}) using keys: ${pkCols.join(', ')}`);
   if (pkCols.length === 0) {
     const err = new Error(`Table ${tableName} has no primary or unique key`);

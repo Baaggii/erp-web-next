@@ -242,3 +242,69 @@ test('updateRow populates updated_by and updated_at when absent', async () => {
   restore();
   assert.equal(res.code, 204);
 });
+
+test('updateRow forwards user companyId to updateTableRow', async () => {
+  const restore = mockPool(async (sql, params) => {
+    if (sql.startsWith('SHOW KEYS FROM')) {
+      return [[{ Column_name: 'id' }]];
+    }
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[
+        { COLUMN_NAME: 'id' },
+        { COLUMN_NAME: 'name' },
+        { COLUMN_NAME: 'company_id' },
+      ]];
+    }
+    if (sql.startsWith('SELECT * FROM `tenant_up`')) {
+      return [[{ id: 1, company_id: 9 }]];
+    }
+    if (sql.startsWith('UPDATE')) {
+      if (params[0] === 'tenant_up') {
+        assert.ok(sql.includes('`company_id` = ?'));
+        assert.deepEqual(params, ['tenant_up', 'Bob', '1', 9]);
+      }
+      return [{}];
+    }
+    return [[]];
+  });
+  const req = {
+    params: { table: 'tenant_up', id: '1' },
+    body: { name: 'Bob' },
+    user: { companyId: 9 },
+  };
+  const res = { locals: {}, sendStatus(c) { this.code = c; } };
+  await controller.updateRow(req, res, (e) => { if (e) throw e; });
+  restore();
+  assert.equal(res.code, 204);
+});
+
+test('deleteRow forwards user companyId to deleteTableRow', async () => {
+  const restore = mockPool(async (sql, params) => {
+    if (sql.startsWith('SHOW KEYS FROM')) {
+      return [[{ Column_name: 'id' }]];
+    }
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'id' }, { COLUMN_NAME: 'company_id' }]];
+    }
+    if (sql.startsWith('SELECT * FROM `tenant_del`')) {
+      return [[{ id: '5', company_id: 4 }]];
+    }
+    if (sql.startsWith('DELETE')) {
+      if (params[0] === 'tenant_del') {
+        assert.ok(sql.includes('`company_id` = ?'));
+        assert.deepEqual(params, ['tenant_del', '5', 4]);
+      }
+      return [{}];
+    }
+    return [[]];
+  });
+  const req = {
+    params: { table: 'tenant_del', id: '5' },
+    query: {},
+    user: { companyId: 4, empid: 'E1' },
+  };
+  const res = { locals: {}, sendStatus(c) { this.code = c; } };
+  await controller.deleteRow(req, res, (e) => { if (e) throw e; });
+  restore();
+  assert.equal(res.code, 204);
+});
