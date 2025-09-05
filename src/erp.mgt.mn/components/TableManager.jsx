@@ -249,6 +249,21 @@ const TableManager = forwardRef(function TableManager({
     return map;
   }, [columnMeta]);
 
+  const fieldTypeMap = useMemo(() => {
+    const map = {};
+    columnMeta.forEach((c) => {
+      const typ = (c.type || c.columnType || c.dataType || c.DATA_TYPE || '').toLowerCase();
+      if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
+        map[c.name] = 'number';
+      } else if (typ.includes('date') || typ.includes('time')) {
+        map[c.name] = typ.includes('time') && !typ.includes('date') ? 'time' : 'date';
+      } else {
+        map[c.name] = 'string';
+      }
+    });
+    return map;
+  }, [columnMeta]);
+
   const generatedCols = useMemo(
     () =>
       new Set(
@@ -2620,6 +2635,7 @@ const TableManager = forwardRef(function TableManager({
         relations={relationOpts}
         relationConfigs={relationConfigs}
         relationData={refRows}
+        fieldTypeMap={fieldTypeMap}
         disabledFields={disabledFields}
         labels={labels}
         requiredFields={formConfig?.requiredFields || []}
