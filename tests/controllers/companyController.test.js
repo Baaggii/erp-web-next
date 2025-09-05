@@ -164,8 +164,11 @@ test('deleteCompanyHandler deletes company with cascade', async () => {
   const calls = [];
   const restore = mockPool(async (sql, params) => {
     calls.push({ sql, params });
-    if (sql.startsWith('SHOW KEYS')) {
-      return [[{ Column_name: 'id' }]];
+    if (
+      sql.includes('information_schema.STATISTICS') &&
+      sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
     }
     if (sql.includes('information_schema.KEY_COLUMN_USAGE')) {
       return [[{ TABLE_NAME: 'orders', COLUMN_NAME: 'company_id', REFERENCED_COLUMN_NAME: 'id' }]];

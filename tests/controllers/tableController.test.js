@@ -206,8 +206,10 @@ test('addRow populates created_by and created_at when absent', async () => {
 
 test('updateRow populates updated_by and updated_at when absent', async () => {
   const restore = mockPool(async (sql, params) => {
-    if (sql.startsWith('SHOW KEYS FROM')) {
-      return [[{ Column_name: 'id' }]];
+    if (
+      sql.includes('information_schema.STATISTICS') && sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
     }
     if (sql.startsWith('SELECT * FROM `test`')) {
       return [[{ id: 1 }]];
@@ -245,8 +247,10 @@ test('updateRow populates updated_by and updated_at when absent', async () => {
 
 test('updateRow forwards user companyId to updateTableRow', async () => {
   const restore = mockPool(async (sql, params) => {
-    if (sql.startsWith('SHOW KEYS FROM')) {
-      return [[{ Column_name: 'id' }]];
+    if (
+      sql.includes('information_schema.STATISTICS') && sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
     }
     if (sql.includes('information_schema.COLUMNS')) {
       return [[
@@ -280,8 +284,10 @@ test('updateRow forwards user companyId to updateTableRow', async () => {
 
 test('deleteRow forwards user companyId to deleteTableRow', async () => {
   const restore = mockPool(async (sql, params) => {
-    if (sql.startsWith('SHOW KEYS FROM')) {
-      return [[{ Column_name: 'id' }]];
+    if (
+      sql.includes('information_schema.STATISTICS') && sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
     }
     if (sql.includes('information_schema.COLUMNS')) {
       return [[{ COLUMN_NAME: 'id' }, { COLUMN_NAME: 'company_id' }]];
