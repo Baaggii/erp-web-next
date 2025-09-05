@@ -1756,17 +1756,19 @@ const TableManager = forwardRef(function TableManager({
   let columns = ordered.filter((c) => !hiddenColumns.includes(c));
   const placeholders = useMemo(() => {
     const map = {};
-    const cols = new Set(allColumns);
-    cols.forEach((c) => {
-      const lower = c.toLowerCase();
-      if (lower.includes('time') && !lower.includes('date')) {
-        map[c] = 'HH:MM:SS';
-      } else if (lower.includes('timestamp') || lower.includes('date')) {
-        map[c] = 'YYYY-MM-DD';
+    columnMeta.forEach((c) => {
+      const typ = (c.type || c.columnType || c.dataType || c.DATA_TYPE || '')
+        .toLowerCase();
+      if (typ.includes('timestamp') || typ.includes('datetime')) {
+        map[c.name] = 'YYYY-MM-DD HH:MM:SS';
+      } else if (typ.includes('date')) {
+        map[c.name] = 'YYYY-MM-DD';
+      } else if (typ.includes('time')) {
+        map[c.name] = 'HH:MM:SS';
       }
     });
     return map;
-  }, [allColumns]);
+  }, [columnMeta]);
 
   const relationOpts = {};
   ordered.forEach((c) => {
@@ -1799,8 +1801,9 @@ const TableManager = forwardRef(function TableManager({
       const avg = getAverageLength(c, rows);
       let w;
       if (avg <= 4) w = ch(Math.max(avg + 1, 5));
-      else if (placeholders[c] && placeholders[c].includes('YYYY-MM-DD'))
-        w = ch(12);
+      else if (placeholders[c] === 'YYYY-MM-DD HH:MM:SS') w = ch(20);
+      else if (placeholders[c] === 'YYYY-MM-DD') w = ch(12);
+      else if (placeholders[c] === 'HH:MM:SS') w = ch(12);
       else if (avg <= 10) w = ch(12);
       else w = ch(20);
       map[c] = Math.min(w, MAX_WIDTH);
@@ -2395,7 +2398,9 @@ const TableManager = forwardRef(function TableManager({
                 let display = raw;
                 if (c === 'TotalCur' || totalCurrencySet.has(c)) {
                   display = currencyFmt.format(Number(r[c] || 0));
-                } else if (placeholders[c]) {
+                } else if (
+                  fieldTypeMap[c] === 'date' || fieldTypeMap[c] === 'time'
+                ) {
                   display = normalizeDateInput(raw, placeholders[c]);
                 }
                 const showFull = display.length > 20;
