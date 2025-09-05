@@ -22505,258 +22505,258 @@ CREATE TABLE `view_transactions_income` (
 -- Indexes for table `audit_log`
 --
 ALTER TABLE `audit_log`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `code_abhuvaari`
 --
 ALTER TABLE `code_abhuvaari`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_HBChig_id2_HBTorol_id2_Hbaitsaagch_id2` (`HBChig_id2`,`HBTorol_id2`,`Hbaitsaagch_id2`),
-  ADD KEY `HBTorol_id2` (`HBTorol_id2`),
-  ADD KEY `Hbaitsaagch_id2` (`Hbaitsaagch_id2`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_HBChig_id2_HBTorol_id2_Hbaitsaagch_id2` (`company_id`, `HBChig_id2`, `HBTorol_id2`, `Hbaitsaagch_id2`),
+  ADD KEY `HBTorol_id2` (`company_id`, `HBTorol_id2`),
+  ADD KEY `Hbaitsaagch_id2` (`company_id`, `Hbaitsaagch_id2`);
 
 --
 -- Indexes for table `code_bayarodor`
 --
 ALTER TABLE `code_bayarodor`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_fest_year_fest_month` (`fest_year`,`fest_month`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_fest_year_fest_month` (`company_id`, `fest_year`, `fest_month`);
 
 --
 -- Indexes for table `code_bkod`
 --
 ALTER TABLE `code_bkod`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_bkod_bkod_cost_bkod_prod_bkod_spec_bkod_prim_bkod_date` (`bkod`,`bkod_cost`,`bkod_prod`,`bkod_spec`,`bkod_prim`,`bkod_date`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_bkod_bkod_cost_bkod_prod_bkod_spec_bkod_prim_bkod_date` (`company_id`, `bkod`, `bkod_cost`, `bkod_prod`, `bkod_spec`, `bkod_prim`, `bkod_date`);
 
 --
 -- Indexes for table `code_bkodprim`
 --
 ALTER TABLE `code_bkodprim`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_1ab68fd7` (`bkod_Tk`,`bkod_Tk_name`,`bkod_Tk_muid`,`bkod_tk_tkkod`,`bkod_Tk_SKU`,`bkod_Tk_date`,`bkod_Tk_prod`,`bkod_Tk_size`,`bkod_tk_length`,`bkod_tk_width`,`bkod_tk_thick`),
-  ADD KEY `bkod_Tk_muid` (`bkod_Tk_muid`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_1ab68fd7` (`company_id`, `bkod_Tk`, `bkod_Tk_name`, `bkod_Tk_muid`, `bkod_tk_tkkod`, `bkod_Tk_SKU`, `bkod_Tk_date`, `bkod_Tk_prod`, `bkod_Tk_size`, `bkod_tk_length`, `bkod_tk_width`, `bkod_tk_thick`),
+  ADD KEY `bkod_Tk_muid` (`company_id`, `bkod_Tk_muid`);
 
 --
 -- Indexes for table `code_branches`
 --
 ALTER TABLE `code_branches`
-  ADD PRIMARY KEY (`company_id`,`branch_id`);
+  ADD PRIMARY KEY (`company_id`, `branch_id`);
 
 --
 -- Indexes for table `code_cashier`
 --
 ALTER TABLE `code_cashier`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `code_chiglel`
 --
 ALTER TABLE `code_chiglel`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `code_department`
 --
 ALTER TABLE `code_department`
-  ADD PRIMARY KEY (`company_id`,`id`),
-  ADD UNIQUE KEY `uniq_company_department_id` (`company_id`,`department_id`),
-  ADD KEY `idx_company_department_id` (`company_id`,`department_id`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_company_department_id` (`company_id`, `department_id`),
+  ADD KEY `idx_company_department_id` (`company_id`, `department_id`);
 
 --
 -- Indexes for table `code_edhorongo`
 --
 ALTER TABLE `code_edhorongo`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_ehkod_company_id` (`ehkod`,`company_id`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_ehkod_company_id` (`company_id`, `ehkod`);
 
 --
 -- Indexes for table `code_edhorongo_other`
 --
 ALTER TABLE `code_edhorongo_other`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `code_expenseangilal`
 --
 ALTER TABLE `code_expenseangilal`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `code_expensebalancetype`
 --
 ALTER TABLE `code_expensebalancetype`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `code_expensebaltype`
 --
 ALTER TABLE `code_expensebaltype`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_k1_k2_k3_k4_k5_k6_` (`k1`,`k2`,`k3`,`k4`,`k5`,`k6_`),
-  ADD KEY `k2` (`k2`),
-  ADD KEY `k3` (`k3`),
-  ADD KEY `k4` (`k4`),
-  ADD KEY `k5` (`k5`),
-  ADD KEY `k6_` (`k6_`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_k1_k2_k3_k4_k5_k6_` (`company_id`, `k1`, `k2`, `k3`, `k4`, `k5`, `k6_`),
+  ADD KEY `k2` (`company_id`, `k2`),
+  ADD KEY `k3` (`company_id`, `k3`),
+  ADD KEY `k4` (`company_id`, `k4`),
+  ADD KEY `k5` (`company_id`, `k5`),
+  ADD KEY `k6_` (`company_id`, `k6_`);
 
 --
 -- Indexes for table `code_expensetype`
 --
 ALTER TABLE `code_expensetype`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `code_expenseutga`
 --
 ALTER TABLE `code_expenseutga`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `code_frequency`
 --
 ALTER TABLE `code_frequency`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `code_huvaari`
 --
 ALTER TABLE `code_huvaari`
-  ADD PRIMARY KEY (`id`),
-  ADD KEY `position_id` (`position_id`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD KEY `position_id` (`company_id`, `position_id`);
 
 --
 -- Indexes for table `code_incometype`
 --
 ALTER TABLE `code_incometype`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `code_initiator`
 --
 ALTER TABLE `code_initiator`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `code_material`
 --
 ALTER TABLE `code_material`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_xmkod_xmkod_muid_xmkod_cost_xmkod_tkkod` (`xmkod`,`xmkod_muid`,`xmkod_cost`,`xmkod_tkkod`),
-  ADD KEY `xmkod_muid` (`xmkod_muid`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_xmkod_xmkod_muid_xmkod_cost_xmkod_tkkod` (`company_id`, `xmkod`, `xmkod_muid`, `xmkod_cost`, `xmkod_tkkod`),
+  ADD KEY `xmkod_muid` (`company_id`, `xmkod_muid`);
 
 --
 -- Indexes for table `code_materialprim`
 --
 ALTER TABLE `code_materialprim`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_53ccf867` (`xmkodtk`,`xmkodtk_name`,`xmkodtk_muid`,`xmkodtk_type`,`xmkodtk_tkkod`),
-  ADD KEY `xmkodtk_muid` (`xmkodtk_muid`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_53ccf867` (`company_id`, `xmkodtk`, `xmkodtk_name`, `xmkodtk_muid`, `xmkodtk_type`, `xmkodtk_tkkod`),
+  ADD KEY `xmkodtk_muid` (`company_id`, `xmkodtk_muid`);
 
 --
 -- Indexes for table `code_position`
 --
 ALTER TABLE `code_position`
-  ADD PRIMARY KEY (`company_id`,`id`),
-  ADD UNIQUE KEY `uniq_company_position_id` (`company_id`,`position_id`),
-  ADD UNIQUE KEY `uniq_company_position_name` (`company_id`,`position_name`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_company_position_id` (`company_id`, `position_id`),
+  ADD UNIQUE KEY `uniq_company_position_name` (`company_id`, `position_name`);
 
 --
 -- Indexes for table `code_position_other`
 --
 ALTER TABLE `code_position_other`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `code_room`
 --
 ALTER TABLE `code_room`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `code_status`
 --
 ALTER TABLE `code_status`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `id` (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `id` (`company_id`, `id`);
 
 --
 -- Indexes for table `code_talbai`
 --
 ALTER TABLE `code_talbai`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `code_torol`
 --
 ALTER TABLE `code_torol`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `code_transaction`
 --
 ALTER TABLE `code_transaction`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_UITransType_UITransTypeName_UITrtype` (`UITransType`,`UITransTypeName`,`UITrtype`),
-  ADD UNIQUE KEY `UITransType` (`UITransType`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_UITransType_UITransTypeName_UITrtype` (`company_id`, `UITransType`, `UITransTypeName`, `UITrtype`),
+  ADD UNIQUE KEY `UITransType` (`company_id`, `UITransType`);
 
 --
 -- Indexes for table `code_unit`
 --
 ALTER TABLE `code_unit`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `code_userlevel_settings`
 --
 ALTER TABLE `code_userlevel_settings`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uls_function` (`uls_id`,`function_name`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uls_function` (`company_id`, `uls_id`, `function_name`);
 
 --
 -- Indexes for table `code_valut`
 --
 ALTER TABLE `code_valut`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `code_violation`
 --
 ALTER TABLE `code_violation`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `code_woodprocctype`
 --
 ALTER TABLE `code_woodprocctype`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `code_woodsort`
 --
 ALTER TABLE `code_woodsort`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `code_woodtype`
 --
 ALTER TABLE `code_woodtype`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `code_workplace`
 --
 ALTER TABLE `code_workplace`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_workplace_id` (`workplace_id`),
-  ADD KEY `workplace_position_id` (`workplace_position_id`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_workplace_id` (`company_id`, `workplace_id`),
+  ADD KEY `workplace_position_id` (`company_id`, `workplace_position_id`);
 
 --
 -- Indexes for table `code_workplace_other`
 --
 ALTER TABLE `code_workplace_other`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `companies`
@@ -22768,26 +22768,26 @@ ALTER TABLE `companies`
 -- Indexes for table `company_licenses`
 --
 ALTER TABLE `company_licenses`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `company_module_licenses`
 --
 ALTER TABLE `company_module_licenses`
-  ADD PRIMARY KEY (`company_id`,`module_key`),
-  ADD KEY `module_key` (`module_key`);
+  ADD PRIMARY KEY (`company_id`, `module_key`),
+  ADD KEY `module_key` (`company_id`, `module_key`);
 
 --
 -- Indexes for table `forms`
 --
 ALTER TABLE `forms`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `form_submissions`
 --
 ALTER TABLE `form_submissions`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `license_plans`
@@ -22806,89 +22806,89 @@ ALTER TABLE `modules`
 -- Indexes for table `notifications`
 --
 ALTER TABLE `notifications`
-  ADD PRIMARY KEY (`notification_id`);
+  ADD PRIMARY KEY (`company_id`, `notification_id`);
 
 --
 -- Indexes for table `payments`
 --
 ALTER TABLE `payments`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `pending_request`
 --
 ALTER TABLE `pending_request`
-  ADD PRIMARY KEY (`request_id`),
-  ADD UNIQUE KEY `idx_pending_unique` (`table_name`,`record_id`,`emp_id`,`request_type`,`is_pending`);
+  ADD PRIMARY KEY (`company_id`, `request_id`),
+  ADD UNIQUE KEY `idx_pending_unique` (`company_id`, `table_name`, `record_id`, `emp_id`, `request_type`, `is_pending`);
 
 --
 -- Indexes for table `report_definitions`
 --
 ALTER TABLE `report_definitions`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `report_key` (`report_key`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `report_key` (`company_id`, `report_key`);
 
 --
 -- Indexes for table `request_seen_counts`
 --
 ALTER TABLE `request_seen_counts`
-  ADD PRIMARY KEY (`emp_id`);
+  ADD PRIMARY KEY (`company_id`, `emp_id`);
 
 --
 -- Indexes for table `role_default_modules`
 --
 ALTER TABLE `role_default_modules`
-  ADD PRIMARY KEY (`company_id`,`role_id`,`module_key`),
-  ADD KEY `idx_company_module_key` (`company_id`,`module_key`);
+  ADD PRIMARY KEY (`company_id`, `role_id`, `module_key`),
+  ADD KEY `idx_company_module_key` (`company_id`, `module_key`);
 
 --
 -- Indexes for table `role_module_permissions`
 --
 ALTER TABLE `role_module_permissions`
-  ADD PRIMARY KEY (`company_id`,`position_id`,`module_key`),
-  ADD KEY `module_key` (`module_key`),
-  ADD KEY `fk_rmp_role` (`position_id`);
+  ADD PRIMARY KEY (`company_id`, `position_id`, `module_key`),
+  ADD KEY `module_key` (`company_id`, `module_key`),
+  ADD KEY `fk_rmp_role` (`company_id`, `position_id`);
 
 --
 -- Indexes for table `tbl_beltgenniiluulegch`
 --
 ALTER TABLE `tbl_beltgenniiluulegch`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_manuf_id` (`manuf_id`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_manuf_id` (`company_id`, `manuf_id`);
 
 --
 -- Indexes for table `tbl_bhuvaari`
 --
 ALTER TABLE `tbl_bhuvaari`
-  ADD UNIQUE KEY `uniq_BH_id_bh_YM` (`BH_id`,`bh_YM`);
+  ADD UNIQUE KEY `uniq_BH_id_bh_YM` (`company_id`, `BH_id`, `bh_YM`);
 
 --
 -- Indexes for table `tbl_contracter`
 --
 ALTER TABLE `tbl_contracter`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_manuf_id_manuf_rd_manuf_phone` (`manuf_id`,`manuf_rd`,`manuf_phone`),
-  ADD KEY `manuf_id` (`manuf_id`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_manuf_id_manuf_rd_manuf_phone` (`company_id`, `manuf_id`, `manuf_rd`, `manuf_phone`),
+  ADD KEY `manuf_id` (`company_id`, `manuf_id`);
 
 --
 -- Indexes for table `tbl_currate`
 --
 ALTER TABLE `tbl_currate`
-  ADD UNIQUE KEY `uniq_Valutid_CurDate_ratenum` (`Valutid`,`CurDate`,`ratenum`);
+  ADD UNIQUE KEY `uniq_Valutid_CurDate_ratenum` (`company_id`, `Valutid`, `CurDate`, `ratenum`);
 
 --
 -- Indexes for table `tbl_discount`
 --
 ALTER TABLE `tbl_discount`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_946b42ff` (`inventory_code`,`start_date`,`end_date`,`discount_amount`,`manufacturer_id`,`coupon_code`,`branchid`,`company_id`,`branch_id`,`department_id`),
-  ADD KEY `branchid` (`branchid`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_946b42ff` (`company_id`, `inventory_code`, `start_date`, `end_date`, `discount_amount`, `manufacturer_id`, `coupon_code`, `branchid`, `branch_id`, `department_id`),
+  ADD KEY `branchid` (`company_id`, `branchid`);
 
 --
 -- Indexes for table `tbl_discount_other`
 --
 ALTER TABLE `tbl_discount_other`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `tbl_employee`
@@ -22902,66 +22902,66 @@ ALTER TABLE `tbl_employee`
 -- Indexes for table `tbl_employment`
 --
 ALTER TABLE `tbl_employment`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_b2a0973c` (`employment_emp_id`,`employment_company_id`,`employment_position_id`,`employment_workplace_id`,`employment_date`,`employment_department_id`,`employment_branch_id`),
-  ADD KEY `employment_company_id` (`employment_company_id`),
-  ADD KEY `employment_branch_id` (`employment_branch_id`),
-  ADD KEY `employment_department_id` (`employment_department_id`),
-  ADD KEY `employment_user_level` (`employment_user_level`),
-  ADD KEY `tbl_employment_ibfk_6` (`employment_senior_empid`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_b2a0973c` (`company_id`, `employment_emp_id`, `employment_position_id`, `employment_workplace_id`, `employment_date`, `employment_department_id`, `employment_branch_id`),
+  ADD KEY `employment_company_id` (`company_id`),
+  ADD KEY `employment_branch_id` (`company_id`, `employment_branch_id`),
+  ADD KEY `employment_department_id` (`company_id`, `employment_department_id`),
+  ADD KEY `employment_user_level` (`company_id`, `employment_user_level`),
+  ADD KEY `tbl_employment_ibfk_6` (`company_id`, `employment_senior_empid`);
 
 --
 -- Indexes for table `tbl_employment_other`
 --
 ALTER TABLE `tbl_employment_other`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `tbl_expenseorg`
 --
 ALTER TABLE `tbl_expenseorg`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_z_org_id` (`z_org_id`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_z_org_id` (`company_id`, `z_org_id`);
 
 --
 -- Indexes for table `tbl_hongololt`
 --
 ALTER TABLE `tbl_hongololt`
-  ADD UNIQUE KEY `uniq_hon_g_id_hon_year_hon_month` (`hon_g_id`,`hon_year`,`hon_month`);
+  ADD UNIQUE KEY `uniq_hon_g_id_hon_year_hon_month` (`company_id`, `hon_g_id`, `hon_year`, `hon_month`);
 
 --
 -- Indexes for table `tbl_sale`
 --
 ALTER TABLE `tbl_sale`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_43ddfc0b` (`hkod`,`hstartmmdate`,`hendmmdate`,`hsalemmp`,`hsalepermm`,`hstartbndate`,`hendbndate`,`hsalepbn`,`hsaleperbn`,`hcoupon`,`branchid`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_43ddfc0b` (`company_id`, `hkod`, `hstartmmdate`, `hendmmdate`, `hsalemmp`, `hsalepermm`, `hstartbndate`, `hendbndate`, `hsalepbn`, `hsaleperbn`, `hcoupon`, `branchid`);
 
 --
 -- Indexes for table `tbl_sellingprice`
 --
 ALTER TABLE `tbl_sellingprice`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_product_primary_code_price_date_company_id` (`product_primary_code`,`price_date`,`company_id`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_product_primary_code_price_date_company_id` (`company_id`, `product_primary_code`, `price_date`);
 
 --
 -- Indexes for table `tbl_sellingprice_other`
 --
 ALTER TABLE `tbl_sellingprice_other`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `tbl_workplace_schedule`
 --
 ALTER TABLE `tbl_workplace_schedule`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_ws_id_ws_workplace_id_ws_emp_id_ws_date` (`ws_id`,`ws_workplace_id`,`ws_emp_id`,`ws_date`),
-  ADD KEY `ws_emp_id` (`ws_emp_id`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_ws_id_ws_workplace_id_ws_emp_id_ws_date` (`company_id`, `ws_id`, `ws_workplace_id`, `ws_emp_id`, `ws_date`),
+  ADD KEY `ws_emp_id` (`company_id`, `ws_emp_id`);
 
 --
 -- Indexes for table `tbl_workplace_schedule_other`
 --
 ALTER TABLE `tbl_workplace_schedule_other`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `tenant_tables`
@@ -22973,103 +22973,103 @@ ALTER TABLE `tenant_tables`
 -- Indexes for table `transactions_contract`
 --
 ALTER TABLE `transactions_contract`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_d1def43f` (`g_num`,`g_id`,`g_burtgel_id`,`g_chig`,`g_torol`,`g_sq`,`g_start`,`g_end`,`company_id`,`branch_id`,`g_cancel`),
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_d1def43f` (`company_id`, `g_num`, `g_id`, `g_burtgel_id`, `g_chig`, `g_torol`, `g_sq`, `g_start`, `g_end`, `branch_id`, `g_cancel`),
   ADD KEY `company_id` (`company_id`);
 
 --
 -- Indexes for table `transactions_contract_other`
 --
 ALTER TABLE `transactions_contract_other`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `transactions_expense`
 --
 ALTER TABLE `transactions_expense`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_z_num_company_id_branch_id_ztr_transbranch_z_barimt` (`z_num`,`company_id`,`branch_id`,`ztr_transbranch`,`z_barimt`),
-  ADD KEY `branch_id` (`branch_id`),
-  ADD KEY `z_angilal_b` (`z_angilal_b`),
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_z_num_company_id_branch_id_ztr_transbranch_z_barimt` (`company_id`, `z_num`, `branch_id`, `ztr_transbranch`, `z_barimt`),
+  ADD KEY `branch_id` (`company_id`, `branch_id`),
+  ADD KEY `z_angilal_b` (`company_id`, `z_angilal_b`),
   ADD KEY `company_id` (`company_id`),
-  ADD KEY `z_from` (`z_from`),
-  ADD KEY `TransType` (`TransType`);
+  ADD KEY `z_from` (`company_id`, `z_from`),
+  ADD KEY `TransType` (`company_id`, `TransType`);
 
 --
 -- Indexes for table `transactions_expense_other`
 --
 ALTER TABLE `transactions_expense_other`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `transactions_income`
 --
 ALTER TABLE `transactions_income`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_db40a088` (`or_num`,`ortr_transbranch`,`or_o_barimt`,`company_id`,`branch_id`),
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_db40a088` (`company_id`, `or_num`, `ortr_transbranch`, `or_o_barimt`, `branch_id`),
   ADD KEY `company_id` (`company_id`);
 
 --
 -- Indexes for table `transactions_income_other`
 --
 ALTER TABLE `transactions_income_other`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `transactions_inventory`
 --
 ALTER TABLE `transactions_inventory`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_bmtr_num_company_id_branch_id_bmtr_transbranch` (`bmtr_num`,`company_id`,`branch_id`,`bmtr_transbranch`),
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_bmtr_num_company_id_branch_id_bmtr_transbranch` (`company_id`, `bmtr_num`, `branch_id`, `bmtr_transbranch`),
   ADD KEY `company_id` (`company_id`),
-  ADD KEY `sp_pm_unit_id` (`sp_pm_unit_id`);
+  ADD KEY `sp_pm_unit_id` (`company_id`, `sp_pm_unit_id`);
 
 --
 -- Indexes for table `transactions_inventory_other`
 --
 ALTER TABLE `transactions_inventory_other`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `transactions_order`
 --
 ALTER TABLE `transactions_order`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_company_id_branch_id_ordrid_ordrdid_ordrtr_transbranch` (`company_id`,`branch_id`,`ordrid`,`ordrdid`,`ordrtr_transbranch`),
-  ADD KEY `sp_pm_unit_id` (`sp_pm_unit_id`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_company_id_branch_id_ordrid_ordrdid_ordrtr_transbranch` (`company_id`, `branch_id`, `ordrid`, `ordrdid`, `ordrtr_transbranch`),
+  ADD KEY `sp_pm_unit_id` (`company_id`, `sp_pm_unit_id`);
 
 --
 -- Indexes for table `transactions_order_other`
 --
 ALTER TABLE `transactions_order_other`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `transactions_plan`
 --
 ALTER TABLE `transactions_plan`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_num_company_id_branch_id_transbranch` (`num`,`company_id`,`branch_id`,`transbranch`),
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_num_company_id_branch_id_transbranch` (`company_id`, `num`, `branch_id`, `transbranch`),
   ADD KEY `company_id` (`company_id`);
 
 --
 -- Indexes for table `transactions_plan_other`
 --
 ALTER TABLE `transactions_plan_other`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`company_id`, `id`);
 
 --
 -- Indexes for table `transactions_pos`
 --
 ALTER TABLE `transactions_pos`
-  ADD PRIMARY KEY (`id`),
-  ADD KEY `branch_id` (`branch_id`),
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD KEY `branch_id` (`company_id`, `branch_id`),
   ADD KEY `company_id` (`company_id`),
-  ADD KEY `emp_id` (`emp_id`),
-  ADD KEY `department_id` (`department_id`),
-  ADD KEY `status` (`status`),
-  ADD KEY `payment_type` (`payment_type`),
-  ADD KEY `cashback_payment_type` (`cashback_payment_type`);
+  ADD KEY `emp_id` (`company_id`, `emp_id`),
+  ADD KEY `department_id` (`company_id`, `department_id`),
+  ADD KEY `status` (`company_id`, `status`),
+  ADD KEY `payment_type` (`company_id`, `payment_type`),
+  ADD KEY `cashback_payment_type` (`company_id`, `cashback_payment_type`);
 
 --
 -- Indexes for table `users`
@@ -23083,22 +23083,22 @@ ALTER TABLE `users`
 -- Indexes for table `user_activity_log`
 --
 ALTER TABLE `user_activity_log`
-  ADD PRIMARY KEY (`log_id`);
+  ADD PRIMARY KEY (`company_id`, `log_id`);
 
 --
 -- Indexes for table `user_levels`
 --
 ALTER TABLE `user_levels`
-  ADD PRIMARY KEY (`company_id`,`id`),
-  ADD UNIQUE KEY `uniq_company_userlevel_id` (`company_id`,`userlevel_id`),
-  ADD KEY `idx_company_userlevel_id` (`company_id`,`userlevel_id`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_company_userlevel_id` (`company_id`, `userlevel_id`),
+  ADD KEY `idx_company_userlevel_id` (`company_id`, `userlevel_id`);
 
 --
 -- Indexes for table `user_level_permissions`
 --
 ALTER TABLE `user_level_permissions`
-  ADD PRIMARY KEY (`company_id`,`id`),
-  ADD KEY `idx_company_userlevel_id` (`company_id`,`userlevel_id`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD KEY `idx_company_userlevel_id` (`company_id`, `userlevel_id`);
 
 --
 -- AUTO_INCREMENT for dumped tables

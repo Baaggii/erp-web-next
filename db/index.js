@@ -1224,7 +1224,10 @@ export async function getPrimaryKeyColumns(tableName) {
     'SHOW KEYS FROM ?? WHERE Key_name = "PRIMARY" ORDER BY Seq_in_index',
     [tableName],
   );
-  let pks = keyRows.map((r) => r.Column_name);
+  // Map primary key columns in index order to support composite keys
+  let pks = keyRows
+    .sort((a, b) => a.Seq_in_index - b.Seq_in_index)
+    .map((r) => r.Column_name);
 
   if (pks.length === 0) {
     const [uniqRows] = await pool.query(
