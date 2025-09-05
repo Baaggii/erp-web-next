@@ -140,18 +140,64 @@ export default forwardRef(function InlineTransactionTable({
     return Array.from({ length: minRows }, () => fillSessionDefaults(defaultValues));
   });
 
+  const totalAmountSet = new Set(totalAmountFields);
+  const totalCurrencySet = new Set(totalCurrencyFields);
+
+  const columnTypeMap = React.useMemo(() => {
+    const map = {};
+    const cols = viewColumns[tableName] || [];
+    cols.forEach((c) => {
+      const name = typeof c === 'string' ? c : c.name;
+      if (!name) return;
+      const key = columnCaseMap[name.toLowerCase()] || name;
+      const typ =
+        (typeof c === 'string'
+          ? ''
+          : c.type || c.columnType || c.dataType || c.DATA_TYPE || '')
+          .toLowerCase();
+      if (typ) map[key] = typ;
+    });
+    return map;
+  }, [viewColumns, tableName, columnCaseMap]);
+
   const placeholders = React.useMemo(() => {
     const map = {};
     fields.forEach((f) => {
       const lower = f.toLowerCase();
-      if (lower.includes('time') && !lower.includes('date')) {
+      const typ = columnTypeMap[f] || '';
+      if (typ.includes('time')) {
+        map[f] = 'HH:MM:SS';
+      } else if (typ.includes('date')) {
+        map[f] = 'YYYY-MM-DD';
+      } else if (lower.includes('time') && !lower.includes('date')) {
         map[f] = 'HH:MM:SS';
       } else if (lower.includes('timestamp') || lower.includes('date')) {
         map[f] = 'YYYY-MM-DD';
       }
     });
     return map;
-  }, [fields]);
+  }, [fields, columnTypeMap]);
+
+  const fieldInputTypes = React.useMemo(() => {
+    const map = {};
+    fields.forEach((f) => {
+      const lower = f.toLowerCase();
+      const typ = columnTypeMap[f] || '';
+      if (placeholders[f] === 'HH:MM:SS' || typ.includes('time')) map[f] = 'time';
+      else if (placeholders[f] === 'YYYY-MM-DD' || typ.includes('date')) map[f] = 'date';
+      else if (
+        typ.match(/int|decimal|numeric|double|float|real|number|bigint/) ||
+        typeof defaultValues[f] === 'number' ||
+        totalAmountSet.has(f) ||
+        totalCurrencySet.has(f)
+      )
+        map[f] = 'number';
+      else if (lower.includes('email')) map[f] = 'email';
+      else if (lower.includes('phone')) map[f] = 'tel';
+      else map[f] = 'text';
+    });
+    return map;
+  }, [fields, columnTypeMap, placeholders, defaultValues, totalAmountSet, totalCurrencySet]);
 
   useEffect(() => {
     if (!Array.isArray(initRows)) return;
@@ -183,9 +229,6 @@ export default forwardRef(function InlineTransactionTable({
   const [previewRow, setPreviewRow] = useState(null);
   const [uploadRow, setUploadRow] = useState(null);
   const procCache = useRef({});
-
-  const totalAmountSet = new Set(totalAmountFields);
-  const totalCurrencySet = new Set(totalCurrencyFields);
 
   const inputFontSize = Math.max(10, labelFontSize);
   const labelStyle = { fontSize: `${labelFontSize}px` };
@@ -670,7 +713,9 @@ export default forwardRef(function InlineTransactionTable({
     const view = viewSource[field];
     if (view && value !== '') {
       const params = new URLSearchParams({ perPage: 1, debug: 1 });
-      const cols = viewColumns[view] || [];
+      const cols = (viewColumns[view] || []).map((c) =>
+        typeof c === 'string' ? c : c.name,
+      );
       Object.entries(viewSource).forEach(([f, v]) => {
         if (v !== view) return;
         if (!cols.includes(f)) return;
@@ -1077,17 +1122,11 @@ export default forwardRef(function InlineTransactionTable({
             onFocus={() => handleFocusField(f)}
             className={invalid ? 'border-red-500 bg-red-100' : ''}
             inputStyle={inputStyle}
-            companyId={company}
-          />
+          companyId={company}
+        />
       );
     }
-    const lower = f.toLowerCase();
-    const sample = rows[0]?.[f] ?? defaultValues[f];
-    const isNumber =
-      typeof sample === 'number' ||
-      /^-?\d+(\.\d+)?$/.test(String(sample)) ||
-      totalAmountSet.has(f) ||
-      totalCurrencySet.has(f);
+    const fieldType = fieldInputTypes[f];
     const commonProps = {
       className: `w-full border px-1 ${invalid ? 'border-red-500 bg-red-100' : ''}`,
       style: { ...inputStyle },
@@ -1098,19 +1137,19 @@ export default forwardRef(function InlineTransactionTable({
       onKeyDown: (e) => handleKeyDown(e, idx, colIdx),
       onFocus: () => handleFocusField(f),
     };
-    if (placeholders[f] === 'YYYY-MM-DD') {
+    if (fieldType === 'date') {
       return <input type="date" {...commonProps} />;
     }
-    if (placeholders[f] === 'HH:MM:SS') {
+    if (fieldType === 'time') {
       return <input type="time" {...commonProps} />;
     }
-    if (lower.includes('email')) {
+    if (fieldType === 'email') {
       return <input type="email" inputMode="email" {...commonProps} />;
     }
-    if (lower.includes('phone')) {
+    if (fieldType === 'tel') {
       return <input type="tel" inputMode="tel" {...commonProps} />;
     }
-    if (isNumber) {
+    if (fieldType === 'number') {
       return <input type="number" inputMode="decimal" {...commonProps} />;
     }
     return (
