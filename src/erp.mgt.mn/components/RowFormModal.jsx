@@ -110,10 +110,15 @@ const RowFormModal = function RowFormModal({
     const now = new Date();
     columns.forEach((c) => {
       const lower = c.toLowerCase();
+      const typ = fieldTypeMap[c];
       let placeholder = '';
-      if (lower.includes('time') && !lower.includes('date')) {
+      if (typ === 'time' || (!typ && lower.includes('time') && !lower.includes('date'))) {
         placeholder = 'HH:MM:SS';
-      } else if (lower.includes('timestamp') || lower.includes('date')) {
+      } else if (
+        typ === 'date' ||
+        typ === 'datetime' ||
+        (!typ && (lower.includes('timestamp') || lower.includes('date')))
+      ) {
         placeholder = 'YYYY-MM-DD';
       }
       const raw = row ? String(row[c] ?? '') : String(defaultValues[c] ?? '');
@@ -142,10 +147,15 @@ const RowFormModal = function RowFormModal({
     Object.entries(row || {}).forEach(([k, v]) => {
       if (!columns.includes(k)) {
         const lower = k.toLowerCase();
+        const typ = fieldTypeMap[k];
         let placeholder = '';
-        if (lower.includes('time') && !lower.includes('date')) {
+        if (typ === 'time' || (!typ && lower.includes('time') && !lower.includes('date'))) {
           placeholder = 'HH:MM:SS';
-        } else if (lower.includes('timestamp') || lower.includes('date')) {
+        } else if (
+          typ === 'date' ||
+          typ === 'datetime' ||
+          (!typ && (lower.includes('timestamp') || lower.includes('date')))
+        ) {
           placeholder = 'YYYY-MM-DD';
         }
         extras[k] = normalizeDateInput(String(v ?? ''), placeholder);
@@ -215,14 +225,19 @@ const RowFormModal = function RowFormModal({
     ]);
     cols.forEach((c) => {
       const lower = c.toLowerCase();
-      if (lower.includes('time') && !lower.includes('date')) {
+      const typ = fieldTypeMap[c];
+      if (typ === 'time' || (!typ && lower.includes('time') && !lower.includes('date'))) {
         map[c] = 'HH:MM:SS';
-      } else if (lower.includes('timestamp') || lower.includes('date')) {
+      } else if (
+        typ === 'date' ||
+        typ === 'datetime' ||
+        (!typ && (lower.includes('timestamp') || lower.includes('date')))
+      ) {
         map[c] = 'YYYY-MM-DD';
       }
     });
     return map;
-  }, [columns, row, defaultValues]);
+  }, [columns, row, defaultValues, fieldTypeMap]);
 
   useEffect(() => {
     const extras = {};
@@ -1092,8 +1107,9 @@ const RowFormModal = function RowFormModal({
         title={tip}
         ref={(el) => (inputRefs.current[c] = el)}
         type={(() => {
-          if (placeholders[c] === 'YYYY-MM-DD') return 'date';
-          if (placeholders[c] === 'HH:MM:SS') return 'time';
+          const typ = fieldTypeMap[c];
+          if (typ === 'date' || typ === 'datetime' || placeholders[c] === 'YYYY-MM-DD') return 'date';
+          if (typ === 'time' || placeholders[c] === 'HH:MM:SS') return 'time';
           const lower = c.toLowerCase();
           if (lower.includes('email')) return 'email';
           if (/(amount|qty|count|price|total|number|qty|quantity)/i.test(lower))
@@ -1108,7 +1124,11 @@ const RowFormModal = function RowFormModal({
             : undefined;
         })()}
         placeholder={placeholders[c] || ''}
-        value={formVals[c]}
+        value={
+          fieldTypeMap[c] === 'date' || fieldTypeMap[c] === 'datetime'
+            ? normalizeDateInput(formVals[c], 'YYYY-MM-DD')
+            : formVals[c]
+        }
         onChange={(e) => {
           setFormVals((prev) => {
             if (prev[c] === e.target.value) return prev;
