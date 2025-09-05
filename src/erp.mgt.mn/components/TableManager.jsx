@@ -2651,7 +2651,6 @@ const TableManager = forwardRef(function TableManager({
         relationConfigs={relationConfigs}
         relationData={refRows}
         fieldTypeMap={fieldTypeMap}
-        columnPlaceholders={placeholders}
         disabledFields={disabledFields}
         labels={labels}
         requiredFields={formConfig?.requiredFields || []}
