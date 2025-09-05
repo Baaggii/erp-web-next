@@ -718,7 +718,7 @@ export default forwardRef(function InlineTransactionTable({
     }
 
     const view = viewSource[field];
-    if (view && value !== '') {
+    if (view && typeof value === 'object' && value && value.value !== '') {
       const params = new URLSearchParams({ perPage: 1, debug: 1 });
       const cols = (viewColumns[view] || []).map((c) =>
         typeof c === 'string' ? c : c.name,
@@ -776,6 +776,7 @@ export default forwardRef(function InlineTransactionTable({
           });
         })
         .catch((err) => {
+          if (err.name === 'AbortError') return;
           window.dispatchEvent(
             new CustomEvent('toast', {
               detail: { message: `View lookup failed: ${err.message}`, type: 'error' },
