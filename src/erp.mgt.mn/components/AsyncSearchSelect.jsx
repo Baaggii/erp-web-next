@@ -38,7 +38,6 @@ export default function AsyncSearchSelect({
   const displayLabel = match ? match.label : label;
   const internalRef = useRef(null);
   const chosenRef = useRef(null);
-  const searchTimer = useRef(null);
 
   async function fetchPage(p = 1, q = '', append = false, signal) {
     const cols =
@@ -81,9 +80,7 @@ export default function AsyncSearchSelect({
       setHasMore(rows.length >= 50 && p * 50 < (json.count || Infinity));
       setOptions((o) => (append ? [...o, ...opts] : opts));
     } catch (err) {
-      if (err.name === 'AbortError') return;
-      console.error(err);
-      setOptions(append ? [] : []);
+      if (err.name !== 'AbortError') setOptions(append ? [] : []);
     } finally {
       setLoading(false);
     }
@@ -116,15 +113,8 @@ export default function AsyncSearchSelect({
     const controller = new AbortController();
     const q = String(input || '').trim();
     setPage(1);
-    searchTimer.current = setTimeout(() => {
-      fetchPage(1, q, false, controller.signal);
-    }, 300);
-    return () => {
-      controller.abort();
-      if (searchTimer.current) {
-        clearTimeout(searchTimer.current);
-      }
-    };
+    fetchPage(1, q, false, controller.signal);
+    return () => controller.abort();
   }, [
     show,
     input,
