@@ -1538,28 +1538,57 @@ export async function listRowReferences(tableName, id, conn = pool) {
   const pkCols = await getPrimaryKeyColumns(tableName);
   const parts = String(id).split('-');
   const [rels] = await conn.query(
-    `SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME
+    `SELECT CONSTRAINT_NAME, TABLE_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME
        FROM information_schema.KEY_COLUMN_USAGE
       WHERE TABLE_SCHEMA = DATABASE()
-        AND REFERENCED_TABLE_NAME = ?`,
+        AND REFERENCED_TABLE_NAME = ?
+      ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION`,
     [tableName],
   );
-  const results = [];
+
+  // Group columns belonging to the same foreign key constraint
+  const groups = new Map();
   for (const rel of rels) {
-    const idx = pkCols.indexOf(rel.REFERENCED_COLUMN_NAME);
-    if (idx === -1) continue;
-    const val = parts[idx];
+    if (!groups.has(rel.CONSTRAINT_NAME)) {
+      groups.set(rel.CONSTRAINT_NAME, {
+        table: rel.TABLE_NAME,
+        columns: [],
+        refCols: [],
+      });
+    }
+    const g = groups.get(rel.CONSTRAINT_NAME);
+    g.columns.push(rel.COLUMN_NAME);
+    g.refCols.push(rel.REFERENCED_COLUMN_NAME);
+  }
+
+  const results = [];
+  for (const g of groups.values()) {
+    const vals = g.refCols.map((rc) => {
+      const idx = pkCols.indexOf(rc);
+      return idx === -1 ? undefined : parts[idx];
+    });
+    if (vals.includes(undefined)) continue;
+    const whereClause = g.columns.map(() => '?? = ?').join(' AND ');
+    const params = [];
+    g.columns.forEach((col, i) => {
+      params.push(col, vals[i]);
+    });
     const [rows] = await conn.query(
-      'SELECT COUNT(*) AS count FROM ?? WHERE ?? = ?',
-      [rel.TABLE_NAME, rel.COLUMN_NAME, val],
+      `SELECT COUNT(*) AS count FROM ?? WHERE ${whereClause}`,
+      [g.table, ...params],
     );
     if (rows[0].count > 0) {
-      results.push({
-        table: rel.TABLE_NAME,
-        column: rel.COLUMN_NAME,
-        value: val,
+      const result = {
+        table: g.table,
+        columns: g.columns,
+        values: vals,
         count: rows[0].count,
-      });
+      };
+      if (g.columns.length === 1) {
+        result.column = g.columns[0];
+        result.value = vals[0];
+      }
+      results.push(result);
     }
   }
   return results;
@@ -1572,22 +1601,30 @@ async function deleteCascade(conn, tableName, id, visited, companyId) {
   const refs = await listRowReferences(tableName, id, conn);
   for (const r of refs) {
     const pkCols = await getPrimaryKeyColumns(r.table);
+    const whereClause = r.columns.map(() => '?? = ?').join(' AND ');
+    const params = [];
+    r.columns.forEach((col, i) => params.push(col, r.values[i]));
+
     if (pkCols.length === 0) {
       const softCol = await getSoftDeleteColumn(r.table);
       if (softCol) {
         await conn.query(
-          `UPDATE ?? SET \`${softCol}\` = 1 WHERE ?? = ?`,
-          [r.table, r.column, r.value],
+          `UPDATE ?? SET \`${softCol}\` = 1 WHERE ${whereClause}`,
+          [r.table, ...params],
         );
       } else {
-        await conn.query('DELETE FROM ?? WHERE ?? = ?', [r.table, r.column, r.value]);
+        await conn.query(
+          `DELETE FROM ?? WHERE ${whereClause}`,
+          [r.table, ...params],
+        );
       }
       continue;
     }
+
     const colList = pkCols.map((c) => `\`${c}\``).join(', ');
     const [rows] = await conn.query(
-      `SELECT ${colList} FROM ?? WHERE ?? = ?`,
-      [r.table, r.column, r.value],
+      `SELECT ${colList} FROM ?? WHERE ${whereClause}`,
+      [r.table, ...params],
     );
     for (const row of rows) {
       const refId =

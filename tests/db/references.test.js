@@ -24,11 +24,16 @@ test('listRowReferences counts referencing rows', async () => {
   const restore = mockPool(async (sql, params) => {
     step++;
     if (sql.startsWith('SHOW KEYS')) {
-      return [[{ Column_name: 'id' }]];
+      return [[{ Column_name: 'id', Seq_in_index: 1 }]];
     }
     if (sql.includes('information_schema.KEY_COLUMN_USAGE')) {
       if (params[0] === 'users') {
-        return [[{ TABLE_NAME: 'orders', COLUMN_NAME: 'user_id', REFERENCED_COLUMN_NAME: 'id' }]];
+        return [[{
+          CONSTRAINT_NAME: 'fk_orders_users',
+          TABLE_NAME: 'orders',
+          COLUMN_NAME: 'user_id',
+          REFERENCED_COLUMN_NAME: 'id',
+        }]];
       }
       return [[]];
     }
@@ -43,7 +48,60 @@ test('listRowReferences counts referencing rows', async () => {
   const refs = await db.listRowReferences('users', '5');
   restore();
   assert.deepEqual(refs, [
-    { table: 'orders', column: 'user_id', value: '5', count: 2 },
+    {
+      table: 'orders',
+      column: 'user_id',
+      value: '5',
+      columns: ['user_id'],
+      values: ['5'],
+      count: 2,
+    },
+  ]);
+});
+
+test('listRowReferences handles composite foreign keys', async () => {
+  const restore = mockPool(async (sql, params) => {
+    if (sql.startsWith('SHOW KEYS')) {
+      return [[
+        { Column_name: 'company_id', Seq_in_index: 1 },
+        { Column_name: 'id', Seq_in_index: 2 },
+      ]];
+    }
+    if (sql.includes('information_schema.KEY_COLUMN_USAGE')) {
+      return [[
+        {
+          CONSTRAINT_NAME: 'fk_orders_users',
+          TABLE_NAME: 'orders',
+          COLUMN_NAME: 'company_id',
+          REFERENCED_COLUMN_NAME: 'company_id',
+        },
+        {
+          CONSTRAINT_NAME: 'fk_orders_users',
+          TABLE_NAME: 'orders',
+          COLUMN_NAME: 'user_id',
+          REFERENCED_COLUMN_NAME: 'id',
+        },
+      ]];
+    }
+    if (sql.startsWith('SELECT COUNT(*)')) {
+      assert.equal(params[0], 'orders');
+      assert.equal(params[1], 'company_id');
+      assert.equal(params[2], '5');
+      assert.equal(params[3], 'user_id');
+      assert.equal(params[4], '7');
+      return [[{ count: 1 }]];
+    }
+    throw new Error('unexpected query');
+  });
+  const refs = await db.listRowReferences('users', '5-7');
+  restore();
+  assert.deepEqual(refs, [
+    {
+      table: 'orders',
+      columns: ['company_id', 'user_id'],
+      values: ['5', '7'],
+      count: 1,
+    },
   ]);
 });
 
