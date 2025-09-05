@@ -21,6 +21,7 @@ const RowFormModal = function RowFormModal({
   relations = {},
   relationConfigs = {},
   relationData = {},
+  fieldTypeMap = {},
   disabledFields = [],
   labels = {},
   requiredFields = [],
@@ -1158,17 +1159,18 @@ const RowFormModal = function RowFormModal({
       return (
         <div className="mb-4">
           <h3 className="mt-0 mb-1 font-semibold">Main</h3>
-            <InlineTransactionTable
-              ref={useGrid ? tableRef : undefined}
-              fields={cols}
-              relations={relations}
-              relationConfigs={relationConfigs}
-              relationData={relationData}
-              labels={labels}
-              totalAmountFields={totalAmountFields}
-              totalCurrencyFields={totalCurrencyFields}
-              viewSource={viewSource}
-              viewDisplays={viewDisplays}
+          <InlineTransactionTable
+            ref={useGrid ? tableRef : undefined}
+            fields={cols}
+            relations={relations}
+            relationConfigs={relationConfigs}
+            relationData={relationData}
+            fieldTypeMap={fieldTypeMap}
+            labels={labels}
+            totalAmountFields={totalAmountFields}
+            totalCurrencyFields={totalCurrencyFields}
+            viewSource={viewSource}
+            viewDisplays={viewDisplays}
               viewColumns={viewColumns}
               procTriggers={procTriggers}
               user={user}

@@ -39,6 +39,7 @@ export default forwardRef(function InlineTransactionTable({
   relations = {},
   relationConfigs = {},
   relationData = {},
+  fieldTypeMap = {},
   labels = {},
   totalAmountFields = [],
   totalCurrencyFields = [],
@@ -164,7 +165,7 @@ export default forwardRef(function InlineTransactionTable({
     const map = {};
     fields.forEach((f) => {
       const lower = f.toLowerCase();
-      const typ = columnTypeMap[f] || '';
+      const typ = fieldTypeMap[f] || columnTypeMap[f] || '';
       if (typ.includes('time')) {
         map[f] = 'HH:MM:SS';
       } else if (typ.includes('date')) {
@@ -176,13 +177,13 @@ export default forwardRef(function InlineTransactionTable({
       }
     });
     return map;
-  }, [fields, columnTypeMap]);
+  }, [fields, columnTypeMap, fieldTypeMap]);
 
   const fieldInputTypes = React.useMemo(() => {
     const map = {};
     fields.forEach((f) => {
       const lower = f.toLowerCase();
-      const typ = columnTypeMap[f] || '';
+      const typ = fieldTypeMap[f] || columnTypeMap[f] || '';
       if (placeholders[f] === 'HH:MM:SS' || typ.includes('time')) map[f] = 'time';
       else if (placeholders[f] === 'YYYY-MM-DD' || typ.includes('date')) map[f] = 'date';
       else if (
@@ -197,7 +198,7 @@ export default forwardRef(function InlineTransactionTable({
       else map[f] = 'text';
     });
     return map;
-  }, [fields, columnTypeMap, placeholders, defaultValues, totalAmountSet, totalCurrencySet]);
+  }, [fields, columnTypeMap, fieldTypeMap, placeholders, defaultValues, totalAmountSet, totalCurrencySet]);
 
   useEffect(() => {
     if (!Array.isArray(initRows)) return;
@@ -928,10 +929,16 @@ export default forwardRef(function InlineTransactionTable({
     let label = undefined;
     let val = e.selectedOption ? e.selectedOption.value : e.target.value;
     if (e.selectedOption) label = e.selectedOption.label;
-    if (placeholders[field]) {
-      val = normalizeDateInput(val, placeholders[field]);
+    const typ = fieldTypeMap[field];
+    let format = placeholders[field];
+    if (!format) {
+      if (typ === 'time') format = 'HH:MM:SS';
+      else if (typ === 'date' || typ === 'datetime') format = 'YYYY-MM-DD';
     }
-    if (totalCurrencySet.has(field)) {
+    if (format) {
+      val = normalizeDateInput(val, format);
+    }
+    if (typ === 'number' || totalCurrencySet.has(field)) {
       val = normalizeNumberInput(val);
     }
     const newValue = label ? { value: val, label } : val;
@@ -951,7 +958,7 @@ export default forwardRef(function InlineTransactionTable({
     }
     const skipNum = /code/i.test(field) || /код/i.test(labels[field] || '');
     if (
-      totalCurrencySet.has(field) &&
+      (typ === 'number' || totalCurrencySet.has(field)) &&
       val !== '' &&
       !skipNum &&
       isNaN(Number(normalizeNumberInput(val)))
@@ -962,7 +969,10 @@ export default forwardRef(function InlineTransactionTable({
       if (e.target.select) e.target.select();
       return;
     }
-    if (placeholders[field] && !isValidDate(val, placeholders[field])) {
+    if (
+      (format || typ === 'date' || typ === 'time' || typ === 'datetime') &&
+      !isValidDate(val, format || (typ === 'time' ? 'HH:MM:SS' : 'YYYY-MM-DD'))
+    ) {
       setErrorMsg((labels[field] || field) + ' талбарт буруу огноо байна');
       setInvalidCell({ row: rowIdx, field });
       e.target.focus();
