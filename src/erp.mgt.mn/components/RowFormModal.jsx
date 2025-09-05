@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useContext, memo } from 'react';
+import React, { useState, useEffect, useRef, useContext, memo, useCallback } from 'react';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import Modal from './Modal.jsx';
 import InlineTransactionTable from './InlineTransactionTable.jsx';
@@ -159,6 +159,7 @@ const RowFormModal = function RowFormModal({
   const [submitLocked, setSubmitLocked] = useState(false);
   const tableRef = useRef(null);
   const [gridRows, setGridRows] = useState(() => (Array.isArray(rows) ? rows : []));
+  const prevRowsRef = useRef(rows);
   const wrapRef = useRef(null);
   const [zoom, setZoom] = useState(1);
   const [previewRow, setPreviewRow] = useState(null);
@@ -167,7 +168,9 @@ const RowFormModal = function RowFormModal({
   const [openSeed, setOpenSeed] = useState({});
 
   useEffect(() => {
-    if (useGrid) {
+    if (!useGrid) return;
+    if (prevRowsRef.current !== rows) {
+      prevRowsRef.current = rows;
       setGridRows(Array.isArray(rows) ? rows : []);
     }
   }, [rows, useGrid]);
@@ -196,6 +199,13 @@ const RowFormModal = function RowFormModal({
       window.removeEventListener('resize', updateZoom);
     };
   }, [fitted, visible]);
+  const handleGridRowsChange = useCallback(
+    (rs) => {
+      setGridRows(rs);
+      onRowsChange(rs);
+    },
+    [onRowsChange],
+  );
   const placeholders = React.useMemo(() => {
     const map = {};
     const cols = new Set([
@@ -1188,15 +1198,12 @@ const RowFormModal = function RowFormModal({
               collectRows={useGrid}
               minRows={1}
               onRowSubmit={onSubmit}
-              onRowsChange={(rows) => {
-              setGridRows(rows);
-              onRowsChange(rows);
-            }}
+              onRowsChange={handleGridRowsChange}
             requiredFields={requiredFields}
             disabledFields={disabledFields}
             defaultValues={defaultValues}
             dateField={dateField}
-            rows={rows}
+            rows={gridRows}
             onNextForm={onNextForm}
             labelFontSize={labelFontSize}
             boxWidth={boxWidth}
