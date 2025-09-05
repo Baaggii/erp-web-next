@@ -2205,6 +2205,9 @@ ALTER TABLE `tbl_employment`
   ADD CONSTRAINT `tbl_employment_ibfk_4` FOREIGN KEY (`employment_company_id`, `employment_department_id`) REFERENCES `code_department` (`company_id`, `department_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `tbl_employment_ibfk_5` FOREIGN KEY (`employment_user_level`) REFERENCES `user_levels` (`userlevel_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `tbl_employment_ibfk_6` FOREIGN KEY (`employment_company_id`, `employment_senior_empid`) REFERENCES `tbl_employee` (`Company_id`, `emp_id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+ALTER TABLE `tbl_employment_other`
+  ADD CONSTRAINT `tbl_employment_other_ibfk_1` FOREIGN KEY (`employment_company_id`, `employment_branch_id`) REFERENCES `code_branches` (`company_id`, `branch_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `tbl_employment_other_ibfk_2` FOREIGN KEY (`employment_company_id`, `employment_department_id`) REFERENCES `code_department` (`company_id`, `department_id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 ALTER TABLE `tbl_expenseorg`
   ADD CONSTRAINT `tbl_expenseorg_ibfk_1` FOREIGN KEY (`company_id`, `z_org_id`) REFERENCES `tbl_contracter` (`company_id`, `manuf_id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 ALTER TABLE `tbl_workplace_schedule`
