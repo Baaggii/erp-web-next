@@ -1068,8 +1068,9 @@ const RowFormModal = function RowFormModal({
         title={tip}
         ref={(el) => (inputRefs.current[c] = el)}
         type={(() => {
-          if (placeholders[c] === 'YYYY-MM-DD') return 'date';
-          if (placeholders[c] === 'HH:MM:SS') return 'time';
+          const typ = fieldTypeMap[c];
+          if (typ === 'date' || typ === 'datetime' || placeholders[c] === 'YYYY-MM-DD') return 'date';
+          if (typ === 'time' || placeholders[c] === 'HH:MM:SS') return 'time';
           const lower = c.toLowerCase();
           if (lower.includes('email')) return 'email';
           if (/(amount|qty|count|price|total|number|qty|quantity)/i.test(lower))
@@ -1084,7 +1085,11 @@ const RowFormModal = function RowFormModal({
             : undefined;
         })()}
         placeholder={placeholders[c] || ''}
-        value={formVals[c]}
+        value={
+          fieldTypeMap[c] === 'date' || fieldTypeMap[c] === 'datetime'
+            ? normalizeDateInput(formVals[c], 'YYYY-MM-DD')
+            : formVals[c]
+        }
         onChange={(e) => {
           setFormVals((prev) => {
             if (prev[c] === e.target.value) return prev;

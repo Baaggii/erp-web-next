@@ -280,7 +280,14 @@ const TableManager = forwardRef(function TableManager({
     [columnMeta],
   );
 
-  const viewSourceMap = formConfig?.viewSource || {};
+  const viewSourceMap = useMemo(() => {
+    const map = {};
+    Object.entries(formConfig?.viewSource || {}).forEach(([k, v]) => {
+      const key = columnCaseMap[k.toLowerCase()] || k;
+      map[key] = v;
+    });
+    return map;
+  }, [formConfig?.viewSource, columnCaseMap]);
 
   const branchIdFields = useMemo(() => {
     if (formConfig?.branchIdFields?.length)
@@ -613,7 +620,7 @@ const TableManager = forwardRef(function TableManager({
   }, [requestStatus, table, user?.empid, dateFilter]);
 
   useEffect(() => {
-    if (!table) return;
+    if (!table || Object.keys(columnCaseMap).length === 0) return;
     let canceled = false;
     async function load() {
       try {
@@ -638,7 +645,8 @@ const TableManager = forwardRef(function TableManager({
         if (canceled) return;
         const map = {};
         rels.forEach((r) => {
-          map[r.COLUMN_NAME] = {
+          const key = columnCaseMap[r.COLUMN_NAME.toLowerCase()] || r.COLUMN_NAME;
+          map[key] = {
             table: r.REFERENCED_TABLE_NAME,
             column: r.REFERENCED_COLUMN_NAME,
           };
@@ -800,7 +808,7 @@ const TableManager = forwardRef(function TableManager({
     return () => {
       canceled = true;
     };
-  }, [table]);
+  }, [table, columnCaseMap]);
 
   useEffect(() => {
     if (!table || columnMeta.length === 0) return;

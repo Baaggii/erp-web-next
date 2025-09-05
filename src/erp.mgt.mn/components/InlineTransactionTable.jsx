@@ -191,16 +191,22 @@ export default forwardRef(function InlineTransactionTable({
     fields.forEach((f) => {
       const lower = f.toLowerCase();
       const typ = fieldTypeMap[f] || columnTypeMap[f] || '';
-      if (placeholders[f] === 'HH:MM:SS' || typ.includes('time')) map[f] = 'time';
-      else if (placeholders[f] === 'YYYY-MM-DD' || typ.includes('date')) map[f] = 'date';
-      else if (
+      if (typ === 'time' || placeholders[f] === 'HH:MM:SS') {
+        map[f] = 'time';
+      } else if (
+        typ === 'date' ||
+        typ === 'datetime' ||
+        placeholders[f] === 'YYYY-MM-DD'
+      ) {
+        map[f] = 'date';
+      } else if (
         typ.match(/int|decimal|numeric|double|float|real|number|bigint/) ||
         typeof defaultValues[f] === 'number' ||
         totalAmountSet.has(f) ||
         totalCurrencySet.has(f)
-      )
+      ) {
         map[f] = 'number';
-      else if (lower.includes('email')) map[f] = 'email';
+      } else if (lower.includes('email')) map[f] = 'email';
       else if (lower.includes('phone')) map[f] = 'tel';
       else map[f] = 'text';
     });
@@ -719,7 +725,7 @@ export default forwardRef(function InlineTransactionTable({
     }
 
     const view = viewSource[field];
-    if (view && value !== '') {
+    if (view && typeof value === 'object' && value && value.value !== '') {
       const params = new URLSearchParams({ perPage: 1, debug: 1 });
       const cols = (viewColumns[view] || []).map((c) =>
         typeof c === 'string' ? c : c.name,
@@ -777,6 +783,7 @@ export default forwardRef(function InlineTransactionTable({
           });
         })
         .catch((err) => {
+          if (err.name === 'AbortError') return;
           window.dispatchEvent(
             new CustomEvent('toast', {
               detail: { message: `View lookup failed: ${err.message}`, type: 'error' },
@@ -1144,11 +1151,16 @@ export default forwardRef(function InlineTransactionTable({
       );
     }
     const fieldType = fieldInputTypes[f];
+    const rawVal = typeof val === 'object' ? val.value : val;
+    const normalizedVal =
+      fieldType === 'date'
+        ? normalizeDateInput(String(rawVal ?? ''), 'YYYY-MM-DD')
+        : rawVal;
     const commonProps = {
       className: `w-full border px-1 ${invalid ? 'border-red-500 bg-red-100' : ''}`,
       style: { ...inputStyle },
-      value: typeof val === 'object' ? val.value : val,
-      title: typeof val === 'object' ? val.value : val,
+      value: normalizedVal,
+      title: normalizedVal,
       onChange: (e) => handleChange(idx, f, e.target.value),
       ref: (el) => (inputRefs.current[`${idx}-${colIdx}`] = el),
       onKeyDown: (e) => handleKeyDown(e, idx, colIdx),
