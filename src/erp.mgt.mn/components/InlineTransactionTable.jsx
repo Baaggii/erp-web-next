@@ -90,6 +90,23 @@ export default forwardRef(function InlineTransactionTable({
     [disabledFields],
   );
 
+  const columnTypeMap = React.useMemo(() => {
+    const map = {};
+    const cols = viewColumns[tableName] || [];
+    cols.forEach((c) => {
+      const name = typeof c === 'string' ? c : c.name;
+      if (!name) return;
+      const key = columnCaseMap[name.toLowerCase()] || name;
+      const typ =
+        (typeof c === 'string'
+          ? ''
+          : c.type || c.columnType || c.dataType || c.DATA_TYPE || '')
+          .toLowerCase();
+      if (typ) map[key] = typ;
+    });
+    return map;
+  }, [viewColumns, tableName, columnCaseMap]);
+
   function fillSessionDefaults(obj) {
     const row = { ...obj };
     if (user?.empid !== undefined) {
@@ -114,7 +131,13 @@ export default forwardRef(function InlineTransactionTable({
     }
     const now = formatTimestamp(new Date()).slice(0, 10);
     dateField.forEach((f) => {
-      if (row[f] === undefined || row[f] === '') row[f] = now;
+      const typ = fieldTypeMap[f] || columnTypeMap[f] || '';
+      if (
+        (typ.includes('date') || typ.includes('time')) &&
+        (row[f] === undefined || row[f] === '')
+      ) {
+        row[f] = now;
+      }
     });
     return row;
   }
@@ -144,35 +167,19 @@ export default forwardRef(function InlineTransactionTable({
   const totalAmountSet = new Set(totalAmountFields);
   const totalCurrencySet = new Set(totalCurrencyFields);
 
-  const columnTypeMap = React.useMemo(() => {
-    const map = {};
-    const cols = viewColumns[tableName] || [];
-    cols.forEach((c) => {
-      const name = typeof c === 'string' ? c : c.name;
-      if (!name) return;
-      const key = columnCaseMap[name.toLowerCase()] || name;
-      const typ =
-        (typeof c === 'string'
-          ? ''
-          : c.type || c.columnType || c.dataType || c.DATA_TYPE || '')
-          .toLowerCase();
-      if (typ) map[key] = typ;
-    });
-    return map;
-  }, [viewColumns, tableName, columnCaseMap]);
-
   const placeholders = React.useMemo(() => {
     const map = {};
     fields.forEach((f) => {
-      const lower = f.toLowerCase();
-      const typ = fieldTypeMap[f] || columnTypeMap[f] || '';
-      if (typ === 'time') {
-        map[f] = 'HH:MM:SS';
-      } else if (typ === 'date' || typ === 'datetime') {
+      const typ = (columnTypeMap[f] || '').toLowerCase();
+      if (typ.includes('timestamp') || typ.includes('datetime')) {
+        map[f] = 'YYYY-MM-DD HH:MM:SS';
+      } else if (typ.includes('date')) {
         map[f] = 'YYYY-MM-DD';
-      } else if (lower.includes('time') && !lower.includes('date')) {
+      } else if (typ.includes('time')) {
         map[f] = 'HH:MM:SS';
-      } else if (lower.includes('timestamp') || lower.includes('date')) {
+      } else if (fieldTypeMap[f] === 'time') {
+        map[f] = 'HH:MM:SS';
+      } else if (fieldTypeMap[f] === 'date') {
         map[f] = 'YYYY-MM-DD';
       }
     });

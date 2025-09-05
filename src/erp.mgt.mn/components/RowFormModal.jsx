@@ -22,6 +22,7 @@ const RowFormModal = function RowFormModal({
   relationConfigs = {},
   relationData = {},
   fieldTypeMap = {},
+  columnPlaceholders = {},
   disabledFields = [],
   labels = {},
   requiredFields = [],
@@ -109,22 +110,11 @@ const RowFormModal = function RowFormModal({
     const init = {};
     const now = new Date();
     columns.forEach((c) => {
-      const lower = c.toLowerCase();
-      const typ = fieldTypeMap[c];
-      let placeholder = '';
-      if (typ === 'time' || (!typ && lower.includes('time') && !lower.includes('date'))) {
-        placeholder = 'HH:MM:SS';
-      } else if (
-        typ === 'date' ||
-        typ === 'datetime' ||
-        (!typ && (lower.includes('timestamp') || lower.includes('date')))
-      ) {
-        placeholder = 'YYYY-MM-DD';
-      }
+      const placeholder = columnPlaceholders[c] || '';
       const raw = row ? String(row[c] ?? '') : String(defaultValues[c] ?? '');
       let val = normalizeDateInput(raw, placeholder);
       const missing = !row || row[c] === undefined || row[c] === '';
-      if (missing && !val && dateField.includes(c)) {
+      if (missing && !val && dateField.includes(c) && placeholder) {
         if (placeholder === 'YYYY-MM-DD') val = formatTimestamp(now).slice(0, 10);
         else if (placeholder === 'HH:MM:SS') val = formatTimestamp(now).slice(11, 19);
         else val = formatTimestamp(now);
@@ -146,18 +136,7 @@ const RowFormModal = function RowFormModal({
     const extras = {};
     Object.entries(row || {}).forEach(([k, v]) => {
       if (!columns.includes(k)) {
-        const lower = k.toLowerCase();
-        const typ = fieldTypeMap[k];
-        let placeholder = '';
-        if (typ === 'time' || (!typ && lower.includes('time') && !lower.includes('date'))) {
-          placeholder = 'HH:MM:SS';
-        } else if (
-          typ === 'date' ||
-          typ === 'datetime' ||
-          (!typ && (lower.includes('timestamp') || lower.includes('date')))
-        ) {
-          placeholder = 'YYYY-MM-DD';
-        }
+        const placeholder = columnPlaceholders[k] || '';
         extras[k] = normalizeDateInput(String(v ?? ''), placeholder);
       }
     });
@@ -216,28 +195,10 @@ const RowFormModal = function RowFormModal({
     },
     [onRowsChange],
   );
-  const placeholders = React.useMemo(() => {
-    const map = {};
-    const cols = new Set([
-      ...columns,
-      ...Object.keys(row || {}),
-      ...Object.keys(defaultValues || {}),
-    ]);
-    cols.forEach((c) => {
-      const lower = c.toLowerCase();
-      const typ = fieldTypeMap[c];
-      if (typ === 'time' || (!typ && lower.includes('time') && !lower.includes('date'))) {
-        map[c] = 'HH:MM:SS';
-      } else if (
-        typ === 'date' ||
-        typ === 'datetime' ||
-        (!typ && (lower.includes('timestamp') || lower.includes('date')))
-      ) {
-        map[c] = 'YYYY-MM-DD';
-      }
-    });
-    return map;
-  }, [columns, row, defaultValues, fieldTypeMap]);
+  const placeholders = React.useMemo(
+    () => ({ ...columnPlaceholders }),
+    [columnPlaceholders],
+  );
 
   useEffect(() => {
     const extras = {};
@@ -414,7 +375,7 @@ const RowFormModal = function RowFormModal({
       const raw = row ? String(row[c] ?? '') : String(defaultValues[c] ?? '');
       let v = normalizeDateInput(raw, placeholders[c]);
       const missing = !row || row[c] === undefined || row[c] === '';
-      if (missing && !v && dateField.includes(c)) {
+      if (missing && !v && dateField.includes(c) && placeholders[c]) {
         const now = new Date();
         if (placeholders[c] === 'YYYY-MM-DD') v = formatTimestamp(now).slice(0, 10);
         else if (placeholders[c] === 'HH:MM:SS') v = formatTimestamp(now).slice(11, 19);
