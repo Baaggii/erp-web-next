@@ -312,28 +312,28 @@ export default function PosTransactionsPage() {
 
   useEffect(() => {
     if (!config) return;
-    const tables = [config.masterTable, ...config.tables.map((t) => t.table)];
-    const forms = [config.masterForm || '', ...config.tables.map((t) => t.form)];
+    const tables = [config.masterTable, ...config.tables.map(t => t.table)];
+    const forms = [config.masterForm || '', ...config.tables.map(t => t.form)];
     tables.forEach((tbl, idx) => {
       const form = forms[idx];
-      if (!tbl || !form || !visibleTables.has(tbl)) return;
+      if (!tbl || !form) return;
       fetch(`/api/transaction_forms?table=${encodeURIComponent(tbl)}&name=${encodeURIComponent(form)}`, { credentials: 'include' })
-        .then((res) => (res.ok ? res.json() : null))
-        .then((cfg) => setFormConfigs((f) => ({ ...f, [tbl]: cfg || {} })))
+        .then(res => res.ok ? res.json() : null)
+        .then(cfg => setFormConfigs(f => ({ ...f, [tbl]: cfg || {} })))
         .catch(() => {});
       fetch(`/api/tables/${encodeURIComponent(tbl)}/columns`, { credentials: 'include' })
-        .then((res) => (res.ok ? res.json() : []))
-        .then((cols) => {
-          setColumnMeta((m) => ({ ...m, [tbl]: cols || [] }));
+        .then(res => res.ok ? res.json() : [])
+        .then(cols => {
+          setColumnMeta(m => ({ ...m, [tbl]: cols || [] }));
           loadRelations(tbl);
         })
         .catch(() => {});
       fetch(`/api/proc_triggers?table=${encodeURIComponent(tbl)}`, { credentials: 'include' })
-        .then((res) => (res.ok ? res.json() : {}))
-        .then((data) => setProcTriggersMap((m) => ({ ...m, [tbl]: data || {} })))
+        .then(res => res.ok ? res.json() : {})
+        .then(data => setProcTriggersMap(m => ({ ...m, [tbl]: data || {} })))
         .catch(() => {});
     });
-  }, [config, visibleTables]);
+  }, [config]);
 
   useEffect(() => {
     if (!config) { setSessionFields([]); return; }
@@ -370,7 +370,6 @@ export default function PosTransactionsPage() {
   useEffect(() => {
     const viewsByName = {};
     Object.entries(formConfigs).forEach(([tbl, fc]) => {
-      if (!visibleTables.has(tbl)) return;
       const views = Object.values(fc.viewSource || {});
       views.forEach((v) => {
         if (!v) return;
@@ -424,7 +423,7 @@ export default function PosTransactionsPage() {
           // ignore errors to allow retry
         });
     });
-  }, [formConfigs, visibleTables]);
+  }, [formConfigs]);
 
   useEffect(() => {
     if (!config) return;
@@ -1004,8 +1003,8 @@ export default function PosTransactionsPage() {
 
   const configNames = Object.keys(configs);
 
-  const { formList, visibleTables } = React.useMemo(() => {
-    if (!config) return { formList: [], visibleTables: new Set() };
+  const formList = React.useMemo(() => {
+    if (!config) return [];
     const arr = [
       { table: config.masterTable, type: config.masterType, position: config.masterPosition, view: config.masterView },
       ...config.tables,
@@ -1017,11 +1016,6 @@ export default function PosTransactionsPage() {
       seen.add(t.table);
       return true;
     });
-    const visibleSet = new Set(
-      filtered
-        .filter((t) => t.position !== 'hidden')
-        .map((t) => t.table),
-    );
     const order = [
       'top_row',
       'upper_left',
@@ -1033,12 +1027,9 @@ export default function PosTransactionsPage() {
       'bottom_row',
       'hidden',
     ];
-    return {
-      formList: filtered.sort(
-        (a, b) => order.indexOf(a.position) - order.indexOf(b.position),
-      ),
-      visibleTables: visibleSet,
-    };
+    return filtered.sort(
+      (a, b) => order.indexOf(a.position) - order.indexOf(b.position),
+    );
   }, [config]);
 
   return (
