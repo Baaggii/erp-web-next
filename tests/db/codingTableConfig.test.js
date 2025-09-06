@@ -4,7 +4,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { setConfig } from '../../api-server/services/codingTableConfig.js';
 
-const filePath = path.join(process.cwd(), 'config', 'codingTableConfigs.json');
+const filePath = path.join(process.cwd(), 'config', '0', 'codingTableConfigs.json');
 
 function withTempFile() {
   return fs.readFile(filePath, 'utf8')

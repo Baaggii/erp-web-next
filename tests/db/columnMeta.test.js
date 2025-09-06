@@ -4,7 +4,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import * as db from '../../db/index.js';
 
-const filePath = path.join(process.cwd(), 'config', 'headerMappings.json');
+const filePath = path.join(process.cwd(), 'config', '0', 'headerMappings.json');
 
 function mockPool(handler) {
   const original = db.pool.query;

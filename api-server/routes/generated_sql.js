@@ -6,11 +6,12 @@ const router = express.Router();
 
 router.post('/', requireAuth, async (req, res, next) => {
   try {
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
     const { table, sql } = req.body;
     if (!table || !sql) {
       return res.status(400).json({ message: 'table and sql required' });
     }
-    await saveSql(table, sql, req.user.companyId);
+    await saveSql(table, sql, companyId);
     res.sendStatus(204);
   } catch (err) {
     next(err);

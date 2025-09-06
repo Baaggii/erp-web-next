@@ -11,12 +11,13 @@ const router = express.Router();
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
     const table = req.query.table;
     if (table) {
-      const cfg = await getConfig(table, req.user.companyId);
+      const cfg = await getConfig(table, companyId);
       res.json(cfg);
     } else {
-      const all = await getAllConfigs(req.user.companyId);
+      const all = await getAllConfigs(companyId);
       res.json(all);
     }
   } catch (err) {
@@ -26,9 +27,10 @@ router.get('/', requireAuth, async (req, res, next) => {
 
 router.post('/', requireAuth, async (req, res, next) => {
   try {
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
     const { table, config } = req.body;
     if (!table) return res.status(400).json({ message: 'table is required' });
-    await setConfig(table, config || {}, req.user.companyId);
+    await setConfig(table, config || {}, companyId);
     res.status(200).json({ message: 'Config saved successfully' });
   } catch (err) {
     next(err);
@@ -37,9 +39,10 @@ router.post('/', requireAuth, async (req, res, next) => {
 
 router.delete('/', requireAuth, async (req, res, next) => {
   try {
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
     const table = req.query.table;
     if (!table) return res.status(400).json({ message: 'table is required' });
-    await deleteConfig(table, req.user.companyId);
+    await deleteConfig(table, companyId);
     res.sendStatus(204);
   } catch (err) {
     next(err);
