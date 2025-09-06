@@ -1052,7 +1052,16 @@ export default forwardRef(function InlineTransactionTable({
       );
     }
     if (rows[idx]?._saved && !collectRows) {
-      return typeof val === 'object' ? val.label : val;
+      const isoDatePattern = /^\d{4}-\d{2}-\d{2}(?:T.*)?$/;
+      const displayVal = typeof val === 'object' ? val.label ?? val.value : val;
+      if (
+        typeof displayVal === 'string' &&
+        isoDatePattern.test(displayVal) &&
+        !placeholders[f]
+      ) {
+        return normalizeDateInput(displayVal, 'YYYY-MM-DD');
+      }
+      return displayVal;
     }
     if (isRel) {
       if (relationConfigs[f]) {
