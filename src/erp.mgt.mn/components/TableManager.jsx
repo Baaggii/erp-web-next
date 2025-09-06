@@ -20,7 +20,6 @@ import ImageSearchModal from './ImageSearchModal.jsx';
 import Modal from './Modal.jsx';
 import CustomDatePicker from './CustomDatePicker.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
-import normalizeDateInput from '../utils/normalizeDateInput.js';
 import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
@@ -67,6 +66,16 @@ const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
+
+function normalizeDateInput(value, format) {
+  if (typeof value !== 'string') return value;
+  let v = value.trim().replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
+  if (/^\d{4}-\d{2}-\d{2}T/.test(v) && !isNaN(Date.parse(v))) {
+    const local = formatTimestamp(new Date(v));
+    return format === 'HH:MM:SS' ? local.slice(11, 19) : local.slice(0, 10);
+  }
+  return v;
+}
 
 function applyDateParams(params, filter) {
   if (!filter) return;
@@ -248,11 +257,8 @@ const TableManager = forwardRef(function TableManager({
       const typ = (c.type || c.columnType || c.dataType || c.DATA_TYPE || '').toLowerCase();
       if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
         map[c.name] = 'number';
-      } else if (typ.includes('date') || typ.includes('time') || typ.includes('timestamp')) {
-        map[c.name] =
-          typ.includes('time') && !typ.includes('date') && !typ.includes('timestamp')
-            ? 'time'
-            : 'date';
+      } else if (typ.includes('date') || typ.includes('time')) {
+        map[c.name] = typ.includes('time') && !typ.includes('date') ? 'time' : 'date';
       } else {
         map[c.name] = 'string';
       }
@@ -1761,9 +1767,7 @@ const TableManager = forwardRef(function TableManager({
     columnMeta.forEach((c) => {
       const typ = (c.type || c.columnType || c.dataType || c.DATA_TYPE || '')
         .toLowerCase();
-      if (typ.includes('timestamp')) {
-        map[c.name] = 'YYYY-MM-DD';
-      } else if (typ.includes('datetime')) {
+      if (typ.includes('timestamp') || typ.includes('datetime')) {
         map[c.name] = 'YYYY-MM-DD HH:MM:SS';
       } else if (typ.includes('date')) {
         map[c.name] = 'YYYY-MM-DD';
