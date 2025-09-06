@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useMemo } from "react";
+import React, { useState, useEffect, useContext, useMemo, useRef } from "react";
 import { marked } from "marked";
 import { jsPDF } from "jspdf";
 import I18nContext from "../context/I18nContext.jsx";
@@ -6,34 +6,6 @@ import { AuthContext } from "../context/AuthContext.jsx";
 import { useToast } from "../context/ToastContext.jsx";
 import useHeaderMappings from "../hooks/useHeaderMappings.js";
 import translateWithCache from "../utils/translateWithCache.js";
-import transactionForms from "../../../config/0/transactionForms.json";
-
-const formDescMap = {};
-const buttonDescMap = {};
-const reportDescMap = {};
-const buttonReqMap = {};
-
-Object.values(transactionForms || {}).forEach((forms) => {
-  Object.entries(forms || {}).forEach(([fKey, cfg]) => {
-    if (cfg.description) formDescMap[fKey] = cfg.description;
-    if (Array.isArray(cfg.buttons)) {
-      cfg.buttons.forEach((b) => {
-        const bKey = typeof b === "string" ? b : b.key;
-        if (!bKey) return;
-        if (b.description) buttonDescMap[bKey] = b.description;
-        const rf = b.requiredFields || b.reqFields;
-        if (rf) buttonReqMap[bKey] = rf;
-      });
-    }
-    if (Array.isArray(cfg.reports)) {
-      cfg.reports.forEach((r) => {
-        const rKey = typeof r === "string" ? r : r.key;
-        if (!rKey) return;
-        if (r.description) reportDescMap[rKey] = r.description;
-      });
-    }
-  });
-});
 
 export default function UserManualExport() {
   const { t, lang: uiLang } = useContext(I18nContext);
@@ -46,6 +18,48 @@ export default function UserManualExport() {
   const [markdown, setMarkdown] = useState("");
   const [levelActions, setLevelActions] = useState({});
   const [txFormsMap, setTxFormsMap] = useState({});
+  const buttonDescMap = useRef({});
+  const reportDescMap = useRef({});
+  const buttonReqMap = useRef({});
+
+  useEffect(() => {
+    async function loadFormDescs() {
+      try {
+        const res = await fetch('/api/transaction_forms', {
+          credentials: 'include',
+        });
+        if (!res.ok) return;
+        const txForms = await res.json();
+        const bMap = {}, rMap = {}, reqMap = {};
+        Object.values(txForms || {}).forEach((forms) => {
+          Object.entries(forms || {}).forEach(([_, cfg]) => {
+            if (Array.isArray(cfg.buttons)) {
+              cfg.buttons.forEach((b) => {
+                const bKey = typeof b === 'string' ? b : b.key;
+                if (!bKey) return;
+                if (b.description) bMap[bKey] = b.description;
+                const rf = b.requiredFields || b.reqFields;
+                if (rf) reqMap[bKey] = rf;
+              });
+            }
+            if (Array.isArray(cfg.reports)) {
+              cfg.reports.forEach((r) => {
+                const rKey = typeof r === 'string' ? r : r.key;
+                if (!rKey) return;
+                if (r.description) rMap[rKey] = r.description;
+              });
+            }
+          });
+        });
+        buttonDescMap.current = bMap;
+        reportDescMap.current = rMap;
+        buttonReqMap.current = reqMap;
+      } catch {
+        /* ignore */
+      }
+    }
+    loadFormDescs();
+  }, []);
 
   const hasContent = Object.values(manual).some(
     (m) =>
@@ -79,7 +93,7 @@ export default function UserManualExport() {
             const rf =
               (typeof btn === "object" &&
                 (btn.requiredFields || btn.reqFields)) ||
-              buttonReqMap[bKey] ||
+              buttonReqMap.current[bKey] ||
               [];
             (rf || []).forEach((f) => keys.add(f));
           }
@@ -99,7 +113,7 @@ export default function UserManualExport() {
           keys.add(bKey);
           const rf =
             (typeof b === "object" && (b.requiredFields || b.reqFields)) ||
-            buttonReqMap[bKey] ||
+            buttonReqMap.current[bKey] ||
             [];
           (rf || []).forEach((f) => keys.add(f));
         }
@@ -411,7 +425,7 @@ export default function UserManualExport() {
           const reportName = await translate(k);
           let rDesc =
             (typeof r === "object" && r.description) ||
-            reportDescMap[k] ||
+            reportDescMap.current[k] ||
             (() => {
               const tr = t(`manual.${k}.description`, "", { lng: lang });
               return tr && tr !== `manual.${k}.description` ? tr : null;
@@ -434,9 +448,9 @@ export default function UserManualExport() {
         md += `| --- | --- | --- |\n`;
         for (const b of mod.buttons) {
           const bName = await translate(b);
-          let reqFields = buttonReqMap[b] || [];
+          let reqFields = buttonReqMap.current[b] || [];
           let bDesc =
-            buttonDescMap[b] ||
+            buttonDescMap.current[b] ||
             (() => {
               const tr = t(`manual.${b}.description`, "", { lng: lang });
               return tr && tr !== `manual.${b}.description` ? tr : null;

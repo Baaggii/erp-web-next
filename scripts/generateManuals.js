@@ -7,7 +7,8 @@ import translateWithCache from '../src/erp.mgt.mn/utils/translateWithCache.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
-const configDir = path.join(rootDir, 'config');
+const companyId = process.env.COMPANY_ID || '0';
+const configDir = path.join(rootDir, 'config', String(companyId));
 const docsDir = path.join(rootDir, 'docs');
 const manualsDir = path.join(docsDir, 'manuals');
 

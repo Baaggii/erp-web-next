@@ -14,7 +14,6 @@ import slugify from '../utils/slugify.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
-import tableDisplayFields from '../../../config/tableDisplayFields.json';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -71,6 +70,13 @@ export default forwardRef(function InlineTransactionTable({
   const mounted = useRef(false);
   const renderCount = useRef(0);
   const warnedDisplay = useRef(new Set());
+  const [tableDisplayFields, setTableDisplayFields] = useState({});
+  useEffect(() => {
+    fetch('/api/display_fields', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : {}))
+      .then(setTableDisplayFields)
+      .catch(() => {});
+  }, []);
   const generalConfig = useGeneralConfig();
   const cfg = generalConfig[scope] || {};
   const general = generalConfig.general || {};
@@ -115,7 +121,7 @@ export default forwardRef(function InlineTransactionTable({
       }
     });
     return map;
-  }, [columnCaseMap]);
+  }, [columnCaseMap, tableDisplayFields]);
 
   const combinedViewSource = React.useMemo(() => {
     const map = { ...viewSourceMap };

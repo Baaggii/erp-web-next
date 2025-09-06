@@ -1,19 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
-import path from 'path';
 import { setFormConfig, deleteFormConfig } from '../../api-server/services/transactionFormConfig.js';
+import { tenantConfigPath } from '../../api-server/utils/configPaths.js';
 import * as db from '../../db/index.js';
 
-const filePath = path.join(process.cwd(), 'config', '0', 'transactionForms.json');
-
-function withTempFile() {
-  return fs.readFile(filePath, 'utf8')
-    .catch(() => '{}')
-    .then((orig) => ({
-      orig,
-      restore: () => fs.writeFile(filePath, orig),
-    }));
+function withTempFile(companyId = 0) {
+  const file = tenantConfigPath('transactionForms.json', companyId);
+  return fs
+    .readFile(file, 'utf8')
+    .then((orig) => ({ file, restore: () => fs.writeFile(file, orig) }))
+    .catch(() => ({ file, restore: () => fs.rm(file, { force: true }) }));
 }
 
 function mockPool(handler) {
@@ -28,35 +25,35 @@ function mockPool(handler) {
 }
 
 await test('setFormConfig writes moduleKey without touching modules', async () => {
-  const { orig, restore } = await withTempFile();
-  await fs.writeFile(filePath, '{}');
+  const { file, restore } = await withTempFile();
+  await fs.writeFile(file, '{}');
   const calls = [];
   const restoreDb = mockPool((sql, params) => calls.push({ sql, params }));
 
   await setFormConfig('tbl', 'Sample Transaction', { moduleKey: 'parent_mod' });
 
   restoreDb();
-  const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
+  const data = JSON.parse(await fs.readFile(file, 'utf8'));
   assert.equal(data.tbl['Sample Transaction'].moduleKey, 'parent_mod');
   assert.equal(calls.length, 0);
   await restore();
 });
 
 await test('setFormConfig stores viewSource map', async () => {
-  const { orig, restore } = await withTempFile();
-  await fs.writeFile(filePath, '{}');
+  const { file, restore } = await withTempFile();
+  await fs.writeFile(file, '{}');
   await setFormConfig('tbl', 'ViewTest', {
     moduleKey: 'parent_mod',
     viewSource: { branch_id: 'v_branch' },
   });
-  const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
+  const data = JSON.parse(await fs.readFile(file, 'utf8'));
   assert.deepEqual(data.tbl.ViewTest.viewSource, { branch_id: 'v_branch' });
   await restore();
 });
 
 await test('setFormConfig stores moduleLabel when provided', async () => {
-  const { orig, restore } = await withTempFile();
-  await fs.writeFile(filePath, '{}');
+  const { file, restore } = await withTempFile();
+  await fs.writeFile(file, '{}');
   const calls = [];
   const restoreDb = mockPool((sql, params) => calls.push({ sql, params }));
 
@@ -66,15 +63,15 @@ await test('setFormConfig stores moduleLabel when provided', async () => {
   });
 
   restoreDb();
-  const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
+  const data = JSON.parse(await fs.readFile(file, 'utf8'));
   assert.equal(data.tbl.Labeled.moduleLabel, 'My Transactions');
   assert.equal(calls.length, 0);
   await restore();
 });
 
 await test('setFormConfig forwards sidebar/header flags', async () => {
-  const { orig, restore } = await withTempFile();
-  await fs.writeFile(filePath, '{}');
+  const { file, restore } = await withTempFile();
+  await fs.writeFile(file, '{}');
   const calls = [];
   const restoreDb = mockPool((sql, params) => calls.push({ sql, params }));
 
@@ -86,15 +83,15 @@ await test('setFormConfig forwards sidebar/header flags', async () => {
   );
 
   restoreDb();
-  const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
+  const data = JSON.parse(await fs.readFile(file, 'utf8'));
   assert.equal(data.tbl.Flagged.moduleKey, 'parent_mod');
   assert.equal(calls.length, 0);
   await restore();
 });
 
 await test('setFormConfig stores additional field lists', async () => {
-  const { orig, restore } = await withTempFile();
-  await fs.writeFile(filePath, '{}');
+  const { file, restore } = await withTempFile();
+  await fs.writeFile(file, '{}');
   await setFormConfig('tbl', 'Extra', {
     moduleKey: 'parent_mod',
     totalCurrencyFields: ['tc'],
@@ -104,25 +101,25 @@ await test('setFormConfig stores additional field lists', async () => {
     mainFields: ['m'],
     footerFields: ['f'],
   });
-  const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
+  const data = JSON.parse(await fs.readFile(file, 'utf8'));
   assert.deepEqual(data.tbl.Extra.totalCurrencyFields, ['tc']);
   assert.deepEqual(data.tbl.Extra.footerFields, ['f']);
   await restore();
 });
 
 await test('setFormConfig stores detectFields', async () => {
-  const { orig, restore } = await withTempFile();
-  await fs.writeFile(filePath, '{}');
+  const { file, restore } = await withTempFile();
+  await fs.writeFile(file, '{}');
   await setFormConfig('tbl', 'DetectCfg', { detectFields: ['d1', 'd2'] });
-  const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
+  const data = JSON.parse(await fs.readFile(file, 'utf8'));
   assert.deepEqual(data.tbl.DetectCfg.detectFields, ['d1', 'd2']);
   await restore();
 });
 
 await test('deleteFormConfig removes entry when unused', async () => {
-  const { orig, restore } = await withTempFile();
+  const { file, restore } = await withTempFile();
   await fs.writeFile(
-    filePath,
+    file,
     JSON.stringify({ tbl: { A: { moduleKey: 'parent' } } })
   );
   const calls = [];
@@ -131,16 +128,16 @@ await test('deleteFormConfig removes entry when unused', async () => {
   await deleteFormConfig('tbl', 'A');
 
   restoreDb();
-  const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
+  const data = JSON.parse(await fs.readFile(file, 'utf8'));
   assert.deepEqual(data, {});
   assert.equal(calls.length, 0);
   await restore();
 });
 
 await test('deleteFormConfig keeps other entries intact', async () => {
-  const { orig, restore } = await withTempFile();
+  const { file, restore } = await withTempFile();
   await fs.writeFile(
-    filePath,
+    file,
     JSON.stringify({ tbl: { A: { moduleKey: 'parent' }, B: { moduleKey: 'parent' } } })
   );
   const calls = [];
@@ -149,9 +146,22 @@ await test('deleteFormConfig keeps other entries intact', async () => {
   await deleteFormConfig('tbl', 'A');
 
   restoreDb();
-  const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
+  const data = JSON.parse(await fs.readFile(file, 'utf8'));
   assert.ok(!data.tbl.A);
   assert.ok(data.tbl.B);
   assert.equal(calls.length, 0);
   await restore();
+});
+
+await test('tenant form config does not overwrite company 0', async () => {
+  const base = await withTempFile(0);
+  const tenant = await withTempFile(77);
+  await fs.writeFile(base.file, '{}');
+  await setFormConfig('tbl', 'Name', { moduleKey: 'm' }, {}, 77);
+  const data0 = JSON.parse(await fs.readFile(base.file, 'utf8'));
+  const data1 = JSON.parse(await fs.readFile(tenant.file, 'utf8'));
+  assert.deepEqual(data0, {});
+  assert.equal(data1.tbl.Name.moduleKey, 'm');
+  await base.restore();
+  await tenant.restore();
 });

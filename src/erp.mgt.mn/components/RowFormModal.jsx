@@ -11,7 +11,6 @@ import normalizeDateInput from '../utils/normalizeDateInput.js';
 import callProcedure from '../utils/callProcedure.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
-import tableDisplayFields from '../../../config/tableDisplayFields.json';
 
 const RowFormModal = function RowFormModal({
   visible,
@@ -67,6 +66,13 @@ const RowFormModal = function RowFormModal({
   const warned = useRef(false);
   const procCache = useRef({});
   const warnedDisplay = useRef(new Set());
+  const [tableDisplayFields, setTableDisplayFields] = useState({});
+  useEffect(() => {
+    fetch('/api/display_fields', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : {}))
+      .then(setTableDisplayFields)
+      .catch(() => {});
+  }, []);
   const generalConfig = useGeneralConfig();
   const cfg = generalConfig[scope] || {};
   const general = generalConfig.general || {};
@@ -141,7 +147,7 @@ const RowFormModal = function RowFormModal({
       }
     });
     return map;
-  }, [columnCaseMap]);
+  }, [columnCaseMap, tableDisplayFields]);
   const [formVals, setFormVals] = useState(() => {
     const init = {};
     const now = new Date();

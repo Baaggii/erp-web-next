@@ -1,22 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
-import path from 'path';
 import {
   getDisplayFields,
   setDisplayFields,
   removeDisplayFields,
 } from '../../api-server/services/displayFieldConfig.js';
+import { tenantConfigPath } from '../../api-server/utils/configPaths.js';
 import * as db from '../../db/index.js';
 
-const filePath = path.join(process.cwd(), 'config', 'tableDisplayFields.json');
-
-function withTempFile() {
-  return fs.readFile(filePath, 'utf8')
-    .catch(() => '{}')
+function withTempFile(companyId = 0) {
+  const file = tenantConfigPath('tableDisplayFields.json', companyId);
+  return fs
+    .readFile(file, 'utf8')
     .then((orig) => ({
-      orig,
-      restore: () => fs.writeFile(filePath, orig),
+      file,
+      restore: () => fs.writeFile(file, orig),
+      existed: true,
+    }))
+    .catch(() => ({
+      file,
+      restore: () => fs.rm(file, { force: true }),
+      existed: false,
     }));
 }
 
@@ -29,16 +34,16 @@ function mockMeta(handler) {
 }
 
 await test('setDisplayFields enforces limit', async (t) => {
-  const { orig, restore } = await withTempFile();
-  await fs.writeFile(filePath, '{}');
+  const { file, restore } = await withTempFile();
+  await fs.writeFile(file, '{}');
   const fields = Array.from({ length: 21 }, (_, i) => `f${i}`);
   await assert.rejects(() => setDisplayFields('tbl', { idField: 'id', displayFields: fields }));
   await restore();
 });
 
 await test('set and get display fields', async (t) => {
-  const { orig, restore } = await withTempFile();
-  await fs.writeFile(filePath, '{}');
+  const { file, restore } = await withTempFile();
+  await fs.writeFile(file, '{}');
   await setDisplayFields('tbl', { idField: 'id', displayFields: ['a', 'b'] });
   const cfg = await getDisplayFields('tbl');
   assert.deepEqual(cfg, { idField: 'id', displayFields: ['a', 'b'] });
@@ -46,8 +51,8 @@ await test('set and get display fields', async (t) => {
 });
 
 await test('table name lookup is case-sensitive', async (t) => {
-  const { orig, restore } = await withTempFile();
-  await fs.writeFile(filePath, '{}');
+  const { file, restore } = await withTempFile();
+  await fs.writeFile(file, '{}');
   await setDisplayFields('MiXeD', { idField: 'id', displayFields: ['x'] });
   const restoreMeta = mockMeta(async (sql, params) => {
     if (sql.includes('information_schema.COLUMNS')) {
@@ -74,8 +79,8 @@ await test('table name lookup is case-sensitive', async (t) => {
 });
 
 await test('removeDisplayFields deletes config', async (t) => {
-  const { orig, restore } = await withTempFile();
-  await fs.writeFile(filePath, '{}');
+  const { file, restore } = await withTempFile();
+  await fs.writeFile(file, '{}');
   await setDisplayFields('tbl', { idField: 'id', displayFields: ['x'] });
   await removeDisplayFields('tbl');
   const restoreMeta = mockMeta(async (sql) => {
@@ -91,4 +96,17 @@ await test('removeDisplayFields deletes config', async (t) => {
   restoreMeta();
   assert.deepEqual(cfg, { idField: 'id', displayFields: ['name'] });
   await restore();
+});
+
+await test('tenant-specific changes do not affect company 0', async () => {
+  const base = await withTempFile(0);
+  const tenant = await withTempFile(123);
+  await fs.writeFile(base.file, '{}');
+  await setDisplayFields('tbl', { idField: 'id', displayFields: ['y'] }, 123);
+  const cfg0 = JSON.parse(await fs.readFile(base.file, 'utf8'));
+  const cfg1 = JSON.parse(await fs.readFile(tenant.file, 'utf8'));
+  assert.deepEqual(cfg0, {});
+  assert.deepEqual(cfg1, { tbl: { idField: 'id', displayFields: ['y'] } });
+  await base.restore();
+  await tenant.restore();
 });

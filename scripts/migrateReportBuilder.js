@@ -6,8 +6,9 @@ import fs from 'fs/promises';
 import path from 'path';
 
 async function migrate() {
+  const companyId = process.env.COMPANY_ID || '0';
   const oldDir = path.join(process.cwd(), 'uploads', 'report_builder');
-  const newDir = path.join(process.cwd(), 'config', '0', 'report_builder');
+  const newDir = path.join(process.cwd(), 'config', String(companyId), 'report_builder');
   const oldProcDir = path.join(oldDir, 'procedures');
   const newProcDir = path.join(newDir, 'procedures');
 
