@@ -69,7 +69,6 @@ export default forwardRef(function InlineTransactionTable({
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
-  const warnedDisplay = useRef(new Set());
   const [tableDisplayFields, setTableDisplayFields] = useState({});
   useEffect(() => {
     fetch('/api/display_fields', { credentials: 'include' })
@@ -107,21 +106,31 @@ export default forwardRef(function InlineTransactionTable({
     return map;
   }, [relationConfigs, columnCaseMap]);
 
-  const autoSelectConfigs = React.useMemo(() => {
-    const map = {};
+  const displayIndex = React.useMemo(() => {
+    const index = {};
     Object.entries(tableDisplayFields || {}).forEach(([tbl, cfg]) => {
       const id = cfg.idField;
       if (!id) return;
-      const key = columnCaseMap[id.toLowerCase()];
-      if (key) {
-        map[key] = { table: tbl, idField: cfg.idField, displayFields: cfg.displayFields || [] };
-      } else if (!warnedDisplay.current.has(`${tbl}.${id}`)) {
-        console.warn(`tableDisplayFields: no column '${id}' found for table '${tbl}'`);
-        warnedDisplay.current.add(`${tbl}.${id}`);
+      index[id.toLowerCase()] = {
+        table: tbl,
+        idField: cfg.idField,
+        displayFields: cfg.displayFields || [],
+      };
+    });
+    return index;
+  }, [tableDisplayFields]);
+
+  // Only columns present in columnCaseMap are evaluated, preventing cross-table false positives.
+  const autoSelectConfigs = React.useMemo(() => {
+    const map = {};
+    Object.entries(columnCaseMap || {}).forEach(([lower, key]) => {
+      const cfg = displayIndex[lower];
+      if (cfg) {
+        map[key] = cfg;
       }
     });
     return map;
-  }, [columnCaseMap, tableDisplayFields]);
+  }, [columnCaseMap, displayIndex]);
 
   const combinedViewSource = React.useMemo(() => {
     const map = { ...viewSourceMap };
