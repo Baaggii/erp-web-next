@@ -154,7 +154,8 @@ export default function PosTransactionsPage() {
   const relationCacheRef = useRef(new Map());
   const loadingTablesRef = useRef(new Set());
   const viewCacheRef = useRef(new Map());
-  const viewLoadingRef = useRef(new Set());
+  // Tracks in-flight view fetch promises so multiple tables can share them
+  const viewFetchesRef = useRef(new Map());
   const abortControllersRef = useRef(new Set());
 
   const fetchWithAbort = (url, options = {}) => {
@@ -172,10 +173,16 @@ export default function PosTransactionsPage() {
     return () => window.removeEventListener('resize', check);
   }, []);
 
+  // Abort pending requests and reset caches when the transaction changes
+  // or the component unmounts to avoid leaking state between sessions.
   useEffect(() => {
     return () => {
       abortControllersRef.current.forEach((c) => c.abort());
       abortControllersRef.current.clear();
+      relationCacheRef.current.clear();
+      loadingTablesRef.current.clear();
+      viewCacheRef.current.clear();
+      viewFetchesRef.current.clear();
     };
   }, [name]);
 
@@ -357,6 +364,12 @@ export default function PosTransactionsPage() {
     };
   }, [config]);
 
+  // Stable key used for effect dependencies that care about visible table set
+  const visibleTablesKey = React.useMemo(
+    () => [...visibleTables].sort().join(','),
+    [visibleTables],
+  );
+
   useEffect(() => {
     if (!config) return;
     const tables = [config.masterTable, ...config.tables.map((t) => t.table)];
@@ -386,7 +399,7 @@ export default function PosTransactionsPage() {
         .then((data) => setProcTriggersMap((m) => ({ ...m, [tbl]: data || {} })))
         .catch(() => {});
     });
-  }, [config, visibleTables]);
+  }, [config, visibleTablesKey]);
 
   useEffect(() => {
     if (!config) { setSessionFields([]); return; }
@@ -420,10 +433,14 @@ export default function PosTransactionsPage() {
     handleNew();
   }, [config, memoFormConfigs, name]);
 
+  // Load view metadata for each required view. Uses a cache for completed
+  // requests and a promise map for in-flight ones so that tables sharing the
+  // same view don't trigger duplicate fetches. The effect depends on a stable
+  // key derived from the visible table set.
   useEffect(() => {
     const viewsByName = {};
     Object.entries(memoFormConfigs).forEach(([tbl, fc]) => {
-      if (!visibleTables.has(tbl)) return;
+      if (!visibleTables.has(tbl)) return; // skip hidden tables
       const views = Object.values(fc.viewSource || {});
       views.forEach((v) => {
         if (!v) return;
@@ -433,8 +450,9 @@ export default function PosTransactionsPage() {
     });
 
     Object.entries(viewsByName).forEach(([view, tbls]) => {
-      if (viewCacheRef.current.has(view)) {
-        const cached = viewCacheRef.current.get(view);
+      const cached = viewCacheRef.current.get(view);
+      if (cached) {
+        // Use cached results when available
         tbls.forEach((tbl) => {
           setViewDisplaysMap((m) => ({
             ...m,
@@ -447,42 +465,50 @@ export default function PosTransactionsPage() {
         });
         return;
       }
-      if (viewLoadingRef.current.has(view)) return;
-      viewLoadingRef.current.add(view);
-      const dfPromise = fetchWithAbort(
-        `/api/display_fields?table=${encodeURIComponent(view)}`,
-        { credentials: 'include' },
-      ).then((res) => (res.ok ? res.json() : null));
-      const colPromise = fetchWithAbort(
-        `/api/tables/${encodeURIComponent(view)}/columns`,
-        { credentials: 'include' },
-      ).then((res) => (res.ok ? res.json() : []));
-      Promise.all([dfPromise, colPromise])
-        .then(([cfg, cols]) => {
-          const data = {
-            cfg: cfg || {},
-            cols: (cols || []).map((c) => c.name),
-          };
-          viewCacheRef.current.set(view, data);
-          tbls.forEach((tbl) => {
-            setViewDisplaysMap((m) => ({
-              ...m,
-              [tbl]: { ...(m[tbl] || {}), [view]: data.cfg },
-            }));
-            setViewColumnsMap((m) => ({
-              ...m,
-              [tbl]: { ...(m[tbl] || {}), [view]: data.cols },
-            }));
+
+      let fetchPromise = viewFetchesRef.current.get(view);
+      if (!fetchPromise) {
+        // Start new fetch only when no cached or in-flight data exists
+        const dfPromise = fetchWithAbort(
+          `/api/display_fields?table=${encodeURIComponent(view)}`,
+          { credentials: 'include' },
+        ).then((res) => (res.ok ? res.json() : null));
+        const colPromise = fetchWithAbort(
+          `/api/tables/${encodeURIComponent(view)}/columns`,
+          { credentials: 'include' },
+        ).then((res) => (res.ok ? res.json() : []));
+        fetchPromise = Promise.all([dfPromise, colPromise])
+          .then(([cfg, cols]) => {
+            const data = {
+              cfg: cfg || {},
+              cols: (cols || []).map((c) => c.name),
+            };
+            viewCacheRef.current.set(view, data);
+            return data;
+          })
+          .catch(() => null)
+          .finally(() => {
+            viewFetchesRef.current.delete(view);
           });
-        })
-        .catch(() => {
-          // ignore errors to allow retry
-        })
-        .finally(() => {
-          viewLoadingRef.current.delete(view);
+        viewFetchesRef.current.set(view, fetchPromise);
+      }
+
+      // Reuse the existing in-flight promise and apply results to all tables
+      fetchPromise.then((data) => {
+        if (!data) return;
+        tbls.forEach((tbl) => {
+          setViewDisplaysMap((m) => ({
+            ...m,
+            [tbl]: { ...(m[tbl] || {}), [view]: data.cfg },
+          }));
+          setViewColumnsMap((m) => ({
+            ...m,
+            [tbl]: { ...(m[tbl] || {}), [view]: data.cols },
+          }));
         });
+      });
     });
-  }, [memoFormConfigs, visibleTables]);
+  }, [memoFormConfigs, visibleTablesKey]);
 
   useEffect(() => {
     if (!config) return;
