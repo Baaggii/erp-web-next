@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import CustomDatePicker from './CustomDatePicker.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
+import normalizeDateInput from '../utils/normalizeDateInput.js';
 
 /**
  * Reusable date range picker with common presets.
@@ -8,8 +9,12 @@ import formatTimestamp from '../utils/formatTimestamp.js';
  */
 export default function DateRangePicker({ start, end, onChange, style }) {
   const [preset, setPreset] = useState('today');
-  const [customStart, setCustomStart] = useState(start || '');
-  const [customEnd, setCustomEnd] = useState(end || '');
+  const [customStart, setCustomStart] = useState(() =>
+    normalizeDateInput(start || '', 'YYYY-MM-DD'),
+  );
+  const [customEnd, setCustomEnd] = useState(() =>
+    normalizeDateInput(end || '', 'YYYY-MM-DD'),
+  );
 
   useEffect(() => {
     const fmt = (d) => formatTimestamp(d).slice(0, 10);
@@ -97,12 +102,12 @@ export default function DateRangePicker({ start, end, onChange, style }) {
         <>
           <CustomDatePicker
             value={customStart}
-            onChange={setCustomStart}
+            onChange={(v) => setCustomStart(normalizeDateInput(v, 'YYYY-MM-DD'))}
             style={{ marginRight: '0.25rem' }}
           />
           <CustomDatePicker
             value={customEnd}
-            onChange={setCustomEnd}
+            onChange={(v) => setCustomEnd(normalizeDateInput(v, 'YYYY-MM-DD'))}
             style={{ marginRight: '0.5rem' }}
           />
         </>
