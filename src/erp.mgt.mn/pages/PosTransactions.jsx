@@ -154,61 +154,86 @@ export default function PosTransactionsPage() {
 
   async function loadRelations(tbl) {
     try {
-      const res = await fetch(`/api/tables/${encodeURIComponent(tbl)}/relations`, { credentials: 'include' });
+      const res = await fetch(`/api/tables/${encodeURIComponent(tbl)}/relations`, {
+        credentials: 'include',
+      });
       if (!res.ok) return;
       const rels = await res.json().catch(() => []);
       const dataMap = {};
       const cfgMap = {};
       const rowMap = {};
-      for (const r of rels) {
+      const tableCache = new Map();
+      const relsByTable = rels.reduce((acc, r) => {
         const refTbl = r.REFERENCED_TABLE_NAME;
-        const refCol = r.REFERENCED_COLUMN_NAME;
-        let cfg = null;
-        try {
-          const cRes = await fetch(`/api/display_fields?table=${encodeURIComponent(refTbl)}`, { credentials: 'include' });
-          if (cRes.ok) cfg = await cRes.json().catch(() => null);
-        } catch {
-          cfg = null;
-        }
-        let page = 1;
-        const perPage = 500;
-        let rows = [];
-        while (true) {
-          const params = new URLSearchParams({ page, perPage });
-          const refRes = await fetch(`/api/tables/${encodeURIComponent(refTbl)}?${params.toString()}`, { credentials: 'include' });
-          if (!refRes.ok) break;
-          const js = await refRes.json().catch(() => ({}));
-          if (Array.isArray(js.rows)) {
-            rows = rows.concat(js.rows);
-            if (rows.length >= (js.count || rows.length) || js.rows.length < perPage) break;
-          } else break;
-          page += 1;
-        }
-        const opts = [];
-        const rMap = {};
-        rows.forEach((row) => {
-          const val = row[refCol];
-          const parts = [];
-          if (val !== undefined) parts.push(val);
-          let displayFields = [];
-          if (cfg && Array.isArray(cfg.displayFields) && cfg.displayFields.length > 0) {
-            displayFields = cfg.displayFields;
-          } else {
-            displayFields = Object.keys(row).filter((f) => f !== refCol).slice(0, 1);
+        if (!acc[refTbl]) acc[refTbl] = [];
+        acc[refTbl].push(r);
+        return acc;
+      }, {});
+      const perPage = 500;
+      const maxPages = 20;
+      for (const [refTbl, list] of Object.entries(relsByTable)) {
+        let cached = tableCache.get(refTbl);
+        if (!cached) {
+          let cfg = null;
+          try {
+            const cRes = await fetch(
+              `/api/display_fields?table=${encodeURIComponent(refTbl)}`,
+              { credentials: 'include', skipErrorToast: true },
+            );
+            if (cRes.ok) cfg = await cRes.json().catch(() => null);
+          } catch {
+            cfg = null;
           }
-          parts.push(...displayFields.map((f) => row[f]).filter((v) => v !== undefined));
-          const label = parts.join(' - ');
-          opts.push({ value: val, label });
-          rMap[val] = row;
-        });
-        if (opts.length > 0) dataMap[r.COLUMN_NAME] = opts;
-        if (Object.keys(rMap).length > 0) rowMap[r.COLUMN_NAME] = rMap;
-        cfgMap[r.COLUMN_NAME] = {
-          table: refTbl,
-          column: refCol,
-          idField: cfg?.idField || refCol,
-          displayFields: cfg?.displayFields || [],
-        };
+          let page = 1;
+          let rows = [];
+          while (page <= maxPages) {
+            const params = new URLSearchParams({ page, perPage });
+            const refRes = await fetch(
+              `/api/tables/${encodeURIComponent(refTbl)}?${params.toString()}`,
+              { credentials: 'include', skipErrorToast: true },
+            );
+            if (!refRes.ok) break;
+            const js = await refRes.json().catch(() => ({}));
+            if (Array.isArray(js.rows)) {
+              rows = rows.concat(js.rows);
+              if (rows.length >= (js.count || rows.length) || js.rows.length < perPage) break;
+            } else break;
+            page += 1;
+          }
+          cached = { cfg, rows };
+          tableCache.set(refTbl, cached);
+        }
+        const { cfg, rows } = cached;
+        for (const r of list) {
+          const refCol = r.REFERENCED_COLUMN_NAME;
+          const opts = [];
+          const rMap = {};
+          rows.forEach((row) => {
+            const val = row[refCol];
+            const parts = [];
+            if (val !== undefined) parts.push(val);
+            let displayFields = [];
+            if (cfg && Array.isArray(cfg.displayFields) && cfg.displayFields.length > 0) {
+              displayFields = cfg.displayFields;
+            } else {
+              displayFields = Object.keys(row).filter((f) => f !== refCol).slice(0, 1);
+            }
+            parts.push(
+              ...displayFields.map((f) => row[f]).filter((v) => v !== undefined),
+            );
+            const label = parts.join(' - ');
+            opts.push({ value: val, label });
+            rMap[val] = row;
+          });
+          if (opts.length > 0) dataMap[r.COLUMN_NAME] = opts;
+          if (Object.keys(rMap).length > 0) rowMap[r.COLUMN_NAME] = rMap;
+          cfgMap[r.COLUMN_NAME] = {
+            table: refTbl,
+            column: refCol,
+            idField: cfg?.idField || refCol,
+            displayFields: cfg?.displayFields || [],
+          };
+        }
       }
       setRelationsMap((m) => ({ ...m, [tbl]: dataMap }));
       setRelationConfigs((m) => ({ ...m, [tbl]: cfgMap }));
