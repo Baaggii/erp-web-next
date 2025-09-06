@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import * as db from '../../db/index.js';
 
 function mockPool(flagsMap = {}) {
-  const original = db.pool.query;
+  const originalQuery = db.pool.query;
+  const originalGetConn = db.pool.getConnection;
   const calls = [];
   db.pool.query = async (sql, params) => {
-    calls.push({ sql, params });
+    // Queries for metadata (columns, tenant tables)
     if (sql.includes('tenant_tables')) {
       const table = params?.[0];
       const flags = flagsMap[table];
@@ -21,8 +22,20 @@ function mockPool(flagsMap = {}) {
     }
     return [[{ id: 1, name: 'A' }]];
   };
+  db.pool.getConnection = async () => ({
+    query: async (sql, params) => {
+      calls.push({ sql, params });
+      if (sql.includes('COUNT(*)')) {
+        return [[{ count: 1 }]];
+      }
+      return [[{ id: 1, name: 'A' }]];
+    },
+    release() {},
+    destroy() {},
+  });
   return () => {
-    db.pool.query = original;
+    db.pool.query = originalQuery;
+    db.pool.getConnection = originalGetConn;
     return calls;
   };
 }

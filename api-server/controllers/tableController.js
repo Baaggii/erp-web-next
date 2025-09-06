@@ -36,6 +36,8 @@ export async function getTables(req, res, next) {
 }
 
 export async function getTableRows(req, res, next) {
+  const controller = new AbortController();
+  req.on('close', () => controller.abort());
   try {
     const {
       page,
@@ -49,21 +51,25 @@ export async function getTableRows(req, res, next) {
       ...filters
     } = req.query;
     const rowsPerPage = Math.min(Number(perPage) || 50, 500);
-    const result = await listTableRows(req.params.table, {
-      page: Number(page) || 1,
-      perPage: rowsPerPage,
-      filters: {
-        ...filters,
-        company_id:
-          company_id !== undefined && company_id !== ''
-            ? company_id
-            : req.user?.companyId,
+    const result = await listTableRows(
+      req.params.table,
+      {
+        page: Number(page) || 1,
+        perPage: rowsPerPage,
+        filters: {
+          ...filters,
+          company_id:
+            company_id !== undefined && company_id !== ''
+              ? company_id
+              : req.user?.companyId,
+        },
+        search: search || '',
+        searchColumns: typeof searchColumns === 'string' ? searchColumns.split(',') : [],
+        sort: { column: sort, dir },
+        debug: debug === '1' || debug === 'true',
       },
-      search: search || '',
-      searchColumns: typeof searchColumns === 'string' ? searchColumns.split(',') : [],
-      sort: { column: sort, dir },
-      debug: debug === '1' || debug === 'true',
-    });
+      controller.signal,
+    );
     res.json(result);
   } catch (err) {
     next(err);

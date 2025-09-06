@@ -1323,7 +1323,9 @@ export async function listTableRows(
     searchColumns = [],
     debug = false,
   } = {},
+  signal,
 ) {
+  signal?.throwIfAborted();
   const columns = await getTableColumnsSafe(tableName);
   logDb(
     `listTableRows(${tableName}) page=${page} perPage=${perPage} ` +
@@ -1381,15 +1383,37 @@ export async function listTableRows(
     `SELECT * FROM ?? ${where} ${order} LIMIT ? OFFSET ?`,
     params,
   );
-  const [rows] = await pool.query(sql);
-  const countParams = [tableName, ...params.slice(1, params.length - 2)];
-  const [countRows] = await pool.query(
-    `SELECT COUNT(*) AS count FROM ?? ${where}`,
-    countParams,
-  );
-  const result = { rows, count: countRows[0].count };
-  if (debug) result.sql = sql;
-  return result;
+  let conn;
+  const abortHandler = () => {
+    conn?.destroy();
+  };
+  try {
+    signal?.throwIfAborted();
+    conn = await pool.getConnection();
+    signal?.addEventListener('abort', abortHandler, { once: true });
+    signal?.throwIfAborted();
+    const [rows] = await conn.query(sql);
+    signal?.throwIfAborted();
+    const countParams = [tableName, ...params.slice(1, params.length - 2)];
+    const [countRows] = await conn.query(
+      `SELECT COUNT(*) AS count FROM ?? ${where}`,
+      countParams,
+    );
+    signal?.throwIfAborted();
+    const result = { rows, count: countRows[0].count };
+    if (debug) result.sql = sql;
+    return result;
+  } catch (err) {
+    if (signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError');
+    }
+    throw err;
+  } finally {
+    signal?.removeEventListener?.('abort', abortHandler);
+    if (conn && !signal?.aborted) {
+      conn.release();
+    }
+  }
 }
 
 /**

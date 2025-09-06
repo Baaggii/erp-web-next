@@ -2,12 +2,28 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as controller from '../../api-server/controllers/tableController.js';
 import * as db from '../../db/index.js';
+import { EventEmitter } from 'node:events';
 
 function mockPool(handler) {
-  const original = db.pool.query;
+  const originalQuery = db.pool.query;
+  const originalGetConn = db.pool.getConnection;
   db.pool.query = handler;
+  db.pool.getConnection = async () => ({
+    query: handler,
+    release() {},
+    destroy() {},
+  });
   return () => {
-    db.pool.query = original;
+    db.pool.query = originalQuery;
+    db.pool.getConnection = originalGetConn;
+  };
+}
+
+function mockGetConnection(handler) {
+  const original = db.pool.getConnection;
+  db.pool.getConnection = handler;
+  return () => {
+    db.pool.getConnection = original;
   };
 }
 
@@ -22,6 +38,7 @@ test('getTableRows forwards error for invalid column', async () => {
     params: { table: 'badtable' },
     query: { bad: 'x' },
     user: { companyId: 1 },
+    on() {},
   };
   let err;
   await controller.getTableRows(req, {}, (e) => { err = e; });
@@ -48,6 +65,7 @@ test('getTableRows uses provided company_id param', async () => {
     params: { table: 'shared' },
     query: { company_id: 5 },
     user: { companyId: 7 },
+    on() {},
   };
   const res = { json() {} };
   await controller.getTableRows(req, res, (e) => { if (e) throw e; });
@@ -72,10 +90,69 @@ test('getTableRows falls back to user companyId when missing', async () => {
     params: { table: 'shared' },
     query: {},
     user: { companyId: 7 },
+    on() {},
   };
   const res = { json() {} };
   await controller.getTableRows(req, res, (e) => { if (e) throw e; });
   restore();
+});
+
+test('getTableRows aborts request and destroys connection', async () => {
+  const restoreQuery = mockPool(async (sql) => {
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'id' }]];
+    }
+    throw new Error('unexpected query');
+  });
+  let destroyed = false;
+  let released = false;
+  let queryCount = 0;
+  const conn = {
+    query() {
+      queryCount++;
+      return new Promise((resolve, reject) => {
+        this._reject = reject;
+      });
+    },
+    release() {
+      released = true;
+    },
+    destroy() {
+      destroyed = true;
+      this._reject?.(new Error('aborted'));
+    },
+  };
+  let resolveConn;
+  const restoreConn = mockGetConnection(
+    () =>
+      new Promise((resolve) => {
+        resolveConn = () => resolve(conn);
+      }),
+  );
+  const req = new EventEmitter();
+  req.params = { table: 't' };
+  req.query = {};
+  req.user = {};
+  const res = { json() {} };
+  let err;
+  const p = controller.getTableRows(req, res, (e) => {
+    err = e;
+  });
+  while (typeof resolveConn !== 'function') {
+    // wait for getConnection to be requested
+    await new Promise((r) => setImmediate(r));
+  }
+  resolveConn();
+  await new Promise((r) => setImmediate(r));
+  req.emit('close');
+  await p;
+  restoreConn();
+  restoreQuery();
+  assert.ok(err);
+  assert.equal(err.name, 'AbortError');
+  assert.ok(destroyed);
+  assert.strictEqual(released, false);
+  assert.strictEqual(queryCount, 1);
 });
 
 test('addRow forwards db error when required id missing', async () => {

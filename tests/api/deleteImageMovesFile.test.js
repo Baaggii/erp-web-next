@@ -3,9 +3,16 @@ import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import path from 'path';
 import { deleteImage } from '../../api-server/services/transactionImageService.js';
+import { getGeneralConfig } from '../../api-server/services/generalConfig.js';
 
 const companyId = 0;
-const baseDir = path.join(process.cwd(), 'uploads', String(companyId), 'txn_images');
+const cfg = await getGeneralConfig(companyId);
+const baseDir = path.join(
+  process.cwd(),
+  cfg.images.basePath || 'uploads',
+  String(companyId),
+  'txn_images',
+);
 const srcDir = path.join(baseDir, 'delete_image_test');
 const deletedDir = path.join(baseDir, 'deleted_images');
 
