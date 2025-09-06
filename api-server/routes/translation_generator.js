@@ -79,9 +79,12 @@ router.get('/', requireAuth, async (req, res, next) => {
       if (currentController === controller) currentController = null;
     });
 
-    req.on('close', () => {
+    const handleClose = () => {
       controller.abort();
-    });
+      if (currentController === controller) currentController = null;
+    };
+    req.on('close', handleClose);
+    res.on('close', handleClose);
   } catch (err) {
     next(err);
   }

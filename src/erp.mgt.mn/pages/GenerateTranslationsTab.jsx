@@ -8,8 +8,10 @@ export default function GenerateTranslationsTab() {
   const [source, setSource] = useState(null);
 
   useEffect(() => {
+    window.addEventListener('beforeunload', cancel);
     return () => {
-      if (source) source.close();
+      window.removeEventListener('beforeunload', cancel);
+      if (source) cancel();
     };
   }, [source]);
 
