@@ -12,7 +12,7 @@ export default function GeneralConfiguration() {
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState('forms');
   const { addToast } = useToast();
-  const { session, permissions } = useContext(AuthContext);
+  const { session, permissions, company } = useContext(AuthContext);
   const { t } = useTranslation(['translation', 'tooltip']);
   const hasAdmin =
     permissions?.permissions?.system_settings ||
@@ -57,6 +57,29 @@ export default function GeneralConfiguration() {
       addToast(t('failedToSave', 'Failed to save'), 'error');
     }
     setSaving(false);
+  }
+
+  async function handleImport() {
+    if (!window.confirm('Import default configuration?')) return;
+    try {
+      const res = await fetch(
+        `/api/config/import/general?companyId=${encodeURIComponent(company ?? '')}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ files: ['generalConfig.json'] }),
+        },
+      );
+      if (!res.ok) throw new Error('failed');
+      const dataRes = await fetch('/api/general_config', { credentials: 'include' });
+      const data = dataRes.ok ? await dataRes.json() : {};
+      setCfg(data);
+      updateCache(data);
+      addToast('Imported', 'success');
+    } catch (err) {
+      addToast(`Import failed: ${err.message}`, 'error');
+    }
   }
 
   if (!cfg) return <p>{t('loading', 'Loading…')}</p>;
@@ -532,9 +555,14 @@ export default function GeneralConfiguration() {
           </div>
         </>
       )}
-      <button onClick={handleSave} disabled={saving}>
-        Save
-      </button>
+      <div>
+        <button onClick={handleImport} style={{ marginRight: '0.5rem' }}>
+          Import Defaults
+        </button>
+        <button onClick={handleSave} disabled={saving}>
+          Save
+        </button>
+      </div>
     </div>
   );
 }
