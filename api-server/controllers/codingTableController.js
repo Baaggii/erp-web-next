@@ -122,7 +122,7 @@ function makeUniqueKeyName(fields) {
   return base;
 }
 
-export async function uploadCodingTable(req, res, next) {
+export async function uploadCodingTable(req, res, next, signal) {
   try {
     const {
       sheet,
@@ -348,14 +348,23 @@ export async function uploadCodingTable(req, res, next) {
     const createSql = `CREATE TABLE IF NOT EXISTS \`${cleanTable}\` (
         ${defs.join(',\n        ')}
       )${autoOpt}`;
-    await pool.query(createSql);
+    await pool.query({ sql: createSql, signal });
     for (const [col, label] of Object.entries(headerMap)) {
-      if (label) await setTableColumnLabel(cleanTable, cleanIdentifier(col), label, req.user.empid);
+      if (signal?.aborted) throw new Error('Aborted');
+      if (label)
+        await setTableColumnLabel(
+          cleanTable,
+          cleanIdentifier(col),
+          label,
+          req.user.empid,
+          signal,
+        );
     }
     let count = 0;
     const errors = [];
     let rowIndex = 0;
     for (const r of finalRows) {
+      if (signal?.aborted) break;
       rowIndex++;
       const cols = [];
       const placeholders = [];
@@ -521,18 +530,22 @@ export async function uploadCodingTable(req, res, next) {
       if (req.body.populateRange === 'true' && values.some((v) => v === 0 || v === null))
         continue;
       try {
-        await pool.query(
-          `INSERT INTO \`${cleanTable}\` (${cols.join(', ')}) VALUES (${placeholders.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')}`,
-          [...values, ...updateValues]
-        );
+        await pool.query({
+          sql: `INSERT INTO \`${cleanTable}\` (${cols.join(', ')}) VALUES (${placeholders.join(', ')}) ON DUPLICATE KEY UPDATE ${updates.join(', ')}`,
+          values: [...values, ...updateValues],
+          signal,
+        });
         count++;
       } catch (err) {
+        if (signal?.aborted) break;
         errors.push({ row: rowIndex, data: r, message: err.message });
       }
     }
     fs.unlinkSync(req.file.path);
-    res.json({ inserted: count, errors });
+    if (!signal?.aborted) {
+      res.json({ inserted: count, errors });
+    }
   } catch (err) {
-    next(err);
+    if (!signal?.aborted) next(err);
   }
 }
