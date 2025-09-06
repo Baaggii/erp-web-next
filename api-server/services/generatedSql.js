@@ -1,17 +1,16 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { pool } from '../../db/index.js';
+import { tenantConfigPath, resolveConfigPath } from '../utils/configPaths.js';
 
-const jsonPath = path.join(process.cwd(), 'config', 'generatedSql.json');
-const sqlPath = path.join(process.cwd(), 'config', 'generated.sql');
-
-async function ensureDir() {
-  await fs.mkdir(path.dirname(jsonPath), { recursive: true });
+async function ensureDir(companyId = 0) {
+  const filePath = tenantConfigPath('generatedSql.json', companyId);
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
 }
 
-async function readMap() {
+async function readMap(companyId = 0) {
   try {
-    await ensureDir();
+    const jsonPath = await resolveConfigPath('generatedSql.json', companyId);
     const data = await fs.readFile(jsonPath, 'utf8');
     return JSON.parse(data);
   } catch {
@@ -19,17 +18,19 @@ async function readMap() {
   }
 }
 
-async function writeFiles(map) {
-  await ensureDir();
+async function writeFiles(map, companyId = 0) {
+  await ensureDir(companyId);
+  const jsonPath = tenantConfigPath('generatedSql.json', companyId);
+  const sqlPath = tenantConfigPath('generated.sql', companyId);
   const sqlCombined = Object.values(map).join('\n\n');
   await fs.writeFile(jsonPath, JSON.stringify(map, null, 2));
   await fs.writeFile(sqlPath, sqlCombined);
 }
 
-export async function saveSql(table, sql) {
-  const map = await readMap();
+export async function saveSql(table, sql, companyId = 0) {
+  const map = await readMap(companyId);
   map[table] = sql;
-  await writeFiles(map);
+  await writeFiles(map, companyId);
 }
 
 export function splitSqlStatements(sqlText) {

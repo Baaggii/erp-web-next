@@ -11,8 +11,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '../../');
 
-async function getDirs() {
-  const cfg = await getGeneralConfig();
+async function getDirs(companyId = 0) {
+  const cfg = await getGeneralConfig(companyId);
   const subdir = cfg.general?.imageDir || 'txn_images';
   const basePath = cfg.images?.basePath || 'uploads';
   const baseRoot = path.isAbsolute(basePath)
@@ -179,7 +179,7 @@ export async function findBenchmarkCode(name) {
   return null;
 }
 
-async function findTxnByParts(inv, sp, transType, timestamp) {
+async function findTxnByParts(inv, sp, transType, timestamp, companyId = 0) {
   let tables;
   try {
     [tables] = await pool.query("SHOW TABLES LIKE 'transactions_%'");
@@ -187,7 +187,7 @@ async function findTxnByParts(inv, sp, transType, timestamp) {
     return null;
   }
 
-  const cfgMatches = await getConfigsByTransTypeValue(transType);
+  const cfgMatches = await getConfigsByTransTypeValue(transType, companyId);
   const cfgMap = new Map(
     cfgMatches.map((m) => [m.table.toLowerCase(), m.config]),
   );
@@ -253,7 +253,7 @@ async function findTxnByParts(inv, sp, transType, timestamp) {
       const rowObj = rows[0];
       let cfgs = {};
       try {
-        cfgs = await getConfigsByTable(tbl);
+        cfgs = await getConfigsByTable(tbl, companyId);
       } catch {}
       return { table: tbl, row: rowObj, configs: cfgs, numField: transCol.Field };
     }
@@ -261,8 +261,14 @@ async function findTxnByParts(inv, sp, transType, timestamp) {
   return null;
 }
 
-export async function saveImages(table, name, files, folder = null) {
-  const { baseDir, urlBase } = await getDirs();
+export async function saveImages(
+  table,
+  name,
+  files,
+  folder = null,
+  companyId = 0,
+) {
+  const { baseDir, urlBase } = await getDirs(companyId);
   ensureDir(baseDir);
   const dir = path.join(baseDir, folder || table);
   ensureDir(dir);
@@ -311,8 +317,8 @@ export async function saveImages(table, name, files, folder = null) {
   return saved;
 }
 
-export async function listImages(table, name, folder = null) {
-  const { baseDir, urlBase } = await getDirs();
+export async function listImages(table, name, folder = null, companyId = 0) {
+  const { baseDir, urlBase } = await getDirs(companyId);
   ensureDir(baseDir);
   const dir = path.join(baseDir, folder || table);
   ensureDir(dir);
@@ -327,8 +333,14 @@ export async function listImages(table, name, folder = null) {
   }
 }
 
-export async function renameImages(table, oldName, newName, folder = null) {
-  const { baseDir, urlBase } = await getDirs();
+export async function renameImages(
+  table,
+  oldName,
+  newName,
+  folder = null,
+  companyId = 0,
+) {
+  const { baseDir, urlBase } = await getDirs(companyId);
   ensureDir(baseDir);
   const dir = path.join(baseDir, table);
   ensureDir(dir);
@@ -365,8 +377,8 @@ export async function renameImages(table, oldName, newName, folder = null) {
   }
 }
 
-export async function searchImages(term, page = 1, perPage = 20) {
-  const { baseDir, urlBase, ignore } = await getDirs();
+export async function searchImages(term, page = 1, perPage = 20, companyId = 0) {
+  const { baseDir, urlBase, ignore } = await getDirs(companyId);
   ensureDir(baseDir);
   const safe = sanitizeName(term);
   const regex = new RegExp(`(^|[\\-_~])${safe}([\\-_~]|$)`, 'i');
@@ -398,8 +410,8 @@ export async function searchImages(term, page = 1, perPage = 20) {
   return { files, total };
 }
 
-export async function moveImagesToDeleted(table, row = {}) {
-  const configs = await getConfigsByTable(table).catch(() => ({}));
+export async function moveImagesToDeleted(table, row = {}, companyId = 0) {
+  const configs = await getConfigsByTable(table, companyId).catch(() => ({}));
   const cfg = pickConfig(configs, row);
   const names = new Set();
   if (cfg?.imagenameField?.length) {
@@ -425,15 +437,21 @@ export async function moveImagesToDeleted(table, row = {}) {
   let moved = 0;
   for (const src of srcFolders) {
     for (const name of names) {
-      const renamed = await renameImages(src, name, name, 'deleted_transactions');
+      const renamed = await renameImages(
+        src,
+        name,
+        name,
+        'deleted_transactions',
+        companyId,
+      );
       moved += renamed.length;
     }
   }
   return moved;
 }
 
-export async function deleteImage(table, file, folder = null) {
-  const { baseDir } = await getDirs();
+export async function deleteImage(table, file, folder = null, companyId = 0) {
+  const { baseDir } = await getDirs(companyId);
   const dir = path.join(baseDir, folder || table);
   const targetDir = path.join(baseDir, 'deleted_images');
   ensureDir(targetDir);
@@ -450,8 +468,8 @@ export async function deleteImage(table, file, folder = null) {
   }
 }
 
-export async function deleteAllImages(table, name, folder = null) {
-  const { baseDir } = await getDirs();
+export async function deleteAllImages(table, name, folder = null, companyId = 0) {
+  const { baseDir } = await getDirs(companyId);
   ensureDir(baseDir);
   const dir = path.join(baseDir, folder || table);
   ensureDir(dir);
@@ -471,8 +489,8 @@ export async function deleteAllImages(table, name, folder = null) {
   }
 }
 
-export async function cleanupOldImages(days = 30) {
-  const { baseDir, basePath } = await getDirs();
+export async function cleanupOldImages(days = 30, companyId = 0) {
+  const { baseDir, basePath } = await getDirs(companyId);
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
   let removed = 0;
 
@@ -505,8 +523,12 @@ export async function cleanupOldImages(days = 30) {
   return removed;
 }
 
-export async function detectIncompleteImages(page = 1, perPage = 100) {
-  const { baseDir } = await getDirs();
+export async function detectIncompleteImages(
+  page = 1,
+  perPage = 100,
+  companyId = 0,
+) {
+  const { baseDir } = await getDirs(companyId);
   const codes = await fetchTxnCodes();
   let results = [];
   const skipped = [];
@@ -586,7 +608,7 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
           });
           continue;
         }
-        found = await findTxnByUniqueId(unique);
+        found = await findTxnByUniqueId(unique, companyId);
       }
       if (!found) {
         skipped.push({
@@ -714,7 +736,7 @@ export async function detectIncompleteImages(page = 1, perPage = 100) {
   };
 }
 
-async function findTxnByUniqueId(idPart) {
+async function findTxnByUniqueId(idPart, companyId = 0) {
   let tables;
   try {
     [tables] = await pool.query("SHOW TABLES LIKE 'transactions_%'");
@@ -743,7 +765,7 @@ async function findTxnByUniqueId(idPart) {
     if (rows.length) {
       let cfgs = {};
       try {
-        cfgs = await getConfigsByTable(tbl);
+        cfgs = await getConfigsByTable(tbl, companyId);
       } catch {}
       return { table: tbl, row: rows[0], configs: cfgs, numField: numCol.Field };
     }
@@ -751,8 +773,8 @@ async function findTxnByUniqueId(idPart) {
   return null;
 }
 
-export async function fixIncompleteImages(list = []) {
-  const { baseDir } = await getDirs();
+export async function fixIncompleteImages(list = [], companyId = 0) {
+  const { baseDir } = await getDirs(companyId);
   let count = 0;
   for (const item of list) {
     const dir = path.join(baseDir, item.folder || '');
@@ -765,11 +787,11 @@ export async function fixIncompleteImages(list = []) {
   return count;
 }
 
-export async function checkUploadedImages(files = [], names = []) {
+export async function checkUploadedImages(files = [], names = [], companyId = 0) {
   const results = [];
   let processed = 0;
   const codes = await fetchTxnCodes();
-  const { baseDir, baseRoot, ignore } = await getDirs();
+  const { baseDir, baseRoot, ignore } = await getDirs(companyId);
   let items = files.length
     ? files
     : names.map((n) => ({
@@ -795,6 +817,7 @@ export async function checkUploadedImages(files = [], names = []) {
           save.sp,
           save.transType,
           Number(save.ts),
+          companyId,
         );
       }
     } else {
@@ -804,7 +827,7 @@ export async function checkUploadedImages(files = [], names = []) {
       } else if (hasTxnCode(base, unique, codes)) {
         reason = 'Already renamed';
       } else {
-        found = await findTxnByUniqueId(unique);
+        found = await findTxnByUniqueId(unique, companyId);
       }
     }
     if (!reason && !found) reason = 'Transaction not found';
@@ -932,8 +955,8 @@ export async function checkUploadedImages(files = [], names = []) {
   return { list: results, summary: { totalFiles: items.length, processed } };
 }
 
-export async function commitUploadedImages(list = []) {
-  const { baseDir } = await getDirs();
+export async function commitUploadedImages(list = [], companyId = 0) {
+  const { baseDir } = await getDirs(companyId);
   let count = 0;
   for (const item of list) {
     const dir = path.join(baseDir, item.folder || '');
@@ -946,7 +969,7 @@ export async function commitUploadedImages(list = []) {
   return count;
 }
 
-export async function detectIncompleteFromNames(names = []) {
+export async function detectIncompleteFromNames(names = [], companyId = 0) {
   const codes = await fetchTxnCodes();
   const results = [];
   const skipped = [];

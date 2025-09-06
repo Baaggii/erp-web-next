@@ -9,7 +9,7 @@ import {
   listCompanies,
 } from '../../db/index.js';
 import { hasAction } from '../utils/hasAction.js';
-import { GLOBAL_COMPANY_ID } from '../../config/constants.js';
+import { GLOBAL_COMPANY_ID } from '../../config/0/constants.js';
 
 export async function listTenantTables(req, res, next) {
   try {

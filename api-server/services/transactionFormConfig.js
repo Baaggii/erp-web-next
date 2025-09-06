@@ -1,10 +1,10 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { tenantConfigPath, resolveConfigPath } from '../utils/configPaths.js';
 
-const filePath = path.join(process.cwd(), 'config', 'transactionForms.json');
-
-async function readConfig() {
+async function readConfig(companyId = 0) {
   try {
+    const filePath = await resolveConfigPath('transactionForms.json', companyId);
     const data = await fs.readFile(filePath, 'utf8');
     return JSON.parse(data);
   } catch {
@@ -12,7 +12,8 @@ async function readConfig() {
   }
 }
 
-async function writeConfig(cfg) {
+async function writeConfig(cfg, companyId = 0) {
+  const filePath = tenantConfigPath('transactionForms.json', companyId);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, JSON.stringify(cfg, null, 2));
 }
@@ -88,15 +89,15 @@ function parseEntry(raw = {}) {
   };
 }
 
-export async function getFormConfig(table, name) {
-  const cfg = await readConfig();
+export async function getFormConfig(table, name, companyId = 0) {
+  const cfg = await readConfig(companyId);
   const byTable = cfg[table] || {};
   const raw = byTable[name];
   return parseEntry(raw);
 }
 
-export async function getConfigsByTable(table) {
-  const cfg = await readConfig();
+export async function getConfigsByTable(table, companyId = 0) {
+  const cfg = await readConfig(companyId);
   const byTable = cfg[table] || {};
   const result = {};
   for (const [name, info] of Object.entries(byTable)) {
@@ -105,8 +106,8 @@ export async function getConfigsByTable(table) {
   return result;
 }
 
-export async function getConfigsByTransTypeValue(val) {
-  const cfg = await readConfig();
+export async function getConfigsByTransTypeValue(val, companyId = 0) {
+  const cfg = await readConfig(companyId);
   const result = [];
   for (const [tbl, names] of Object.entries(cfg)) {
     for (const [name, info] of Object.entries(names)) {
@@ -122,9 +123,9 @@ export async function getConfigsByTransTypeValue(val) {
   return result;
 }
 
-export async function findTableByProcedure(proc) {
+export async function findTableByProcedure(proc, companyId = 0) {
   if (!proc) return null;
-  const cfg = await readConfig();
+  const cfg = await readConfig(companyId);
   for (const [tbl, names] of Object.entries(cfg)) {
     for (const info of Object.values(names)) {
       const parsed = parseEntry(info);
@@ -134,8 +135,11 @@ export async function findTableByProcedure(proc) {
   return null;
 }
 
-export async function listTransactionNames({ moduleKey, branchId, departmentId } = {}) {
-  const cfg = await readConfig();
+export async function listTransactionNames(
+  { moduleKey, branchId, departmentId } = {},
+  companyId = 0,
+) {
+  const cfg = await readConfig(companyId);
   const result = {};
   const bId = branchId ? Number(branchId) : null;
   const dId = departmentId ? Number(departmentId) : null;
@@ -154,7 +158,13 @@ export async function listTransactionNames({ moduleKey, branchId, departmentId }
   return result;
 }
 
-export async function setFormConfig(table, name, config, options = {}) {
+export async function setFormConfig(
+  table,
+  name,
+  config,
+  options = {},
+  companyId = 0,
+) {
   const {
     visibleFields = [],
     requiredFields = [],
@@ -204,7 +214,7 @@ export async function setFormConfig(table, name, config, options = {}) {
   const ad = Array.isArray(allowedDepartments)
     ? allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
     : [];
-  const cfg = await readConfig();
+  const cfg = await readConfig(companyId);
   if (!cfg[table]) cfg[table] = {};
   cfg[table][name] = {
     visibleFields: arrify(visibleFields),
@@ -243,14 +253,14 @@ export async function setFormConfig(table, name, config, options = {}) {
   if (editableFields !== undefined) {
     cfg[table][name].editableFields = arrify(editableFields);
   }
-  await writeConfig(cfg);
+  await writeConfig(cfg, companyId);
   return cfg[table][name];
 }
 
-export async function deleteFormConfig(table, name) {
-  const cfg = await readConfig();
+export async function deleteFormConfig(table, name, companyId = 0) {
+  const cfg = await readConfig(companyId);
   if (!cfg[table] || !cfg[table][name]) return;
   delete cfg[table][name];
   if (Object.keys(cfg[table]).length === 0) delete cfg[table];
-  await writeConfig(cfg);
+  await writeConfig(cfg, companyId);
 }

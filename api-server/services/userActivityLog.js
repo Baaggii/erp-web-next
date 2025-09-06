@@ -1,5 +1,5 @@
 import { pool } from '../../db/index.js';
-import { GLOBAL_COMPANY_ID } from '../../config/constants.js';
+import { GLOBAL_COMPANY_ID } from '../../config/0/constants.js';
 
 export async function logUserAction(
   {

@@ -10,7 +10,7 @@ router.post('/', requireAuth, async (req, res, next) => {
     if (!table || !sql) {
       return res.status(400).json({ message: 'table and sql required' });
     }
-    await saveSql(table, sql);
+    await saveSql(table, sql, req.user.companyId);
     res.sendStatus(204);
   } catch (err) {
     next(err);

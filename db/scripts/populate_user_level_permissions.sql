@@ -1,5 +1,5 @@
 SET collation_connection = 'utf8mb4_unicode_ci';
-SET @json = LOAD_FILE('configs/permissionActions.json');
+SET @json = LOAD_FILE('config/0/configs/permissionActions.json');
 
 -- Ensure system admin remains unrestricted
 DELETE FROM user_level_permissions WHERE userlevel_id = 1 AND company_id = 0;

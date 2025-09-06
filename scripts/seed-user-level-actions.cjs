@@ -5,10 +5,24 @@ const mysql = require('mysql2/promise');
 
 (async () => {
   try {
-    const configPath = path.join(process.cwd(), 'config', 'userLevelActions.json');
-    const raw = await fs.readFile(configPath, 'utf8');
+    const companyId = process.env.COMPANY_ID || 0;
+    const tenantPath = path.join(
+      process.cwd(),
+      'config',
+      String(companyId),
+      'userLevelActions.json',
+    );
+    let raw;
+    try {
+      raw = await fs.readFile(tenantPath, 'utf8');
+    } catch {
+      raw = await fs.readFile(
+        path.join(process.cwd(), 'config', '0', 'userLevelActions.json'),
+        'utf8',
+      );
+    }
     const actions = JSON.parse(raw);
-    const { GLOBAL_COMPANY_ID } = await import('../config/constants.js');
+    const { GLOBAL_COMPANY_ID } = await import('../config/0/constants.js');
 
     const pool = mysql.createPool({
       host: process.env.DB_HOST,

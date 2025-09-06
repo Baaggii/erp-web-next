@@ -11,9 +11,41 @@ import {
   deleteProcedure,
 } from '../../db/index.js';
 
+function tenantDir(companyId = 0) {
+  return path.join(
+    process.cwd(),
+    'config',
+    String(companyId),
+    'uploads',
+    'report_builder',
+  );
+}
+
+async function resolveDir(companyId = 0) {
+  const dir = tenantDir(companyId);
+  try {
+    await fs.access(dir);
+    return dir;
+  } catch {
+    return tenantDir(0);
+  }
+}
+
+function tenantProcDir(companyId = 0) {
+  return path.join(tenantDir(companyId), 'procedures');
+}
+
+async function resolveProcDir(companyId = 0) {
+  const dir = tenantProcDir(companyId);
+  try {
+    await fs.access(dir);
+    return dir;
+  } catch {
+    return tenantProcDir(0);
+  }
+}
+
 const router = express.Router();
-const CONFIG_DIR = path.join(process.cwd(), 'uploads', 'report_builder');
-const PROC_DIR = path.join(CONFIG_DIR, 'procedures');
 
 // List database tables
 router.get('/tables', requireAuth, async (req, res, next) => {
@@ -91,8 +123,9 @@ router.post('/procedure-files/:name', requireAuth, async (req, res, next) => {
     const { sql } = req.body || {};
     if (!name) return res.status(400).json({ message: 'name required' });
     if (!sql) return res.status(400).json({ message: 'sql required' });
-    await fs.mkdir(PROC_DIR, { recursive: true });
-    const file = path.join(PROC_DIR, `${name}.json`);
+    const dir = tenantProcDir(req.user.companyId);
+    await fs.mkdir(dir, { recursive: true });
+    const file = path.join(dir, `${name}.json`);
     await fs.writeFile(file, JSON.stringify({ sql }, null, 2));
     res.json({ ok: true });
   } catch (err) {
@@ -104,8 +137,9 @@ router.post('/procedure-files/:name', requireAuth, async (req, res, next) => {
 router.get('/procedure-files', requireAuth, async (req, res, next) => {
   try {
     const { prefix = '' } = req.query;
-    await fs.mkdir(PROC_DIR, { recursive: true });
-    const files = await fs.readdir(PROC_DIR);
+    const dir = await resolveProcDir(req.user.companyId);
+    await fs.mkdir(dir, { recursive: true });
+    const files = await fs.readdir(dir);
     const names = files
       .filter((f) => f.endsWith('.json'))
       .map((f) => f.replace(/\.json$/, ''))
@@ -124,7 +158,8 @@ router.get('/procedure-files', requireAuth, async (req, res, next) => {
 router.get('/procedure-files/:name', requireAuth, async (req, res, next) => {
   try {
     const { name } = req.params;
-    const file = path.join(PROC_DIR, `${name}.json`);
+    const dir = await resolveProcDir(req.user.companyId);
+    const file = path.join(dir, `${name}.json`);
     const text = await fs.readFile(file, 'utf-8');
     res.json(JSON.parse(text));
   } catch (err) {
@@ -137,8 +172,9 @@ router.post('/configs/:name', requireAuth, async (req, res, next) => {
   try {
     const { name } = req.params;
     if (!name) return res.status(400).json({ message: 'name required' });
-    await fs.mkdir(CONFIG_DIR, { recursive: true });
-    const file = path.join(CONFIG_DIR, `${name}.json`);
+    const dir = tenantDir(req.user.companyId);
+    await fs.mkdir(dir, { recursive: true });
+    const file = path.join(dir, `${name}.json`);
     await fs.writeFile(file, JSON.stringify(req.body || {}, null, 2));
     res.json({ ok: true });
   } catch (err) {
@@ -150,8 +186,9 @@ router.post('/configs/:name', requireAuth, async (req, res, next) => {
 router.get('/configs', requireAuth, async (req, res, next) => {
   try {
     const { prefix = '' } = req.query;
-    await fs.mkdir(CONFIG_DIR, { recursive: true });
-    const files = await fs.readdir(CONFIG_DIR);
+    const dir = await resolveDir(req.user.companyId);
+    await fs.mkdir(dir, { recursive: true });
+    const files = await fs.readdir(dir);
     const names = files
       .filter((f) => f.endsWith('.json'))
       .map((f) => f.replace(/\.json$/, ''))
@@ -170,7 +207,8 @@ router.get('/configs', requireAuth, async (req, res, next) => {
 router.get('/configs/:name', requireAuth, async (req, res, next) => {
   try {
     const { name } = req.params;
-    const file = path.join(CONFIG_DIR, `${name}.json`);
+    const dir = await resolveDir(req.user.companyId);
+    const file = path.join(dir, `${name}.json`);
     const text = await fs.readFile(file, 'utf-8');
     res.json(JSON.parse(text));
   } catch (err) {

@@ -67,5 +67,11 @@
       "name",
       "company_id"
     ]
+  },
+  "MiXeD": {
+    "idField": "id",
+    "displayFields": [
+      "x"
+    ]
   }
 }

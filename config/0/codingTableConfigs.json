@@ -6143,5 +6143,13 @@
     "autoIncStart": "1",
     "triggers": "",
     "foreignKeys": ""
+  },
+  "tbl": {
+    "viewSource": {
+      "code": {
+        "table": "tbl_code",
+        "view": "v_code"
+      }
+    }
   }
 }

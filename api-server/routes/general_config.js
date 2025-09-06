@@ -7,7 +7,7 @@ const router = express.Router();
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
-    const cfg = await getGeneralConfig();
+    const cfg = await getGeneralConfig(req.user.companyId);
     res.json(cfg);
   } catch (err) {
     next(err);
@@ -20,7 +20,7 @@ router.put('/', requireAuth, async (req, res, next) => {
       req.session ||
       (await getEmploymentSession(req.user.empid, req.user.companyId));
     if (!session?.permissions?.system_settings) return res.sendStatus(403);
-    const cfg = await updateGeneralConfig(req.body || {});
+    const cfg = await updateGeneralConfig(req.body || {}, req.user.companyId);
     res.json(cfg);
   } catch (err) {
     next(err);

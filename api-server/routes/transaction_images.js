@@ -36,10 +36,10 @@ router.delete('/cleanup/:days?', requireAuth, async (req, res, next) => {
   try {
     let days = parseInt(req.params.days || req.query.days, 10);
     if (!days || Number.isNaN(days)) {
-      const cfg = await getGeneralConfig();
+      const cfg = await getGeneralConfig(req.user.companyId);
       days = cfg.images?.cleanupDays || 30;
     }
-    const removed = await cleanupOldImages(days);
+    const removed = await cleanupOldImages(days, req.user.companyId);
     res.json({ removed });
   } catch (err) {
     next(err);
@@ -50,7 +50,7 @@ router.get('/detect_incomplete', requireAuth, async (req, res, next) => {
   try {
     const page = parseInt(req.query.page, 10) || 1;
     const perPage = parseInt(req.query.pageSize, 10) || 100;
-    const data = await detectIncompleteImages(page, perPage);
+    const data = await detectIncompleteImages(page, perPage, req.user.companyId);
     res.json(data);
   } catch (err) {
     next(err);
@@ -60,7 +60,7 @@ router.get('/detect_incomplete', requireAuth, async (req, res, next) => {
 router.post('/fix_incomplete', requireAuth, async (req, res, next) => {
   try {
     const arr = Array.isArray(req.body?.list) ? req.body.list : [];
-    const fixed = await fixIncompleteImages(arr);
+    const fixed = await fixIncompleteImages(arr, req.user.companyId);
     res.json({ fixed });
   } catch (err) {
     next(err);
@@ -101,7 +101,7 @@ router.post(
           originalname: m.originalName || f.originalname,
         };
       });
-      const { list, summary } = await checkUploadedImages(withMeta, names);
+      const { list, summary } = await checkUploadedImages(withMeta, names, req.user.companyId);
       res.json({ list, summary });
     } catch (err) {
       next(err);
@@ -112,7 +112,7 @@ router.post(
 router.post('/upload_scan', requireAuth, async (req, res, next) => {
   try {
     const names = Array.isArray(req.body?.names) ? req.body.names : [];
-    const { list, skipped, summary } = await detectIncompleteFromNames(names);
+    const { list, skipped, summary } = await detectIncompleteFromNames(names, req.user.companyId);
     res.json({ list, skipped, summary });
   } catch (err) {
     next(err);
@@ -122,7 +122,7 @@ router.post('/upload_scan', requireAuth, async (req, res, next) => {
 router.post('/upload_commit', requireAuth, async (req, res, next) => {
   try {
     const arr = Array.isArray(req.body?.list) ? req.body.list : [];
-    const uploaded = await commitUploadedImages(arr);
+    const uploaded = await commitUploadedImages(arr, req.user.companyId);
     res.json({ uploaded });
   } catch (err) {
     next(err);
@@ -133,7 +133,7 @@ router.get('/search/:value', requireAuth, async (req, res, next) => {
   try {
     const page = parseInt(req.query.page, 10) || 1;
     const perPage = parseInt(req.query.pageSize, 10) || 20;
-    const { files, total } = await searchImages(req.params.value, page, perPage);
+    const { files, total } = await searchImages(req.params.value, page, perPage, req.user.companyId);
     res.json({ files: toAbsolute(req, files), total, page, perPage });
   } catch (err) {
     next(err);
@@ -150,6 +150,7 @@ router.post('/:table/:name', requireAuth, upload.array('images'), async (req, re
       req.params.name,
       req.files,
       req.query.folder,
+      req.user.companyId,
     );
     res.json(toAbsolute(req, files));
   } catch (err) {
@@ -163,6 +164,7 @@ router.get('/:table/:name', requireAuth, async (req, res, next) => {
       req.params.table,
       req.params.name,
       req.query.folder,
+      req.user.companyId,
     );
     res.json(toAbsolute(req, files));
   } catch (err) {
@@ -177,6 +179,7 @@ router.post('/:table/:oldName/rename/:newName', requireAuth, async (req, res, ne
       req.params.oldName,
       req.params.newName,
       req.query.folder,
+      req.user.companyId,
     );
     res.json(toAbsolute(req, files));
   } catch (err) {
@@ -190,6 +193,7 @@ router.delete('/:table/:name/:file', requireAuth, async (req, res, next) => {
       req.params.table,
       req.params.file,
       req.query.folder,
+      req.user.companyId,
     );
     res.json({ ok });
   } catch (err) {
@@ -203,6 +207,7 @@ router.delete('/:table/:name', requireAuth, async (req, res, next) => {
       req.params.table,
       req.params.name,
       req.query.folder,
+      req.user.companyId,
     );
     res.json({ deleted: count });
   } catch (err) {

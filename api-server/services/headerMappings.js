@@ -1,10 +1,10 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { tenantConfigPath, resolveConfigPath } from '../utils/configPaths.js';
 
-const filePath = path.join(process.cwd(), 'config', 'headerMappings.json');
-
-async function readMappings() {
+async function readMappings(companyId = 0) {
   try {
+    const filePath = await resolveConfigPath('headerMappings.json', companyId);
     const data = await fs.readFile(filePath, 'utf8');
     return JSON.parse(data);
   } catch {
@@ -12,12 +12,14 @@ async function readMappings() {
   }
 }
 
-async function writeMappings(map) {
+async function writeMappings(map, companyId = 0) {
+  const filePath = tenantConfigPath('headerMappings.json', companyId);
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, JSON.stringify(map, null, 2) + '\n', 'utf8');
 }
 
-export async function getMappings(headers = [], lang) {
-  const map = await readMappings();
+export async function getMappings(headers = [], lang, companyId = 0) {
+  const map = await readMappings(companyId);
   const result = {};
   headers.forEach((h) => {
     const entry = map[h];
@@ -58,6 +60,6 @@ export async function addMappings(newMap) {
       map[k] = v;
     }
   }
-  await writeMappings(map);
+  await writeMappings(map, companyId);
   return map;
 }

@@ -6,7 +6,7 @@ import { AuthContext } from "../context/AuthContext.jsx";
 import { useToast } from "../context/ToastContext.jsx";
 import useHeaderMappings from "../hooks/useHeaderMappings.js";
 import translateWithCache from "../utils/translateWithCache.js";
-import transactionForms from "../../../config/transactionForms.json";
+import transactionForms from "../../../config/0/transactionForms.json";
 
 const formDescMap = {};
 const buttonDescMap = {};

@@ -1,8 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { pool } from '../../db/index.js';
-
-const CFG_PATH = path.join(process.cwd(), 'config', 'posTransactionConfig.json');
+import { resolveConfigPath } from '../utils/configPaths.js';
 
 function getValue(row, field) {
   const val = row?.[field];
@@ -103,8 +102,13 @@ async function upsertRow(conn, table, row) {
   return res.insertId && res.insertId !== 0 ? res.insertId : row.id;
 }
 
-export async function postPosTransaction(data, sessionInfo = {}) {
-  const cfgRaw = await fs.readFile(CFG_PATH, 'utf8');
+export async function postPosTransaction(
+  data,
+  sessionInfo = {},
+  companyId = 0,
+) {
+  const cfgPath = await resolveConfigPath('posTransactionConfig.json', companyId);
+  const cfgRaw = await fs.readFile(cfgPath, 'utf8');
   const json = JSON.parse(cfgRaw);
   const cfg = json['POS_Modmarket'];
   if (!cfg) throw new Error('POS_Modmarket config not found');

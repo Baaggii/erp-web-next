@@ -1,6 +1,7 @@
 // scripts/generateTranslations.js
 import fs from 'fs';
 import path from 'path';
+import { resolveConfigPathSync } from '../api-server/utils/configPaths.js';
 let OpenAI;
 try {
   ({ default: OpenAI } = await import('../api-server/utils/openaiClient.js'));
@@ -21,8 +22,15 @@ const languageNames = {
   fr: 'French',
   ru: 'Russian',
 };
-const headerMappingsPath = path.resolve('config/headerMappings.json');
-const transactionFormsPath = path.resolve('config/transactionForms.json');
+const companyId = process.env.COMPANY_ID || 0;
+const headerMappingsPath = resolveConfigPathSync(
+  'headerMappings.json',
+  companyId,
+);
+const transactionFormsPath = resolveConfigPathSync(
+  'transactionForms.json',
+  companyId,
+);
 const localesDir = path.resolve('src/erp.mgt.mn/locales');
 const tooltipsDir = path.join(localesDir, 'tooltips');
 const TIMEOUT_MS = 7000;
@@ -355,7 +363,10 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
 
   try {
     const ulaConfig = JSON.parse(
-      fs.readFileSync(path.resolve('config/userLevelActions.json'), 'utf8'),
+      fs.readFileSync(
+        resolveConfigPathSync('userLevelActions.json', companyId),
+        'utf8',
+      ),
     );
     function walkUla(obj, pathSegs) {
       if (!obj || typeof obj !== 'object') return;
@@ -401,7 +412,10 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
 
   try {
     const posConfig = JSON.parse(
-      fs.readFileSync(path.resolve('config/posTransactionConfig.json'), 'utf8'),
+      fs.readFileSync(
+        resolveConfigPathSync('posTransactionConfig.json', companyId),
+        'utf8',
+      ),
     );
     function walkPos(obj, pathSegs) {
       if (!obj || typeof obj !== 'object') return;
