@@ -1,6 +1,11 @@
 import { API_BASE } from './apiBase.js';
 
 let tokenPromise;
+const controllers = new Set();
+window.addEventListener('beforeunload', () => {
+  controllers.forEach(controller => controller.abort());
+  controllers.clear();
+});
 
 function dispatchStart(key) {
   window.dispatchEvent(new CustomEvent('loading:start', { detail: { key } }));
@@ -27,6 +32,14 @@ async function getToken() {
 const originalFetch = window.fetch.bind(window);
 window.fetch = async (url, options = {}, _retry) => {
   const { skipLoader, skipErrorToast, ...opts } = options || {};
+  const controller = new AbortController();
+  controllers.add(controller);
+  if (opts.signal) {
+    const userSignal = opts.signal;
+    if (userSignal.aborted) controller.abort();
+    else userSignal.addEventListener('abort', () => controller.abort(), { once: true });
+  }
+  opts.signal = controller.signal;
   const key = skipLoader ? null : currentKey();
   if (key) dispatchStart(key);
   const method = (opts.method || 'GET').toUpperCase();
@@ -39,6 +52,7 @@ window.fetch = async (url, options = {}, _retry) => {
   try {
     res = await originalFetch(url, opts);
   } finally {
+    controllers.delete(controller);
     if (key) dispatchEnd(key);
   }
   if (res.status === 401 && !_retry) {
