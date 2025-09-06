@@ -1,5 +1,7 @@
 import express from 'express';
 import multer from 'multer';
+import fs from 'fs';
+import path from 'path';
 import { requireAuth } from '../middlewares/auth.js';
 import {
   saveImages,
@@ -18,7 +20,17 @@ import {
 import { getGeneralConfig } from '../services/generalConfig.js';
 
 const router = express.Router();
-const upload = multer({ dest: 'uploads/tmp' });
+
+const storage = multer.diskStorage({
+  destination(req, file, cb) {
+    const companyId = req.user?.companyId || 0;
+    const dest = path.join('uploads', String(companyId), 'tmp');
+    fs.mkdirSync(dest, { recursive: true });
+    cb(null, dest);
+  },
+});
+
+const upload = multer({ storage });
 
 function toAbsolute(req, list) {
   const host = req.get('x-forwarded-host') || req.get('host');

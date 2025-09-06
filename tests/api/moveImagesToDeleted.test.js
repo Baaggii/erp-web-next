@@ -5,7 +5,8 @@ import path from 'path';
 import { moveImagesToDeleted } from '../../api-server/services/transactionImageService.js';
 
 const cfgPath = path.join(process.cwd(), 'config', 'transactionForms.json');
-const baseDir = path.join(process.cwd(), 'uploads', 'txn_images');
+const companyId = 0;
+const baseDir = path.join(process.cwd(), 'uploads', String(companyId), 'txn_images');
 
 await test.skip('moveImagesToDeleted archives images', async () => {
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
@@ -22,7 +23,7 @@ await test.skip('moveImagesToDeleted archives images', async () => {
   const fileName = 'img001_123.jpg';
   await fs.writeFile(path.join(srcDir, fileName), 'x');
 
-  const moved = await moveImagesToDeleted('transactions_test', row);
+  const moved = await moveImagesToDeleted('transactions_test', row, companyId);
   assert.equal(moved, 1);
   const targetDir = path.join(baseDir, 'deleted_transactions');
   const files = await fs.readdir(targetDir);

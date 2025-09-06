@@ -18,7 +18,8 @@ function mockPool(handler) {
 }
 
 const cfgPath = path.join(process.cwd(), 'config', '0', 'transactionForms.json');
-const baseDir = path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test');
+const companyId = 0;
+const baseDir = path.join(process.cwd(), 'uploads', String(companyId), 'txn_images', 'transactions_test');
 
 await test('detectIncompleteImages finds and fixes files', async () => {
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
@@ -51,16 +52,16 @@ await test('detectIncompleteImages finds and fixes files', async () => {
     }),
   );
 
-  const { list, hasMore } = await detectIncompleteImages(1);
+  const { list, hasMore } = await detectIncompleteImages(1, undefined, companyId);
   assert.equal(hasMore, false);
   assert.equal(list.length, 1);
   assert.ok(list[0].newName.includes('num001'));
 
-  const count = await fixIncompleteImages(list);
+  const count = await fixIncompleteImages(list, companyId);
   assert.equal(count, 1);
 
   const exists = await fs.readdir(
-    path.join(process.cwd(), 'uploads', 'txn_images', 't1', 'a'),
+    path.join(process.cwd(), 'uploads', String(companyId), 'txn_images', 't1', 'a'),
   );
   assert.ok(exists.some((f) => f.includes('num001')));
 
@@ -71,7 +72,7 @@ await test('detectIncompleteImages finds and fixes files', async () => {
 
 await test('detectIncompleteImages scans entire folder', async () => {
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
-  const dir = path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test');
+  const dir = path.join(process.cwd(), 'uploads', String(companyId), 'txn_images', 'transactions_test');
   await fs.mkdir(dir, { recursive: true });
   await fs.writeFile(path.join(dir, 'a_b_c_d_e.jpg'), 'x');
   await fs.writeFile(path.join(dir, 'unique123.jpg'), 'x');
@@ -113,7 +114,7 @@ await test('detectIncompleteImages scans entire folder', async () => {
     }),
   );
 
-  const { list } = await detectIncompleteImages(1, 1);
+  const { list } = await detectIncompleteImages(1, 1, companyId);
   assert.equal(list.length, 1);
   assert.equal(list[0].newName, 'img006_unique123.jpg');
 
@@ -124,7 +125,7 @@ await test('detectIncompleteImages scans entire folder', async () => {
 
 await test('detectIncompleteImages skips files with transaction codes', { concurrency: false }, async () => {
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
-  const dir = path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test');
+  const dir = path.join(process.cwd(), 'uploads', String(companyId), 'txn_images', 'transactions_test');
   await fs.mkdir(dir, { recursive: true });
   const ts = 1754112726584;
   await fs.writeFile(path.join(dir, `uuid12345.jpg`), 'x');
@@ -172,7 +173,7 @@ await test('detectIncompleteImages skips files with transaction codes', { concur
     }),
   );
 
-  const { list, skipped } = await detectIncompleteImages(1, 10);
+  const { list, skipped } = await detectIncompleteImages(1, 10, companyId);
   assert.equal(list.length, 1);
   assert.equal(list[0].currentName, 'uuid12345.jpg');
   assert.equal(skipped.length, 1);
@@ -186,7 +187,7 @@ await test('detectIncompleteImages skips files with transaction codes', { concur
 
 await test('checkUploadedImages handles object names', async () => {
   const restoreDb = mockPool(async () => [[]]);
-  const { list, summary } = await checkUploadedImages([], [{ name: 'abc.jpg' }]);
+  const { list, summary } = await checkUploadedImages([], [{ name: 'abc.jpg' }], companyId);
   assert.equal(summary.totalFiles, 1);
   assert.equal(summary.processed, 0);
   assert.equal(list.length, 1);
@@ -196,8 +197,8 @@ await test('checkUploadedImages handles object names', async () => {
 
 await test('checkUploadedImages renames on upload', async () => {
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
-  await fs.mkdir(path.join(process.cwd(), 'uploads', 'tmp'), { recursive: true });
-  const tmp = path.join(process.cwd(), 'uploads', 'tmp', 'abc12345.jpg');
+  await fs.mkdir(path.join(process.cwd(), 'uploads', String(companyId), 'tmp'), { recursive: true });
+  const tmp = path.join(process.cwd(), 'uploads', String(companyId), 'tmp', 'abc12345.jpg');
   await fs.writeFile(tmp, 'x');
 
   const row = {
@@ -224,15 +225,15 @@ await test('checkUploadedImages renames on upload', async () => {
     }),
   );
 
-  const { list, summary } = await checkUploadedImages([{ originalname: 'abc12345.jpg', path: tmp }]);
+  const { list, summary } = await checkUploadedImages([{ originalname: 'abc12345.jpg', path: tmp }], companyId);
   assert.equal(summary.processed, 1);
   assert.equal(list.length, 1);
   assert.ok(list[0].newName.includes('num002'));
 
-  const uploaded = await commitUploadedImages(list);
+  const uploaded = await commitUploadedImages(list, companyId);
   assert.equal(uploaded, 1);
   const exists = await fs.readdir(
-    path.join(process.cwd(), 'uploads', 'txn_images', 't1', 'a'),
+    path.join(process.cwd(), 'uploads', String(companyId), 'txn_images', 't1', 'a'),
   );
   assert.ok(exists.some((f) => f.includes('num002')));
 
@@ -243,12 +244,13 @@ await test('checkUploadedImages renames on upload', async () => {
 
 await test('checkUploadedImages skips files with transaction codes', async () => {
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
-  await fs.mkdir(path.join(process.cwd(), 'uploads', 'tmp'), { recursive: true });
+  await fs.mkdir(path.join(process.cwd(), 'uploads', String(companyId), 'tmp'), { recursive: true });
   const ts = 1754112726584;
-  const tmp1 = path.join(process.cwd(), 'uploads', 'tmp', 'uuid12345.jpg');
+  const tmp1 = path.join(process.cwd(), 'uploads', String(companyId), 'tmp', 'uuid12345.jpg');
   const tmp2 = path.join(
     process.cwd(),
     'uploads',
+    String(companyId),
     'tmp',
     `t1_4001_uuid12345_${ts}_abcd12.jpg`,
   );
@@ -312,7 +314,7 @@ await test('checkUploadedImages skips files with transaction codes', async () =>
 
 await test('detectIncompleteImages fallback naming', async () => {
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
-  const dir = path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test');
+  const dir = path.join(process.cwd(), 'uploads', String(companyId), 'txn_images', 'transactions_test');
   await fs.mkdir(dir, { recursive: true });
   const file = path.join(dir, 'xyz98765.jpg');
   await fs.writeFile(file, 'x');
@@ -337,14 +339,14 @@ await test('detectIncompleteImages fallback naming', async () => {
   const origCfg = await fs.readFile(cfgPath, 'utf8').catch(() => '{}');
   await fs.writeFile(cfgPath, JSON.stringify({ transactions_test: { default: {} } }));
 
-  const { list } = await detectIncompleteImages(1);
+  const { list } = await detectIncompleteImages(1, undefined, companyId);
   assert.equal(list.length, 1);
   assert.ok(list[0].newName.includes('o100_d200_b_t2'));
 
-  const moved = await fixIncompleteImages(list);
+  const moved = await fixIncompleteImages(list, companyId);
   assert.equal(moved, 1);
   const exists = await fs.readdir(
-    path.join(process.cwd(), 'uploads', 'txn_images', 't2', 'b'),
+    path.join(process.cwd(), 'uploads', String(companyId), 'txn_images', 't2', 'b'),
   );
   assert.ok(exists.some((f) => f.includes('o100_d200_b_t2')));
 
@@ -355,7 +357,7 @@ await test('detectIncompleteImages fallback naming', async () => {
 
 await test('detectIncompleteImages handles timestamped names without trtype', async () => {
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
-  const dir = path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test');
+  const dir = path.join(process.cwd(), 'uploads', String(companyId), 'txn_images', 'transactions_test');
   await fs.mkdir(dir, { recursive: true });
   const ts = 1754112726584;
   const file = path.join(dir, `300021_300021_4001_${ts}_c2kene.jpg`);
@@ -400,14 +402,14 @@ await test('detectIncompleteImages handles timestamped names without trtype', as
     }),
   );
 
-  const { list } = await detectIncompleteImages(1);
+  const { list } = await detectIncompleteImages(1, undefined, companyId);
   assert.equal(list.length, 1);
   assert.equal(list[0].newName, `img003__${ts}_c2kene.jpg`);
 
-  const moved = await fixIncompleteImages(list);
+  const moved = await fixIncompleteImages(list, companyId);
   assert.equal(moved, 1);
   const exists = await fs.readdir(
-    path.join(process.cwd(), 'uploads', 'txn_images', 't3', '4001'),
+    path.join(process.cwd(), 'uploads', String(companyId), 'txn_images', 't3', '4001'),
   );
   assert.ok(exists.includes(`img003__${ts}_c2kene.jpg`));
 
@@ -418,7 +420,7 @@ await test('detectIncompleteImages handles timestamped names without trtype', as
 
 await test('detectIncompleteImages ignores timestamp mismatch when searching', async () => {
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
-  const dir = path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test');
+  const dir = path.join(process.cwd(), 'uploads', String(companyId), 'txn_images', 'transactions_test');
   await fs.mkdir(dir, { recursive: true });
   const ts = 1754112726584;
   const file = path.join(dir, `300021_300021_4001_${ts}_c2kene.jpg`);
@@ -463,7 +465,7 @@ await test('detectIncompleteImages ignores timestamp mismatch when searching', a
     }),
   );
 
-  const { list } = await detectIncompleteImages(1);
+  const { list } = await detectIncompleteImages(1, undefined, companyId);
   assert.equal(list.length, 1);
   assert.equal(list[0].newName, `img009__${ts}_c2kene.jpg`);
 
@@ -477,6 +479,7 @@ await test('detectIncompleteImages finds bmtr_pmid files within 2-day range', as
   const dir = path.join(
     process.cwd(),
     'uploads',
+    String(companyId),
     'txn_images',
     'transactions_test',
   );
@@ -527,7 +530,7 @@ await test('detectIncompleteImages finds bmtr_pmid files within 2-day range', as
     }),
   );
 
-  const { list } = await detectIncompleteImages(1);
+  const { list } = await detectIncompleteImages(1, undefined, companyId);
   assert.equal(list.length, 1);
   assert.equal(list[0].newName, `img011__${ts}_4rpenn.jpg`);
 
@@ -541,6 +544,7 @@ await test('detectIncompleteImages handles files without sp_primary_code', async
   const dir = path.join(
     process.cwd(),
     'uploads',
+    String(companyId),
     'txn_images',
     'transactions_test',
   );
@@ -590,7 +594,7 @@ await test('detectIncompleteImages handles files without sp_primary_code', async
     }),
   );
 
-  const { list, skipped } = await detectIncompleteImages(1);
+  const { list, skipped } = await detectIncompleteImages(1, undefined, companyId);
   assert.equal(list.length, 1);
   assert.equal(skipped.length, 0);
   assert.equal(list[0].newName, `img012__${ts}_wfrv5b.jpg`);
@@ -602,9 +606,9 @@ await test('detectIncompleteImages handles files without sp_primary_code', async
 
 await test('checkUploadedImages handles timestamped names', async () => {
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
-  await fs.mkdir(path.join(process.cwd(), 'uploads', 'tmp'), { recursive: true });
+  await fs.mkdir(path.join(process.cwd(), 'uploads', String(companyId), 'tmp'), { recursive: true });
   const ts = 1754112726584;
-  const tmp = path.join(process.cwd(), 'uploads', 'tmp', `300021_300021_4001_${ts}_c2kene.jpg`);
+  const tmp = path.join(process.cwd(), 'uploads', String(companyId), 'tmp', `300021_300021_4001_${ts}_c2kene.jpg`);
   await fs.writeFile(tmp, 'x');
 
   const row = {
@@ -653,10 +657,10 @@ await test('checkUploadedImages handles timestamped names', async () => {
   assert.equal(list.length, 1);
   assert.equal(list[0].newName, `img004__${ts}_c2kene.jpg`);
 
-  const uploaded = await commitUploadedImages(list);
+  const uploaded = await commitUploadedImages(list, companyId);
   assert.equal(uploaded, 1);
   const exists = await fs.readdir(
-    path.join(process.cwd(), 'uploads', 'txn_images', 't3', '4001'),
+    path.join(process.cwd(), 'uploads', String(companyId), 'txn_images', 't3', '4001'),
   );
   assert.ok(exists.includes(`img004__${ts}_c2kene.jpg`));
 
@@ -667,7 +671,7 @@ await test('checkUploadedImages handles timestamped names', async () => {
 
 await test('detectIncompleteImages handles UUID with numeric suffix', async () => {
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
-  const dir = path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test');
+  const dir = path.join(process.cwd(), 'uploads', String(companyId), 'txn_images', 'transactions_test');
   await fs.mkdir(dir, { recursive: true });
   const file = path.join(dir, 'A5E68912-2218-41BD-BB11-E4810BB30C96-4.jpg');
   await fs.writeFile(file, 'x');
@@ -698,7 +702,7 @@ await test('detectIncompleteImages handles UUID with numeric suffix', async () =
     }),
   );
 
-  const { list } = await detectIncompleteImages(1);
+  const { list } = await detectIncompleteImages(1, undefined, companyId);
   assert.equal(list.length, 1);
   assert.equal(
     list[0].newName,
@@ -712,7 +716,7 @@ await test('detectIncompleteImages handles UUID with numeric suffix', async () =
 
 await test('detectIncompleteImages handles hyphenated ID with leading dash', async () => {
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
-  const dir = path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test');
+  const dir = path.join(process.cwd(), 'uploads', String(companyId), 'txn_images', 'transactions_test');
   await fs.mkdir(dir, { recursive: true });
   const file = path.join(dir, '-CGRA-OXSB-PSBZ-FMEY-8.jpg');
   await fs.writeFile(file, 'x');
@@ -742,7 +746,7 @@ await test('detectIncompleteImages handles hyphenated ID with leading dash', asy
     }),
   );
 
-  const { list } = await detectIncompleteImages(1);
+  const { list } = await detectIncompleteImages(1, undefined, companyId);
   assert.equal(list.length, 1);
   assert.equal(
     list[0].newName,
@@ -756,7 +760,7 @@ await test('detectIncompleteImages handles hyphenated ID with leading dash', asy
 
 await test('detectIncompleteImages renames when trtype is missing', async () => {
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
-  const dir = path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test');
+  const dir = path.join(process.cwd(), 'uploads', String(companyId), 'txn_images', 'transactions_test');
   await fs.mkdir(dir, { recursive: true });
   const file = path.join(dir, '-CGRA-OXSB-PSBZ-FMEY-8.jpg');
   await fs.writeFile(file, 'x');
@@ -787,7 +791,7 @@ await test('detectIncompleteImages renames when trtype is missing', async () => 
   const origCfg = await fs.readFile(cfgPath, 'utf8').catch(() => '{}');
   await fs.writeFile(cfgPath, JSON.stringify({ transactions_test: { default: {} } }));
 
-  const { list } = await detectIncompleteImages(1);
+  const { list } = await detectIncompleteImages(1, undefined, companyId);
   assert.equal(list.length, 1);
   assert.equal(list[0].newName, '111_o1_d1_x_x_CGRA-OXSB-PSBZ-FMEY-8.jpg');
 
@@ -798,7 +802,7 @@ await test('detectIncompleteImages renames when trtype is missing', async () => 
 
 await test('detectIncompleteImages handles extra unique before timestamp', async () => {
   await fs.rm(path.join(process.cwd(), 'uploads'), { recursive: true, force: true });
-  const dir = path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test');
+  const dir = path.join(process.cwd(), 'uploads', String(companyId), 'txn_images', 'transactions_test');
   await fs.mkdir(dir, { recursive: true });
   const ts = 1753974108927;
   const file = path.join(
@@ -846,17 +850,17 @@ await test('detectIncompleteImages handles extra unique before timestamp', async
     }),
   );
 
-  const { list } = await detectIncompleteImages(1);
+  const { list } = await detectIncompleteImages(1, undefined, companyId);
   assert.equal(list.length, 1);
   assert.equal(
     list[0].newName,
     `img007_ydzfh-sdang-cxfxb-kajww_akihl-zukov-ulioe-fhnde__${ts}_oge4m7.jpg`,
   );
 
-  const moved = await fixIncompleteImages(list);
+  const moved = await fixIncompleteImages(list, companyId);
   assert.equal(moved, 1);
   const exists = await fs.readdir(
-    path.join(process.cwd(), 'uploads', 'txn_images', 't6', '4001'),
+    path.join(process.cwd(), 'uploads', String(companyId), 'txn_images', 't6', '4001'),
   );
   assert.ok(
     exists.includes(
@@ -919,7 +923,7 @@ await test('detectIncompleteFromNames reports unflagged reasons', async () => {
   const { list, skipped, summary } = await detectIncompleteFromNames([
     'a.jpg',
     '12345678-1234-1234-1234-123456789abc_t1_4001.jpg',
-  ]);
+  ], companyId);
   assert.equal(list.length, 0);
   assert.equal(skipped.length, 2);
   assert.equal(summary.skipped, 2);

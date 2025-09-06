@@ -93,12 +93,14 @@ app.set("io", io);
 const imgCfg = await getGeneralConfig();
 const imgBase = imgCfg.images?.basePath || "uploads";
 const projectRoot = path.resolve(__dirname, "../");
-const uploadsDir = path.isAbsolute(imgBase)
+const uploadsRoot = path.isAbsolute(imgBase)
   ? imgBase
   : path.join(projectRoot, imgBase);
-if (fs.existsSync(uploadsDir)) {
-  app.use(`/api/${imgBase}`, express.static(uploadsDir));
-}
+app.use(`/api/${imgBase}/:companyId`, (req, res, next) => {
+  const dir = path.join(uploadsRoot, req.params.companyId);
+  if (!fs.existsSync(dir)) return res.sendStatus(404);
+  return express.static(dir)(req, res, next);
+});
 
 // Health-check: also verify DB connection
 app.get("/api/auth/health", async (req, res, next) => {

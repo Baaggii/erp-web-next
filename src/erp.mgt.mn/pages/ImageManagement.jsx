@@ -1,6 +1,7 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useContext } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
+import { AuthContext } from '../context/AuthContext.jsx';
 
 const FOLDER_STATE_KEY = 'imgMgmtFolderState';
 
@@ -77,6 +78,7 @@ function extractDateFromName(name) {
 
 export default function ImageManagement() {
   const { addToast } = useToast();
+  const { company } = useContext(AuthContext);
   const [days, setDays] = useState('');
   const [result, setResult] = useState(null);
   const [tab, setTab] = useState('cleanup');
@@ -543,7 +545,7 @@ export default function ImageManagement() {
         if (scanCancelRef.current) return;
         let res;
         try {
-          res = await fetch('/api/transaction_images/upload_scan', {
+          res = await fetch(`/api/transaction_images/upload_scan${company != null ? `?companyId=${encodeURIComponent(company)}` : ''}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
@@ -620,9 +622,10 @@ export default function ImageManagement() {
   }
 
   async function handleCleanup() {
-    const path = days ? `/api/transaction_images/cleanup/${days}` : '/api/transaction_images/cleanup';
+    const base = days ? `/api/transaction_images/cleanup/${days}` : '/api/transaction_images/cleanup';
+    const url = `${base}${company != null ? `?companyId=${encodeURIComponent(company)}` : ''}`;
     try {
-      const res = await fetch(path, { method: 'DELETE', credentials: 'include' });
+      const res = await fetch(url, { method: 'DELETE', credentials: 'include' });
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
         const removed = data.removed || 0;
@@ -641,7 +644,7 @@ export default function ImageManagement() {
     detectAbortRef.current = controller;
     setActiveOp('detect');
     try {
-      const res = await fetch(`/api/transaction_images/detect_incomplete?page=${p}&pageSize=${pageSize}`, {
+      const res = await fetch(`/api/transaction_images/detect_incomplete?page=${p}&pageSize=${pageSize}${company != null ? `&companyId=${encodeURIComponent(company)}` : ''}`, {
         credentials: 'include',
         signal: controller.signal,
       });
@@ -714,7 +717,7 @@ export default function ImageManagement() {
   async function applyFixesSelection(list, sel) {
     const items = list.filter((p) => sel.includes(p.currentName) && !p.processed);
     if (items.length === 0) return;
-    const res = await fetch('/api/transaction_images/fix_incomplete', {
+    const res = await fetch(`/api/transaction_images/fix_incomplete${company != null ? `?companyId=${encodeURIComponent(company)}` : ''}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -757,7 +760,7 @@ export default function ImageManagement() {
         idxMap.set(u.id, idx);
         return { name: u.originalName, index: idx };
       });
-      const res = await fetch('/api/transaction_images/upload_check', {
+      const res = await fetch(`/api/transaction_images/upload_check${company != null ? `?companyId=${encodeURIComponent(company)}` : ''}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -958,13 +961,13 @@ export default function ImageManagement() {
             }),
           );
         }
-        try {
-          const res = await fetch('/api/transaction_images/upload_check', {
-            method: 'POST',
-            body: formData,
-            credentials: 'include',
-            signal: controller.signal,
-          });
+          try {
+            const res = await fetch(`/api/transaction_images/upload_check${company != null ? `?companyId=${encodeURIComponent(company)}` : ''}`, {
+              method: 'POST',
+              body: formData,
+              credentials: 'include',
+              signal: controller.signal,
+            });
           if (!res.ok) throw new Error('bad response');
           const data = await res.json().catch(() => ({}));
           const list = Array.isArray(data.list) ? data.list : null;
@@ -1094,7 +1097,7 @@ export default function ImageManagement() {
     setActiveOp('commit');
 
     try {
-      const res = await fetch('/api/transaction_images/upload_commit', {
+      const res = await fetch(`/api/transaction_images/upload_commit${company != null ? `?companyId=${encodeURIComponent(company)}` : ''}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

@@ -4,7 +4,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import { cleanupOldImages } from '../../api-server/services/transactionImageService.js';
 
-const baseDir = path.join(process.cwd(), 'uploads', 'txn_images', 'test_cleanup');
+const companyId = 0;
+const baseDir = path.join(process.cwd(), 'uploads', String(companyId), 'txn_images', 'test_cleanup');
 
 test('cleanupOldImages removes old files', { concurrency: false }, async () => {
   await fs.mkdir(baseDir, { recursive: true });
@@ -13,7 +14,7 @@ test('cleanupOldImages removes old files', { concurrency: false }, async () => {
   const oldTime = Date.now() - 40 * 24 * 60 * 60 * 1000;
   await fs.utimes(file, oldTime / 1000, oldTime / 1000);
 
-  const removed = await cleanupOldImages(30);
+  const removed = await cleanupOldImages(30, companyId);
 
   let exists = true;
   try {

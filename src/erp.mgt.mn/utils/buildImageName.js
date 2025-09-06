@@ -1,4 +1,4 @@
-export default function buildImageName(row = {}, fields = [], columnCaseMap = {}) {
+export default function buildImageName(row = {}, fields = [], columnCaseMap = {}, companyId) {
   const missing = [];
   function getVal(obj, field) {
     if (!obj) return undefined;
@@ -30,5 +30,7 @@ export default function buildImageName(row = {}, fields = [], columnCaseMap = {}
       row[columnCaseMap['imagename']];
     safe = sanitize(fallback || '');
   }
-  return { name: safe, missing };
+  const url =
+    companyId != null && safe ? `/api/uploads/${companyId}/${safe}` : undefined;
+  return { name: safe, missing, url };
 }
