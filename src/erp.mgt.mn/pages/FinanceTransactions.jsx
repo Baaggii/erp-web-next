@@ -28,6 +28,20 @@ function normalizeDateInput(value, format) {
   return v;
 }
 
+function buildFieldTypeMap(rows) {
+  const map = {};
+  if (!Array.isArray(rows) || rows.length === 0) return map;
+  Object.keys(rows[0]).forEach((c) => {
+    const lower = c.toLowerCase();
+    if (lower.includes('time') && !lower.includes('date')) {
+      map[c] = 'time';
+    } else if (lower.includes('timestamp') || lower.includes('date')) {
+      map[c] = 'date';
+    }
+  });
+  return map;
+}
+
 function isEqual(a, b) {
   try {
     return JSON.stringify(a) === JSON.stringify(b);
@@ -445,7 +459,12 @@ useEffect(() => {
           `${label} returned ${rows.length} row${rows.length === 1 ? '' : 's'}`,
           'success',
         );
-        setReportResult({ name: selectedProc, params: paramMap, rows });
+        setReportResult({
+          name: selectedProc,
+          params: paramMap,
+          rows,
+          fieldTypeMap: buildFieldTypeMap(rows),
+        });
       } else {
         addToast('Failed to run procedure', 'error');
       }
@@ -627,7 +646,8 @@ useEffect(() => {
           procedure={reportResult.name}
           params={reportResult.params}
           rows={reportResult.rows}
-          buttonPerms={buttonPerms}
+           buttonPerms={buttonPerms}
+           fieldTypeMap={reportResult.fieldTypeMap}
         />
       )}
       {transactionNames.length === 0 && (

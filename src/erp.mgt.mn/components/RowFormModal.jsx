@@ -1516,6 +1516,7 @@ const RowFormModal = function RowFormModal({
         columns={previewRow ? Object.keys(previewRow) : []}
         relations={relations}
         labels={labels}
+        fieldTypeMap={fieldTypeMap}
       />
     </>
   );

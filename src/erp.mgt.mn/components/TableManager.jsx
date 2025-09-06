@@ -2693,6 +2693,7 @@ const TableManager = forwardRef(function TableManager({
         relations={relationOpts}
         references={detailRefs}
         labels={labels}
+        fieldTypeMap={fieldTypeMap}
       />
       <RowImageUploadModal
         visible={uploadRow !== null}

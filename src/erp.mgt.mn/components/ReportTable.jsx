@@ -55,7 +55,13 @@ function isCountColumn(name) {
   return f === 'count' || f === 'count()' || f.startsWith('count(');
 }
 
-export default function ReportTable({ procedure = '', params = {}, rows = [], buttonPerms = {} }) {
+export default function ReportTable({
+  procedure = '',
+  params = {},
+  rows = [],
+  buttonPerms = {},
+  fieldTypeMap = {},
+}) {
   const { user, branch, department } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const [page, setPage] = useState(1);
@@ -91,15 +97,22 @@ export default function ReportTable({ procedure = '', params = {}, rows = [], bu
   const placeholders = useMemo(() => {
     const map = {};
     columns.forEach((c) => {
-      const lower = c.toLowerCase();
-      if (lower.includes('time') && !lower.includes('date')) {
+      const typ = fieldTypeMap[c];
+      if (typ === 'time') {
         map[c] = 'HH:MM:SS';
-      } else if (lower.includes('timestamp') || lower.includes('date')) {
+      } else if (typ === 'date' || typ === 'datetime') {
         map[c] = 'YYYY-MM-DD';
+      } else if (!typ || typ === 'string') {
+        const lower = c.toLowerCase();
+        if (lower.includes('time') && !lower.includes('date')) {
+          map[c] = 'HH:MM:SS';
+        } else if (lower.includes('timestamp') || lower.includes('date')) {
+          map[c] = 'YYYY-MM-DD';
+        }
       }
     });
     return map;
-  }, [columns]);
+  }, [columns, fieldTypeMap]);
 
   const filtered = useMemo(() => {
     if (!search) return rows;
@@ -186,15 +199,22 @@ export default function ReportTable({ procedure = '', params = {}, rows = [], bu
   const modalPlaceholders = useMemo(() => {
     const map = {};
     modalColumns.forEach((c) => {
-      const lower = c.toLowerCase();
-      if (lower.includes('time') && !lower.includes('date')) {
+      const typ = fieldTypeMap[c];
+      if (typ === 'time') {
         map[c] = 'HH:MM:SS';
-      } else if (lower.includes('timestamp') || lower.includes('date')) {
+      } else if (typ === 'date' || typ === 'datetime') {
         map[c] = 'YYYY-MM-DD';
+      } else if (!typ || typ === 'string') {
+        const lower = c.toLowerCase();
+        if (lower.includes('time') && !lower.includes('date')) {
+          map[c] = 'HH:MM:SS';
+        } else if (lower.includes('timestamp') || lower.includes('date')) {
+          map[c] = 'YYYY-MM-DD';
+        }
       }
     });
     return map;
-  }, [modalColumns]);
+  }, [modalColumns, fieldTypeMap]);
 
   const modalAlign = useMemo(() => {
     const map = {};
