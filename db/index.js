@@ -40,9 +40,7 @@ try {
 import defaultModules from "./defaultModules.js";
 import { logDb } from "./debugLog.js";
 import fs from "fs/promises";
-import path from "path";
 import {
-  resolveConfigPathSync,
   tenantConfigPath,
   resolveConfigPath,
 } from "../api-server/utils/configPaths.js";
@@ -50,7 +48,23 @@ import { getDisplayFields as getDisplayCfg } from "../api-server/services/displa
 import { GLOBAL_COMPANY_ID } from "../config/0/constants.js";
 import { formatDateForDb } from "../api-server/utils/formatDate.js";
 
-const actionsPath = resolveConfigPathSync("configs/permissionActions.json");
+const permissionRegistryCache = new Map();
+
+async function loadPermissionRegistry(companyId = GLOBAL_COMPANY_ID) {
+  if (!permissionRegistryCache.has(companyId)) {
+    try {
+      const actionsPath = await resolveConfigPath(
+        "permissionActions.json",
+        companyId,
+      );
+      const raw = await fs.readFile(actionsPath, "utf8");
+      permissionRegistryCache.set(companyId, JSON.parse(raw));
+    } catch {
+      permissionRegistryCache.set(companyId, {});
+    }
+  }
+  return permissionRegistryCache.get(companyId);
+}
 
 function buildDisplayExpr(alias, cfg, fallback) {
   const fields = (cfg?.displayFields || []).map((f) => `${alias}.${f}`);
@@ -62,14 +76,22 @@ function buildDisplayExpr(alias, cfg, fallback) {
 
 const tableColumnsCache = new Map();
 
-// Load soft delete table configuration
-const softDeleteConfigPath = resolveConfigPathSync("softDeleteTables.json");
-let softDeleteConfig = {};
-try {
-  const data = await fs.readFile(softDeleteConfigPath, "utf8");
-  softDeleteConfig = JSON.parse(data);
-} catch {
-  softDeleteConfig = {};
+const softDeleteConfigCache = new Map();
+
+async function loadSoftDeleteConfig(companyId = GLOBAL_COMPANY_ID) {
+  if (!softDeleteConfigCache.has(companyId)) {
+    try {
+      const cfgPath = await resolveConfigPath(
+        "softDeleteTables.json",
+        companyId,
+      );
+      const raw = await fs.readFile(cfgPath, "utf8");
+      softDeleteConfigCache.set(companyId, JSON.parse(raw));
+    } catch {
+      softDeleteConfigCache.set(companyId, {});
+    }
+  }
+  return softDeleteConfigCache.get(companyId);
 }
 const SOFT_DELETE_CANDIDATES = [
   "is_deleted",
@@ -79,7 +101,8 @@ const SOFT_DELETE_CANDIDATES = [
   "deletedAt",
 ];
 
-async function getSoftDeleteColumn(tableName) {
+async function getSoftDeleteColumn(tableName, companyId = GLOBAL_COMPANY_ID) {
+  const softDeleteConfig = await loadSoftDeleteConfig(companyId);
   const cfgVal = softDeleteConfig[tableName];
   if (cfgVal === undefined) return null;
   const columns = await getTableColumnsSafe(tableName);
@@ -349,33 +372,30 @@ export async function getUserLevelActions(
     const perms = {};
     const [mods] = await pool.query('SELECT module_key FROM modules');
     for (const { module_key } of mods) perms[module_key] = true;
-    try {
-      const raw = await fs.readFile(actionsPath, 'utf8');
-      const registry = JSON.parse(raw);
-      const forms = registry.forms || {};
-      const permissions = registry.permissions || [];
-      if (Object.keys(forms).length || permissions.length) {
-        perms.buttons = {};
-        perms.functions = {};
-        perms.api = {};
-        perms.permissions = {};
-        for (const form of Object.values(forms)) {
-          form.buttons?.forEach((b) => {
-            const key = typeof b === 'string' ? b : b.key;
-            perms.buttons[key] = true;
-          });
-          form.functions?.forEach((f) => (perms.functions[f] = true));
-          form.api?.forEach((a) => {
-            const key = typeof a === 'string' ? a : a.key;
-            perms.api[key] = true;
-          });
-        }
-        permissions.forEach((p) => {
-          const key = typeof p === 'string' ? p : p.key;
-          perms.permissions[key] = true;
+    const registry = await loadPermissionRegistry(companyId);
+    const forms = registry.forms || {};
+    const permissions = registry.permissions || [];
+    if (Object.keys(forms).length || permissions.length) {
+      perms.buttons = {};
+      perms.functions = {};
+      perms.api = {};
+      perms.permissions = {};
+      for (const form of Object.values(forms)) {
+        form.buttons?.forEach((b) => {
+          const key = typeof b === 'string' ? b : b.key;
+          perms.buttons[key] = true;
+        });
+        form.functions?.forEach((f) => (perms.functions[f] = true));
+        form.api?.forEach((a) => {
+          const key = typeof a === 'string' ? a : a.key;
+          perms.api[key] = true;
         });
       }
-    } catch {}
+      permissions.forEach((p) => {
+        const key = typeof p === 'string' ? p : p.key;
+        perms.permissions[key] = true;
+      });
+    }
     return perms;
   }
   const perms = {};
@@ -395,9 +415,8 @@ export async function getUserLevelActions(
   return perms;
 }
 
-export async function listActionGroups() {
-  const raw = await fs.readFile(actionsPath, 'utf8');
-  const registry = JSON.parse(raw);
+export async function listActionGroups(companyId = GLOBAL_COMPANY_ID) {
+  const registry = await loadPermissionRegistry(companyId);
   const groups = {
     modules: new Set(Object.keys(registry.forms || {})),
     buttons: new Set(),
@@ -473,10 +492,13 @@ export async function setUserLevelActions(
   }
 }
 
-export async function populateMissingPermissions(allow = false, extraPermissions = []) {
+export async function populateMissingPermissions(
+  allow = false,
+  extraPermissions = [],
+  companyId = GLOBAL_COMPANY_ID,
+) {
   if (!allow) return;
-  const raw = await fs.readFile(actionsPath, 'utf8');
-  const registry = JSON.parse(raw);
+  const registry = await loadPermissionRegistry(companyId);
   const actions = [];
   const [mods] = await pool.query('SELECT module_key FROM modules');
   for (const { module_key } of mods) actions.push(['module_key', module_key]);
@@ -1493,7 +1515,7 @@ export async function deleteTableRow(
     throw err;
   }
 
-  const softCol = await getSoftDeleteColumn(tableName);
+  const softCol = await getSoftDeleteColumn(tableName, companyId);
   const now = formatDateForDb(new Date());
 
   if (pkCols.length === 1) {
@@ -1609,7 +1631,7 @@ async function deleteCascade(conn, tableName, id, visited, companyId) {
     r.columns.forEach((col, i) => params.push(col, r.values[i]));
 
     if (pkCols.length === 0) {
-      const softCol = await getSoftDeleteColumn(r.table);
+      const softCol = await getSoftDeleteColumn(r.table, companyId);
       if (softCol) {
         await conn.query(
           `UPDATE ?? SET \`${softCol}\` = 1 WHERE ${whereClause}`,
