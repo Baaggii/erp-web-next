@@ -1,7 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-
-const filePath = path.join(process.cwd(), 'config', 'generalConfig.json');
+import { tenantConfigPath, resolveConfigPath } from '../utils/configPaths.js';
 
 const defaults = {
   forms: {
@@ -43,8 +42,9 @@ const defaults = {
   },
 };
 
-async function readConfig() {
+async function readConfig(companyId = 0) {
   try {
+    const filePath = await resolveConfigPath('generalConfig.json', companyId);
     const data = await fs.readFile(filePath, 'utf8');
     const parsed = JSON.parse(data);
     if (parsed.forms || parsed.pos || parsed.general || parsed.images) {
@@ -75,17 +75,18 @@ async function readConfig() {
   }
 }
 
-async function writeConfig(cfg) {
+async function writeConfig(cfg, companyId = 0) {
+  const filePath = tenantConfigPath('generalConfig.json', companyId);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, JSON.stringify(cfg, null, 2));
 }
 
-export async function getGeneralConfig() {
-  return readConfig();
+export async function getGeneralConfig(companyId = 0) {
+  return readConfig(companyId);
 }
 
-export async function updateGeneralConfig(updates = {}) {
-  const cfg = await readConfig();
+export async function updateGeneralConfig(updates = {}, companyId = 0) {
+  const cfg = await readConfig(companyId);
   if (updates.forms) Object.assign(cfg.forms, updates.forms);
   if (updates.pos) Object.assign(cfg.pos, updates.pos);
   if (updates.general) {
@@ -94,6 +95,6 @@ export async function updateGeneralConfig(updates = {}) {
   if (updates.images) {
     Object.assign(cfg.images, updates.images);
   }
-  await writeConfig(cfg);
+  await writeConfig(cfg, companyId);
   return cfg;
 }

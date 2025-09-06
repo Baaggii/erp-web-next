@@ -40,19 +40,17 @@ try {
 import defaultModules from "./defaultModules.js";
 import { logDb } from "./debugLog.js";
 import fs from "fs/promises";
-import { existsSync } from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
+import {
+  resolveConfigPathSync,
+  tenantConfigPath,
+  resolveConfigPath,
+} from "../api-server/utils/configPaths.js";
 import { getDisplayFields as getDisplayCfg } from "../api-server/services/displayFieldConfig.js";
-import { GLOBAL_COMPANY_ID } from "../config/constants.js";
+import { GLOBAL_COMPANY_ID } from "../config/0/constants.js";
 import { formatDateForDb } from "../api-server/utils/formatDate.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const actionsPath = (() => {
-  const cwdPath = path.resolve(process.cwd(), "configs/permissionActions.json");
-  if (existsSync(cwdPath)) return cwdPath;
-  return path.resolve(__dirname, "../configs/permissionActions.json");
-})();
+const actionsPath = resolveConfigPathSync("configs/permissionActions.json");
 
 function buildDisplayExpr(alias, cfg, fallback) {
   const fields = (cfg?.displayFields || []).map((f) => `${alias}.${f}`);
@@ -65,11 +63,7 @@ function buildDisplayExpr(alias, cfg, fallback) {
 const tableColumnsCache = new Map();
 
 // Load soft delete table configuration
-const softDeleteConfigPath = path.resolve(
-  process.cwd(),
-  "config",
-  "softDeleteTables.json",
-);
+const softDeleteConfigPath = resolveConfigPathSync("softDeleteTables.json");
 let softDeleteConfig = {};
 try {
   const data = await fs.readFile(softDeleteConfigPath, "utf8");
@@ -1819,7 +1813,7 @@ export async function getProcedureRawRows(
   if (!createSql) {
     const file = `${name.replace(/[^a-z0-9_]/gi, '_')}_rows.sql`;
     await fs.writeFile(
-      path.join(process.cwd(), 'config', file),
+      tenantConfigPath(file),
       `-- No SQL found for ${name}\n`,
     );
     return { rows: [], sql: '', original: '', file };
@@ -2019,10 +2013,8 @@ export async function getProcedureRawRows(
           }
         }
         try {
-          const txt = await fs.readFile(
-            path.join(process.cwd(), 'config', 'transactionForms.json'),
-            'utf8',
-          );
+          const tfPath = await resolveConfigPath('transactionForms.json');
+          const txt = await fs.readFile(tfPath, 'utf8');
           const cfg = JSON.parse(txt);
           const set = new Set();
 
@@ -2058,10 +2050,8 @@ export async function getProcedureRawRows(
           }
         } catch {}
         try {
-          const dfTxt = await fs.readFile(
-            path.join(process.cwd(), 'config', 'tableDisplayFields.json'),
-            'utf8',
-          );
+          const dfPath = await resolveConfigPath('tableDisplayFields.json');
+          const dfTxt = await fs.readFile(dfPath, 'utf8');
           const dfCfg = JSON.parse(dfTxt);
           if (Array.isArray(dfCfg[table]?.displayFields)) {
             displayFields = dfCfg[table].displayFields.map(String);
@@ -2163,7 +2153,7 @@ export async function getProcedureRawRows(
   if (sql && sql !== originalSql) {
     content += `\n-- Transformed SQL for ${name}\n${sql}\n`;
   }
-  await fs.writeFile(path.join(process.cwd(), 'config', file), content);
+  await fs.writeFile(tenantConfigPath(file), content);
 
   try {
     const [out] = await pool.query(sql);

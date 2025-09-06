@@ -11,7 +11,7 @@ router.get('/', requireAuth, async (req, res, next) => {
   try {
     const { headers: headersParam, lang } = req.query;
     const headers = headersParam ? headersParam.split(',') : [];
-    const map = await getMappings(headers, lang);
+    const map = await getMappings(headers, lang, req.user.companyId);
     res.json(map);
   } catch (err) {
     next(err);
@@ -28,7 +28,7 @@ const postRateLimiter = rateLimit({
 // Body: { "sales": { "en": "Sales Dashboard" } }
 router.post('/', requireAuth, postRateLimiter, async (req, res, next) => {
   try {
-    await addMappings(req.body || {});
+    await addMappings(req.body || {}, req.user.companyId);
     res.sendStatus(204);
   } catch (err) {
     next(err);

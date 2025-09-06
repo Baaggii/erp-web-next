@@ -15,17 +15,17 @@ router.get('/', requireAuth, async (req, res, next) => {
   try {
     const { table, name, moduleKey, branchId, departmentId, proc } = req.query;
     if (proc) {
-      const tbl = await findTableByProcedure(proc);
+      const tbl = await findTableByProcedure(proc, req.user.companyId);
       if (tbl) res.json({ table: tbl });
       else res.status(404).json({ message: 'Table not found' });
     } else if (table && name) {
-      const cfg = await getFormConfig(table, name);
+      const cfg = await getFormConfig(table, name, req.user.companyId);
       res.json(cfg);
     } else if (table) {
-      const all = await getConfigsByTable(table);
+      const all = await getConfigsByTable(table, req.user.companyId);
       res.json(all);
     } else {
-      const names = await listTransactionNames({ moduleKey, branchId, departmentId });
+      const names = await listTransactionNames({ moduleKey, branchId, departmentId }, req.user.companyId);
       res.json(names);
     }
   } catch (err) {
@@ -38,7 +38,7 @@ router.post('/', requireAuth, async (req, res, next) => {
     const { table, name, config } = req.body;
     if (!table || !name)
       return res.status(400).json({ message: 'table and name are required' });
-    await setFormConfig(table, name, config);
+    await setFormConfig(table, name, config, {}, req.user.companyId);
     res.sendStatus(204);
   } catch (err) {
     next(err);
@@ -50,7 +50,7 @@ router.delete('/', requireAuth, async (req, res, next) => {
     const { table, name } = req.query;
     if (!table || !name)
       return res.status(400).json({ message: 'table and name are required' });
-    await deleteFormConfig(table, name);
+    await deleteFormConfig(table, name, req.user.companyId);
     res.sendStatus(204);
   } catch (err) {
     next(err);

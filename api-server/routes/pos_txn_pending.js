@@ -8,13 +8,13 @@ router.get('/', requireAuth, async (req, res, next) => {
   try {
     const { id, name } = req.query;
     if (id) {
-      const rec = await getPending(id);
+      const rec = await getPending(id, req.user.companyId);
       if (!rec || (rec.session?.employeeId && rec.session.employeeId !== req.user.empid)) {
         return res.status(404).json({ message: 'Not found' });
       }
       res.json(rec || {});
     } else {
-      const list = await listPending(name, req.user.empid);
+      const list = await listPending(name, req.user.empid, req.user.companyId);
       res.json(list);
     }
   } catch (err) {
@@ -27,7 +27,12 @@ router.post('/', requireAuth, async (req, res, next) => {
     const { id, name, data, masterId, session } = req.body;
     if (!name) return res.status(400).json({ message: 'name is required' });
     const info = { ...(session || {}), employeeId: req.user.empid };
-    const result = await savePending(id, { name, data, masterId, session: info }, req.user.empid);
+    const result = await savePending(
+      id,
+      { name, data, masterId, session: info },
+      req.user.empid,
+      req.user.companyId,
+    );
     res.json({ id: result.id });
   } catch (err) {
     next(err);
@@ -38,7 +43,7 @@ router.delete('/', requireAuth, async (req, res, next) => {
   try {
     const { id } = req.query;
     if (!id) return res.status(400).json({ message: 'id is required' });
-    await deletePending(id);
+    await deletePending(id, req.user.companyId);
     res.sendStatus(204);
   } catch (err) {
     next(err);

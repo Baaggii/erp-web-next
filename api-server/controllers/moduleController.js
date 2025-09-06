@@ -9,7 +9,7 @@ import {
 } from "../../db/index.js";
 import { logActivity } from "../utils/activityLog.js";
 import { hasAction } from "../utils/hasAction.js";
-import { GLOBAL_COMPANY_ID } from "../../config/constants.js";
+import { GLOBAL_COMPANY_ID } from "../../config/0/constants.js";
 
 export async function listModules(req, res, next) {
   try {

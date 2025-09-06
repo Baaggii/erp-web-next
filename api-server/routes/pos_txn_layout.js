@@ -8,10 +8,10 @@ router.get('/', requireAuth, async (req, res, next) => {
   try {
     const name = req.query.name;
     if (name) {
-      const cfg = await getLayout(name);
+      const cfg = await getLayout(name, req.user.companyId);
       res.json(cfg || {});
     } else {
-      const all = await getAllLayouts();
+      const all = await getAllLayouts(req.user.companyId);
       res.json(all);
     }
   } catch (err) {
@@ -23,7 +23,7 @@ router.post('/', requireAuth, async (req, res, next) => {
   try {
     const { name, layout } = req.body;
     if (!name) return res.status(400).json({ message: 'name is required' });
-    await setLayout(name, layout || {});
+    await setLayout(name, layout || {}, req.user.companyId);
     res.sendStatus(204);
   } catch (err) {
     next(err);

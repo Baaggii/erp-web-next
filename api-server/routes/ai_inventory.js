@@ -15,7 +15,7 @@ router.post('/identify', requireAuth, upload.single('image'), async (req, res, n
   try {
     if (!req.file) return res.status(400).json({ message: 'missing image' });
     const items = await identifyItems(req.file.buffer, req.file.mimetype);
-    const result = await saveResult(req.user.empid, items);
+    const result = await saveResult(req.user.empid, items, req.user.companyId);
     res.json(result);
   } catch (err) {
     next(err);
@@ -24,7 +24,7 @@ router.post('/identify', requireAuth, upload.single('image'), async (req, res, n
 
 router.get('/results', requireAuth, async (req, res, next) => {
   try {
-    const data = await listResults();
+    const data = await listResults(req.user.companyId);
     res.json(data);
   } catch (err) {
     next(err);
@@ -33,7 +33,7 @@ router.get('/results', requireAuth, async (req, res, next) => {
 
 router.post('/results/:id/confirm', requireAuth, async (req, res, next) => {
   try {
-    const rec = await confirmResult(req.params.id);
+    const rec = await confirmResult(req.params.id, req.user.companyId);
     if (!rec) return res.sendStatus(404);
     res.json(rec);
   } catch (err) {
