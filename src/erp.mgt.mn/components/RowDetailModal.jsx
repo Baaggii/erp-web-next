@@ -65,7 +65,14 @@ export default function RowDetailModal({
                   {(() => {
                     const raw = relations[c] ? labelMap[c][row[c]] || row[c] : row[c];
                     const str = String(raw ?? '');
-                    const display = placeholders[c] ? normalizeDateInput(str, placeholders[c]) : str;
+                    let display;
+                    if (placeholders[c]) {
+                      display = normalizeDateInput(str, placeholders[c]);
+                    } else if (/^\d{4}-\d{2}-\d{2}T/.test(str)) {
+                      display = normalizeDateInput(str, 'YYYY-MM-DD');
+                    } else {
+                      display = str;
+                    }
                     return display;
                   })()}
                 </td>
