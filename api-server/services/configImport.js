@@ -8,8 +8,12 @@ function isSafePath(file) {
 }
 
 export async function importConfigFiles(files = [], companyId = 0, type = '') {
-  const sourceDir = path.join(baseConfigDir, '0', type);
-  const targetDir = path.join(baseConfigDir, String(companyId), type);
+  const sourceDir = type
+    ? path.join(baseConfigDir, '0', type)
+    : path.join(baseConfigDir, '0');
+  const targetDir = type
+    ? path.join(baseConfigDir, String(companyId), type)
+    : path.join(baseConfigDir, String(companyId));
   const results = [];
   try {
     await fs.mkdir(targetDir, { recursive: true });

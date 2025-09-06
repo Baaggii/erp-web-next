@@ -5,7 +5,7 @@ import { getEmploymentSession } from '../../db/index.js';
 
 const router = express.Router();
 
-router.post('/import/:type', requireAuth, async (req, res, next) => {
+router.post('/import/:type?', requireAuth, async (req, res, next) => {
   try {
     const companyId = Number(req.query.companyId ?? req.user.companyId);
     const session =

@@ -504,7 +504,7 @@ export default function FormsManagement() {
     if (!window.confirm('Import default forms configuration?')) return;
     try {
       const res = await fetch(
-        `/api/config/import/forms?companyId=${encodeURIComponent(company ?? '')}`,
+        `/api/config/import?companyId=${encodeURIComponent(company ?? '')}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
