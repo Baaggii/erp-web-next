@@ -16,6 +16,7 @@ export default function AsyncSearchSelect({
   onFocus,
   inputStyle = {},
   companyId,
+  shouldFetch = true,
   ...rest
 }) {
   const { company, branch, department } = useContext(AuthContext);
@@ -131,12 +132,20 @@ export default function AsyncSearchSelect({
   }, [table]);
 
   useEffect(() => {
-    if (disabled || tenantMeta === null) return;
+    if (!shouldFetch || disabled || tenantMeta === null) return;
     const controller = new AbortController();
     fetchPage(1, '', false, controller.signal);
     setPage(1);
     return () => controller.abort();
-  }, [table, tenantMeta, effectiveCompanyId, branch, department, disabled]);
+  }, [
+    table,
+    tenantMeta,
+    effectiveCompanyId,
+    branch,
+    department,
+    disabled,
+    shouldFetch,
+  ]);
 
   useEffect(() => {
     if (disabled || !show || tenantMeta === null) return;

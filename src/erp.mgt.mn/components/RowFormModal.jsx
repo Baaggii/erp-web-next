@@ -960,6 +960,8 @@ const RowFormModal = function RowFormModal({
     const isColumn = columns.includes(c);
     const disabled = disabledSet.has(c.toLowerCase()) || !isColumn;
     const tip = t(c.toLowerCase(), { ns: 'tooltip', defaultValue: labels[c] || c });
+    const formVisible =
+      (inline && visible) || (typeof document !== 'undefined' && !document.hidden);
 
     if (disabled) {
       const raw = isColumn ? formVals[c] : extraVals[c];
@@ -1035,115 +1037,124 @@ const RowFormModal = function RowFormModal({
     }
 
     const control = relationConfigMap[c] ? (
-      <AsyncSearchSelect
-        title={tip}
-        table={relationConfigMap[c].table}
-        searchColumn={relationConfigMap[c].idField || relationConfigMap[c].column}
-        searchColumns={[
-          relationConfigMap[c].idField || relationConfigMap[c].column,
-          ...(relationConfigMap[c].displayFields || []),
-        ]}
-        labelFields={relationConfigMap[c].displayFields || []}
-        value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
-        onChange={(val) => {
-          setFormVals((v) => ({ ...v, [c]: val }));
-          setErrors((er) => ({ ...er, [c]: undefined }));
-          onChange({ [c]: val });
-        }}
-        onSelect={(opt) => {
-          const el = inputRefs.current[c];
-          if (el) {
-            const fake = { key: 'Enter', preventDefault: () => {}, target: el, selectedOption: opt };
-            handleKeyDown(fake, c);
-          }
-        }}
-        disabled={disabled}
-        onKeyDown={(e) => handleKeyDown(e, c)}
-        onFocus={(e) => {
-          e.target.select();
-          handleFocusField(c);
-          e.target.style.width = 'auto';
-          const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
-          e.target.style.width = `${Math.max(boxWidth, w)}px`;
-        }}
-        inputRef={(el) => (inputRefs.current[c] = el)}
-        inputStyle={inputStyle}
-        companyId={company}
-      />
+      formVisible && (
+        <AsyncSearchSelect
+          shouldFetch={false}
+          title={tip}
+          table={relationConfigMap[c].table}
+          searchColumn={relationConfigMap[c].idField || relationConfigMap[c].column}
+          searchColumns={[
+            relationConfigMap[c].idField || relationConfigMap[c].column,
+            ...(relationConfigMap[c].displayFields || []),
+          ]}
+          labelFields={relationConfigMap[c].displayFields || []}
+          value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
+          onChange={(val) => {
+            setFormVals((v) => ({ ...v, [c]: val }));
+            setErrors((er) => ({ ...er, [c]: undefined }));
+            onChange({ [c]: val });
+          }}
+          onSelect={(opt) => {
+            const el = inputRefs.current[c];
+            if (el) {
+              const fake = { key: 'Enter', preventDefault: () => {}, target: el, selectedOption: opt };
+              handleKeyDown(fake, c);
+            }
+          }}
+          disabled={disabled}
+          onKeyDown={(e) => handleKeyDown(e, c)}
+          onFocus={(e) => {
+            e.target.select();
+            handleFocusField(c);
+            e.target.style.width = 'auto';
+            const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
+            e.target.style.width = `${Math.max(boxWidth, w)}px`;
+          }}
+          inputRef={(el) => (inputRefs.current[c] = el)}
+          inputStyle={inputStyle}
+          companyId={company}
+        />
+      )
     ) : viewSourceMap[c] && !Array.isArray(relations[c]) ? (
-      <AsyncSearchSelect
-        title={tip}
-        table={viewSourceMap[c]}
-        searchColumn={viewDisplays[viewSourceMap[c]]?.idField || c}
-        searchColumns={[
-          viewDisplays[viewSourceMap[c]]?.idField || c,
-          ...(viewDisplays[viewSourceMap[c]]?.displayFields || []),
-        ]}
-        labelFields={viewDisplays[viewSourceMap[c]]?.displayFields || []}
-        idField={viewDisplays[viewSourceMap[c]]?.idField || c}
-        value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
-        onChange={(val) => {
-          setFormVals((v) => ({ ...v, [c]: val }));
-          setErrors((er) => ({ ...er, [c]: undefined }));
-          onChange({ [c]: val });
-        }}
-        onSelect={(opt) => {
-          const el = inputRefs.current[c];
-          if (el) {
-            const fake = { key: 'Enter', preventDefault: () => {}, target: el, selectedOption: opt };
-            handleKeyDown(fake, c);
-          }
-        }}
-        disabled={disabled}
-        onKeyDown={(e) => handleKeyDown(e, c)}
-        onFocus={(e) => {
-          e.target.select();
-          handleFocusField(c);
-          e.target.style.width = 'auto';
-          const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
-          e.target.style.width = `${Math.max(boxWidth, w)}px`;
-        }}
-        inputRef={(el) => (inputRefs.current[c] = el)}
-        inputStyle={inputStyle}
-        companyId={company}
-      />
+      formVisible && (
+        <AsyncSearchSelect
+          shouldFetch={false}
+          title={tip}
+          table={viewSourceMap[c]}
+          searchColumn={viewDisplays[viewSourceMap[c]]?.idField || c}
+          searchColumns={[
+            viewDisplays[viewSourceMap[c]]?.idField || c,
+            ...(viewDisplays[viewSourceMap[c]]?.displayFields || []),
+          ]}
+          labelFields={viewDisplays[viewSourceMap[c]]?.displayFields || []}
+          idField={viewDisplays[viewSourceMap[c]]?.idField || c}
+          value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
+          onChange={(val) => {
+            setFormVals((v) => ({ ...v, [c]: val }));
+            setErrors((er) => ({ ...er, [c]: undefined }));
+            onChange({ [c]: val });
+          }}
+          onSelect={(opt) => {
+            const el = inputRefs.current[c];
+            if (el) {
+              const fake = { key: 'Enter', preventDefault: () => {}, target: el, selectedOption: opt };
+              handleKeyDown(fake, c);
+            }
+          }}
+          disabled={disabled}
+          onKeyDown={(e) => handleKeyDown(e, c)}
+          onFocus={(e) => {
+            e.target.select();
+            handleFocusField(c);
+            e.target.style.width = 'auto';
+            const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
+            e.target.style.width = `${Math.max(boxWidth, w)}px`;
+          }}
+          inputRef={(el) => (inputRefs.current[c] = el)}
+          inputStyle={inputStyle}
+          companyId={company}
+        />
+      )
     ) : autoSelectConfigs[c] && !Array.isArray(relations[c]) ? (
-      <AsyncSearchSelect
-        title={tip}
-        table={autoSelectConfigs[c].table}
-        searchColumn={autoSelectConfigs[c].idField}
-        searchColumns={[
-          autoSelectConfigs[c].idField,
-          ...(autoSelectConfigs[c].displayFields || []),
-        ]}
-        labelFields={autoSelectConfigs[c].displayFields || []}
-        idField={autoSelectConfigs[c].idField}
-        value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
-        onChange={(val) => {
-          setFormVals((v) => ({ ...v, [c]: val }));
-          setErrors((er) => ({ ...er, [c]: undefined }));
-          onChange({ [c]: val });
-        }}
-        onSelect={(opt) => {
-          const el = inputRefs.current[c];
-          if (el) {
-            const fake = { key: 'Enter', preventDefault: () => {}, target: el, selectedOption: opt };
-            handleKeyDown(fake, c);
-          }
-        }}
-        disabled={disabled}
-        onKeyDown={(e) => handleKeyDown(e, c)}
-        onFocus={(e) => {
-          e.target.select();
-          handleFocusField(c);
-          e.target.style.width = 'auto';
-          const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
-          e.target.style.width = `${Math.max(boxWidth, w)}px`;
-        }}
-        inputRef={(el) => (inputRefs.current[c] = el)}
-        inputStyle={inputStyle}
-        companyId={company}
-      />
+      formVisible && (
+        <AsyncSearchSelect
+          shouldFetch={false}
+          title={tip}
+          table={autoSelectConfigs[c].table}
+          searchColumn={autoSelectConfigs[c].idField}
+          searchColumns={[
+            autoSelectConfigs[c].idField,
+            ...(autoSelectConfigs[c].displayFields || []),
+          ]}
+          labelFields={autoSelectConfigs[c].displayFields || []}
+          idField={autoSelectConfigs[c].idField}
+          value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
+          onChange={(val) => {
+            setFormVals((v) => ({ ...v, [c]: val }));
+            setErrors((er) => ({ ...er, [c]: undefined }));
+            onChange({ [c]: val });
+          }}
+          onSelect={(opt) => {
+            const el = inputRefs.current[c];
+            if (el) {
+              const fake = { key: 'Enter', preventDefault: () => {}, target: el, selectedOption: opt };
+              handleKeyDown(fake, c);
+            }
+          }}
+          disabled={disabled}
+          onKeyDown={(e) => handleKeyDown(e, c)}
+          onFocus={(e) => {
+            e.target.select();
+            handleFocusField(c);
+            e.target.style.width = 'auto';
+            const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
+            e.target.style.width = `${Math.max(boxWidth, w)}px`;
+          }}
+          inputRef={(el) => (inputRefs.current[c] = el)}
+          inputStyle={inputStyle}
+          companyId={company}
+        />
+      )
     ) : Array.isArray(relations[c]) ? (
       <select
         title={tip}
