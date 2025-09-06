@@ -16,7 +16,6 @@ function tenantDir(companyId = 0) {
     process.cwd(),
     'config',
     String(companyId),
-    'uploads',
     'report_builder',
   );
 }
@@ -158,10 +157,21 @@ router.get('/procedure-files', requireAuth, async (req, res, next) => {
 router.get('/procedure-files/:name', requireAuth, async (req, res, next) => {
   try {
     const { name } = req.params;
-    const dir = await resolveProcDir(req.user.companyId);
-    const file = path.join(dir, `${name}.json`);
-    const text = await fs.readFile(file, 'utf-8');
-    res.json(JSON.parse(text));
+    const dir = tenantProcDir(req.user.companyId);
+    const fallbackDir = tenantProcDir(0);
+    try {
+      const text = await fs.readFile(path.join(dir, `${name}.json`), 'utf-8');
+      return res.json(JSON.parse(text));
+    } catch (err) {
+      if (err.code === 'ENOENT' && dir !== fallbackDir) {
+        const text = await fs.readFile(
+          path.join(fallbackDir, `${name}.json`),
+          'utf-8',
+        );
+        return res.json(JSON.parse(text));
+      }
+      throw err;
+    }
   } catch (err) {
     next(err);
   }
@@ -207,10 +217,21 @@ router.get('/configs', requireAuth, async (req, res, next) => {
 router.get('/configs/:name', requireAuth, async (req, res, next) => {
   try {
     const { name } = req.params;
-    const dir = await resolveDir(req.user.companyId);
-    const file = path.join(dir, `${name}.json`);
-    const text = await fs.readFile(file, 'utf-8');
-    res.json(JSON.parse(text));
+    const dir = tenantDir(req.user.companyId);
+    const fallbackDir = tenantDir(0);
+    try {
+      const text = await fs.readFile(path.join(dir, `${name}.json`), 'utf-8');
+      return res.json(JSON.parse(text));
+    } catch (err) {
+      if (err.code === 'ENOENT' && dir !== fallbackDir) {
+        const text = await fs.readFile(
+          path.join(fallbackDir, `${name}.json`),
+          'utf-8',
+        );
+        return res.json(JSON.parse(text));
+      }
+      throw err;
+    }
   } catch (err) {
     next(err);
   }
