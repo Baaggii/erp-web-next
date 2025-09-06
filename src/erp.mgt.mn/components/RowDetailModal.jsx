@@ -14,6 +14,16 @@ export default function RowDetailModal({
   fieldTypeMap = {},
 }) {
   const { t } = useTranslation();
+  if (!visible) return null;
+
+  const labelMap = {};
+  Object.entries(relations).forEach(([col, opts]) => {
+    labelMap[col] = {};
+    opts.forEach((o) => {
+      labelMap[col][o.value] = o.label;
+    });
+  });
+
   const cols = columns.length > 0 ? columns : Object.keys(row);
   const placeholders = React.useMemo(() => {
     const map = {};
@@ -27,16 +37,6 @@ export default function RowDetailModal({
     });
     return map;
   }, [cols, fieldTypeMap]);
-
-  if (!visible) return null;
-
-  const labelMap = {};
-  Object.entries(relations).forEach(([col, opts]) => {
-    labelMap[col] = {};
-    opts.forEach((o) => {
-      labelMap[col][o.value] = o.label;
-    });
-  });
 
   return (
     <Modal visible={visible} title={t('row_details', 'Row Details')} onClose={onClose}>
