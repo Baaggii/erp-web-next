@@ -19,13 +19,15 @@ router.post('/', requireAuth, async (req, res, next) => {
 });
 
 router.post('/execute', requireAuth, async (req, res, next) => {
+  const controller = new AbortController();
+  req.on('close', () => controller.abort());
   try {
     const { sql } = req.body;
     if (!sql) {
       return res.status(400).json({ message: 'sql required' });
     }
-    const { inserted, failed } = await runSql(sql);
-    res.json({ inserted, failed });
+    const { inserted, failed, aborted } = await runSql(sql, controller.signal);
+    res.json({ inserted, failed, aborted });
   } catch (err) {
     next(err);
   }

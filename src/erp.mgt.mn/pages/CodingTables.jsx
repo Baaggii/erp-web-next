@@ -1441,6 +1441,9 @@ export default function CodingTablesPage() {
         return { inserted: totalInserted, failed: failedAll, aborted: true };
       }
       const data = await res.json().catch(() => ({}));
+      if (data.aborted) {
+        return { inserted: totalInserted, failed: failedAll, aborted: true };
+      }
       const inserted = data.inserted || 0;
       if (Array.isArray(data.failed) && data.failed.length > 0) {
         const errMsg = data.failed
