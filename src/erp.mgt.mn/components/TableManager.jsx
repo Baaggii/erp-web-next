@@ -245,9 +245,12 @@ const TableManager = forwardRef(function TableManager({
   const fieldTypeMap = useMemo(() => {
     const map = {};
     columnMeta.forEach((c) => {
-      const typ = (c.type || c.columnType || c.dataType || c.DATA_TYPE || '').toLowerCase();
+      const typ = (c.type || c.columnType || c.dataType || c.DATA_TYPE || '')
+        .toLowerCase();
       if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
         map[c.name] = 'number';
+      } else if (typ.includes('timestamp') || typ.includes('datetime')) {
+        map[c.name] = 'date';
       } else if (typ.includes('date') || typ.includes('time')) {
         map[c.name] = typ.includes('time') && !typ.includes('date') ? 'time' : 'date';
       } else {
@@ -1756,18 +1759,22 @@ const TableManager = forwardRef(function TableManager({
   const placeholders = useMemo(() => {
     const map = {};
     columnMeta.forEach((c) => {
-      const typ = (c.type || c.columnType || c.dataType || c.DATA_TYPE || '')
-        .toLowerCase();
-      if (typ.includes('timestamp') || typ.includes('datetime')) {
-        map[c.name] = 'YYYY-MM-DD HH:MM:SS';
-      } else if (typ.includes('date')) {
-        map[c.name] = 'YYYY-MM-DD';
-      } else if (typ.includes('time')) {
+      const lower = c.name.toLowerCase();
+      const typ = fieldTypeMap[c.name];
+      if (typ === 'time') {
         map[c.name] = 'HH:MM:SS';
+      } else if (typ === 'date' || typ === 'datetime') {
+        map[c.name] = 'YYYY-MM-DD';
+      } else if (!typ || typ === 'string') {
+        if (lower.includes('time') && !lower.includes('date')) {
+          map[c.name] = 'HH:MM:SS';
+        } else if (lower.includes('timestamp') || lower.includes('date')) {
+          map[c.name] = 'YYYY-MM-DD';
+        }
       }
     });
     return map;
-  }, [columnMeta]);
+  }, [columnMeta, fieldTypeMap]);
 
   const relationOpts = {};
   ordered.forEach((c) => {
@@ -1800,7 +1807,6 @@ const TableManager = forwardRef(function TableManager({
       const avg = getAverageLength(c, rows);
       let w;
       if (avg <= 4) w = ch(Math.max(avg + 1, 5));
-      else if (placeholders[c] === 'YYYY-MM-DD HH:MM:SS') w = ch(20);
       else if (placeholders[c] === 'YYYY-MM-DD') w = ch(12);
       else if (placeholders[c] === 'HH:MM:SS') w = ch(12);
       else if (avg <= 10) w = ch(12);

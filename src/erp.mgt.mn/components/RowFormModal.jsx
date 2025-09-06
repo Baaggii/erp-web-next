@@ -227,14 +227,16 @@ const RowFormModal = function RowFormModal({
     cols.forEach((c) => {
       const lower = c.toLowerCase();
       const typ = fieldTypeMap[c];
-      if (typ === 'time' || (!typ && lower.includes('time') && !lower.includes('date'))) {
+      if (typ === 'time') {
         map[c] = 'HH:MM:SS';
-      } else if (
-        typ === 'date' ||
-        typ === 'datetime' ||
-        (!typ && (lower.includes('timestamp') || lower.includes('date')))
-      ) {
+      } else if (typ === 'date' || typ === 'datetime') {
         map[c] = 'YYYY-MM-DD';
+      } else if (!typ || typ === 'string') {
+        if (lower.includes('time') && !lower.includes('date')) {
+          map[c] = 'HH:MM:SS';
+        } else if (lower.includes('timestamp') || lower.includes('date')) {
+          map[c] = 'YYYY-MM-DD';
+        }
       }
     });
     return map;
