@@ -9,9 +9,10 @@ const router = express.Router();
 // "lang" selects a localized value when available.
 router.get('/', requireAuth, async (req, res, next) => {
   try {
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
     const { headers: headersParam, lang } = req.query;
     const headers = headersParam ? headersParam.split(',') : [];
-    const map = await getMappings(headers, lang, req.user.companyId);
+    const map = await getMappings(headers, lang, companyId);
     res.json(map);
   } catch (err) {
     next(err);
@@ -28,7 +29,8 @@ const postRateLimiter = rateLimit({
 // Body: { "sales": { "en": "Sales Dashboard" } }
 router.post('/', requireAuth, postRateLimiter, async (req, res, next) => {
   try {
-    await addMappings(req.body || {}, req.user.companyId);
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
+    await addMappings(req.body || {}, companyId);
     res.sendStatus(204);
   } catch (err) {
     next(err);

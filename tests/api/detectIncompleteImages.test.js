@@ -17,7 +17,7 @@ function mockPool(handler) {
   return () => { db.pool.query = orig; };
 }
 
-const cfgPath = path.join(process.cwd(), 'config', 'transactionForms.json');
+const cfgPath = path.join(process.cwd(), 'config', '0', 'transactionForms.json');
 const baseDir = path.join(process.cwd(), 'uploads', 'txn_images', 'transactions_test');
 
 await test('detectIncompleteImages finds and fixes files', async () => {

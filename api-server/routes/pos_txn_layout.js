@@ -6,12 +6,13 @@ const router = express.Router();
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
     const name = req.query.name;
     if (name) {
-      const cfg = await getLayout(name, req.user.companyId);
+      const cfg = await getLayout(name, companyId);
       res.json(cfg || {});
     } else {
-      const all = await getAllLayouts(req.user.companyId);
+      const all = await getAllLayouts(companyId);
       res.json(all);
     }
   } catch (err) {
@@ -21,9 +22,10 @@ router.get('/', requireAuth, async (req, res, next) => {
 
 router.post('/', requireAuth, async (req, res, next) => {
   try {
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
     const { name, layout } = req.body;
     if (!name) return res.status(400).json({ message: 'name is required' });
-    await setLayout(name, layout || {}, req.user.companyId);
+    await setLayout(name, layout || {}, companyId);
     res.sendStatus(204);
   } catch (err) {
     next(err);

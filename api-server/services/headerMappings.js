@@ -45,8 +45,8 @@ export async function getMappings(headers = [], lang, companyId = 0) {
   return result;
 }
 
-export async function addMappings(newMap) {
-  const map = await readMappings();
+export async function addMappings(newMap, companyId = 0) {
+  const map = await readMappings(companyId);
   for (const [k, v] of Object.entries(newMap)) {
     if (v == null) continue;
     if (

@@ -7,7 +7,8 @@ const router = express.Router();
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
-    const cfg = await getGeneralConfig(req.user.companyId);
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
+    const cfg = await getGeneralConfig(companyId);
     res.json(cfg);
   } catch (err) {
     next(err);
@@ -16,11 +17,12 @@ router.get('/', requireAuth, async (req, res, next) => {
 
 router.put('/', requireAuth, async (req, res, next) => {
   try {
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
     const session =
       req.session ||
-      (await getEmploymentSession(req.user.empid, req.user.companyId));
+      (await getEmploymentSession(req.user.empid, companyId));
     if (!session?.permissions?.system_settings) return res.sendStatus(403);
-    const cfg = await updateGeneralConfig(req.body || {}, req.user.companyId);
+    const cfg = await updateGeneralConfig(req.body || {}, companyId);
     res.json(cfg);
   } catch (err) {
     next(err);

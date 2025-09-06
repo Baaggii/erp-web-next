@@ -6,15 +6,16 @@ const router = express.Router();
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
     const { id, name } = req.query;
     if (id) {
-      const rec = await getPending(id, req.user.companyId);
+      const rec = await getPending(id, companyId);
       if (!rec || (rec.session?.employeeId && rec.session.employeeId !== req.user.empid)) {
         return res.status(404).json({ message: 'Not found' });
       }
       res.json(rec || {});
     } else {
-      const list = await listPending(name, req.user.empid, req.user.companyId);
+      const list = await listPending(name, req.user.empid, companyId);
       res.json(list);
     }
   } catch (err) {
@@ -24,6 +25,7 @@ router.get('/', requireAuth, async (req, res, next) => {
 
 router.post('/', requireAuth, async (req, res, next) => {
   try {
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
     const { id, name, data, masterId, session } = req.body;
     if (!name) return res.status(400).json({ message: 'name is required' });
     const info = { ...(session || {}), employeeId: req.user.empid };
@@ -31,7 +33,7 @@ router.post('/', requireAuth, async (req, res, next) => {
       id,
       { name, data, masterId, session: info },
       req.user.empid,
-      req.user.companyId,
+      companyId,
     );
     res.json({ id: result.id });
   } catch (err) {
@@ -41,9 +43,10 @@ router.post('/', requireAuth, async (req, res, next) => {
 
 router.delete('/', requireAuth, async (req, res, next) => {
   try {
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
     const { id } = req.query;
     if (!id) return res.status(400).json({ message: 'id is required' });
-    await deletePending(id, req.user.companyId);
+    await deletePending(id, companyId);
     res.sendStatus(204);
   } catch (err) {
     next(err);

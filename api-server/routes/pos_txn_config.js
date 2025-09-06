@@ -11,12 +11,13 @@ const router = express.Router();
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
     const name = req.query.name;
     if (name) {
-      const cfg = await getConfig(name, req.user.companyId);
+      const cfg = await getConfig(name, companyId);
       res.json(cfg || {});
     } else {
-      const all = await getAllConfigs(req.user.companyId);
+      const all = await getAllConfigs(companyId);
       res.json(all);
     }
   } catch (err) {
@@ -26,9 +27,10 @@ router.get('/', requireAuth, async (req, res, next) => {
 
 router.post('/', requireAuth, async (req, res, next) => {
   try {
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
     const { name, config } = req.body;
     if (!name) return res.status(400).json({ message: 'name is required' });
-    await setConfig(name, config || {}, req.user.companyId);
+    await setConfig(name, config || {}, companyId);
     res.sendStatus(204);
   } catch (err) {
     next(err);
@@ -37,9 +39,10 @@ router.post('/', requireAuth, async (req, res, next) => {
 
 router.delete('/', requireAuth, async (req, res, next) => {
   try {
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
     const name = req.query.name;
     if (!name) return res.status(400).json({ message: 'name is required' });
-    await deleteConfig(name, req.user.companyId);
+    await deleteConfig(name, companyId);
     res.sendStatus(204);
   } catch (err) {
     next(err);

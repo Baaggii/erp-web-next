@@ -5,7 +5,7 @@ import path from 'path';
 import { setFormConfig, deleteFormConfig } from '../../api-server/services/transactionFormConfig.js';
 import * as db from '../../db/index.js';
 
-const filePath = path.join(process.cwd(), 'config', 'transactionForms.json');
+const filePath = path.join(process.cwd(), 'config', '0', 'transactionForms.json');
 
 function withTempFile() {
   return fs.readFile(filePath, 'utf8')

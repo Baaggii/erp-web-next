@@ -58,7 +58,7 @@ END`;
   assert.ok(!/HAVING/i.test(sql));
   assert.ok(!/SUM\(/i.test(sql));
   assert.ok(/after/i.test(sql));
-  await fs.unlink(path.join(process.cwd(), 'config', 'sp_test_rows.sql')).catch(() => {});
+  await fs.unlink(path.join(process.cwd(), 'config', '0', 'sp_test_rows.sql')).catch(() => {});
 });
 
 test('getProcedureRawRows handles nested SUM expressions', { concurrency: false }, async () => {
@@ -84,7 +84,7 @@ END`;
   assert.ok(!/\ba_val\b/i.test(sql));
   assert.ok(!/SUM\(/i.test(sql));
   assert.ok(sql.includes("id = 5"));
-  await fs.unlink(path.join(process.cwd(), 'config', 'sp_case_rows.sql')).catch(() => {});
+  await fs.unlink(path.join(process.cwd(), 'config', '0', 'sp_case_rows.sql')).catch(() => {});
 });
 
 test(
@@ -93,7 +93,7 @@ test(
   async () => {
     const origRead = fs.readFile;
     fs.readFile = async (p, enc) => {
-      if (p.endsWith(path.join('config', 'transactionForms.json'))) {
+      if (p.endsWith(path.join('config', '0', 'transactionForms.json'))) {
         return JSON.stringify({
           trans: {
             general: {
@@ -108,7 +108,7 @@ test(
           },
         });
       }
-      if (p.endsWith(path.join('config', 'tableDisplayFields.json'))) {
+      if (p.endsWith(path.join('config', '0', 'tableDisplayFields.json'))) {
         return JSON.stringify({
           trans: { idField: 'id', displayFields: ['id', 'note', 'hdr', 'main', 'ftr'] },
         });
@@ -138,7 +138,7 @@ END`;
     assert.ok(sql.includes('tr.ftr'));
     assert.deepEqual(displayFields, ['id', 'note', 'hdr', 'main', 'ftr']);
     await fs
-      .unlink(path.join(process.cwd(), 'config', 'sp_vis_rows.sql'))
+      .unlink(path.join(process.cwd(), 'config', '0', 'sp_vis_rows.sql'))
       .catch(() => {});
   },
 );
@@ -169,7 +169,7 @@ END`;
   assert.ok(sql.includes("region = 'West'"));
   assert.ok(sql.includes('id = 5'));
   assert.ok(!sql.includes("name = 'Phones'"));
-  await fs.unlink(path.join(process.cwd(), 'config', 'sp_multi_rows.sql')).catch(() => {});
+  await fs.unlink(path.join(process.cwd(), 'config', '0', 'sp_multi_rows.sql')).catch(() => {});
 });
 
 test('getProcedureRawRows accepts prefixed field names', { concurrency: false }, async () => {
@@ -190,7 +190,7 @@ END`;
   restore();
   assert.ok(sql.includes("region = 'West'"));
   assert.ok(sql.includes('id = 7'));
-  await fs.unlink(path.join(process.cwd(), 'config', 'sp_pref_rows.sql')).catch(() => {});
+  await fs.unlink(path.join(process.cwd(), 'config', '0', 'sp_pref_rows.sql')).catch(() => {});
 });
 
 test('getProcedureRawRows formats date conditions', { concurrency: false }, async () => {
@@ -210,7 +210,7 @@ END`;
   );
   restore();
   assert.ok(sql.includes("trans_date = '2025-08-12'"));
-  await fs.unlink(path.join(process.cwd(), 'config', 'sp_date_rows.sql')).catch(() => {});
+  await fs.unlink(path.join(process.cwd(), 'config', '0', 'sp_date_rows.sql')).catch(() => {});
 });
 
 test('getProcedureRawRows ignores aggregate fields in extraConditions', { concurrency: false }, async () => {
@@ -235,7 +235,7 @@ END`;
   restore();
   assert.ok(sql.includes('id = 1'));
   assert.ok(!sql.includes('total ='));
-  await fs.unlink(path.join(process.cwd(), 'config', 'sp_agg_rows.sql')).catch(() => {});
+  await fs.unlink(path.join(process.cwd(), 'config', '0', 'sp_agg_rows.sql')).catch(() => {});
 });
 
 test('getProcedureRawRows removes non-column aggregate extraConditions', { concurrency: false }, async () => {
@@ -257,7 +257,7 @@ END`;
   restore();
   assert.ok(sql.includes('id = 1'));
   assert.ok(!sql.includes('cnt ='));
-  await fs.unlink(path.join(process.cwd(), 'config', 'sp_agg2_rows.sql')).catch(() => {});
+  await fs.unlink(path.join(process.cwd(), 'config', '0', 'sp_agg2_rows.sql')).catch(() => {});
 });
 
 test('getProcedureRawRows formats time conditions', { concurrency: false }, async () => {
@@ -281,5 +281,5 @@ END`;
   );
   restore();
   assert.ok(sql.includes("trans_time = '12:34:56'"));
-  await fs.unlink(path.join(process.cwd(), 'config', 'sp_time_rows.sql')).catch(() => {});
+  await fs.unlink(path.join(process.cwd(), 'config', '0', 'sp_time_rows.sql')).catch(() => {});
 });
