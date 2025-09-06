@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo, useCallback } from 'react';
 import { HashRouter, Routes, Route, Outlet } from 'react-router-dom';
 import AuthContextProvider, { AuthContext } from './context/AuthContext.jsx';
 import { TabProvider } from './context/TabContext.jsx';
@@ -16,7 +16,6 @@ import ReportsPage from './pages/Reports.jsx';
 import UsersPage from './pages/Users.jsx';
 import CompaniesPage from './pages/Companies.jsx';
 import RolePermissionsPage from './pages/RolePermissions.jsx';
-import ActionPermissionsPage from './pages/ActionPermissions.jsx';
 import CompanyLicensesPage from './pages/CompanyLicenses.jsx';
 import TablesManagementPage from './pages/TablesManagement.jsx';
 import CodingTablesPage from './pages/CodingTables.jsx';
@@ -82,90 +81,111 @@ function AuthedApp() {
   const modules = useModules();
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
-  const headerMap = useHeaderMappings(modules.map((m) => m.module_key));
 
-  const moduleMap = {};
-  modules.forEach((m) => {
-    const label =
-      generalConfig.general?.procLabels?.[m.module_key] ||
-      headerMap[m.module_key] ||
-      m.label;
-    moduleMap[m.module_key] = { ...m, label, children: [] };
-  });
-  modules.forEach((m) => {
-    if (m.parent_key && moduleMap[m.parent_key]) {
-      moduleMap[m.parent_key].children.push(moduleMap[m.module_key]);
-    }
-  });
+  // memoize module keys so the array passed to useHeaderMappings has a stable identity
+  const moduleKeys = useMemo(() => modules.map((m) => m.module_key), [modules]);
+  const headerMap = useHeaderMappings(moduleKeys);
 
-  const componentMap = {
-    dashboard: <DashboardPage />,
-    forms: <FormsPage />,
-    reports: <ReportsPage />,
-    settings: <SettingsPage />,
-    users: <UsersPage />,
-    companies: <CompaniesPage />,
-    role_permissions: <RolePermissionsPage />,
-    user_level_actions: <UserLevelActionsPage />,
-    user_settings: <UserSettingsPage />,
-    modules: <ModulesPage />,
-    company_licenses: <CompanyLicensesPage />,
-    tables_management: <TablesManagementPage />,
-    coding_tables: <CodingTablesPage />,
-    forms_management: <FormsManagementPage />,
-    report_builder: <ReportBuilderPage />,
-    relations_config: <RelationsConfigPage />,
-    pos_transaction_management: <PosTxnConfigPage />,
-    pos_transactions: <PosTransactionsPage />,
-    general_configuration: <GeneralConfigurationPage />,
-    image_management: <ImageManagementPage />,
-    change_password: <ChangePasswordPage />,
-    requests: <RequestsPage />,
-    sales: <TabbedWindows />,
-    tenant_tables_registry: <TenantTablesRegistryPage />,
-    edit_translations: <TranslationEditorPage />,
-    user_manual_export: <UserManualExportPage />,
-  };
+  // Build module hierarchy only when its inputs change
+  const moduleMap = useMemo(() => {
+    const map = {};
+    modules.forEach((m) => {
+      const label =
+        generalConfig.general?.procLabels?.[m.module_key] ||
+        headerMap[m.module_key] ||
+        m.label;
+      map[m.module_key] = { ...m, label, children: [] };
+    });
+    modules.forEach((m) => {
+      if (m.parent_key && map[m.parent_key]) {
+        map[m.parent_key].children.push(map[m.module_key]);
+      }
+    });
+    return map;
+  }, [modules, generalConfig, headerMap]);
 
-  modules.forEach((m) => {
-    if (m.module_key === 'pos_transactions') return;
-    if (txnModules.keys.has(m.module_key)) {
-      componentMap[m.module_key] = (
-        <FinanceTransactionsPage moduleKey={m.module_key} />
+  // Map module keys to components; dynamic finance modules are merged here
+  const componentMap = useMemo(() => {
+    const map = {
+      dashboard: <DashboardPage />,
+      forms: <FormsPage />,
+      reports: <ReportsPage />,
+      settings: <SettingsPage />,
+      users: <UsersPage />,
+      companies: <CompaniesPage />,
+      role_permissions: <RolePermissionsPage />,
+      user_level_actions: <UserLevelActionsPage />,
+      user_settings: <UserSettingsPage />,
+      modules: <ModulesPage />,
+      company_licenses: <CompanyLicensesPage />,
+      tables_management: <TablesManagementPage />,
+      coding_tables: <CodingTablesPage />,
+      forms_management: <FormsManagementPage />,
+      report_builder: <ReportBuilderPage />,
+      relations_config: <RelationsConfigPage />,
+      pos_transaction_management: <PosTxnConfigPage />,
+      pos_transactions: <PosTransactionsPage />,
+      general_configuration: <GeneralConfigurationPage />,
+      image_management: <ImageManagementPage />,
+      change_password: <ChangePasswordPage />,
+      requests: <RequestsPage />,
+      sales: <TabbedWindows />,
+      tenant_tables_registry: <TenantTablesRegistryPage />,
+      edit_translations: <TranslationEditorPage />,
+      user_manual_export: <UserManualExportPage />,
+    };
+
+    modules.forEach((m) => {
+      if (m.module_key === 'pos_transactions') return;
+      if (txnModules.keys.has(m.module_key)) {
+        map[m.module_key] = (
+          <FinanceTransactionsPage moduleKey={m.module_key} />
+        );
+      }
+    });
+    return map;
+  }, [modules, txnModules]);
+
+  // Index routes that should remain stable between renders
+  const indexComponents = useMemo(
+    () => ({
+      settings: <GeneralSettings />,
+      report_management: <ReportManagementPage />,
+    }),
+    []
+  );
+
+  // Recursive route renderer; memoized to keep function identity stable
+  const renderRoute = useCallback(
+    function renderRoute(mod) {
+      const slug = mod.module_key.replace(/_/g, '-');
+      const children = mod.children.map((child) => renderRoute(child));
+      let element = componentMap[mod.module_key];
+      if (!element) {
+        element = mod.children.length > 0 ? <Outlet /> : <div>{mod.label}</div>;
+      }
+
+      if (!mod.parent_key && mod.module_key === 'dashboard') {
+        return <Route key={mod.module_key} index element={element} />;
+      }
+
+      return (
+        <Route key={mod.module_key} path={slug} element={element}>
+          {indexComponents[mod.module_key] && (
+            <Route index element={indexComponents[mod.module_key]} />
+          )}
+          {children}
+        </Route>
       );
-    }
-  });
+    },
+    [componentMap, indexComponents]
+  );
 
-  const indexComponents = {
-    settings: <GeneralSettings />,
-    report_management: <ReportManagementPage />,
-  };
-
-  function renderRoute(mod) {
-    const slug = mod.module_key.replace(/_/g, '-');
-    const children = mod.children.map(renderRoute);
-    let element = componentMap[mod.module_key];
-    if (!element) {
-      element = mod.children.length > 0 ? <Outlet /> : <div>{mod.label}</div>;
-    }
-
-    if (!mod.parent_key && mod.module_key === 'dashboard') {
-      return <Route key={mod.module_key} index element={element} />;
-    }
-
-    return (
-      <Route key={mod.module_key} path={slug} element={element}>
-        {indexComponents[mod.module_key] && (
-          <Route index element={indexComponents[mod.module_key]} />
-        )}
-        {children}
-      </Route>
-    );
-  }
-
-  const roots = modules
-    .filter((m) => !m.parent_key)
-    .map((m) => moduleMap[m.module_key]);
+  // Top-level modules for routing; computed only when inputs change
+  const roots = useMemo(
+    () => modules.filter((m) => !m.parent_key).map((m) => moduleMap[m.module_key]),
+    [modules, moduleMap]
+  );
 
   return (
     <ErrorBoundary>
