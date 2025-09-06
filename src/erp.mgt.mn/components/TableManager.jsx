@@ -790,7 +790,12 @@ const TableManager = forwardRef(function TableManager({
         if (!canceled) {
           setRefData(dataMap);
           setRefRows(rowMap);
-          setRelationConfigs(cfgMap);
+          const remap = {};
+          Object.entries(cfgMap).forEach(([k, v]) => {
+            const key = columnCaseMap[k.toLowerCase()] || k;
+            remap[key] = v;
+          });
+          setRelationConfigs(remap);
         }
       } catch (err) {
         console.error('Failed to load table relations', err);
