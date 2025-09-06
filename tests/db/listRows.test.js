@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as db from '../../db/index.js';
 
-function mockPool(flagsMap = {}) {
+function mockPool(flagsMap = {}, rows = [{ id: 1, name: 'Bob Smith' }]) {
   const originalQuery = db.pool.query;
   const originalGetConn = db.pool.getConnection;
   const calls = [];
@@ -20,15 +20,15 @@ function mockPool(flagsMap = {}) {
         { COLUMN_NAME: 'name' },
       ]];
     }
-    return [[{ id: 1, name: 'A' }]];
+    return [rows];
   };
   db.pool.getConnection = async () => ({
     query: async (sql, params) => {
       calls.push({ sql, params });
       if (sql.includes('COUNT(*)')) {
-        return [[{ count: 1 }]];
+        return [[{ count: rows.length }]];
       }
-      return [[{ id: 1, name: 'A' }]];
+      return [rows];
     },
     release() {},
     destroy() {},
@@ -40,9 +40,9 @@ function mockPool(flagsMap = {}) {
   };
 }
 
-test('listTableRows applies sorting and filters', async () => {
+test('listTableRows applies sorting and substring filters', async () => {
   const restore = mockPool();
-  await db.listTableRows('users', {
+  const result = await db.listTableRows('users', {
     filters: { name: 'Bob' },
     sort: { column: 'id', dir: 'desc' },
     perPage: 10,
@@ -50,9 +50,9 @@ test('listTableRows applies sorting and filters', async () => {
   const calls = restore();
   const main = calls.find((c) => c.sql.startsWith('SELECT *'));
   assert.ok(main.sql.includes('ORDER BY `id` DESC'));
-  assert.ok(main.sql.includes("'Bob'"));
-  assert.ok(!main.sql.includes('%Bob%'));
-  assert.ok(!main.sql.toLowerCase().includes('like'));
+  assert.ok(main.sql.toLowerCase().includes('like'));
+  assert.ok(main.sql.includes('%Bob%'));
+  assert.equal(result.rows[0].name, 'Bob Smith');
 });
 
 test('listTableRows returns SQL when debug enabled', async () => {
@@ -104,9 +104,10 @@ test('listTableRows allows zero-valued filters', async () => {
     filters: { company_id: 0 },
   });
   const calls = restore();
-  const main = calls.find((c) => c.sql.startsWith('SELECT *'));
+  const count = calls.find((c) => c.sql.includes('COUNT(*)'));
   assert.equal(result.rows.length, 1);
-  assert.ok(/`company_id`\s*=\s*0/.test(main.sql));
+  assert.ok(/`company_id`\s*=\s*\?/i.test(count.sql));
+  assert.equal(count.params?.[1], 0);
 });
 
 test('listTableRows skips company_id for global tables', async () => {
