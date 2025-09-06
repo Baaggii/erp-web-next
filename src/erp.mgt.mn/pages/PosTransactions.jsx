@@ -142,8 +142,17 @@ export default function PosTransactionsPage() {
   const masterIdRef = useRef(null);
   const refs = useRef({});
   const dragInfo = useRef(null);
-  const loadedViewsRef = useRef(new Set());
-  const loadingViewsRef = useRef(new Set());
+  const relationCacheRef = useRef(new Map());
+  const viewCacheRef = useRef(new Map());
+  const abortControllersRef = useRef(new Set());
+
+  const fetchWithAbort = (url, options = {}) => {
+    const controller = new AbortController();
+    abortControllersRef.current.add(controller);
+    return fetch(url, { ...options, signal: controller.signal }).finally(() => {
+      abortControllersRef.current.delete(controller);
+    });
+  };
 
   useEffect(() => {
     const check = () => setIsNarrow(window.innerWidth < 768);
@@ -152,9 +161,16 @@ export default function PosTransactionsPage() {
     return () => window.removeEventListener('resize', check);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      abortControllersRef.current.forEach((c) => c.abort());
+      abortControllersRef.current.clear();
+    };
+  }, [name]);
+
   async function loadRelations(tbl) {
     try {
-      const res = await fetch(`/api/tables/${encodeURIComponent(tbl)}/relations`, {
+      const res = await fetchWithAbort(`/api/tables/${encodeURIComponent(tbl)}/relations`, {
         credentials: 'include',
       });
       if (!res.ok) return;
@@ -162,7 +178,7 @@ export default function PosTransactionsPage() {
       const dataMap = {};
       const cfgMap = {};
       const rowMap = {};
-      const tableCache = new Map();
+      const tableCache = relationCacheRef.current;
       const relsByTable = rels.reduce((acc, r) => {
         const refTbl = r.REFERENCED_TABLE_NAME;
         if (!acc[refTbl]) acc[refTbl] = [];
@@ -176,7 +192,7 @@ export default function PosTransactionsPage() {
         if (!cached) {
           let cfg = null;
           try {
-            const cRes = await fetch(
+            const cRes = await fetchWithAbort(
               `/api/display_fields?table=${encodeURIComponent(refTbl)}`,
               { credentials: 'include', skipErrorToast: true },
             );
@@ -188,7 +204,7 @@ export default function PosTransactionsPage() {
           let rows = [];
           while (page <= maxPages) {
             const params = new URLSearchParams({ page, perPage });
-            const refRes = await fetch(
+            const refRes = await fetchWithAbort(
               `/api/tables/${encodeURIComponent(refTbl)}?${params.toString()}`,
               { credentials: 'include', skipErrorToast: true },
             );
@@ -347,47 +363,60 @@ export default function PosTransactionsPage() {
   }, [config, formConfigs, name]);
 
   useEffect(() => {
+    const viewsByName = {};
     Object.entries(formConfigs).forEach(([tbl, fc]) => {
       const views = Object.values(fc.viewSource || {});
       views.forEach((v) => {
         if (!v) return;
-        const key = `${tbl}:${v}`;
-        if (
-          loadedViewsRef.current.has(key) ||
-          loadingViewsRef.current.has(key)
-        ) {
-          return;
-        }
-        loadingViewsRef.current.add(key);
-        Promise.all([
-          fetch(`/api/display_fields?table=${encodeURIComponent(v)}`, {
-            credentials: 'include',
-          }).then((res) => (res.ok ? res.json() : null)),
-          fetch(`/api/tables/${encodeURIComponent(v)}/columns`, {
-            credentials: 'include',
-          }).then((res) => (res.ok ? res.json() : [])),
-        ])
-          .then(([cfg, cols]) => {
+        if (!viewsByName[v]) viewsByName[v] = [];
+        viewsByName[v].push(tbl);
+      });
+    });
+
+    Object.entries(viewsByName).forEach(([view, tbls]) => {
+      const cached = viewCacheRef.current.get(view);
+      if (cached) {
+        tbls.forEach((tbl) => {
+          setViewDisplaysMap((m) => ({
+            ...m,
+            [tbl]: { ...(m[tbl] || {}), [view]: cached.cfg || {} },
+          }));
+          setViewColumnsMap((m) => ({
+            ...m,
+            [tbl]: { ...(m[tbl] || {}), [view]: cached.cols || [] },
+          }));
+        });
+        return;
+      }
+      const dfPromise = fetchWithAbort(
+        `/api/display_fields?table=${encodeURIComponent(view)}`,
+        { credentials: 'include' },
+      ).then((res) => (res.ok ? res.json() : null));
+      const colPromise = fetchWithAbort(
+        `/api/tables/${encodeURIComponent(view)}/columns`,
+        { credentials: 'include' },
+      ).then((res) => (res.ok ? res.json() : []));
+      Promise.all([dfPromise, colPromise])
+        .then(([cfg, cols]) => {
+          const data = {
+            cfg: cfg || {},
+            cols: (cols || []).map((c) => c.name),
+          };
+          viewCacheRef.current.set(view, data);
+          tbls.forEach((tbl) => {
             setViewDisplaysMap((m) => ({
               ...m,
-              [tbl]: { ...(m[tbl] || {}), [v]: cfg || {} },
+              [tbl]: { ...(m[tbl] || {}), [view]: data.cfg },
             }));
             setViewColumnsMap((m) => ({
               ...m,
-              [tbl]: {
-                ...(m[tbl] || {}),
-                [v]: (cols || []).map((c) => c.name),
-              },
+              [tbl]: { ...(m[tbl] || {}), [view]: data.cols },
             }));
-            loadedViewsRef.current.add(key);
-          })
-          .catch(() => {
-            // ignore errors to allow retry
-          })
-          .finally(() => {
-            loadingViewsRef.current.delete(key);
           });
-      });
+        })
+        .catch(() => {
+          // ignore errors to allow retry
+        });
     });
   }, [formConfigs]);
 
