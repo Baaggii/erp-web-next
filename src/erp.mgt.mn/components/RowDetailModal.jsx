@@ -3,7 +3,16 @@ import Modal from './Modal.jsx';
 import { useTranslation } from 'react-i18next';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
 
-export default function RowDetailModal({ visible, onClose, row = {}, columns = [], relations = {}, references = [], labels = {} }) {
+export default function RowDetailModal({
+  visible,
+  onClose,
+  row = {},
+  columns = [],
+  relations = {},
+  references = [],
+  labels = {},
+  fieldTypeMap = {},
+}) {
   const { t } = useTranslation();
   if (!visible) return null;
 
@@ -19,15 +28,22 @@ export default function RowDetailModal({ visible, onClose, row = {}, columns = [
   const placeholders = React.useMemo(() => {
     const map = {};
     cols.forEach((c) => {
-      const lower = c.toLowerCase();
-      if (lower.includes('time') && !lower.includes('date')) {
+      const typ = fieldTypeMap[c];
+      if (typ === 'time') {
         map[c] = 'HH:MM:SS';
-      } else if (lower.includes('timestamp') || lower.includes('date')) {
+      } else if (typ === 'date' || typ === 'datetime') {
         map[c] = 'YYYY-MM-DD';
+      } else if (!typ || typ === 'string') {
+        const lower = c.toLowerCase();
+        if (lower.includes('time') && !lower.includes('date')) {
+          map[c] = 'HH:MM:SS';
+        } else if (lower.includes('timestamp') || lower.includes('date')) {
+          map[c] = 'YYYY-MM-DD';
+        }
       }
     });
     return map;
-  }, [cols]);
+  }, [cols, fieldTypeMap]);
 
   return (
     <Modal visible={visible} title={t('row_details', 'Row Details')} onClose={onClose}>

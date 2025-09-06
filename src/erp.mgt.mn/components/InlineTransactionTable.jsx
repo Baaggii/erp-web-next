@@ -1304,6 +1304,7 @@ export default forwardRef(function InlineTransactionTable({
         columns={previewRow ? Object.keys(previewRow) : []}
         relations={relations}
         labels={labels}
+        fieldTypeMap={fieldTypeMap}
       />
       <RowImageUploadModal
         visible={uploadRow !== null}
