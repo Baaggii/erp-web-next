@@ -26,6 +26,7 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
 import { useTranslation } from 'react-i18next';
 import TooltipWrapper from './TooltipWrapper.jsx';
+import normalizeDateInput from '../utils/normalizeDateInput.js';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -66,16 +67,6 @@ const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
-
-function normalizeDateInput(value, format) {
-  if (typeof value !== 'string') return value;
-  let v = value.trim().replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
-  if (/^\d{4}-\d{2}-\d{2}T/.test(v) && !isNaN(Date.parse(v))) {
-    const local = formatTimestamp(new Date(v));
-    return format === 'HH:MM:SS' ? local.slice(11, 19) : local.slice(0, 10);
-  }
-  return v;
-}
 
 function applyDateParams(params, filter) {
   if (!filter) return;
