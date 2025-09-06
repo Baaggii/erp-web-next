@@ -2,7 +2,7 @@ import { listPrinters } from '../services/printers.js';
 
 export async function getPrinters(req, res, next) {
   try {
-    const printers = await listPrinters();
+    const printers = await listPrinters(req.user.companyId);
     res.json(printers);
   } catch (err) {
     next(err);
