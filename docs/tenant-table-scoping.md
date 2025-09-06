@@ -23,6 +23,13 @@ GET /api/tenant_tables/options
 The response is an array with each table's `tableName`, `isShared`, and
 `seedOnCreate` flags (defaulting to `false` when not configured).
 
+## Configuration import
+
+`seedOnCreate` only governs database rows. After creating a company, copy
+default config files from `config/0/` into `config/<companyId>/` via
+`/api/config/import` so the tenant starts with the standard settings. See
+`tenant-directory-structure.md` for commands.
+
 ## Default shared tables
 
 The following tables are preconfigured as shared (`is_shared=1`) so that global rows
