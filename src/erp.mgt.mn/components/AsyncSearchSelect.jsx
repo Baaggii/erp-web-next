@@ -18,7 +18,7 @@ export default function AsyncSearchSelect({
   companyId,
   ...rest
 }) {
-  const { company } = useContext(AuthContext);
+  const { company, branch, department } = useContext(AuthContext);
   const effectiveCompanyId = companyId ?? company;
   const initialVal =
     typeof value === 'object' && value !== null ? value.value : value || '';
@@ -38,6 +38,7 @@ export default function AsyncSearchSelect({
   const displayLabel = match ? match.label : label;
   const internalRef = useRef(null);
   const chosenRef = useRef(null);
+  const [tenantMeta, setTenantMeta] = useState(null);
 
   async function fetchPage(p = 1, q = '', append = false, signal) {
     const cols =
@@ -50,7 +51,17 @@ export default function AsyncSearchSelect({
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: p, perPage: 50 });
-      if (effectiveCompanyId != null) params.set('company_id', effectiveCompanyId);
+      const isShared =
+        tenantMeta?.isShared ?? tenantMeta?.is_shared ?? false;
+      const keys = tenantMeta?.tenantKeys ?? tenantMeta?.tenant_keys ?? [];
+      if (!isShared) {
+        if (keys.includes('company_id') && effectiveCompanyId != null)
+          params.set('company_id', effectiveCompanyId);
+        if (keys.includes('branch_id') && branch != null)
+          params.set('branch_id', branch);
+        if (keys.includes('department_id') && department != null)
+          params.set('department_id', department);
+      }
       if (q) {
         params.set('search', q);
         params.set('searchColumns', cols.join(','));
@@ -101,15 +112,34 @@ export default function AsyncSearchSelect({
   }, [options, show]);
 
   useEffect(() => {
-    if (disabled) return;
+    let canceled = false;
+    setTenantMeta(null);
+    if (!table) return;
+    fetch(`/api/tenant_tables/${encodeURIComponent(table)}`, {
+      credentials: 'include',
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!canceled) setTenantMeta(data || {});
+      })
+      .catch(() => {
+        if (!canceled) setTenantMeta({});
+      });
+    return () => {
+      canceled = true;
+    };
+  }, [table]);
+
+  useEffect(() => {
+    if (disabled || tenantMeta === null) return;
     const controller = new AbortController();
     fetchPage(1, '', false, controller.signal);
     setPage(1);
     return () => controller.abort();
-  }, [table, effectiveCompanyId]);
+  }, [table, tenantMeta, effectiveCompanyId, branch, department, disabled]);
 
   useEffect(() => {
-    if (disabled || !show) return;
+    if (disabled || !show || tenantMeta === null) return;
     const controller = new AbortController();
     const q = String(input || '').trim();
     setPage(1);
@@ -124,7 +154,10 @@ export default function AsyncSearchSelect({
     searchColumns,
     labelFields,
     idField,
+    tenantMeta,
     effectiveCompanyId,
+    branch,
+    department,
   ]);
 
   function handleSelectKeyDown(e) {
