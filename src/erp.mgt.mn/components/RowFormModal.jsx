@@ -7,6 +7,7 @@ import TooltipWrapper from './TooltipWrapper.jsx';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
+import normalizeDateInput from '../utils/normalizeDateInput.js';
 import callProcedure from '../utils/callProcedure.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
@@ -122,7 +123,8 @@ const RowFormModal = function RowFormModal({
         placeholder = 'YYYY-MM-DD';
       }
       const raw = row ? String(row[c] ?? '') : String(defaultValues[c] ?? '');
-      let val = normalizeDateInput(raw, placeholder);
+      const format = fieldTypeMap[c] === 'date' ? 'YYYY-MM-DD' : placeholder;
+      let val = normalizeDateInput(raw, format);
       const missing = !row || row[c] === undefined || row[c] === '';
       if (missing && !val && dateField.includes(c)) {
         if (placeholder === 'YYYY-MM-DD') val = formatTimestamp(now).slice(0, 10);
@@ -158,7 +160,8 @@ const RowFormModal = function RowFormModal({
         ) {
           placeholder = 'YYYY-MM-DD';
         }
-        extras[k] = normalizeDateInput(String(v ?? ''), placeholder);
+        const format = typ === 'date' ? 'YYYY-MM-DD' : placeholder;
+        extras[k] = normalizeDateInput(String(v ?? ''), format);
       }
     });
     return extras;
@@ -243,7 +246,8 @@ const RowFormModal = function RowFormModal({
     const extras = {};
     Object.entries(row || {}).forEach(([k, v]) => {
       if (!columns.includes(k)) {
-        extras[k] = normalizeDateInput(String(v ?? ''), placeholders[k]);
+        const format = fieldTypeMap[k] === 'date' ? 'YYYY-MM-DD' : placeholders[k];
+        extras[k] = normalizeDateInput(String(v ?? ''), format);
       }
     });
     setExtraVals(extras);
@@ -374,17 +378,6 @@ const RowFormModal = function RowFormModal({
       </div>
     );
   }
-
-  function normalizeDateInput(value, format) {
-    if (typeof value !== 'string') return value;
-    let v = value.trim().replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
-    if (/^\d{4}-\d{2}-\d{2}T/.test(v) && !isNaN(Date.parse(v))) {
-      const local = formatTimestamp(new Date(v));
-      return format === 'HH:MM:SS' ? local.slice(11, 19) : local.slice(0, 10);
-    }
-    return v;
-  }
-
   function normalizeNumberInput(value) {
     if (typeof value !== 'string') return value;
     return value.replace(',', '.');
@@ -412,7 +405,8 @@ const RowFormModal = function RowFormModal({
     const vals = {};
     columns.forEach((c) => {
       const raw = row ? String(row[c] ?? '') : String(defaultValues[c] ?? '');
-      let v = normalizeDateInput(raw, placeholders[c]);
+      const format = fieldTypeMap[c] === 'date' ? 'YYYY-MM-DD' : placeholders[c];
+      let v = normalizeDateInput(raw, format);
       const missing = !row || row[c] === undefined || row[c] === '';
       if (missing && !v && dateField.includes(c)) {
         const now = new Date();
@@ -514,7 +508,10 @@ const RowFormModal = function RowFormModal({
     let label = undefined;
     let val = e.selectedOption ? e.selectedOption.value : e.target.value;
     if (e.selectedOption) label = e.selectedOption.label;
-    val = normalizeDateInput(val, placeholders[col]);
+    {
+      const format = fieldTypeMap[col] === 'date' ? 'YYYY-MM-DD' : placeholders[col];
+      val = normalizeDateInput(val, format);
+    }
     if (totalAmountSet.has(col) || totalCurrencySet.has(col)) {
       val = normalizeNumberInput(val);
     }
@@ -683,7 +680,8 @@ const RowFormModal = function RowFormModal({
         const row = procCache.current[cacheKey];
         const norm = {};
         Object.entries(row).forEach(([k, v]) => {
-          norm[k] = normalizeDateInput(v, placeholders[k]);
+          const format = fieldTypeMap[k] === 'date' ? 'YYYY-MM-DD' : placeholders[k];
+          norm[k] = normalizeDateInput(v, format);
         });
         setExtraVals((v) => ({ ...v, ...norm }));
         setFormVals((vals) => {
@@ -719,7 +717,8 @@ const RowFormModal = function RowFormModal({
         procCache.current[cacheKey] = row;
         const norm = {};
         Object.entries(row).forEach(([k, v]) => {
-          norm[k] = normalizeDateInput(v, placeholders[k]);
+          const format = fieldTypeMap[k] === 'date' ? 'YYYY-MM-DD' : placeholders[k];
+          norm[k] = normalizeDateInput(v, format);
         });
         setExtraVals((v) => ({ ...v, ...norm }));
         setFormVals((vals) => {
@@ -807,7 +806,8 @@ const RowFormModal = function RowFormModal({
         const normalized = {};
         Object.entries(r).forEach(([k, v]) => {
           const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
-          let val = normalizeDateInput(raw, placeholders[k]);
+          const format = fieldTypeMap[k] === 'date' ? 'YYYY-MM-DD' : placeholders[k];
+          let val = normalizeDateInput(raw, format);
           if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
             val = normalizeNumberInput(val);
           }
@@ -911,7 +911,8 @@ const RowFormModal = function RowFormModal({
       }
       const normalized = {};
       Object.entries(merged).forEach(([k, v]) => {
-        let val = normalizeDateInput(v, placeholders[k]);
+        const format = fieldTypeMap[k] === 'date' ? 'YYYY-MM-DD' : placeholders[k];
+        let val = normalizeDateInput(v, format);
         if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
           val = normalizeNumberInput(val);
         }
