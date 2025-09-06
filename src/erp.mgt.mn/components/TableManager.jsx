@@ -679,26 +679,33 @@ const TableManager = forwardRef(function TableManager({
               );
             }
 
-            let hasCompanyId = false;
+            let tenantInfo = null;
             try {
-              const colRes = await fetch(
-                `/api/tables/${encodeURIComponent(rel.table)}/columns`,
+              const ttRes = await fetch(
+                `/api/tenant_tables/${encodeURIComponent(rel.table)}`,
                 { credentials: 'include' },
               );
-              if (colRes.ok) {
-                const cols = await colRes.json().catch(() => []);
-                hasCompanyId = Array.isArray(cols)
-                  ? cols.some((c) => c.name === 'company_id')
-                  : false;
+              if (ttRes.ok) {
+                tenantInfo = await ttRes.json().catch(() => null);
               }
             } catch {
-              /* ignore column fetch errors */
+              /* ignore tenant table fetch errors */
             }
+            const isShared =
+              tenantInfo?.isShared ?? tenantInfo?.is_shared ?? false;
+            const tenantKeys =
+              tenantInfo?.tenantKeys ?? tenantInfo?.tenant_keys ?? [];
 
             while (true) {
               const params = new URLSearchParams({ page, perPage });
-              if (company != null && hasCompanyId)
-                params.set('company_id', company);
+              if (!isShared) {
+                if (tenantKeys.includes('company_id') && company != null)
+                  params.set('company_id', company);
+                if (tenantKeys.includes('branch_id') && branch != null)
+                  params.set('branch_id', branch);
+                if (tenantKeys.includes('department_id') && department != null)
+                  params.set('department_id', department);
+              }
               const refRes = await fetch(
                 `/api/tables/${encodeURIComponent(rel.table)}?${params.toString()}`,
                 { credentials: 'include' },
@@ -809,7 +816,7 @@ const TableManager = forwardRef(function TableManager({
     return () => {
       canceled = true;
     };
-  }, [table, columnCaseMap]);
+  }, [table, columnCaseMap, company, branch, department]);
 
   useEffect(() => {
     if (!table || columnMeta.length === 0) return;
