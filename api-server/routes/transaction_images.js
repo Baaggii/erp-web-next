@@ -59,10 +59,17 @@ router.delete('/cleanup/:days?', requireAuth, async (req, res, next) => {
 });
 
 router.get('/detect_incomplete', requireAuth, async (req, res, next) => {
+  const controller = new AbortController();
+  req.on('close', () => controller.abort());
   try {
     const page = parseInt(req.query.page, 10) || 1;
     const perPage = parseInt(req.query.pageSize, 10) || 100;
-    const data = await detectIncompleteImages(page, perPage, req.user.companyId);
+    const data = await detectIncompleteImages(
+      page,
+      perPage,
+      req.user.companyId,
+      controller.signal,
+    );
     res.json(data);
   } catch (err) {
     next(err);
@@ -90,6 +97,8 @@ router.post(
     return next();
   },
   async (req, res, next) => {
+    const controller = new AbortController();
+    req.on('close', () => controller.abort());
     try {
       let metaRaw = req.body?.meta || [];
       if (!Array.isArray(metaRaw)) metaRaw = [metaRaw];
@@ -113,7 +122,12 @@ router.post(
           originalname: m.originalName || f.originalname,
         };
       });
-      const { list, summary } = await checkUploadedImages(withMeta, names, req.user.companyId);
+      const { list, summary } = await checkUploadedImages(
+        withMeta,
+        names,
+        req.user.companyId,
+        controller.signal,
+      );
       res.json({ list, summary });
     } catch (err) {
       next(err);
@@ -122,9 +136,15 @@ router.post(
 );
 
 router.post('/upload_scan', requireAuth, async (req, res, next) => {
+  const controller = new AbortController();
+  req.on('close', () => controller.abort());
   try {
     const names = Array.isArray(req.body?.names) ? req.body.names : [];
-    const { list, skipped, summary } = await detectIncompleteFromNames(names, req.user.companyId);
+    const { list, skipped, summary } = await detectIncompleteFromNames(
+      names,
+      req.user.companyId,
+      controller.signal,
+    );
     res.json({ list, skipped, summary });
   } catch (err) {
     next(err);
@@ -132,9 +152,15 @@ router.post('/upload_scan', requireAuth, async (req, res, next) => {
 });
 
 router.post('/upload_commit', requireAuth, async (req, res, next) => {
+  const controller = new AbortController();
+  req.on('close', () => controller.abort());
   try {
     const arr = Array.isArray(req.body?.list) ? req.body.list : [];
-    const uploaded = await commitUploadedImages(arr, req.user.companyId);
+    const uploaded = await commitUploadedImages(
+      arr,
+      req.user.companyId,
+      controller.signal,
+    );
     res.json({ uploaded });
   } catch (err) {
     next(err);

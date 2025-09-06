@@ -534,6 +534,7 @@ export async function detectIncompleteImages(
   page = 1,
   perPage = 100,
   companyId = 0,
+  signal,
 ) {
   const { baseDir } = await getDirs(companyId);
   const codes = await fetchTxnCodes();
@@ -553,6 +554,7 @@ export async function detectIncompleteImages(
   }
 
   for (const entry of dirs) {
+    signal?.throwIfAborted();
     if (!entry.isDirectory() || !entry.name.startsWith('transactions_')) continue;
     const dirPath = path.join(baseDir, entry.name);
     let files;
@@ -564,6 +566,7 @@ export async function detectIncompleteImages(
     folders.add(entry.name);
     totalFiles += files.length;
     for (const f of files) {
+      signal?.throwIfAborted();
       const ext = path.extname(f);
       const base = path.basename(f, ext);
       const filePath = path.join(dirPath, f);
@@ -794,7 +797,12 @@ export async function fixIncompleteImages(list = [], companyId = 0) {
   return count;
 }
 
-export async function checkUploadedImages(files = [], names = [], companyId = 0) {
+export async function checkUploadedImages(
+  files = [],
+  names = [],
+  companyId = 0,
+  signal,
+) {
   const results = [];
   let processed = 0;
   const codes = await fetchTxnCodes();
@@ -806,6 +814,7 @@ export async function checkUploadedImages(files = [], names = [], companyId = 0)
         index: n?.index,
       }));
   for (const file of items) {
+    signal?.throwIfAborted();
     const ext = path.extname(file.originalname || '');
     const base = path.basename(file.originalname || '', ext);
     let unique = '';
@@ -962,10 +971,11 @@ export async function checkUploadedImages(files = [], names = [], companyId = 0)
   return { list: results, summary: { totalFiles: items.length, processed } };
 }
 
-export async function commitUploadedImages(list = [], companyId = 0) {
+export async function commitUploadedImages(list = [], companyId = 0, signal) {
   const { baseDir } = await getDirs(companyId);
   let count = 0;
   for (const item of list) {
+    signal?.throwIfAborted();
     const dir = path.join(baseDir, item.folder || '');
     ensureDir(dir);
     try {
@@ -976,12 +986,13 @@ export async function commitUploadedImages(list = [], companyId = 0) {
   return count;
 }
 
-export async function detectIncompleteFromNames(names = [], companyId = 0) {
+export async function detectIncompleteFromNames(names = [], companyId = 0, signal) {
   const codes = await fetchTxnCodes();
   const results = [];
   const skipped = [];
   let processed = 0;
   for (const name of names) {
+    signal?.throwIfAborted();
     const ext = path.extname(name || '');
     const base = path.basename(name || '', ext);
     const { unique } = parseFileUnique(base);
