@@ -19,20 +19,6 @@ function normalizeDateInput(value, format) {
   return v;
 }
 
-function buildFieldTypeMap(rows) {
-  const map = {};
-  if (!Array.isArray(rows) || rows.length === 0) return map;
-  Object.keys(rows[0]).forEach((c) => {
-    const lower = c.toLowerCase();
-    if (lower.includes('time') && !lower.includes('date')) {
-      map[c] = 'time';
-    } else if (lower.includes('timestamp') || lower.includes('date')) {
-      map[c] = 'date';
-    }
-  });
-  return map;
-}
-
 export default function Reports() {
   const { company, branch, user } = useContext(AuthContext);
   const buttonPerms = useButtonPerms();
@@ -191,7 +177,7 @@ export default function Reports() {
           name: selectedProc,
           params: paramMap,
           rows,
-          fieldTypeMap: buildFieldTypeMap(rows),
+          fieldTypeMap: data.fieldTypeMap || {},
         });
       } else {
         addToast('Failed to run procedure', 'error');
@@ -258,24 +244,7 @@ export default function Reports() {
               />
               {procParams.map((p, i) => {
                 if (autoParams[i] !== null) return null;
-                const lower = p.toLowerCase();
                 const val = manualParams[p] || '';
-                if (lower.includes('date')) {
-                  return (
-                    <CustomDatePicker
-                      key={p}
-                      value={val}
-                      onChange={(v) =>
-                        setManualParams((m) => ({
-                          ...m,
-                          [p]: normalizeDateInput(v, 'YYYY-MM-DD'),
-                        }))
-                      }
-                      placeholder={p}
-                      style={{ marginLeft: '0.5rem' }}
-                    />
-                  );
-                }
                 return (
                   <input
                     key={p}
