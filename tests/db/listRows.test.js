@@ -98,6 +98,17 @@ test('listTableRows scopes company_id with tenant tables', async () => {
   assert.ok(/`company_id`\s*=\s*\?/i.test(count.sql));
 });
 
+test('listTableRows allows zero-valued filters', async () => {
+  const restore = mockPool({ tenant: { is_shared: 0, seed_on_create: 0 } });
+  const result = await db.listTableRows('tenant', {
+    filters: { company_id: 0 },
+  });
+  const calls = restore();
+  const main = calls.find((c) => c.sql.startsWith('SELECT *'));
+  assert.equal(result.rows.length, 1);
+  assert.ok(/`company_id`\s*=\s*0/.test(main.sql));
+});
+
 test('listTableRows skips company_id for global tables', async () => {
   const restore = mockPool({});
   await db.listTableRows('global', {

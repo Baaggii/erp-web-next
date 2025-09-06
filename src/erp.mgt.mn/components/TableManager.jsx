@@ -829,7 +829,8 @@ const TableManager = forwardRef(function TableManager({
       params.set('dir', sort.dir);
     }
     Object.entries(filters).forEach(([k, v]) => {
-      if (v && validCols.has(k)) params.set(k, v);
+      if (v !== '' && v !== null && v !== undefined && validCols.has(k))
+        params.set(k, v);
     });
     fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
       credentials: 'include',
