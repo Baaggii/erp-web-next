@@ -45,7 +45,7 @@ function formatCellValue(val, placeholder) {
     return normalizeDateInput(str, placeholder);
   }
   if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
-    return str.slice(0, 10);
+    return normalizeDateInput(str, 'YYYY-MM-DD');
   }
   return str;
 }
