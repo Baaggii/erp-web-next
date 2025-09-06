@@ -5,14 +5,15 @@ import path from 'path';
 import { searchImages } from '../../api-server/services/transactionImageService.js';
 import { updateGeneralConfig, getGeneralConfig } from '../../api-server/services/generalConfig.js';
 
-const baseDir = path.join(process.cwd(), 'uploads', 'txn_images', 'search_images_test');
+const companyId = 0;
+const baseDir = path.join(process.cwd(), 'uploads', String(companyId), 'txn_images', 'search_images_test');
 
 await test('searchImages finds files by field value', { concurrency: false }, async () => {
   const orig = await getGeneralConfig();
   await updateGeneralConfig({
     images: {
       ignoreOnSearch: [
-        path.join(process.cwd(), 'uploads'),
+        path.join(process.cwd(), 'uploads', String(companyId)),
         path.join(baseDir, 'ignored'),
       ],
     },
@@ -28,7 +29,7 @@ await test('searchImages finds files by field value', { concurrency: false }, as
   await fs.writeFile(path.join(baseDir, 'ignored', 'g_123_h.png'), 'x');
   await fs.writeFile(path.join(baseDir, 'nomatch.jpg'), 'x');
 
-  const { files, total } = await searchImages('123', 1, 10);
+  const { files, total } = await searchImages('123', 1, 10, companyId);
   assert.equal(total, 3);
   const joined = files.join('\n');
   assert.ok(joined.includes('a_123_b.jpg'));

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useContext } from 'react';
 import { createPortal } from 'react-dom';
 import Modal from './Modal.jsx';
 import buildImageName from '../utils/buildImageName.js';
@@ -6,6 +6,7 @@ import { API_BASE, API_ROOT } from '../utils/apiBase.js';
 import { useToast } from '../context/ToastContext.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { useTranslation } from 'react-i18next';
+import { AuthContext } from '../context/AuthContext.jsx';
 
 export default function RowImageViewModal({
   visible,
@@ -22,6 +23,7 @@ export default function RowImageViewModal({
   const { addToast } = useToast();
   const generalConfig = useGeneralConfig();
   const { t } = useTranslation();
+  const { company } = useContext(AuthContext);
   const toast = (msg, type = 'info') => {
     if (type === 'info' && !generalConfig?.general?.imageToastEnabled) return;
     addToast(msg, type);
@@ -120,13 +122,13 @@ export default function RowImageViewModal({
     let primary = '';
     let idName = '';
     if (cfg?.imagenameField?.length) {
-      primary = buildImageName(row, cfg.imagenameField, columnCaseMap).name;
+      primary = buildImageName(row, cfg.imagenameField, columnCaseMap, company).name;
     }
     if (!primary) {
       primary = buildFallbackName(row);
     }
     if (cfg?.imageIdField) {
-      idName = buildImageName(row, [cfg.imageIdField], columnCaseMap).name;
+      idName = buildImageName(row, [cfg.imageIdField], columnCaseMap, company).name;
     }
     const altNames = [];
     if (idName && idName !== primary) altNames.push(idName);
@@ -151,6 +153,7 @@ export default function RowImageViewModal({
       for (const fld of folders) {
         const params = new URLSearchParams();
         if (fld) params.set('folder', fld);
+        if (company != null) params.set('companyId', company);
         const url = `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(primary)}?${params.toString()}`;
         toast(`Searching URL: ${url}`, 'info');
         try {
@@ -182,6 +185,7 @@ export default function RowImageViewModal({
                 try {
                   const renameParams = new URLSearchParams();
                   if (folder) renameParams.set('folder', folder);
+                  if (company != null) renameParams.set('companyId', company);
                   const renameUrl = `${API_BASE}/transaction_images/${safeTable}/${encodeURIComponent(idName)}/rename/${encodeURIComponent(primary)}?${renameParams.toString()}`;
                   toast(`Renaming via: ${renameUrl}`, 'info');
                   await fetch(renameUrl, { method: 'POST', credentials: 'include' });

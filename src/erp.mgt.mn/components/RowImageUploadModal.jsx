@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import Modal from './Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import buildImageName from '../utils/buildImageName.js';
 import AISuggestionModal from './AISuggestionModal.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { useTranslation } from 'react-i18next';
+import { AuthContext } from '../context/AuthContext.jsx';
 
 export default function RowImageUploadModal({
   visible,
@@ -26,6 +27,7 @@ export default function RowImageUploadModal({
   const [suggestions, setSuggestions] = useState([]);
   const generalConfig = useGeneralConfig();
   const { t } = useTranslation();
+  const { company } = useContext(AuthContext);
   const toast = (msg, type = 'info') => {
     if (type === 'info' && !generalConfig?.general?.imageToastEnabled) return;
     addToast(msg, type);
@@ -42,7 +44,7 @@ export default function RowImageUploadModal({
     } else if (imageIdField) {
       list = [imageIdField];
     }
-    return buildImageName(row, list, columnCaseMap);
+    return buildImageName(row, list, columnCaseMap, company);
   }
 
   useEffect(() => {
@@ -68,6 +70,7 @@ export default function RowImageUploadModal({
     const safeTable = encodeURIComponent(table);
     const params = new URLSearchParams();
     if (folder) params.set('folder', folder);
+    if (company != null) params.set('companyId', company);
     (async () => {
       if (primary) {
         try {
@@ -165,6 +168,7 @@ export default function RowImageUploadModal({
     const safeTable = encodeURIComponent(table);
     const params = new URLSearchParams();
     if (folder) params.set('folder', folder);
+    if (company != null) params.set('companyId', company);
     const uploadUrl = `/api/transaction_images/${safeTable}/${encodeURIComponent(finalName)}?${params.toString()}`;
     const filesToUpload = Array.from(selectedFiles || files);
     if (!filesToUpload.length) return;
@@ -184,7 +188,7 @@ export default function RowImageUploadModal({
           for (const file of filesToUpload) {
             try {
               const codeRes = await fetch(
-                `/api/transaction_images/benchmark_code?name=${encodeURIComponent(file.name)}`,
+                `/api/transaction_images/benchmark_code?name=${encodeURIComponent(file.name)}${company != null ? `&companyId=${encodeURIComponent(company)}` : ''}`,
                 { credentials: 'include' },
               );
             if (codeRes.ok) {
@@ -256,6 +260,7 @@ export default function RowImageUploadModal({
       const safeTable = encodeURIComponent(table);
       const params = new URLSearchParams();
       if (folder) params.set('folder', folder);
+      if (company != null) params.set('companyId', company);
       await fetch(
         `/api/transaction_images/${safeTable}/${encodeURIComponent(name)}/${encodeURIComponent(file)}?${params.toString()}`,
         { method: 'DELETE', credentials: 'include' },
@@ -271,6 +276,7 @@ export default function RowImageUploadModal({
       const safeTable = encodeURIComponent(table);
       const params = new URLSearchParams();
       if (folder) params.set('folder', folder);
+      if (company != null) params.set('companyId', company);
       await fetch(`/api/transaction_images/${safeTable}/${encodeURIComponent(name)}?${params.toString()}`, {
         method: 'DELETE',
         credentials: 'include',

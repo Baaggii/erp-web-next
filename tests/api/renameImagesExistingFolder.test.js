@@ -4,7 +4,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import { renameImages } from '../../api-server/services/transactionImageService.js';
 
-const baseDir = path.join(process.cwd(), 'uploads', 'txn_images', 'rename_images_test');
+const companyId = 0;
+const baseDir = path.join(process.cwd(), 'uploads', String(companyId), 'txn_images', 'rename_images_test');
 
 await test('renameImages handles images already in folder', { concurrency: false }, async () => {
   await fs.rm(baseDir, { recursive: true, force: true });
@@ -17,6 +18,7 @@ await test('renameImages handles images already in folder', { concurrency: false
     'old',
     'new',
     'rename_images_test/tool/4001',
+    companyId,
   );
   assert.equal(res.length, 1);
   const files = await fs.readdir(dir);

@@ -14,17 +14,24 @@ const projectRoot = path.resolve(__dirname, '../../');
 async function getDirs(companyId = 0) {
   const cfg = await getGeneralConfig(companyId);
   const subdir = cfg.general?.imageDir || 'txn_images';
-  const basePath = cfg.images?.basePath || 'uploads';
-  const baseRoot = path.isAbsolute(basePath)
-    ? basePath
-    : path.join(projectRoot, basePath);
+  const rootBase = cfg.images?.basePath || 'uploads';
+  const baseName = path.basename(rootBase);
+  const companySeg = String(companyId || 0);
+  const baseRoot = path.isAbsolute(rootBase)
+    ? path.join(rootBase, companySeg)
+    : path.join(projectRoot, rootBase, companySeg);
   const baseDir = path.join(baseRoot, subdir);
-  const baseName = path.basename(basePath);
   const ignore = (cfg.images?.ignoreOnSearch || [])
     .map((s) => path.basename(String(s)).toLowerCase())
     .filter((s) => s && s !== baseName.toLowerCase());
-  const urlBase = `/api/${baseName}/${subdir}`;
-  return { baseDir, baseRoot, urlBase, basePath: baseName, ignore };
+  const urlBase = `/api/${baseName}/${companySeg}/${subdir}`;
+  return {
+    baseDir,
+    baseRoot,
+    urlBase,
+    basePath: path.join(baseName, companySeg),
+    ignore,
+  };
 }
 
 function ensureDir(dir) {
