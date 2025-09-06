@@ -250,9 +250,11 @@ const TableManager = forwardRef(function TableManager({
       if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
         map[c.name] = 'number';
       } else if (typ.includes('timestamp') || typ.includes('datetime')) {
+        map[c.name] = 'datetime';
+      } else if (typ.includes('date')) {
         map[c.name] = 'date';
-      } else if (typ.includes('date') || typ.includes('time')) {
-        map[c.name] = typ.includes('time') && !typ.includes('date') ? 'time' : 'date';
+      } else if (typ.includes('time')) {
+        map[c.name] = 'time';
       } else {
         map[c.name] = 'string';
       }
@@ -1000,13 +1002,13 @@ const TableManager = forwardRef(function TableManager({
       vals[c] = v;
       defaults[c] = v;
       if (!v && formConfig?.dateField?.includes(c)) {
-        const lower = c.toLowerCase();
+        const typ = fieldTypeMap[c];
         const now = new Date();
-        if (lower.includes('timestamp') || (lower.includes('date') && lower.includes('time'))) {
+        if (typ === 'datetime') {
           defaults[c] = formatTimestamp(now);
-        } else if (lower.includes('date')) {
+        } else if (typ === 'date') {
           defaults[c] = formatTimestamp(now).slice(0, 10);
-        } else if (lower.includes('time')) {
+        } else if (typ === 'time') {
           defaults[c] = formatTimestamp(now).slice(11, 19);
         }
       }
@@ -1759,18 +1761,11 @@ const TableManager = forwardRef(function TableManager({
   const placeholders = useMemo(() => {
     const map = {};
     columnMeta.forEach((c) => {
-      const lower = c.name.toLowerCase();
       const typ = fieldTypeMap[c.name];
       if (typ === 'time') {
         map[c.name] = 'HH:MM:SS';
       } else if (typ === 'date' || typ === 'datetime') {
         map[c.name] = 'YYYY-MM-DD';
-      } else if (!typ || typ === 'string') {
-        if (lower.includes('time') && !lower.includes('date')) {
-          map[c.name] = 'HH:MM:SS';
-        } else if (lower.includes('timestamp') || lower.includes('date')) {
-          map[c.name] = 'YYYY-MM-DD';
-        }
       }
     });
     return map;
@@ -2404,7 +2399,9 @@ const TableManager = forwardRef(function TableManager({
                 if (c === 'TotalCur' || totalCurrencySet.has(c)) {
                   display = currencyFmt.format(Number(r[c] || 0));
                 } else if (
-                  fieldTypeMap[c] === 'date' || fieldTypeMap[c] === 'time'
+                  fieldTypeMap[c] === 'date' ||
+                  fieldTypeMap[c] === 'datetime' ||
+                  fieldTypeMap[c] === 'time'
                 ) {
                   display = normalizeDateInput(raw, placeholders[c]);
                 }

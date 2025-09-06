@@ -102,13 +102,6 @@ export default function ReportTable({
         map[c] = 'HH:MM:SS';
       } else if (typ === 'date' || typ === 'datetime') {
         map[c] = 'YYYY-MM-DD';
-      } else if (!typ || typ === 'string') {
-        const lower = c.toLowerCase();
-        if (lower.includes('time') && !lower.includes('date')) {
-          map[c] = 'HH:MM:SS';
-        } else if (lower.includes('timestamp') || lower.includes('date')) {
-          map[c] = 'YYYY-MM-DD';
-        }
       }
     });
     return map;
@@ -204,13 +197,6 @@ export default function ReportTable({
         map[c] = 'HH:MM:SS';
       } else if (typ === 'date' || typ === 'datetime') {
         map[c] = 'YYYY-MM-DD';
-      } else if (!typ || typ === 'string') {
-        const lower = c.toLowerCase();
-        if (lower.includes('time') && !lower.includes('date')) {
-          map[c] = 'HH:MM:SS';
-        } else if (lower.includes('timestamp') || lower.includes('date')) {
-          map[c] = 'YYYY-MM-DD';
-        }
       }
     });
     return map;

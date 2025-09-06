@@ -110,16 +110,11 @@ const RowFormModal = function RowFormModal({
     const init = {};
     const now = new Date();
     columns.forEach((c) => {
-      const lower = c.toLowerCase();
       const typ = fieldTypeMap[c];
       let placeholder = '';
-      if (typ === 'time' || (!typ && lower.includes('time') && !lower.includes('date'))) {
+      if (typ === 'time') {
         placeholder = 'HH:MM:SS';
-      } else if (
-        typ === 'date' ||
-        typ === 'datetime' ||
-        (!typ && (lower.includes('timestamp') || lower.includes('date')))
-      ) {
+      } else if (typ === 'date' || typ === 'datetime') {
         placeholder = 'YYYY-MM-DD';
       }
       const raw = row ? String(row[c] ?? '') : String(defaultValues[c] ?? '');
@@ -147,16 +142,11 @@ const RowFormModal = function RowFormModal({
     const extras = {};
     Object.entries(row || {}).forEach(([k, v]) => {
       if (!columns.includes(k)) {
-        const lower = k.toLowerCase();
         const typ = fieldTypeMap[k];
         let placeholder = '';
-        if (typ === 'time' || (!typ && lower.includes('time') && !lower.includes('date'))) {
+        if (typ === 'time') {
           placeholder = 'HH:MM:SS';
-        } else if (
-          typ === 'date' ||
-          typ === 'datetime' ||
-          (!typ && (lower.includes('timestamp') || lower.includes('date')))
-        ) {
+        } else if (typ === 'date' || typ === 'datetime') {
           placeholder = 'YYYY-MM-DD';
         }
         extras[k] = normalizeDateInput(String(v ?? ''), placeholder);
@@ -225,18 +215,11 @@ const RowFormModal = function RowFormModal({
       ...Object.keys(defaultValues || {}),
     ]);
     cols.forEach((c) => {
-      const lower = c.toLowerCase();
       const typ = fieldTypeMap[c];
       if (typ === 'time') {
         map[c] = 'HH:MM:SS';
       } else if (typ === 'date' || typ === 'datetime') {
         map[c] = 'YYYY-MM-DD';
-      } else if (!typ || typ === 'string') {
-        if (lower.includes('time') && !lower.includes('date')) {
-          map[c] = 'HH:MM:SS';
-        } else if (lower.includes('timestamp') || lower.includes('date')) {
-          map[c] = 'YYYY-MM-DD';
-        }
       }
     });
     return map;

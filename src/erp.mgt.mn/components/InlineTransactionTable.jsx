@@ -155,18 +155,11 @@ export default forwardRef(function InlineTransactionTable({
   const placeholders = React.useMemo(() => {
     const map = {};
     fields.forEach((f) => {
-      const lower = f.toLowerCase();
       const typ = fieldTypeMap[f] || columnTypeMap[f] || '';
       if (typ === 'time') {
         map[f] = 'HH:MM:SS';
       } else if (typ === 'date' || typ === 'datetime') {
         map[f] = 'YYYY-MM-DD';
-      } else if (!typ || typ === 'string') {
-        if (lower.includes('time') && !lower.includes('date')) {
-          map[f] = 'HH:MM:SS';
-        } else if (lower.includes('timestamp') || lower.includes('date')) {
-          map[f] = 'YYYY-MM-DD';
-        }
       }
     });
     return map;
