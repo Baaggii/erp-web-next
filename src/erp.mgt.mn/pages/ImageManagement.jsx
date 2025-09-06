@@ -104,6 +104,7 @@ export default function ImageManagement() {
   const scanCancelRef = useRef(false);
   const renameAbortRef = useRef();
   const commitAbortRef = useRef();
+  const batchAbortRef = useRef();
   const dirHandleRef = useRef();
   const [activeOp, setActiveOp] = useState(null);
   const [report, setReport] = useState('');
@@ -483,6 +484,7 @@ export default function ImageManagement() {
             default:
               break;
           }
+          batchAbortRef.current?.abort();
           setActiveOp(null);
         }
         return;
@@ -860,6 +862,8 @@ export default function ImageManagement() {
 
   async function renameAndUploadAll() {
     batchRef.current = true;
+    const controller = new AbortController();
+    batchAbortRef.current = controller;
     try {
       const items = [];
       for (let i = uploadStart; i < uploadsRef.current.length; i++) {
@@ -882,16 +886,29 @@ export default function ImageManagement() {
         await new Promise((r) => setTimeout(r));
         const chunkIds = chunk.map((c) => c.id);
         await renameSelected(chunkIds, { keepSelection: true, silent: true });
+        if (controller.signal.aborted) {
+          setReport('Rename and upload canceled');
+          addToast('Rename and upload canceled', 'info');
+          break;
+        }
         const tables = getTables();
         const toUpload = [...tables.uploads, ...tables.ignored]
           .filter((u) => chunkIds.includes(u.id) && u.tmpPath && !u.processed)
           .map((u) => u.id);
         if (toUpload.length) await commitUploads(toUpload, { silent: true });
+        if (controller.signal.aborted) {
+          setReport('Rename and upload canceled');
+          addToast('Rename and upload canceled', 'info');
+          break;
+        }
       }
-      setReport('Rename and upload completed');
-      addToast('Rename and upload completed', 'success');
+      if (!controller.signal.aborted) {
+        setReport('Rename and upload completed');
+        addToast('Rename and upload completed', 'success');
+      }
     } finally {
       batchRef.current = false;
+      batchAbortRef.current = null;
     }
   }
 
