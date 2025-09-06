@@ -1,10 +1,9 @@
 import fs from 'fs/promises';
-import path from 'path';
+import { resolveDataPath } from '../utils/dataPaths.js';
 
-const printersPath = path.join(process.cwd(), 'api-server', 'data', 'printers.json');
-
-export async function listPrinters() {
+export async function listPrinters(companyId = 0) {
   try {
+    const printersPath = await resolveDataPath('printers.json', companyId);
     const data = await fs.readFile(printersPath, 'utf8');
     return JSON.parse(data || '[]');
   } catch {
