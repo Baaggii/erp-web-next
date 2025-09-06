@@ -22,6 +22,22 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-router.post('/upload', requireAuth, upload.single('file'), uploadCodingTable);
+router.post(
+  '/upload',
+  requireAuth,
+  upload.single('file'),
+  async (req, res, next) => {
+    const controller = new AbortController();
+    const handleClose = () => controller.abort();
+    req.on('close', handleClose);
+    res.on('close', handleClose);
+    try {
+      await uploadCodingTable(req, res, next, controller.signal);
+    } finally {
+      req.off('close', handleClose);
+      res.off('close', handleClose);
+    }
+  },
+);
 
 export default router;
