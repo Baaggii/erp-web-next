@@ -2,10 +2,21 @@ import { API_BASE } from './apiBase.js';
 
 let tokenPromise;
 const controllers = new Set();
-window.addEventListener('beforeunload', () => {
+
+function abortAll() {
   controllers.forEach(controller => controller.abort());
   controllers.clear();
+}
+
+window.addEventListener('beforeunload', event => {
+  if (controllers.size) {
+    event.preventDefault();
+    event.returnValue = '';
+  }
 });
+
+window.addEventListener('unload', abortAll);
+window.addEventListener('pagehide', abortAll);
 
 function dispatchStart(key) {
   window.dispatchEvent(new CustomEvent('loading:start', { detail: { key } }));
