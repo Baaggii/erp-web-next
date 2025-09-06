@@ -5,9 +5,13 @@ import { debugLog } from '../utils/debug.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import I18nContext from '../context/I18nContext.jsx';
+import { useToast } from '../context/ToastContext.jsx';
+import { AuthContext } from '../context/AuthContext.jsx';
 
 export default function FormsManagement() {
   const { t } = useContext(I18nContext);
+  const { addToast } = useToast();
+  const { company } = useContext(AuthContext);
   const [tables, setTables] = useState([]);
   const [table, setTable] = useState('');
   const [names, setNames] = useState([]);
@@ -489,6 +493,45 @@ export default function FormsManagement() {
     setModuleKey('');
   }
 
+  async function handleImport() {
+    if (!window.confirm('Import default forms configuration?')) return;
+    try {
+      const res = await fetch(
+        `/api/config/import/forms?companyId=${encodeURIComponent(company ?? '')}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ files: ['transactionForms.json'] }),
+        },
+      );
+      if (!res.ok) throw new Error('failed');
+      refreshTxnModules();
+      refreshModules();
+      const resCfg = await fetch('/api/transaction_forms', { credentials: 'include' });
+      const data = resCfg.ok ? await resCfg.json() : {};
+      const byTable = {};
+      const namesArr = [];
+      const mapping = {};
+      const fields = {};
+      for (const [n, info] of Object.entries(data)) {
+        const tbl = info.table;
+        mapping[n] = tbl;
+        namesArr.push(n);
+        fields[n] = Array.isArray(info.visibleFields) ? info.visibleFields : [];
+        if (!byTable[tbl]) byTable[tbl] = [];
+        byTable[tbl].push(n);
+      }
+      setFormOptions(byTable);
+      setFormNames(namesArr);
+      setFormToTable(mapping);
+      setFormFields(fields);
+      addToast('Imported', 'success');
+    } catch (err) {
+      addToast(`Import failed: ${err.message}`, 'error');
+    }
+  }
+
   return (
     <div>
       <h2>{t('settings_forms_management', 'Forms Management')}</h2>
@@ -924,6 +967,9 @@ export default function FormsManagement() {
             )}
           </div>
           <div style={{ marginTop: '1rem' }}>
+            <button onClick={handleImport} style={{ marginRight: '0.5rem' }}>
+              Import Defaults
+            </button>
             <button onClick={handleSave}>Save Configuration</button>
           </div>
         </div>

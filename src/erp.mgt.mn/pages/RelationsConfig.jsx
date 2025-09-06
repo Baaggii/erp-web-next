@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useContext } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
+import { AuthContext } from '../context/AuthContext.jsx';
 
 export default function RelationsConfig() {
   const { addToast } = useToast();
+  const { company } = useContext(AuthContext);
   const [tables, setTables] = useState([]);
   const [table, setTable] = useState('');
   const [columns, setColumns] = useState([]);
@@ -76,9 +78,42 @@ export default function RelationsConfig() {
     }
   }
 
+  async function handleImport() {
+    if (!window.confirm('Import default relations configuration?')) return;
+    try {
+      const res = await fetch(
+        `/api/config/import/relations?companyId=${encodeURIComponent(company ?? '')}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ files: ['tableDisplayFields.json'] }),
+        },
+      );
+      if (!res.ok) throw new Error('failed');
+      if (table) {
+        const cfgRes = await fetch(
+          `/api/display_fields?table=${encodeURIComponent(table)}`,
+          { credentials: 'include' },
+        );
+        if (cfgRes.ok) {
+          const cfg = await cfgRes.json();
+          setIdField(cfg.idField || '');
+          setDisplayFields(cfg.displayFields || []);
+        }
+      }
+      addToast('Imported', 'success');
+    } catch (err) {
+      addToast(`Import failed: ${err.message}`, 'error');
+    }
+  }
+
   return (
     <div>
       <h2>Relations Display Fields</h2>
+      <div style={{ marginBottom: '0.5rem' }}>
+        <button onClick={handleImport}>Import Defaults</button>
+      </div>
       <div>
         <label>
           Table:

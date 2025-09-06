@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useContext } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { refreshModules } from '../hooks/useModules.js';
+import { AuthContext } from '../context/AuthContext.jsx';
 
 const emptyConfig = {
   label: '',
@@ -18,6 +19,7 @@ const emptyConfig = {
 
 export default function PosTxnConfig() {
   const { addToast } = useToast();
+  const { company } = useContext(AuthContext);
   const [configs, setConfigs] = useState({});
   const [name, setName] = useState('');
   const [formOptions, setFormOptions] = useState({});
@@ -305,6 +307,30 @@ export default function PosTxnConfig() {
       .then((res) => (res.ok ? res.json() : {}))
       .then((data) => setConfigs(data))
       .catch(() => {});
+  }
+
+  async function handleImport() {
+    if (!window.confirm('Import default POS transaction configuration?')) return;
+    try {
+      const res = await fetch(
+        `/api/config/import/pos_txn?companyId=${encodeURIComponent(company ?? '')}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ files: ['posTransactionConfig.json'] }),
+        },
+      );
+      if (!res.ok) throw new Error('failed');
+      refreshTxnModules();
+      refreshModules();
+      const resCfg = await fetch('/api/pos_txn_config', { credentials: 'include' });
+      const data = resCfg.ok ? await resCfg.json() : {};
+      setConfigs(data);
+      addToast('Imported', 'success');
+    } catch (err) {
+      addToast(`Import failed: ${err.message}`, 'error');
+    }
   }
 
   function handleAddCalc() {
@@ -820,6 +846,9 @@ export default function PosTxnConfig() {
         </select>
       </div>
       <div style={{ marginTop: '1rem' }}>
+        <button onClick={handleImport} style={{ marginRight: '0.5rem' }}>
+          Import Defaults
+        </button>
         <button onClick={handleSave}>Save</button>
       </div>
     </div>

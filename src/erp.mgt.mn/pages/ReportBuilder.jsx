@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useContext } from 'react';
 import buildStoredProcedure from '../utils/buildStoredProcedure.js';
 import buildReportSql from '../utils/buildReportSql.js';
 import ErrorBoundary from '../components/ErrorBoundary.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import formatSqlValue from '../utils/formatSqlValue.js';
+import { useToast } from '../context/ToastContext.jsx';
+import { AuthContext } from '../context/AuthContext.jsx';
 
 const SESSION_PARAMS = [
   { name: 'session_branch_id', type: 'INT' },
@@ -53,6 +55,8 @@ function ReportBuilderInner() {
 
   const [customParamName, setCustomParamName] = useState('');
   const [customParamType, setCustomParamType] = useState(PARAM_TYPES[0]);
+  const { addToast } = useToast();
+  const { company } = useContext(AuthContext);
 
   useEffect(() => {
     setUnionQueries((prev) => {
@@ -136,6 +140,50 @@ function ReportBuilderInner() {
     }
     fetchSaved();
   }, [generalConfig?.general?.reportProcPrefix]);
+
+  async function handleImport() {
+    if (!window.confirm('Import default report builder configuration?')) return;
+    try {
+      const res = await fetch(
+        `/api/config/import/report_builder?companyId=${encodeURIComponent(
+          company ?? '',
+        )}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ files: [] }),
+        },
+      );
+      if (!res.ok) throw new Error('failed');
+      const prefix = generalConfig?.general?.reportProcPrefix || '';
+      const query = prefix ? `?prefix=${encodeURIComponent(prefix)}` : '';
+      try {
+        const resCfg = await fetch(`/api/report_builder/configs${query}`);
+        const dataCfg = await resCfg.json();
+        const list = dataCfg.names || [];
+        setSavedReports(list);
+        setSelectedReport(list[0] || '');
+      } catch {}
+      try {
+        const resFiles = await fetch(`/api/report_builder/procedure-files${query}`);
+        const dataFiles = await resFiles.json();
+        const list = dataFiles.names || [];
+        setProcFiles(list);
+        setSelectedProcFile(list[0] || '');
+      } catch {}
+      try {
+        const resProcs = await fetch(`/api/report_builder/procedures${query}`);
+        const dataProcs = await resProcs.json();
+        const list = dataProcs.names || [];
+        setDbProcedures(list);
+        setSelectedDbProcedure(list[0] || '');
+      } catch {}
+      addToast('Imported', 'success');
+    } catch (err) {
+      addToast(`Import failed: ${err.message}`, 'error');
+    }
+  }
 
   // Ensure fields for a table are loaded
   async function ensureFields(table) {
@@ -1428,6 +1476,9 @@ function ReportBuilderInner() {
   return (
     <div>
       <h2>Report Builder</h2>
+      <div style={{ marginBottom: '0.5rem' }}>
+        <button onClick={handleImport}>Import Defaults</button>
+      </div>
 
       <section>
         <h3>Primary Table</h3>
