@@ -311,6 +311,43 @@ export default function PosTransactionsPage() {
       .catch(() => setLayout({}));
   }, [name]);
 
+  const { formList, visibleTables } = React.useMemo(() => {
+    if (!config) return { formList: [], visibleTables: new Set() };
+    const arr = [
+      { table: config.masterTable, type: config.masterType, position: config.masterPosition, view: config.masterView },
+      ...config.tables,
+    ];
+    const seen = new Set();
+    const filtered = arr.filter((t) => {
+      if (!t.table) return false;
+      if (seen.has(t.table)) return false;
+      seen.add(t.table);
+      return true;
+    });
+    const visibleSet = new Set(
+      filtered
+        .filter((t) => t.position !== 'hidden')
+        .map((t) => t.table),
+    );
+    const order = [
+      'top_row',
+      'upper_left',
+      'upper_right',
+      'left',
+      'right',
+      'lower_left',
+      'lower_right',
+      'bottom_row',
+      'hidden',
+    ];
+    return {
+      formList: filtered.sort(
+        (a, b) => order.indexOf(a.position) - order.indexOf(b.position),
+      ),
+      visibleTables: visibleSet,
+    };
+  }, [config]);
+
   useEffect(() => {
     if (!config) return;
     const tables = [config.masterTable, ...config.tables.map((t) => t.table)];
@@ -318,16 +355,9 @@ export default function PosTransactionsPage() {
     tables.forEach((tbl, idx) => {
       const form = forms[idx];
       if (!tbl || !form || !visibleTables.has(tbl)) return;
-        fetch(`/api/transaction_forms?table=${encodeURIComponent(tbl)}&name=${encodeURIComponent(form)}`, { credentials: 'include' })
+      fetch(`/api/transaction_forms?table=${encodeURIComponent(tbl)}&name=${encodeURIComponent(form)}`, { credentials: 'include' })
         .then((res) => (res.ok ? res.json() : null))
-        .then((cfg) =>
-          setFormConfigs((f) => {
-            const next = cfg || {};
-            const cur = f[tbl];
-            if (JSON.stringify(cur) === JSON.stringify(next)) return f;
-            return { ...f, [tbl]: next };
-          })
-        )
+        .then((cfg) => setFormConfigs((f) => ({ ...f, [tbl]: cfg || {} })))
         .catch(() => {});
       fetch(`/api/tables/${encodeURIComponent(tbl)}/columns`, { credentials: 'include' })
         .then((res) => (res.ok ? res.json() : []))
@@ -437,7 +467,7 @@ export default function PosTransactionsPage() {
           viewLoadingRef.current.delete(view);
         });
     });
-  }, [formConfigs]);
+  }, [formConfigs, visibleTables]);
 
   useEffect(() => {
     if (!config) return;
@@ -1014,45 +1044,7 @@ export default function PosTransactionsPage() {
     window.removeEventListener('mousemove', onDrag);
     window.removeEventListener('mouseup', endDrag);
   }
-
   const configNames = Object.keys(configs);
-
-  const { formList, visibleTables } = React.useMemo(() => {
-    if (!config) return { formList: [], visibleTables: new Set() };
-    const arr = [
-      { table: config.masterTable, type: config.masterType, position: config.masterPosition, view: config.masterView },
-      ...config.tables,
-    ];
-    const seen = new Set();
-    const filtered = arr.filter((t) => {
-      if (!t.table) return false;
-      if (seen.has(t.table)) return false;
-      seen.add(t.table);
-      return true;
-    });
-    const visibleSet = new Set(
-      filtered
-        .filter((t) => t.position !== 'hidden')
-        .map((t) => t.table),
-    );
-    const order = [
-      'top_row',
-      'upper_left',
-      'upper_right',
-      'left',
-      'right',
-      'lower_left',
-      'lower_right',
-      'bottom_row',
-      'hidden',
-    ];
-    return {
-      formList: filtered.sort(
-        (a, b) => order.indexOf(a.position) - order.indexOf(b.position),
-      ),
-      visibleTables: visibleSet,
-    };
-  }, [config]);
 
   return (
     <div>
