@@ -7,6 +7,7 @@ import TooltipWrapper from './TooltipWrapper.jsx';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
+import normalizeDateInput from '../utils/normalizeDateInput.js';
 import callProcedure from '../utils/callProcedure.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
@@ -373,16 +374,6 @@ const RowFormModal = function RowFormModal({
         </table>
       </div>
     );
-  }
-
-  function normalizeDateInput(value, format) {
-    if (typeof value !== 'string') return value;
-    let v = value.trim().replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
-    if (/^\d{4}-\d{2}-\d{2}T/.test(v) && !isNaN(Date.parse(v))) {
-      const local = formatTimestamp(new Date(v));
-      return format === 'HH:MM:SS' ? local.slice(11, 19) : local.slice(0, 10);
-    }
-    return v;
   }
 
   function normalizeNumberInput(value) {

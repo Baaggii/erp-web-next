@@ -1,7 +1,7 @@
 import React from 'react';
 import Modal from './Modal.jsx';
-import formatTimestamp from '../utils/formatTimestamp.js';
 import { useTranslation } from 'react-i18next';
+import normalizeDateInput from '../utils/normalizeDateInput.js';
 
 export default function RowDetailModal({ visible, onClose, row = {}, columns = [], relations = {}, references = [], labels = {} }) {
   const { t } = useTranslation();
@@ -28,16 +28,6 @@ export default function RowDetailModal({ visible, onClose, row = {}, columns = [
     });
     return map;
   }, [cols]);
-
-  function normalizeDateInput(value, format) {
-    if (typeof value !== 'string') return value;
-    let v = value.trim().replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
-    if (/^\d{4}-\d{2}-\d{2}T/.test(v) && !isNaN(Date.parse(v))) {
-      const local = formatTimestamp(new Date(v));
-      return format === 'HH:MM:SS' ? local.slice(11, 19) : local.slice(0, 10);
-    }
-    return v;
-  }
 
   return (
     <Modal visible={visible} title={t('row_details', 'Row Details')} onClose={onClose}>

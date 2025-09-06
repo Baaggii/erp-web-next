@@ -13,6 +13,7 @@ import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
+import normalizeDateInput from '../utils/normalizeDateInput.js';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -22,16 +23,6 @@ const currencyFmt = new Intl.NumberFormat('en-US', {
 function normalizeNumberInput(value) {
   if (typeof value !== 'string') return value;
   return value.replace(',', '.');
-}
-
-function normalizeDateInput(value, format) {
-  if (typeof value !== 'string') return value;
-  let v = value.trim().replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
-  if (/^\d{4}-\d{2}-\d{2}T/.test(v) && !isNaN(Date.parse(v))) {
-    const local = formatTimestamp(new Date(v));
-    return format === 'HH:MM:SS' ? local.slice(11, 19) : local.slice(0, 10);
-  }
-  return v;
 }
 
 export default forwardRef(function InlineTransactionTable({

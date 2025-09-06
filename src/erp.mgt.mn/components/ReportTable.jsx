@@ -4,6 +4,7 @@ import useGeneralConfig, { updateCache } from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import Modal from './Modal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
+import normalizeDateInput from '../utils/normalizeDateInput.js';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -30,16 +31,6 @@ function formatNumber(val) {
   if (val === null || val === undefined || val === '') return '';
   const num = Number(String(val).replace(',', '.'));
   return Number.isNaN(num) ? '' : numberFmt.format(num);
-}
-
-function normalizeDateInput(value, format) {
-  if (typeof value !== 'string') return value;
-  let v = value.trim().replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
-  if (/^\d{4}-\d{2}-\d{2}T/.test(v) && !isNaN(Date.parse(v))) {
-    const local = formatTimestamp(new Date(v));
-    return format === 'HH:MM:SS' ? local.slice(11, 19) : local.slice(0, 10);
-  }
-  return v;
 }
 
 function formatCellValue(val, placeholder) {
