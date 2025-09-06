@@ -7,11 +7,12 @@ import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import I18nContext from '../context/I18nContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
+import { Navigate } from 'react-router-dom';
 
 export default function FormsManagement() {
   const { t } = useContext(I18nContext);
   const { addToast } = useToast();
-  const { company } = useContext(AuthContext);
+  const { session, permissions, company } = useContext(AuthContext);
   const [tables, setTables] = useState([]);
   const [table, setTable] = useState('');
   const [names, setNames] = useState([]);
@@ -28,6 +29,12 @@ export default function FormsManagement() {
   const generalConfig = useGeneralConfig();
   const modules = useModules();
   const procMap = useHeaderMappings(procedureOptions);
+  const hasAdmin =
+    permissions?.permissions?.system_settings ||
+    session?.permissions?.system_settings;
+  if (!hasAdmin) {
+    return <Navigate to="/" replace />;
+  }
   function getProcLabel(name) {
     return generalConfig.general?.procLabels?.[name] || procMap[name] || name;
   }
