@@ -14,7 +14,8 @@ export default function RowDetailModal({
   fieldTypeMap = {},
 }) {
   const { t } = useTranslation();
-  const cols = columns.length > 0 ? columns : Object.keys(row);
+  const safeRow = row || {};
+  const cols = columns.length > 0 ? columns : Object.keys(safeRow);
   const placeholders = React.useMemo(() => {
     const map = {};
     cols.forEach((c) => {
@@ -63,7 +64,9 @@ export default function RowDetailModal({
                   }}
                 >
                   {(() => {
-                    const raw = relations[c] ? labelMap[c][row[c]] || row[c] : row[c];
+                    const raw = relations[c]
+                      ? labelMap[c][safeRow[c]] || safeRow[c]
+                      : safeRow[c];
                     const str = String(raw ?? '');
                     let display;
                     if (placeholders[c]) {
