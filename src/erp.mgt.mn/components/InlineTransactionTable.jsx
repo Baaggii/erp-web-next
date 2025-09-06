@@ -14,6 +14,7 @@ import slugify from '../utils/slugify.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
+import tableDisplayFields from '../../../config/tableDisplayFields.json';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -69,6 +70,7 @@ export default forwardRef(function InlineTransactionTable({
 }, ref) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
+  const warnedDisplay = useRef(new Set());
   const generalConfig = useGeneralConfig();
   const cfg = generalConfig[scope] || {};
   const general = generalConfig.general || {};
@@ -80,6 +82,48 @@ export default forwardRef(function InlineTransactionTable({
     () => new Set(disabledFields.map((f) => f.toLowerCase())),
     [disabledFields],
   );
+
+  const viewSourceMap = React.useMemo(() => {
+    const map = {};
+    Object.entries(viewSource || {}).forEach(([k, v]) => {
+      const key = columnCaseMap[k.toLowerCase()] || k;
+      map[key] = v;
+    });
+    return map;
+  }, [viewSource, columnCaseMap]);
+
+  const relationConfigMap = React.useMemo(() => {
+    const map = {};
+    Object.entries(relationConfigs || {}).forEach(([k, v]) => {
+      const key = columnCaseMap[k.toLowerCase()] || k;
+      map[key] = v;
+    });
+    return map;
+  }, [relationConfigs, columnCaseMap]);
+
+  const autoSelectConfigs = React.useMemo(() => {
+    const map = {};
+    Object.entries(tableDisplayFields || {}).forEach(([tbl, cfg]) => {
+      const id = cfg.idField;
+      if (!id) return;
+      const key = columnCaseMap[id.toLowerCase()];
+      if (key) {
+        map[key] = { table: tbl, idField: cfg.idField, displayFields: cfg.displayFields || [] };
+      } else if (!warnedDisplay.current.has(`${tbl}.${id}`)) {
+        console.warn(`tableDisplayFields: no column '${id}' found for table '${tbl}'`);
+        warnedDisplay.current.add(`${tbl}.${id}`);
+      }
+    });
+    return map;
+  }, [columnCaseMap]);
+
+  const combinedViewSource = React.useMemo(() => {
+    const map = { ...viewSourceMap };
+    Object.entries(autoSelectConfigs).forEach(([k, cfg]) => {
+      if (!map[k]) map[k] = cfg.table;
+    });
+    return map;
+  }, [viewSourceMap, autoSelectConfigs]);
 
   function fillSessionDefaults(obj) {
     const row = { ...obj };
@@ -530,10 +574,13 @@ export default forwardRef(function InlineTransactionTable({
 
   async function openRelationPreview(col, val) {
     if (val && typeof val === 'object') val = val.value;
-    const conf = relationConfigs[col];
-    const viewTbl = viewSource[col];
+    const conf = relationConfigMap[col];
+    const auto = autoSelectConfigs[col];
+    const viewTbl = viewSourceMap[col] || auto?.table;
     const table = conf ? conf.table : viewTbl;
-    const idField = conf ? conf.idField || conf.column : viewDisplays[viewTbl]?.idField || col;
+    const idField = conf
+      ? conf.idField || conf.column
+      : auto?.idField || viewDisplays[viewTbl]?.idField || col;
     if (!table || val === undefined || val === '') return;
     let row = relationData[col]?.[val];
     if (!row) {
@@ -679,7 +726,7 @@ export default forwardRef(function InlineTransactionTable({
       const next = r.map((row, i) => {
         if (i !== rowIdx) return row;
         const updated = { ...row, [field]: value };
-        const conf = relationConfigs[field];
+        const conf = relationConfigMap[field];
         let val = value;
         if (val && typeof val === 'object' && 'value' in val) {
           val = val.value;
@@ -703,13 +750,13 @@ export default forwardRef(function InlineTransactionTable({
       setErrorMsg('');
     }
 
-    const view = viewSource[field];
+    const view = combinedViewSource[field];
     if (view && value !== '') {
       const params = new URLSearchParams({ perPage: 1, debug: 1 });
       const cols = (viewColumns[view] || []).map((c) =>
         typeof c === 'string' ? c : c.name,
       );
-      Object.entries(viewSource).forEach(([f, v]) => {
+      Object.entries(combinedViewSource).forEach(([f, v]) => {
         if (v !== view) return;
         if (!cols.includes(f)) return;
         let pv = f === field ? value : rows[rowIdx]?.[f];
@@ -1004,29 +1051,40 @@ export default forwardRef(function InlineTransactionTable({
 
   function renderCell(idx, f, colIdx) {
     const val = rows[idx]?.[f] ?? '';
-    const isRel = relationConfigs[f] || Array.isArray(relations[f]);
     const invalid = invalidCell && invalidCell.row === idx && invalidCell.field === f;
     if (disabledSet.has(f.toLowerCase())) {
       let display = typeof val === 'object' ? val.label || val.value : val;
       const rawVal = typeof val === 'object' ? val.value : val;
       if (
-        relationConfigs[f] &&
+        relationConfigMap[f] &&
         rawVal !== undefined &&
         relationData[f]?.[rawVal]
       ) {
         const row = relationData[f][rawVal];
         const parts = [rawVal];
-        (relationConfigs[f].displayFields || []).forEach((df) => {
+        (relationConfigMap[f].displayFields || []).forEach((df) => {
           if (row[df] !== undefined) parts.push(row[df]);
         });
         display = parts.join(' - ');
       } else if (
-        viewSource[f] &&
+        viewSourceMap[f] &&
         rawVal !== undefined &&
         relationData[f]?.[rawVal]
       ) {
         const row = relationData[f][rawVal];
-        const cfg = viewDisplays[viewSource[f]] || {};
+        const cfg = viewDisplays[viewSourceMap[f]] || {};
+        const parts = [rawVal];
+        (cfg.displayFields || []).forEach((df) => {
+          if (row[df] !== undefined) parts.push(row[df]);
+        });
+        display = parts.join(' - ');
+      } else if (
+        autoSelectConfigs[f] &&
+        rawVal !== undefined &&
+        relationData[f]?.[rawVal]
+      ) {
+        const row = relationData[f][rawVal];
+        const cfg = autoSelectConfigs[f];
         const parts = [rawVal];
         (cfg.displayFields || []).forEach((df) => {
           if (row[df] !== undefined) parts.push(row[df]);
@@ -1063,76 +1121,98 @@ export default forwardRef(function InlineTransactionTable({
       }
       return displayVal;
     }
-    if (isRel) {
-      if (relationConfigs[f]) {
-        const conf = relationConfigs[f];
-        const inputVal = typeof val === 'object' ? val.value : val;
-        return (
-          <AsyncSearchSelect
-            table={conf.table}
-            searchColumn={conf.idField || conf.column}
-            searchColumns={[conf.idField || conf.column, ...(conf.displayFields || [])]}
-            labelFields={conf.displayFields || []}
-            value={inputVal}
-            onChange={(v, label) =>
-              handleChange(idx, f, label ? { value: v, label } : v)
-            }
-            onSelect={(opt) => handleOptionSelect(idx, colIdx, opt)}
-            inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
-            onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
-            onFocus={() => handleFocusField(f)}
-            className={invalid ? 'border-red-500 bg-red-100' : ''}
-            inputStyle={inputStyle}
-            companyId={company}
-          />
-        );
-      }
-      if (Array.isArray(relations[f])) {
-        const inputVal = typeof val === 'object' ? val.value : val;
-        return (
-          <select
-            className={`w-full border px-1 ${invalid ? 'border-red-500 bg-red-100' : ''}`}
-            style={inputStyle}
-            value={inputVal}
-            onChange={(e) => handleChange(idx, f, e.target.value)}
-            ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
-            onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
-            onFocus={() => handleFocusField(f)}
-            title={typeof val === 'object' ? val.label || val.value : val}
-          >
-            <option value="">-- select --</option>
-            {relations[f].map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        );
-      }
+    if (relationConfigMap[f]) {
+      const conf = relationConfigMap[f];
+      const inputVal = typeof val === 'object' ? val.value : val;
+      return (
+        <AsyncSearchSelect
+          table={conf.table}
+          searchColumn={conf.idField || conf.column}
+          searchColumns={[conf.idField || conf.column, ...(conf.displayFields || [])]}
+          labelFields={conf.displayFields || []}
+          value={inputVal}
+          onChange={(v, label) =>
+            handleChange(idx, f, label ? { value: v, label } : v)
+          }
+          onSelect={(opt) => handleOptionSelect(idx, colIdx, opt)}
+          inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
+          onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
+          onFocus={() => handleFocusField(f)}
+          className={invalid ? 'border-red-500 bg-red-100' : ''}
+          inputStyle={inputStyle}
+          companyId={company}
+        />
+      );
     }
-    if (viewSource[f]) {
-      const view = viewSource[f];
+    if (Array.isArray(relations[f])) {
+      const inputVal = typeof val === 'object' ? val.value : val;
+      return (
+        <select
+          className={`w-full border px-1 ${invalid ? 'border-red-500 bg-red-100' : ''}`}
+          style={inputStyle}
+          value={inputVal}
+          onChange={(e) => handleChange(idx, f, e.target.value)}
+          ref={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
+          onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
+          onFocus={() => handleFocusField(f)}
+          title={typeof val === 'object' ? val.label || val.value : val}
+        >
+          <option value="">-- select --</option>
+          {relations[f].map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      );
+    }
+    if (viewSourceMap[f]) {
+      const view = viewSourceMap[f];
       const cfg = viewDisplays[view] || {};
       const inputVal = typeof val === 'object' ? val.value : val;
       const idField = cfg.idField || f;
       const labelFields = cfg.displayFields || [];
       return (
-          <AsyncSearchSelect
-            table={view}
-            searchColumn={idField}
-            searchColumns={[idField, ...labelFields]}
-            labelFields={labelFields}
-            idField={idField}
-            value={inputVal}
-            onChange={(v, label) =>
-              handleChange(idx, f, label ? { value: v, label } : v)
-            }
-            onSelect={(opt) => handleOptionSelect(idx, colIdx, opt)}
-            inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
-            onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
-            onFocus={() => handleFocusField(f)}
-            className={invalid ? 'border-red-500 bg-red-100' : ''}
-            inputStyle={inputStyle}
+        <AsyncSearchSelect
+          table={view}
+          searchColumn={idField}
+          searchColumns={[idField, ...labelFields]}
+          labelFields={labelFields}
+          idField={idField}
+          value={inputVal}
+          onChange={(v, label) =>
+            handleChange(idx, f, label ? { value: v, label } : v)
+          }
+          onSelect={(opt) => handleOptionSelect(idx, colIdx, opt)}
+          inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
+          onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
+          onFocus={() => handleFocusField(f)}
+          className={invalid ? 'border-red-500 bg-red-100' : ''}
+          inputStyle={inputStyle}
+          companyId={company}
+        />
+      );
+    }
+    if (autoSelectConfigs[f]) {
+      const cfg = autoSelectConfigs[f];
+      const inputVal = typeof val === 'object' ? val.value : val;
+      return (
+        <AsyncSearchSelect
+          table={cfg.table}
+          searchColumn={cfg.idField}
+          searchColumns={[cfg.idField, ...(cfg.displayFields || [])]}
+          labelFields={cfg.displayFields || []}
+          idField={cfg.idField}
+          value={inputVal}
+          onChange={(v, label) =>
+            handleChange(idx, f, label ? { value: v, label } : v)
+          }
+          onSelect={(opt) => handleOptionSelect(idx, colIdx, opt)}
+          inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
+          onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
+          onFocus={() => handleFocusField(f)}
+          className={invalid ? 'border-red-500 bg-red-100' : ''}
+          inputStyle={inputStyle}
           companyId={company}
         />
       );

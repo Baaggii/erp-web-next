@@ -11,6 +11,7 @@ import normalizeDateInput from '../utils/normalizeDateInput.js';
 import callProcedure from '../utils/callProcedure.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
+import tableDisplayFields from '../../../config/tableDisplayFields.json';
 
 const RowFormModal = function RowFormModal({
   visible,
@@ -65,6 +66,7 @@ const RowFormModal = function RowFormModal({
   const renderCount = useRef(0);
   const warned = useRef(false);
   const procCache = useRef({});
+  const warnedDisplay = useRef(new Set());
   const generalConfig = useGeneralConfig();
   const cfg = generalConfig[scope] || {};
   const general = generalConfig.general || {};
@@ -106,6 +108,40 @@ const RowFormModal = function RowFormModal({
     [disabledFields],
   );
   const { user, company, branch, department, userSettings } = useContext(AuthContext);
+
+  const viewSourceMap = React.useMemo(() => {
+    const map = {};
+    Object.entries(viewSource || {}).forEach(([k, v]) => {
+      const key = columnCaseMap[k.toLowerCase()] || k;
+      map[key] = v;
+    });
+    return map;
+  }, [viewSource, columnCaseMap]);
+
+  const relationConfigMap = React.useMemo(() => {
+    const map = {};
+    Object.entries(relationConfigs || {}).forEach(([k, v]) => {
+      const key = columnCaseMap[k.toLowerCase()] || k;
+      map[key] = v;
+    });
+    return map;
+  }, [relationConfigs, columnCaseMap]);
+
+  const autoSelectConfigs = React.useMemo(() => {
+    const map = {};
+    Object.entries(tableDisplayFields || {}).forEach(([tbl, cfg]) => {
+      const id = cfg.idField;
+      if (!id) return;
+      const key = columnCaseMap[id.toLowerCase()];
+      if (key) {
+        map[key] = { table: tbl, idField: cfg.idField, displayFields: cfg.displayFields || [] };
+      } else if (!warnedDisplay.current.has(`${tbl}.${id}`)) {
+        console.warn(`tableDisplayFields: no column '${id}' found for table '${tbl}'`);
+        warnedDisplay.current.add(`${tbl}.${id}`);
+      }
+    });
+    return map;
+  }, [columnCaseMap]);
   const [formVals, setFormVals] = useState(() => {
     const init = {};
     const now = new Date();
@@ -730,10 +766,13 @@ const RowFormModal = function RowFormModal({
   async function openRelationPreview(col) {
     let val = formVals[col];
     if (val && typeof val === 'object') val = val.value;
-    const conf = relationConfigs[col];
-    const viewTbl = viewSource[col];
+    const conf = relationConfigMap[col];
+    const auto = autoSelectConfigs[col];
+    const viewTbl = viewSourceMap[col] || auto?.table;
     const table = conf ? conf.table : viewTbl;
-    const idField = conf ? conf.idField || conf.column : viewDisplays[viewTbl]?.idField || col;
+    const idField = conf
+      ? conf.idField || conf.column
+      : auto?.idField || viewDisplays[viewTbl]?.idField || col;
     if (!table || val === undefined || val === '') return;
     let row = relationData[col]?.[val];
     if (!row) {
@@ -921,23 +960,35 @@ const RowFormModal = function RowFormModal({
       const val = typeof raw === 'object' && raw !== null ? raw.value : raw;
       let display = typeof raw === 'object' && raw !== null ? raw.label || val : val;
       if (
-        relationConfigs[c] &&
+        relationConfigMap[c] &&
         val !== undefined &&
         relationData[c]?.[val]
       ) {
         const row = relationData[c][val];
         const parts = [val];
-        (relationConfigs[c].displayFields || []).forEach((df) => {
+        (relationConfigMap[c].displayFields || []).forEach((df) => {
           if (row[df] !== undefined) parts.push(row[df]);
         });
         display = parts.join(' - ');
       } else if (
-        viewSource[c] &&
+        viewSourceMap[c] &&
         val !== undefined &&
         relationData[c]?.[val]
       ) {
         const row = relationData[c][val];
-        const cfg = viewDisplays[viewSource[c]] || {};
+        const cfg = viewDisplays[viewSourceMap[c]] || {};
+        const parts = [val];
+        (cfg.displayFields || []).forEach((df) => {
+          if (row[df] !== undefined) parts.push(row[df]);
+        });
+        display = parts.join(' - ');
+      } else if (
+        autoSelectConfigs[c] &&
+        val !== undefined &&
+        relationData[c]?.[val]
+      ) {
+        const row = relationData[c][val];
+        const cfg = autoSelectConfigs[c];
         const parts = [val];
         (cfg.displayFields || []).forEach((df) => {
           if (row[df] !== undefined) parts.push(row[df]);
@@ -977,16 +1028,16 @@ const RowFormModal = function RowFormModal({
       );
     }
 
-    const control = relationConfigs[c] ? (
+    const control = relationConfigMap[c] ? (
       <AsyncSearchSelect
         title={tip}
-        table={relationConfigs[c].table}
-        searchColumn={relationConfigs[c].idField || relationConfigs[c].column}
+        table={relationConfigMap[c].table}
+        searchColumn={relationConfigMap[c].idField || relationConfigMap[c].column}
         searchColumns={[
-          relationConfigs[c].idField || relationConfigs[c].column,
-          ...(relationConfigs[c].displayFields || []),
+          relationConfigMap[c].idField || relationConfigMap[c].column,
+          ...(relationConfigMap[c].displayFields || []),
         ]}
-        labelFields={relationConfigs[c].displayFields || []}
+        labelFields={relationConfigMap[c].displayFields || []}
         value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
         onChange={(val) => {
           setFormVals((v) => ({ ...v, [c]: val }));
@@ -1013,17 +1064,54 @@ const RowFormModal = function RowFormModal({
         inputStyle={inputStyle}
         companyId={company}
       />
-    ) : viewSource[c] && !Array.isArray(relations[c]) ? (
+    ) : viewSourceMap[c] && !Array.isArray(relations[c]) ? (
       <AsyncSearchSelect
         title={tip}
-        table={viewSource[c]}
-        searchColumn={viewDisplays[viewSource[c]]?.idField || c}
+        table={viewSourceMap[c]}
+        searchColumn={viewDisplays[viewSourceMap[c]]?.idField || c}
         searchColumns={[
-          viewDisplays[viewSource[c]]?.idField || c,
-          ...(viewDisplays[viewSource[c]]?.displayFields || []),
+          viewDisplays[viewSourceMap[c]]?.idField || c,
+          ...(viewDisplays[viewSourceMap[c]]?.displayFields || []),
         ]}
-        labelFields={viewDisplays[viewSource[c]]?.displayFields || []}
-        idField={viewDisplays[viewSource[c]]?.idField || c}
+        labelFields={viewDisplays[viewSourceMap[c]]?.displayFields || []}
+        idField={viewDisplays[viewSourceMap[c]]?.idField || c}
+        value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
+        onChange={(val) => {
+          setFormVals((v) => ({ ...v, [c]: val }));
+          setErrors((er) => ({ ...er, [c]: undefined }));
+          onChange({ [c]: val });
+        }}
+        onSelect={(opt) => {
+          const el = inputRefs.current[c];
+          if (el) {
+            const fake = { key: 'Enter', preventDefault: () => {}, target: el, selectedOption: opt };
+            handleKeyDown(fake, c);
+          }
+        }}
+        disabled={disabled}
+        onKeyDown={(e) => handleKeyDown(e, c)}
+        onFocus={(e) => {
+          e.target.select();
+          handleFocusField(c);
+          e.target.style.width = 'auto';
+          const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
+          e.target.style.width = `${Math.max(boxWidth, w)}px`;
+        }}
+        inputRef={(el) => (inputRefs.current[c] = el)}
+        inputStyle={inputStyle}
+        companyId={company}
+      />
+    ) : autoSelectConfigs[c] && !Array.isArray(relations[c]) ? (
+      <AsyncSearchSelect
+        title={tip}
+        table={autoSelectConfigs[c].table}
+        searchColumn={autoSelectConfigs[c].idField}
+        searchColumns={[
+          autoSelectConfigs[c].idField,
+          ...(autoSelectConfigs[c].displayFields || []),
+        ]}
+        labelFields={autoSelectConfigs[c].displayFields || []}
+        idField={autoSelectConfigs[c].idField}
         value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
         onChange={(val) => {
           setFormVals((v) => ({ ...v, [c]: val }));
@@ -1169,32 +1257,32 @@ const RowFormModal = function RowFormModal({
             ref={useGrid ? tableRef : undefined}
             fields={cols}
             relations={relations}
-            relationConfigs={relationConfigs}
+            relationConfigs={relationConfigMap}
             relationData={relationData}
             fieldTypeMap={fieldTypeMap}
             labels={labels}
             totalAmountFields={totalAmountFields}
             totalCurrencyFields={totalCurrencyFields}
-            viewSource={viewSource}
+            viewSource={viewSourceMap}
             viewDisplays={viewDisplays}
-              viewColumns={viewColumns}
-              procTriggers={procTriggers}
-              user={user}
-              company={company}
-              branch={branch}
-              department={department}
-              columnCaseMap={columnCaseMap}
-              tableName={table}
-              imagenameFields={imagenameField}
-              imageIdField={imageIdField}
-              userIdFields={userIdFields}
-              branchIdFields={branchIdFields}
-              departmentIdFields={departmentIdFields}
-              companyIdFields={companyIdFields}
-              collectRows={useGrid}
-              minRows={1}
-              onRowSubmit={onSubmit}
-              onRowsChange={handleGridRowsChange}
+            viewColumns={viewColumns}
+            procTriggers={procTriggers}
+            user={user}
+            company={company}
+            branch={branch}
+            department={department}
+            columnCaseMap={columnCaseMap}
+            tableName={table}
+            imagenameFields={imagenameField}
+            imageIdField={imageIdField}
+            userIdFields={userIdFields}
+            branchIdFields={branchIdFields}
+            departmentIdFields={departmentIdFields}
+            companyIdFields={companyIdFields}
+            collectRows={useGrid}
+            minRows={1}
+            onRowSubmit={onSubmit}
+            onRowsChange={handleGridRowsChange}
             requiredFields={requiredFields}
             disabledFields={disabledFields}
             defaultValues={defaultValues}
