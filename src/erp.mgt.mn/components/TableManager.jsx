@@ -2404,6 +2404,11 @@ const TableManager = forwardRef(function TableManager({
                   fieldTypeMap[c] === 'time'
                 ) {
                   display = normalizeDateInput(raw, placeholders[c]);
+                } else if (
+                  placeholders[c] === undefined &&
+                  /^\d{4}-\d{2}-\d{2}T/.test(raw)
+                ) {
+                  display = normalizeDateInput(raw, 'YYYY-MM-DD');
                 }
                 const showFull = display.length > 20;
                 return (
