@@ -82,7 +82,7 @@ export default function RelationsConfig() {
     if (!window.confirm('Import default relations configuration?')) return;
     try {
       const res = await fetch(
-        `/api/config/import/relations?companyId=${encodeURIComponent(company ?? '')}`,
+        `/api/config/import?companyId=${encodeURIComponent(company ?? '')}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

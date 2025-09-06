@@ -145,9 +145,7 @@ function ReportBuilderInner() {
     if (!window.confirm('Import default report builder configuration?')) return;
     try {
       const res = await fetch(
-        `/api/config/import/report_builder?companyId=${encodeURIComponent(
-          company ?? '',
-        )}`,
+        `/api/config/import?companyId=${encodeURIComponent(company ?? '')}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

@@ -63,7 +63,7 @@ export default function GeneralConfiguration() {
     if (!window.confirm('Import default configuration?')) return;
     try {
       const res = await fetch(
-        `/api/config/import/general?companyId=${encodeURIComponent(company ?? '')}`,
+        `/api/config/import?companyId=${encodeURIComponent(company ?? '')}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

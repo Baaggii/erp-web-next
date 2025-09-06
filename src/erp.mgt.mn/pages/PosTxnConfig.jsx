@@ -313,7 +313,7 @@ export default function PosTxnConfig() {
     if (!window.confirm('Import default POS transaction configuration?')) return;
     try {
       const res = await fetch(
-        `/api/config/import/pos_txn?companyId=${encodeURIComponent(company ?? '')}`,
+        `/api/config/import?companyId=${encodeURIComponent(company ?? '')}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
