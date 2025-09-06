@@ -143,6 +143,7 @@ export default function PosTransactionsPage() {
   const refs = useRef({});
   const dragInfo = useRef(null);
   const relationCacheRef = useRef(new Map());
+  const loadingTablesRef = useRef(new Set());
   const viewCacheRef = useRef(new Map());
   const abortControllersRef = useRef(new Set());
 
@@ -169,6 +170,8 @@ export default function PosTransactionsPage() {
   }, [name]);
 
   async function loadRelations(tbl) {
+    if (loadingTablesRef.current.has(tbl)) return;
+    loadingTablesRef.current.add(tbl);
     try {
       const res = await fetchWithAbort(`/api/tables/${encodeURIComponent(tbl)}/relations`, {
         credentials: 'include',
@@ -256,6 +259,8 @@ export default function PosTransactionsPage() {
       setRelationData((m) => ({ ...m, [tbl]: rowMap }));
     } catch {
       /* ignore */
+    } finally {
+      loadingTablesRef.current.delete(tbl);
     }
   }
 
@@ -374,8 +379,8 @@ export default function PosTransactionsPage() {
     });
 
     Object.entries(viewsByName).forEach(([view, tbls]) => {
-      const cached = viewCacheRef.current.get(view);
-      if (cached) {
+      if (viewCacheRef.current.has(view)) {
+        const cached = viewCacheRef.current.get(view);
         tbls.forEach((tbl) => {
           setViewDisplaysMap((m) => ({
             ...m,
