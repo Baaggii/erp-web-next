@@ -4121,7 +4121,6 @@
       "date",
       "sellerid",
       "branchid",
-      "coupcode",
       "TRTYPENAME",
       "trtype",
       "UITransTypeName",
@@ -4137,7 +4136,6 @@
       "count",
       "state",
       "transbranch",
-      "id_1",
       "confirm",
       "confirm_date",
       "confirm_emp",
@@ -4165,7 +4163,8 @@
       "g_end",
       "company_id",
       "branch_id",
-      "g_cancel"
+      "g_cancel",
+      "department_id"
     ],
     "calcText": "",
     "columnTypes": {
@@ -4493,7 +4492,8 @@
       "Column190": false,
       "company_id": false,
       "branch_id": false,
-      "id": false
+      "id": false,
+      "department_id": false
     },
     "allowZeroMap": {
       "gUnique_id": true,
@@ -4657,7 +4657,8 @@
       "Column190": true,
       "company_id": true,
       "branch_id": true,
-      "id": true
+      "id": true,
+      "department_id": true
     },
     "defaultValues": {
       "gUnique_id": "",
@@ -4744,9 +4745,9 @@
       "IMAGE3": "",
       "IMAGE4": "",
       "IMAGE5": "",
-      "TRTYPENAME": "",
-      "trtype": "",
-      "UITransTypeName": "",
+      "TRTYPENAME": "Гэрээ",
+      "trtype": "cont",
+      "UITransTypeName": "6100",
       "ORGANIZATION": "",
       "ROOMID": "",
       "USERID": "",
@@ -4820,8 +4821,9 @@
       "Column189": "",
       "Column190": "",
       "company_id": "1",
-      "branch_id": "",
-      "id": ""
+      "branch_id": "1",
+      "id": "",
+      "department_id": "102"
     },
     "defaultFrom": {
       "gUnique_id": "",
@@ -4985,7 +4987,8 @@
       "Column190": "",
       "company_id": "",
       "branch_id": "transbranch",
-      "id": ""
+      "id": "",
+      "department_id": ""
     },
     "renameMap": {
       "gUnique_id": "gUnique_id",
@@ -5090,7 +5093,7 @@
       "count": "count",
       "state": "state",
       "transbranch": "transbranch",
-      "id_1": "contract_id",
+      "id_1": "contract_id1",
       "confirm": "confirm",
       "confirm_date": "confirm_date",
       "confirm_emp": "confirm_emp",
@@ -5149,17 +5152,21 @@
       "Column190": "Column190",
       "company_id": "company_id",
       "branch_id": "branch_id",
-      "id": "id"
+      "id": "id",
+      "department_id": "department_id"
     },
     "extraFields": [
       "id",
       "company_id",
-      "branch_id"
+      "branch_id",
+      "department_id"
     ],
     "populateRange": false,
     "startYear": "",
     "endYear": "",
-    "autoIncStart": "1"
+    "autoIncStart": "1",
+    "triggers": "",
+    "foreignKeys": ""
   },
   "tbl_discount": {
     "sheet": "Hyamdral",

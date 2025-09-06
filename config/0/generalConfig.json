@@ -26,7 +26,10 @@
     "showReportParams": false,
     "requestPollingEnabled": false,
     "requestPollingIntervalSeconds": 30,
-    "procLabels": {},
+    "procLabels": {
+      "dynrep_inventory_warehouse": "АГУУЛАХЫН БАРАА МАТЕРИАЛЫН ТАЙЛАН",
+      "dynrep_income_daterange": "САНХҮҮГИЙН ОРЛОГЫН ТАЙЛАН"
+    },
     "procFieldLabels": {},
     "reportProcPrefix": "dynrep_",
     "reportViewPrefix": "dynview_",
