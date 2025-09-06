@@ -8,11 +8,12 @@ import {
 import fs from 'fs/promises';
 import { resolveConfigPathSync } from '../utils/configPaths.js';
 
-// Resolve the permission registry path with tenant fallback
-const actionsPath = resolveConfigPathSync('configs/permissionActions.json');
-
 export async function listGroups(req, res, next) {
   try {
+    const actionsPath = resolveConfigPathSync(
+      'permissionActions.json',
+      req.user.companyId,
+    );
     const raw = await fs.readFile(actionsPath, 'utf8');
     const registry = JSON.parse(raw);
     const allForms = registry.forms || {};
@@ -95,7 +96,11 @@ export async function populateMissing(req, res, next) {
   try {
     const allow = !!req.body?.allow;
     const permissions = req.body?.permissions || [];
-    await populateMissingPermissions(allow, permissions);
+    await populateMissingPermissions(
+      allow,
+      permissions,
+      req.user.companyId,
+    );
     res.sendStatus(200);
   } catch (err) {
     next(err);
