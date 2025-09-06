@@ -1075,11 +1075,33 @@ const TableManager = forwardRef(function TableManager({
     setDetailRow(row);
     const id = getRowId(row);
     if (id !== undefined) {
+      let tenantInfo = null;
       try {
-        const res = await fetch(
-          `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}/references`,
+        const ttRes = await fetch(
+          `/api/tenant_tables/${encodeURIComponent(table)}`,
           { credentials: 'include' },
         );
+        if (ttRes.ok) {
+          tenantInfo = await ttRes.json().catch(() => null);
+        }
+      } catch {
+        tenantInfo = null;
+      }
+      try {
+        const params = new URLSearchParams();
+        if (tenantInfo && !(tenantInfo.isShared ?? tenantInfo.is_shared)) {
+          const keys = tenantInfo.tenantKeys ?? tenantInfo.tenant_keys ?? [];
+          if (keys.includes('company_id') && company != null)
+            params.set('company_id', company);
+          if (keys.includes('branch_id') && branch != null)
+            params.set('branch_id', branch);
+          if (keys.includes('department_id') && department != null)
+            params.set('department_id', department);
+        }
+        const url = `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}/references${
+          params.toString() ? `?${params.toString()}` : ''
+        }`;
+        const res = await fetch(url, { credentials: 'include' });
         if (res.ok) {
           try {
             const refs = await res.json();
