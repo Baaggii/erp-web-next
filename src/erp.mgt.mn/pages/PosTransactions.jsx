@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useContext } from 'react';
+import React, { useEffect, useState, useRef, useContext, useMemo } from 'react';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import RowFormModal from '../components/RowFormModal.jsx';
 import Modal from '../components/Modal.jsx';
@@ -7,6 +7,14 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
+
+function isEqual(a, b) {
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
 
 function parseErrorField(msg) {
   if (!msg) return null;
@@ -123,6 +131,7 @@ export default function PosTransactionsPage() {
   const [name, setName] = useState('');
   const [config, setConfig] = useState(null);
   const [formConfigs, setFormConfigs] = useState({});
+  const memoFormConfigs = useMemo(() => formConfigs, [formConfigs]);
   const [columnMeta, setColumnMeta] = useState({});
   const [values, setValues] = useState({});
   const [layout, setLayout] = useState({});
@@ -357,7 +366,13 @@ export default function PosTransactionsPage() {
       if (!tbl || !form || !visibleTables.has(tbl)) return;
       fetch(`/api/transaction_forms?table=${encodeURIComponent(tbl)}&name=${encodeURIComponent(form)}`, { credentials: 'include' })
         .then((res) => (res.ok ? res.json() : null))
-        .then((cfg) => setFormConfigs((f) => ({ ...f, [tbl]: cfg || {} })))
+        .then((cfg) =>
+          setFormConfigs((f) => {
+            const prev = f[tbl];
+            const next = cfg || {};
+            return isEqual(prev, next) ? f : { ...f, [tbl]: next };
+          }),
+        )
         .catch(() => {});
       fetch(`/api/tables/${encodeURIComponent(tbl)}/columns`, { credentials: 'include' })
         .then((res) => (res.ok ? res.json() : []))
@@ -399,15 +414,15 @@ export default function PosTransactionsPage() {
   useEffect(() => {
     if (!config) return;
     const tables = [config.masterTable, ...config.tables.map((t) => t.table)];
-    if (!tables.every((tbl) => formConfigs[tbl])) return;
+    if (!tables.every((tbl) => memoFormConfigs[tbl])) return;
     if (initRef.current === name) return;
     initRef.current = name;
     handleNew();
-  }, [config, formConfigs, name]);
+  }, [config, memoFormConfigs, name]);
 
   useEffect(() => {
     const viewsByName = {};
-    Object.entries(formConfigs).forEach(([tbl, fc]) => {
+    Object.entries(memoFormConfigs).forEach(([tbl, fc]) => {
       if (!visibleTables.has(tbl)) return;
       const views = Object.values(fc.viewSource || {});
       views.forEach((v) => {
@@ -467,7 +482,7 @@ export default function PosTransactionsPage() {
           viewLoadingRef.current.delete(view);
         });
     });
-  }, [formConfigs, visibleTables]);
+  }, [memoFormConfigs, visibleTables]);
 
   useEffect(() => {
     if (!config) return;
@@ -696,7 +711,7 @@ export default function PosTransactionsPage() {
       if (!next[tbl]) next[tbl] = {};
       next[tbl][config.statusField.field] = config.statusField.created;
     }
-    Object.entries(formConfigs).forEach(([tbl, fc]) => {
+    Object.entries(memoFormConfigs).forEach(([tbl, fc]) => {
       const defs = fc.defaultValues || {};
       if (!next[tbl]) next[tbl] = {};
       Object.entries(defs).forEach(([k, v]) => {
@@ -751,7 +766,7 @@ export default function PosTransactionsPage() {
       next[tbl][config.statusField.field] = config.statusField.beforePost;
     }
     // fill defaults and system fields when missing
-    Object.entries(formConfigs).forEach(([tbl, fc]) => {
+    Object.entries(memoFormConfigs).forEach(([tbl, fc]) => {
       const defs = fc.defaultValues || {};
       if (!next[tbl]) next[tbl] = Array.isArray(values[tbl]) ? [] : {};
       const applyDefaults = (row) => {
@@ -884,7 +899,7 @@ export default function PosTransactionsPage() {
     if (!name) return;
     // basic required field check
     for (const t of [{ table: config.masterTable }, ...config.tables]) {
-      const fc = formConfigs[t.table];
+      const fc = memoFormConfigs[t.table];
       if (!fc) continue;
       const req = fc.requiredFields || [];
       const row = values[t.table] || {};
@@ -896,7 +911,7 @@ export default function PosTransactionsPage() {
       }
     }
     const payload = { ...values };
-    Object.entries(formConfigs).forEach(([tbl, fc]) => {
+    Object.entries(memoFormConfigs).forEach(([tbl, fc]) => {
       const defs = fc.defaultValues || {};
       if (!payload[tbl]) payload[tbl] = {};
       Object.entries(defs).forEach(([k, v]) => {
@@ -953,7 +968,7 @@ export default function PosTransactionsPage() {
             },
           }));
         }
-        const imgCfg = formConfigs[config.masterTable] || {};
+        const imgCfg = memoFormConfigs[config.masterTable] || {};
         if (imgCfg.imageIdField) {
           const columnMap = (columnMeta[config.masterTable] || []).reduce(
             (m, c) => {
@@ -1099,7 +1114,7 @@ export default function PosTransactionsPage() {
             {formList
               .filter(t => t.position !== 'hidden')
               .map((t, idx) => {
-                const fc = formConfigs[t.table];
+                const fc = memoFormConfigs[t.table];
                 if (!fc) return <div key={idx}>Loading...</div>;
                 const meta = columnMeta[t.table] || [];
                 const labels = {};
@@ -1189,10 +1204,10 @@ export default function PosTransactionsPage() {
                       defaultValues={fc.defaultValues || {}}
                       table={config.masterTable}
                       imagenameField={
-                        formConfigs[config.masterTable]?.imagenameField || []
+                        memoFormConfigs[config.masterTable]?.imagenameField || []
                       }
                       imageIdField={
-                        formConfigs[config.masterTable]?.imageIdField || ''
+                        memoFormConfigs[config.masterTable]?.imageIdField || ''
                       }
                       relations={relationsMap[t.table] || {}}
                       relationConfigs={relationConfigs[t.table] || {}}
@@ -1214,7 +1229,7 @@ export default function PosTransactionsPage() {
                       onNextForm={() => {
                         let next = idx + 1;
                         while (next < formList.length) {
-                          const nf = formConfigs[formList[next].table];
+                          const nf = memoFormConfigs[formList[next].table];
                           const provided = Array.isArray(nf?.editableFields)
                             ? nf.editableFields
                             : [];
