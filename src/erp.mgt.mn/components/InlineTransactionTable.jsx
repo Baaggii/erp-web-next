@@ -12,7 +12,6 @@ import RowImageUploadModal from './RowImageUploadModal.jsx';
 import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
-import normalizeDateInput from '../utils/normalizeDateInput.js';
 import callProcedure from '../utils/callProcedure.js';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
@@ -23,6 +22,16 @@ const currencyFmt = new Intl.NumberFormat('en-US', {
 function normalizeNumberInput(value) {
   if (typeof value !== 'string') return value;
   return value.replace(',', '.');
+}
+
+function normalizeDateInput(value, format) {
+  if (typeof value !== 'string') return value;
+  let v = value.trim().replace(/^(\d{4})[.,](\d{2})[.,](\d{2})/, '$1-$2-$3');
+  if (/^\d{4}-\d{2}-\d{2}T/.test(v) && !isNaN(Date.parse(v))) {
+    const local = formatTimestamp(new Date(v));
+    return format === 'HH:MM:SS' ? local.slice(11, 19) : local.slice(0, 10);
+  }
+  return v;
 }
 
 export default forwardRef(function InlineTransactionTable({
@@ -211,9 +220,8 @@ export default forwardRef(function InlineTransactionTable({
       if (!row || typeof row !== 'object') return row;
       const updated = fillSessionDefaults(row);
       Object.entries(updated).forEach(([k, v]) => {
-        const format = fieldTypeMap[k] === 'date' ? 'YYYY-MM-DD' : placeholders[k];
-        if (format) {
-          updated[k] = normalizeDateInput(String(v ?? ''), format);
+        if (placeholders[k]) {
+          updated[k] = normalizeDateInput(String(v ?? ''), placeholders[k]);
         }
       });
       return updated;
@@ -439,9 +447,8 @@ export default forwardRef(function InlineTransactionTable({
         if (val && typeof val === 'object' && 'value' in val) {
           val = val.value;
         }
-        const format = fieldTypeMap[key] === 'date' ? 'YYYY-MM-DD' : placeholders[key];
-        if (format) {
-          val = normalizeDateInput(val, format);
+        if (placeholders[key]) {
+          val = normalizeDateInput(val, placeholders[key]);
         }
         if (totalCurrencySet.has(key) || totalAmountSet.has(key)) {
           val = normalizeNumberInput(val);
@@ -569,9 +576,8 @@ export default forwardRef(function InlineTransactionTable({
       const prev = rows[rows.length - 1];
       for (const f of fields) {
         let val = prev[f];
-        const format = fieldTypeMap[f] === 'date' ? 'YYYY-MM-DD' : placeholders[f];
-        if (format) {
-          val = normalizeDateInput(val, format);
+        if (placeholders[f]) {
+          val = normalizeDateInput(val, placeholders[f]);
         }
         if (totalCurrencySet.has(f) || totalAmountSet.has(f)) {
           val = normalizeNumberInput(val);
@@ -783,9 +789,8 @@ export default forwardRef(function InlineTransactionTable({
     const row = rows[idx] || {};
     for (const f of requiredFields) {
       let val = row[f];
-      const format = fieldTypeMap[f] === 'date' ? 'YYYY-MM-DD' : placeholders[f];
-      if (format) {
-        val = normalizeDateInput(val, format);
+      if (placeholders[f]) {
+        val = normalizeDateInput(val, placeholders[f]);
       }
       if (totalCurrencySet.has(f)) {
         val = normalizeNumberInput(val);
@@ -834,8 +839,7 @@ export default forwardRef(function InlineTransactionTable({
       const key = columnCaseMap[k.toLowerCase()];
       if (!key) return;
       let val = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
-      const format = fieldTypeMap[key] === 'date' ? 'YYYY-MM-DD' : placeholders[key];
-      if (format) val = normalizeDateInput(val, format);
+      if (placeholders[key]) val = normalizeDateInput(val, placeholders[key]);
       if (totalAmountSet.has(key) || totalCurrencySet.has(key)) {
         val = normalizeNumberInput(val);
       }
