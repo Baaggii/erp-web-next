@@ -145,6 +145,7 @@ export default function PosTransactionsPage() {
   const relationCacheRef = useRef(new Map());
   const loadingTablesRef = useRef(new Set());
   const viewCacheRef = useRef(new Map());
+  const viewLoadingRef = useRef(new Set());
   const abortControllersRef = useRef(new Set());
 
   const fetchWithAbort = (url, options = {}) => {
@@ -297,7 +298,7 @@ export default function PosTransactionsPage() {
           cfg = { ...cfg, masterTable: master.table || '', masterForm: master.form || '', masterType: master.type || 'single', masterPosition: master.position || 'upper_left', tables: rest };
         }
         setConfig(cfg);
-        setFormConfigs({});
+        setFormConfigs((f) => (Object.keys(f).length ? {} : f));
         setValues({});
         setRelationsMap({});
         setRelationConfigs({});
@@ -431,6 +432,8 @@ export default function PosTransactionsPage() {
         });
         return;
       }
+      if (viewLoadingRef.current.has(view)) return;
+      viewLoadingRef.current.add(view);
       const dfPromise = fetchWithAbort(
         `/api/display_fields?table=${encodeURIComponent(view)}`,
         { credentials: 'include' },
@@ -459,6 +462,9 @@ export default function PosTransactionsPage() {
         })
         .catch(() => {
           // ignore errors to allow retry
+        })
+        .finally(() => {
+          viewLoadingRef.current.delete(view);
         });
     });
   }, [formConfigs, visibleTables]);
