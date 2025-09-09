@@ -125,11 +125,6 @@ export default function GeneralConfiguration() {
       <TooltipWrapper title={t('general_configuration', { ns: 'tooltip', defaultValue: 'Configure global settings' })}>
         <h2>{t('generalConfiguration', 'General Configuration')}</h2>
       </TooltipWrapper>
-      {isDefault && (
-        <div style={{ color: 'orange', marginBottom: '0.5rem' }}>
-          Using default configuration
-        </div>
-      )}
       <div className="tab-button-group" style={{ marginBottom: '0.5rem' }}>
         <TooltipWrapper title={t('tab_forms', { ns: 'tooltip', defaultValue: 'Form options' })}>
           <button
@@ -178,7 +173,6 @@ export default function GeneralConfiguration() {
           Images
         </button>
       </div>
-      <fieldset disabled={isDefault} style={{ border: 'none', padding: 0 }}>
       {tab === 'forms' || tab === 'pos' ? (
         <>
           <div style={{ marginBottom: '0.5rem' }}>
@@ -595,12 +589,11 @@ export default function GeneralConfiguration() {
           </div>
         </>
       )}
-      </fieldset>
       <div>
         <button onClick={handleImport} style={{ marginRight: '0.5rem' }}>
           Import Defaults
         </button>
-        <button onClick={handleSave} disabled={saving || isDefault}>
+        <button onClick={handleSave} disabled={saving}>
           Save
         </button>
       </div>
