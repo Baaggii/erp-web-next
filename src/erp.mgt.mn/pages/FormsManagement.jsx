@@ -26,6 +26,8 @@ export default function FormsManagement() {
   const [procedureOptions, setProcedureOptions] = useState([]);
   const [branchCfg, setBranchCfg] = useState({ idField: null, displayFields: [] });
   const [deptCfg, setDeptCfg] = useState({ idField: null, displayFields: [] });
+  const [savedConfigs, setSavedConfigs] = useState([]);
+  const [selectedSaved, setSelectedSaved] = useState('');
   const generalConfig = useGeneralConfig();
   const modules = useModules();
   const procMap = useHeaderMappings(procedureOptions);
@@ -40,6 +42,21 @@ export default function FormsManagement() {
   }
   useEffect(() => {
     debugLog('Component mounted: FormsManagement');
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/transaction_forms', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((data) => {
+        const list = [];
+        Object.entries(data || {}).forEach(([tbl, forms]) => {
+          Object.entries(forms || {}).forEach(([nm, cfg]) => {
+            list.push({ table: tbl, name: nm, config: cfg });
+          });
+        });
+        setSavedConfigs(list);
+      })
+      .catch(() => setSavedConfigs([]));
   }, []);
 
   const [config, setConfig] = useState({
@@ -369,10 +386,61 @@ export default function FormsManagement() {
           allowedBranches: [],
           allowedDepartments: [],
           procedures: [],
-        });
-        setModuleKey('');
       });
+      setModuleKey('');
+    });
   }, [table, name, names]);
+
+  function handleSavedSelect(e) {
+    const idx = e.target.value;
+    if (idx === '') {
+      setSelectedSaved('');
+      return;
+    }
+    const entry = savedConfigs[idx];
+    setSelectedSaved(idx);
+    if (!entry) return;
+    setTable(entry.table);
+    setName(entry.name);
+    setModuleKey(entry.config?.moduleKey || '');
+    setConfig({
+      visibleFields: entry.config?.visibleFields || [],
+      requiredFields: entry.config?.requiredFields || [],
+      defaultValues: entry.config?.defaultValues || {},
+      editableDefaultFields: entry.config?.editableDefaultFields || [],
+      editableFields: entry.config?.editableFields || [],
+      userIdFields: entry.config?.userIdFields || [],
+      branchIdFields: entry.config?.branchIdFields || [],
+      departmentIdFields: entry.config?.departmentIdFields || [],
+      companyIdFields: entry.config?.companyIdFields || [],
+      dateField: entry.config?.dateField || [],
+      emailField: entry.config?.emailField || [],
+      imagenameField: entry.config?.imagenameField || [],
+      imageIdField: entry.config?.imageIdField || '',
+      imageFolder: entry.config?.imageFolder || '',
+      printEmpField: entry.config?.printEmpField || [],
+      printCustField: entry.config?.printCustField || [],
+      totalCurrencyFields: entry.config?.totalCurrencyFields || [],
+      totalAmountFields: entry.config?.totalAmountFields || [],
+      signatureFields: entry.config?.signatureFields || [],
+      headerFields: entry.config?.headerFields || [],
+      mainFields: entry.config?.mainFields || [],
+      footerFields: entry.config?.footerFields || [],
+      viewSource: entry.config?.viewSource || {},
+      transactionTypeField: entry.config?.transactionTypeField || '',
+      transactionTypeValue: entry.config?.transactionTypeValue || '',
+      detectFields: entry.config?.detectFields || [],
+      allowedBranches: (entry.config?.allowedBranches || []).map(String),
+      allowedDepartments: (entry.config?.allowedDepartments || []).map(String),
+      procedures: entry.config?.procedures || [],
+    });
+    fetch(`/api/tables/${encodeURIComponent(entry.table)}/columns`, {
+      credentials: 'include',
+    })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((cols) => setColumns(cols.map((c) => c.name || c)))
+      .catch(() => setColumns([]));
+  }
 
   // If a user selects a predefined transaction name, the associated module
   // parent key will be applied automatically based on the stored
@@ -621,9 +689,25 @@ export default function FormsManagement() {
     <div>
       <h2>{t('settings_forms_management', 'Forms Management')}</h2>
       <div style={{ marginBottom: '1rem' }}>
+        <select value={selectedSaved} onChange={handleSavedSelect}>
+          <option value="">-- select saved configuration --</option>
+          {savedConfigs.map((sc, idx) => (
+            <option key={`${sc.table}-${sc.name}`} value={idx}>
+              {`${sc.table} – ${sc.name}`}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div style={{ marginBottom: '1rem' }}>
         <label>
           Module:
-          <select value={moduleKey} onChange={(e) => setModuleKey(e.target.value)}>
+          <select
+            value={moduleKey}
+            onChange={(e) => {
+              setModuleKey(e.target.value);
+              setSelectedSaved('');
+            }}
+          >
             <option value="">-- select module --</option>
             {modules.map((m) => (
               <option key={m.module_key} value={m.module_key}>
@@ -634,7 +718,13 @@ export default function FormsManagement() {
         </label>
       </div>
       <div style={{ marginBottom: '1rem' }}>
-        <select value={table} onChange={(e) => setTable(e.target.value)}>
+        <select
+          value={table}
+          onChange={(e) => {
+            setTable(e.target.value);
+            setSelectedSaved('');
+          }}
+        >
           <option value="">-- select table --</option>
           {tables.map((t) => (
             <option key={t} value={t}>
@@ -655,7 +745,13 @@ export default function FormsManagement() {
           >
             <label>
               Existing configuration:
-              <select value={name} onChange={(e) => setName(e.target.value)}>
+              <select
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setSelectedSaved('');
+                }}
+              >
                 <option value="">-- select transaction --</option>
                 {names.map((n) => (
                   <option key={n} value={n}>
@@ -671,7 +767,10 @@ export default function FormsManagement() {
                 type="text"
                 placeholder="Transaction name"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setSelectedSaved('');
+                }}
               />
             </label>
 
