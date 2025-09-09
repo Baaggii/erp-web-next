@@ -414,7 +414,9 @@ export default function PosTransactionsPage() {
         )
         .catch(() => {});
       if (!loadedTablesRef.current.has(tbl)) {
-        fetch(`/api/tables/${encodeURIComponent(tbl)}/columns`, { credentials: 'include' })
+        fetchWithAbort(`/api/tables/${encodeURIComponent(tbl)}/columns`, {
+          credentials: 'include',
+        })
           .then((res) => (res.ok ? res.json() : []))
           .then(async (cols) => {
             setColumnMeta((m) => ({ ...m, [tbl]: cols || [] }));
@@ -429,7 +431,10 @@ export default function PosTransactionsPage() {
           .catch(() => {
             loadedTablesRef.current.add(tbl);
           });
-        fetch(`/api/proc_triggers?table=${encodeURIComponent(tbl)}`, { credentials: 'include' })
+        fetchWithAbort(
+          `/api/proc_triggers?table=${encodeURIComponent(tbl)}`,
+          { credentials: 'include' },
+        )
           .then((res) => (res.ok ? res.json() : {}))
           .then((data) => setProcTriggersMap((m) => ({ ...m, [tbl]: data || {} })))
           .catch(() => {});
