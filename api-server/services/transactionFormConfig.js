@@ -1,24 +1,19 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { tenantConfigPath } from '../utils/configPaths.js';
+import { tenantConfigPath, getConfigPath } from '../utils/configPaths.js';
 
-async function readConfig(companyId = 0) {
-  const tenantFile = tenantConfigPath('transactionForms.json', companyId);
-  let filePath = tenantFile;
-  let isDefault = false;
-  try {
-    await fs.access(tenantFile);
-  } catch {
-    filePath = tenantConfigPath('transactionForms.json', 0);
-    isDefault = true;
+  async function readConfig(companyId = 0) {
+    const { path: filePath, isDefault } = await getConfigPath(
+      'transactionForms.json',
+      companyId,
+    );
+    try {
+      const data = await fs.readFile(filePath, 'utf8');
+      return { cfg: JSON.parse(data), isDefault };
+    } catch {
+      return { cfg: {}, isDefault: true };
+    }
   }
-  try {
-    const data = await fs.readFile(filePath, 'utf8');
-    return { cfg: JSON.parse(data), isDefault };
-  } catch {
-    return { cfg: {}, isDefault: true };
-  }
-}
 
 async function writeConfig(cfg, companyId = 0) {
   const filePath = tenantConfigPath('transactionForms.json', companyId);

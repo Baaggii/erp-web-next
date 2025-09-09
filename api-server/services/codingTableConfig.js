@@ -1,29 +1,24 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { tenantConfigPath } from '../utils/configPaths.js';
+import { tenantConfigPath, getConfigPath } from '../utils/configPaths.js';
 
 async function ensureDir(companyId = 0) {
   const filePath = tenantConfigPath('codingTableConfigs.json', companyId);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
 }
 
-async function readConfig(companyId = 0) {
-  const tenantFile = tenantConfigPath('codingTableConfigs.json', companyId);
-  let filePath = tenantFile;
-  let isDefault = false;
-  try {
-    await fs.access(tenantFile);
-  } catch {
-    filePath = tenantConfigPath('codingTableConfigs.json', 0);
-    isDefault = true;
+  async function readConfig(companyId = 0) {
+    const { path: filePath, isDefault } = await getConfigPath(
+      'codingTableConfigs.json',
+      companyId,
+    );
+    try {
+      const data = await fs.readFile(filePath, 'utf8');
+      return { cfg: JSON.parse(data), isDefault };
+    } catch {
+      return { cfg: {}, isDefault: true };
+    }
   }
-  try {
-    const data = await fs.readFile(filePath, 'utf8');
-    return { cfg: JSON.parse(data), isDefault };
-  } catch {
-    return { cfg: {}, isDefault: true };
-  }
-}
 
 async function writeConfig(cfg, companyId = 0) {
   await ensureDir(companyId);

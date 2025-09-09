@@ -1,7 +1,7 @@
 // scripts/generateTranslations.js
 import fs from 'fs';
 import path from 'path';
-import { resolveConfigPathSync } from '../api-server/utils/configPaths.js';
+import { getConfigPathSync } from '../api-server/utils/configPaths.js';
 let OpenAI;
 try {
   ({ default: OpenAI } = await import('../api-server/utils/openaiClient.js'));
@@ -23,11 +23,11 @@ const languageNames = {
   ru: 'Russian',
 };
 const companyId = process.env.COMPANY_ID || 0;
-const headerMappingsPath = resolveConfigPathSync(
+const { path: headerMappingsPath } = getConfigPathSync(
   'headerMappings.json',
   companyId,
 );
-const transactionFormsPath = resolveConfigPathSync(
+const { path: transactionFormsPath } = getConfigPathSync(
   'transactionForms.json',
   companyId,
 );
@@ -364,7 +364,7 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
   try {
     const ulaConfig = JSON.parse(
       fs.readFileSync(
-        resolveConfigPathSync('userLevelActions.json', companyId),
+        getConfigPathSync('userLevelActions.json', companyId).path,
         'utf8',
       ),
     );
@@ -413,7 +413,7 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
   try {
     const posConfig = JSON.parse(
       fs.readFileSync(
-        resolveConfigPathSync('posTransactionConfig.json', companyId),
+        getConfigPathSync('posTransactionConfig.json', companyId).path,
         'utf8',
       ),
     );

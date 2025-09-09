@@ -1,15 +1,18 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { tenantConfigPath, resolveConfigPath } from '../utils/configPaths.js';
+import { tenantConfigPath, getConfigPath } from '../utils/configPaths.js';
 
 async function readLayout(companyId = 0) {
-  try {
-    const filePath = await resolveConfigPath('posTransactionLayout.json', companyId);
-    const data = await fs.readFile(filePath, 'utf8');
-    return JSON.parse(data);
-  } catch {
-    return {};
-  }
+    try {
+      const { path: filePath } = await getConfigPath(
+        'posTransactionLayout.json',
+        companyId,
+      );
+      const data = await fs.readFile(filePath, 'utf8');
+      return JSON.parse(data);
+    } catch {
+      return {};
+    }
 }
 
 async function writeLayout(cfg, companyId = 0) {
