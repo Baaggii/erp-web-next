@@ -460,10 +460,20 @@ export default function FormsManagement() {
   async function handleDelete() {
     if (!table || !name) return;
     if (!window.confirm('Delete transaction configuration?')) return;
-    await fetch(`/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`, {
-      method: 'DELETE',
-      credentials: 'include',
-    });
+    try {
+      const res = await fetch(
+        `/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`,
+        {
+          method: 'DELETE',
+          credentials: 'include',
+        },
+      );
+      if (!res.ok) throw new Error('failed');
+      addToast('Deleted', 'success');
+    } catch {
+      addToast('Delete failed', 'error');
+      return;
+    }
     refreshTxnModules();
     refreshModules();
     setNames((n) => n.filter((x) => x !== name));
