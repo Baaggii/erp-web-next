@@ -6,14 +6,24 @@ import {
   getProcedureParams,
   getProcedureRawRows,
 } from '../../db/index.js';
+import { listPermittedProcedures } from '../utils/reportProcedures.js';
 
 const router = express.Router();
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
-    const { prefix = '' } = req.query;
-    const procedures = await listStoredProcedures(prefix);
-    res.json({ procedures });
+    const { prefix = '', branchId, departmentId } = req.query;
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
+    const { procedures } = await listPermittedProcedures(
+      { branchId, departmentId, prefix },
+      companyId,
+      req.user,
+    );
+    const existing = new Set(await listStoredProcedures(prefix));
+    const names = procedures
+      .map((p) => p.name)
+      .filter((n) => existing.has(n));
+    res.json({ procedures: names });
   } catch (err) {
     next(err);
   }
@@ -21,6 +31,16 @@ router.get('/', requireAuth, async (req, res, next) => {
 
 router.get('/:name/params', requireAuth, async (req, res, next) => {
   try {
+    const { branchId, departmentId } = req.query;
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
+    const { procedures } = await listPermittedProcedures(
+      { branchId, departmentId },
+      companyId,
+      req.user,
+    );
+    const allowed = new Set(procedures.map((p) => p.name));
+    if (!allowed.has(req.params.name))
+      return res.status(403).json({ message: 'Procedure not allowed' });
     const parameters = await getProcedureParams(req.params.name);
     res.json({ parameters });
   } catch (err) {
@@ -32,6 +52,16 @@ router.post('/', requireAuth, async (req, res, next) => {
   try {
     const { name, params, aliases } = req.body || {};
     if (!name) return res.status(400).json({ message: 'name required' });
+    const { branchId, departmentId } = req.query;
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
+    const { procedures } = await listPermittedProcedures(
+      { branchId, departmentId },
+      companyId,
+      req.user,
+    );
+    const allowed = new Set(procedures.map((p) => p.name));
+    if (!allowed.has(name))
+      return res.status(403).json({ message: 'Procedure not allowed' });
     const row = await callStoredProcedure(
       name,
       Array.isArray(params) ? params : [],
@@ -56,6 +86,16 @@ router.post('/raw', requireAuth, async (req, res, next) => {
     } = req.body || {};
     if (!name || !column)
       return res.status(400).json({ message: 'name and column required' });
+    const { branchId, departmentId } = req.query;
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
+    const { procedures } = await listPermittedProcedures(
+      { branchId, departmentId },
+      companyId,
+      req.user,
+    );
+    const allowed = new Set(procedures.map((p) => p.name));
+    if (!allowed.has(name))
+      return res.status(403).json({ message: 'Procedure not allowed' });
     const { rows, sql, original, file, displayFields } = await getProcedureRawRows(
       name,
       params || {},
