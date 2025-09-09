@@ -152,12 +152,12 @@ function ReportBuilderInner() {
       return;
     try {
       const res = await fetch(
-        `/api/config/import?companyId=${encodeURIComponent(company ?? '')}`,
+        `/api/config/import/report_builder?companyId=${encodeURIComponent(company ?? '')}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ files: ['headerMappings.json'] }),
+          body: JSON.stringify({}),
         },
       );
       if (!res.ok) throw new Error('failed');
