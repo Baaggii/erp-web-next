@@ -25,49 +25,53 @@ function normalizeNumberInput(value) {
   return value.replace(',', '.');
 }
 
-export default forwardRef(function InlineTransactionTable({
-  fields = [],
-  relations = {},
-  relationConfigs = {},
-  relationData = {},
-  fieldTypeMap = {},
-  labels = {},
-  totalAmountFields = [],
-  totalCurrencyFields = [],
-  collectRows = false,
-  minRows = 1,
-  onRowSubmit = () => {},
-  onRowsChange = () => {},
-  requiredFields = [],
-  defaultValues = {},
-  onNextForm = null,
-  rows: initRows = [],
-  columnCaseMap = {},
-  viewSource = {},
-  viewDisplays = {},
-  viewColumns = {},
-  loadView = () => {},
-  procTriggers = {},
-  user = {},
-  company,
-  branch,
-  department,
-  scope = 'forms',
-  labelFontSize,
-  boxWidth,
-  boxHeight,
-  boxMaxWidth,
-  boxMaxHeight,
-  disabledFields = [],
-  dateField = [],
-  userIdFields = [],
-  branchIdFields = [],
-  departmentIdFields = [],
-  companyIdFields = [],
-  tableName = '',
-  imagenameFields = [],
-  imageIdField = '',
-}, ref) {
+function InlineTransactionTable(
+  {
+    fields = [],
+    relations = {},
+    relationConfigs = {},
+    relationData = {},
+    fieldTypeMap = {},
+    labels = {},
+    totalAmountFields = [],
+    totalCurrencyFields = [],
+    collectRows = false,
+    minRows = 1,
+    onRowSubmit = () => {},
+    onRowsChange = () => {},
+    requiredFields = [],
+    defaultValues = {},
+    onNextForm = null,
+    rows: initRows = [],
+    columnCaseMap = {},
+    viewSource = {},
+    viewDisplays = {},
+    viewColumns = {},
+    loadView = () => {},
+    procTriggers = {},
+    user = {},
+    company,
+    branch,
+    department,
+    scope = 'forms',
+    labelFontSize,
+    boxWidth,
+    boxHeight,
+    boxMaxWidth,
+    boxMaxHeight,
+    disabledFields = [],
+    dateField = [],
+    userIdFields = [],
+    branchIdFields = [],
+    departmentIdFields = [],
+    companyIdFields = [],
+    tableName = '',
+    imagenameFields = [],
+    imageIdField = '',
+    configHash: _configHash,
+  },
+  ref,
+) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
   const [tableDisplayFields, setTableDisplayFields] = useState({});
@@ -89,6 +93,20 @@ export default forwardRef(function InlineTransactionTable({
     [disabledFields],
   );
 
+  const columnCaseMapKey = React.useMemo(
+    () => JSON.stringify(columnCaseMap || {}),
+    [columnCaseMap],
+  );
+  const viewSourceKey = React.useMemo(() => JSON.stringify(viewSource || {}), [viewSource]);
+  const relationConfigsKey = React.useMemo(
+    () => JSON.stringify(relationConfigs || {}),
+    [relationConfigs],
+  );
+  const tableDisplayFieldsKey = React.useMemo(
+    () => JSON.stringify(tableDisplayFields || {}),
+    [tableDisplayFields],
+  );
+
   const viewSourceMap = React.useMemo(() => {
     const map = {};
     Object.entries(viewSource || {}).forEach(([k, v]) => {
@@ -96,7 +114,7 @@ export default forwardRef(function InlineTransactionTable({
       map[key] = v;
     });
     return map;
-  }, [viewSource, columnCaseMap]);
+  }, [viewSourceKey, columnCaseMapKey]);
 
   const relationConfigMap = React.useMemo(() => {
     const map = {};
@@ -105,7 +123,7 @@ export default forwardRef(function InlineTransactionTable({
       map[key] = v;
     });
     return map;
-  }, [relationConfigs, columnCaseMap]);
+  }, [relationConfigsKey, columnCaseMapKey]);
 
   const displayIndex = React.useMemo(() => {
     const index = {};
@@ -119,7 +137,7 @@ export default forwardRef(function InlineTransactionTable({
       };
     });
     return index;
-  }, [tableDisplayFields]);
+  }, [tableDisplayFieldsKey]);
 
   // Only columns present in columnCaseMap are evaluated, preventing cross-table false positives.
   const autoSelectConfigs = React.useMemo(() => {
@@ -131,7 +149,7 @@ export default forwardRef(function InlineTransactionTable({
       }
     });
     return map;
-  }, [columnCaseMap, displayIndex]);
+  }, [columnCaseMapKey, displayIndex]);
 
   const combinedViewSource = React.useMemo(() => {
     const map = { ...viewSourceMap };
@@ -195,6 +213,16 @@ export default forwardRef(function InlineTransactionTable({
   const totalAmountSet = new Set(totalAmountFields);
   const totalCurrencySet = new Set(totalCurrencyFields);
 
+  const viewColumnsKey = React.useMemo(
+    () => JSON.stringify(viewColumns[tableName] || []),
+    [viewColumns, tableName],
+  );
+  const fieldTypeMapKey = React.useMemo(
+    () => JSON.stringify(fieldTypeMap || {}),
+    [fieldTypeMap],
+  );
+  const fieldsKey = React.useMemo(() => fields.join(','), [fields]);
+
   const columnTypeMap = React.useMemo(() => {
     const map = {};
     const cols = viewColumns[tableName] || [];
@@ -210,7 +238,7 @@ export default forwardRef(function InlineTransactionTable({
       if (typ) map[key] = typ;
     });
     return map;
-  }, [viewColumns, tableName, columnCaseMap]);
+  }, [viewColumnsKey, columnCaseMapKey, tableName]);
 
   const placeholders = React.useMemo(() => {
     const map = {};
@@ -223,7 +251,7 @@ export default forwardRef(function InlineTransactionTable({
       }
     });
     return map;
-  }, [fields, columnTypeMap, fieldTypeMap]);
+  }, [fieldsKey, columnTypeMap, fieldTypeMapKey]);
 
   const fieldInputTypes = React.useMemo(() => {
     const map = {};
@@ -250,7 +278,7 @@ export default forwardRef(function InlineTransactionTable({
       else map[f] = 'text';
     });
     return map;
-  }, [fields, columnTypeMap, fieldTypeMap, placeholders, defaultValues, totalAmountSet, totalCurrencySet]);
+  }, [fieldsKey, columnTypeMap, fieldTypeMapKey, placeholders, defaultValues, totalAmountSet, totalCurrencySet]);
 
   useEffect(() => {
     if (!Array.isArray(initRows)) return;
@@ -283,8 +311,7 @@ export default forwardRef(function InlineTransactionTable({
   const [invalidCell, setInvalidCell] = useState(null);
   const [previewRow, setPreviewRow] = useState(null);
   const [uploadRow, setUploadRow] = useState(null);
-  const fetchFlagsRef = useRef({});
-  const [fetchFlags, setFetchFlags] = useState(fetchFlagsRef.current);
+  const alreadyRequestedRef = useRef(new Set());
   const procCache = useRef({});
 
   const inputFontSize = Math.max(10, labelFontSize);
@@ -622,12 +649,10 @@ export default forwardRef(function InlineTransactionTable({
 
   function handleFocusField(col) {
     showTriggerInfo(col);
-    if (!fetchFlagsRef.current[col]) {
-      if (viewSourceMap[col]) {
-        loadView(viewSourceMap[col]);
-      }
-      fetchFlagsRef.current[col] = true;
-      setFetchFlags({ ...fetchFlagsRef.current });
+    const view = viewSourceMap[col];
+    if (view && !alreadyRequestedRef.current.has(view)) {
+      alreadyRequestedRef.current.add(view);
+      loadView(view);
     }
   }
 
@@ -1153,7 +1178,6 @@ export default forwardRef(function InlineTransactionTable({
       const inputVal = typeof val === 'object' ? val.value : val;
       return (
         <AsyncSearchSelect
-          shouldFetch={fetchFlags[f]}
           table={conf.table}
           searchColumn={conf.idField || conf.column}
           searchColumns={[conf.idField || conf.column, ...(conf.displayFields || [])]}
@@ -1202,7 +1226,6 @@ export default forwardRef(function InlineTransactionTable({
       const labelFields = cfg.displayFields || [];
       return (
         <AsyncSearchSelect
-          shouldFetch={fetchFlags[f]}
           table={view}
           searchColumn={idField}
           searchColumns={[idField, ...labelFields]}
@@ -1227,7 +1250,6 @@ export default forwardRef(function InlineTransactionTable({
       const inputVal = typeof val === 'object' ? val.value : val;
       return (
         <AsyncSearchSelect
-          shouldFetch={fetchFlags[f]}
           table={cfg.table}
           searchColumn={cfg.idField}
           searchColumns={[cfg.idField, ...(cfg.displayFields || [])]}
@@ -1433,4 +1455,12 @@ export default forwardRef(function InlineTransactionTable({
       />
     </div>
   );
-});
+}
+
+const FwdInlineTransactionTable = forwardRef(InlineTransactionTable);
+
+function areEqual(prev, next) {
+  return prev.tableName === next.tableName && prev.configHash === next.configHash;
+}
+
+export default React.memo(FwdInlineTransactionTable, areEqual);
