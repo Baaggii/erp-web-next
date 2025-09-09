@@ -275,7 +275,7 @@ export default forwardRef(function InlineTransactionTable({
     if (JSON.stringify(normalized) !== JSON.stringify(rows)) {
       setRows(normalized);
     }
-  }, [initRows, minRows, defaultValues, placeholders, user?.empid, company]);
+  }, [initRows, minRows, defaultValues, placeholders]);
   const inputRefs = useRef({});
   const focusRow = useRef(0);
   const addBtnRef = useRef(null);
