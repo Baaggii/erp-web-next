@@ -37,6 +37,7 @@ if (typeof mock.import !== 'function') {
         },
         '../context/AuthContext.jsx': { AuthContext: {} },
         '../utils/debug.js': { debugLog: () => {} },
+        '../context/ToastContext.jsx': { useToast: () => ({ addToast: () => {} }) },
       },
     );
 

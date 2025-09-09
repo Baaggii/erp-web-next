@@ -1,12 +1,14 @@
 // src/erp.mgt.mn/pages/Users.jsx
 import React, { useEffect, useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
+import { useToast } from '../context/ToastContext.jsx';
 import { debugLog } from '../utils/debug.js';
 
 export default function Users() {
   const [usersList, setUsersList] = useState([]);
   const [filter, setFilter] = useState('');
   const { company } = useContext(AuthContext);
+  const { addToast } = useToast();
 
   useEffect(() => {
     debugLog('Component mounted: Users');
@@ -69,10 +71,11 @@ export default function Users() {
       } catch {
         // ignore json errors
       }
-      alert(message);
+      addToast(message, 'error');
       return;
     }
     loadUsers();
+    addToast('User deleted', 'success');
   }
 
   return (
