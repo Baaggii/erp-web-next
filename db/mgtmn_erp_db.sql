@@ -1907,6 +1907,7 @@ INSERT INTO `modules` (`module_key`, `label`, `parent_key`, `show_in_sidebar`, `
 ('pos_transactions', 'POS POS', 'forms', 1, 0),
 ('relations_config', 'Хүснэгтийн холболт', 'system_configurations', 1, 0),
 ('report_builder', 'Тайлангийн бүтээгч', 'report_management', 1, 0),
+('report_access', 'Report Access', 'report_management', 1, 0),
 ('report_management', 'Тайлангийн удирдлага', 'system_configurations', 1, 0),
 ('reports', 'Тайлан', NULL, 1, 0),
 ('requests', 'Хүсэлтүүд', NULL, 1, 0),

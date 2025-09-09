@@ -134,7 +134,7 @@ function AuthedApp() {
       tenant_tables_registry: <TenantTablesRegistryPage />,
       edit_translations: <TranslationEditorPage />,
       user_manual_export: <UserManualExportPage />,
-      allowed_reports_config: <AllowedReportsConfigPage />,
+      report_access: <AllowedReportsConfigPage />,
     };
 
     modules.forEach((m) => {

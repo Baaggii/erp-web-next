@@ -50,6 +50,15 @@ export function useModules() {
           show_in_header: true,
         });
       }
+      if (!rows.some((m) => m.module_key === 'report_access')) {
+        rows.push({
+          module_key: 'report_access',
+          label: 'Report Access',
+          parent_key: 'report_management',
+          show_in_sidebar: true,
+          show_in_header: false,
+        });
+      }
       try {
         const params = new URLSearchParams();
         if (branch) params.set('branchId', branch);
