@@ -58,6 +58,7 @@ const RowFormModal = function RowFormModal({
   viewSource = {},
   viewDisplays = {},
   viewColumns = {},
+  loadView = () => {},
   procTriggers = {},
   autoFillSession = true,
 }) {
@@ -218,6 +219,7 @@ const RowFormModal = function RowFormModal({
   const [seedOptions, setSeedOptions] = useState([]);
   const [seedRecordOptions, setSeedRecordOptions] = useState({});
   const [openSeed, setOpenSeed] = useState({});
+  const [fetchFlags, setFetchFlags] = useState({});
 
   useEffect(() => {
     if (!useGrid) return;
@@ -811,6 +813,10 @@ const RowFormModal = function RowFormModal({
 
   async function handleFocusField(col) {
     showTriggerInfo(col);
+    if (viewSourceMap[col]) {
+      loadView(viewSourceMap[col]);
+      setFetchFlags((f) => ({ ...f, [col]: true }));
+    }
   }
 
   async function submitForm() {
@@ -1087,7 +1093,7 @@ const RowFormModal = function RowFormModal({
     ) : viewSourceMap[c] && !Array.isArray(relations[c]) ? (
       formVisible && (
         <AsyncSearchSelect
-          shouldFetch={false}
+          shouldFetch={fetchFlags[c]}
           title={tip}
           table={viewSourceMap[c]}
           searchColumn={viewDisplays[viewSourceMap[c]]?.idField || c}
@@ -1292,6 +1298,7 @@ const RowFormModal = function RowFormModal({
             viewSource={viewSourceMap}
             viewDisplays={viewDisplays}
             viewColumns={viewColumns}
+            loadView={loadView}
             procTriggers={procTriggers}
             user={user}
             company={company}
