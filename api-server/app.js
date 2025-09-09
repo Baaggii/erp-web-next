@@ -28,6 +28,7 @@ import { getGeneralConfig } from "./services/generalConfig.js";
 import userSettingsRoutes from "./routes/user_settings.js";
 import printerRoutes from "./routes/printers.js";
 import printRoutes from "./routes/print.js";
+import reportAccessRoutes from "./routes/report_access.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -94,6 +95,7 @@ app.use("/api/config", configRoutes);
 app.use("/api/permissions", permissionsRoutes);
 app.use("/api/tenant_tables", tenantTablesRoutes);
 app.use("/api/translations/generate", translationGeneratorRoutes);
+app.use("/api/report_access", reportAccessRoutes);
 
 // Serve static React build and fallback to index.html
 // NOTE: adjust this path to where your SPA build actually lives.
