@@ -518,6 +518,81 @@ export default function PosTransactionsPage() {
     });
   }, [visibleTablesKey, configVersion]);
 
+  const memoFieldTypeMap = useMemo(() => {
+    const map = {};
+    Object.entries(columnMeta).forEach(([tbl, cols]) => {
+      if (!visibleTables.has(tbl)) return;
+      const inner = {};
+      cols.forEach((c) => {
+        const typ = (
+          c.type ||
+          c.columnType ||
+          c.dataType ||
+          c.DATA_TYPE ||
+          ''
+        ).toLowerCase();
+        if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
+          inner[c.name] = 'number';
+        } else if (typ.includes('timestamp') || typ.includes('datetime')) {
+          inner[c.name] = 'datetime';
+        } else if (typ.includes('date')) {
+          inner[c.name] = 'date';
+        } else if (typ.includes('time')) {
+          inner[c.name] = 'time';
+        } else {
+          inner[c.name] = 'string';
+        }
+      });
+      map[tbl] = inner;
+    });
+    return map;
+  }, [visibleTablesKey, configVersion, columnMeta]);
+
+  const memoColumnCaseMap = useMemo(() => {
+    const map = {};
+    Object.entries(columnMeta).forEach(([tbl, cols]) => {
+      if (!visibleTables.has(tbl)) return;
+      const inner = {};
+      cols.forEach((c) => {
+        inner[c.name.toLowerCase()] = c.name;
+      });
+      map[tbl] = inner;
+    });
+    return map;
+  }, [visibleTablesKey, configVersion, columnMeta]);
+
+  const memoRelationConfigs = useMemo(() => {
+    const map = {};
+    visibleTables.forEach((tbl) => {
+      if (relationConfigs[tbl]) map[tbl] = relationConfigs[tbl];
+    });
+    return map;
+  }, [visibleTablesKey, configVersion, relationConfigs]);
+
+  const memoRelationData = useMemo(() => {
+    const map = {};
+    visibleTables.forEach((tbl) => {
+      if (relationData[tbl]) map[tbl] = relationData[tbl];
+    });
+    return map;
+  }, [visibleTablesKey, configVersion, relationData]);
+
+  const memoViewDisplaysMap = useMemo(() => {
+    const map = {};
+    visibleTables.forEach((tbl) => {
+      if (viewDisplaysMap[tbl]) map[tbl] = viewDisplaysMap[tbl];
+    });
+    return map;
+  }, [visibleTablesKey, configVersion, viewDisplaysMap]);
+
+  const memoViewColumnsMap = useMemo(() => {
+    const map = {};
+    visibleTables.forEach((tbl) => {
+      if (viewColumnsMap[tbl]) map[tbl] = viewColumnsMap[tbl];
+    });
+    return map;
+  }, [visibleTablesKey, configVersion, viewColumnsMap]);
+
   useEffect(() => {
     if (!config) { setSessionFields([]); return; }
     const fields = [];
@@ -1277,18 +1352,18 @@ export default function PosTransactionsPage() {
                         memoFormConfigs[config.masterTable]?.imageIdField || ''
                       }
                       relations={relationsMap[t.table] || {}}
-                      relationConfigs={relationConfigs[t.table] || {}}
-                      relationData={relationData[t.table] || {}}
-                    procTriggers={procTriggersMap[t.table] || {}}
-                    viewSource={fc.viewSource || {}}
-                    viewDisplays={viewDisplaysMap[t.table] || {}}
-                    viewColumns={viewColumnsMap[t.table] || {}}
-                    loadView={loadView}
-                    user={user}
-                    
-                    columnCaseMap={(columnMeta[t.table] || []).reduce((m,c)=>{m[c.name.toLowerCase()] = c.name;return m;}, {})}
-                    onChange={(changes) => handleChange(t.table, changes)}
-                    onRowsChange={(rows) => handleRowsChange(t.table, rows)}
+                      relationConfigs={memoRelationConfigs[t.table] || {}}
+                      relationData={memoRelationData[t.table] || {}}
+                      procTriggers={procTriggersMap[t.table] || {}}
+                      viewSource={fc.viewSource || {}}
+                      viewDisplays={memoViewDisplaysMap[t.table] || {}}
+                      viewColumns={memoViewColumnsMap[t.table] || {}}
+                      loadView={loadView}
+                      user={user}
+                      fieldTypeMap={memoFieldTypeMap[t.table] || {}}
+                      columnCaseMap={memoColumnCaseMap[t.table] || {}}
+                      onChange={(changes) => handleChange(t.table, changes)}
+                      onRowsChange={(rows) => handleRowsChange(t.table, rows)}
                       onSubmit={() => true}
                       useGrid={t.view === 'table' || t.type === 'multi'}
                       fitted={t.view === 'fitted'}
