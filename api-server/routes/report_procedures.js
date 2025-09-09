@@ -8,7 +8,10 @@ router.get('/', requireAuth, async (req, res, next) => {
   try {
     const { branchId, departmentId, prefix = '' } = req.query;
     const companyId = Number(req.query.companyId ?? req.user.companyId);
-    const forms = await listTransactionNames({ branchId, departmentId }, companyId);
+    const { names: forms, isDefault } = await listTransactionNames(
+      { branchId, departmentId },
+      companyId,
+    );
     const set = new Set();
     Object.values(forms).forEach((info) => {
       if (Array.isArray(info.procedures)) {
@@ -22,7 +25,7 @@ router.get('/', requireAuth, async (req, res, next) => {
         });
       }
     });
-    res.json({ procedures: Array.from(set) });
+    res.json({ procedures: Array.from(set), isDefault });
   } catch (err) {
     next(err);
   }

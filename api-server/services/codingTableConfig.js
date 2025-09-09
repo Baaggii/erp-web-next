@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { tenantConfigPath, resolveConfigPath } from '../utils/configPaths.js';
+import { tenantConfigPath } from '../utils/configPaths.js';
 
 async function ensureDir(companyId = 0) {
   const filePath = tenantConfigPath('codingTableConfigs.json', companyId);
@@ -8,12 +8,20 @@ async function ensureDir(companyId = 0) {
 }
 
 async function readConfig(companyId = 0) {
+  const tenantFile = tenantConfigPath('codingTableConfigs.json', companyId);
+  let filePath = tenantFile;
+  let isDefault = false;
   try {
-    const filePath = await resolveConfigPath('codingTableConfigs.json', companyId);
-    const data = await fs.readFile(filePath, 'utf8');
-    return JSON.parse(data);
+    await fs.access(tenantFile);
   } catch {
-    return {};
+    filePath = tenantConfigPath('codingTableConfigs.json', 0);
+    isDefault = true;
+  }
+  try {
+    const data = await fs.readFile(filePath, 'utf8');
+    return { cfg: JSON.parse(data), isDefault };
+  } catch {
+    return { cfg: {}, isDefault: true };
   }
 }
 
@@ -77,28 +85,28 @@ function parseConfig(raw = {}) {
 }
 
 export async function getConfig(table, companyId = 0) {
-  const cfg = await readConfig(companyId);
-  return parseConfig(cfg[table]);
+  const { cfg, isDefault } = await readConfig(companyId);
+  return { config: parseConfig(cfg[table]), isDefault };
 }
 
 export async function getAllConfigs(companyId = 0) {
-  const cfg = await readConfig(companyId);
+  const { cfg, isDefault } = await readConfig(companyId);
   const result = {};
   for (const [tbl, info] of Object.entries(cfg)) {
     result[tbl] = parseConfig(info);
   }
-  return result;
+  return { config: result, isDefault };
 }
 
 export async function setConfig(table, config = {}, companyId = 0) {
-  const cfg = await readConfig(companyId);
+  const { cfg } = await readConfig(companyId);
   cfg[table] = config;
   await writeConfig(cfg, companyId);
   return cfg[table];
 }
 
 export async function deleteConfig(table, companyId = 0) {
-  const cfg = await readConfig(companyId);
+  const { cfg } = await readConfig(companyId);
   if (cfg[table]) {
     delete cfg[table];
     await writeConfig(cfg, companyId);

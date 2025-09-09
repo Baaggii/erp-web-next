@@ -14,11 +14,11 @@ router.get('/', requireAuth, async (req, res, next) => {
     const companyId = Number(req.query.companyId ?? req.user.companyId);
     const name = req.query.name;
     if (name) {
-      const cfg = await getConfig(name, companyId);
-      res.json(cfg || {});
+      const { config, isDefault } = await getConfig(name, companyId);
+      res.json(config ? { ...config, isDefault } : { isDefault });
     } else {
-      const all = await getAllConfigs(companyId);
-      res.json(all);
+      const { config, isDefault } = await getAllConfigs(companyId);
+      res.json({ ...config, isDefault });
     }
   } catch (err) {
     next(err);

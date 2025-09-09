@@ -31,8 +31,8 @@ await test('listTransactionNames filters procedures by companyId', async () => {
     tenant.file,
     JSON.stringify({ tbl: { Tenant: { procedures: ['tenantProc'] } } })
   );
-  const baseForms = await listTransactionNames({}, 0);
-  const tenantForms = await listTransactionNames({}, 77);
+  const { names: baseForms } = await listTransactionNames({}, 0);
+  const { names: tenantForms } = await listTransactionNames({}, 77);
   assert.deepEqual(collectProcedures(baseForms), ['baseProc']);
   assert.deepEqual(collectProcedures(tenantForms), ['tenantProc']);
   await tenant.restore();

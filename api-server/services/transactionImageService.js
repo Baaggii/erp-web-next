@@ -12,7 +12,7 @@ const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '../../');
 
 async function getDirs(companyId = 0) {
-  const cfg = await getGeneralConfig(companyId);
+  const { config: cfg } = await getGeneralConfig(companyId);
   const subdir = cfg.general?.imageDir || 'txn_images';
   const rootBase = cfg.images?.basePath || 'uploads';
   const baseName = path.basename(rootBase);
@@ -194,7 +194,10 @@ async function findTxnByParts(inv, sp, transType, timestamp, companyId = 0) {
     return null;
   }
 
-  const cfgMatches = await getConfigsByTransTypeValue(transType, companyId);
+  const { configs: cfgMatches } = await getConfigsByTransTypeValue(
+    transType,
+    companyId,
+  );
   const cfgMap = new Map(
     cfgMatches.map((m) => [m.table.toLowerCase(), m.config]),
   );
@@ -260,7 +263,8 @@ async function findTxnByParts(inv, sp, transType, timestamp, companyId = 0) {
       const rowObj = rows[0];
       let cfgs = {};
       try {
-        cfgs = await getConfigsByTable(tbl, companyId);
+        const { config } = await getConfigsByTable(tbl, companyId);
+        cfgs = config;
       } catch {}
       return { table: tbl, row: rowObj, configs: cfgs, numField: transCol.Field };
     }
@@ -418,7 +422,11 @@ export async function searchImages(term, page = 1, perPage = 20, companyId = 0) 
 }
 
 export async function moveImagesToDeleted(table, row = {}, companyId = 0) {
-  const configs = await getConfigsByTable(table, companyId).catch(() => ({}));
+  let configs = {};
+  try {
+    const { config } = await getConfigsByTable(table, companyId);
+    configs = config;
+  } catch {}
   const cfg = pickConfig(configs, row);
   const names = new Set();
   if (cfg?.imagenameField?.length) {
@@ -775,7 +783,8 @@ async function findTxnByUniqueId(idPart, companyId = 0) {
     if (rows.length) {
       let cfgs = {};
       try {
-        cfgs = await getConfigsByTable(tbl, companyId);
+        const { config } = await getConfigsByTable(tbl, companyId);
+        cfgs = config;
       } catch {}
       return { table: tbl, row: rows[0], configs: cfgs, numField: numCol.Field };
     }

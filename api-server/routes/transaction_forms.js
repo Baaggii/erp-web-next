@@ -16,18 +16,18 @@ router.get('/', requireAuth, async (req, res, next) => {
     const companyId = Number(req.query.companyId ?? req.user.companyId);
     const { table, name, moduleKey, branchId, departmentId, proc } = req.query;
     if (proc) {
-      const tbl = await findTableByProcedure(proc, companyId);
-      if (tbl) res.json({ table: tbl });
-      else res.status(404).json({ message: 'Table not found' });
+      const { table: tbl, isDefault } = await findTableByProcedure(proc, companyId);
+      if (tbl) res.json({ table: tbl, isDefault });
+      else res.status(404).json({ message: 'Table not found', isDefault });
     } else if (table && name) {
-      const cfg = await getFormConfig(table, name, companyId);
-      res.json(cfg);
+      const { config, isDefault } = await getFormConfig(table, name, companyId);
+      res.json({ ...config, isDefault });
     } else if (table) {
-      const all = await getConfigsByTable(table, companyId);
-      res.json(all);
+      const { config, isDefault } = await getConfigsByTable(table, companyId);
+      res.json({ ...config, isDefault });
     } else {
-      const names = await listTransactionNames({ moduleKey, branchId, departmentId }, companyId);
-      res.json(names);
+      const { names, isDefault } = await listTransactionNames({ moduleKey, branchId, departmentId }, companyId);
+      res.json({ ...names, isDefault });
     }
   } catch (err) {
     next(err);

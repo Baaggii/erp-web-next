@@ -9,7 +9,7 @@ const companyId = 0;
 const baseDir = path.join(process.cwd(), 'uploads', String(companyId), 'txn_images', 'search_images_test');
 
 await test('searchImages finds files by field value', { concurrency: false }, async () => {
-  const orig = await getGeneralConfig();
+  const { config: orig } = await getGeneralConfig();
   await updateGeneralConfig({
     images: {
       ignoreOnSearch: [

@@ -8,8 +8,8 @@ const router = express.Router();
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const companyId = Number(req.query.companyId ?? req.user.companyId);
-    const cfg = await getGeneralConfig(companyId);
-    res.json(cfg);
+    const { config, isDefault } = await getGeneralConfig(companyId);
+    res.json({ ...config, isDefault });
   } catch (err) {
     next(err);
   }

@@ -10,8 +10,8 @@ export async function fetchGeneralConfig(req, res, next) {
       (await getEmploymentSession(req.user.empid, companyId));
     if (!(await hasAction(session, 'system_settings'))) return res.sendStatus(403);
     const getter = req.getGeneralConfig || cfgSvc.getGeneralConfig;
-    const cfg = await getter(companyId);
-    res.json(cfg);
+    const { config, isDefault } = await getter(companyId);
+    res.json({ ...config, isDefault });
   } catch (err) {
     next(err);
   }
