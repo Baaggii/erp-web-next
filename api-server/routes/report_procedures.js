@@ -7,7 +7,8 @@ const router = express.Router();
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const { branchId, departmentId, prefix = '' } = req.query;
-    const forms = await listTransactionNames({ branchId, departmentId });
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
+    const forms = await listTransactionNames({ branchId, departmentId }, companyId);
     const set = new Set();
     Object.values(forms).forEach((info) => {
       if (Array.isArray(info.procedures)) {
