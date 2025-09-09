@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { tenantConfigPath } from '../utils/configPaths.js';
+import { tenantConfigPath, getConfigPath } from '../utils/configPaths.js';
 
 const defaults = {
   forms: {
@@ -42,50 +42,45 @@ const defaults = {
   },
 };
 
-async function readConfig(companyId = 0) {
-  const tenantFile = tenantConfigPath('generalConfig.json', companyId);
-  let filePath = tenantFile;
-  let isDefault = false;
-  try {
-    await fs.access(tenantFile);
-  } catch {
-    filePath = tenantConfigPath('generalConfig.json', 0);
-    isDefault = true;
-  }
+  async function readConfig(companyId = 0) {
+    const { path: filePath, isDefault } = await getConfigPath(
+      'generalConfig.json',
+      companyId,
+    );
 
-  try {
-    const data = await fs.readFile(filePath, 'utf8');
-    const parsed = JSON.parse(data);
-    let result;
-    if (parsed.forms || parsed.pos || parsed.general || parsed.images) {
-      const { imageStorage, ...restGeneral } = parsed.general || {};
-      const images = parsed.images || imageStorage || {};
-      result = {
-        ...defaults,
-        ...parsed,
-        general: {
-          ...defaults.general,
-          ...restGeneral,
-        },
-        images: {
-          ...defaults.images,
-          ...images,
-        },
-      };
-    } else {
-      // migrate older flat structure to new nested layout
-      result = {
-        forms: { ...defaults.forms, ...parsed },
-        pos: { ...defaults.pos },
-        general: { ...defaults.general },
-        images: { ...defaults.images },
-      };
+    try {
+      const data = await fs.readFile(filePath, 'utf8');
+      const parsed = JSON.parse(data);
+      let result;
+      if (parsed.forms || parsed.pos || parsed.general || parsed.images) {
+        const { imageStorage, ...restGeneral } = parsed.general || {};
+        const images = parsed.images || imageStorage || {};
+        result = {
+          ...defaults,
+          ...parsed,
+          general: {
+            ...defaults.general,
+            ...restGeneral,
+          },
+          images: {
+            ...defaults.images,
+            ...images,
+          },
+        };
+      } else {
+        // migrate older flat structure to new nested layout
+        result = {
+          forms: { ...defaults.forms, ...parsed },
+          pos: { ...defaults.pos },
+          general: { ...defaults.general },
+          images: { ...defaults.images },
+        };
+      }
+      return { config: result, isDefault };
+    } catch {
+      return { config: { ...defaults }, isDefault: true };
     }
-    return { config: result, isDefault };
-  } catch {
-    return { config: { ...defaults }, isDefault: true };
   }
-}
 
 async function writeConfig(cfg, companyId = 0) {
   const filePath = tenantConfigPath('generalConfig.json', companyId);

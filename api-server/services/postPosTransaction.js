@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { pool } from '../../db/index.js';
-import { resolveConfigPath } from '../utils/configPaths.js';
+import { getConfigPath } from '../utils/configPaths.js';
 
 function getValue(row, field) {
   const val = row?.[field];
@@ -107,7 +107,10 @@ export async function postPosTransaction(
   sessionInfo = {},
   companyId = 0,
 ) {
-  const cfgPath = await resolveConfigPath('posTransactionConfig.json', companyId);
+    const { path: cfgPath } = await getConfigPath(
+      'posTransactionConfig.json',
+      companyId,
+    );
   const cfgRaw = await fs.readFile(cfgPath, 'utf8');
   const json = JSON.parse(cfgRaw);
   const cfg = json['POS_Modmarket'];

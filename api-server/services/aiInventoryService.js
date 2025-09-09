@@ -1,16 +1,19 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { getResponseWithFile } from '../utils/openaiClient.js';
-import { tenantConfigPath, resolveConfigPath } from '../utils/configPaths.js';
+import { tenantConfigPath, getConfigPath } from '../utils/configPaths.js';
 
 async function readData(companyId = 0) {
-  try {
-    const filePath = await resolveConfigPath('aiInventoryResults.json', companyId);
-    const data = await fs.readFile(filePath, 'utf8');
-    return JSON.parse(data);
-  } catch {
-    return {};
-  }
+    try {
+      const { path: filePath } = await getConfigPath(
+        'aiInventoryResults.json',
+        companyId,
+      );
+      const data = await fs.readFile(filePath, 'utf8');
+      return JSON.parse(data);
+    } catch {
+      return {};
+    }
 }
 
 async function writeData(data, companyId = 0) {

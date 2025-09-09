@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { pool } from '../../db/index.js';
-import { tenantConfigPath, resolveConfigPath } from '../utils/configPaths.js';
+import { tenantConfigPath, getConfigPath } from '../utils/configPaths.js';
 
 async function ensureDir(companyId = 0) {
   const filePath = tenantConfigPath('generatedSql.json', companyId);
@@ -9,13 +9,16 @@ async function ensureDir(companyId = 0) {
 }
 
 async function readMap(companyId = 0) {
-  try {
-    const jsonPath = await resolveConfigPath('generatedSql.json', companyId);
-    const data = await fs.readFile(jsonPath, 'utf8');
-    return JSON.parse(data);
-  } catch {
-    return {};
-  }
+    try {
+      const { path: jsonPath } = await getConfigPath(
+        'generatedSql.json',
+        companyId,
+      );
+      const data = await fs.readFile(jsonPath, 'utf8');
+      return JSON.parse(data);
+    } catch {
+      return {};
+    }
 }
 
 async function writeFiles(map, companyId = 0) {

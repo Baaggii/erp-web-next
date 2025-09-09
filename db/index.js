@@ -40,10 +40,7 @@ try {
 import defaultModules from "./defaultModules.js";
 import { logDb } from "./debugLog.js";
 import fs from "fs/promises";
-import {
-  tenantConfigPath,
-  resolveConfigPath,
-} from "../api-server/utils/configPaths.js";
+import { tenantConfigPath, getConfigPath } from "../api-server/utils/configPaths.js";
 import { getDisplayFields as getDisplayCfg } from "../api-server/services/displayFieldConfig.js";
 import { GLOBAL_COMPANY_ID } from "../config/0/constants.js";
 import { formatDateForDb } from "../api-server/utils/formatDate.js";
@@ -53,7 +50,7 @@ const permissionRegistryCache = new Map();
 async function loadPermissionRegistry(companyId = GLOBAL_COMPANY_ID) {
   if (!permissionRegistryCache.has(companyId)) {
     try {
-      const actionsPath = await resolveConfigPath(
+      const { path: actionsPath } = await getConfigPath(
         "permissionActions.json",
         companyId,
       );
@@ -81,7 +78,7 @@ const softDeleteConfigCache = new Map();
 async function loadSoftDeleteConfig(companyId = GLOBAL_COMPANY_ID) {
   if (!softDeleteConfigCache.has(companyId)) {
     try {
-      const cfgPath = await resolveConfigPath(
+      const { path: cfgPath } = await getConfigPath(
         "softDeleteTables.json",
         companyId,
       );
@@ -2075,7 +2072,7 @@ export async function getProcedureRawRows(
           }
         }
         try {
-          const tfPath = await resolveConfigPath('transactionForms.json');
+          const { path: tfPath } = await getConfigPath('transactionForms.json');
           const txt = await fs.readFile(tfPath, 'utf8');
           const cfg = JSON.parse(txt);
           const set = new Set();
@@ -2112,7 +2109,7 @@ export async function getProcedureRawRows(
           }
         } catch {}
         try {
-          const dfPath = await resolveConfigPath('tableDisplayFields.json');
+          const { path: dfPath } = await getConfigPath('tableDisplayFields.json');
           const dfTxt = await fs.readFile(dfPath, 'utf8');
           const dfCfg = JSON.parse(dfTxt);
           if (Array.isArray(dfCfg[table]?.displayFields)) {

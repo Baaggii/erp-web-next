@@ -1,16 +1,19 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { tenantConfigPath, resolveConfigPath } from '../utils/configPaths.js';
+import { tenantConfigPath, getConfigPath } from '../utils/configPaths.js';
 
-async function readData(companyId = 0) {
-  try {
-    const filePath = await resolveConfigPath('posPendingTransactions.json', companyId);
-    const data = await fs.readFile(filePath, 'utf8');
-    return JSON.parse(data);
-  } catch {
-    return {};
+  async function readData(companyId = 0) {
+    try {
+      const { path: filePath } = await getConfigPath(
+        'posPendingTransactions.json',
+        companyId,
+      );
+      const data = await fs.readFile(filePath, 'utf8');
+      return JSON.parse(data);
+    } catch {
+      return {};
+    }
   }
-}
 
 async function writeData(data, companyId = 0) {
   const filePath = tenantConfigPath('posPendingTransactions.json', companyId);

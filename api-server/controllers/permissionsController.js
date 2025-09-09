@@ -6,14 +6,14 @@ import {
   listModules,
 } from '../../db/index.js';
 import fs from 'fs/promises';
-import { resolveConfigPathSync } from '../utils/configPaths.js';
+import { getConfigPathSync } from '../utils/configPaths.js';
 
 export async function listGroups(req, res, next) {
   try {
-    const actionsPath = resolveConfigPathSync(
-      'permissionActions.json',
-      req.user.companyId,
-    );
+      const { path: actionsPath } = getConfigPathSync(
+        'permissionActions.json',
+        req.user.companyId,
+      );
     const raw = await fs.readFile(actionsPath, 'utf8');
     const registry = JSON.parse(raw);
     const allForms = registry.forms || {};
