@@ -31,6 +31,7 @@ export default function FormsManagement() {
   const generalConfig = useGeneralConfig();
   const modules = useModules();
   const procMap = useHeaderMappings(procedureOptions);
+  const [isDefault, setIsDefault] = useState(false);
   const hasAdmin =
     permissions?.permissions?.system_settings ||
     session?.permissions?.system_settings;
@@ -78,11 +79,11 @@ export default function FormsManagement() {
 
   useEffect(() => {
     fetch('/api/transaction_forms', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : {}))
+      .then((res) => (res.ok ? res.json() : { isDefault: true }))
       .then((data) => {
         const arr = [];
         Object.entries(data || {}).forEach(([n, info]) => {
-          if (!info || !info.table) return;
+          if (n === 'isDefault' || !info || !info.table) return;
           arr.push({
             key: `${info.table}::${n}`,
             name: n,
@@ -92,8 +93,14 @@ export default function FormsManagement() {
           });
         });
         setSavedConfigs(arr);
+        if (data && Object.prototype.hasOwnProperty.call(data, 'isDefault')) {
+          setIsDefault(!!data.isDefault);
+        }
       })
-      .catch(() => setSavedConfigs([]));
+      .catch(() => {
+        setSavedConfigs([]);
+        setIsDefault(true);
+      });
   }, []);
 
   const branchOptions = useMemo(() => {
@@ -258,11 +265,12 @@ export default function FormsManagement() {
       .catch(() => setColumns([]));
     const params = new URLSearchParams({ table, moduleKey });
     fetch(`/api/transaction_forms?${params.toString()}`, { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : {}))
+      .then((res) => (res.ok ? res.json() : { isDefault: true }))
       .then((data) => {
+        setIsDefault(!!data.isDefault);
         const filtered = {};
         Object.entries(data).forEach(([n, info]) => {
-          if (!info || info.moduleKey !== moduleKey) return;
+          if (n === 'isDefault' || !info || info.moduleKey !== moduleKey) return;
           filtered[n] = info;
         });
         setNames(Object.keys(filtered));
@@ -335,6 +343,7 @@ export default function FormsManagement() {
         }
       })
       .catch(() => {
+        setIsDefault(true);
         setNames([]);
         setName('');
         setConfig({
@@ -375,8 +384,9 @@ export default function FormsManagement() {
   useEffect(() => {
     if (!table || !name || !names.includes(name)) return;
     fetch(`/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`, { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : {}))
+      .then((res) => (res.ok ? res.json() : { isDefault: true }))
       .then((cfg) => {
+        setIsDefault(!!cfg.isDefault);
         setModuleKey(cfg.moduleKey || '');
         setConfig({
           visibleFields: cfg.visibleFields || [],
@@ -411,6 +421,7 @@ export default function FormsManagement() {
         });
       })
       .catch(() => {
+        setIsDefault(true);
         setConfig({
           visibleFields: [],
           requiredFields: [],
@@ -513,6 +524,24 @@ export default function FormsManagement() {
         [cfg.transactionTypeField]: cfg.transactionTypeValue,
       };
     }
+    if (isDefault) {
+      try {
+        const resImport = await fetch(
+          `/api/config/import?companyId=${encodeURIComponent(company ?? '')}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ files: ['transactionForms.json'] }),
+          },
+        );
+        if (!resImport.ok) throw new Error('import failed');
+        setIsDefault(false);
+      } catch (err) {
+        addToast(`Import failed: ${err.message}`, 'error');
+        return;
+      }
+    }
     const res = await fetch('/api/transaction_forms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -546,6 +575,7 @@ export default function FormsManagement() {
         return [...list, info];
       });
       setSelectedConfig(key);
+      setIsDefault(false);
     } else {
       addToast('Save failed', 'error');
     }
@@ -633,9 +663,12 @@ export default function FormsManagement() {
       const allRes = await fetch('/api/transaction_forms', { credentials: 'include' });
       if (allRes.ok) {
         const allData = await allRes.json();
+        if (Object.prototype.hasOwnProperty.call(allData, 'isDefault')) {
+          setIsDefault(!!allData.isDefault);
+        }
         const arr = [];
         Object.entries(allData || {}).forEach(([n, info]) => {
-          if (!info || !info.table) return;
+          if (n === 'isDefault' || !info || !info.table) return;
           arr.push({
             key: `${info.table}::${n}`,
             name: n,
@@ -651,10 +684,11 @@ export default function FormsManagement() {
         const resCfg = await fetch(`/api/transaction_forms?${params.toString()}`, {
           credentials: 'include',
         });
-        const data = resCfg.ok ? await resCfg.json() : {};
+        const data = resCfg.ok ? await resCfg.json() : { isDefault: true };
+        setIsDefault(!!data.isDefault);
         const filtered = {};
         Object.entries(data).forEach(([n, info]) => {
-          if (!info || info.moduleKey !== moduleKey) return;
+          if (n === 'isDefault' || !info || info.moduleKey !== moduleKey) return;
           filtered[n] = info;
         });
         const formNames = Object.keys(filtered);

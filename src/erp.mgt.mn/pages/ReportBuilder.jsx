@@ -52,6 +52,7 @@ function ReportBuilderInner() {
   const [dbProcedures, setDbProcedures] = useState([]);
   const [selectedDbProcedure, setSelectedDbProcedure] = useState('');
   const [procFileText, setProcFileText] = useState('');
+  const [isDefault, setIsDefault] = useState(false);
 
   const [customParamName, setCustomParamName] = useState('');
   const [customParamType, setCustomParamType] = useState(PARAM_TYPES[0]);
@@ -114,6 +115,7 @@ function ReportBuilderInner() {
         const res = await fetch(`/api/report_builder/configs${query}`);
         const data = await res.json();
         const list = data.names || [];
+        setIsDefault(!!data.isDefault);
         setSavedReports(list);
         setSelectedReport(list[0] || '');
       } catch (err) {
@@ -165,6 +167,7 @@ function ReportBuilderInner() {
         const resCfg = await fetch(`/api/report_builder/configs${query}`);
         const dataCfg = await resCfg.json();
         const list = dataCfg.names || [];
+        setIsDefault(!!dataCfg.isDefault);
         setSavedReports(list);
         setSelectedReport(list[0] || '');
       } catch {}
@@ -1261,6 +1264,19 @@ function ReportBuilderInner() {
       const prefix = generalConfig?.general?.reportProcPrefix || '';
       if (!procName) throw new Error('procedure name is required');
       const name = `${prefix}${procName}`;
+      if (isDefault) {
+        const resImport = await fetch(
+          `/api/config/import?companyId=${encodeURIComponent(company ?? '')}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ files: ['headerMappings.json'] }),
+          },
+        );
+        if (!resImport.ok) throw new Error('Import failed');
+        setIsDefault(false);
+      }
       const res = await fetch(
         `/api/report_builder/configs/${encodeURIComponent(name)}`,
         {
@@ -1275,6 +1291,7 @@ function ReportBuilderInner() {
       );
       const listData = await listRes.json();
       const list = listData.names || [];
+      setIsDefault(!!listData.isDefault);
       setSavedReports(list);
       setSelectedReport(name);
       window.dispatchEvent(

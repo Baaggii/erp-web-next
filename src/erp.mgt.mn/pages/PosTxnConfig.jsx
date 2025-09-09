@@ -21,6 +21,7 @@ export default function PosTxnConfig() {
   const { addToast } = useToast();
   const { company } = useContext(AuthContext);
   const [configs, setConfigs] = useState({});
+  const [isDefault, setIsDefault] = useState(false);
   const [name, setName] = useState('');
   const [formOptions, setFormOptions] = useState({});
   const [formNames, setFormNames] = useState([]);
@@ -34,9 +35,16 @@ export default function PosTxnConfig() {
 
   useEffect(() => {
     fetch('/api/pos_txn_config', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : {}))
-      .then((data) => setConfigs(data))
-      .catch(() => setConfigs({}));
+      .then((res) => (res.ok ? res.json() : { isDefault: true }))
+      .then((data) => {
+        setIsDefault(!!data.isDefault);
+        const { isDefault: _def, ...rest } = data || {};
+        setConfigs(rest);
+      })
+      .catch(() => {
+        setConfigs({});
+        setIsDefault(true);
+      });
 
     fetch('/api/transaction_forms', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
@@ -121,8 +129,9 @@ export default function PosTxnConfig() {
       const res = await fetch(`/api/pos_txn_config?name=${encodeURIComponent(n)}`, {
         credentials: 'include',
       });
-      const cfg = res.ok ? await res.json() : emptyConfig;
-      const loaded = { ...emptyConfig, ...(cfg || {}) };
+      const cfg = res.ok ? await res.json() : {};
+      const { isDefault: def, ...rest } = cfg || {};
+      const loaded = { ...emptyConfig, ...(rest || {}) };
       if (Array.isArray(loaded.tables) && loaded.tables.length > 0) {
         const [master, ...rest] = loaded.tables;
         loaded.masterTable = master.table || '';
@@ -171,9 +180,11 @@ export default function PosTxnConfig() {
       }
 
       if (!loaded.statusField) loaded.statusField = { table: '', field: '', created: '', beforePost: '', posted: '' };
+      setIsDefault(!!def);
       setName(n);
       setConfig(loaded);
     } catch {
+      setIsDefault(true);
       setName(n);
       setConfig({ ...emptyConfig });
     }
@@ -276,6 +287,24 @@ export default function PosTxnConfig() {
         ...config.tables,
       ],
     };
+    if (isDefault) {
+      try {
+        const resImport = await fetch(
+          `/api/config/import?companyId=${encodeURIComponent(company ?? '')}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ files: ['posTransactionConfig.json'] }),
+          },
+        );
+        if (!resImport.ok) throw new Error('import failed');
+        setIsDefault(false);
+      } catch (err) {
+        addToast(`Import failed: ${err.message}`, 'error');
+        return;
+      }
+    }
     await fetch('/api/pos_txn_config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -286,8 +315,12 @@ export default function PosTxnConfig() {
     refreshModules();
     addToast('Saved', 'success');
     fetch('/api/pos_txn_config', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : {}))
-      .then((data) => setConfigs(data))
+      .then((res) => (res.ok ? res.json() : { isDefault: true }))
+      .then((data) => {
+        setIsDefault(!!data.isDefault);
+        const { isDefault: _def, ...rest } = data || {};
+        setConfigs(rest);
+      })
       .catch(() => {});
   }
 
@@ -309,8 +342,12 @@ export default function PosTxnConfig() {
       setName('');
       setConfig({ ...emptyConfig });
       fetch('/api/pos_txn_config', { credentials: 'include' })
-        .then((res) => (res.ok ? res.json() : {}))
-        .then((data) => setConfigs(data))
+        .then((res) => (res.ok ? res.json() : { isDefault: true }))
+        .then((data) => {
+          setIsDefault(!!data.isDefault);
+          const { isDefault: _def, ...rest } = data || {};
+          setConfigs(rest);
+        })
         .catch(() => {});
     } catch {
       addToast('Delete failed', 'error');
@@ -338,8 +375,10 @@ export default function PosTxnConfig() {
       refreshTxnModules();
       refreshModules();
       const resCfg = await fetch('/api/pos_txn_config', { credentials: 'include' });
-      const data = resCfg.ok ? await resCfg.json() : {};
-      setConfigs(data);
+      const data = resCfg.ok ? await resCfg.json() : { isDefault: true };
+      setIsDefault(!!data.isDefault);
+      const { isDefault: _def, ...rest } = data || {};
+      setConfigs(rest);
       addToast('Imported', 'success');
     } catch (err) {
       addToast(`Import failed: ${err.message}`, 'error');
