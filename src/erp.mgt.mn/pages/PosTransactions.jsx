@@ -7,6 +7,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
+import { debugLog } from '../utils/debug.js';
 
 function isEqual(a, b) {
   try {
@@ -25,6 +26,24 @@ function parseErrorField(msg) {
   m = msg.match(/for key '([^']+)'/i);
   if (m) return m[1];
   return null;
+}
+
+export function hasForeignKey(cols = []) {
+  return cols.some(
+    (c) =>
+      c?.REFERENCED_TABLE_NAME ||
+      c?.referenced_table_name ||
+      c?.COLUMN_KEY === 'MUL' ||
+      c?.column_key === 'MUL' ||
+      c?.Key === 'MUL',
+  );
+}
+
+export function shouldLoadRelations(formConfig, cols = []) {
+  const hasView = formConfig
+    ? Object.values(formConfig.viewSource || {}).some(Boolean)
+    : false;
+  return hasView || hasForeignKey(cols);
 }
 
 function PendingSelectModal({ visible, list = [], onSelect, onClose }) {
@@ -399,10 +418,11 @@ export default function PosTransactionsPage() {
           .then(async (cols) => {
             setColumnMeta((m) => ({ ...m, [tbl]: cols || [] }));
             const fc = memoFormConfigs[tbl];
-            const hasView = fc
-              ? Object.values(fc.viewSource || {}).some(Boolean)
-              : true;
-            if (hasView) await loadRelations(tbl);
+            if (shouldLoadRelations(fc, cols)) {
+              await loadRelations(tbl);
+            } else {
+              debugLog(`Skipping relations fetch for ${tbl}`);
+            }
             loadedTablesRef.current.add(tbl);
           })
           .catch(() => {
