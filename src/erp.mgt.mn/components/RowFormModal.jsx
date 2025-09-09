@@ -114,6 +114,19 @@ const RowFormModal = function RowFormModal({
     [disabledFields],
   );
   const { user, company, branch, department, userSettings } = useContext(AuthContext);
+  const columnCaseMapKey = React.useMemo(
+    () => JSON.stringify(columnCaseMap || {}),
+    [columnCaseMap],
+  );
+  const viewSourceKey = React.useMemo(() => JSON.stringify(viewSource || {}), [viewSource]);
+  const relationConfigsKey = React.useMemo(
+    () => JSON.stringify(relationConfigs || {}),
+    [relationConfigs],
+  );
+  const tableDisplayFieldsKey = React.useMemo(
+    () => JSON.stringify(tableDisplayFields || {}),
+    [tableDisplayFields],
+  );
 
   const viewSourceMap = React.useMemo(() => {
     const map = {};
@@ -122,7 +135,7 @@ const RowFormModal = function RowFormModal({
       map[key] = v;
     });
     return map;
-  }, [viewSource, columnCaseMap]);
+  }, [viewSourceKey, columnCaseMapKey]);
 
   const relationConfigMap = React.useMemo(() => {
     const map = {};
@@ -131,7 +144,7 @@ const RowFormModal = function RowFormModal({
       map[key] = v;
     });
     return map;
-  }, [relationConfigs, columnCaseMap]);
+  }, [relationConfigsKey, columnCaseMapKey]);
 
   const displayIndex = React.useMemo(() => {
     const index = {};
@@ -145,7 +158,7 @@ const RowFormModal = function RowFormModal({
       };
     });
     return index;
-  }, [tableDisplayFields]);
+  }, [tableDisplayFieldsKey]);
 
   // Only columns present in columnCaseMap are evaluated, preventing cross-table false positives.
   const autoSelectConfigs = React.useMemo(() => {
@@ -157,7 +170,33 @@ const RowFormModal = function RowFormModal({
       }
     });
     return map;
-  }, [columnCaseMap, displayIndex]);
+  }, [columnCaseMapKey, displayIndex]);
+  const relationConfigMapKey = React.useMemo(
+    () => JSON.stringify(relationConfigMap || {}),
+    [relationConfigMap],
+  );
+  const viewSourceMapKey = React.useMemo(
+    () => JSON.stringify(viewSourceMap || {}),
+    [viewSourceMap],
+  );
+  const viewDisplaysKey = React.useMemo(
+    () => JSON.stringify(viewDisplays || {}),
+    [viewDisplays],
+  );
+  const viewColumnsKey = React.useMemo(
+    () => JSON.stringify(viewColumns || {}),
+    [viewColumns],
+  );
+  const fieldTypeMapKey = React.useMemo(
+    () => JSON.stringify(fieldTypeMap || {}),
+    [fieldTypeMap],
+  );
+  const columnsKey = React.useMemo(() => columns.join(','), [columns]);
+  const rowKey = React.useMemo(() => JSON.stringify(row || {}), [row]);
+  const defaultValuesKey = React.useMemo(
+    () => JSON.stringify(defaultValues || {}),
+    [defaultValues],
+  );
   const [formVals, setFormVals] = useState(() => {
     const init = {};
     const now = new Date();
@@ -219,13 +258,11 @@ const RowFormModal = function RowFormModal({
   const [seedOptions, setSeedOptions] = useState([]);
   const [seedRecordOptions, setSeedRecordOptions] = useState({});
   const [openSeed, setOpenSeed] = useState({});
-  const fetchFlagsRef = useRef({});
-  const [fetchFlags, setFetchFlags] = useState(fetchFlagsRef.current);
+  const alreadyRequestedRef = useRef(new Set());
 
   useEffect(() => {
     if (visible) {
-      fetchFlagsRef.current = {};
-      setFetchFlags(fetchFlagsRef.current);
+      alreadyRequestedRef.current.clear();
     }
   }, [visible]);
 
@@ -284,7 +321,7 @@ const RowFormModal = function RowFormModal({
       }
     });
     return map;
-  }, [columns, row, defaultValues, fieldTypeMap]);
+  }, [columnsKey, rowKey, defaultValuesKey, fieldTypeMapKey]);
 
   useEffect(() => {
     const extras = {};
@@ -821,12 +858,10 @@ const RowFormModal = function RowFormModal({
 
   async function handleFocusField(col) {
     showTriggerInfo(col);
-    if (!fetchFlagsRef.current[col]) {
-      if (viewSourceMap[col]) {
-        loadView(viewSourceMap[col]);
-      }
-      fetchFlagsRef.current[col] = true;
-      setFetchFlags({ ...fetchFlagsRef.current });
+    const view = viewSourceMap[col];
+    if (view && !alreadyRequestedRef.current.has(view)) {
+      alreadyRequestedRef.current.add(view);
+      loadView(view);
     }
   }
 
@@ -1065,7 +1100,6 @@ const RowFormModal = function RowFormModal({
     const control = relationConfigMap[c] ? (
       formVisible && (
         <AsyncSearchSelect
-          shouldFetch={fetchFlags[c]}
           title={tip}
           table={relationConfigMap[c].table}
           searchColumn={relationConfigMap[c].idField || relationConfigMap[c].column}
@@ -1104,7 +1138,6 @@ const RowFormModal = function RowFormModal({
     ) : viewSourceMap[c] && !Array.isArray(relations[c]) ? (
       formVisible && (
         <AsyncSearchSelect
-          shouldFetch={fetchFlags[c]}
           title={tip}
           table={viewSourceMap[c]}
           searchColumn={viewDisplays[viewSourceMap[c]]?.idField || c}
@@ -1144,7 +1177,6 @@ const RowFormModal = function RowFormModal({
     ) : autoSelectConfigs[c] && !Array.isArray(relations[c]) ? (
       formVisible && (
         <AsyncSearchSelect
-          shouldFetch={fetchFlags[c]}
           title={tip}
           table={autoSelectConfigs[c].table}
           searchColumn={autoSelectConfigs[c].idField}
@@ -1293,6 +1325,14 @@ const RowFormModal = function RowFormModal({
       );
     }
     if (inline || useGrid) {
+      const configHash = [
+        cols.join(','),
+        relationConfigMapKey,
+        viewSourceMapKey,
+        viewDisplaysKey,
+        viewColumnsKey,
+        columnCaseMapKey,
+      ].join('|');
       return (
         <div className="mb-4">
           <h3 className="mt-0 mb-1 font-semibold">Main</h3>
@@ -1338,6 +1378,7 @@ const RowFormModal = function RowFormModal({
             boxHeight={boxHeight}
             boxMaxWidth={boxMaxWidth}
             scope={scope}
+            configHash={configHash}
           />
         </div>
       );
