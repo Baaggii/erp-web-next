@@ -45,6 +45,7 @@ import TranslationEditorPage from './pages/TranslationEditor.jsx';
 import UserManualExportPage from './pages/UserManualExport.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import UserSettingsPage from './pages/UserSettings.jsx';
+import AllowedReportsConfigPage from './pages/AllowedReportsConfig.jsx';
 
 export default function App() {
   useEffect(() => {
@@ -133,6 +134,7 @@ function AuthedApp() {
       tenant_tables_registry: <TenantTablesRegistryPage />,
       edit_translations: <TranslationEditorPage />,
       user_manual_export: <UserManualExportPage />,
+      report_access: <AllowedReportsConfigPage />,
     };
 
     modules.forEach((m) => {

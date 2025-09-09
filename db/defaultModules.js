@@ -25,6 +25,7 @@ export default [
   { moduleKey: 'pos_transactions', label: 'POS POS', parentKey: 'forms', showInSidebar: true, showInHeader: false },
   { moduleKey: 'relations_config', label: 'Хүснэгтийн холболт', parentKey: 'system_configurations', showInSidebar: true, showInHeader: false },
   { moduleKey: 'report_builder', label: 'Тайлангийн бүтээгч', parentKey: 'report_management', showInSidebar: true, showInHeader: false },
+  { moduleKey: 'report_access', label: 'Report Access', parentKey: 'report_management', showInSidebar: true, showInHeader: false },
   { moduleKey: 'report_management', label: 'Тайлангийн удирдлага', parentKey: 'system_configurations', showInSidebar: true, showInHeader: false },
   { moduleKey: 'reports', label: 'Тайлан', parentKey: null, showInSidebar: true, showInHeader: false },
   { moduleKey: 'requests', label: 'Хүсэлтүүд', parentKey: null, showInSidebar: true, showInHeader: null },
