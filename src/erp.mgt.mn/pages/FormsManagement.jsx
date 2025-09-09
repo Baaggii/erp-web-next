@@ -26,6 +26,8 @@ export default function FormsManagement() {
   const [procedureOptions, setProcedureOptions] = useState([]);
   const [branchCfg, setBranchCfg] = useState({ idField: null, displayFields: [] });
   const [deptCfg, setDeptCfg] = useState({ idField: null, displayFields: [] });
+  const [savedConfigs, setSavedConfigs] = useState([]);
+  const [selectedConfig, setSelectedConfig] = useState('');
   const generalConfig = useGeneralConfig();
   const modules = useModules();
   const procMap = useHeaderMappings(procedureOptions);
@@ -74,6 +76,26 @@ export default function FormsManagement() {
     procedures: [],
   });
 
+  useEffect(() => {
+    fetch('/api/transaction_forms', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((data) => {
+        const arr = [];
+        Object.entries(data || {}).forEach(([n, info]) => {
+          if (!info || !info.table) return;
+          arr.push({
+            key: `${info.table}::${n}`,
+            name: n,
+            table: info.table,
+            moduleKey: info.moduleKey || '',
+            config: info,
+          });
+        });
+        setSavedConfigs(arr);
+      })
+      .catch(() => setSavedConfigs([]));
+  }, []);
+
   const branchOptions = useMemo(() => {
     const idField = branchCfg?.idField || 'id';
     return branches.map((b) => {
@@ -105,6 +127,56 @@ export default function FormsManagement() {
       return { value: String(val), label };
     });
   }, [departments, deptCfg]);
+
+  function handleSelectExisting(e) {
+    const key = e.target.value;
+    setSelectedConfig(key);
+    if (!key) return;
+    const cfg = savedConfigs.find((c) => c.key === key);
+    if (!cfg) return;
+    setTable(cfg.table);
+    setName(cfg.name);
+    setModuleKey(cfg.moduleKey || '');
+    const info = cfg.config || {};
+    setConfig({
+      visibleFields: info.visibleFields || [],
+      requiredFields: info.requiredFields || [],
+      defaultValues: info.defaultValues || {},
+      editableDefaultFields: info.editableDefaultFields || [],
+      editableFields: info.editableFields || [],
+      userIdFields: info.userIdFields || [],
+      branchIdFields: info.branchIdFields || [],
+      departmentIdFields: info.departmentIdFields || [],
+      companyIdFields: info.companyIdFields || [],
+      dateField: info.dateField || [],
+      emailField: info.emailField || [],
+      imagenameField: info.imagenameField || [],
+      imageIdField: info.imageIdField || '',
+      imageFolder: info.imageFolder || '',
+      printEmpField: info.printEmpField || [],
+      printCustField: info.printCustField || [],
+      totalCurrencyFields: info.totalCurrencyFields || [],
+      totalAmountFields: info.totalAmountFields || [],
+      signatureFields: info.signatureFields || [],
+      headerFields: info.headerFields || [],
+      mainFields: info.mainFields || [],
+      footerFields: info.footerFields || [],
+      viewSource: info.viewSource || {},
+      transactionTypeField: info.transactionTypeField || '',
+      transactionTypeValue: info.transactionTypeValue || '',
+      detectFields: info.detectFields || [],
+      allowedBranches: (info.allowedBranches || []).map(String),
+      allowedDepartments: (info.allowedDepartments || []).map(String),
+      procedures: info.procedures || [],
+    });
+    setNames([cfg.name]);
+    fetch(`/api/tables/${encodeURIComponent(cfg.table)}/columns`, {
+      credentials: 'include',
+    })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((cols) => setColumns(cols.map((c) => c.name || c)))
+      .catch(() => setColumns([]));
+  }
 
     useEffect(() => {
       const procPrefix = generalConfig?.general?.reportProcPrefix || '';
@@ -456,6 +528,24 @@ export default function FormsManagement() {
       refreshModules();
       addToast('Saved', 'success');
       if (!names.includes(name)) setNames((n) => [...n, name]);
+      const key = `${table}::${name}`;
+      const info = {
+        key,
+        name,
+        table,
+        moduleKey: cfg.moduleKey || '',
+        config: cfg,
+      };
+      setSavedConfigs((list) => {
+        const idx = list.findIndex((c) => c.key === key);
+        if (idx >= 0) {
+          const copy = [...list];
+          copy[idx] = info;
+          return copy;
+        }
+        return [...list, info];
+      });
+      setSelectedConfig(key);
     } else {
       addToast('Save failed', 'error');
     }
@@ -481,6 +571,9 @@ export default function FormsManagement() {
     refreshTxnModules();
     refreshModules();
     setNames((n) => n.filter((x) => x !== name));
+    setSavedConfigs((list) =>
+      list.filter((c) => !(c.table === table && c.name === name)),
+    );
     setName('');
     setConfig({
       visibleFields: [],
@@ -514,6 +607,7 @@ export default function FormsManagement() {
       procedures: [],
     });
     setModuleKey('');
+    setSelectedConfig('');
   }
 
   async function handleImport() {
@@ -531,6 +625,22 @@ export default function FormsManagement() {
       if (!res.ok) throw new Error('failed');
       refreshTxnModules();
       refreshModules();
+      const allRes = await fetch('/api/transaction_forms', { credentials: 'include' });
+      if (allRes.ok) {
+        const allData = await allRes.json();
+        const arr = [];
+        Object.entries(allData || {}).forEach(([n, info]) => {
+          if (!info || !info.table) return;
+          arr.push({
+            key: `${info.table}::${n}`,
+            name: n,
+            table: info.table,
+            moduleKey: info.moduleKey || '',
+            config: info,
+          });
+        });
+        setSavedConfigs(arr);
+      }
       if (table) {
         const params = new URLSearchParams({ table, moduleKey });
         const resCfg = await fetch(`/api/transaction_forms?${params.toString()}`, {
@@ -622,8 +732,27 @@ export default function FormsManagement() {
       <h2>{t('settings_forms_management', 'Forms Management')}</h2>
       <div style={{ marginBottom: '1rem' }}>
         <label>
+          Existing configuration:
+          <select value={selectedConfig} onChange={handleSelectExisting}>
+            <option value="">-- select configuration --</option>
+            {savedConfigs.map((c) => (
+              <option key={c.key} value={c.key}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div style={{ marginBottom: '1rem' }}>
+        <label>
           Module:
-          <select value={moduleKey} onChange={(e) => setModuleKey(e.target.value)}>
+          <select
+            value={moduleKey}
+            onChange={(e) => {
+              setSelectedConfig('');
+              setModuleKey(e.target.value);
+            }}
+          >
             <option value="">-- select module --</option>
             {modules.map((m) => (
               <option key={m.module_key} value={m.module_key}>
@@ -634,7 +763,13 @@ export default function FormsManagement() {
         </label>
       </div>
       <div style={{ marginBottom: '1rem' }}>
-        <select value={table} onChange={(e) => setTable(e.target.value)}>
+        <select
+          value={table}
+          onChange={(e) => {
+            setSelectedConfig('');
+            setTable(e.target.value);
+          }}
+        >
           <option value="">-- select table --</option>
           {tables.map((t) => (
             <option key={t} value={t}>
@@ -654,24 +789,15 @@ export default function FormsManagement() {
             }}
           >
             <label>
-              Existing configuration:
-              <select value={name} onChange={(e) => setName(e.target.value)}>
-                <option value="">-- select transaction --</option>
-                {names.map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label>
               Transaction name:
               <input
                 type="text"
                 placeholder="Transaction name"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setSelectedConfig('');
+                  setName(e.target.value);
+                }}
               />
             </label>
 
