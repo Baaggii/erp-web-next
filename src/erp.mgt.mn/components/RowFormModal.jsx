@@ -814,8 +814,10 @@ const RowFormModal = function RowFormModal({
 
   async function handleFocusField(col) {
     showTriggerInfo(col);
-    if (viewSourceMap[col]) {
-      loadView(viewSourceMap[col]);
+    if (!fetchFlags[col]) {
+      if (viewSourceMap[col]) {
+        loadView(viewSourceMap[col]);
+      }
       setFetchFlags((f) => ({ ...f, [col]: true }));
     }
   }
@@ -1055,7 +1057,7 @@ const RowFormModal = function RowFormModal({
     const control = relationConfigMap[c] ? (
       formVisible && (
         <AsyncSearchSelect
-          shouldFetch={false}
+          shouldFetch={fetchFlags[c]}
           title={tip}
           table={relationConfigMap[c].table}
           searchColumn={relationConfigMap[c].idField || relationConfigMap[c].column}
@@ -1134,7 +1136,7 @@ const RowFormModal = function RowFormModal({
     ) : autoSelectConfigs[c] && !Array.isArray(relations[c]) ? (
       formVisible && (
         <AsyncSearchSelect
-          shouldFetch={false}
+          shouldFetch={fetchFlags[c]}
           title={tip}
           table={autoSelectConfigs[c].table}
           searchColumn={autoSelectConfigs[c].idField}
