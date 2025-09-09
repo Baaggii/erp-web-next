@@ -46,6 +46,7 @@ export default forwardRef(function InlineTransactionTable({
   viewSource = {},
   viewDisplays = {},
   viewColumns = {},
+  loadView = () => {},
   procTriggers = {},
   user = {},
   company,
@@ -280,6 +281,7 @@ export default forwardRef(function InlineTransactionTable({
   const [invalidCell, setInvalidCell] = useState(null);
   const [previewRow, setPreviewRow] = useState(null);
   const [uploadRow, setUploadRow] = useState(null);
+  const [fetchFlags, setFetchFlags] = useState({});
   const procCache = useRef({});
 
   const inputFontSize = Math.max(10, labelFontSize);
@@ -617,6 +619,10 @@ export default forwardRef(function InlineTransactionTable({
 
   function handleFocusField(col) {
     showTriggerInfo(col);
+    if (viewSourceMap[col]) {
+      loadView(viewSourceMap[col]);
+      setFetchFlags((f) => ({ ...f, [col]: true }));
+    }
   }
 
   function addRow() {
@@ -1189,6 +1195,7 @@ export default forwardRef(function InlineTransactionTable({
       const labelFields = cfg.displayFields || [];
       return (
         <AsyncSearchSelect
+          shouldFetch={fetchFlags[f]}
           table={view}
           searchColumn={idField}
           searchColumns={[idField, ...labelFields]}
