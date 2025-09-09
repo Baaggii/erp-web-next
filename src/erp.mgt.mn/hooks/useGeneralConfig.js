@@ -3,13 +3,11 @@ import { useEffect, useState } from 'react';
 const cache = { data: null };
 
 export function updateCache(data) {
-  cache.data = { ...data, isDefault: data?.isDefault ?? false };
-  if (cache.data?.general) {
-    window.erpDebug = !!cache.data.general.debugLoggingEnabled;
+  cache.data = data;
+  if (data?.general) {
+    window.erpDebug = !!data.general.debugLoggingEnabled;
   }
-  window.dispatchEvent(
-    new CustomEvent('generalConfigUpdated', { detail: cache.data }),
-  );
+  window.dispatchEvent(new CustomEvent('generalConfigUpdated', { detail: data }));
 }
 
 export default function useGeneralConfig() {
@@ -23,12 +21,12 @@ export default function useGeneralConfig() {
       }
     } else {
       fetch('/api/general_config', { credentials: 'include' })
-        .then(res => (res.ok ? res.json() : { isDefault: true }))
+        .then(res => (res.ok ? res.json() : {}))
         .then(data => {
           updateCache(data);
-          setCfg(cache.data);
+          setCfg(data);
         })
-        .catch(() => setCfg({ isDefault: true }));
+        .catch(() => setCfg({}));
     }
     const handler = e => {
       setCfg(e.detail);
@@ -40,5 +38,5 @@ export default function useGeneralConfig() {
     return () => window.removeEventListener('generalConfigUpdated', handler);
   }, []);
 
-  return cfg || { isDefault: true };
+  return cfg || {};
 }
