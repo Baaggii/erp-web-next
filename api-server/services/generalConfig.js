@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { tenantConfigPath, resolveConfigPath } from '../utils/configPaths.js';
+import { tenantConfigPath } from '../utils/configPaths.js';
 
 const defaults = {
   forms: {
@@ -43,14 +43,24 @@ const defaults = {
 };
 
 async function readConfig(companyId = 0) {
+  const tenantFile = tenantConfigPath('generalConfig.json', companyId);
+  let filePath = tenantFile;
+  let isDefault = false;
   try {
-    const filePath = await resolveConfigPath('generalConfig.json', companyId);
+    await fs.access(tenantFile);
+  } catch {
+    filePath = tenantConfigPath('generalConfig.json', 0);
+    isDefault = true;
+  }
+
+  try {
     const data = await fs.readFile(filePath, 'utf8');
     const parsed = JSON.parse(data);
+    let result;
     if (parsed.forms || parsed.pos || parsed.general || parsed.images) {
       const { imageStorage, ...restGeneral } = parsed.general || {};
       const images = parsed.images || imageStorage || {};
-      return {
+      result = {
         ...defaults,
         ...parsed,
         general: {
@@ -62,16 +72,18 @@ async function readConfig(companyId = 0) {
           ...images,
         },
       };
+    } else {
+      // migrate older flat structure to new nested layout
+      result = {
+        forms: { ...defaults.forms, ...parsed },
+        pos: { ...defaults.pos },
+        general: { ...defaults.general },
+        images: { ...defaults.images },
+      };
     }
-    // migrate older flat structure to new nested layout
-    return {
-      forms: { ...defaults.forms, ...parsed },
-      pos: { ...defaults.pos },
-      general: { ...defaults.general },
-      images: { ...defaults.images },
-    };
+    return { config: result, isDefault };
   } catch {
-    return { ...defaults };
+    return { config: { ...defaults }, isDefault: true };
   }
 }
 
@@ -86,7 +98,7 @@ export async function getGeneralConfig(companyId = 0) {
 }
 
 export async function updateGeneralConfig(updates = {}, companyId = 0) {
-  const cfg = await readConfig(companyId);
+  const { config: cfg } = await readConfig(companyId);
   if (updates.forms) Object.assign(cfg.forms, updates.forms);
   if (updates.pos) Object.assign(cfg.pos, updates.pos);
   if (updates.general) {
@@ -96,5 +108,5 @@ export async function updateGeneralConfig(updates = {}, companyId = 0) {
     Object.assign(cfg.images, updates.images);
   }
   await writeConfig(cfg, companyId);
-  return cfg;
+  return { ...cfg, isDefault: false };
 }

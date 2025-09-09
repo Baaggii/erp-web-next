@@ -91,7 +91,7 @@ io.use((socket, next) => {
 app.set("io", io);
 
 // Serve uploaded images statically
-const imgCfg = await getGeneralConfig();
+const { config: imgCfg } = await getGeneralConfig();
 const imgBase = imgCfg.images?.basePath || "uploads";
 const projectRoot = path.resolve(__dirname, "../");
 const uploadsRoot = path.isAbsolute(imgBase)

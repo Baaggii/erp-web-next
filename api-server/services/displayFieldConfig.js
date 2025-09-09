@@ -1,15 +1,23 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { listTableColumnMeta } from '../../db/index.js';
-import { tenantConfigPath, resolveConfigPath } from '../utils/configPaths.js';
+import { tenantConfigPath } from '../utils/configPaths.js';
 
 async function readConfig(companyId = 0) {
+  const tenantFile = tenantConfigPath('tableDisplayFields.json', companyId);
+  let filePath = tenantFile;
+  let isDefault = false;
   try {
-    const filePath = await resolveConfigPath('tableDisplayFields.json', companyId);
-    const data = await fs.readFile(filePath, 'utf8');
-    return JSON.parse(data);
+    await fs.access(tenantFile);
   } catch {
-    return {};
+    filePath = tenantConfigPath('tableDisplayFields.json', 0);
+    isDefault = true;
+  }
+  try {
+    const data = await fs.readFile(filePath, 'utf8');
+    return { cfg: JSON.parse(data), isDefault };
+  } catch {
+    return { cfg: {}, isDefault: true };
   }
 }
 
@@ -20,13 +28,13 @@ async function writeConfig(cfg, companyId = 0) {
 }
 
 export async function getDisplayFields(table, companyId = 0) {
-  const cfg = await readConfig(companyId);
-  if (cfg[table]) return cfg[table];
+  const { cfg, isDefault } = await readConfig(companyId);
+  if (cfg[table]) return { config: cfg[table], isDefault };
 
   try {
     const meta = await listTableColumnMeta(table);
     if (!Array.isArray(meta) || meta.length === 0) {
-      return { idField: null, displayFields: [] };
+      return { config: { idField: null, displayFields: [] }, isDefault };
     }
     const idField =
       meta.find((c) => String(c.key).toUpperCase() === 'PRI')?.name || meta[0].name;
@@ -34,14 +42,15 @@ export async function getDisplayFields(table, companyId = 0) {
       .map((c) => c.name)
       .filter((n) => n !== idField)
       .slice(0, 3);
-    return { idField, displayFields };
+    return { config: { idField, displayFields }, isDefault };
   } catch {
-    return { idField: null, displayFields: [] };
+    return { config: { idField: null, displayFields: [] }, isDefault };
   }
 }
 
 export async function getAllDisplayFields(companyId = 0) {
-  return readConfig(companyId);
+  const { cfg, isDefault } = await readConfig(companyId);
+  return { config: cfg, isDefault };
 }
 
 export async function setDisplayFields(
@@ -53,14 +62,14 @@ export async function setDisplayFields(
   if (displayFields.length > 20) {
     throw new Error('Up to 20 display fields can be configured');
   }
-  const cfg = await readConfig(companyId);
+  const { cfg } = await readConfig(companyId);
   cfg[table] = { idField, displayFields };
   await writeConfig(cfg, companyId);
   return cfg[table];
 }
 
 export async function removeDisplayFields(table, companyId = 0) {
-  const cfg = await readConfig(companyId);
+  const { cfg } = await readConfig(companyId);
   if (cfg[table]) {
     delete cfg[table];
     await writeConfig(cfg, companyId);

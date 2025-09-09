@@ -6,7 +6,7 @@ import { deleteImage } from '../../api-server/services/transactionImageService.j
 import { getGeneralConfig } from '../../api-server/services/generalConfig.js';
 
 const companyId = 0;
-const cfg = await getGeneralConfig(companyId);
+const { config: cfg } = await getGeneralConfig(companyId);
 const baseDir = path.join(
   process.cwd(),
   cfg.images.basePath || 'uploads',

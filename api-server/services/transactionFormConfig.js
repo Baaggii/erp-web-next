@@ -1,14 +1,22 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { tenantConfigPath, resolveConfigPath } from '../utils/configPaths.js';
+import { tenantConfigPath } from '../utils/configPaths.js';
 
 async function readConfig(companyId = 0) {
+  const tenantFile = tenantConfigPath('transactionForms.json', companyId);
+  let filePath = tenantFile;
+  let isDefault = false;
   try {
-    const filePath = await resolveConfigPath('transactionForms.json', companyId);
-    const data = await fs.readFile(filePath, 'utf8');
-    return JSON.parse(data);
+    await fs.access(tenantFile);
   } catch {
-    return {};
+    filePath = tenantConfigPath('transactionForms.json', 0);
+    isDefault = true;
+  }
+  try {
+    const data = await fs.readFile(filePath, 'utf8');
+    return { cfg: JSON.parse(data), isDefault };
+  } catch {
+    return { cfg: {}, isDefault: true };
   }
 }
 
@@ -90,24 +98,24 @@ function parseEntry(raw = {}) {
 }
 
 export async function getFormConfig(table, name, companyId = 0) {
-  const cfg = await readConfig(companyId);
+  const { cfg, isDefault } = await readConfig(companyId);
   const byTable = cfg[table] || {};
   const raw = byTable[name];
-  return parseEntry(raw);
+  return { config: parseEntry(raw), isDefault };
 }
 
 export async function getConfigsByTable(table, companyId = 0) {
-  const cfg = await readConfig(companyId);
+  const { cfg, isDefault } = await readConfig(companyId);
   const byTable = cfg[table] || {};
   const result = {};
   for (const [name, info] of Object.entries(byTable)) {
     result[name] = parseEntry(info);
   }
-  return result;
+  return { config: result, isDefault };
 }
 
 export async function getConfigsByTransTypeValue(val, companyId = 0) {
-  const cfg = await readConfig(companyId);
+  const { cfg, isDefault } = await readConfig(companyId);
   const result = [];
   for (const [tbl, names] of Object.entries(cfg)) {
     for (const [name, info] of Object.entries(names)) {
@@ -120,26 +128,26 @@ export async function getConfigsByTransTypeValue(val, companyId = 0) {
       }
     }
   }
-  return result;
+  return { configs: result, isDefault };
 }
 
 export async function findTableByProcedure(proc, companyId = 0) {
-  if (!proc) return null;
-  const cfg = await readConfig(companyId);
+  if (!proc) return { table: null, isDefault: false };
+  const { cfg, isDefault } = await readConfig(companyId);
   for (const [tbl, names] of Object.entries(cfg)) {
     for (const info of Object.values(names)) {
       const parsed = parseEntry(info);
-      if (parsed.procedures.includes(proc)) return tbl;
+      if (parsed.procedures.includes(proc)) return { table: tbl, isDefault };
     }
   }
-  return null;
+  return { table: null, isDefault };
 }
 
 export async function listTransactionNames(
   { moduleKey, branchId, departmentId } = {},
   companyId = 0,
 ) {
-  const cfg = await readConfig(companyId);
+  const { cfg, isDefault } = await readConfig(companyId);
   const result = {};
   const bId = branchId ? Number(branchId) : null;
   const dId = departmentId ? Number(departmentId) : null;
@@ -155,7 +163,7 @@ export async function listTransactionNames(
       result[name] = { table: tbl, ...parsed };
     }
   }
-  return result;
+  return { names: result, isDefault };
 }
 
 export async function setFormConfig(
@@ -214,7 +222,7 @@ export async function setFormConfig(
   const ad = Array.isArray(allowedDepartments)
     ? allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
     : [];
-  const cfg = await readConfig(companyId);
+  const { cfg } = await readConfig(companyId);
   if (!cfg[table]) cfg[table] = {};
   cfg[table][name] = {
     visibleFields: arrify(visibleFields),
@@ -258,7 +266,7 @@ export async function setFormConfig(
 }
 
 export async function deleteFormConfig(table, name, companyId = 0) {
-  const cfg = await readConfig(companyId);
+  const { cfg } = await readConfig(companyId);
   if (!cfg[table] || !cfg[table][name]) return;
   delete cfg[table][name];
   if (Object.keys(cfg[table]).length === 0) delete cfg[table];

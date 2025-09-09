@@ -48,7 +48,7 @@ router.delete('/cleanup/:days?', requireAuth, async (req, res, next) => {
   try {
     let days = parseInt(req.params.days || req.query.days, 10);
     if (!days || Number.isNaN(days)) {
-      const cfg = await getGeneralConfig(req.user.companyId);
+      const { config: cfg } = await getGeneralConfig(req.user.companyId);
       days = cfg.images?.cleanupDays || 30;
     }
     const removed = await cleanupOldImages(days, req.user.companyId);

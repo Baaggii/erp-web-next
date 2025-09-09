@@ -42,7 +42,7 @@ app.use(cookieParser());
 app.use(logger);
 
 // Serve uploaded images statically before CSRF so image requests don't require tokens
-const imgCfg = await getGeneralConfig();
+const { config: imgCfg } = await getGeneralConfig();
 const imgBase = imgCfg.images?.basePath || "uploads";
 const projectRoot = path.resolve(__dirname, "../");
 const uploadsRoot = path.isAbsolute(imgBase)

@@ -1,14 +1,22 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { tenantConfigPath, resolveConfigPath } from '../utils/configPaths.js';
+import { tenantConfigPath } from '../utils/configPaths.js';
 
 async function readConfig(companyId = 0) {
+  const tenantFile = tenantConfigPath('posTransactionConfig.json', companyId);
+  let filePath = tenantFile;
+  let isDefault = false;
   try {
-    const filePath = await resolveConfigPath('posTransactionConfig.json', companyId);
-    const data = await fs.readFile(filePath, 'utf8');
-    return JSON.parse(data);
+    await fs.access(tenantFile);
   } catch {
-    return {};
+    filePath = tenantConfigPath('posTransactionConfig.json', 0);
+    isDefault = true;
+  }
+  try {
+    const data = await fs.readFile(filePath, 'utf8');
+    return { cfg: JSON.parse(data), isDefault };
+  } catch {
+    return { cfg: {}, isDefault: true };
   }
 }
 
@@ -19,23 +27,24 @@ async function writeConfig(cfg, companyId = 0) {
 }
 
 export async function getConfig(name, companyId = 0) {
-  const cfg = await readConfig(companyId);
-  return cfg[name] || null;
+  const { cfg, isDefault } = await readConfig(companyId);
+  return { config: cfg[name] || null, isDefault };
 }
 
 export async function getAllConfigs(companyId = 0) {
-  return readConfig(companyId);
+  const { cfg, isDefault } = await readConfig(companyId);
+  return { config: cfg, isDefault };
 }
 
 export async function setConfig(name, config = {}, companyId = 0) {
-  const cfg = await readConfig(companyId);
+  const { cfg } = await readConfig(companyId);
   cfg[name] = config;
   await writeConfig(cfg, companyId);
   return cfg[name];
 }
 
 export async function deleteConfig(name, companyId = 0) {
-  const cfg = await readConfig(companyId);
+  const { cfg } = await readConfig(companyId);
   delete cfg[name];
   await writeConfig(cfg, companyId);
 }

@@ -24,7 +24,7 @@ test('fetchGeneralConfig requires system_settings permission', async () => {
   const req = {
     user: { empid: 1, companyId: 1 },
     session: { permissions: { system_settings: 0 } },
-    getGeneralConfig: async () => ({})
+    getGeneralConfig: async () => ({ config: {}, isDefault: false })
   };
   const res = createRes();
   await fetchGeneralConfig(req, res, () => {});
@@ -50,11 +50,11 @@ test('saveGeneralConfig allows update with permission', async () => {
     user: { empid: 1, companyId: 1 },
     body: { general: { aiApiEnabled: true } },
     session: { permissions: { system_settings: 1 } },
-    updateGeneralConfig: async (body) => body,
+    updateGeneralConfig: async (body) => ({ ...body, isDefault: false }),
   };
   const res = createRes();
   await saveGeneralConfig(req, res, () => {});
-  assert.deepEqual(res.body, { general: { aiApiEnabled: true } });
+  assert.deepEqual(res.body, { general: { aiApiEnabled: true }, isDefault: false });
 });
 
 test('saveGeneralConfig allows update with user-level permission', async () => {
@@ -66,22 +66,25 @@ test('saveGeneralConfig allows update with user-level permission', async () => {
       user_level: 3,
       __userLevelActions: { permissions: { system_settings: true } },
     },
-    updateGeneralConfig: async (body) => body,
+    updateGeneralConfig: async (body) => ({ ...body, isDefault: false }),
   };
   const res = createRes();
   await saveGeneralConfig(req, res, () => {});
-  assert.deepEqual(res.body, { general: { aiApiEnabled: true } });
+  assert.deepEqual(res.body, { general: { aiApiEnabled: true }, isDefault: false });
 });
 
 test('fetchGeneralConfig allows system admin', async () => {
   const req = {
     user: { empid: 1, companyId: 0 },
     session: { permissions: { system_settings: 1 }, company_id: 0 },
-    getGeneralConfig: async () => ({ general: { aiApiEnabled: true } }),
+    getGeneralConfig: async () => ({
+      config: { general: { aiApiEnabled: true } },
+      isDefault: false,
+    }),
   };
   const res = createRes();
   await fetchGeneralConfig(req, res, () => {});
-  assert.deepEqual(res.body, { general: { aiApiEnabled: true } });
+  assert.deepEqual(res.body, { general: { aiApiEnabled: true }, isDefault: false });
 });
 
 test('saveGeneralConfig allows system admin', async () => {
@@ -89,9 +92,9 @@ test('saveGeneralConfig allows system admin', async () => {
     user: { empid: 1, companyId: 0 },
     body: { general: { aiApiEnabled: true } },
     session: { permissions: { system_settings: 1 }, company_id: 0 },
-    updateGeneralConfig: async (body) => body,
+    updateGeneralConfig: async (body) => ({ ...body, isDefault: false }),
   };
   const res = createRes();
   await saveGeneralConfig(req, res, () => {});
-  assert.deepEqual(res.body, { general: { aiApiEnabled: true } });
+  assert.deepEqual(res.body, { general: { aiApiEnabled: true }, isDefault: false });
 });
