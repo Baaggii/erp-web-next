@@ -393,6 +393,7 @@ export default function PosTransactionsPage() {
 
   useEffect(() => {
     loadedTablesRef.current.clear();
+    loadingTablesRef.current.clear();
   }, [visibleTablesKey]);
 
   useEffect(() => {
