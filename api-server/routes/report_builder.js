@@ -120,9 +120,10 @@ router.post('/procedure-files/:name', requireAuth, async (req, res, next) => {
   try {
     const { name } = req.params;
     const { sql } = req.body || {};
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
     if (!name) return res.status(400).json({ message: 'name required' });
     if (!sql) return res.status(400).json({ message: 'sql required' });
-    const dir = tenantProcDir(req.user.companyId);
+    const dir = tenantProcDir(companyId);
     await fs.mkdir(dir, { recursive: true });
     const file = path.join(dir, `${name}.json`);
     await fs.writeFile(file, JSON.stringify({ sql }, null, 2));
@@ -136,7 +137,8 @@ router.post('/procedure-files/:name', requireAuth, async (req, res, next) => {
 router.get('/procedure-files', requireAuth, async (req, res, next) => {
   try {
     const { prefix = '' } = req.query;
-    const dir = await resolveProcDir(req.user.companyId);
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
+    const dir = await resolveProcDir(companyId);
     await fs.mkdir(dir, { recursive: true });
     const files = await fs.readdir(dir);
     const names = files
@@ -157,7 +159,8 @@ router.get('/procedure-files', requireAuth, async (req, res, next) => {
 router.get('/procedure-files/:name', requireAuth, async (req, res, next) => {
   try {
     const { name } = req.params;
-    const dir = tenantProcDir(req.user.companyId);
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
+    const dir = tenantProcDir(companyId);
     const fallbackDir = tenantProcDir(0);
     try {
       const text = await fs.readFile(path.join(dir, `${name}.json`), 'utf-8');
@@ -181,8 +184,9 @@ router.get('/procedure-files/:name', requireAuth, async (req, res, next) => {
 router.post('/configs/:name', requireAuth, async (req, res, next) => {
   try {
     const { name } = req.params;
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
     if (!name) return res.status(400).json({ message: 'name required' });
-    const dir = tenantDir(req.user.companyId);
+    const dir = tenantDir(companyId);
     await fs.mkdir(dir, { recursive: true });
     const file = path.join(dir, `${name}.json`);
     await fs.writeFile(file, JSON.stringify(req.body || {}, null, 2));
@@ -196,7 +200,8 @@ router.post('/configs/:name', requireAuth, async (req, res, next) => {
 router.get('/configs', requireAuth, async (req, res, next) => {
   try {
     const { prefix = '' } = req.query;
-    const dir = await resolveDir(req.user.companyId);
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
+    const dir = await resolveDir(companyId);
     await fs.mkdir(dir, { recursive: true });
     const files = await fs.readdir(dir);
     const names = files
@@ -217,7 +222,8 @@ router.get('/configs', requireAuth, async (req, res, next) => {
 router.get('/configs/:name', requireAuth, async (req, res, next) => {
   try {
     const { name } = req.params;
-    const dir = tenantDir(req.user.companyId);
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
+    const dir = tenantDir(companyId);
     const fallbackDir = tenantDir(0);
     try {
       const text = await fs.readFile(path.join(dir, `${name}.json`), 'utf-8');
