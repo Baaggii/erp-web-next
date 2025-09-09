@@ -281,7 +281,8 @@ export default forwardRef(function InlineTransactionTable({
   const [invalidCell, setInvalidCell] = useState(null);
   const [previewRow, setPreviewRow] = useState(null);
   const [uploadRow, setUploadRow] = useState(null);
-  const [fetchFlags, setFetchFlags] = useState({});
+  const fetchFlagsRef = useRef({});
+  const [fetchFlags, setFetchFlags] = useState(fetchFlagsRef.current);
   const procCache = useRef({});
 
   const inputFontSize = Math.max(10, labelFontSize);
@@ -619,11 +620,12 @@ export default forwardRef(function InlineTransactionTable({
 
   function handleFocusField(col) {
     showTriggerInfo(col);
-    if (!fetchFlags[col]) {
+    if (!fetchFlagsRef.current[col]) {
       if (viewSourceMap[col]) {
         loadView(viewSourceMap[col]);
       }
-      setFetchFlags((f) => ({ ...f, [col]: true }));
+      fetchFlagsRef.current[col] = true;
+      setFetchFlags({ ...fetchFlagsRef.current });
     }
   }
 
