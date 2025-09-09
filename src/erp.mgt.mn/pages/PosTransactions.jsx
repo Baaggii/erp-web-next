@@ -684,28 +684,32 @@ export default function PosTransactionsPage() {
   useEffect(() => {
     if (!config) return;
     if (masterSessionValue === undefined) return;
-    sessionFields.forEach((sf) => {
-      if (sf.table === config.masterTable) return;
-      setValues((v) => {
-        const tblVal = v[sf.table];
+    const updateSessionValues = (prev) => {
+      let next = prev;
+      for (const sf of sessionFields) {
+        if (sf.table === config.masterTable) continue;
+        const tblVal = next[sf.table];
         if (Array.isArray(tblVal)) {
-          let changed = false;
+          let tableChanged = false;
           const updated = tblVal.map((r) => {
             if (r[sf.field] === masterSessionValue) return r;
-            changed = true;
+            tableChanged = true;
             return { ...r, [sf.field]: masterSessionValue };
           });
-          if (changed) return { ...v, [sf.table]: updated };
-          return v;
+          if (tableChanged) next = { ...next, [sf.table]: updated };
+          continue;
         }
         const cur = tblVal?.[sf.field];
-        if (cur === masterSessionValue) return v;
-        return {
-          ...v,
-          [sf.table]: { ...(tblVal || {}), [sf.field]: masterSessionValue },
-        };
-      });
-    });
+        if (cur !== masterSessionValue) {
+          next = {
+            ...next,
+            [sf.table]: { ...(tblVal || {}), [sf.field]: masterSessionValue },
+          };
+        }
+      }
+      return next;
+    };
+    setValues(updateSessionValues);
   }, [masterSessionValue, config, sessionFields]);
 
   function syncCalcFields(vals, mapConfig) {
