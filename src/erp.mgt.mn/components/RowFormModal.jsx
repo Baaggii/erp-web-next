@@ -817,10 +817,10 @@ const RowFormModal = function RowFormModal({
 
   async function handleFocusField(col) {
     showTriggerInfo(col);
+    if (viewSourceMap[col]) {
+      loadView(viewSourceMap[col]);
+    }
     if (!fetchFlags[col]) {
-      if (viewSourceMap[col]) {
-        loadView(viewSourceMap[col]);
-      }
       setFetchFlags((f) => ({ ...f, [col]: true }));
     }
   }
