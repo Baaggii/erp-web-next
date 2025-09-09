@@ -202,6 +202,7 @@ export default function RelationsConfig() {
           </button>
         </div>
       )}
+    </fieldset>
     </div>
     </fieldset>
   );
