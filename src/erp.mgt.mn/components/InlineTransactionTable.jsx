@@ -620,10 +620,12 @@ export default forwardRef(function InlineTransactionTable({
 
   function handleFocusField(col) {
     showTriggerInfo(col);
-    if (viewSourceMap[col]) {
-      loadView(viewSourceMap[col]);
+    if (!fetchFlags[col]) {
+      if (viewSourceMap[col]) {
+        loadView(viewSourceMap[col]);
+      }
+      setFetchFlags((f) => ({ ...f, [col]: true }));
     }
-    setFetchFlags((f) => ({ ...f, [col]: true }));
   }
 
   function addRow() {
