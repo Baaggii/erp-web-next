@@ -310,35 +310,35 @@ export default function PosTransactionsPage() {
   }
 
   const loadView = useCallback(
-    async (view) => {
+    async (viewName) => {
       const apply = (data) => {
         Object.entries(memoFormConfigs).forEach(([tbl, fc]) => {
           const views = Object.values(fc.viewSource || {});
-          if (views.includes(view)) {
+          if (views.includes(viewName)) {
             setViewDisplaysMap((m) => ({
               ...m,
-              [tbl]: { ...(m[tbl] || {}), [view]: data.cfg },
+              [tbl]: { ...(m[tbl] || {}), [viewName]: data.cfg },
             }));
             setViewColumnsMap((m) => ({
               ...m,
-              [tbl]: { ...(m[tbl] || {}), [view]: data.cols },
+              [tbl]: { ...(m[tbl] || {}), [viewName]: data.cols },
             }));
           }
         });
       };
-      const cached = viewCacheRef.current.get(view);
+      const cached = viewCacheRef.current.get(viewName);
       if (cached) {
         apply(cached);
         return cached;
       }
-      let fetchPromise = viewFetchesRef.current.get(view);
+      let fetchPromise = viewFetchesRef.current.get(viewName);
       if (!fetchPromise) {
         const dfPromise = fetchWithAbort(
-          `/api/display_fields?table=${encodeURIComponent(view)}`,
+          `/api/display_fields?table=${encodeURIComponent(viewName)}`,
           { credentials: 'include' },
         ).then((res) => (res.ok ? res.json() : null));
         const colPromise = fetchWithAbort(
-          `/api/tables/${encodeURIComponent(view)}/columns`,
+          `/api/tables/${encodeURIComponent(viewName)}/columns`,
           { credentials: 'include' },
         ).then((res) => (res.ok ? res.json() : []));
         fetchPromise = Promise.all([dfPromise, colPromise])
@@ -347,14 +347,14 @@ export default function PosTransactionsPage() {
               cfg: cfg || {},
               cols: (cols || []).map((c) => c.name),
             };
-            viewCacheRef.current.set(view, data);
+            viewCacheRef.current.set(viewName, data);
             return data;
           })
           .catch(() => null)
           .finally(() => {
-            viewFetchesRef.current.delete(view);
+            viewFetchesRef.current.delete(viewName);
           });
-        viewFetchesRef.current.set(view, fetchPromise);
+        viewFetchesRef.current.set(viewName, fetchPromise);
       }
       const data = await fetchPromise;
       if (data) apply(data);
@@ -1283,6 +1283,7 @@ export default function PosTransactionsPage() {
                     viewSource={fc.viewSource || {}}
                     viewDisplays={viewDisplaysMap[t.table] || {}}
                     viewColumns={viewColumnsMap[t.table] || {}}
+                    viewCache={viewCacheRef.current}
                     loadView={loadView}
                     user={user}
                     
