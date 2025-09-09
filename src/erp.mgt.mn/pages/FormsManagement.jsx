@@ -517,24 +517,86 @@ export default function FormsManagement() {
       if (!res.ok) throw new Error('failed');
       refreshTxnModules();
       refreshModules();
-      const resCfg = await fetch('/api/transaction_forms', { credentials: 'include' });
-      const data = resCfg.ok ? await resCfg.json() : {};
-      const byTable = {};
-      const namesArr = [];
-      const mapping = {};
-      const fields = {};
-      for (const [n, info] of Object.entries(data)) {
-        const tbl = info.table;
-        mapping[n] = tbl;
-        namesArr.push(n);
-        fields[n] = Array.isArray(info.visibleFields) ? info.visibleFields : [];
-        if (!byTable[tbl]) byTable[tbl] = [];
-        byTable[tbl].push(n);
+      if (table) {
+        const params = new URLSearchParams({ table, moduleKey });
+        const resCfg = await fetch(`/api/transaction_forms?${params.toString()}`, {
+          credentials: 'include',
+        });
+        const data = resCfg.ok ? await resCfg.json() : {};
+        const filtered = {};
+        Object.entries(data).forEach(([n, info]) => {
+          if (!info || info.moduleKey !== moduleKey) return;
+          filtered[n] = info;
+        });
+        const formNames = Object.keys(filtered);
+        setNames(formNames);
+        if (filtered[name]) {
+          setConfig({
+            visibleFields: filtered[name].visibleFields || [],
+            requiredFields: filtered[name].requiredFields || [],
+            defaultValues: filtered[name].defaultValues || {},
+            editableDefaultFields: filtered[name].editableDefaultFields || [],
+            editableFields: filtered[name].editableFields || [],
+            userIdFields: filtered[name].userIdFields || [],
+            branchIdFields: filtered[name].branchIdFields || [],
+            departmentIdFields: filtered[name].departmentIdFields || [],
+            companyIdFields: filtered[name].companyIdFields || [],
+            dateField: filtered[name].dateField || [],
+            emailField: filtered[name].emailField || [],
+            imagenameField: filtered[name].imagenameField || [],
+            imageIdField: filtered[name].imageIdField || '',
+            imageFolder: filtered[name].imageFolder || '',
+            printEmpField: filtered[name].printEmpField || [],
+            printCustField: filtered[name].printCustField || [],
+            totalCurrencyFields: filtered[name].totalCurrencyFields || [],
+            totalAmountFields: filtered[name].totalAmountFields || [],
+            signatureFields: filtered[name].signatureFields || [],
+            headerFields: filtered[name].headerFields || [],
+            mainFields: filtered[name].mainFields || [],
+            footerFields: filtered[name].footerFields || [],
+            viewSource: filtered[name].viewSource || {},
+            transactionTypeField: filtered[name].transactionTypeField || '',
+            transactionTypeValue: filtered[name].transactionTypeValue || '',
+            detectFields: filtered[name].detectFields || [],
+            allowedBranches: (filtered[name].allowedBranches || []).map(String),
+            allowedDepartments: (filtered[name].allowedDepartments || []).map(String),
+            procedures: filtered[name].procedures || [],
+          });
+        } else {
+          setName('');
+          setConfig({
+            visibleFields: [],
+            requiredFields: [],
+            defaultValues: {},
+            editableDefaultFields: [],
+            editableFields: [],
+            userIdFields: [],
+            branchIdFields: [],
+            departmentIdFields: [],
+            companyIdFields: [],
+            dateField: [],
+            emailField: [],
+            imagenameField: [],
+            imageIdField: '',
+            imageFolder: '',
+            printEmpField: [],
+            printCustField: [],
+            totalCurrencyFields: [],
+            totalAmountFields: [],
+            signatureFields: [],
+            headerFields: [],
+            mainFields: [],
+            footerFields: [],
+            viewSource: {},
+            transactionTypeField: '',
+            transactionTypeValue: '',
+            detectFields: [],
+            allowedBranches: [],
+            allowedDepartments: [],
+            procedures: [],
+          });
+        }
       }
-      setFormOptions(byTable);
-      setFormNames(namesArr);
-      setFormToTable(mapping);
-      setFormFields(fields);
       addToast('Imported', 'success');
     } catch (err) {
       addToast(`Import failed: ${err.message}`, 'error');
