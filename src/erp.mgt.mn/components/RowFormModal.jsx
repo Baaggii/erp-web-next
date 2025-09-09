@@ -58,7 +58,6 @@ const RowFormModal = function RowFormModal({
   viewSource = {},
   viewDisplays = {},
   viewColumns = {},
-  viewCache = new Map(),
   loadView = () => {},
   procTriggers = {},
   autoFillSession = true,
@@ -1301,7 +1300,6 @@ const RowFormModal = function RowFormModal({
             viewSource={viewSourceMap}
             viewDisplays={viewDisplays}
             viewColumns={viewColumns}
-            viewCache={viewCache}
             loadView={loadView}
             procTriggers={procTriggers}
             user={user}

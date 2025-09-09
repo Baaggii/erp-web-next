@@ -46,7 +46,6 @@ export default forwardRef(function InlineTransactionTable({
   viewSource = {},
   viewDisplays = {},
   viewColumns = {},
-  viewCache = new Map(),
   loadView = () => {},
   procTriggers = {},
   user = {},

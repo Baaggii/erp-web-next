@@ -1283,7 +1283,6 @@ export default function PosTransactionsPage() {
                     viewSource={fc.viewSource || {}}
                     viewDisplays={viewDisplaysMap[t.table] || {}}
                     viewColumns={viewColumnsMap[t.table] || {}}
-                    viewCache={viewCacheRef.current}
                     loadView={loadView}
                     user={user}
                     
