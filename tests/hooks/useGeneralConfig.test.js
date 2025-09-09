@@ -71,6 +71,7 @@ if (!haveReact) {
     assert.equal(value.general.editLabelsEnabled, false);
     assert.equal(window.erpDebug, false);
     assert.equal(listeners.generalConfigUpdated.size, 1);
+    assert.equal(value.isDefault, false);
 
     await act(async () => {
       updateCache({ general: { editLabelsEnabled: true, debugLoggingEnabled: true } });
@@ -79,6 +80,7 @@ if (!haveReact) {
 
     assert.equal(value.general.editLabelsEnabled, true);
     assert.equal(window.erpDebug, true);
+    assert.equal(value.isDefault, false);
 
     unmount();
     assert.equal(listeners.generalConfigUpdated.size, 0);
