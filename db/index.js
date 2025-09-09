@@ -40,10 +40,34 @@ try {
 import defaultModules from "./defaultModules.js";
 import { logDb } from "./debugLog.js";
 import fs from "fs/promises";
+import path from "path";
 import { tenantConfigPath, getConfigPath } from "../api-server/utils/configPaths.js";
 import { getDisplayFields as getDisplayCfg } from "../api-server/services/displayFieldConfig.js";
 import { GLOBAL_COMPANY_ID } from "../config/0/constants.js";
 import { formatDateForDb } from "../api-server/utils/formatDate.js";
+
+const PROTECTED_PROCEDURE_PREFIXES = ["dynrep_"];
+
+async function isProtectedProcedure(name) {
+  if (!name) return false;
+  if (PROTECTED_PROCEDURE_PREFIXES.some((p) => name.startsWith(p))) return true;
+  const base = path.join(
+    process.cwd(),
+    "config",
+    "0",
+    "report_builder",
+    "procedures",
+  );
+  try {
+    await fs.access(path.join(base, `${name}.json`));
+    return true;
+  } catch {}
+  try {
+    await fs.access(path.join(base, `${name}.sql`));
+    return true;
+  } catch {}
+  return false;
+}
 
 const permissionRegistryCache = new Map();
 
@@ -1141,6 +1165,13 @@ export async function saveStoredProcedure(sql) {
     .replace(/^DELIMITER \$\$/gm, '')
     .replace(/^DELIMITER ;/gm, '')
     .replace(/END\s*\$\$/gm, 'END;');
+  const nameMatch = cleaned.match(/CREATE\s+PROCEDURE\s+`?([^\s`(]+)`?/i);
+  const procName = nameMatch ? nameMatch[1] : null;
+  if (await isProtectedProcedure(procName)) {
+    const err = new Error('Procedure not allowed');
+    err.status = 403;
+    throw err;
+  }
   const dropMatch = cleaned.match(/DROP\s+PROCEDURE[^;]+;/i);
   const createMatch = cleaned.match(/CREATE\s+PROCEDURE[\s\S]+END;/i);
   if (dropMatch) {
@@ -1170,6 +1201,11 @@ export async function listReportProcedures(prefix = '') {
 
 export async function deleteProcedure(name) {
   if (!name) return;
+  if (await isProtectedProcedure(name)) {
+    const err = new Error('Procedure not allowed');
+    err.status = 403;
+    throw err;
+  }
   await pool.query(`DROP PROCEDURE IF EXISTS \`${name}\``);
 }
 

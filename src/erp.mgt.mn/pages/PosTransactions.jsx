@@ -24,6 +24,20 @@ function isEqual(a, b) {
   }
 }
 
+function hash(obj) {
+  let str;
+  try {
+    str = JSON.stringify(obj);
+  } catch {
+    str = '';
+  }
+  let h = 0;
+  for (let i = 0; i < str.length; i += 1) {
+    h = (h * 31 + str.charCodeAt(i)) >>> 0;
+  }
+  return h.toString(36);
+}
+
 function parseErrorField(msg) {
   if (!msg) return null;
   let m = msg.match(/FOREIGN KEY \(`([^`]*)`\)/i);
@@ -158,6 +172,17 @@ export default function PosTransactionsPage() {
   const [config, setConfig] = useState(null);
   const [formConfigs, setFormConfigs] = useState({});
   const memoFormConfigs = useMemo(() => formConfigs, [formConfigs]);
+  // Stable hash of view dependencies in form configs to keep loadView callback
+  // from recreating unnecessarily when irrelevant parts mutate.
+  const formConfigsViewHash = useMemo(() => {
+    const entries = Object.entries(memoFormConfigs).map(([tbl, fc]) => {
+      const views = Object.values(fc.viewSource || {})
+        .filter(Boolean)
+        .sort();
+      return `${tbl}:${views.join(',')}`;
+    });
+    return entries.sort().join('|');
+  }, [memoFormConfigs]);
   const [columnMeta, setColumnMeta] = useState({});
   const [values, setValues] = useState({});
   const [layout, setLayout] = useState({});
@@ -183,6 +208,8 @@ export default function PosTransactionsPage() {
   const viewCacheRef = useRef(new Map());
   // Tracks in-flight view fetch promises so multiple tables can share them
   const viewFetchesRef = useRef(new Map());
+  // Records view names that finished loading to avoid repeated network calls
+  const viewLoadedRef = useRef(new Set());
   const abortControllersRef = useRef(new Set());
 
   const fetchWithAbort = (url, options = {}) => {
@@ -200,28 +227,30 @@ export default function PosTransactionsPage() {
     return () => window.removeEventListener('resize', check);
   }, []);
 
-  // Abort pending requests and reset caches when the transaction changes
-  // or the component unmounts to avoid leaking state between sessions.
+  // Abort pending requests and reset caches when the transaction name changes
+  // to avoid leaking state between sessions.
   useEffect(() => {
     return () => {
       abortControllersRef.current.forEach((c) => c.abort());
       abortControllersRef.current.clear();
       relationCacheRef.current.clear();
       loadingTablesRef.current.clear();
-      loadedTablesRef.current.clear();
       viewCacheRef.current.clear();
       viewFetchesRef.current.clear();
+      viewLoadedRef.current.clear();
     };
   }, [name]);
 
   async function loadRelations(tbl) {
-    if (loadingTablesRef.current.has(tbl)) return;
+    if (loadingTablesRef.current.has(tbl)) {
+      return { dataMap: {}, cfgMap: {}, rowMap: {} };
+    }
     loadingTablesRef.current.add(tbl);
     try {
       const res = await fetchWithAbort(`/api/tables/${encodeURIComponent(tbl)}/relations`, {
         credentials: 'include',
       });
-      if (!res.ok) return;
+      if (!res.ok) return { dataMap: {}, cfgMap: {}, rowMap: {} };
       const rels = await res.json().catch(() => []);
       const dataMap = {};
       const cfgMap = {};
@@ -299,11 +328,10 @@ export default function PosTransactionsPage() {
           };
         }
       }
-      setRelationsMap((m) => ({ ...m, [tbl]: dataMap }));
-      setRelationConfigs((m) => ({ ...m, [tbl]: cfgMap }));
-      setRelationData((m) => ({ ...m, [tbl]: rowMap }));
+      return { dataMap, cfgMap, rowMap };
     } catch {
       /* ignore */
+      return { dataMap: {}, cfgMap: {}, rowMap: {} };
     } finally {
       loadingTablesRef.current.delete(tbl);
     }
@@ -326,9 +354,15 @@ export default function PosTransactionsPage() {
           }
         });
       };
+      if (viewLoadedRef.current.has(viewName)) {
+        const cached = viewCacheRef.current.get(viewName);
+        if (cached) apply(cached);
+        return cached;
+      }
       const cached = viewCacheRef.current.get(viewName);
       if (cached) {
         apply(cached);
+        viewLoadedRef.current.add(viewName);
         return cached;
       }
       let fetchPromise = viewFetchesRef.current.get(viewName);
@@ -357,10 +391,13 @@ export default function PosTransactionsPage() {
         viewFetchesRef.current.set(viewName, fetchPromise);
       }
       const data = await fetchPromise;
-      if (data) apply(data);
+      if (data) {
+        apply(data);
+        viewLoadedRef.current.add(viewName);
+      }
       return data;
     },
-    [memoFormConfigs],
+    [formConfigsViewHash],
   );
 
   useEffect(() => {
@@ -452,17 +489,11 @@ export default function PosTransactionsPage() {
     [visibleTables],
   );
 
-  // Stable hash of table/form identifiers. Ignores layout-only config so
-  // adjusting positions doesn't trigger reloads.
-  const configVersion = React.useMemo(() => {
-    if (!config) return '';
-    const parts = [
-      config.masterTable,
-      config.masterForm,
-      ...(config.tables || []).flatMap((t) => [t.table, t.form]),
-    ];
-    return parts.filter(Boolean).join('|');
-  }, [config]);
+  // Stable version identifier derived from memoized form configs.
+  const configVersion = React.useMemo(
+    () => hash(memoFormConfigs),
+    [memoFormConfigs],
+  );
 
   useEffect(() => {
     loadedTablesRef.current.clear();
@@ -474,48 +505,102 @@ export default function PosTransactionsPage() {
   // changes, layout adjustments still avoid reloads.
   useEffect(() => {
     if (!config) return;
+    let cancelled = false;
     const tables = [config.masterTable, ...config.tables.map((t) => t.table)];
     const forms = [config.masterForm || '', ...config.tables.map((t) => t.form)];
-    tables.forEach((tbl, idx) => {
-      const form = forms[idx];
-      if (!tbl || !form || !visibleTables.has(tbl)) return;
-      fetch(`/api/transaction_forms?table=${encodeURIComponent(tbl)}&name=${encodeURIComponent(form)}`, { credentials: 'include' })
-        .then((res) => (res.ok ? res.json() : null))
-        .then((cfg) =>
-          setFormConfigs((f) => {
-            const prev = f[tbl];
-            const next = cfg || {};
-            return isEqual(prev, next) ? f : { ...f, [tbl]: next };
-          }),
-        )
-        .catch(() => {});
-      if (!loadedTablesRef.current.has(tbl)) {
-        fetchWithAbort(`/api/tables/${encodeURIComponent(tbl)}/columns`, {
-          credentials: 'include',
-        })
-          .then((res) => (res.ok ? res.json() : []))
-          .then(async (cols) => {
-            setColumnMeta((m) => ({ ...m, [tbl]: cols || [] }));
-            const fc = memoFormConfigs[tbl];
-            if (shouldLoadRelations(fc, cols)) {
-              await loadRelations(tbl);
-            } else {
-              debugLog(`Skipping relations fetch for ${tbl}`);
+
+    async function loadAll() {
+      const fcMap = {};
+      const colMap = {};
+      const relMap = {};
+      const relCfgMap = {};
+      const relDataMap = {};
+
+      await Promise.all(
+        tables.map(async (tbl, idx) => {
+          const form = forms[idx];
+          if (!tbl || !form || !visibleTables.has(tbl)) return;
+
+          let cfg = null;
+          try {
+            const res = await fetch(
+              `/api/transaction_forms?table=${encodeURIComponent(tbl)}&name=${encodeURIComponent(form)}`,
+              { credentials: 'include' },
+            );
+            cfg = res.ok ? await res.json().catch(() => null) : null;
+          } catch {
+            cfg = null;
+          }
+          fcMap[tbl] = cfg || {};
+
+          if (!loadedTablesRef.current.has(tbl)) {
+            try {
+              const colRes = await fetchWithAbort(
+                `/api/tables/${encodeURIComponent(tbl)}/columns`,
+                { credentials: 'include' },
+              );
+              const cols = colRes.ok ? await colRes.json().catch(() => []) : [];
+              colMap[tbl] = cols || [];
+              if (shouldLoadRelations(cfg, cols)) {
+                const { dataMap, cfgMap, rowMap } = await loadRelations(tbl);
+                if (Object.keys(dataMap).length)
+                  relMap[tbl] = dataMap;
+                if (Object.keys(cfgMap).length)
+                  relCfgMap[tbl] = cfgMap;
+                if (Object.keys(rowMap).length)
+                  relDataMap[tbl] = rowMap;
+              } else {
+                debugLog(`Skipping relations fetch for ${tbl}`);
+              }
+            } catch {
+              /* ignore */
+            } finally {
+              loadedTablesRef.current.add(tbl);
             }
-            loadedTablesRef.current.add(tbl);
-          })
-          .catch(() => {
-            loadedTablesRef.current.add(tbl);
-          });
-        fetchWithAbort(
-          `/api/proc_triggers?table=${encodeURIComponent(tbl)}`,
-          { credentials: 'include' },
-        )
-          .then((res) => (res.ok ? res.json() : {}))
-          .then((data) => setProcTriggersMap((m) => ({ ...m, [tbl]: data || {} })))
-          .catch(() => {});
-      }
-    });
+
+            fetchWithAbort(
+              `/api/proc_triggers?table=${encodeURIComponent(tbl)}`,
+              { credentials: 'include' },
+            )
+              .then((res) => (res.ok ? res.json() : {}))
+              .then((data) => {
+                if (!cancelled)
+                  setProcTriggersMap((m) => ({ ...m, [tbl]: data || {} }));
+              })
+              .catch(() => {});
+          }
+        }),
+      );
+
+      if (cancelled) return;
+
+      setFormConfigs((prev) => {
+        let changed = false;
+        const merged = { ...prev };
+        Object.entries(fcMap).forEach(([tbl, cfg]) => {
+          const prevCfg = prev[tbl];
+          const nextCfg = cfg || {};
+          if (!isEqual(prevCfg, nextCfg)) {
+            merged[tbl] = nextCfg;
+            changed = true;
+          }
+        });
+        return changed ? merged : prev;
+      });
+      if (Object.keys(colMap).length)
+        setColumnMeta((prev) => ({ ...prev, ...colMap }));
+      if (Object.keys(relMap).length)
+        setRelationsMap((prev) => ({ ...prev, ...relMap }));
+      if (Object.keys(relCfgMap).length)
+        setRelationConfigs((prev) => ({ ...prev, ...relCfgMap }));
+      if (Object.keys(relDataMap).length)
+        setRelationData((prev) => ({ ...prev, ...relDataMap }));
+    }
+
+    loadAll();
+    return () => {
+      cancelled = true;
+    };
   }, [visibleTablesKey, configVersion]);
 
   const memoFieldTypeMap = useMemo(() => {
@@ -607,7 +692,7 @@ export default function PosTransactionsPage() {
       (p.parts || []).forEach(pt => check(pt.table, pt.field));
     });
     setSessionFields(fields);
-  }, [config]);
+  }, [visibleTablesKey, configVersion]);
 
   const masterSessionValue = React.useMemo(() => {
     if (!config) return undefined;
@@ -623,35 +708,39 @@ export default function PosTransactionsPage() {
     if (initRef.current === name) return;
     initRef.current = name;
     handleNew();
-  }, [config, memoFormConfigs, name]);
+  }, [visibleTablesKey, configVersion, name]);
 
 
   useEffect(() => {
     if (!config) return;
     if (masterSessionValue === undefined) return;
-    sessionFields.forEach((sf) => {
-      if (sf.table === config.masterTable) return;
-      setValues((v) => {
-        const tblVal = v[sf.table];
+    const updateSessionValues = (prev) => {
+      let next = prev;
+      for (const sf of sessionFields) {
+        if (sf.table === config.masterTable) continue;
+        const tblVal = next[sf.table];
         if (Array.isArray(tblVal)) {
-          let changed = false;
+          let tableChanged = false;
           const updated = tblVal.map((r) => {
             if (r[sf.field] === masterSessionValue) return r;
-            changed = true;
+            tableChanged = true;
             return { ...r, [sf.field]: masterSessionValue };
           });
-          if (changed) return { ...v, [sf.table]: updated };
-          return v;
+          if (tableChanged) next = { ...next, [sf.table]: updated };
+          continue;
         }
         const cur = tblVal?.[sf.field];
-        if (cur === masterSessionValue) return v;
-        return {
-          ...v,
-          [sf.table]: { ...(tblVal || {}), [sf.field]: masterSessionValue },
-        };
-      });
-    });
-  }, [masterSessionValue, config, sessionFields]);
+        if (cur !== masterSessionValue) {
+          next = {
+            ...next,
+            [sf.table]: { ...(tblVal || {}), [sf.field]: masterSessionValue },
+          };
+        }
+      }
+      return next;
+    };
+    setValues(updateSessionValues);
+  }, [masterSessionValue, visibleTablesKey, configVersion, sessionFields]);
 
   function syncCalcFields(vals, mapConfig) {
     if (!Array.isArray(mapConfig)) return vals;

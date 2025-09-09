@@ -71,7 +71,9 @@ export function useModules() {
         );
         if (pres.ok) {
           const data = await pres.json();
-          const list = Array.isArray(data.procedures) ? data.procedures : [];
+          const list = Array.isArray(data.procedures)
+            ? data.procedures.map((p) => (typeof p === 'string' ? p : p.name))
+            : [];
           const filtered = prefix
             ? list.filter((p) =>
                 p.toLowerCase().includes(prefix.toLowerCase()),

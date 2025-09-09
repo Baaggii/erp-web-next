@@ -1,6 +1,6 @@
 import express from 'express';
 import { requireAuth } from '../middlewares/auth.js';
-import { listTransactionNames } from '../services/transactionFormConfig.js';
+import { listPermittedProcedures } from '../utils/reportProcedures.js';
 
 const router = express.Router();
 
@@ -8,24 +8,12 @@ router.get('/', requireAuth, async (req, res, next) => {
   try {
     const { branchId, departmentId, prefix = '' } = req.query;
     const companyId = Number(req.query.companyId ?? req.user.companyId);
-    const { names: forms, isDefault } = await listTransactionNames(
-      { branchId, departmentId },
+    const { procedures, isDefault } = await listPermittedProcedures(
+      { branchId, departmentId, prefix },
       companyId,
+      req.user,
     );
-    const set = new Set();
-    Object.values(forms).forEach((info) => {
-      if (Array.isArray(info.procedures)) {
-        info.procedures.forEach((p) => {
-          if (
-            typeof p === 'string' &&
-            (!prefix || p.toLowerCase().includes(prefix.toLowerCase()))
-          ) {
-            set.add(p);
-          }
-        });
-      }
-    });
-    res.json({ procedures: Array.from(set), isDefault });
+    res.json({ procedures, isDefault });
   } catch (err) {
     next(err);
   }

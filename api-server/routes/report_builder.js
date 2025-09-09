@@ -11,6 +11,36 @@ import {
   deleteProcedure,
 } from '../../db/index.js';
 
+const PROTECTED_PROCEDURE_PREFIXES = ['dynrep_'];
+
+async function isProtectedProcedure(name) {
+  if (!name) return false;
+  if (PROTECTED_PROCEDURE_PREFIXES.some((p) => name.startsWith(p))) {
+    return true;
+  }
+  const dir = path.join(
+    process.cwd(),
+    'config',
+    '0',
+    'report_builder',
+    'procedures',
+  );
+  try {
+    await fs.access(path.join(dir, `${name}.json`));
+    return true;
+  } catch {}
+  try {
+    await fs.access(path.join(dir, `${name}.sql`));
+    return true;
+  } catch {}
+  return false;
+}
+
+function extractProcedureName(sql) {
+  const match = sql.match(/CREATE\s+PROCEDURE\s+`?([^\s`(]+)`?/i);
+  return match ? match[1] : null;
+}
+
 function tenantDir(companyId = 0) {
   return path.join(
     process.cwd(),
@@ -84,6 +114,9 @@ router.post('/procedures', requireAuth, async (req, res, next) => {
   try {
     const { sql } = req.body || {};
     if (!sql) return res.status(400).json({ message: 'sql required' });
+    const name = extractProcedureName(sql);
+    if (await isProtectedProcedure(name))
+      return res.status(403).json({ message: 'Procedure not allowed' });
     await saveStoredProcedure(sql);
     res.json({ ok: true });
   } catch (err) {
@@ -96,6 +129,8 @@ router.delete('/procedures/:name', requireAuth, async (req, res, next) => {
   try {
     const { name } = req.params;
     if (!name) return res.status(400).json({ message: 'name required' });
+    if (await isProtectedProcedure(name))
+      return res.status(403).json({ message: 'Procedure not allowed' });
     await deleteProcedure(name);
     res.json({ ok: true });
   } catch (err) {
