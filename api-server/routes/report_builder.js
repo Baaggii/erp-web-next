@@ -104,8 +104,29 @@ router.get('/fields', requireAuth, async (req, res, next) => {
 router.get('/procedures', requireAuth, async (req, res, next) => {
   try {
     const { prefix = '' } = req.query;
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
     const names = await listReportProcedures(prefix);
-    res.json({ names });
+
+    // Determine which procedures are default by checking procedure files
+    const tenantDirPath = tenantProcDir(companyId);
+    const defaultDirPath = tenantProcDir(0);
+
+    const map = new Map();
+    const tenantFiles = await fs.readdir(tenantDirPath).catch(() => []);
+    tenantFiles
+      .filter((f) => f.endsWith('.json'))
+      .forEach((f) => map.set(f.replace(/\.json$/, ''), false));
+    const defaultFiles = await fs.readdir(defaultDirPath).catch(() => []);
+    defaultFiles
+      .filter((f) => f.endsWith('.json'))
+      .forEach((f) => {
+        const name = f.replace(/\.json$/, '');
+        if (!map.has(name)) map.set(name, true);
+      });
+
+    const list = names.map((name) => ({ name, isDefault: map.get(name) ?? false }));
+
+    res.json({ names: list });
   } catch (err) {
     next(err);
   }
@@ -231,6 +252,31 @@ router.get('/procedure-files/:name', requireAuth, async (req, res, next) => {
     next(err);
   }
 });
+
+// Import a default stored procedure file into tenant directory
+router.post(
+  '/procedure-files/:name/import',
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      const { name } = req.params;
+      const companyId = Number(req.query.companyId ?? req.user.companyId);
+      if (!name) return res.status(400).json({ message: 'name required' });
+
+      const srcDir = tenantProcDir(0);
+      const destDir = tenantProcDir(companyId);
+      await fs.mkdir(destDir, { recursive: true });
+      await fs.copyFile(
+        path.join(srcDir, `${name}.json`),
+        path.join(destDir, `${name}.json`),
+      );
+
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 // Save report definition to host
 router.post('/configs/:name', requireAuth, async (req, res, next) => {

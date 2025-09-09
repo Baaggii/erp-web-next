@@ -47,12 +47,13 @@ function ReportBuilderInner() {
   const [loadError, setLoadError] = useState('');
   const [savedReports, setSavedReports] = useState([]);
   const [selectedReport, setSelectedReport] = useState('');
-  const [procFiles, setProcFiles] = useState([]);
+  const [procFiles, setProcFiles] = useState([]); // {name,isDefault}
   const [selectedProcFile, setSelectedProcFile] = useState('');
-  const [dbProcedures, setDbProcedures] = useState([]);
+  const [dbProcedures, setDbProcedures] = useState([]); // {name,isDefault}
   const [selectedDbProcedure, setSelectedDbProcedure] = useState('');
   const [procFileText, setProcFileText] = useState('');
   const [procFileIsDefault, setProcFileIsDefault] = useState(false);
+  const [dbProcIsDefault, setDbProcIsDefault] = useState(false);
   const [isDefault, setIsDefault] = useState(false);
 
   const [customParamName, setCustomParamName] = useState('');
@@ -137,7 +138,8 @@ function ReportBuilderInner() {
         const data = await res.json();
         const list = data.names || [];
         setDbProcedures(list);
-        setSelectedDbProcedure(list[0] || '');
+        setSelectedDbProcedure(list[0]?.name || '');
+        setDbProcIsDefault(list[0]?.isDefault || false);
       } catch (err) {
         console.error(err);
       }
@@ -186,7 +188,8 @@ function ReportBuilderInner() {
         const dataProcs = await resProcs.json();
         const list = dataProcs.names || [];
         setDbProcedures(list);
-        setSelectedDbProcedure(list[0] || '');
+        setSelectedDbProcedure(list[0]?.name || '');
+        setDbProcIsDefault(list[0]?.isDefault || false);
       } catch {}
       addToast('Imported', 'success');
     } catch (err) {
@@ -1202,8 +1205,9 @@ function ReportBuilderInner() {
         { method: 'DELETE' },
       );
       if (!res.ok) throw new Error('Delete failed');
-      setDbProcedures(dbProcedures.filter((n) => n !== selectedDbProcedure));
+      setDbProcedures(dbProcedures.filter((p) => p.name !== selectedDbProcedure));
       setSelectedDbProcedure('');
+      setDbProcIsDefault(false);
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: { message: 'Procedure deleted', type: 'success' },
@@ -1458,6 +1462,28 @@ function ReportBuilderInner() {
       setProcFileIsDefault(!!data.isDefault);
     } catch (err) {
       console.error(err);
+    }
+  }
+
+  async function handleImportProcFile() {
+    if (!selectedProcFile) return;
+    try {
+      const res = await fetch(
+        `/api/report_builder/procedure-files/${encodeURIComponent(selectedProcFile)}/import?companyId=${encodeURIComponent(
+          company ?? '',
+        )}`,
+        { method: 'POST' },
+      );
+      if (!res.ok) throw new Error('Import failed');
+      setProcFiles((prev) =>
+        prev.map((f) =>
+          f.name === selectedProcFile ? { ...f, isDefault: false } : f,
+        ),
+      );
+      setProcFileIsDefault(false);
+      addToast('Imported', 'success');
+    } catch (err) {
+      addToast(`Import failed: ${err.message}`, 'error');
     }
   }
 
@@ -2641,13 +2667,26 @@ function ReportBuilderInner() {
 
       <section style={{ marginTop: '1rem' }}>
         <h3>Stored Procedure</h3>
-        {procSql && <button onClick={handlePostProc}>POST Procedure</button>}
-        <button onClick={handleSaveProcFile} style={{ marginLeft: '0.5rem' }}>
+        {procSql && (
+          <button onClick={handlePostProc} disabled={procFileIsDefault}>
+            POST Procedure
+          </button>
+        )}
+        <button
+          onClick={handleSaveProcFile}
+          style={{ marginLeft: '0.5rem' }}
+          disabled={procFileIsDefault}
+        >
           Save to Host
         </button>
         <select
           value={selectedProcFile}
-          onChange={(e) => setSelectedProcFile(e.target.value)}
+          onChange={(e) => {
+            const val = e.target.value;
+            setSelectedProcFile(val);
+            const item = procFiles.find((f) => f.name === val);
+            setProcFileIsDefault(item?.isDefault || false);
+          }}
           style={{ marginLeft: '0.5rem' }}
         >
           {procFiles.map((f) => (
@@ -2659,18 +2698,35 @@ function ReportBuilderInner() {
         <button onClick={handleLoadProcFile} style={{ marginLeft: '0.5rem' }}>
           Load from Host
         </button>
+        {procFileIsDefault && (
+          <button
+            onClick={handleImportProcFile}
+            style={{ marginLeft: '0.5rem' }}
+          >
+            Import default procedure
+          </button>
+        )}
         <select
           value={selectedDbProcedure}
-          onChange={(e) => setSelectedDbProcedure(e.target.value)}
+          onChange={(e) => {
+            const val = e.target.value;
+            setSelectedDbProcedure(val);
+            const item = dbProcedures.find((p) => p.name === val);
+            setDbProcIsDefault(item?.isDefault || false);
+          }}
           style={{ marginLeft: '0.5rem' }}
         >
-          {dbProcedures.map((n) => (
-            <option key={n} value={n}>
-              {n}
+          {dbProcedures.map((p) => (
+            <option key={p.name} value={p.name}>
+              {p.name} {p.isDefault ? '(default)' : ''}
             </option>
           ))}
         </select>
-        <button onClick={handleDeleteProcedure} style={{ marginLeft: '0.5rem' }}>
+        <button
+          onClick={handleDeleteProcedure}
+          style={{ marginLeft: '0.5rem' }}
+          disabled={dbProcIsDefault}
+        >
           Delete Procedure
         </button>
       </section>
