@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useToast } from '../context/ToastContext.jsx';
 
 export default function CompaniesPage() {
   const [companies, setCompanies] = useState([]);
   const [filter, setFilter] = useState('');
   const navigate = useNavigate();
+  const { addToast } = useToast();
 
   function loadCompanies() {
     fetch('/api/companies', { credentials: 'include' })
@@ -130,28 +132,15 @@ export default function CompaniesPage() {
     });
     await res.json().catch(() => ({}));
     if (res.status === 403) {
-      window.dispatchEvent(
-        new CustomEvent('toast', {
-          detail: {
-            message: 'You need System Settings permission to delete a company.',
-            type: 'error'
-          }
-        })
-      );
+      addToast('You need System Settings permission to delete a company.', 'error');
       return;
     }
     if (!res.ok) {
-      window.dispatchEvent(
-        new CustomEvent('toast', {
-          detail: {
-            message: 'Failed to delete company',
-            type: 'error'
-          }
-        })
-      );
+      addToast('Failed to delete company', 'error');
       return;
     }
     loadCompanies();
+    addToast('Company deleted', 'success');
   }
 
   const visibleCompanies = companies.filter((c) =>
