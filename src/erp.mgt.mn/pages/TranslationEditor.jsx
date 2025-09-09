@@ -2,6 +2,7 @@ import React, { useState, useContext } from 'react';
 import I18nContext from '../context/I18nContext.jsx';
 import { clearHeaderMappingsCache } from '../hooks/useHeaderMappings.js';
 import GenerateTranslationsTab from './GenerateTranslationsTab.jsx';
+import TextManagementTab from './TextManagementTab.jsx';
 
 const LANGS = ['en', 'mn', 'ja', 'ko', 'zh', 'es', 'de', 'fr', 'ru'];
 
@@ -70,6 +71,13 @@ export default function TranslationEditorPage() {
         >
           {t('generateTranslations', 'Generate')}
         </button>
+        <button
+          onClick={() => setActiveTab('textManagement')}
+          disabled={activeTab === 'textManagement'}
+          style={{ marginLeft: '0.5rem' }}
+        >
+          {t('textManagement', 'Text Management')}
+        </button>
       </div>
 
       {activeTab === 'manual' && (
@@ -114,6 +122,7 @@ export default function TranslationEditorPage() {
       )}
 
       {activeTab === 'generate' && <GenerateTranslationsTab />}
+      {activeTab === 'textManagement' && <TextManagementTab />}
     </div>
   );
 }
