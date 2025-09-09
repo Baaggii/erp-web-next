@@ -222,6 +222,10 @@ const RowFormModal = function RowFormModal({
   const [fetchFlags, setFetchFlags] = useState({});
 
   useEffect(() => {
+    if (visible) setFetchFlags({});
+  }, [visible]);
+
+  useEffect(() => {
     if (!useGrid) return;
     if (prevRowsRef.current !== rows) {
       prevRowsRef.current = rows;
