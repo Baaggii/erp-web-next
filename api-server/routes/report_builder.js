@@ -54,9 +54,10 @@ async function resolveDir(companyId = 0) {
   const dir = tenantDir(companyId);
   try {
     await fs.access(dir);
-    return dir;
+    return { path: dir, isDefault: companyId === 0 };
   } catch {
-    return tenantDir(0);
+    const fallback = tenantDir(0);
+    return { path: fallback, isDefault: true };
   }
 }
 
@@ -68,9 +69,10 @@ async function resolveProcDir(companyId = 0) {
   const dir = tenantProcDir(companyId);
   try {
     await fs.access(dir);
-    return dir;
+    return { path: dir, isDefault: companyId === 0 };
   } catch {
-    return tenantProcDir(0);
+    const fallback = tenantProcDir(0);
+    return { path: fallback, isDefault: true };
   }
 }
 
@@ -173,17 +175,30 @@ router.get('/procedure-files', requireAuth, async (req, res, next) => {
   try {
     const { prefix = '' } = req.query;
     const companyId = Number(req.query.companyId ?? req.user.companyId);
-    const dir = await resolveProcDir(companyId);
-    await fs.mkdir(dir, { recursive: true });
-    const files = await fs.readdir(dir);
-    const names = files
+    const tenantDirPath = tenantProcDir(companyId);
+    const defaultDirPath = tenantProcDir(0);
+    const tenantFiles = await fs.readdir(tenantDirPath).catch(() => []);
+    const defaultFiles = await fs.readdir(defaultDirPath).catch(() => []);
+
+    const map = new Map();
+    tenantFiles
       .filter((f) => f.endsWith('.json'))
-      .map((f) => f.replace(/\.json$/, ''))
+      .forEach((f) => map.set(f.replace(/\.json$/, ''), false));
+    defaultFiles
+      .filter((f) => f.endsWith('.json'))
+      .forEach((f) => {
+        const name = f.replace(/\.json$/, '');
+        if (!map.has(name)) map.set(name, true);
+      });
+
+    const names = Array.from(map.entries())
       .filter(
-        (n) =>
+        ([n]) =>
           typeof n === 'string' &&
           (!prefix || n.toLowerCase().includes(prefix.toLowerCase())),
-      );
+      )
+      .map(([name, isDefault]) => ({ name, isDefault }));
+
     res.json({ names });
   } catch (err) {
     next(err);
@@ -199,14 +214,16 @@ router.get('/procedure-files/:name', requireAuth, async (req, res, next) => {
     const fallbackDir = tenantProcDir(0);
     try {
       const text = await fs.readFile(path.join(dir, `${name}.json`), 'utf-8');
-      return res.json(JSON.parse(text));
+      const data = JSON.parse(text);
+      return res.json({ ...data, isDefault: false });
     } catch (err) {
       if (err.code === 'ENOENT' && dir !== fallbackDir) {
         const text = await fs.readFile(
           path.join(fallbackDir, `${name}.json`),
           'utf-8',
         );
-        return res.json(JSON.parse(text));
+        const data = JSON.parse(text);
+        return res.json({ ...data, isDefault: true });
       }
       throw err;
     }
@@ -236,9 +253,8 @@ router.get('/configs', requireAuth, async (req, res, next) => {
   try {
     const { prefix = '' } = req.query;
     const companyId = Number(req.query.companyId ?? req.user.companyId);
-    const dir = await resolveDir(companyId);
-    await fs.mkdir(dir, { recursive: true });
-    const files = await fs.readdir(dir);
+    const { path: dir, isDefault } = await resolveDir(companyId);
+    const files = await fs.readdir(dir).catch(() => []);
     const names = files
       .filter((f) => f.endsWith('.json'))
       .map((f) => f.replace(/\.json$/, ''))
@@ -247,7 +263,7 @@ router.get('/configs', requireAuth, async (req, res, next) => {
           typeof n === 'string' &&
           (!prefix || n.toLowerCase().includes(prefix.toLowerCase())),
       );
-    res.json({ names });
+    res.json({ names, isDefault });
   } catch (err) {
     next(err);
   }

@@ -52,6 +52,7 @@ function ReportBuilderInner() {
   const [dbProcedures, setDbProcedures] = useState([]);
   const [selectedDbProcedure, setSelectedDbProcedure] = useState('');
   const [procFileText, setProcFileText] = useState('');
+  const [procFileIsDefault, setProcFileIsDefault] = useState(false);
   const [isDefault, setIsDefault] = useState(false);
 
   const [customParamName, setCustomParamName] = useState('');
@@ -126,7 +127,8 @@ function ReportBuilderInner() {
         const data = await res.json();
         const list = data.names || [];
         setProcFiles(list);
-        setSelectedProcFile(list[0] || '');
+        setSelectedProcFile(list[0]?.name || '');
+        setProcFileIsDefault(list[0]?.isDefault || false);
       } catch (err) {
         console.error(err);
       }
@@ -176,7 +178,8 @@ function ReportBuilderInner() {
         const dataFiles = await resFiles.json();
         const list = dataFiles.names || [];
         setProcFiles(list);
-        setSelectedProcFile(list[0] || '');
+        setSelectedProcFile(list[0]?.name || '');
+        setProcFileIsDefault(list[0]?.isDefault || false);
       } catch {}
       try {
         const resProcs = await fetch(`/api/report_builder/procedures${query}`);
@@ -1429,6 +1432,7 @@ function ReportBuilderInner() {
       const list = listData.names || [];
       setProcFiles(list);
       setSelectedProcFile(name);
+      setProcFileIsDefault(false);
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: { message: 'Procedure saved to host', type: 'success' },
@@ -1451,6 +1455,7 @@ function ReportBuilderInner() {
       );
       const data = await res.json();
       setProcFileText(data.sql || '');
+      setProcFileIsDefault(!!data.isDefault);
     } catch (err) {
       console.error(err);
     }
@@ -2645,9 +2650,9 @@ function ReportBuilderInner() {
           onChange={(e) => setSelectedProcFile(e.target.value)}
           style={{ marginLeft: '0.5rem' }}
         >
-          {procFiles.map((n) => (
-            <option key={n} value={n}>
-              {n}
+          {procFiles.map((f) => (
+            <option key={f.name} value={f.name}>
+              {f.name} {f.isDefault ? '(default)' : ''}
             </option>
           ))}
         </select>
@@ -2678,7 +2683,13 @@ function ReportBuilderInner() {
             onChange={(e) => setProcFileText(e.target.value)}
             rows={8}
             style={{ width: '100%' }}
+            readOnly={procFileIsDefault}
           />
+          {procFileIsDefault && (
+            <div style={{ marginTop: '0.25rem', color: 'red' }}>
+              Default file is read-only. Import to edit.
+            </div>
+          )}
           <button onClick={handleParseSql} style={{ marginTop: '0.5rem' }}>
             Parse SQL
           </button>
