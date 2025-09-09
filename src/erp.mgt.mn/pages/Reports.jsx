@@ -11,7 +11,7 @@ import useButtonPerms from '../hooks/useButtonPerms.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
 
 export default function Reports() {
-  const { company, branch, user } = useContext(AuthContext);
+  const { company, branch, department, user } = useContext(AuthContext);
   const buttonPerms = useButtonPerms();
   const { addToast } = useToast();
   const generalConfig = useGeneralConfig();
@@ -23,7 +23,8 @@ export default function Reports() {
   const [datePreset, setDatePreset] = useState('custom');
   const [result, setResult] = useState(null);
   const [manualParams, setManualParams] = useState({});
-  const procMap = useHeaderMappings(procedures);
+  const procNames = useMemo(() => procedures.map((p) => p.name), [procedures]);
+  const procMap = useHeaderMappings(procNames);
 
   function getLabel(name) {
     return (
@@ -33,19 +34,27 @@ export default function Reports() {
 
   useEffect(() => {
     const prefix = generalConfig?.general?.reportProcPrefix || '';
+    const params = new URLSearchParams();
+    if (branch) params.set('branchId', branch);
+    if (department) params.set('departmentId', department);
+    if (prefix) params.set('prefix', prefix);
     fetch(
-      `/api/procedures${
-        prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''
+      `/api/report_procedures${
+        params.toString() ? `?${params.toString()}` : ''
       }`,
       { credentials: 'include' },
     )
       .then((res) => (res.ok ? res.json() : { procedures: [] }))
       .then((data) => {
-        const list = Array.isArray(data.procedures) ? data.procedures : [];
+        const list = Array.isArray(data.procedures)
+          ? data.procedures.map((p) =>
+              typeof p === 'string' ? { name: p, isDefault: data.isDefault } : p,
+            )
+          : [];
         setProcedures(list);
       })
       .catch(() => setProcedures([]));
-  }, [generalConfig?.general?.reportProcPrefix]);
+  }, [branch, department, generalConfig?.general?.reportProcPrefix]);
 
   useEffect(() => {
     if (!selectedProc) {
@@ -53,13 +62,21 @@ export default function Reports() {
       setManualParams({});
       return;
     }
-    fetch(`/api/procedures/${encodeURIComponent(selectedProc)}/params`, {
-      credentials: 'include',
-    })
+    const params = new URLSearchParams();
+    if (branch) params.set('branchId', branch);
+    if (department) params.set('departmentId', department);
+    fetch(
+      `/api/procedures/${encodeURIComponent(selectedProc)}/params${
+        params.toString() ? `?${params.toString()}` : ''
+      }`,
+      {
+        credentials: 'include',
+      },
+    )
       .then((res) => (res.ok ? res.json() : { parameters: [] }))
       .then((data) => setProcParams(data.parameters || []))
       .catch(() => setProcParams([]));
-  }, [selectedProc]);
+  }, [selectedProc, branch, department]);
 
   useEffect(() => {
     setResult(null);
@@ -72,11 +89,12 @@ export default function Reports() {
       if (name.includes('start') || name.includes('from')) return startDate || null;
       if (name.includes('end') || name.includes('to')) return endDate || null;
       if (name.includes('branch')) return branch ?? null;
+      if (name.includes('department')) return department ?? null;
       if (name.includes('company')) return company ?? null;
       if (name.includes('user') || name.includes('emp')) return user?.empid ?? null;
       return null;
     });
-  }, [procParams, startDate, endDate, company, branch, user]);
+  }, [procParams, startDate, endDate, company, branch, department, user]);
 
   const finalParams = useMemo(() => {
     return procParams.map((p, i) => {
@@ -151,12 +169,18 @@ export default function Reports() {
     const label = getLabel(selectedProc);
     addToast(`Calling ${label}`, 'info');
     try {
-      const res = await fetch('/api/procedures', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ name: selectedProc, params: finalParams }),
-      });
+      const q = new URLSearchParams();
+      if (branch) q.set('branchId', branch);
+      if (department) q.set('departmentId', department);
+      const res = await fetch(
+        `/api/procedures${q.toString() ? `?${q.toString()}` : ''}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ name: selectedProc, params: finalParams }),
+        },
+      );
       if (res.ok) {
         const data = await res.json().catch(() => ({ row: [] }));
         const rows = Array.isArray(data.row) ? data.row : [];
@@ -194,8 +218,8 @@ export default function Reports() {
         >
           <option value="">-- select --</option>
           {procedures.map((p) => (
-            <option key={p} value={p}>
-              {getLabel(p)}
+            <option key={p.name} value={p.name}>
+              {getLabel(p.name)} {p.isDefault ? '(default)' : '(company)'}
             </option>
           ))}
         </select>
