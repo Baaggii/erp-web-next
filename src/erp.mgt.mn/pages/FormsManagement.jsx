@@ -441,7 +441,7 @@ export default function FormsManagement() {
         [cfg.transactionTypeField]: cfg.transactionTypeValue,
       };
     }
-    await fetch('/api/transaction_forms', {
+    const res = await fetch('/api/transaction_forms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -451,10 +451,14 @@ export default function FormsManagement() {
         config: cfg,
       }),
     });
-    refreshTxnModules();
-    refreshModules();
-    alert('Saved');
-    if (!names.includes(name)) setNames((n) => [...n, name]);
+    if (res.ok) {
+      refreshTxnModules();
+      refreshModules();
+      addToast('Saved', 'success');
+      if (!names.includes(name)) setNames((n) => [...n, name]);
+    } else {
+      addToast('Save failed', 'error');
+    }
   }
 
   async function handleDelete() {
