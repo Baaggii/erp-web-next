@@ -611,7 +611,12 @@ export default function FormsManagement() {
   }
 
   async function handleImport() {
-    if (!window.confirm('Import default forms configuration?')) return;
+    if (
+      !window.confirm(
+        'Importing defaults will overwrite the current configuration. Continue?'
+      )
+    )
+      return;
     try {
       const res = await fetch(
         `/api/config/import?companyId=${encodeURIComponent(company ?? '')}`,

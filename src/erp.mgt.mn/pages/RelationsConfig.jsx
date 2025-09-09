@@ -79,7 +79,12 @@ export default function RelationsConfig() {
   }
 
   async function handleImport() {
-    if (!window.confirm('Import default relations configuration?')) return;
+    if (
+      !window.confirm(
+        'Importing defaults will overwrite the current configuration. Continue?'
+      )
+    )
+      return;
     try {
       const res = await fetch(
         `/api/config/import?companyId=${encodeURIComponent(company ?? '')}`,
