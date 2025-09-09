@@ -158,6 +158,17 @@ export default function PosTransactionsPage() {
   const [config, setConfig] = useState(null);
   const [formConfigs, setFormConfigs] = useState({});
   const memoFormConfigs = useMemo(() => formConfigs, [formConfigs]);
+  // Stable hash of view dependencies in form configs to keep loadView callback
+  // from recreating unnecessarily when irrelevant parts mutate.
+  const formConfigsViewHash = useMemo(() => {
+    const entries = Object.entries(memoFormConfigs).map(([tbl, fc]) => {
+      const views = Object.values(fc.viewSource || {})
+        .filter(Boolean)
+        .sort();
+      return `${tbl}:${views.join(',')}`;
+    });
+    return entries.sort().join('|');
+  }, [memoFormConfigs]);
   const [columnMeta, setColumnMeta] = useState({});
   const [values, setValues] = useState({});
   const [layout, setLayout] = useState({});
@@ -183,6 +194,8 @@ export default function PosTransactionsPage() {
   const viewCacheRef = useRef(new Map());
   // Tracks in-flight view fetch promises so multiple tables can share them
   const viewFetchesRef = useRef(new Map());
+  // Records view names that finished loading to avoid repeated network calls
+  const viewLoadedRef = useRef(new Set());
   const abortControllersRef = useRef(new Set());
 
   const fetchWithAbort = (url, options = {}) => {
@@ -200,8 +213,8 @@ export default function PosTransactionsPage() {
     return () => window.removeEventListener('resize', check);
   }, []);
 
-  // Abort pending requests and reset caches when the transaction changes
-  // or the component unmounts to avoid leaking state between sessions.
+  // Abort pending requests and reset caches when the transaction name changes
+  // to avoid leaking state between sessions.
   useEffect(() => {
     return () => {
       abortControllersRef.current.forEach((c) => c.abort());
@@ -211,6 +224,7 @@ export default function PosTransactionsPage() {
       loadedTablesRef.current.clear();
       viewCacheRef.current.clear();
       viewFetchesRef.current.clear();
+      viewLoadedRef.current.clear();
     };
   }, [name]);
 
@@ -327,9 +341,15 @@ export default function PosTransactionsPage() {
           }
         });
       };
+      if (viewLoadedRef.current.has(viewName)) {
+        const cached = viewCacheRef.current.get(viewName);
+        if (cached) apply(cached);
+        return cached;
+      }
       const cached = viewCacheRef.current.get(viewName);
       if (cached) {
         apply(cached);
+        viewLoadedRef.current.add(viewName);
         return cached;
       }
       let fetchPromise = viewFetchesRef.current.get(viewName);
@@ -358,10 +378,13 @@ export default function PosTransactionsPage() {
         viewFetchesRef.current.set(viewName, fetchPromise);
       }
       const data = await fetchPromise;
-      if (data) apply(data);
+      if (data) {
+        apply(data);
+        viewLoadedRef.current.add(viewName);
+      }
       return data;
     },
-    [memoFormConfigs],
+    [formConfigsViewHash],
   );
 
   useEffect(() => {
