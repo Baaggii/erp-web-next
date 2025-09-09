@@ -30,7 +30,7 @@ function parseEntry(raw = {}) {
       ? raw.departments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
       : [],
     permissions: Array.isArray(raw.permissions)
-      ? raw.permissions.map(String)
+      ? raw.permissions.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
       : [],
   };
 }
