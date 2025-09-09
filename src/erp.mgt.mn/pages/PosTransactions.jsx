@@ -24,6 +24,20 @@ function isEqual(a, b) {
   }
 }
 
+function hash(obj) {
+  let str;
+  try {
+    str = JSON.stringify(obj);
+  } catch {
+    str = '';
+  }
+  let h = 0;
+  for (let i = 0; i < str.length; i += 1) {
+    h = (h * 31 + str.charCodeAt(i)) >>> 0;
+  }
+  return h.toString(36);
+}
+
 function parseErrorField(msg) {
   if (!msg) return null;
   let m = msg.match(/FOREIGN KEY \(`([^`]*)`\)/i);
@@ -221,7 +235,6 @@ export default function PosTransactionsPage() {
       abortControllersRef.current.clear();
       relationCacheRef.current.clear();
       loadingTablesRef.current.clear();
-      loadedTablesRef.current.clear();
       viewCacheRef.current.clear();
       viewFetchesRef.current.clear();
       viewLoadedRef.current.clear();
@@ -476,17 +489,11 @@ export default function PosTransactionsPage() {
     [visibleTables],
   );
 
-  // Stable hash of table/form identifiers. Ignores layout-only config so
-  // adjusting positions doesn't trigger reloads.
-  const configVersion = React.useMemo(() => {
-    if (!config) return '';
-    const parts = [
-      config.masterTable,
-      config.masterForm,
-      ...(config.tables || []).flatMap((t) => [t.table, t.form]),
-    ];
-    return parts.filter(Boolean).join('|');
-  }, [config]);
+  // Stable version identifier derived from memoized form configs.
+  const configVersion = React.useMemo(
+    () => hash(memoFormConfigs),
+    [memoFormConfigs],
+  );
 
   useEffect(() => {
     loadedTablesRef.current.clear();
@@ -685,7 +692,7 @@ export default function PosTransactionsPage() {
       (p.parts || []).forEach(pt => check(pt.table, pt.field));
     });
     setSessionFields(fields);
-  }, [config]);
+  }, [visibleTablesKey, configVersion]);
 
   const masterSessionValue = React.useMemo(() => {
     if (!config) return undefined;
@@ -701,7 +708,7 @@ export default function PosTransactionsPage() {
     if (initRef.current === name) return;
     initRef.current = name;
     handleNew();
-  }, [config, memoFormConfigs, name]);
+  }, [visibleTablesKey, configVersion, name]);
 
 
   useEffect(() => {
@@ -733,7 +740,7 @@ export default function PosTransactionsPage() {
       return next;
     };
     setValues(updateSessionValues);
-  }, [masterSessionValue, config, sessionFields]);
+  }, [masterSessionValue, visibleTablesKey, configVersion, sessionFields]);
 
   function syncCalcFields(vals, mapConfig) {
     if (!Array.isArray(mapConfig)) return vals;
