@@ -139,9 +139,15 @@ export default function RelationsConfig() {
   return (
     <div>
       <h2>Relations Display Fields</h2>
+      {isDefault && (
+        <div style={{ color: 'orange', marginBottom: '0.5rem' }}>
+          Using default configuration
+        </div>
+      )}
       <div style={{ marginBottom: '0.5rem' }}>
         <button onClick={handleImport}>Import Defaults</button>
       </div>
+      <fieldset disabled={isDefault} style={{ border: 'none', padding: 0, margin: 0 }}>
       <div>
         <label>
           Table:
@@ -196,6 +202,7 @@ export default function RelationsConfig() {
           </button>
         </div>
       )}
+    </fieldset>
     </div>
   );
 }
