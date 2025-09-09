@@ -153,6 +153,7 @@ export default function PosTransactionsPage() {
   const dragInfo = useRef(null);
   const relationCacheRef = useRef(new Map());
   const loadingTablesRef = useRef(new Set());
+  const loadedTablesRef = useRef(new Set());
   const viewCacheRef = useRef(new Map());
   // Tracks in-flight view fetch promises so multiple tables can share them
   const viewFetchesRef = useRef(new Map());
@@ -181,6 +182,7 @@ export default function PosTransactionsPage() {
       abortControllersRef.current.clear();
       relationCacheRef.current.clear();
       loadingTablesRef.current.clear();
+      loadedTablesRef.current.clear();
       viewCacheRef.current.clear();
       viewFetchesRef.current.clear();
     };
@@ -371,6 +373,10 @@ export default function PosTransactionsPage() {
   );
 
   useEffect(() => {
+    loadedTablesRef.current.clear();
+  }, [visibleTablesKey]);
+
+  useEffect(() => {
     if (!config) return;
     const tables = [config.masterTable, ...config.tables.map((t) => t.table)];
     const forms = [config.masterForm || '', ...config.tables.map((t) => t.form)];
@@ -387,19 +393,28 @@ export default function PosTransactionsPage() {
           }),
         )
         .catch(() => {});
-      fetch(`/api/tables/${encodeURIComponent(tbl)}/columns`, { credentials: 'include' })
-        .then((res) => (res.ok ? res.json() : []))
-        .then((cols) => {
-          setColumnMeta((m) => ({ ...m, [tbl]: cols || [] }));
-          loadRelations(tbl);
-        })
-        .catch(() => {});
-      fetch(`/api/proc_triggers?table=${encodeURIComponent(tbl)}`, { credentials: 'include' })
-        .then((res) => (res.ok ? res.json() : {}))
-        .then((data) => setProcTriggersMap((m) => ({ ...m, [tbl]: data || {} })))
-        .catch(() => {});
+      if (!loadedTablesRef.current.has(tbl)) {
+        fetch(`/api/tables/${encodeURIComponent(tbl)}/columns`, { credentials: 'include' })
+          .then((res) => (res.ok ? res.json() : []))
+          .then(async (cols) => {
+            setColumnMeta((m) => ({ ...m, [tbl]: cols || [] }));
+            const fc = memoFormConfigs[tbl];
+            const hasView = fc
+              ? Object.values(fc.viewSource || {}).some(Boolean)
+              : true;
+            if (hasView) await loadRelations(tbl);
+            loadedTablesRef.current.add(tbl);
+          })
+          .catch(() => {
+            loadedTablesRef.current.add(tbl);
+          });
+        fetch(`/api/proc_triggers?table=${encodeURIComponent(tbl)}`, { credentials: 'include' })
+          .then((res) => (res.ok ? res.json() : {}))
+          .then((data) => setProcTriggersMap((m) => ({ ...m, [tbl]: data || {} })))
+          .catch(() => {});
+      }
     });
-  }, [config, visibleTablesKey]);
+  }, [visibleTablesKey]);
 
   useEffect(() => {
     if (!config) { setSessionFields([]); return; }
