@@ -219,10 +219,14 @@ const RowFormModal = function RowFormModal({
   const [seedOptions, setSeedOptions] = useState([]);
   const [seedRecordOptions, setSeedRecordOptions] = useState({});
   const [openSeed, setOpenSeed] = useState({});
-  const [fetchFlags, setFetchFlags] = useState({});
+  const fetchFlagsRef = useRef({});
+  const [fetchFlags, setFetchFlags] = useState(fetchFlagsRef.current);
 
   useEffect(() => {
-    if (visible) setFetchFlags({});
+    if (visible) {
+      fetchFlagsRef.current = {};
+      setFetchFlags(fetchFlagsRef.current);
+    }
   }, [visible]);
 
   useEffect(() => {
@@ -817,11 +821,12 @@ const RowFormModal = function RowFormModal({
 
   async function handleFocusField(col) {
     showTriggerInfo(col);
-    if (viewSourceMap[col]) {
-      loadView(viewSourceMap[col]);
-    }
-    if (!fetchFlags[col]) {
-      setFetchFlags((f) => ({ ...f, [col]: true }));
+    if (!fetchFlagsRef.current[col]) {
+      if (viewSourceMap[col]) {
+        loadView(viewSourceMap[col]);
+      }
+      fetchFlagsRef.current[col] = true;
+      setFetchFlags({ ...fetchFlagsRef.current });
     }
   }
 
