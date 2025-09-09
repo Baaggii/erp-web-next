@@ -622,8 +622,8 @@ export default forwardRef(function InlineTransactionTable({
     showTriggerInfo(col);
     if (viewSourceMap[col]) {
       loadView(viewSourceMap[col]);
-      setFetchFlags((f) => ({ ...f, [col]: true }));
     }
+    setFetchFlags((f) => ({ ...f, [col]: true }));
   }
 
   function addRow() {
@@ -1148,6 +1148,7 @@ export default forwardRef(function InlineTransactionTable({
       const inputVal = typeof val === 'object' ? val.value : val;
       return (
         <AsyncSearchSelect
+          shouldFetch={fetchFlags[f]}
           table={conf.table}
           searchColumn={conf.idField || conf.column}
           searchColumns={[conf.idField || conf.column, ...(conf.displayFields || [])]}
@@ -1221,6 +1222,7 @@ export default forwardRef(function InlineTransactionTable({
       const inputVal = typeof val === 'object' ? val.value : val;
       return (
         <AsyncSearchSelect
+          shouldFetch={fetchFlags[f]}
           table={cfg.table}
           searchColumn={cfg.idField}
           searchColumns={[cfg.idField, ...(cfg.displayFields || [])]}
