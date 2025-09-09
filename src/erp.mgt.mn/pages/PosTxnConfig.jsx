@@ -476,6 +476,12 @@ export default function PosTxnConfig() {
   return (
     <div>
       <h2>POS Transaction Config</h2>
+      {isDefault && (
+        <div style={{ color: 'orange', marginBottom: '0.5rem' }}>
+          Using default configuration
+        </div>
+      )}
+      <fieldset disabled={isDefault} style={{ border: 'none', padding: 0, margin: 0 }}>
       <div style={{ marginBottom: '1rem' }}>
         <select value={name} onChange={(e) => loadConfig(e.target.value)}>
           <option value="">-- select config --</option>
@@ -897,11 +903,12 @@ export default function PosTxnConfig() {
           ))}
         </select>
       </div>
+      </fieldset>
       <div style={{ marginTop: '1rem' }}>
         <button onClick={handleImport} style={{ marginRight: '0.5rem' }}>
           Import Defaults
         </button>
-        <button onClick={handleSave}>Save</button>
+        <button onClick={handleSave} disabled={isDefault}>Save</button>
       </div>
     </div>
   );
