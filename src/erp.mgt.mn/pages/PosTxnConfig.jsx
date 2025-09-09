@@ -294,19 +294,27 @@ export default function PosTxnConfig() {
   async function handleDelete() {
     if (!name) return;
     if (!window.confirm('Delete configuration?')) return;
-    await fetch(`/api/pos_txn_config?name=${encodeURIComponent(name)}`, {
-      method: 'DELETE',
-      credentials: 'include',
-    });
-    refreshTxnModules();
-    refreshModules();
-    addToast('Deleted', 'success');
-    setName('');
-    setConfig({ ...emptyConfig });
-    fetch('/api/pos_txn_config', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : {}))
-      .then((data) => setConfigs(data))
-      .catch(() => {});
+    try {
+      const res = await fetch(`/api/pos_txn_config?name=${encodeURIComponent(name)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        addToast('Delete failed', 'error');
+        return;
+      }
+      refreshTxnModules();
+      refreshModules();
+      addToast('Deleted', 'success');
+      setName('');
+      setConfig({ ...emptyConfig });
+      fetch('/api/pos_txn_config', { credentials: 'include' })
+        .then((res) => (res.ok ? res.json() : {}))
+        .then((data) => setConfigs(data))
+        .catch(() => {});
+    } catch {
+      addToast('Delete failed', 'error');
+    }
   }
 
   async function handleImport() {
