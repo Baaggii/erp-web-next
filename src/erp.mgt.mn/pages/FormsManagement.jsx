@@ -18,8 +18,6 @@ export default function FormsManagement() {
   const [names, setNames] = useState([]);
   const [name, setName] = useState('');
   const [moduleKey, setModuleKey] = useState('');
-  const [savedConfigs, setSavedConfigs] = useState([]);
-  const [selectedConfig, setSelectedConfig] = useState(null);
   const [branches, setBranches] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [txnTypes, setTxnTypes] = useState([]);
@@ -42,22 +40,6 @@ export default function FormsManagement() {
   }
   useEffect(() => {
     debugLog('Component mounted: FormsManagement');
-  }, []);
-
-  useEffect(() => {
-    fetch('/api/transaction_forms', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : {}))
-      .then((data) => {
-        const arr = [];
-        Object.entries(data || {}).forEach(([tbl, forms]) => {
-          Object.entries(forms || {}).forEach(([n, cfg]) => {
-            if (!cfg) return;
-            arr.push({ name: n, table: tbl, moduleKey: cfg.moduleKey || '', config: cfg });
-          });
-        });
-        setSavedConfigs(arr);
-      })
-      .catch(() => setSavedConfigs([]));
   }, []);
 
   const [config, setConfig] = useState({
@@ -398,32 +380,6 @@ export default function FormsManagement() {
   // were previously set here but have been removed as they are no longer
   // managed from this page.
 
-  function handleSelectSavedConfig(e) {
-    const idx = e.target.value;
-    if (idx === '') {
-      setSelectedConfig(null);
-      return;
-    }
-    const entry = savedConfigs[Number(idx)];
-    if (!entry) return;
-    setSelectedConfig(entry);
-    setTable(entry.table);
-    setName(entry.name);
-    setModuleKey(entry.moduleKey || '');
-    const cfg = entry.config || {};
-    setConfig({
-      ...cfg,
-      allowedBranches: (cfg.allowedBranches || []).map(String),
-      allowedDepartments: (cfg.allowedDepartments || []).map(String),
-    });
-    fetch(`/api/tables/${encodeURIComponent(entry.table)}/columns`, {
-      credentials: 'include',
-    })
-      .then((res) => (res.ok ? res.json() : []))
-      .then((cols) => setColumns(cols.map((c) => c.name || c)))
-      .catch(() => setColumns([]));
-  }
-
   function toggleVisible(field) {
     setConfig((c) => {
       const vis = new Set(c.visibleFields);
@@ -666,22 +622,6 @@ export default function FormsManagement() {
       <h2>{t('settings_forms_management', 'Forms Management')}</h2>
       <div style={{ marginBottom: '1rem' }}>
         <label>
-          Load configuration:
-          <select
-            value={selectedConfig ? savedConfigs.indexOf(selectedConfig) : ''}
-            onChange={handleSelectSavedConfig}
-          >
-            <option value="">-- select configuration --</option>
-            {savedConfigs.map((cfg, idx) => (
-              <option key={`${cfg.table}-${cfg.name}-${idx}`} value={idx}>
-                {cfg.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <div style={{ marginBottom: '1rem' }}>
-        <label>
           Module:
           <select value={moduleKey} onChange={(e) => setModuleKey(e.target.value)}>
             <option value="">-- select module --</option>
@@ -694,13 +634,7 @@ export default function FormsManagement() {
         </label>
       </div>
       <div style={{ marginBottom: '1rem' }}>
-        <select
-          value={table}
-          onChange={(e) => {
-            setTable(e.target.value);
-            setSelectedConfig(null);
-          }}
-        >
+        <select value={table} onChange={(e) => setTable(e.target.value)}>
           <option value="">-- select table --</option>
           {tables.map((t) => (
             <option key={t} value={t}>
@@ -721,13 +655,7 @@ export default function FormsManagement() {
           >
             <label>
               Existing configuration:
-              <select
-                value={name}
-                onChange={(e) => {
-                  setName(e.target.value);
-                  setSelectedConfig(null);
-                }}
-              >
+              <select value={name} onChange={(e) => setName(e.target.value)}>
                 <option value="">-- select transaction --</option>
                 {names.map((n) => (
                   <option key={n} value={n}>
@@ -743,10 +671,7 @@ export default function FormsManagement() {
                 type="text"
                 placeholder="Transaction name"
                 value={name}
-                onChange={(e) => {
-                  setName(e.target.value);
-                  setSelectedConfig(null);
-                }}
+                onChange={(e) => setName(e.target.value)}
               />
             </label>
 
@@ -779,7 +704,6 @@ export default function FormsManagement() {
                     setConfig((c) => ({ ...c, transactionTypeValue: val }));
                     const found = txnTypes.find((t) => String(t.UITransType) === val);
                     if (found && found.UITransTypeName) setName(found.UITransTypeName);
-                    setSelectedConfig(null);
                   }}
                 >
                   <option value="">-- select type --</option>
