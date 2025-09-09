@@ -10,6 +10,7 @@ export default function RelationsConfig() {
   const [columns, setColumns] = useState([]);
   const [idField, setIdField] = useState('');
   const [displayFields, setDisplayFields] = useState([]);
+  const [isDefault, setIsDefault] = useState(false);
 
   useEffect(() => {
     fetch('/api/tables', { credentials: 'include' })
@@ -29,14 +30,20 @@ export default function RelationsConfig() {
     fetch(`/api/display_fields?table=${encodeURIComponent(table)}`, {
       credentials: 'include',
     })
-      .then((res) => (res.ok ? res.json() : { idField: '', displayFields: [] }))
+      .then((res) =>
+        res.ok
+          ? res.json()
+          : { idField: '', displayFields: [], isDefault: true },
+      )
       .then((cfg) => {
         setIdField(cfg.idField || '');
         setDisplayFields(cfg.displayFields || []);
+        setIsDefault(!!cfg.isDefault);
       })
       .catch(() => {
         setIdField('');
         setDisplayFields([]);
+        setIsDefault(true);
       });
   }, [table]);
 
@@ -48,6 +55,19 @@ export default function RelationsConfig() {
 
   async function handleSave() {
     try {
+      if (isDefault) {
+        const resImport = await fetch(
+          `/api/config/import?companyId=${encodeURIComponent(company ?? '')}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ files: ['tableDisplayFields.json'] }),
+          },
+        );
+        if (!resImport.ok) throw new Error('import failed');
+        setIsDefault(false);
+      }
       const res = await fetch('/api/display_fields', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -105,7 +125,10 @@ export default function RelationsConfig() {
           const cfg = await cfgRes.json();
           setIdField(cfg.idField || '');
           setDisplayFields(cfg.displayFields || []);
+          setIsDefault(!!cfg.isDefault);
         }
+      } else {
+        setIsDefault(false);
       }
       addToast('Imported', 'success');
     } catch (err) {

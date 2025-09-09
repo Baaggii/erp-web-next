@@ -11,6 +11,7 @@ export default function GeneralConfiguration() {
   const [cfg, setCfg] = useState(null);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState('forms');
+  const [isDefault, setIsDefault] = useState(false);
   const { addToast } = useToast();
   const { session, permissions, company } = useContext(AuthContext);
   const { t } = useTranslation(['translation', 'tooltip']);
@@ -24,9 +25,16 @@ export default function GeneralConfiguration() {
   useEffect(() => {
     if (initial && Object.keys(initial).length) setCfg(initial);
     fetch('/api/general_config', { credentials: 'include' })
-      .then(res => (res.ok ? res.json() : {}))
-      .then(setCfg)
-      .catch(() => setCfg({}));
+      .then((res) => (res.ok ? res.json() : { isDefault: true }))
+      .then((data) => {
+        const { isDefault: def, ...rest } = data || {};
+        setCfg(rest);
+        setIsDefault(!!def);
+      })
+      .catch(() => {
+        setCfg({});
+        setIsDefault(true);
+      });
   }, [initial]);
 
   function handleChange(e) {
@@ -42,19 +50,38 @@ export default function GeneralConfiguration() {
 
   async function handleSave() {
     setSaving(true);
-    const res = await fetch('/api/general_config', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(cfg),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      setCfg(data);
-      updateCache(data);
-      addToast(t('saved', 'Saved'), 'success');
-    } else {
-      addToast(t('failedToSave', 'Failed to save'), 'error');
+    try {
+      if (isDefault) {
+        const resImport = await fetch(
+          `/api/config/import?companyId=${encodeURIComponent(company ?? '')}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ files: ['generalConfig.json'] }),
+          },
+        );
+        if (!resImport.ok) throw new Error('import failed');
+        setIsDefault(false);
+      }
+      const payload = { [tab]: cfg[tab] };
+      const res = await fetch('/api/general_config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCfg(data);
+        setIsDefault(false);
+        updateCache(data);
+        addToast(t('saved', 'Saved'), 'success');
+      } else {
+        addToast(t('failedToSave', 'Failed to save'), 'error');
+      }
+    } catch (err) {
+      addToast(err.message || t('failedToSave', 'Failed to save'), 'error');
     }
     setSaving(false);
   }
@@ -79,8 +106,10 @@ export default function GeneralConfiguration() {
       if (!res.ok) throw new Error('failed');
       const dataRes = await fetch('/api/general_config', { credentials: 'include' });
       const data = dataRes.ok ? await dataRes.json() : {};
-      setCfg(data);
-      updateCache(data);
+      const { isDefault: def, ...rest } = data || {};
+      setCfg(rest);
+      setIsDefault(!!def);
+      updateCache(rest);
       addToast('Imported', 'success');
     } catch (err) {
       addToast(`Import failed: ${err.message}`, 'error');
