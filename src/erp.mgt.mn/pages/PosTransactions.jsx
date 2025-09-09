@@ -391,11 +391,26 @@ export default function PosTransactionsPage() {
     [visibleTables],
   );
 
+  // Stable hash of table/form identifiers. Ignores layout-only config so
+  // adjusting positions doesn't trigger reloads.
+  const configVersion = React.useMemo(() => {
+    if (!config) return '';
+    const parts = [
+      config.masterTable,
+      config.masterForm,
+      ...(config.tables || []).flatMap((t) => [t.table, t.form]),
+    ];
+    return parts.filter(Boolean).join('|');
+  }, [config]);
+
   useEffect(() => {
     loadedTablesRef.current.clear();
     loadingTablesRef.current.clear();
-  }, [visibleTablesKey]);
+  }, [visibleTablesKey, configVersion]);
 
+  // Reload form configs and column metadata when either the visible table set
+  // or the form identifiers change. Because configVersion ignores layout-only
+  // changes, layout adjustments still avoid reloads.
   useEffect(() => {
     if (!config) return;
     const tables = [config.masterTable, ...config.tables.map((t) => t.table)];
@@ -440,7 +455,7 @@ export default function PosTransactionsPage() {
           .catch(() => {});
       }
     });
-  }, [visibleTablesKey]);
+  }, [visibleTablesKey, configVersion]);
 
   useEffect(() => {
     if (!config) { setSessionFields([]); return; }
