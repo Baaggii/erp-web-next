@@ -23,3 +23,17 @@ test('parseProcedureConfig converts SQL when block missing', () => {
   assert.equal(result.config.fields.length, 2);
   assert.equal(result.config.groups.length, 2);
 });
+
+test('parseProcedureConfig handles line comments in SHOW CREATE PROCEDURE output', () => {
+  const sql = `CREATE DEFINER=\`root\`@\`localhost\` PROCEDURE \`t\`()
+BEGIN
+  SELECT p.id, p.name FROM prod p -- list products
+  WHERE p.id = 1 # filter
+  GROUP BY p.id, p.name;
+END`;
+  const result = parseProcedureConfig(sql);
+  assert.equal(result.converted, true);
+  assert.equal(result.config.fromTable, 'prod');
+  assert.equal(result.config.fields.length, 2);
+  assert.equal(result.config.groups.length, 2);
+});

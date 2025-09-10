@@ -29,9 +29,13 @@ function convertSql(sql) {
   const procName = nameMatch ? nameMatch[1] : '';
 
   // Extract body inside BEGIN..END and strip comments
-  const bodyMatch = sql.match(/BEGIN\s+([\s\S]*?)END/i);
+  const bodyMatch = sql.match(/BEGIN\s+([\s\S]*)END/i);
   let body = bodyMatch ? bodyMatch[1] : sql;
-  body = body.replace(/\/\*[\s\S]*?\*\//g, ' ').trim();
+  body = body
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/--.*$/gm, ' ')
+    .replace(/#.*$/gm, ' ')
+    .trim();
 
   const selIdx = body.toUpperCase().indexOf('SELECT');
   if (selIdx === -1) return null;
