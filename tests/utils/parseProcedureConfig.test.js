@@ -52,3 +52,11 @@ END`;
   assert.equal(result.config.fromTable, 'prod');
   assert.equal(result.config.fields.length, 2);
 });
+
+test('parseProcedureConfig tolerates ORDER BY and positional GROUP BY', () => {
+  const sql = `CREATE PROCEDURE t() BEGIN SELECT p.id, p.name FROM prod p GROUP BY 1 ORDER BY p.name; END`;
+  const result = parseProcedureConfig(sql);
+  assert.equal(result.converted, true);
+  assert.equal(result.config.fromTable, 'prod');
+  assert.equal(result.config.fields.length, 2);
+});

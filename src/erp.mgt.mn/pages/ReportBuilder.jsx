@@ -1529,10 +1529,18 @@ function ReportBuilderInner() {
                 body: JSON.stringify(parsed.config),
               },
             );
-            addToast('Generated config from SQL', 'success');
+            if (parsed.partial) {
+              addToast('Generated config with limited clauses', 'warning');
+            } else {
+              addToast('Generated config from SQL', 'success');
+            }
           } catch (err) {
             console.error(err);
-            addToast('Generated config from SQL (save failed)', 'error');
+            if (parsed.partial) {
+              addToast('Generated config with limited clauses (save failed)', 'warning');
+            } else {
+              addToast('Generated config from SQL (save failed)', 'error');
+            }
           }
         } else {
           addToast('Loaded config from embedded block', 'success');
