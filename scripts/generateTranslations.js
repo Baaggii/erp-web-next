@@ -208,7 +208,11 @@ async function translateWithOpenAI(text, from, to) {
 
 /* ---------------- Main ---------------- */
 
-export async function generateTranslations({ onLog = console.log, signal } = {}) {
+export async function generateTranslations({
+  onLog = console.log,
+  signal,
+  textsPath,
+} = {}) {
   log = onLog;
   const checkAbort = () => {
     if (signal?.aborted) throw new Error('Aborted');
@@ -216,8 +220,7 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
 
   try {
     log('[gen-i18n] START');
-    const base = JSON.parse(fs.readFileSync(headerMappingsPath, 'utf8'));
-    const modules = await fetchModules();
+    let base = {};
     let headerMappingsUpdated = false;
     const entryMap = new Map();
 
@@ -233,193 +236,205 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
     entryMap.set(key, { key, sourceText, sourceLang, origin });
   }
 
-  for (const { moduleKey, label } of modules) {
-    checkAbort();
-    if (base[moduleKey] === undefined) {
-      base[moduleKey] = label;
-      headerMappingsUpdated = true;
+  if (textsPath) {
+    base = JSON.parse(fs.readFileSync(textsPath, 'utf8'));
+    for (const [key, value] of Object.entries(base)) {
+      const sourceText =
+        typeof value === 'string' ? value : value?.mn || value?.en;
+      const sourceLang = /[\u0400-\u04FF]/.test(sourceText) ? 'mn' : 'en';
+      addEntry(key, sourceText, sourceLang, 'file');
     }
-    const sourceLang = /[\u0400-\u04FF]/.test(label) ? 'mn' : 'en';
-    addEntry(moduleKey, label, sourceLang, 'module');
-  }
-
-  for (const key of Object.keys(base)) {
-    checkAbort();
-    const value = base[key];
-    let sourceText;
-    let sourceLang;
-    if (value && typeof value === 'object') {
-      sourceText = value.mn || value.en;
-      sourceLang = value.mn ? 'mn' : 'en';
-    } else {
-      sourceText = value;
-      sourceLang = /[\u0400-\u04FF]/.test(sourceText) ? 'mn' : 'en';
-    }
-    addEntry(key, sourceText, sourceLang, 'table');
-  }
-
-  const tPairs = collectPhrasesFromPages(path.resolve('src/erp.mgt.mn'));
-  for (const { key, text } of tPairs) {
-    checkAbort();
-    const sourceLang = /[\u0400-\u04FF]/.test(text) ? 'mn' : 'en';
-    if (base[key] === undefined) {
-      base[key] = text;
-      headerMappingsUpdated = true;
-    }
-    addEntry(key, text, sourceLang, 'page');
-  }
-
-  try {
-    const formConfigs = JSON.parse(
-      fs.readFileSync(transactionFormsPath, 'utf8'),
-    );
-    for (const forms of Object.values(formConfigs)) {
+  } else {
+    base = JSON.parse(fs.readFileSync(headerMappingsPath, 'utf8'));
+    const modules = await fetchModules();
+    for (const { moduleKey, label } of modules) {
       checkAbort();
-      if (!forms || typeof forms !== 'object') continue;
-      for (const [formName, config] of Object.entries(forms)) {
-        checkAbort();
-        const formSlug = slugify(formName);
-        const sourceLang = /[\u0400-\u04FF]/.test(formName) ? 'mn' : 'en';
-        addEntry(`form.${formSlug}`, formName, sourceLang, 'form');
+      if (base[moduleKey] === undefined) {
+        base[moduleKey] = label;
+        headerMappingsUpdated = true;
+      }
+      const sourceLang = /[\u0400-\u04FF]/.test(label) ? 'mn' : 'en';
+      addEntry(moduleKey, label, sourceLang, 'module');
+    }
 
-        function walk(obj, pathSegs) {
-          if (!obj || typeof obj !== 'object') return;
-          for (const [k, v] of Object.entries(obj)) {
-            const segs = [...pathSegs, slugify(k)];
-            if (typeof v === 'string') {
-              if (/^[a-z0-9_.]+$/.test(v)) continue;
-              const lang = /[\u0400-\u04FF]/.test(v) ? 'mn' : 'en';
-              addEntry(`form.${segs.join('.')}`, v, lang, 'form');
-            } else if (Array.isArray(v)) {
-              for (const item of v) {
-                if (item && typeof item === 'object') {
-                  walk(item, segs);
-                } else if (typeof item === 'string' && !/^[a-z0-9_.]+$/.test(item)) {
-                  const lang = /[\u0400-\u04FF]/.test(item) ? 'mn' : 'en';
-                  addEntry(
-                    `form.${segs.join('.')}.${slugify(item)}`,
-                    item,
-                    lang,
-                    'form',
-                  );
+    for (const key of Object.keys(base)) {
+      checkAbort();
+      const value = base[key];
+      let sourceText;
+      let sourceLang;
+      if (value && typeof value === 'object') {
+        sourceText = value.mn || value.en;
+        sourceLang = value.mn ? 'mn' : 'en';
+      } else {
+        sourceText = value;
+        sourceLang = /[\u0400-\u04FF]/.test(sourceText) ? 'mn' : 'en';
+      }
+      addEntry(key, sourceText, sourceLang, 'table');
+    }
+
+    const tPairs = collectPhrasesFromPages(path.resolve('src/erp.mgt.mn'));
+    for (const { key, text } of tPairs) {
+      checkAbort();
+      const sourceLang = /[\u0400-\u04FF]/.test(text) ? 'mn' : 'en';
+      if (base[key] === undefined) {
+        base[key] = text;
+        headerMappingsUpdated = true;
+      }
+      addEntry(key, text, sourceLang, 'page');
+    }
+
+    try {
+      const formConfigs = JSON.parse(
+        fs.readFileSync(transactionFormsPath, 'utf8'),
+      );
+      for (const forms of Object.values(formConfigs)) {
+        checkAbort();
+        if (!forms || typeof forms !== 'object') continue;
+        for (const [formName, config] of Object.entries(forms)) {
+          checkAbort();
+          const formSlug = slugify(formName);
+          const sourceLang = /[\u0400-\u04FF]/.test(formName) ? 'mn' : 'en';
+          addEntry(`form.${formSlug}`, formName, sourceLang, 'form');
+
+          function walk(obj, pathSegs) {
+            if (!obj || typeof obj !== 'object') return;
+            for (const [k, v] of Object.entries(obj)) {
+              const segs = [...pathSegs, slugify(k)];
+              if (typeof v === 'string') {
+                if (/^[a-z0-9_.]+$/.test(v)) continue;
+                const lang = /[\u0400-\u04FF]/.test(v) ? 'mn' : 'en';
+                addEntry(`form.${segs.join('.')}`, v, lang, 'form');
+              } else if (Array.isArray(v)) {
+                for (const item of v) {
+                  if (item && typeof item === 'object') {
+                    walk(item, segs);
+                  } else if (typeof item === 'string' && !/^[a-z0-9_.]+$/.test(item)) {
+                    const lang = /[\u0400-\u04FF]/.test(item) ? 'mn' : 'en';
+                    addEntry(
+                      `form.${segs.join('.')}.${slugify(item)}`,
+                      item,
+                      lang,
+                      'form',
+                    );
+                  }
                 }
+              } else {
+                walk(v, segs);
               }
-            } else {
-              walk(v, segs);
             }
           }
+          walk(config, [formSlug]);
         }
-        walk(config, [formSlug]);
       }
+    } catch (err) {
+      console.warn(`[gen-i18n] Failed to load forms: ${err.message}`);
     }
-  } catch (err) {
-    console.warn(`[gen-i18n] Failed to load forms: ${err.message}`);
-  }
 
   const skipString = /^[a-z0-9_.\/:-]+$/;
 
-  try {
-    const ulaConfig = JSON.parse(
-      fs.readFileSync(
-        getConfigPathSync('userLevelActions.json', companyId).path,
-        'utf8',
-      ),
-    );
-    function walkUla(obj, pathSegs) {
-      if (!obj || typeof obj !== 'object') return;
-      if (Array.isArray(obj)) {
-        for (const item of obj) {
-          if (item && typeof item === 'object') {
-            walkUla(item, pathSegs);
-          } else if (typeof item === 'string' && !skipString.test(item)) {
-            const lang = /[\u0400-\u04FF]/.test(item) ? 'mn' : 'en';
-            const baseKey = pathSegs.length
-              ? `userLevelActions.${pathSegs.join('.')}`
-              : 'userLevelActions';
-            addEntry(
-              `${baseKey}.${slugify(item)}`,
-              item,
-              lang,
-              'userLevelActions',
-            );
+    try {
+      const ulaConfig = JSON.parse(
+        fs.readFileSync(
+          getConfigPathSync('userLevelActions.json', companyId).path,
+          'utf8',
+        ),
+      );
+      function walkUla(obj, pathSegs) {
+        if (!obj || typeof obj !== 'object') return;
+        if (Array.isArray(obj)) {
+          for (const item of obj) {
+            if (item && typeof item === 'object') {
+              walkUla(item, pathSegs);
+            } else if (typeof item === 'string' && !skipString.test(item)) {
+              const lang = /[\u0400-\u04FF]/.test(item) ? 'mn' : 'en';
+              const baseKey = pathSegs.length
+                ? `userLevelActions.${pathSegs.join('.')}`
+                : 'userLevelActions';
+              addEntry(
+                `${baseKey}.${slugify(item)}`,
+                item,
+                lang,
+                'userLevelActions',
+              );
+            }
           }
-        }
-      } else {
-        for (const [k, v] of Object.entries(obj)) {
-          const segs = [...pathSegs, slugify(k)];
-          if (typeof v === 'string') {
-            if (skipString.test(v)) continue;
-            const lang = /[\u0400-\u04FF]/.test(v) ? 'mn' : 'en';
-            addEntry(
-              `userLevelActions.${segs.join('.')}`,
-              v,
-              lang,
-              'userLevelActions',
-            );
-          } else {
-            walkUla(v, segs);
-          }
-        }
-      }
-    }
-    walkUla(ulaConfig, []);
-  } catch (err) {
-    console.warn(`[gen-i18n] Failed to load user level actions: ${err.message}`);
-  }
-
-  try {
-    const posConfig = JSON.parse(
-      fs.readFileSync(
-        getConfigPathSync('posTransactionConfig.json', companyId).path,
-        'utf8',
-      ),
-    );
-    function walkPos(obj, pathSegs) {
-      if (!obj || typeof obj !== 'object') return;
-      if (Array.isArray(obj)) {
-        for (const item of obj) {
-          if (item && typeof item === 'object') {
-            const itemSeg = slugify(
-              item.name || item.key || item.id || item.table || item.form || '',
-            );
-            walkPos(item, itemSeg ? [...pathSegs, itemSeg] : pathSegs);
-          } else if (typeof item === 'string' && !skipString.test(item)) {
-            const lang = /[\u0400-\u04FF]/.test(item) ? 'mn' : 'en';
-            const baseKey = pathSegs.length
-              ? `posTransactionConfig.${pathSegs.join('.')}`
-              : 'posTransactionConfig';
-            addEntry(
-              `${baseKey}.${slugify(item)}`,
-              item,
-              lang,
-              'posTransactionConfig',
-            );
-          }
-        }
-      } else {
-        for (const [k, v] of Object.entries(obj)) {
-          const segs = [...pathSegs, slugify(k)];
-          if (typeof v === 'string') {
-            if (skipString.test(v)) continue;
-            const lang = /[\u0400-\u04FF]/.test(v) ? 'mn' : 'en';
-            addEntry(
-              `posTransactionConfig.${segs.join('.')}`,
-              v,
-              lang,
-              'posTransactionConfig',
-            );
-          } else {
-            walkPos(v, segs);
+        } else {
+          for (const [k, v] of Object.entries(obj)) {
+            const segs = [...pathSegs, slugify(k)];
+            if (typeof v === 'string') {
+              if (skipString.test(v)) continue;
+              const lang = /[\u0400-\u04FF]/.test(v) ? 'mn' : 'en';
+              addEntry(
+                `userLevelActions.${segs.join('.')}`,
+                v,
+                lang,
+                'userLevelActions',
+              );
+            } else {
+              walkUla(v, segs);
+            }
           }
         }
       }
+      walkUla(ulaConfig, []);
+    } catch (err) {
+      console.warn(`[gen-i18n] Failed to load user level actions: ${err.message}`);
     }
-    walkPos(posConfig, []);
-  } catch (err) {
-    console.warn(`[gen-i18n] Failed to load POS config: ${err.message}`);
+
+    try {
+      const posConfig = JSON.parse(
+        fs.readFileSync(
+          getConfigPathSync('posTransactionConfig.json', companyId).path,
+          'utf8',
+        ),
+      );
+      function walkPos(obj, pathSegs) {
+        if (!obj || typeof obj !== 'object') return;
+        if (Array.isArray(obj)) {
+          for (const item of obj) {
+            if (item && typeof item === 'object') {
+              const itemSeg = slugify(
+                item.name || item.key || item.id || item.table || item.form || '',
+              );
+              walkPos(item, itemSeg ? [...pathSegs, itemSeg] : pathSegs);
+            } else if (typeof item === 'string' && !skipString.test(item)) {
+              const lang = /[\u0400-\u04FF]/.test(item) ? 'mn' : 'en';
+              const baseKey = pathSegs.length
+                ? `posTransactionConfig.${pathSegs.join('.')}`
+                : 'posTransactionConfig';
+              addEntry(
+                `${baseKey}.${slugify(item)}`,
+                item,
+                lang,
+                'posTransactionConfig',
+              );
+            }
+          }
+        } else {
+          for (const [k, v] of Object.entries(obj)) {
+            const segs = [...pathSegs, slugify(k)];
+            if (typeof v === 'string') {
+              if (skipString.test(v)) continue;
+              const lang = /[\u0400-\u04FF]/.test(v) ? 'mn' : 'en';
+              addEntry(
+                `posTransactionConfig.${segs.join('.')}`,
+                v,
+                lang,
+                'posTransactionConfig',
+              );
+            } else {
+              walkPos(v, segs);
+            }
+          }
+        }
+      }
+      walkPos(posConfig, []);
+    } catch (err) {
+      console.warn(`[gen-i18n] Failed to load POS config: ${err.message}`);
+    }
   }
 
-  if (headerMappingsUpdated) {
+  if (!textsPath && headerMappingsUpdated) {
     const ordered = sortObj(base);
     fs.writeFileSync(headerMappingsPath, JSON.stringify(ordered, null, 2));
     log(`[gen-i18n] updated ${headerMappingsPath}`);

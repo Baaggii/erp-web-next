@@ -18,7 +18,12 @@ process.on('uncaughtException', (err) => {
 
 async function main() {
   try {
-    await generateTranslations({ onLog: console.log, signal: controller.signal });
+    const textsPath = process.argv[2];
+    await generateTranslations({
+      onLog: console.log,
+      signal: controller.signal,
+      textsPath,
+    });
     await generateTooltipTranslations({ onLog: console.log, signal: controller.signal });
   } catch (err) {
     console.error('[gen-i18n] FATAL', err);
