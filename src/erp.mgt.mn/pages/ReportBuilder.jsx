@@ -109,7 +109,8 @@ function ReportBuilderInner() {
   }, []);
 
   useEffect(() => {
-    const prefix = generalConfig?.general?.reportProcPrefix || '';
+    const basePrefix = generalConfig?.general?.reportProcPrefix || '';
+    const prefix = company ? `${basePrefix}${company}_` : basePrefix;
     if (!generalConfig) return;
     const query = prefix ? `?prefix=${encodeURIComponent(prefix)}` : '';
     async function fetchSaved() {
@@ -145,7 +146,7 @@ function ReportBuilderInner() {
       }
     }
     fetchSaved();
-  }, [generalConfig?.general?.reportProcPrefix]);
+  }, [generalConfig?.general?.reportProcPrefix, company]);
 
   async function handleImport() {
     if (
@@ -165,7 +166,8 @@ function ReportBuilderInner() {
         },
       );
       if (!res.ok) throw new Error('failed');
-      const prefix = generalConfig?.general?.reportProcPrefix || '';
+      const basePrefix = generalConfig?.general?.reportProcPrefix || '';
+      const prefix = company ? `${basePrefix}${company}_` : basePrefix;
       const query = prefix ? `?prefix=${encodeURIComponent(prefix)}` : '';
       try {
         const resCfg = await fetch(`/api/report_builder/configs${query}`);
@@ -1120,7 +1122,7 @@ function ReportBuilderInner() {
       const sql = buildReportSql(report);
       const prefix = generalConfig?.general?.reportViewPrefix || '';
       if (!procName) throw new Error('procedure name is required');
-      const viewName = `${prefix}${procName}`;
+      const viewName = `${prefix}${company ? `${company}_` : ''}${procName}`;
       const view = `CREATE OR REPLACE VIEW ${viewName} AS\n${sql};`;
       setViewSql(view);
       setError('');
@@ -1136,7 +1138,7 @@ function ReportBuilderInner() {
       const { report, params: p } = buildDefinition();
       const prefix = generalConfig?.general?.reportProcPrefix || '';
       const built = buildStoredProcedure({
-        name: procName,
+        name: company ? `${company}_${procName}` : procName,
         params: p,
         report,
         prefix,
@@ -1152,7 +1154,8 @@ function ReportBuilderInner() {
   async function handlePostProc() {
     if (!procSql) return;
     if (!window.confirm('POST stored procedure to database?')) return;
-    const prefix = generalConfig?.general?.reportProcPrefix || '';
+    const basePrefix = generalConfig?.general?.reportProcPrefix || '';
+    const prefix = company ? `${basePrefix}${company}_` : basePrefix;
     try {
       const res = await fetch(
         `/api/report_builder/procedures${
@@ -1268,8 +1271,9 @@ function ReportBuilderInner() {
       unionQueries: legacyUnions,
     };
     try {
-      const prefix = generalConfig?.general?.reportProcPrefix || '';
+      const basePrefix = generalConfig?.general?.reportProcPrefix || '';
       if (!procName) throw new Error('procedure name is required');
+      const prefix = company ? `${basePrefix}${company}_` : basePrefix;
       const name = `${prefix}${procName}`;
       if (isDefault) {
         const resImport = await fetch(
@@ -1416,8 +1420,9 @@ function ReportBuilderInner() {
 
   async function handleSaveProcFile() {
     if (!procSql) return;
-    const prefix = generalConfig?.general?.reportProcPrefix || '';
+    const basePrefix = generalConfig?.general?.reportProcPrefix || '';
     if (!procName) return;
+    const prefix = company ? `${basePrefix}${company}_` : basePrefix;
     const name = `${prefix}${procName}`;
     try {
       const res = await fetch(
@@ -1492,10 +1497,14 @@ function ReportBuilderInner() {
     setProcSql(sql);
     const nameMatch = sql.match(/CREATE\s+PROCEDURE\s+`?([^`(]+)`?\s*\(/i);
     if (nameMatch) {
-      const prefix = generalConfig?.general?.reportProcPrefix || '';
+      const basePrefix = generalConfig?.general?.reportProcPrefix || '';
       let name = nameMatch[1];
-      if (prefix && name.toLowerCase().startsWith(prefix.toLowerCase())) {
-        name = name.slice(prefix.length);
+      if (basePrefix && name.toLowerCase().startsWith(basePrefix.toLowerCase())) {
+        name = name.slice(basePrefix.length);
+      }
+      const companyPrefix = company ? `${company}_` : '';
+      if (companyPrefix && name.toLowerCase().startsWith(companyPrefix.toLowerCase())) {
+        name = name.slice(companyPrefix.length);
       }
       setProcName(name);
     }
@@ -2636,7 +2645,7 @@ function ReportBuilderInner() {
         <label>
           Procedure Name:
           <div>
-            {generalConfig?.general?.reportProcPrefix || ''}
+            {`${generalConfig?.general?.reportProcPrefix || ''}${company ? `${company}_` : ''}`}
             <input
               value={procName}
               onChange={(e) => setProcName(e.target.value)}
