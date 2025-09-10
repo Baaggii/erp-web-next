@@ -1499,8 +1499,11 @@ function ReportBuilderInner() {
     const sql = await handleLoadDbProcedure(false);
     try {
       const cfg = parseConfigFromSql(sql);
-      if (!cfg) throw new Error('No config');
-      applyConfig(cfg);
+      if (cfg) {
+        applyConfig(cfg);
+      } else {
+        addToast('No embedded config found', 'error');
+      }
     } catch (err) {
       addToast('Failed to load config from procedure', 'error');
     }
@@ -1587,7 +1590,7 @@ function ReportBuilderInner() {
   }
 
   function parseConfigFromSql(sql) {
-    const match = sql.match(/\/\*RB_CONFIG([\s\S]*?)RB_CONFIG\*\//);
+    const match = sql.match(/\/\*\s*RB_CONFIG([\s\S]*?)RB_CONFIG\s*\*\//i);
     if (!match) return null;
     try {
       return JSON.parse(match[1]);
