@@ -88,3 +88,26 @@ test('parseProcedureConfig parses JOIN USING clause', () => {
   assert.equal(result.config.joins[0].conditions[0].toField, 'id');
   assert.equal(result.config.joins[0].targetTable, 'prod');
 });
+
+test('parseProcedureConfig converts SQL with subquery and JOIN ON', () => {
+  const sql = `CREATE PROCEDURE t()` +
+    ` BEGIN SELECT s.id, c.name FROM (SELECT id, category_id FROM prod) s JOIN cat c ON c.id = s.category_id GROUP BY s.id, c.name; END`;
+  const result = parseProcedureConfig(sql);
+  assert.equal(result.converted, true);
+  assert.equal(result.config.fromTable, 's');
+  assert.equal(result.config.joins.length, 1);
+  assert.equal(result.config.joins[0].targetTable, 's');
+  assert.equal(result.config.fields.length, 2);
+});
+
+test('parseProcedureConfig converts SQL with subquery and JOIN USING', () => {
+  const sql = `CREATE PROCEDURE t()` +
+    ` BEGIN SELECT s.id, c.name FROM (SELECT id FROM prod) s JOIN cat c USING (id); END`;
+  const result = parseProcedureConfig(sql);
+  assert.equal(result.converted, true);
+  assert.equal(result.config.fromTable, 's');
+  assert.equal(result.config.joins.length, 1);
+  assert.equal(result.config.joins[0].conditions[0].fromField, 'id');
+  assert.equal(result.config.joins[0].conditions[0].toField, 'id');
+  assert.equal(result.config.joins[0].targetTable, 's');
+});
