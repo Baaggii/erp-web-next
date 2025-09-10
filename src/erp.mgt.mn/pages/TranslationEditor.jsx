@@ -2,8 +2,7 @@ import React, { useState, useContext } from 'react';
 import I18nContext from '../context/I18nContext.jsx';
 import GenerateTranslationsTab from './GenerateTranslationsTab.jsx';
 import TextManagementTab from './TextManagementTab.jsx';
-
-const LANGS = ['en', 'mn', 'ja', 'ko', 'zh', 'es', 'de', 'fr', 'ru'];
+import ManualTranslationsTab from './ManualTranslationsTab.jsx';
 
 export default function TranslationEditorPage() {
   const { t } = useContext(I18nContext);
