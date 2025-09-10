@@ -56,10 +56,18 @@ function ReportBuilderInner() {
   const [dbProcIsDefault, setDbProcIsDefault] = useState(false);
   const [isDefault, setIsDefault] = useState(false);
 
+  const tenantProcedures = dbProcedures.filter((p) => !p.isDefault);
+
   const [customParamName, setCustomParamName] = useState('');
   const [customParamType, setCustomParamType] = useState(PARAM_TYPES[0]);
   const { addToast } = useToast();
   const { company } = useContext(AuthContext);
+
+  useEffect(() => {
+    const firstTenant = tenantProcedures[0];
+    setSelectedDbProcedure(firstTenant?.name || '');
+    setDbProcIsDefault(firstTenant?.isDefault || false);
+  }, [dbProcedures]);
 
   useEffect(() => {
     setUnionQueries((prev) => {
@@ -2734,9 +2742,9 @@ function ReportBuilderInner() {
           }}
           style={{ marginLeft: '0.5rem' }}
         >
-          {dbProcedures.map((p) => (
+          {tenantProcedures.map((p) => (
             <option key={p.name} value={p.name}>
-              {p.name} {p.isDefault ? '(default)' : ''}
+              {p.name}
             </option>
           ))}
         </select>
