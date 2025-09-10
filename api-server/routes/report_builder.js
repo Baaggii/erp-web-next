@@ -105,7 +105,10 @@ router.get('/procedures', requireAuth, async (req, res, next) => {
   try {
     const { prefix = '' } = req.query;
     const companyId = Number(req.query.companyId ?? req.user.companyId);
-    const names = await listReportProcedures(prefix);
+    const names = (await listReportProcedures(prefix)).filter(
+      (n) =>
+        n.startsWith(`${prefix}0_`) || n.startsWith(`${prefix}${companyId}_`),
+    );
 
     // Determine which procedures are default by checking procedure files
     const tenantDirPath = tenantProcDir(companyId);

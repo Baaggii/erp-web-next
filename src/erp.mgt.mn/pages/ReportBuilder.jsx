@@ -113,6 +113,9 @@ function ReportBuilderInner() {
     const prefix = company ? `${basePrefix}${company}_` : basePrefix;
     if (!generalConfig) return;
     const query = prefix ? `?prefix=${encodeURIComponent(prefix)}` : '';
+    const procQuery = basePrefix
+      ? `?prefix=${encodeURIComponent(basePrefix)}`
+      : '';
     async function fetchSaved() {
       try {
         const res = await fetch(`/api/report_builder/configs${query}`);
@@ -135,9 +138,12 @@ function ReportBuilderInner() {
         console.error(err);
       }
       try {
-        const res = await fetch(`/api/report_builder/procedures${query}`);
+        const res = await fetch(`/api/report_builder/procedures${procQuery}`);
         const data = await res.json();
-        const list = data.names || [];
+        const list = (data.names || []).filter(({ name }) =>
+          name.startsWith(`${basePrefix}0_`) ||
+          (company != null && name.startsWith(`${basePrefix}${company}_`)),
+        );
         setDbProcedures(list);
         setSelectedDbProcedure(list[0]?.name || '');
         setDbProcIsDefault(list[0]?.isDefault || false);
@@ -169,6 +175,9 @@ function ReportBuilderInner() {
       const basePrefix = generalConfig?.general?.reportProcPrefix || '';
       const prefix = company ? `${basePrefix}${company}_` : basePrefix;
       const query = prefix ? `?prefix=${encodeURIComponent(prefix)}` : '';
+      const procQuery = basePrefix
+        ? `?prefix=${encodeURIComponent(basePrefix)}`
+        : '';
       try {
         const resCfg = await fetch(`/api/report_builder/configs${query}`);
         const dataCfg = await resCfg.json();
@@ -186,9 +195,14 @@ function ReportBuilderInner() {
         setProcFileIsDefault(list[0]?.isDefault || false);
       } catch {}
       try {
-        const resProcs = await fetch(`/api/report_builder/procedures${query}`);
+        const resProcs = await fetch(
+          `/api/report_builder/procedures${procQuery}`,
+        );
         const dataProcs = await resProcs.json();
-        const list = dataProcs.names || [];
+        const list = (dataProcs.names || []).filter(({ name }) =>
+          name.startsWith(`${basePrefix}0_`) ||
+          (company != null && name.startsWith(`${basePrefix}${company}_`)),
+        );
         setDbProcedures(list);
         setSelectedDbProcedure(list[0]?.name || '');
         setDbProcIsDefault(list[0]?.isDefault || false);
@@ -1155,33 +1169,28 @@ function ReportBuilderInner() {
     if (!procSql) return;
     if (!window.confirm('POST stored procedure to database?')) return;
     const basePrefix = generalConfig?.general?.reportProcPrefix || '';
-    const prefix = company ? `${basePrefix}${company}_` : basePrefix;
+    const procQuery = basePrefix
+      ? `?prefix=${encodeURIComponent(basePrefix)}`
+      : '';
     try {
-      const res = await fetch(
-        `/api/report_builder/procedures${
-          prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''
-        }`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sql: procSql }),
-        },
-      );
+      const res = await fetch(`/api/report_builder/procedures`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql: procSql }),
+      });
       if (!res.ok) throw new Error('Save failed');
       try {
         const listRes = await fetch(
-          `/api/report_builder/procedures${
-            prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''
-          }`,
+          `/api/report_builder/procedures${procQuery}`,
         );
         const data = await listRes.json();
-        const list = prefix
-          ? (data.names || []).filter((n) =>
-              n.toLowerCase().includes(prefix.toLowerCase()),
-            )
-          : data.names || [];
+        const list = (data.names || []).filter(({ name }) =>
+          name.startsWith(`${basePrefix}0_`) ||
+          (company != null && name.startsWith(`${basePrefix}${company}_`)),
+        );
         setDbProcedures(list);
-        setSelectedDbProcedure(list[0] || '');
+        setSelectedDbProcedure(list[0]?.name || '');
+        setDbProcIsDefault(list[0]?.isDefault || false);
       } catch (err) {
         console.error(err);
       }
