@@ -87,8 +87,14 @@ export default function ManualTranslationsTab() {
     const toSave = [];
     for (const entry of entries) {
       const newEntry = { ...entry, values: { ...entry.values } };
-      const en = newEntry.values.en?.trim();
-      const mn = newEntry.values.mn?.trim();
+      const en =
+        typeof newEntry.values.en === 'string'
+          ? newEntry.values.en.trim()
+          : String(newEntry.values.en ?? '').trim();
+      const mn =
+        typeof newEntry.values.mn === 'string'
+          ? newEntry.values.mn.trim()
+          : String(newEntry.values.mn ?? '').trim();
       if (!en && mn) {
         const translated = await translateWithCache('en', mn);
         if (translated) {
@@ -130,8 +136,19 @@ export default function ManualTranslationsTab() {
     const notCompleted = [];
     for (const entry of entries) {
       const newEntry = { ...entry, values: { ...entry.values } };
-      const sourceText = newEntry.values.en?.trim() || newEntry.values.mn?.trim();
-      const missingBefore = restLanguages.filter((l) => !newEntry.values[l]?.trim());
+      const sourceText =
+        (typeof newEntry.values.en === 'string'
+          ? newEntry.values.en.trim()
+          : String(newEntry.values.en ?? '').trim()) ||
+        (typeof newEntry.values.mn === 'string'
+          ? newEntry.values.mn.trim()
+          : String(newEntry.values.mn ?? '').trim());
+      const missingBefore = restLanguages.filter((l) => {
+        const val = newEntry.values[l];
+        const trimmed =
+          typeof val === 'string' ? val.trim() : String(val ?? '').trim();
+        return !trimmed;
+      });
       let changed = false;
       if (missingBefore.length && sourceText) {
         for (const lang of missingBefore) {
@@ -142,7 +159,12 @@ export default function ManualTranslationsTab() {
           }
         }
       }
-      const missingAfter = restLanguages.filter((l) => !newEntry.values[l]?.trim());
+      const missingAfter = restLanguages.filter((l) => {
+        const val = newEntry.values[l];
+        const trimmed =
+          typeof val === 'string' ? val.trim() : String(val ?? '').trim();
+        return !trimmed;
+      });
       if (missingBefore.length && missingAfter.length) {
         notCompleted.push(newEntry);
       }
