@@ -132,3 +132,9 @@ test('parseProcedureConfig handles JOIN subquery alias', () => {
   assert.equal(result.config.joins[0].targetTable, 'prod');
   assert.equal(result.config.joins[0].conditions[0].fromField, 'id');
 });
+
+test('parseProcedureConfig throws on HAVING clause', () => {
+  const sql =
+    `CREATE PROCEDURE t() BEGIN SELECT p.id FROM prod p GROUP BY p.id HAVING COUNT(*) > 1; END`;
+  assert.throws(() => parseProcedureConfig(sql), /Unsupported HAVING clause/);
+});
