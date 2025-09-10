@@ -56,18 +56,22 @@ function ReportBuilderInner() {
   const [dbProcIsDefault, setDbProcIsDefault] = useState(false);
   const [isDefault, setIsDefault] = useState(false);
 
-  const tenantProcedures = dbProcedures.filter((p) => !p.isDefault);
-
   const [customParamName, setCustomParamName] = useState('');
   const [customParamType, setCustomParamType] = useState(PARAM_TYPES[0]);
   const { addToast } = useToast();
-  const { company } = useContext(AuthContext);
+  const { company, permissions, session } = useContext(AuthContext);
+  const isAdmin =
+    permissions?.permissions?.system_settings ||
+    session?.permissions?.system_settings;
+
+  const tenantProcedures = dbProcedures.filter((p) => !p.isDefault);
+  const displayProcedures = isAdmin ? dbProcedures : tenantProcedures;
 
   useEffect(() => {
-    const firstTenant = tenantProcedures[0];
-    setSelectedDbProcedure(firstTenant?.name || '');
-    setDbProcIsDefault(firstTenant?.isDefault || false);
-  }, [dbProcedures]);
+    const first = displayProcedures[0];
+    setSelectedDbProcedure(first?.name || '');
+    setDbProcIsDefault(first?.isDefault || false);
+  }, [dbProcedures, isAdmin]);
 
   useEffect(() => {
     setUnionQueries((prev) => {
@@ -147,18 +151,19 @@ function ReportBuilderInner() {
         const res = await fetch(`/api/report_builder/procedures${procQuery}`);
         const data = await res.json();
         const list = (data.names || []).filter(({ name }) =>
-          name.startsWith(`${basePrefix}0_`) ||
-          (company != null && name.startsWith(`${basePrefix}${company}_`)),
+          isAdmin
+            ? name.startsWith(basePrefix)
+            : name.startsWith(`${basePrefix}0_`) ||
+              (company != null &&
+                name.startsWith(`${basePrefix}${company}_`)),
         );
         setDbProcedures(list);
-        setSelectedDbProcedure(list[0]?.name || '');
-        setDbProcIsDefault(list[0]?.isDefault || false);
       } catch (err) {
         console.error(err);
       }
     }
     fetchSaved();
-  }, [generalConfig?.general?.reportProcPrefix, company]);
+  }, [generalConfig?.general?.reportProcPrefix, company, isAdmin]);
 
   async function handleImport() {
     if (
@@ -204,12 +209,13 @@ function ReportBuilderInner() {
         );
         const dataProcs = await resProcs.json();
         const list = (dataProcs.names || []).filter(({ name }) =>
-          name.startsWith(`${basePrefix}0_`) ||
-          (company != null && name.startsWith(`${basePrefix}${company}_`)),
+          isAdmin
+            ? name.startsWith(basePrefix)
+            : name.startsWith(`${basePrefix}0_`) ||
+              (company != null &&
+                name.startsWith(`${basePrefix}${company}_`)),
         );
         setDbProcedures(list);
-        setSelectedDbProcedure(list[0]?.name || '');
-        setDbProcIsDefault(list[0]?.isDefault || false);
       } catch {}
       addToast('Imported', 'success');
     } catch (err) {
@@ -2758,7 +2764,7 @@ function ReportBuilderInner() {
           }}
           style={{ marginLeft: '0.5rem' }}
         >
-          {tenantProcedures.map((p) => (
+          {displayProcedures.map((p) => (
             <option key={p.name} value={p.name}>
               {p.name}
             </option>
