@@ -36,15 +36,11 @@ export async function fetchModules() {
       const [rows] = await db.pool.query(
         'SELECT module_key AS moduleKey, label FROM modules',
       );
-      await db.pool.end();
       return rows.map((r) => ({ moduleKey: r.moduleKey, label: r.label }));
     } catch (err) {
       console.warn(
         `[translations] DB query failed; falling back to defaults: ${err.message}`,
       );
-      try {
-        await db.pool.end();
-      } catch {}
     }
   } catch (err) {
     console.warn(
