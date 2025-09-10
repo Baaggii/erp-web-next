@@ -68,3 +68,23 @@ test('parseProcedureConfig converts SQL with ORDER BY and LIMIT', () => {
   assert.equal(result.config.fromTable, 'prod');
   assert.equal(result.config.fields.length, 2);
 });
+
+test('parseProcedureConfig handles subquery FROM alias', () => {
+  const sql =
+    `CREATE PROCEDURE t() BEGIN SELECT s.id FROM (SELECT id FROM prod) s; END`;
+  const result = parseProcedureConfig(sql);
+  assert.equal(result.converted, true);
+  assert.equal(result.config.fromTable, 's');
+  assert.equal(result.config.fields[0].table, 's');
+});
+
+test('parseProcedureConfig parses JOIN USING clause', () => {
+  const sql =
+    `CREATE PROCEDURE t() BEGIN SELECT p.id, c.name FROM prod p JOIN cat c USING (id); END`;
+  const result = parseProcedureConfig(sql);
+  assert.equal(result.converted, true);
+  assert.equal(result.config.joins.length, 1);
+  assert.equal(result.config.joins[0].conditions[0].fromField, 'id');
+  assert.equal(result.config.joins[0].conditions[0].toField, 'id');
+  assert.equal(result.config.joins[0].targetTable, 'prod');
+});

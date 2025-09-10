@@ -133,21 +133,47 @@ function convertSql(sql) {
 function parseFromAndJoins(text) {
   const aliasMap = {};
   let remaining = text.trim();
+  let partial = false;
 
-  const fromMatch = remaining.match(/^([`"\w\.]+)(?:\s+(?:AS\s+)?([`"\w]+))?/i);
-  if (!fromMatch)
-    return { fromTable: '', fromAlias: '', joins: [], aliasMap, partial: true };
-  let fromTable = fromMatch[1].replace(/[`"]/g, '');
-  let fromAlias = fromMatch[2];
-  if (!fromAlias || /(LEFT|RIGHT|INNER|FULL|OUTER|CROSS|JOIN)/i.test(fromAlias)) {
+  let fromTable = '';
+  let fromAlias = '';
+
+  if (/^\(/.test(remaining)) {
+    let depth = 0;
+    let i = 0;
+    for (; i < remaining.length; i++) {
+      const ch = remaining[i];
+      if (ch === '(') depth += 1;
+      else if (ch === ')') {
+        depth -= 1;
+        if (depth === 0) break;
+      }
+    }
+    const after = remaining.slice(i + 1).trim();
+    const aliasMatch = after.match(/^(?:AS\s+)?([`"\w]+)/i);
+    if (!aliasMatch) {
+      return { fromTable: '', fromAlias: '', joins: [], aliasMap, partial: true };
+    }
+    fromTable = aliasMatch[1].replace(/[`"]/g, '');
     fromAlias = fromTable;
+    aliasMap[fromAlias] = fromTable;
+    remaining = after.slice(aliasMatch[0].length).trim();
+  } else {
+    const fromMatch = remaining.match(/^([`"\w\.]+)(?:\s+(?:AS\s+)?([`"\w]+))?/i);
+    if (!fromMatch)
+      return { fromTable: '', fromAlias: '', joins: [], aliasMap, partial: true };
+    fromTable = fromMatch[1].replace(/[`"]/g, '');
+    fromAlias = fromMatch[2];
+    if (!fromAlias || /(LEFT|RIGHT|INNER|FULL|OUTER|CROSS|JOIN)/i.test(fromAlias)) {
+      fromAlias = fromTable;
+    }
+    aliasMap[fromAlias] = fromTable;
+    remaining = remaining.slice(fromMatch[0].length).trim();
   }
-  aliasMap[fromAlias] = fromTable;
-  remaining = remaining.slice(fromMatch[0].length).trim();
 
   const joins = [];
-  let partial = false;
-  const joinRe = /(LEFT|RIGHT|INNER|FULL|OUTER|CROSS)?\s*JOIN\s+([`"\w\.]+)(?:\s+(?:AS\s+)?([`"\w]+))?\s+ON\s+([^]*?)(?=(LEFT|RIGHT|INNER|FULL|OUTER|CROSS)?\s*JOIN|$)/gi;
+  let lastAlias = fromAlias;
+  const joinRe = /(LEFT|RIGHT|INNER|FULL|OUTER|CROSS)?\s*JOIN\s+([`"\w\.]+)(?:\s+(?:AS\s+)?([`"\w]+))?\s+(ON|USING)\s+([^]*?)(?=(LEFT|RIGHT|INNER|FULL|OUTER|CROSS)?\s*JOIN|$)/gi;
   let jm;
   while ((jm = joinRe.exec(remaining))) {
     const type = jm[1] ? `${jm[1].trim()} JOIN` : 'JOIN';
@@ -157,7 +183,12 @@ function parseFromAndJoins(text) {
       alias = table;
     }
     aliasMap[alias] = table;
-    const conditions = parseJoinConditions(jm[4].trim(), alias, aliasMap);
+    let conditions = [];
+    if (jm[4].toUpperCase() === 'ON') {
+      conditions = parseJoinConditions(jm[5].trim(), alias, aliasMap);
+    } else {
+      conditions = parseUsingColumns(jm[5].trim(), lastAlias);
+    }
     if (conditions.length === 0) partial = true;
     const targetAlias = conditions[0]?.targetAlias || fromAlias;
     conditions.forEach((c) => delete c.targetAlias);
@@ -169,6 +200,7 @@ function parseFromAndJoins(text) {
       conditions,
       filters: [],
     });
+    lastAlias = alias;
   }
 
   if (remaining.slice(joinRe.lastIndex).trim()) partial = true;
@@ -204,6 +236,20 @@ function parseJoinConditions(text, joinAlias, aliasMap) {
     });
   });
   return conds;
+}
+
+function parseUsingColumns(text, baseAlias) {
+  const cols = text
+    .replace(/^\(|\)$/g, '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return cols.map((col, idx) => ({
+    fromField: col.replace(/[`"]/g, ''),
+    toField: col.replace(/[`"]/g, ''),
+    connector: idx > 0 ? 'AND' : undefined,
+    targetAlias: baseAlias,
+  }));
 }
 
 function parseFields(text, aliasMap) {
