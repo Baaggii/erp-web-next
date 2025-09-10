@@ -6,6 +6,7 @@ export default function GenerateTranslationsTab() {
   const [logs, setLogs] = useState([]);
   const [status, setStatus] = useState('');
   const [source, setSource] = useState(null);
+  const [filePath, setFilePath] = useState('');
 
   useEffect(() => {
     window.addEventListener('beforeunload', cancel);
@@ -19,7 +20,10 @@ export default function GenerateTranslationsTab() {
     if (source) return;
     setLogs([]);
     setStatus(t('generationStarted', 'Generation started'));
-    const es = new EventSource('/api/translations/generate');
+    const url = filePath
+      ? `/api/translations/generate?file=${encodeURIComponent(filePath)}`
+      : '/api/translations/generate';
+    const es = new EventSource(url);
     es.onmessage = (e) => {
       if (e.data === '[DONE]') {
         setStatus(t('generationCompleted', 'Generation completed'));
@@ -57,6 +61,13 @@ export default function GenerateTranslationsTab() {
   return (
     <div>
       <div style={{ marginBottom: '0.5rem' }}>
+        <input
+          type="text"
+          placeholder={t('exportedFilePath', 'Exported texts JSON path')}
+          value={filePath}
+          onChange={(e) => setFilePath(e.target.value)}
+          style={{ marginRight: '0.5rem' }}
+        />
         <button onClick={start} disabled={!!source}>
           {t('start', 'Start')}
         </button>

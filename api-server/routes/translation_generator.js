@@ -30,7 +30,11 @@ router.get('/', requireAuth, async (req, res, next) => {
 
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
-    const scriptPath = path.resolve(__dirname, '../../scripts/generateTranslations.cli.js');
+    const scriptPath = path.resolve(
+      __dirname,
+      '../../scripts/generateTranslations.cli.js',
+    );
+    const textsPath = req.query.file;
 
     const sendError = (err) => {
       res.write(`event: generator_error\ndata: ${err.message}\n\n`);
@@ -41,7 +45,9 @@ router.get('/', requireAuth, async (req, res, next) => {
 
     let child;
     try {
-      child = spawn(process.execPath, [scriptPath], {
+      const args = [scriptPath];
+      if (textsPath) args.push(textsPath);
+      child = spawn(process.execPath, args, {
         signal: controller.signal,
       });
     } catch (err) {
