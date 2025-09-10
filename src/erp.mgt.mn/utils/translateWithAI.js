@@ -2,28 +2,14 @@ const localeCache = {};
 const aiCache = {};
 let aiDisabled = false;
 
-function getCompanyId() {
-  try {
-    const stored = localStorage.getItem('erp_session_ids');
-    if (stored) return JSON.parse(stored).company ?? 0;
-  } catch {}
-  return 0;
-}
-
 async function loadLocale(lang) {
   if (!localeCache[lang]) {
-    const companyId = getCompanyId();
-    const ids = companyId != null ? [companyId, 0] : [0];
-    for (const id of ids) {
-      try {
-        const res = await fetch(`/config/${id}/locales/${lang}.json`);
-        if (res.ok) {
-          localeCache[lang] = await res.json();
-          break;
-        }
-      } catch {}
+    try {
+      localeCache[lang] = (await import(`../locales/${lang}.json`)).default;
+    } catch (err) {
+      console.error('Failed to load locale', lang, err);
+      localeCache[lang] = {};
     }
-    if (!localeCache[lang]) localeCache[lang] = {};
   }
   return localeCache[lang];
 }

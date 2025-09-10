@@ -1,10 +1,7 @@
 // scripts/generateTranslations.js
 import fs from 'fs';
 import path from 'path';
-import {
-  tenantConfigPath,
-  getConfigPathSync,
-} from '../api-server/utils/configPaths.js';
+import { getConfigPathSync } from '../api-server/utils/configPaths.js';
 let OpenAI;
 try {
   ({ default: OpenAI } = await import('../api-server/utils/openaiClient.js'));
@@ -39,7 +36,7 @@ const { path: transactionFormsPath } = getConfigPathSync(
   'transactionForms.json',
   companyId,
 );
-const localesDir = tenantConfigPath('locales', companyId);
+const localesDir = path.resolve('src/erp.mgt.mn/locales');
 const tooltipsDir = path.join(localesDir, 'tooltips');
 const TIMEOUT_MS = 7000;
 
@@ -802,11 +799,12 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
     if (signal?.aborted) throw new Error('Aborted');
   };
 
-  await fs.promises.mkdir(tooltipsDir, { recursive: true });
+  const tooltipDir = path.resolve('src/erp.mgt.mn/locales/tooltips');
+  await fs.promises.mkdir(tooltipDir, { recursive: true });
 
   const tipData = {};
   for (const lang of languages) {
-    const p = path.join(tooltipsDir, `${lang}.json`);
+    const p = path.join(tooltipDir, `${lang}.json`);
     tipData[lang] = fs.existsSync(p)
       ? JSON.parse(fs.readFileSync(p, 'utf8'))
       : {};
@@ -815,11 +813,11 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
   if (tipData.en && tipData.mn) {
     syncKeys(tipData.en, tipData.mn, 'tooltip');
     fs.writeFileSync(
-      path.join(tooltipsDir, 'en.json'),
+      path.join(tooltipDir, 'en.json'),
       JSON.stringify(sortObj(tipData.en), null, 2),
     );
     fs.writeFileSync(
-      path.join(tooltipsDir, 'mn.json'),
+      path.join(tooltipDir, 'mn.json'),
       JSON.stringify(sortObj(tipData.mn), null, 2),
     );
   }
@@ -859,7 +857,7 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
 
   for (const lang of languages) {
     checkAbort();
-    const langPath = path.join(tooltipsDir, `${lang}.json`);
+    const langPath = path.join(tooltipDir, `${lang}.json`);
     const current = tipData[lang] || {};
     // remove keys not in base to keep key counts aligned
     for (const k of Object.keys(current)) {

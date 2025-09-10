@@ -29,41 +29,25 @@ async function saveNodeCache() {
   await fs.writeFile(nodeCachePath, JSON.stringify(nodeCache, null, 2));
 }
 
-function getCompanyId() {
-  if (typeof process !== 'undefined' && process.versions?.node) {
-    return Number(process.env.COMPANY_ID || 0);
-  }
-  try {
-    const stored = localStorage.getItem('erp_session_ids');
-    if (stored) return JSON.parse(stored).company ?? 0;
-  } catch {}
-  return 0;
-}
-
 async function loadLocale(lang) {
   if (localeCache[lang]) return localeCache[lang];
   try {
     if (typeof process !== 'undefined' && process.versions?.node) {
       const fs = await import('fs/promises');
-      const { tenantConfigPath } = await import(
-        '../../api-server/utils/configPaths.js'
+      const path = await import('path');
+      const file = path.join(
+        process.cwd(),
+        'src',
+        'erp.mgt.mn',
+        'locales',
+        `${lang}.json`,
       );
-      const file = tenantConfigPath(`locales/${lang}.json`, getCompanyId());
       const data = await fs.readFile(file, 'utf8');
       localeCache[lang] = JSON.parse(data);
     } else {
-      const companyId = getCompanyId();
-      const ids = companyId != null ? [companyId, 0] : [0];
-      for (const id of ids) {
-        try {
-          const res = await fetch(`/config/${id}/locales/${lang}.json`);
-          if (res.ok) {
-            localeCache[lang] = await res.json();
-            break;
-          }
-        } catch {}
-      }
-      if (!localeCache[lang]) localeCache[lang] = {};
+      localeCache[lang] = (
+        await import(`../locales/${lang}.json`)
+      ).default;
     }
   } catch {
     localeCache[lang] = {};
