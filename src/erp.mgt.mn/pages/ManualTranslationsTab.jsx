@@ -230,19 +230,21 @@ export default function ManualTranslationsTab() {
   return (
     <div>
       <div style={{ marginBottom: '0.5rem', display: 'flex', gap: '0.5rem' }}>
-        <button onClick={addRow}>{t('addRow', 'Add Row')}</button>
-        <button onClick={completeEnMn} disabled={completing}>
+        <button type="button" onClick={addRow}>{t('addRow', 'Add Row')}</button>
+        <button type="button" onClick={completeEnMn} disabled={completing}>
           {completing
             ? t('completing', 'Completing...')
             : t('completeEnMn', 'Complete en/mn translations')}
         </button>
-        <button onClick={completeOtherLanguages} disabled={completing}>
+        <button type="button" onClick={completeOtherLanguages} disabled={completing}>
           {completing
             ? t('completing', 'Completing...')
             : t('completeOtherLangs', 'Complete other languages translations')}
         </button>
         {completing && (
-          <button onClick={() => (abortRef.current = true)}>{t('cancel', 'Cancel')}</button>
+          <button type="button" onClick={() => (abortRef.current = true)}>
+            {t('cancel', 'Cancel')}
+          </button>
         )}
         <input
           value={searchTerm}
