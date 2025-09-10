@@ -1346,11 +1346,11 @@ function ReportBuilderInner() {
     }
   }
 
-  async function handleLoadConfig() {
-    if (!selectedReport) return;
+  async function handleLoadConfig(name = selectedReport) {
+    if (!name) return;
     try {
       const res = await fetch(
-        `/api/report_builder/configs/${encodeURIComponent(selectedReport)}`,
+        `/api/report_builder/configs/${encodeURIComponent(name)}`,
       );
       const data = await res.json();
       setProcName(data.procName || '');
@@ -1443,6 +1443,12 @@ function ReportBuilderInner() {
     } catch (err) {
       console.error(err);
     }
+  }
+
+  async function handleLoadConfigFromProcedure() {
+    if (!selectedDbProcedure) return;
+    setSelectedReport(selectedDbProcedure);
+    await handleLoadConfig(selectedDbProcedure);
   }
 
   async function handleSaveProcFile() {
@@ -2763,6 +2769,12 @@ function ReportBuilderInner() {
           style={{ marginLeft: '0.5rem' }}
         >
           Load Script
+        </button>
+        <button
+          onClick={handleLoadConfigFromProcedure}
+          style={{ marginLeft: '0.5rem' }}
+        >
+          Load Config
         </button>
         <button
           onClick={handleDeleteProcedure}
