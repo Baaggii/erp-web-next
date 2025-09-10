@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext } from 'react';
+import React, { useEffect, useState, useContext, useRef } from 'react';
 import I18nContext from '../context/I18nContext.jsx';
 import translateWithCache from '../utils/translateWithCache.js';
 
@@ -10,6 +10,7 @@ export default function ManualTranslationsTab() {
   const [perPage, setPerPage] = useState(10);
   const [searchTerm, setSearchTerm] = useState('');
   const [completing, setCompleting] = useState(false);
+  const abortRef = useRef(false);
 
   useEffect(() => {
     load();
@@ -82,10 +83,12 @@ export default function ManualTranslationsTab() {
   }
 
   async function completeEnMn() {
+    abortRef.current = false;
     setCompleting(true);
     const updated = [];
     const toSave = [];
     for (const entry of entries) {
+      if (abortRef.current) break;
       const newEntry = { ...entry, values: { ...entry.values } };
       const en = newEntry.values.en?.trim();
       const mn = newEntry.values.mn?.trim();
@@ -105,6 +108,10 @@ export default function ManualTranslationsTab() {
       updated.push(newEntry);
     }
     setEntries(updated);
+    if (abortRef.current) {
+      setCompleting(false);
+      return;
+    }
     for (const entry of toSave) {
       await fetch('/api/manual_translations', {
         method: 'POST',
@@ -123,24 +130,28 @@ export default function ManualTranslationsTab() {
   }
 
   async function completeOtherLanguages() {
+    abortRef.current = false;
     setCompleting(true);
     const restLanguages = languages.filter((l) => l !== 'en' && l !== 'mn');
     const updated = [];
     const toSave = [];
     const notCompleted = [];
     for (const entry of entries) {
+      if (abortRef.current) break;
       const newEntry = { ...entry, values: { ...entry.values } };
       const sourceText = newEntry.values.en?.trim() || newEntry.values.mn?.trim();
       const missingBefore = restLanguages.filter((l) => !newEntry.values[l]?.trim());
       let changed = false;
       if (missingBefore.length && sourceText) {
         for (const lang of missingBefore) {
+          if (abortRef.current) break;
           const translated = await translateWithCache(lang, sourceText);
           if (translated) {
             newEntry.values[lang] = translated;
             changed = true;
           }
         }
+        if (abortRef.current) break;
       }
       const missingAfter = restLanguages.filter((l) => !newEntry.values[l]?.trim());
       if (missingBefore.length && missingAfter.length) {
@@ -152,6 +163,10 @@ export default function ManualTranslationsTab() {
       updated.push(newEntry);
     }
     setEntries(updated);
+    if (abortRef.current) {
+      setCompleting(false);
+      return;
+    }
     for (const entry of toSave) {
       await fetch('/api/manual_translations', {
         method: 'POST',
@@ -173,7 +188,10 @@ export default function ManualTranslationsTab() {
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: {
-            message: t('translationsIncomplete', 'Some entries could not be completed'),
+            message: t(
+              'translationsIncomplete',
+              'Some entries could not be completed',
+            ),
             type: 'error',
           },
         }),
@@ -201,6 +219,9 @@ export default function ManualTranslationsTab() {
             ? t('completing', 'Completing...')
             : t('completeOtherLangs', 'Complete other languages translations')}
         </button>
+        {completing && (
+          <button onClick={() => (abortRef.current = true)}>{t('cancel', 'Cancel')}</button>
+        )}
         <input
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
