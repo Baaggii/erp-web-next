@@ -10,7 +10,7 @@ import buildReportSql from './buildReportSql.js';
  * @returns {string}
  */
 export default function buildStoredProcedure(definition = {}) {
-  const { name, params = [], report, prefix = '' } = definition;
+  const { name, params = [], report, prefix = '', config } = definition;
   if (!name) throw new Error('procedure name is required');
   if (!report) throw new Error('report definition is required');
 
@@ -33,6 +33,7 @@ export default function buildStoredProcedure(definition = {}) {
     paramLines ? `  ${paramLines}` : '',
     ')',
     'BEGIN',
+    config ? `  /*RB_CONFIG${JSON.stringify(config)}RB_CONFIG*/` : '',
     selectSql + ';',
     'END $$',
     'DELIMITER ;',
