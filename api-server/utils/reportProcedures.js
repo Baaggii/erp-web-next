@@ -1,28 +1,13 @@
 import { listTransactionNames } from '../services/transactionFormConfig.js';
 import { listAllowedReports } from '../services/reportAccessConfig.js';
-import { getEmploymentSession, getUserLevelActions } from '../../db/index.js';
-
-function flattenPermissions(permsObj = {}) {
-  const set = new Set();
-  for (const [key, value] of Object.entries(permsObj)) {
-    if (value && typeof value === 'object') {
-      Object.keys(value).forEach((k) => set.add(k));
-    } else if (value) {
-      set.add(key);
-    }
-  }
-  return set;
-}
+import { getEmploymentSession } from '../../db/index.js';
 
 async function getUserContext(user, companyId) {
   const session = await getEmploymentSession(user.empid, companyId);
-  const perms = session?.user_level
-    ? await getUserLevelActions(session.user_level, companyId)
-    : {};
   return {
     branchId: session?.branch_id,
     departmentId: session?.department_id,
-    permSet: flattenPermissions(perms),
+    userLevelId: session?.user_level,
   };
 }
 
@@ -62,7 +47,8 @@ export async function listPermittedProcedures(
         continue;
       if (
         access.permissions.length &&
-        !access.permissions.some((p) => userCtx.permSet.has(p))
+        (userCtx.userLevelId == null ||
+          !access.permissions.includes(userCtx.userLevelId))
       )
         continue;
     }

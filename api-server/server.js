@@ -125,6 +125,7 @@ app.use("/api/modules", requireAuth, moduleRoutes);
 app.use("/api/company_modules", requireAuth, companyModuleRoutes);
 app.use("/api/coding_tables", requireAuth, codingTableRoutes);
 app.use("/api/header_mappings", requireAuth, headerMappingRoutes);
+app.use("/api/manual_translations", manualTranslationsRoutes);
 app.use("/api/openai", featureToggle('aiApiEnabled'), openaiRoutes);
 app.use("/api/ai_inventory", featureToggle('aiInventoryApiEnabled'), aiInventoryRoutes);
 app.use("/api/display_fields", displayFieldRoutes);

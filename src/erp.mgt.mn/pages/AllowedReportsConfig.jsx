@@ -16,7 +16,8 @@ export default function AllowedReportsConfig() {
   const [branchCfg, setBranchCfg] = useState({});
   const [deptRows, setDeptRows] = useState([]);
   const [deptCfg, setDeptCfg] = useState({});
-  const [permOptions, setPermOptions] = useState([]);
+  const [permRows, setPermRows] = useState([]);
+  const [permCfg, setPermCfg] = useState({});
 
   useEffect(() => {
     fetch('/api/report_access', { credentials: 'include' })
@@ -57,23 +58,15 @@ export default function AllowedReportsConfig() {
       .then(setDeptCfg)
       .catch(() => setDeptCfg({ idField: null, displayFields: [] }));
 
-    fetch('/api/permissions/actions', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : { permissions: [] }))
-      .then((data) => {
-        const perms = Array.isArray(data.permissions)
-          ? data.permissions
-          : Object.values(data.permissions || {});
-        setPermOptions(
-          perms.map((p) => ({
-            value: typeof p === 'string' ? p : p.key,
-            label:
-              typeof p === 'string'
-                ? p
-                : p.name || p.key,
-          })),
-        );
-      })
-      .catch(() => setPermOptions([]));
+    fetch('/api/tables/user_levels?perPage=500', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { rows: [] }))
+      .then((data) => setPermRows(data.rows || []))
+      .catch(() => setPermRows([]));
+
+    fetch('/api/display_fields?table=user_levels', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { idField: null, displayFields: [] }))
+      .then(setPermCfg)
+      .catch(() => setPermCfg({ idField: null, displayFields: [] }));
   }, []);
 
   const branchOptions = useMemo(() => {
@@ -108,12 +101,28 @@ export default function AllowedReportsConfig() {
     });
   }, [deptRows, deptCfg]);
 
+  const permOptions = useMemo(() => {
+    const idField = permCfg?.idField || 'id';
+    return permRows.map((r) => {
+      const val = r[idField] ?? r.id;
+      const label = permCfg?.displayFields?.length
+        ? permCfg.displayFields
+            .map((f) => r[f])
+            .filter((v) => v !== undefined && v !== null)
+            .join(' - ')
+        : Object.values(r)
+            .filter((v) => v !== undefined && v !== null)
+            .join(' - ');
+      return { value: String(val), label };
+    });
+  }, [permRows, permCfg]);
+
   function edit(p) {
     const info = reports[p] || { branches: [], departments: [], permissions: [] };
     setProc(p);
     setBranches((info.branches || []).map(String));
     setDepartments((info.departments || []).map(String));
-    setPermissions(info.permissions || []);
+    setPermissions((info.permissions || []).map(String));
   }
 
   function handleNew() {
@@ -133,7 +142,9 @@ export default function AllowedReportsConfig() {
         proc,
         branches: branches.map((v) => Number(v)).filter((v) => !Number.isNaN(v)),
         departments: departments.map((v) => Number(v)).filter((v) => !Number.isNaN(v)),
-        permissions,
+        permissions: permissions
+          .map((v) => Number(v))
+          .filter((v) => !Number.isNaN(v)),
       };
       const res = await fetch('/api/report_access', {
         method: 'POST',
@@ -197,7 +208,16 @@ export default function AllowedReportsConfig() {
                   <td>{p}</td>
                   <td>{(info.branches || []).join(', ')}</td>
                   <td>{(info.departments || []).join(', ')}</td>
-                  <td>{(info.permissions || []).join(', ')}</td>
+                  <td>
+                    {(info.permissions || [])
+                      .map((perm) => {
+                        const opt = permOptions.find(
+                          (o) => o.value === String(perm),
+                        );
+                        return opt ? opt.label : perm;
+                      })
+                      .join(', ')}
+                  </td>
                   <td>
                     <button onClick={() => edit(p)}>Edit</button>
                     <button

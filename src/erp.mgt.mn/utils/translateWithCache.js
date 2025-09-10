@@ -29,6 +29,17 @@ async function saveNodeCache() {
   await fs.writeFile(nodeCachePath, JSON.stringify(nodeCache, null, 2));
 }
 
+function getCompanyId() {
+  if (typeof process !== 'undefined' && process.versions?.node) {
+    return Number(process.env.COMPANY_ID || 0);
+  }
+  try {
+    const stored = localStorage.getItem('erp_session_ids');
+    if (stored) return JSON.parse(stored).company ?? 0;
+  } catch {}
+  return 0;
+}
+
 async function loadLocale(lang) {
   if (localeCache[lang]) return localeCache[lang];
   try {
@@ -41,9 +52,18 @@ async function loadLocale(lang) {
       const data = await fs.readFile(file, 'utf8');
       localeCache[lang] = JSON.parse(data);
     } else {
-      localeCache[lang] = (
-        await import(`../locales/${lang}.json`)
-      ).default;
+      const companyId = getCompanyId();
+      const ids = companyId != null ? [companyId, 0] : [0];
+      for (const id of ids) {
+        try {
+          const res = await fetch(`/config/${id}/locales/${lang}.json`);
+          if (res.ok) {
+            localeCache[lang] = await res.json();
+            break;
+          }
+        } catch {}
+      }
+      if (!localeCache[lang]) localeCache[lang] = {};
     }
   } catch {
     localeCache[lang] = {};
