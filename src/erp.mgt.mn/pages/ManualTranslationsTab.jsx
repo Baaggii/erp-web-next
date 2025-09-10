@@ -131,6 +131,13 @@ export default function ManualTranslationsTab() {
         </tbody>
       </table>
       <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center' }}>
+        <button
+          onClick={() => setPage(1)}
+          disabled={page === 1}
+          style={{ marginRight: '0.25rem' }}
+        >
+          {t('first', 'First')}
+        </button>
         <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>
           {t('prev', 'Prev')}
         </button>
@@ -142,6 +149,13 @@ export default function ManualTranslationsTab() {
           disabled={page === totalPages}
         >
           {t('next', 'Next')}
+        </button>
+        <button
+          onClick={() => setPage(totalPages)}
+          disabled={page === totalPages}
+          style={{ marginLeft: '0.25rem' }}
+        >
+          {t('last', 'Last')}
         </button>
         <span style={{ marginLeft: '1rem' }}>{t('perPage', 'Per page')}:</span>
         <input
