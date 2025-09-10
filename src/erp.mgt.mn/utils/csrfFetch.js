@@ -105,7 +105,9 @@ window.fetch = async (url, options = {}, _retry) => {
       console.error('API Error:', method, url, errorMsg);
     }
     window.dispatchEvent(
-      new CustomEvent('toast', { detail: { message: `❌ Request failed: ${errorMsg}`, type: 'error' } })
+      new CustomEvent('toast', {
+        detail: { message: `Request failed: ${errorMsg}`, type: 'error' },
+      })
     );
   }
   return res;

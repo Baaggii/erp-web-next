@@ -125,10 +125,16 @@ async function requestTranslation(text, lang) {
       aiDisabled = true;
       return null;
     }
+    if (res.status === 429) {
+      const err = new Error('rate limited');
+      err.rateLimited = true;
+      throw err;
+    }
     if (!res.ok) throw new Error('openai request failed');
     const data = await res.json();
     return data.response?.trim() || null;
   } catch (err) {
+    if (err.rateLimited) throw err;
     console.error('AI translation failed', err);
     return null;
   }
@@ -160,7 +166,13 @@ export default async function translateWithCache(lang, key, fallback) {
     return cached;
   }
 
-  const translated = await requestTranslation(base, lang);
+  let translated;
+  try {
+    translated = await requestTranslation(base, lang);
+  } catch (err) {
+    if (err.rateLimited) throw err;
+    return base;
+  }
   if (!translated) return base;
 
   setLS(cacheKey, translated);

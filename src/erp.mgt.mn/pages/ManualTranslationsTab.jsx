@@ -2,6 +2,8 @@ import React, { useEffect, useState, useContext, useRef } from 'react';
 import I18nContext from '../context/I18nContext.jsx';
 import translateWithCache from '../utils/translateWithCache.js';
 
+const delay = () => new Promise((r) => setTimeout(r, 200));
+
 export default function ManualTranslationsTab() {
   const { t } = useContext(I18nContext);
   const [languages, setLanguages] = useState([]);
@@ -87,8 +89,9 @@ export default function ManualTranslationsTab() {
     setCompleting(true);
     const updated = [];
     const toSave = [];
+    let rateLimited = false;
     for (const entry of entries) {
-      if (abortRef.current) break;
+      if (abortRef.current || rateLimited) break;
       const newEntry = { ...entry, values: { ...entry.values } };
       const en =
         typeof newEntry.values.en === 'string'
@@ -99,21 +102,49 @@ export default function ManualTranslationsTab() {
           ? newEntry.values.mn.trim()
           : String(newEntry.values.mn ?? '').trim();
       if (!en && mn) {
-        const translated = await translateWithCache('en', mn);
-        if (translated) {
-          newEntry.values.en = translated;
-          toSave.push(newEntry);
+        try {
+          await delay();
+          const translated = await translateWithCache('en', mn);
+          if (translated) {
+            newEntry.values.en = translated;
+            toSave.push(newEntry);
+          }
+        } catch (err) {
+          if (err.rateLimited) {
+            abortRef.current = true;
+            rateLimited = true;
+          }
         }
       } else if (!mn && en) {
-        const translated = await translateWithCache('mn', en);
-        if (translated) {
-          newEntry.values.mn = translated;
-          toSave.push(newEntry);
+        try {
+          await delay();
+          const translated = await translateWithCache('mn', en);
+          if (translated) {
+            newEntry.values.mn = translated;
+            toSave.push(newEntry);
+          }
+        } catch (err) {
+          if (err.rateLimited) {
+            abortRef.current = true;
+            rateLimited = true;
+          }
         }
       }
       updated.push(newEntry);
     }
     setEntries(updated);
+    if (rateLimited) {
+      setCompleting(false);
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: t('openaiRateLimit', 'OpenAI rate limit exceeded'),
+            type: 'error',
+          },
+        }),
+      );
+      return;
+    }
     if (abortRef.current) {
       setCompleting(false);
       return;
@@ -142,8 +173,9 @@ export default function ManualTranslationsTab() {
     const updated = [];
     const toSave = [];
     const notCompleted = [];
+    let rateLimited = false;
     for (const entry of entries) {
-      if (abortRef.current) break;
+      if (abortRef.current || rateLimited) break;
       const newEntry = { ...entry, values: { ...entry.values } };
       const sourceText =
         (typeof newEntry.values.en === 'string'
@@ -161,14 +193,22 @@ export default function ManualTranslationsTab() {
       let changed = false;
       if (missingBefore.length && sourceText) {
         for (const lang of missingBefore) {
-          if (abortRef.current) break;
-          const translated = await translateWithCache(lang, sourceText);
-          if (translated) {
-            newEntry.values[lang] = translated;
-            changed = true;
+          if (abortRef.current || rateLimited) break;
+          try {
+            await delay();
+            const translated = await translateWithCache(lang, sourceText);
+            if (translated) {
+              newEntry.values[lang] = translated;
+              changed = true;
+            }
+          } catch (err) {
+            if (err.rateLimited) {
+              abortRef.current = true;
+              rateLimited = true;
+            }
           }
         }
-        if (abortRef.current) break;
+        if (abortRef.current || rateLimited) break;
       }
       const missingAfter = restLanguages.filter((l) => {
         const val = newEntry.values[l];
@@ -185,6 +225,18 @@ export default function ManualTranslationsTab() {
       updated.push(newEntry);
     }
     setEntries(updated);
+    if (rateLimited) {
+      setCompleting(false);
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: t('openaiRateLimit', 'OpenAI rate limit exceeded'),
+            type: 'error',
+          },
+        }),
+      );
+      return;
+    }
     if (abortRef.current) {
       setCompleting(false);
       return;
