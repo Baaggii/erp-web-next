@@ -52,12 +52,8 @@ function tenantDir(companyId = 0) {
 
 async function resolveDir(companyId = 0) {
   const dir = tenantDir(companyId);
-  try {
-    await fs.access(dir);
-    return { path: dir, isDefault: companyId === 0 };
-  } catch {
-    return { path: null, isDefault: companyId === 0 };
-  }
+  const files = await fs.readdir(dir).catch(() => []);
+  return { path: dir, files, isDefault: companyId === 0 };
 }
 
 function tenantProcDir(companyId = 0) {
@@ -66,12 +62,8 @@ function tenantProcDir(companyId = 0) {
 
 async function resolveProcDir(companyId = 0) {
   const dir = tenantProcDir(companyId);
-  try {
-    await fs.access(dir);
-    return { path: dir, isDefault: companyId === 0 };
-  } catch {
-    return { path: null, isDefault: companyId === 0 };
-  }
+  const files = await fs.readdir(dir).catch(() => []);
+  return { path: dir, files, isDefault: companyId === 0 };
 }
 
 const router = express.Router();
@@ -195,20 +187,13 @@ router.post('/procedure-files/:name', requireAuth, async (req, res, next) => {
 // List stored procedure files on host
 router.get('/procedure-files', requireAuth, async (req, res, next) => {
   try {
-    const { prefix = '' } = req.query;
     const companyId = Number(req.query.companyId ?? req.user.companyId);
-    const { path: dir, isDefault } = await resolveProcDir(companyId);
-    if (!dir) return res.json({ names: [] });
+    const dir = tenantProcDir(companyId);
     const files = await fs.readdir(dir).catch(() => []);
     const names = files
       .filter((f) => f.endsWith('.json'))
       .map((f) => f.replace(/\.json$/, ''))
-      .filter(
-        (n) =>
-          typeof n === 'string' &&
-          (!prefix || n.toLowerCase().includes(prefix.toLowerCase())),
-      )
-      .map((name) => ({ name, isDefault }));
+      .map((name) => ({ name, isDefault: companyId === 0 }));
 
     res.json({ names });
   } catch (err) {
@@ -220,9 +205,7 @@ router.get('/procedure-files', requireAuth, async (req, res, next) => {
 router.get('/procedure-files/defaults', requireAuth, async (req, res, next) => {
   try {
     const { prefix = '' } = req.query;
-    const { path: dir } = await resolveProcDir(0);
-    if (!dir) return res.json({ names: [] });
-    const files = await fs.readdir(dir).catch(() => []);
+    const { files } = await resolveProcDir(0);
     const names = files
       .filter((f) => f.endsWith('.json'))
       .map((f) => f.replace(/\.json$/, ''))
@@ -298,19 +281,13 @@ router.post('/configs/:name', requireAuth, async (req, res, next) => {
 // List saved report definitions
 router.get('/configs', requireAuth, async (req, res, next) => {
   try {
-    const { prefix = '' } = req.query;
     const companyId = Number(req.query.companyId ?? req.user.companyId);
-    const { path: dir, isDefault } = await resolveDir(companyId);
-    const files = dir ? await fs.readdir(dir).catch(() => []) : [];
+    const dir = tenantDir(companyId);
+    const files = await fs.readdir(dir).catch(() => []);
     const names = files
       .filter((f) => f.endsWith('.json'))
-      .map((f) => f.replace(/\.json$/, ''))
-      .filter(
-        (n) =>
-          typeof n === 'string' &&
-          (!prefix || n.toLowerCase().includes(prefix.toLowerCase())),
-      );
-    res.json({ names, isDefault });
+      .map((f) => f.replace(/\.json$/, ''));
+    res.json({ names, isDefault: companyId === 0 });
   } catch (err) {
     next(err);
   }
