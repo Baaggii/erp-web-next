@@ -1207,8 +1207,14 @@ function ReportBuilderInner() {
     }
   }
 
-  async function handlePostProc() {
-    if (!procSql) return;
+  async function handlePostProc(sqlOverride, nameOverride) {
+    if (sqlOverride && typeof sqlOverride.preventDefault === 'function') {
+      sqlOverride = undefined;
+      nameOverride = undefined;
+    }
+    const sqlToPost = sqlOverride ?? procSql;
+    const name = nameOverride ?? procName;
+    if (!sqlToPost) return;
     if (!window.confirm('POST stored procedure to database?')) return;
     const basePrefix = generalConfig?.general?.reportProcPrefix || '';
     const procQuery = basePrefix
@@ -1218,7 +1224,7 @@ function ReportBuilderInner() {
       const res = await fetch(`/api/report_builder/procedures`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql: procSql }),
+        body: JSON.stringify({ sql: sqlToPost }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -1235,7 +1241,7 @@ function ReportBuilderInner() {
       );
       const expectedName = `${basePrefix}${
         company != null ? `${company}_` : ''
-      }${procName}`;
+      }${name}`;
       if (!list.some(({ name }) => name === expectedName)) {
         throw new Error('Save failed');
       }
@@ -1604,13 +1610,15 @@ function ReportBuilderInner() {
       /CREATE\s+DEFINER[^\n]+PROCEDURE/i,
       'CREATE PROCEDURE',
     );
+    let newName;
+    let baseName;
     const nameMatch = sql.match(
       /CREATE\s+PROCEDURE\s+`?([^`(]+)`?\s*\(/i,
     );
     if (nameMatch) {
       const basePrefix = generalConfig?.general?.reportProcPrefix || '';
       const oldName = nameMatch[1];
-      let baseName = oldName;
+      baseName = oldName;
       if (
         basePrefix &&
         baseName.toLowerCase().startsWith(basePrefix.toLowerCase())
@@ -1618,14 +1626,33 @@ function ReportBuilderInner() {
         baseName = baseName.slice(basePrefix.length);
       }
       baseName = baseName.replace(/^\d+_/, '');
-      const newName = `${basePrefix}${company}_${baseName}`;
+      newName = `${basePrefix}${company}_${baseName}`;
       sql = sql.replace(
         /(CREATE\s+PROCEDURE\s+)`?[^`(]+`?/i,
         `$1\`${newName}\``,
       );
+      // ensure a leading DROP PROCEDURE exists and uses the new name
+      if (/^\s*DROP\s+PROCEDURE/i.test(sql)) {
+        sql = sql.replace(
+          /^(\s*DROP\s+PROCEDURE\s+IF\s+EXISTS\s+)`?[^`\s;]+`?/i,
+          `$1\`${newName}\``,
+        );
+        if (!/^\s*DROP\s+PROCEDURE[\s\S]*?\nDELIMITER\s+\$\$/i.test(sql)) {
+          sql = sql.replace(
+            /^(\s*DROP\s+PROCEDURE[^\n]*\n)/i,
+            `$1DELIMITER $$\n`,
+          );
+        }
+      } else {
+        sql = `DROP PROCEDURE IF EXISTS \`${newName}\`;\nDELIMITER $$\n${sql}`;
+      }
       setProcCompanyId(company);
       setProcName(baseName);
     }
+    // ensure body terminates with END $$\nDELIMITER ;
+    sql = sql.replace(/\nDELIMITER\s*;\s*$/i, '');
+    sql = sql.replace(/\nEND\s*(?:\$\$)?\s*;?\s*$/i, '');
+    sql = `${sql}\nEND $$\nDELIMITER ;`;
     setProcSql(sql);
     setProcFileText(sql);
     const paramsMatch = sql.match(/CREATE\s+PROCEDURE[\s\S]*?\(([^)]*)\)/i);
@@ -1644,6 +1671,12 @@ function ReportBuilderInner() {
     } else {
       setParams([]);
     }
+    return { sql, baseName };
+  }
+
+  async function handleReplaceProcedure() {
+    const { sql, baseName } = handleParseSql();
+    await handlePostProc(sql, baseName);
   }
 
   if (loading) {
@@ -2889,6 +2922,13 @@ function ReportBuilderInner() {
           )}
           <button onClick={handleParseSql} style={{ marginTop: '0.5rem' }}>
             Parse SQL
+          </button>
+          <button
+            onClick={handleReplaceProcedure}
+            style={{ marginTop: '0.5rem', marginLeft: '0.5rem' }}
+            disabled={procFileIsDefault}
+          >
+            Replace Procedure
           </button>
         </section>
       )}
