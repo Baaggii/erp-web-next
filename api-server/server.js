@@ -50,6 +50,7 @@ import pendingRequestRoutes from "./routes/pending_request.js";
 import activityLogRoutes from "./routes/user_activity_log.js";
 import userSettingsRoutes from "./routes/user_settings.js";
 import translationRoutes from "./routes/translations.js";
+import manualTranslationsRoutes from "./routes/manual_translations.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -125,6 +126,7 @@ app.use("/api/modules", requireAuth, moduleRoutes);
 app.use("/api/company_modules", requireAuth, companyModuleRoutes);
 app.use("/api/coding_tables", requireAuth, codingTableRoutes);
 app.use("/api/header_mappings", requireAuth, headerMappingRoutes);
+app.use("/api/manual_translations", manualTranslationsRoutes);
 app.use("/api/openai", featureToggle('aiApiEnabled'), openaiRoutes);
 app.use("/api/ai_inventory", featureToggle('aiInventoryApiEnabled'), aiInventoryRoutes);
 app.use("/api/display_fields", displayFieldRoutes);
