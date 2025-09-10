@@ -1253,17 +1253,28 @@ function ReportBuilderInner() {
     }
   }
 
-  async function handleLoadDbProcedure() {
-    if (!selectedDbProcedure) return;
+  async function handleLoadDbProcedure(autoApply = true) {
+    if (!selectedDbProcedure) return '';
     try {
       const res = await fetch(
         `/api/report_builder/procedures/${encodeURIComponent(selectedDbProcedure)}`,
       );
       const data = await res.json();
-      setProcFileText(data.sql || '');
+      const sql = data.sql || '';
+      setProcFileText(sql);
       setProcFileIsDefault(dbProcIsDefault);
+      if (autoApply) {
+        try {
+          const cfg = parseConfigFromSql(sql);
+          if (cfg) applyConfig(cfg);
+        } catch (err) {
+          console.error(err);
+        }
+      }
+      return sql;
     } catch (err) {
       console.error(err);
+      return '';
     }
   }
 
@@ -1368,6 +1379,96 @@ function ReportBuilderInner() {
         }),
       );
     }
+  } 
+
+  function applyConfig(data) {
+    setProcName(data.procName || '');
+    const unionsRaw = data.unionQueries || [];
+    const normalize = (q) => ({
+      unionType: q.unionType || 'UNION',
+      fromTable: q.fromTable || '',
+      joins: (q.joins || []).map((j) => ({
+        ...j,
+        conditions: (j.conditions || []).map((c) => ({
+          connector: c.connector || 'AND',
+          ...c,
+        })),
+        filters: (j.filters || []).map((f) => ({
+          connector: f.connector || 'AND',
+          ...f,
+        })),
+      })),
+      fields: (q.fields || []).map((f) => ({
+        source: f.source || 'field',
+        table: f.table || q.fromTable,
+        field: f.field || '',
+        baseAlias: f.baseAlias || '',
+        alias: f.alias || '',
+        aggregate: f.aggregate || 'NONE',
+        calcParts: (f.calcParts || []).map((p) => ({
+          operator: p.operator || '+',
+          source: p.source || 'field',
+          ...p,
+        })),
+        conditions: (f.conditions || []).map((c) => ({
+          connector: c.connector || 'AND',
+          ...c,
+        })),
+      })),
+      groups: q.groups || [],
+      having: (q.having || []).map((h) => ({
+        connector: h.connector || 'AND',
+        valueType: h.valueType || (h.param ? 'param' : 'value'),
+        source: h.source || 'field',
+        ...h,
+      })),
+      conditions: (q.conditions || []).map((c) => ({
+        connector: c.connector || 'AND',
+        ...c,
+      })),
+      fromFilters: (q.fromFilters || []).map((f) => ({
+        connector: f.connector || 'AND',
+        ...f,
+      })),
+    });
+    const all = [];
+    all.push(
+      normalize({
+        fromTable: data.fromTable,
+        joins: data.joins,
+        fields: data.fields,
+        groups: data.groups,
+        having: data.having,
+        conditions: data.conditions,
+        fromFilters: data.fromFilters,
+        unionType: unionsRaw[0]?.unionType,
+      }),
+    );
+    for (let i = 0; i < unionsRaw.length; i++) {
+      all.push(
+        normalize({
+          ...unionsRaw[i],
+          unionType: unionsRaw[i + 1]?.unionType,
+        }),
+      );
+    }
+    const first = all[0] || {};
+    setUnionQueries(all);
+    setCurrentUnionIndex(0);
+    setFromTable(first.fromTable || '');
+    setFromFilters(first.fromFilters || []);
+    setJoins(first.joins || []);
+    setFields(first.fields || []);
+    setGroups(first.groups || []);
+    setUnionType(first.unionType || 'UNION');
+    setHaving(first.having || []);
+    setParams(data.params || []);
+    setConditions(first.conditions || []);
+    ensureFields(first.fromTable);
+    (first.joins || []).forEach((j) => {
+      ensureFields(j.table);
+      ensureFields(j.targetTable);
+    });
   }
 
   async function handleLoadConfig(name = selectedReport) {
@@ -1377,93 +1478,7 @@ function ReportBuilderInner() {
         `/api/report_builder/configs/${encodeURIComponent(name)}`,
       );
       const data = await res.json();
-      setProcName(data.procName || '');
-      const unionsRaw = data.unionQueries || [];
-      const normalize = (q) => ({
-        unionType: q.unionType || 'UNION',
-        fromTable: q.fromTable || '',
-        joins: (q.joins || []).map((j) => ({
-          ...j,
-          conditions: (j.conditions || []).map((c) => ({
-            connector: c.connector || 'AND',
-            ...c,
-          })),
-          filters: (j.filters || []).map((f) => ({
-            connector: f.connector || 'AND',
-            ...f,
-          })),
-        })),
-        fields: (q.fields || []).map((f) => ({
-          source: f.source || 'field',
-          table: f.table || q.fromTable,
-          field: f.field || '',
-          baseAlias: f.baseAlias || '',
-          alias: f.alias || '',
-          aggregate: f.aggregate || 'NONE',
-          calcParts: (f.calcParts || []).map((p) => ({
-            operator: p.operator || '+',
-            source: p.source || 'field',
-            ...p,
-          })),
-          conditions: (f.conditions || []).map((c) => ({
-            connector: c.connector || 'AND',
-            ...c,
-          })),
-        })),
-        groups: q.groups || [],
-        having: (q.having || []).map((h) => ({
-          connector: h.connector || 'AND',
-          valueType: h.valueType || (h.param ? 'param' : 'value'),
-          source: h.source || 'field',
-          ...h,
-        })),
-        conditions: (q.conditions || []).map((c) => ({
-          connector: c.connector || 'AND',
-          ...c,
-        })),
-        fromFilters: (q.fromFilters || []).map((f) => ({
-          connector: f.connector || 'AND',
-          ...f,
-        })),
-      });
-      const all = [];
-      all.push(
-        normalize({
-          fromTable: data.fromTable,
-          joins: data.joins,
-          fields: data.fields,
-          groups: data.groups,
-          having: data.having,
-          conditions: data.conditions,
-          fromFilters: data.fromFilters,
-          unionType: unionsRaw[0]?.unionType,
-        }),
-      );
-      for (let i = 0; i < unionsRaw.length; i++) {
-        all.push(
-          normalize({
-            ...unionsRaw[i],
-            unionType: unionsRaw[i + 1]?.unionType,
-          }),
-        );
-      }
-      const first = all[0];
-      setUnionQueries(all);
-      setCurrentUnionIndex(0);
-      setFromTable(first.fromTable || '');
-      setFromFilters(first.fromFilters || []);
-      setJoins(first.joins || []);
-      setFields(first.fields || []);
-      setGroups(first.groups || []);
-      setUnionType(first.unionType || 'UNION');
-      setHaving(first.having || []);
-      setParams(data.params || []);
-      setConditions(first.conditions || []);
-      ensureFields(first.fromTable);
-      (first.joins || []).forEach((j) => {
-        ensureFields(j.table);
-        ensureFields(j.targetTable);
-      });
+      applyConfig(data);
     } catch (err) {
       console.error(err);
     }
@@ -1472,7 +1487,14 @@ function ReportBuilderInner() {
   async function handleLoadConfigFromProcedure() {
     if (!selectedDbProcedure) return;
     setSelectedReport(selectedDbProcedure);
-    await handleLoadConfig(selectedDbProcedure);
+    const sql = await handleLoadDbProcedure(false);
+    try {
+      const cfg = parseConfigFromSql(sql);
+      if (!cfg) throw new Error('No config');
+      applyConfig(cfg);
+    } catch (err) {
+      addToast('Failed to load config from procedure', 'error');
+    }
   }
 
   async function handleSaveProcFile() {
@@ -1552,6 +1574,16 @@ function ReportBuilderInner() {
       addToast('Imported', 'success');
     } catch (err) {
       addToast(`Import failed: ${err.message}`, 'error');
+    }
+  }
+
+  function parseConfigFromSql(sql) {
+    const match = sql.match(/\/\*RB_CONFIG([\s\S]*?)RB_CONFIG\*\//);
+    if (!match) return null;
+    try {
+      return JSON.parse(match[1]);
+    } catch {
+      return null;
     }
   }
 
