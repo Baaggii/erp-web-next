@@ -1,7 +1,12 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-const localesDir = path.resolve(process.cwd(), 'src', 'erp.mgt.mn', 'locales');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const projectRoot = path.resolve(__dirname, '../../');
+
+const localesDir = path.join(projectRoot, 'src', 'erp.mgt.mn', 'locales');
 const tooltipDir = path.join(localesDir, 'tooltips');
 
 async function listLangs(dir) {
