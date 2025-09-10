@@ -1238,6 +1238,20 @@ function ReportBuilderInner() {
     }
   }
 
+  async function handleLoadDbProcedure() {
+    if (!selectedDbProcedure) return;
+    try {
+      const res = await fetch(
+        `/api/report_builder/procedures/${encodeURIComponent(selectedDbProcedure)}`,
+      );
+      const data = await res.json();
+      setProcFileText(data.sql || '');
+      setProcFileIsDefault(dbProcIsDefault);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
   async function handlePostView() {
     if (!viewSql) return;
     if (!window.confirm('POST view to database?')) return;
@@ -2744,6 +2758,12 @@ function ReportBuilderInner() {
             </option>
           ))}
         </select>
+        <button
+          onClick={handleLoadDbProcedure}
+          style={{ marginLeft: '0.5rem' }}
+        >
+          Load Script
+        </button>
         <button
           onClick={handleDeleteProcedure}
           style={{ marginLeft: '0.5rem' }}

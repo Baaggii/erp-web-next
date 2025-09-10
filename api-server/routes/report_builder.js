@@ -9,6 +9,7 @@ import {
   saveView,
   listReportProcedures,
   deleteProcedure,
+  getProcedureSql,
 } from '../../db/index.js';
 
 const PROTECTED_PROCEDURE_PREFIXES = ['dynrep_'];
@@ -134,6 +135,18 @@ router.post('/procedures', requireAuth, async (req, res, next) => {
       return res.status(403).json({ message: 'Procedure not allowed' });
     await saveStoredProcedure(sql);
     res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get a stored procedure SQL
+router.get('/procedures/:name', requireAuth, async (req, res, next) => {
+  try {
+    const { name } = req.params;
+    const sql = await getProcedureSql(name);
+    if (!sql) return res.status(404).json({ message: 'Procedure not found' });
+    res.json({ sql });
   } catch (err) {
     next(err);
   }
