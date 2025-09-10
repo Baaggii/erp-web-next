@@ -1161,20 +1161,19 @@ export async function zeroSharedTenantKeys(userId) {
 }
 
 export async function saveStoredProcedure(sql, { allowProtected = false } = {}) {
-  const cleaned = sql
+  const cleanedSql = sql
+    .replace(/^\s*DELIMITER.*$/gim, '')
     .replace(/CREATE\s+DEFINER=`[^`]+`@`[^`]+`\s+PROCEDURE/gi, 'CREATE PROCEDURE')
-    .replace(/^DELIMITER \$\$/gm, '')
-    .replace(/^DELIMITER ;/gm, '')
     .replace(/END\s*\$\$/gm, 'END;');
-  const nameMatch = cleaned.match(/CREATE\s+PROCEDURE\s+`?([^\s`(]+)`?/i);
+  const nameMatch = cleanedSql.match(/CREATE\s+PROCEDURE\s+`?([^\s`(]+)`?/i);
   const procName = nameMatch ? nameMatch[1] : null;
   if (!allowProtected && (await isProtectedProcedure(procName))) {
     const err = new Error('Procedure not allowed');
     err.status = 403;
     throw err;
   }
-  const dropMatch = cleaned.match(/DROP\s+PROCEDURE[^;]+;/i);
-  const createMatch = cleaned.match(/CREATE\s+PROCEDURE[\s\S]+END;/i);
+  const dropMatch = cleanedSql.match(/DROP\s+PROCEDURE[^;]+;/i);
+  const createMatch = cleanedSql.match(/CREATE\s+PROCEDURE[\s\S]+END\s*(;|$)/i);
   if (!createMatch) {
     throw new Error('Missing CREATE PROCEDURE statement');
   }
