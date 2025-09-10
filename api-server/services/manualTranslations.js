@@ -1,8 +1,12 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { tenantConfigPath } from '../utils/configPaths.js';
 
-const localesDir = path.resolve(process.cwd(), 'src', 'erp.mgt.mn', 'locales');
-const tooltipDir = path.join(localesDir, 'tooltips');
+function getDirs(companyId = 0) {
+  const localesDir = tenantConfigPath('locales', companyId);
+  const tooltipDir = path.join(localesDir, 'tooltips');
+  return { localesDir, tooltipDir };
+}
 
 async function listLangs(dir) {
   try {
@@ -13,7 +17,8 @@ async function listLangs(dir) {
   }
 }
 
-export async function loadTranslations() {
+export async function loadTranslations(companyId = 0) {
+  const { localesDir, tooltipDir } = getDirs(companyId);
   const langs = new Set([
     ...(await listLangs(localesDir)),
     ...(await listLangs(tooltipDir)),
@@ -47,8 +52,14 @@ export async function loadTranslations() {
   return { languages: Array.from(langs), entries: Object.values(entries) };
 }
 
-export async function saveTranslation({ key, type = 'locale', values = {} }) {
+export async function saveTranslation({
+  key,
+  type = 'locale',
+  values = {},
+  companyId = 0,
+}) {
   if (!key) return;
+  const { localesDir, tooltipDir } = getDirs(companyId);
   for (const [lang, val] of Object.entries(values)) {
     const dir = type === 'tooltip' ? tooltipDir : localesDir;
     const file = path.join(dir, `${lang}.json`);
@@ -66,8 +77,13 @@ export async function saveTranslation({ key, type = 'locale', values = {} }) {
   }
 }
 
-export async function deleteTranslation(key, type = 'locale') {
+export async function deleteTranslation(
+  key,
+  type = 'locale',
+  companyId = 0,
+) {
   if (!key) return;
+  const { localesDir, tooltipDir } = getDirs(companyId);
   const dir = type === 'tooltip' ? tooltipDir : localesDir;
   for (const lang of await listLangs(dir)) {
     const file = path.join(dir, `${lang}.json`);
