@@ -17,6 +17,7 @@
     "/api/generated_sql",
     "/api/generated_sql/execute",
     "/api/header_mappings",
+    "/api/manual_translations",
     "/api/modules",
     "/api/modules/populate",
     "/api/openai",
