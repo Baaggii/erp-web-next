@@ -184,5 +184,12 @@ export async function exportTranslations(companyId = 0) {
     walkPos(posConfig, []);
   } catch {}
 
-  return sortObj(base);
+  const sorted = sortObj(base);
+  const exportPath = path.join(
+    path.dirname(headerMappingsPath),
+    'exportedtexts.json',
+  );
+  fs.writeFileSync(exportPath, JSON.stringify(sorted, null, 2));
+  console.log(`Exported translations written to ${exportPath}`);
+  return exportPath;
 }
