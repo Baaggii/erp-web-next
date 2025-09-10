@@ -1,26 +1,33 @@
 import React, { useContext } from 'react';
 import I18nContext from '../context/I18nContext.jsx';
+import { useToast } from '../context/ToastContext.jsx';
 
 export default function TextManagementTab() {
   const { t } = useContext(I18nContext);
+  const { addToast } = useToast();
 
   async function handleExport() {
     try {
       const res = await fetch('/api/translations/export', {
         credentials: 'include',
       });
-      if (!res.ok) return;
-      const data = await res.json();
-      const blob = new Blob([JSON.stringify(data, null, 2)], {
-        type: 'application/json',
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'headerMappings.json';
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {}
+      if (!res.ok) {
+        addToast(
+          t('exportTextsFailed', 'Failed to export hardcoded texts'),
+          'error'
+        );
+        return;
+      }
+      addToast(
+        t('exportTextsSuccess', 'Hardcoded texts export started'),
+        'success'
+      );
+    } catch {
+      addToast(
+        t('exportTextsFailed', 'Failed to export hardcoded texts'),
+        'error'
+      );
+    }
   }
 
   return (
