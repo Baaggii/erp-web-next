@@ -4,6 +4,7 @@ import buildReportSql from '../utils/buildReportSql.js';
 import ErrorBoundary from '../components/ErrorBoundary.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import formatSqlValue from '../utils/formatSqlValue.js';
+import parseConfigFromSql from '../utils/parseConfigFromSql.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 
@@ -1502,10 +1503,11 @@ function ReportBuilderInner() {
       if (cfg) {
         applyConfig(cfg);
       } else {
-        addToast('No embedded config found', 'error');
+        addToast('No embedded config found in procedure', 'error');
       }
     } catch (err) {
-      addToast('Failed to load config from procedure', 'error');
+      console.error(err);
+      addToast('Invalid embedded config JSON', 'error');
     }
   }
 
@@ -1586,16 +1588,6 @@ function ReportBuilderInner() {
       addToast('Imported', 'success');
     } catch (err) {
       addToast(`Import failed: ${err.message}`, 'error');
-    }
-  }
-
-  function parseConfigFromSql(sql) {
-    const match = sql.match(/\/\*\s*RB_CONFIG([\s\S]*?)RB_CONFIG\s*\*\//i);
-    if (!match) return null;
-    try {
-      return JSON.parse(match[1]);
-    } catch {
-      return null;
     }
   }
 
