@@ -1308,7 +1308,7 @@ function ReportBuilderInner() {
           if (parsed?.config) applyConfig(parsed.config);
         } catch (err) {
           console.error(err);
-          addToast(err.message || 'SQL parsing error', 'error');
+          addToast(err.message, 'error');
         }
       }
       return sql;
@@ -1535,11 +1535,11 @@ function ReportBuilderInner() {
           }
         } catch (err2) {
           console.error(err2);
-          addToast(err2.message || 'SQL parsing error', 'error');
+          addToast(err2.message, 'error');
         }
         return;
       }
-      addToast(err.message || 'SQL parsing error', 'error');
+      addToast(err.message, 'error');
       return;
     }
 

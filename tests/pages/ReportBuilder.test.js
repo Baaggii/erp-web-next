@@ -159,4 +159,77 @@ if (typeof mock.import !== 'function') {
 
     delete global.fetch;
   });
+
+  test('ReportBuilder surfaces parsing errors', async () => {
+    const states = [];
+    let loadConfigHandler;
+    const reactMock = {
+      useState(initial) {
+        const idx = states.length;
+        states.push(initial);
+        return [states[idx], (v) => (states[idx] = v)];
+      },
+      useEffect() {},
+      useContext() {
+        return { company: 0, permissions: { permissions: { system_settings: true } }, session: {} };
+      },
+      createElement(type, props, ...children) {
+        if (typeof type === 'function') {
+          return type({ ...props, children });
+        }
+        const text = children.flat ? children.flat().join('') : children.join('');
+        if (type === 'button' && text.includes('Load config from stored procedure')) {
+          loadConfigHandler = props.onClick;
+        }
+        return null;
+      },
+    };
+
+    const addToastCalls = [];
+    const sql =
+      'CREATE PROCEDURE t() BEGIN SELECT p.id FROM prod p GROUP BY p.id HAVING COUNT(*) > 1; END';
+    let fetchUrl;
+    global.fetch = async (url) => {
+      fetchUrl = url;
+      return { ok: true, json: async () => ({ sql }) };
+    };
+
+    const { default: ReportBuilder } = await mock.import(
+      '../../src/erp.mgt.mn/pages/ReportBuilder.jsx',
+      {
+        react: {
+          default: reactMock,
+          useState: reactMock.useState,
+          useEffect: reactMock.useEffect,
+          useContext: reactMock.useContext,
+          createElement: reactMock.createElement,
+        },
+        '../utils/buildStoredProcedure.js': { default: () => '' },
+        '../utils/buildReportSql.js': { default: () => '' },
+        '../components/ErrorBoundary.jsx': { default: (p) => p.children },
+        '../hooks/useGeneralConfig.js': { default: () => ({ general: {} }) },
+        '../utils/formatSqlValue.js': { default: (v) => v },
+        '../context/ToastContext.jsx': {
+          useToast: () => ({ addToast: (msg, type) => addToastCalls.push({ msg, type }) }),
+        },
+        '../context/AuthContext.jsx': { AuthContext: {} },
+      },
+    );
+
+    ReportBuilder();
+
+    // selectedDbProcedure
+    states[28] = 'proc1';
+    states[29] = '';
+    states[30] = '';
+
+    await loadConfigHandler();
+
+    assert.equal(fetchUrl, '/api/report_builder/procedures/proc1');
+    assert.deepEqual(addToastCalls, [
+      { msg: 'Unsupported HAVING clause', type: 'error' },
+    ]);
+
+    delete global.fetch;
+  });
 }

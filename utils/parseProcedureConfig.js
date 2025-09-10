@@ -52,7 +52,14 @@ function convertSql(sql) {
   const having = findClause(rest, 'HAVING');
   const limit = findClause(rest, 'LIMIT');
 
-  const clauseIndices = [where.index, group.index, order.index, having.index, limit.index].filter(
+  if (having.index !== -1) {
+    throw new Error('Unsupported HAVING clause');
+  }
+  if (/\bUNION\b/i.test(rest)) {
+    throw new Error('Unsupported UNION clause');
+  }
+
+  const clauseIndices = [where.index, group.index, order.index, limit.index].filter(
     (i) => i !== -1,
   );
   const endIdx = clauseIndices.length ? Math.min(...clauseIndices) : rest.length;
@@ -63,7 +70,7 @@ function convertSql(sql) {
   let groupPart = '';
 
   if (where.index !== -1) {
-    const afterWhereCandidates = [group.index, order.index, having.index, limit.index].filter(
+    const afterWhereCandidates = [group.index, order.index, limit.index].filter(
       (i) => i !== -1 && i > where.index,
     );
     const whereEndIdx = afterWhereCandidates.length
@@ -73,7 +80,7 @@ function convertSql(sql) {
   }
 
   if (group.index !== -1) {
-    const afterGroupCandidates = [order.index, having.index, limit.index].filter(
+    const afterGroupCandidates = [order.index, limit.index].filter(
       (i) => i !== -1 && i > group.index,
     );
     const groupEndIdx = afterGroupCandidates.length
