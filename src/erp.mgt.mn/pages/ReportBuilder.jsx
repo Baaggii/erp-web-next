@@ -4,7 +4,7 @@ import buildReportSql from '../utils/buildReportSql.js';
 import ErrorBoundary from '../components/ErrorBoundary.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import formatSqlValue from '../utils/formatSqlValue.js';
-import parseConfigFromSql from '../utils/parseConfigFromSql.js';
+import parseProcedureConfig from '../utils/parseProcedureConfig.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 
@@ -52,6 +52,7 @@ function ReportBuilderInner() {
   const [selectedProcFile, setSelectedProcFile] = useState('');
   const [dbProcedures, setDbProcedures] = useState([]); // {name,isDefault}
   const [selectedDbProcedure, setSelectedDbProcedure] = useState('');
+  const [loadedProcName, setLoadedProcName] = useState('');
   const [procFileText, setProcFileText] = useState('');
   const [procFileIsDefault, setProcFileIsDefault] = useState(false);
   const [dbProcIsDefault, setDbProcIsDefault] = useState(false);
@@ -1292,9 +1293,10 @@ function ReportBuilderInner() {
       const sql = data.sql || '';
       setProcFileText(sql);
       setProcFileIsDefault(dbProcIsDefault);
+      setLoadedProcName(selectedDbProcedure);
       if (autoApply) {
         try {
-          const cfg = parseConfigFromSql(sql);
+          const cfg = parseProcedureConfig(sql);
           if (cfg) applyConfig(cfg);
         } catch (err) {
           console.error(err);
@@ -1497,9 +1499,12 @@ function ReportBuilderInner() {
   async function handleLoadConfigFromProcedure() {
     if (!selectedDbProcedure) return;
     setSelectedReport(selectedDbProcedure);
-    const sql = await handleLoadDbProcedure(false);
+    let sql = procFileText;
+    if (!sql || loadedProcName !== selectedDbProcedure) {
+      sql = await handleLoadDbProcedure(false);
+    }
     try {
-      const cfg = parseConfigFromSql(sql);
+      const cfg = parseProcedureConfig(sql);
       if (cfg) {
         applyConfig(cfg);
       } else {
@@ -2840,7 +2845,7 @@ function ReportBuilderInner() {
           onClick={handleLoadConfigFromProcedure}
           style={{ marginLeft: '0.5rem' }}
         >
-          Load Config
+          Load config from stored procedure
         </button>
         <button
           onClick={handleDeleteProcedure}

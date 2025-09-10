@@ -33,8 +33,10 @@ export default function buildStoredProcedure(definition = {}) {
     paramLines ? `  ${paramLines}` : '',
     ')',
     'BEGIN',
-    config ? `  /*RB_CONFIG${JSON.stringify(config)}RB_CONFIG*/` : '',
     selectSql + ';',
+    config
+      ? `  /*REPORT_BUILDER_CONFIG ${JSON.stringify(config)} */`
+      : '',
     'END $$',
     'DELIMITER ;',
   ]
