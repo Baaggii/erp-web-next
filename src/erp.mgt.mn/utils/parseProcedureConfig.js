@@ -7,7 +7,7 @@
  * @returns {{config: object, converted: boolean}|null}
  */
 export default function parseProcedureConfig(sql = '') {
-  if (!sql) return null;
+  if (!sql) return { error: 'No SQL provided' };
 
   const match = sql.match(/\/\*REPORT_BUILDER_CONFIG\s*([\s\S]*?)\*\//i);
   if (match) {
@@ -19,7 +19,8 @@ export default function parseProcedureConfig(sql = '') {
   }
 
   const config = convertSql(sql);
-  return config ? { config, converted: true } : null;
+  if (config) return { config, converted: true };
+  return { error: 'REPORT_BUILDER_CONFIG not found' };
 }
 
 function convertSql(sql) {

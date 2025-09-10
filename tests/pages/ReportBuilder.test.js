@@ -30,7 +30,7 @@ if (typeof mock.import !== 'function') {
     };
 
     const addToastCalls = [];
-    const sql = 'SELECT 1; /*REPORT_BUILDER_CONFIG {"procName":"abc","unionQueries":[]} */';
+    const sql = 'SELECT 1; /*REPORT_BUILDER_CONFIG {"procName":"abc","unionQueries":[]}*/';
     let fetchUrl;
     global.fetch = async (url) => {
       fetchUrl = url;
