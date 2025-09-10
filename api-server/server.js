@@ -49,6 +49,7 @@ import reportBuilderRoutes from "./routes/report_builder.js";
 import pendingRequestRoutes from "./routes/pending_request.js";
 import activityLogRoutes from "./routes/user_activity_log.js";
 import userSettingsRoutes from "./routes/user_settings.js";
+import translationRoutes from "./routes/translations.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -150,6 +151,7 @@ app.use("/api/config", configRoutes);
 app.use("/api/pending_request", pendingRequestRoutes);
 app.use("/api/user/settings", userSettingsRoutes);
 app.use("/api/user_activity_log", activityLogRoutes);
+app.use("/api/translations", translationRoutes);
 
 // Serve static React build and fallback to index.html
 // NOTE: adjust this path to where your SPA build actually lives.
