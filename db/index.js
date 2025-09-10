@@ -1160,14 +1160,14 @@ export async function zeroSharedTenantKeys(userId) {
   }
 }
 
-export async function saveStoredProcedure(sql) {
+export async function saveStoredProcedure(sql, { allowProtected = false } = {}) {
   const cleaned = sql
     .replace(/^DELIMITER \$\$/gm, '')
     .replace(/^DELIMITER ;/gm, '')
     .replace(/END\s*\$\$/gm, 'END;');
   const nameMatch = cleaned.match(/CREATE\s+PROCEDURE\s+`?([^\s`(]+)`?/i);
   const procName = nameMatch ? nameMatch[1] : null;
-  if (await isProtectedProcedure(procName)) {
+  if (!allowProtected && (await isProtectedProcedure(procName))) {
     const err = new Error('Procedure not allowed');
     err.status = 403;
     throw err;
@@ -1199,9 +1199,9 @@ export async function listReportProcedures(prefix = '') {
   return rows.map((r) => r.ROUTINE_NAME);
 }
 
-export async function deleteProcedure(name) {
+export async function deleteProcedure(name, { allowProtected = false } = {}) {
   if (!name) return;
-  if (await isProtectedProcedure(name)) {
+  if (!allowProtected && (await isProtectedProcedure(name))) {
     const err = new Error('Procedure not allowed');
     err.status = 403;
     throw err;

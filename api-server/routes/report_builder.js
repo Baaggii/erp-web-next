@@ -145,9 +145,17 @@ router.post('/procedures', requireAuth, async (req, res, next) => {
     const { sql } = req.body || {};
     if (!sql) return res.status(400).json({ message: 'sql required' });
     const name = extractProcedureName(sql);
-    if (await isProtectedProcedure(name))
+    const session =
+      req.session ||
+      (await getEmploymentSession(req.user.empid, req.user.companyId));
+    let isAdmin = session?.permissions?.system_settings;
+    if (!isAdmin) {
+      const rootSession = await getEmploymentSession(req.user.empid, 0);
+      isAdmin = !!rootSession;
+    }
+    if (!isAdmin && (await isProtectedProcedure(name)))
       return res.status(403).json({ message: 'Procedure not allowed' });
-    await saveStoredProcedure(sql);
+    await saveStoredProcedure(sql, { allowProtected: isAdmin });
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -171,9 +179,17 @@ router.delete('/procedures/:name', requireAuth, async (req, res, next) => {
   try {
     const { name } = req.params;
     if (!name) return res.status(400).json({ message: 'name required' });
-    if (await isProtectedProcedure(name))
+    const session =
+      req.session ||
+      (await getEmploymentSession(req.user.empid, req.user.companyId));
+    let isAdmin = session?.permissions?.system_settings;
+    if (!isAdmin) {
+      const rootSession = await getEmploymentSession(req.user.empid, 0);
+      isAdmin = !!rootSession;
+    }
+    if (!isAdmin && (await isProtectedProcedure(name)))
       return res.status(403).json({ message: 'Procedure not allowed' });
-    await deleteProcedure(name);
+    await deleteProcedure(name, { allowProtected: isAdmin });
     res.json({ ok: true });
   } catch (err) {
     next(err);
