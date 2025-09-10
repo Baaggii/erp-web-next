@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useContext } from 'react';
 import I18nContext from '../context/I18nContext.jsx';
+import translateWithCache from '../utils/translateWithCache.js';
 
 export default function ManualTranslationsTab() {
   const { t } = useContext(I18nContext);
@@ -8,6 +9,7 @@ export default function ManualTranslationsTab() {
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
   const [searchTerm, setSearchTerm] = useState('');
+  const [completing, setCompleting] = useState(false);
 
   useEffect(() => {
     load();
@@ -79,6 +81,47 @@ export default function ManualTranslationsTab() {
     setEntries((prev) => prev.filter((_, i) => i !== index));
   }
 
+  async function completeEnMn() {
+    setCompleting(true);
+    const updated = [];
+    const toSave = [];
+    for (const entry of entries) {
+      const newEntry = { ...entry, values: { ...entry.values } };
+      const en = newEntry.values.en?.trim();
+      const mn = newEntry.values.mn?.trim();
+      if (!en && mn) {
+        const translated = await translateWithCache('en', mn);
+        if (translated) {
+          newEntry.values.en = translated;
+          toSave.push(newEntry);
+        }
+      } else if (!mn && en) {
+        const translated = await translateWithCache('mn', en);
+        if (translated) {
+          newEntry.values.mn = translated;
+          toSave.push(newEntry);
+        }
+      }
+      updated.push(newEntry);
+    }
+    setEntries(updated);
+    for (const entry of toSave) {
+      await fetch('/api/manual_translations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(entry),
+      });
+    }
+    if (toSave.length) await load();
+    setCompleting(false);
+    window.dispatchEvent(
+      new CustomEvent('toast', {
+        detail: { message: t('translationsCompleted', 'Translations completed'), type: 'success' },
+      }),
+    );
+  }
+
   function addRow() {
     const newEntries = [...entries, { key: '', type: 'locale', values: {} }];
     setEntries(newEntries);
@@ -89,6 +132,11 @@ export default function ManualTranslationsTab() {
     <div>
       <div style={{ marginBottom: '0.5rem', display: 'flex', gap: '0.5rem' }}>
         <button onClick={addRow}>{t('addRow', 'Add Row')}</button>
+        <button onClick={completeEnMn} disabled={completing}>
+          {completing
+            ? t('completing', 'Completing...')
+            : t('completeEnMn', 'Complete en/mn translations')}
+        </button>
         <input
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
