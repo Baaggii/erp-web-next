@@ -12,6 +12,7 @@ export default function ManualTranslationsTab() {
   const [perPage, setPerPage] = useState(10);
   const [searchTerm, setSearchTerm] = useState('');
   const [completing, setCompleting] = useState(false);
+  const [activeRow, setActiveRow] = useState(null);
   const abortRef = useRef(false);
 
   useEffect(() => {
@@ -105,8 +106,10 @@ export default function ManualTranslationsTab() {
     const updated = [];
     const toSave = [];
     let rateLimited = false;
-    for (const entry of entries) {
+    for (let idx = 0; idx < entries.length; idx++) {
       if (abortRef.current || rateLimited) break;
+      setActiveRow(idx);
+      const entry = entries[idx];
       const newEntry = { ...entry, values: { ...entry.values } };
       const en =
         typeof newEntry.values.en === 'string'
@@ -147,6 +150,7 @@ export default function ManualTranslationsTab() {
       }
       updated.push(newEntry);
     }
+    setActiveRow(null);
     setEntries(updated);
     if (rateLimited) {
       setCompleting(false);
@@ -189,8 +193,10 @@ export default function ManualTranslationsTab() {
     const toSave = [];
     const notCompleted = [];
     let rateLimited = false;
-    for (const entry of entries) {
+    for (let idx = 0; idx < entries.length; idx++) {
       if (abortRef.current || rateLimited) break;
+      setActiveRow(idx);
+      const entry = entries[idx];
       const newEntry = { ...entry, values: { ...entry.values } };
       const sourceText =
         (typeof newEntry.values.en === 'string'
@@ -239,6 +245,7 @@ export default function ManualTranslationsTab() {
       }
       updated.push(newEntry);
     }
+    setActiveRow(null);
     setEntries(updated);
     if (rateLimited) {
       setCompleting(false);
@@ -335,8 +342,10 @@ export default function ManualTranslationsTab() {
         <tbody>
           {paged.map((entry) => {
             const entryIdx = entries.indexOf(entry);
+            const rowStyle =
+              entryIdx === activeRow ? { backgroundColor: '#fef3c7' } : undefined;
             return (
-              <tr key={entryIdx}>
+              <tr key={entryIdx} style={rowStyle}>
                 <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
                   <input
                     value={entry.key}
