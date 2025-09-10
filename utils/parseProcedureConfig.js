@@ -152,6 +152,7 @@ function parseFromAndJoins(text) {
   let fromTable = '';
   let fromAlias = '';
 
+  // Handle subquery in FROM clause: FROM (SELECT ...) alias
   if (/^\(/.test(remaining)) {
     let depth = 0;
     let i = 0;
@@ -164,13 +165,14 @@ function parseFromAndJoins(text) {
       }
     }
     const after = remaining.slice(i + 1).trim();
-    const aliasMatch = after.match(/^(?:AS\s+)?([`"\w]+)/i);
+    const aliasMatch = after.match(/^(?:AS\s+)?([`"\w]+)\b/i);
     if (!aliasMatch) {
       return { fromTable: '', fromAlias: '', joins: [], aliasMap, partial: true };
     }
-    fromTable = aliasMatch[1].replace(/[`"]/g, '');
-    fromAlias = fromTable;
-    aliasMap[fromAlias] = fromTable;
+    const alias = aliasMatch[1].replace(/[`"]/g, '');
+    fromTable = alias;
+    fromAlias = alias;
+    aliasMap[alias] = alias;
     remaining = after.slice(aliasMatch[0].length).trim();
   } else {
     const fromMatch = remaining.match(/^([`"\w\.]+)(?:\s+(?:AS\s+)?([`"\w]+))?/i);
@@ -187,14 +189,28 @@ function parseFromAndJoins(text) {
 
   const joins = [];
   let lastAlias = fromAlias;
-  const joinRe = /(LEFT|RIGHT|INNER|FULL|OUTER|CROSS)?\s*JOIN\s+([`"\w\.]+)(?:\s+(?:AS\s+)?([`"\w]+))?\s+(ON|USING)\s+([^]*?)(?=(LEFT|RIGHT|INNER|FULL|OUTER|CROSS)?\s*JOIN|$)/gi;
+  const joinRe =
+    /(LEFT|RIGHT|INNER|FULL|OUTER|CROSS)?\s*JOIN\s+(\((?:[^)(]+|\([^)(]*\))*\)|[`"\w\.]+)(?:\s+(?:AS\s+)?([`"\w]+))?\s+(ON|USING)\s+([^]*?)(?=(LEFT|RIGHT|INNER|FULL|OUTER|CROSS)?\s*JOIN|$)/gi;
   let jm;
   while ((jm = joinRe.exec(remaining))) {
     const type = jm[1] ? `${jm[1].trim()} JOIN` : 'JOIN';
-    const table = jm[2].replace(/[`"]/g, '');
+    let table = jm[2].trim();
     let alias = jm[3];
-    if (!alias || /(LEFT|RIGHT|INNER|FULL|OUTER|CROSS|JOIN)/i.test(alias)) {
-      alias = table;
+    if (table.startsWith('(')) {
+      // JOIN (SELECT ...) alias
+      if (!alias) {
+        partial = true;
+        continue;
+      }
+      alias = alias.replace(/[`"]/g, '');
+      table = alias;
+    } else {
+      table = table.replace(/[`"]/g, '');
+      if (!alias || /(LEFT|RIGHT|INNER|FULL|OUTER|CROSS|JOIN)/i.test(alias)) {
+        alias = table;
+      } else {
+        alias = alias.replace(/[`"]/g, '');
+      }
     }
     aliasMap[alias] = table;
     let conditions = [];

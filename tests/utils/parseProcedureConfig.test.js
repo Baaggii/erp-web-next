@@ -121,3 +121,14 @@ test('parseProcedureConfig converts SQL with subquery and JOIN USING', () => {
   assert.equal(result.config.joins[0].conditions[0].toField, 'id');
   assert.equal(result.config.joins[0].targetTable, 's');
 });
+
+test('parseProcedureConfig handles JOIN subquery alias', () => {
+  const sql =
+    `CREATE PROCEDURE t() BEGIN SELECT p.id FROM prod p JOIN (SELECT id FROM cat) c ON p.id = c.id; END`;
+  const result = parseProcedureConfig(sql);
+  assert.equal(result.converted, true);
+  assert.equal(result.config.joins.length, 1);
+  assert.equal(result.config.joins[0].table, 'c');
+  assert.equal(result.config.joins[0].targetTable, 'prod');
+  assert.equal(result.config.joins[0].conditions[0].fromField, 'id');
+});
