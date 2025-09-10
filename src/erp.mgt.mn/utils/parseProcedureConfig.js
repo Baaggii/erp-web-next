@@ -18,8 +18,8 @@ export default function parseProcedureConfig(sql = '') {
     }
   }
 
-  const config = convertSql(sql);
-  if (config) return { config, converted: true };
+  const result = convertSql(sql);
+  if (result) return { config: result.config, converted: true, partial: result.partial };
   return { error: 'REPORT_BUILDER_CONFIG not found' };
 }
 
@@ -41,6 +41,8 @@ function convertSql(sql) {
   if (selIdx === -1) return null;
   let statement = body.slice(selIdx);
   statement = statement.split(';')[0];
+  // Strip trailing clauses we don't parse
+  statement = statement.replace(/\b(ORDER BY|LIMIT|HAVING)\b[\s\S]*$/i, '').trim();
 
   const selectMatch = statement.match(/SELECT\s+([\s\S]+?)\s+FROM\s+([\s\S]+)/i);
   if (!selectMatch) return null;
@@ -70,22 +72,50 @@ function convertSql(sql) {
     groupPart = rest.slice(groupIdx + 9).trim();
   }
 
-  const { fromTable, fromAlias, joins, aliasMap } = parseFromAndJoins(fromJoinPart);
+  const {
+    fromTable,
+    fromAlias,
+    joins,
+    aliasMap,
+    partial: fromPartial,
+  } = parseFromAndJoins(fromJoinPart);
   if (!fromTable) return null;
 
+  let partial = !!fromPartial;
+
   const fields = parseFields(selectPart, aliasMap);
-  const { fromFilters } = parseWhere(wherePart, fromAlias, joins, aliasMap);
-  const groups = parseGroupBy(groupPart, aliasMap);
+  let whereRes;
+  try {
+    whereRes = parseWhere(wherePart, fromAlias, joins, aliasMap);
+  } catch {
+    partial = true;
+    whereRes = { fromFilters: [], partial: true };
+  }
+  const { fromFilters, partial: wherePartial } = whereRes;
+  if (wherePartial) partial = true;
+
+  let groupRes;
+  try {
+    groupRes = parseGroupBy(groupPart, aliasMap);
+  } catch {
+    partial = true;
+    groupRes = { groups: [], partial: true };
+  }
+  const { groups, partial: groupPartial } = groupRes;
+  if (groupPartial) partial = true;
 
   return {
-    procName,
-    fromTable,
-    joins,
-    fields,
-    groups,
-    fromFilters,
-    conditions: [],
-    unionQueries: [],
+    config: {
+      procName,
+      fromTable,
+      joins,
+      fields,
+      groups,
+      fromFilters,
+      conditions: [],
+      unionQueries: [],
+    },
+    partial,
   };
 }
 
@@ -93,8 +123,9 @@ function parseFromAndJoins(text) {
   const aliasMap = {};
   let remaining = text.trim();
 
-  const fromMatch = remaining.match(/^([`"\w\.]+)(?:\s+([`"\w]+))?/);
-  if (!fromMatch) return { fromTable: '', fromAlias: '', joins: [], aliasMap };
+  const fromMatch = remaining.match(/^([`"\w\.]+)(?:\s+(?:AS\s+)?([`"\w]+))?/i);
+  if (!fromMatch)
+    return { fromTable: '', fromAlias: '', joins: [], aliasMap, partial: true };
   let fromTable = fromMatch[1].replace(/[`"]/g, '');
   let fromAlias = fromMatch[2];
   if (!fromAlias || /(LEFT|RIGHT|INNER|FULL|OUTER|CROSS|JOIN)/i.test(fromAlias)) {
@@ -104,7 +135,8 @@ function parseFromAndJoins(text) {
   remaining = remaining.slice(fromMatch[0].length).trim();
 
   const joins = [];
-  const joinRe = /(LEFT|RIGHT|INNER|FULL|OUTER|CROSS)?\s*JOIN\s+([`"\w\.]+)(?:\s+([`"\w]+))?\s+ON\s+([^]*?)(?=(LEFT|RIGHT|INNER|FULL|OUTER|CROSS)?\s*JOIN|$)/gi;
+  let partial = false;
+  const joinRe = /(LEFT|RIGHT|INNER|FULL|OUTER|CROSS)?\s*JOIN\s+([`"\w\.]+)(?:\s+(?:AS\s+)?([`"\w]+))?\s+ON\s+([^]*?)(?=(LEFT|RIGHT|INNER|FULL|OUTER|CROSS)?\s*JOIN|$)/gi;
   let jm;
   while ((jm = joinRe.exec(remaining))) {
     const type = jm[1] ? `${jm[1].trim()} JOIN` : 'JOIN';
@@ -115,6 +147,7 @@ function parseFromAndJoins(text) {
     }
     aliasMap[alias] = table;
     const conditions = parseJoinConditions(jm[4].trim(), alias, aliasMap);
+    if (conditions.length === 0) partial = true;
     const targetAlias = conditions[0]?.targetAlias || fromAlias;
     conditions.forEach((c) => delete c.targetAlias);
     joins.push({
@@ -127,7 +160,9 @@ function parseFromAndJoins(text) {
     });
   }
 
-  return { fromTable, fromAlias, joins, aliasMap };
+  if (remaining.slice(joinRe.lastIndex).trim()) partial = true;
+
+  return { fromTable, fromAlias, joins, aliasMap, partial };
 }
 
 function parseJoinConditions(text, joinAlias, aliasMap) {
@@ -212,11 +247,15 @@ function parseFields(text, aliasMap) {
 
 function parseWhere(text, baseAlias, joins, aliasMap) {
   const fromFilters = [];
-  if (!text) return { fromFilters };
+  let partial = false;
+  if (!text) return { fromFilters, partial };
   const parts = text.split(/\s+AND\s+/i);
   parts.forEach((p) => {
     const m = p.trim().match(/([`"\w]+)\.([`"\w]+)\s*(=|<>|>=|<=|>|<)\s*(.+)/);
-    if (!m) return;
+    if (!m) {
+      partial = true;
+      return;
+    }
     const alias = m[1].replace(/[`"]/g, '');
     const field = m[2].replace(/[`"]/g, '');
     const operator = m[3];
@@ -239,23 +278,30 @@ function parseWhere(text, baseAlias, joins, aliasMap) {
       if (j) j.filters.push(filter);
     }
   });
-  return { fromFilters };
+  return { fromFilters, partial };
 }
 
 function parseGroupBy(text, aliasMap) {
-  if (!text) return [];
-  return text
-    .split(',')
+  if (!text) return { groups: [], partial: false };
+  const parts = text.split(',');
+  const groups = [];
+  let partial = false;
+  parts
     .map((p) => p.trim())
     .filter(Boolean)
-    .map((seg) => {
+    .forEach((seg) => {
       const m = seg.match(/([`"\w]+)\.([`"\w]+)/);
-      if (!m) return null;
-      return {
-        table: aliasMap[m[1].replace(/[`"]/g, '')] || m[1].replace(/[`"]/g, ''),
+      if (!m) {
+        partial = true;
+        return;
+      }
+      groups.push({
+        table:
+          aliasMap[m[1].replace(/[`"]/g, '')] ||
+          m[1].replace(/[`"]/g, ''),
         field: m[2].replace(/[`"]/g, ''),
-      };
-    })
-    .filter(Boolean);
+      });
+    });
+  return { groups, partial };
 }
 
