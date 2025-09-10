@@ -118,15 +118,13 @@ function ReportBuilderInner() {
 
   useEffect(() => {
     const basePrefix = generalConfig?.general?.reportProcPrefix || '';
-    const prefix = company ? `${basePrefix}${company}_` : basePrefix;
     if (!generalConfig) return;
-    const query = prefix ? `?prefix=${encodeURIComponent(prefix)}` : '';
     const procQuery = basePrefix
       ? `?prefix=${encodeURIComponent(basePrefix)}`
       : '';
     async function fetchSaved() {
       try {
-        const res = await fetch(`/api/report_builder/configs${query}`);
+        const res = await fetch('/api/report_builder/configs');
         const data = await res.json();
         const list = data.names || [];
         setIsDefault(!!data.isDefault);
@@ -136,7 +134,7 @@ function ReportBuilderInner() {
         console.error(err);
       }
       try {
-        const res = await fetch(`/api/report_builder/procedure-files${query}`);
+        const res = await fetch('/api/report_builder/procedure-files');
         const data = await res.json();
         const list = data.names || [];
         setProcFiles(list);
@@ -181,13 +179,11 @@ function ReportBuilderInner() {
       );
       if (!res.ok) throw new Error('failed');
       const basePrefix = generalConfig?.general?.reportProcPrefix || '';
-      const prefix = company ? `${basePrefix}${company}_` : basePrefix;
-      const query = prefix ? `?prefix=${encodeURIComponent(prefix)}` : '';
       const procQuery = basePrefix
         ? `?prefix=${encodeURIComponent(basePrefix)}`
         : '';
       try {
-        const resCfg = await fetch(`/api/report_builder/configs${query}`);
+        const resCfg = await fetch('/api/report_builder/configs');
         const dataCfg = await resCfg.json();
         const list = dataCfg.names || [];
         setIsDefault(!!dataCfg.isDefault);
@@ -195,7 +191,7 @@ function ReportBuilderInner() {
         setSelectedReport(list[0] || '');
       } catch {}
       try {
-        const resFiles = await fetch(`/api/report_builder/procedure-files${query}`);
+        const resFiles = await fetch('/api/report_builder/procedure-files');
         const dataFiles = await resFiles.json();
         const list = dataFiles.names || [];
         setProcFiles(list);
@@ -1315,7 +1311,7 @@ function ReportBuilderInner() {
       );
       if (!res.ok) throw new Error('Save failed');
       const listRes = await fetch(
-        `/api/report_builder/configs${prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''}`,
+        '/api/report_builder/configs',
       );
       const listData = await listRes.json();
       const list = listData.names || [];
@@ -1452,7 +1448,7 @@ function ReportBuilderInner() {
       );
       if (!res.ok) throw new Error('Save failed');
       const listRes = await fetch(
-        `/api/report_builder/procedure-files${prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''}`,
+        '/api/report_builder/procedure-files',
       );
       const listData = await listRes.json();
       const list = listData.names || [];
