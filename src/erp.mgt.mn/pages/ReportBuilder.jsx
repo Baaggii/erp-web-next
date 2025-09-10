@@ -1130,6 +1130,29 @@ function ReportBuilderInner() {
     };
   }
 
+  function buildConfig() {
+    const first = unionQueries[0] || {};
+    const legacyUnions = unionQueries.slice(1).map((q, i) => ({
+      ...q,
+      unionType: unionQueries[i].unionType || 'UNION',
+    }));
+    return {
+      procName,
+      fromTable: first.fromTable,
+      joins: first.joins,
+      fields: (first.fields || []).map((f) => ({
+        ...f,
+        calcParts: (f.calcParts || []).filter((p) => p.source !== 'none'),
+      })),
+      groups: first.groups,
+      having: first.having,
+      params,
+      conditions: first.conditions,
+      fromFilters: first.fromFilters,
+      unionQueries: legacyUnions,
+    };
+  }
+
   function handleGenerateSql() {
     setSelectSql('');
     try {
@@ -1164,11 +1187,13 @@ function ReportBuilderInner() {
     try {
       const { report, params: p } = buildDefinition();
       const prefix = generalConfig?.general?.reportProcPrefix || '';
+      const config = buildConfig();
       const built = buildStoredProcedure({
         name: company ? `${company}_${procName}` : procName,
         params: p,
         report,
         prefix,
+        config,
       });
       setProcSql(built);
       setError('');
@@ -1309,26 +1334,7 @@ function ReportBuilderInner() {
   }
 
   async function handleSaveConfig() {
-    const first = unionQueries[0] || {};
-    const legacyUnions = unionQueries.slice(1).map((q, i) => ({
-      ...q,
-      unionType: unionQueries[i].unionType || 'UNION',
-    }));
-    const data = {
-      procName,
-      fromTable: first.fromTable,
-      joins: first.joins,
-      fields: first.fields.map((f) => ({
-        ...f,
-        calcParts: (f.calcParts || []).filter((p) => p.source !== 'none'),
-      })),
-      groups: first.groups,
-      having: first.having,
-      params,
-      conditions: first.conditions,
-      fromFilters: first.fromFilters,
-      unionQueries: legacyUnions,
-    };
+    const data = buildConfig();
     try {
       const basePrefix = generalConfig?.general?.reportProcPrefix || '';
       if (!procName) throw new Error('procedure name is required');
