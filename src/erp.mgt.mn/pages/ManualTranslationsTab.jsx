@@ -18,9 +18,24 @@ export default function ManualTranslationsTab() {
     load();
   }, []);
 
-  async function load() {
+  async function load(retry = 0) {
     try {
       const res = await fetch('/api/manual_translations', { credentials: 'include' });
+      if (res.status === 429) {
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: {
+              message: t('rateLimitExceeded', 'Too many requests, please try again later'),
+              type: 'error',
+            },
+          }),
+        );
+        if (retry < 3) {
+          const wait = 500 * 2 ** retry;
+          setTimeout(() => load(retry + 1), wait);
+        }
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setLanguages(data.languages);
