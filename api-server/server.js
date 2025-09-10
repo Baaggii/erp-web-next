@@ -50,6 +50,7 @@ import pendingRequestRoutes from "./routes/pending_request.js";
 import activityLogRoutes from "./routes/user_activity_log.js";
 import userSettingsRoutes from "./routes/user_settings.js";
 import translationRoutes from "./routes/translations.js";
+import manualTranslationsRoutes from "./routes/manual_translations.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
