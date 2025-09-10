@@ -4,6 +4,7 @@ import buildReportSql from '../utils/buildReportSql.js';
 import ErrorBoundary from '../components/ErrorBoundary.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import formatSqlValue from '../utils/formatSqlValue.js';
+import parseConfigFromSql from '../utils/parseConfigFromSql.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 
@@ -20,12 +21,16 @@ const CALC_OPERATORS = ['+', '-', '*', '/'];
 const PAREN_OPTIONS = [0, 1, 2, 3];
 
 function ReportBuilderInner() {
+  const { addToast } = useToast();
+  const { company, permissions, session } = useContext(AuthContext);
+
   const [tables, setTables] = useState([]); // list of table names
   const [tableFields, setTableFields] = useState({}); // { tableName: [field, ...] }
   const [fieldEnums, setFieldEnums] = useState({}); // { tableName: { field: [enum] } }
   const [fieldTypes, setFieldTypes] = useState({}); // { tableName: { field: type } }
 
   const [procName, setProcName] = useState('');
+  const [procCompanyId, setProcCompanyId] = useState(company);
   const [fromTable, setFromTable] = useState('');
   const [joins, setJoins] = useState([]); // {table, alias, type, targetTable, conditions:[{fromField,toField,connector,open,close}], filters:[]}
   const [fields, setFields] = useState([]); // {source:'field'|'alias', table, field, baseAlias, alias, aggregate, conditions:[], calcParts:[{source,table,field,alias,operator}]}
@@ -58,8 +63,6 @@ function ReportBuilderInner() {
 
   const [customParamName, setCustomParamName] = useState('');
   const [customParamType, setCustomParamType] = useState(PARAM_TYPES[0]);
-  const { addToast } = useToast();
-  const { company, permissions, session } = useContext(AuthContext);
   const isAdmin =
     permissions?.permissions?.system_settings ||
     session?.permissions?.system_settings;
@@ -1172,7 +1175,9 @@ function ReportBuilderInner() {
       const sql = buildReportSql(report);
       const prefix = generalConfig?.general?.reportViewPrefix || '';
       if (!procName) throw new Error('procedure name is required');
-      const viewName = `${prefix}${company ? `${company}_` : ''}${procName}`;
+      const viewName = `${prefix}${
+        procCompanyId != null ? `${procCompanyId}_` : ''
+      }${procName}`;
       const view = `CREATE OR REPLACE VIEW ${viewName} AS\n${sql};`;
       setViewSql(view);
       setError('');
@@ -1189,7 +1194,7 @@ function ReportBuilderInner() {
       const prefix = generalConfig?.general?.reportProcPrefix || '';
       const config = buildConfig();
       const built = buildStoredProcedure({
-        name: company ? `${company}_${procName}` : procName,
+        name: procCompanyId != null ? `${procCompanyId}_${procName}` : procName,
         params: p,
         report,
         prefix,
@@ -1210,6 +1215,29 @@ function ReportBuilderInner() {
     const procQuery = basePrefix
       ? `?prefix=${encodeURIComponent(basePrefix)}`
       : '';
+    let expectedName = '';
+    let tenant = procCompanyId;
+    const nameMatch = procSql.match(/CREATE\s+PROCEDURE\s+`?([^`(]+)`?\s*\(/i);
+    if (nameMatch) {
+      expectedName = nameMatch[1];
+      let name = expectedName;
+      if (basePrefix && name.toLowerCase().startsWith(basePrefix.toLowerCase())) {
+        name = name.slice(basePrefix.length);
+      }
+      const tenantMatch = name.match(/^(\d+)_/);
+      if (tenantMatch) {
+        tenant = Number(tenantMatch[1]);
+        name = name.slice(tenantMatch[1].length + 1);
+      } else {
+        tenant = null;
+      }
+      setProcCompanyId(tenant);
+      setProcName(name);
+    } else {
+      expectedName = `${basePrefix}${
+        procCompanyId != null ? `${procCompanyId}_` : ''
+      }${procName}`;
+    }
     try {
       const res = await fetch(`/api/report_builder/procedures`, {
         method: 'POST',
@@ -1225,14 +1253,15 @@ function ReportBuilderInner() {
         throw new Error('Failed to fetch procedures');
       }
       const data = await listRes.json();
-      const list = (data.names || []).filter(({ name }) =>
+      const all = data.names || [];
+      const list = all.filter(({ name }) =>
         name.startsWith(`${basePrefix}0_`) ||
-        (company != null && name.startsWith(`${basePrefix}${company}_`)),
+        (tenant != null && name.startsWith(`${basePrefix}${tenant}_`)),
       );
-      const expectedName = `${basePrefix}${
-        company != null ? `${company}_` : ''
-      }${procName}`;
-      if (!list.some(({ name }) => name === expectedName)) {
+      if (
+        expectedName &&
+        !all.some(({ name }) => name === expectedName)
+      ) {
         throw new Error('Save failed');
       }
       setDbProcedures(list);
@@ -1293,8 +1322,8 @@ function ReportBuilderInner() {
       setProcFileIsDefault(dbProcIsDefault);
       if (autoApply) {
         try {
-          const cfg = parseConfigFromSql(sql);
-          if (cfg) applyConfig(cfg);
+          const { config } = parseConfigFromSql(sql);
+          if (config) applyConfig(config);
         } catch (err) {
           console.error(err);
         }
@@ -1338,11 +1367,16 @@ function ReportBuilderInner() {
     try {
       const basePrefix = generalConfig?.general?.reportProcPrefix || '';
       if (!procName) throw new Error('procedure name is required');
-      const prefix = company ? `${basePrefix}${company}_` : basePrefix;
+      const prefix =
+        procCompanyId != null
+          ? `${basePrefix}${procCompanyId}_`
+          : basePrefix;
       const name = `${prefix}${procName}`;
       if (isDefault) {
         const resImport = await fetch(
-          `/api/config/import?companyId=${encodeURIComponent(company ?? '')}`,
+          `/api/config/import?companyId=${encodeURIComponent(
+            procCompanyId ?? '',
+          )}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1498,13 +1532,15 @@ function ReportBuilderInner() {
     setSelectedReport(selectedDbProcedure);
     const sql = await handleLoadDbProcedure(false);
     try {
-      const cfg = parseConfigFromSql(sql);
-      if (cfg) {
-        applyConfig(cfg);
-      } else {
-        addToast('No embedded config found', 'error');
+      const { config, error: cfgErr } = parseConfigFromSql(sql);
+      if (cfgErr) {
+        console.error(cfgErr);
+        addToast(cfgErr, 'error');
+        return;
       }
+      applyConfig(config);
     } catch (err) {
+      console.error(err);
       addToast('Failed to load config from procedure', 'error');
     }
   }
@@ -1513,7 +1549,10 @@ function ReportBuilderInner() {
     if (!procSql) return;
     const basePrefix = generalConfig?.general?.reportProcPrefix || '';
     if (!procName) return;
-    const prefix = company ? `${basePrefix}${company}_` : basePrefix;
+    const prefix =
+      procCompanyId != null
+        ? `${basePrefix}${procCompanyId}_`
+        : basePrefix;
     const name = `${prefix}${procName}`;
     try {
       const res = await fetch(
@@ -1589,16 +1628,6 @@ function ReportBuilderInner() {
     }
   }
 
-  function parseConfigFromSql(sql) {
-    const match = sql.match(/\/\*\s*RB_CONFIG([\s\S]*?)RB_CONFIG\s*\*\//i);
-    if (!match) return null;
-    try {
-      return JSON.parse(match[1]);
-    } catch {
-      return null;
-    }
-  }
-
   function handleParseSql() {
     const sql = procFileText || '';
     setProcSql(sql);
@@ -1609,10 +1638,13 @@ function ReportBuilderInner() {
       if (basePrefix && name.toLowerCase().startsWith(basePrefix.toLowerCase())) {
         name = name.slice(basePrefix.length);
       }
-      const companyPrefix = company ? `${company}_` : '';
-      if (companyPrefix && name.toLowerCase().startsWith(companyPrefix.toLowerCase())) {
-        name = name.slice(companyPrefix.length);
+      let tenant = null;
+      const tenantMatch = name.match(/^(\d+)_/);
+      if (tenantMatch) {
+        tenant = Number(tenantMatch[1]);
+        name = name.slice(tenantMatch[1].length + 1);
       }
+      setProcCompanyId(tenant);
       setProcName(name);
     }
     const paramsMatch = sql.match(/CREATE\s+PROCEDURE[\s\S]*?\(([^)]*)\)/i);
