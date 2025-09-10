@@ -26,6 +26,10 @@ export default function buildStoredProcedure(definition = {}) {
     .map((l) => `  ${l}`)
     .join('\n');
 
+  const configBlock = `  /*REPORT_BUILDER_CONFIG ${JSON.stringify(
+    config || {},
+  )}*/`;
+
   return [
     `DROP PROCEDURE IF EXISTS ${procName};`,
     'DELIMITER $$',
@@ -34,9 +38,7 @@ export default function buildStoredProcedure(definition = {}) {
     ')',
     'BEGIN',
     selectSql + ';',
-    config
-      ? `  /*REPORT_BUILDER_CONFIG ${JSON.stringify(config)} */`
-      : '',
+    configBlock,
     'END $$',
     'DELIMITER ;',
   ]

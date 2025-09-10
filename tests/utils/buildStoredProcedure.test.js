@@ -19,5 +19,6 @@ test('buildStoredProcedure inserts configured prefix', () => {
 test('buildStoredProcedure embeds REPORT_BUILDER_CONFIG block', () => {
   const config = { procName: 'sales', unionQueries: [] };
   const sql = buildStoredProcedure({ name: 'sales', report, config });
-  assert.deepEqual(parseProcedureConfig(sql), config);
+  const parsed = parseProcedureConfig(sql);
+  assert.deepEqual(parsed, { config, converted: false });
 });

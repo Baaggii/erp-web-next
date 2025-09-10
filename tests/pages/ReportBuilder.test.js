@@ -30,7 +30,7 @@ if (typeof mock.import !== 'function') {
     };
 
     const addToastCalls = [];
-    const sql = 'SELECT 1; /*REPORT_BUILDER_CONFIG {"procName":"abc","unionQueries":[]} */';
+    const sql = 'SELECT 1; /*REPORT_BUILDER_CONFIG {"procName":"abc","unionQueries":[]}*/';
     let fetchUrl;
     global.fetch = async (url) => {
       fetchUrl = url;
@@ -70,7 +70,9 @@ if (typeof mock.import !== 'function') {
 
     assert.equal(fetchUrl, '/api/report_builder/procedures/proc1');
     assert.equal(states[4], 'abc');
-    assert.equal(addToastCalls.length, 0);
+    assert.deepEqual(addToastCalls, [
+      { msg: 'Loaded config from embedded block', type: 'success' },
+    ]);
 
     delete global.fetch;
   });
