@@ -1650,20 +1650,14 @@ function ReportBuilderInner() {
         /(CREATE\s+PROCEDURE\s+)`?[^`(]+`?/i,
         `$1\`${newName}\``,
       );
-      // ensure a leading DROP PROCEDURE exists and uses the new name
-      if (/^\s*DROP\s+PROCEDURE/i.test(sql)) {
-        sql = sql.replace(
-          /^(\s*DROP\s+PROCEDURE\s+IF\s+EXISTS\s+)`?[^`\s;]+`?/i,
-          `$1\`${newName}\``,
-        );
-        if (!/^\s*DROP\s+PROCEDURE[\s\S]*?\nDELIMITER\s+\$\$/i.test(sql)) {
-          sql = sql.replace(
-            /^(\s*DROP\s+PROCEDURE[^\n]*\n)/i,
-            `$1DELIMITER $$\n`,
-          );
-        }
-      } else {
-        sql = `DROP PROCEDURE IF EXISTS \`${newName}\`;\nDELIMITER $$\n${sql}`;
+      // strip any leading DROP PROCEDURE statement
+      sql = sql.replace(
+        /^\s*DROP\s+PROCEDURE\s+IF\s+EXISTS[^;]+;\s*/i,
+        '',
+      );
+      // ensure the script starts with a DELIMITER block
+      if (!/^\s*DELIMITER\s+\$\$/i.test(sql)) {
+        sql = `DELIMITER $$\n${sql}`;
       }
       setProcCompanyId(company);
       setProcName(baseName);
@@ -1690,12 +1684,19 @@ function ReportBuilderInner() {
     } else {
       setParams([]);
     }
-    return { sql, baseName };
+    return { sql, baseName, newName };
   }
 
   async function handleReplaceProcedure() {
-    const { sql, baseName } = handleParseSql();
-    await handlePostProc(sql, baseName);
+    const { sql, baseName, newName } = handleParseSql();
+    if (
+      !window.confirm(
+        `Replace procedure ${newName} with the current script?`,
+      )
+    )
+      return;
+    const dropSql = `DROP PROCEDURE IF EXISTS \`${newName}\`;\n${sql}`;
+    await handlePostProc(dropSql, baseName);
   }
 
   if (loading) {
