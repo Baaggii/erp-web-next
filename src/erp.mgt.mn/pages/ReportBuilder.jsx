@@ -105,8 +105,8 @@ function ReportBuilderInner() {
     async function fetchTables() {
       try {
         const res = await fetch('/api/report_builder/tables');
-        if (!res.ok) throw new Error('Failed to load tables');
         const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || 'Failed to load tables');
         setTables(data.tables || []);
         const first = data.tables?.[0];
         if (first) setFromTable(first);
@@ -182,7 +182,10 @@ function ReportBuilderInner() {
           body: JSON.stringify({}),
         },
       );
-      if (!res.ok) throw new Error('failed');
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || 'failed');
+      }
       const basePrefix = generalConfig?.general?.reportProcPrefix || '';
       const procQuery = basePrefix
         ? `?prefix=${encodeURIComponent(basePrefix)}`
@@ -1188,7 +1191,10 @@ function ReportBuilderInner() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sql: procSql }),
       });
-      if (!res.ok) throw new Error('Save failed');
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || 'Save failed');
+      }
       try {
         const listRes = await fetch(
           `/api/report_builder/procedures${procQuery}`,
@@ -1226,7 +1232,10 @@ function ReportBuilderInner() {
         `/api/report_builder/procedures/${encodeURIComponent(selectedDbProcedure)}`,
         { method: 'DELETE' },
       );
-      if (!res.ok) throw new Error('Delete failed');
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || 'Delete failed');
+      }
       setDbProcedures(dbProcedures.filter((p) => p.name !== selectedDbProcedure));
       setSelectedDbProcedure('');
       setDbProcIsDefault(false);
@@ -1267,7 +1276,10 @@ function ReportBuilderInner() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sql: viewSql }),
       });
-      if (!res.ok) throw new Error('Save failed');
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || 'Save failed');
+      }
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: { message: 'View saved', type: 'success' },
@@ -1318,7 +1330,10 @@ function ReportBuilderInner() {
             body: JSON.stringify({ files: ['headerMappings.json'] }),
           },
         );
-        if (!resImport.ok) throw new Error('Import failed');
+        if (!resImport.ok) {
+          const data = await resImport.json().catch(() => ({}));
+          throw new Error(data.message || 'Import failed');
+        }
         setIsDefault(false);
       }
       const res = await fetch(
@@ -1329,7 +1344,10 @@ function ReportBuilderInner() {
           body: JSON.stringify(data),
         },
       );
-      if (!res.ok) throw new Error('Save failed');
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || 'Save failed');
+      }
       const listRes = await fetch(
         '/api/report_builder/configs',
       );
@@ -1472,7 +1490,10 @@ function ReportBuilderInner() {
           body: JSON.stringify({ sql: procSql }),
         },
       );
-      if (!res.ok) throw new Error('Save failed');
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || 'Save failed');
+      }
       const listRes = await fetch(
         '/api/report_builder/procedure-files',
       );
@@ -1518,7 +1539,10 @@ function ReportBuilderInner() {
         )}`,
         { method: 'POST' },
       );
-      if (!res.ok) throw new Error('Import failed');
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || 'Import failed');
+      }
       setProcFiles((prev) =>
         prev.map((f) =>
           f.name === selectedProcFile ? { ...f, isDefault: false } : f,
