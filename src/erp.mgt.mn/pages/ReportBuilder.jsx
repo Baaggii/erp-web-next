@@ -1308,6 +1308,7 @@ function ReportBuilderInner() {
           if (parsed?.config) applyConfig(parsed.config);
         } catch (err) {
           console.error(err);
+          addToast(err.message || 'SQL parsing error', 'error');
         }
       }
       return sql;
@@ -1513,7 +1514,9 @@ function ReportBuilderInner() {
     }
     try {
       const parsed = parseProcedureConfig(sql);
-      if (parsed?.config) {
+      if (!parsed) {
+        addToast('SQL parsing failed; unable to derive config', 'error');
+      } else if (parsed.config) {
         applyConfig(parsed.config);
         if (parsed.converted) {
           try {
@@ -1534,14 +1537,14 @@ function ReportBuilderInner() {
         } else {
           addToast('Loaded config from embedded block', 'success');
         }
-      } else if (parsed?.error) {
+      } else if (parsed.error) {
         addToast(`SQL parsing failed: ${parsed.error}`, 'error');
       } else {
         addToast('No embedded config found in procedure', 'error');
       }
     } catch (err) {
       console.error(err);
-      addToast(`SQL parsing error: ${err.message}`, 'error');
+      addToast(err.message || 'SQL parsing error', 'error');
     }
   }
 
