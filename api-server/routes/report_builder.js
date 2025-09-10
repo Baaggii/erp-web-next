@@ -56,8 +56,7 @@ async function resolveDir(companyId = 0) {
     await fs.access(dir);
     return { path: dir, isDefault: companyId === 0 };
   } catch {
-    const fallback = tenantDir(0);
-    return { path: fallback, isDefault: true };
+    return { path: null, isDefault: companyId === 0 };
   }
 }
 
@@ -71,8 +70,7 @@ async function resolveProcDir(companyId = 0) {
     await fs.access(dir);
     return { path: dir, isDefault: companyId === 0 };
   } catch {
-    const fallback = tenantProcDir(0);
-    return { path: fallback, isDefault: true };
+    return { path: null, isDefault: companyId === 0 };
   }
 }
 
@@ -199,30 +197,41 @@ router.get('/procedure-files', requireAuth, async (req, res, next) => {
   try {
     const { prefix = '' } = req.query;
     const companyId = Number(req.query.companyId ?? req.user.companyId);
-    const tenantDirPath = tenantProcDir(companyId);
-    const defaultDirPath = tenantProcDir(0);
-    const tenantFiles = await fs.readdir(tenantDirPath).catch(() => []);
-    const defaultFiles = await fs.readdir(defaultDirPath).catch(() => []);
-
-    const map = new Map();
-    tenantFiles
+    const { path: dir, isDefault } = await resolveProcDir(companyId);
+    if (!dir) return res.json({ names: [] });
+    const files = await fs.readdir(dir).catch(() => []);
+    const names = files
       .filter((f) => f.endsWith('.json'))
-      .forEach((f) => map.set(f.replace(/\.json$/, ''), false));
-    defaultFiles
-      .filter((f) => f.endsWith('.json'))
-      .forEach((f) => {
-        const name = f.replace(/\.json$/, '');
-        if (!map.has(name)) map.set(name, true);
-      });
-
-    const names = Array.from(map.entries())
+      .map((f) => f.replace(/\.json$/, ''))
       .filter(
-        ([n]) =>
+        (n) =>
           typeof n === 'string' &&
           (!prefix || n.toLowerCase().includes(prefix.toLowerCase())),
       )
-      .map(([name, isDefault]) => ({ name, isDefault }));
+      .map((name) => ({ name, isDefault }));
 
+    res.json({ names });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// List default stored procedure files on host
+router.get('/procedure-files/defaults', requireAuth, async (req, res, next) => {
+  try {
+    const { prefix = '' } = req.query;
+    const { path: dir } = await resolveProcDir(0);
+    if (!dir) return res.json({ names: [] });
+    const files = await fs.readdir(dir).catch(() => []);
+    const names = files
+      .filter((f) => f.endsWith('.json'))
+      .map((f) => f.replace(/\.json$/, ''))
+      .filter(
+        (n) =>
+          typeof n === 'string' &&
+          (!prefix || n.toLowerCase().includes(prefix.toLowerCase())),
+      )
+      .map((name) => ({ name, isDefault: true }));
     res.json({ names });
   } catch (err) {
     next(err);
@@ -235,23 +244,12 @@ router.get('/procedure-files/:name', requireAuth, async (req, res, next) => {
     const { name } = req.params;
     const companyId = Number(req.query.companyId ?? req.user.companyId);
     const dir = tenantProcDir(companyId);
-    const fallbackDir = tenantProcDir(0);
-    try {
-      const text = await fs.readFile(path.join(dir, `${name}.json`), 'utf-8');
-      const data = JSON.parse(text);
-      return res.json({ ...data, isDefault: false });
-    } catch (err) {
-      if (err.code === 'ENOENT' && dir !== fallbackDir) {
-        const text = await fs.readFile(
-          path.join(fallbackDir, `${name}.json`),
-          'utf-8',
-        );
-        const data = JSON.parse(text);
-        return res.json({ ...data, isDefault: true });
-      }
-      throw err;
-    }
+    const text = await fs.readFile(path.join(dir, `${name}.json`), 'utf-8');
+    const data = JSON.parse(text);
+    return res.json({ ...data, isDefault: companyId === 0 });
   } catch (err) {
+    if (err.code === 'ENOENT')
+      return res.status(404).json({ message: 'Procedure file not found' });
     next(err);
   }
 });
@@ -303,7 +301,7 @@ router.get('/configs', requireAuth, async (req, res, next) => {
     const { prefix = '' } = req.query;
     const companyId = Number(req.query.companyId ?? req.user.companyId);
     const { path: dir, isDefault } = await resolveDir(companyId);
-    const files = await fs.readdir(dir).catch(() => []);
+    const files = dir ? await fs.readdir(dir).catch(() => []) : [];
     const names = files
       .filter((f) => f.endsWith('.json'))
       .map((f) => f.replace(/\.json$/, ''))
@@ -324,21 +322,11 @@ router.get('/configs/:name', requireAuth, async (req, res, next) => {
     const { name } = req.params;
     const companyId = Number(req.query.companyId ?? req.user.companyId);
     const dir = tenantDir(companyId);
-    const fallbackDir = tenantDir(0);
-    try {
-      const text = await fs.readFile(path.join(dir, `${name}.json`), 'utf-8');
-      return res.json(JSON.parse(text));
-    } catch (err) {
-      if (err.code === 'ENOENT' && dir !== fallbackDir) {
-        const text = await fs.readFile(
-          path.join(fallbackDir, `${name}.json`),
-          'utf-8',
-        );
-        return res.json(JSON.parse(text));
-      }
-      throw err;
-    }
+    const text = await fs.readFile(path.join(dir, `${name}.json`), 'utf-8');
+    return res.json(JSON.parse(text));
   } catch (err) {
+    if (err.code === 'ENOENT')
+      return res.status(404).json({ message: 'Config not found' });
     next(err);
   }
 });
