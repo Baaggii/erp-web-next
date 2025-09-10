@@ -18,7 +18,7 @@ router.get('/export', requireAuth, async (req, res, next) => {
     if (!(await checkPermission(req))) return res.sendStatus(403);
     const companyId = Number(req.query.companyId ?? req.user.companyId);
     const filePath = await exportTranslations(companyId);
-    res.status(200).json({ filePath });
+    res.status(200).json({ success: true, filePath });
   } catch (err) {
     next(err);
   }

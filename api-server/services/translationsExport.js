@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { getConfigPathSync } from '../utils/configPaths.js';
+import { getConfigPathSync, tenantConfigPath } from '../utils/configPaths.js';
 import { slugify } from '../utils/slugify.js';
 import {
   collectPhrasesFromPages,
@@ -174,10 +174,8 @@ export async function exportTranslations(companyId = 0) {
   } catch {}
 
   const sorted = sortObj(base);
-  const exportPath = path.join(
-    path.dirname(headerMappingsPath),
-    'exportedtexts.json',
-  );
+  const exportPath = tenantConfigPath('exportedtexts.json', 0);
+  fs.mkdirSync(path.dirname(exportPath), { recursive: true });
   fs.writeFileSync(exportPath, JSON.stringify(sorted, null, 2));
   console.log(`Exported translations written to ${exportPath}`);
   return exportPath;
