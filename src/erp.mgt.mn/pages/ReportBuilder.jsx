@@ -1296,8 +1296,8 @@ function ReportBuilderInner() {
       setLoadedProcName(selectedDbProcedure);
       if (autoApply) {
         try {
-          const cfg = parseProcedureConfig(sql);
-          if (cfg) applyConfig(cfg);
+          const parsed = parseProcedureConfig(sql);
+          if (parsed?.config) applyConfig(parsed.config);
         } catch (err) {
           console.error(err);
         }
@@ -1504,9 +1504,28 @@ function ReportBuilderInner() {
       sql = await handleLoadDbProcedure(false);
     }
     try {
-      const cfg = parseProcedureConfig(sql);
-      if (cfg) {
-        applyConfig(cfg);
+      const parsed = parseProcedureConfig(sql);
+      if (parsed?.config) {
+        applyConfig(parsed.config);
+        if (parsed.converted) {
+          try {
+            const name = parsed.config.procName || selectedDbProcedure;
+            await fetch(
+              `/api/report_builder/configs/${encodeURIComponent(name)}`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(parsed.config),
+              },
+            );
+            addToast('Generated config from SQL', 'success');
+          } catch (err) {
+            console.error(err);
+            addToast('Generated config from SQL (save failed)', 'error');
+          }
+        } else {
+          addToast('Loaded config from embedded block', 'success');
+        }
       } else {
         addToast('No embedded config found in procedure', 'error');
       }

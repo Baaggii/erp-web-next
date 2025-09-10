@@ -9,7 +9,7 @@ import {
   saveView,
   listReportProcedures,
   deleteProcedure,
-  getProcedureSql,
+  getStoredProcedureSql,
   getEmploymentSession,
 } from '../../db/index.js';
 
@@ -166,7 +166,7 @@ router.post('/procedures', requireAuth, async (req, res, next) => {
 router.get('/procedures/:name', requireAuth, async (req, res, next) => {
   try {
     const { name } = req.params;
-    const sql = await getProcedureSql(name);
+    const sql = await getStoredProcedureSql(name);
     if (!sql) return res.status(404).json({ message: 'Procedure not found' });
     res.json({ sql });
   } catch (err) {
