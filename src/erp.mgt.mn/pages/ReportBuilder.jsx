@@ -4,7 +4,7 @@ import buildReportSql from '../utils/buildReportSql.js';
 import ErrorBoundary from '../components/ErrorBoundary.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import formatSqlValue from '../utils/formatSqlValue.js';
-import parseProcedureConfig from '../utils/parseProcedureConfig.js';
+import parseProcedureConfig from '../../../utils/parseProcedureConfig.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 
@@ -1512,47 +1512,72 @@ function ReportBuilderInner() {
     if (!sql || loadedProcName !== selectedDbProcedure) {
       sql = await handleLoadDbProcedure(false);
     }
+    let parsed;
     try {
-      const parsed = parseProcedureConfig(sql);
-      if (!parsed) {
-        addToast('SQL parsing failed; unable to derive config', 'error');
-      } else if (parsed.config) {
-        applyConfig(parsed.config);
-        if (parsed.converted) {
-          try {
-            const name = parsed.config.procName || selectedDbProcedure;
-            await fetch(
-              `/api/report_builder/configs/${encodeURIComponent(name)}`,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(parsed.config),
-              },
-            );
-            if (parsed.partial) {
-              addToast('Generated config with limited clauses', 'warning');
-            } else {
-              addToast('Generated config from SQL', 'success');
-            }
-          } catch (err) {
-            console.error(err);
-            if (parsed.partial) {
-              addToast('Generated config with limited clauses (save failed)', 'warning');
-            } else {
-              addToast('Generated config from SQL (save failed)', 'error');
-            }
-          }
-        } else {
-          addToast('Loaded config from embedded block', 'success');
-        }
-      } else if (parsed.error) {
-        addToast(`SQL parsing failed: ${parsed.error}`, 'error');
-      } else {
-        addToast('No embedded config found in procedure', 'error');
+      parsed = parseProcedureConfig(sql);
+      if (parsed?.error === 'REPORT_BUILDER_CONFIG not found') {
+        throw new Error('REPORT_BUILDER_CONFIG not found');
       }
     } catch (err) {
       console.error(err);
+      if (err.message === 'REPORT_BUILDER_CONFIG not found') {
+        try {
+          const res = await fetch(
+            `/api/report_builder/procedures/${encodeURIComponent(selectedDbProcedure)}/config`,
+            { method: 'POST' },
+          );
+          const data = await res.json();
+          if (data?.config?.config) {
+            applyConfig(data.config.config);
+            addToast('Generated config from SQL', 'success');
+          } else {
+            addToast('SQL parsing failed; unable to derive config', 'error');
+          }
+        } catch (err2) {
+          console.error(err2);
+          addToast(err2.message || 'SQL parsing error', 'error');
+        }
+        return;
+      }
       addToast(err.message || 'SQL parsing error', 'error');
+      return;
+    }
+
+    if (!parsed) {
+      addToast('SQL parsing failed; unable to derive config', 'error');
+    } else if (parsed.config) {
+      applyConfig(parsed.config);
+      if (parsed.converted) {
+        try {
+          const name = parsed.config.procName || selectedDbProcedure;
+          await fetch(
+            `/api/report_builder/configs/${encodeURIComponent(name)}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(parsed.config),
+            },
+          );
+          if (parsed.partial) {
+            addToast('Generated config with limited clauses', 'warning');
+          } else {
+            addToast('Generated config from SQL', 'success');
+          }
+        } catch (err) {
+          console.error(err);
+          if (parsed.partial) {
+            addToast('Generated config with limited clauses (save failed)', 'warning');
+          } else {
+            addToast('Generated config from SQL (save failed)', 'error');
+          }
+        }
+      } else {
+        addToast('Loaded config from embedded block', 'success');
+      }
+    } else if (parsed.error) {
+      addToast(`SQL parsing failed: ${parsed.error}`, 'error');
+    } else {
+      addToast('No embedded config found in procedure', 'error');
     }
   }
 

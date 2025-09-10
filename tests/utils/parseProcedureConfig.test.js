@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import parseProcedureConfig from '../../src/erp.mgt.mn/utils/parseProcedureConfig.js';
+import parseProcedureConfig from '../../utils/parseProcedureConfig.js';
 
 test('parseProcedureConfig extracts config block', () => {
   const sql = 'SELECT 1; /*REPORT_BUILDER_CONFIG {"foo":"bar"} */';
