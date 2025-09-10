@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { getConfigPathSync, tenantConfigPath } from '../utils/configPaths.js';
 import { slugify } from '../utils/slugify.js';
 import {
@@ -179,4 +180,22 @@ export async function exportTranslations(companyId = 0) {
   fs.writeFileSync(exportPath, JSON.stringify(sorted, null, 2));
   console.log(`Exported translations written to ${exportPath}`);
   return exportPath;
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const companyId = Number(process.argv[2] || 0);
+  const run = async () => {
+    try {
+      await exportTranslations(companyId);
+    } catch (err) {
+      console.error(err);
+      process.exit(1);
+    } finally {
+      try {
+        const db = await import('../../db/index.js');
+        await db.pool.end();
+      } catch {}
+    }
+  };
+  run();
 }

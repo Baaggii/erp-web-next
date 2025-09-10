@@ -214,11 +214,12 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
     if (signal?.aborted) throw new Error('Aborted');
   };
 
-  log('[gen-i18n] START');
-  const base = JSON.parse(fs.readFileSync(headerMappingsPath, 'utf8'));
-  const modules = await fetchModules();
-  let headerMappingsUpdated = false;
-  const entryMap = new Map();
+  try {
+    log('[gen-i18n] START');
+    const base = JSON.parse(fs.readFileSync(headerMappingsPath, 'utf8'));
+    const modules = await fetchModules();
+    let headerMappingsUpdated = false;
+    const entryMap = new Map();
 
   function addEntry(key, sourceText, sourceLang, origin) {
     if (
@@ -784,6 +785,12 @@ export async function generateTranslations({ onLog = console.log, signal } = {})
     }
   }
   log('[gen-i18n] DONE');
+  } finally {
+    try {
+      const db = await import('../db/index.js');
+      await db.pool.end();
+    } catch {}
+  }
 }
 
 export async function generateTooltipTranslations({ onLog = console.log, signal } = {}) {
