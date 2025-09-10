@@ -46,9 +46,9 @@ async function loadLocale(lang) {
     if (typeof process !== 'undefined' && process.versions?.node) {
       const fs = await import('fs/promises');
       const { tenantConfigPath } = await import(
-        '../../api-server/utils/configPaths.js'
+        '../../../api-server/utils/configPaths.js'
       );
-      const file = tenantConfigPath(`locales/${lang}.json`, getCompanyId());
+      const file = tenantConfigPath(`locales/${lang}.json`, 0);
       const data = await fs.readFile(file, 'utf8');
       localeCache[lang] = JSON.parse(data);
     } else {

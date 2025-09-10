@@ -1,41 +1,53 @@
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
-import { getConfigPathSync, tenantConfigPath } from '../utils/configPaths.js';
+import { getConfigPathSync } from '../utils/configPaths.js';
 import { slugify } from '../utils/slugify.js';
-import {
-  collectPhrasesFromPages,
-  fetchModules,
-  sortObj,
-} from '../utils/translationHelpers.js';
 
-function pickDefault(val) {
-  if (val && typeof val === 'object') {
-    if (typeof val.en === 'string') return val.en;
-    const first = Object.values(val).find((v) => typeof v === 'string');
-    return first !== undefined ? first : val;
-  }
-  return val;
+function sortObj(o) {
+  return Object.keys(o)
+    .sort()
+    .reduce((acc, k) => ((acc[k] = o[k]), acc), {});
 }
 
-function flattenLangObjects(obj) {
-  if (!obj || typeof obj !== 'object') return;
-  for (const [k, v] of Object.entries(obj)) {
-    if (v && typeof v === 'object') {
-      if (Array.isArray(v)) {
-        v.forEach((item) => {
-          if (item && typeof item === 'object') flattenLangObjects(item);
-        });
-      } else {
-        const values = Object.values(v);
-        if (values.length && values.every((item) => typeof item === 'string')) {
-          obj[k] = pickDefault(v);
-        } else {
-          flattenLangObjects(v);
-        }
-      }
+function collectPhrasesFromPages(dir) {
+  const files = [];
+  function walk(d) {
+    for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+      const full = path.join(d, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.(jsx?|tsx?)$/.test(entry.name)) files.push(full);
     }
   }
+  walk(dir);
+  const regex = /\bt\(\s*['"]([^'"]+)['"]\s*(?:,\s*['"]([^'"]+)['"])?\s*\)/g;
+  const pairs = [];
+  for (const file of files) {
+    const content = fs.readFileSync(file, 'utf8');
+    let match;
+    while ((match = regex.exec(content))) {
+      pairs.push({ key: match[1], text: match[2] || match[1] });
+    }
+  }
+  return pairs;
+}
+
+async function fetchModules() {
+  try {
+    const db = await import('../../db/index.js');
+    try {
+      const [rows] = await db.pool.query(
+        'SELECT module_key AS moduleKey, label FROM modules',
+      );
+      await db.pool.end();
+      return rows.map((r) => ({ moduleKey: r.moduleKey, label: r.label }));
+    } catch (err) {
+      try {
+        await db.pool.end();
+      } catch {}
+    }
+  } catch {}
+  const fallback = await import('../../db/defaultModules.js');
+  return fallback.default.map(({ moduleKey, label }) => ({ moduleKey, label }));
 }
 
 export async function exportTranslations(companyId = 0) {
@@ -48,16 +60,15 @@ export async function exportTranslations(companyId = 0) {
     companyId,
   );
   const base = JSON.parse(fs.readFileSync(headerMappingsPath, 'utf8'));
-  flattenLangObjects(base);
   const modules = await fetchModules();
 
   for (const { moduleKey, label } of modules) {
-    if (base[moduleKey] === undefined) base[moduleKey] = pickDefault(label);
+    if (base[moduleKey] === undefined) base[moduleKey] = label;
   }
 
   const tPairs = collectPhrasesFromPages(path.resolve('src/erp.mgt.mn'));
   for (const { key, text } of tPairs) {
-    if (base[key] === undefined) base[key] = pickDefault(text);
+    if (base[key] === undefined) base[key] = text;
   }
 
   try {
@@ -66,8 +77,7 @@ export async function exportTranslations(companyId = 0) {
       if (!forms || typeof forms !== 'object') continue;
       for (const [formName, config] of Object.entries(forms)) {
         const formSlug = slugify(formName);
-        if (base[`form.${formSlug}`] === undefined)
-          base[`form.${formSlug}`] = pickDefault(formName);
+        if (base[`form.${formSlug}`] === undefined) base[`form.${formSlug}`] = formName;
         function walk(obj, pathSegs) {
           if (!obj || typeof obj !== 'object') return;
           for (const [k, v] of Object.entries(obj)) {
@@ -75,14 +85,14 @@ export async function exportTranslations(companyId = 0) {
             if (typeof v === 'string') {
               if (/^[a-z0-9_.]+$/.test(v)) continue;
               const key = `form.${segs.join('.')}`;
-              if (base[key] === undefined) base[key] = pickDefault(v);
+              if (base[key] === undefined) base[key] = v;
             } else if (Array.isArray(v)) {
               for (const item of v) {
                 if (item && typeof item === 'object') {
                   walk(item, segs);
                 } else if (typeof item === 'string' && !/^[a-z0-9_.]+$/.test(item)) {
                   const key = `form.${segs.join('.')}.${slugify(item)}`;
-                  if (base[key] === undefined) base[key] = pickDefault(item);
+                  if (base[key] === undefined) base[key] = item;
                 }
               }
             } else {
@@ -115,7 +125,7 @@ export async function exportTranslations(companyId = 0) {
               ? `userLevelActions.${pathSegs.join('.')}`
               : 'userLevelActions';
             const key = `${baseKey}.${slugify(item)}`;
-            if (base[key] === undefined) base[key] = pickDefault(item);
+            if (base[key] === undefined) base[key] = item;
           }
         }
       } else {
@@ -124,7 +134,7 @@ export async function exportTranslations(companyId = 0) {
           if (typeof v === 'string') {
             if (skipString.test(v)) continue;
             const key = `userLevelActions.${segs.join('.')}`;
-            if (base[key] === undefined) base[key] = pickDefault(v);
+            if (base[key] === undefined) base[key] = v;
           } else {
             walkUla(v, segs);
           }
@@ -155,7 +165,7 @@ export async function exportTranslations(companyId = 0) {
               ? `posTransactionConfig.${pathSegs.join('.')}`
               : 'posTransactionConfig';
             const key = `${baseKey}.${slugify(item)}`;
-            if (base[key] === undefined) base[key] = pickDefault(item);
+            if (base[key] === undefined) base[key] = item;
           }
         }
       } else {
@@ -164,7 +174,7 @@ export async function exportTranslations(companyId = 0) {
           if (typeof v === 'string') {
             if (skipString.test(v)) continue;
             const key = `posTransactionConfig.${segs.join('.')}`;
-            if (base[key] === undefined) base[key] = pickDefault(v);
+            if (base[key] === undefined) base[key] = v;
           } else {
             walkPos(v, segs);
           }
@@ -174,28 +184,5 @@ export async function exportTranslations(companyId = 0) {
     walkPos(posConfig, []);
   } catch {}
 
-  const sorted = sortObj(base);
-  const exportPath = tenantConfigPath('exportedtexts.json', 0);
-  fs.mkdirSync(path.dirname(exportPath), { recursive: true });
-  fs.writeFileSync(exportPath, JSON.stringify(sorted, null, 2));
-  console.log(`Exported translations written to ${exportPath}`);
-  return exportPath;
-}
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const companyId = Number(process.argv[2] || 0);
-  const run = async () => {
-    try {
-      await exportTranslations(companyId);
-    } catch (err) {
-      console.error(err);
-      process.exit(1);
-    } finally {
-      try {
-        const db = await import('../../db/index.js');
-        await db.pool.end();
-      } catch {}
-    }
-  };
-  run();
+  return sortObj(base);
 }
