@@ -122,6 +122,65 @@ export default function ManualTranslationsTab() {
     );
   }
 
+  async function completeOtherLanguages() {
+    setCompleting(true);
+    const restLanguages = languages.filter((l) => l !== 'en' && l !== 'mn');
+    const updated = [];
+    const toSave = [];
+    const notCompleted = [];
+    for (const entry of entries) {
+      const newEntry = { ...entry, values: { ...entry.values } };
+      const sourceText = newEntry.values.en?.trim() || newEntry.values.mn?.trim();
+      const missingBefore = restLanguages.filter((l) => !newEntry.values[l]?.trim());
+      let changed = false;
+      if (missingBefore.length && sourceText) {
+        for (const lang of missingBefore) {
+          const translated = await translateWithCache(lang, sourceText);
+          if (translated) {
+            newEntry.values[lang] = translated;
+            changed = true;
+          }
+        }
+      }
+      const missingAfter = restLanguages.filter((l) => !newEntry.values[l]?.trim());
+      if (missingBefore.length && missingAfter.length) {
+        notCompleted.push(newEntry);
+      }
+      if (changed) {
+        toSave.push(newEntry);
+      }
+      updated.push(newEntry);
+    }
+    setEntries(updated);
+    for (const entry of toSave) {
+      await fetch('/api/manual_translations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(entry),
+      });
+    }
+    if (toSave.length) await load();
+    setCompleting(false);
+    if (toSave.length) {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message: t('translationsCompleted', 'Translations completed'), type: 'success' },
+        }),
+      );
+    }
+    if (notCompleted.length) {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: t('translationsIncomplete', 'Some entries could not be completed'),
+            type: 'error',
+          },
+        }),
+      );
+    }
+  }
+
   function addRow() {
     const newEntries = [...entries, { key: '', type: 'locale', values: {} }];
     setEntries(newEntries);
@@ -136,6 +195,11 @@ export default function ManualTranslationsTab() {
           {completing
             ? t('completing', 'Completing...')
             : t('completeEnMn', 'Complete en/mn translations')}
+        </button>
+        <button onClick={completeOtherLanguages} disabled={completing}>
+          {completing
+            ? t('completing', 'Completing...')
+            : t('completeOtherLangs', 'Complete other languages translations')}
         </button>
         <input
           value={searchTerm}
