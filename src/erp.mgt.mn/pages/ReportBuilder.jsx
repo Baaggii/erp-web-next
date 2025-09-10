@@ -1534,12 +1534,14 @@ function ReportBuilderInner() {
         } else {
           addToast('Loaded config from embedded block', 'success');
         }
+      } else if (parsed?.error) {
+        addToast(`SQL parsing failed: ${parsed.error}`, 'error');
       } else {
         addToast('No embedded config found in procedure', 'error');
       }
     } catch (err) {
       console.error(err);
-      addToast('Invalid embedded config JSON', 'error');
+      addToast(`SQL parsing error: ${err.message}`, 'error');
     }
   }
 
