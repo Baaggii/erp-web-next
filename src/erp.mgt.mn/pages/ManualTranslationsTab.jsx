@@ -34,7 +34,7 @@ export default function ManualTranslationsTab() {
     if (!searchTerm) return true;
     const term = searchTerm.toLowerCase();
     if (entry.key.toLowerCase().includes(term)) return true;
-    return Object.values(entry.values).some((v) => (v || '').toLowerCase().includes(term));
+    return Object.values(entry.values).some((v) => String(v ?? '').toLowerCase().includes(term));
   });
 
   const start = (page - 1) * perPage;
