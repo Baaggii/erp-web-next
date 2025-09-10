@@ -7,6 +7,11 @@ try {
   ({ default: OpenAI } = await import('../api-server/utils/openaiClient.js'));
 } catch {}
 import { slugify } from '../api-server/utils/slugify.js';
+import {
+  collectPhrasesFromPages,
+  fetchModules,
+  sortObj,
+} from '../api-server/utils/translationHelpers.js';
 
 let log = console.log;
 
@@ -36,9 +41,6 @@ const tooltipsDir = path.join(localesDir, 'tooltips');
 const TIMEOUT_MS = 7000;
 
 /* ---------------- Utilities ---------------- */
-function sortObj(o) {
-  return Object.keys(o).sort().reduce((acc, k) => (acc[k] = o[k], acc), {});
-}
 
 function syncKeys(targetA, targetB, label) {
   const keysA = Object.keys(targetA || {});
@@ -108,52 +110,6 @@ function writeLocaleFile(lang, obj) {
   log(`[gen-i18n] wrote ${file} (${Object.keys(ordered).length} keys)`);
 }
 
-function collectPhrasesFromPages(dir) {
-  const files = [];
-  function walk(d) {
-    for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
-      const full = path.join(d, entry.name);
-      if (entry.isDirectory()) walk(full);
-      else if (/\.(jsx?|tsx?)$/.test(entry.name)) files.push(full);
-    }
-  }
-  walk(dir);
-
-  const regex = /\bt\(\s*['"]([^'"]+)['"]\s*(?:,\s*['"]([^'"]+)['"])?\s*\)/g;
-  const pairs = [];
-  for (const file of files) {
-    const content = fs.readFileSync(file, 'utf8');
-    let match;
-    while ((match = regex.exec(content))) {
-      pairs.push({ key: match[1], text: match[2] || match[1] });
-    }
-  }
-  return pairs;
-}
-
-async function fetchModules() {
-  try {
-    const db = await import('../db/index.js');
-    try {
-      const [rows] = await db.pool.query(
-        'SELECT module_key AS moduleKey, label FROM modules',
-      );
-      await db.pool.end();
-      return rows.map((r) => ({ moduleKey: r.moduleKey, label: r.label }));
-    } catch (err) {
-      console.warn(
-        `[gen-i18n] DB query failed; falling back to defaults: ${err.message}`,
-      );
-      try { await db.pool.end(); } catch {}
-    }
-  } catch (err) {
-    console.warn(
-      `[gen-i18n] Failed to load DB modules; falling back: ${err.message}`,
-    );
-  }
-  const fallback = await import('../db/defaultModules.js');
-  return fallback.default.map(({ moduleKey, label }) => ({ moduleKey, label }));
-}
 
 /* ---------------- Providers ---------------- */
 
