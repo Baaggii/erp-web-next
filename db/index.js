@@ -1162,6 +1162,7 @@ export async function zeroSharedTenantKeys(userId) {
 
 export async function saveStoredProcedure(sql, { allowProtected = false } = {}) {
   const cleaned = sql
+    .replace(/CREATE\s+DEFINER=`[^`]+`@`[^`]+`\s+PROCEDURE/gi, 'CREATE PROCEDURE')
     .replace(/^DELIMITER \$\$/gm, '')
     .replace(/^DELIMITER ;/gm, '')
     .replace(/END\s*\$\$/gm, 'END;');
