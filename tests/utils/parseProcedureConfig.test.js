@@ -37,3 +37,18 @@ END`;
   assert.equal(result.config.fields.length, 2);
   assert.equal(result.config.groups.length, 2);
 });
+
+test('parseProcedureConfig handles inner END and line comments', () => {
+  const sql = `CREATE PROCEDURE t()
+BEGIN
+  WHILE i < 10 DO
+    -- loop body
+    SET i = i + 1;
+  END WHILE;
+  SELECT p.id, p.name FROM prod p; -- final select
+END`;
+  const result = parseProcedureConfig(sql);
+  assert.equal(result.converted, true);
+  assert.equal(result.config.fromTable, 'prod');
+  assert.equal(result.config.fields.length, 2);
+});
