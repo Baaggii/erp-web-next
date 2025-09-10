@@ -12,6 +12,7 @@ import {
   getStoredProcedureSql,
   getEmploymentSession,
 } from '../../db/index.js';
+import { generateProcedureConfig } from '../utils/generateProcedureConfig.js';
 
 const PROTECTED_PROCEDURE_PREFIXES = ['dynrep_'];
 
@@ -173,6 +174,24 @@ router.get('/procedures/:name', requireAuth, async (req, res, next) => {
     next(err);
   }
 });
+
+// Generate and save config from a stored procedure
+router.post(
+  '/procedures/:name/config',
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      const { name } = req.params;
+      const companyId = Number(req.query.companyId ?? req.user.companyId);
+      const sql = await getStoredProcedureSql(name);
+      if (!sql) return res.status(404).json({ message: 'Procedure not found' });
+      const config = await generateProcedureConfig(name, sql, companyId);
+      res.json({ ok: true, config });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 // Delete a stored procedure
 router.delete('/procedures/:name', requireAuth, async (req, res, next) => {

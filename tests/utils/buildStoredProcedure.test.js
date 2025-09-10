@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import buildStoredProcedure from '../../src/erp.mgt.mn/utils/buildStoredProcedure.js';
-import parseProcedureConfig from '../../src/erp.mgt.mn/utils/parseProcedureConfig.js';
+import parseProcedureConfig from '../../utils/parseProcedureConfig.js';
 
 // minimal report definition
 const report = { from: { table: 'tbl' } };
