@@ -1195,21 +1195,24 @@ function ReportBuilderInner() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.message || 'Save failed');
       }
-      try {
-        const listRes = await fetch(
-          `/api/report_builder/procedures${procQuery}`,
-        );
-        const data = await listRes.json();
-        const list = (data.names || []).filter(({ name }) =>
-          name.startsWith(`${basePrefix}0_`) ||
-          (company != null && name.startsWith(`${basePrefix}${company}_`)),
-        );
-        setDbProcedures(list);
-        setSelectedDbProcedure(list[0]?.name || '');
-        setDbProcIsDefault(list[0]?.isDefault || false);
-      } catch (err) {
-        console.error(err);
+      const listRes = await fetch(`/api/report_builder/procedures${procQuery}`);
+      if (!listRes.ok) {
+        throw new Error('Failed to fetch procedures');
       }
+      const data = await listRes.json();
+      const list = (data.names || []).filter(({ name }) =>
+        name.startsWith(`${basePrefix}0_`) ||
+        (company != null && name.startsWith(`${basePrefix}${company}_`)),
+      );
+      const expectedName = `${basePrefix}${
+        company != null ? `${company}_` : ''
+      }${procName}`;
+      if (!list.some(({ name }) => name === expectedName)) {
+        throw new Error('Save failed');
+      }
+      setDbProcedures(list);
+      setSelectedDbProcedure(list[0]?.name || '');
+      setDbProcIsDefault(list[0]?.isDefault || false);
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: { message: 'Stored procedure saved', type: 'success' },

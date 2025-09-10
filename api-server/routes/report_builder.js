@@ -158,7 +158,7 @@ router.post('/procedures', requireAuth, async (req, res, next) => {
     await saveStoredProcedure(sql, { allowProtected: isAdmin });
     res.json({ ok: true });
   } catch (err) {
-    next(err);
+    res.status(err.status || 400).json({ message: err.message });
   }
 });
 

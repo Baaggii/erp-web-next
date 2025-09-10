@@ -1174,11 +1174,16 @@ export async function saveStoredProcedure(sql, { allowProtected = false } = {}) 
   }
   const dropMatch = cleaned.match(/DROP\s+PROCEDURE[^;]+;/i);
   const createMatch = cleaned.match(/CREATE\s+PROCEDURE[\s\S]+END;/i);
+  if (!createMatch) {
+    throw new Error('Missing CREATE PROCEDURE statement');
+  }
   if (dropMatch) {
     await pool.query(dropMatch[0]);
   }
-  if (createMatch) {
-    await pool.query(createMatch[0]);
+  await pool.query(createMatch[0]);
+  const procs = await listReportProcedures(procName);
+  if (!procs.includes(procName)) {
+    throw new Error('Failed to create procedure');
   }
 }
 
