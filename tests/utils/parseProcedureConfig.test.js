@@ -60,3 +60,11 @@ test('parseProcedureConfig tolerates ORDER BY and positional GROUP BY', () => {
   assert.equal(result.config.fromTable, 'prod');
   assert.equal(result.config.fields.length, 2);
 });
+
+test('parseProcedureConfig converts SQL with ORDER BY and LIMIT', () => {
+  const sql = `CREATE PROCEDURE t() BEGIN SELECT p.id, p.name FROM prod p ORDER BY p.name LIMIT 5; END`;
+  const result = parseProcedureConfig(sql);
+  assert.equal(result.converted, true);
+  assert.equal(result.config.fromTable, 'prod');
+  assert.equal(result.config.fields.length, 2);
+});

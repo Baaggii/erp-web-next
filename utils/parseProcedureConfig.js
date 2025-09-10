@@ -41,9 +41,6 @@ function convertSql(sql) {
   if (selIdx === -1) return null;
   let statement = body.slice(selIdx);
   statement = statement.split(';')[0];
-  // Strip trailing clauses we don't parse
-  statement = statement.replace(/\b(ORDER BY|LIMIT|HAVING)\b[\s\S]*$/i, '').trim();
-
   const selectMatch = statement.match(/SELECT\s+([\s\S]+?)\s+FROM\s+([\s\S]+)/i);
   if (!selectMatch) return null;
   const selectPart = selectMatch[1].trim();
@@ -52,24 +49,38 @@ function convertSql(sql) {
   const upperRest = rest.toUpperCase();
   const whereIdx = upperRest.indexOf(' WHERE ');
   const groupIdx = upperRest.indexOf(' GROUP BY ');
-  const endIdx = Math.min(
-    whereIdx !== -1 ? whereIdx : upperRest.length,
-    groupIdx !== -1 ? groupIdx : upperRest.length,
+  const orderIdx = upperRest.indexOf(' ORDER BY ');
+  const havingIdx = upperRest.indexOf(' HAVING ');
+  const limitIdx = upperRest.indexOf(' LIMIT ');
+
+  const clauseIndices = [whereIdx, groupIdx, orderIdx, havingIdx, limitIdx].filter(
+    (i) => i !== -1,
   );
+  const endIdx = clauseIndices.length ? Math.min(...clauseIndices) : upperRest.length;
 
   const fromJoinPart = rest.slice(0, endIdx).trim();
 
   let wherePart = '';
   let groupPart = '';
+
   if (whereIdx !== -1) {
-    if (groupIdx !== -1 && groupIdx > whereIdx) {
-      wherePart = rest.slice(whereIdx + 6, groupIdx).trim();
-    } else {
-      wherePart = rest.slice(whereIdx + 6).trim();
-    }
+    const afterWhereCandidates = [groupIdx, orderIdx, havingIdx, limitIdx].filter(
+      (i) => i !== -1 && i > whereIdx,
+    );
+    const whereEndIdx = afterWhereCandidates.length
+      ? Math.min(...afterWhereCandidates)
+      : rest.length;
+    wherePart = rest.slice(whereIdx + 6, whereEndIdx).trim();
   }
+
   if (groupIdx !== -1) {
-    groupPart = rest.slice(groupIdx + 9).trim();
+    const afterGroupCandidates = [orderIdx, havingIdx, limitIdx].filter(
+      (i) => i !== -1 && i > groupIdx,
+    );
+    const groupEndIdx = afterGroupCandidates.length
+      ? Math.min(...afterGroupCandidates)
+      : rest.length;
+    groupPart = rest.slice(groupIdx + 9, groupEndIdx).trim();
   }
 
   const {
