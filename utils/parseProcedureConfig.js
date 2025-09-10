@@ -46,41 +46,41 @@ function convertSql(sql) {
   const selectPart = selectMatch[1].trim();
   const rest = selectMatch[2];
 
-  const upperRest = rest.toUpperCase();
-  const whereIdx = upperRest.indexOf(' WHERE ');
-  const groupIdx = upperRest.indexOf(' GROUP BY ');
-  const orderIdx = upperRest.indexOf(' ORDER BY ');
-  const havingIdx = upperRest.indexOf(' HAVING ');
-  const limitIdx = upperRest.indexOf(' LIMIT ');
+  const where = findClause(rest, 'WHERE');
+  const group = findClause(rest, 'GROUP BY');
+  const order = findClause(rest, 'ORDER BY');
+  const having = findClause(rest, 'HAVING');
+  const limit = findClause(rest, 'LIMIT');
 
-  const clauseIndices = [whereIdx, groupIdx, orderIdx, havingIdx, limitIdx].filter(
+  const clauseIndices = [where.index, group.index, order.index, having.index, limit.index].filter(
     (i) => i !== -1,
   );
-  const endIdx = clauseIndices.length ? Math.min(...clauseIndices) : upperRest.length;
+  const endIdx = clauseIndices.length ? Math.min(...clauseIndices) : rest.length;
 
   const fromJoinPart = rest.slice(0, endIdx).trim();
 
   let wherePart = '';
   let groupPart = '';
 
-  if (whereIdx !== -1) {
-    const afterWhereCandidates = [groupIdx, orderIdx, havingIdx, limitIdx].filter(
-      (i) => i !== -1 && i > whereIdx,
+  if (where.index !== -1) {
+    const afterWhereCandidates = [group.index, order.index, having.index, limit.index].filter(
+      (i) => i !== -1 && i > where.index,
     );
     const whereEndIdx = afterWhereCandidates.length
       ? Math.min(...afterWhereCandidates)
       : rest.length;
-    wherePart = rest.slice(whereIdx + 6, whereEndIdx).trim();
+    wherePart = rest.slice(where.index + where.length, whereEndIdx).trim();
   }
 
-  if (groupIdx !== -1) {
-    const afterGroupCandidates = [orderIdx, havingIdx, limitIdx].filter(
-      (i) => i !== -1 && i > groupIdx,
+  if (group.index !== -1) {
+    const afterGroupCandidates = [order.index, having.index, limit.index].filter(
+      (i) => i !== -1 && i > group.index,
     );
     const groupEndIdx = afterGroupCandidates.length
       ? Math.min(...afterGroupCandidates)
       : rest.length;
-    groupPart = rest.slice(groupIdx + 9, groupEndIdx).trim();
+    groupPart = rest.slice(group.index + group.length, groupEndIdx).trim();
+    groupPart = stripTrailingClauses(groupPart);
   }
 
   const {
@@ -128,6 +128,20 @@ function convertSql(sql) {
     },
     partial,
   };
+}
+
+function findClause(text, clause) {
+  const pattern = clause.replace(/\s+/g, '\\s+');
+  const regex = new RegExp(`\\b${pattern}\\b`, 'i');
+  const match = regex.exec(text);
+  return match ? { index: match.index, length: match[0].length } : { index: -1, length: 0 };
+}
+
+function stripTrailingClauses(text) {
+  const indices = ['WHERE', 'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT']
+    .map((k) => findClause(text, k).index)
+    .filter((i) => i !== -1);
+  return indices.length ? text.slice(0, Math.min(...indices)).trim() : text.trim();
 }
 
 function parseFromAndJoins(text) {

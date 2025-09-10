@@ -69,6 +69,16 @@ test('parseProcedureConfig converts SQL with ORDER BY and LIMIT', () => {
   assert.equal(result.config.fields.length, 2);
 });
 
+test('parseProcedureConfig converts SQL with GROUP BY, ORDER BY, and LIMIT', () => {
+  const sql =
+    `CREATE PROCEDURE t() BEGIN SELECT p.id, p.name FROM prod p GROUP BY p.id, p.name ORDER BY p.name LIMIT 5; END`;
+  const result = parseProcedureConfig(sql);
+  assert.equal(result.converted, true);
+  assert.equal(result.config.fromTable, 'prod');
+  assert.equal(result.config.fields.length, 2);
+  assert.equal(result.config.groups.length, 2);
+});
+
 test('parseProcedureConfig handles subquery FROM alias', () => {
   const sql =
     `CREATE PROCEDURE t() BEGIN SELECT s.id FROM (SELECT id FROM prod) s; END`;
