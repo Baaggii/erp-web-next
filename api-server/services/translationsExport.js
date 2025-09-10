@@ -8,6 +8,35 @@ import {
   sortObj,
 } from '../utils/translationHelpers.js';
 
+function pickDefault(val) {
+  if (val && typeof val === 'object') {
+    if (typeof val.en === 'string') return val.en;
+    const first = Object.values(val).find((v) => typeof v === 'string');
+    return first !== undefined ? first : val;
+  }
+  return val;
+}
+
+function flattenLangObjects(obj) {
+  if (!obj || typeof obj !== 'object') return;
+  for (const [k, v] of Object.entries(obj)) {
+    if (v && typeof v === 'object') {
+      if (Array.isArray(v)) {
+        v.forEach((item) => {
+          if (item && typeof item === 'object') flattenLangObjects(item);
+        });
+      } else {
+        const values = Object.values(v);
+        if (values.length && values.every((item) => typeof item === 'string')) {
+          obj[k] = pickDefault(v);
+        } else {
+          flattenLangObjects(v);
+        }
+      }
+    }
+  }
+}
+
 export async function exportTranslations(companyId = 0) {
   const { path: headerMappingsPath } = getConfigPathSync(
     'headerMappings.json',
@@ -18,15 +47,16 @@ export async function exportTranslations(companyId = 0) {
     companyId,
   );
   const base = JSON.parse(fs.readFileSync(headerMappingsPath, 'utf8'));
+  flattenLangObjects(base);
   const modules = await fetchModules();
 
   for (const { moduleKey, label } of modules) {
-    if (base[moduleKey] === undefined) base[moduleKey] = label;
+    if (base[moduleKey] === undefined) base[moduleKey] = pickDefault(label);
   }
 
   const tPairs = collectPhrasesFromPages(path.resolve('src/erp.mgt.mn'));
   for (const { key, text } of tPairs) {
-    if (base[key] === undefined) base[key] = text;
+    if (base[key] === undefined) base[key] = pickDefault(text);
   }
 
   try {
@@ -35,7 +65,8 @@ export async function exportTranslations(companyId = 0) {
       if (!forms || typeof forms !== 'object') continue;
       for (const [formName, config] of Object.entries(forms)) {
         const formSlug = slugify(formName);
-        if (base[`form.${formSlug}`] === undefined) base[`form.${formSlug}`] = formName;
+        if (base[`form.${formSlug}`] === undefined)
+          base[`form.${formSlug}`] = pickDefault(formName);
         function walk(obj, pathSegs) {
           if (!obj || typeof obj !== 'object') return;
           for (const [k, v] of Object.entries(obj)) {
@@ -43,14 +74,14 @@ export async function exportTranslations(companyId = 0) {
             if (typeof v === 'string') {
               if (/^[a-z0-9_.]+$/.test(v)) continue;
               const key = `form.${segs.join('.')}`;
-              if (base[key] === undefined) base[key] = v;
+              if (base[key] === undefined) base[key] = pickDefault(v);
             } else if (Array.isArray(v)) {
               for (const item of v) {
                 if (item && typeof item === 'object') {
                   walk(item, segs);
                 } else if (typeof item === 'string' && !/^[a-z0-9_.]+$/.test(item)) {
                   const key = `form.${segs.join('.')}.${slugify(item)}`;
-                  if (base[key] === undefined) base[key] = item;
+                  if (base[key] === undefined) base[key] = pickDefault(item);
                 }
               }
             } else {
@@ -83,7 +114,7 @@ export async function exportTranslations(companyId = 0) {
               ? `userLevelActions.${pathSegs.join('.')}`
               : 'userLevelActions';
             const key = `${baseKey}.${slugify(item)}`;
-            if (base[key] === undefined) base[key] = item;
+            if (base[key] === undefined) base[key] = pickDefault(item);
           }
         }
       } else {
@@ -92,7 +123,7 @@ export async function exportTranslations(companyId = 0) {
           if (typeof v === 'string') {
             if (skipString.test(v)) continue;
             const key = `userLevelActions.${segs.join('.')}`;
-            if (base[key] === undefined) base[key] = v;
+            if (base[key] === undefined) base[key] = pickDefault(v);
           } else {
             walkUla(v, segs);
           }
@@ -123,7 +154,7 @@ export async function exportTranslations(companyId = 0) {
               ? `posTransactionConfig.${pathSegs.join('.')}`
               : 'posTransactionConfig';
             const key = `${baseKey}.${slugify(item)}`;
-            if (base[key] === undefined) base[key] = item;
+            if (base[key] === undefined) base[key] = pickDefault(item);
           }
         }
       } else {
@@ -132,7 +163,7 @@ export async function exportTranslations(companyId = 0) {
           if (typeof v === 'string') {
             if (skipString.test(v)) continue;
             const key = `posTransactionConfig.${segs.join('.')}`;
-            if (base[key] === undefined) base[key] = v;
+            if (base[key] === undefined) base[key] = pickDefault(v);
           } else {
             walkPos(v, segs);
           }
