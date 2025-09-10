@@ -10,6 +10,7 @@ import {
   listReportProcedures,
   deleteProcedure,
   getProcedureSql,
+  getEmploymentSession,
 } from '../../db/index.js';
 
 const PROTECTED_PROCEDURE_PREFIXES = ['dynrep_'];
@@ -95,10 +96,23 @@ router.get('/fields', requireAuth, async (req, res, next) => {
 router.get('/procedures', requireAuth, async (req, res, next) => {
   try {
     const companyId = Number(req.query.companyId ?? req.user.companyId);
-    const names = (await listReportProcedures()).filter((n) => {
-      const parts = n.split('_');
-      return parts[1] === '0' || parts[1] === String(companyId);
-    });
+    const prefix = req.query.prefix || '';
+
+    const session =
+      req.session || (await getEmploymentSession(req.user.empid, companyId));
+    let isAdmin = session?.permissions?.system_settings;
+    if (!isAdmin) {
+      const rootSession = await getEmploymentSession(req.user.empid, 0);
+      isAdmin = !!rootSession;
+    }
+
+    let names = await listReportProcedures(prefix);
+    if (!isAdmin) {
+      names = names.filter((n) => {
+        const parts = n.split('_');
+        return parts[1] === '0' || parts[1] === String(companyId);
+      });
+    }
 
     // Determine which procedures are default by checking procedure files
     const tenantDirPath = tenantProcDir(companyId);
