@@ -11,8 +11,8 @@ export default function ManualTranslationsTab() {
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
   const [searchTerm, setSearchTerm] = useState('');
-  const [completing, setCompleting] = useState(false);
-  const [activeRow, setActiveRow] = useState(null);
+  const [completingEnMn, setCompletingEnMn] = useState(false);
+  const [completingOther, setCompletingOther] = useState(false);
   const abortRef = useRef(false);
 
   useEffect(() => {
@@ -102,7 +102,7 @@ export default function ManualTranslationsTab() {
 
   async function completeEnMn() {
     abortRef.current = false;
-    setCompleting(true);
+    setCompletingEnMn(true);
     const updated = [];
     const toSave = [];
     let rateLimited = false;
@@ -153,7 +153,7 @@ export default function ManualTranslationsTab() {
     setActiveRow(null);
     setEntries(updated);
     if (rateLimited) {
-      setCompleting(false);
+      setCompletingEnMn(false);
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: {
@@ -165,7 +165,7 @@ export default function ManualTranslationsTab() {
       return;
     }
     if (abortRef.current) {
-      setCompleting(false);
+      setCompletingEnMn(false);
       return;
     }
     for (const entry of toSave) {
@@ -177,7 +177,7 @@ export default function ManualTranslationsTab() {
       });
     }
     if (toSave.length) await load();
-    setCompleting(false);
+    setCompletingEnMn(false);
     window.dispatchEvent(
       new CustomEvent('toast', {
         detail: { message: t('translationsCompleted', 'Translations completed'), type: 'success' },
@@ -187,7 +187,7 @@ export default function ManualTranslationsTab() {
 
   async function completeOtherLanguages() {
     abortRef.current = false;
-    setCompleting(true);
+    setCompletingOther(true);
     const restLanguages = languages.filter((l) => l !== 'en' && l !== 'mn');
     const updated = [];
     const toSave = [];
@@ -248,7 +248,7 @@ export default function ManualTranslationsTab() {
     setActiveRow(null);
     setEntries(updated);
     if (rateLimited) {
-      setCompleting(false);
+      setCompletingOther(false);
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: {
@@ -260,7 +260,7 @@ export default function ManualTranslationsTab() {
       return;
     }
     if (abortRef.current) {
-      setCompleting(false);
+      setCompletingOther(false);
       return;
     }
     for (const entry of toSave) {
@@ -272,7 +272,7 @@ export default function ManualTranslationsTab() {
       });
     }
     if (toSave.length) await load();
-    setCompleting(false);
+    setCompletingOther(false);
     if (toSave.length) {
       window.dispatchEvent(
         new CustomEvent('toast', {
@@ -305,17 +305,25 @@ export default function ManualTranslationsTab() {
     <div>
       <div style={{ marginBottom: '0.5rem', display: 'flex', gap: '0.5rem' }}>
         <button type="button" onClick={addRow}>{t('addRow', 'Add Row')}</button>
-        <button type="button" onClick={completeEnMn} disabled={completing}>
-          {completing
+        <button
+          type="button"
+          onClick={completeEnMn}
+          disabled={completingEnMn || completingOther}
+        >
+          {completingEnMn
             ? t('completing', 'Completing...')
             : t('completeEnMn', 'Complete en/mn translations')}
         </button>
-        <button type="button" onClick={completeOtherLanguages} disabled={completing}>
-          {completing
+        <button
+          type="button"
+          onClick={completeOtherLanguages}
+          disabled={completingEnMn || completingOther}
+        >
+          {completingOther
             ? t('completing', 'Completing...')
             : t('completeOtherLangs', 'Complete other languages translations')}
         </button>
-        {completing && (
+        {(completingEnMn || completingOther) && (
           <button type="button" onClick={() => (abortRef.current = true)}>
             {t('cancel', 'Cancel')}
           </button>
