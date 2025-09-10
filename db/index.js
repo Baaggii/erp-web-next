@@ -1209,6 +1209,25 @@ export async function deleteProcedure(name) {
   await pool.query(`DROP PROCEDURE IF EXISTS \`${name}\``);
 }
 
+export async function getProcedureSql(name) {
+  if (!name) return null;
+  try {
+    const sql = mysql.format('SHOW CREATE PROCEDURE ??', [name]);
+    const [rows] = await pool.query(sql);
+    const text = rows?.[0]?.['Create Procedure'];
+    if (text) return text;
+  } catch {}
+  try {
+    const [rows] = await pool.query(
+      `SELECT ROUTINE_DEFINITION FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE() AND ROUTINE_NAME = ?`,
+      [name],
+    );
+    return rows?.[0]?.ROUTINE_DEFINITION || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getTableColumnLabels(tableName) {
   const [rows] = await pool.query(
     'SELECT column_name, mn_label FROM table_column_labels WHERE table_name = ?',
