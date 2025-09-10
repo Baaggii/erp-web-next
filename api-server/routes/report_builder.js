@@ -93,12 +93,11 @@ router.get('/fields', requireAuth, async (req, res, next) => {
 // List stored procedures
 router.get('/procedures', requireAuth, async (req, res, next) => {
   try {
-    const { prefix = '' } = req.query;
     const companyId = Number(req.query.companyId ?? req.user.companyId);
-    const names = (await listReportProcedures(prefix)).filter(
-      (n) =>
-        n.startsWith(`${prefix}0_`) || n.startsWith(`${prefix}${companyId}_`),
-    );
+    const names = (await listReportProcedures()).filter((n) => {
+      const parts = n.split('_');
+      return parts[1] === '0' || parts[1] === String(companyId);
+    });
 
     // Determine which procedures are default by checking procedure files
     const tenantDirPath = tenantProcDir(companyId);

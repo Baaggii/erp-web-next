@@ -33,7 +33,7 @@ export default function AllowedReportsConfig() {
         setIsDefault(true);
       });
 
-    fetch('/api/report_builder/procedure-files', { credentials: 'include' })
+    fetch('/api/report_builder/procedures', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : { names: [] }))
       .then((data) => setProcOptions(data.names || []))
       .catch(() => setProcOptions([]));
