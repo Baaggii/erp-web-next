@@ -29,7 +29,7 @@ function convertSql(sql) {
   const procName = nameMatch ? nameMatch[1] : '';
 
   // Extract body inside BEGIN..END and strip comments
-  const bodyMatch = sql.match(/BEGIN\s+([\s\S]*)END/i);
+  const bodyMatch = sql.match(/BEGIN\s+([\s\S]*)END\s*$/i);
   let body = bodyMatch ? bodyMatch[1] : sql;
   body = body
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
