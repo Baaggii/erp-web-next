@@ -19,8 +19,7 @@ const router = express.Router();
 
 router.get('/', limiter, requireAuth, async (req, res, next) => {
   try {
-    const companyId = Number(req.query.companyId ?? req.user.companyId);
-    const data = await loadTranslations(companyId);
+    const data = await loadTranslations();
     res.json(data);
   } catch (err) {
     next(err);
@@ -29,8 +28,7 @@ router.get('/', limiter, requireAuth, async (req, res, next) => {
 
 router.post('/', limiter, requireAuth, async (req, res, next) => {
   try {
-    const companyId = Number(req.body?.companyId ?? req.user.companyId);
-    await saveTranslation({ ...(req.body || {}), companyId });
+    await saveTranslation(req.body || {});
     res.sendStatus(204);
   } catch (err) {
     next(err);
@@ -40,9 +38,8 @@ router.post('/', limiter, requireAuth, async (req, res, next) => {
 router.delete('/', limiter, requireAuth, async (req, res, next) => {
   try {
     const { key, type = 'locale' } = req.query;
-    const companyId = Number(req.query.companyId ?? req.user.companyId);
     if (!key) return res.status(400).json({ error: 'key required' });
-    await deleteTranslation(key, type, companyId);
+    await deleteTranslation(key, type);
     res.sendStatus(204);
   } catch (err) {
     next(err);

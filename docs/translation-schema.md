@@ -1,6 +1,6 @@
 # Translation Workflow
 
-All UI strings are stored per language under `config/<companyId>/locales/<lang>.json`.
+All UI strings are stored per language under `src/erp.mgt.mn/locales/<lang>.json`.
 These locale files are generated automatically and should **not** be edited or
 committed manually.
 
@@ -16,7 +16,7 @@ npm run generate:translations
 
 The script retrieves translations from the service and falls back to machine
 translation when necessary. New locale files will be written under the
-tenant-specific `config/<companyId>/locales` directory.
+`locales` directory.
 
 Because the files are generated, avoid committing changes to them. CI or
 release builds will regenerate the locales as needed.

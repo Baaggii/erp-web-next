@@ -18,7 +18,7 @@ export const I18nContext = createContext({
 });
 
 export function I18nProvider({ children }) {
-  const { userSettings, updateUserSettings, company } = useContext(AuthContext);
+  const { userSettings, updateUserSettings } = useContext(AuthContext);
   const allLangs = ['en', 'mn', 'ja', 'ko', 'zh', 'es', 'de', 'fr', 'ru'];
   const getInitialLang = () =>
     allLangs.includes(userSettings?.lang) ? userSettings.lang : 'en';
@@ -34,22 +34,9 @@ export function I18nProvider({ children }) {
     async (newLang) => {
       if (!allLangs.includes(newLang)) return;
 
-      async function fetchLocale(lang, type = '') {
-        const ids = company != null ? [company, 0] : [0];
-        for (const id of ids) {
-          try {
-            const res = await fetch(
-              `/config/${id}/locales${type === 'tooltip' ? '/tooltips' : ''}/${lang}.json`,
-            );
-            if (res.ok) return await res.json();
-          } catch {}
-        }
-        return {};
-      }
-
       const [translations, tooltipFile] = await Promise.all([
-        fetchLocale(newLang),
-        fetchLocale(newLang, 'tooltip'),
+        import(`../locales/${newLang}.json`),
+        import(`../locales/tooltips/${newLang}.json`),
       ]);
       const newFallback = allLangs.filter((l) => l !== newLang);
 
@@ -57,8 +44,8 @@ export function I18nProvider({ children }) {
         await i18n.use(initReactI18next).init({
           resources: {
             [newLang]: {
-              translation: translations,
-              tooltip: tooltipFile,
+              translation: translations.default,
+              tooltip: tooltipFile.default,
             },
           },
           lng: newLang,
@@ -69,14 +56,14 @@ export function I18nProvider({ children }) {
         i18n.addResourceBundle(
           newLang,
           'translation',
-          translations,
+          translations.default,
           true,
           true
         );
         i18n.addResourceBundle(
           newLang,
           'tooltip',
-          tooltipFile,
+          tooltipFile.default,
           true,
           true
         );
@@ -88,13 +75,13 @@ export function I18nProvider({ children }) {
       setLang(newLang);
       setTick((t) => t + 1);
     },
-    [updateUserSettings, company]
+    [updateUserSettings]
   );
 
   useEffect(() => {
     changeLang(lang);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [company]);
+  }, []);
 
   useEffect(() => {
     if (userSettings?.lang && userSettings.lang !== lang) {
