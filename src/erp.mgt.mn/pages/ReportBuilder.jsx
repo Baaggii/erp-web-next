@@ -58,6 +58,8 @@ function ReportBuilderInner() {
   const [dbProcIsDefault, setDbProcIsDefault] = useState(false);
   const [isDefault, setIsDefault] = useState(false);
 
+  const [procCompanyId, setProcCompanyId] = useState('');
+
   const [customParamName, setCustomParamName] = useState('');
   const [customParamType, setCustomParamType] = useState(PARAM_TYPES[0]);
   const { addToast } = useToast();
@@ -1597,21 +1599,35 @@ function ReportBuilderInner() {
   }
 
   function handleParseSql() {
-    const sql = procFileText || '';
-    setProcSql(sql);
-    const nameMatch = sql.match(/CREATE\s+PROCEDURE\s+`?([^`(]+)`?\s*\(/i);
+    let sql = procFileText || '';
+    sql = sql.replace(
+      /CREATE\s+DEFINER[^\n]+PROCEDURE/i,
+      'CREATE PROCEDURE',
+    );
+    const nameMatch = sql.match(
+      /CREATE\s+PROCEDURE\s+`?([^`(]+)`?\s*\(/i,
+    );
     if (nameMatch) {
       const basePrefix = generalConfig?.general?.reportProcPrefix || '';
-      let name = nameMatch[1];
-      if (basePrefix && name.toLowerCase().startsWith(basePrefix.toLowerCase())) {
-        name = name.slice(basePrefix.length);
+      const oldName = nameMatch[1];
+      let baseName = oldName;
+      if (
+        basePrefix &&
+        baseName.toLowerCase().startsWith(basePrefix.toLowerCase())
+      ) {
+        baseName = baseName.slice(basePrefix.length);
       }
-      const companyPrefix = company ? `${company}_` : '';
-      if (companyPrefix && name.toLowerCase().startsWith(companyPrefix.toLowerCase())) {
-        name = name.slice(companyPrefix.length);
-      }
-      setProcName(name);
+      baseName = baseName.replace(/^\d+_/, '');
+      const newName = `${basePrefix}${company}_${baseName}`;
+      sql = sql.replace(
+        /(CREATE\s+PROCEDURE\s+)`?[^`(]+`?/i,
+        `$1\`${newName}\``,
+      );
+      setProcCompanyId(company);
+      setProcName(baseName);
     }
+    setProcSql(sql);
+    setProcFileText(sql);
     const paramsMatch = sql.match(/CREATE\s+PROCEDURE[\s\S]*?\(([^)]*)\)/i);
     if (paramsMatch) {
       const paramLines = paramsMatch[1]
