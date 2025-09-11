@@ -20,5 +20,5 @@ test('buildStoredProcedure embeds REPORT_BUILDER_CONFIG block', () => {
   const config = { procName: 'sales', unionQueries: [] };
   const sql = buildStoredProcedure({ name: 'sales', report, config });
   const parsed = parseProcedureConfig(sql);
-  assert.deepEqual(parsed, { config, converted: false });
+  assert.deepEqual(parsed, { report: config, converted: false });
 });

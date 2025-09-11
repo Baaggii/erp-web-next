@@ -1,37 +1,28 @@
 /**
  * Parse a stored procedure SQL for an embedded REPORT_BUILDER_CONFIG block.
- * If absent, attempt to convert the SELECT/FROM/JOIN/WHERE/GROUP BY clauses
- * into a report builder configuration structure.
- *
- * @param {string} sql
- * @returns {{config: object, converted: boolean}|null}
+ * When the block is missing, convert the SELECT statement into a report object
+ * mirroring the report builder form state.
  */
+
 export default function parseProcedureConfig(sql = '') {
   if (!sql) return { error: 'No SQL provided' };
 
   const match = sql.match(/\/\*REPORT_BUILDER_CONFIG\s*([\s\S]*?)\*\//i);
   if (match) {
     try {
-      return { config: JSON.parse(match[1]), converted: false };
-    } catch (err) {
+      return { report: JSON.parse(match[1]), converted: false };
+    } catch {
       throw new Error('Invalid REPORT_BUILDER_CONFIG JSON');
     }
   }
 
-  const result = convertSql(sql);
-  if (result) return { config: result.config, converted: true, partial: result.partial };
-  return { error: 'REPORT_BUILDER_CONFIG not found' };
+  const report = convertSql(sql);
+  if (!report) return { error: 'REPORT_BUILDER_CONFIG not found' };
+  return { report, converted: true };
 }
 
 function convertSql(sql) {
-  // Attempt to extract procedure name
-  const nameMatch = sql.match(/PROCEDURE\s+`?([^\s`(]+)`?/i);
-  const procName = nameMatch ? nameMatch[1] : '';
-
-  // Extract body inside BEGIN..END and strip comments
-  const bodyMatch = sql.match(/BEGIN\s+([\s\S]*)END\s*$/i);
-  let body = bodyMatch ? bodyMatch[1] : sql;
-  body = body
+  let body = sql
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .replace(/--.*$/gm, ' ')
     .replace(/#.*$/gm, ' ')
@@ -39,363 +30,277 @@ function convertSql(sql) {
 
   const selIdx = body.toUpperCase().indexOf('SELECT');
   if (selIdx === -1) return null;
-  let statement = body.slice(selIdx);
-  statement = statement.split(';')[0];
-  const selectMatch = statement.match(/SELECT\s+([\s\S]+?)\s+FROM\s+([\s\S]+)/i);
-  if (!selectMatch) return null;
-  const selectPart = selectMatch[1].trim();
-  const rest = selectMatch[2];
+  body = body.slice(selIdx);
+  body = body.split(';')[0];
+
+  const unionParts = splitTopLevel(body, /\bUNION\b/i);
+  const main = parseSelectStatement(unionParts.shift());
+  if (!main) return null;
+  main.unions = unionParts.map((p) => parseSelectStatement(p));
+  return main;
+}
+
+function parseSelectStatement(stmt = '') {
+  const m = stmt.match(/SELECT\s+([\s\S]+?)\s+FROM\s+([\s\S]+)/i);
+  if (!m) return null;
+  const selectPart = m[1].trim();
+  const rest = m[2];
 
   const where = findClause(rest, 'WHERE');
   const group = findClause(rest, 'GROUP BY');
-  const order = findClause(rest, 'ORDER BY');
   const having = findClause(rest, 'HAVING');
-  const limit = findClause(rest, 'LIMIT');
 
-  if (having.index !== -1) {
-    throw new Error('Unsupported HAVING clause');
-  }
-  if (/\bUNION\b/i.test(rest)) {
-    throw new Error('Unsupported UNION clause');
-  }
-
-  const clauseIndices = [where.index, group.index, order.index, limit.index].filter(
-    (i) => i !== -1,
-  );
-  const endIdx = clauseIndices.length ? Math.min(...clauseIndices) : rest.length;
+  const clauseIdx = [where.index, group.index, having.index]
+    .filter((i) => i !== -1)
+    .sort((a, b) => a - b);
+  const endIdx = clauseIdx.length ? clauseIdx[0] : rest.length;
 
   const fromJoinPart = rest.slice(0, endIdx).trim();
 
-  let wherePart = '';
-  let groupPart = '';
+  const wherePart =
+    where.index !== -1
+      ? rest
+          .slice(
+            where.index + where.length,
+            group.index !== -1
+              ? group.index
+              : having.index !== -1
+              ? having.index
+              : rest.length,
+          )
+          .trim()
+      : '';
 
-  if (where.index !== -1) {
-    const afterWhereCandidates = [group.index, order.index, limit.index].filter(
-      (i) => i !== -1 && i > where.index,
-    );
-    const whereEndIdx = afterWhereCandidates.length
-      ? Math.min(...afterWhereCandidates)
-      : rest.length;
-    wherePart = rest.slice(where.index + where.length, whereEndIdx).trim();
-  }
+  const groupPart =
+    group.index !== -1
+      ? rest
+          .slice(group.index + group.length, having.index !== -1 ? having.index : rest.length)
+          .trim()
+      : '';
 
-  if (group.index !== -1) {
-    const afterGroupCandidates = [order.index, limit.index].filter(
-      (i) => i !== -1 && i > group.index,
-    );
-    const groupEndIdx = afterGroupCandidates.length
-      ? Math.min(...afterGroupCandidates)
-      : rest.length;
-    groupPart = rest.slice(group.index + group.length, groupEndIdx).trim();
-    groupPart = stripTrailingClauses(groupPart);
-  }
+  const havingPart =
+    having.index !== -1 ? rest.slice(having.index + having.length).trim() : '';
 
-  const {
-    fromTable,
-    fromAlias,
-    joins,
-    aliasMap,
-    partial: fromPartial,
-  } = parseFromAndJoins(fromJoinPart);
-  if (!fromTable) return null;
-
-  let partial = !!fromPartial;
-
-  const fields = parseFields(selectPart, aliasMap);
-  let whereRes;
-  try {
-    whereRes = parseWhere(wherePart, fromAlias, joins, aliasMap);
-  } catch {
-    partial = true;
-    whereRes = { fromFilters: [], partial: true };
-  }
-  const { fromFilters, partial: wherePartial } = whereRes;
-  if (wherePartial) partial = true;
-
-  let groupRes;
-  try {
-    groupRes = parseGroupBy(groupPart, aliasMap);
-  } catch {
-    partial = true;
-    groupRes = { groups: [], partial: true };
-  }
-  const { groups, partial: groupPartial } = groupRes;
-  if (groupPartial) partial = true;
+  const { from, joins } = parseFromAndJoins(fromJoinPart);
 
   return {
-    config: {
-      procName,
-      fromTable,
-      joins,
-      fields,
-      groups,
-      fromFilters,
-      conditions: [],
-      unionQueries: [],
-    },
-    partial,
+    from,
+    select: parseSelectList(selectPart),
+    joins,
+    where: parseConditions(wherePart),
+    groupBy: parseGroupBy(groupPart),
+    having: parseConditions(havingPart),
+    unions: [],
   };
 }
 
-function findClause(text, clause) {
-  const pattern = clause.replace(/\s+/g, '\\s+');
-  const regex = new RegExp(`\\b${pattern}\\b`, 'i');
-  const match = regex.exec(text);
-  return match ? { index: match.index, length: match[0].length } : { index: -1, length: 0 };
+function parseSelectList(text) {
+  return splitByComma(text).map((item) => {
+    let expr = item.trim();
+    let alias;
+    const asMatch = expr.match(/\s+AS\s+([`"\w]+)/i);
+    if (asMatch) {
+      alias = strip(asMatch[1]);
+      expr = expr.slice(0, asMatch.index).trim();
+    } else {
+      const aliasMatch = expr.match(/\s+([`"\w]+)$/);
+      if (aliasMatch && !/\./.test(aliasMatch[1])) {
+        alias = strip(aliasMatch[1]);
+        expr = expr.slice(0, aliasMatch.index).trim();
+      }
+    }
+    return { expr, alias };
+  });
 }
 
-function stripTrailingClauses(text) {
-  const indices = ['WHERE', 'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT']
-    .map((k) => findClause(text, k).index)
-    .filter((i) => i !== -1);
-  return indices.length ? text.slice(0, Math.min(...indices)).trim() : text.trim();
+function parseGroupBy(text) {
+  if (!text) return [];
+  return splitByComma(text).map((s) => s.trim()).filter(Boolean);
 }
 
 function parseFromAndJoins(text) {
-  const aliasMap = {};
-  let remaining = text.trim();
-  let partial = false;
+  const result = { from: { table: '', alias: '' }, joins: [] };
+  if (!text) return result;
+  const fromMatch = text.match(/^([`"\w\.]+)(?:\s+(?:AS\s+)?([`"\w]+))?/i);
+  if (!fromMatch) return result;
+  result.from.table = strip(fromMatch[1]);
+  result.from.alias = fromMatch[2] ? strip(fromMatch[2]) : result.from.table;
 
-  let fromTable = '';
-  let fromAlias = '';
-
-  // Handle subquery in FROM clause: FROM (SELECT ...) alias
-  if (/^\(/.test(remaining)) {
-    let depth = 0;
-    let i = 0;
-    for (; i < remaining.length; i++) {
-      const ch = remaining[i];
-      if (ch === '(') depth += 1;
-      else if (ch === ')') {
-        depth -= 1;
-        if (depth === 0) break;
-      }
-    }
-    const after = remaining.slice(i + 1).trim();
-    const aliasMatch = after.match(/^(?:AS\s+)?([`"\w]+)\b/i);
-    if (!aliasMatch) {
-      return { fromTable: '', fromAlias: '', joins: [], aliasMap, partial: true };
-    }
-    const alias = aliasMatch[1].replace(/[`"]/g, '');
-    fromTable = alias;
-    fromAlias = alias;
-    aliasMap[alias] = alias;
-    remaining = after.slice(aliasMatch[0].length).trim();
-  } else {
-    const fromMatch = remaining.match(/^([`"\w\.]+)(?:\s+(?:AS\s+)?([`"\w]+))?/i);
-    if (!fromMatch)
-      return { fromTable: '', fromAlias: '', joins: [], aliasMap, partial: true };
-    fromTable = fromMatch[1].replace(/[`"]/g, '');
-    fromAlias = fromMatch[2];
-    if (!fromAlias || /(LEFT|RIGHT|INNER|FULL|OUTER|CROSS|JOIN)/i.test(fromAlias)) {
-      fromAlias = fromTable;
-    }
-    aliasMap[fromAlias] = fromTable;
-    remaining = remaining.slice(fromMatch[0].length).trim();
-  }
-
-  const joins = [];
-  let lastAlias = fromAlias;
+  let rest = text.slice(fromMatch[0].length).trim();
   const joinRe =
-    /(LEFT|RIGHT|INNER|FULL|OUTER|CROSS)?\s*JOIN\s+(\((?:[^)(]+|\([^)(]*\))*\)|[`"\w\.]+)(?:\s+(?:AS\s+)?([`"\w]+))?\s+(ON|USING)\s+([^]*?)(?=(LEFT|RIGHT|INNER|FULL|OUTER|CROSS)?\s*JOIN|$)/gi;
+    /(LEFT|RIGHT|INNER|FULL|CROSS)?\s*JOIN\s+([`"\w\.]+)(?:\s+(?:AS\s+)?([`"\w]+))?\s+(ON|USING)\s+([^]*?)(?=(LEFT|RIGHT|INNER|FULL|CROSS)?\s*JOIN|$)/gi;
   let jm;
-  while ((jm = joinRe.exec(remaining))) {
-    const type = jm[1] ? `${jm[1].trim()} JOIN` : 'JOIN';
-    let table = jm[2].trim();
-    let alias = jm[3];
-    if (table.startsWith('(')) {
-      // JOIN (SELECT ...) alias
-      if (!alias) {
-        partial = true;
+  while ((jm = joinRe.exec(rest))) {
+    const type = jm[1] ? jm[1].trim().toUpperCase() + ' JOIN' : 'JOIN';
+    const table = strip(jm[2]);
+    const alias = jm[3] ? strip(jm[3]) : table;
+    const on = jm[4].toUpperCase() === 'USING' ? `USING ${jm[5].trim()}` : jm[5].trim();
+    result.joins.push({ table, alias, type, on });
+  }
+  return result;
+}
+
+function parseConditions(text) {
+  if (!text) return [];
+  const res = [];
+  let i = 0;
+  const len = text.length;
+  let connector;
+  while (i < len) {
+    while (i < len && /\s/.test(text[i])) i++;
+    let open = 0;
+    while (text[i] === '(') {
+      open++;
+      i++;
+      while (i < len && /\s/.test(text[i])) i++;
+    }
+    let expr = '';
+    let depth = 0;
+    let quote = null;
+    while (i < len) {
+      const rest = text.slice(i).toUpperCase();
+      if (!quote && depth === 0 && (rest.startsWith('AND ') || rest.startsWith('OR ') || rest === 'AND' || rest === 'OR'))
+        break;
+      const ch = text[i];
+      if (quote) {
+        if (ch === quote && text[i - 1] !== '\\') quote = null;
+        expr += ch;
+        i++;
         continue;
       }
-      alias = alias.replace(/[`"]/g, '');
-      table = alias;
-    } else {
-      table = table.replace(/[`"]/g, '');
-      if (!alias || /(LEFT|RIGHT|INNER|FULL|OUTER|CROSS|JOIN)/i.test(alias)) {
-        alias = table;
-      } else {
-        alias = alias.replace(/[`"]/g, '');
+      if (ch === '"' || ch === "'" || ch === '`') {
+        quote = ch;
+        expr += ch;
+        i++;
+        continue;
       }
+      if (ch === '(') {
+        depth++;
+        expr += ch;
+        i++;
+        continue;
+      }
+      if (ch === ')') {
+        if (depth === 0) break;
+        depth--;
+        expr += ch;
+        i++;
+        continue;
+      }
+      expr += ch;
+      i++;
     }
-    aliasMap[alias] = table;
-    let conditions = [];
-    if (jm[4].toUpperCase() === 'ON') {
-      conditions = parseJoinConditions(jm[5].trim(), alias, aliasMap);
+    let close = 0;
+    while (i < len && /\s/.test(text[i])) i++;
+    while (text[i] === ')') {
+      close++;
+      i++;
+      while (i < len && /\s/.test(text[i])) i++;
+    }
+    res.push({ expr: expr.trim(), connector, open, close });
+    while (i < len && /\s/.test(text[i])) i++;
+    if (text.slice(i).toUpperCase().startsWith('AND')) {
+      connector = 'AND';
+      i += 3;
+    } else if (text.slice(i).toUpperCase().startsWith('OR')) {
+      connector = 'OR';
+      i += 2;
     } else {
-      conditions = parseUsingColumns(jm[5].trim(), lastAlias);
+      connector = undefined;
+      break;
     }
-    if (conditions.length === 0) partial = true;
-    const targetAlias = conditions[0]?.targetAlias || fromAlias;
-    conditions.forEach((c) => delete c.targetAlias);
-    joins.push({
-      table,
-      alias,
-      type,
-      targetTable: aliasMap[targetAlias] || targetAlias,
-      conditions,
-      filters: [],
-    });
-    lastAlias = alias;
   }
-
-  if (remaining.slice(joinRe.lastIndex).trim()) partial = true;
-
-  return { fromTable, fromAlias, joins, aliasMap, partial };
+  return res;
 }
 
-function parseJoinConditions(text, joinAlias, aliasMap) {
-  const parts = text.split(/\s+AND\s+/i);
-  const conds = [];
-  parts.forEach((p, idx) => {
-    const m = p.trim().match(/([`"\w]+)\.([`"\w]+)\s*=\s*([`"\w]+)\.([`"\w]+)/);
-    if (!m) return;
-    const [_, a1, f1, a2, f2] = m.map((s) => s.replace(/[`"]/g, ''));
-    let fromAlias = a1;
-    let fromField = f1;
-    let toField = f2;
-    if (a1 === joinAlias) {
-      fromAlias = a2;
-      fromField = f2;
-      toField = f1;
-    } else if (a2 !== joinAlias) {
-      // neither side is join alias; default
-      fromAlias = a1;
-      fromField = f1;
-      toField = f2;
+function splitByComma(text) {
+  const parts = [];
+  let current = '';
+  let depth = 0;
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quote) {
+      if (ch === quote && text[i - 1] !== '\\') quote = null;
+      current += ch;
+      continue;
     }
-    conds.push({
-      fromField,
-      toField,
-      connector: idx > 0 ? 'AND' : undefined,
-      targetAlias: fromAlias,
-    });
-  });
-  return conds;
+    if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === '(') {
+      depth++;
+      current += ch;
+      continue;
+    }
+    if (ch === ')') {
+      depth--;
+      current += ch;
+      continue;
+    }
+    if (ch === ',' && depth === 0) {
+      parts.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) parts.push(current.trim());
+  return parts;
 }
 
-function parseUsingColumns(text, baseAlias) {
-  const cols = text
-    .replace(/^\(|\)$/g, '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  return cols.map((col, idx) => ({
-    fromField: col.replace(/[`"]/g, ''),
-    toField: col.replace(/[`"]/g, ''),
-    connector: idx > 0 ? 'AND' : undefined,
-    targetAlias: baseAlias,
-  }));
-}
-
-function parseFields(text, aliasMap) {
-  return text
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((item) => {
-      let expr = item;
-      let alias = '';
-      const asMatch = item.match(/(.+?)\s+AS\s+([\w`"]+)/i);
-      if (asMatch) {
-        expr = asMatch[1];
-        alias = asMatch[2].replace(/[`"]/g, '');
-      } else {
-        const aliasMatch = item.match(/(.+?)\s+([\w`"]+)$/);
-        if (aliasMatch && !/\./.test(aliasMatch[2])) {
-          expr = aliasMatch[1];
-          alias = aliasMatch[2].replace(/[`"]/g, '');
-        }
+function splitTopLevel(text, regex) {
+  const parts = [];
+  let depth = 0;
+  let quote = null;
+  let current = '';
+  for (let i = 0; i < text.length; i++) {
+    const sub = text.slice(i);
+    if (!quote && depth === 0) {
+      const m = regex.exec(sub);
+      if (m && m.index === 0) {
+        parts.push(current.trim());
+        current = '';
+        i += m[0].length - 1;
+        continue;
       }
-
-      const aggMatch = expr.match(/^(SUM|COUNT|MAX|MIN)\s*\(\s*([`"\w]+)\.([`"\w]+)\s*\)/i);
-      if (aggMatch) {
-        return {
-          source: 'field',
-          table: aliasMap[aggMatch[2].replace(/[`"]/g, '')] || aggMatch[2].replace(/[`"]/g, ''),
-          field: aggMatch[3].replace(/[`"]/g, ''),
-          alias,
-          aggregate: aggMatch[1].toUpperCase(),
-          baseAlias: '',
-          calcParts: [],
-          conditions: [],
-        };
-      }
-
-      const fieldMatch = expr.match(/([`"\w]+)\.([`"\w]+)/);
-      if (!fieldMatch) return null;
-      return {
-        source: 'field',
-        table: aliasMap[fieldMatch[1].replace(/[`"]/g, '')] || fieldMatch[1].replace(/[`"]/g, ''),
-        field: fieldMatch[2].replace(/[`"]/g, ''),
-        alias,
-        aggregate: 'NONE',
-        baseAlias: '',
-        calcParts: [],
-        conditions: [],
-      };
-    })
-    .filter(Boolean);
+    }
+    const ch = text[i];
+    if (quote) {
+      if (ch === quote && text[i - 1] !== '\\') quote = null;
+      current += ch;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === '(') {
+      depth++;
+      current += ch;
+      continue;
+    }
+    if (ch === ')') {
+      depth--;
+      current += ch;
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) parts.push(current.trim());
+  return parts;
 }
 
-function parseWhere(text, baseAlias, joins, aliasMap) {
-  const fromFilters = [];
-  let partial = false;
-  if (!text) return { fromFilters, partial };
-  const parts = text.split(/\s+AND\s+/i);
-  parts.forEach((p) => {
-    const m = p.trim().match(/([`"\w]+)\.([`"\w]+)\s*(=|<>|>=|<=|>|<)\s*(.+)/);
-    if (!m) {
-      partial = true;
-      return;
-    }
-    const alias = m[1].replace(/[`"]/g, '');
-    const field = m[2].replace(/[`"]/g, '');
-    const operator = m[3];
-    let value = m[4].trim();
-    let valueType = 'value';
-    const filter = { field, operator, connector: 'AND', open: 0, close: 0 };
-    if (/^:[\w]+/.test(value)) {
-      valueType = 'param';
-      filter.param = value.slice(1);
-    } else {
-      value = value.replace(/^['"]|['"]$/g, '');
-      filter.value = value;
-    }
-    filter.valueType = valueType;
-
-    if (alias === baseAlias || aliasMap[alias] === aliasMap[baseAlias]) {
-      fromFilters.push(filter);
-    } else {
-      const j = joins.find((jn) => jn.alias === alias);
-      if (j) j.filters.push(filter);
-    }
-  });
-  return { fromFilters, partial };
+function findClause(text, clause) {
+  const re = new RegExp(`\\b${clause.replace(/\s+/g, '\\s+')}\\b`, 'i');
+  const m = re.exec(text);
+  return m ? { index: m.index, length: m[0].length } : { index: -1, length: 0 };
 }
 
-function parseGroupBy(text, aliasMap) {
-  if (!text) return { groups: [], partial: false };
-  const parts = text.split(',');
-  const groups = [];
-  let partial = false;
-  parts
-    .map((p) => p.trim())
-    .filter(Boolean)
-    .forEach((seg) => {
-      const m = seg.match(/([`"\w]+)\.([`"\w]+)/);
-      if (!m) {
-        partial = true;
-        return;
-      }
-      groups.push({
-        table:
-          aliasMap[m[1].replace(/[`"]/g, '')] ||
-          m[1].replace(/[`"]/g, ''),
-        field: m[2].replace(/[`"]/g, ''),
-      });
-    });
-  return { groups, partial };
+function strip(str = '') {
+  return str.replace(/^[`"']|[`"']$/g, '');
 }
 
