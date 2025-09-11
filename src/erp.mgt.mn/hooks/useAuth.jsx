@@ -17,9 +17,26 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
     const tokenRes = await fetch(`${API_BASE}/csrf-token`, {
       credentials: 'include',
     });
-    if (!tokenRes.ok) throw new Error('csrf');
-    const tokenData = await tokenRes.json();
-    const csrfToken = tokenData?.csrfToken;
+
+    const tokenType = tokenRes.headers.get('content-type') || '';
+    const tokenRaw = await tokenRes.text();
+    if (!tokenRes.ok) {
+      const message = tokenType.includes('text/html')
+        ? t('loginRequestFailed', 'Login request failed')
+        : tokenRaw || tokenRes.statusText || t('loginRequestFailed', 'Login request failed');
+      throw new Error(message);
+    }
+    if (!tokenType.includes('application/json')) {
+      throw new Error(t('loginRequestFailed', 'Login request failed'));
+    }
+
+    let csrfToken = null;
+    try {
+      const tokenData = JSON.parse(tokenRaw);
+      csrfToken = tokenData?.csrfToken;
+    } catch {
+      throw new Error(t('loginRequestFailed', 'Login request failed'));
+    }
 
     res = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
@@ -29,24 +46,44 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
     });
   } catch (err) {
     // Network errors (e.g. server unreachable)
-    throw new Error(t('loginRequestFailed', 'Login request failed'));
+    const message = /Failed to fetch|NetworkError/i.test(err?.message)
+      ? t('unableToReachServer', 'Unable to reach server')
+      : err?.message || t('loginRequestFailed', 'Login request failed');
+    throw new Error(message);
   }
 
+  const dataType = res.headers.get('content-type') || '';
+  const raw = await res.text();
+
   if (!res.ok) {
-    const contentType = res.headers.get('content-type') || '';
     let message = t('loginFailed', 'Login failed');
-    if (contentType.includes('application/json')) {
-      const data = await res.json().catch(() => ({}));
-      if (data && data.message) message = data.message;
+    if (dataType.includes('application/json')) {
+      try {
+        const data = JSON.parse(raw);
+        if (data && data.message) message = data.message;
+      } catch {
+        // fall through with default message
+      }
     } else if (res.status === 503) {
       message = t('serviceUnavailable', 'Service unavailable');
+    } else if (dataType.includes('text/html')) {
+      message = t('loginRequestFailed', 'Login request failed');
     } else {
-      message = res.statusText || message;
+      message = raw || res.statusText || message;
     }
     throw new Error(message);
   }
 
-  const data = await res.json();
+  let data;
+  if (dataType.includes('application/json')) {
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      throw new Error(t('loginRequestFailed', 'Login request failed'));
+    }
+  } else {
+    throw new Error(t('loginRequestFailed', 'Login request failed'));
+  }
   if (data?.session) {
     try {
       const stored = JSON.parse(localStorage.getItem('erp_session_ids') || '{}');
