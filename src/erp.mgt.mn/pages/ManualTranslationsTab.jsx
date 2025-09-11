@@ -140,16 +140,17 @@ export default function ManualTranslationsTab() {
     abortRef.current = false;
     processingRef.current = true;
     setCompletingEnMn(true);
-    const original = [...entries];
+    const allEntries = [...entries];
+    const original = [...allEntries];
     const updated = [];
     const pending = [];
     let saved = false;
     let rateLimited = false;
-    for (let idx = 0; idx < entries.length; idx++) {
+    for (let idx = 0; idx < allEntries.length; idx++) {
       if (abortRef.current || rateLimited) break;
       setActiveRow(idx);
       setPage(Math.floor(idx / perPage) + 1);
-      const entry = entries[idx];
+      const entry = allEntries[idx];
       const newEntry = { ...entry, values: { ...entry.values } };
       const en =
         typeof newEntry.values.en === 'string'
@@ -193,7 +194,7 @@ export default function ManualTranslationsTab() {
       updated.push(newEntry);
       if (
         pending.length &&
-        ((idx + 1) % perPage === 0 || idx === entries.length - 1)
+        ((idx + 1) % perPage === 0 || idx === allEntries.length - 1)
       ) {
         await fetch('/api/manual_translations/bulk', {
           method: 'POST',
@@ -254,18 +255,19 @@ export default function ManualTranslationsTab() {
     abortRef.current = false;
     processingRef.current = true;
     setCompletingOther(true);
-    const original = [...entries];
+    const allEntries = [...entries];
+    const original = [...allEntries];
     const restLanguages = languages.filter((l) => l !== 'en' && l !== 'mn');
     const updated = [];
     const pending = [];
     const notCompleted = [];
     let saved = false;
     let rateLimited = false;
-    for (let idx = 0; idx < entries.length; idx++) {
+    for (let idx = 0; idx < allEntries.length; idx++) {
       if (abortRef.current || rateLimited) break;
       setActiveRow(idx);
       setPage(Math.floor(idx / perPage) + 1);
-      const entry = entries[idx];
+      const entry = allEntries[idx];
       const newEntry = { ...entry, values: { ...entry.values } };
       const sourceText =
         (typeof newEntry.values.en === 'string'
@@ -316,7 +318,7 @@ export default function ManualTranslationsTab() {
       updated.push(newEntry);
       if (
         pending.length &&
-        ((idx + 1) % perPage === 0 || idx === entries.length - 1)
+        ((idx + 1) % perPage === 0 || idx === allEntries.length - 1)
       ) {
         await fetch('/api/manual_translations/bulk', {
           method: 'POST',
