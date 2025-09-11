@@ -1305,7 +1305,7 @@ function ReportBuilderInner() {
       if (autoApply) {
         try {
           const parsed = parseProcedureConfig(sql);
-          if (parsed?.config) applyConfig(parsed.config);
+          if (parsed?.report) applyConfig(parsed.report);
         } catch (err) {
           console.error(err);
           addToast(err.message, 'error');
@@ -1545,17 +1545,17 @@ function ReportBuilderInner() {
 
     if (!parsed) {
       addToast('SQL parsing failed; unable to derive config', 'error');
-    } else if (parsed.config) {
-      applyConfig(parsed.config);
+    } else if (parsed.report) {
+      applyConfig(parsed.report);
       if (parsed.converted) {
         try {
-          const name = parsed.config.procName || selectedDbProcedure;
+          const name = parsed.report.procName || selectedDbProcedure;
           await fetch(
             `/api/report_builder/configs/${encodeURIComponent(name)}`,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(parsed.config),
+              body: JSON.stringify(parsed.report),
             },
           );
           if (parsed.partial) {

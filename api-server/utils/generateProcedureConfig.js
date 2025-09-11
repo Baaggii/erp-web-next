@@ -11,7 +11,7 @@ export async function generateProcedureConfig(name, sql, companyId = 0) {
       companyId,
     );
     await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.writeFile(filePath, JSON.stringify(result.config, null, 2));
+    await fs.writeFile(filePath, JSON.stringify(result.report, null, 2));
   }
   return result;
 }
