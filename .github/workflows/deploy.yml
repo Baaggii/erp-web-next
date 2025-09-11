@@ -1,0 +1,68 @@
+name: Deploy (One-Click)
+
+on:
+  workflow_dispatch:   # run manually from Actions tab
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build homepage
+        run: npm run build:homepage
+
+      - name: Build ERP
+        run: npm run build:erp
+
+      # Upload built folders to the server
+      - name: Push homepage assets
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "public_html/*"
+          target: "${{ secrets.HOME_HTML }}"
+          overwrite: true
+          strip_components: 1
+
+      - name: Push ERP assets
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "erp.mgt.mn/*"
+          target: "${{ secrets.ERP_HTML }}"
+          overwrite: true
+          strip_components: 1
+
+      # Ensure .htaccess are in place
+      - name: Copy .htaccess and restart app
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            set -e
+            cp ${GITHUB_WORKSPACE:-/tmp}/src/homepage/.htaccess ${{ secrets.HOME_HTML }}/.htaccess || true
+            cp ${GITHUB_WORKSPACE:-/tmp}/src/erp.mgt.mn/.htaccess ${{ secrets.ERP_HTML }}/.htaccess || true
+            cd ${{ secrets.APP_DIR }}
+            npm ci --omit=dev
+            pm2 restart erp-app --update-env || pm2 start erp-app
