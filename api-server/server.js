@@ -4,7 +4,6 @@ import path from "path";
 import { fileURLToPath } from "url";
 import http from "http";
 import express from "express";
-import cors from "cors";
 import cookieParser from "cookie-parser";
 import { Server as SocketIOServer } from "socket.io";
 import * as jwtService from "./services/jwtService.js";
@@ -59,7 +58,6 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 app.set('trust proxy', true);
-app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 app.use(cookieParser());
