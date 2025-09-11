@@ -5,6 +5,7 @@ import ErrorBoundary from '../components/ErrorBoundary.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import formatSqlValue from '../utils/formatSqlValue.js';
 import parseProcedureConfig from '../../../utils/parseProcedureConfig.js';
+import reportDefinitionToConfig from '../utils/reportDefinitionToConfig.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 
@@ -1500,7 +1501,9 @@ function ReportBuilderInner() {
         `/api/report_builder/configs/${encodeURIComponent(cfgName)}`,
       );
       const data = await res.json();
-      applyConfig(data);
+      const raw = data.report || data;
+      const cfg = raw?.select || raw?.from ? reportDefinitionToConfig(raw) : raw;
+      applyConfig(cfg);
     } catch (err) {
       console.error(err);
     }
@@ -1529,7 +1532,9 @@ function ReportBuilderInner() {
           );
           const data = await res.json();
           if (data?.config?.config) {
-            applyConfig(data.config.config);
+            const raw = data.config.config;
+            const cfg = raw?.select || raw?.from ? reportDefinitionToConfig(raw) : raw;
+            applyConfig(cfg);
             addToast('Generated config from SQL', 'success');
           } else {
             addToast('SQL parsing failed; unable to derive config', 'error');
@@ -1547,7 +1552,11 @@ function ReportBuilderInner() {
     if (!parsed) {
       addToast('SQL parsing failed; unable to derive config', 'error');
     } else if (parsed.report) {
-      applyConfig(parsed.report);
+      const cfg =
+        parsed.report?.select || parsed.report?.from
+          ? reportDefinitionToConfig(parsed.report)
+          : parsed.report;
+      applyConfig(cfg);
       if (parsed.converted) {
         try {
           const name = parsed.report.procName || selectedDbProcedure;
