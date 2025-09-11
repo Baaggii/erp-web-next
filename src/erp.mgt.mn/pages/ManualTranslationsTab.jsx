@@ -116,7 +116,7 @@ export default function ManualTranslationsTab() {
     setCompletingEnMn(true);
     const original = [...entries];
     const updated = [];
-    const toSave = [];
+    let pending = [];
     let rateLimited = false;
     for (let idx = 0; idx < entries.length; idx++) {
       if (abortRef.current || rateLimited) break;
@@ -138,7 +138,6 @@ export default function ManualTranslationsTab() {
           const translated = await translateWithCache('en', mn);
           if (translated) {
             newEntry.values.en = translated;
-            toSave.push(newEntry);
           }
         } catch (err) {
           if (err.rateLimited) {
@@ -152,7 +151,6 @@ export default function ManualTranslationsTab() {
           const translated = await translateWithCache('mn', en);
           if (translated) {
             newEntry.values.mn = translated;
-            toSave.push(newEntry);
           }
         } catch (err) {
           if (err.rateLimited) {
@@ -162,6 +160,16 @@ export default function ManualTranslationsTab() {
         }
       }
       updated.push(newEntry);
+      pending.push(newEntry);
+      if ((idx + 1) % perPage === 0 || idx === entries.length - 1) {
+        await fetch('/api/manual_translations/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(pending),
+        });
+        pending = [];
+      }
     }
     setActiveRow(null);
     const finalEntries = [...updated, ...entries.slice(updated.length)];
@@ -196,15 +204,6 @@ export default function ManualTranslationsTab() {
       );
       return;
     }
-    if (toSave.length) {
-      await fetch('/api/manual_translations/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(toSave),
-      });
-      await load();
-    }
     processingRef.current = false;
     setCompletingEnMn(false);
     window.dispatchEvent(
@@ -222,8 +221,9 @@ export default function ManualTranslationsTab() {
     const original = [...entries];
     const restLanguages = languages.filter((l) => l !== 'en' && l !== 'mn');
     const updated = [];
-    const toSave = [];
     const notCompleted = [];
+    let pending = [];
+    let hadChanges = false;
     let rateLimited = false;
     for (let idx = 0; idx < entries.length; idx++) {
       if (abortRef.current || rateLimited) break;
@@ -274,9 +274,19 @@ export default function ManualTranslationsTab() {
         notCompleted.push(newEntry);
       }
       if (changed) {
-        toSave.push(newEntry);
+        hadChanges = true;
       }
       updated.push(newEntry);
+      pending.push(newEntry);
+      if ((idx + 1) % perPage === 0 || idx === entries.length - 1) {
+        await fetch('/api/manual_translations/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(pending),
+        });
+        pending = [];
+      }
     }
     setActiveRow(null);
     const finalEntries = [...updated, ...entries.slice(updated.length)];
@@ -311,18 +321,9 @@ export default function ManualTranslationsTab() {
       );
       return;
     }
-    if (toSave.length) {
-      await fetch('/api/manual_translations/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(toSave),
-      });
-      await load();
-    }
     processingRef.current = false;
     setCompletingOther(false);
-    if (toSave.length) {
+    if (hadChanges) {
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: { message: t('translationsCompleted', 'Translations completed'), type: 'success' },
