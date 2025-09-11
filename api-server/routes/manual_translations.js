@@ -35,6 +35,18 @@ router.post('/', limiter, requireAuth, async (req, res, next) => {
   }
 });
 
+router.post('/bulk', limiter, requireAuth, async (req, res, next) => {
+  try {
+    const entries = Array.isArray(req.body) ? req.body : [];
+    for (const entry of entries) {
+      await saveTranslation(entry || {});
+    }
+    res.sendStatus(204);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.delete('/', limiter, requireAuth, async (req, res, next) => {
   try {
     const { key, type = 'locale' } = req.query;

@@ -183,15 +183,15 @@ export default function ManualTranslationsTab() {
       setCompletingEnMn(false);
       return;
     }
-    for (const entry of toSave) {
-      await fetch('/api/manual_translations', {
+    if (toSave.length) {
+      await fetch('/api/manual_translations/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(entry),
+        body: JSON.stringify(toSave),
       });
+      await load();
     }
-    if (toSave.length) await load();
     processingRef.current = false;
     setCompletingEnMn(false);
     window.dispatchEvent(
@@ -285,15 +285,15 @@ export default function ManualTranslationsTab() {
       setCompletingOther(false);
       return;
     }
-    for (const entry of toSave) {
-      await fetch('/api/manual_translations', {
+    if (toSave.length) {
+      await fetch('/api/manual_translations/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(entry),
+        body: JSON.stringify(toSave),
       });
+      await load();
     }
-    if (toSave.length) await load();
     processingRef.current = false;
     setCompletingOther(false);
     if (toSave.length) {
