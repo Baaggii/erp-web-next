@@ -19,14 +19,23 @@ test('exported texts are merged into manual translations', async () => {
   );
   try {
     const data = await loadTranslations();
-    const foo = data.entries.find((e) => e.type === 'exported' && e.key === 'foo');
-    assert(foo, 'foo entry exists');
-    assert.equal(foo.values.en, 'Foo');
+    const localeFoo = data.entries.find((e) => e.type === 'locale' && e.key === 'foo');
+    const tooltipFoo = data.entries.find((e) => e.type === 'tooltip' && e.key === 'foo');
+    assert(localeFoo, 'locale foo entry exists');
+    assert(tooltipFoo, 'tooltip foo entry exists');
+    assert.equal(localeFoo.values.en, 'Foo');
+    assert.equal(tooltipFoo.values.en, 'Foo');
     const otherLang = data.languages.find((l) => l !== 'en');
-    if (otherLang) assert.equal(foo.values[otherLang], '');
-    const nested = data.entries.find((e) => e.type === 'exported' && e.key === 'nested.bar');
-    assert(nested, 'nested entry exists');
-    assert.equal(nested.values.en, 'Bar');
+    if (otherLang) {
+      assert.equal(localeFoo.values[otherLang], '');
+      assert.equal(tooltipFoo.values[otherLang], '');
+    }
+    const nestedLocale = data.entries.find((e) => e.type === 'locale' && e.key === 'nested.bar');
+    const nestedTooltip = data.entries.find((e) => e.type === 'tooltip' && e.key === 'nested.bar');
+    assert(nestedLocale, 'nested locale entry exists');
+    assert(nestedTooltip, 'nested tooltip entry exists');
+    assert.equal(nestedLocale.values.en, 'Bar');
+    assert.equal(nestedTooltip.values.en, 'Bar');
   } finally {
     cleanup();
   }
