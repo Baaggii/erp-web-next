@@ -6,6 +6,7 @@ export default defineConfig({
   root: 'src/homepage',
   publicDir: 'src/homepage',    // ensure .htaccess, index.html/css live here
   plugins: [react()],
+  optimizeDeps: { disabled: true },
   build: {
     outDir: '../../../../public_html',
     emptyOutDir: false
