@@ -16,6 +16,7 @@ export default function ManualTranslationsTab() {
   const [activeRow, setActiveRow] = useState(null);
   const abortRef = useRef(false);
   const processingRef = useRef(false);
+  const activeRowRef = useRef(null);
 
   useEffect(() => {
     load();
@@ -52,6 +53,12 @@ export default function ManualTranslationsTab() {
   useEffect(() => {
     setPage(1);
   }, [searchTerm]);
+
+  useEffect(() => {
+    if (activeRowRef.current) {
+      activeRowRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [page, activeRow]);
 
   const filteredEntries = entries.filter((entry) => {
     if (!searchTerm) return true;
@@ -113,6 +120,7 @@ export default function ManualTranslationsTab() {
     for (let idx = 0; idx < entries.length; idx++) {
       if (abortRef.current || rateLimited) break;
       setActiveRow(idx);
+      setPage(Math.floor(idx / perPage) + 1);
       const entry = entries[idx];
       const newEntry = { ...entry, values: { ...entry.values } };
       const en =
@@ -206,6 +214,7 @@ export default function ManualTranslationsTab() {
     for (let idx = 0; idx < entries.length; idx++) {
       if (abortRef.current || rateLimited) break;
       setActiveRow(idx);
+      setPage(Math.floor(idx / perPage) + 1);
       const entry = entries[idx];
       const newEntry = { ...entry, values: { ...entry.values } };
       const sourceText =
@@ -367,7 +376,11 @@ export default function ManualTranslationsTab() {
             const rowStyle =
               entryIdx === activeRow ? { backgroundColor: '#fef3c7' } : undefined;
             return (
-              <tr key={entryIdx} style={rowStyle}>
+              <tr
+                key={entryIdx}
+                style={rowStyle}
+                ref={entryIdx === activeRow ? activeRowRef : null}
+              >
                 <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
                   <input
                     value={entry.key}
