@@ -158,6 +158,7 @@ export default function ManualTranslationsTab() {
     const updated = entries.slice(0, startIdx);
     let pending = [];
     let rateLimited = false;
+    let processed = 0;
     for (let idx = startIdx; idx < entries.length; idx++) {
       if (abortRef.current || rateLimited) break;
       setActiveRow(idx);
@@ -172,12 +173,14 @@ export default function ManualTranslationsTab() {
         typeof newEntry.values.mn === 'string'
           ? newEntry.values.mn.trim()
           : String(newEntry.values.mn ?? '').trim();
+      let changed = false;
       if (!en && mn) {
         try {
           await delay();
           const translated = await translateWithCache('en', mn);
           if (translated) {
             newEntry.values.en = translated;
+            changed = true;
           }
         } catch (err) {
           if (err.rateLimited) {
@@ -191,6 +194,7 @@ export default function ManualTranslationsTab() {
           const translated = await translateWithCache('mn', en);
           if (translated) {
             newEntry.values.mn = translated;
+            changed = true;
           }
         } catch (err) {
           if (err.rateLimited) {
@@ -200,16 +204,21 @@ export default function ManualTranslationsTab() {
         }
       }
       updated.push(newEntry);
-      pending.push(newEntry);
-      if ((idx + 1) % perPage === 0 || idx === entries.length - 1) {
-        await fetch('/api/manual_translations/bulk', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(pending),
-        });
-        pending = [];
+      if (changed) {
+        pending.push(newEntry);
       }
+      if ((processed + 1) % perPage === 0 || idx === entries.length - 1) {
+        if (pending.length > 0) {
+          await fetch('/api/manual_translations/bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(pending),
+          });
+          pending = [];
+        }
+      }
+      processed++;
     }
     setActiveRow(null);
     const finalEntries = [...updated, ...entries.slice(updated.length)];
@@ -283,6 +292,7 @@ export default function ManualTranslationsTab() {
     let pending = [];
     let hadChanges = false;
     let rateLimited = false;
+    let processed = 0;
     for (let idx = startIdx; idx < entries.length; idx++) {
       if (abortRef.current || rateLimited) break;
       setActiveRow(idx);
@@ -333,18 +343,21 @@ export default function ManualTranslationsTab() {
       }
       if (changed) {
         hadChanges = true;
+        pending.push(newEntry);
       }
       updated.push(newEntry);
-      pending.push(newEntry);
-      if ((idx + 1) % perPage === 0 || idx === entries.length - 1) {
-        await fetch('/api/manual_translations/bulk', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(pending),
-        });
-        pending = [];
+      if ((processed + 1) % perPage === 0 || idx === entries.length - 1) {
+        if (pending.length > 0) {
+          await fetch('/api/manual_translations/bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(pending),
+          });
+          pending = [];
+        }
       }
+      processed++;
     }
     setActiveRow(null);
     const finalEntries = [...updated, ...entries.slice(updated.length)];
