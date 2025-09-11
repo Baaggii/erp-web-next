@@ -8,7 +8,7 @@ export default defineConfig({
   plugins: [react()],
   optimizeDeps: { disabled: true },
   build: {
-     outDir: 'dist/home',       // stays inside workspace on CI
+    outDir: '../../dist/home',  // <-- move output to repo/dist/home
     emptyOutDir: false
   }
 });
