@@ -15,6 +15,7 @@ export default function ManualTranslationsTab() {
   const [completingOther, setCompletingOther] = useState(false);
   const [activeRow, setActiveRow] = useState(null);
   const abortRef = useRef(false);
+  const processingRef = useRef(false);
 
   useEffect(() => {
     load();
@@ -102,7 +103,9 @@ export default function ManualTranslationsTab() {
   }
 
   async function completeEnMn() {
+    if (processingRef.current) return;
     abortRef.current = false;
+    processingRef.current = true;
     setCompletingEnMn(true);
     const updated = [];
     const toSave = [];
@@ -152,8 +155,10 @@ export default function ManualTranslationsTab() {
       updated.push(newEntry);
     }
     setActiveRow(null);
-    setEntries(updated);
+    const finalEntries = [...updated, ...entries.slice(updated.length)];
+    setEntries(finalEntries);
     if (rateLimited) {
+      processingRef.current = false;
       setCompletingEnMn(false);
       window.dispatchEvent(
         new CustomEvent('toast', {
@@ -166,6 +171,7 @@ export default function ManualTranslationsTab() {
       return;
     }
     if (abortRef.current) {
+      processingRef.current = false;
       setCompletingEnMn(false);
       return;
     }
@@ -178,6 +184,7 @@ export default function ManualTranslationsTab() {
       });
     }
     if (toSave.length) await load();
+    processingRef.current = false;
     setCompletingEnMn(false);
     window.dispatchEvent(
       new CustomEvent('toast', {
@@ -187,7 +194,9 @@ export default function ManualTranslationsTab() {
   }
 
   async function completeOtherLanguages() {
+    if (processingRef.current) return;
     abortRef.current = false;
+    processingRef.current = true;
     setCompletingOther(true);
     const restLanguages = languages.filter((l) => l !== 'en' && l !== 'mn');
     const updated = [];
@@ -247,8 +256,10 @@ export default function ManualTranslationsTab() {
       updated.push(newEntry);
     }
     setActiveRow(null);
-    setEntries(updated);
+    const finalEntries = [...updated, ...entries.slice(updated.length)];
+    setEntries(finalEntries);
     if (rateLimited) {
+      processingRef.current = false;
       setCompletingOther(false);
       window.dispatchEvent(
         new CustomEvent('toast', {
@@ -261,6 +272,7 @@ export default function ManualTranslationsTab() {
       return;
     }
     if (abortRef.current) {
+      processingRef.current = false;
       setCompletingOther(false);
       return;
     }
@@ -273,6 +285,7 @@ export default function ManualTranslationsTab() {
       });
     }
     if (toSave.length) await load();
+    processingRef.current = false;
     setCompletingOther(false);
     if (toSave.length) {
       window.dispatchEvent(
