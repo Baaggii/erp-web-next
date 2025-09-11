@@ -86,3 +86,17 @@ test('exports button and option labels from JSX', { concurrency: false }, async 
   restore();
   await db.pool.end();
 });
+
+test('exported texts include all headerMappings keys', { concurrency: false }, async () => {
+  const restore = mockPoolSequential([[[{ moduleKey: 'm1', label: 'Module 1' }]]]);
+  const exportedPath = await exportTranslations(0);
+  const exported = JSON.parse(fs.readFileSync(exportedPath, 'utf8'));
+  const headers = JSON.parse(
+    fs.readFileSync('config/0/headerMappings.json', 'utf8'),
+  );
+  for (const key of Object.keys(headers)) {
+    assert.ok(Object.prototype.hasOwnProperty.call(exported, key), key);
+  }
+  restore();
+  await db.pool.end();
+});
