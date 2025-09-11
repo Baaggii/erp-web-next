@@ -16,7 +16,6 @@ export default function ManualTranslationsTab() {
   const [completingEnMn, setCompletingEnMn] = useState(false);
   const [completingOther, setCompletingOther] = useState(false);
   const [activeRow, setActiveRow] = useState(null);
-  const [savingLanguage, setSavingLanguage] = useState(null);
   const abortRef = useRef(false);
   const processingRef = useRef(false);
   const activeRowRef = useRef(null);
@@ -117,30 +116,6 @@ export default function ManualTranslationsTab() {
       { method: 'DELETE', credentials: 'include' },
     );
     setEntries((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  async function saveLanguage(lang) {
-    setSavingLanguage(lang);
-    try {
-      const data = entries.map(({ key, type, values }) => ({
-        key,
-        type,
-        values: { [lang]: values[lang] },
-      }));
-      const res = await fetch('/api/manual_translations/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw new Error('Failed');
-      await load();
-      addToast(t('saveLanguageSuccess', 'Language saved'), 'success');
-    } catch {
-      addToast(t('saveLanguageError', 'Failed to save language'), 'error');
-    } finally {
-      setSavingLanguage(null);
-    }
   }
 
   async function handleExport() {
@@ -499,13 +474,6 @@ export default function ManualTranslationsTab() {
             {languages.map((l) => (
               <th key={l} style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
                 {l}
-                <button
-                  style={{ marginLeft: '0.25rem' }}
-                  onClick={() => saveLanguage(l)}
-                  disabled={savingLanguage === l}
-                >
-                  {t('save', 'Save')}
-                </button>
               </th>
             ))}
             <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }} />
