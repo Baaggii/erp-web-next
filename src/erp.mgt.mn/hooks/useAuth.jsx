@@ -45,10 +45,13 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
       body: JSON.stringify({ empid, password, companyId }),
     });
   } catch (err) {
-    // Network errors (e.g. server unreachable)
-    const message = /Failed to fetch|NetworkError/i.test(err?.message)
+    // Network errors (e.g. server unreachable or request blocked)
+    const rawMessage = typeof err?.message === 'string' ? err.message.trim() : '';
+    const isNetworkIssue =
+      !rawMessage || /Failed to fetch|NetworkError|TypeError/i.test(rawMessage);
+    const message = isNetworkIssue
       ? t('unableToReachServer', 'Unable to reach server')
-      : err?.message || t('loginRequestFailed', 'Login request failed');
+      : rawMessage || t('loginRequestFailed', 'Login request failed');
     throw new Error(message);
   }
 
