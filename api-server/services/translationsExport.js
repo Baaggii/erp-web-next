@@ -55,11 +55,10 @@ export async function exportTranslations(companyId = 0) {
     if (base[moduleKey] === undefined) base[moduleKey] = pickDefault(label);
   }
 
-  const pagePairs = collectPhrasesFromPages(path.resolve('src/erp.mgt.mn'));
-  for (const { key, text } of pagePairs) {
+  const tPairs = collectPhrasesFromPages(path.resolve('src/erp.mgt.mn'));
+  for (const { key, text } of tPairs) {
     if (base[key] === undefined) base[key] = pickDefault(text);
   }
-  console.log(`[translations] collected ${pagePairs.length} phrases from pages`);
 
   try {
     const formConfigs = JSON.parse(fs.readFileSync(transactionFormsPath, 'utf8'));
