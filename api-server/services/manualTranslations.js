@@ -49,42 +49,7 @@ export async function loadTranslations() {
     } catch {}
   }
 
-  // Merge keys from exported hardcoded texts
-  try {
-    const configDir = path.join(projectRoot, 'config');
-    const tenants = await fs.readdir(configDir, { withFileTypes: true });
-    for (const dirent of tenants) {
-      if (!dirent.isDirectory()) continue;
-      const file = path.join(configDir, dirent.name, 'exportedtexts.json');
-      try {
-        const data = JSON.parse(await fs.readFile(file, 'utf8'));
-        for (const [k, v] of Object.entries(data)) {
-          const id = `locale:${k}`;
-          if (!entries[id]) entries[id] = { key: k, type: 'locale', values: {} };
-          if (v && typeof v === 'object') {
-            for (const [lng, text] of Object.entries(v)) {
-              langs.add(lng);
-              if (entries[id].values[lng] === undefined) {
-                entries[id].values[lng] = text;
-              }
-            }
-          } else if (v != null && entries[id].values.en === undefined) {
-            langs.add('en');
-            entries[id].values.en = v;
-          }
-        }
-      } catch {}
-    }
-  } catch {}
-
-  const langList = Array.from(langs);
-  for (const entry of Object.values(entries)) {
-    for (const lang of langList) {
-      if (entry.values[lang] === undefined) entry.values[lang] = '';
-    }
-  }
-
-  return { languages: langList, entries: Object.values(entries) };
+  return { languages: Array.from(langs), entries: Object.values(entries) };
 }
 
 export async function saveTranslation({ key, type = 'locale', values = {} }) {

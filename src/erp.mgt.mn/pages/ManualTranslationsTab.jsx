@@ -42,18 +42,11 @@ export default function ManualTranslationsTab() {
         }
         return;
       }
-        if (res.ok) {
-          const data = await res.json();
-          setLanguages(data.languages);
-          const filled = data.entries.map((e) => {
-            const vals = { ...e.values };
-            for (const l of data.languages) {
-              if (vals[l] === undefined) vals[l] = '';
-            }
-            return { ...e, values: vals };
-          });
-          setEntries(filled);
-        }
+      if (res.ok) {
+        const data = await res.json();
+        setLanguages(data.languages);
+        setEntries(data.entries);
+      }
     } catch {
       // ignore
     }
@@ -424,8 +417,7 @@ export default function ManualTranslationsTab() {
   }
 
   function addRow() {
-    const empty = Object.fromEntries(languages.map((l) => [l, '']));
-    const newEntries = [...entries, { key: '', type: 'locale', values: empty }];
+    const newEntries = [...entries, { key: '', type: 'locale', values: {} }];
     setEntries(newEntries);
     setPage(Math.ceil(newEntries.length / perPage));
   }
