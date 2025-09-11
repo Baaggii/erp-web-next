@@ -40,26 +40,36 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
     throw new Error(message);
   }
 
+  const dataType = res.headers.get('content-type') || '';
+  const raw = await res.text();
+
   if (!res.ok) {
-    const contentType = res.headers.get('content-type') || '';
     let message = t('loginFailed', 'Login failed');
-    if (contentType.includes('application/json')) {
-      const data = await res.json().catch(() => ({}));
-      if (data && data.message) message = data.message;
+    if (dataType.includes('application/json')) {
+      try {
+        const data = JSON.parse(raw);
+        if (data && data.message) message = data.message;
+      } catch {
+        // fall through with default message
+      }
     } else if (res.status === 503) {
       message = t('serviceUnavailable', 'Service unavailable');
     } else {
-      message = res.statusText || message;
+      message = raw || res.statusText || message;
     }
     throw new Error(message);
   }
 
-  const dataType = res.headers.get('content-type') || '';
-  if (!dataType.includes('application/json')) {
-    const text = await res.text();
-    throw new Error(text || t('loginRequestFailed', 'Login request failed'));
+  let data;
+  if (dataType.includes('application/json')) {
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      throw new Error(raw || t('loginRequestFailed', 'Login request failed'));
+    }
+  } else {
+    throw new Error(raw || t('loginRequestFailed', 'Login request failed'));
   }
-  const data = await res.json();
   if (data?.session) {
     try {
       const stored = JSON.parse(localStorage.getItem('erp_session_ids') || '{}');
