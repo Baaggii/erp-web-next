@@ -1,11 +1,13 @@
 import React, { useEffect, useState, useContext, useRef } from 'react';
 import I18nContext from '../context/I18nContext.jsx';
+import { useToast } from '../context/ToastContext.jsx';
 import translateWithCache from '../utils/translateWithCache.js';
 
 const delay = () => new Promise((r) => setTimeout(r, 200));
 
 export default function ManualTranslationsTab() {
   const { t } = useContext(I18nContext);
+  const { addToast } = useToast();
   const [languages, setLanguages] = useState([]);
   const [entries, setEntries] = useState([]);
   const [page, setPage] = useState(1);
@@ -107,6 +109,30 @@ export default function ManualTranslationsTab() {
       { method: 'DELETE', credentials: 'include' },
     );
     setEntries((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  async function handleExport() {
+    try {
+      const res = await fetch('/api/translations/export', {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        addToast(
+          t('exportTextsFailed', 'Failed to export hardcoded texts'),
+          'error',
+        );
+        return;
+      }
+      addToast(
+        t('exportTextsSuccess', 'Hardcoded texts export started'),
+        'success',
+      );
+    } catch {
+      addToast(
+        t('exportTextsFailed', 'Failed to export hardcoded texts'),
+        'error',
+      );
+    }
   }
 
   async function completeEnMn() {
@@ -378,6 +404,9 @@ export default function ManualTranslationsTab() {
             {t('cancel', 'Cancel')}
           </button>
         )}
+        <button type="button" onClick={handleExport}>
+          {t('exportHardcodedTexts', 'Export hardcoded texts')}
+        </button>
         <input
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}

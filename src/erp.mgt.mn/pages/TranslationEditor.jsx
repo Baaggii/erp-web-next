@@ -1,7 +1,6 @@
 import React, { useState, useContext } from 'react';
 import I18nContext from '../context/I18nContext.jsx';
 import GenerateTranslationsTab from './GenerateTranslationsTab.jsx';
-import TextManagementTab from './TextManagementTab.jsx';
 import ManualTranslationsTab from './ManualTranslationsTab.jsx';
 
 export default function TranslationEditorPage() {
@@ -25,18 +24,10 @@ export default function TranslationEditorPage() {
         >
           {t('generateTranslations', 'Generate')}
         </button>
-        <button
-          onClick={() => setActiveTab('textManagement')}
-          disabled={activeTab === 'textManagement'}
-          style={{ marginLeft: '0.5rem' }}
-        >
-          {t('textManagement', 'Text Management')}
-        </button>
       </div>
 
       {activeTab === 'manual' && <ManualTranslationsTab />}
       {activeTab === 'generate' && <GenerateTranslationsTab />}
-      {activeTab === 'textManagement' && <TextManagementTab />}
     </div>
   );
 }
