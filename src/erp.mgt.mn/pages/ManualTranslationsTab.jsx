@@ -13,6 +13,7 @@ export default function ManualTranslationsTab() {
   const [searchTerm, setSearchTerm] = useState('');
   const [completingEnMn, setCompletingEnMn] = useState(false);
   const [completingOther, setCompletingOther] = useState(false);
+  const [activeRow, setActiveRow] = useState(null);
   const abortRef = useRef(false);
 
   useEffect(() => {
