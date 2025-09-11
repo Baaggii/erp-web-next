@@ -9,6 +9,6 @@ export default defineConfig({
   build: {
     outDir: '../../../../erp.mgt.mn',
     emptyOutDir: true,
-    minify: false
+    minify: 'terser'
   }
 });
