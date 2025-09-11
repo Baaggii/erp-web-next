@@ -13,17 +13,9 @@ import { API_BASE } from '../utils/apiBase.js';
 export async function login({ empid, password, companyId }, t = (key, fallback) => fallback || key) {
   let res;
   try {
-    // Retrieve CSRF token first so that the login request can include it
-    const tokenRes = await fetch(`${API_BASE}/csrf-token`, {
-      credentials: 'include',
-    });
-    if (!tokenRes.ok) throw new Error('csrf');
-    const tokenData = await tokenRes.json();
-    const csrfToken = tokenData?.csrfToken;
-
     res = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+      headers: { 'Content-Type': 'application/json' },
       credentials: 'include', // Ensures cookie is stored
       body: JSON.stringify({ empid, password, companyId }),
     });
