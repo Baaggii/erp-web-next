@@ -137,14 +137,28 @@ export default function ManualTranslationsTab() {
 
   async function completeEnMn() {
     if (processingRef.current) return;
+    const startIdx = entries.findIndex(
+      ({ values }) => (!!values.en && !values.mn) || (!!values.mn && !values.en),
+    );
+    if (startIdx === -1) {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: t('allTranslationsComplete', 'All translations are complete'),
+            type: 'success',
+          },
+        }),
+      );
+      return;
+    }
     abortRef.current = false;
     processingRef.current = true;
     setCompletingEnMn(true);
     const original = [...entries];
-    const updated = [];
+    const updated = entries.slice(0, startIdx);
     let pending = [];
     let rateLimited = false;
-    for (let idx = 0; idx < entries.length; idx++) {
+    for (let idx = startIdx; idx < entries.length; idx++) {
       if (abortRef.current || rateLimited) break;
       setActiveRow(idx);
       setPage(Math.floor(idx / perPage) + 1);
@@ -241,17 +255,35 @@ export default function ManualTranslationsTab() {
 
   async function completeOtherLanguages() {
     if (processingRef.current) return;
+    const restLanguages = languages.filter((l) => l !== 'en' && l !== 'mn');
+    const startIdx = entries.findIndex(({ values }) =>
+      restLanguages.some((l) => {
+        const val = values[l];
+        const trimmed = typeof val === 'string' ? val.trim() : String(val ?? '').trim();
+        return !trimmed;
+      }),
+    );
+    if (startIdx === -1) {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: t('allTranslationsComplete', 'All translations are complete'),
+            type: 'success',
+          },
+        }),
+      );
+      return;
+    }
     abortRef.current = false;
     processingRef.current = true;
     setCompletingOther(true);
     const original = [...entries];
-    const restLanguages = languages.filter((l) => l !== 'en' && l !== 'mn');
-    const updated = [];
+    const updated = entries.slice(0, startIdx);
     const notCompleted = [];
     let pending = [];
     let hadChanges = false;
     let rateLimited = false;
-    for (let idx = 0; idx < entries.length; idx++) {
+    for (let idx = startIdx; idx < entries.length; idx++) {
       if (abortRef.current || rateLimited) break;
       setActiveRow(idx);
       setPage(Math.floor(idx / perPage) + 1);
