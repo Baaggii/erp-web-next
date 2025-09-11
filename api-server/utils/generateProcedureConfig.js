@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { tenantConfigPath } from './configPaths.js';
-import parseProcedureConfig from '../../utils/parseProcedureConfig.js';
+import parseProcedureConfig from '../../src/erp.mgt.mn/utils/parseProcedureConfig.js';
 
 export async function generateProcedureConfig(name, sql, companyId = 0) {
   const result = parseProcedureConfig(sql);
