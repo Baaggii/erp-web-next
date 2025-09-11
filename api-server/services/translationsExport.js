@@ -19,23 +19,30 @@ function pickDefault(val) {
 }
 
 function flattenLangObjects(obj) {
-  if (!obj || typeof obj !== 'object') return;
-  for (const [k, v] of Object.entries(obj)) {
-    if (v && typeof v === 'object') {
-      if (Array.isArray(v)) {
-        v.forEach((item) => {
-          if (item && typeof item === 'object') flattenLangObjects(item);
-        });
-      } else {
-        const values = Object.values(v);
-        if (values.length && values.every((item) => typeof item === 'string')) {
-          obj[k] = pickDefault(v);
-        } else {
-          flattenLangObjects(v);
-        }
+  if (!obj || typeof obj !== 'object') return obj;
+
+  if (Array.isArray(obj)) {
+    for (let i = 0; i < obj.length; i += 1) {
+      const item = obj[i];
+      if (item && typeof item === 'object') {
+        obj[i] = flattenLangObjects(item);
       }
     }
+    return obj;
   }
+
+  for (const [k, v] of Object.entries(obj)) {
+    if (v && typeof v === 'object') {
+      obj[k] = flattenLangObjects(v);
+    }
+  }
+
+  const values = Object.values(obj);
+  if (values.length && values.every((item) => typeof item === 'string')) {
+    return pickDefault(obj);
+  }
+
+  return obj;
 }
 
 export async function exportTranslations(companyId = 0) {
