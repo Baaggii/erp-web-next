@@ -17,16 +17,19 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
     const tokenRes = await fetch(`${API_BASE}/csrf-token`, {
       credentials: 'include',
     });
+
+    const tokenRaw = await tokenRes.text();
     if (!tokenRes.ok) {
-      throw new Error(tokenRes.statusText || 'csrf');
+      throw new Error(tokenRaw || tokenRes.statusText || t('loginRequestFailed', 'Login request failed'));
     }
 
-    const tokenType = tokenRes.headers.get('content-type') || '';
-    if (!tokenType.includes('application/json')) {
-      throw new Error(t('loginRequestFailed', 'Login request failed'));
+    let csrfToken = null;
+    try {
+      const tokenData = JSON.parse(tokenRaw);
+      csrfToken = tokenData?.csrfToken;
+    } catch {
+      throw new Error(tokenRaw || t('loginRequestFailed', 'Login request failed'));
     }
-    const tokenData = await tokenRes.json().catch(() => ({}));
-    const csrfToken = tokenData?.csrfToken;
 
     res = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
@@ -36,7 +39,9 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
     });
   } catch (err) {
     // Network errors (e.g. server unreachable)
-    const message = err?.message || t('loginRequestFailed', 'Login request failed');
+    const message = /Failed to fetch|NetworkError/i.test(err?.message)
+      ? t('unableToReachServer', 'Unable to reach server')
+      : err?.message || t('loginRequestFailed', 'Login request failed');
     throw new Error(message);
   }
 
