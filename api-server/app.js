@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import express from "express";
+import cors from "cors";
 import cookieParser from "cookie-parser";
 import csurf from "csurf";
 import { testConnection } from "../db/index.js";
@@ -37,6 +38,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 app.set('trust proxy', true);
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 app.use(cookieParser());
