@@ -101,3 +101,38 @@ export default function Tmp() {
   assert.equal(exported['Test Label'], 'Test Label');
   await db.pool.end();
 });
+
+test('deeply nested header mappings are flattened', async () => {
+  const headerMappingsPath = path.join('config', '0', 'headerMappings.json');
+  const original = fs.readFileSync(headerMappingsPath, 'utf8');
+  const nestedMappings = {
+    root: {
+      title: { en: 'Root Title' },
+      items: [
+        {
+          name: { en: 'Item Name' },
+          children: [
+            { label: { en: 'Child1' } },
+            { label: { en: 'Child2' }, more: [{ deep: { en: 'Deep' } }] },
+          ],
+        },
+      ],
+    },
+  };
+  fs.writeFileSync(headerMappingsPath, JSON.stringify(nestedMappings, null, 2));
+
+  const restore = mockPoolSequential([[[{ moduleKey: 'm1', label: 'Module 1' }]]]);
+  try {
+    await exportTranslations(0);
+  } finally {
+    restore();
+  }
+  const exportedPath = path.join('config', '0', 'exportedtexts.json');
+  const exported = JSON.parse(fs.readFileSync(exportedPath, 'utf8'));
+  assert.equal(exported.root.title, 'Root Title');
+  assert.equal(exported.root.items[0].name, 'Item Name');
+  assert.equal(exported.root.items[0].children[1].more[0].deep, 'Deep');
+  fs.writeFileSync(headerMappingsPath, original);
+  fs.unlinkSync(exportedPath);
+  await db.pool.end();
+});

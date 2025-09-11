@@ -18,22 +18,30 @@ function pickDefault(val) {
   return val;
 }
 
+function isLangObject(v) {
+  if (!v || Array.isArray(v) || typeof v !== 'object') return false;
+  const values = Object.values(v);
+  return values.length > 0 && values.every((item) => typeof item === 'string');
+}
+
 function flattenLangObjects(obj) {
   if (!obj || typeof obj !== 'object') return;
-  for (const [k, v] of Object.entries(obj)) {
-    if (v && typeof v === 'object') {
-      if (Array.isArray(v)) {
-        v.forEach((item) => {
-          if (item && typeof item === 'object') flattenLangObjects(item);
-        });
-      } else {
-        const values = Object.values(v);
-        if (values.length && values.every((item) => typeof item === 'string')) {
-          obj[k] = pickDefault(v);
-        } else {
-          flattenLangObjects(v);
-        }
+  if (Array.isArray(obj)) {
+    for (let i = 0; i < obj.length; i += 1) {
+      const item = obj[i];
+      if (isLangObject(item)) {
+        obj[i] = pickDefault(item);
+      } else if (item && typeof item === 'object') {
+        flattenLangObjects(item);
       }
+    }
+    return;
+  }
+  for (const [k, v] of Object.entries(obj)) {
+    if (isLangObject(v)) {
+      obj[k] = pickDefault(v);
+    } else if (v && typeof v === 'object') {
+      flattenLangObjects(v);
     }
   }
 }
@@ -49,6 +57,7 @@ export async function exportTranslations(companyId = 0) {
   );
   const base = JSON.parse(fs.readFileSync(headerMappingsPath, 'utf8'));
   flattenLangObjects(base);
+  const headerKeys = new Set(Object.keys(base));
   const modules = await fetchModules();
 
   for (const { moduleKey, label } of modules) {
@@ -173,6 +182,12 @@ export async function exportTranslations(companyId = 0) {
     }
     walkPos(posConfig, []);
   } catch {}
+
+  for (const key of headerKeys) {
+    if (!Object.prototype.hasOwnProperty.call(base, key)) {
+      throw new Error(`Missing header mapping key: ${key}`);
+    }
+  }
 
   const sorted = sortObj(base);
   const exportPath = tenantConfigPath('exportedtexts.json', 0);
