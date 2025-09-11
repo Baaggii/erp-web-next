@@ -208,14 +208,15 @@ export default function AllowedReportsConfig() {
                   <td>{p}</td>
                   <td>{(info.branches || []).join(', ')}</td>
                   <td>{(info.departments || []).join(', ')}</td>
-                  <td style={{ whiteSpace: 'pre-wrap' }}>
-                    {(info.permissions || []).map((perm) => {
-                      const opt = permOptions.find(
-                        (o) => o.value === String(perm),
-                      );
-                      const label = opt ? opt.label : perm;
-                      return <div key={String(perm)}>{label}</div>;
-                    })}
+                  <td>
+                    {(info.permissions || [])
+                      .map((perm) => {
+                        const opt = permOptions.find(
+                          (o) => o.value === String(perm),
+                        );
+                        return opt ? opt.label : perm;
+                      })
+                      .join(', ')}
                   </td>
                   <td>
                     <button onClick={() => edit(p)}>Edit</button>
