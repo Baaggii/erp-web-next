@@ -77,7 +77,7 @@ if (typeof mock.import !== 'function') {
     delete global.fetch;
   });
 
-  test('ReportBuilder loads config for selected report', async () => {
+  test('ReportBuilder loads config when Load Config clicked', async () => {
     const states = [];
     let loadConfigHandler;
     const reactMock = {
@@ -139,7 +139,7 @@ if (typeof mock.import !== 'function') {
     // selectedReport
     states[24] = 'cfg1';
 
-    await loadConfigHandler();
+    await loadConfigHandler({});
 
     assert.equal(fetchUrl, '/api/report_builder/configs/cfg1');
     assert.equal(states[4], 'abc');
