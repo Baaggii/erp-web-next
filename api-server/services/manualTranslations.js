@@ -78,11 +78,15 @@ export async function loadTranslations() {
           }
         })(raw, '');
         for (const [k, v] of Object.entries(flat)) {
-          const id = `exported:${k}`;
-          if (!entries[id]) entries[id] = { key: k, type: 'exported', values: {} };
-          for (const lang of langs) {
-            if (lang === 'en') entries[id].values[lang] = v;
-            else entries[id].values[lang] ??= '';
+          const localeId = `locale:${k}`;
+          const tooltipId = `tooltip:${k}`;
+          if (!entries[localeId]) entries[localeId] = { key: k, type: 'locale', values: { en: v } };
+          if (!entries[tooltipId]) entries[tooltipId] = { key: k, type: 'tooltip', values: { en: v } };
+          for (const id of [localeId, tooltipId]) {
+            const entry = entries[id];
+            for (const lang of langs) {
+              entry.values[lang] ??= '';
+            }
           }
         }
         if (!langs.has('en')) langs.add('en');
