@@ -462,86 +462,90 @@ export default function ManualTranslationsTab() {
           placeholder={t('search', 'Search')}
         />
       </div>
-      <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-        <thead>
-          <tr>
-            <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Key</th>
-            <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Type</th>
-            {languages.map((l) => (
-              <th key={l} style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '0.25rem',
-                  }}
-                >
-                  <span>{l}</span>
-                  <button
-                    type="button"
-                    onClick={() => saveLanguage(l)}
-                    disabled={savingLanguage !== null}
-                  >
-                    {savingLanguage === l
-                      ? t('saving', 'Saving...')
-                      : t('save', 'Save')}
-                  </button>
-                </div>
-              </th>
-            ))}
-            <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }} />
-          </tr>
-        </thead>
-        <tbody>
-          {paged.map((entry) => {
-            const entryIdx = entries.indexOf(entry);
-            const rowStyle =
-              entryIdx === activeRow ? { backgroundColor: '#fef3c7' } : undefined;
-            return (
-              <tr
-                key={entryIdx}
-                style={rowStyle}
-                ref={entryIdx === activeRow ? activeRowRef : null}
-              >
-                <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
-                  <input
-                    value={entry.key}
-                    onChange={(e) => updateEntry(entryIdx, 'key', e.target.value)}
-                  />
-                </td>
-                <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
-                  <select
-                    value={entry.type}
-                    onChange={(e) => updateEntry(entryIdx, 'type', e.target.value)}
-                  >
-                    <option value="locale">locale</option>
-                    <option value="tooltip">tooltip</option>
-                    <option value="exported">exported</option>
-                  </select>
-                </td>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+            <thead>
+              <tr>
+                <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Key</th>
+                <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Type</th>
                 {languages.map((l) => (
-                  <td key={l} style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
-                    <input
-                      value={entry.values[l] || ''}
-                      onChange={(e) => updateValue(entryIdx, l, e.target.value)}
-                    />
-                  </td>
+                  <th key={l} style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '0.25rem',
+                      }}
+                    >
+                      <span>{l}</span>
+                      <button
+                        type="button"
+                        onClick={() => saveLanguage(l)}
+                        disabled={savingLanguage !== null}
+                      >
+                        {savingLanguage === l
+                          ? t('saving', 'Saving...')
+                          : t('save', 'Save')}
+                      </button>
+                    </div>
+                  </th>
                 ))}
-                <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
-                  <button onClick={() => save(entryIdx)}>{t('save', 'Save')}</button>
-                  <button
-                    onClick={() => remove(entryIdx)}
-                    style={{ marginLeft: '0.25rem' }}
-                  >
-                    {t('delete', 'Delete')}
-                  </button>
-                </td>
+                <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }} />
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            </thead>
+              <tbody>
+                {paged.map((entry) => {
+                  const entryIdx = entries.indexOf(entry);
+                  const rowStyle =
+                    entryIdx === activeRow ? { backgroundColor: '#fef3c7' } : undefined;
+                  return (
+                    <tr
+                      key={entryIdx}
+                      style={rowStyle}
+                      ref={entryIdx === activeRow ? activeRowRef : null}
+                    >
+                      <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                        <input
+                          value={entry.key}
+                          onChange={(e) => updateEntry(entryIdx, 'key', e.target.value)}
+                        />
+                      </td>
+                      <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                        <select
+                          value={entry.type}
+                          onChange={(e) => updateEntry(entryIdx, 'type', e.target.value)}
+                        >
+                          <option value="locale">locale</option>
+                          <option value="tooltip">tooltip</option>
+                          <option value="exported">exported</option>
+                        </select>
+                      </td>
+                      {languages.map((l) => (
+                        <td key={l} style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                          <textarea
+                            value={entry.values[l] || ''}
+                            onChange={(e) => updateValue(entryIdx, l, e.target.value)}
+                            style={{ width: '100%', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}
+                            rows={2}
+                          />
+                        </td>
+                      ))}
+                      <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                        <button onClick={() => save(entryIdx)}>{t('save', 'Save')}</button>
+                        <button
+                          onClick={() => remove(entryIdx)}
+                          style={{ marginLeft: '0.25rem' }}
+                        >
+                          {t('delete', 'Delete')}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
       <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center' }}>
         <button
           onClick={() => setPage(1)}
