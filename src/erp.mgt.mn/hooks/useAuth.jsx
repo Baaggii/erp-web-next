@@ -17,7 +17,9 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
     const tokenRes = await fetch(`${API_BASE}/csrf-token`, {
       credentials: 'include',
     });
-    if (!tokenRes.ok) throw new Error('csrf');
+    if (!tokenRes.ok) {
+      throw new Error(tokenRes.statusText || 'csrf');
+    }
     const tokenData = await tokenRes.json();
     const csrfToken = tokenData?.csrfToken;
 
@@ -29,7 +31,8 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
     });
   } catch (err) {
     // Network errors (e.g. server unreachable)
-    throw new Error(t('loginRequestFailed', 'Login request failed'));
+    const message = err?.message || t('loginRequestFailed', 'Login request failed');
+    throw new Error(message);
   }
 
   if (!res.ok) {
