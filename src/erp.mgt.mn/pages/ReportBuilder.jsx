@@ -4,7 +4,7 @@ import buildReportSql from '../utils/buildReportSql.js';
 import ErrorBoundary from '../components/ErrorBoundary.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import formatSqlValue from '../utils/formatSqlValue.js';
-import parseProcedureConfig from '../utils/parseProcedureConfig.js';
+import parseProcedureConfig from '../../../utils/parseProcedureConfig.js';
 import reportDefinitionToConfig from '../utils/reportDefinitionToConfig.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
