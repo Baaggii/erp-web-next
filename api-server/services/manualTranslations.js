@@ -49,6 +49,54 @@ export async function loadTranslations() {
     } catch {}
   }
 
+  // Load exported text identifiers
+  const configDir = path.join(projectRoot, 'config');
+  try {
+    const tenants = await fs.readdir(configDir, { withFileTypes: true });
+    for (const tenant of tenants) {
+      if (!tenant.isDirectory()) continue;
+      const exportedFile = path.join(configDir, tenant.name, 'exportedtexts.json');
+      try {
+        const raw = JSON.parse(await fs.readFile(exportedFile, 'utf8'));
+        const flat = {};
+        (function walk(obj, prefix) {
+          if (typeof obj === 'string') {
+            flat[prefix] = obj;
+            return;
+          }
+          if (Array.isArray(obj)) {
+            obj.forEach((v, i) => {
+              walk(v, prefix ? `${prefix}.${i}` : String(i));
+            });
+            return;
+          }
+          if (obj && typeof obj === 'object') {
+            for (const [k, v] of Object.entries(obj)) {
+              const key = prefix ? `${prefix}.${k}` : k;
+              walk(v, key);
+            }
+          }
+        })(raw, '');
+        for (const [k, v] of Object.entries(flat)) {
+          const id = `exported:${k}`;
+          if (!entries[id]) entries[id] = { key: k, type: 'exported', values: {} };
+          for (const lang of langs) {
+            if (lang === 'en') entries[id].values[lang] = v;
+            else entries[id].values[lang] ??= '';
+          }
+        }
+        if (!langs.has('en')) langs.add('en');
+      } catch {}
+    }
+  } catch {}
+
+  // Ensure all language fields exist
+  for (const entry of Object.values(entries)) {
+    for (const lang of langs) {
+      if (entry.values[lang] == null) entry.values[lang] = '';
+    }
+  }
+
   return { languages: Array.from(langs), entries: Object.values(entries) };
 }
 
