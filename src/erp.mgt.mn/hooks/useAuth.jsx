@@ -18,16 +18,9 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
       credentials: 'include',
     });
 
-    const tokenType = tokenRes.headers.get('content-type') || '';
     const tokenRaw = await tokenRes.text();
     if (!tokenRes.ok) {
-      const message = tokenType.includes('text/html')
-        ? t('loginRequestFailed', 'Login request failed')
-        : tokenRaw || tokenRes.statusText || t('loginRequestFailed', 'Login request failed');
-      throw new Error(message);
-    }
-    if (!tokenType.includes('application/json')) {
-      throw new Error(t('loginRequestFailed', 'Login request failed'));
+      throw new Error(tokenRaw || tokenRes.statusText || t('loginRequestFailed', 'Login request failed'));
     }
 
     let csrfToken = null;
@@ -35,7 +28,7 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
       const tokenData = JSON.parse(tokenRaw);
       csrfToken = tokenData?.csrfToken;
     } catch {
-      throw new Error(t('loginRequestFailed', 'Login request failed'));
+      throw new Error(tokenRaw || t('loginRequestFailed', 'Login request failed'));
     }
 
     res = await fetch(`${API_BASE}/auth/login`, {
@@ -66,8 +59,6 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
       }
     } else if (res.status === 503) {
       message = t('serviceUnavailable', 'Service unavailable');
-    } else if (dataType.includes('text/html')) {
-      message = t('loginRequestFailed', 'Login request failed');
     } else {
       message = raw || res.statusText || message;
     }
@@ -79,10 +70,10 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
     try {
       data = JSON.parse(raw);
     } catch {
-      throw new Error(t('loginRequestFailed', 'Login request failed'));
+      throw new Error(raw || t('loginRequestFailed', 'Login request failed'));
     }
   } else {
-    throw new Error(t('loginRequestFailed', 'Login request failed'));
+    throw new Error(raw || t('loginRequestFailed', 'Login request failed'));
   }
   if (data?.session) {
     try {
