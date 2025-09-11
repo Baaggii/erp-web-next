@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import parseProcedureConfig from '../../utils/parseProcedureConfig.js';
+import parseProcedureConfig from '../../src/erp.mgt.mn/utils/parseProcedureConfig.js';
 
 // simple stand-in for the ReportBuilder applyConfig loader
 function applyConfig(report) {
@@ -56,5 +56,15 @@ test('round trip through applyConfig returns original report', () => {
   const { report } = parseProcedureConfig(sql);
   const state = applyConfig(report);
   assert.deepEqual(state, report);
+});
+
+test('handles functions with internal commas', () => {
+  const sql =
+    'SELECT SUM(IF(p.flag=1, p.qty, 0)) AS total, p.name FROM prod p';
+  const { report } = parseProcedureConfig(sql);
+  assert.deepEqual(report.select, [
+    { expr: 'SUM(IF(p.flag=1, p.qty, 0))', alias: 'total' },
+    { expr: 'p.name', alias: undefined },
+  ]);
 });
 
