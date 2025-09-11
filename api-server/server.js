@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import http from "http";
 import express from "express";
 import cookieParser from "cookie-parser";
+import csrf from "csurf";
 import { Server as SocketIOServer } from "socket.io";
 import * as jwtService from "./services/jwtService.js";
 import { getCookieName } from "./utils/cookieNames.js";
@@ -57,12 +58,19 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-app.set('trust proxy', true);
-app.use(express.json({ limit: '100mb' }));
-app.use(express.urlencoded({ extended: true, limit: '100mb' }));
+app.set("trust proxy", 1); // behind a single reverse proxy
+
+app.use(express.json({ limit: "100mb" }));
+app.use(express.urlencoded({ extended: true, limit: "100mb" }));
 app.use(cookieParser());
+app.use(csrf({ cookie: true }));          // <— csurf middleware
 app.use(logger);
 app.use(activityLogger);
+
+// CSRF token endpoint
+app.get("/api/csrf-token", (req, res) => {
+  res.json({ csrfToken: req.csrfToken() });
+});
 
 // Create HTTP server and attach Socket.IO
 const server = http.createServer(app);
@@ -78,7 +86,7 @@ io.use((socket, next) => {
       raw.split(";").map((c) => {
         const [k, ...v] = c.trim().split("=");
         return [k, decodeURIComponent(v.join("="))];
-      }),
+      })
     );
     const token = cookies[getCookieName()];
     if (!token) return next(new Error("Authentication error"));
@@ -127,8 +135,8 @@ app.use("/api/company_modules", requireAuth, companyModuleRoutes);
 app.use("/api/coding_tables", requireAuth, codingTableRoutes);
 app.use("/api/header_mappings", requireAuth, headerMappingRoutes);
 app.use("/api/manual_translations", manualTranslationsRoutes);
-app.use("/api/openai", featureToggle('aiApiEnabled'), openaiRoutes);
-app.use("/api/ai_inventory", featureToggle('aiInventoryApiEnabled'), aiInventoryRoutes);
+app.use("/api/openai", featureToggle("aiApiEnabled"), openaiRoutes);
+app.use("/api/ai_inventory", featureToggle("aiInventoryApiEnabled"), aiInventoryRoutes);
 app.use("/api/display_fields", displayFieldRoutes);
 app.use("/api/coding_table_configs", codingTableConfigRoutes);
 app.use("/api/generated_sql", generatedSqlRoutes);
@@ -156,8 +164,6 @@ app.use("/api/user_activity_log", activityLogRoutes);
 app.use("/api/translations", translationRoutes);
 
 // Serve static React build and fallback to index.html
-// NOTE: adjust this path to where your SPA build actually lives.
-// If your build outputs to /home/mgtmn/erp.mgt.mn, update to:
 const buildDir = path.resolve(__dirname, "../../../erp.mgt.mn");
 app.use(express.static(buildDir));
 app.get("*", (req, res) => res.sendFile(path.join(buildDir, "index.html")));
@@ -167,5 +173,5 @@ app.use(errorHandler);
 
 const port = process.env.PORT || 3002;
 server.listen(port, () =>
-  console.log(`✅ ERP API & SPA listening on port ${port}`),
+  console.log(`✅ ERP API & SPA listening on port ${port}`)
 );
