@@ -16,6 +16,7 @@ export default function ManualTranslationsTab() {
   const [completingEnMn, setCompletingEnMn] = useState(false);
   const [completingOther, setCompletingOther] = useState(false);
   const [activeRow, setActiveRow] = useState(null);
+  const [savingLanguage, setSavingLanguage] = useState(null);
   const abortRef = useRef(false);
   const processingRef = useRef(false);
   const activeRowRef = useRef(null);
@@ -100,6 +101,36 @@ export default function ManualTranslationsTab() {
       body: JSON.stringify(entry),
     });
     await load();
+  }
+
+  async function saveLanguage(lang) {
+    setSavingLanguage(lang);
+    const payload = entries.map((e) => ({
+      key: e.key,
+      type: e.type,
+      values: { [lang]: e.values[lang] ?? '' },
+    }));
+    try {
+      const res = await fetch('/api/manual_translations/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        addToast(
+          t('languageSaveFailed', 'Failed to save language translations'),
+          'error',
+        );
+        return;
+      }
+      addToast(t('languageSaved', 'Language translations saved'), 'success');
+      await load();
+    } catch {
+      addToast(t('languageSaveFailed', 'Failed to save language translations'), 'error');
+    } finally {
+      setSavingLanguage(null);
+    }
   }
 
   async function remove(index) {
@@ -438,7 +469,25 @@ export default function ManualTranslationsTab() {
             <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Type</th>
             {languages.map((l) => (
               <th key={l} style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
-                {l}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '0.25rem',
+                  }}
+                >
+                  <span>{l}</span>
+                  <button
+                    type="button"
+                    onClick={() => saveLanguage(l)}
+                    disabled={savingLanguage !== null}
+                  >
+                    {savingLanguage === l
+                      ? t('saving', 'Saving...')
+                      : t('save', 'Save')}
+                  </button>
+                </div>
               </th>
             ))}
             <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }} />
