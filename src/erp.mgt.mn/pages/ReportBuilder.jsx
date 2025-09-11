@@ -1493,7 +1493,7 @@ function ReportBuilderInner() {
   }
 
   async function handleLoadConfig(name) {
-    const cfgName = name ?? selectedReport;
+    const cfgName = typeof name === 'string' ? name : selectedReport;
     if (!cfgName) return;
     try {
       const res = await fetch(
