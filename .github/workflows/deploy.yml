@@ -27,29 +27,36 @@ jobs:
         run: npm run build:erp
 
       # Upload built folders to the server
-      - name: Push homepage assets
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          source: "public_html/*"
-          target: "${{ secrets.HOME_HTML }}"
-          overwrite: true
-          strip_components: 1
+     - name: Push homepage assets
+  uses: appleboy/scp-action@v0.1.7
+  with:
+    host: ${{ secrets.SSH_HOST }}
+    username: ${{ secrets.SSH_USER }}
+    key: ${{ secrets.SSH_KEY }}
+    source: "dist/home/*"
+    target: "${{ secrets.HOME_HTML }}"
+    overwrite: true
+    strip_components: 1
 
-      - name: Push ERP assets
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          source: "erp.mgt.mn/*"
-          target: "${{ secrets.ERP_HTML }}"
-          overwrite: true
-          strip_components: 1
+- name: Push ERP assets
+  uses: appleboy/scp-action@v0.1.7
+  with:
+    host: ${{ secrets.SSH_HOST }}
+    username: ${{ secrets.SSH_USER }}
+    key: ${{ secrets.SSH_KEY }}
+    source: "dist/erp/*"
+    target: "${{ secrets.ERP_HTML }}"
+    overwrite: true
+    strip_components: 1
+
+- name: Prepare homepage and ERP folders
+  run: |
+    rm -rf public_html && mkdir -p public_html
+    rm -rf erp.mgt.mn && mkdir -p erp.mgt.mn
+    cp -r dist/home/* public_html/
+    cp -r dist/erp/* erp.mgt.mn/
+
+# then your existing Push homepage assets step can continue using public_html/*
 
       # Ensure .htaccess are in place
       - name: Copy .htaccess and restart app
