@@ -429,9 +429,28 @@ export default function ManualTranslationsTab() {
         <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>
           {t('prev', 'Prev')}
         </button>
-        <span style={{ margin: '0 0.5rem' }}>
-          {page} / {totalPages}
-        </span>
+        <input
+          type="number"
+          value={page}
+          min={1}
+          max={totalPages}
+          onChange={(e) => {
+            const val = Number(e.target.value);
+            if (!Number.isNaN(val)) {
+              setPage(Math.min(Math.max(1, val), totalPages));
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              const val = Number(e.currentTarget.value);
+              if (!Number.isNaN(val)) {
+                setPage(Math.min(Math.max(1, val), totalPages));
+              }
+            }
+          }}
+          style={{ width: '3rem', margin: '0 0.5rem' }}
+        />
+        / {totalPages}
         <button
           onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
           disabled={page === totalPages}
