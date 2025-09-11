@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import * as parser from '@babel/parser';
-import traverse from '@babel/traverse';
+import traverseModule from '@babel/traverse';
+const traverse = traverseModule.default;
 
 export function sortObj(o) {
   return Object.keys(o)
