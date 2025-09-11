@@ -13,8 +13,7 @@ export default function ManualTranslationsTab() {
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
   const [searchTerm, setSearchTerm] = useState('');
-  const [completingEnMn, setCompletingEnMn] = useState(false);
-  const [completingOther, setCompletingOther] = useState(false);
+  const [completing, setCompleting] = useState(false);
   const [activeRow, setActiveRow] = useState(null);
   const [savingLanguage, setSavingLanguage] = useState(null);
   const abortRef = useRef(false);
@@ -166,15 +165,17 @@ export default function ManualTranslationsTab() {
     }
   }
 
-  async function completeEnMn() {
+  async function completeAll() {
     if (processingRef.current) return;
     abortRef.current = false;
     processingRef.current = true;
-    setCompletingEnMn(true);
+    setCompleting(true);
     const allEntries = [...entries];
     const original = [...allEntries];
+    const restLanguages = languages.filter((l) => l !== 'en' && l !== 'mn');
     const updated = [];
     const pending = [];
+    const notCompleted = [];
     let saved = false;
     let rateLimited = false;
     for (let idx = 0; idx < allEntries.length; idx++) {
@@ -191,14 +192,14 @@ export default function ManualTranslationsTab() {
         typeof newEntry.values.mn === 'string'
           ? newEntry.values.mn.trim()
           : String(newEntry.values.mn ?? '').trim();
+      let changed = false;
       if (!en && mn) {
         try {
           await delay();
           const translated = await translateWithCache('en', mn);
           if (translated) {
             newEntry.values.en = translated;
-            pending.push(newEntry);
-            saved = true;
+            changed = true;
           }
         } catch (err) {
           if (err.rateLimited) {
@@ -212,8 +213,7 @@ export default function ManualTranslationsTab() {
           const translated = await translateWithCache('mn', en);
           if (translated) {
             newEntry.values.mn = translated;
-            pending.push(newEntry);
-            saved = true;
+            changed = true;
           }
         } catch (err) {
           if (err.rateLimited) {
@@ -222,125 +222,50 @@ export default function ManualTranslationsTab() {
           }
         }
       }
-      updated.push(newEntry);
-      if (
-        pending.length &&
-        ((idx + 1) % perPage === 0 || idx === allEntries.length - 1)
-      ) {
-        await fetch('/api/manual_translations/bulk', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(pending),
-        });
-        pending.length = 0;
-      }
-    }
-    setActiveRow(null);
-    const finalEntries = [...updated, ...entries.slice(updated.length)];
-    if (abortRef.current) {
-      setEntries(original);
-      processingRef.current = false;
-      setCompletingEnMn(false);
-      await load();
-      if (rateLimited) {
-        window.dispatchEvent(
-          new CustomEvent('toast', {
-            detail: {
-              message: t('openaiRateLimit', 'OpenAI rate limit exceeded'),
-              type: 'error',
-            },
-          }),
-        );
-      }
-      return;
-    }
-    setEntries(finalEntries);
-    if (rateLimited) {
-      processingRef.current = false;
-      setCompletingEnMn(false);
-      window.dispatchEvent(
-        new CustomEvent('toast', {
-          detail: {
-            message: t('openaiRateLimit', 'OpenAI rate limit exceeded'),
-            type: 'error',
-          },
-        }),
-      );
-      return;
-    }
-    if (saved) {
-      await load();
-    }
-    processingRef.current = false;
-    setCompletingEnMn(false);
-    window.dispatchEvent(
-      new CustomEvent('toast', {
-        detail: { message: t('translationsCompleted', 'Translations completed'), type: 'success' },
-      }),
-    );
-  }
-
-  async function completeOtherLanguages() {
-    if (processingRef.current) return;
-    abortRef.current = false;
-    processingRef.current = true;
-    setCompletingOther(true);
-    const allEntries = [...entries];
-    const original = [...allEntries];
-    const restLanguages = languages.filter((l) => l !== 'en' && l !== 'mn');
-    const updated = [];
-    const pending = [];
-    const notCompleted = [];
-    let saved = false;
-    let rateLimited = false;
-    for (let idx = 0; idx < allEntries.length; idx++) {
-      if (abortRef.current || rateLimited) break;
-      setActiveRow(idx);
-      setPage(Math.floor(idx / perPage) + 1);
-      const entry = allEntries[idx];
-      const newEntry = { ...entry, values: { ...entry.values } };
-      const sourceText =
-        (typeof newEntry.values.en === 'string'
+      const enAfter =
+        typeof newEntry.values.en === 'string'
           ? newEntry.values.en.trim()
-          : String(newEntry.values.en ?? '').trim()) ||
-        (typeof newEntry.values.mn === 'string'
+          : String(newEntry.values.en ?? '').trim();
+      const mnAfter =
+        typeof newEntry.values.mn === 'string'
           ? newEntry.values.mn.trim()
-          : String(newEntry.values.mn ?? '').trim());
-      const missingBefore = restLanguages.filter((l) => {
-        const val = newEntry.values[l];
-        const trimmed =
-          typeof val === 'string' ? val.trim() : String(val ?? '').trim();
-        return !trimmed;
-      });
-      let changed = false;
-      if (missingBefore.length && sourceText) {
-        for (const lang of missingBefore) {
-          if (abortRef.current || rateLimited) break;
-          try {
-            await delay();
-            const translated = await translateWithCache(lang, sourceText);
-            if (translated) {
-              newEntry.values[lang] = translated;
-              changed = true;
-            }
-          } catch (err) {
-            if (err.rateLimited) {
-              abortRef.current = true;
-              rateLimited = true;
+          : String(newEntry.values.mn ?? '').trim();
+      if (enAfter && mnAfter && restLanguages.length) {
+        const sourceText = enAfter || mnAfter;
+        const missingBefore = restLanguages.filter((l) => {
+          const val = newEntry.values[l];
+          const trimmed =
+            typeof val === 'string' ? val.trim() : String(val ?? '').trim();
+          return !trimmed;
+        });
+        if (missingBefore.length) {
+          for (const lang of missingBefore) {
+            if (abortRef.current || rateLimited) break;
+            try {
+              await delay();
+              const translated = await translateWithCache(lang, sourceText);
+              if (translated) {
+                newEntry.values[lang] = translated;
+                changed = true;
+              }
+            } catch (err) {
+              if (err.rateLimited) {
+                abortRef.current = true;
+                rateLimited = true;
+              }
             }
           }
+          if (abortRef.current || rateLimited) break;
+          const missingAfter = restLanguages.filter((l) => {
+            const val = newEntry.values[l];
+            const trimmed =
+              typeof val === 'string' ? val.trim() : String(val ?? '').trim();
+            return !trimmed;
+          });
+          if (missingAfter.length) {
+            notCompleted.push(newEntry);
+          }
         }
-        if (abortRef.current || rateLimited) break;
-      }
-      const missingAfter = restLanguages.filter((l) => {
-        const val = newEntry.values[l];
-        const trimmed =
-          typeof val === 'string' ? val.trim() : String(val ?? '').trim();
-        return !trimmed;
-      });
-      if (missingBefore.length && missingAfter.length) {
-        notCompleted.push(newEntry);
       }
       if (changed) {
         pending.push(newEntry);
@@ -365,7 +290,7 @@ export default function ManualTranslationsTab() {
     if (abortRef.current) {
       setEntries(original);
       processingRef.current = false;
-      setCompletingOther(false);
+      setCompleting(false);
       await load();
       if (rateLimited) {
         window.dispatchEvent(
@@ -382,7 +307,7 @@ export default function ManualTranslationsTab() {
     setEntries(finalEntries);
     if (rateLimited) {
       processingRef.current = false;
-      setCompletingOther(false);
+      setCompleting(false);
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: {
@@ -397,11 +322,14 @@ export default function ManualTranslationsTab() {
       await load();
     }
     processingRef.current = false;
-    setCompletingOther(false);
+    setCompleting(false);
     if (saved) {
       window.dispatchEvent(
         new CustomEvent('toast', {
-          detail: { message: t('translationsCompleted', 'Translations completed'), type: 'success' },
+          detail: {
+            message: t('translationsCompleted', 'Translations completed'),
+            type: 'success',
+          },
         }),
       );
     }
@@ -432,23 +360,14 @@ export default function ManualTranslationsTab() {
         <button type="button" onClick={addRow}>{t('addRow', 'Add Row')}</button>
         <button
           type="button"
-          onClick={completeEnMn}
-          disabled={completingEnMn || completingOther}
+          onClick={completeAll}
+          disabled={completing}
         >
-          {completingEnMn
+          {completing
             ? t('completing', 'Completing...')
-            : t('completeEnMn', 'Complete en/mn translations')}
+            : t('completeTranslations', 'Complete translations')}
         </button>
-        <button
-          type="button"
-          onClick={completeOtherLanguages}
-          disabled={completingEnMn || completingOther}
-        >
-          {completingOther
-            ? t('completing', 'Completing...')
-            : t('completeOtherLangs', 'Complete other languages translations')}
-        </button>
-        {(completingEnMn || completingOther) && (
+        {completing && (
           <button type="button" onClick={() => (abortRef.current = true)}>
             {t('cancel', 'Cancel')}
           </button>
