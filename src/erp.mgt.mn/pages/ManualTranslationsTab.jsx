@@ -466,6 +466,7 @@ export default function ManualTranslationsTab() {
                   >
                     <option value="locale">locale</option>
                     <option value="tooltip">tooltip</option>
+                    <option value="exported">exported</option>
                   </select>
                 </td>
                 {languages.map((l) => (
