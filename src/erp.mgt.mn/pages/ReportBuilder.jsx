@@ -1492,11 +1492,12 @@ function ReportBuilderInner() {
     });
   }
 
-  async function handleLoadConfig(name = selectedReport) {
-    if (!name) return;
+  async function handleLoadConfig(name) {
+    const cfgName = name ?? selectedReport;
+    if (!cfgName) return;
     try {
       const res = await fetch(
-        `/api/report_builder/configs/${encodeURIComponent(name)}`,
+        `/api/report_builder/configs/${encodeURIComponent(cfgName)}`,
       );
       const data = await res.json();
       applyConfig(data);
@@ -3005,7 +3006,7 @@ function ReportBuilderInner() {
             </option>
           ))}
         </select>
-        <button onClick={handleLoadConfig} style={{ marginLeft: '0.5rem' }}>
+        <button onClick={() => handleLoadConfig()} style={{ marginLeft: '0.5rem' }}>
           Load Config
         </button>
       </section>

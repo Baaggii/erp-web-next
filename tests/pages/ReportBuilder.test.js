@@ -77,6 +77,76 @@ if (typeof mock.import !== 'function') {
     delete global.fetch;
   });
 
+  test('ReportBuilder loads config for selected report', async () => {
+    const states = [];
+    let loadConfigHandler;
+    const reactMock = {
+      useState(initial) {
+        const idx = states.length;
+        states.push(initial);
+        return [states[idx], (v) => (states[idx] = v)];
+      },
+      useEffect() {},
+      useContext() {
+        return {
+          company: 0,
+          permissions: { permissions: { system_settings: true } },
+          session: {},
+        };
+      },
+      createElement(type, props, ...children) {
+        if (typeof type === 'function') {
+          return type({ ...props, children });
+        }
+        const text = children.flat ? children.flat().join('') : children.join('');
+        if (type === 'button' && text.includes('Load Config')) {
+          loadConfigHandler = props.onClick;
+        }
+        return null;
+      },
+    };
+
+    let fetchUrl;
+    global.fetch = async (url) => {
+      fetchUrl = url;
+      return { ok: true, json: async () => ({ procName: 'abc', unionQueries: [] }) };
+    };
+
+    const { default: ReportBuilder } = await mock.import(
+      '../../src/erp.mgt.mn/pages/ReportBuilder.jsx',
+      {
+        react: {
+          default: reactMock,
+          useState: reactMock.useState,
+          useEffect: reactMock.useEffect,
+          useContext: reactMock.useContext,
+          createElement: reactMock.createElement,
+        },
+        '../utils/buildStoredProcedure.js': { default: () => '' },
+        '../utils/buildReportSql.js': { default: () => '' },
+        '../components/ErrorBoundary.jsx': { default: (p) => p.children },
+        '../hooks/useGeneralConfig.js': { default: () => ({ general: {} }) },
+        '../utils/formatSqlValue.js': { default: (v) => v },
+        '../context/ToastContext.jsx': {
+          useToast: () => ({ addToast() {} }),
+        },
+        '../context/AuthContext.jsx': { AuthContext: {} },
+      },
+    );
+
+    ReportBuilder();
+
+    // selectedReport
+    states[24] = 'cfg1';
+
+    await loadConfigHandler();
+
+    assert.equal(fetchUrl, '/api/report_builder/configs/cfg1');
+    assert.equal(states[4], 'abc');
+
+    delete global.fetch;
+  });
+
   test('ReportBuilder auto-generates config when missing', async () => {
     const states = [];
     let loadConfigHandler;
