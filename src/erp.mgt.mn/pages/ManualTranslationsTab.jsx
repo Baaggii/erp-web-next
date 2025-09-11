@@ -104,11 +104,13 @@ export default function ManualTranslationsTab() {
 
   async function saveLanguage(lang) {
     setSavingLanguage(lang);
-    const payload = entries.map((e) => ({
-      key: e.key,
-      type: e.type,
-      values: { [lang]: e.values[lang] ?? '' },
-    }));
+    const payload = paged
+      .filter((e) => e.key)
+      .map((e) => ({
+        key: e.key,
+        type: e.type,
+        values: { [lang]: e.values[lang] ?? '' },
+      }));
     try {
       const res = await fetch('/api/manual_translations/bulk', {
         method: 'POST',
