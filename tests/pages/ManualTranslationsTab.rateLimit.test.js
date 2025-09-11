@@ -18,7 +18,7 @@ if (typeof mock.import !== 'function') {
   };
 
   const states = [];
-  let enMnHandler;
+  let completeHandler;
   const reactMock = {
     useState(initial) {
       const idx = states.length;
@@ -45,8 +45,8 @@ if (typeof mock.import !== 'function') {
         return type({ ...props, children });
       }
       const text = children.flat ? children.flat().join('') : children.join('');
-      if (type === 'button' && text.includes('Complete en/mn translations')) {
-        enMnHandler = props.onClick;
+      if (type === 'button' && text.includes('Complete translations')) {
+        completeHandler = props.onClick;
       }
       return null;
     },
@@ -76,7 +76,7 @@ if (typeof mock.import !== 'function') {
 
   reactMock.createElement(ManualTranslationsTab, {});
 
-  await enMnHandler();
+  await completeHandler();
 
   assert.equal(translateMock.mock.callCount(), 1);
   assert.equal(toasts.length, 1);

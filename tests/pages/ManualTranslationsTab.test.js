@@ -2,15 +2,12 @@ import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 
 if (typeof mock.import !== 'function') {
-  test('ManualTranslationsTab completion buttons trigger only their handlers', { skip: true }, () => {});
+  test('ManualTranslationsTab completion button triggers only its handler', { skip: true }, () => {});
 } else {
-  test('ManualTranslationsTab completion buttons trigger only their handlers', async () => {
+  test('ManualTranslationsTab completion button triggers only its handler', async () => {
     const states = [];
     let formSubmitHandler;
-    let addRowHandler, addRowProps;
-    let enMnHandler, enMnProps;
-    let otherHandler, otherProps;
-    let cancelHandler, cancelProps;
+    let completeHandler, completeProps;
     const reactMock = {
       useState(initial) {
         const idx = states.length;
@@ -29,23 +26,9 @@ if (typeof mock.import !== 'function') {
           return type({ ...props, children });
         }
         const text = children.flat ? children.flat().join('') : children.join('');
-        if (type === 'button') {
-          if (text.includes('Add Row')) {
-            addRowHandler = props.onClick;
-            addRowProps = props;
-          }
-          if (text.includes('Complete en/mn translations')) {
-            enMnHandler = props.onClick;
-            enMnProps = props;
-          }
-          if (text.includes('Complete other languages translations')) {
-            otherHandler = props.onClick;
-            otherProps = props;
-          }
-          if (text.includes('Cancel')) {
-            cancelHandler = props.onClick;
-            cancelProps = props;
-          }
+        if (type === 'button' && text.includes('Complete translations')) {
+          completeHandler = props.onClick;
+          completeProps = props;
         }
         if (type === 'form') {
           formSubmitHandler = props.onSubmit;
@@ -70,39 +53,24 @@ if (typeof mock.import !== 'function') {
       },
     );
 
-    // Scenario 1: form submits to en/mn handler
-    let enMnCalls = 0;
-    let otherCalls = 0;
-    function simulateClick(handler, props, which) {
+    let completeCalls = 0;
+    let submitCalls = 0;
+    function simulateClick(handler, props) {
       handler();
+      completeCalls++;
       if (!props.type || props.type === 'submit') {
         formSubmitHandler();
       }
-      if (which === 'enMn') enMnCalls++;
-      if (which === 'other') otherCalls++;
     }
 
     reactMock.createElement(
       'form',
-      { onSubmit: () => enMnCalls++ },
+      { onSubmit: () => submitCalls++ },
       reactMock.createElement(ManualTranslationsTab, {}),
     );
 
-    simulateClick(otherHandler, otherProps, 'other');
-    assert.equal(otherCalls, 1);
-    assert.equal(enMnCalls, 0);
-
-    // Scenario 2: form submits to other languages handler
-    enMnCalls = 0;
-    otherCalls = 0;
-    reactMock.createElement(
-      'form',
-      { onSubmit: () => otherCalls++ },
-      reactMock.createElement(ManualTranslationsTab, {}),
-    );
-
-    simulateClick(enMnHandler, enMnProps, 'enMn');
-    assert.equal(enMnCalls, 1);
-    assert.equal(otherCalls, 0);
+    simulateClick(completeHandler, completeProps);
+    assert.equal(completeCalls, 1);
+    assert.equal(submitCalls, 0);
   });
 }
