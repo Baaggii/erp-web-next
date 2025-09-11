@@ -1,5 +1,7 @@
 import fs from 'fs';
 import path from 'path';
+import * as parser from '@babel/parser';
+import traverse from '@babel/traverse';
 
 export function sortObj(o) {
   return Object.keys(o)
@@ -17,14 +19,54 @@ export function collectPhrasesFromPages(dir) {
     }
   }
   walk(dir);
-  const regex = /\bt\(\s*['"]([^'"]+)['"]\s*(?:,\s*['"]([^'"]+)['"])?\s*\)/g;
   const pairs = [];
+  const uiTags = new Set(['button', 'label', 'option']);
   for (const file of files) {
     const content = fs.readFileSync(file, 'utf8');
-    let match;
-    while ((match = regex.exec(content))) {
-      pairs.push({ key: match[1], text: match[2] || match[1] });
+    let ast;
+    try {
+      ast = parser.parse(content, {
+        sourceType: 'module',
+        plugins: ['jsx', 'typescript', 'classProperties', 'dynamicImport'],
+      });
+    } catch (err) {
+      console.warn(`[translations] Failed to parse ${file}: ${err.message}`);
+      continue;
     }
+    traverse(ast, {
+      CallExpression(path) {
+        const callee = path.get('callee');
+        if (callee.isIdentifier({ name: 't' })) {
+          const args = path.get('arguments');
+          if (args.length >= 1 && args[0].isStringLiteral()) {
+            const key = args[0].node.value;
+            const text =
+              args.length > 1 && args[1].isStringLiteral()
+                ? args[1].node.value
+                : key;
+            pairs.push({ key, text });
+          }
+        }
+      },
+      JSXElement(path) {
+        const namePath = path.get('openingElement.name');
+        if (!namePath.isJSXIdentifier()) return;
+        const tag = namePath.node.name;
+        if (!uiTags.has(tag)) return;
+        for (const child of path.get('children')) {
+          if (child.isJSXText()) {
+            const val = child.node.value.trim();
+            if (val) pairs.push({ key: val, text: val });
+          } else if (child.isJSXExpressionContainer()) {
+            const expr = child.get('expression');
+            if (expr.isStringLiteral()) {
+              const val = expr.node.value.trim();
+              if (val) pairs.push({ key: val, text: val });
+            }
+          }
+        }
+      },
+    });
   }
   return pairs;
 }
