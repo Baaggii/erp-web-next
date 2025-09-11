@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'fs';
+import path from 'path';
 import { exportTranslations } from '../../api-server/services/translationsExport.js';
 import { login } from '../../api-server/controllers/authController.js';
 import * as db from '../../db/index.js';
@@ -64,5 +66,38 @@ test('login succeeds after exporting translations', async () => {
   await login({ body: { empid: 1, password: 'pw', companyId: 0 } }, res, () => {});
   restore();
   assert.equal(res.code, 200);
+  await db.pool.end();
+});
+
+test('dropdown items and button labels exported', async () => {
+  const tmpFile = path.join('src', 'erp.mgt.mn', 'TmpTranslation.jsx');
+  fs.writeFileSync(
+    tmpFile,
+    `import { t } from 'i18next';
+export default function Tmp() {
+  return (
+    <div>
+      <button>Test Button</button>
+      <label>Test Label</label>
+      <select>
+        <option>Test Option</option>
+        <option>{t('wrapped')}</option>
+      </select>
+      <button>{t('Wrapped Button')}</button>
+    </div>
+  );
+}
+`,
+  );
+
+  const restore = mockPoolSequential([[[{ moduleKey: 'm1', label: 'Module 1' }]]]);
+  await exportTranslations(0);
+  const exportedPath = path.join('config', '0', 'exportedtexts.json');
+  const exported = JSON.parse(fs.readFileSync(exportedPath, 'utf8'));
+  restore();
+  fs.unlinkSync(tmpFile);
+  assert.equal(exported['Test Button'], 'Test Button');
+  assert.equal(exported['Test Option'], 'Test Option');
+  assert.equal(exported['Test Label'], 'Test Label');
   await db.pool.end();
 });

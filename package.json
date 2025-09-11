@@ -37,7 +37,8 @@
     "xlsx": "^0.18.5",
     "jspdf": "^2.5.2",
     "react-joyride": "^2.9.0",
-    "@babel/parser": "^7.26.2"
+    "@babel/parser": "^7.26.2",
+    "@babel/traverse": "^7.26.0"
   },
   "devDependencies": {
     "@babel/parser": "^7.26.2",
