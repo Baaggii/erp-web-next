@@ -96,7 +96,42 @@ function parseSelectStatement(stmt = '') {
 }
 
 function parseSelectList(text) {
-  return splitByComma(text).map((item) => {
+  const tokens = [];
+  let current = '';
+  let parenDepth = 0;
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quote) {
+      if (ch === quote && text[i - 1] !== '\\') quote = null;
+      current += ch;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === '(') {
+      parenDepth++;
+      current += ch;
+      continue;
+    }
+    if (ch === ')') {
+      parenDepth--;
+      current += ch;
+      continue;
+    }
+    if (ch === ',' && parenDepth === 0) {
+      if (current.trim()) tokens.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) tokens.push(current.trim());
+
+  return tokens.map((item) => {
     let expr = item.trim();
     let alias;
     const asMatch = expr.match(/\s+AS\s+([`"\w]+)/i);

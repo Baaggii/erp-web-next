@@ -69,3 +69,12 @@ test('parseProcedureConfig handles subquery FROM with filters', () => {
   assert.equal(report.fromFilters[0].expr, 'orders.branch_id = :branch');
 });
 
+test('parseProcedureConfig preserves commas inside parentheses in select', () => {
+  const sql = "SELECT CONCAT(p.last_name, ', ', p.first_name) AS full_name, p.id FROM prod p";
+  const { report } = parseProcedureConfig(sql);
+  assert.deepEqual(report.select, [
+    { expr: "CONCAT(p.last_name, ', ', p.first_name)", alias: 'full_name' },
+    { expr: 'p.id', alias: undefined },
+  ]);
+});
+
