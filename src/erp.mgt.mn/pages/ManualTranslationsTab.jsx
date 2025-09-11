@@ -114,6 +114,7 @@ export default function ManualTranslationsTab() {
     abortRef.current = false;
     processingRef.current = true;
     setCompletingEnMn(true);
+    const original = [...entries];
     const updated = [];
     const toSave = [];
     let rateLimited = false;
@@ -164,6 +165,23 @@ export default function ManualTranslationsTab() {
     }
     setActiveRow(null);
     const finalEntries = [...updated, ...entries.slice(updated.length)];
+    if (abortRef.current) {
+      setEntries(original);
+      processingRef.current = false;
+      setCompletingEnMn(false);
+      await load();
+      if (rateLimited) {
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: {
+              message: t('openaiRateLimit', 'OpenAI rate limit exceeded'),
+              type: 'error',
+            },
+          }),
+        );
+      }
+      return;
+    }
     setEntries(finalEntries);
     if (rateLimited) {
       processingRef.current = false;
@@ -176,11 +194,6 @@ export default function ManualTranslationsTab() {
           },
         }),
       );
-      return;
-    }
-    if (abortRef.current) {
-      processingRef.current = false;
-      setCompletingEnMn(false);
       return;
     }
     if (toSave.length) {
@@ -206,6 +219,7 @@ export default function ManualTranslationsTab() {
     abortRef.current = false;
     processingRef.current = true;
     setCompletingOther(true);
+    const original = [...entries];
     const restLanguages = languages.filter((l) => l !== 'en' && l !== 'mn');
     const updated = [];
     const toSave = [];
@@ -266,6 +280,23 @@ export default function ManualTranslationsTab() {
     }
     setActiveRow(null);
     const finalEntries = [...updated, ...entries.slice(updated.length)];
+    if (abortRef.current) {
+      setEntries(original);
+      processingRef.current = false;
+      setCompletingOther(false);
+      await load();
+      if (rateLimited) {
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: {
+              message: t('openaiRateLimit', 'OpenAI rate limit exceeded'),
+              type: 'error',
+            },
+          }),
+        );
+      }
+      return;
+    }
     setEntries(finalEntries);
     if (rateLimited) {
       processingRef.current = false;
@@ -278,11 +309,6 @@ export default function ManualTranslationsTab() {
           },
         }),
       );
-      return;
-    }
-    if (abortRef.current) {
-      processingRef.current = false;
-      setCompletingOther(false);
       return;
     }
     if (toSave.length) {
