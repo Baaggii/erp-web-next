@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'fs';
+import path from 'path';
 import { exportTranslations } from '../../api-server/services/translationsExport.js';
 import { login } from '../../api-server/controllers/authController.js';
 import * as db from '../../db/index.js';
@@ -36,7 +38,7 @@ function createRes() {
   };
 }
 
-test('login succeeds after exporting translations', async () => {
+test('login succeeds after exporting translations', { concurrency: false }, async () => {
   const sessions = [
     {
       company_id: 0,
@@ -64,5 +66,23 @@ test('login succeeds after exporting translations', async () => {
   await login({ body: { empid: 1, password: 'pw', companyId: 0 } }, res, () => {});
   restore();
   assert.equal(res.code, 200);
+  await db.pool.end();
+});
+
+test('exports button and option labels from JSX', { concurrency: false }, async () => {
+  const restore = mockPoolSequential([[[{ moduleKey: 'm1', label: 'Module 1' }]]]);
+  const dir = path.join('src', 'erp.mgt.mn');
+  fs.mkdirSync(dir, { recursive: true });
+  const tempFile = path.join(dir, 'TempComponent.jsx');
+  fs.writeFileSync(
+    tempFile,
+    `export default function T(){return (<div><button>Save</button><select><option>First Option</option></select></div>);}`,
+  );
+  const exportedPath = await exportTranslations(0);
+  const data = JSON.parse(fs.readFileSync(exportedPath, 'utf8'));
+  assert.equal(data['Save'], 'Save');
+  assert.equal(data['First Option'], 'First Option');
+  fs.unlinkSync(tempFile);
+  restore();
   await db.pool.end();
 });
