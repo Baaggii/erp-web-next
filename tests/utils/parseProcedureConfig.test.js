@@ -68,3 +68,29 @@ test('handles functions with internal commas', () => {
   ]);
 });
 
+test('parses subquery in FROM clause and extracts filters', () => {
+  const sql =
+    'SELECT o.id FROM (SELECT * FROM orders WHERE status = 1 AND qty > 0) o JOIN cust c ON c.id = o.cust_id';
+  const { report } = parseProcedureConfig(sql);
+  assert.deepEqual(report.from, { table: 'orders', alias: 'o' });
+  assert.equal(report.fromFilters.length, 2);
+  assert.deepEqual(report.fromFilters[0], {
+    expr: 'status = 1',
+    connector: undefined,
+    open: 0,
+    close: 0,
+  });
+  assert.deepEqual(report.fromFilters[1], {
+    expr: 'qty > 0',
+    connector: 'AND',
+    open: 0,
+    close: 0,
+  });
+  assert.deepEqual(report.joins[0], {
+    table: 'cust',
+    alias: 'c',
+    type: 'JOIN',
+    on: 'c.id = o.cust_id',
+  });
+});
+

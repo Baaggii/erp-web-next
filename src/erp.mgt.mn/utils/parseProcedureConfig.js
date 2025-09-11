@@ -81,7 +81,7 @@ function parseSelectStatement(stmt = '') {
   const havingPart =
     having.index !== -1 ? rest.slice(having.index + having.length).trim() : '';
 
-  const { from, joins } = parseFromAndJoins(fromJoinPart);
+  const { from, joins, fromFilters } = parseFromAndJoins(fromJoinPart);
 
   return {
     from,
@@ -91,6 +91,7 @@ function parseSelectStatement(stmt = '') {
     groupBy: parseGroupBy(groupPart),
     having: parseConditions(havingPart),
     unions: [],
+    fromFilters,
   };
 }
 
@@ -118,15 +119,57 @@ function parseGroupBy(text) {
   return splitByComma(text).map((s) => s.trim()).filter(Boolean);
 }
 
-function parseFromAndJoins(text) {
-  const result = { from: { table: '', alias: '' }, joins: [] };
-  if (!text) return result;
-  const fromMatch = text.match(/^([`"\w\.]+)(?:\s+(?:AS\s+)?([`"\w]+))?/i);
-  if (!fromMatch) return result;
-  result.from.table = strip(fromMatch[1]);
-  result.from.alias = fromMatch[2] ? strip(fromMatch[2]) : result.from.table;
+function parseWhere(stmt = '') {
+  const from = stmt.match(/FROM\s+([`"\w\.]+)(?:\s+(?:AS\s+)?([`"\w]+))?/i);
+  const table = from ? strip(from[1]) : '';
+  const where = findClause(stmt, 'WHERE');
+  let wherePart = '';
+  if (where.index !== -1) {
+    const rest = stmt.slice(where.index + where.length);
+    const group = findClause(rest, 'GROUP BY');
+    const having = findClause(rest, 'HAVING');
+    const clauseIdx = [group.index, having.index]
+      .filter((i) => i !== -1)
+      .sort((a, b) => a - b);
+    const endIdx = clauseIdx.length ? clauseIdx[0] : rest.length;
+    wherePart = rest.slice(0, endIdx).trim();
+  }
+  return { table, filters: parseConditions(wherePart) };
+}
 
-  let rest = text.slice(fromMatch[0].length).trim();
+function parseFromAndJoins(text) {
+  const result = { from: { table: '', alias: '' }, joins: [], fromFilters: [] };
+  if (!text) return result;
+  let rest = text.trim();
+
+  if (rest.startsWith('(')) {
+    let depth = 0;
+    let i = 0;
+    for (; i < rest.length; i++) {
+      const ch = rest[i];
+      if (ch === '(') depth++;
+      else if (ch === ')') {
+        depth--;
+        if (depth === 0) break;
+      }
+    }
+    const inner = rest.slice(1, i);
+    const after = rest.slice(i + 1).trim();
+    const aliasMatch = after.match(/^([`"\w]+)(?:\s+|$)/);
+    const alias = aliasMatch ? strip(aliasMatch[1]) : '';
+    const { table, filters } = parseWhere(inner);
+    result.from.table = table;
+    result.from.alias = alias || table;
+    result.fromFilters.push(...filters);
+    rest = after.slice(aliasMatch ? aliasMatch[0].length : 0).trim();
+  } else {
+    const fromMatch = rest.match(/^([`"\w\.]+)(?:\s+(?:AS\s+)?([`"\w]+))?/i);
+    if (!fromMatch) return result;
+    result.from.table = strip(fromMatch[1]);
+    result.from.alias = fromMatch[2] ? strip(fromMatch[2]) : result.from.table;
+    rest = rest.slice(fromMatch[0].length).trim();
+  }
+
   const joinRe =
     /(LEFT|RIGHT|INNER|FULL|CROSS)?\s*JOIN\s+([`"\w\.]+)(?:\s+(?:AS\s+)?([`"\w]+))?\s+(ON|USING)\s+([^]*?)(?=(LEFT|RIGHT|INNER|FULL|CROSS)?\s*JOIN|$)/gi;
   let jm;
@@ -295,9 +338,37 @@ function splitTopLevel(text, regex) {
 }
 
 function findClause(text, clause) {
-  const re = new RegExp(`\\b${clause.replace(/\s+/g, '\\s+')}\\b`, 'i');
-  const m = re.exec(text);
-  return m ? { index: m.index, length: m[0].length } : { index: -1, length: 0 };
+  const upper = clause.toUpperCase();
+  const re = new RegExp(`^${clause.replace(/\s+/g, '\\s+')}`, 'i');
+  let depth = 0;
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quote) {
+      if (ch === quote && text[i - 1] !== '\\') quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch;
+      continue;
+    }
+    if (ch === '(') {
+      depth++;
+      continue;
+    }
+    if (ch === ')') {
+      depth--;
+      continue;
+    }
+    if (depth === 0) {
+      const sub = text.slice(i).toUpperCase();
+      if (sub.startsWith(upper)) {
+        const m = re.exec(text.slice(i));
+        if (m) return { index: i, length: m[0].length };
+      }
+    }
+  }
+  return { index: -1, length: 0 };
 }
 
 function strip(str = '') {
