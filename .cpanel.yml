@@ -1,10 +1,10 @@
 ---
 deployment:
   tasks:
-    - mkdir -p ~/public_html ~/public_html/erp
-    - rm -rf node_modules
-    - npm install --no-progress
-    - npm run build:homepage
-    - npm run build:erp
-    - cp src/erp.mgt.mn/.htaccess ~/public_html/erp/.htaccess
-    - npm prune --omit=dev
+    - /bin/bash -lc 'set -euo pipefail'
+    - /bin/bash -lc 'rsync -a --delete ./home_build/ "$HOME/public_html/"'
+    - /bin/bash -lc 'rsync -a --delete ./erp_build/  "$HOME/erp.mgt.mn/"'
+    - /bin/bash -lc 'cp -f src/erp.mgt.mn/.htaccess "$HOME/erp.mgt.mn/.htaccess" || true'
+    - /bin/bash -lc 'cp -f src/homepage/.htaccess "$HOME/public_html/.htaccess" || true'
+    # (Optional backend restart if allowed)
+    - /bin/bash -lc 'pm2 restart erp-app --update-env || true'
