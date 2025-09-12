@@ -12,53 +12,38 @@ concurrency:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-
-    # All steps run from the repo root
-    defaults:
-      run:
-        working-directory: .
-
     env:
       NODE_OPTIONS: "--max_old_space_size=1024"
       ESBUILD_WORKER_THREADS: "0"
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Setup Node 20
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: package-lock.json
+          cache-dependency-path: package-lock.json  # lockfile is at the repo root
 
-      - name: Install deps (from lockfile)
+      - name: Install dependencies
         run: npm ci --no-audit
 
-      # Build to local folders inside the workspace
-      - name: Build homepage (vite.home.config.js)
+      - name: Build homepage
         run: |
-          set -euo pipefail
           mkdir -p .esbuild-tmp build_home
           export ESBUILD_TEMP_DIR="$(pwd)/.esbuild-tmp"
           npx vite build --config vite.home.config.js --outDir build_home
-          test -f build_home/index.html || { echo "build_home/index.html missing"; ls -la build_home; exit 1; }
 
-      - name: Build ERP (vite.config.js)
+      - name: Build ERP
         run: |
-          set -euo pipefail
           mkdir -p .esbuild-tmp build_erp
           export ESBUILD_TEMP_DIR="$(pwd)/.esbuild-tmp"
           node scripts/extractTourOrder.js
           npx vite build --config vite.config.js --outDir build_erp
-          test -f build_erp/index.html || { echo "build_erp/index.html missing"; ls -la build_erp; exit 1; }
 
-      - name: Prepare .htaccess files
+      - name: Copy .htaccess files
         run: |
-          set -euo pipefail
-          test -d build_home || { echo "build_home not found"; exit 1; }
-          test -d build_erp  || { echo "build_erp not found"; exit 1; }
           cp -v src/homepage/.htaccess    build_home/.htaccess
           cp -v src/erp.mgt.mn/.htaccess  build_erp/.htaccess
 
@@ -67,26 +52,22 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.SSH_KEY }}
 
-      - name: Known hosts
+      - name: Add known host
         run: |
           mkdir -p ~/.ssh
           ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
 
-      # Deploy homepage -> ~/public_html on the server
-      - name: Deploy homepage (rsync -> public_html)
+      - name: Deploy homepage (to public_html)
         run: |
-          rsync -avz --delete \
-            --chmod=Du=rwx,Dg=rx,Do=rx,Fu=rw,Fg=r,Fo=r \
+          rsync -avz --delete --chmod=Du=rwx,Dg=rx,Do=rx,Fu=rw,Fg=r,Fo=r \
             build_home/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:public_html/
 
-      # Deploy ERP -> ~/erp.mgt.mn on the server
-      - name: Deploy ERP (rsync -> erp.mgt.mn)
+      - name: Deploy ERP (to erp.mgt.mn)
         run: |
-          rsync -avz --delete \
-            --chmod=Du=rwx,Dg=rx,Do=rx,Fu=rw,Fg=r,Fo=r \
+          rsync -avz --delete --chmod=Du=rwx,Dg=rx,Do=rx,Fu=rw,Fg=r,Fo=r \
             build_erp/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:erp.mgt.mn/
 
-      - name: Restart PM2 (erp-app)
+      - name: Restart PM2
         run: |
           ssh -p "${{ secrets.SSH_PORT }}" ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
             "export PATH=\$HOME/nodevenv/apps/erp-web-next/20/bin:\$PATH; pm2 restart erp-app --update-env && pm2 save"
