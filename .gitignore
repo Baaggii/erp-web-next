@@ -1,3 +1,4 @@
+node_modules/
 node_modules/*
 !node_modules/jsonwebtoken
 !node_modules/jsonwebtoken/**
@@ -26,3 +27,5 @@ uploads/*
 !uploads/txn_images/test_cleanup/
 !uploads/txn_images/test_cleanup/.gitkeep
 !config/.gitkeep
+node_modules/
+node_modules/

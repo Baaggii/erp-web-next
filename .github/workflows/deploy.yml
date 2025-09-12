@@ -1,0 +1,81 @@
+name: Deploy (One-Click)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build homepage
+        run: npm run build:homepage
+
+      - name: Build ERP
+        run: npm run build:erp
+
+      - name: Sanity check build outputs
+        run: |
+          echo "== ls dist =="
+          ls -la dist || true
+          echo "== ls dist/home =="
+          ls -la dist/home || true
+          echo "== ls dist/erp =="
+          ls -la dist/erp || true
+
+      # Upload built folders to the server
+      - name: Push homepage assets
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "dist/home/*"
+          target: "${{ secrets.HOME_HTML }}"
+          overwrite: true
+          strip_components: 1
+
+      - name: Push ERP assets
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "dist/erp/*"
+          target: "${{ secrets.ERP_HTML }}"
+          overwrite: true
+          strip_components: 1
+
+      # Ensure .htaccess are in place and restart app
+      - name: Copy .htaccess and restart app
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            set -e
+            # copy .htaccess from repo to final locations if present
+            cp ${GITHUB_WORKSPACE:-/tmp}/src/homepage/.htaccess ${{ secrets.HOME_HTML }}/.htaccess || true
+            cp ${GITHUB_WORKSPACE:-/tmp}/src/erp.mgt.mn/.htaccess ${{ secrets.ERP_HTML }}/.htaccess || true
+            # restart node app
+            cd ${{ secrets.APP_DIR }}
+            npm ci --omit=dev
+            pm2 restart erp-app --update-env || pm2 start erp-app
