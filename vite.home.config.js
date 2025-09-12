@@ -7,10 +7,16 @@ export default defineConfig({
   root: 'src/homepage',
   publicDir: 'src/homepage',
   plugins: [react()],
+  optimizeDeps: { disabled: true } (skip esbuild pre-bundle),
   build: {
     outDir: '../../../../public_html',
     emptyOutDir: false,
-    minify: false      // disable esbuild minification
+    minify: false, 
+    cssMinify: false, 
+    target: 'es2020', 
+    rollupOptions: {
+      external: ['sharp', 'puppeteer']
+    },
   },
   esbuild: {
     legalComments: 'none'
