@@ -443,6 +443,7 @@ export default function CodingTablesPage() {
     if (dup.size > 0) {
       addToast('Duplicate header names detected. Please rename them.', 'warning');
     }
+    return hdrs;
   }
 
   function handleExtract() {
@@ -1927,12 +1928,21 @@ export default function CodingTablesPage() {
           setTriggerSql('');
           return;
         }
-        // Only set sheet from config if the user hasn't chosen a sheet yet
-        if (!sheet) {
-          setSheet(cfg.sheet ?? '');
+
+        const newSheet = sheet || cfg.sheet || '';
+        if (!sheet && cfg.sheet) {
+          setSheet(cfg.sheet);
         }
-        setHeaderRow(cfg.headerRow ?? 1);
-        setMnHeaderRow(cfg.mnHeaderRow ?? '');
+        const hdrRow = cfg.headerRow ?? 1;
+        const mnHdrRow = cfg.mnHeaderRow ?? '';
+        setHeaderRow(hdrRow);
+        setMnHeaderRow(mnHdrRow);
+
+        let hdrs = headers;
+        if (workbook && newSheet) {
+          hdrs = extractHeaders(workbook, newSheet, hdrRow, mnHdrRow);
+        }
+
         setIdFilterMode(cfg.idFilterMode ?? 'contains');
         setIdColumn(cfg.idColumn ?? '');
         setNameColumn(cfg.nameColumn ?? '');
@@ -1942,54 +1952,46 @@ export default function CodingTablesPage() {
         setOtherColumns(cfg.otherColumns ?? []);
         setUniqueFields(cfg.uniqueFields ?? []);
         setCalcText(cfg.calcText ?? '');
-        setColumnTypes(cfg.columnTypes ?? {});
-        if (cfg.columnTypes) {
-          const baseHeaders = Object.keys(cfg.columnTypes || {});
-          const merged = Array.from(
-            new Set([
-              ...baseHeaders,
-              ...(cfg.otherColumns || []),
-              ...(cfg.uniqueFields || []),
-              ...extras.filter((f) => f.trim() !== ''),
-              ...(cfg.idColumn ? [cfg.idColumn] : []),
-              ...(cfg.nameColumn ? [cfg.nameColumn] : []),
-              ...Object.keys(cfg.renameMap || {}),
-            ])
-          );
-          setHeaders(merged);
-        }
 
-        const fieldSet = new Set([
-          ...Object.keys(cfg.columnTypes || {}),
-          ...extras.filter((f) => f.trim() !== ''),
+        const sheetFields = new Set(hdrs);
+        const missing = new Set();
+        const mergeMap = (prev, map) => {
+          const merged = { ...prev };
+          Object.entries(map || {}).forEach(([k, v]) => {
+            if (sheetFields.has(k)) {
+              merged[k] = v;
+            } else {
+              missing.add(k);
+            }
+          });
+          return merged;
+        };
+
+        setColumnTypes((t) => mergeMap(t, cfg.columnTypes));
+        setNotNullMap((m) => mergeMap(m, cfg.notNullMap));
+        setAllowZeroMap((m) => mergeMap(m, cfg.allowZeroMap));
+        setDefaultValues((m) => mergeMap(m, cfg.defaultValues));
+        setDefaultFrom((m) => mergeMap(m, cfg.defaultFrom));
+        setRenameMap((m) => mergeMap(m, cfg.renameMap));
+
+        const otherFields = [
           ...(cfg.otherColumns || []),
           ...(cfg.uniqueFields || []),
           ...(cfg.idColumn ? [cfg.idColumn] : []),
           ...(cfg.nameColumn ? [cfg.nameColumn] : []),
-          ...Object.keys(cfg.notNullMap || {}),
-          ...Object.keys(cfg.allowZeroMap || {}),
-          ...Object.keys(cfg.defaultValues || {}),
-          ...Object.keys(cfg.defaultFrom || {}),
-          ...Object.keys(cfg.renameMap || {}),
-        ]);
-        const fields = Array.from(fieldSet);
-        const nn = {};
-        const az = {};
-        const dv = {};
-        const df = {};
-        const rm = {};
-        fields.forEach((f) => {
-          nn[f] = cfg.notNullMap && f in cfg.notNullMap ? cfg.notNullMap[f] : false;
-          az[f] = cfg.allowZeroMap && f in cfg.allowZeroMap ? cfg.allowZeroMap[f] : !nn[f];
-          dv[f] = cfg.defaultValues && f in cfg.defaultValues ? cfg.defaultValues[f] : '';
-          df[f] = cfg.defaultFrom && f in cfg.defaultFrom ? cfg.defaultFrom[f] : '';
-          rm[f] = cfg.renameMap && f in cfg.renameMap ? cfg.renameMap[f] : f;
+          ...extras.filter((f) => f.trim() !== ''),
+        ];
+        otherFields.forEach((f) => {
+          if (!sheetFields.has(f)) missing.add(f);
         });
-        setRenameMap(rm);
-        setNotNullMap(nn);
-        setAllowZeroMap(az);
-        setDefaultValues(dv);
-        setDefaultFrom(df);
+
+        if (missing.size > 0) {
+          addToast(
+            `Fields from config not found in sheet: ${Array.from(missing).join(', ')}`,
+            'warning'
+          );
+        }
+
         setPopulateRange(cfg.populateRange ?? false);
         setStartYear(cfg.startYear ?? '');
         setEndYear(cfg.endYear ?? '');
