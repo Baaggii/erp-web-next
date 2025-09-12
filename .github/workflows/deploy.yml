@@ -13,13 +13,12 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
-    # All steps run from the app subfolder
+    # All steps run from the repo root
     defaults:
       run:
-        working-directory: apps/erp-web-next
+        working-directory: .
 
     env:
-      # build safety on CI
       NODE_OPTIONS: "--max_old_space_size=1024"
       ESBUILD_WORKER_THREADS: "0"
 
@@ -32,12 +31,12 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: apps/erp-web-next/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install deps (from lockfile)
         run: npm ci --no-audit
 
-      # Build to local folders (override your outDir so CI doesn't write outside workspace)
+      # Build to local folders inside the workspace
       - name: Build homepage (vite.home.config.js)
         run: |
           set -euo pipefail
@@ -73,21 +72,20 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
 
-      # Deploy homepage -> ~/public_html
+      # Deploy homepage -> ~/public_html on the server
       - name: Deploy homepage (rsync -> public_html)
         run: |
           rsync -avz --delete \
             --chmod=Du=rwx,Dg=rx,Do=rx,Fu=rw,Fg=r,Fo=r \
             build_home/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:public_html/
 
-      # Deploy ERP -> ~/erp.mgt.mn
+      # Deploy ERP -> ~/erp.mgt.mn on the server
       - name: Deploy ERP (rsync -> erp.mgt.mn)
         run: |
           rsync -avz --delete \
             --chmod=Du=rwx,Dg=rx,Do=rx,Fu=rw,Fg=r,Fo=r \
             build_erp/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:erp.mgt.mn/
 
-      # Optional: restart PM2 backend on the server
       - name: Restart PM2 (erp-app)
         run: |
           ssh -p "${{ secrets.SSH_PORT }}" ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
