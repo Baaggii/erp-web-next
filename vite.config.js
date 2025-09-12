@@ -1,24 +1,22 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
 
-// vite.config.js
 export default defineConfig({
   root: 'src/erp.mgt.mn',
   base: '/',
   publicDir: 'src/erp.mgt.mn',
   plugins: [react()],
+  optimizeDeps: { disabled: true }, // skip esbuild pre-bundle
+  esbuild: { legalComments: 'none' },
   build: {
     outDir: '../../../../erp.mgt.mn',
     emptyOutDir: true,
-    optimizeDeps: { disabled: true } (skip esbuild pre-bundle),
-    minify: false, 
-    cssMinify: false, 
-    target: 'es2020', 
+    target: 'es2020',
+    minify: false,
+    cssMinify: false,
     rollupOptions: {
+      // ensure server-only deps never enter the browser bundle
       external: ['sharp', 'puppeteer']
-    },
-  esbuild: { 
-    legalComments: 'none' 
     }
   }
 })
