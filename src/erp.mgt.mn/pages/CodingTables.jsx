@@ -320,8 +320,14 @@ export default function CodingTablesPage() {
     setStartYear('');
     setEndYear('');
     setAutoIncStart('1');
-    if (workbook) {
-      extractHeaders(workbook, s, headerRow, mnHeaderRow);
+    const entry = Object.entries(configMap).find(([, cfg]) => cfg.sheet === s);
+    if (entry) {
+      setTableName(entry[0]);
+    } else {
+      setTableName('');
+      if (workbook) {
+        extractHeaders(workbook, s, headerRow, mnHeaderRow);
+      }
     }
   }
 
@@ -1927,17 +1933,9 @@ export default function CodingTablesPage() {
           setTriggerSql('');
           return;
         }
-        // Only set sheet from config if the user hasn't chosen a sheet yet
-        if (!sheet) {
-          setSheet(cfg.sheet ?? '');
-        }
-        // Only override row numbers if they haven't been manually changed yet
-        if (headerRow === 1) {
-          setHeaderRow(cfg.headerRow ?? 1);
-        }
-        if (mnHeaderRow === '') {
-          setMnHeaderRow(cfg.mnHeaderRow ?? '');
-        }
+        setSheet(cfg.sheet ?? '');
+        setHeaderRow(cfg.headerRow ?? 1);
+        setMnHeaderRow(cfg.mnHeaderRow ?? '');
         setIdFilterMode(cfg.idFilterMode ?? 'contains');
         setIdColumn(cfg.idColumn ?? '');
         setNameColumn(cfg.nameColumn ?? '');
