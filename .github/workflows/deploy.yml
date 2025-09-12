@@ -3,7 +3,16 @@ name: Deploy ERP & Homepage
 on:
   push:
     branches: [ master ]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deploy environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - production
+          - staging
 
 concurrency:
   group: deploy-${{ github.ref }}
@@ -26,10 +35,34 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json  # lockfile is at the repo root
 
-      - name: Install dependencies
-        run: npm ci --no-audit
+      - name: Check lockfile
+      # ensure package-lock.json stays in sync with package.json
+        run: |
+          npm install --package-lock-only --ignore-scripts
+          git diff --exit-code package-lock.json
 
-      - name: Build homepage
+      - name: Install deps (from lockfile)
+        run: npm ci
+
+      - name: Determine deploy target
+        id: vars
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.environment }}" = "staging" ]; then
+            echo "ssh_host=${{ secrets.STAGING_SSH_HOST }}" >> $GITHUB_OUTPUT
+            echo "ssh_port=${{ secrets.STAGING_SSH_PORT }}" >> $GITHUB_OUTPUT
+            echo "ssh_user=${{ secrets.STAGING_SSH_USER }}" >> $GITHUB_OUTPUT
+            echo "web_dir=${{ secrets.STAGING_WEB_DIR }}" >> $GITHUB_OUTPUT
+            echo "erp_dir=${{ secrets.STAGING_ERP_DIR }}" >> $GITHUB_OUTPUT
+          else
+            echo "ssh_host=${{ secrets.SSH_HOST }}" >> $GITHUB_OUTPUT
+            echo "ssh_port=${{ secrets.SSH_PORT }}" >> $GITHUB_OUTPUT
+            echo "ssh_user=${{ secrets.SSH_USER }}" >> $GITHUB_OUTPUT
+            echo "web_dir=public_html" >> $GITHUB_OUTPUT
+            echo "erp_dir=erp.mgt.mn" >> $GITHUB_OUTPUT
+          fi
+
+      # Build to local folders (override your outDir so CI doesn't write outside workspace)
+      - name: Build homepage (vite.home.config.js)
         run: |
           mkdir -p .esbuild-tmp build_home
           export ESBUILD_TEMP_DIR="$(pwd)/.esbuild-tmp"
@@ -63,24 +96,26 @@ jobs:
 
       - name: Test SSH connectivity
         run: |
-          ssh -p "${{ secrets.SSH_PORT }}" -o BatchMode=yes -o ConnectTimeout=20 \
-            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "echo ok"
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "${{ steps.vars.outputs.ssh_port }}" "${{ steps.vars.outputs.ssh_host }}" >> ~/.ssh/known_hosts
 
-      
-      - name: Deploy homepage (-> ~/public_html)
+      # Deploy homepage -> target web directory
+      - name: Deploy homepage (rsync)
         run: |
           rsync -avz --delete \
-            -e "ssh -p ${{ secrets.SSH_PORT }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30" \
-            build_home/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:public_html/
-      
-      - name: Deploy ERP (-> ~/erp.mgt.mn)
+            --chmod=Du=rwx,Dg=rx,Do=rx,Fu=rw,Fg=r,Fo=r \
+            build_home/ ${{ steps.vars.outputs.ssh_user }}@${{ steps.vars.outputs.ssh_host }}:${{ steps.vars.outputs.web_dir }}/
+
+      # Deploy ERP -> target erp directory
+      - name: Deploy ERP (rsync)
         run: |
           rsync -avz --delete \
-            -e "ssh -p ${{ secrets.SSH_PORT }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30" \
-            build_erp/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:erp.mgt.mn/
-      
+            --chmod=Du=rwx,Dg=rx,Do=rx,Fu=rw,Fg=r,Fo=r \
+            build_erp/ ${{ steps.vars.outputs.ssh_user }}@${{ steps.vars.outputs.ssh_host }}:${{ steps.vars.outputs.erp_dir }}/
+
+      # Optional: restart PM2 backend on the server
       - name: Restart PM2 (erp-app)
         run: |
-          ssh -p "${{ secrets.SSH_PORT }}" ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+          ssh -p "${{ steps.vars.outputs.ssh_port }}" ${{ steps.vars.outputs.ssh_user }}@${{ steps.vars.outputs.ssh_host }} \
             "export PATH=\$HOME/nodevenv/apps/erp-web-next/20/bin:\$PATH; pm2 restart erp-app --update-env && pm2 save"
 
