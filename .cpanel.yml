@@ -2,9 +2,14 @@
 deployment:
   tasks:
     - /bin/bash -lc 'set -euo pipefail'
-    - /bin/bash -lc 'rsync -a --delete ./home_build/ "$HOME/public_html/"'
-    - /bin/bash -lc 'rsync -a --delete ./erp_build/  "$HOME/erp.mgt.mn/"'
-    - /bin/bash -lc 'cp -f src/erp.mgt.mn/.htaccess "$HOME/erp.mgt.mn/.htaccess" || true'
-    - /bin/bash -lc 'cp -f src/homepage/.htaccess "$HOME/public_html/.htaccess" || true'
-    # (Optional backend restart if allowed)
+
+    # Deploy homepage
+    - /bin/bash -lc 'rsync -a --delete ./build_home/ "$HOME/public_html/"'
+
+    # Deploy ERP
+    - /bin/bash -lc 'rsync -a --delete ./build_erp/ "$HOME/erp.mgt.mn/"'
+
+    # Restart backend app
     - /bin/bash -lc 'pm2 restart erp-app --update-env || true'
+
+    - /bin/echo "[cpanel] Deploy finished: $(date -Is)"
