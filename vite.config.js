@@ -10,9 +10,15 @@ export default defineConfig({
   build: {
     outDir: '../../../../erp.mgt.mn',
     emptyOutDir: true,
-    minify: false,
+    optimizeDeps: { disabled: true } (skip esbuild pre-bundle),
+    minify: false, 
+    cssMinify: false, 
+    target: 'es2020', 
     rollupOptions: {
       external: ['sharp', 'puppeteer']
+    },
+  esbuild: { 
+    legalComments: 'none' 
     }
   }
 })
