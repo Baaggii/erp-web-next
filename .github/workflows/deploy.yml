@@ -55,7 +55,7 @@ jobs:
       - name: Known hosts
         shell: bash
         run: |
-          mkdir -p "$HOME/.ssh"
+          mkdir -p ~/.ssh
           ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> "$HOME/.ssh/known_hosts" 2>/dev/null
 
 
