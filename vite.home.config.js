@@ -7,7 +7,7 @@ export default defineConfig({
   publicDir: 'src/homepage',    // ensure .htaccess, index.html/css live here
   plugins: [react()],
   build: {
-    outDir: '../../dist/home',  // <-- move output to repo/dist/home
+    outDir: '../../../../public_html',
     emptyOutDir: false
   }
 });

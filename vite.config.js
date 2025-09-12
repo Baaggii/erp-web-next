@@ -7,7 +7,7 @@ export default defineConfig({
   publicDir: 'src/erp.mgt.mn',   // Copy all files here (e.g. .htaccess)
   plugins: [react()],
   build: {
-    outDir: '../../dist/erp',   // <-- move output to repo/dist/erp
+    outDir: '../../../../erp.mgt.mn',
     emptyOutDir: true,
     minify: false
   }
