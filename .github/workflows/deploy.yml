@@ -51,32 +51,23 @@ jobs:
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_KEY }}
-
-      - name: Prepare SSH known_hosts (robust)
+      
+      - name: Prepare SSH known_hosts
         shell: bash
         run: |
           set -euo pipefail
-      
-          # Make sure HOME resolves and dirs exist with correct perms
           install -m 700 -d "$HOME/.ssh"
-          : > "$HOME/.ssh/known_hosts"
-          chmod 600 "$HOME/.ssh/known_hosts"
+          : > "$HOME/.ssh/known_hosts"; chmod 600 "$HOME/.ssh/known_hosts"
+          ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> "$HOME/.ssh/known_hosts" 2>/dev/null || \
+            echo "::warning::ssh-keyscan failed (host unreachable); continuing"
       
-          # Guard secrets and avoid failing the whole step if they’re missing/unreachable
-          SSH_HOST="${{ secrets.SSH_HOST || '' }}"
-          SSH_PORT="${{ secrets.SSH_PORT || '' }}"
-          if [[ -n "$SSH_HOST" && -n "$SSH_PORT" ]]; then
-            ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" >> "$HOME/.ssh/known_hosts" 2>/dev/null || \
-              echo "::warning::ssh-keyscan failed (host unreachable); continuing"
-          else
-            echo "::warning::SSH_HOST or SSH_PORT not set; skipping ssh-keyscan"
-          fi
-
-      - name: Deploy homepage (to public_html)
+      - name: Deploy homepage
         run: |
-          rsync -avz --delete --chmod=Du=rwx,Dg=rx,Do=rx,Fu=rw,Fg=r,Fo=r \
+          rsync -avz --delete \
+            -e "ssh -p ${{ secrets.SSH_PORT }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30" \
             build_home/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:public_html/
-
+      
+      
       - name: Deploy ERP (to erp.mgt.mn)
         run: |
           rsync -avz --delete --chmod=Du=rwx,Dg=rx,Do=rx,Fu=rw,Fg=r,Fo=r \
