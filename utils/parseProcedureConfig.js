@@ -81,7 +81,7 @@ function parseSelectStatement(stmt = '') {
   const havingPart =
     having.index !== -1 ? rest.slice(having.index + having.length).trim() : '';
 
-  const { from, joins } = parseFromAndJoins(fromJoinPart);
+  const { from, joins, fromFilters } = parseFromAndJoins(fromJoinPart);
 
   return {
     from,
@@ -91,11 +91,47 @@ function parseSelectStatement(stmt = '') {
     groupBy: parseGroupBy(groupPart),
     having: parseConditions(havingPart),
     unions: [],
+    fromFilters,
   };
 }
 
 function parseSelectList(text) {
-  return splitByComma(text).map((item) => {
+  const tokens = [];
+  let current = '';
+  let parenDepth = 0;
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quote) {
+      if (ch === quote && text[i - 1] !== '\\') quote = null;
+      current += ch;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === '(') {
+      parenDepth++;
+      current += ch;
+      continue;
+    }
+    if (ch === ')') {
+      parenDepth--;
+      current += ch;
+      continue;
+    }
+    if (ch === ',' && parenDepth === 0) {
+      if (current.trim()) tokens.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) tokens.push(current.trim());
+
+  return tokens.map((item) => {
     let expr = item.trim();
     let alias;
     const asMatch = expr.match(/\s+AS\s+([`"\w]+)/i);
@@ -119,14 +155,36 @@ function parseGroupBy(text) {
 }
 
 function parseFromAndJoins(text) {
-  const result = { from: { table: '', alias: '' }, joins: [] };
+  const result = { from: { table: '', alias: '' }, joins: [], fromFilters: [] };
   if (!text) return result;
-  const fromMatch = text.match(/^([`"\w\.]+)(?:\s+(?:AS\s+)?([`"\w]+))?/i);
-  if (!fromMatch) return result;
-  result.from.table = strip(fromMatch[1]);
-  result.from.alias = fromMatch[2] ? strip(fromMatch[2]) : result.from.table;
 
-  let rest = text.slice(fromMatch[0].length).trim();
+  let rest = text.trim();
+
+  // detect subquery with alias e.g. (SELECT ... ) t0
+  const subMatch = rest.match(/^\((SELECT[\s\S]+?)\)\s+(?:AS\s+)?([`"\w]+)/i);
+  if (subMatch) {
+    // alias becomes table and alias in result
+    result.from.table = strip(subMatch[2]);
+    result.from.alias = strip(subMatch[2]);
+
+    // parse inner subquery to extract filters
+    const inner = parseSelectStatement(subMatch[1]);
+    if (inner) {
+      result.fromFilters = inner.where || [];
+      if (inner.fromFilters?.length) {
+        result.fromFilters.push(...inner.fromFilters);
+      }
+    }
+
+    rest = rest.slice(subMatch[0].length).trim();
+  } else {
+    const fromMatch = rest.match(/^([`"\w\.]+)(?:\s+(?:AS\s+)?([`"\w]+))?/i);
+    if (!fromMatch) return result;
+    result.from.table = strip(fromMatch[1]);
+    result.from.alias = fromMatch[2] ? strip(fromMatch[2]) : result.from.table;
+    rest = rest.slice(fromMatch[0].length).trim();
+  }
+
   const joinRe =
     /(LEFT|RIGHT|INNER|FULL|CROSS)?\s*JOIN\s+([`"\w\.]+)(?:\s+(?:AS\s+)?([`"\w]+))?\s+(ON|USING)\s+([^]*?)(?=(LEFT|RIGHT|INNER|FULL|CROSS)?\s*JOIN|$)/gi;
   let jm;
@@ -296,8 +354,33 @@ function splitTopLevel(text, regex) {
 
 function findClause(text, clause) {
   const re = new RegExp(`\\b${clause.replace(/\s+/g, '\\s+')}\\b`, 'i');
-  const m = re.exec(text);
-  return m ? { index: m.index, length: m[0].length } : { index: -1, length: 0 };
+  let depth = 0;
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quote) {
+      if (ch === quote && text[i - 1] !== '\\') quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch;
+      continue;
+    }
+    if (ch === '(') {
+      depth++;
+      continue;
+    }
+    if (ch === ')') {
+      if (depth > 0) depth--;
+      continue;
+    }
+    if (depth === 0) {
+      const sub = text.slice(i);
+      const m = re.exec(sub);
+      if (m && m.index === 0) return { index: i, length: m[0].length };
+    }
+  }
+  return { index: -1, length: 0 };
 }
 
 function strip(str = '') {
