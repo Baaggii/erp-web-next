@@ -60,6 +60,12 @@ jobs:
           : > "$HOME/.ssh/known_hosts"; chmod 600 "$HOME/.ssh/known_hosts"
           ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> "$HOME/.ssh/known_hosts" 2>/dev/null || \
             echo "::warning::ssh-keyscan failed (host unreachable); continuing"
+
+      - name: Test SSH connectivity
+        run: |
+          ssh -p "${{ secrets.SSH_PORT }}" -o BatchMode=yes -o ConnectTimeout=20 \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "echo ok"
+
       
       - name: Deploy homepage (-> ~/public_html)
         run: |
