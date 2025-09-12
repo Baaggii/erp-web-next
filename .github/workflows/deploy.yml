@@ -1,81 +1,83 @@
-name: Deploy (One-Click)
+name: Deploy ERP & Homepage
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [ master ]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
+    env:
+      # build safety on CI
+      NODE_OPTIONS: "--max_old_space_size=1024"
+      ESBUILD_WORKER_THREADS: "0"
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Setup Node
+      - name: Setup Node 20
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: 20
+          cache: npm
 
-      - name: Install deps
+      - name: Install deps (from lockfile)
         run: npm ci
 
-      - name: Build homepage
-        run: npm run build:homepage
-
-      - name: Build ERP
-        run: npm run build:erp
-
-      - name: Sanity check build outputs
+      # Build to local folders (override your outDir so CI doesn't write outside workspace)
+      - name: Build homepage (vite.home.config.js)
         run: |
-          echo "== ls dist =="
-          ls -la dist || true
-          echo "== ls dist/home =="
-          ls -la dist/home || true
-          echo "== ls dist/erp =="
-          ls -la dist/erp || true
+          mkdir -p .esbuild-tmp
+          export ESBUILD_TEMP_DIR="$(pwd)/.esbuild-tmp"
+          npx vite build --config vite.home.config.js --outDir build_home
 
-      # Upload built folders to the server
-      - name: Push homepage assets
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          source: "dist/home/*"
-          target: "${{ secrets.HOME_HTML }}"
-          overwrite: true
-          strip_components: 1
+      - name: Build ERP (vite.config.js)
+        run: |
+          mkdir -p .esbuild-tmp
+          export ESBUILD_TEMP_DIR="$(pwd)/.esbuild-tmp"
+          node scripts/extractTourOrder.js
+          npx vite build --config vite.config.js --outDir build_erp
 
-      - name: Push ERP assets
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          source: "dist/erp/*"
-          target: "${{ secrets.ERP_HTML }}"
-          overwrite: true
-          strip_components: 1
+      - name: Prepare .htaccess files
+        run: |
+          # copy your source .htaccess into the build outputs
+          cp -f src/homepage/.htaccess build_home/.htaccess
+          mkdir -p build_erp
+          cp -f src/erp.mgt.mn/.htaccess build_erp/.htaccess
 
-      # Ensure .htaccess are in place and restart app
-      - name: Copy .htaccess and restart app
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Add SSH key
+        uses: webfactory/ssh-agent@v0.9.0
         with:
-          host: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          script: |
-            set -e
-            # copy .htaccess from repo to final locations if present
-            cp ${GITHUB_WORKSPACE:-/tmp}/src/homepage/.htaccess ${{ secrets.HOME_HTML }}/.htaccess || true
-            cp ${GITHUB_WORKSPACE:-/tmp}/src/erp.mgt.mn/.htaccess ${{ secrets.ERP_HTML }}/.htaccess || true
-            # restart node app
-            cd ${{ secrets.APP_DIR }}
-            npm ci --omit=dev
-            pm2 restart erp-app --update-env || pm2 start erp-app
+          ssh-private-key: ${{ secrets.SSH_KEY }}
+
+      - name: Known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      # Deploy homepage -> ~/public_html
+      - name: Deploy homepage (rsync -> public_html)
+        run: |
+          rsync -avz --delete \
+            --chmod=Du=rwx,Dg=rx,Do=rx,Fu=rw,Fg=r,Fo=r \
+            build_home/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:public_html/
+
+      # Deploy ERP -> ~/erp.mgt.mn
+      - name: Deploy ERP (rsync -> erp.mgt.mn)
+        run: |
+          rsync -avz --delete \
+            --chmod=Du=rwx,Dg=rx,Do=rx,Fu=rw,Fg=r,Fo=r \
+            build_erp/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:erp.mgt.mn/
+
+      # Optional: restart PM2 backend on the server
+      - name: Restart PM2 (erp-app)
+        run: |
+          ssh -p "${{ secrets.SSH_PORT }}" ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "export PATH=\$HOME/nodevenv/apps/erp-web-next/20/bin:\$PATH; pm2 restart erp-app --update-env && pm2 save"
