@@ -1931,8 +1931,13 @@ export default function CodingTablesPage() {
         if (!sheet) {
           setSheet(cfg.sheet ?? '');
         }
-        setHeaderRow(cfg.headerRow ?? 1);
-        setMnHeaderRow(cfg.mnHeaderRow ?? '');
+        // Only override row numbers if they haven't been manually changed yet
+        if (headerRow === 1) {
+          setHeaderRow(cfg.headerRow ?? 1);
+        }
+        if (mnHeaderRow === '') {
+          setMnHeaderRow(cfg.mnHeaderRow ?? '');
+        }
         setIdFilterMode(cfg.idFilterMode ?? 'contains');
         setIdColumn(cfg.idColumn ?? '');
         setNameColumn(cfg.nameColumn ?? '');
