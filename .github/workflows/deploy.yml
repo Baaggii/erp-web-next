@@ -61,19 +61,20 @@ jobs:
           ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> "$HOME/.ssh/known_hosts" 2>/dev/null || \
             echo "::warning::ssh-keyscan failed (host unreachable); continuing"
       
-      - name: Deploy homepage
+      - name: Deploy homepage (-> ~/public_html)
         run: |
           rsync -avz --delete \
             -e "ssh -p ${{ secrets.SSH_PORT }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30" \
             build_home/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:public_html/
       
-      
-      - name: Deploy ERP (to erp.mgt.mn)
+      - name: Deploy ERP (-> ~/erp.mgt.mn)
         run: |
-          rsync -avz --delete --chmod=Du=rwx,Dg=rx,Do=rx,Fu=rw,Fg=r,Fo=r \
+          rsync -avz --delete \
+            -e "ssh -p ${{ secrets.SSH_PORT }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30" \
             build_erp/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:erp.mgt.mn/
-
-      - name: Restart PM2
+      
+      - name: Restart PM2 (erp-app)
         run: |
           ssh -p "${{ secrets.SSH_PORT }}" ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
             "export PATH=\$HOME/nodevenv/apps/erp-web-next/20/bin:\$PATH; pm2 restart erp-app --update-env && pm2 save"
+
