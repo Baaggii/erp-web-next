@@ -52,11 +52,25 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.SSH_KEY }}
 
-      - name: Add known host
+      - name: Prepare SSH known_hosts (robust)
+        shell: bash
         run: |
-          export HOME="/home/runner"
-          mkdir -p "$HOME/.ssh"
-          ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> "$HOME/.ssh/known_hosts"
+          set -euo pipefail
+      
+          # Make sure HOME resolves and dirs exist with correct perms
+          install -m 700 -d "$HOME/.ssh"
+          : > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+      
+          # Guard secrets and avoid failing the whole step if they’re missing/unreachable
+          SSH_HOST="${{ secrets.SSH_HOST || '' }}"
+          SSH_PORT="${{ secrets.SSH_PORT || '' }}"
+          if [[ -n "$SSH_HOST" && -n "$SSH_PORT" ]]; then
+            ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" >> "$HOME/.ssh/known_hosts" 2>/dev/null || \
+              echo "::warning::ssh-keyscan failed (host unreachable); continuing"
+          else
+            echo "::warning::SSH_HOST or SSH_PORT not set; skipping ssh-keyscan"
+          fi
 
       - name: Deploy homepage (to public_html)
         run: |
