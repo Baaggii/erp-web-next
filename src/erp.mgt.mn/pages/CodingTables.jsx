@@ -1933,16 +1933,10 @@ export default function CodingTablesPage() {
         if (!sheet && cfg.sheet) {
           setSheet(cfg.sheet);
         }
-        let hdrRow = headerRow;
-        let mnHdrRow = mnHeaderRow;
-        if (headerRow === 1 && cfg.headerRow) {
-          hdrRow = cfg.headerRow;
-          setHeaderRow(cfg.headerRow);
-        }
-        if (mnHeaderRow === '' && cfg.mnHeaderRow) {
-          mnHdrRow = cfg.mnHeaderRow;
-          setMnHeaderRow(cfg.mnHeaderRow);
-        }
+        const hdrRow = cfg.headerRow ?? 1;
+        const mnHdrRow = cfg.mnHeaderRow ?? '';
+        setHeaderRow(hdrRow);
+        setMnHeaderRow(mnHdrRow);
 
         let hdrs = headers;
         if (workbook && newSheet) {
