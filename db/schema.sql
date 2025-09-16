@@ -1084,6 +1084,164 @@ CREATE TABLE `transactions_income` (
   `sp_cost_date` date DEFAULT NULL,
   `sp_source_table` varchar(50) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+DELIMITER $$
+CREATE TRIGGER `transactions_income_or_num_bi` BEFORE INSERT ON `transactions_income` FOR EACH ROW BEGIN
+  IF NEW.or_num IS NULL OR NEW.or_num = '' THEN
+    SET NEW.or_num = CONCAT(
+      CONCAT(
+        CHAR(IF(RAND() < 0.5, FLOOR(65 + RAND() * 26), FLOOR(97 + RAND() * 26))),
+        CHAR(IF(RAND() < 0.5, FLOOR(65 + RAND() * 26), FLOOR(97 + RAND() * 26))),
+        CHAR(IF(RAND() < 0.5, FLOOR(65 + RAND() * 26), FLOOR(97 + RAND() * 26))),
+        CHAR(IF(RAND() < 0.5, FLOOR(65 + RAND() * 26), FLOOR(97 + RAND() * 26))),
+        CHAR(IF(RAND() < 0.5, FLOOR(65 + RAND() * 26), FLOOR(97 + RAND() * 26)))
+      ),
+      '-',
+      CONCAT(
+        CHAR(IF(RAND() < 0.5, FLOOR(65 + RAND() * 26), FLOOR(97 + RAND() * 26))),
+        CHAR(IF(RAND() < 0.5, FLOOR(65 + RAND() * 26), FLOOR(97 + RAND() * 26))),
+        CHAR(IF(RAND() < 0.5, FLOOR(65 + RAND() * 26), FLOOR(97 + RAND() * 26))),
+        CHAR(IF(RAND() < 0.5, FLOOR(65 + RAND() * 26), FLOOR(97 + RAND() * 26))),
+        CHAR(IF(RAND() < 0.5, FLOOR(65 + RAND() * 26), FLOOR(97 + RAND() * 26)))
+      ),
+      '-',
+      CONCAT(
+        CHAR(IF(RAND() < 0.5, FLOOR(65 + RAND() * 26), FLOOR(97 + RAND() * 26))),
+        CHAR(IF(RAND() < 0.5, FLOOR(65 + RAND() * 26), FLOOR(97 + RAND() * 26))),
+        CHAR(IF(RAND() < 0.5, FLOOR(65 + RAND() * 26), FLOOR(97 + RAND() * 26))),
+        CHAR(IF(RAND() < 0.5, FLOOR(65 + RAND() * 26), FLOOR(97 + RAND() * 26))),
+        CHAR(IF(RAND() < 0.5, FLOOR(65 + RAND() * 26), FLOOR(97 + RAND() * 26)))
+      ),
+      '-',
+      CONCAT(
+        CHAR(IF(RAND() < 0.5, FLOOR(65 + RAND() * 26), FLOOR(97 + RAND() * 26))),
+        CHAR(IF(RAND() < 0.5, FLOOR(65 + RAND() * 26), FLOOR(97 + RAND() * 26))),
+        CHAR(IF(RAND() < 0.5, FLOOR(65 + RAND() * 26), FLOOR(97 + RAND() * 26))),
+        CHAR(IF(RAND() < 0.5, FLOOR(65 + RAND() * 26), FLOOR(97 + RAND() * 26))),
+        CHAR(IF(RAND() < 0.5, FLOOR(65 + RAND() * 26), FLOOR(97 + RAND() * 26)))
+      )
+    );
+  END IF;
+END
+$$
+DELIMITER ;
+DELIMITER $$
+CREATE TRIGGER `trg_resolve_income_inventory_metadata` BEFORE INSERT ON `transactions_income` FOR EACH ROW BEGIN
+  DECLARE v_primary_code VARCHAR(50);
+  DECLARE v_selling_code VARCHAR(50);
+  DECLARE v_pm_name VARCHAR(255);
+  DECLARE v_pm_unit_id INT;
+  DECLARE v_categories INT;
+  DECLARE v_manufacturer_id INT;
+  DECLARE v_cost DECIMAL(18,4);
+  DECLARE v_cost_date DATE;
+  DECLARE v_source_table VARCHAR(50);
+
+  CALL resolve_inventory_metadatas(
+    NEW.or_bcode,
+    v_primary_code,
+    v_selling_code,
+    v_pm_name,
+    v_pm_unit_id,
+    v_categories,
+    v_manufacturer_id,
+    v_cost,
+    v_cost_date,
+    v_source_table
+  );
+
+  SET NEW.sp_primary_code = v_primary_code;
+  SET NEW.sp_selling_code = v_selling_code;
+  SET NEW.sp_pm_name = v_pm_name;
+  SET NEW.sp_pm_unit_id = v_pm_unit_id;
+  SET NEW.sp_categories = v_categories;
+  SET NEW.sp_manufacturer_id = v_manufacturer_id;
+  SET NEW.sp_cost = v_cost;
+  SET NEW.sp_cost_date = v_cost_date;
+  SET NEW.sp_source_table = v_source_table;
+END
+$$
+DELIMITER ;
+DELIMITER $$
+CREATE TRIGGER `trg_resolve_income_inventory_metadata_update` BEFORE UPDATE ON `transactions_income` FOR EACH ROW BEGIN
+  DECLARE v_primary_code VARCHAR(50);
+  DECLARE v_selling_code VARCHAR(50);
+  DECLARE v_pm_name VARCHAR(255);
+  DECLARE v_pm_unit_id INT;
+  DECLARE v_categories INT;
+  DECLARE v_manufacturer_id INT;
+  DECLARE v_cost DECIMAL(18,4);
+  DECLARE v_cost_date DATE;
+  DECLARE v_source_table VARCHAR(50);
+
+  CALL resolve_inventory_metadatas(
+    NEW.or_bcode,
+    v_primary_code,
+    v_selling_code,
+    v_pm_name,
+    v_pm_unit_id,
+    v_categories,
+    v_manufacturer_id,
+    v_cost,
+    v_cost_date,
+    v_source_table
+  );
+
+  SET NEW.sp_primary_code = v_primary_code;
+  SET NEW.sp_selling_code = v_selling_code;
+  SET NEW.sp_pm_name = v_pm_name;
+  SET NEW.sp_pm_unit_id = v_pm_unit_id;
+  SET NEW.sp_categories = v_categories;
+  SET NEW.sp_manufacturer_id = v_manufacturer_id;
+  SET NEW.sp_cost = v_cost;
+  SET NEW.sp_cost_date = v_cost_date;
+  SET NEW.sp_source_table = v_source_table;
+END
+$$
+DELIMITER ;
+DELIMITER $$
+CREATE TRIGGER `trg_transactions_income_insert` BEFORE INSERT ON `transactions_income` FOR EACH ROW BEGIN
+  DECLARE v_trtypename VARCHAR(100);
+  DECLARE v_trtype VARCHAR(4);
+  DECLARE CONTINUE HANDLER FOR NOT FOUND SET v_trtypename = NULL, v_trtype = NULL;
+
+  IF NEW.TransType IS NOT NULL THEN
+    SELECT ct.UITransTypeName, ct.UITrtype
+      INTO v_trtypename, v_trtype
+      FROM code_transaction ct
+     WHERE ct.UITransType = NEW.TransType
+     LIMIT 1;
+  ELSE
+    SET v_trtypename = NULL;
+    SET v_trtype = NULL;
+  END IF;
+
+  SET NEW.TRTYPENAME = v_trtypename;
+  SET NEW.trtype = v_trtype;
+END
+$$
+DELIMITER ;
+DELIMITER $$
+CREATE TRIGGER `trg_transactions_income_update` BEFORE UPDATE ON `transactions_income` FOR EACH ROW BEGIN
+  DECLARE v_trtypename VARCHAR(100);
+  DECLARE v_trtype VARCHAR(4);
+  DECLARE CONTINUE HANDLER FOR NOT FOUND SET v_trtypename = NULL, v_trtype = NULL;
+
+  IF NEW.TransType IS NOT NULL THEN
+    SELECT ct.UITransTypeName, ct.UITrtype
+      INTO v_trtypename, v_trtype
+      FROM code_transaction ct
+     WHERE ct.UITransType = NEW.TransType
+     LIMIT 1;
+  ELSE
+    SET v_trtypename = NULL;
+    SET v_trtype = NULL;
+  END IF;
+
+  SET NEW.TRTYPENAME = v_trtypename;
+  SET NEW.trtype = v_trtype;
+END
+$$
+DELIMITER ;
 CREATE TABLE `transactions_income_other` (
   `id` int NOT NULL,
   `or_num` varchar(50) DEFAULT NULL,
