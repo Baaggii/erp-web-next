@@ -76,6 +76,9 @@ export default function CodingTablesPage() {
   const [loadingWorkbook, setLoadingWorkbook] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0);
   const workerRef = useRef(null);
+  const sheetSelectedManuallyRef = useRef(false);
+  const headerRowSelectedManuallyRef = useRef(false);
+  const mnHeaderRowSelectedManuallyRef = useRef(false);
 
   useEffect(() => {
     fetch('/api/coding_table_configs', { credentials: 'include' })
@@ -240,6 +243,7 @@ export default function CodingTablesPage() {
             setWorkbook(wb);
             setSheets(wb.SheetNames);
             const firstSheet = wb.SheetNames[0];
+            sheetSelectedManuallyRef.current = false;
             setSheet(firstSheet);
             setLoadProgress(100);
           }
@@ -247,7 +251,9 @@ export default function CodingTablesPage() {
         };
         worker.postMessage({ arrayBuffer: ab }, [ab]);
       });
+      headerRowSelectedManuallyRef.current = false;
       setHeaderRow(1);
+      mnHeaderRowSelectedManuallyRef.current = false;
       setMnHeaderRow('');
       setHeaders([]);
       setHeaderMap({});
@@ -299,9 +305,11 @@ export default function CodingTablesPage() {
   function handleSheetChange(e) {
     const s = e.target.value;
     setSheet(s);
+    sheetSelectedManuallyRef.current = true;
     setHeaders([]);
     setHeaderMap({});
     setMnHeaderRow('');
+    mnHeaderRowSelectedManuallyRef.current = false;
     setIdCandidates([]);
     setIdColumn('');
     setNameColumn('');
@@ -334,9 +342,11 @@ export default function CodingTablesPage() {
   function handleHeaderRowChange(e) {
     const r = Number(e.target.value) || 1;
     setHeaderRow(r);
+    headerRowSelectedManuallyRef.current = true;
     setHeaders([]);
     setHeaderMap({});
     setMnHeaderRow('');
+    mnHeaderRowSelectedManuallyRef.current = false;
     setIdCandidates([]);
     setIdColumn('');
     setNameColumn('');
@@ -355,6 +365,11 @@ export default function CodingTablesPage() {
     setStartYear('');
     setEndYear('');
     setAutoIncStart('1');
+  }
+
+  function handleMnHeaderRowChange(e) {
+    setMnHeaderRow(e.target.value);
+    mnHeaderRowSelectedManuallyRef.current = true;
   }
 
   function refreshFile() {
@@ -1933,9 +1948,18 @@ export default function CodingTablesPage() {
           setTriggerSql('');
           return;
         }
-        setSheet(cfg.sheet ?? '');
-        setHeaderRow(cfg.headerRow ?? 1);
-        setMnHeaderRow(cfg.mnHeaderRow ?? '');
+        if (!sheetSelectedManuallyRef.current) {
+          sheetSelectedManuallyRef.current = false;
+          setSheet(cfg.sheet ?? '');
+        }
+        if (!headerRowSelectedManuallyRef.current) {
+          headerRowSelectedManuallyRef.current = false;
+          setHeaderRow(cfg.headerRow ?? 1);
+        }
+        if (!mnHeaderRowSelectedManuallyRef.current) {
+          mnHeaderRowSelectedManuallyRef.current = false;
+          setMnHeaderRow(cfg.mnHeaderRow ?? '');
+        }
         setIdFilterMode(cfg.idFilterMode ?? 'contains');
         setIdColumn(cfg.idColumn ?? '');
         setNameColumn(cfg.nameColumn ?? '');
@@ -2042,7 +2066,7 @@ export default function CodingTablesPage() {
               inputMode="decimal"
               min="1"
               value={mnHeaderRow}
-              onChange={(e) => setMnHeaderRow(e.target.value)}
+              onChange={handleMnHeaderRowChange}
               style={{ marginLeft: '0.5rem' }}
             />
             <button onClick={handleExtract}>Read Columns</button>
