@@ -923,6 +923,114 @@ export async function listTableColumnsDetailed(tableName) {
   }));
 }
 
+export async function listTriggerColumns(tableName) {
+  if (!tableName) return [];
+  const [rows] = await pool.query('SHOW TRIGGERS');
+  const target = String(tableName).toLowerCase();
+  const columns = new Set();
+
+  const stripQuotes = (identifier = '') => {
+    let trimmed = String(identifier).trim();
+    if (
+      (trimmed.startsWith('`') && trimmed.endsWith('`')) ||
+      (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'"))
+    ) {
+      trimmed = trimmed.slice(1, -1);
+    }
+    return trimmed;
+  };
+
+  const normalizeTableName = (identifier = '') => {
+    const parts = String(identifier)
+      .split('.')
+      .map((part) => stripQuotes(part))
+      .filter(Boolean);
+    return parts.length > 0 ? parts[parts.length - 1] : '';
+  };
+
+  const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  const collectNewAssignments = (statement) => {
+    const setRegex = /SET\s+([^;]+)/gi;
+    let setMatch;
+    while ((setMatch = setRegex.exec(statement))) {
+      const assignments = setMatch[1];
+      const assignRegex = /(?:^|,)\s*NEW\.(?:`([^`]+)`|([A-Za-z0-9_]+))\s*=/gi;
+      let assignMatch;
+      while ((assignMatch = assignRegex.exec(assignments))) {
+        const col = assignMatch[1] || assignMatch[2];
+        if (col) columns.add(stripQuotes(col));
+      }
+    }
+  };
+
+  const collectUpdateAssignments = (statement) => {
+    const updateRegex = /UPDATE\s+([\s\S]+?)\s+SET\s+([\s\S]+?)(?:;|$)/gi;
+    let updateMatch;
+    while ((updateMatch = updateRegex.exec(statement))) {
+      const targetClause = updateMatch[1];
+      const setClause = updateMatch[2];
+      if (!targetClause || !setClause) continue;
+      const beforeJoin = targetClause.split(/\bJOIN\b/i)[0]?.trim();
+      if (!beforeJoin) continue;
+      const tokens = beforeJoin.split(/\s+/).filter(Boolean);
+      if (tokens.length === 0) continue;
+      const baseToken = tokens[0];
+      const baseTable = normalizeTableName(baseToken);
+      if (!baseTable || baseTable.toLowerCase() !== target) continue;
+      let aliasToken = '';
+      if (tokens.length >= 2) {
+        if (/^AS$/i.test(tokens[1]) && tokens[2]) aliasToken = tokens[2];
+        else if (!/^USING$/i.test(tokens[1])) aliasToken = tokens[1];
+      }
+      const aliasNames = new Set();
+      const baseName = stripQuotes(baseTable);
+      const tableNameClean = stripQuotes(tableName);
+      if (baseName) aliasNames.add(baseName);
+      if (tableNameClean) aliasNames.add(tableNameClean);
+      if (aliasToken) {
+        const aliasName = stripQuotes(aliasToken);
+        if (aliasName) aliasNames.add(aliasName);
+      }
+      const aliasPattern = Array.from(aliasNames)
+        .filter(Boolean)
+        .map((alias) => '`?' + escapeRegExp(alias) + '`?')
+        .join('|');
+      if (!aliasPattern) continue;
+      let setBody = setClause;
+      setBody = setBody.split(/\bWHERE\b/i)[0];
+      setBody = setBody.split(/\bORDER\s+BY\b/i)[0];
+      setBody = setBody.split(/\bLIMIT\b/i)[0];
+      setBody = setBody.split(/\bRETURNING\b/i)[0];
+      if (!setBody) continue;
+      const assignmentRegex = new RegExp(
+        '(?:^|,)\\s*(?:' +
+          aliasPattern +
+          ')\\.(?:`([^`]+)`|([A-Za-z0-9_]+))\\s*=',
+        'gi',
+      );
+      let assignmentMatch;
+      while ((assignmentMatch = assignmentRegex.exec(setBody))) {
+        const col = assignmentMatch[1] || assignmentMatch[2];
+        if (col) columns.add(stripQuotes(col));
+      }
+    }
+  };
+
+  for (const trigger of rows) {
+    if (!trigger || typeof trigger.Statement !== 'string') continue;
+    if (String(trigger.Table || '').toLowerCase() !== target) continue;
+    const statement = trigger.Statement;
+    collectNewAssignments(statement);
+    collectUpdateAssignments(statement);
+  }
+
+  return Array.from(columns)
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+}
+
 export async function listTenantTables() {
   try {
     const [rows] = await pool.query(
