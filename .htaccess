@@ -1,7 +1,11 @@
-RewriteEngine On
+<IfModule mod_rewrite.c>
+  RewriteEngine On
 
-# Proxy /api/* to Express backend
-ProxyPass "/api/" "http://127.0.0.1:3002/api/"
-ProxyPassReverse "/api/" "http://127.0.0.1:3002/api/"
+  # Proxy API calls to the Express backend
+  RewriteRule ^api/(.*)$ http://127.0.0.1:3002/api/$1 [P,L]
 
-# Serve assets from /assets
+  # Allow Apache to serve existing files and directories (e.g. /assets)
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+</IfModule>
