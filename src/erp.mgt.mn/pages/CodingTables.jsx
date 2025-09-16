@@ -12,15 +12,6 @@ function normalizeField(name) {
   return cleanIdentifier(name).toLowerCase();
 }
 
-function triggerKeyVariants(name) {
-  const cleaned = cleanIdentifier(name);
-  if (!cleaned) return [];
-  const lower = cleaned.toLowerCase();
-  const squeezed = lower.replace(/_/g, '');
-  return Array.from(new Set([cleaned, lower, squeezed]))
-    .filter((key) => key);
-}
-
 export default function CodingTablesPage() {
   const { addToast } = useToast();
   const [sheets, setSheets] = useState([]);
@@ -45,7 +36,6 @@ export default function CodingTablesPage() {
   const [recordsSqlOther, setRecordsSqlOther] = useState('');
   const [triggerSql, setTriggerSql] = useState('');
   const [foreignKeySql, setForeignKeySql] = useState('');
-  const [triggerColumns, setTriggerColumns] = useState([]);
   const [sqlMove, setSqlMove] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
@@ -104,35 +94,6 @@ export default function CodingTablesPage() {
   }, []);
 
   useEffect(() => {
-    if (!tableName) {
-      setTriggerColumns([]);
-      return;
-    }
-    const controller = new AbortController();
-    fetch(`/api/trigger_columns?table=${encodeURIComponent(tableName)}`, {
-      credentials: 'include',
-      signal: controller.signal,
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (controller.signal.aborted) return;
-        if (!data || !Array.isArray(data.columns)) {
-          setTriggerColumns([]);
-          return;
-        }
-        const cols = data.columns
-          .map((col) => String(col).trim())
-          .filter((col) => col.length > 0);
-        setTriggerColumns(Array.from(new Set(cols)));
-      })
-      .catch((err) => {
-        if (err?.name === 'AbortError') return;
-        setTriggerColumns([]);
-      });
-    return () => controller.abort();
-  }, [tableName]);
-
-  useEffect(() => {
     function onKey(e) {
       if (e.key === 'Escape') {
         if (uploading) {
@@ -169,24 +130,6 @@ export default function CodingTablesPage() {
     [allFields]
   );
 
-  const triggerColumnKeySet = useMemo(() => {
-    const set = new Set();
-    triggerColumns.forEach((col) => {
-      triggerKeyVariants(col).forEach((key) => set.add(key));
-    });
-    return set;
-  }, [triggerColumns]);
-
-  const triggerColumnDisplayMap = useMemo(() => {
-    const map = new Map();
-    triggerColumns.forEach((col) => {
-      triggerKeyVariants(col).forEach((key) => {
-        if (key && !map.has(key)) map.set(key, col);
-      });
-    });
-    return map;
-  }, [triggerColumns]);
-
   useEffect(() => {
     if (
       workbook &&
@@ -220,11 +163,6 @@ export default function CodingTablesPage() {
     for (const f of fields) {
       if (f === exclude) continue;
       if (skipId && f === idColumn) continue;
-      const dbName = cleanIdentifier(renameMap[f] || f);
-      const isTriggerManaged = triggerKeyVariants(dbName).some((key) =>
-        triggerColumnKeySet.has(key)
-      );
-      if (isTriggerManaged) continue;
       if (seen.has(f)) continue;
       seen.add(f);
       opts.push({ value: f, label: renameMap[f] || f });
@@ -866,7 +804,7 @@ export default function CodingTablesPage() {
     });
     const idx = Number(headerRow) - 1;
     const raw = data[idx] || [];
-    const rawHdrs = [];
+    const hdrs = [];
     const keepIdx = [];
     const seen = {};
     const extrasNorm = extraFields
@@ -883,44 +821,21 @@ export default function CodingTablesPage() {
         const key = normalizeField(h);
         if (key in seen) {
           const suffixNum = seen[key];
-          rawHdrs.push(`${clean}_${suffixNum}`);
+          hdrs.push(`${clean}_${suffixNum}`);
           seen[key] = suffixNum + 1;
         } else {
           seen[key] = 1;
-          rawHdrs.push(clean);
+          hdrs.push(clean);
         }
         keepIdx.push(i);
       }
     });
-    const rawExtra = extraFields
+    const extra = extraFields
       .filter((f) => f.trim() !== '')
       .map((f) => cleanIdentifier(f));
-    const headerInfo = rawHdrs.map((h, idx2) => {
-      const dbName = cleanIdentifier(renameMap[h] || h);
-      const skip = triggerKeyVariants(dbName).some((key) =>
-        triggerColumnKeySet.has(key)
-      );
-      return { header: h, index: keepIdx[idx2], skip };
-    });
-    const filteredHeaderInfo = headerInfo.filter((info) => !info.skip);
-    const hdrs = filteredHeaderInfo.map((info) => info.header);
-    const headerIndexes = filteredHeaderInfo.map((info) => info.index);
-
-    const extraInfo = rawExtra.map((h) => {
-      const dbName = cleanIdentifier(renameMap[h] || h);
-      const skip = triggerKeyVariants(dbName).some((key) =>
-        triggerColumnKeySet.has(key)
-      );
-      return { header: h, skip };
-    });
-    const extra = extraInfo.filter((info) => !info.skip).map((info) => info.header);
-
     const rows = data
       .slice(idx + 1)
-      .map((r) => [
-        ...headerIndexes.map((ci) => r[ci]),
-        ...Array(extra.length).fill(undefined),
-      ]);
+      .map((r) => [...keepIdx.map((ci) => r[ci]), ...Array(extra.length).fill(undefined)]);
     const allHdrs = [...hdrs, ...extra];
     const errorDescIdx = allHdrs.length;
     const dbCols = {};
@@ -1936,14 +1851,6 @@ export default function CodingTablesPage() {
         if (typeof v !== 'boolean') return `${k} allowZero must be true/false`;
       }
     }
-    if (cfg.triggerColumns && !Array.isArray(cfg.triggerColumns)) {
-      return 'triggerColumns must be an array';
-    }
-    if (Array.isArray(cfg.triggerColumns)) {
-      for (const col of cfg.triggerColumns) {
-        if (typeof col !== 'string') return 'triggerColumns must contain strings';
-      }
-    }
     if (cfg.triggers && typeof cfg.triggers !== 'string') {
       return 'triggers must be a string';
     }
@@ -1983,13 +1890,6 @@ export default function CodingTablesPage() {
       defaultFrom: filterMap(defaultFrom),
       renameMap: filterMap(renameMap),
       extraFields: extraFields.filter((f) => f.trim() !== ''),
-      triggerColumns: Array.from(
-        new Set(
-          triggerColumns
-            .map((col) => String(col).trim())
-            .filter((col) => col.length > 0),
-        ),
-      ),
       populateRange,
       startYear,
       endYear,
@@ -2132,17 +2032,13 @@ export default function CodingTablesPage() {
   }, [allFields, idFilterMode, notNullMap, renameMap]);
 
   useEffect(() => {
-    if (!tableName) {
-      setTriggerColumns([]);
-      return;
-    }
+    if (!tableName) return;
     if (!configNames.includes(tableName)) {
       if (workbook && sheet) {
         extractHeaders(workbook, sheet, headerRow, mnHeaderRow);
       }
       setForeignKeySql('');
       setTriggerSql('');
-      setTriggerColumns([]);
       return;
     }
     fetch(`/api/coding_table_configs?table=${encodeURIComponent(tableName)}`, {
@@ -2156,7 +2052,6 @@ export default function CodingTablesPage() {
           }
           setForeignKeySql('');
           setTriggerSql('');
-          setTriggerColumns([]);
           return;
         }
         if (!sheetSelectedManuallyRef.current) {
@@ -2234,11 +2129,6 @@ export default function CodingTablesPage() {
         setAutoIncStart(cfg.autoIncStart ?? '1');
         setForeignKeySql(cfg.foreignKeys ?? '');
         setTriggerSql(cfg.triggers ?? '');
-        setTriggerColumns(
-          Array.isArray(cfg.triggerColumns)
-            ? Array.from(new Set(cfg.triggerColumns.map((col) => String(col))))
-            : [],
-        );
       })
       .catch(() => {});
   }, [tableName, configNames]);
@@ -2378,79 +2268,37 @@ export default function CodingTablesPage() {
                     )}
                   </div>
                 )}
-                {triggerColumns.length > 0 && (
-                  <div style={{ marginBottom: '0.25rem', color: '#555' }}>
-                    Auto-managed columns:{' '}
-                    {Array.from(new Set(triggerColumns)).join(', ')}
-                  </div>
-                )}
-                {allFields.map((h) => {
-                  const dbName = cleanIdentifier(renameMap[h] || h);
-                  const variantKeys = triggerKeyVariants(dbName);
-                  const isTriggerManaged = variantKeys.some((key) =>
-                    triggerColumnKeySet.has(key)
-                  );
-                  const triggerDisplay =
-                    variantKeys
-                      .map((key) => triggerColumnDisplayMap.get(key))
-                      .find(Boolean) ||
-                    triggerKeyVariants(h)
-                      .map((key) => triggerColumnDisplayMap.get(key))
-                      .find(Boolean) ||
-                    '';
-                  return (
-                    <div
-                      key={h}
-                      style={{
-                        marginBottom: '0.25rem',
-                        color: duplicateHeaders.has(h) ? 'red' : 'inherit',
-                        opacity: isTriggerManaged ? 0.7 : 1,
+                {allFields.map((h) => (
+                  <div
+                    key={h}
+                    style={{
+                      marginBottom: '0.25rem',
+                      color: duplicateHeaders.has(h) ? 'red' : 'inherit',
+                    }}
+                  >
+                    <code>{h}</code>
+                    {' → '}
+                    <input
+                      value={renameMap[h] || ''}
+                      placeholder={h}
+                      onChange={(e) => {
+                        setRenameMap({ ...renameMap, [h]: e.target.value });
+                        setDuplicateHeaders((d) => {
+                          const next = new Set(d);
+                          next.delete(h);
+                          return next;
+                        });
                       }}
-                    >
-                      <code>{h}</code>
-                      {' → '}
-                      <input
-                        value={renameMap[h] || ''}
-                        placeholder={h}
-                        onChange={(e) => {
-                          setRenameMap({ ...renameMap, [h]: e.target.value });
-                          setDuplicateHeaders((d) => {
-                            const next = new Set(d);
-                            next.delete(h);
-                            return next;
-                          });
-                        }}
-                        style={{ marginRight: '0.5rem' }}
-                        disabled={isTriggerManaged}
-                        title={
-                          isTriggerManaged
-                            ? 'Managed by database trigger'
-                            : undefined
-                        }
-                      />
-                      <input
-                        value={headerMap[h] || ''}
-                        onChange={(e) =>
-                          setHeaderMap({ ...headerMap, [h]: e.target.value })
-                        }
-                        disabled={isTriggerManaged}
-                        title={
-                          isTriggerManaged
-                            ? 'Managed by database trigger'
-                            : undefined
-                        }
-                      />
-                      {isTriggerManaged && (
-                        <span style={{ marginLeft: '0.5rem', color: '#555' }}>
-                          auto-managed
-                          {triggerDisplay && triggerDisplay !== dbName
-                            ? ` (${triggerDisplay})`
-                            : ''}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
+                      style={{ marginRight: '0.5rem' }}
+                    />
+                    <input
+                      value={headerMap[h] || ''}
+                      onChange={(e) =>
+                        setHeaderMap({ ...headerMap, [h]: e.target.value })
+                      }
+                    />
+                  </div>
+                ))}
                 <button type="button" onClick={saveMappings} style={{ marginTop: '0.5rem' }}>
                   Add Mappings
                 </button>
@@ -2582,18 +2430,11 @@ export default function CodingTablesPage() {
                 Group By Column:
                 <select value={groupByField} onChange={(e) => setGroupByField(e.target.value)}>
                   <option value="">--none--</option>
-                  {allFields
-                    .filter((h) => {
-                      const dbName = cleanIdentifier(renameMap[h] || h);
-                      return !triggerKeyVariants(dbName).some((key) =>
-                        triggerColumnKeySet.has(key)
-                      );
-                    })
-                    .map((h) => (
-                      <option key={h} value={h}>
-                        {renameMap[h] || h}
-                      </option>
-                    ))}
+                  {allFields.map((h) => (
+                    <option key={h} value={h}>
+                      {renameMap[h] || h}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>
