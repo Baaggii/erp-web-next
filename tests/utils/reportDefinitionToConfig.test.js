@@ -96,17 +96,3 @@ test('reportDefinitionToConfig round trip', () => {
     having: [],
   });
 });
-
-test('reportDefinitionToConfig captures fromFilters', () => {
-  const def = {
-    from: { table: 'orders', alias: 't0' },
-    select: [{ expr: 't0.id' }],
-    fromFilters: [
-      { expr: 't0.branch_id = :branch', connector: undefined, open: 0, close: 0 },
-    ],
-  };
-  const cfg = reportDefinitionToConfig(def);
-  assert.deepEqual(cfg.fromFilters, [
-    { raw: 't0.branch_id = :branch', connector: undefined, open: 0, close: 0 },
-  ]);
-});

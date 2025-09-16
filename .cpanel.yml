@@ -1,15 +1,10 @@
 ---
 deployment:
   tasks:
-    - /bin/bash -lc 'set -euo pipefail'
-
-    # Deploy homepage
-    - /bin/bash -lc 'rsync -a --delete ./build_home/ "$HOME/public_html/"'
-
-    # Deploy ERP
-    - /bin/bash -lc 'rsync -a --delete ./build_erp/ "$HOME/erp.mgt.mn/"'
-
-    # Restart backend app
-    - /bin/bash -lc 'pm2 restart erp-app --update-env || true'
-
-    - /bin/echo "[cpanel] Deploy finished: $(date -Is)"
+    - mkdir -p ~/public_html ~/public_html/erp
+    - rm -rf node_modules
+    - npm install --no-progress
+    - npm run build:homepage
+    - npm run build:erp
+    - cp src/erp.mgt.mn/.htaccess ~/public_html/erp/.htaccess
+    - npm prune --omit=dev
