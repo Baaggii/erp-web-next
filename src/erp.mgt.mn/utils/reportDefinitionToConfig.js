@@ -6,6 +6,7 @@ export default function reportDefinitionToConfig(def = {}) {
     groups: [],
     conditions: [],
     having: [],
+    fromFilters: [],
   };
 
   const aliasToTable = {};
@@ -84,6 +85,16 @@ export default function reportDefinitionToConfig(def = {}) {
       connector: w.connector,
       open: w.open || 0,
       close: w.close || 0,
+    });
+  });
+
+  // from-level filters from subquery
+  (def.fromFilters || []).forEach((f) => {
+    cfg.fromFilters.push({
+      raw: f.expr,
+      connector: f.connector,
+      open: f.open || 0,
+      close: f.close || 0,
     });
   });
 

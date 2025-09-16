@@ -58,3 +58,23 @@ test('round trip through applyConfig returns original report', () => {
   assert.deepEqual(state, report);
 });
 
+test('parseProcedureConfig handles subquery FROM with filters', () => {
+  const sql =
+    'SELECT t0.id FROM (SELECT id FROM orders WHERE orders.branch_id = :branch AND orders.date >= :fromDate) t0 LEFT JOIN users u ON t0.id = u.order_id';
+  const { report } = parseProcedureConfig(sql);
+  assert.deepEqual(report.from, { table: 't0', alias: 't0' });
+  assert.equal(report.joins.length, 1);
+  assert.equal(report.joins[0].table, 'users');
+  assert.equal(report.fromFilters.length, 2);
+  assert.equal(report.fromFilters[0].expr, 'orders.branch_id = :branch');
+});
+
+test('parseProcedureConfig preserves commas inside parentheses in select', () => {
+  const sql = "SELECT CONCAT(p.last_name, ', ', p.first_name) AS full_name, p.id FROM prod p";
+  const { report } = parseProcedureConfig(sql);
+  assert.deepEqual(report.select, [
+    { expr: "CONCAT(p.last_name, ', ', p.first_name)", alias: 'full_name' },
+    { expr: 'p.id', alias: undefined },
+  ]);
+});
+
