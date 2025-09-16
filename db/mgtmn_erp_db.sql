@@ -21161,22 +21161,36 @@ END
 $$
 DELIMITER ;
 DELIMITER $$
-CREATE TRIGGER `trg_transactions_income_insert` AFTER INSERT ON `transactions_income` FOR EACH ROW BEGIN
-  UPDATE transactions_income ti
-  JOIN code_transaction ct ON ct.UITransType = NEW.TransType
-  SET ti.TRTYPENAME = ct.UITransTypeName,
-      ti.trtype = ct.UITrtype
-  WHERE ti.id = NEW.id;
+CREATE TRIGGER `trg_transactions_income_insert` BEFORE INSERT ON `transactions_income` FOR EACH ROW BEGIN
+  DECLARE v_trtypename VARCHAR(100);
+  DECLARE v_trtype VARCHAR(4);
+  DECLARE CONTINUE HANDLER FOR NOT FOUND SET v_trtypename = NULL, v_trtype = NULL;
+
+  SELECT ct.UITransTypeName, ct.UITrtype
+    INTO v_trtypename, v_trtype
+    FROM code_transaction ct
+   WHERE ct.UITransType = NEW.TransType
+   LIMIT 1;
+
+  SET NEW.TRTYPENAME = v_trtypename;
+  SET NEW.trtype = v_trtype;
 END
 $$
 DELIMITER ;
 DELIMITER $$
-CREATE TRIGGER `trg_transactions_income_update` AFTER UPDATE ON `transactions_income` FOR EACH ROW BEGIN
-  UPDATE transactions_income ti
-  JOIN code_transaction ct ON ct.UITransType = NEW.TransType
-  SET ti.TRTYPENAME = ct.UITransTypeName,
-      ti.trtype = ct.UITrtype
-  WHERE ti.id = NEW.id;
+CREATE TRIGGER `trg_transactions_income_update` BEFORE UPDATE ON `transactions_income` FOR EACH ROW BEGIN
+  DECLARE v_trtypename VARCHAR(100);
+  DECLARE v_trtype VARCHAR(4);
+  DECLARE CONTINUE HANDLER FOR NOT FOUND SET v_trtypename = NULL, v_trtype = NULL;
+
+  SELECT ct.UITransTypeName, ct.UITrtype
+    INTO v_trtypename, v_trtype
+    FROM code_transaction ct
+   WHERE ct.UITransType = NEW.TransType
+   LIMIT 1;
+
+  SET NEW.TRTYPENAME = v_trtypename;
+  SET NEW.trtype = v_trtype;
 END
 $$
 DELIMITER ;

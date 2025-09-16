@@ -1084,6 +1084,40 @@ CREATE TABLE `transactions_income` (
   `sp_cost_date` date DEFAULT NULL,
   `sp_source_table` varchar(50) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+DELIMITER $$
+CREATE TRIGGER `trg_transactions_income_insert` BEFORE INSERT ON `transactions_income` FOR EACH ROW BEGIN
+  DECLARE v_trtypename VARCHAR(100);
+  DECLARE v_trtype VARCHAR(4);
+  DECLARE CONTINUE HANDLER FOR NOT FOUND SET v_trtypename = NULL, v_trtype = NULL;
+
+  SELECT ct.UITransTypeName, ct.UITrtype
+    INTO v_trtypename, v_trtype
+    FROM code_transaction ct
+   WHERE ct.UITransType = NEW.TransType
+   LIMIT 1;
+
+  SET NEW.TRTYPENAME = v_trtypename;
+  SET NEW.trtype = v_trtype;
+END
+$$
+DELIMITER ;
+DELIMITER $$
+CREATE TRIGGER `trg_transactions_income_update` BEFORE UPDATE ON `transactions_income` FOR EACH ROW BEGIN
+  DECLARE v_trtypename VARCHAR(100);
+  DECLARE v_trtype VARCHAR(4);
+  DECLARE CONTINUE HANDLER FOR NOT FOUND SET v_trtypename = NULL, v_trtype = NULL;
+
+  SELECT ct.UITransTypeName, ct.UITrtype
+    INTO v_trtypename, v_trtype
+    FROM code_transaction ct
+   WHERE ct.UITransType = NEW.TransType
+   LIMIT 1;
+
+  SET NEW.TRTYPENAME = v_trtypename;
+  SET NEW.trtype = v_trtype;
+END
+$$
+DELIMITER ;
 CREATE TABLE `transactions_income_other` (
   `id` int NOT NULL,
   `or_num` varchar(50) DEFAULT NULL,
