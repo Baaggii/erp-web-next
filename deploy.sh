@@ -42,8 +42,12 @@ npm run build:erp
 
 # 4) Sync built assets to docroots (delete old hashes)
 #    Vite already wrote straight into these paths, but rsync keeps things clean if you ever change outputs.
-rsync -rtv --delete "$DOCROOT_HOME/" "$DOCROOT_HOME/"
-rsync -rtv --delete "$DOCROOT_ERP/"  "$DOCROOT_ERP/"
+# rsync -rtv --delete "$DOCROOT_HOME/" "$DOCROOT_HOME/"
+# rsync -rtv --delete "$DOCROOT_ERP/"  "$DOCROOT_ERP/"
+# Instead of rsync
+cp -rf "$APP_DIR/dist-homepage/"* "$DOCROOT_HOME/"
+cp -rf "$APP_DIR/dist-erp/"*       "$DOCROOT_ERP/"
+
 
 # 5) Ensure correct .htaccess files (subdomain vs /erp/ base rules)
 install -m 0644 "$HTACCESS_HOME_SRC" "$DOCROOT_HOME/.htaccess"
