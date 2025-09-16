@@ -1405,6 +1405,44 @@ export default function CodingTablesPage() {
     let otherInserted = 0;
     const errGroups = {};
     const failedAll = [];
+    let errorMessage = '';
+    const setErrorMessage = (msg) => {
+      if (typeof msg === 'string') {
+        const trimmed = msg.trim();
+        if (trimmed && !errorMessage) {
+          errorMessage = trimmed;
+        }
+      }
+    };
+    const captureErrorDetails = (payload) => {
+      if (!payload || typeof payload !== 'object') return;
+      const parts = [];
+      if (typeof payload.message === 'string' && payload.message.trim()) {
+        parts.push(payload.message.trim());
+      }
+      if (Array.isArray(payload.failed) && payload.failed.length > 0) {
+        const firstFailedObj = payload.failed.find(
+          (item) =>
+            item &&
+            typeof item === 'object' &&
+            typeof item.error === 'string' &&
+            item.error.trim()
+        );
+        if (firstFailedObj) {
+          parts.push(firstFailedObj.error.trim());
+        } else {
+          const firstFailedStr = payload.failed.find(
+            (item) => typeof item === 'string' && item.trim()
+          );
+          if (firstFailedStr) {
+            parts.push(firstFailedStr.trim());
+          }
+        }
+      }
+      if (parts.length > 0) {
+        setErrorMessage(parts.join(': '));
+      }
+    };
     interruptRef.current = false;
     abortCtrlRef.current = new AbortController();
     for (let i = 0; i < statements.length; i++) {
@@ -1445,19 +1483,53 @@ export default function CodingTablesPage() {
         });
       } catch (err) {
         if (err.name === 'AbortError') {
-          return { inserted: totalInserted, failed: failedAll, aborted: true };
+          abortCtrlRef.current = null;
+          return {
+            inserted: totalInserted,
+            failed: failedAll,
+            aborted: true,
+            errorMessage,
+          };
         }
+        setErrorMessage(err?.message || 'Execution failed');
         alert('Execution failed');
-        return { inserted: totalInserted, failed: failedAll, aborted: true };
+        abortCtrlRef.current = null;
+        return {
+          inserted: totalInserted,
+          failed: failedAll,
+          aborted: true,
+          errorMessage,
+        };
       }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
+        captureErrorDetails(data);
+        if (!errorMessage) {
+          setErrorMessage(
+            (data && typeof data.message === 'string' && data.message) ||
+              res.statusText ||
+              'Execution failed'
+          );
+        }
         alert(data.message || 'Execution failed');
-        return { inserted: totalInserted, failed: failedAll, aborted: true };
+        abortCtrlRef.current = null;
+        return {
+          inserted: totalInserted,
+          failed: failedAll,
+          aborted: true,
+          errorMessage,
+        };
       }
       const data = await res.json().catch(() => ({}));
+      captureErrorDetails(data);
       if (data.aborted) {
-        return { inserted: totalInserted, failed: failedAll, aborted: true };
+        abortCtrlRef.current = null;
+        return {
+          inserted: totalInserted,
+          failed: failedAll,
+          aborted: true,
+          errorMessage,
+        };
       }
       const inserted = data.inserted || 0;
       if (Array.isArray(data.failed) && data.failed.length > 0) {
@@ -1494,6 +1566,7 @@ export default function CodingTablesPage() {
       insertedMain: mainInserted,
       insertedOther: otherInserted,
       errorGroups: errGroups,
+      errorMessage,
     };
   }
 
@@ -1514,9 +1587,14 @@ export default function CodingTablesPage() {
         insertedMain: mInserted,
         insertedOther: oInserted,
         errorGroups: runErr,
+        errorMessage,
       } = await runStatements(statements);
       if (aborted) {
-        addToast('Insert interrupted', 'warning');
+        if (errorMessage) {
+          addToast(errorMessage, 'error');
+        } else {
+          addToast('Insert interrupted', 'warning');
+        }
       } else {
         if (failed.length > 0) {
           setSqlMove(failed.join('\n'));
@@ -1530,6 +1608,9 @@ export default function CodingTablesPage() {
         setSummaryInfo(
           `Inserted to main: ${mInserted}. _other: ${oInserted}. Duplicates: ${dupCount}. ${errSummary}`
         );
+        if (errorMessage) {
+          addToast(errorMessage, 'error');
+        }
         addToast(`Table created with ${inserted} rows`, 'success');
       }
     } catch (err) {
@@ -1559,9 +1640,14 @@ export default function CodingTablesPage() {
         insertedMain: mInserted,
         insertedOther: oInserted,
         errorGroups: runErr,
+        errorMessage,
       } = await runStatements(statements);
       if (aborted) {
-        addToast('Insert interrupted', 'warning');
+        if (errorMessage) {
+          addToast(errorMessage, 'error');
+        } else {
+          addToast('Insert interrupted', 'warning');
+        }
       } else {
         if (failed.length > 0) {
           setSqlMove(failed.join('\n'));
@@ -1575,6 +1661,9 @@ export default function CodingTablesPage() {
         setSummaryInfo(
           `Inserted to main: ${mInserted}. _other: ${oInserted}. Duplicates: ${dupCount}. ${errSummary}`
         );
+        if (errorMessage) {
+          addToast(errorMessage, 'error');
+        }
         addToast(`Table created with ${inserted} rows`, 'success');
       }
     } catch (err) {
@@ -1598,8 +1687,19 @@ export default function CodingTablesPage() {
         insertedMain: mInserted,
         insertedOther: oInserted,
         errorGroups: runErr,
+        aborted,
+        errorMessage,
       } = await runStatements([structSqlOther]);
-      if (!interruptRef.current) {
+      if (aborted) {
+        if (errorMessage) {
+          addToast(errorMessage, 'error');
+        } else {
+          addToast('Insert interrupted', 'warning');
+        }
+      } else {
+        if (errorMessage) {
+          addToast(errorMessage, 'error');
+        }
         addToast(`Other table inserted ${inserted} rows`, 'success');
         setInsertedMain(mInserted);
         setInsertedOther(oInserted);
@@ -1610,8 +1710,6 @@ export default function CodingTablesPage() {
         setSummaryInfo(
           `Inserted to main: ${mInserted}. _other: ${oInserted}. Duplicates: ${dupCount}. ${errSummary}`
         );
-      } else {
-        addToast('Insert interrupted', 'warning');
       }
     } catch (err) {
       console.error('SQL execution failed', err);
@@ -1631,13 +1729,14 @@ export default function CodingTablesPage() {
       const statements = [recordsSql, recordsSqlOther]
         .filter(Boolean)
         .flatMap((s) => splitSqlStatements(s));
-      const {
+      let {
         inserted,
         failed,
         aborted,
-        insertedMain,
-        insertedOther,
+        insertedMain: mInserted,
+        insertedOther: oInserted,
         errorGroups: runErr,
+        errorMessage,
       } = await runStatements(statements);
       if (failed.length > 0) {
         const tbl = cleanIdentifier(tableName);
@@ -1675,8 +1774,15 @@ export default function CodingTablesPage() {
         }
       }
       if (aborted) {
-        addToast('Insert interrupted', 'warning');
+        if (errorMessage) {
+          addToast(errorMessage, 'error');
+        } else {
+          addToast('Insert interrupted', 'warning');
+        }
       } else {
+        if (errorMessage) {
+          addToast(errorMessage, 'error');
+        }
         addToast('Records inserted', 'success');
         setInsertedMain(mInserted);
         setInsertedOther(oInserted);
