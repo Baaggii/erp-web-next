@@ -89,6 +89,7 @@ export default function CodingTablesPage() {
   const sheetSelectedManuallyRef = useRef(false);
   const headerRowSelectedManuallyRef = useRef(false);
   const mnHeaderRowSelectedManuallyRef = useRef(false);
+  const lastGenerationRef = useRef(null);
 
   useEffect(() => {
     fetch('/api/coding_table_configs', { credentials: 'include' })
@@ -104,6 +105,12 @@ export default function CodingTablesPage() {
   }, []);
 
   useEffect(() => {
+    if (
+      lastGenerationRef.current &&
+      lastGenerationRef.current.tableName !== tableName
+    ) {
+      lastGenerationRef.current = null;
+    }
     if (!tableName) {
       setTriggerColumns([]);
       return;
@@ -131,6 +138,17 @@ export default function CodingTablesPage() {
       });
     return () => controller.abort();
   }, [tableName]);
+
+  useEffect(() => {
+    if (!workbook || !sheet || !tableName) return;
+    const last = lastGenerationRef.current;
+    if (!last || !last.options) return;
+    if (last.workbook !== workbook) return;
+    if (last.sheet !== sheet) return;
+    if (last.tableName !== tableName) return;
+    generateFromWorkbook(last.options);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [triggerColumns, workbook, sheet, tableName]);
 
   useEffect(() => {
     function onKey(e) {
@@ -265,6 +283,7 @@ export default function CodingTablesPage() {
   async function loadWorkbook(file) {
     setLoadingWorkbook(true);
     setLoadProgress(0);
+    lastGenerationRef.current = null;
     try {
       const reader = new FileReader();
       const ab = await new Promise((resolve, reject) => {
@@ -368,6 +387,7 @@ export default function CodingTablesPage() {
     const s = e.target.value;
     setSheet(s);
     sheetSelectedManuallyRef.current = true;
+    lastGenerationRef.current = null;
     setHeaders([]);
     setHeaderMap({});
     setMnHeaderRow('');
@@ -857,6 +877,13 @@ export default function CodingTablesPage() {
 
   function generateFromWorkbook({ structure = true, records = true } = {}) {
     if (!workbook || !sheet || !tableName) return;
+    const options = { structure, records };
+    lastGenerationRef.current = {
+      options,
+      workbook,
+      sheet,
+      tableName,
+    };
     const tbl = cleanIdentifier(tableName);
     const idCol = cleanIdentifier(idColumn);
     const nmCol = cleanIdentifier(nameColumn);
