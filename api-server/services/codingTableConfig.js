@@ -70,9 +70,6 @@ function parseConfig(raw = {}) {
     extraFields: Array.isArray(raw.extraFields)
       ? raw.extraFields.map(String)
       : [],
-    triggerColumns: Array.isArray(raw.triggerColumns)
-      ? raw.triggerColumns.map(String)
-      : [],
     populateRange: !!raw.populateRange,
     startYear: raw.startYear ? String(raw.startYear) : '',
     endYear: raw.endYear ? String(raw.endYear) : '',

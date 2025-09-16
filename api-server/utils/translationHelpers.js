@@ -1,21 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-let parser;
-try {
-  parser = await import('@babel/parser');
-} catch {
-  parser = null;
-}
-let traverseModule;
-try {
-  traverseModule = await import('@babel/traverse');
-} catch {
-  traverseModule = null;
-}
-const traverse = traverseModule?.default;
-const parse = parser?.parse;
-const hasBabelParser = parse && traverse;
-let warnedMissingParser = false;
+import * as parser from '@babel/parser';
+import traverseModule from '@babel/traverse';
+const traverse = traverseModule.default;
 
 export function sortObj(o) {
   return Object.keys(o)
@@ -35,42 +22,11 @@ export function collectPhrasesFromPages(dir) {
   walk(dir);
   const pairs = [];
   const uiTags = new Set(['button', 'label', 'option']);
-  if (!hasBabelParser && !warnedMissingParser) {
-    console.warn(
-      '[translations] Babel parser not available; using regex fallback',
-    );
-    warnedMissingParser = true;
-  }
   for (const file of files) {
     const content = fs.readFileSync(file, 'utf8');
-    if (!hasBabelParser) {
-      const tRegex = /t\(\s*(['"])([^'"\\]+?)\1(?:\s*,\s*(['"])([^'"\\]+?)\3)?\s*\)/g;
-      let match;
-      while ((match = tRegex.exec(content))) {
-        const key = match[2];
-        const text = match[4] || key;
-        pairs.push({ key, text });
-      }
-      const tagPattern = Array.from(uiTags).join('|');
-      const tagRegex = new RegExp(
-        `<(${tagPattern})[^>]*>([\\s\\S]*?)</\\1>`,
-        'gi',
-      );
-      let tagMatch;
-      while ((tagMatch = tagRegex.exec(content))) {
-        const raw = tagMatch[2]
-          .replace(/<[^>]+>/g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-        if (raw && !/[{}]/.test(raw)) {
-          pairs.push({ key: raw, text: raw });
-        }
-      }
-      continue;
-    }
     let ast;
     try {
-      ast = parse(content, {
+      ast = parser.parse(content, {
         sourceType: 'module',
         plugins: ['jsx', 'typescript', 'classProperties', 'dynamicImport'],
       });
