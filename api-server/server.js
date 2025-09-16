@@ -39,6 +39,7 @@ import aiInventoryRoutes from "./routes/ai_inventory.js";
 import { getGeneralConfig } from "./services/generalConfig.js";
 import procedureRoutes from "./routes/procedures.js";
 import procTriggerRoutes from "./routes/proc_triggers.js";
+import triggerColumnRoutes from "./routes/trigger_columns.js";
 import reportProcedureRoutes from "./routes/report_procedures.js";
 import generalConfigRoutes from "./routes/general_config.js";
 import permissionsRoutes from "./routes/permissions.js";
@@ -140,6 +141,7 @@ app.use("/api/ai_inventory", featureToggle("aiInventoryApiEnabled"), aiInventory
 app.use("/api/display_fields", displayFieldRoutes);
 app.use("/api/coding_table_configs", codingTableConfigRoutes);
 app.use("/api/generated_sql", generatedSqlRoutes);
+app.use("/api/trigger_columns", triggerColumnRoutes);
 app.use("/api/transaction_forms", transactionFormRoutes);
 app.use("/api/pos_txn_config", posTxnConfigRoutes);
 app.use("/api/pos_txn_layout", posTxnLayoutRoutes);
