@@ -34,7 +34,6 @@ export default function CodingTablesPage() {
   const [structSqlOther, setStructSqlOther] = useState('');
   const [recordsSql, setRecordsSql] = useState('');
   const [recordsSqlOther, setRecordsSqlOther] = useState('');
-  const [recordPayload, setRecordPayload] = useState(null);
   const [triggerSql, setTriggerSql] = useState('');
   const [foreignKeySql, setForeignKeySql] = useState('');
   const [sqlMove, setSqlMove] = useState('');
@@ -263,9 +262,8 @@ export default function CodingTablesPage() {
       setNameColumn('');
       setStructSql('');
       setStructSqlOther('');
-        setRecordsSql('');
-        setRecordsSqlOther('');
-        setRecordPayload(null);
+      setRecordsSql('');
+      setRecordsSqlOther('');
       setSqlMove('');
       setOtherColumns([]);
       setUniqueFields([]);
@@ -319,7 +317,6 @@ export default function CodingTablesPage() {
     setStructSqlOther('');
     setRecordsSql('');
     setRecordsSqlOther('');
-    setRecordPayload(null);
     setSqlMove('');
     setOtherColumns([]);
     setUniqueFields([]);
@@ -357,7 +354,6 @@ export default function CodingTablesPage() {
     setStructSqlOther('');
     setRecordsSql('');
     setRecordsSqlOther('');
-    setRecordPayload(null);
     setSqlMove('');
     setOtherColumns([]);
     setUniqueFields([]);
@@ -782,7 +778,6 @@ export default function CodingTablesPage() {
       setStructSqlOther('');
       setRecordsSql('');
       setRecordsSqlOther('');
-      setRecordPayload(null);
       setSql(allSql);
       setSqlOther('');
       setSqlMove('');
@@ -799,7 +794,6 @@ export default function CodingTablesPage() {
   }
 
   function generateFromWorkbook({ structure = true, records = true } = {}) {
-    setRecordPayload(null);
     if (!workbook || !sheet || !tableName) return;
     const tbl = cleanIdentifier(tableName);
     const idCol = cleanIdentifier(idColumn);
@@ -1253,66 +1247,6 @@ export default function CodingTablesPage() {
       return parts.filter(Boolean).join('\n');
     }
 
-    function buildRowObjects(rows, fields, relaxed = false) {
-      if (!rows.length || !fields.length) return [];
-      const idxMap = fields.map((f) =>
-        f === 'error_description' ? errorDescIdx : allHdrs.indexOf(f),
-      );
-      const list = [];
-      for (const r of rows) {
-        let hasData = relaxed;
-        const obj = {};
-        fields.forEach((f, i) => {
-          const idx = idxMap[i];
-          let v;
-          if (idx === -1) {
-            v = f === 'error_description' ? r[errorDescIdx] : undefined;
-          } else {
-            v = r[idx];
-          }
-          const type = colTypes[f];
-          v = normalizeExcelError(v, type);
-          v = normalizeSpecialChars(v, type);
-          if (v === undefined || v === null || v === '') {
-            const from = defaultFrom[f];
-            if (from) {
-              const fi = allHdrs.indexOf(from);
-              v = fi === -1 ? undefined : r[fi];
-            }
-            if (v === undefined || v === null || v === '') {
-              v = defaultValues[f];
-            }
-          }
-          if (!relaxed) {
-            if (
-              v !== undefined &&
-              v !== null &&
-              v !== '' &&
-              (allowZeroMap[f] ? true : v !== 0)
-            ) {
-              hasData = true;
-            }
-            if (localNotNull[f]) {
-              hasData = true;
-            }
-          }
-          v = normalizeNumeric(v, type);
-          if (type === 'DATE' && v != null && v !== '') {
-            const d = parseExcelDate(v);
-            v = d ? formatTimestamp(d).slice(0, 10) : null;
-          }
-          if (v === undefined) v = null;
-          if (v === '') v = null;
-          const dbName = dbCols[f] || cleanIdentifier(renameMap[f] || f);
-          obj[dbName] = v;
-        });
-        if (!relaxed && !hasData) continue;
-        if (Object.keys(obj).length === 0) continue;
-        list.push(obj);
-      }
-      return list;
-    }
-
     let fields = [
       ...(nmCol ? [nmCol] : []),
       ...uniqueOnly,
@@ -1375,15 +1309,6 @@ export default function CodingTablesPage() {
     if (records) {
       setRecordsSql(insertMainStr);
       setRecordsSqlOther(insertOtherStr);
-      const chunkLimit = parseInt(groupSize, 10) || 300;
-      const mainObjects = buildRowObjects(mainRows, fields, false);
-      const otherObjects = buildRowObjects(otherCombined, fieldsOther, true);
-      setRecordPayload({
-        table: tbl,
-        chunkSize: chunkLimit,
-        mainRows: mainObjects,
-        otherRows: otherObjects,
-      });
     }
     const errCounts = {};
     otherRows.forEach((r) => {
@@ -1411,7 +1336,6 @@ export default function CodingTablesPage() {
     setStructSqlOther('');
     setRecordsSql('');
     setRecordsSqlOther('');
-    setRecordPayload(null);
     setInsertedMain(0);
     setInsertedOther(0);
     setUnsuccessfulGroups({});
@@ -1425,7 +1349,6 @@ export default function CodingTablesPage() {
     }
     setRecordsSql('');
     setRecordsSqlOther('');
-    setRecordPayload(null);
     setInsertedMain(0);
     setInsertedOther(0);
     setUnsuccessfulGroups({});
@@ -1797,169 +1720,85 @@ export default function CodingTablesPage() {
   }
 
   async function executeRecordsSql() {
-    const tbl = cleanIdentifier(tableName);
-    const payload = recordPayload;
-    const mainRows = payload?.mainRows || [];
-    const otherRows = payload?.otherRows || [];
-    if (!tbl || (mainRows.length === 0 && otherRows.length === 0)) {
-      alert('Generate records first');
-      return;
-    }
-    const chunkSize =
-      (payload?.chunkSize && Number(payload.chunkSize)) ||
-      parseInt(groupSize, 10) ||
-      300;
-    const buildChunks = (rows) => {
-      const chunks = [];
-      for (let i = 0; i < rows.length; i += chunkSize) {
-        chunks.push(rows.slice(i, i + chunkSize));
-      }
-      return chunks;
-    };
-    const groups = [
-      ...buildChunks(mainRows).map((rows) => ({
-        table: tbl,
-        rows,
-        isOther: false,
-      })),
-      ...buildChunks(otherRows).map((rows) => ({
-        table: `${tbl}_other`,
-        rows,
-        isOther: true,
-      })),
-    ];
-    if (groups.length === 0) {
-      alert('No records to upload');
+    if (!recordsSql && !recordsSqlOther) {
+      alert('Generate SQL first');
       return;
     }
     setUploading(true);
-    setSqlMove('');
-    setInsertedCount(0);
-    setInsertedMain(0);
-    setInsertedOther(0);
-    setUnsuccessfulGroups({});
-    setErrorGroups({});
-    setUploadProgress({ done: 0, total: groups.length });
-    setGroupMessage(groups.length > 0 ? `Group 1/${groups.length}` : '');
-    interruptRef.current = false;
-    let aborted = false;
-    let totalInserted = 0;
-    let insertedMain = 0;
-    let insertedOther = 0;
-    let errorMessage = '';
-    const errGroups = {};
     try {
-      for (let i = 0; i < groups.length; i += 1) {
-        if (interruptRef.current) {
-          aborted = true;
-          break;
-        }
-        const group = groups[i];
-        setGroupMessage(
-          `Group ${i + 1}/${groups.length} (${group.rows.length} records)`
-        );
-        let res;
-        const controller = new AbortController();
-        abortCtrlRef.current = controller;
-        try {
-          res = await fetch('/api/coding_table_post', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ table: group.table, rows: group.rows }),
-            signal: controller.signal,
-          });
-        } catch (err) {
-          abortCtrlRef.current = null;
-          if (err.name === 'AbortError') {
-            aborted = true;
-            break;
-          }
-          errorMessage = err?.message || 'Execution failed';
-          aborted = true;
-          break;
-        }
-        abortCtrlRef.current = null;
-        let data = {};
-        if (res.ok) {
-          data = await res.json().catch(() => ({}));
-        } else {
-          data = await res.json().catch(() => ({}));
-          errorMessage =
-            (data && typeof data.message === 'string' && data.message) ||
-            res.statusText ||
-            'Execution failed';
-          aborted = true;
-          break;
-        }
-        if (data.message && !errorMessage) {
-          errorMessage = data.message;
-        }
-        if (data.aborted) {
-          aborted = true;
-          break;
-        }
-        const inserted = Number(data.inserted) || 0;
-        if (group.isOther) {
-          insertedOther += inserted;
-        } else {
-          insertedMain += inserted;
-        }
-        totalInserted += inserted;
-        setInsertedCount(totalInserted);
-        addToast(`Inserted ${totalInserted} records`, 'info');
-        setUploadProgress({ done: i + 1, total: groups.length });
-        const errors = Array.isArray(data.errors) ? data.errors : [];
-        errors.forEach((item) => {
-          const msg =
-            (item && typeof item.error === 'string' && item.error) ||
-            'Unknown error';
-          errGroups[msg] = (errGroups[msg] || 0) + 1;
+      const statements = [recordsSql, recordsSqlOther]
+        .filter(Boolean)
+        .flatMap((s) => splitSqlStatements(s));
+      let {
+        inserted,
+        failed,
+        aborted,
+        insertedMain: mInserted,
+        insertedOther: oInserted,
+        errorGroups: runErr,
+        errorMessage,
+      } = await runStatements(statements);
+      if (failed.length > 0) {
+        const tbl = cleanIdentifier(tableName);
+        const moveSql = failed
+          .map((stmt) => {
+            const re = new RegExp(`INSERT INTO\\s+\`${tbl}\``, 'i');
+            if (re.test(stmt) && !/\_other`/i.test(stmt)) {
+              return stmt.replace(re, `INSERT INTO \`${tbl}_other\``);
+            }
+            return stmt;
+          })
+          .join('\n');
+        const resMove = await fetch('/api/generated_sql/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql: moveSql }),
+          credentials: 'include',
         });
-        if (data.errorGroups && typeof data.errorGroups === 'object') {
-          Object.entries(data.errorGroups).forEach(([key, val]) => {
-            if (!key) return;
-            const count = Number(val) || 0;
-            if (!count) return;
-            errGroups[key] = (errGroups[key] || 0) + count;
-          });
+        if (!resMove.ok) {
+          setSqlMove(moveSql);
+        } else {
+          const dataMove = await resMove.json().catch(() => ({}));
+          if (typeof dataMove.inserted === 'number') {
+            oInserted += dataMove.inserted;
+          }
+          if (Array.isArray(dataMove.failed) && dataMove.failed.length > 0) {
+            setSqlMove(
+              dataMove.failed
+                .map((f) =>
+                  typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
+                )
+                .join('\n')
+            );
+          }
         }
-        if (i < groups.length - 1) {
-          await new Promise((r) => setTimeout(r, 250));
+      }
+      if (aborted) {
+        if (errorMessage) {
+          addToast(errorMessage, 'error');
+        } else {
+          addToast('Insert interrupted', 'warning');
         }
+      } else {
+        if (errorMessage) {
+          addToast(errorMessage, 'error');
+        }
+        addToast('Records inserted', 'success');
+        setInsertedMain(mInserted);
+        setInsertedOther(oInserted);
+        setUnsuccessfulGroups(runErr);
+        const errSummary = Object.entries(runErr)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join('; ');
+        setSummaryInfo(
+          `Inserted to main: ${mInserted}. _other: ${oInserted}. Duplicates: ${dupCount}. ${errSummary}`
+        );
       }
     } catch (err) {
-      if (!aborted) {
-        errorMessage = err?.message || 'Execution failed';
-        aborted = true;
-      }
+      console.error('SQL execution failed', err);
+      alert('Execution failed');
     } finally {
-      abortCtrlRef.current = null;
       setUploading(false);
-      setUploadProgress({ done: 0, total: 0 });
-      setGroupMessage('');
-    }
-    setInsertedMain(insertedMain);
-    setInsertedOther(insertedOther);
-    setUnsuccessfulGroups(errGroups);
-    setErrorGroups(errGroups);
-    const errSummary = Object.entries(errGroups)
-      .map(([k, v]) => `${k}: ${v}`)
-      .join('; ');
-    setSummaryInfo(
-      `Inserted to main: ${insertedMain}. _other: ${insertedOther}. Duplicates: ${dupCount}. ${errSummary}`
-    );
-    if (aborted) {
-      if (errorMessage) {
-        addToast(errorMessage, 'error');
-      } else {
-        addToast('Insert interrupted', 'warning');
-      }
-    } else {
-      if (errorMessage) {
-        addToast(errorMessage, 'error');
-      }
-      addToast('Records inserted', 'success');
     }
   }
 
