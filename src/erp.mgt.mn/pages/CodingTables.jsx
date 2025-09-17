@@ -2064,29 +2064,17 @@ export default function CodingTablesPage() {
       const errSummaryString = Object.entries(errorSummaryMap)
         .map(([key, count]) => `${key}: ${count}`)
         .join('; ');
-      const totalInsertedCount = insertedMainCount + insertedOtherCount;
-      const baseSummary = [
-        `Inserted to main: ${insertedMainCount}.`,
-        `_other: ${insertedOtherCount}.`,
-        `Total: ${totalInsertedCount}.`,
-        `Duplicates: ${dupCount}.`,
-      ].join(' ');
-      const errorSuffix = errSummaryString ? ` Errors: ${errSummaryString}` : '';
-      const combinedSummary = `${baseSummary}${errorSuffix}`;
-      setSummaryInfo(combinedSummary);
+      const baseSummary = `Inserted to main: ${insertedMainCount}. _other: ${insertedOtherCount}. Duplicates: ${dupCount}.`;
+      const errorSuffix = errSummaryString ? ` ${errSummaryString}` : '';
+      setSummaryInfo(`${baseSummary}${errorSuffix}`);
 
-      let toastSeverity = 'success';
-      let statusMessage = 'Insert completed successfully.';
       if (errors.length > 0) {
-        toastSeverity = 'error';
-        statusMessage = aborted
-          ? `Insert interrupted with row errors after ${totalInsertedCount} rows processed.`
-          : 'Row insert errors encountered.';
+        addToast('Some records failed to insert', 'error');
       } else if (aborted) {
-        toastSeverity = 'warning';
-        statusMessage = `Insert interrupted after ${totalInsertedCount} rows processed.`;
+        addToast('Insert interrupted', 'warning');
+      } else {
+        addToast('Records inserted', 'success');
       }
-      addToast(`${statusMessage} ${combinedSummary}`.trim(), toastSeverity);
       if (payload.message) {
         addToast(payload.message, 'info');
       }
