@@ -106,8 +106,6 @@ async function insertRowsSequentially(
         await connection.query('DROP TEMPORARY TABLE IF EXISTS ??', [stageName]);
         stageName = null;
         stageColumns = [];
-      } else {
-        summary.stagingUsed = true;
       }
     } catch (err) {
       if (stageName) {
@@ -136,6 +134,8 @@ async function insertRowsSequentially(
     stageName && stageColumns.length > 0
       ? `INSERT INTO ?? (${columnPlaceholder}) SELECT ${columnPlaceholder} FROM ??`
       : null;
+
+  let stagedCopyPerformed = false;
 
   for (let i = 0; i < normalizedRows.length; i += 1) {
     if (signal?.aborted) {
@@ -166,6 +166,7 @@ async function insertRowsSequentially(
           stageName,
         ];
         await connection.query(stageInsertSql, params);
+        stagedCopyPerformed = true;
         await connection.query('DELETE FROM ??', [stageName]);
       } else {
         const insertCommand = buildInsertCommand(safeTable, normalizedRow);
@@ -195,6 +196,8 @@ async function insertRowsSequentially(
       });
     }
   }
+
+  summary.stagingUsed = stagedCopyPerformed;
 
   return summary;
 }
