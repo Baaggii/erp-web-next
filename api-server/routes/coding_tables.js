@@ -3,6 +3,7 @@ import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
 import { uploadCodingTable } from '../controllers/codingTableController.js';
+import { upsertCodingTableRow } from '../services/codingTableRowUpsert.js';
 import { requireAuth } from '../middlewares/auth.js';
 
 const router = express.Router();
@@ -39,5 +40,18 @@ router.post(
     }
   },
 );
+
+router.post('/upsert-row', requireAuth, async (req, res, next) => {
+  try {
+    const { table, row } = req.body || {};
+    if (!table || !row || typeof row !== 'object') {
+      return res.status(400).json({ message: 'table and row required' });
+    }
+    const result = await upsertCodingTableRow(table, row);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
 
 export default router;
