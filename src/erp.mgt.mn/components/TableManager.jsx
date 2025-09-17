@@ -22,6 +22,7 @@ import CustomDatePicker from './CustomDatePicker.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
+import { getTenantKeyList } from '../utils/tenantKeys.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
 import { useTranslation } from 'react-i18next';
@@ -693,8 +694,7 @@ const TableManager = forwardRef(function TableManager({
             }
             const isShared =
               tenantInfo?.isShared ?? tenantInfo?.is_shared ?? false;
-            const tenantKeys =
-              tenantInfo?.tenantKeys ?? tenantInfo?.tenant_keys ?? [];
+            const tenantKeys = getTenantKeyList(tenantInfo);
 
             while (true) {
               const params = new URLSearchParams({ page, perPage });
@@ -1091,7 +1091,7 @@ const TableManager = forwardRef(function TableManager({
       try {
         const params = new URLSearchParams();
         if (tenantInfo && !(tenantInfo.isShared ?? tenantInfo.is_shared)) {
-          const keys = tenantInfo.tenantKeys ?? tenantInfo.tenant_keys ?? [];
+          const keys = getTenantKeyList(tenantInfo);
           if (keys.includes('company_id') && company != null)
             params.set('company_id', company);
           if (keys.includes('branch_id') && branch != null)

@@ -3,6 +3,7 @@ import {
   upsertTenantTable,
   getEmploymentSession,
   listAllTenantTableOptions,
+  getTenantTable as getTenantTableDb,
   zeroSharedTenantKeys,
   seedDefaultsForSeedTables,
   seedTenantTables,
@@ -25,6 +26,22 @@ export async function listTenantTableOptions(req, res, next) {
     if (!(await ensureAdmin(req))) return res.sendStatus(403);
     const tables = await listAllTenantTableOptions();
     res.json(tables);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getTenantTable(req, res, next) {
+  try {
+    const tableName = req.params.table_name;
+    if (!tableName) {
+      return res.status(400).json({ message: 'table_name is required' });
+    }
+    const table = await getTenantTableDb(tableName);
+    if (!table) {
+      return res.status(404).json({ message: 'Table not found' });
+    }
+    res.json(table);
   } catch (err) {
     next(err);
   }
