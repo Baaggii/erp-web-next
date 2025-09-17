@@ -34,10 +34,6 @@ export default function CodingTablesPage() {
   const [structSqlOther, setStructSqlOther] = useState('');
   const [recordsSql, setRecordsSql] = useState('');
   const [recordsSqlOther, setRecordsSqlOther] = useState('');
-  const [preparedMainRows, setPreparedMainRows] = useState([]);
-  const [preparedOtherRows, setPreparedOtherRows] = useState([]);
-  const [preparedMainFieldTypes, setPreparedMainFieldTypes] = useState({});
-  const [preparedOtherFieldTypes, setPreparedOtherFieldTypes] = useState({});
   const [triggerSql, setTriggerSql] = useState('');
   const [foreignKeySql, setForeignKeySql] = useState('');
   const [sqlMove, setSqlMove] = useState('');
@@ -71,7 +67,6 @@ export default function CodingTablesPage() {
   const [insertedMain, setInsertedMain] = useState(0);
   const [insertedOther, setInsertedOther] = useState(0);
   const [unsuccessfulGroups, setUnsuccessfulGroups] = useState({});
-  const [useStagingInsert, setUseStagingInsert] = useState(false);
   const fileInputRef = useRef(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [configNames, setConfigNames] = useState([]);
@@ -1265,11 +1260,6 @@ export default function CodingTablesPage() {
       seenCols.add(db);
       return true;
     });
-    const mainFieldDefs = fields.map((f) => ({
-      source: f,
-      column: dbCols[f] || cleanIdentifier(renameMap[f] || f),
-      type: colTypes[f],
-    }));
 
     const structMainStr = buildStructure(tbl, true);
     const insertMainStr = buildGroupedInsertSQL(
@@ -1284,87 +1274,6 @@ export default function CodingTablesPage() {
     const structOtherStr = buildOtherStructure(`${tbl}_other`);
     const fieldsWithoutId = fields.filter((f) => f !== idCol);
     const fieldsOther = [...fieldsWithoutId, 'error_description'];
-    const otherFieldDefs = fieldsOther.map((f) => ({
-      source: f,
-      column:
-        f === 'error_description'
-          ? 'error_description'
-          : dbCols[f] || cleanIdentifier(renameMap[f] || f),
-      type: f === 'error_description' ? 'VARCHAR(255)' : colTypes[f],
-    }));
-
-    function convertRowToRecord(row, fieldDefs, relaxed = false) {
-      const record = {};
-      let hasData = relaxed;
-      fieldDefs.forEach(({ source, column, type }) => {
-        const sourceIdx =
-          source === 'error_description' ? errorDescIdx : allHdrs.indexOf(source);
-        let value = sourceIdx === -1 ? undefined : row[sourceIdx];
-        if (source === 'error_description') {
-          value = row[errorDescIdx];
-        }
-        value = normalizeExcelError(value, type);
-        value = normalizeSpecialChars(value, type);
-        if (
-          (value === undefined || value === null || value === '') &&
-          source !== 'error_description'
-        ) {
-          const from = defaultFrom[source];
-          if (from) {
-            const fi = allHdrs.indexOf(from);
-            if (fi !== -1) {
-              value = row[fi];
-              value = normalizeExcelError(value, type);
-              value = normalizeSpecialChars(value, type);
-            }
-          }
-          if (value === undefined || value === null || value === '') {
-            value = defaultValues[source];
-          }
-        }
-        value = normalizeNumeric(value, type);
-        const typeUpper = typeof type === 'string' ? type.toUpperCase() : '';
-        let finalVal = value;
-        if (finalVal === undefined || finalVal === null || finalVal === '') {
-          record[column] = null;
-        } else if (typeUpper === 'DATE') {
-          const parsed = parseExcelDate(finalVal);
-          record[column] = parsed ? formatTimestamp(parsed).slice(0, 10) : null;
-        } else if (/DATETIME|TIMESTAMP/.test(typeUpper)) {
-          const parsed =
-            finalVal instanceof Date ? finalVal : parseExcelDate(finalVal);
-          record[column] = parsed ? formatTimestamp(parsed) : null;
-        } else if (/(INT|DECIMAL|NUMERIC|DOUBLE|FLOAT|LONG|BIGINT|NUMBER)/.test(typeUpper)) {
-          const num = Number(finalVal);
-          record[column] = Number.isNaN(num) ? null : num;
-        } else {
-          record[column] = finalVal;
-        }
-        const currentVal = record[column];
-        if (!relaxed) {
-          if (
-            currentVal !== null &&
-            currentVal !== '' &&
-            currentVal !== undefined &&
-            (allowZeroMap[source] ? true : currentVal !== 0)
-          ) {
-            hasData = true;
-          }
-          if (localNotNull[source]) {
-            hasData = true;
-          }
-        } else if (
-          currentVal !== null &&
-          currentVal !== '' &&
-          currentVal !== undefined
-        ) {
-          hasData = true;
-        }
-      });
-      if (!hasData) return null;
-      return record;
-    }
-
     const insertOtherStr = buildGroupedInsertSQL(
       otherCombined,
       `${tbl}_other`,
@@ -1400,29 +1309,6 @@ export default function CodingTablesPage() {
     if (records) {
       setRecordsSql(insertMainStr);
       setRecordsSqlOther(insertOtherStr);
-      const preparedMain = mainRows
-        .map((row) => convertRowToRecord(row, mainFieldDefs, false))
-        .filter(Boolean);
-      const preparedOther = otherCombined
-        .map((row) => convertRowToRecord(row, otherFieldDefs, true))
-        .filter(Boolean);
-      setPreparedMainRows(preparedMain);
-      setPreparedOtherRows(preparedOther);
-      setPreparedMainFieldTypes(
-        Object.fromEntries(
-          mainFieldDefs.map((def) => [def.column, def.type || null]),
-        ),
-      );
-      setPreparedOtherFieldTypes(
-        Object.fromEntries(
-          otherFieldDefs.map((def) => [def.column, def.type || null]),
-        ),
-      );
-    } else {
-      setPreparedMainRows([]);
-      setPreparedOtherRows([]);
-      setPreparedMainFieldTypes({});
-      setPreparedOtherFieldTypes({});
     }
     const errCounts = {};
     otherRows.forEach((r) => {
@@ -1453,10 +1339,6 @@ export default function CodingTablesPage() {
     setInsertedMain(0);
     setInsertedOther(0);
     setUnsuccessfulGroups({});
-    setPreparedMainRows([]);
-    setPreparedOtherRows([]);
-    setPreparedMainFieldTypes({});
-    setPreparedOtherFieldTypes({});
     generateFromWorkbook({ structure: true, records: true });
   }
 
@@ -1470,10 +1352,6 @@ export default function CodingTablesPage() {
     setInsertedMain(0);
     setInsertedOther(0);
     setUnsuccessfulGroups({});
-    setPreparedMainRows([]);
-    setPreparedOtherRows([]);
-    setPreparedMainFieldTypes({});
-    setPreparedOtherFieldTypes({});
     generateFromWorkbook({ structure: false, records: true });
   }
 
@@ -1841,258 +1719,86 @@ export default function CodingTablesPage() {
     }
   }
 
-  function hasValue(val) {
-    return !(val === undefined || val === null || val === '');
-  }
-
-  function castDynamicValueForType(value, type) {
-    if (!type) return value;
-    const upper = String(type).toUpperCase();
-    if (upper === 'DATE') {
-      const dateVal = value instanceof Date ? value : new Date(value);
-      if (Number.isNaN(dateVal.getTime())) return null;
-      return formatTimestamp(dateVal).slice(0, 10);
-    }
-    if (/DATETIME|TIMESTAMP/.test(upper)) {
-      const dateVal = value instanceof Date ? value : new Date(value);
-      if (Number.isNaN(dateVal.getTime())) return null;
-      return formatTimestamp(dateVal);
-    }
-    if (/(INT|DECIMAL|NUMERIC|DOUBLE|FLOAT|LONG|BIGINT|NUMBER)/.test(upper)) {
-      const num = Number(value);
-      return Number.isNaN(num) ? null : num;
-    }
-    return value;
-  }
-
-  function generateOrNumber(prefix, counter) {
-    const now = new Date();
-    const datePart = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(
-      2,
-      '0',
-    )}${String(now.getDate()).padStart(2, '0')}`;
-    return `${prefix}-${datePart}-${String(counter).padStart(5, '0')}`;
-  }
-
-  function buildLowerKeyMap(record) {
-    const map = {};
-    Object.keys(record || {}).forEach((key) => {
-      map[key.toLowerCase()] = key;
-    });
-    return map;
-  }
-
-  function findKey(lowerMap, candidates) {
-    for (const candidate of candidates) {
-      const lower = candidate.toLowerCase();
-      if (lowerMap[lower]) return lowerMap[lower];
-    }
-    return null;
-  }
-
-  function applyTotals(record, lowerKeyMap, fieldTypes) {
-    const totalKey = findKey(lowerKeyMap, [
-      'total',
-      'total_amount',
-      'amount_total',
-      'grand_total',
-      'overall_total',
-      'line_total',
-    ]);
-    if (!totalKey) return;
-    if (hasValue(record[totalKey])) return;
-    const qtyKey = findKey(lowerKeyMap, ['quantity', 'qty']);
-    const priceKey = findKey(lowerKeyMap, ['unit_price', 'unitprice', 'price']);
-    if (qtyKey && priceKey) {
-      const qty = Number(record[qtyKey]);
-      const price = Number(record[priceKey]);
-      if (!Number.isNaN(qty) && !Number.isNaN(price)) {
-        const computed = qty * price;
-        record[totalKey] = castDynamicValueForType(
-          computed,
-          fieldTypes[totalKey],
-        );
-        return;
-      }
-    }
-    let sum = 0;
-    let counted = 0;
-    Object.entries(record).forEach(([key, val]) => {
-      const lower = key.toLowerCase();
-      if (lower === totalKey.toLowerCase()) return;
-      if (!/(amount|fee|tax|subtotal|charge)/.test(lower)) return;
-      const num = Number(val);
-      if (Number.isNaN(num)) return;
-      sum += num;
-      counted += 1;
-    });
-    if (counted > 0) {
-      record[totalKey] = castDynamicValueForType(sum, fieldTypes[totalKey]);
-    }
-  }
-
-  function applyDynamicFieldValues(records, fieldTypes, options = {}) {
-    if (!Array.isArray(records) || records.length === 0) {
-      return { rows: [], nextCounter: Number(options.startCounter ?? 1) };
-    }
-    const now = new Date();
-    const orPrefix = options.orPrefix || 'OR';
-    let counter = Number(options.startCounter ?? 1);
-    const processed = records.map((original) => {
-      const record = { ...original };
-      const lowerKeyMap = buildLowerKeyMap(record);
-      const createdKey = findKey(lowerKeyMap, [
-        'created_at',
-        'createdat',
-        'created_on',
-        'createdon',
-      ]);
-      if (createdKey && !hasValue(record[createdKey])) {
-        record[createdKey] = castDynamicValueForType(
-          now,
-          fieldTypes[createdKey],
-        );
-      }
-      const updatedKey = findKey(lowerKeyMap, [
-        'updated_at',
-        'updatedat',
-        'updated_on',
-        'updatedon',
-      ]);
-      if (updatedKey) {
-        record[updatedKey] = castDynamicValueForType(
-          now,
-          fieldTypes[updatedKey],
-        );
-      }
-      const orKey = findKey(lowerKeyMap, [
-        'or_number',
-        'ornumber',
-        'or_no',
-        'orno',
-      ]);
-      if (orKey && !hasValue(record[orKey])) {
-        record[orKey] = castDynamicValueForType(
-          generateOrNumber(orPrefix, counter),
-          fieldTypes[orKey],
-        );
-        counter += 1;
-      }
-      applyTotals(record, lowerKeyMap, fieldTypes);
-      return record;
-    });
-    return { rows: processed, nextCounter: counter };
-  }
-
   async function executeRecordsSql() {
-    const tbl = cleanIdentifier(tableName);
-    if (!tbl) {
-      addToast('Table name required', 'error');
+    if (!recordsSql && !recordsSqlOther) {
+      alert('Generate SQL first');
       return;
     }
-    if (preparedMainRows.length === 0 && preparedOtherRows.length === 0) {
-      alert('Populate records first');
-      return;
-    }
-    interruptRef.current = false;
-    const totalRows = preparedMainRows.length + preparedOtherRows.length;
     setUploading(true);
-    setSqlMove('');
-    setGroupMessage(totalRows ? `Preparing ${totalRows} rows` : 'Preparing rows');
-    setUploadProgress({ done: 0, total: totalRows || 1 });
     try {
-      const prefixBase = tbl.slice(0, 3).toUpperCase() || 'OR';
-      const mainResult = applyDynamicFieldValues(
-        preparedMainRows,
-        preparedMainFieldTypes,
-        {
-          orPrefix: prefixBase,
-          startCounter: Number(autoIncStart) || 1,
-        },
-      );
-      const otherResult = applyDynamicFieldValues(
-        preparedOtherRows,
-        preparedOtherFieldTypes,
-        {
-          orPrefix: prefixBase,
-          startCounter: mainResult.nextCounter,
-        },
-      );
-      const preparedMain = mainResult.rows;
-      const preparedOther = otherResult.rows;
-
-      setGroupMessage('Inserting rows...');
-      const controller = new AbortController();
-      abortCtrlRef.current = controller;
-      const res = await fetch('/api/coding_tables/insertRecords', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        signal: controller.signal,
-        body: JSON.stringify({
-          table: tbl,
-          mainRows: preparedMain,
-          otherRows: preparedOther,
-          useStaging: useStagingInsert,
-        }),
-      });
-      abortCtrlRef.current = null;
-      if (!res.ok) {
-        const text = await res.text().catch(() => '');
-        throw new Error(text || 'Failed to insert records');
+      const statements = [recordsSql, recordsSqlOther]
+        .filter(Boolean)
+        .flatMap((s) => splitSqlStatements(s));
+      let {
+        inserted,
+        failed,
+        aborted,
+        insertedMain: mInserted,
+        insertedOther: oInserted,
+        errorGroups: runErr,
+        errorMessage,
+      } = await runStatements(statements);
+      if (failed.length > 0) {
+        const tbl = cleanIdentifier(tableName);
+        const moveSql = failed
+          .map((stmt) => {
+            const re = new RegExp(`INSERT INTO\\s+\`${tbl}\``, 'i');
+            if (re.test(stmt) && !/\_other`/i.test(stmt)) {
+              return stmt.replace(re, `INSERT INTO \`${tbl}_other\``);
+            }
+            return stmt;
+          })
+          .join('\n');
+        const resMove = await fetch('/api/generated_sql/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql: moveSql }),
+          credentials: 'include',
+        });
+        if (!resMove.ok) {
+          setSqlMove(moveSql);
+        } else {
+          const dataMove = await resMove.json().catch(() => ({}));
+          if (typeof dataMove.inserted === 'number') {
+            oInserted += dataMove.inserted;
+          }
+          if (Array.isArray(dataMove.failed) && dataMove.failed.length > 0) {
+            setSqlMove(
+              dataMove.failed
+                .map((f) =>
+                  typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
+                )
+                .join('\n')
+            );
+          }
+        }
       }
-      const payload = await res.json().catch(() => ({}));
-      const insertedMainCount = Number(payload.insertedMain) || 0;
-      const insertedOtherCount = Number(payload.insertedOther) || 0;
-      const errors = Array.isArray(payload.errors) ? payload.errors : [];
-      const aborted = Boolean(payload.aborted);
-      const stagingUsed = Boolean(payload.stagingUsed);
-
-      setInsertedMain(insertedMainCount);
-      setInsertedOther(insertedOtherCount);
-      setInsertedCount(insertedMainCount + insertedOtherCount);
-      setUploadProgress({ done: totalRows, total: totalRows || 1 });
-      setGroupMessage('');
-
-      const errorSummaryMap = errors.reduce((acc, err) => {
-        const key = err && err.table ? String(err.table) : 'unknown';
-        acc[key] = (acc[key] || 0) + 1;
-        return acc;
-      }, {});
-      setUnsuccessfulGroups(errorSummaryMap);
-
-      const errSummaryString = Object.entries(errorSummaryMap)
-        .map(([key, count]) => `${key}: ${count}`)
-        .join('; ');
-      const baseSummary = `Inserted to main: ${insertedMainCount}. _other: ${insertedOtherCount}. Duplicates: ${dupCount}.`;
-      const errorSuffix = errSummaryString ? ` ${errSummaryString}` : '';
-      setSummaryInfo(`${baseSummary}${errorSuffix}`);
-
-      if (errors.length > 0) {
-        addToast('Some records failed to insert', 'error');
-      } else if (aborted) {
-        addToast('Insert interrupted', 'warning');
+      if (aborted) {
+        if (errorMessage) {
+          addToast(errorMessage, 'error');
+        } else {
+          addToast('Insert interrupted', 'warning');
+        }
       } else {
+        if (errorMessage) {
+          addToast(errorMessage, 'error');
+        }
         addToast('Records inserted', 'success');
-      }
-      if (payload.message) {
-        addToast(payload.message, 'info');
-      }
-      if (stagingUsed) {
-        addToast('Rows were migrated via staging table', 'info');
+        setInsertedMain(mInserted);
+        setInsertedOther(oInserted);
+        setUnsuccessfulGroups(runErr);
+        const errSummary = Object.entries(runErr)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join('; ');
+        setSummaryInfo(
+          `Inserted to main: ${mInserted}. _other: ${oInserted}. Duplicates: ${dupCount}. ${errSummary}`
+        );
       }
     } catch (err) {
-      if (err?.name === 'AbortError') {
-        addToast('Insert interrupted', 'warning');
-      } else {
-        console.error('Record insertion failed', err);
-        addToast(err?.message || 'Insert failed', 'error');
-      }
+      console.error('SQL execution failed', err);
+      alert('Execution failed');
     } finally {
-      abortCtrlRef.current = null;
       setUploading(false);
-      setGroupMessage('');
-      setUploadProgress({ done: 0, total: 0 });
     }
   }
 
@@ -2866,23 +2572,10 @@ export default function CodingTablesPage() {
               <button onClick={executeSeparateSql} style={{ marginLeft: '0.5rem' }}>
                 Create Tables & Records
               </button>
-              {(recordsSql ||
-                recordsSqlOther ||
-                preparedMainRows.length > 0 ||
-                preparedOtherRows.length > 0) && (
-                <>
-                  <label style={{ marginLeft: '0.5rem' }}>
-                    <input
-                      type="checkbox"
-                      checked={useStagingInsert}
-                      onChange={(e) => setUseStagingInsert(e.target.checked)}
-                    />{' '}
-                    Use staging table
-                  </label>
-                  <button onClick={executeRecordsSql} style={{ marginLeft: '0.5rem' }}>
-                    Insert Records
-                  </button>
-                </>
+              {(recordsSql || recordsSqlOther) && (
+                <button onClick={executeRecordsSql} style={{ marginLeft: '0.5rem' }}>
+                  Insert Records
+                </button>
               )}
             </div>
               {(structSql || recordsSql) && (

@@ -4,7 +4,6 @@ import fs from 'fs';
 import path from 'path';
 import { uploadCodingTable } from '../controllers/codingTableController.js';
 import { requireAuth } from '../middlewares/auth.js';
-import { insertCodingTableRows } from '../services/codingTablesInsert.js';
 
 const router = express.Router();
 
@@ -40,31 +39,5 @@ router.post(
     }
   },
 );
-
-router.post('/insertRecords', requireAuth, async (req, res, next) => {
-  const controller = new AbortController();
-  const handleAbort = () => controller.abort();
-  req.on('close', handleAbort);
-  res.on('close', handleAbort);
-  try {
-    const { table, mainRows = [], otherRows = [], useStaging = false } = req.body || {};
-    if (!table) {
-      return res.status(400).json({ message: 'table required' });
-    }
-    const result = await insertCodingTableRows({
-      table,
-      mainRows,
-      otherRows,
-      useStaging: Boolean(useStaging),
-      signal: controller.signal,
-    });
-    return res.json(result);
-  } catch (err) {
-    return next(err);
-  } finally {
-    req.off('close', handleAbort);
-    res.off('close', handleAbort);
-  }
-});
 
 export default router;
