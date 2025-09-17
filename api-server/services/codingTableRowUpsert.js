@@ -44,6 +44,28 @@ function sanitizeTable(table) {
   return String(table || '').replace(/[^A-Za-z0-9_]+/g, '');
 }
 
+function escapeRegex(source) {
+  return String(source || '').replace(/[.*+?^${}()|[\]\\]/g, '\$&');
+}
+
+async function dropSelfReferentialTriggers(conn, table) {
+  if (!conn || !table) return;
+  const [rows] = await conn.query(
+    `SELECT TRIGGER_NAME, ACTION_STATEMENT FROM information_schema.triggers WHERE TRIGGER_SCHEMA = DATABASE() AND EVENT_OBJECT_TABLE = ?`,
+    [table],
+  );
+  if (!Array.isArray(rows) || rows.length === 0) return;
+  const pattern = new RegExp('\\bUPDATE\\s+`?' + escapeRegex(table) + '`?\\b', 'i');
+  for (const trigger of rows) {
+    const statement = trigger?.ACTION_STATEMENT || '';
+    if (!statement || !pattern.test(statement)) continue;
+    const name = trigger?.TRIGGER_NAME;
+    if (!name) continue;
+    const safeName = String(name).replace(/`/g, '``');
+    await conn.query(`DROP TRIGGER IF EXISTS \`${safeName}\``);
+  }
+}
+
 export async function upsertCodingTableRow(table, row) {
   if (!table || !row || typeof row !== 'object') {
     throw new Error('table and row required');
@@ -55,6 +77,7 @@ export async function upsertCodingTableRow(table, row) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+    await dropSelfReferentialTriggers(conn, cleanTable);
     const payload = { ...row };
     await applyDynamicFields(conn, cleanTable, payload);
     const entries = Object.entries(payload).filter(([, value]) => value !== undefined);
