@@ -1,8 +1,26 @@
 import fs from 'fs';
 import path from 'path';
-import * as parser from '@babel/parser';
-import traverseModule from '@babel/traverse';
-const traverse = traverseModule.default;
+
+let parser = null;
+let traverse = null;
+try {
+  const parserMod = await import('@babel/parser');
+  parser = parserMod.default || parserMod;
+  try {
+    const traverseModule = await import('@babel/traverse');
+    traverse = traverseModule.default;
+  } catch (err) {
+    console.warn(
+      `[translations] Failed to load @babel/traverse; falling back to regex parsing: ${err.message}`,
+    );
+    parser = null;
+  }
+} catch (err) {
+  console.warn(
+    `[translations] Failed to load @babel/parser; falling back to regex parsing: ${err.message}`,
+  );
+  parser = null;
+}
 
 export function sortObj(o) {
   return Object.keys(o)
@@ -22,52 +40,76 @@ export function collectPhrasesFromPages(dir) {
   walk(dir);
   const pairs = [];
   const uiTags = new Set(['button', 'label', 'option']);
+  const seen = new Set();
+  const addPair = (key, text) => {
+    if (key == null || text == null) return;
+    const normalized = `${key}:::${text}`;
+    if (seen.has(normalized)) return;
+    seen.add(normalized);
+    pairs.push({ key, text });
+  };
   for (const file of files) {
     const content = fs.readFileSync(file, 'utf8');
-    let ast;
-    try {
-      ast = parser.parse(content, {
-        sourceType: 'module',
-        plugins: ['jsx', 'typescript', 'classProperties', 'dynamicImport'],
-      });
-    } catch (err) {
-      console.warn(`[translations] Failed to parse ${file}: ${err.message}`);
-      continue;
-    }
-    traverse(ast, {
-      CallExpression(path) {
-        const callee = path.get('callee');
-        if (callee.isIdentifier({ name: 't' })) {
-          const args = path.get('arguments');
-          if (args.length >= 1 && args[0].isStringLiteral()) {
-            const key = args[0].node.value;
-            const text =
-              args.length > 1 && args[1].isStringLiteral()
-                ? args[1].node.value
-                : key;
-            pairs.push({ key, text });
-          }
-        }
-      },
-      JSXElement(path) {
-        const namePath = path.get('openingElement.name');
-        if (!namePath.isJSXIdentifier()) return;
-        const tag = namePath.node.name;
-        if (!uiTags.has(tag)) return;
-        for (const child of path.get('children')) {
-          if (child.isJSXText()) {
-            const val = child.node.value.trim();
-            if (val) pairs.push({ key: val, text: val });
-          } else if (child.isJSXExpressionContainer()) {
-            const expr = child.get('expression');
-            if (expr.isStringLiteral()) {
-              const val = expr.node.value.trim();
-              if (val) pairs.push({ key: val, text: val });
+    if (parser && traverse) {
+      let ast;
+      try {
+        ast = parser.parse(content, {
+          sourceType: 'module',
+          plugins: ['jsx', 'typescript', 'classProperties', 'dynamicImport'],
+        });
+      } catch (err) {
+        console.warn(`[translations] Failed to parse ${file}: ${err.message}`);
+        continue;
+      }
+      traverse(ast, {
+        CallExpression(path) {
+          const callee = path.get('callee');
+          if (callee.isIdentifier({ name: 't' })) {
+            const args = path.get('arguments');
+            if (args.length >= 1 && args[0].isStringLiteral()) {
+              const key = args[0].node.value;
+              const text =
+                args.length > 1 && args[1].isStringLiteral()
+                  ? args[1].node.value
+                  : key;
+              addPair(key, text);
             }
           }
-        }
-      },
-    });
+        },
+        JSXElement(path) {
+          const namePath = path.get('openingElement.name');
+          if (!namePath.isJSXIdentifier()) return;
+          const tag = namePath.node.name;
+          if (!uiTags.has(tag)) return;
+          for (const child of path.get('children')) {
+            if (child.isJSXText()) {
+              const val = child.node.value.trim();
+              if (val) addPair(val, val);
+            } else if (child.isJSXExpressionContainer()) {
+              const expr = child.get('expression');
+              if (expr.isStringLiteral()) {
+                const val = expr.node.value.trim();
+                if (val) addPair(val, val);
+              }
+            }
+          }
+        },
+      });
+      continue;
+    }
+
+    const tagRegex = /<(button|label|option)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+    let match;
+    while ((match = tagRegex.exec(content))) {
+      const raw = match[2].replace(/<[^>]*>/g, '').trim();
+      if (raw) addPair(raw, raw);
+    }
+    const callRegex = /t\(\s*['"]([^'"\\]+)['"](?:\s*,\s*['"]([^'"\\]+)['"])?/gi;
+    while ((match = callRegex.exec(content))) {
+      const key = match[1];
+      const text = match[2] ?? match[1];
+      addPair(key, text);
+    }
   }
   return pairs;
 }

@@ -40,6 +40,8 @@ export default function CodingTablesPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
   const [insertedCount, setInsertedCount] = useState(0);
+  const [rowUploadPayload, setRowUploadPayload] = useState(null);
+  const [requiresRowUpload, setRequiresRowUpload] = useState(false);
   const [groupMessage, setGroupMessage] = useState('');
   const [groupByField, setGroupByField] = useState('');
   const [groupSize, setGroupSize] = useState(300);
@@ -79,6 +81,17 @@ export default function CodingTablesPage() {
   const sheetSelectedManuallyRef = useRef(false);
   const headerRowSelectedManuallyRef = useRef(false);
   const mnHeaderRowSelectedManuallyRef = useRef(false);
+
+  const ROW_HELPER_TABLES = useMemo(
+    () =>
+      new Set([
+        'transactions_income',
+        'transactions_expense',
+        'transactions_order',
+        'transactions_plan',
+      ]),
+    [],
+  );
 
   useEffect(() => {
     fetch('/api/coding_table_configs', { credentials: 'include' })
@@ -796,6 +809,8 @@ export default function CodingTablesPage() {
   function generateFromWorkbook({ structure = true, records = true } = {}) {
     if (!workbook || !sheet || !tableName) return;
     const tbl = cleanIdentifier(tableName);
+    setRowUploadPayload(null);
+    setRequiresRowUpload(false);
     const idCol = cleanIdentifier(idColumn);
     const nmCol = cleanIdentifier(nameColumn);
     const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheet], {
@@ -1085,6 +1100,13 @@ export default function CodingTablesPage() {
           results.push(piece.endsWith(';') ? piece : piece + ';');
           continue;
         }
+        const updateSelfRe = new RegExp(`UPDATE\\s+\`?${tbl}\`?\\b`, 'i');
+        if (updateSelfRe.test(piece)) {
+          results.push(
+            `-- Trigger snippet skipped: updates ${tbl} directly (handled via API)`
+          );
+          continue;
+        }
         const colMatch = piece.match(/SET\s+NEW\.\`?([A-Za-z0-9_]+)\`?\s*=/i);
         const col = colMatch ? cleanIdentifier(colMatch[1]) : `col${i + 1}`;
         counts[col] = (counts[col] || 0) + 1;
@@ -1144,6 +1166,85 @@ export default function CodingTablesPage() {
       const trgSql = buildTriggerScripts(triggerSql, tableNameForSql);
       const trgPart = trgSql ? `\n${trgSql}` : '';
       return `${base}${trgPart}\n`;
+    }
+
+    function coerceRowValue(val, type) {
+      if (val === undefined || val === null || val === '') {
+        return null;
+      }
+      if (type === 'DATE') {
+        const d = parseExcelDate(val);
+        if (!d) return null;
+        return formatTimestamp(d).slice(0, 10);
+      }
+      let normalized = normalizeNumeric(val, type);
+      if (normalized === undefined || normalized === null || normalized === '') {
+        return normalized ?? null;
+      }
+      if (
+        typeof normalized === 'string' &&
+        /INT|DECIMAL|NUMERIC|DOUBLE|FLOAT|LONG|BIGINT|NUMBER/i.test(
+          String(type),
+        )
+      ) {
+        const num = Number(normalized);
+        if (!Number.isNaN(num)) {
+          return num;
+        }
+      }
+      if (typeof normalized === 'string') {
+        return removeSqlUnsafeChars(normalized);
+      }
+      return normalized;
+    }
+
+    function buildRowObjects(rows, fields, relaxed = false) {
+      const idxMap = fields.map((f) => allHdrs.indexOf(f));
+      const records = [];
+      for (const r of rows) {
+        let hasData = relaxed;
+        const record = {};
+        fields.forEach((field, fieldIdx) => {
+          const idxF = idxMap[fieldIdx];
+          let raw;
+          if (idxF === -1) {
+            raw = field === 'error_description' ? r[errorDescIdx] : undefined;
+          } else {
+            raw = r[idxF];
+          }
+          raw = normalizeExcelError(raw, colTypes[field]);
+          raw = normalizeSpecialChars(raw, colTypes[field]);
+          if (raw === undefined || raw === null || raw === '') {
+            const from = defaultFrom[field];
+            if (from) {
+              const fi = allHdrs.indexOf(from);
+              raw = fi === -1 ? undefined : r[fi];
+            }
+            if (raw === undefined || raw === null || raw === '') {
+              raw = defaultValues[field];
+            }
+          }
+          if (!relaxed) {
+            if (
+              raw !== undefined &&
+              raw !== null &&
+              raw !== '' &&
+              (allowZeroMap[field] ? true : raw !== 0)
+            ) {
+              hasData = true;
+            }
+            if (localNotNull[field]) {
+              hasData = true;
+            }
+          }
+          const dbName = dbCols[field] || cleanIdentifier(renameMap[field] || field);
+          const coerced = coerceRowValue(raw, colTypes[field]);
+          record[dbName] = coerced ?? null;
+        });
+        if (!hasData) continue;
+        records.push(record);
+      }
+      return records;
     }
 
     function buildInsert(rows, tableNameForSql, fields, chunkLimit = 100, relaxed = false) {
@@ -1262,14 +1363,23 @@ export default function CodingTablesPage() {
     });
 
     const structMainStr = buildStructure(tbl, true);
-    const insertMainStr = buildGroupedInsertSQL(
-      mainRows,
-      tbl,
-      fields,
-      null,
-      parseInt(groupSize, 10) || 300,
-      false
-    );
+    let insertMainStr = '';
+    const useRowApi = ROW_HELPER_TABLES.has(tbl.toLowerCase());
+    if (useRowApi) {
+      const payloadRows = buildRowObjects(mainRows, fields, false);
+      setRowUploadPayload({ table: tbl, rows: payloadRows });
+      setRequiresRowUpload(true);
+      insertMainStr = '';
+    } else {
+      insertMainStr = buildGroupedInsertSQL(
+        mainRows,
+        tbl,
+        fields,
+        null,
+        parseInt(groupSize, 10) || 300,
+        false,
+      );
+    }
     const otherCombined = [...otherRows, ...dupRows];
     const structOtherStr = buildOtherStructure(`${tbl}_other`);
     const fieldsWithoutId = fields.filter((f) => f !== idCol);
@@ -1719,13 +1829,162 @@ export default function CodingTablesPage() {
     }
   }
 
+  async function uploadRowsIndividually(tableForUpload, rows) {
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return {
+        inserted: 0,
+        failed: [],
+        aborted: false,
+        insertedMain: 0,
+        insertedOther: 0,
+        errorGroups: {},
+        errorMessage: '',
+      };
+    }
+    setUploadProgress({ done: 0, total: rows.length });
+    setInsertedCount(0);
+    setGroupMessage(`Row 1/${rows.length}`);
+    interruptRef.current = false;
+    const errorGroups = {};
+    const failed = [];
+    let inserted = 0;
+    let errorMessage = '';
+    for (let i = 0; i < rows.length; i++) {
+      if (interruptRef.current) break;
+      setGroupMessage(`Row ${i + 1}/${rows.length}`);
+      const controller = new AbortController();
+      abortCtrlRef.current = controller;
+      try {
+        const res = await fetch('/api/coding_tables/upsert-row', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ table: tableForUpload, row: rows[i] }),
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          let payload;
+          try {
+            payload = await res.json();
+          } catch {
+            payload = await res.text();
+          }
+          const msg =
+            (payload && typeof payload.message === 'string' && payload.message) ||
+            (typeof payload === 'string' && payload.trim()) ||
+            `Row ${i + 1} failed`;
+          if (msg) {
+            errorGroups[msg] = (errorGroups[msg] || 0) + 1;
+            failed.push(msg);
+            if (!errorMessage) {
+              errorMessage = msg;
+            }
+          }
+        } else {
+          const data = await res.json().catch(() => ({}));
+          const delta = typeof data.inserted === 'number' ? data.inserted : 1;
+          inserted += delta;
+          setInsertedCount(inserted);
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          abortCtrlRef.current = null;
+          return {
+            inserted,
+            failed,
+            aborted: true,
+            insertedMain: inserted,
+            insertedOther: 0,
+            errorGroups,
+            errorMessage: errorMessage || err.message || 'Upload aborted',
+          };
+        }
+        const msg = err?.message || 'Upsert failed';
+        errorGroups[msg] = (errorGroups[msg] || 0) + 1;
+        failed.push(msg);
+        if (!errorMessage) {
+          errorMessage = msg;
+        }
+      } finally {
+        abortCtrlRef.current = null;
+        setUploadProgress({ done: i + 1, total: rows.length });
+      }
+    }
+    setGroupMessage('');
+    return {
+      inserted,
+      failed,
+      aborted: interruptRef.current,
+      insertedMain: inserted,
+      insertedOther: 0,
+      errorGroups,
+      errorMessage,
+    };
+  }
+
   async function executeRecordsSql() {
-    if (!recordsSql && !recordsSqlOther) {
+    const preparedRows = rowUploadPayload?.rows || [];
+    if (!requiresRowUpload && !recordsSql && !recordsSqlOther) {
       alert('Generate SQL first');
+      return;
+    }
+    if (requiresRowUpload && preparedRows.length === 0 && !recordsSqlOther) {
+      alert('No rows prepared');
       return;
     }
     setUploading(true);
     try {
+      if (requiresRowUpload) {
+        const tableForUpload = rowUploadPayload?.table || cleanIdentifier(tableName);
+        const mainResult = await uploadRowsIndividually(
+          tableForUpload,
+          preparedRows,
+        );
+        let mInserted = mainResult.insertedMain || 0;
+        let oInserted = 0;
+        let runErr = { ...mainResult.errorGroups };
+        let errorMessage = mainResult.errorMessage || '';
+        let aborted = mainResult.aborted;
+        if (!aborted && recordsSqlOther) {
+          const otherStatements = splitSqlStatements(recordsSqlOther);
+          if (otherStatements.length > 0) {
+            const otherRes = await runStatements(otherStatements);
+            aborted = otherRes.aborted;
+            if (otherRes.errorMessage && !errorMessage) {
+              errorMessage = otherRes.errorMessage;
+            }
+            if (otherRes.errorGroups) {
+              Object.entries(otherRes.errorGroups).forEach(([key, value]) => {
+                runErr[key] = (runErr[key] || 0) + value;
+              });
+            }
+            mInserted += otherRes.insertedMain || 0;
+            oInserted += otherRes.insertedOther || 0;
+          }
+        }
+        if (aborted) {
+          if (errorMessage) {
+            addToast(errorMessage, 'error');
+          } else {
+            addToast('Insert interrupted', 'warning');
+          }
+        } else {
+          if (errorMessage) {
+            addToast(errorMessage, 'error');
+          }
+          addToast('Records inserted', 'success');
+          setInsertedMain(mInserted);
+          setInsertedOther(oInserted);
+          setUnsuccessfulGroups(runErr);
+          const errSummary = Object.entries(runErr)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join('; ');
+          setSummaryInfo(
+            `Inserted to main: ${mInserted}. _other: ${oInserted}. Duplicates: ${dupCount}. ${errSummary}`,
+          );
+        }
+        return;
+      }
       const statements = [recordsSql, recordsSqlOther]
         .filter(Boolean)
         .flatMap((s) => splitSqlStatements(s));
@@ -1766,9 +2025,9 @@ export default function CodingTablesPage() {
             setSqlMove(
               dataMove.failed
                 .map((f) =>
-                  typeof f === 'string' ? f : `${f.sql} -- ${f.error}`
+                  typeof f === 'string' ? f : `${f.sql} -- ${f.error}`,
                 )
-                .join('\n')
+                .join('\n'),
             );
           }
         }
@@ -1791,7 +2050,7 @@ export default function CodingTablesPage() {
           .map(([k, v]) => `${k}: ${v}`)
           .join('; ');
         setSummaryInfo(
-          `Inserted to main: ${mInserted}. _other: ${oInserted}. Duplicates: ${dupCount}. ${errSummary}`
+          `Inserted to main: ${mInserted}. _other: ${oInserted}. Duplicates: ${dupCount}. ${errSummary}`,
         );
       }
     } catch (err) {
@@ -1799,6 +2058,7 @@ export default function CodingTablesPage() {
       alert('Execution failed');
     } finally {
       setUploading(false);
+      setUploadProgress({ done: 0, total: 0 });
     }
   }
 
@@ -2572,7 +2832,7 @@ export default function CodingTablesPage() {
               <button onClick={executeSeparateSql} style={{ marginLeft: '0.5rem' }}>
                 Create Tables & Records
               </button>
-              {(recordsSql || recordsSqlOther) && (
+              {(recordsSql || recordsSqlOther || requiresRowUpload) && (
                 <button onClick={executeRecordsSql} style={{ marginLeft: '0.5rem' }}>
                   Insert Records
                 </button>
@@ -2596,7 +2856,11 @@ export default function CodingTablesPage() {
                     onChange={(e) => setRecordsSql(e.target.value)}
                     rows={10}
                     cols={40}
-                    placeholder="No records generated"
+                    placeholder={
+                      requiresRowUpload
+                        ? 'Rows will be uploaded via the coding table API'
+                        : 'No records generated'
+                    }
                   />
                 </div>
                 </div>
