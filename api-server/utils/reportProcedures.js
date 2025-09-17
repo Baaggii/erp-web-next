@@ -1,5 +1,6 @@
 import { listTransactionNames } from '../services/transactionFormConfig.js';
 import { listAllowedReports } from '../services/reportAccessConfig.js';
+import { getProcTriggers } from '../services/procTriggers.js';
 import { getEmploymentSession } from '../../db/index.js';
 
 async function getUserContext(user, companyId) {
@@ -23,12 +24,35 @@ export async function listPermittedProcedures(
   const { config: allowedCfg, isDefault: accessDefault } =
     await listAllowedReports(companyId);
   const formProcs = new Set();
+  const tables = new Set();
   Object.values(forms).forEach((info) => {
-    if (Array.isArray(info?.procedures)) {
+    if (!info) return;
+    if (info.table) tables.add(info.table);
+    if (Array.isArray(info.procedures)) {
       info.procedures.forEach((p) => formProcs.add(p));
     }
   });
-  const allProcs = new Set([...formProcs, ...Object.keys(allowedCfg)]);
+
+  const triggerProcs = new Set();
+  for (const table of tables) {
+    if (!table) continue;
+    try {
+      const triggers = await getProcTriggers(table);
+      Object.values(triggers || {}).forEach((configs) => {
+        (configs || []).forEach((cfg) => {
+          if (cfg?.name) triggerProcs.add(cfg.name);
+        });
+      });
+    } catch (err) {
+      // Ignore trigger lookup failures and continue with known procedures
+    }
+  }
+
+  const allProcs = new Set([
+    ...formProcs,
+    ...triggerProcs,
+    ...Object.keys(allowedCfg),
+  ]);
 
   const userCtx = await getUserContext(user, companyId);
   const bId = Number(branchId ?? userCtx.branchId);
