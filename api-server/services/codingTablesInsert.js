@@ -43,12 +43,13 @@ function buildInsertCommand(tableName, row) {
   if (columns.length === 0) {
     return null;
   }
-  const columnTokens = columns.map(() => '??').join(', ');
-  const valueTokens = columns.map(() => '?').join(', ');
-  const values = columns.map((col) => row[col]);
+  const safeColumns = columns.map((col) => assertSafeIdentifier(col, 'column'));
+  const columnList = safeColumns.map((col) => `\`${col}\``).join(', ');
+  const valueTokens = safeColumns.map(() => '?').join(', ');
+  const values = safeColumns.map((col) => row[col]);
   return {
-    sql: `INSERT INTO ?? (${columnTokens}) VALUES (${valueTokens})`,
-    params: [safeTable, ...columns, ...values],
+    sql: `INSERT INTO \`${safeTable}\` (${columnList}) VALUES (${valueTokens})`,
+    params: values,
   };
 }
 
