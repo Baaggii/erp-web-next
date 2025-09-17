@@ -1,15 +1,33 @@
 import React, { createContext, useCallback, useContext, useState, useEffect, useMemo } from 'react';
 import { trackSetState } from '../utils/debug.js';
 
+const DEFAULT_TOAST_TYPE = 'info';
+const TOAST_ICONS = {
+  success: '✅',
+  error: '❌',
+  warning: '⚠️',
+  info: 'ℹ️',
+};
+
+function normalizeToastType(type) {
+  const normalized = (type || DEFAULT_TOAST_TYPE).toString().toLowerCase();
+  if (normalized === 'warn' || normalized === 'warning') return 'warning';
+  if (normalized === 'success' || normalized === 'error' || normalized === 'info' || normalized === 'warning') {
+    return normalized;
+  }
+  return DEFAULT_TOAST_TYPE;
+}
+
 const ToastContext = createContext({ addToast: () => {} });
 
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
 
-  const addToast = useCallback((message, type = 'info') => {
+  const addToast = useCallback((message, type = DEFAULT_TOAST_TYPE) => {
     const id = Date.now() + Math.random();
+    const normalizedType = normalizeToastType(type);
     trackSetState('ToastProvider.setToasts');
-    setToasts((t) => [...t, { id, message, type }]);
+    setToasts((t) => [...t, { id, message, type: normalizedType }]);
     setTimeout(() => {
       trackSetState('ToastProvider.setToasts');
       setToasts((t) => t.filter((toast) => toast.id !== id));
@@ -31,11 +49,14 @@ export function ToastProvider({ children }) {
     <ToastContext.Provider value={value}>
       {children}
       <div className="toast-container">
-        {toasts.map((t) => (
-          <div key={t.id} className={`toast toast-${t.type}`}>
-            {t.type === 'success' ? '✅' : t.type === 'error' ? '❌' : 'ℹ️'} {t.message}
-          </div>
-        ))}
+        {toasts.map((t) => {
+          const icon = TOAST_ICONS[t.type] || TOAST_ICONS[DEFAULT_TOAST_TYPE];
+          return (
+            <div key={t.id} className={`toast toast-${t.type}`}>
+              {icon} {t.message}
+            </div>
+          );
+        })}
       </div>
     </ToastContext.Provider>
   );
