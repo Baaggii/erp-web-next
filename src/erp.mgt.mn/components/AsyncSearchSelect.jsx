@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
+import { getTenantKeyList } from '../utils/tenantKeys.js';
 
 export default function AsyncSearchSelect({
   table,
@@ -54,7 +55,7 @@ export default function AsyncSearchSelect({
       const params = new URLSearchParams({ page: p, perPage: 50 });
       const isShared =
         tenantMeta?.isShared ?? tenantMeta?.is_shared ?? false;
-      const keys = tenantMeta?.tenantKeys ?? tenantMeta?.tenant_keys ?? [];
+      const keys = getTenantKeyList(tenantMeta);
       if (!isShared) {
         if (keys.includes('company_id') && effectiveCompanyId != null)
           params.set('company_id', effectiveCompanyId);

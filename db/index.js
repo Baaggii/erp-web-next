@@ -99,6 +99,30 @@ const tableColumnsCache = new Map();
 
 const softDeleteConfigCache = new Map();
 
+const tenantTableKeyConfigCache = new Map();
+
+const DEFAULT_TENANT_KEY_ALIASES = [
+  {
+    key: "company_id",
+    aliases: ["company_id", "companyid", "companyId", "companyID"],
+  },
+  {
+    key: "branch_id",
+    aliases: ["branch_id", "branchid", "branchId", "branchID"],
+  },
+  {
+    key: "department_id",
+    aliases: [
+      "department_id",
+      "departmentid",
+      "departmentId",
+      "departmentID",
+      "dept_id",
+      "deptid",
+    ],
+  },
+];
+
 async function loadSoftDeleteConfig(companyId = GLOBAL_COMPANY_ID) {
   if (!softDeleteConfigCache.has(companyId)) {
     try {
@@ -113,6 +137,26 @@ async function loadSoftDeleteConfig(companyId = GLOBAL_COMPANY_ID) {
     }
   }
   return softDeleteConfigCache.get(companyId);
+}
+
+async function loadTenantTableKeyConfig(companyId = GLOBAL_COMPANY_ID) {
+  if (!tenantTableKeyConfigCache.has(companyId)) {
+    try {
+      const { path: cfgPath } = await getConfigPath(
+        "tenantTableKeys.json",
+        companyId,
+      );
+      const raw = await fs.readFile(cfgPath, "utf8");
+      const parsed = JSON.parse(raw);
+      tenantTableKeyConfigCache.set(
+        companyId,
+        parsed && typeof parsed === "object" ? parsed : {},
+      );
+    } catch {
+      tenantTableKeyConfigCache.set(companyId, {});
+    }
+  }
+  return tenantTableKeyConfigCache.get(companyId);
 }
 const SOFT_DELETE_CANDIDATES = [
   "is_deleted",
@@ -991,6 +1035,50 @@ export async function getTenantTableFlags(tableName) {
     if (err?.code === 'ER_NO_SUCH_TABLE') return null;
     throw err;
   }
+}
+
+export async function getTenantTable(tableName, companyId = GLOBAL_COMPANY_ID) {
+  if (!tableName) return null;
+  const [columns, flags, keyConfig] = await Promise.all([
+    listTableColumns(tableName),
+    getTenantTableFlags(tableName),
+    loadTenantTableKeyConfig(companyId),
+  ]);
+  if (!Array.isArray(columns) || columns.length === 0) {
+    return null;
+  }
+  const columnMap = new Map();
+  for (const col of columns) {
+    const key = String(col || '').toLowerCase();
+    if (!key) continue;
+    columnMap.set(key, col);
+  }
+
+  let tenantKeys = [];
+  const override = keyConfig?.[tableName];
+  if (Array.isArray(override)) {
+    tenantKeys = override
+      .map((key) => columnMap.get(String(key || '').toLowerCase()))
+      .filter(Boolean);
+  }
+
+  if (tenantKeys.length === 0) {
+    for (const { aliases } of DEFAULT_TENANT_KEY_ALIASES) {
+      for (const alias of aliases) {
+        const actual = columnMap.get(alias.toLowerCase());
+        if (actual && !tenantKeys.includes(actual)) {
+          tenantKeys.push(actual);
+          break;
+        }
+      }
+    }
+  }
+
+  return {
+    tableName,
+    isShared: !!(flags?.isShared),
+    tenantKeys,
+  };
 }
 
 export async function seedTenantTables(
