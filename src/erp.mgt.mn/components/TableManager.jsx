@@ -740,6 +740,7 @@ const TableManager = forwardRef(function TableManager({
             cfgMap[col] = {
               table: rel.table,
               column: rel.column,
+              idField: cfg?.idField ?? rel.column,
               displayFields: cfg?.displayFields || [],
             };
             if (rows.length > 0) {
