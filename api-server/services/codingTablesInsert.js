@@ -21,37 +21,6 @@ function collectColumns(rows) {
   return Array.from(set);
 }
 
-function normalizeRow(row) {
-  if (!row || typeof row !== 'object') {
-    return null;
-  }
-  const normalized = {};
-  Object.keys(row).forEach((key) => {
-    const safeKey = assertSafeIdentifier(key, 'column');
-    const value = row[key];
-    normalized[safeKey] = value === undefined ? null : value;
-  });
-  return normalized;
-}
-
-function buildInsertCommand(tableName, row) {
-  const safeTable = assertSafeIdentifier(tableName, 'table');
-  if (!row || typeof row !== 'object') {
-    return null;
-  }
-  const columns = Object.keys(row);
-  if (columns.length === 0) {
-    return null;
-  }
-  const columnTokens = columns.map(() => '??').join(', ');
-  const valueTokens = columns.map(() => '?').join(', ');
-  const values = columns.map((col) => row[col]);
-  return {
-    sql: `INSERT INTO ?? (${columnTokens}) VALUES (${valueTokens})`,
-    params: [safeTable, ...columns, ...values],
-  };
-}
-
 async function insertRowsSequentially(
   connection,
   tableName,
@@ -67,19 +36,6 @@ async function insertRowsSequentially(
   const safeTable = assertSafeIdentifier(tableName, 'table');
   const rowArray = Array.isArray(rows) ? rows : [];
   if (rowArray.length === 0) {
-    return summary;
-  }
-
-  const normalizedRows = rowArray.map((row) => normalizeRow(row));
-  const hasInsertable = normalizedRows.some(
-    (row) => row && Object.keys(row).length > 0,
-  );
-  if (!hasInsertable) {
-    summary.errors.push({
-      index: -1,
-      table: safeTable,
-      message: 'No rows contained insertable columns.',
-    });
     return summary;
   }
 
@@ -100,26 +56,9 @@ async function insertRowsSequentially(
         stageName,
         safeTable,
       ]);
-      stageColumns = collectColumns(normalizedRows);
-      if (stageColumns.length === 0) {
-        await connection.query('DROP TEMPORARY TABLE IF EXISTS ??', [stageName]);
-        stageName = null;
-        stageColumns = [];
-      } else {
-        summary.stagingUsed = true;
-      }
+      stageColumns = collectColumns(rowArray);
+      summary.stagingUsed = true;
     } catch (err) {
-      if (stageName) {
-        try {
-          await connection.query('DROP TEMPORARY TABLE IF EXISTS ??', [stageName]);
-        } catch (dropErr) {
-          summary.errors.push({
-            index: -1,
-            table: stageName,
-            message: `Failed to drop staging table: ${dropErr.message}`,
-          });
-        }
-      }
       summary.errors.push({
         index: -1,
         table: safeTable,
@@ -136,28 +75,17 @@ async function insertRowsSequentially(
       ? `INSERT INTO ?? (${columnPlaceholder}) SELECT ${columnPlaceholder} FROM ??`
       : null;
 
-  for (let i = 0; i < normalizedRows.length; i += 1) {
+  for (let i = 0; i < rowArray.length; i += 1) {
     if (signal?.aborted) {
       summary.aborted = true;
       break;
     }
-    const normalizedRow = normalizedRows[i];
-    if (!normalizedRow || Object.keys(normalizedRow).length === 0) {
-      summary.errors.push({
-        index: i,
-        table: safeTable,
-        message: 'Row had no insertable columns.',
-      });
-      continue;
-    }
+    const row = rowArray[i];
+    if (!row || typeof row !== 'object') continue;
     try {
       if (stageName && stageInsertSql) {
-        await connection.query('DELETE FROM ??', [stageName]);
-        const stageInsert = buildInsertCommand(stageName, normalizedRow);
-        if (!stageInsert) {
-          throw new Error('Row had no insertable columns.');
-        }
-        await connection.execute(stageInsert.sql, stageInsert.params);
+        await connection.query('TRUNCATE TABLE ??', [stageName]);
+        await connection.query('INSERT INTO ?? SET ?', [stageName, row]);
         const params = [
           safeTable,
           ...stageColumns,
@@ -165,13 +93,9 @@ async function insertRowsSequentially(
           stageName,
         ];
         await connection.query(stageInsertSql, params);
-        await connection.query('DELETE FROM ??', [stageName]);
+        await connection.query('TRUNCATE TABLE ??', [stageName]);
       } else {
-        const insertCommand = buildInsertCommand(safeTable, normalizedRow);
-        if (!insertCommand) {
-          throw new Error('Row had no insertable columns.');
-        }
-        await connection.execute(insertCommand.sql, insertCommand.params);
+        await connection.query('INSERT INTO ?? SET ?', [safeTable, row]);
       }
       summary.inserted += 1;
     } catch (err) {
