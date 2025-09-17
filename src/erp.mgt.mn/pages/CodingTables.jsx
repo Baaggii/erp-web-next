@@ -12,71 +12,6 @@ function normalizeField(name) {
   return cleanIdentifier(name).toLowerCase();
 }
 
-function deriveErrorReason(error) {
-  if (!error || typeof error !== 'object') {
-    return 'Unknown error';
-  }
-  const rawMessage =
-    typeof error.message === 'string' ? error.message.replace(/\s+/g, ' ').trim() : '';
-  const lowerMessage = rawMessage.toLowerCase();
-  if (lowerMessage.includes('duplicate entry') || lowerMessage.includes('duplicate key')) {
-    return 'Duplicate key';
-  }
-  if (lowerMessage.includes('unique constraint failed')) {
-    return 'Duplicate key';
-  }
-  if (
-    lowerMessage.includes('row had no insertable columns') ||
-    lowerMessage.includes('no rows contained insertable columns')
-  ) {
-    return 'No insertable columns';
-  }
-  if (lowerMessage.includes('validation') && lowerMessage.includes('fail')) {
-    return 'Validation failed';
-  }
-  if (
-    lowerMessage.includes('foreign key constraint fails') ||
-    lowerMessage.includes('cannot add or update a child row')
-  ) {
-    return 'Foreign key constraint';
-  }
-  if (lowerMessage.includes('data too long for column')) {
-    return 'Data too long';
-  }
-  if (lowerMessage.includes('deadlock found')) {
-    return 'Deadlock detected';
-  }
-  if (lowerMessage.includes('lock wait timeout exceeded')) {
-    return 'Lock wait timeout';
-  }
-  if (lowerMessage.includes('failed to prepare staging table')) {
-    return 'Failed to prepare staging table';
-  }
-  if (lowerMessage.includes('failed to drop staging table')) {
-    return 'Failed to drop staging table';
-  }
-  if (rawMessage) {
-    return rawMessage.length > 120 ? `${rawMessage.slice(0, 117)}...` : rawMessage;
-  }
-  const tableName =
-    typeof error.table === 'string' ? error.table.replace(/\s+/g, ' ').trim() : '';
-  return tableName ? `${tableName} error` : 'Unknown error';
-}
-
-function summarizeErrorsByReason(errors = []) {
-  return errors.reduce((acc, err) => {
-    const reason = deriveErrorReason(err);
-    const tableRaw = err && typeof err.table === 'string' ? err.table : '';
-    const tableName = tableRaw.replace(/\s+/g, ' ').trim();
-    const key =
-      tableName && (!reason || reason === 'Unknown error')
-        ? `${tableName}: ${reason || 'Unknown error'}`
-        : reason || 'Unknown error';
-    acc[key] = (acc[key] || 0) + 1;
-    return acc;
-  }, {});
-}
-
 export default function CodingTablesPage() {
   const { addToast } = useToast();
   const [sheets, setSheets] = useState([]);
@@ -2119,7 +2054,11 @@ export default function CodingTablesPage() {
       setUploadProgress({ done: totalRows, total: totalRows || 1 });
       setGroupMessage('');
 
-      const errorSummaryMap = summarizeErrorsByReason(errors);
+      const errorSummaryMap = errors.reduce((acc, err) => {
+        const key = err && err.table ? String(err.table) : 'unknown';
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
       setUnsuccessfulGroups(errorSummaryMap);
 
       const errSummaryString = Object.entries(errorSummaryMap)
