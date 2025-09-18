@@ -4,6 +4,46 @@ import Modal from '../components/Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import I18nContext from '../context/I18nContext.jsx';
 
+function formatSeedSummaryId(id) {
+  if (id === null || id === undefined) return '';
+  if (typeof id === 'object') {
+    try {
+      return JSON.stringify(id);
+    } catch {
+      return '';
+    }
+  }
+  return String(id);
+}
+
+function getSeedSummaryEntries(summary) {
+  if (!summary || typeof summary !== 'object') return [];
+  const entries = [];
+  for (const [table, info] of Object.entries(summary)) {
+    if (!info || typeof info !== 'object') continue;
+    const count = Number(info.count);
+    const safeCount = Number.isFinite(count) ? count : 0;
+    const ids = Array.isArray(info.ids)
+      ? info.ids
+          .filter((id) => id !== null && id !== undefined)
+          .map((id) => formatSeedSummaryId(id))
+          .filter((val) => val !== '')
+      : [];
+    entries.push({ table, count: safeCount, ids });
+  }
+  return entries;
+}
+
+function formatSeedSummaryForToast(entries) {
+  if (!Array.isArray(entries) || entries.length === 0) return '';
+  return entries
+    .map(({ table, count, ids }) => {
+      const idText = ids.length > 0 ? ` (${ids.join(', ')})` : '';
+      return `${table}: ${count}${idText}`;
+    })
+    .join('; ');
+}
+
 async function parseErrorBody(res) {
   const ct = res.headers.get('content-type') || '';
   try {
@@ -32,6 +72,7 @@ export default function TenantTablesRegistry() {
   const [expandedTable, setExpandedTable] = useState(null);
   const [defaultRows, setDefaultRows] = useState({});
   const [columns, setColumns] = useState({});
+  const [lastSeedSummary, setLastSeedSummary] = useState(null);
   const { addToast } = useToast();
   const { t } = useContext(I18nContext);
   const location = useLocation();
@@ -68,6 +109,13 @@ export default function TenantTablesRegistry() {
       addToast(`Failed to load companies: ${err.message}`, 'error');
     }
   }
+
+  const lastSeedEntries = lastSeedSummary?.summary
+    ? getSeedSummaryEntries(lastSeedSummary.summary)
+    : [];
+  const lastSeedCompany = lastSeedSummary
+    ? companies.find((c) => String(c.id) === String(lastSeedSummary.companyId))
+    : null;
 
   async function loadTables() {
     let options = [];
@@ -256,12 +304,25 @@ export default function TenantTablesRegistry() {
         const msg = await parseErrorBody(res);
         throw new Error(msg || 'Failed to seed company');
       }
-      addToast(
-        flag ? 'Repopulated company defaults' : 'Populated company defaults',
-        'success',
-      );
+      const ct = res.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) {
+        throw new Error(`Unexpected response: ${ct || 'unknown content-type'}`);
+      }
+      const summary = await res.json();
+      const entries = getSeedSummaryEntries(summary);
+      const summaryText = formatSeedSummaryForToast(entries);
+      const baseMessage = flag
+        ? 'Repopulated company defaults'
+        : 'Populated company defaults';
+      const message = summaryText ? `${baseMessage}: ${summaryText}` : baseMessage;
+      addToast(message, 'success');
+      setLastSeedSummary({
+        companyId: String(companyId),
+        summary: summary && typeof summary === 'object' && summary !== null ? summary : {},
+      });
       setSeedModalOpen(false);
       await loadTables();
+      return summary;
     }
     try {
       await send(overwrite);
@@ -407,6 +468,37 @@ export default function TenantTablesRegistry() {
           Reset Shared Table Tenant Keys
         </button>
       </div>
+      {lastSeedSummary ? (
+        <div
+          style={{
+            marginTop: '0.75rem',
+            padding: '0.75rem',
+            backgroundColor: '#eef2ff',
+            borderRadius: '4px',
+          }}
+        >
+          <strong>
+            {t('lastSeedSummary', 'Last seed summary')}{' '}
+            {lastSeedCompany?.name || lastSeedCompany?.company_name
+              ? `(${lastSeedCompany?.name || lastSeedCompany?.company_name})`
+              : `(${t('companyId', 'Company ID')}: ${lastSeedSummary.companyId})`}
+          </strong>
+          {lastSeedEntries.length > 0 ? (
+            <ul style={{ margin: '0.5rem 0 0 1.25rem' }}>
+              {lastSeedEntries.map(({ table, count, ids }) => (
+                <li key={table}>
+                  {table}: {count}
+                  {ids.length > 0 ? ` (${ids.join(', ')})` : ''}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p style={{ margin: '0.5rem 0 0' }}>
+              {t('noRecordsInserted', 'No records were inserted')}
+            </p>
+          )}
+        </div>
+      ) : null}
       {tables === null ? null : tables.length === 0 ? (
         <p>{t('noTenantTables', 'No tenant tables.')}</p>
       ) : (
