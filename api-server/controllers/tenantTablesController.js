@@ -108,6 +108,15 @@ export async function seedDefaults(req, res, next) {
     await seedDefaultsForSeedTables(req.user.empid);
     res.sendStatus(204);
   } catch (err) {
+    if (err?.status === 409 && err?.conflicts) {
+      res.status(409).json({
+        message:
+          err.message ||
+          'Cannot populate defaults because tenant data exists in seed tables.',
+        conflicts: err.conflicts,
+      });
+      return;
+    }
     next(err);
   }
 }

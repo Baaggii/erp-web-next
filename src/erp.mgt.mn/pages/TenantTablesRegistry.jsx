@@ -44,6 +44,78 @@ function formatSeedSummaryForToast(entries) {
     .join('; ');
 }
 
+function normalizeSeedDefaultsConflict(data) {
+  if (!data || typeof data !== 'object') return null;
+  const message =
+    typeof data.message === 'string' ? data.message.trim() : '';
+  const conflicts = Array.isArray(data.conflicts)
+    ? data.conflicts
+        .map((entry) => {
+          const tableRaw =
+            typeof entry?.table === 'string'
+              ? entry.table
+              : typeof entry?.tableName === 'string'
+              ? entry.tableName
+              : '';
+          const table = tableRaw.trim();
+          if (!table) return null;
+          let companies = Array.isArray(entry?.companies)
+            ? entry.companies
+                .map((company) => {
+                  const rawId =
+                    company?.companyId ??
+                    company?.company_id ??
+                    company?.id ??
+                    company?.company ??
+                    null;
+                  if (rawId === null || rawId === undefined || rawId === '') {
+                    return null;
+                  }
+                  const id = String(rawId);
+                  const rowsVal = Number(company?.rows ?? company?.count ?? 0);
+                  if (!Number.isFinite(rowsVal) || rowsVal <= 0) return null;
+                  return { companyId: id, rows: rowsVal };
+                })
+                .filter(Boolean)
+            : [];
+          if (companies.length === 0 && Array.isArray(entry?.companyIds)) {
+            companies = entry.companyIds
+              .filter((id) => id !== null && id !== undefined && id !== '')
+              .map((id) => ({ companyId: String(id), rows: 0 }));
+          }
+          const totalRowsVal = Number(entry?.rows);
+          const totalRows = Number.isFinite(totalRowsVal) && totalRowsVal > 0
+            ? totalRowsVal
+            : companies.reduce(
+                (sum, comp) => sum + (Number.isFinite(comp.rows) ? comp.rows : 0),
+                0,
+              );
+          return {
+            table,
+            rows: totalRows > 0 ? totalRows : 0,
+            companies,
+          };
+        })
+        .filter(Boolean)
+    : [];
+  if (!message && conflicts.length === 0) return null;
+  return { message, conflicts };
+}
+
+function formatConflictCompanies(companies) {
+  if (!Array.isArray(companies) || companies.length === 0) return '';
+  return companies
+    .map((company) => {
+      if (!company || company.companyId === undefined || company.companyId === null)
+        return '';
+      const idText = String(company.companyId);
+      const rows = Number(company.rows);
+      return Number.isFinite(rows) && rows > 0 ? `${idText} (${rows})` : idText;
+    })
+    .filter((text) => text !== '')
+    .join(', ');
+}
+
 async function parseErrorBody(res) {
   const ct = res.headers.get('content-type') || '';
   try {
@@ -73,6 +145,7 @@ export default function TenantTablesRegistry() {
   const [defaultRows, setDefaultRows] = useState({});
   const [columns, setColumns] = useState({});
   const [lastSeedSummary, setLastSeedSummary] = useState(null);
+  const [seedDefaultsConflict, setSeedDefaultsConflict] = useState(null);
   const { addToast } = useToast();
   const { t } = useContext(I18nContext);
   const location = useLocation();
@@ -197,9 +270,37 @@ export default function TenantTablesRegistry() {
         credentials: 'include',
       });
       if (!res.ok) {
+        if (res.status === 409) {
+          const fallbackMessage = t(
+            'seedDefaultsConflictMessage',
+            'Tenant data detected in seed tables. Clear tenant data before retrying.',
+          );
+          let normalized = null;
+          try {
+            const data = await res.clone().json();
+            normalized = normalizeSeedDefaultsConflict(data);
+          } catch {
+            normalized = null;
+          }
+          if (!normalized) {
+            const msg = await parseErrorBody(res);
+            const message = msg || fallbackMessage;
+            setSeedDefaultsConflict({ message, conflicts: [] });
+            addToast(message, 'warning');
+            return;
+          }
+          const message = normalized.message || fallbackMessage;
+          setSeedDefaultsConflict({
+            message,
+            conflicts: normalized.conflicts || [],
+          });
+          addToast(message, 'warning');
+          return;
+        }
         const msg = await parseErrorBody(res);
         throw new Error(msg || 'Failed to seed defaults');
       }
+      setSeedDefaultsConflict(null);
       addToast(t('populatedDefaultsTenantKey0', 'Populated defaults (tenant key 0)'), 'success');
       await loadTables();
     } catch (err) {
@@ -468,6 +569,48 @@ export default function TenantTablesRegistry() {
           Reset Shared Table Tenant Keys
         </button>
       </div>
+      {seedDefaultsConflict ? (
+        <div
+          style={{
+            marginTop: '0.75rem',
+            padding: '0.75rem',
+            backgroundColor: '#fef3c7',
+            border: '1px solid #fbbf24',
+            borderRadius: '4px',
+          }}
+        >
+          <strong>{t('seedDefaultsConflictTitle', 'Global default seeding blocked')}</strong>
+          <p style={{ margin: '0.5rem 0 0' }}>
+            {seedDefaultsConflict.message ||
+              t(
+                'seedDefaultsConflictMessage',
+                'Tenant data detected in seed tables. Clear tenant data before retrying.',
+              )}
+          </p>
+          {Array.isArray(seedDefaultsConflict.conflicts) &&
+          seedDefaultsConflict.conflicts.length > 0 ? (
+            <ul style={{ margin: '0.5rem 0 0 1.25rem' }}>
+              {seedDefaultsConflict.conflicts.map((conflict) => {
+                const safeRows = Number(conflict?.rows);
+                const count = Number.isFinite(safeRows) && safeRows > 0 ? safeRows : 0;
+                const companiesText = formatConflictCompanies(conflict?.companies);
+                return (
+                  <li key={conflict.table}>
+                    {conflict.table}: {count}
+                    {companiesText ? ` (${companiesText})` : ''}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+          <p style={{ margin: '0.5rem 0 0' }}>
+            {t(
+              'seedDefaultsConflictAdvice',
+              'Back up or clear tenant data for the listed company IDs before retrying.',
+            )}
+          </p>
+        </div>
+      ) : null}
       {lastSeedSummary ? (
         <div
           style={{
