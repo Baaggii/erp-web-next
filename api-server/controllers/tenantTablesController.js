@@ -95,8 +95,8 @@ export async function updateTenantTable(req, res, next) {
 export async function resetSharedTenantKeys(req, res, next) {
   try {
     if (!(await ensureAdmin(req))) return res.sendStatus(403);
-    await zeroSharedTenantKeys(req.user.empid);
-    res.sendStatus(204);
+    const result = await zeroSharedTenantKeys(req.user.empid);
+    res.json(result);
   } catch (err) {
     next(err);
   }

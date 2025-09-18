@@ -31,7 +31,7 @@ async function loadController(overrides = {}) {
     getEmploymentSession: async () => ({}),
     listAllTenantTableOptions: async () => [],
     getTenantTable: async () => null,
-    zeroSharedTenantKeys: async () => {},
+    zeroSharedTenantKeys: async () => ({ tables: [], totals: {} }),
     seedDefaultsForSeedTables: async () => {},
     seedTenantTables: async () => ({}),
     listCompanies: async () => [],
@@ -167,5 +167,34 @@ if (typeof mock?.import !== 'function') {
     assert.equal(seedStub.mock.calls.length, 2);
     assert.deepEqual(seedStub.mock.calls[0].arguments, [10, ['posts'], { posts: [3, 4] }, true, 5]);
     assert.deepEqual(seedStub.mock.calls[1].arguments, [12, ['posts'], { posts: [3, 4] }, true, 5]);
+  });
+
+  test('resetSharedTenantKeys returns summary payload', async () => {
+    const summary = {
+      tables: [
+        {
+          tableName: 'users',
+          totalRows: 4,
+          updatedRows: 3,
+          skippedRows: 1,
+          skippedRecords: [{ id: 1, company_id: 2 }],
+        },
+      ],
+      totals: { tablesProcessed: 1, totalRows: 4, updatedRows: 3, skippedRows: 1 },
+    };
+    const zeroStub = mock.fn(async () => summary);
+    const mod = await loadController({
+      getEmploymentSession: async () => ({ permissions: { system_settings: true } }),
+      zeroSharedTenantKeys: zeroStub,
+    });
+    const req = { user: { empid: 5, companyId: 1 } };
+    const res = createRes();
+    await mod.resetSharedTenantKeys(req, res, (err) => {
+      if (err) throw err;
+    });
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.body, summary);
+    assert.equal(zeroStub.mock.calls.length, 1);
+    assert.deepEqual(zeroStub.mock.calls[0].arguments, [5]);
   });
 }

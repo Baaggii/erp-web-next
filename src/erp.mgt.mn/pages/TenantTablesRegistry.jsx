@@ -144,6 +144,7 @@ export default function TenantTablesRegistry() {
   const [expandedTable, setExpandedTable] = useState(null);
   const [defaultRows, setDefaultRows] = useState({});
   const [columns, setColumns] = useState({});
+  const [lastResetSummary, setLastResetSummary] = useState(null);
   const [lastSeedSummary, setLastSeedSummary] = useState(null);
   const [seedDefaultsConflict, setSeedDefaultsConflict] = useState(null);
   const { addToast } = useToast();
@@ -166,6 +167,157 @@ export default function TenantTablesRegistry() {
       navigate(location.pathname, { replace: true });
     }
   }, []);
+
+  const resetTables = Array.isArray(lastResetSummary?.tables)
+    ? lastResetSummary.tables
+    : [];
+  const resetTotals = lastResetSummary?.totals || {};
+  const processedTables = Number(resetTotals?.tablesProcessed ?? 0);
+  const totalRowsProcessed = Number(resetTotals?.totalRows ?? 0);
+  const updatedRowsTotal = Number(resetTotals?.updatedRows ?? 0);
+  const skippedRowsTotal = Number(resetTotals?.skippedRows ?? 0);
+  const displayedResetEntries = resetTables.filter((entry) => {
+    if (!entry || typeof entry !== 'object') return false;
+    const total = Number(entry?.totalRows ?? 0);
+    const updated = Number(entry?.updatedRows ?? 0);
+    const skipped = Number(entry?.skippedRows ?? 0);
+    return total > 0 || updated > 0 || skipped > 0;
+  });
+  const normalizedResetEntries = displayedResetEntries
+    .map((entry) => ({
+      tableName:
+        typeof entry?.tableName === 'string' ? entry.tableName : '',
+      totalRows: Number(entry?.totalRows ?? 0),
+      updatedRows: Number(entry?.updatedRows ?? 0),
+      skippedRows: Number(entry?.skippedRows ?? 0),
+    }))
+    .filter((entry) => entry.tableName);
+  const skippedTableRecords = resetTables
+    .map((entry) => {
+      const tableName =
+        typeof entry?.tableName === 'string' ? entry.tableName : '';
+      const records = Array.isArray(entry?.skippedRecords)
+        ? entry.skippedRecords.map((rec) =>
+            rec && typeof rec === 'object' ? { ...rec } : {},
+          )
+        : [];
+      return { tableName, records };
+    })
+    .filter((entry) => entry.tableName && entry.records.length > 0);
+  const hasSkippedRows = skippedTableRecords.length > 0;
+  const resetTimestampText = (() => {
+    const raw = lastResetSummary?.timestamp;
+    if (!raw || typeof raw !== 'string') return '';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString();
+  })();
+
+  function collectSkippedRowsForExport() {
+    const rows = [];
+    for (const { tableName, records } of skippedTableRecords) {
+      for (const record of records) {
+        rows.push({ table: tableName, ...(record || {}) });
+      }
+    }
+    return rows;
+  }
+
+  function formatCsvValue(value) {
+    if (value === null || value === undefined) return '';
+    let str;
+    if (value instanceof Date) {
+      str = value.toISOString();
+    } else if (typeof value === 'object') {
+      try {
+        str = JSON.stringify(value);
+      } catch {
+        str = String(value);
+      }
+    } else {
+      str = String(value);
+    }
+    if (/[",\n]/.test(str)) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  }
+
+  function downloadFile(filename, content, mime) {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  function handleDownloadSkippedJson() {
+    if (!hasSkippedRows) return;
+    try {
+      const exportData = {};
+      for (const { tableName, records } of skippedTableRecords) {
+        exportData[tableName] = records;
+      }
+      downloadFile(
+        `skipped-tenant-rows-${Date.now()}.json`,
+        JSON.stringify(exportData, null, 2),
+        'application/json',
+      );
+    } catch (err) {
+      addToast(
+        `${t('exportFailed', 'Failed to export skipped rows')}: ${err.message}`,
+        'error',
+      );
+    }
+  }
+
+  function handleDownloadSkippedCsv() {
+    if (!hasSkippedRows) return;
+    try {
+      const rows = collectSkippedRowsForExport();
+      if (rows.length === 0) {
+        addToast(
+          t('noSkippedRowsToExport', 'No skipped rows to export.'),
+          'info',
+        );
+        return;
+      }
+      const columnNames = new Set();
+      rows.forEach((row) => {
+        Object.keys(row || {}).forEach((col) => {
+          columnNames.add(col);
+        });
+      });
+      const orderedColumns = Array.from(columnNames).sort((a, b) => {
+        if (a === 'table') return -1;
+        if (b === 'table') return 1;
+        return a.localeCompare(b);
+      });
+      const lines = [];
+      lines.push(orderedColumns.map((col) => formatCsvValue(col)).join(','));
+      rows.forEach((row) => {
+        lines.push(
+          orderedColumns
+            .map((col) => formatCsvValue(row[col]))
+            .join(','),
+        );
+      });
+      downloadFile(
+        `skipped-tenant-rows-${Date.now()}.csv`,
+        lines.join('\n'),
+        'text/csv;charset=utf-8;',
+      );
+    } catch (err) {
+      addToast(
+        `${t('exportFailed', 'Failed to export skipped rows')}: ${err.message}`,
+        'error',
+      );
+    }
+  }
 
   async function loadCompanies() {
     try {
@@ -253,7 +405,34 @@ export default function TenantTablesRegistry() {
         const msg = await parseErrorBody(res);
         throw new Error(msg || 'Failed to reset');
       }
-      addToast(t('resetSharedTenantTableKeys', 'Reset shared tenant table keys'), 'success');
+      const ct = res.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) {
+        throw new Error(`Unexpected response: ${ct || 'unknown content-type'}`);
+      }
+      const data = await res.json();
+      if (data && typeof data === 'object') {
+        setLastResetSummary(data);
+      } else {
+        setLastResetSummary(null);
+      }
+      const totals = data?.totals || {};
+      const updatedCount = Number(totals?.updatedRows ?? totals?.updated ?? 0);
+      const skippedCount = Number(totals?.skippedRows ?? totals?.skipped ?? 0);
+      const parts = [];
+      if (Number.isFinite(updatedCount)) {
+        parts.push(`${t('updated', 'Updated')}: ${updatedCount}`);
+      }
+      if (Number.isFinite(skippedCount)) {
+        parts.push(`${t('skipped', 'Skipped')}: ${skippedCount}`);
+      }
+      let toastMessage = t(
+        'resetSharedTenantTableKeys',
+        'Reset shared tenant table keys',
+      );
+      if (parts.length > 0) {
+        toastMessage = `${toastMessage} (${parts.join(', ')})`;
+      }
+      addToast(toastMessage, 'success');
       await loadTables();
     } catch (err) {
       addToast(`Failed to reset tenant keys: ${err.message}`, 'error');
@@ -609,6 +788,102 @@ export default function TenantTablesRegistry() {
               'Back up or clear tenant data for the listed company IDs before retrying.',
             )}
           </p>
+        </div>
+      ) : null}
+      {lastResetSummary ? (
+        <div
+          style={{
+            marginTop: '0.75rem',
+            padding: '0.75rem',
+            backgroundColor: '#ecfeff',
+            border: '1px solid #38bdf8',
+            borderRadius: '4px',
+          }}
+        >
+          <strong>{t('lastTenantKeyReset', 'Last tenant key reset')}</strong>
+          {resetTimestampText ? (
+            <p style={{ margin: '0.25rem 0 0', color: '#1f2937' }}>
+              {t('completedAt', 'Completed at')}: {resetTimestampText}
+            </p>
+          ) : null}
+          <p style={{ margin: '0.5rem 0 0' }}>
+            {t('tablesProcessed', 'Tables processed')}: {
+              Number.isFinite(processedTables) ? processedTables : 0
+            }
+            {' · '}
+            {t('totalRows', 'Total rows')}: {
+              Number.isFinite(totalRowsProcessed) ? totalRowsProcessed : 0
+            }
+            {' · '}
+            {t('updatedRows', 'Updated rows')}: {
+              Number.isFinite(updatedRowsTotal) ? updatedRowsTotal : 0
+            }
+            {' · '}
+            {t('skippedRows', 'Skipped rows')}: {
+              Number.isFinite(skippedRowsTotal) ? skippedRowsTotal : 0
+            }
+          </p>
+          {normalizedResetEntries.length > 0 ? (
+            <ul style={{ margin: '0.5rem 0 0 1.25rem' }}>
+              {normalizedResetEntries.map((entry) => {
+                const hasSkip = entry.skippedRows > 0;
+                return (
+                  <li key={entry.tableName}>
+                    <span style={{ fontWeight: 600 }}>{entry.tableName}</span>: {t('totalRows', 'Total rows')}:{' '}
+                    {entry.totalRows}, {t('updated', 'Updated')}: {entry.updatedRows}, {' '}
+                    <span style={{ color: hasSkip ? '#b91c1c' : 'inherit' }}>
+                      {t('skipped', 'Skipped')}: {entry.skippedRows}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p style={{ margin: '0.5rem 0 0' }}>
+              {t(
+                'resetTenantKeysNoActivity',
+                'No tenant-specific rows required updating.',
+              )}
+            </p>
+          )}
+          {hasSkippedRows ? (
+            <>
+              <p style={{ margin: '0.75rem 0 0' }}>
+                {t(
+                  'resetTenantKeysSkippedAdvice',
+                  'Download skipped records to reconcile tenant-specific rows before retrying.',
+                )}
+              </p>
+              <div
+                style={{
+                  marginTop: '0.5rem',
+                  display: 'flex',
+                  gap: '0.5rem',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <button
+                  onClick={handleDownloadSkippedCsv}
+                  disabled={resetting || !hasSkippedRows}
+                >
+                  {t('downloadSkippedCsv', 'Download skipped records (CSV)')}
+                </button>
+                <button
+                  onClick={handleDownloadSkippedJson}
+                  disabled={resetting || !hasSkippedRows}
+                >
+                  {t('downloadSkippedJson', 'Download skipped records (JSON)')}
+                </button>
+              </div>
+            </>
+          ) : (
+            <p style={{ margin: '0.75rem 0 0' }}>
+              {t(
+                'resetTenantKeysNoSkips',
+                'All shared rows were updated successfully.',
+              )}
+            </p>
+          )}
         </div>
       ) : null}
       {lastSeedSummary ? (

@@ -123,6 +123,10 @@ const DEFAULT_TENANT_KEY_ALIASES = [
   },
 ];
 
+function escapeIdentifier(name) {
+  return `\`${String(name).replace(/`/g, "``")}\``;
+}
+
 async function loadSoftDeleteConfig(companyId = GLOBAL_COMPANY_ID) {
   if (!softDeleteConfigCache.has(companyId)) {
     try {
@@ -1330,24 +1334,138 @@ export async function seedSeedTablesForCompanies(userId = null) {
 }
 
 export async function zeroSharedTenantKeys(userId) {
+  const summary = {
+    tables: [],
+    totals: {
+      tablesProcessed: 0,
+      totalRows: 0,
+      updatedRows: 0,
+      skippedRows: 0,
+    },
+    timestamp: new Date().toISOString(),
+  };
+
   const [rows] = await pool.query(
     `SELECT table_name FROM tenant_tables WHERE is_shared = 1`,
   );
+
   for (const { table_name } of rows) {
     const cols = await getTableColumnsSafe(table_name);
-    if (cols.some((c) => c.toLowerCase() === "company_id")) {
-      const sets = ["company_id = ?"];
-      const params = [table_name, GLOBAL_COMPANY_ID];
-      if (cols.some((c) => c.toLowerCase() === "updated_by")) {
-        sets.push("updated_by = ?");
-        params.push(userId);
+    const companyCol = cols.find((c) => c.toLowerCase() === "company_id");
+    if (!companyCol) continue;
+
+    const pkCols = await getPrimaryKeyColumns(table_name);
+    const companyColLower = companyCol.toLowerCase();
+    const pkLower = new Set(pkCols.map((c) => c.toLowerCase()));
+    const joinConditions = [];
+
+    for (const col of pkCols) {
+      const lower = col.toLowerCase();
+      if (lower === companyColLower) {
+        joinConditions.push(
+          `tgt.${escapeIdentifier(col)} = ${GLOBAL_COMPANY_ID}`,
+        );
+      } else {
+        joinConditions.push(
+          `tgt.${escapeIdentifier(col)} <=> src.${escapeIdentifier(col)}`,
+        );
       }
-      if (cols.some((c) => c.toLowerCase() === "updated_at")) {
-        sets.push("updated_at = NOW()");
-      }
-      await pool.query(`UPDATE ?? SET ${sets.join(", ")}`, params);
     }
+
+    if (!pkLower.has(companyColLower)) {
+      joinConditions.push(
+        `tgt.${escapeIdentifier(companyCol)} = ${GLOBAL_COMPANY_ID}`,
+      );
+    }
+
+    const joinCondition = joinConditions.length
+      ? joinConditions.join(" AND ")
+      : `tgt.${escapeIdentifier(companyCol)} = ${GLOBAL_COMPANY_ID}`;
+
+    const countSql = `SELECT COUNT(*) AS cnt FROM ${escapeIdentifier(
+      table_name,
+    )} WHERE ${escapeIdentifier(companyCol)} <> ?`;
+    const [countRows] = await pool.query(countSql, [GLOBAL_COMPANY_ID]);
+    const totalRows = Number(countRows?.[0]?.cnt ?? 0);
+
+    let skippedRecords = [];
+    let updatedRows = 0;
+    let skippedRows = 0;
+
+    if (totalRows > 0) {
+      const conflictSql = `
+        SELECT src.*
+          FROM ${escapeIdentifier(table_name)} AS src
+          JOIN ${escapeIdentifier(table_name)} AS tgt
+            ON ${joinCondition}
+         WHERE src.${escapeIdentifier(companyCol)} <> ?
+      `;
+      const [conflictRaw] = await pool.query(conflictSql, [GLOBAL_COMPANY_ID]);
+
+      const conflictMap = new Map();
+      for (const row of conflictRaw || []) {
+        const plain = row ? { ...row } : {};
+        const keyParts = [plain[companyCol]];
+        for (const col of pkCols) {
+          keyParts.push(plain[col]);
+        }
+        const key = JSON.stringify(keyParts);
+        if (!conflictMap.has(key)) {
+          conflictMap.set(key, plain);
+        }
+      }
+
+      skippedRecords = Array.from(conflictMap.values());
+
+      const setClauses = [`src.${escapeIdentifier(companyCol)} = ?`];
+      const params = [GLOBAL_COMPANY_ID];
+      const updatedByCol = cols.find((c) => c.toLowerCase() === "updated_by");
+      if (updatedByCol) {
+        setClauses.push(`src.${escapeIdentifier(updatedByCol)} = ?`);
+        params.push(userId ?? null);
+      }
+      const updatedAtCol = cols.find((c) => c.toLowerCase() === "updated_at");
+      if (updatedAtCol) {
+        setClauses.push(`src.${escapeIdentifier(updatedAtCol)} = NOW()`);
+      }
+
+      const updateSql = `
+        UPDATE ${escapeIdentifier(table_name)} AS src
+        LEFT JOIN ${escapeIdentifier(table_name)} AS tgt
+          ON ${joinCondition}
+        SET ${setClauses.join(", ")}
+        WHERE src.${escapeIdentifier(companyCol)} <> ?
+          AND tgt.${escapeIdentifier(companyCol)} IS NULL
+      `;
+      const [result] = await pool.query(updateSql, [
+        ...params,
+        GLOBAL_COMPANY_ID,
+      ]);
+      updatedRows = Number(result?.affectedRows ?? 0);
+
+      const computedSkipped = totalRows - updatedRows;
+      skippedRows = Math.max(skippedRecords.length, computedSkipped, 0);
+    }
+
+    const tableSummary = {
+      tableName: table_name,
+      companyIdColumn: companyCol,
+      primaryKeyColumns: pkCols,
+      totalRows,
+      updatedRows,
+      skippedRows,
+      skippedRecords,
+    };
+
+    summary.tables.push(tableSummary);
+    summary.totals.totalRows += totalRows;
+    summary.totals.updatedRows += updatedRows;
+    summary.totals.skippedRows += skippedRows;
   }
+
+  summary.totals.tablesProcessed = summary.tables.length;
+
+  return summary;
 }
 
 export async function saveStoredProcedure(sql, { allowProtected = false } = {}) {

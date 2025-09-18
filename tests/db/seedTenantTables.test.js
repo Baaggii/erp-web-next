@@ -179,10 +179,11 @@ await test('zeroSharedTenantKeys updates audit columns when present', async () =
   const calls = [];
   db.pool.query = async (sql, params) => {
     calls.push({ sql, params });
-    if (sql.startsWith('SELECT table_name FROM tenant_tables')) {
+    const trimmed = sql.trim();
+    if (trimmed.startsWith('SELECT table_name FROM tenant_tables')) {
       return [[{ table_name: 't1' }]];
     }
-    if (sql.startsWith('SELECT COLUMN_NAME')) {
+    if (trimmed.startsWith('SELECT COLUMN_NAME')) {
       return [[
         { COLUMN_NAME: 'id' },
         { COLUMN_NAME: 'company_id' },
@@ -190,14 +191,37 @@ await test('zeroSharedTenantKeys updates audit columns when present', async () =
         { COLUMN_NAME: 'updated_at' },
       ]];
     }
+    if (trimmed.startsWith('SELECT COUNT(*) AS cnt')) {
+      return [[{ cnt: 2 }]];
+    }
+    if (trimmed.startsWith('SELECT src.*')) {
+      return [[]];
+    }
+    if (trimmed.startsWith('UPDATE')) {
+      return [{ affectedRows: 2 }];
+    }
     return [[], []];
   };
-  await db.zeroSharedTenantKeys(77);
+  const summary = await db.zeroSharedTenantKeys(77);
   db.pool.query = origQuery;
-  const update = calls.find((c) => c.sql.startsWith('UPDATE ?? SET company_id'));
+  const trimmedCalls = calls.map((c) => ({ ...c, sql: c.sql.trim() }));
+  const update = trimmedCalls.find((c) =>
+    c.sql.startsWith('UPDATE `t1` AS src'),
+  );
   assert.ok(update);
-  assert.match(update.sql, /updated_by = \?, updated_at = NOW\(\)/);
-  assert.deepEqual(update.params, ['t1', 0, 77]);
+  assert.match(update.sql, /SET src.`company_id` = \?/);
+  assert.match(update.sql, /src.`updated_by` = \?/);
+  assert.match(update.sql, /src.`updated_at` = NOW\(\)/);
+  assert.deepEqual(update.params, [0, 77, 0]);
+  assert.equal(summary.tables.length, 1);
+  assert.equal(summary.tables[0].tableName, 't1');
+  assert.equal(summary.tables[0].totalRows, 2);
+  assert.equal(summary.tables[0].updatedRows, 2);
+  assert.equal(summary.tables[0].skippedRows, 0);
+  assert.deepEqual(summary.tables[0].skippedRecords, []);
+  assert.equal(summary.totals.totalRows, 2);
+  assert.equal(summary.totals.updatedRows, 2);
+  assert.equal(summary.totals.skippedRows, 0);
 });
 
 await test('seedSeedTablesForCompanies seeds all companies', async () => {
