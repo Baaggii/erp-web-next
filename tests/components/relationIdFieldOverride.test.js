@@ -32,7 +32,7 @@ if (!haveReact) {
   test('TableManager handles relation idField overrides', { skip: true }, () => {});
   test('RowFormModal uses relation idField for search column', { skip: true }, () => {});
 } else {
-  test('TableManager passes relation idField override to RowFormModal', async (t) => {
+  test('TableManager applies relation idField override to labels and RowFormModal', async (t) => {
     const origFetch = global.fetch;
     global.fetch = async (input) => {
       const url = typeof input === 'string' ? input : input?.url || '';
@@ -70,7 +70,15 @@ if (!haveReact) {
         };
       }
       if (url.startsWith('/api/tables/other_table?')) {
-        return { ok: true, json: async () => ({ rows: [], count: 0 }) };
+        return {
+          ok: true,
+          json: async () => ({
+            rows: [
+              { id: 1, code: 'A123', name: 'Alpha' },
+            ],
+            count: 1,
+          }),
+        };
       }
       if (url.startsWith('/api/tables/other_table/columns')) {
         return { ok: true, json: async () => [] };
@@ -88,6 +96,7 @@ if (!haveReact) {
     };
 
     let receivedRelationConfigs = null;
+    let receivedRelations = null;
     const { default: TableManager } = await t.mock.import(
       '../../src/erp.mgt.mn/components/TableManager.jsx',
       {
@@ -100,6 +109,7 @@ if (!haveReact) {
         './RowFormModal.jsx': {
           default: (props) => {
             receivedRelationConfigs = props.relationConfigs;
+            receivedRelations = props.relations;
             return null;
           },
         },
@@ -125,14 +135,31 @@ if (!haveReact) {
       await act(async () => {
         root.render(React.createElement(TableManager, { table: 'test' }));
       });
-      for (let i = 0; i < 5; i += 1) {
-        if (receivedRelationConfigs?.other_id) break;
+      for (let i = 0; i < 10; i += 1) {
+        if (
+          receivedRelationConfigs?.other_id &&
+          receivedRelations?.other_id &&
+          Array.from(
+            container.querySelectorAll('select option'),
+          ).some((opt) => opt.value)
+        ) {
+          break;
+        }
         // eslint-disable-next-line no-await-in-loop
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
       assert.ok(receivedRelationConfigs);
       assert.equal(receivedRelationConfigs.other_id?.idField, 'code');
       assert.deepEqual(receivedRelationConfigs.other_id?.displayFields, ['name']);
+      assert.ok(receivedRelations);
+      assert.deepEqual(receivedRelations.other_id, [
+        { value: 1, label: 'A123 - Alpha' },
+      ]);
+      const option = Array.from(
+        container.querySelectorAll('select option'),
+      ).find((opt) => opt.value === '1');
+      assert.ok(option);
+      assert.equal(option.textContent, 'A123 - Alpha');
     } finally {
       root.unmount();
       global.fetch = origFetch;
