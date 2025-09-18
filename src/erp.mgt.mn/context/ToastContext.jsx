@@ -3,6 +3,21 @@ import { trackSetState } from '../utils/debug.js';
 
 const ToastContext = createContext({ addToast: () => {} });
 
+const DEFAULT_TOAST_ICON = 'ℹ️';
+
+function getToastIcon(type) {
+  switch (type) {
+    case 'success':
+      return '✅';
+    case 'error':
+      return '❌';
+    case 'warning':
+      return '⚠️';
+    default:
+      return DEFAULT_TOAST_ICON;
+  }
+}
+
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
 
@@ -31,11 +46,16 @@ export function ToastProvider({ children }) {
     <ToastContext.Provider value={value}>
       {children}
       <div className="toast-container">
-        {toasts.map((t) => (
-          <div key={t.id} className={`toast toast-${t.type}`}>
-            {t.type === 'success' ? '✅' : t.type === 'error' ? '❌' : 'ℹ️'} {t.message}
-          </div>
-        ))}
+        {toasts.map((t) => {
+          const rawType = t.type || 'info';
+          const normalizedType = rawType === 'warn' ? 'warning' : rawType;
+          const icon = getToastIcon(normalizedType);
+          return (
+            <div key={t.id} className={`toast toast-${normalizedType}`}>
+              {icon} {t.message}
+            </div>
+          );
+        })}
       </div>
     </ToastContext.Provider>
   );
