@@ -1377,9 +1377,8 @@ export default function CodingTablesPage() {
         rows: payloadRows,
         otherTable: {
           table: `${tbl}_other`,
-          columns: [...otherTableColumns],
-          columnList: [...otherTableColumns],
-          fields: [...fieldsOther],
+          columns: otherTableColumns,
+          fields: fieldsOther,
         },
       });
       setRequiresRowUpload(true);
@@ -1919,7 +1918,6 @@ export default function CodingTablesPage() {
     const errorGroups = {};
     const failed = [];
     const failedRows = [];
-    const failedRowObjects = [];
     let inserted = 0;
     let errorMessage = '';
     const ensureMessage = (value, fallback) => {
@@ -1934,9 +1932,7 @@ export default function CodingTablesPage() {
       const normalized = ensureMessage(message, 'Row failed');
       const truncated =
         normalized.length > 255 ? normalized.slice(0, 255) : normalized;
-      const rowWithError = { ...row, error_description: truncated };
-      failedRows.push(rowWithError);
-      failedRowObjects.push({ ...rowWithError });
+      failedRows.push({ ...row, error_description: truncated });
     };
     const resolveChunkLimit = () => {
       const parsed = Number.parseInt(groupSize, 10);
@@ -1944,19 +1940,18 @@ export default function CodingTablesPage() {
     };
     const computeOtherInsertSql = () => {
       const table = otherTableInfo?.table;
-      const columnList = Array.isArray(otherTableInfo?.columnList)
-        ? otherTableInfo.columnList
-        : Array.isArray(otherTableInfo?.columns)
+      const columnList = Array.isArray(otherTableInfo?.columns)
         ? otherTableInfo.columns
+        : Array.isArray(otherTableInfo?.columnList)
+        ? otherTableInfo.columnList
         : [];
-      const sourceRows = failedRows.length > 0 ? failedRows : failedRowObjects;
-      if (!table || columnList.length === 0 || sourceRows.length === 0) {
+      if (!table || columnList.length === 0 || failedRows.length === 0) {
         return '';
       }
       return buildOtherInsertFromRowObjects(
         table,
         columnList,
-        sourceRows,
+        failedRows,
         resolveChunkLimit(),
       );
     };
@@ -1999,29 +1994,27 @@ export default function CodingTablesPage() {
           inserted += delta;
           setInsertedCount(inserted);
         }
-        } catch (err) {
-          if (err.name === 'AbortError') {
-            abortCtrlRef.current = null;
-            const otherInsertSql = computeOtherInsertSql();
-            const failedCount = failedRows.length || failedRowObjects.length;
-            const abortMessage = ensureMessage(
-              errorMessage || err.message,
-              'Upload aborted',
-            );
-            return {
-              inserted,
-              failed,
-              aborted: true,
-              insertedMain: inserted,
-              insertedOther: 0,
-              errorGroups,
-              errorMessage: abortMessage,
-              failedRows,
-              failedRowObjects,
-              otherInsertSql,
-              otherInsertCount: otherInsertSql ? failedCount : 0,
-            };
-          }
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          abortCtrlRef.current = null;
+          const otherInsertSql = computeOtherInsertSql();
+          const abortMessage = ensureMessage(
+            errorMessage || err.message,
+            'Upload aborted',
+          );
+          return {
+            inserted,
+            failed,
+            aborted: true,
+            insertedMain: inserted,
+            insertedOther: 0,
+            errorGroups,
+            errorMessage: abortMessage,
+            failedRows,
+            otherInsertSql,
+            otherInsertCount: otherInsertSql ? failedRows.length : 0,
+          };
+        }
         const finalMsg = ensureMessage(err?.message, 'Upsert failed');
         errorGroups[finalMsg] = (errorGroups[finalMsg] || 0) + 1;
         failed.push(finalMsg);
@@ -2036,7 +2029,6 @@ export default function CodingTablesPage() {
     }
     setGroupMessage('');
     const otherInsertSql = computeOtherInsertSql();
-    const failedRowCount = failedRows.length || failedRowObjects.length;
     const finalErrorMessage = ensureMessage(errorMessage, '');
     return {
       inserted,
@@ -2047,9 +2039,8 @@ export default function CodingTablesPage() {
       errorGroups,
       errorMessage: finalErrorMessage,
       failedRows,
-      failedRowObjects,
       otherInsertSql,
-      otherInsertCount: otherInsertSql ? failedRowCount : 0,
+      otherInsertCount: otherInsertSql ? failedRows.length : 0,
     };
   }
 
@@ -2078,8 +2069,6 @@ export default function CodingTablesPage() {
             ? mainResult.otherInsertCount
             : Array.isArray(mainResult.failedRows)
             ? mainResult.failedRows.length
-            : Array.isArray(mainResult.failedRowObjects)
-            ? mainResult.failedRowObjects.length
             : 0;
         let oInserted = 0;
         let runErr = { ...mainResult.errorGroups };
