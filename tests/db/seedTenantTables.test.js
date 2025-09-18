@@ -41,14 +41,62 @@ await test('seedTenantTables filters by record ids', async () => {
     if (sql.startsWith('SELECT COLUMN_NAME')) {
       return [[{ COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' }]];
     }
+    if (sql.startsWith('INSERT INTO ??')) {
+      return [{ affectedRows: 2 }];
+    }
     return [[], []];
   };
-  await db.seedTenantTables(7, null, { posts: [1, 2] }, false, 1);
+  const summary = await db.seedTenantTables(7, null, { posts: [1, 2] }, false, 1);
   db.pool.query = orig;
   const insertCall = calls.find((c) => c.sql.startsWith('INSERT INTO ??'));
   assert.ok(insertCall);
   assert.match(insertCall.sql, /IN \(\?, \?\)/);
   assert.deepEqual(insertCall.params, ['posts', 7, 'posts', 1, 2]);
+  assert.deepEqual(summary, { posts: { count: 2, ids: [1, 2] } });
+});
+
+await test('seedTenantTables returns summary for provided rows', async () => {
+  const orig = db.pool.query;
+  const calls = [];
+  db.pool.query = async (sql, params) => {
+    calls.push({ sql, params });
+    if (sql.startsWith('SELECT table_name, is_shared FROM tenant_tables')) {
+      return [[{ table_name: 'posts', is_shared: 0 }]];
+    }
+    if (sql.startsWith('SELECT COUNT(*)')) {
+      return [[{ cnt: 0 }]];
+    }
+    if (sql.startsWith('SELECT COLUMN_NAME')) {
+      return [[
+        { COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' },
+        { COLUMN_NAME: 'company_id', COLUMN_KEY: '', EXTRA: '' },
+        { COLUMN_NAME: 'title', COLUMN_KEY: '', EXTRA: '' },
+      ]];
+    }
+    if (sql.startsWith('SELECT column_name, mn_label FROM table_column_labels')) {
+      return [[]];
+    }
+    if (sql.startsWith('INSERT INTO ?? (`company_id`, `id`, `title`)')) {
+      return [{ affectedRows: 1, insertId: 77 }];
+    }
+    if (sql.startsWith('INSERT INTO user_level_permissions')) {
+      return [{ affectedRows: 0 }];
+    }
+    return [[], []];
+  };
+  const summary = await db.seedTenantTables(
+    9,
+    null,
+    { posts: [{ id: 55, title: 'Hello' }] },
+    false,
+    42,
+  );
+  db.pool.query = orig;
+  assert.deepEqual(summary, { posts: { count: 1, ids: [55] } });
+  const insert = calls.find((c) =>
+    c.sql.startsWith('INSERT INTO ?? (`company_id`, `id`, `title`)'),
+  );
+  assert.ok(insert);
 });
 
 await test('seedTenantTables overrides audit columns', async () => {

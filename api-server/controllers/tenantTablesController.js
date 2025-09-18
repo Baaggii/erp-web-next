@@ -123,12 +123,20 @@ export async function seedExistingCompanies(req, res, next) {
       }
     }
     const companies = await listCompanies(req.user.empid);
+    const results = {};
     for (const { id, created_by } of companies) {
       if (id === GLOBAL_COMPANY_ID) continue;
       if (created_by !== req.user.empid) continue;
-      await seedTenantTables(id, tables, recordMap, overwrite, req.user.empid);
+      const summary = await seedTenantTables(
+        id,
+        tables,
+        recordMap,
+        overwrite,
+        req.user.empid,
+      );
+      results[id] = summary || {};
     }
-    res.sendStatus(204);
+    res.json(results);
   } catch (err) {
     next(err);
   }
@@ -165,8 +173,14 @@ export async function seedCompany(req, res, next) {
       return res.sendStatus(403);
     }
 
-    await seedTenantTables(companyId, tables, recordMap, overwrite, req.user.empid);
-    res.sendStatus(204);
+    const summary = await seedTenantTables(
+      companyId,
+      tables,
+      recordMap,
+      overwrite,
+      req.user.empid,
+    );
+    res.json(summary || {});
   } catch (err) {
     next(err);
   }

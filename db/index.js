@@ -1090,8 +1090,9 @@ export async function seedTenantTables(
   updatedBy = createdBy,
 ) {
   let tables;
+  const summary = {};
   if (Array.isArray(selectedTables)) {
-    if (selectedTables.length === 0) return;
+    if (selectedTables.length === 0) return summary;
     const placeholders = selectedTables.map(() => '?').join(', ');
     const [rows] = await pool.query(
       `SELECT table_name, is_shared FROM tenant_tables WHERE seed_on_create = 1 AND table_name IN (${placeholders})`,
@@ -1109,8 +1110,10 @@ export async function seedTenantTables(
     );
     tables = rows;
   }
-  for (const { table_name, is_shared } of tables) {
+  for (const { table_name, is_shared } of tables || []) {
     if (is_shared) continue;
+    const tableSummary = { count: 0 };
+    summary[table_name] = tableSummary;
     const [[{ cnt }]] = await pool.query(
       'SELECT COUNT(*) AS cnt FROM ?? WHERE company_id = ?',
       [table_name, companyId],
@@ -1138,16 +1141,57 @@ export async function seedTenantTables(
       .map((c) => c.name);
 
     const records = recordMap?.[table_name];
+    const pkCols = meta.filter((m) => m.key === 'PRI').map((m) => m.name);
+    const insertedIds = [];
+    const manualRecords =
+      Array.isArray(records) &&
+      records.length > 0 &&
+      typeof records[0] === 'object' &&
+      records[0] !== null
+        ? records
+        : null;
 
-    if (Array.isArray(records) && records.length > 0 && typeof records[0] === 'object' && records[0] !== null) {
-      for (const row of records) {
+    if (manualRecords) {
+      for (const row of manualRecords) {
         const rowCols = Object.keys(row).filter((c) => c !== 'company_id');
         await ensureValidColumns(table_name, columns, rowCols);
         const colNames = ['company_id', ...rowCols];
         const colsClause = colNames.map((c) => `\`${c}\``).join(', ');
         const placeholders = colNames.map(() => '?').join(', ');
         const params = [table_name, ...colNames.map((c) => (c === 'company_id' ? companyId : row[c]))];
-        await pool.query(`INSERT INTO ?? (${colsClause}) VALUES (${placeholders})`, params);
+        const [result] = await pool.query(
+          `INSERT INTO ?? (${colsClause}) VALUES (${placeholders})`,
+          params,
+        );
+        const inserted = Number(result?.affectedRows);
+        tableSummary.count += Number.isFinite(inserted) ? inserted : 1;
+        if (pkCols.length === 1) {
+          const pk = pkCols[0];
+          if (row[pk] !== undefined && row[pk] !== null) {
+            insertedIds.push(row[pk]);
+          } else {
+            const insId = Number(result?.insertId);
+            if (Number.isFinite(insId) && insId > 0) {
+              insertedIds.push(insId);
+            }
+          }
+        } else if (pkCols.length > 1) {
+          const composite = {};
+          let hasAll = true;
+          for (const pk of pkCols) {
+            if (row[pk] === undefined) {
+              hasAll = false;
+              break;
+            }
+            composite[pk] = row[pk];
+          }
+          if (hasAll) {
+            insertedIds.push(composite);
+          }
+        }
+      }
+      if (insertedIds.length > 0) {
+        tableSummary.ids = insertedIds;
       }
       continue;
     }
@@ -1175,17 +1219,21 @@ export async function seedTenantTables(
       `INSERT INTO ?? (${colsClause}) SELECT ${selectClause} FROM ?? WHERE company_id = ${GLOBAL_COMPANY_ID}`;
     params.push(table_name);
 
-    const ids = Array.isArray(records) ? records : null;
-    if (Array.isArray(ids) && ids.length > 0) {
-      const pkCols = meta.filter((m) => m.key === 'PRI').map((m) => m.name);
-      if (pkCols.length === 1) {
-        const placeholders = ids.map(() => '?').join(', ');
-        sql += ` AND \`${pkCols[0]}\` IN (${placeholders})`;
-        params.push(...ids);
-      }
+    const ids = Array.isArray(records) ? records : [];
+    if (ids.length > 0 && pkCols.length === 1) {
+      const placeholders = ids.map(() => '?').join(', ');
+      sql += ` AND \`${pkCols[0]}\` IN (${placeholders})`;
+      params.push(...ids);
     }
 
-    await pool.query(sql, params);
+    const [result] = await pool.query(sql, params);
+    const inserted = Number(result?.affectedRows);
+    if (Number.isFinite(inserted)) {
+      tableSummary.count += inserted;
+    }
+    if (ids.length > 0) {
+      tableSummary.ids = [...ids];
+    }
   }
 
   await pool.query(
@@ -1196,6 +1244,8 @@ export async function seedTenantTables(
      ON DUPLICATE KEY UPDATE action = VALUES(action)`,
     [companyId, createdBy],
   );
+
+  return summary;
 }
 
 export async function seedDefaultsForSeedTables(userId) {

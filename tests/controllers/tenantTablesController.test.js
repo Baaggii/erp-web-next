@@ -10,11 +10,15 @@ function createRes() {
       return this;
     },
     json(payload) {
+      if (this.statusCode === undefined) {
+        this.statusCode = 200;
+      }
       this.body = payload;
       return this;
     },
     sendStatus(code) {
       this.statusCode = code;
+      this.body = undefined;
       return this;
     },
   };
@@ -29,7 +33,7 @@ async function loadController(overrides = {}) {
     getTenantTable: async () => null,
     zeroSharedTenantKeys: async () => {},
     seedDefaultsForSeedTables: async () => {},
-    seedTenantTables: async () => {},
+    seedTenantTables: async () => ({}),
     listCompanies: async () => [],
     ...overrides,
   };
@@ -39,7 +43,7 @@ async function loadController(overrides = {}) {
       '../../db/index.js': baseDb,
     },
   );
-  return mod.getTenantTable;
+  return mod;
 }
 
 if (typeof mock?.import !== 'function') {
@@ -56,7 +60,7 @@ if (typeof mock?.import !== 'function') {
       isShared: false,
       tenantKeys: ['company_id'],
     }));
-    const getTenantTable = await loadController({ getTenantTable: stub });
+    const { getTenantTable } = await loadController({ getTenantTable: stub });
     await getTenantTable(req, res, (err) => {
       if (err) throw err;
     });
@@ -71,7 +75,7 @@ if (typeof mock?.import !== 'function') {
   test('getTenantTable requires table_name param', async () => {
     const req = { params: {} };
     const res = createRes();
-    const getTenantTable = await loadController();
+    const { getTenantTable } = await loadController();
     await getTenantTable(req, res, (err) => {
       if (err) throw err;
     });
@@ -82,7 +86,7 @@ if (typeof mock?.import !== 'function') {
   test('getTenantTable returns 404 when table not found', async () => {
     const req = { params: { table_name: 'missing' } };
     const res = createRes();
-    const getTenantTable = await loadController({ getTenantTable: async () => null });
+    const { getTenantTable } = await loadController({ getTenantTable: async () => null });
     await getTenantTable(req, res, (err) => {
       if (err) throw err;
     });
@@ -94,7 +98,7 @@ if (typeof mock?.import !== 'function') {
     const req = { params: { table_name: 'users' } };
     const res = createRes();
     const failure = new Error('db failed');
-    const getTenantTable = await loadController({
+    const { getTenantTable } = await loadController({
       getTenantTable: async () => {
         throw failure;
       },
@@ -104,5 +108,64 @@ if (typeof mock?.import !== 'function') {
       captured = err;
     });
     assert.equal(captured, failure);
+  });
+
+  test('seedCompany returns summary payload', async () => {
+    const summary = { posts: { count: 2, ids: ['1', '2'] } };
+    const seedStub = mock.fn(async () => summary);
+    const mod = await loadController({
+      getEmploymentSession: async () => ({ permissions: { system_settings: true } }),
+      listCompanies: async () => [
+        { id: 7, created_by: 99 },
+        { id: 8, created_by: 5 },
+      ],
+      seedTenantTables: seedStub,
+    });
+    const req = {
+      body: { companyId: 8, tables: ['posts'], records: [], overwrite: false },
+      user: { empid: 5, companyId: 1 },
+    };
+    const res = createRes();
+    await mod.seedCompany(req, res, (err) => {
+      if (err) throw err;
+    });
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.body, summary);
+    assert.equal(seedStub.mock.calls.length, 1);
+    assert.deepEqual(seedStub.mock.calls[0].arguments, [8, ['posts'], {}, false, 5]);
+  });
+
+  test('seedExistingCompanies returns summaries keyed by company', async () => {
+    const seedStub = mock.fn(async (companyId) => ({ posts: { count: companyId } }));
+    const mod = await loadController({
+      getEmploymentSession: async () => ({ permissions: { system_settings: true } }),
+      listCompanies: async () => [
+        { id: 0, created_by: 5 },
+        { id: 10, created_by: 5 },
+        { id: 11, created_by: 6 },
+        { id: 12, created_by: 5 },
+      ],
+      seedTenantTables: seedStub,
+    });
+    const req = {
+      body: {
+        tables: ['posts'],
+        records: [{ table: 'posts', ids: [3, 4] }],
+        overwrite: true,
+      },
+      user: { empid: 5, companyId: 1 },
+    };
+    const res = createRes();
+    await mod.seedExistingCompanies(req, res, (err) => {
+      if (err) throw err;
+    });
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.body, {
+      10: { posts: { count: 10 } },
+      12: { posts: { count: 12 } },
+    });
+    assert.equal(seedStub.mock.calls.length, 2);
+    assert.deepEqual(seedStub.mock.calls[0].arguments, [10, ['posts'], { posts: [3, 4] }, true, 5]);
+    assert.deepEqual(seedStub.mock.calls[1].arguments, [12, ['posts'], { posts: [3, 4] }, true, 5]);
   });
 }
