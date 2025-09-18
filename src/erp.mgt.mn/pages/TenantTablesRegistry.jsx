@@ -799,91 +799,89 @@ export default function TenantTablesRegistry() {
                       ) : tableRecords[table.tableName]?.columns &&
                         tableRecords[table.tableName]?.rows ? (
                         tableRecords[table.tableName].rows.length ? (
-                          <>
-                            <table style={{ borderCollapse: 'collapse' }}>
-                              <thead>
-                                <tr>
-                                  <th style={styles.th}></th>
-                                  {(tableRecords[table.tableName]?.columns ?? []).map((c) => (
-                                    <th key={c} style={styles.th}>
-                                      {c}
-                                    </th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {(tableRecords[table.tableName]?.rows ?? []).map((r) => {
-                                  const info = tableRecords[table.tableName];
-                                  const selectedSet = info?.selected || new Set();
-                                  const isSelected = selectedSet.has(r.id);
-                                  const key = getRecordKey(r.id);
-                                  const currentRow = info?.edits?.[key] || r;
-                                  const columns = info?.columns ?? [];
-                                  return (
-                                    <tr key={r.id}>
-                                      <td style={styles.td}>
-                                        <input
-                                          type="checkbox"
-                                          checked={!!selectedSet.has(r.id)}
-                                          onChange={(e) =>
-                                            handleRecordSelect(
-                                              table.tableName,
-                                              r.id,
-                                              e.target.checked,
-                                            )
-                                          }
-                                        />
-                                      </td>
-                                      {columns.map((c) => {
-                                        const value = currentRow?.[c];
-                                        const displayValue =
-                                          value === null || value === undefined
-                                            ? ''
-                                            : String(value);
-                                        const isEditable =
-                                          isSelected &&
-                                          c !== info?.primaryKey &&
-                                          c !== 'company_id';
-                                        return (
-                                          <td key={c} style={styles.td}>
-                                            {isEditable ? (
-                                              <input
-                                                type="text"
-                                                value={displayValue}
-                                                onChange={(e) =>
-                                                  handleRecordInputChange(
-                                                    table.tableName,
-                                                    r.id,
-                                                    c,
-                                                    e.target.value,
-                                                  )
-                                                }
-                                                style={{ width: '100%' }}
-                                              />
-                                            ) : (
-                                              displayValue
-                                            )}
-                                          </td>
-                                        );
-                                      })}
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                            {(tableRecords[table.tableName]?.validationErrors || []).length >
-                            0 ? (
-                              <div style={{ marginTop: '0.5rem', color: '#b91c1c' }}>
-                                <ul style={{ margin: '0.25rem 0 0 1.25rem' }}>
-                                  {(
-                                    tableRecords[table.tableName]?.validationErrors || []
-                                  ).map((msg, idx) => (
-                                    <li key={`${msg}-${idx}`}>{msg}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            ) : null}
-                          </>
+                          <table style={{ borderCollapse: 'collapse' }}>
+                            <thead>
+                              <tr>
+                                <th style={styles.th}></th>
+                                {(tableRecords[table.tableName]?.columns ?? []).map((c) => (
+                                  <th key={c} style={styles.th}>
+                                    {c}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(tableRecords[table.tableName]?.rows ?? []).map((r) => {
+                                const info = tableRecords[table.tableName];
+                                const selectedSet = info?.selected || new Set();
+                                const isSelected = selectedSet.has(r.id);
+                                const key = getRecordKey(r.id);
+                                const currentRow = info?.edits?.[key] || r;
+                                const columns = info?.columns ?? [];
+                                return (
+                                  <tr key={r.id}>
+                                    <td style={styles.td}>
+                                      <input
+                                        type="checkbox"
+                                        checked={!!selectedSet.has(r.id)}
+                                        onChange={(e) =>
+                                          handleRecordSelect(
+                                            table.tableName,
+                                            r.id,
+                                            e.target.checked,
+                                          )
+                                        }
+                                      />
+                                    </td>
+                                    {columns.map((c) => {
+                                      const value = currentRow?.[c];
+                                      const displayValue =
+                                        value === null || value === undefined
+                                          ? ''
+                                          : String(value);
+                                      const isEditable =
+                                        isSelected &&
+                                        c !== info?.primaryKey &&
+                                        c !== 'company_id';
+                                      return (
+                                        <td key={c} style={styles.td}>
+                                          {isEditable ? (
+                                            <input
+                                              type="text"
+                                              value={displayValue}
+                                              onChange={(e) =>
+                                                handleRecordInputChange(
+                                                  table.tableName,
+                                                  r.id,
+                                                  c,
+                                                  e.target.value,
+                                                )
+                                              }
+                                              style={{ width: '100%' }}
+                                            />
+                                          ) : (
+                                            displayValue
+                                          )}
+                                        </td>
+                                      );
+                                    })}
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                          {(tableRecords[table.tableName]?.validationErrors || []).length >
+                          0 ? (
+                            <div style={{ marginTop: '0.5rem', color: '#b91c1c' }}>
+                              <ul style={{ margin: '0.25rem 0 0 1.25rem' }}>
+                                {(
+                                  tableRecords[table.tableName]?.validationErrors || []
+                                ).map((msg, idx) => (
+                                  <li key={`${msg}-${idx}`}>{msg}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
                         ) : (
                           <p>{t('noRecords', 'No records')}</p>
                         )
