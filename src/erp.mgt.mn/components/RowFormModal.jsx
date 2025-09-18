@@ -171,6 +171,13 @@ const RowFormModal = function RowFormModal({
     });
     return map;
   }, [columnCaseMapKey, displayIndex]);
+  const getRowValueCaseInsensitive = useCallback((rowObj, key) => {
+    if (!rowObj || !key) return undefined;
+    const lowerKey = key.toLowerCase();
+    const match = Object.keys(rowObj).find((k) => k.toLowerCase() === lowerKey);
+    if (match === undefined) return undefined;
+    return rowObj[match];
+  }, []);
   const relationConfigMapKey = React.useMemo(
     () => JSON.stringify(relationConfigMap || {}),
     [relationConfigMap],
@@ -1034,8 +1041,17 @@ const RowFormModal = function RowFormModal({
         relationData[c]?.[val]
       ) {
         const row = relationData[c][val];
-        const parts = [val];
-        (relationConfigMap[c].displayFields || []).forEach((df) => {
+        const cfg = relationConfigMap[c];
+        const parts = [];
+        const identifier = getRowValueCaseInsensitive(
+          row,
+          cfg.idField || cfg.column,
+        );
+        if (identifier !== undefined && identifier !== null) {
+          parts.push(identifier);
+        }
+        if (parts.length === 0) parts.push(val);
+        (cfg.displayFields || []).forEach((df) => {
           if (row[df] !== undefined) parts.push(row[df]);
         });
         display = parts.join(' - ');
@@ -1046,7 +1062,15 @@ const RowFormModal = function RowFormModal({
       ) {
         const row = relationData[c][val];
         const cfg = viewDisplays[viewSourceMap[c]] || {};
-        const parts = [val];
+        const parts = [];
+        const identifier = getRowValueCaseInsensitive(
+          row,
+          cfg.idField || c,
+        );
+        if (identifier !== undefined && identifier !== null) {
+          parts.push(identifier);
+        }
+        if (parts.length === 0) parts.push(val);
         (cfg.displayFields || []).forEach((df) => {
           if (row[df] !== undefined) parts.push(row[df]);
         });
@@ -1058,7 +1082,12 @@ const RowFormModal = function RowFormModal({
       ) {
         const row = relationData[c][val];
         const cfg = autoSelectConfigs[c];
-        const parts = [val];
+        const parts = [];
+        const identifier = getRowValueCaseInsensitive(row, cfg.idField);
+        if (identifier !== undefined && identifier !== null) {
+          parts.push(identifier);
+        }
+        if (parts.length === 0) parts.push(val);
         (cfg.displayFields || []).forEach((df) => {
           if (row[df] !== undefined) parts.push(row[df]);
         });
