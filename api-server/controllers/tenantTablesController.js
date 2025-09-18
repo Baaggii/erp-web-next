@@ -12,6 +12,9 @@ import {
 import { hasAction } from '../utils/hasAction.js';
 import { GLOBAL_COMPANY_ID } from '../../config/0/constants.js';
 
+const SHARED_SEED_CONFLICT_MESSAGE =
+  'Shared tables always read from tenant key 0, so they cannot participate in per-company seeding.';
+
 export async function listTenantTables(req, res, next) {
   try {
     const tables = await listTenantTablesDb();
@@ -59,11 +62,16 @@ export async function createTenantTable(req, res, next) {
     if (!tableName) {
       return res.status(400).json({ message: 'tableName is required' });
     }
+    const sharedFlag = !!isShared;
+    const seedFlag = !!seedOnCreate;
+    if (sharedFlag && seedFlag) {
+      return res.status(400).json({ message: SHARED_SEED_CONFLICT_MESSAGE });
+    }
     const userId = req.user?.empid;
     const result = await upsertTenantTable(
       tableName,
-      isShared,
-      seedOnCreate,
+      sharedFlag,
+      seedFlag,
       userId,
       userId,
     );
@@ -78,11 +86,16 @@ export async function updateTenantTable(req, res, next) {
     if (!(await ensureAdmin(req))) return res.sendStatus(403);
     const tableName = req.params.table_name;
     const { isShared, seedOnCreate } = req.body || {};
+    const sharedFlag = !!isShared;
+    const seedFlag = !!seedOnCreate;
+    if (sharedFlag && seedFlag) {
+      return res.status(400).json({ message: SHARED_SEED_CONFLICT_MESSAGE });
+    }
     const userId = req.user?.empid;
     const result = await upsertTenantTable(
       tableName,
-      isShared,
-      seedOnCreate,
+      sharedFlag,
+      seedFlag,
       null,
       userId,
     );

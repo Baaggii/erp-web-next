@@ -151,6 +151,14 @@ export default function TenantTablesRegistry() {
   const { t } = useContext(I18nContext);
   const location = useLocation();
   const navigate = useNavigate();
+  const sharedSeedingHelpText = t(
+    'sharedTablesSeedingHelp',
+    'Shared tables always read from tenant key 0, so they cannot participate in per-company seeding.',
+  );
+  const sharedSeedingConflictMessage = t(
+    'sharedTablesSeedingConflict',
+    'Shared tables always read from tenant key 0, so they cannot participate in per-company seeding.',
+  );
 
   useEffect(() => {
     loadTables();
@@ -681,7 +689,34 @@ export default function TenantTablesRegistry() {
   }
 
   function handleChange(idx, field, value) {
-    setTables((ts) => ts.map((t, i) => (i === idx ? { ...t, [field]: value } : t)));
+    const table = Array.isArray(tables) ? tables[idx] : null;
+    const warnOnSeedToggle =
+      field === 'seedOnCreate' && value === true && table?.isShared;
+    const warnOnSharedToggle =
+      field === 'isShared' && value === true && table?.seedOnCreate;
+    const shouldWarn = warnOnSeedToggle || warnOnSharedToggle;
+    setTables((prevTables) => {
+      if (!Array.isArray(prevTables)) return prevTables;
+      return prevTables.map((t, i) => {
+        if (i !== idx) return t;
+        if (field === 'seedOnCreate') {
+          if (value && t.isShared) {
+            return t;
+          }
+          return { ...t, seedOnCreate: value };
+        }
+        if (field === 'isShared') {
+          if (value && t.seedOnCreate) {
+            return { ...t, isShared: value, seedOnCreate: false };
+          }
+          return { ...t, isShared: value };
+        }
+        return { ...t, [field]: value };
+      });
+    });
+    if (shouldWarn) {
+      addToast(sharedSeedingConflictMessage, 'error');
+    }
   }
 
   async function handleSave(row) {
@@ -691,6 +726,10 @@ export default function TenantTablesRegistry() {
     }
     if (typeof row.isShared !== 'boolean' || typeof row.seedOnCreate !== 'boolean') {
       addToast(t('invalidValues', 'Invalid values'), 'error');
+      return;
+    }
+    if (row.isShared && row.seedOnCreate) {
+      addToast(sharedSeedingConflictMessage, 'error');
       return;
     }
     setSaving((s) => ({ ...s, [row.tableName]: true }));
@@ -748,6 +787,9 @@ export default function TenantTablesRegistry() {
           Reset Shared Table Tenant Keys
         </button>
       </div>
+      <p style={{ marginTop: '0.75rem', color: '#374151', maxWidth: '60ch' }}>
+        {sharedSeedingHelpText}
+      </p>
       {seedDefaultsConflict ? (
         <div
           style={{
@@ -930,42 +972,56 @@ export default function TenantTablesRegistry() {
             </tr>
           </thead>
           <tbody>
-            {tables.map((table, idx) => (
-              <React.Fragment key={table.tableName}>
-                <tr>
-                  <td style={styles.td}>{table.tableName}</td>
-                  <td style={styles.td}>
-                    <input
-                      type="checkbox"
-                      checked={!!table.isShared}
-                      onChange={(e) => handleChange(idx, 'isShared', e.target.checked)}
-                    />
-                  </td>
-                  <td style={styles.td}>
-                    <input
-                      type="checkbox"
-                      checked={!!table.seedOnCreate}
-                      onChange={(e) => handleChange(idx, 'seedOnCreate', e.target.checked)}
-                    />
-                  </td>
-                  <td style={styles.td}>
-                    <button
-                      onClick={() => handleSave(table)}
-                      disabled={saving[table.tableName]}
-                    >
-                      Save
-                    </button>{' '}
-                    <button onClick={() => handleToggleExpand(table.tableName)}>
-                      {expandedTable === table.tableName ? 'Collapse' : 'Expand'}
-                    </button>
-                  </td>
-                </tr>
-                {expandedTable === table.tableName && (
+            {tables.map((table, idx) => {
+              const conflict = !!(table.isShared && table.seedOnCreate);
+              return (
+                <React.Fragment key={table.tableName}>
                   <tr>
-                    <td colSpan={4} style={{ padding: '0.5rem' }}>
-                      {defaultRows[table.tableName]?.loading ? (
-                        <p>{t('loading', 'Loading...')}</p>
-                      ) : defaultRows[table.tableName]?.error ? (
+                    <td style={styles.td}>{table.tableName}</td>
+                    <td style={styles.td}>
+                      <input
+                        type="checkbox"
+                        checked={!!table.isShared}
+                        onChange={(e) => handleChange(idx, 'isShared', e.target.checked)}
+                      />
+                    </td>
+                    <td style={styles.td}>
+                      <input
+                        type="checkbox"
+                        checked={!!table.seedOnCreate}
+                        onChange={(e) => handleChange(idx, 'seedOnCreate', e.target.checked)}
+                      />
+                      {conflict ? (
+                        <div
+                          style={{
+                            marginTop: '0.25rem',
+                            color: '#b91c1c',
+                            fontSize: '0.875rem',
+                          }}
+                        >
+                          {sharedSeedingConflictMessage}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td style={styles.td}>
+                      <button
+                        onClick={() => handleSave(table)}
+                        disabled={saving[table.tableName] || conflict}
+                        title={conflict ? sharedSeedingConflictMessage : undefined}
+                      >
+                        Save
+                      </button>{' '}
+                      <button onClick={() => handleToggleExpand(table.tableName)}>
+                        {expandedTable === table.tableName ? 'Collapse' : 'Expand'}
+                      </button>
+                    </td>
+                  </tr>
+                  {expandedTable === table.tableName && (
+                    <tr>
+                      <td colSpan={4} style={{ padding: '0.5rem' }}>
+                        {defaultRows[table.tableName]?.loading ? (
+                          <p>{t('loading', 'Loading...')}</p>
+                        ) : defaultRows[table.tableName]?.error ? (
                         <p>Error: {defaultRows[table.tableName].error}</p>
                       ) : defaultRows[table.tableName]?.rows.length ? (
                         <div>
@@ -1005,9 +1061,10 @@ export default function TenantTablesRegistry() {
                       )}
                     </td>
                   </tr>
-                )}
-              </React.Fragment>
-            ))}
+                  )}
+                </React.Fragment>
+              );
+            })}
           </tbody>
         </table>
       )}

@@ -1011,6 +1011,15 @@ export async function upsertTenantTable(
   updatedBy = null,
 ) {
   const userId = createdBy ?? updatedBy;
+  const sharedFlag = !!isShared;
+  const seedFlag = !!seedOnCreate;
+  if (sharedFlag && seedFlag) {
+    const err = new Error(
+      'Shared tables always read from tenant key 0, so they cannot participate in per-company seeding.',
+    );
+    err.status = 400;
+    throw err;
+  }
   await pool.query(
     `INSERT INTO tenant_tables (table_name, is_shared, seed_on_create, created_by, created_at)
      VALUES (?, ?, ?, ?, NOW())
@@ -1019,9 +1028,9 @@ export async function upsertTenantTable(
        seed_on_create = VALUES(seed_on_create),
        updated_by = VALUES(created_by),
        updated_at = NOW()`,
-    [tableName, isShared ? 1 : 0, seedOnCreate ? 1 : 0, userId],
+    [tableName, sharedFlag ? 1 : 0, seedFlag ? 1 : 0, userId],
   );
-  return { tableName, isShared: !!isShared, seedOnCreate: !!seedOnCreate };
+  return { tableName, isShared: sharedFlag, seedOnCreate: seedFlag };
 }
 
 export async function getTenantTableFlags(tableName) {

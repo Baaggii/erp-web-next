@@ -1,6 +1,9 @@
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 
+const CONFLICT_MESSAGE =
+  'Shared tables always read from tenant key 0, so they cannot participate in per-company seeding.';
+
 function createRes() {
   return {
     statusCode: undefined,
@@ -108,6 +111,49 @@ if (typeof mock?.import !== 'function') {
       captured = err;
     });
     assert.equal(captured, failure);
+  });
+
+  test('createTenantTable rejects shared seed_on_create combination', async () => {
+    const upsertStub = mock.fn(async () => {
+      throw new Error('should not be called');
+    });
+    const mod = await loadController({
+      getEmploymentSession: async () => ({ permissions: { system_settings: true } }),
+      upsertTenantTable: upsertStub,
+    });
+    const req = {
+      body: { tableName: 'posts', isShared: true, seedOnCreate: true },
+      user: { empid: 5, companyId: 1 },
+    };
+    const res = createRes();
+    await mod.createTenantTable(req, res, (err) => {
+      if (err) throw err;
+    });
+    assert.equal(res.statusCode, 400);
+    assert.equal(res.body?.message, CONFLICT_MESSAGE);
+    assert.equal(upsertStub.mock.calls.length, 0);
+  });
+
+  test('updateTenantTable rejects shared seed_on_create combination', async () => {
+    const upsertStub = mock.fn(async () => {
+      throw new Error('should not be called');
+    });
+    const mod = await loadController({
+      getEmploymentSession: async () => ({ permissions: { system_settings: true } }),
+      upsertTenantTable: upsertStub,
+    });
+    const req = {
+      params: { table_name: 'posts' },
+      body: { isShared: true, seedOnCreate: true },
+      user: { empid: 5, companyId: 1 },
+    };
+    const res = createRes();
+    await mod.updateTenantTable(req, res, (err) => {
+      if (err) throw err;
+    });
+    assert.equal(res.statusCode, 400);
+    assert.equal(res.body?.message, CONFLICT_MESSAGE);
+    assert.equal(upsertStub.mock.calls.length, 0);
   });
 
   test('seedCompany returns summary payload', async () => {
