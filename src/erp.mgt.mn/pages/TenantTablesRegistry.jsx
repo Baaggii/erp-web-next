@@ -44,18 +44,6 @@ function formatSeedSummaryForToast(entries) {
     .join('; ');
 }
 
-function getRecordKey(id) {
-  if (id === null || id === undefined) return '__rec__null__';
-  if (typeof id === 'object') {
-    try {
-      return `__rec__obj__${JSON.stringify(id)}`;
-    } catch {
-      return `__rec__obj__${String(id)}`;
-    }
-  }
-  return `__rec__val__${String(id)}`;
-}
-
 async function parseErrorBody(res) {
   const ct = res.headers.get('content-type') || '';
   try {
@@ -238,39 +226,17 @@ export default function TenantTablesRegistry() {
     setTableRecords((prev) => {
       const info = prev[table];
       if (!info) return prev;
-      const selected = new Set(info.selected || []);
-      const key = getRecordKey(id);
-      const edits = { ...(info.edits || {}) };
+      const selected = new Set(info.selected);
       if (checked) selected.add(id);
       else selected.delete(id);
-      if (!checked && edits[key]) {
-        delete edits[key];
-      }
-      const nextInfo = { ...info, selected, edits };
-      const validationErrors = getValidationErrors(nextInfo);
-      return {
-        ...prev,
-        [table]: {
-          ...nextInfo,
-          validationErrors,
-        },
-      };
+      return { ...prev, [table]: { ...info, selected } };
     });
   }
 
   async function loadTableRecords(table) {
     setTableRecords((prev) => ({
       ...prev,
-      [table]: {
-        loading: true,
-        columns: [],
-        rows: [],
-        selected: new Set(),
-        edits: {},
-        rowMap: {},
-        validationErrors: [],
-        primaryKey: null,
-      },
+      [table]: { loading: true, columns: [], rows: [], selected: new Set() },
     }));
     try {
       const [rowsRes, colsRes] = await Promise.all([
@@ -304,112 +270,17 @@ export default function TenantTablesRegistry() {
         })
         .filter((r) => r.id !== undefined);
       const selected = new Set(recs.map((r) => r.id));
-      const rowMap = {};
-      recs.forEach((row) => {
-        rowMap[getRecordKey(row.id)] = row;
-      });
       setTableRecords((prev) => ({
         ...prev,
-        [table]: {
-          loading: false,
-          columns: colNames,
-          rows: recs,
-          selected,
-          edits: {},
-          rowMap,
-          validationErrors: [],
-          primaryKey: pk || null,
-        },
+        [table]: { loading: false, columns: colNames, rows: recs, selected },
       }));
     } catch (err) {
       setTableRecords((prev) => ({
         ...prev,
-        [table]: {
-          loading: false,
-          columns: [],
-          rows: [],
-          selected: new Set(),
-          edits: {},
-          rowMap: {},
-          validationErrors: [],
-          primaryKey: null,
-        },
+        [table]: { loading: false, columns: [], rows: [], selected: new Set() },
       }));
       addToast(`Failed to load records for ${table}: ${err.message}`, 'error');
     }
-  }
-
-  function getValidationErrors(info) {
-    if (!info) return [];
-    const columns = info.columns || [];
-    const edits = info.edits || {};
-    const selectedKeys = new Set(
-      Array.from(info.selected || []).map((rowId) => getRecordKey(rowId)),
-    );
-    const errors = [];
-    for (const [key, row] of Object.entries(edits)) {
-      if (!selectedKeys.has(key)) continue;
-      for (const col of columns) {
-        if (col === 'company_id') continue;
-        const value = row[col];
-        if (typeof value === 'string') {
-          if (value.trim() === '') {
-            errors.push(
-              `Row ${formatSeedSummaryId(
-                row[info.primaryKey] ?? row.id ?? key,
-              )}: ${col} is required`,
-            );
-            break;
-          }
-        } else if (value === undefined) {
-          errors.push(
-            `Row ${formatSeedSummaryId(
-              row[info.primaryKey] ?? row.id ?? key,
-            )}: ${col} is required`,
-          );
-          break;
-        }
-      }
-    }
-    return errors;
-  }
-
-  function handleRecordInputChange(table, id, column, value) {
-    setTableRecords((prev) => {
-      const info = prev[table];
-      if (!info) return prev;
-      if (!info.selected?.has(id)) {
-        return prev;
-      }
-      const key = getRecordKey(id);
-      const edits = { ...(info.edits || {}) };
-      const originalRow =
-        (info.rowMap && info.rowMap[key]) ||
-        info.rows.find((row) => getRecordKey(row.id) === key);
-      if (!originalRow) return prev;
-      const existing = edits[key];
-      const currentRow = existing ? { ...existing } : { ...originalRow };
-      const updatedRow = { ...currentRow, [column]: value };
-      const normalize = (val) => (val === null || val === undefined ? '' : String(val));
-      const differs = (info.columns || []).some((col) => {
-        if (col === 'company_id') return false;
-        return normalize(originalRow[col]) !== normalize(updatedRow[col]);
-      });
-      if (differs) {
-        edits[key] = updatedRow;
-      } else if (edits[key]) {
-        delete edits[key];
-      }
-      const nextInfo = { ...info, edits };
-      const validationErrors = getValidationErrors(nextInfo);
-      return {
-        ...prev,
-        [table]: {
-          ...nextInfo,
-          validationErrors,
-        },
-      };
-    });
   }
 
   async function handleSeedCompanySubmit(overwrite) {
@@ -418,41 +289,9 @@ export default function TenantTablesRegistry() {
       setSeedModalOpen(false);
       return;
     }
-    const invalidTables = tables.filter(
-      (t) => (tableRecords[t]?.validationErrors || []).length > 0,
-    );
-    if (invalidTables.length > 0) {
-      addToast(t('fixValidationErrors', 'Please resolve validation errors before seeding'), 'error');
-      return;
-    }
     const records = tables
-      .map((t) => {
-        const info = tableRecords[t];
-        if (!info) return null;
-        const selectedIds = Array.from(info.selected || []);
-        if (selectedIds.length === 0) return null;
-        const hasManualEdits = selectedIds.some((id) => {
-          const key = getRecordKey(id);
-          return Boolean(info.edits?.[key]);
-        });
-        if (hasManualEdits) {
-          const rows = selectedIds
-            .map((id) => {
-              const key = getRecordKey(id);
-              const edited = info.edits?.[key];
-              const baseRow =
-                edited ||
-                (info.rowMap && info.rowMap[key]) ||
-                info.rows.find((row) => getRecordKey(row.id) === key);
-              if (!baseRow) return null;
-              return { ...baseRow };
-            })
-            .filter((row) => row !== null);
-          return rows.length > 0 ? { table: t, rows } : null;
-        }
-        return { table: t, ids: selectedIds };
-      })
-      .filter((r) => r && ((r.ids && r.ids.length > 0) || (r.rows && r.rows.length > 0)));
+      .map((t) => ({ table: t, ids: Array.from(tableRecords[t]?.selected || []) }))
+      .filter((r) => r.ids.length > 0);
     setSeedingCompany(true);
     async function send(flag) {
       const res = await fetch('/api/tenant_tables/seed-company', {
@@ -811,77 +650,26 @@ export default function TenantTablesRegistry() {
                               </tr>
                             </thead>
                             <tbody>
-                              {(tableRecords[table.tableName]?.rows ?? []).map((r) => {
-                                const info = tableRecords[table.tableName];
-                                const selectedSet = info?.selected || new Set();
-                                const isSelected = selectedSet.has(r.id);
-                                const key = getRecordKey(r.id);
-                                const currentRow = info?.edits?.[key] || r;
-                                const columns = info?.columns ?? [];
-                                return (
-                                  <tr key={r.id}>
-                                    <td style={styles.td}>
-                                      <input
-                                        type="checkbox"
-                                        checked={!!selectedSet.has(r.id)}
-                                        onChange={(e) =>
-                                          handleRecordSelect(
-                                            table.tableName,
-                                            r.id,
-                                            e.target.checked,
-                                          )
-                                        }
-                                      />
+                              {(tableRecords[table.tableName]?.rows ?? []).map((r) => (
+                                <tr key={r.id}>
+                                  <td style={styles.td}>
+                                    <input
+                                      type="checkbox"
+                                      checked={!!tableRecords[table.tableName]?.selected?.has(r.id)}
+                                      onChange={(e) =>
+                                        handleRecordSelect(table.tableName, r.id, e.target.checked)
+                                      }
+                                    />
+                                  </td>
+                                  {(tableRecords[table.tableName]?.columns ?? []).map((c) => (
+                                    <td key={c} style={styles.td}>
+                                      {String(r[c])}
                                     </td>
-                                    {columns.map((c) => {
-                                      const value = currentRow?.[c];
-                                      const displayValue =
-                                        value === null || value === undefined
-                                          ? ''
-                                          : String(value);
-                                      const isEditable =
-                                        isSelected &&
-                                        c !== info?.primaryKey &&
-                                        c !== 'company_id';
-                                      return (
-                                        <td key={c} style={styles.td}>
-                                          {isEditable ? (
-                                            <input
-                                              type="text"
-                                              value={displayValue}
-                                              onChange={(e) =>
-                                                handleRecordInputChange(
-                                                  table.tableName,
-                                                  r.id,
-                                                  c,
-                                                  e.target.value,
-                                                )
-                                              }
-                                              style={{ width: '100%' }}
-                                            />
-                                          ) : (
-                                            displayValue
-                                          )}
-                                        </td>
-                                      );
-                                    })}
-                                  </tr>
-                                );
-                              })}
+                                  ))}
+                                </tr>
+                              ))}
                             </tbody>
                           </table>
-                          {(tableRecords[table.tableName]?.validationErrors || []).length >
-                          0 ? (
-                            <div style={{ marginTop: '0.5rem', color: '#b91c1c' }}>
-                              <ul style={{ margin: '0.25rem 0 0 1.25rem' }}>
-                                {(
-                                  tableRecords[table.tableName]?.validationErrors || []
-                                ).map((msg, idx) => (
-                                  <li key={`${msg}-${idx}`}>{msg}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          ) : null}
                         ) : (
                           <p>{t('noRecords', 'No records')}</p>
                         )
@@ -905,11 +693,7 @@ export default function TenantTablesRegistry() {
             disabled={
               seedingCompany ||
               !companyId ||
-              Object.keys(selectedTables).filter((t) => selectedTables[t]).length === 0 ||
-              Object.entries(tableRecords).some(
-                ([tableName, info]) =>
-                  selectedTables[tableName] && (info?.validationErrors || []).length > 0,
-              )
+              Object.keys(selectedTables).filter((t) => selectedTables[t]).length === 0
             }
             style={{ marginRight: '0.5rem' }}
           >
@@ -920,11 +704,7 @@ export default function TenantTablesRegistry() {
             disabled={
               seedingCompany ||
               !companyId ||
-              Object.keys(selectedTables).filter((t) => selectedTables[t]).length === 0 ||
-              Object.entries(tableRecords).some(
-                ([tableName, info]) =>
-                  selectedTables[tableName] && (info?.validationErrors || []).length > 0,
-              )
+              Object.keys(selectedTables).filter((t) => selectedTables[t]).length === 0
             }
           >
             Repopulate
