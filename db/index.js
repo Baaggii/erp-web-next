@@ -1252,18 +1252,70 @@ export async function seedDefaultsForSeedTables(userId) {
   const [rows] = await pool.query(
     `SELECT table_name FROM tenant_tables WHERE seed_on_create = 1`,
   );
+  const tableInfos = [];
+  const conflicts = [];
   for (const { table_name } of rows) {
-    const cols = await getTableColumnsSafe(table_name);
+    const tableName = table_name;
+    const cols = await getTableColumnsSafe(tableName);
+    const lowerCols = cols.map((c) => String(c).toLowerCase());
+    if (lowerCols.includes("company_id")) {
+      const [tenantRows] = await pool.query(
+        `SELECT company_id AS companyId, COUNT(*) AS rowCount
+           FROM ??
+          WHERE company_id IS NOT NULL AND company_id <> ?
+          GROUP BY company_id`,
+        [tableName, GLOBAL_COMPANY_ID],
+      );
+      const companies = (tenantRows || [])
+        .map((row) => {
+          const rawId =
+            row?.companyId ??
+            row?.company_id ??
+            row?.companyID ??
+            row?.company;
+          if (rawId === null || rawId === undefined || rawId === '') return null;
+          const rows = Number(row?.rowCount ?? row?.count ?? 0);
+          if (!Number.isFinite(rows) || rows <= 0) return null;
+          return { companyId: String(rawId), rows };
+        })
+        .filter(Boolean);
+      const totalRows = companies.reduce((sum, info) => sum + info.rows, 0);
+      if (totalRows > 0) {
+        conflicts.push({
+          table: tableName,
+          rows: totalRows,
+          companies,
+        });
+      }
+    }
+    tableInfos.push({ tableName, cols, lowerCols });
+  }
+
+  if (conflicts.length > 0) {
+    const err = new Error(
+      "Cannot populate defaults because tenant data exists in seed tables.",
+    );
+    err.status = 409;
+    err.conflicts = conflicts;
+    throw err;
+  }
+
+  for (const { tableName, cols, lowerCols } of tableInfos) {
+    if (!lowerCols.includes("company_id")) continue;
     const sets = ["company_id = ?"];
-    const params = [table_name, GLOBAL_COMPANY_ID];
-    if (cols.some((c) => c.toLowerCase() === "updated_by")) {
+    const params = [tableName, GLOBAL_COMPANY_ID];
+    if (lowerCols.includes("updated_by")) {
       sets.push("updated_by = ?");
       params.push(userId);
     }
-    if (cols.some((c) => c.toLowerCase() === "updated_at")) {
+    if (lowerCols.includes("updated_at")) {
       sets.push("updated_at = NOW()");
     }
-    await pool.query(`UPDATE ?? SET ${sets.join(", ")}`, params);
+    params.push(GLOBAL_COMPANY_ID);
+    await pool.query(
+      `UPDATE ?? SET ${sets.join(", ")} WHERE company_id = ?`,
+      params,
+    );
   }
 }
 

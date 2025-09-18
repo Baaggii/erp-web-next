@@ -170,8 +170,8 @@ await test('seedDefaultsForSeedTables updates audit columns when present', async
   const updates = calls.filter((c) => c.sql.startsWith('UPDATE ?? SET company_id'));
   assert.equal(updates.length, 2);
   assert.match(updates[0].sql, /updated_by = \?, updated_at = NOW\(\)/);
-  assert.deepEqual(updates[0].params, ['t1', 0, 55]);
-  assert.deepEqual(updates[1].params, ['t2', 0, 55]);
+  assert.deepEqual(updates[0].params, ['t1', 0, 55, 0]);
+  assert.deepEqual(updates[1].params, ['t2', 0, 55, 0]);
 });
 
 await test('zeroSharedTenantKeys updates audit columns when present', async () => {
