@@ -1378,6 +1378,7 @@ export default function CodingTablesPage() {
         otherTable: {
           table: `${tbl}_other`,
           columns: otherTableColumns,
+          fields: fieldsOther,
         },
       });
       setRequiresRowUpload(true);
@@ -1937,15 +1938,23 @@ export default function CodingTablesPage() {
       const parsed = Number.parseInt(groupSize, 10);
       return Number.isNaN(parsed) || parsed <= 0 ? 300 : parsed;
     };
-    const computeOtherInsertSql = () =>
-      buildOtherInsertFromRowObjects(
-        otherTableInfo?.table,
-        Array.isArray(otherTableInfo?.columns)
-          ? otherTableInfo.columns
-          : [],
+    const computeOtherInsertSql = () => {
+      const table = otherTableInfo?.table;
+      const columnList = Array.isArray(otherTableInfo?.columns)
+        ? otherTableInfo.columns
+        : Array.isArray(otherTableInfo?.columnList)
+        ? otherTableInfo.columnList
+        : [];
+      if (!table || columnList.length === 0 || failedRows.length === 0) {
+        return '';
+      }
+      return buildOtherInsertFromRowObjects(
+        table,
+        columnList,
         failedRows,
         resolveChunkLimit(),
       );
+    };
     for (let i = 0; i < rows.length; i++) {
       if (interruptRef.current) break;
       setGroupMessage(`Row ${i + 1}/${rows.length}`);
@@ -2055,6 +2064,12 @@ export default function CodingTablesPage() {
           rowUploadPayload?.otherTable || null,
         );
         let mInserted = mainResult.insertedMain || 0;
+        const capturedOtherCount =
+          typeof mainResult.otherInsertCount === 'number'
+            ? mainResult.otherInsertCount
+            : Array.isArray(mainResult.failedRows)
+            ? mainResult.failedRows.length
+            : 0;
         let oInserted = 0;
         let runErr = { ...mainResult.errorGroups };
         let errorMessage = mainResult.errorMessage || '';
@@ -2087,6 +2102,8 @@ export default function CodingTablesPage() {
             oInserted += otherRes.insertedOther || 0;
           }
         }
+        const totalOtherCount = Math.max(oInserted, capturedOtherCount);
+        const pendingOtherCount = Math.max(0, capturedOtherCount - oInserted);
         if (aborted) {
           if (errorMessage) {
             addToast(errorMessage, 'error');
@@ -2097,15 +2114,35 @@ export default function CodingTablesPage() {
           if (errorMessage) {
             addToast(errorMessage, 'error');
           }
-          addToast('Records inserted', 'success');
+          const otherToastDetail = (() => {
+            if (totalOtherCount === 0) return '';
+            if (pendingOtherCount > 0) {
+              return ` _other pending ${pendingOtherCount} (captured ${capturedOtherCount})`;
+            }
+            if (capturedOtherCount > 0) {
+              return ` _other inserted ${totalOtherCount} (includes ${capturedOtherCount} API failures)`;
+            }
+            return ` _other inserted ${totalOtherCount}`;
+          })();
+          addToast(`Records inserted.${otherToastDetail}`, 'success');
           setInsertedMain(mInserted);
-          setInsertedOther(oInserted);
+          setInsertedOther(totalOtherCount);
           setUnsuccessfulGroups(runErr);
           const errSummary = Object.entries(runErr)
             .map(([k, v]) => `${k}: ${v}`)
             .join('; ');
+          const otherSummaryDetail = (() => {
+            if (totalOtherCount === 0) return `_other: ${totalOtherCount}`;
+            if (pendingOtherCount > 0) {
+              return `_other: ${totalOtherCount} (captured ${capturedOtherCount}, pending ${pendingOtherCount})`;
+            }
+            if (capturedOtherCount > 0) {
+              return `_other: ${totalOtherCount} (includes ${capturedOtherCount} API failures)`;
+            }
+            return `_other: ${totalOtherCount}`;
+          })();
           setSummaryInfo(
-            `Inserted to main: ${mInserted}. _other: ${oInserted}. Duplicates: ${dupCount}. ${errSummary}`,
+            `Inserted to main: ${mInserted}. ${otherSummaryDetail}. Duplicates: ${dupCount}. ${errSummary}`,
           );
         }
         return;
