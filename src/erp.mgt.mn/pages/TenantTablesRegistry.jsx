@@ -3,7 +3,6 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import Modal from '../components/Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import I18nContext from '../context/I18nContext.jsx';
-import { updateTablesWithChange } from './TenantTablesRegistry.helpers.js';
 
 function formatSeedSummaryId(id) {
   if (id === null || id === undefined) return '';
@@ -696,7 +695,25 @@ export default function TenantTablesRegistry() {
     const warnOnSharedToggle =
       field === 'isShared' && value === true && table?.seedOnCreate;
     const shouldWarn = warnOnSeedToggle || warnOnSharedToggle;
-    setTables((prevTables) => updateTablesWithChange(prevTables, idx, field, value));
+    setTables((prevTables) => {
+      if (!Array.isArray(prevTables)) return prevTables;
+      return prevTables.map((t, i) => {
+        if (i !== idx) return t;
+        if (field === 'seedOnCreate') {
+          if (value && t.isShared) {
+            return t;
+          }
+          return { ...t, seedOnCreate: value };
+        }
+        if (field === 'isShared') {
+          if (value && t.seedOnCreate) {
+            return { ...t, isShared: value, seedOnCreate: false };
+          }
+          return { ...t, isShared: value };
+        }
+        return { ...t, [field]: value };
+      });
+    });
     if (shouldWarn) {
       addToast(sharedSeedingConflictMessage, 'error');
     }
