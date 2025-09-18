@@ -240,4 +240,77 @@ if (!haveReact) {
       global.fetch = origFetch;
     }
   });
+
+  test('RowFormModal shows relation idField value for disabled fields', async (t) => {
+    const origFetch = global.fetch;
+    global.fetch = async () => ({ ok: true, json: async () => ({}) });
+
+    const { default: RowFormModal } = await t.mock.import(
+      '../../src/erp.mgt.mn/components/RowFormModal.jsx',
+      {
+        './AsyncSearchSelect.jsx': { default: () => React.createElement('div', null, 'select') },
+        './InlineTransactionTable.jsx': { default: () => null },
+        './RowDetailModal.jsx': { default: () => null },
+        './TooltipWrapper.jsx': {
+          default: (props) => React.createElement('div', props),
+        },
+        './Modal.jsx': {
+          default: ({ children }) => React.createElement('div', null, children),
+        },
+        '../context/AuthContext.jsx': {
+          AuthContext: React.createContext({
+            user: {},
+            company: 1,
+            branch: 1,
+            department: 1,
+            userSettings: {},
+          }),
+        },
+        '../hooks/useGeneralConfig.js': { default: () => ({ forms: {}, general: {} }) },
+        '../utils/formatTimestamp.js': { default: () => '2024-05-01 12:34:56' },
+        '../utils/normalizeDateInput.js': { default: (v) => v },
+        '../utils/apiBase.js': { API_BASE: '' },
+        '../utils/callProcedure.js': { default: () => {} },
+      },
+    );
+
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    try {
+      await act(async () => {
+        root.render(
+          React.createElement(RowFormModal, {
+            visible: true,
+            onCancel: () => {},
+            onSubmit: () => {},
+            columns: ['other_id'],
+            row: { other_id: 1 },
+            relationConfigs: {
+              other_id: {
+                table: 'other_table',
+                column: 'id',
+                idField: 'code',
+                displayFields: ['name'],
+              },
+            },
+            relationData: {
+              other_id: {
+                1: { ID: 1, CODE: 'A123', name: 'Alpha' },
+              },
+            },
+            disabledFields: ['other_id'],
+            labels: { other_id: 'Other' },
+            fieldTypeMap: { other_id: 'string' },
+          }),
+        );
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const text = container.textContent || '';
+      assert.ok(text.includes('A123 - Alpha'));
+      assert.ok(!text.includes('1 - Alpha'));
+    } finally {
+      root.unmount();
+      global.fetch = origFetch;
+    }
+  });
 }
