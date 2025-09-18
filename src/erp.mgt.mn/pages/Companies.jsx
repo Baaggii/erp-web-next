@@ -1,12 +1,22 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../context/ToastContext.jsx';
+import { useModules } from '../hooks/useModules.js';
+import modulePath from '../utils/modulePath.js';
 
 export default function CompaniesPage() {
   const [companies, setCompanies] = useState([]);
   const [filter, setFilter] = useState('');
   const navigate = useNavigate();
   const { addToast } = useToast();
+  const modules = useModules();
+  const moduleMap = useMemo(() => {
+    const map = {};
+    modules.forEach((m) => {
+      map[m.module_key] = m;
+    });
+    return map;
+  }, [modules]);
 
   function loadCompanies() {
     fetch('/api/companies', { credentials: 'include' })
@@ -72,7 +82,14 @@ export default function CompaniesPage() {
       id != null &&
       window.confirm('Populate seed table records now?')
     ) {
-      navigate('/tenant-tables-registry?seed=1&companyId=' + id);
+      const registryModule = moduleMap.tenant_tables_registry;
+      if (!registryModule) {
+        addToast('Tenant Tables Registry module is unavailable.', 'error');
+        return;
+      }
+      const basePath = modulePath(registryModule, moduleMap);
+      const params = new URLSearchParams({ seed: '1', companyId: String(id) });
+      navigate(`${basePath}?${params.toString()}`);
     }
   }
 
