@@ -124,7 +124,6 @@ footer { text-align:center; padding:1rem; background:#f1f1f1; font-size:0.9rem; 
 
 .toast-success { color: #16a34a; }
 .toast-error { color: #dc2626; }
-.toast-warning { color: #d97706; }
 
 @keyframes fade-slide {
   from { opacity: 0; transform: translateX(20px); }
