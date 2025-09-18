@@ -753,7 +753,19 @@ const TableManager = forwardRef(function TableManager({
                 const parts = [];
                 const valKey = keyMap[rel.column.toLowerCase()];
                 const val = valKey ? row[valKey] : undefined;
-                if (val !== undefined) parts.push(val);
+
+                const idFieldName = cfg?.idField ?? rel.column;
+                const idKey =
+                  typeof idFieldName === 'string'
+                    ? keyMap[idFieldName.toLowerCase()]
+                    : undefined;
+                const identifier = idKey ? row[idKey] : undefined;
+
+                if (identifier !== undefined) {
+                  parts.push(identifier);
+                } else if (val !== undefined) {
+                  parts.push(val);
+                }
 
                 let displayFields = [];
                 if (
