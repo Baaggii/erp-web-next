@@ -653,6 +653,8 @@
   "route_disabled": "This route is disabled",
   "sales": "Sales Dashboard",
   "seedOnCreate": "Seed on Create",
+  "sharedTablesSeedToggleWarning": "Seed on Create tables must remain tenant-specific. The Shared column has been unchecked.",
+  "sharedTablesShareToggleWarning": "Shared tables always read from tenant key 0. The Seed on Create column has been unchecked.",
   "selectCompany": "Select company",
   "selectUserLevel": "Select user level",
   "select_printer": "Select printer",

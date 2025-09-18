@@ -160,6 +160,14 @@ export default function TenantTablesRegistry() {
     'sharedTablesSeedingConflict',
     'Shared tables always read from tenant key 0, so they cannot participate in per-company seeding.',
   );
+  const sharedTablesShareToggleWarning = t(
+    'sharedTablesShareToggleWarning',
+    'Shared tables always read from tenant key 0. The Seed on Create column has been unchecked.',
+  );
+  const sharedTablesSeedToggleWarning = t(
+    'sharedTablesSeedToggleWarning',
+    'Seed on Create tables must remain tenant-specific. The Shared column has been unchecked.',
+  );
 
   useEffect(() => {
     loadTables();
@@ -695,10 +703,19 @@ export default function TenantTablesRegistry() {
       field === 'seedOnCreate' && value === true && table?.isShared;
     const warnOnSharedToggle =
       field === 'isShared' && value === true && table?.seedOnCreate;
-    const shouldWarn = warnOnSeedToggle || warnOnSharedToggle;
-    setTables((prevTables) => updateTablesWithChange(prevTables, idx, field, value));
-    if (shouldWarn) {
-      addToast(sharedSeedingConflictMessage, 'error');
+    setTables((prevTables) => {
+      const nextTables = updateTablesWithChange(prevTables, idx, field, value);
+      if (!Array.isArray(nextTables)) {
+        return nextTables;
+      }
+      return nextTables.map((row, rowIdx) =>
+        rowIdx === idx ? { ...row, __lastToggledField: field } : row,
+      );
+    });
+    if (warnOnSharedToggle) {
+      addToast(sharedTablesShareToggleWarning, 'warning');
+    } else if (warnOnSeedToggle) {
+      addToast(sharedTablesSeedToggleWarning, 'warning');
     }
   }
 
@@ -712,7 +729,14 @@ export default function TenantTablesRegistry() {
       return;
     }
     if (row.isShared && row.seedOnCreate) {
-      addToast(sharedSeedingConflictMessage, 'error');
+      const lastToggle = row.__lastToggledField;
+      if (lastToggle === 'isShared') {
+        addToast(sharedTablesShareToggleWarning, 'warning');
+      } else if (lastToggle === 'seedOnCreate') {
+        addToast(sharedTablesSeedToggleWarning, 'warning');
+      } else {
+        addToast(sharedSeedingConflictMessage, 'warning');
+      }
       return;
     }
     setSaving((s) => ({ ...s, [row.tableName]: true }));
