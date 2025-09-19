@@ -3488,6 +3488,38 @@ export async function deleteTenantDefaultRow(tableName, rowId, userId) {
 export async function listRowReferences(tableName, id, conn = pool) {
   const pkCols = await getPrimaryKeyColumns(tableName);
   const parts = String(id).split('-');
+  let targetRowLoaded = false;
+  let targetRow;
+
+  const normalizeValue = (value) => {
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+    return String(value);
+  };
+
+  const loadTargetRow = async () => {
+    if (targetRowLoaded) return targetRow;
+    targetRowLoaded = true;
+    if (!pkCols.length) {
+      targetRow = null;
+      return targetRow;
+    }
+    if (pkCols.some((_, idx) => parts[idx] === undefined)) {
+      targetRow = null;
+      return targetRow;
+    }
+    const whereClause = pkCols.map(() => '?? = ?').join(' AND ');
+    const params = [];
+    pkCols.forEach((col, i) => {
+      params.push(col, parts[i]);
+    });
+    const [rows] = await conn.query(
+      `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
+      [tableName, ...params],
+    );
+    targetRow = rows[0] || null;
+    return targetRow;
+  };
   const [rels] = await conn.query(
     `SELECT CONSTRAINT_NAME, TABLE_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME
        FROM information_schema.KEY_COLUMN_USAGE
@@ -3514,15 +3546,38 @@ export async function listRowReferences(tableName, id, conn = pool) {
 
   const results = [];
   for (const g of groups.values()) {
-    const vals = g.refCols.map((rc) => {
-      const idx = pkCols.indexOf(rc);
-      return idx === -1 ? undefined : parts[idx];
+    const queryVals = [];
+    const resultVals = [];
+    const missingIndexes = [];
+    g.refCols.forEach((rc, idx) => {
+      const pkIdx = pkCols.indexOf(rc);
+      if (pkIdx === -1) {
+        queryVals[idx] = undefined;
+        resultVals[idx] = undefined;
+        missingIndexes.push(idx);
+      } else {
+        const value = parts[pkIdx];
+        queryVals[idx] = value;
+        resultVals[idx] = normalizeValue(value);
+      }
     });
-    if (vals.includes(undefined)) continue;
+    if (missingIndexes.length) {
+      const row = await loadTargetRow();
+      if (!row) continue;
+      for (const idx of missingIndexes) {
+        const rc = g.refCols[idx];
+        if (Object.prototype.hasOwnProperty.call(row, rc)) {
+          const value = row[rc];
+          queryVals[idx] = value;
+          resultVals[idx] = normalizeValue(value);
+        }
+      }
+    }
+    if (queryVals.includes(undefined)) continue;
     const whereClause = g.columns.map(() => '?? = ?').join(' AND ');
     const params = [];
     g.columns.forEach((col, i) => {
-      params.push(col, vals[i]);
+      params.push(col, queryVals[i]);
     });
     const [rows] = await conn.query(
       `SELECT COUNT(*) AS count FROM ?? WHERE ${whereClause}`,
@@ -3532,12 +3587,12 @@ export async function listRowReferences(tableName, id, conn = pool) {
       const result = {
         table: g.table,
         columns: g.columns,
-        values: vals,
+        values: resultVals,
         count: rows[0].count,
       };
       if (g.columns.length === 1) {
         result.column = g.columns[0];
-        result.value = vals[0];
+        result.value = resultVals[0];
       }
       results.push(result);
     }
