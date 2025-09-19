@@ -63,10 +63,76 @@ function convertRowValueToString(value) {
   return String(value);
 }
 
+function isAuditColumn(name) {
+  if (!name) return false;
+  const lower = String(name).toLowerCase();
+  return lower.startsWith('created_') || lower.startsWith('updated_');
+}
+
+function formatAuditDateParts(date) {
+  const pad = (num) => String(num).padStart(2, '0');
+  return (
+    `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}` +
+    ` ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`
+  );
+}
+
+function formatAuditTimestamp(value) {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    return formatAuditDateParts(value);
+  }
+  if (typeof value === 'number') {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    return formatAuditDateParts(date);
+  }
+  const str = typeof value === 'string' ? value.trim() : String(value);
+  if (!str) return null;
+  if (str.toLowerCase() === 'null') return null;
+  const isoLike = str.match(
+    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/,
+  );
+  if (isoLike) {
+    return `${isoLike[1]}-${isoLike[2]}-${isoLike[3]} ${isoLike[4]}:${isoLike[5]}:${isoLike[6]}`;
+  }
+  const parsed = new Date(str);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return formatAuditDateParts(parsed);
+}
+
+function getAuditDisplayValue(value) {
+  const formatted = formatAuditTimestamp(value);
+  if (formatted !== null) return formatted;
+  return convertRowValueToString(value);
+}
+
+function prepareAuditValueForApi(value) {
+  if (value === undefined || value === null) return undefined;
+  const formatted = formatAuditTimestamp(value);
+  if (formatted !== null) return formatted;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed.toLowerCase() === 'null') {
+      return undefined;
+    }
+    const fallback = formatAuditTimestamp(trimmed);
+    if (fallback !== null) {
+      return fallback;
+    }
+  }
+  return undefined;
+}
+
 function createEditableCopy(row, columns) {
   const editable = {};
   for (const column of columns || []) {
     if (column === 'company_id') continue;
+    if (isAuditColumn(column)) {
+      editable[column] = getAuditDisplayValue(row?.[column]);
+      continue;
+    }
     editable[column] = convertRowValueToString(row?.[column]);
   }
   return editable;
@@ -76,6 +142,18 @@ function hasRowChanges(originalRow, draft, columns) {
   if (!originalRow) return false;
   for (const column of columns || []) {
     if (column === 'company_id') continue;
+    if (isAuditColumn(column)) {
+      const originalValue = formatAuditTimestamp(originalRow?.[column]) ?? '';
+      const draftHasValue =
+        draft && Object.prototype.hasOwnProperty.call(draft, column);
+      const draftValue = draftHasValue
+        ? formatAuditTimestamp(draft[column]) ?? ''
+        : originalValue;
+      if (draftValue !== originalValue) {
+        return true;
+      }
+      continue;
+    }
     const originalValue = convertRowValueToString(originalRow[column]);
     const draftValue =
       draft && Object.prototype.hasOwnProperty.call(draft, column)
@@ -112,6 +190,15 @@ function buildManualRowFromDraft(originalRow, draft, columns) {
   const manual = {};
   for (const column of columns || []) {
     if (column === 'company_id') continue;
+    if (isAuditColumn(column)) {
+      if (draft && Object.prototype.hasOwnProperty.call(draft, column)) {
+        const prepared = prepareAuditValueForApi(draft[column]);
+        if (prepared !== undefined) {
+          manual[column] = prepared;
+        }
+      }
+      continue;
+    }
     if (draft && Object.prototype.hasOwnProperty.call(draft, column)) {
       const raw = draft[column];
       const value = coerceManualRowValue(raw, originalRow?.[column]);
@@ -133,6 +220,13 @@ function buildManualRowForNew(values, columns) {
     const raw = values[column];
     if (raw === '' || raw === undefined || raw === null) continue;
     if (typeof raw === 'string' && raw.trim() === '') continue;
+    if (isAuditColumn(column)) {
+      const prepared = prepareAuditValueForApi(raw);
+      if (prepared !== undefined) {
+        manual[column] = prepared;
+      }
+      continue;
+    }
     manual[column] = raw;
   }
   return manual;

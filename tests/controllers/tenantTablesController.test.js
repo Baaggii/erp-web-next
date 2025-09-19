@@ -215,6 +215,62 @@ if (typeof mock?.import !== 'function') {
     assert.notStrictEqual(args[2].posts[0], manualRows[0]);
   });
 
+  test('seedCompany inserts manual rows without audit columns', async () => {
+    const manualRows = [
+      { id: 1, title: 'Welcome', body: 'Hello' },
+      { id: 2, title: 'Getting Started', body: 'Steps' },
+    ];
+    const summary = { posts: { count: manualRows.length, ids: [1, 2] } };
+    const seedStub = mock.fn(async (companyId, tables, records, overwrite, userId) => {
+      assert.equal(companyId, 8);
+      assert.deepEqual(tables, ['posts']);
+      assert.equal(overwrite, false);
+      assert.equal(userId, 5);
+      const rows = records?.posts;
+      assert.ok(Array.isArray(rows));
+      assert.equal(rows.length, manualRows.length);
+      for (const row of rows) {
+        for (const key of Object.keys(row)) {
+          const lower = key.toLowerCase();
+          if (lower.startsWith('created_') || lower.startsWith('updated_')) {
+            const err = new Error('ER_BAD_FIELD_ERROR');
+            err.code = 'ER_BAD_FIELD_ERROR';
+            throw err;
+          }
+        }
+      }
+      return summary;
+    });
+    const mod = await loadController({
+      getEmploymentSession: async () => ({ permissions: { system_settings: true } }),
+      listCompanies: async () => [
+        { id: 8, created_by: 5 },
+      ],
+      seedTenantTables: seedStub,
+    });
+    const req = {
+      body: {
+        companyId: 8,
+        tables: ['posts'],
+        records: [
+          {
+            table: 'posts',
+            rows: manualRows,
+          },
+        ],
+        overwrite: false,
+      },
+      user: { empid: 5, companyId: 1 },
+    };
+    const res = createRes();
+    await mod.seedCompany(req, res, (err) => {
+      if (err) throw err;
+    });
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.body, summary);
+    assert.equal(seedStub.mock.calls.length, 1);
+  });
+
   test('seedCompany rejects invalid manual rows', async () => {
     const seedStub = mock.fn(async () => ({}));
     const mod = await loadController({
