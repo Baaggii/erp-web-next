@@ -172,27 +172,68 @@ test('deleteCompanyHandler deletes company with cascade', async () => {
   const calls = [];
   const userId = 1;
   const companyId = 5;
+  const tenantCompanyId = 55;
   const restore = mockPool(async (sql, params) => {
     calls.push({ sql, params });
     if (sql.startsWith('SELECT * FROM companies WHERE created_by = ?')) {
-      return [[{ id: companyId, name: 'DemoCo', created_by: userId }]];
+      return [[{
+        id: companyId,
+        company_id: tenantCompanyId,
+        name: 'DemoCo',
+        created_by: userId,
+      }]];
     }
     if (
       sql.includes('information_schema.STATISTICS') &&
       sql.includes("INDEX_NAME = 'PRIMARY'")
     ) {
-      return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
+      if (params?.[0] === 'companies') {
+        return [[
+          { COLUMN_NAME: 'company_id', SEQ_IN_INDEX: 1 },
+          { COLUMN_NAME: 'id', SEQ_IN_INDEX: 2 },
+        ]];
+      }
+      if (params?.[0] === 'orders') {
+        return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
+      }
     }
     if (sql.includes('information_schema.KEY_COLUMN_USAGE')) {
-      return [[{ TABLE_NAME: 'orders', COLUMN_NAME: 'company_id', REFERENCED_COLUMN_NAME: 'id' }]];
+      return [[
+        {
+          CONSTRAINT_NAME: 'fk_orders_companies',
+          TABLE_NAME: 'orders',
+          COLUMN_NAME: 'company_id',
+          REFERENCED_COLUMN_NAME: 'company_id',
+        },
+        {
+          CONSTRAINT_NAME: 'fk_orders_companies',
+          TABLE_NAME: 'orders',
+          COLUMN_NAME: 'company_ref_id',
+          REFERENCED_COLUMN_NAME: 'id',
+        },
+      ]];
     }
     if (sql.includes('information_schema.COLUMNS')) {
       return [[{ COLUMN_NAME: 'id' }, { COLUMN_NAME: 'company_id' }]];
     }
     if (sql.startsWith('SELECT COUNT(*)')) {
+      assert.equal(params?.[0], 'orders');
+      assert.deepEqual(params?.slice(1), [
+        'company_id',
+        String(tenantCompanyId),
+        'company_ref_id',
+        String(companyId),
+      ]);
       return [[{ count: 1 }]];
     }
     if (sql.startsWith('SELECT `id` FROM')) {
+      assert.equal(params?.[0], 'orders');
+      assert.deepEqual(params?.slice(1), [
+        'company_id',
+        String(tenantCompanyId),
+        'company_ref_id',
+        String(companyId),
+      ]);
       return [[{ id: 3 }]];
     }
     if (sql.startsWith('DELETE FROM')) {
@@ -210,6 +251,14 @@ test('deleteCompanyHandler deletes company with cascade', async () => {
   restore();
   const deletes = calls.filter(c => c.sql.startsWith('DELETE FROM'));
   assert.equal(deletes.length, 2);
+  const ordersDelete = deletes.find((c) => c.params?.[0] === 'orders');
+  assert.deepEqual(ordersDelete?.params, ['orders', 3, tenantCompanyId]);
+  const companiesDelete = deletes.find((c) => c.params?.[0] === 'companies');
+  assert.deepEqual(companiesDelete?.params, [
+    'companies',
+    String(tenantCompanyId),
+    String(companyId),
+  ]);
   assert.equal(res.code, 200);
   assert.deepEqual(res.body, {
     backup: null,
@@ -222,13 +271,19 @@ test('deleteCompanyHandler returns backup metadata when requested', async () => 
   const userId = 7;
   const employeeCode = 'EMP-7A';
   const companyId = 9;
+  const tenantCompanyId = 90;
   const backupDir = path.join(process.cwd(), 'config', String(companyId));
   await fs.rm(backupDir, { recursive: true, force: true });
   const restore = mockPool(async (sql, params) => {
     calls.push({ sql, params });
     if (sql.startsWith('SELECT * FROM companies WHERE created_by = ?')) {
       assert.equal(params?.[0], employeeCode);
-      return [[{ id: companyId, name: 'BackupCo', created_by: employeeCode }]];
+      return [[{
+        id: companyId,
+        company_id: tenantCompanyId,
+        name: 'BackupCo',
+        created_by: employeeCode,
+      }]];
     }
     if (sql.includes('FROM tenant_tables WHERE seed_on_create = 1')) {
       return [[{ table_name: 'orders', is_shared: 0 }]];
@@ -240,10 +295,31 @@ test('deleteCompanyHandler returns backup metadata when requested', async () => 
       sql.includes('information_schema.STATISTICS') &&
       sql.includes("INDEX_NAME = 'PRIMARY'")
     ) {
-      return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
+      if (params?.[0] === 'companies') {
+        return [[
+          { COLUMN_NAME: 'company_id', SEQ_IN_INDEX: 1 },
+          { COLUMN_NAME: 'id', SEQ_IN_INDEX: 2 },
+        ]];
+      }
+      if (params?.[0] === 'orders') {
+        return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
+      }
     }
     if (sql.includes('information_schema.KEY_COLUMN_USAGE')) {
-      return [[{ TABLE_NAME: 'orders', COLUMN_NAME: 'company_id', REFERENCED_COLUMN_NAME: 'id' }]];
+      return [[
+        {
+          CONSTRAINT_NAME: 'fk_orders_companies',
+          TABLE_NAME: 'orders',
+          COLUMN_NAME: 'company_id',
+          REFERENCED_COLUMN_NAME: 'company_id',
+        },
+        {
+          CONSTRAINT_NAME: 'fk_orders_companies',
+          TABLE_NAME: 'orders',
+          COLUMN_NAME: 'company_ref_id',
+          REFERENCED_COLUMN_NAME: 'id',
+        },
+      ]];
     }
     if (sql.includes('information_schema.COLUMNS') && params?.[0] === 'orders') {
       return [[
@@ -256,12 +332,26 @@ test('deleteCompanyHandler returns backup metadata when requested', async () => 
       return [[]];
     }
     if (sql.startsWith('SELECT * FROM ?? WHERE company_id = ?') && params?.[0] === 'orders') {
-      return [[{ id: 11, company_id: companyId, name: 'Sample order' }]];
+      return [[{ id: 11, company_id: tenantCompanyId, name: 'Sample order' }]];
     }
     if (sql.startsWith('SELECT COUNT(*)')) {
+      assert.equal(params?.[0], 'orders');
+      assert.deepEqual(params?.slice(1), [
+        'company_id',
+        String(tenantCompanyId),
+        'company_ref_id',
+        String(companyId),
+      ]);
       return [[{ count: 1 }]];
     }
     if (sql.startsWith('SELECT `id` FROM')) {
+      assert.equal(params?.[0], 'orders');
+      assert.deepEqual(params?.slice(1), [
+        'company_id',
+        String(tenantCompanyId),
+        'company_ref_id',
+        String(companyId),
+      ]);
       return [[{ id: 11 }]];
     }
     if (sql.startsWith('DELETE FROM')) {
@@ -284,6 +374,14 @@ test('deleteCompanyHandler returns backup metadata when requested', async () => 
   }
   const deletes = calls.filter((c) => c.sql.startsWith('DELETE FROM'));
   assert.equal(deletes.length, 2);
+  const ordersDelete = deletes.find((c) => c.params?.[0] === 'orders');
+  assert.deepEqual(ordersDelete?.params, ['orders', 11, tenantCompanyId]);
+  const companiesDelete = deletes.find((c) => c.params?.[0] === 'companies');
+  assert.deepEqual(companiesDelete?.params, [
+    'companies',
+    String(tenantCompanyId),
+    String(companyId),
+  ]);
   assert.equal(res.code, 200);
   assert.ok(res.body.backup);
   assert.equal(res.body.backup.companyId, companyId);
