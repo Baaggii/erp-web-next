@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext } from 'react';
+import React, { useEffect, useState, useContext, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Modal from '../components/Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
@@ -303,6 +303,7 @@ export default function TenantTablesRegistry() {
   const [lastResetSummary, setLastResetSummary] = useState(null);
   const [lastSeedSummary, setLastSeedSummary] = useState(null);
   const [seedDefaultsConflict, setSeedDefaultsConflict] = useState(null);
+  const lastToggleFieldRef = useRef({});
   const { addToast } = useToast();
   const { t } = useContext(I18nContext);
   const location = useLocation();
@@ -314,6 +315,14 @@ export default function TenantTablesRegistry() {
   const sharedSeedingConflictMessage = t(
     'sharedTablesSeedingConflict',
     'Shared tables always read from tenant key 0, so they cannot participate in per-company seeding.',
+  );
+  const sharedToggleWarningMessage = t(
+    'sharedTablesShareToggleWarning',
+    'Shared tables cannot also enable Seed on Create. Seed on Create has been turned off.',
+  );
+  const seedToggleWarningMessage = t(
+    'sharedTablesSeedToggleWarning',
+    'Seed on Create is only available when Shared is off. Shared has been turned off.',
   );
 
   useEffect(() => {
@@ -553,8 +562,10 @@ export default function TenantTablesRegistry() {
           isRegistered: regMap.has(t.tableName),
         })),
       );
+      lastToggleFieldRef.current = {};
     } else {
       setTables([]);
+      lastToggleFieldRef.current = {};
     }
   }
 
@@ -1101,10 +1112,20 @@ export default function TenantTablesRegistry() {
       field === 'seedOnCreate' && value === true && table?.isShared;
     const warnOnSharedToggle =
       field === 'isShared' && value === true && table?.seedOnCreate;
-    const shouldWarn = warnOnSeedToggle || warnOnSharedToggle;
+    let tableKey = '';
+    if (typeof table?.tableName === 'string' && table.tableName !== '') {
+      tableKey = table.tableName;
+    } else if (Number.isInteger(idx) && idx >= 0) {
+      tableKey = `__index_${idx}`;
+    }
+    if (tableKey) {
+      lastToggleFieldRef.current[tableKey] = field;
+    }
     setTables((prevTables) => updateTablesWithChange(prevTables, idx, field, value));
-    if (shouldWarn) {
-      addToast(sharedSeedingConflictMessage, 'error');
+    if (warnOnSeedToggle) {
+      addToast(seedToggleWarningMessage, 'warning');
+    } else if (warnOnSharedToggle) {
+      addToast(sharedToggleWarningMessage, 'warning');
     }
   }
 
@@ -1118,7 +1139,26 @@ export default function TenantTablesRegistry() {
       return;
     }
     if (row.isShared && row.seedOnCreate) {
-      addToast(sharedSeedingConflictMessage, 'error');
+      let tableKey = '';
+      if (typeof row?.tableName === 'string' && row.tableName) {
+        tableKey = row.tableName;
+      } else if (Array.isArray(tables)) {
+        const index = tables.indexOf(row);
+        if (index >= 0) {
+          tableKey = `__index_${index}`;
+        }
+      }
+      const lastField = tableKey ? lastToggleFieldRef.current[tableKey] : undefined;
+      const message =
+        lastField === 'seedOnCreate'
+          ? seedToggleWarningMessage
+          : lastField === 'isShared'
+          ? sharedToggleWarningMessage
+          : sharedSeedingConflictMessage;
+      if (tableKey) {
+        delete lastToggleFieldRef.current[tableKey];
+      }
+      addToast(message, 'warning');
       return;
     }
     setSaving((s) => ({ ...s, [row.tableName]: true }));
