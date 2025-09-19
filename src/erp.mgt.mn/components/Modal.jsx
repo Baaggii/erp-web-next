@@ -24,11 +24,13 @@ export default function Modal({ visible, title, onClose, children, width = 'auto
   }
 
   function startDrag(e) {
-    const rect = modalRef.current?.getBoundingClientRect() || { left: 0, top: 0 };
-    const offsetX = e.clientX - rect.left;
-    const offsetY = e.clientY - rect.top;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startPos = { ...posRef.current };
     function move(ev) {
-      posRef.current = { x: ev.clientX - offsetX, y: ev.clientY - offsetY };
+      const deltaX = ev.clientX - startX;
+      const deltaY = ev.clientY - startY;
+      posRef.current = { x: startPos.x + deltaX, y: startPos.y + deltaY };
       if (modalRef.current) {
         modalRef.current.style.transform = `translate(${posRef.current.x}px, ${posRef.current.y}px)`;
       }
@@ -64,6 +66,7 @@ export default function Modal({ visible, title, onClose, children, width = 'auto
     overflowY: 'auto',
     width,
     minWidth: '300px',
+    transform: `translate(${posRef.current.x}px, ${posRef.current.y}px)`,
   };
 
   const headerStyle = {
