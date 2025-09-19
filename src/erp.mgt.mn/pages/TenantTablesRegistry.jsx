@@ -293,6 +293,7 @@ export default function TenantTablesRegistry() {
   const [seedingDefaults, setSeedingDefaults] = useState(false);
   const [seedingCompany, setSeedingCompany] = useState(false);
   const [seedModalOpen, setSeedModalOpen] = useState(false);
+  const [exportingDefaults, setExportingDefaults] = useState(false);
   const [selectedTables, setSelectedTables] = useState({});
   const [tableRecords, setTableRecords] = useState({});
   const [companies, setCompanies] = useState([]);
@@ -660,6 +661,80 @@ export default function TenantTablesRegistry() {
       addToast(`Failed to seed defaults: ${err.message}`, 'error');
     } finally {
       setSeedingDefaults(false);
+    }
+  }
+
+  async function handleExportDefaults() {
+    const promptLabel = t(
+      'exportDefaultsPrompt',
+      'Enter a name for this defaults snapshot',
+    );
+    const input = window.prompt(promptLabel, '');
+    if (input === null) {
+      return;
+    }
+    const trimmed = String(input).trim();
+    if (!trimmed) {
+      addToast(t('exportNameRequired', 'Export name is required.'), 'warning');
+      return;
+    }
+    setExportingDefaults(true);
+    try {
+      const res = await fetch('/api/tenant_tables/export-defaults', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ versionName: trimmed }),
+      });
+      if (!res.ok) {
+        const msg = await parseErrorBody(res);
+        throw new Error(msg || 'Failed to export defaults');
+      }
+      const ct = res.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) {
+        throw new Error(`Unexpected response: ${ct || 'unknown content-type'}`);
+      }
+      const data = await res.json();
+      const fallbackName = `tenant-defaults-${Date.now()}.sql`;
+      const fileName =
+        typeof data?.fileName === 'string' && data.fileName.trim()
+          ? data.fileName
+          : fallbackName;
+      if (typeof data?.sql === 'string' && data.sql.trim()) {
+        downloadFile(fileName, data.sql, 'application/sql;charset=utf-8;');
+      }
+      const tableCount = Number(data?.tableCount);
+      const rowCount = Number(data?.rowCount);
+      const summaryParts = [];
+      if (Number.isFinite(tableCount)) {
+        summaryParts.push(
+          tableCount === 1
+            ? t('oneTableExported', '1 table')
+            : t('tableCountExported', '{{count}} tables', { count: tableCount }),
+        );
+      }
+      if (Number.isFinite(rowCount)) {
+        summaryParts.push(
+          rowCount === 1
+            ? t('oneRowExported', '1 row')
+            : t('rowCountExported', '{{count}} rows', { count: rowCount }),
+        );
+      }
+      let successMessage = t('defaultsExported', 'Defaults saved');
+      if (summaryParts.length > 0) {
+        successMessage = `${successMessage} (${summaryParts.join(', ')})`;
+      }
+      if (typeof data?.relativePath === 'string' && data.relativePath) {
+        successMessage = `${successMessage} — ${data.relativePath}`;
+      }
+      addToast(successMessage, 'success');
+    } catch (err) {
+      addToast(
+        `${t('exportFailed', 'Failed to export defaults')}: ${err.message}`,
+        'error',
+      );
+    } finally {
+      setExportingDefaults(false);
     }
   }
 
@@ -1567,6 +1642,9 @@ export default function TenantTablesRegistry() {
           flexWrap: 'wrap',
         }}
       >
+        <button onClick={handleExportDefaults} disabled={exportingDefaults}>
+          {exportingDefaults ? t('saving', 'Saving...') : t('saveDefaults', 'Save defaults')}
+        </button>
         <button onClick={handleSeedDefaults} disabled={seedingDefaults}>
           Populate defaults (tenant key 0)
         </button>
