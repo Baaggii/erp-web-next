@@ -198,20 +198,23 @@ test('deleteCompanyHandler deletes company with cascade', async () => {
       }
     }
     if (sql.includes('information_schema.KEY_COLUMN_USAGE')) {
-      return [[
-        {
-          CONSTRAINT_NAME: 'fk_orders_companies',
-          TABLE_NAME: 'orders',
-          COLUMN_NAME: 'company_id',
-          REFERENCED_COLUMN_NAME: 'company_id',
-        },
-        {
-          CONSTRAINT_NAME: 'fk_orders_companies',
-          TABLE_NAME: 'orders',
-          COLUMN_NAME: 'company_ref_id',
-          REFERENCED_COLUMN_NAME: 'id',
-        },
-      ]];
+      if (params?.[0] === 'companies') {
+        return [[
+          {
+            CONSTRAINT_NAME: 'fk_orders_companies',
+            TABLE_NAME: 'orders',
+            COLUMN_NAME: 'company_id',
+            REFERENCED_COLUMN_NAME: 'company_id',
+          },
+          {
+            CONSTRAINT_NAME: 'fk_orders_companies',
+            TABLE_NAME: 'orders',
+            COLUMN_NAME: 'company_ref_id',
+            REFERENCED_COLUMN_NAME: 'id',
+          },
+        ]];
+      }
+      return [[]];
     }
     if (sql.includes('information_schema.COLUMNS')) {
       return [[{ COLUMN_NAME: 'id' }, { COLUMN_NAME: 'company_id' }]];
@@ -266,6 +269,237 @@ test('deleteCompanyHandler deletes company with cascade', async () => {
   });
 });
 
+test('deleteCompanyHandler cascades through employment and users tables', async () => {
+  const calls = [];
+  const employeeCode = 'EMP-1';
+  const tenantCompanyId = 7;
+  const companyId = 7;
+  const employmentRow = {
+    company_id: String(tenantCompanyId),
+    employment_emp_id: 'EMP9',
+    employment_position_id: '10',
+    employment_workplace_id: '20',
+    employment_date: '20240101',
+    employment_department_id: '30',
+    employment_branch_id: '40',
+    employment_company_id: String(companyId),
+  };
+  const restore = mockPool(async (sql, params) => {
+    calls.push({ sql, params });
+    if (sql.startsWith('SELECT * FROM companies WHERE created_by = ?')) {
+      assert.equal(params?.[0], employeeCode);
+      return [[{
+        id: companyId,
+        company_id: tenantCompanyId,
+        name: 'CascadeCo',
+        created_by: employeeCode,
+      }]];
+    }
+    if (
+      sql.includes('information_schema.STATISTICS') &&
+      sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      if (params?.[0] === 'companies') {
+        return [[
+          { COLUMN_NAME: 'company_id', SEQ_IN_INDEX: 1 },
+          { COLUMN_NAME: 'id', SEQ_IN_INDEX: 2 },
+        ]];
+      }
+      if (params?.[0] === 'tbl_employment') {
+        return [[]];
+      }
+      if (params?.[0] === 'users') {
+        return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
+      }
+    }
+    if (
+      sql.includes('information_schema.STATISTICS') &&
+      sql.includes('NON_UNIQUE = 0')
+    ) {
+      if (params?.[0] === 'tbl_employment') {
+        return [[
+          { INDEX_NAME: 'uniq', COLUMN_NAME: 'company_id', SEQ_IN_INDEX: 1 },
+          { INDEX_NAME: 'uniq', COLUMN_NAME: 'employment_emp_id', SEQ_IN_INDEX: 2 },
+          { INDEX_NAME: 'uniq', COLUMN_NAME: 'employment_position_id', SEQ_IN_INDEX: 3 },
+          { INDEX_NAME: 'uniq', COLUMN_NAME: 'employment_workplace_id', SEQ_IN_INDEX: 4 },
+          { INDEX_NAME: 'uniq', COLUMN_NAME: 'employment_date', SEQ_IN_INDEX: 5 },
+          { INDEX_NAME: 'uniq', COLUMN_NAME: 'employment_department_id', SEQ_IN_INDEX: 6 },
+          { INDEX_NAME: 'uniq', COLUMN_NAME: 'employment_branch_id', SEQ_IN_INDEX: 7 },
+        ]];
+      }
+    }
+    if (sql.includes('information_schema.KEY_COLUMN_USAGE')) {
+      if (params?.[0] === 'companies') {
+        return [[{
+          CONSTRAINT_NAME: 'fk_employment_company',
+          TABLE_NAME: 'tbl_employment',
+          COLUMN_NAME: 'employment_company_id',
+          REFERENCED_COLUMN_NAME: 'id',
+        }]];
+      }
+      if (params?.[0] === 'tbl_employment') {
+        return [[
+          {
+            CONSTRAINT_NAME: 'users_ibfk_1',
+            TABLE_NAME: 'users',
+            COLUMN_NAME: 'company_id',
+            REFERENCED_COLUMN_NAME: 'employment_company_id',
+          },
+          {
+            CONSTRAINT_NAME: 'users_ibfk_1',
+            TABLE_NAME: 'users',
+            COLUMN_NAME: 'empid',
+            REFERENCED_COLUMN_NAME: 'employment_emp_id',
+          },
+        ]];
+      }
+      if (params?.[0] === 'users') {
+        return [[]];
+      }
+    }
+    if (sql.startsWith('SELECT COUNT(*) AS count FROM ?? WHERE')) {
+      if (params?.[0] === 'tbl_employment') {
+        assert.deepEqual(params, [
+          'tbl_employment',
+          'employment_company_id',
+          String(companyId),
+        ]);
+        return [[{ count: 1 }]];
+      }
+      if (params?.[0] === 'users') {
+        assert.deepEqual(params, [
+          'users',
+          'company_id',
+          String(companyId),
+          'empid',
+          employmentRow.employment_emp_id,
+        ]);
+        return [[{ count: 1 }]];
+      }
+    }
+    if (sql.startsWith('SELECT `company_id`') && params?.[0] === 'tbl_employment') {
+      assert.deepEqual(params, [
+        'tbl_employment',
+        'employment_company_id',
+        String(companyId),
+      ]);
+      return [[employmentRow]];
+    }
+    if (sql.startsWith('SELECT * FROM ?? WHERE') && params?.[0] === 'tbl_employment') {
+      assert.deepEqual(params, [
+        'tbl_employment',
+        'company_id',
+        employmentRow.company_id,
+        'employment_emp_id',
+        employmentRow.employment_emp_id,
+        'employment_position_id',
+        employmentRow.employment_position_id,
+        'employment_workplace_id',
+        employmentRow.employment_workplace_id,
+        'employment_date',
+        employmentRow.employment_date,
+        'employment_department_id',
+        employmentRow.employment_department_id,
+        'employment_branch_id',
+        employmentRow.employment_branch_id,
+      ]);
+      return [[employmentRow]];
+    }
+    if (sql.startsWith('SELECT `id` FROM ?? WHERE') && params?.[0] === 'users') {
+      assert.deepEqual(params, [
+        'users',
+        'company_id',
+        String(companyId),
+        'empid',
+        employmentRow.employment_emp_id,
+      ]);
+      return [[{ id: 99 }]];
+    }
+    if (sql.includes('information_schema.COLUMNS')) {
+      if (params?.[0] === 'users') {
+        return [[
+          { COLUMN_NAME: 'id' },
+          { COLUMN_NAME: 'password' },
+          { COLUMN_NAME: 'created_by' },
+          { COLUMN_NAME: 'created_at' },
+          { COLUMN_NAME: 'empid' },
+          { COLUMN_NAME: 'company_id' },
+        ]];
+      }
+      if (params?.[0] === 'tbl_employment') {
+        return [[
+          { COLUMN_NAME: 'company_id' },
+          { COLUMN_NAME: 'employment_emp_id' },
+          { COLUMN_NAME: 'employment_position_id' },
+          { COLUMN_NAME: 'employment_workplace_id' },
+          { COLUMN_NAME: 'employment_date' },
+          { COLUMN_NAME: 'employment_department_id' },
+          { COLUMN_NAME: 'employment_branch_id' },
+          { COLUMN_NAME: 'employment_company_id' },
+        ]];
+      }
+      if (params?.[0] === 'companies') {
+        return [[
+          { COLUMN_NAME: 'company_id' },
+          { COLUMN_NAME: 'id' },
+          { COLUMN_NAME: 'name' },
+          { COLUMN_NAME: 'created_by' },
+        ]];
+      }
+    }
+    if (sql.startsWith('DELETE FROM ?? WHERE') && params?.[0] === 'users') {
+      return [{}];
+    }
+    if (sql.startsWith('DELETE FROM ?? WHERE') && params?.[0] === 'tbl_employment') {
+      return [{}];
+    }
+    if (sql.startsWith('DELETE FROM ?? WHERE') && params?.[0] === 'companies') {
+      return [{}];
+    }
+    throw new Error(`unexpected query: ${sql}`);
+  });
+  const req = {
+    params: { id: String(companyId) },
+    user: { empid: employeeCode, companyId: 0 },
+    session: { permissions: { system_settings: true } },
+    body: {},
+  };
+  const res = createRes();
+  await deleteCompanyHandler(req, res, () => {});
+  restore();
+  const deletes = calls.filter((c) => c.sql.startsWith('DELETE FROM'));
+  assert.equal(deletes.length, 3);
+  const userDelete = deletes.find((c) => c.params?.[0] === 'users');
+  assert.deepEqual(
+    userDelete ? userDelete.params.map((p) => String(p)) : null,
+    ['users', '99', String(tenantCompanyId)],
+  );
+  const employmentDelete = deletes.find((c) => c.params?.[0] === 'tbl_employment');
+  assert.deepEqual(
+    employmentDelete ? employmentDelete.params.map((p) => String(p)) : null,
+    [
+      'tbl_employment',
+      employmentRow.company_id,
+      employmentRow.employment_emp_id,
+      employmentRow.employment_position_id,
+      employmentRow.employment_workplace_id,
+      employmentRow.employment_date,
+      employmentRow.employment_department_id,
+      employmentRow.employment_branch_id,
+    ],
+  );
+  const companyDelete = deletes.find((c) => c.params?.[0] === 'companies');
+  assert.deepEqual(
+    companyDelete ? companyDelete.params.map((p) => String(p)) : null,
+    ['companies', String(tenantCompanyId), String(companyId)],
+  );
+  assert.equal(res.code, 200);
+  assert.deepEqual(res.body, {
+    backup: null,
+    company: { id: companyId, name: 'CascadeCo' }
+  });
+});
+
 test('deleteCompanyHandler returns backup metadata when requested', async () => {
   const calls = [];
   const userId = 7;
@@ -306,20 +540,23 @@ test('deleteCompanyHandler returns backup metadata when requested', async () => 
       }
     }
     if (sql.includes('information_schema.KEY_COLUMN_USAGE')) {
-      return [[
-        {
-          CONSTRAINT_NAME: 'fk_orders_companies',
-          TABLE_NAME: 'orders',
-          COLUMN_NAME: 'company_id',
-          REFERENCED_COLUMN_NAME: 'company_id',
-        },
-        {
-          CONSTRAINT_NAME: 'fk_orders_companies',
-          TABLE_NAME: 'orders',
-          COLUMN_NAME: 'company_ref_id',
-          REFERENCED_COLUMN_NAME: 'id',
-        },
-      ]];
+      if (params?.[0] === 'companies') {
+        return [[
+          {
+            CONSTRAINT_NAME: 'fk_orders_companies',
+            TABLE_NAME: 'orders',
+            COLUMN_NAME: 'company_id',
+            REFERENCED_COLUMN_NAME: 'company_id',
+          },
+          {
+            CONSTRAINT_NAME: 'fk_orders_companies',
+            TABLE_NAME: 'orders',
+            COLUMN_NAME: 'company_ref_id',
+            REFERENCED_COLUMN_NAME: 'id',
+          },
+        ]];
+      }
+      return [[]];
     }
     if (sql.includes('information_schema.COLUMNS') && params?.[0] === 'orders') {
       return [[

@@ -109,6 +109,105 @@ test('listRowReferences handles composite foreign keys', async () => {
   ]);
 });
 
+test('listRowReferences fills non-primary referenced columns from target row', async () => {
+  const targetRow = {
+    company_id: '55',
+    employment_emp_id: 'EMP9',
+    employment_position_id: '10',
+    employment_workplace_id: '20',
+    employment_date: '20240101',
+    employment_department_id: '30',
+    employment_branch_id: '40',
+    employment_company_id: '7',
+  };
+  const identifier = [
+    targetRow.company_id,
+    targetRow.employment_emp_id,
+    targetRow.employment_position_id,
+    targetRow.employment_workplace_id,
+    targetRow.employment_date,
+    targetRow.employment_department_id,
+    targetRow.employment_branch_id,
+  ].join('-');
+  const restore = mockPool(async (sql, params) => {
+    if (
+      sql.includes('information_schema.STATISTICS') && sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      return [[]];
+    }
+    if (
+      sql.includes('information_schema.STATISTICS') && sql.includes('NON_UNIQUE = 0')
+    ) {
+      return [[
+        { INDEX_NAME: 'uniq', COLUMN_NAME: 'company_id', SEQ_IN_INDEX: 1 },
+        { INDEX_NAME: 'uniq', COLUMN_NAME: 'employment_emp_id', SEQ_IN_INDEX: 2 },
+        { INDEX_NAME: 'uniq', COLUMN_NAME: 'employment_position_id', SEQ_IN_INDEX: 3 },
+        { INDEX_NAME: 'uniq', COLUMN_NAME: 'employment_workplace_id', SEQ_IN_INDEX: 4 },
+        { INDEX_NAME: 'uniq', COLUMN_NAME: 'employment_date', SEQ_IN_INDEX: 5 },
+        { INDEX_NAME: 'uniq', COLUMN_NAME: 'employment_department_id', SEQ_IN_INDEX: 6 },
+        { INDEX_NAME: 'uniq', COLUMN_NAME: 'employment_branch_id', SEQ_IN_INDEX: 7 },
+      ]];
+    }
+    if (sql.includes('information_schema.KEY_COLUMN_USAGE')) {
+      return [[
+        {
+          CONSTRAINT_NAME: 'users_ibfk_1',
+          TABLE_NAME: 'users',
+          COLUMN_NAME: 'company_id',
+          REFERENCED_COLUMN_NAME: 'employment_company_id',
+        },
+        {
+          CONSTRAINT_NAME: 'users_ibfk_1',
+          TABLE_NAME: 'users',
+          COLUMN_NAME: 'empid',
+          REFERENCED_COLUMN_NAME: 'employment_emp_id',
+        },
+      ]];
+    }
+    if (sql.startsWith('SELECT * FROM ?? WHERE')) {
+      assert.deepEqual(params, [
+        'tbl_employment',
+        'company_id',
+        targetRow.company_id,
+        'employment_emp_id',
+        targetRow.employment_emp_id,
+        'employment_position_id',
+        targetRow.employment_position_id,
+        'employment_workplace_id',
+        targetRow.employment_workplace_id,
+        'employment_date',
+        targetRow.employment_date,
+        'employment_department_id',
+        targetRow.employment_department_id,
+        'employment_branch_id',
+        targetRow.employment_branch_id,
+      ]);
+      return [[targetRow]];
+    }
+    if (sql.startsWith('SELECT COUNT(*) AS count FROM ?? WHERE')) {
+      assert.deepEqual(params, [
+        'users',
+        'company_id',
+        targetRow.employment_company_id,
+        'empid',
+        targetRow.employment_emp_id,
+      ]);
+      return [[{ count: 1 }]];
+    }
+    throw new Error('unexpected query');
+  });
+  const refs = await db.listRowReferences('tbl_employment', identifier);
+  restore();
+  assert.deepEqual(refs, [
+    {
+      table: 'users',
+      columns: ['company_id', 'empid'],
+      values: [targetRow.employment_company_id, targetRow.employment_emp_id],
+      count: 1,
+    },
+  ]);
+});
+
 test('deleteTableRowCascade deletes related rows first', async () => {
   const calls = [];
   const restore = mockPool(async (sql, params) => {
