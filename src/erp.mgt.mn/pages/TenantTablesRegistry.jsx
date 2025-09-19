@@ -102,37 +102,10 @@ function formatAuditTimestamp(value) {
   return formatAuditDateParts(parsed);
 }
 
-function getAuditDisplayValue(value) {
-  const formatted = formatAuditTimestamp(value);
-  if (formatted !== null) return formatted;
-  return convertRowValueToString(value);
-}
-
-function prepareAuditValueForApi(value) {
-  if (value === undefined || value === null) return undefined;
-  const formatted = formatAuditTimestamp(value);
-  if (formatted !== null) return formatted;
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed || trimmed.toLowerCase() === 'null') {
-      return undefined;
-    }
-    const fallback = formatAuditTimestamp(trimmed);
-    if (fallback !== null) {
-      return fallback;
-    }
-  }
-  return undefined;
-}
-
 function createEditableCopy(row, columns) {
   const editable = {};
   for (const column of columns || []) {
-    if (column === 'company_id') continue;
-    if (isAuditColumn(column)) {
-      editable[column] = getAuditDisplayValue(row?.[column]);
-      continue;
-    }
+    if (column === 'company_id' || isAuditColumn(column)) continue;
     editable[column] = convertRowValueToString(row?.[column]);
   }
   return editable;
@@ -190,15 +163,7 @@ function buildManualRowFromDraft(originalRow, draft, columns) {
   const manual = {};
   for (const column of columns || []) {
     if (column === 'company_id') continue;
-    if (isAuditColumn(column)) {
-      if (draft && Object.prototype.hasOwnProperty.call(draft, column)) {
-        const prepared = prepareAuditValueForApi(draft[column]);
-        if (prepared !== undefined) {
-          manual[column] = prepared;
-        }
-      }
-      continue;
-    }
+    if (isAuditColumn(column)) continue;
     if (draft && Object.prototype.hasOwnProperty.call(draft, column)) {
       const raw = draft[column];
       const value = coerceManualRowValue(raw, originalRow?.[column]);
@@ -220,13 +185,7 @@ function buildManualRowForNew(values, columns) {
     const raw = values[column];
     if (raw === '' || raw === undefined || raw === null) continue;
     if (typeof raw === 'string' && raw.trim() === '') continue;
-    if (isAuditColumn(column)) {
-      const prepared = prepareAuditValueForApi(raw);
-      if (prepared !== undefined) {
-        manual[column] = prepared;
-      }
-      continue;
-    }
+    if (isAuditColumn(column)) continue;
     manual[column] = raw;
   }
   return manual;
@@ -719,6 +678,9 @@ export default function TenantTablesRegistry() {
   }
 
   function handleDraftChange(table, id, field, value) {
+    if (field === 'company_id' || isAuditColumn(field)) {
+      return;
+    }
     setTableRecords((prev) => {
       const info = prev[table];
       if (!info) return prev;
@@ -750,7 +712,7 @@ export default function TenantTablesRegistry() {
       const editable = info.editable || { draftsById: {}, newRows: [] };
       const values = {};
       for (const column of info.columns || []) {
-        if (column === 'company_id') continue;
+        if (column === 'company_id' || isAuditColumn(column)) continue;
         values[column] = '';
       }
       const newRow = {
@@ -772,6 +734,9 @@ export default function TenantTablesRegistry() {
   }
 
   function handleNewRowChange(table, rowKey, field, value) {
+    if (field === 'company_id' || isAuditColumn(field)) {
+      return;
+    }
     setTableRecords((prev) => {
       const info = prev[table];
       if (!info) return prev;
@@ -1495,7 +1460,7 @@ export default function TenantTablesRegistry() {
                         }
                         const columnNames = info.columns || [];
                         const displayColumns = columnNames.filter(
-                          (col) => col !== 'company_id',
+                          (col) => col !== 'company_id' && !isAuditColumn(col),
                         );
                         const draftsById = info.editable?.draftsById || {};
                         const newRows = info.editable?.newRows || [];
