@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import Modal from '../components/Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import I18nContext from '../context/I18nContext.jsx';
-import { updateTablesWithChange } from './TenantTablesRegistry.helpers.js';
+import { updateTablesWithChange, buildRowIdentifier } from './TenantTablesRegistry.helpers.js';
 
 function formatSeedSummaryId(id) {
   if (id === null || id === undefined) return '';
@@ -299,7 +299,6 @@ export default function TenantTablesRegistry() {
   const [companyId, setCompanyId] = useState('');
   const [expandedTable, setExpandedTable] = useState(null);
   const [defaultRows, setDefaultRows] = useState({});
-  const [columns, setColumns] = useState({});
   const [lastResetSummary, setLastResetSummary] = useState(null);
   const [lastSeedSummary, setLastSeedSummary] = useState(null);
   const [seedDefaultsConflict, setSeedDefaultsConflict] = useState(null);
@@ -1061,9 +1060,20 @@ export default function TenantTablesRegistry() {
   async function loadDefaultRows(table) {
     setDefaultRows((prev) => ({
       ...prev,
-      [table]: { loading: true, error: '', rows: [] },
+      [table]: {
+        loading: true,
+        error: '',
+        rows: [],
+        columnNames: [],
+        displayColumns: [],
+        primaryKeys: [],
+        draftsById: {},
+        newRows: [],
+        saving: {},
+        deleting: {},
+        supportsEditing: true,
+      },
     }));
-    setColumns((prev) => ({ ...prev, [table]: [] }));
     try {
       const [colsRes, rowsRes] = await Promise.all([
         fetch(`/api/tables/${encodeURIComponent(table)}/columns`, {
@@ -1083,26 +1093,377 @@ export default function TenantTablesRegistry() {
       }
       const cols = await colsRes.json();
       const rowsData = await rowsRes.json();
-      const colNames = cols.map((c) => c.name);
+      const columnNames = cols.map((c) => c.name);
+      const primaryKeys = cols
+        .filter((c) => c && c.key === 'PRI')
+        .map((c) => c.name)
+        .filter(Boolean);
+      const displayColumns = columnNames.filter(
+        (name) => name !== 'company_id' && !isAuditColumn(name),
+      );
+      const supportsEditing = primaryKeys.length > 0 && displayColumns.length > 0;
       const rows = (rowsData.rows || []).map((r) => {
         const obj = {};
-        colNames.forEach((name, idx) => {
+        columnNames.forEach((name, idx) => {
           obj[name] =
             r[name] !== undefined ? r[name] : Array.isArray(r) ? r[idx] : undefined;
         });
         return obj;
       });
-      setColumns((prev) => ({ ...prev, [table]: colNames }));
+      const normalizedRows = rows.map((values, index) => {
+        const identifier = supportsEditing
+          ? buildRowIdentifier(values, primaryKeys)
+          : null;
+        const key =
+          identifier !== null && identifier !== undefined
+            ? formatRowIdKey(identifier)
+            : `row-${index}`;
+        return { id: identifier, key, values };
+      });
+      const draftsById = {};
+      for (const row of normalizedRows) {
+        if (!row || !row.key) continue;
+        draftsById[row.key] = createEditableCopy(row.values, columnNames);
+      }
       setDefaultRows((prev) => ({
         ...prev,
-        [table]: { loading: false, error: '', rows },
+        [table]: {
+          loading: false,
+          error: '',
+          rows: normalizedRows,
+          columnNames,
+          displayColumns,
+          primaryKeys,
+          draftsById,
+          newRows: [],
+          saving: {},
+          deleting: {},
+          supportsEditing,
+        },
       }));
     } catch (err) {
       addToast(`Failed to load defaults for ${table}: ${err.message}`, 'error');
       setDefaultRows((prev) => ({
         ...prev,
-        [table]: { loading: false, error: err.message, rows: [] },
+        [table]: {
+          loading: false,
+          error: err.message,
+          rows: [],
+          columnNames: [],
+          displayColumns: [],
+          primaryKeys: [],
+          draftsById: {},
+          newRows: [],
+          saving: {},
+          deleting: {},
+          supportsEditing: false,
+        },
       }));
+    }
+  }
+
+  function handleDefaultDraftChange(table, rowKey, field, value) {
+    if (field === 'company_id' || isAuditColumn(field)) {
+      return;
+    }
+    setDefaultRows((prev) => {
+      const info = prev[table];
+      if (!info) return prev;
+      const row = info.rows?.find((r) => r.key === rowKey);
+      if (!row) return prev;
+      const columnNames = info.columnNames || Object.keys(row.values || {});
+      const currentDraft =
+        info.draftsById?.[rowKey] || createEditableCopy(row.values, columnNames);
+      const updatedDraft = { ...currentDraft, [field]: value };
+      return {
+        ...prev,
+        [table]: {
+          ...info,
+          draftsById: { ...(info.draftsById || {}), [rowKey]: updatedDraft },
+        },
+      };
+    });
+  }
+
+  function handleDefaultRowReset(table, rowKey) {
+    setDefaultRows((prev) => {
+      const info = prev[table];
+      if (!info) return prev;
+      const row = info.rows?.find((r) => r.key === rowKey);
+      if (!row) return prev;
+      const columnNames = info.columnNames || Object.keys(row.values || {});
+      const draft = createEditableCopy(row.values, columnNames);
+      return {
+        ...prev,
+        [table]: {
+          ...info,
+          draftsById: { ...(info.draftsById || {}), [rowKey]: draft },
+        },
+      };
+    });
+  }
+
+  async function handleDefaultRowSave(table, rowKey) {
+    const info = defaultRows[table];
+    if (!info) return;
+    const row = info.rows?.find((r) => r.key === rowKey);
+    if (!row) {
+      addToast(t('defaultRowNotFound', 'Default row not found.'), 'error');
+      return;
+    }
+    if (!row.id) {
+      addToast(
+        t(
+          'defaultRowMissingIdentifier',
+          'Cannot update this row because its primary key is missing.',
+        ),
+        'error',
+      );
+      return;
+    }
+    const columnNames = info.columnNames || Object.keys(row.values || {});
+    const draft =
+      info.draftsById?.[rowKey] || createEditableCopy(row.values, columnNames);
+    const manual = buildManualRowFromDraft(row.values, draft, columnNames);
+    if (Object.keys(manual).length === 0) {
+      addToast(t('noChangesToSave', 'No changes to save.'), 'info');
+      return;
+    }
+    setDefaultRows((prev) => {
+      const current = prev[table];
+      if (!current) return prev;
+      return {
+        ...prev,
+        [table]: {
+          ...current,
+          saving: { ...(current.saving || {}), [rowKey]: true },
+        },
+      };
+    });
+    try {
+      const res = await fetch(
+        `/api/tenant_tables/${encodeURIComponent(table)}/default-rows/${encodeURIComponent(row.id)}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(manual),
+        },
+      );
+      if (!res.ok) {
+        const msg = await parseErrorBody(res);
+        throw new Error(msg || 'Failed to update default row');
+      }
+      addToast(t('defaultRowSaved', 'Default row updated'), 'success');
+      await loadDefaultRows(table);
+    } catch (err) {
+      addToast(`Failed to update default row: ${err.message}`, 'error');
+    } finally {
+      setDefaultRows((prev) => {
+        const current = prev[table];
+        if (!current) return prev;
+        const nextSaving = { ...(current.saving || {}) };
+        delete nextSaving[rowKey];
+        return {
+          ...prev,
+          [table]: { ...current, saving: nextSaving },
+        };
+      });
+    }
+  }
+
+  async function handleDefaultRowDelete(table, rowKey) {
+    const info = defaultRows[table];
+    if (!info) return;
+    const row = info.rows?.find((r) => r.key === rowKey);
+    if (!row) {
+      addToast(t('defaultRowNotFound', 'Default row not found.'), 'error');
+      return;
+    }
+    if (!row.id) {
+      addToast(
+        t(
+          'defaultRowMissingIdentifier',
+          'Cannot update this row because its primary key is missing.',
+        ),
+        'error',
+      );
+      return;
+    }
+    setDefaultRows((prev) => {
+      const current = prev[table];
+      if (!current) return prev;
+      return {
+        ...prev,
+        [table]: {
+          ...current,
+          deleting: { ...(current.deleting || {}), [rowKey]: true },
+        },
+      };
+    });
+    try {
+      const res = await fetch(
+        `/api/tenant_tables/${encodeURIComponent(table)}/default-rows/${encodeURIComponent(row.id)}`,
+        {
+          method: 'DELETE',
+          credentials: 'include',
+        },
+      );
+      if (!res.ok) {
+        const msg = await parseErrorBody(res);
+        throw new Error(msg || 'Failed to delete default row');
+      }
+      addToast(t('defaultRowDeleted', 'Default row deleted'), 'success');
+      await loadDefaultRows(table);
+    } catch (err) {
+      addToast(`Failed to delete default row: ${err.message}`, 'error');
+    } finally {
+      setDefaultRows((prev) => {
+        const current = prev[table];
+        if (!current) return prev;
+        const nextDeleting = { ...(current.deleting || {}) };
+        delete nextDeleting[rowKey];
+        return {
+          ...prev,
+          [table]: { ...current, deleting: nextDeleting },
+        };
+      });
+    }
+  }
+
+  function handleAddDefaultRow(table) {
+    setDefaultRows((prev) => {
+      const info = prev[table];
+      if (!info) return prev;
+      const displayColumns = info.displayColumns || [];
+      const values = {};
+      displayColumns.forEach((col) => {
+        values[col] = '';
+      });
+      const newRow = {
+        key: `new-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        values,
+        saving: false,
+      };
+      return {
+        ...prev,
+        [table]: {
+          ...info,
+          newRows: [...(info.newRows || []), newRow],
+        },
+      };
+    });
+  }
+
+  function handleDefaultNewRowChange(table, rowKey, field, value) {
+    if (field === 'company_id' || isAuditColumn(field)) {
+      return;
+    }
+    setDefaultRows((prev) => {
+      const info = prev[table];
+      if (!info) return prev;
+      const newRows = (info.newRows || []).map((row) =>
+        row.key === rowKey
+          ? { ...row, values: { ...(row.values || {}), [field]: value } }
+          : row,
+      );
+      return {
+        ...prev,
+        [table]: {
+          ...info,
+          newRows,
+        },
+      };
+    });
+  }
+
+  function handleDefaultNewRowCancel(table, rowKey) {
+    setDefaultRows((prev) => {
+      const info = prev[table];
+      if (!info) return prev;
+      const newRows = (info.newRows || []).filter((row) => row.key !== rowKey);
+      return {
+        ...prev,
+        [table]: {
+          ...info,
+          newRows,
+        },
+      };
+    });
+  }
+
+  async function handleDefaultNewRowSave(table, rowKey) {
+    const info = defaultRows[table];
+    if (!info) return;
+    const row = (info.newRows || []).find((r) => r.key === rowKey);
+    if (!row) return;
+    const columnNames = info.columnNames || [];
+    const payload = buildManualRowForNew(row.values, columnNames);
+    if (Object.keys(payload).length === 0) {
+      addToast(
+        t('defaultRowRequiresValues', 'Enter at least one value before saving.'),
+        'warning',
+      );
+      return;
+    }
+    setDefaultRows((prev) => {
+      const current = prev[table];
+      if (!current) return prev;
+      const newRows = (current.newRows || []).map((r) =>
+        r.key === rowKey ? { ...r, saving: true } : r,
+      );
+      return {
+        ...prev,
+        [table]: {
+          ...current,
+          newRows,
+        },
+      };
+    });
+    try {
+      const res = await fetch(
+        `/api/tenant_tables/${encodeURIComponent(table)}/default-rows`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(payload),
+        },
+      );
+      if (!res.ok) {
+        const msg = await parseErrorBody(res);
+        throw new Error(msg || 'Failed to add default row');
+      }
+      addToast(t('defaultRowAdded', 'Default row added'), 'success');
+      setDefaultRows((prev) => {
+        const current = prev[table];
+        if (!current) return prev;
+        const newRows = (current.newRows || []).filter((r) => r.key !== rowKey);
+        return {
+          ...prev,
+          [table]: {
+            ...current,
+            newRows,
+          },
+        };
+      });
+      await loadDefaultRows(table);
+    } catch (err) {
+      addToast(`Failed to add default row: ${err.message}`, 'error');
+      setDefaultRows((prev) => {
+        const current = prev[table];
+        if (!current) return prev;
+        const newRows = (current.newRows || []).map((r) =>
+          r.key === rowKey ? { ...r, saving: false } : r,
+        );
+        return {
+          ...prev,
+          [table]: {
+            ...current,
+            newRows,
+          },
+        };
+      });
     }
   }
 
@@ -1448,46 +1809,255 @@ export default function TenantTablesRegistry() {
                   {expandedTable === table.tableName && (
                     <tr>
                       <td colSpan={4} style={{ padding: '0.5rem' }}>
-                        {defaultRows[table.tableName]?.loading ? (
-                          <p>{t('loading', 'Loading...')}</p>
-                        ) : defaultRows[table.tableName]?.error ? (
-                        <p>Error: {defaultRows[table.tableName].error}</p>
-                      ) : defaultRows[table.tableName]?.rows.length ? (
-                        <div>
-                          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <thead>
-                              <tr style={{ backgroundColor: '#f3f4f6' }}>
-                                {columns[table.tableName]?.map((c) => (
-                                  <th key={c} style={styles.th}>
-                                    {c}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {defaultRows[table.tableName].rows.map((r, i) => (
-                                <tr key={i}>
-                                  {columns[table.tableName]?.map((c) => (
-                                    <td key={c} style={styles.td}>
-                                      {String(r[c])}
-                                    </td>
-                                  ))}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                          <div style={{ marginTop: '0.5rem', textAlign: 'right' }}>
-                            <button onClick={() => setExpandedTable(null)}>{t('collapse', 'Collapse')}</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div>
-                          <p>{t('noRecords', 'No records')}</p>
-                          <div style={{ marginTop: '0.5rem', textAlign: 'right' }}>
-                            <button onClick={() => setExpandedTable(null)}>{t('collapse', 'Collapse')}</button>
-                          </div>
-                        </div>
-                      )}
+                        {(() => {
+                          const info = defaultRows[table.tableName] || {};
+                          if (info.loading) {
+                            return <p>{t('loading', 'Loading...')}</p>;
+                          }
+                          if (info.error) {
+                            return <p>Error: {info.error}</p>;
+                          }
+                          const displayColumns = info.displayColumns || [];
+                          const columnNames = info.columnNames || [];
+                          const viewColumns = info.supportsEditing !== false
+                            ? displayColumns
+                            : columnNames;
+                          const rows = Array.isArray(info.rows) ? info.rows : [];
+                          const newRows = Array.isArray(info.newRows) ? info.newRows : [];
+                          const draftsById = info.draftsById || {};
+                          const saving = info.saving || {};
+                          const deleting = info.deleting || {};
+                          const supportsEditing = info.supportsEditing !== false;
+                          const showActions = supportsEditing;
+                          const hasRows = rows.length > 0;
+
+                          if (!hasRows && !showActions) {
+                            return (
+                              <div>
+                                <p>{t('noRecords', 'No records')}</p>
+                                <div style={{ marginTop: '0.5rem', textAlign: 'right' }}>
+                                  <button onClick={() => setExpandedTable(null)}>
+                                    {t('collapse', 'Collapse')}
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div>
+                              {supportsEditing ? null : (
+                                <p style={{ marginBottom: '0.5rem', color: '#6b7280' }}>
+                                  {t(
+                                    'defaultRowsReadOnly',
+                                    'Editing is unavailable because editable columns or a primary key could not be determined.',
+                                  )}
+                                </p>
+                              )}
+                              {hasRows || (showActions && newRows.length > 0) ? (
+                                <div>
+                                  {viewColumns.length > 0 ? (
+                                    <table
+                                      style={{ width: '100%', borderCollapse: 'collapse' }}
+                                    >
+                                      <thead>
+                                        <tr style={{ backgroundColor: '#f3f4f6' }}>
+                                          {viewColumns.map((c) => (
+                                            <th key={c} style={styles.th}>
+                                              {c}
+                                            </th>
+                                          ))}
+                                          {showActions ? (
+                                            <th style={styles.th}>{t('actions', 'Actions')}</th>
+                                          ) : null}
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {rows.map((row) => {
+                                          const rowKey = row.key;
+                                          const draft =
+                                            draftsById[rowKey] ||
+                                            createEditableCopy(row.values, columnNames);
+                                          const hasChanges = hasRowChanges(
+                                            row.values,
+                                            draft,
+                                            columnNames,
+                                          );
+                                          const isSaving = !!saving[rowKey];
+                                          const isDeleting = !!deleting[rowKey];
+                                          const disableActions =
+                                            !supportsEditing || !row.id || isSaving || isDeleting;
+                                          return (
+                                            <tr key={rowKey}>
+                                              {viewColumns.map((c) => {
+                                                const isPrimary =
+                                                  (info.primaryKeys || []).includes(c);
+                                                if (!supportsEditing || isPrimary) {
+                                                  return (
+                                                    <td key={c} style={styles.td}>
+                                                      {convertRowValueToString(row.values?.[c])}
+                                                    </td>
+                                                  );
+                                                }
+                                                return (
+                                                  <td key={c} style={styles.td}>
+                                                    <input
+                                                      type="text"
+                                                      value={draft?.[c] ?? ''}
+                                                      onChange={(e) =>
+                                                        handleDefaultDraftChange(
+                                                          table.tableName,
+                                                          rowKey,
+                                                          c,
+                                                          e.target.value,
+                                                        )
+                                                      }
+                                                      disabled={disableActions}
+                                                      style={{ width: '100%' }}
+                                                    />
+                                                  </td>
+                                                );
+                                              })}
+                                              {showActions ? (
+                                                <td style={styles.td}>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                      handleDefaultRowSave(
+                                                        table.tableName,
+                                                        rowKey,
+                                                      )
+                                                    }
+                                                    disabled={disableActions || !hasChanges}
+                                                  >
+                                                    {isSaving
+                                                      ? t('saving', 'Saving...')
+                                                      : t('save', 'Save')}
+                                                  </button>{' '}
+                                                  <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                      handleDefaultRowReset(
+                                                        table.tableName,
+                                                        rowKey,
+                                                      )
+                                                    }
+                                                    disabled={disableActions || !hasChanges}
+                                                  >
+                                                    {t('reset', 'Reset')}
+                                                  </button>{' '}
+                                                  <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                      handleDefaultRowDelete(
+                                                        table.tableName,
+                                                        rowKey,
+                                                      )
+                                                    }
+                                                    disabled={disableActions}
+                                                  >
+                                                    {isDeleting
+                                                      ? t('deleting', 'Deleting...')
+                                                      : t('delete', 'Delete')}
+                                                  </button>
+                                                </td>
+                                              ) : null}
+                                            </tr>
+                                          );
+                                        })}
+                                        {showActions
+                                          ? newRows.map((row) => (
+                                              <tr key={row.key}>
+                                                {displayColumns.map((c) => (
+                                                  <td key={c} style={styles.td}>
+                                                    <input
+                                                      type="text"
+                                                      value={row.values?.[c] ?? ''}
+                                                      onChange={(e) =>
+                                                        handleDefaultNewRowChange(
+                                                          table.tableName,
+                                                          row.key,
+                                                          c,
+                                                          e.target.value,
+                                                        )
+                                                      }
+                                                      disabled={row.saving}
+                                                      style={{ width: '100%' }}
+                                                    />
+                                                  </td>
+                                                ))}
+                                                <td style={styles.td}>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                      handleDefaultNewRowSave(
+                                                        table.tableName,
+                                                        row.key,
+                                                      )
+                                                    }
+                                                    disabled={row.saving || !rowHasValues(row.values)}
+                                                  >
+                                                    {row.saving
+                                                      ? t('saving', 'Saving...')
+                                                      : t('save', 'Save')}
+                                                  </button>{' '}
+                                                  <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                      handleDefaultNewRowCancel(
+                                                        table.tableName,
+                                                        row.key,
+                                                      )
+                                                    }
+                                                    disabled={row.saving}
+                                                  >
+                                                    {t('cancel', 'Cancel')}
+                                                  </button>
+                                                </td>
+                                              </tr>
+                                            ))
+                                          : null}
+                                      </tbody>
+                                    </table>
+                                  ) : (
+                                    <p>{t('defaultRowsNoColumns', 'No columns available to display.')}</p>
+                                  )}
+                                  {showActions ? (
+                                    <div style={{ marginTop: '0.5rem' }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAddDefaultRow(table.tableName)}
+                                        disabled={!supportsEditing}
+                                      >
+                                        {t('addRow', 'Add row')}
+                                      </button>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : (
+                                <div>
+                                  <p>{t('noRecords', 'No records')}</p>
+                                  {showActions ? (
+                                    <div style={{ marginTop: '0.5rem' }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAddDefaultRow(table.tableName)}
+                                        disabled={!supportsEditing}
+                                      >
+                                        {t('addRow', 'Add row')}
+                                      </button>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              )}
+                              <div style={{ marginTop: '0.5rem', textAlign: 'right' }}>
+                                <button onClick={() => setExpandedTable(null)}>
+                                  {t('collapse', 'Collapse')}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()}
                     </td>
                   </tr>
                   )}
