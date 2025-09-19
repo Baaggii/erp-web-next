@@ -1991,6 +1991,11 @@ async function createSeedBackupForCompany(companyId, tableInfos, options = {}) {
   const sql = lines.join('\n');
   await fs.writeFile(backupPath, sql, 'utf8');
 
+  const normalizedCompanyName =
+    typeof options.companyName === 'string' && options.companyName.trim()
+      ? options.companyName.trim()
+      : null;
+
   const entry = {
     fileName,
     relativePath,
@@ -2004,9 +2009,460 @@ async function createSeedBackupForCompany(companyId, tableInfos, options = {}) {
     tables: tableSummaries,
   };
 
+  if (normalizedCompanyName) {
+    entry.companyName = normalizedCompanyName;
+  }
+
   await updateSeedBackupCatalog(companyId, entry);
 
   return entry;
+}
+
+async function readSeedBackupFile(companyId, fileName, { includeSql = false } = {}) {
+  const safeName = sanitizeSnapshotFileName(fileName);
+  const relativePathRaw = path.join(TENANT_SEED_BACKUP_DIR, safeName);
+  const relativePath = relativePathRaw.replace(/\\/g, '/');
+  const absolutePath = tenantConfigPath(relativePathRaw, companyId);
+  let stats;
+  try {
+    stats = await fs.stat(absolutePath);
+  } catch (err) {
+    if (err?.code === 'ENOENT') {
+      const notFound = new Error('Backup not found');
+      notFound.status = 404;
+      throw notFound;
+    }
+    throw err;
+  }
+  const sql = await fs.readFile(absolutePath, 'utf8');
+  return {
+    fileName: safeName,
+    relativePath,
+    absolutePath,
+    fileSize: stats.size,
+    modifiedAt: stats.mtime ? stats.mtime.toISOString() : null,
+    createdAt: stats.birthtime ? stats.birthtime.toISOString() : null,
+    sql: includeSql ? sql : undefined,
+  };
+}
+
+function normalizeBackupEntry(entry = {}, companyId) {
+  if (!entry || typeof entry !== 'object') return null;
+  const fileName =
+    typeof entry.fileName === 'string' && entry.fileName.trim()
+      ? entry.fileName.trim()
+      : '';
+  if (!fileName) return null;
+  const generatedAt =
+    typeof entry.generatedAt === 'string' && entry.generatedAt.trim()
+      ? entry.generatedAt.trim()
+      : typeof entry.generatedAtRaw === 'string' && entry.generatedAtRaw.trim()
+      ? entry.generatedAtRaw.trim()
+      : null;
+  const requestedByRaw =
+    entry.requestedBy !== undefined && entry.requestedBy !== null
+      ? Number(entry.requestedBy)
+      : null;
+  const normalized = {
+    ...entry,
+    fileName,
+    generatedAt,
+    requestedBy: Number.isFinite(requestedByRaw) ? requestedByRaw : null,
+    companyId: Number(entry.companyId ?? companyId) || Number(companyId) || 0,
+  };
+  if (
+    typeof entry.companyName === 'string' &&
+    entry.companyName.trim() &&
+    !normalized.companyName
+  ) {
+    normalized.companyName = entry.companyName.trim();
+  }
+  return normalized;
+}
+
+export async function createCompanySeedBackup(companyId, options = {}) {
+  const normalizedId = Number(companyId);
+  if (!Number.isFinite(normalizedId) || normalizedId <= 0) {
+    const err = new Error('A valid companyId is required');
+    err.status = 400;
+    throw err;
+  }
+
+  let tableRows;
+  try {
+    [tableRows] = await pool.query(
+      `SELECT table_name, is_shared FROM tenant_tables WHERE seed_on_create = 1`,
+    );
+  } catch (err) {
+    if (err?.code === 'ER_NO_SUCH_TABLE') {
+      return null;
+    }
+    throw err;
+  }
+
+  const processedTables = [];
+  for (const row of tableRows || []) {
+    if (!row || row.is_shared) continue;
+    const tableName = row.table_name;
+    if (!tableName) continue;
+    let countRows;
+    try {
+      [countRows] = await pool.query(
+        'SELECT COUNT(*) AS cnt FROM ?? WHERE company_id = ?',
+        [tableName, normalizedId],
+      );
+    } catch (err) {
+      if (err?.code === 'ER_NO_SUCH_TABLE') continue;
+      throw err;
+    }
+    const existingCount = Number(countRows?.[0]?.cnt) || 0;
+    if (existingCount === 0) continue;
+    const meta = await listTableColumnMeta(tableName);
+    processedTables.push({
+      tableName,
+      columns: meta.map((m) => m.name),
+      existingCount,
+    });
+  }
+
+  if (processedTables.length === 0) {
+    return null;
+  }
+
+  const trimmedBackupName =
+    typeof options.backupName === 'string' ? options.backupName.trim() : '';
+  const originalNameRaw =
+    typeof options.originalBackupName === 'string'
+      ? options.originalBackupName
+      : options.backupName ?? trimmedBackupName;
+  const requestedByValue =
+    options.requestedBy !== undefined && options.requestedBy !== null
+      ? Number(options.requestedBy)
+      : null;
+
+  const backupOptions = {
+    backupName: trimmedBackupName,
+    originalBackupName:
+      typeof originalNameRaw === 'string' ? originalNameRaw : trimmedBackupName,
+    requestedBy: Number.isFinite(requestedByValue) ? requestedByValue : null,
+    companyName:
+      typeof options.companyName === 'string' ? options.companyName : undefined,
+  };
+
+  const result = await createSeedBackupForCompany(
+    normalizedId,
+    processedTables,
+    backupOptions,
+  );
+  return result;
+}
+
+export async function listCompanySeedBackupsForUser(
+  userId,
+  ownedCompanies = [],
+) {
+  const normalizedUserId = Number(userId);
+  if (!Number.isFinite(normalizedUserId)) {
+    const err = new Error('A valid userId is required');
+    err.status = 400;
+    throw err;
+  }
+
+  const ownedIdMap = new Map();
+  for (const company of ownedCompanies || []) {
+    if (!company) continue;
+    const idValue =
+      company.id !== undefined ? company.id : company.company_id ?? company.id;
+    const normalizedId = Number(idValue);
+    if (!Number.isFinite(normalizedId) || normalizedId <= 0) continue;
+    ownedIdMap.set(
+      normalizedId,
+      company.name || company.company_name || company.companyName || '',
+    );
+  }
+
+  const configRoot = path.join(process.cwd(), 'config');
+  let dirEntries;
+  try {
+    dirEntries = await fs.readdir(configRoot, { withFileTypes: true });
+  } catch (err) {
+    if (err?.code === 'ENOENT') {
+      return [];
+    }
+    throw err;
+  }
+
+  const backups = [];
+  for (const dir of dirEntries || []) {
+    if (!dir.isDirectory()) continue;
+    if (!/^\d+$/.test(dir.name)) continue;
+    const companyId = Number(dir.name);
+    if (!Number.isFinite(companyId) || companyId <= 0) continue;
+    let catalog;
+    try {
+      catalog = await readSeedBackupCatalog(companyId);
+    } catch (err) {
+      if (err?.code === 'ENOENT') continue;
+      throw err;
+    }
+    const entries = Array.isArray(catalog.entries) ? catalog.entries : [];
+    for (const entry of entries) {
+      const normalized = normalizeBackupEntry(entry, companyId);
+      if (!normalized) continue;
+      const requestedMatches =
+        normalized.requestedBy !== null && normalized.requestedBy === normalizedUserId;
+      const owned = ownedIdMap.has(normalized.companyId);
+      if (!requestedMatches && !owned) continue;
+      if (!normalized.companyName && ownedIdMap.has(normalized.companyId)) {
+        normalized.companyName = ownedIdMap.get(normalized.companyId);
+      }
+      backups.push(normalized);
+    }
+  }
+
+  backups.sort((a, b) => {
+    const dateA = a.generatedAt || '';
+    const dateB = b.generatedAt || '';
+    if (dateA && dateB) {
+      if (dateA < dateB) return 1;
+      if (dateA > dateB) return -1;
+      return 0;
+    }
+    if (dateA) return -1;
+    if (dateB) return 1;
+    return a.fileName.localeCompare(b.fileName);
+  });
+
+  return backups;
+}
+
+export async function restoreCompanySeedBackup(
+  sourceCompanyId,
+  fileName,
+  targetCompanyId,
+  restoredBy = null,
+) {
+  const sourceId = Number(sourceCompanyId);
+  const targetId = Number(targetCompanyId);
+  if (!Number.isFinite(sourceId) || sourceId <= 0) {
+    const err = new Error('A valid source companyId is required');
+    err.status = 400;
+    throw err;
+  }
+  if (!Number.isFinite(targetId) || targetId <= 0) {
+    const err = new Error('A valid target companyId is required');
+    err.status = 400;
+    throw err;
+  }
+
+  const safeName = sanitizeSnapshotFileName(fileName);
+  const { entries } = await readSeedBackupCatalog(sourceId);
+  const catalogEntries = Array.isArray(entries) ? entries : [];
+  const normalizedEntry = catalogEntries
+    .map((entry) => normalizeBackupEntry(entry, sourceId))
+    .find((entry) => entry && entry.fileName === safeName);
+  if (!normalizedEntry) {
+    const notFound = new Error('Backup not found');
+    notFound.status = 404;
+    throw notFound;
+  }
+  if (Number(normalizedEntry.companyId) !== sourceId) {
+    const err = new Error('Backup company mismatch');
+    err.status = 400;
+    throw err;
+  }
+
+  const backupFile = await readSeedBackupFile(sourceId, safeName, {
+    includeSql: true,
+  });
+  const sql = backupFile.sql || '';
+  const statements = splitSnapshotStatements(sql);
+
+  let tableRows;
+  try {
+    [tableRows] = await pool.query(
+      `SELECT table_name
+         FROM tenant_tables
+        WHERE seed_on_create = 1
+          AND is_shared = 0`,
+    );
+  } catch (err) {
+    if (err?.code === 'ER_NO_SUCH_TABLE') {
+      const error = new Error('Tenant tables registry is unavailable');
+      error.status = 400;
+      throw error;
+    }
+    throw err;
+  }
+
+  const allowedTables = new Set(
+    (tableRows || [])
+      .map((row) => row?.table_name)
+      .filter((name) => typeof name === 'string' && name.trim())
+      .map((name) => name.toLowerCase()),
+  );
+
+  if (allowedTables.size === 0) {
+    const err = new Error('No seed-enabled tables registered for recovery.');
+    err.status = 400;
+    throw err;
+  }
+
+  const summaryByTable = new Map();
+  const ensureSummary = (name) => {
+    if (!summaryByTable.has(name)) {
+      summaryByTable.set(name, {
+        tableName: name,
+        deletedRows: 0,
+        insertedRows: 0,
+      });
+    }
+    return summaryByTable.get(name);
+  };
+
+  let statementsExecuted = 0;
+  let totalDeleted = 0;
+  let totalInserted = 0;
+
+  const conn = await pool.getConnection();
+  const startedAt = new Date();
+  try {
+    await conn.beginTransaction();
+    for (const statement of statements) {
+      const trimmed = statement.trim();
+      if (!trimmed) continue;
+      if (/^START\s+TRANSACTION$/i.test(trimmed)) continue;
+      if (/^COMMIT$/i.test(trimmed)) continue;
+      if (/^ROLLBACK$/i.test(trimmed)) continue;
+      if (/^SET\s+/i.test(trimmed)) continue;
+
+      const deleteMatch = trimmed.match(
+        /^DELETE\s+FROM\s+`?([A-Za-z0-9_]+)`?\s+WHERE\s+(.+)$/i,
+      );
+      if (deleteMatch) {
+        const tableName = deleteMatch[1];
+        ensureAllowedTable(tableName, allowedTables);
+        const whereClause = deleteMatch[2];
+        const companyMatch = whereClause.match(/company_id\s*=\s*([0-9]+)/i);
+        if (!companyMatch) {
+          const err = new Error(
+            `Backup delete for ${tableName} must restrict to company_id.`,
+          );
+          err.status = 400;
+          throw err;
+        }
+        const originalId = Number(companyMatch[1]);
+        if (!Number.isFinite(originalId) || originalId !== sourceId) {
+          const err = new Error(
+            `Backup delete for ${tableName} targets unexpected company id.`,
+          );
+          err.status = 400;
+          throw err;
+        }
+        const deleteSql =
+          `DELETE FROM ${escapeIdentifier(tableName)} WHERE ${escapeIdentifier('company_id')} = ${mysql.escape(targetId)}`;
+        const [res] = await conn.query(`${deleteSql};`);
+        statementsExecuted += 1;
+        const affected = Number(res?.affectedRows) || 0;
+        totalDeleted += affected;
+        ensureSummary(tableName).deletedRows += affected;
+        continue;
+      }
+
+      const insertMatch = trimmed.match(
+        /^INSERT\s+INTO\s+`?([A-Za-z0-9_]+)`?\s*\(([^)]+)\)\s*VALUES\s*\((.*)\)$/i,
+      );
+      if (insertMatch) {
+        const tableName = insertMatch[1];
+        ensureAllowedTable(tableName, allowedTables);
+        const columnList = splitTopLevel(insertMatch[2]);
+        const valuesList = splitTopLevel(insertMatch[3]);
+        if (columnList.length !== valuesList.length) {
+          const err = new Error(
+            `Column/value count mismatch in backup insert for ${tableName}.`,
+          );
+          err.status = 400;
+          throw err;
+        }
+        const normalizedColumns = columnList.map((col) =>
+          col.replace(/`/g, '').trim().toLowerCase(),
+        );
+        const companyIdx = normalizedColumns.indexOf('company_id');
+        if (companyIdx === -1) {
+          const err = new Error(
+            `Backup insert for ${tableName} must include company_id.`,
+          );
+          err.status = 400;
+          throw err;
+        }
+        const rawValue = valuesList[companyIdx]?.trim() ?? '';
+        const normalizedValue = rawValue.replace(/^['"]|['"]$/g, '');
+        const originalId = Number(normalizedValue);
+        if (!Number.isFinite(originalId) || originalId !== sourceId) {
+          const err = new Error(
+            `Backup insert for ${tableName} targets unexpected company id.`,
+          );
+          err.status = 400;
+          throw err;
+        }
+        valuesList[companyIdx] = mysql.escape(targetId);
+        const insertSql =
+          `INSERT INTO ${escapeIdentifier(tableName)} (${columnList.join(', ')}) VALUES (${valuesList.join(', ')});`;
+        const [res] = await conn.query(insertSql);
+        statementsExecuted += 1;
+        const affected = Number(res?.affectedRows) || 0;
+        totalInserted += affected;
+        ensureSummary(tableName).insertedRows += affected;
+        continue;
+      }
+
+      const err = new Error(
+        `Unsupported statement in company backup: ${trimmed.slice(0, 60)}...`,
+      );
+      err.status = 400;
+      throw err;
+    }
+    await conn.commit();
+  } catch (err) {
+    try {
+      await conn.rollback();
+    } catch {}
+    throw err;
+  } finally {
+    conn.release();
+  }
+
+  const completedAt = new Date();
+  const tables = Array.from(summaryByTable.values()).sort((a, b) =>
+    a.tableName.localeCompare(b.tableName),
+  );
+
+  return {
+    fileName: safeName,
+    relativePath: backupFile.relativePath,
+    versionName: normalizedEntry.versionName ?? null,
+    originalName: normalizedEntry.originalName ?? null,
+    companyName: normalizedEntry.companyName ?? null,
+    sourceCompanyId: sourceId,
+    targetCompanyId: targetId,
+    generatedAt:
+      normalizedEntry.generatedAt ??
+      normalizedEntry.generatedAtRaw ??
+      backupFile.modifiedAt ??
+      null,
+    requestedBy: normalizedEntry.requestedBy ?? null,
+    restoredBy:
+      restoredBy !== undefined && restoredBy !== null
+        ? restoredBy
+        : null,
+    tableCount: tables.length,
+    totalDeleted,
+    totalInserted,
+    statementsExecuted,
+    startedAt: startedAt.toISOString(),
+    completedAt: completedAt.toISOString(),
+    tables,
+  };
 }
 
 export async function listTenantDefaultSnapshots() {

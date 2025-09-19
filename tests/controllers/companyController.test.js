@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createCompanyHandler, deleteCompanyHandler } from '../../api-server/controllers/companyController.js';
+import { promises as fs } from 'fs';
+import path from 'path';
+import {
+  createCompanyHandler,
+  deleteCompanyHandler,
+  listCompanyBackupsHandler,
+  restoreCompanyBackupHandler,
+} from '../../api-server/controllers/companyController.js';
 import { seedCompany } from '../../api-server/controllers/tenantTablesController.js';
 import * as db from '../../db/index.js';
 
@@ -163,8 +170,13 @@ test('createCompanyHandler forwards seedRecords and overwrite', async () => {
 
 test('deleteCompanyHandler deletes company with cascade', async () => {
   const calls = [];
+  const userId = 1;
+  const companyId = 5;
   const restore = mockPool(async (sql, params) => {
     calls.push({ sql, params });
+    if (sql.startsWith('SELECT * FROM companies WHERE created_by = ?')) {
+      return [[{ id: companyId, name: 'DemoCo', created_by: userId }]];
+    }
     if (
       sql.includes('information_schema.STATISTICS') &&
       sql.includes("INDEX_NAME = 'PRIMARY'")
@@ -189,8 +201,8 @@ test('deleteCompanyHandler deletes company with cascade', async () => {
     throw new Error('unexpected query');
   });
   const req = {
-    params: { id: '5' },
-    user: { empid: 1, companyId: 0 },
+    params: { id: String(companyId) },
+    user: { empid: userId, companyId: 0 },
     session: { permissions: { system_settings: true } },
   };
   const res = createRes();
@@ -198,7 +210,83 @@ test('deleteCompanyHandler deletes company with cascade', async () => {
   restore();
   const deletes = calls.filter(c => c.sql.startsWith('DELETE FROM'));
   assert.equal(deletes.length, 2);
-  assert.equal(res.code, 204);
+  assert.equal(res.code, 200);
+  assert.deepEqual(res.body, {
+    backup: null,
+    company: { id: companyId, name: 'DemoCo' }
+  });
+});
+
+test('deleteCompanyHandler returns backup metadata when requested', async () => {
+  const calls = [];
+  const userId = 7;
+  const companyId = 9;
+  const backupDir = path.join(process.cwd(), 'config', String(companyId));
+  await fs.rm(backupDir, { recursive: true, force: true });
+  const restore = mockPool(async (sql, params) => {
+    calls.push({ sql, params });
+    if (sql.startsWith('SELECT * FROM companies WHERE created_by = ?')) {
+      return [[{ id: companyId, name: 'BackupCo', created_by: userId }]];
+    }
+    if (sql.includes('FROM tenant_tables WHERE seed_on_create = 1')) {
+      return [[{ table_name: 'orders', is_shared: 0 }]];
+    }
+    if (sql.startsWith('SELECT COUNT(*) AS cnt FROM ??') && params?.[0] === 'orders') {
+      return [[{ cnt: 1 }]];
+    }
+    if (
+      sql.includes('information_schema.STATISTICS') &&
+      sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
+    }
+    if (sql.includes('information_schema.KEY_COLUMN_USAGE')) {
+      return [[{ TABLE_NAME: 'orders', COLUMN_NAME: 'company_id', REFERENCED_COLUMN_NAME: 'id' }]];
+    }
+    if (sql.includes('information_schema.COLUMNS') && params?.[0] === 'orders') {
+      return [[
+        { COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' },
+        { COLUMN_NAME: 'company_id', COLUMN_KEY: '', EXTRA: '' },
+        { COLUMN_NAME: 'name', COLUMN_KEY: '', EXTRA: '' },
+      ]];
+    }
+    if (sql.includes('FROM table_column_labels WHERE table_name = ?')) {
+      return [[]];
+    }
+    if (sql.startsWith('SELECT * FROM ?? WHERE company_id = ?') && params?.[0] === 'orders') {
+      return [[{ id: 11, company_id: companyId, name: 'Sample order' }]];
+    }
+    if (sql.startsWith('SELECT COUNT(*)')) {
+      return [[{ count: 1 }]];
+    }
+    if (sql.startsWith('SELECT `id` FROM')) {
+      return [[{ id: 11 }]];
+    }
+    if (sql.startsWith('DELETE FROM')) {
+      return [{}];
+    }
+    throw new Error(`unexpected query: ${sql}`);
+  });
+  const req = {
+    params: { id: String(companyId) },
+    body: { createBackup: true, backupName: 'Company 9 backup' },
+    user: { empid: userId, companyId: 0 },
+    session: { permissions: { system_settings: true } },
+  };
+  const res = createRes();
+  try {
+    await deleteCompanyHandler(req, res, () => {});
+  } finally {
+    restore();
+    await fs.rm(backupDir, { recursive: true, force: true });
+  }
+  const deletes = calls.filter((c) => c.sql.startsWith('DELETE FROM'));
+  assert.equal(deletes.length, 2);
+  assert.equal(res.code, 200);
+  assert.ok(res.body.backup);
+  assert.equal(res.body.backup.companyId, companyId);
+  assert.equal(res.body.backup.originalName, 'Company 9 backup');
+  assert.equal(res.body.company.name, 'BackupCo');
 });
 
 test('deleteCompanyHandler forwards error messages', async () => {
@@ -215,6 +303,135 @@ test('deleteCompanyHandler forwards error messages', async () => {
   restore();
   assert.equal(res.code, 500);
   assert.deepEqual(res.body, { message: 'boom' });
+});
+
+test('listCompanyBackupsHandler returns backups', async () => {
+  const userId = 44;
+  const companyId = 12;
+  const backupDir = path.join(
+    process.cwd(),
+    'config',
+    String(companyId),
+    'defaults',
+    'seed-backups',
+  );
+  await fs.rm(path.join(process.cwd(), 'config', String(companyId)), {
+    recursive: true,
+    force: true,
+  });
+  await fs.mkdir(backupDir, { recursive: true });
+  const entry = {
+    companyId,
+    fileName: 'manual-backup.sql',
+    originalName: 'Latest backup',
+    generatedAt: '2024-01-01T00:00:00.000Z',
+    requestedBy: userId,
+    companyName: 'ActiveCo',
+  };
+  await fs.writeFile(
+    path.join(backupDir, 'index.json'),
+    JSON.stringify([entry], null, 2),
+    'utf8',
+  );
+  const restorePool = mockPool(async (sql, params) => {
+    if (sql.startsWith('SELECT * FROM companies WHERE created_by = ?')) {
+      return [[{ id: companyId, name: 'ActiveCo', created_by: userId }]];
+    }
+    return [[]];
+  });
+  const req = {
+    user: { empid: userId, companyId: 0 },
+    session: { permissions: { system_settings: true } },
+  };
+  const res = createRes();
+  try {
+    await listCompanyBackupsHandler(req, res, () => {});
+  } finally {
+    restorePool();
+    await fs.rm(path.join(process.cwd(), 'config', String(companyId)), {
+      recursive: true,
+      force: true,
+    });
+  }
+  assert.ok(res.body);
+  assert.ok(Array.isArray(res.body.backups));
+  assert.equal(res.body.backups.length, 1);
+  assert.equal(res.body.backups[0].companyId, companyId);
+  assert.equal(res.body.backups[0].fileName, entry.fileName);
+});
+
+test('restoreCompanyBackupHandler restores backup', async () => {
+  const userId = 91;
+  const sourceCompanyId = 15;
+  const targetCompanyId = 20;
+  const backupRoot = path.join(process.cwd(), 'config');
+  const sourceDir = path.join(backupRoot, String(sourceCompanyId));
+  const backupDir = path.join(sourceDir, 'defaults', 'seed-backups');
+  await fs.rm(sourceDir, { recursive: true, force: true });
+  await fs.mkdir(backupDir, { recursive: true });
+  const fileName = 'manual.sql';
+  const sqlLines = [
+    '-- Tenant seed backup',
+    `-- Company ID: ${sourceCompanyId}`,
+    '-- Backup name: Tenant snapshot',
+    `-- Generated at: ${new Date().toISOString()}`,
+    '',
+    'START TRANSACTION;',
+    `DELETE FROM orders WHERE company_id = ${sourceCompanyId};`,
+    `INSERT INTO \`orders\` (\`company_id\`, \`id\`, \`name\`) VALUES (${sourceCompanyId}, 1, 'Example');`,
+    'COMMIT;',
+  ];
+  await fs.writeFile(path.join(backupDir, fileName), sqlLines.join('\n'), 'utf8');
+  const catalogEntry = {
+    companyId: sourceCompanyId,
+    fileName,
+    originalName: 'Tenant snapshot',
+    generatedAt: '2024-01-02T00:00:00.000Z',
+    requestedBy: userId,
+  };
+  await fs.writeFile(
+    path.join(backupDir, 'index.json'),
+    JSON.stringify([catalogEntry], null, 2),
+    'utf8',
+  );
+  const calls = [];
+  const restorePool = mockPool(async (sql, params) => {
+    calls.push(sql);
+    if (sql.startsWith('SELECT * FROM companies WHERE created_by = ?')) {
+      return [[{ id: targetCompanyId, name: 'TargetCo', created_by: userId }]];
+    }
+    if (
+      sql.includes('FROM tenant_tables') &&
+      sql.includes('seed_on_create = 1') &&
+      sql.includes('is_shared = 0')
+    ) {
+      return [[{ table_name: 'orders' }]];
+    }
+    if (sql.startsWith('DELETE FROM')) {
+      return [{ affectedRows: 1 }];
+    }
+    if (sql.startsWith('INSERT INTO')) {
+      return [{ affectedRows: 1 }];
+    }
+    return [[]];
+  });
+  const req = {
+    body: { sourceCompanyId, targetCompanyId, fileName },
+    user: { empid: userId, companyId: 0 },
+    session: { permissions: { system_settings: true } },
+  };
+  const res = createRes();
+  try {
+    await restoreCompanyBackupHandler(req, res, () => {});
+  } finally {
+    restorePool();
+    await fs.rm(sourceDir, { recursive: true, force: true });
+  }
+  // ensure restore completed using mocked SQL responses
+  assert.ok(res.body.summary, `Unexpected restore response: ${JSON.stringify(res.body)}`);
+  assert.ok(res.body.summary);
+  assert.equal(res.body.summary.sourceCompanyId, sourceCompanyId);
+  assert.equal(res.body.summary.targetCompanyId, targetCompanyId);
 });
 
 test(
