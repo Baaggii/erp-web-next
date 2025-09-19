@@ -102,6 +102,13 @@ function formatAuditTimestamp(value) {
   return formatAuditDateParts(parsed);
 }
 
+function formatSnapshotTimestamp(value) {
+  if (!value || (typeof value === 'string' && value.trim() === '')) return '';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString();
+}
+
 function createEditableCopy(row, columns) {
   const editable = {};
   for (const column of columns || []) {
@@ -303,6 +310,13 @@ export default function TenantTablesRegistry() {
   const [lastResetSummary, setLastResetSummary] = useState(null);
   const [lastSeedSummary, setLastSeedSummary] = useState(null);
   const [seedDefaultsConflict, setSeedDefaultsConflict] = useState(null);
+  const [recoverModalOpen, setRecoverModalOpen] = useState(false);
+  const [snapshotList, setSnapshotList] = useState([]);
+  const [snapshotListLoading, setSnapshotListLoading] = useState(false);
+  const [snapshotListError, setSnapshotListError] = useState('');
+  const [selectedSnapshot, setSelectedSnapshot] = useState('');
+  const [restoringDefaults, setRestoringDefaults] = useState(false);
+  const [restoreSummary, setRestoreSummary] = useState(null);
   const lastToggleFieldRef = useRef({});
   const { addToast } = useToast();
   const { t } = useContext(I18nContext);
@@ -506,6 +520,51 @@ export default function TenantTablesRegistry() {
     } catch (err) {
       addToast(`Failed to load companies: ${err.message}`, 'error');
     }
+  }
+
+  async function loadSnapshotList() {
+    setSnapshotListLoading(true);
+    setSnapshotListError('');
+    try {
+      const res = await fetch('/api/tenant_tables/default-snapshots', {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const msg = await parseErrorBody(res);
+        throw new Error(msg || 'Failed to load snapshots');
+      }
+      const ct = res.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) {
+        throw new Error(`Unexpected response: ${ct || 'unknown content-type'}`);
+      }
+      const data = await res.json();
+      const items = Array.isArray(data?.snapshots)
+        ? data.snapshots.filter((snap) => snap && typeof snap.fileName === 'string')
+        : [];
+      setSnapshotList(items);
+      setSelectedSnapshot((prev) => {
+        if (prev && items.some((item) => item.fileName === prev)) {
+          return prev;
+        }
+        return items[0]?.fileName ?? '';
+      });
+    } catch (err) {
+      setSnapshotList([]);
+      setSelectedSnapshot('');
+      setSnapshotListError(err.message);
+    } finally {
+      setSnapshotListLoading(false);
+    }
+  }
+
+  function openRecoverDefaultsModal() {
+    setRestoreSummary(null);
+    setRecoverModalOpen(true);
+    loadSnapshotList();
+  }
+
+  function closeRecoverDefaultsModal() {
+    setRecoverModalOpen(false);
   }
 
   const lastSeedEntries = lastSeedSummary?.summary
@@ -735,6 +794,70 @@ export default function TenantTablesRegistry() {
       );
     } finally {
       setExportingDefaults(false);
+    }
+  }
+
+  async function handleRestoreDefaultsConfirm() {
+    if (!selectedSnapshot) {
+      addToast(
+        t('selectSnapshotToRecover', 'Select a snapshot to recover first.'),
+        'warning',
+      );
+      return;
+    }
+    setRestoringDefaults(true);
+    setRestoreSummary(null);
+    try {
+      const res = await fetch('/api/tenant_tables/restore-defaults', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ fileName: selectedSnapshot }),
+      });
+      if (!res.ok) {
+        const msg = await parseErrorBody(res);
+        throw new Error(msg || 'Failed to recover defaults');
+      }
+      const ct = res.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) {
+        throw new Error(`Unexpected response: ${ct || 'unknown content-type'}`);
+      }
+      const summary = await res.json();
+      setRestoreSummary(summary);
+      const tableCount = Number(summary?.tableCount);
+      const insertedRows = Number(summary?.totalInserted);
+      const summaryParts = [];
+      if (Number.isFinite(tableCount)) {
+        summaryParts.push(
+          tableCount === 1
+            ? t('oneTableProcessed', '1 table')
+            : t('tableCountProcessed', '{{count}} tables', { count: tableCount }),
+        );
+      }
+      if (Number.isFinite(insertedRows)) {
+        summaryParts.push(
+          insertedRows === 1
+            ? t('oneRowInserted', '1 row')
+            : t('rowCountInserted', '{{count}} rows', { count: insertedRows }),
+        );
+      }
+      let toastMessage = t('defaultsRestored', 'Defaults restored');
+      if (summaryParts.length > 0) {
+        toastMessage = `${toastMessage} (${summaryParts.join(', ')})`;
+      }
+      addToast(toastMessage, 'success');
+      await loadTables();
+      const tablesToRefresh = Object.keys(defaultRows || {});
+      for (const tableName of tablesToRefresh) {
+        await loadDefaultRows(tableName);
+      }
+    } catch (err) {
+      addToast(
+        `${t('restoreDefaultsFailed', 'Failed to recover defaults')}: ${err.message}`,
+        'error',
+      );
+    } finally {
+      setRestoringDefaults(false);
     }
   }
 
@@ -1645,6 +1768,11 @@ export default function TenantTablesRegistry() {
         <button onClick={handleExportDefaults} disabled={exportingDefaults}>
           {exportingDefaults ? t('saving', 'Saving...') : t('saveDefaults', 'Save defaults')}
         </button>
+        <button onClick={openRecoverDefaultsModal} disabled={restoringDefaults}>
+          {restoringDefaults
+            ? t('restoringDefaults', 'Restoring...')
+            : t('recoverDefaults', 'Recover defaults')}
+        </button>
         <button onClick={handleSeedDefaults} disabled={seedingDefaults}>
           Populate defaults (tenant key 0)
         </button>
@@ -2401,6 +2529,168 @@ export default function TenantTablesRegistry() {
             }
           >
             Repopulate
+          </button>
+      </div>
+      </Modal>
+      <Modal
+        visible={recoverModalOpen}
+        title={t('recoverDefaultsTitle', 'Recover defaults from snapshot')}
+        onClose={closeRecoverDefaultsModal}
+        width="520px"
+      >
+        {snapshotListLoading ? (
+          <p>{t('loading', 'Loading...')}</p>
+        ) : snapshotListError ? (
+          <div>
+            <p style={{ color: '#b91c1c', marginBottom: '0.5rem' }}>{snapshotListError}</p>
+            <button type="button" onClick={loadSnapshotList}>
+              {t('retry', 'Retry')}
+            </button>
+          </div>
+        ) : snapshotList.length === 0 ? (
+          <p>{t('noSnapshotsFound', 'No default snapshots were found.')}</p>
+        ) : (
+          <div style={{ maxHeight: '50vh', overflowY: 'auto', marginBottom: '0.75rem' }}>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              {snapshotList.map((snap) => {
+                const displayLabel = snap.versionName || snap.fileName;
+                const timestamp =
+                  formatSnapshotTimestamp(
+                    snap.generatedAt || snap.generatedAtRaw || snap.modifiedAt,
+                  ) || '';
+                const tableCount = Number(snap?.tableCount);
+                const rowCount = Number(snap?.rowCount);
+                return (
+                  <li
+                    key={snap.fileName}
+                    style={{ padding: '0.5rem 0', borderBottom: '1px solid #e5e7eb' }}
+                  >
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '0.5rem',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="recover-default-snapshot"
+                        value={snap.fileName}
+                        checked={selectedSnapshot === snap.fileName}
+                        onChange={() => {
+                          setSelectedSnapshot(snap.fileName);
+                          setRestoreSummary(null);
+                        }}
+                      />
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{displayLabel}</div>
+                        <div style={{ fontSize: '0.85rem', color: '#4b5563' }}>
+                          {snap.fileName}
+                          {timestamp ? ` • ${timestamp}` : ''}
+                        </div>
+                        <div
+                          style={{ fontSize: '0.85rem', color: '#4b5563', marginTop: '0.25rem' }}
+                        >
+                          {t('tablesProcessed', 'Tables processed')}: {
+                            Number.isFinite(tableCount) ? tableCount : 0
+                          }
+                          {' · '}
+                          {t('rowsIncluded', 'Rows included')}: {
+                            Number.isFinite(rowCount) ? rowCount : 0
+                          }
+                        </div>
+                      </div>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+        {restoreSummary ? (
+          <div
+            style={{
+              marginTop: '0.75rem',
+              padding: '0.75rem',
+              backgroundColor: '#ecfdf5',
+              border: '1px solid #34d399',
+              borderRadius: '4px',
+            }}
+          >
+            <strong>{t('restoreCompleted', 'Restore completed')}</strong>
+            <p style={{ margin: '0.5rem 0 0', color: '#065f46' }}>
+              {t('tablesProcessed', 'Tables processed')}: {
+                Number.isFinite(Number(restoreSummary?.tableCount))
+                  ? Number(restoreSummary.tableCount)
+                  : Array.isArray(restoreSummary?.tables)
+                  ? restoreSummary.tables.length
+                  : 0
+              }
+            </p>
+            <p style={{ margin: '0.25rem 0 0', color: '#065f46' }}>
+              {t('rowsInserted', 'Rows inserted')}: {
+                Number.isFinite(Number(restoreSummary?.totalInserted))
+                  ? Number(restoreSummary.totalInserted)
+                  : 0
+              }
+            </p>
+            {Number.isFinite(Number(restoreSummary?.totalDeleted)) &&
+            Number(restoreSummary.totalDeleted) > 0 ? (
+              <p style={{ margin: '0.25rem 0 0', color: '#065f46' }}>
+                {t('rowsDeleted', 'Rows deleted')}: {Number(restoreSummary.totalDeleted)}
+              </p>
+            ) : null}
+            {Array.isArray(restoreSummary?.tables) && restoreSummary.tables.length > 0 ? (
+              <ul style={{ margin: '0.5rem 0 0 1.25rem' }}>
+                {restoreSummary.tables.map((info) => {
+                  const inserted = Number(info?.insertedRows ?? 0);
+                  const deleted = Number(info?.deletedRows ?? 0);
+                  const details = [];
+                  details.push(
+                    inserted === 1
+                      ? t('oneRowInsertedShort', '1 inserted')
+                      : t('rowCountInsertedShort', '{{count}} inserted', {
+                          count: inserted,
+                        }),
+                  );
+                  if (deleted > 0) {
+                    details.push(
+                      deleted === 1
+                        ? t('oneRowDeleted', '1 deleted')
+                        : t('rowCountDeleted', '{{count}} deleted', { count: deleted }),
+                    );
+                  }
+                  const label = info?.tableName || t('unknownTable', 'Unknown table');
+                  return (
+                    <li key={`${info?.tableName || 'unknown'}-${details.join('-')}`}>
+                      {label}: {details.join(', ')}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
+        <div
+          style={{
+            marginTop: '0.75rem',
+            display: 'flex',
+            justifyContent: 'flex-end',
+            gap: '0.5rem',
+          }}
+        >
+          <button type="button" onClick={closeRecoverDefaultsModal}>
+            {t('cancel', 'Cancel')}
+          </button>
+          <button
+            type="button"
+            onClick={handleRestoreDefaultsConfirm}
+            disabled={!selectedSnapshot || restoringDefaults || snapshotListLoading}
+          >
+            {restoringDefaults
+              ? t('restoringDefaults', 'Restoring...')
+              : t('recoverDefaults', 'Recover defaults')}
           </button>
         </div>
       </Modal>

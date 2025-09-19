@@ -14,6 +14,8 @@ import {
   insertDefaultTenantRow,
   updateDefaultTenantRow,
   deleteDefaultTenantRow,
+  listDefaultSnapshots,
+  restoreDefaults,
 } from '../controllers/tenantTablesController.js';
 
 const router = express.Router();
@@ -26,6 +28,8 @@ router.get('/:table_name', requireAuth, getTenantTable);
 router.post('/zero-keys', requireAuth, resetSharedTenantKeys);
 router.post('/seed-defaults', requireAuth, seedDefaults);
 router.post('/export-defaults', requireAuth, exportDefaults);
+router.get('/default-snapshots', requireAuth, listDefaultSnapshots);
+router.post('/restore-defaults', requireAuth, restoreDefaults);
 router.post('/seed-companies', requireAuth, seedExistingCompanies);
 router.post('/seed-company', requireAuth, seedCompany);
 router.post('/:table_name/default-rows', requireAuth, insertDefaultTenantRow);
