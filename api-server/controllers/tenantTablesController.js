@@ -11,6 +11,7 @@ import {
   insertTenantDefaultRow,
   updateTenantDefaultRow as updateTenantDefaultRowDb,
   deleteTenantDefaultRow,
+  exportTenantTableDefaults,
 } from '../../db/index.js';
 import { hasAction } from '../utils/hasAction.js';
 import { GLOBAL_COMPANY_ID } from '../../config/0/constants.js';
@@ -213,6 +214,21 @@ export async function seedCompany(req, res, next) {
       req.user.empid,
     );
     res.json(summary || {});
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function exportDefaults(req, res, next) {
+  try {
+    if (!(await ensureAdmin(req))) return res.sendStatus(403);
+    const versionNameRaw = req.body?.versionName;
+    const trimmed = typeof versionNameRaw === 'string' ? versionNameRaw.trim() : '';
+    if (!trimmed) {
+      return res.status(400).json({ message: 'versionName is required' });
+    }
+    const metadata = await exportTenantTableDefaults(trimmed, req.user?.empid ?? null);
+    res.json(metadata);
   } catch (err) {
     next(err);
   }

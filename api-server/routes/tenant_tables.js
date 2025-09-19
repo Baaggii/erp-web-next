@@ -8,6 +8,7 @@ import {
   getTenantTable,
   resetSharedTenantKeys,
   seedDefaults,
+  exportDefaults,
   seedExistingCompanies,
   seedCompany,
   insertDefaultTenantRow,
@@ -24,6 +25,7 @@ router.get('/options', requireAuth, listTenantTableOptions);
 router.get('/:table_name', requireAuth, getTenantTable);
 router.post('/zero-keys', requireAuth, resetSharedTenantKeys);
 router.post('/seed-defaults', requireAuth, seedDefaults);
+router.post('/export-defaults', requireAuth, exportDefaults);
 router.post('/seed-companies', requireAuth, seedExistingCompanies);
 router.post('/seed-company', requireAuth, seedCompany);
 router.post('/:table_name/default-rows', requireAuth, insertDefaultTenantRow);

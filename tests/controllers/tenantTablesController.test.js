@@ -41,6 +41,7 @@ async function loadController(overrides = {}) {
     insertTenantDefaultRow: async () => ({}),
     updateTenantDefaultRow: async () => ({}),
     deleteTenantDefaultRow: async () => {},
+    exportTenantTableDefaults: async () => ({}),
     ...overrides,
   };
   const mod = await mock.import(
@@ -446,5 +447,62 @@ if (typeof mock?.import !== 'function') {
     assert.equal(res.statusCode, 204);
     assert.equal(deleteStub.mock.calls.length, 1);
     assert.deepEqual(deleteStub.mock.calls[0].arguments, ['posts', '9', 9]);
+  });
+
+  test('exportDefaults returns export metadata', async () => {
+    const metadata = { fileName: '20240101_baseline.sql', tableCount: 2 };
+    const exportStub = mock.fn(async () => metadata);
+    const mod = await loadController({
+      getEmploymentSession: async () => ({ permissions: { system_settings: true } }),
+      exportTenantTableDefaults: exportStub,
+    });
+    const req = {
+      body: { versionName: 'Baseline' },
+      user: { empid: 5, companyId: 1 },
+    };
+    const res = createRes();
+    await mod.exportDefaults(req, res, (err) => {
+      if (err) throw err;
+    });
+    assert.equal(res.statusCode, 200);
+    assert.equal(exportStub.mock.calls.length, 1);
+    assert.deepEqual(exportStub.mock.calls[0].arguments, ['Baseline', 5]);
+    assert.equal(res.body, metadata);
+  });
+
+  test('exportDefaults requires versionName', async () => {
+    const mod = await loadController({
+      getEmploymentSession: async () => ({ permissions: { system_settings: true } }),
+    });
+    const req = {
+      body: {},
+      user: { empid: 5, companyId: 1 },
+    };
+    const res = createRes();
+    await mod.exportDefaults(req, res, (err) => {
+      if (err) throw err;
+    });
+    assert.equal(res.statusCode, 400);
+    assert.match(res.body?.message ?? '', /versionName is required/i);
+  });
+
+  test('exportDefaults forwards export errors', async () => {
+    const failure = new Error('export failed');
+    const mod = await loadController({
+      getEmploymentSession: async () => ({ permissions: { system_settings: true } }),
+      exportTenantTableDefaults: async () => {
+        throw failure;
+      },
+    });
+    const req = {
+      body: { versionName: 'Baseline' },
+      user: { empid: 5, companyId: 1 },
+    };
+    const res = createRes();
+    let captured;
+    await mod.exportDefaults(req, res, (err) => {
+      captured = err;
+    });
+    assert.equal(captured, failure);
   });
 }

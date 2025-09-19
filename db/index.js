@@ -1332,6 +1332,201 @@ export async function seedDefaultsForSeedTables(userId) {
   }
 }
 
+function sanitizeExportName(name) {
+  if (!name && name !== 0) return '';
+  const normalized = String(name)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return normalized;
+}
+
+function formatExportTimestamp(date = new Date()) {
+  const pad = (value) => String(value).padStart(2, '0');
+  return (
+    `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}` +
+    `-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`
+  );
+}
+
+export async function exportTenantTableDefaults(versionName, requestedBy = null) {
+  const safeName = sanitizeExportName(versionName);
+  if (!safeName) {
+    const err = new Error('A valid export name is required');
+    err.status = 400;
+    throw err;
+  }
+
+  const generatedAt = new Date();
+  const timestampPart = formatExportTimestamp(generatedAt);
+  const fileName = `${timestampPart}_${safeName}.sql`;
+  const relativePathRaw = path.join('defaults', fileName);
+  const relativePath = relativePathRaw.replace(/\\/g, '/');
+  const filePath = tenantConfigPath(relativePathRaw);
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+
+  let tableRows;
+  try {
+    [tableRows] = await pool.query(
+      `SELECT table_name
+         FROM tenant_tables
+        WHERE is_shared = 1 OR seed_on_create = 1
+        ORDER BY table_name`,
+    );
+  } catch (err) {
+    if (err?.code === 'ER_NO_SUCH_TABLE') {
+      tableRows = [];
+    } else {
+      throw err;
+    }
+  }
+
+  const tableNames = Array.from(
+    new Set(
+      (tableRows || [])
+        .map((row) => row?.table_name)
+        .filter((name) => typeof name === 'string' && name.trim()),
+    ),
+  );
+
+  const lines = [];
+  lines.push('-- Tenant table defaults export');
+  lines.push(`-- Version: ${safeName}`);
+  lines.push(`-- Generated at: ${generatedAt.toISOString()}`);
+  if (requestedBy !== null && requestedBy !== undefined) {
+    lines.push(`-- Requested by: ${requestedBy}`);
+  }
+  lines.push('');
+  lines.push('START TRANSACTION;');
+
+  const tableSummaries = [];
+  let exportedTables = 0;
+  let totalRows = 0;
+
+  if (tableNames.length === 0) {
+    lines.push('-- No tenant tables matched the export criteria.');
+  }
+
+  for (const rawName of tableNames) {
+    const tableName = String(rawName);
+    let columns = [];
+    try {
+      columns = await listTableColumns(tableName);
+    } catch (err) {
+      tableSummaries.push({
+        tableName,
+        rows: 0,
+        skipped: true,
+        reason: 'column_lookup_failed',
+        error: err.message,
+      });
+      lines.push('');
+      lines.push(`-- Skipped ${tableName}: failed to load column metadata (${err.message}).`);
+      continue;
+    }
+
+    if (!Array.isArray(columns) || columns.length === 0) {
+      tableSummaries.push({
+        tableName,
+        rows: 0,
+        skipped: true,
+        reason: 'no_columns',
+      });
+      lines.push('');
+      lines.push(`-- Skipped ${tableName}: no columns available.`);
+      continue;
+    }
+
+    const lowerCols = columns.map((col) => String(col).toLowerCase());
+    if (!lowerCols.includes('company_id')) {
+      tableSummaries.push({
+        tableName,
+        rows: 0,
+        skipped: true,
+        reason: 'missing_company_id',
+      });
+      lines.push('');
+      lines.push(`-- Skipped ${tableName}: company_id column not found.`);
+      continue;
+    }
+
+    let rows;
+    try {
+      [rows] = await pool.query('SELECT * FROM ?? WHERE company_id = ?', [
+        tableName,
+        GLOBAL_COMPANY_ID,
+      ]);
+    } catch (err) {
+      tableSummaries.push({
+        tableName,
+        rows: 0,
+        skipped: true,
+        reason: 'row_fetch_failed',
+        error: err.message,
+      });
+      lines.push('');
+      lines.push(`-- Skipped ${tableName}: failed to load rows (${err.message}).`);
+      continue;
+    }
+
+    const normalizedRows = Array.isArray(rows) ? rows : [];
+    const rowCount = normalizedRows.length;
+    tableSummaries.push({ tableName, rows: rowCount, skipped: false });
+    exportedTables += 1;
+    totalRows += rowCount;
+
+    lines.push('');
+    lines.push(`-- Table: ${tableName}`);
+    lines.push(
+      `DELETE FROM ${escapeIdentifier(tableName)} WHERE ${escapeIdentifier(
+        'company_id',
+      )} = ${GLOBAL_COMPANY_ID};`,
+    );
+
+    if (rowCount === 0) {
+      lines.push('-- No rows to export.');
+      continue;
+    }
+
+    const columnIdentifiers = columns.map((col) => escapeIdentifier(col));
+    for (const row of normalizedRows) {
+      const values = columns.map((col) => {
+        if (row && Object.prototype.hasOwnProperty.call(row, col)) {
+          const val = row[col];
+          return mysql.escape(val === undefined ? null : val);
+        }
+        return 'NULL';
+      });
+      lines.push(
+        `INSERT INTO ${escapeIdentifier(tableName)} (${columnIdentifiers.join(
+          ', ',
+        )}) VALUES (${values.join(', ')});`,
+      );
+    }
+  }
+
+  lines.push('');
+  lines.push('COMMIT;');
+  const sql = lines.join('\n');
+  await fs.writeFile(filePath, sql, 'utf8');
+
+  return {
+    fileName,
+    relativePath,
+    generatedAt: generatedAt.toISOString(),
+    versionName: safeName,
+    originalName: versionName,
+    tableCount: exportedTables,
+    rowCount: totalRows,
+    fileSize: Buffer.byteLength(sql, 'utf8'),
+    requestedBy: requestedBy ?? null,
+    tables: tableSummaries,
+    sql,
+  };
+}
+
 export async function seedSeedTablesForCompanies(userId = null) {
   const [companies] = await pool.query(
     `SELECT id FROM companies WHERE id > ?`,
