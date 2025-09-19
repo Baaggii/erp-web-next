@@ -1,47 +1,12 @@
 import express from 'express';
 import { requireAuth } from '../middlewares/auth.js';
-import {
-  listTenantTables,
-  createTenantTable,
-  updateTenantTable,
-  listTenantTableOptions,
-  getTenantTable,
-  resetSharedTenantKeys,
-  seedDefaults,
-  exportDefaults,
-  seedExistingCompanies,
-  seedCompany,
-  insertDefaultTenantRow,
-  updateDefaultTenantRow,
-  deleteDefaultTenantRow,
-  listDefaultSnapshots,
-  restoreDefaults,
-} from '../controllers/tenantTablesController.js';
+import * as tenantTablesController from '../controllers/tenantTablesController.js';
+import { createTenantTablesRouter } from './tenantTablesRouterFactory.js';
 
-const router = express.Router();
-
-router.get('/', requireAuth, listTenantTables);
-router.post('/', requireAuth, createTenantTable);
-router.put('/:table_name', requireAuth, updateTenantTable);
-router.get('/options', requireAuth, listTenantTableOptions);
-router.get('/:table_name', requireAuth, getTenantTable);
-router.post('/zero-keys', requireAuth, resetSharedTenantKeys);
-router.post('/seed-defaults', requireAuth, seedDefaults);
-router.post('/export-defaults', requireAuth, exportDefaults);
-router.get('/default-snapshots', requireAuth, listDefaultSnapshots);
-router.post('/restore-defaults', requireAuth, restoreDefaults);
-router.post('/seed-companies', requireAuth, seedExistingCompanies);
-router.post('/seed-company', requireAuth, seedCompany);
-router.post('/:table_name/default-rows', requireAuth, insertDefaultTenantRow);
-router.put(
-  '/:table_name/default-rows/:row_id',
+const router = createTenantTablesRouter({
+  createRouter: () => express.Router(),
   requireAuth,
-  updateDefaultTenantRow,
-);
-router.delete(
-  '/:table_name/default-rows/:row_id',
-  requireAuth,
-  deleteDefaultTenantRow,
-);
+  controller: tenantTablesController,
+});
 
 export default router;
