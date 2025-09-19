@@ -174,18 +174,25 @@ export async function seedCompany(req, res, next) {
     }
     const recordMap = {};
     for (const rec of records || []) {
-      if (
-        rec?.table &&
-        Array.isArray(rec.rows) &&
-        rec.rows.length > 0
-      ) {
-        recordMap[rec.table] = rec.rows;
-      } else if (
-        rec?.table &&
-        Array.isArray(rec.ids) &&
-        rec.ids.length > 0
-      ) {
-        recordMap[rec.table] = rec.ids;
+      if (!rec?.table) continue;
+      const tableName = String(rec.table);
+      if (Array.isArray(rec.rows) && rec.rows.length > 0) {
+        const sanitized = [];
+        for (const row of rec.rows) {
+          if (!row || typeof row !== 'object' || Array.isArray(row)) {
+            return res.status(400).json({
+              message: `Invalid manual row payload for table ${tableName}`,
+            });
+          }
+          sanitized.push({ ...row });
+        }
+        if (sanitized.length > 0) {
+          recordMap[tableName] = sanitized;
+          continue;
+        }
+      }
+      if (Array.isArray(rec.ids) && rec.ids.length > 0) {
+        recordMap[tableName] = rec.ids;
       }
     }
 

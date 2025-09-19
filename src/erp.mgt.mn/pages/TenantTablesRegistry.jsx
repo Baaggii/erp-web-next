@@ -45,6 +45,108 @@ function formatSeedSummaryForToast(entries) {
     .join('; ');
 }
 
+function formatRowIdKey(id) {
+  if (id === null || id === undefined) return 'null';
+  if (typeof id === 'object') {
+    try {
+      return JSON.stringify(id);
+    } catch {
+      return String(id);
+    }
+  }
+  return String(id);
+}
+
+function convertRowValueToString(value) {
+  if (value === null || value === undefined) return '';
+  if (value instanceof Date) return value.toISOString();
+  return String(value);
+}
+
+function createEditableCopy(row, columns) {
+  const editable = {};
+  for (const column of columns || []) {
+    if (column === 'company_id') continue;
+    editable[column] = convertRowValueToString(row?.[column]);
+  }
+  return editable;
+}
+
+function hasRowChanges(originalRow, draft, columns) {
+  if (!originalRow) return false;
+  for (const column of columns || []) {
+    if (column === 'company_id') continue;
+    const originalValue = convertRowValueToString(originalRow[column]);
+    const draftValue =
+      draft && Object.prototype.hasOwnProperty.call(draft, column)
+        ? String(draft[column] ?? '')
+        : originalValue;
+    if (draftValue !== originalValue) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function coerceManualRowValue(value, originalValue) {
+  if (value === null || value === undefined) return value;
+  if (value === '') {
+    if (originalValue === null || originalValue === undefined) {
+      return null;
+    }
+    return '';
+  }
+  if (typeof originalValue === 'number') {
+    const parsed = Number(value);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  if (typeof originalValue === 'boolean') {
+    if (String(value).toLowerCase() === 'true') return true;
+    if (String(value).toLowerCase() === 'false') return false;
+  }
+  if (String(value).toLowerCase() === 'null') return null;
+  return value;
+}
+
+function buildManualRowFromDraft(originalRow, draft, columns) {
+  const manual = {};
+  for (const column of columns || []) {
+    if (column === 'company_id') continue;
+    if (draft && Object.prototype.hasOwnProperty.call(draft, column)) {
+      const raw = draft[column];
+      const value = coerceManualRowValue(raw, originalRow?.[column]);
+      if (value !== undefined) {
+        manual[column] = value;
+      }
+    } else if (originalRow && originalRow[column] !== undefined) {
+      manual[column] = originalRow[column];
+    }
+  }
+  return manual;
+}
+
+function buildManualRowForNew(values, columns) {
+  const manual = {};
+  for (const column of columns || []) {
+    if (column === 'company_id') continue;
+    if (!values || !Object.prototype.hasOwnProperty.call(values, column)) continue;
+    const raw = values[column];
+    if (raw === '' || raw === undefined || raw === null) continue;
+    if (typeof raw === 'string' && raw.trim() === '') continue;
+    manual[column] = raw;
+  }
+  return manual;
+}
+
+function rowHasValues(values) {
+  if (!values || typeof values !== 'object') return false;
+  return Object.values(values).some((value) => {
+    if (value === null || value === undefined) return false;
+    if (typeof value === 'string') return value.trim() !== '';
+    return true;
+  });
+}
+
 function normalizeSeedDefaultsConflict(data) {
   if (!data || typeof data !== 'object') return null;
   const message =
@@ -522,10 +624,134 @@ export default function TenantTablesRegistry() {
     });
   }
 
+  function handleDraftChange(table, id, field, value) {
+    setTableRecords((prev) => {
+      const info = prev[table];
+      if (!info) return prev;
+      const editable = info.editable || { draftsById: {}, newRows: [] };
+      const key = formatRowIdKey(id);
+      const currentDraft =
+        editable.draftsById?.[key] || createEditableCopy(
+          info.rows.find((row) => formatRowIdKey(row.id) === key) || {},
+          info.columns,
+        );
+      const updatedDraft = { ...currentDraft, [field]: value };
+      return {
+        ...prev,
+        [table]: {
+          ...info,
+          editable: {
+            draftsById: { ...editable.draftsById, [key]: updatedDraft },
+            newRows: [...(editable.newRows || [])],
+          },
+        },
+      };
+    });
+  }
+
+  function handleAddCustomRow(table) {
+    setTableRecords((prev) => {
+      const info = prev[table];
+      if (!info) return prev;
+      const editable = info.editable || { draftsById: {}, newRows: [] };
+      const values = {};
+      for (const column of info.columns || []) {
+        if (column === 'company_id') continue;
+        values[column] = '';
+      }
+      const newRow = {
+        key: `new-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        values,
+        selected: true,
+      };
+      return {
+        ...prev,
+        [table]: {
+          ...info,
+          editable: {
+            draftsById: { ...(editable.draftsById || {}) },
+            newRows: [...(editable.newRows || []), newRow],
+          },
+        },
+      };
+    });
+  }
+
+  function handleNewRowChange(table, rowKey, field, value) {
+    setTableRecords((prev) => {
+      const info = prev[table];
+      if (!info) return prev;
+      const editable = info.editable || { draftsById: {}, newRows: [] };
+      const newRows = (editable.newRows || []).map((row) => {
+        if (row.key !== rowKey) return row;
+        return {
+          ...row,
+          values: { ...(row.values || {}), [field]: value },
+        };
+      });
+      return {
+        ...prev,
+        [table]: {
+          ...info,
+          editable: {
+            draftsById: { ...(editable.draftsById || {}) },
+            newRows,
+          },
+        },
+      };
+    });
+  }
+
+  function handleToggleNewRowSelect(table, rowKey, checked) {
+    setTableRecords((prev) => {
+      const info = prev[table];
+      if (!info) return prev;
+      const editable = info.editable || { draftsById: {}, newRows: [] };
+      const newRows = (editable.newRows || []).map((row) =>
+        row.key === rowKey ? { ...row, selected: checked } : row,
+      );
+      return {
+        ...prev,
+        [table]: {
+          ...info,
+          editable: {
+            draftsById: { ...(editable.draftsById || {}) },
+            newRows,
+          },
+        },
+      };
+    });
+  }
+
+  function handleRemoveNewRow(table, rowKey) {
+    setTableRecords((prev) => {
+      const info = prev[table];
+      if (!info) return prev;
+      const editable = info.editable || { draftsById: {}, newRows: [] };
+      const newRows = (editable.newRows || []).filter((row) => row.key !== rowKey);
+      return {
+        ...prev,
+        [table]: {
+          ...info,
+          editable: {
+            draftsById: { ...(editable.draftsById || {}) },
+            newRows,
+          },
+        },
+      };
+    });
+  }
+
   async function loadTableRecords(table) {
     setTableRecords((prev) => ({
       ...prev,
-      [table]: { loading: true, columns: [], rows: [], selected: new Set() },
+      [table]: {
+        loading: true,
+        columns: [],
+        rows: [],
+        selected: new Set(),
+        editable: { draftsById: {}, newRows: [] },
+      },
     }));
     try {
       const [rowsRes, colsRes] = await Promise.all([
@@ -559,14 +785,31 @@ export default function TenantTablesRegistry() {
         })
         .filter((r) => r.id !== undefined);
       const selected = new Set(recs.map((r) => r.id));
+      const draftsById = {};
+      for (const row of recs) {
+        const key = formatRowIdKey(row.id);
+        draftsById[key] = createEditableCopy(row, colNames);
+      }
       setTableRecords((prev) => ({
         ...prev,
-        [table]: { loading: false, columns: colNames, rows: recs, selected },
+        [table]: {
+          loading: false,
+          columns: colNames,
+          rows: recs,
+          selected,
+          editable: { draftsById, newRows: [] },
+        },
       }));
     } catch (err) {
       setTableRecords((prev) => ({
         ...prev,
-        [table]: { loading: false, columns: [], rows: [], selected: new Set() },
+        [table]: {
+          loading: false,
+          columns: [],
+          rows: [],
+          selected: new Set(),
+          editable: { draftsById: {}, newRows: [] },
+        },
       }));
       addToast(`Failed to load records for ${table}: ${err.message}`, 'error');
     }
@@ -578,9 +821,59 @@ export default function TenantTablesRegistry() {
       setSeedModalOpen(false);
       return;
     }
-    const records = tables
-      .map((t) => ({ table: t, ids: Array.from(tableRecords[t]?.selected || []) }))
-      .filter((r) => r.ids.length > 0);
+    const records = [];
+    for (const tableName of tables) {
+      const info = tableRecords[tableName];
+      if (!info) continue;
+      const selectedIds = Array.from(info.selected || []);
+      const columns = info.columns || [];
+      const draftsById = info.editable?.draftsById || {};
+      const originalRows = info.rows || [];
+      const originalByKey = new Map(
+        originalRows.map((row) => [formatRowIdKey(row.id), row]),
+      );
+      const newRows = (info.editable?.newRows || []).filter(
+        (row) => row.selected && rowHasValues(row.values),
+      );
+      let requiresManualRows = newRows.length > 0;
+      for (const id of selectedIds) {
+        const key = formatRowIdKey(id);
+        const original = originalByKey.get(key);
+        if (!original) continue;
+        const draft = draftsById[key] || createEditableCopy(original, columns);
+        if (hasRowChanges(original, draft, columns)) {
+          requiresManualRows = true;
+          break;
+        }
+      }
+
+      if (requiresManualRows) {
+        const manualRows = [];
+        for (const id of selectedIds) {
+          const key = formatRowIdKey(id);
+          const original = originalByKey.get(key);
+          if (!original) continue;
+          const draft = draftsById[key] || createEditableCopy(original, columns);
+          const manual = buildManualRowFromDraft(original, draft, columns);
+          if (Object.keys(manual).length > 0) {
+            manualRows.push(manual);
+          }
+        }
+        for (const row of newRows) {
+          const manual = buildManualRowForNew(row.values, columns);
+          if (Object.keys(manual).length > 0) {
+            manualRows.push(manual);
+          }
+        }
+        if (manualRows.length > 0) {
+          records.push({ table: tableName, rows: manualRows });
+        }
+      } else {
+        if (selectedIds.length > 0) {
+          records.push({ table: tableName, ids: selectedIds });
+        }
+      }
+    }
     setSeedingCompany(true);
     async function send(flag) {
       const res = await fetch('/api/tenant_tables/seed-company', {
@@ -1091,54 +1384,155 @@ export default function TenantTablesRegistry() {
                   </label>
                   {selectedTables[table.tableName] && (
                     <div style={{ marginLeft: '1rem', marginTop: '0.25rem' }}>
-                      {tableRecords[table.tableName]?.loading ? (
-                        <p>{t('loading', 'Loading...')}</p>
-                      ) : tableRecords[table.tableName]?.columns &&
-                        tableRecords[table.tableName]?.rows ? (
-                        tableRecords[table.tableName].rows.length ? (
-                          <table style={{ borderCollapse: 'collapse' }}>
-                            <thead>
-                              <tr>
-                                <th style={styles.th}></th>
-                                {(tableRecords[table.tableName]?.columns ?? []).map((c) => (
-                                  <th key={c} style={styles.th}>
-                                    {c}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {(tableRecords[table.tableName]?.rows ?? []).map((r) => (
-                                <tr key={r.id}>
-                                  <td style={styles.td}>
-                                    <input
-                                      type="checkbox"
-                                      checked={!!tableRecords[table.tableName]?.selected?.has(r.id)}
-                                      onChange={(e) =>
-                                        handleRecordSelect(table.tableName, r.id, e.target.checked)
-                                      }
-                                    />
-                                  </td>
-                                  {(tableRecords[table.tableName]?.columns ?? []).map((c) => (
-                                    <td key={c} style={styles.td}>
-                                      {String(r[c])}
-                                    </td>
+                      {(() => {
+                        const info = tableRecords[table.tableName];
+                        if (info?.loading) {
+                          return <p>{t('loading', 'Loading...')}</p>;
+                        }
+                        if (!info?.columns || !info?.rows) {
+                          return (
+                            <p>
+                              {t(
+                                'loadFailed',
+                                `Failed to load records for ${table.tableName}`,
+                              )}
+                            </p>
+                          );
+                        }
+                        const columnNames = info.columns || [];
+                        const displayColumns = columnNames.filter(
+                          (col) => col !== 'company_id',
+                        );
+                        const draftsById = info.editable?.draftsById || {};
+                        const newRows = info.editable?.newRows || [];
+                        const rows = info.rows || [];
+                        const hasRows = rows.length > 0;
+                        const hasCustomRows = newRows.length > 0;
+                        if (!hasRows && !hasCustomRows) {
+                          return (
+                            <div>
+                              <p>{t('noRecords', 'No records')}</p>
+                              <div style={{ marginTop: '0.5rem' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddCustomRow(table.tableName)}
+                                >
+                                  {t('addCustomRow', 'Add custom row')}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div>
+                            <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                              <thead>
+                                <tr>
+                                  <th style={styles.th}></th>
+                                  {displayColumns.map((c) => (
+                                    <th key={c} style={styles.th}>
+                                      {c}
+                                    </th>
                                   ))}
+                                  <th style={styles.th}>{t('actions', 'Actions')}</th>
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        ) : (
-                          <p>{t('noRecords', 'No records')}</p>
-                        )
-                      ) : (
-                        <p>
-                          {t(
-                            'loadFailed',
-                            `Failed to load records for ${table.tableName}`
-                          )}
-                        </p>
-                      )}
+                              </thead>
+                              <tbody>
+                                {rows.map((r) => {
+                                  const rowKey = formatRowIdKey(r.id);
+                                  const draft =
+                                    draftsById[rowKey] || createEditableCopy(r, columnNames);
+                                  return (
+                                    <tr key={rowKey}>
+                                      <td style={styles.td}>
+                                        <input
+                                          type="checkbox"
+                                          checked={!!info.selected?.has(r.id)}
+                                          onChange={(e) =>
+                                            handleRecordSelect(
+                                              table.tableName,
+                                              r.id,
+                                              e.target.checked,
+                                            )
+                                          }
+                                        />
+                                      </td>
+                                      {displayColumns.map((c) => (
+                                        <td key={c} style={styles.td}>
+                                          <input
+                                            type="text"
+                                            value={draft?.[c] ?? ''}
+                                            onChange={(e) =>
+                                              handleDraftChange(
+                                                table.tableName,
+                                                r.id,
+                                                c,
+                                                e.target.value,
+                                              )
+                                            }
+                                            style={{ width: '100%' }}
+                                          />
+                                        </td>
+                                      ))}
+                                      <td style={styles.td}></td>
+                                    </tr>
+                                  );
+                                })}
+                                {newRows.map((row) => (
+                                  <tr key={row.key}>
+                                    <td style={styles.td}>
+                                      <input
+                                        type="checkbox"
+                                        checked={!!row.selected}
+                                        onChange={(e) =>
+                                          handleToggleNewRowSelect(
+                                            table.tableName,
+                                            row.key,
+                                            e.target.checked,
+                                          )
+                                        }
+                                      />
+                                    </td>
+                                    {displayColumns.map((c) => (
+                                      <td key={c} style={styles.td}>
+                                        <input
+                                          type="text"
+                                          value={row.values?.[c] ?? ''}
+                                          onChange={(e) =>
+                                            handleNewRowChange(
+                                              table.tableName,
+                                              row.key,
+                                              c,
+                                              e.target.value,
+                                            )
+                                          }
+                                          style={{ width: '100%' }}
+                                        />
+                                      </td>
+                                    ))}
+                                    <td style={styles.td}>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveNewRow(table.tableName, row.key)}
+                                      >
+                                        {t('remove', 'Remove')}
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            <div style={{ marginTop: '0.5rem' }}>
+                              <button
+                                type="button"
+                                onClick={() => handleAddCustomRow(table.tableName)}
+                              >
+                                {t('addCustomRow', 'Add custom row')}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>

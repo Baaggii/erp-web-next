@@ -181,6 +181,67 @@ if (typeof mock?.import !== 'function') {
     assert.deepEqual(seedStub.mock.calls[0].arguments, [8, ['posts'], {}, false, 5]);
   });
 
+  test('seedCompany forwards manual rows payload', async () => {
+    const manualRows = [{ id: 7, title: 'Welcome' }];
+    const seedStub = mock.fn(async () => ({}));
+    const mod = await loadController({
+      getEmploymentSession: async () => ({ permissions: { system_settings: true } }),
+      listCompanies: async () => [
+        { id: 8, created_by: 5 },
+      ],
+      seedTenantTables: seedStub,
+    });
+    const req = {
+      body: {
+        companyId: 8,
+        tables: ['posts'],
+        records: [{ table: 'posts', rows: manualRows }],
+        overwrite: true,
+      },
+      user: { empid: 5, companyId: 1 },
+    };
+    const res = createRes();
+    await mod.seedCompany(req, res, (err) => {
+      if (err) throw err;
+    });
+    assert.equal(res.statusCode, 200);
+    assert.equal(seedStub.mock.calls.length, 1);
+    const args = seedStub.mock.calls[0].arguments;
+    assert.equal(args[0], 8);
+    assert.deepEqual(args[1], ['posts']);
+    assert.equal(args[3], true);
+    assert.equal(args[4], 5);
+    assert.deepEqual(args[2], { posts: [{ id: 7, title: 'Welcome' }] });
+    assert.notStrictEqual(args[2].posts[0], manualRows[0]);
+  });
+
+  test('seedCompany rejects invalid manual rows', async () => {
+    const seedStub = mock.fn(async () => ({}));
+    const mod = await loadController({
+      getEmploymentSession: async () => ({ permissions: { system_settings: true } }),
+      listCompanies: async () => [
+        { id: 8, created_by: 5 },
+      ],
+      seedTenantTables: seedStub,
+    });
+    const req = {
+      body: {
+        companyId: 8,
+        tables: ['posts'],
+        records: [{ table: 'posts', rows: [null, { id: 1 }] }],
+        overwrite: false,
+      },
+      user: { empid: 5, companyId: 1 },
+    };
+    const res = createRes();
+    await mod.seedCompany(req, res, (err) => {
+      if (err) throw err;
+    });
+    assert.equal(res.statusCode, 400);
+    assert.match(res.body?.message ?? '', /Invalid manual row payload/);
+    assert.equal(seedStub.mock.calls.length, 0);
+  });
+
   test('seedExistingCompanies returns summaries keyed by company', async () => {
     const seedStub = mock.fn(async (companyId) => ({ posts: { count: companyId } }));
     const mod = await loadController({
