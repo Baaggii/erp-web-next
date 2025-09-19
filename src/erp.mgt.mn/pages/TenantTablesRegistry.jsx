@@ -332,6 +332,27 @@ export default function TenantTablesRegistry() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!seedModalOpen) return;
+    if (!Array.isArray(tables) || tables.length === 0) return;
+    if (Object.keys(selectedTables || {}).length > 0) return;
+
+    const defaults = tables.filter((table) => table?.seedOnCreate && table?.tableName);
+    if (defaults.length === 0) return;
+
+    setSelectedTables(() => {
+      const initial = {};
+      for (const table of defaults) {
+        initial[table.tableName] = true;
+      }
+      return initial;
+    });
+
+    for (const table of defaults) {
+      loadTableRecords(table.tableName);
+    }
+  }, [seedModalOpen, tables, selectedTables, loadTableRecords]);
+
   const resetTables = Array.isArray(lastResetSummary?.tables)
     ? lastResetSummary.tables
     : [];
