@@ -220,13 +220,15 @@ test('deleteCompanyHandler deletes company with cascade', async () => {
 test('deleteCompanyHandler returns backup metadata when requested', async () => {
   const calls = [];
   const userId = 7;
+  const employeeCode = 'EMP-7A';
   const companyId = 9;
   const backupDir = path.join(process.cwd(), 'config', String(companyId));
   await fs.rm(backupDir, { recursive: true, force: true });
   const restore = mockPool(async (sql, params) => {
     calls.push({ sql, params });
     if (sql.startsWith('SELECT * FROM companies WHERE created_by = ?')) {
-      return [[{ id: companyId, name: 'BackupCo', created_by: userId }]];
+      assert.equal(params?.[0], employeeCode);
+      return [[{ id: companyId, name: 'BackupCo', created_by: employeeCode }]];
     }
     if (sql.includes('FROM tenant_tables WHERE seed_on_create = 1')) {
       return [[{ table_name: 'orders', is_shared: 0 }]];
@@ -270,7 +272,7 @@ test('deleteCompanyHandler returns backup metadata when requested', async () => 
   const req = {
     params: { id: String(companyId) },
     body: { createBackup: true, backupName: 'Company 9 backup' },
-    user: { empid: userId, companyId: 0 },
+    user: { id: userId, empid: employeeCode, companyId: 0 },
     session: { permissions: { system_settings: true } },
   };
   const res = createRes();
@@ -286,6 +288,7 @@ test('deleteCompanyHandler returns backup metadata when requested', async () => 
   assert.ok(res.body.backup);
   assert.equal(res.body.backup.companyId, companyId);
   assert.equal(res.body.backup.originalName, 'Company 9 backup');
+  assert.equal(res.body.backup.requestedBy, userId);
   assert.equal(res.body.company.name, 'BackupCo');
 });
 
@@ -307,6 +310,7 @@ test('deleteCompanyHandler forwards error messages', async () => {
 
 test('listCompanyBackupsHandler returns backups', async () => {
   const userId = 44;
+  const employeeCode = 'EMP-44A';
   const companyId = 12;
   const backupDir = path.join(
     process.cwd(),
@@ -335,12 +339,13 @@ test('listCompanyBackupsHandler returns backups', async () => {
   );
   const restorePool = mockPool(async (sql, params) => {
     if (sql.startsWith('SELECT * FROM companies WHERE created_by = ?')) {
-      return [[{ id: companyId, name: 'ActiveCo', created_by: userId }]];
+      assert.equal(params?.[0], employeeCode);
+      return [[{ id: companyId, name: 'ActiveCo', created_by: employeeCode }]];
     }
     return [[]];
   });
   const req = {
-    user: { empid: userId, companyId: 0 },
+    user: { id: userId, empid: employeeCode, companyId: 0 },
     session: { permissions: { system_settings: true } },
   };
   const res = createRes();
@@ -362,6 +367,7 @@ test('listCompanyBackupsHandler returns backups', async () => {
 
 test('restoreCompanyBackupHandler restores backup', async () => {
   const userId = 91;
+  const employeeCode = 'EMP-91B';
   const sourceCompanyId = 15;
   const targetCompanyId = 20;
   const backupRoot = path.join(process.cwd(), 'config');
@@ -398,7 +404,8 @@ test('restoreCompanyBackupHandler restores backup', async () => {
   const restorePool = mockPool(async (sql, params) => {
     calls.push(sql);
     if (sql.startsWith('SELECT * FROM companies WHERE created_by = ?')) {
-      return [[{ id: targetCompanyId, name: 'TargetCo', created_by: userId }]];
+      assert.equal(params?.[0], employeeCode);
+      return [[{ id: targetCompanyId, name: 'TargetCo', created_by: employeeCode }]];
     }
     if (
       sql.includes('FROM tenant_tables') &&
@@ -417,7 +424,7 @@ test('restoreCompanyBackupHandler restores backup', async () => {
   });
   const req = {
     body: { sourceCompanyId, targetCompanyId, fileName },
-    user: { empid: userId, companyId: 0 },
+    user: { id: userId, empid: employeeCode, companyId: 0 },
     session: { permissions: { system_settings: true } },
   };
   const res = createRes();
