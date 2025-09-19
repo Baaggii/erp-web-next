@@ -1880,8 +1880,8 @@ export async function updateTableRow(
 export async function insertTableRow(
   tableName,
   row,
-  seedTables = [],
-  seedRecords = null,
+  seedTables,
+  seedRecords,
   overwrite = false,
   userId = null,
 ) {
@@ -1898,13 +1898,17 @@ export async function insertTableRow(
     [tableName, ...values],
   );
   if (tableName === 'companies') {
-    await seedTenantTables(
-      result.insertId,
-      seedTables,
-      seedRecords,
-      overwrite,
-      userId,
-    );
+    const hasSeedTables = seedTables !== undefined;
+    const hasSeedRecords = seedRecords !== undefined;
+    if (hasSeedTables || hasSeedRecords) {
+      await seedTenantTables(
+        result.insertId,
+        seedTables,
+        seedRecords,
+        overwrite,
+        userId,
+      );
+    }
   }
   return { id: result.insertId };
 }

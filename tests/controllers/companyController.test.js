@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createCompanyHandler, deleteCompanyHandler } from '../../api-server/controllers/companyController.js';
+import { seedCompany } from '../../api-server/controllers/tenantTablesController.js';
 import * as db from '../../db/index.js';
 
 function mockPoolSequential(responses = []) {
@@ -215,3 +216,200 @@ test('deleteCompanyHandler forwards error messages', async () => {
   assert.equal(res.code, 500);
   assert.deepEqual(res.body, { message: 'boom' });
 });
+
+test(
+  'creating a company keeps tenant tables empty until seed endpoint runs',
+  async (t) => {
+    const companies = [];
+    const posts = [];
+    let tenantTableSelects = 0;
+    const queryMock = t.mock.method(db.pool, 'query', async (sql, params) => {
+      if (
+        typeof sql === 'string' &&
+        /information_schema\.COLUMNS/.test(sql) &&
+        sql.startsWith('SELECT COLUMN_NAME')
+      ) {
+        if (params?.[0] === 'companies') {
+          return [[
+            { COLUMN_NAME: 'name' },
+            { COLUMN_NAME: 'created_by' },
+          ]];
+        }
+        if (params?.[0] === 'posts') {
+          return [[
+            { COLUMN_NAME: 'id' },
+            { COLUMN_NAME: 'company_id' },
+            { COLUMN_NAME: 'title' },
+          ]];
+        }
+      }
+      if (
+        typeof sql === 'string' &&
+        sql.startsWith('INSERT INTO ??') &&
+        params?.[0] === 'companies'
+      ) {
+        const id = companies.length + 1;
+        const open = sql.indexOf('(');
+        const close = sql.indexOf(')', open + 1);
+        const columnSegment = sql.slice(open + 1, close);
+        const columns = columnSegment
+          .split(',')
+          .map((c) => c.trim().replace(/`/g, ''));
+        const values = params.slice(1);
+        const record = { id };
+        columns.forEach((col, idx) => {
+          record[col] = values[idx];
+        });
+        companies.push(record);
+        return [{ insertId: id }];
+      }
+      if (
+        typeof sql === 'string' &&
+        sql.startsWith('INSERT INTO ??') &&
+        params?.[0] === 'posts'
+      ) {
+        const open = sql.indexOf('(');
+        const close = sql.indexOf(')', open + 1);
+        const columnSegment = sql.slice(open + 1, close);
+        const columns = columnSegment
+          .split(',')
+          .map((c) => c.trim().replace(/`/g, ''));
+        const values = params.slice(1);
+        const record = {};
+        columns.forEach((col, idx) => {
+          record[col] = values[idx];
+        });
+        posts.push(record);
+        return [{}];
+      }
+      if (typeof sql === 'string' && sql === 'SELECT * FROM companies') {
+        return [companies.map((c) => ({ ...c }))];
+      }
+      if (
+        typeof sql === 'string' &&
+        sql === 'SELECT * FROM companies WHERE created_by = ?'
+      ) {
+        const creator = params?.[0];
+        return [
+          companies
+            .filter((c) => c.created_by === creator)
+            .map((c) => ({ ...c })),
+        ];
+      }
+      if (
+        typeof sql === 'string' &&
+        sql.includes('FROM tbl_employment e') &&
+        sql.includes('GROUP BY e.employment_company_id')
+      ) {
+        const [, companyId] = params || [];
+        return [[
+          {
+            company_id: companyId ?? 0,
+            branch_id: 0,
+            department_id: 0,
+            position_id: 0,
+            senior_empid: null,
+            employee_name: 'Admin',
+            user_level: 1,
+            user_level_name: 'Admin',
+            permission_list: 'system_settings',
+          },
+        ]];
+      }
+      if (
+        typeof sql === 'string' &&
+        sql.includes('FROM tenant_tables WHERE seed_on_create = 1')
+      ) {
+        tenantTableSelects += 1;
+        const rows = [
+          { table_name: 'posts', is_shared: 0 },
+        ];
+        return [rows];
+      }
+      if (
+        typeof sql === 'string' &&
+        sql.startsWith('SELECT COUNT(*) AS cnt FROM ?? WHERE company_id = ?')
+      ) {
+        const [tableName, companyId] = params || [];
+        if (tableName === 'posts') {
+          const count = posts.filter(
+            (p) => Number(p.company_id) === Number(companyId),
+          ).length;
+          return [[{ cnt: count }]];
+        }
+      }
+      if (
+        typeof sql === 'string' &&
+        sql.startsWith('SELECT COLUMN_NAME, COLUMN_KEY, EXTRA') &&
+        sql.includes('information_schema.COLUMNS')
+      ) {
+        if (params?.[0] === 'posts') {
+          return [[
+            { COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' },
+            { COLUMN_NAME: 'company_id', COLUMN_KEY: '', EXTRA: '' },
+            { COLUMN_NAME: 'title', COLUMN_KEY: '', EXTRA: '' },
+          ]];
+        }
+      }
+      if (
+        typeof sql === 'string' &&
+        sql.startsWith(
+          'SELECT column_name, mn_label FROM table_column_labels WHERE table_name = ?',
+        )
+      ) {
+        return [[]];
+      }
+      if (
+        typeof sql === 'string' &&
+        sql.startsWith(
+          'INSERT INTO user_level_permissions (company_id, userlevel_id, action, action_key, created_by, created_at)',
+        )
+      ) {
+        return [[]];
+      }
+      throw new Error(`Unexpected query: ${sql}`);
+    });
+
+    const req = {
+      body: { name: 'Seedless Co' },
+      user: { empid: 42, companyId: 0, userLevel: 1 },
+      session: { permissions: { system_settings: true } },
+    };
+    const res = createRes();
+    await createCompanyHandler(req, res, (err) => {
+      if (err) throw err;
+    });
+    assert.equal(res.code, 201);
+    assert.equal(tenantTableSelects, 0);
+    assert.deepEqual(posts, []);
+    const companyId = res.body.id;
+
+    const seedReq = {
+      body: {
+        companyId,
+        tables: ['posts'],
+        records: [
+          {
+            table: 'posts',
+            rows: [{ id: 7, title: 'Welcome' }],
+          },
+        ],
+        overwrite: false,
+      },
+      user: { empid: 42, companyId: 0 },
+    };
+    const seedRes = createRes();
+    await seedCompany(seedReq, seedRes, (err) => {
+      if (err) throw err;
+    });
+    assert.ok(tenantTableSelects > 0);
+    assert.equal(posts.length, 1);
+    assert.deepEqual(posts[0], {
+      company_id: companyId,
+      id: 7,
+      title: 'Welcome',
+    });
+    assert.equal(seedRes.body?.posts?.count, 1);
+    assert.ok(queryMock.mock.calls.length > 0);
+  },
+);
