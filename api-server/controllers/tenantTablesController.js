@@ -124,8 +124,17 @@ export async function resetSharedTenantKeys(req, res, next) {
 export async function seedDefaults(req, res, next) {
   try {
     if (!(await ensureAdmin(req))) return res.sendStatus(403);
+    const backupNameRaw = req.body?.backupName;
+    const trimmedBackupName =
+      typeof backupNameRaw === 'string' ? backupNameRaw.trim() : '';
+    await seedDefaultsForSeedTables(req.user.empid, { preview: true });
+    const backupLabel = trimmedBackupName || 'seed-backup';
+    const backupMetadata = await exportTenantTableDefaults(
+      backupLabel,
+      req.user?.empid ?? null,
+    );
     await seedDefaultsForSeedTables(req.user.empid);
-    res.sendStatus(204);
+    res.json({ backup: backupMetadata || null });
   } catch (err) {
     if (err?.status === 409 && err?.conflicts) {
       res.status(409).json({
@@ -143,7 +152,14 @@ export async function seedDefaults(req, res, next) {
 export async function seedExistingCompanies(req, res, next) {
   try {
     if (!(await ensureAdmin(req))) return res.sendStatus(403);
-    const { tables = null, records = [], overwrite = false } = req.body || {};
+    const {
+      tables = null,
+      records = [],
+      overwrite = false,
+      backupName: backupNameRaw = '',
+    } = req.body || {};
+    const trimmedBackupName =
+      typeof backupNameRaw === 'string' ? backupNameRaw.trim() : '';
     const recordMap = {};
     for (const rec of records || []) {
       if (rec?.table && Array.isArray(rec.ids) && rec.ids.length > 0) {
@@ -155,14 +171,21 @@ export async function seedExistingCompanies(req, res, next) {
     for (const { id, created_by } of companies) {
       if (id === GLOBAL_COMPANY_ID) continue;
       if (created_by !== req.user.empid) continue;
-      const summary = await seedTenantTables(
+      const result = await seedTenantTables(
         id,
         tables,
         recordMap,
         overwrite,
         req.user.empid,
+        req.user.empid,
+        {
+          backupName: trimmedBackupName,
+          originalBackupName:
+            typeof backupNameRaw === 'string' ? backupNameRaw : trimmedBackupName,
+          requestedBy: req.user?.empid ?? null,
+        },
       );
-      results[id] = summary || {};
+      results[id] = result?.summary || {};
     }
     res.json(results);
   } catch (err) {
@@ -173,8 +196,13 @@ export async function seedExistingCompanies(req, res, next) {
 export async function seedCompany(req, res, next) {
   try {
     if (!(await ensureAdmin(req))) return res.sendStatus(403);
-    const { companyId, tables = null, records = [], overwrite = false } =
-      req.body || {};
+    const {
+      companyId,
+      tables = null,
+      records = [],
+      overwrite = false,
+      backupName: backupNameRaw = '',
+    } = req.body || {};
     if (!companyId) {
       return res.status(400).json({ message: 'companyId is required' });
     }
@@ -208,14 +236,27 @@ export async function seedCompany(req, res, next) {
       return res.sendStatus(403);
     }
 
-    const summary = await seedTenantTables(
+    const trimmedBackupName =
+      typeof backupNameRaw === 'string' ? backupNameRaw.trim() : '';
+
+    const result = await seedTenantTables(
       companyId,
       tables,
       recordMap,
       overwrite,
       req.user.empid,
+      req.user.empid,
+      {
+        backupName: trimmedBackupName,
+        originalBackupName:
+          typeof backupNameRaw === 'string' ? backupNameRaw : trimmedBackupName,
+        requestedBy: req.user?.empid ?? null,
+      },
     );
-    res.json(summary || {});
+    res.json({
+      summary: result?.summary || {},
+      backup: result?.backup || null,
+    });
   } catch (err) {
     next(err);
   }

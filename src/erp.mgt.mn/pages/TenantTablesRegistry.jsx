@@ -109,6 +109,51 @@ function formatSnapshotTimestamp(value) {
   return date.toLocaleString();
 }
 
+function buildBackupSuggestion(prefix) {
+  const pad = (value) => String(value).padStart(2, '0');
+  const now = new Date();
+  return `${prefix} ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(
+    now.getDate(),
+  )} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+}
+
+function normalizeBackupResponse(raw, companyId) {
+  if (!raw || typeof raw !== 'object') return null;
+  const fileName =
+    typeof raw.fileName === 'string' && raw.fileName.trim()
+      ? raw.fileName.trim()
+      : '';
+  const originalName =
+    typeof raw.originalName === 'string' && raw.originalName.trim()
+      ? raw.originalName.trim()
+      : '';
+  const versionName =
+    typeof raw.versionName === 'string' && raw.versionName.trim()
+      ? raw.versionName.trim()
+      : '';
+  const displayName = originalName || versionName || fileName;
+  const generatedAt =
+    raw.generatedAt || raw.generatedAtRaw || raw.modifiedAt || raw.completedAt || null;
+  const tableCountValue = Number(raw.tableCount);
+  const rowCountValue = Number(
+    raw.rowCount !== undefined ? raw.rowCount : raw.totalInserted ?? raw.totalRows,
+  );
+  const requestedBy =
+    raw.requestedBy !== undefined && raw.requestedBy !== null
+      ? String(raw.requestedBy)
+      : null;
+  return {
+    companyId:
+      companyId !== undefined && companyId !== null ? String(companyId) : '',
+    fileName,
+    displayName,
+    generatedAt,
+    tableCount: Number.isFinite(tableCountValue) ? tableCountValue : null,
+    rowCount: Number.isFinite(rowCountValue) ? rowCountValue : null,
+    requestedBy,
+  };
+}
+
 function createEditableCopy(row, columns) {
   const editable = {};
   for (const column of columns || []) {
@@ -309,6 +354,7 @@ export default function TenantTablesRegistry() {
   const [defaultRows, setDefaultRows] = useState({});
   const [lastResetSummary, setLastResetSummary] = useState(null);
   const [lastSeedSummary, setLastSeedSummary] = useState(null);
+  const [lastSeedBackup, setLastSeedBackup] = useState(null);
   const [seedDefaultsConflict, setSeedDefaultsConflict] = useState(null);
   const [recoverModalOpen, setRecoverModalOpen] = useState(false);
   const [snapshotList, setSnapshotList] = useState([]);
@@ -338,6 +384,25 @@ export default function TenantTablesRegistry() {
     'sharedTablesSeedToggleWarning',
     'Seed on Create is only available when Shared is off. Shared has been turned off.',
   );
+
+  function requestBackupName(actionDescription, defaultPrefix) {
+    const suggestion = buildBackupSuggestion(defaultPrefix);
+    const message = t(
+      'seedBackupPrompt',
+      'Enter a backup name before {{action}}.',
+      { action: actionDescription },
+    );
+    const input = window.prompt(message, suggestion);
+    if (input === null) {
+      return null;
+    }
+    const trimmed = String(input).trim();
+    if (!trimmed) {
+      addToast(t('backupNameRequired', 'Backup name is required.'), 'warning');
+      return null;
+    }
+    return { name: trimmed, original: input };
+  }
 
   useEffect(() => {
     loadTables();
@@ -573,6 +638,9 @@ export default function TenantTablesRegistry() {
   const lastSeedCompany = lastSeedSummary
     ? companies.find((c) => String(c.id) === String(lastSeedSummary.companyId))
     : null;
+  const lastBackupCompany = lastSeedBackup
+    ? companies.find((c) => String(c.id) === String(lastSeedBackup.companyId))
+    : null;
 
   async function loadTables() {
     let options = [];
@@ -676,11 +744,25 @@ export default function TenantTablesRegistry() {
   }
 
   async function handleSeedDefaults() {
+    const actionLabel = t(
+      'seedDefaultsActionDescription',
+      'populating global defaults',
+    );
+    const defaultPrefix = t(
+      'seedDefaultsBackupSuggestion',
+      'Global defaults backup',
+    );
+    const backupRequest = requestBackupName(actionLabel, defaultPrefix);
+    if (!backupRequest) {
+      return;
+    }
     setSeedingDefaults(true);
     try {
       const res = await fetch('/api/tenant_tables/seed-defaults', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        body: JSON.stringify({ backupName: backupRequest.name }),
       });
       if (!res.ok) {
         if (res.status === 409) {
@@ -713,8 +795,24 @@ export default function TenantTablesRegistry() {
         const msg = await parseErrorBody(res);
         throw new Error(msg || 'Failed to seed defaults');
       }
+      const ct = res.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) {
+        throw new Error(`Unexpected response: ${ct || 'unknown content-type'}`);
+      }
+      const data = await res.json();
       setSeedDefaultsConflict(null);
-      addToast(t('populatedDefaultsTenantKey0', 'Populated defaults (tenant key 0)'), 'success');
+      const backupInfo = normalizeBackupResponse(data?.backup, 0);
+      setLastSeedBackup(backupInfo);
+      const baseMessage = t(
+        'populatedDefaultsTenantKey0',
+        'Populated defaults (tenant key 0)',
+      );
+      const toastMessage = backupInfo?.displayName
+        ? `${baseMessage} (${t('backupCreated', 'Backup: {{name}}', {
+            name: backupInfo.displayName,
+          })})`
+        : baseMessage;
+      addToast(toastMessage, 'success');
       await loadTables();
     } catch (err) {
       addToast(`Failed to seed defaults: ${err.message}`, 'error');
@@ -1195,13 +1293,42 @@ export default function TenantTablesRegistry() {
         }
       }
     }
+    const selectedCompanyInfo = companies.find(
+      (c) => String(c.id) === String(companyId),
+    );
+    const actionDescription = selectedCompanyInfo
+      ? t('seedCompanyActionWithName', 'populating defaults for {{name}}', {
+          name:
+            selectedCompanyInfo.name ||
+            selectedCompanyInfo.company_name ||
+            String(companyId),
+        })
+      : t('seedCompanyActionDescription', 'populating company defaults');
+    const suggestionPrefix = selectedCompanyInfo
+      ? t('seedCompanyBackupSuggestionWithName', '{{name}} backup', {
+          name:
+            selectedCompanyInfo.name || selectedCompanyInfo.company_name || String(companyId),
+        })
+      : t('seedCompanyBackupSuggestion', 'Company {{companyId}} backup', {
+          companyId,
+        });
+    const backupRequest = requestBackupName(actionDescription, suggestionPrefix);
+    if (!backupRequest) {
+      return;
+    }
     setSeedingCompany(true);
     async function send(flag) {
       const res = await fetch('/api/tenant_tables/seed-company', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ companyId, tables, records, overwrite: flag }),
+        body: JSON.stringify({
+          companyId,
+          tables,
+          records,
+          overwrite: flag,
+          backupName: backupRequest.name,
+        }),
       });
       if (!res.ok) {
         const msg = await parseErrorBody(res);
@@ -1211,21 +1338,38 @@ export default function TenantTablesRegistry() {
       if (!ct.includes('application/json')) {
         throw new Error(`Unexpected response: ${ct || 'unknown content-type'}`);
       }
-      const summary = await res.json();
-      const entries = getSeedSummaryEntries(summary);
+      const data = await res.json();
+      const summaryPayload =
+        data && typeof data.summary === 'object' && data.summary !== null
+          ? data.summary
+          : {};
+      const backupInfo = normalizeBackupResponse(data?.backup, companyId);
+      setLastSeedBackup(backupInfo);
+      const entries = getSeedSummaryEntries(summaryPayload);
       const summaryText = formatSeedSummaryForToast(entries);
       const baseMessage = flag
-        ? 'Repopulated company defaults'
-        : 'Populated company defaults';
-      const message = summaryText ? `${baseMessage}: ${summaryText}` : baseMessage;
+        ? t('repopulatedCompanyDefaults', 'Repopulated company defaults')
+        : t('populatedCompanyDefaults', 'Populated company defaults');
+      const detailSegments = [];
+      if (summaryText) {
+        detailSegments.push(summaryText);
+      }
+      if (backupInfo?.displayName) {
+        detailSegments.push(
+          t('backupCreated', 'Backup: {{name}}', { name: backupInfo.displayName }),
+        );
+      }
+      const message = detailSegments.length > 0
+        ? `${baseMessage}: ${detailSegments.join('; ')}`
+        : baseMessage;
       addToast(message, 'success');
       setLastSeedSummary({
         companyId: String(companyId),
-        summary: summary && typeof summary === 'object' && summary !== null ? summary : {},
+        summary: summaryPayload,
       });
       setSeedModalOpen(false);
       await loadTables();
-      return summary;
+      return { summary: summaryPayload, backup: backupInfo };
     }
     try {
       await send(overwrite);
@@ -1922,6 +2066,61 @@ export default function TenantTablesRegistry() {
               )}
             </p>
           )}
+        </div>
+      ) : null}
+      {lastSeedBackup ? (
+        <div
+          style={{
+            marginTop: '0.75rem',
+            padding: '0.75rem',
+            backgroundColor: '#f0fdf4',
+            border: '1px solid #34d399',
+            borderRadius: '4px',
+          }}
+        >
+          <strong>{t('lastSeedBackup', 'Last seed backup')}</strong>
+          <p style={{ margin: '0.5rem 0 0' }}>
+            {t('backupTarget', 'Target')}:{' '}
+            {lastSeedBackup.companyId === '0'
+              ? t('globalDefaults', 'Global defaults')
+              : lastBackupCompany?.name || lastBackupCompany?.company_name
+              ? `${
+                  lastBackupCompany.name || lastBackupCompany.company_name
+                } (${t('companyId', 'Company ID')}: ${lastSeedBackup.companyId})`
+              : `${t('companyId', 'Company ID')}: ${lastSeedBackup.companyId}`}
+          </p>
+          <p style={{ margin: '0.25rem 0 0' }}>
+            {t('backupNameLabel', 'Backup')}: {lastSeedBackup.displayName || t('unknownBackupName', 'Unnamed backup')}
+          </p>
+          {lastSeedBackup.generatedAt ? (
+            <p style={{ margin: '0.25rem 0 0' }}>
+              {t('generatedAt', 'Generated at')}:{' '}
+              {formatSnapshotTimestamp(lastSeedBackup.generatedAt)}
+            </p>
+          ) : null}
+          {lastSeedBackup.fileName ? (
+            <p style={{ margin: '0.25rem 0 0' }}>
+              {t('backupFileName', 'File')}: {lastSeedBackup.fileName}
+            </p>
+          ) : null}
+          {lastSeedBackup.tableCount !== null || lastSeedBackup.rowCount !== null ? (
+            <p style={{ margin: '0.25rem 0 0' }}>
+              {lastSeedBackup.tableCount !== null
+                ? `${t('tablesProcessed', 'Tables processed')}: ${lastSeedBackup.tableCount}`
+                : ''}
+              {lastSeedBackup.tableCount !== null && lastSeedBackup.rowCount !== null
+                ? ' · '
+                : ''}
+              {lastSeedBackup.rowCount !== null
+                ? `${t('rowsIncluded', 'Rows included')}: ${lastSeedBackup.rowCount}`
+                : ''}
+            </p>
+          ) : null}
+          {lastSeedBackup.requestedBy ? (
+            <p style={{ margin: '0.25rem 0 0' }}>
+              {t('requestedBy', 'Requested by')}: {lastSeedBackup.requestedBy}
+            </p>
+          ) : null}
         </div>
       ) : null}
       {lastSeedSummary ? (

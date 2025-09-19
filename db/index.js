@@ -1101,11 +1101,18 @@ export async function seedTenantTables(
   overwrite = false,
   createdBy = null,
   updatedBy = createdBy,
+  backupOptions = {},
 ) {
   let tables;
   const summary = {};
+  const normalizedRecordMap =
+    recordMap && typeof recordMap === 'object' && !Array.isArray(recordMap)
+      ? recordMap
+      : {};
   if (Array.isArray(selectedTables)) {
-    if (selectedTables.length === 0) return summary;
+    if (selectedTables.length === 0) {
+      return { summary, backup: null };
+    }
     const placeholders = selectedTables.map(() => '?').join(', ');
     const [rows] = await pool.query(
       `SELECT table_name, is_shared FROM tenant_tables WHERE seed_on_create = 1 AND table_name IN (${placeholders})`,
@@ -1123,6 +1130,7 @@ export async function seedTenantTables(
     );
     tables = rows;
   }
+  const processedTables = [];
   for (const { table_name, is_shared } of tables || []) {
     if (is_shared) continue;
     const tableSummary = { count: 0 };
@@ -1131,16 +1139,11 @@ export async function seedTenantTables(
       'SELECT COUNT(*) AS cnt FROM ?? WHERE company_id = ?',
       [table_name, companyId],
     );
-    if (cnt > 0) {
-      if (!overwrite) {
-        const err = new Error(`Table ${table_name} already contains data`);
-        err.status = 400;
-        throw err;
-      }
-      await pool.query('DELETE FROM ?? WHERE company_id = ?', [
-        table_name,
-        companyId,
-      ]);
+    const existingCount = Number(cnt) || 0;
+    if (existingCount > 0 && !overwrite) {
+      const err = new Error(`Table ${table_name} already contains data`);
+      err.status = 400;
+      throw err;
     }
 
     const meta = await listTableColumnMeta(table_name);
@@ -1153,9 +1156,8 @@ export async function seedTenantTables(
       )
       .map((c) => c.name);
 
-    const records = recordMap?.[table_name];
+    const records = normalizedRecordMap?.[table_name];
     const pkCols = meta.filter((m) => m.key === 'PRI').map((m) => m.name);
-    const insertedIds = [];
     const manualRecords =
       Array.isArray(records) &&
       records.length > 0 &&
@@ -1163,15 +1165,67 @@ export async function seedTenantTables(
       records[0] !== null
         ? records
         : null;
+    const ids = manualRecords ? [] : Array.isArray(records) ? records : [];
+
+    processedTables.push({
+      tableName: table_name,
+      tableSummary,
+      columns,
+      otherCols,
+      pkCols,
+      manualRecords,
+      ids,
+      existingCount,
+    });
+  }
+
+  let backupMetadata = null;
+  const backupRequestedBy =
+    backupOptions?.requestedBy !== undefined && backupOptions?.requestedBy !== null
+      ? backupOptions.requestedBy
+      : createdBy ?? null;
+  const shouldBackup =
+    overwrite && processedTables.some((info) => Number(info.existingCount) > 0);
+  if (shouldBackup) {
+    backupMetadata = await createSeedBackupForCompany(companyId, processedTables, {
+      backupName: backupOptions?.backupName ?? '',
+      originalBackupName:
+        backupOptions?.originalBackupName ?? backupOptions?.backupName ?? '',
+      requestedBy: backupRequestedBy,
+    });
+  }
+
+  for (const info of processedTables) {
+    const {
+      tableName,
+      tableSummary,
+      columns,
+      otherCols,
+      pkCols,
+      manualRecords,
+      ids,
+      existingCount,
+    } = info;
+
+    if (existingCount > 0) {
+      await pool.query('DELETE FROM ?? WHERE company_id = ?', [
+        tableName,
+        companyId,
+      ]);
+    }
 
     if (manualRecords) {
+      const insertedIds = [];
       for (const row of manualRecords) {
         const rowCols = Object.keys(row).filter((c) => c !== 'company_id');
-        await ensureValidColumns(table_name, columns, rowCols);
+        await ensureValidColumns(tableName, columns, rowCols);
         const colNames = ['company_id', ...rowCols];
         const colsClause = colNames.map((c) => `\`${c}\``).join(', ');
         const placeholders = colNames.map(() => '?').join(', ');
-        const params = [table_name, ...colNames.map((c) => (c === 'company_id' ? companyId : row[c]))];
+        const params = [
+          tableName,
+          ...colNames.map((c) => (c === 'company_id' ? companyId : row[c])),
+        ];
         const [result] = await pool.query(
           `INSERT INTO ?? (${colsClause}) VALUES (${placeholders})`,
           params,
@@ -1213,7 +1267,7 @@ export async function seedTenantTables(
       .map((c) => `\`${c}\``)
       .join(', ');
     const selectParts = ['? AS company_id'];
-    const params = [table_name, companyId];
+    const params = [tableName, companyId];
     for (const col of otherCols) {
       if (col === 'created_by') {
         selectParts.push('?');
@@ -1230,13 +1284,13 @@ export async function seedTenantTables(
     const selectClause = selectParts.join(', ');
     let sql =
       `INSERT INTO ?? (${colsClause}) SELECT ${selectClause} FROM ?? WHERE company_id = ${GLOBAL_COMPANY_ID}`;
-    params.push(table_name);
+    params.push(tableName);
 
-    const ids = Array.isArray(records) ? records : [];
-    if (ids.length > 0 && pkCols.length === 1) {
-      const placeholders = ids.map(() => '?').join(', ');
+    const idList = Array.isArray(ids) ? ids : [];
+    if (idList.length > 0 && pkCols.length === 1) {
+      const placeholders = idList.map(() => '?').join(', ');
       sql += ` AND \`${pkCols[0]}\` IN (${placeholders})`;
-      params.push(...ids);
+      params.push(...idList);
     }
 
     const [result] = await pool.query(sql, params);
@@ -1244,8 +1298,8 @@ export async function seedTenantTables(
     if (Number.isFinite(inserted)) {
       tableSummary.count += inserted;
     }
-    if (ids.length > 0) {
-      tableSummary.ids = [...ids];
+    if (idList.length > 0) {
+      tableSummary.ids = [...idList];
     }
   }
 
@@ -1258,10 +1312,10 @@ export async function seedTenantTables(
     [companyId, createdBy],
   );
 
-  return summary;
+  return { summary, backup: backupMetadata };
 }
 
-export async function seedDefaultsForSeedTables(userId) {
+export async function seedDefaultsForSeedTables(userId, { preview = false } = {}) {
   const [rows] = await pool.query(
     `SELECT table_name FROM tenant_tables WHERE seed_on_create = 1`,
   );
@@ -1313,6 +1367,10 @@ export async function seedDefaultsForSeedTables(userId) {
     throw err;
   }
 
+  if (preview) {
+    return { tables: tableInfos.map((info) => info.tableName) };
+  }
+
   for (const { tableName, cols, lowerCols } of tableInfos) {
     if (!lowerCols.includes("company_id")) continue;
     const sets = ["company_id = ?"];
@@ -1352,6 +1410,11 @@ function formatExportTimestamp(date = new Date()) {
 }
 
 const TENANT_DEFAULT_SNAPSHOT_DIR = path.join('defaults');
+const TENANT_SEED_BACKUP_DIR = path.join('defaults', 'seed-backups');
+const TENANT_SEED_BACKUP_CATALOG = path.join(
+  TENANT_SEED_BACKUP_DIR,
+  'index.json',
+);
 
 function sanitizeSnapshotFileName(fileName) {
   if (!fileName || typeof fileName !== 'string') {
@@ -1801,6 +1864,149 @@ export async function exportTenantTableDefaults(versionName, requestedBy = null)
     tables: tableSummaries,
     sql,
   };
+}
+
+async function readSeedBackupCatalog(companyId) {
+  const catalogPathRaw = TENANT_SEED_BACKUP_CATALOG;
+  const catalogPath = tenantConfigPath(catalogPathRaw, companyId);
+  let entries = [];
+  try {
+    const raw = await fs.readFile(catalogPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      entries = parsed;
+    }
+  } catch (err) {
+    if (err?.code !== 'ENOENT') {
+      throw err;
+    }
+  }
+  return { entries, catalogPath };
+}
+
+async function writeSeedBackupCatalog(companyId, entries) {
+  const catalogPathRaw = TENANT_SEED_BACKUP_CATALOG;
+  const catalogPath = tenantConfigPath(catalogPathRaw, companyId);
+  await fs.mkdir(path.dirname(catalogPath), { recursive: true });
+  await fs.writeFile(catalogPath, JSON.stringify(entries, null, 2), 'utf8');
+  return catalogPath;
+}
+
+async function updateSeedBackupCatalog(companyId, entry) {
+  const { entries } = await readSeedBackupCatalog(companyId);
+  const normalized = Array.isArray(entries) ? entries : [];
+  const filtered = normalized.filter((existing) => existing?.fileName !== entry.fileName);
+  filtered.unshift(entry);
+  await writeSeedBackupCatalog(companyId, filtered);
+}
+
+async function createSeedBackupForCompany(companyId, tableInfos, options = {}) {
+  const candidates = (tableInfos || []).filter(
+    (info) => info && Number(info.existingCount) > 0,
+  );
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  const generatedAt = new Date();
+  const safeNameRaw = sanitizeExportName(options.backupName);
+  const sanitizedName = safeNameRaw || 'seed-backup';
+  const fileSuffix = `company-${companyId}`;
+  const baseName = sanitizedName
+    ? `${sanitizedName}_${fileSuffix}`
+    : fileSuffix;
+  const fileName = `${formatExportTimestamp(generatedAt)}_${baseName}.sql`;
+  const relativePathRaw = path.join(TENANT_SEED_BACKUP_DIR, fileName);
+  const relativePath = relativePathRaw.replace(/\\/g, '/');
+  const backupPath = tenantConfigPath(relativePathRaw, companyId);
+  await fs.mkdir(path.dirname(backupPath), { recursive: true });
+
+  const lines = [];
+  lines.push('-- Tenant seed backup');
+  lines.push(`-- Company ID: ${companyId}`);
+  const originalName =
+    typeof options.originalBackupName === 'string' && options.originalBackupName.trim()
+      ? options.originalBackupName.trim()
+      : options.backupName && typeof options.backupName === 'string'
+      ? options.backupName
+      : sanitizedName;
+  lines.push(`-- Backup name: ${originalName}`);
+  lines.push(`-- Generated at: ${generatedAt.toISOString()}`);
+  if (options.requestedBy !== undefined && options.requestedBy !== null) {
+    lines.push(`-- Requested by: ${options.requestedBy}`);
+  }
+  lines.push('');
+  lines.push('START TRANSACTION;');
+
+  let totalRows = 0;
+  const tableSummaries = [];
+
+  for (const info of candidates) {
+    const tableName = info.tableName;
+    lines.push('');
+    lines.push(`-- Table: ${tableName}`);
+    lines.push(
+      `DELETE FROM ${escapeIdentifier(tableName)} WHERE ${escapeIdentifier('company_id')} = ${mysql.escape(
+        companyId,
+      )};`,
+    );
+    let rows;
+    try {
+      [rows] = await pool.query('SELECT * FROM ?? WHERE company_id = ?', [
+        tableName,
+        companyId,
+      ]);
+    } catch (err) {
+      throw new Error(`Failed to load rows for backup from ${tableName}: ${err.message}`);
+    }
+    const normalizedRows = Array.isArray(rows) ? rows : [];
+    const rowCount = normalizedRows.length;
+    tableSummaries.push({ tableName, rows: rowCount });
+    totalRows += rowCount;
+    if (rowCount === 0) {
+      lines.push('-- No rows to backup.');
+      continue;
+    }
+    const columns =
+      Array.isArray(info.columns) && info.columns.length > 0
+        ? info.columns
+        : Object.keys(normalizedRows[0] || {});
+    const columnIdentifiers = columns.map((col) => escapeIdentifier(col));
+    for (const row of normalizedRows) {
+      const values = columns.map((col) =>
+        row && Object.prototype.hasOwnProperty.call(row, col)
+          ? mysql.escape(row[col] === undefined ? null : row[col])
+          : 'NULL',
+      );
+      lines.push(
+        `INSERT INTO ${escapeIdentifier(tableName)} (${columnIdentifiers.join(', ')}) VALUES (${values.join(
+          ', ',
+        )});`,
+      );
+    }
+  }
+
+  lines.push('');
+  lines.push('COMMIT;');
+  const sql = lines.join('\n');
+  await fs.writeFile(backupPath, sql, 'utf8');
+
+  const entry = {
+    fileName,
+    relativePath,
+    generatedAt: generatedAt.toISOString(),
+    versionName: sanitizedName,
+    originalName,
+    requestedBy: options.requestedBy ?? null,
+    tableCount: candidates.length,
+    rowCount: totalRows,
+    companyId: Number(companyId),
+    tables: tableSummaries,
+  };
+
+  await updateSeedBackupCatalog(companyId, entry);
+
+  return entry;
 }
 
 export async function listTenantDefaultSnapshots() {

@@ -409,7 +409,7 @@ test(
       id: 7,
       title: 'Welcome',
     });
-    assert.equal(seedRes.body?.posts?.count, 1);
+    assert.equal(seedRes.body?.summary?.posts?.count, 1);
     assert.ok(queryMock.mock.calls.length > 0);
   },
 );
