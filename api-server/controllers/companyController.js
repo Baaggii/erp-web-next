@@ -110,7 +110,7 @@ export async function deleteCompanyHandler(req, res, next) {
         backupName: trimmedBackupName,
         originalBackupName:
           typeof backupNameRaw === 'string' ? backupNameRaw : trimmedBackupName,
-        requestedBy: req.user?.empid ?? null,
+        requestedBy: req.user?.id ?? null,
         companyName:
           company.name || company.company_name || company.companyName || '',
       });
@@ -135,10 +135,8 @@ export async function listCompanyBackupsHandler(req, res, next) {
       return res.sendStatus(403);
     }
     const ownedCompanies = await listCompanies(req.user.empid);
-    const backups = await listCompanySeedBackupsForUser(
-      req.user.empid,
-      ownedCompanies,
-    );
+    const userId = req.user?.id;
+    const backups = await listCompanySeedBackupsForUser(userId, ownedCompanies);
     res.json({ backups });
   } catch (err) {
     next(err);
@@ -169,6 +167,7 @@ export async function restoreCompanyBackupHandler(req, res, next) {
     }
 
     const ownedCompanies = await listCompanies(req.user.empid);
+    const userId = req.user?.id;
     const targetCompany = (ownedCompanies || []).find(
       (c) => Number(c.id) === targetId,
     );
@@ -177,7 +176,7 @@ export async function restoreCompanyBackupHandler(req, res, next) {
     }
 
     const accessibleBackups = await listCompanySeedBackupsForUser(
-      req.user.empid,
+      userId,
       ownedCompanies,
     );
     const hasAccess = accessibleBackups.some(
