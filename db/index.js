@@ -1351,6 +1351,282 @@ function formatExportTimestamp(date = new Date()) {
   );
 }
 
+const TENANT_DEFAULT_SNAPSHOT_DIR = path.join('defaults');
+
+function sanitizeSnapshotFileName(fileName) {
+  if (!fileName || typeof fileName !== 'string') {
+    const err = new Error('fileName is required');
+    err.status = 400;
+    throw err;
+  }
+  const trimmed = fileName.trim();
+  if (!trimmed) {
+    const err = new Error('fileName is required');
+    err.status = 400;
+    throw err;
+  }
+  const base = path.basename(trimmed);
+  if (base !== trimmed || base.includes('..')) {
+    const err = new Error('Invalid snapshot name');
+    err.status = 400;
+    throw err;
+  }
+  if (!/\.sql$/i.test(base)) {
+    const err = new Error('Snapshot must be a .sql file');
+    err.status = 400;
+    throw err;
+  }
+  return base;
+}
+
+function stripSnapshotComments(sql) {
+  const lines = sql.split(/\r?\n/);
+  const cleaned = [];
+  let inBlock = false;
+  for (const rawLine of lines) {
+    let line = rawLine;
+    if (inBlock) {
+      const endIdx = line.indexOf('*/');
+      if (endIdx === -1) {
+        continue;
+      }
+      line = line.slice(endIdx + 2);
+      inBlock = false;
+    }
+    while (true) {
+      const startIdx = line.indexOf('/*');
+      if (startIdx === -1) break;
+      const endIdx = line.indexOf('*/', startIdx + 2);
+      if (endIdx === -1) {
+        line = line.slice(0, startIdx);
+        inBlock = true;
+        break;
+      }
+      line = line.slice(0, startIdx) + line.slice(endIdx + 2);
+    }
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (trimmed.startsWith('--') || trimmed.startsWith('#')) continue;
+    cleaned.push(line);
+  }
+  return cleaned.join('\n');
+}
+
+function splitSnapshotStatements(sqlText) {
+  const sanitized = stripSnapshotComments(sqlText);
+  const statements = [];
+  let current = '';
+  let inSingle = false;
+  let inDouble = false;
+  let inBacktick = false;
+  for (let i = 0; i < sanitized.length; i += 1) {
+    const char = sanitized[i];
+    const next = sanitized[i + 1];
+    current += char;
+    if (char === '\\') {
+      if (next !== undefined) {
+        current += next;
+        i += 1;
+      }
+      continue;
+    }
+    if (!inDouble && !inBacktick && char === "'") {
+      inSingle = !inSingle;
+      continue;
+    }
+    if (!inSingle && !inBacktick && char === '"') {
+      inDouble = !inDouble;
+      continue;
+    }
+    if (!inSingle && !inDouble && char === '`') {
+      inBacktick = !inBacktick;
+      continue;
+    }
+    if (char === ';' && !inSingle && !inDouble && !inBacktick) {
+      const trimmed = current.slice(0, -1).trim();
+      if (trimmed) statements.push(trimmed);
+      current = '';
+    }
+  }
+  const trailing = current.trim();
+  if (trailing) statements.push(trailing);
+  return statements;
+}
+
+function splitTopLevel(str, delimiter = ',') {
+  const parts = [];
+  let current = '';
+  let depth = 0;
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < str.length; i += 1) {
+    const char = str[i];
+    const next = str[i + 1];
+    if (char === '\\') {
+      current += char;
+      if (next !== undefined) {
+        current += next;
+        i += 1;
+      }
+      continue;
+    }
+    if (!inDouble && char === "'") {
+      inSingle = !inSingle;
+      current += char;
+      continue;
+    }
+    if (!inSingle && char === '"') {
+      inDouble = !inDouble;
+      current += char;
+      continue;
+    }
+    if (!inSingle && !inDouble) {
+      if (char === '(') {
+        depth += 1;
+        current += char;
+        continue;
+      }
+      if (char === ')') {
+        depth = Math.max(0, depth - 1);
+        current += char;
+        continue;
+      }
+      if (char === delimiter && depth === 0) {
+        parts.push(current.trim());
+        current = '';
+        continue;
+      }
+    }
+    current += char;
+  }
+  if (current.trim()) {
+    parts.push(current.trim());
+  }
+  return parts;
+}
+
+function parseTenantSnapshotSql(sql) {
+  const lines = sql.split(/\r?\n/);
+  let versionName = null;
+  let generatedAtRaw = null;
+  let requestedBy = null;
+  const tables = new Map();
+
+  const ensureTable = (name) => {
+    if (!tables.has(name)) {
+      tables.set(name, {
+        tableName: name,
+        deleteStatements: 0,
+        insertStatements: 0,
+      });
+    }
+    return tables.get(name);
+  };
+
+  let currentTable = null;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const versionMatch = line.match(/^--\s*Version:\s*(.+)$/i);
+    if (versionMatch) {
+      versionName = versionMatch[1].trim() || versionName;
+      continue;
+    }
+    const generatedMatch = line.match(/^--\s*Generated at:\s*(.+)$/i);
+    if (generatedMatch) {
+      generatedAtRaw = generatedMatch[1].trim() || generatedAtRaw;
+      continue;
+    }
+    const requestedMatch = line.match(/^--\s*Requested by:\s*(.+)$/i);
+    if (requestedMatch) {
+      requestedBy = requestedMatch[1].trim() || requestedBy;
+      continue;
+    }
+    const tableMatch = line.match(/^--\s*Table:\s*(.+)$/i);
+    if (tableMatch) {
+      const tableName = tableMatch[1].trim();
+      currentTable = tableName || null;
+      if (currentTable) ensureTable(currentTable);
+      continue;
+    }
+    if (line.startsWith('--') || line.startsWith('#')) {
+      continue;
+    }
+    const deleteMatch = line.match(/^DELETE\s+FROM\s+`?([A-Za-z0-9_]+)`?/i);
+    if (deleteMatch) {
+      const tableName = deleteMatch[1];
+      currentTable = tableName;
+      ensureTable(tableName).deleteStatements += 1;
+      continue;
+    }
+    const insertMatch = line.match(/^INSERT\s+INTO\s+`?([A-Za-z0-9_]+)`?/i);
+    if (insertMatch) {
+      const tableName = insertMatch[1];
+      currentTable = tableName;
+      ensureTable(tableName).insertStatements += 1;
+      continue;
+    }
+    if (currentTable) {
+      ensureTable(currentTable);
+    }
+  }
+
+  let generatedAt = null;
+  if (generatedAtRaw) {
+    const parsed = new Date(generatedAtRaw);
+    if (!Number.isNaN(parsed.getTime())) {
+      generatedAt = parsed.toISOString();
+    }
+  }
+
+  const tableSummaries = Array.from(tables.values());
+  const rowCount = tableSummaries.reduce(
+    (sum, info) => sum + (Number(info.insertStatements) || 0),
+    0,
+  );
+
+  return {
+    versionName,
+    generatedAt,
+    generatedAtRaw,
+    requestedBy,
+    tableCount: tableSummaries.length,
+    rowCount,
+    tables: tableSummaries,
+  };
+}
+
+async function readTenantSnapshotFile(fileName, { includeSql = false } = {}) {
+  const safeName = sanitizeSnapshotFileName(fileName);
+  const relativePathRaw = path.join(TENANT_DEFAULT_SNAPSHOT_DIR, safeName);
+  const relativePath = relativePathRaw.replace(/\\/g, '/');
+  const absolutePath = tenantConfigPath(relativePathRaw);
+  let stats;
+  try {
+    stats = await fs.stat(absolutePath);
+  } catch (err) {
+    if (err?.code === 'ENOENT') {
+      const notFound = new Error('Snapshot not found');
+      notFound.status = 404;
+      throw notFound;
+    }
+    throw err;
+  }
+  const sql = await fs.readFile(absolutePath, 'utf8');
+  const metadata = parseTenantSnapshotSql(sql);
+  return {
+    fileName: safeName,
+    relativePath,
+    absolutePath,
+    fileSize: stats.size,
+    modifiedAt: stats.mtime ? stats.mtime.toISOString() : null,
+    createdAt: stats.birthtime ? stats.birthtime.toISOString() : null,
+    ...metadata,
+    sql: includeSql ? sql : undefined,
+  };
+}
+
 export async function exportTenantTableDefaults(versionName, requestedBy = null) {
   const safeName = sanitizeExportName(versionName);
   if (!safeName) {
@@ -1524,6 +1800,235 @@ export async function exportTenantTableDefaults(versionName, requestedBy = null)
     requestedBy: requestedBy ?? null,
     tables: tableSummaries,
     sql,
+  };
+}
+
+export async function listTenantDefaultSnapshots() {
+  const dirPath = tenantConfigPath(TENANT_DEFAULT_SNAPSHOT_DIR);
+  let entries;
+  try {
+    entries = await fs.readdir(dirPath, { withFileTypes: true });
+  } catch (err) {
+    if (err?.code === 'ENOENT') {
+      return [];
+    }
+    throw err;
+  }
+  const snapshots = [];
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    if (!/\.sql$/i.test(entry.name)) continue;
+    try {
+      const info = await readTenantSnapshotFile(entry.name, { includeSql: false });
+      delete info.sql;
+      snapshots.push(info);
+    } catch (err) {
+      if (err?.status === 404) continue;
+      throw err;
+    }
+  }
+  snapshots.sort((a, b) => {
+    const dateA = a.generatedAt || a.modifiedAt || '';
+    const dateB = b.generatedAt || b.modifiedAt || '';
+    if (dateA && dateB) {
+      return dateA < dateB ? 1 : dateA > dateB ? -1 : 0;
+    }
+    if (dateA) return -1;
+    if (dateB) return 1;
+    return a.fileName.localeCompare(b.fileName);
+  });
+  return snapshots;
+}
+
+function ensureAllowedTable(tableName, allowedSet) {
+  if (!allowedSet.has(tableName.toLowerCase())) {
+    const err = new Error(
+      `Snapshot references table ${tableName} that is not registered as shared or seed-enabled.`,
+    );
+    err.status = 400;
+    throw err;
+  }
+}
+
+function ensureCompanyIdIsZero(columns, values) {
+  const normalizedColumns = columns.map((col) => col.replace(/`/g, '').trim().toLowerCase());
+  const idx = normalizedColumns.indexOf('company_id');
+  if (idx === -1) {
+    const err = new Error('Snapshot insert is missing company_id column');
+    err.status = 400;
+    throw err;
+  }
+  const rawValue = values[idx];
+  if (rawValue === undefined) {
+    const err = new Error('Snapshot insert is missing company_id value');
+    err.status = 400;
+    throw err;
+  }
+  const trimmed = rawValue.trim();
+  let normalized = trimmed;
+  if (/^['"].*['"]$/.test(trimmed)) {
+    normalized = trimmed.slice(1, -1);
+  }
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed) || parsed !== 0) {
+    const err = new Error('Snapshot insert must target company_id 0');
+    err.status = 400;
+    throw err;
+  }
+}
+
+export async function restoreTenantDefaultSnapshot(fileName, restoredBy = null) {
+  const snapshot = await readTenantSnapshotFile(fileName, { includeSql: true });
+  const sql = snapshot.sql || '';
+  const statements = splitSnapshotStatements(sql);
+
+  let tableRows;
+  try {
+    [tableRows] = await pool.query(
+      `SELECT table_name
+         FROM tenant_tables
+        WHERE is_shared = 1 OR seed_on_create = 1`,
+    );
+  } catch (err) {
+    if (err?.code === 'ER_NO_SUCH_TABLE') {
+      const error = new Error('Tenant tables registry is unavailable');
+      error.status = 400;
+      throw error;
+    }
+    throw err;
+  }
+
+  const allowedTables = new Set(
+    (tableRows || [])
+      .map((row) => row?.table_name)
+      .filter((name) => typeof name === 'string' && name.trim())
+      .map((name) => name.toLowerCase()),
+  );
+
+  if (allowedTables.size === 0) {
+    const err = new Error('No shared or seed-enabled tables are registered for recovery.');
+    err.status = 400;
+    throw err;
+  }
+
+  const summaryByTable = new Map();
+  const ensureSummary = (name) => {
+    if (!summaryByTable.has(name)) {
+      summaryByTable.set(name, {
+        tableName: name,
+        deletedRows: 0,
+        insertedRows: 0,
+      });
+    }
+    return summaryByTable.get(name);
+  };
+
+  let statementsExecuted = 0;
+  let totalDeleted = 0;
+  let totalInserted = 0;
+  const referencedTables = new Set();
+
+  for (const info of snapshot.tables || []) {
+    referencedTables.add(info.tableName.toLowerCase());
+  }
+
+  for (const tableName of referencedTables) {
+    ensureAllowedTable(tableName, allowedTables);
+  }
+
+  const conn = await pool.getConnection();
+  const startedAt = new Date();
+  try {
+    await conn.beginTransaction();
+    for (const statement of statements) {
+      const trimmed = statement.trim();
+      if (!trimmed) continue;
+      if (/^START\s+TRANSACTION$/i.test(trimmed)) {
+        continue;
+      }
+      if (/^COMMIT$/i.test(trimmed)) {
+        continue;
+      }
+      if (/^ROLLBACK$/i.test(trimmed)) {
+        continue;
+      }
+      if (/^SET\s+/i.test(trimmed)) {
+        continue;
+      }
+
+      const deleteMatch = trimmed.match(/^DELETE\s+FROM\s+`?([A-Za-z0-9_]+)`?\s+WHERE\s+(.+)$/i);
+      if (deleteMatch) {
+        const tableName = deleteMatch[1];
+        ensureAllowedTable(tableName, allowedTables);
+        const whereClause = deleteMatch[2].replace(/`/g, '');
+        if (!/company_id\s*=\s*0/i.test(whereClause)) {
+          const err = new Error(
+            `Snapshot delete for ${tableName} must restrict to company_id = 0`,
+          );
+          err.status = 400;
+          throw err;
+        }
+        const [res] = await conn.query(`${trimmed};`);
+        statementsExecuted += 1;
+        const affected = Number(res?.affectedRows) || 0;
+        totalDeleted += affected;
+        ensureSummary(tableName).deletedRows += affected;
+        referencedTables.add(tableName.toLowerCase());
+        continue;
+      }
+
+      const insertMatch = trimmed.match(
+        /^INSERT\s+INTO\s+`?([A-Za-z0-9_]+)`?\s*\(([^)]+)\)\s*VALUES\s*\((.*)\)$/i,
+      );
+      if (insertMatch) {
+        const tableName = insertMatch[1];
+        ensureAllowedTable(tableName, allowedTables);
+        const columnList = splitTopLevel(insertMatch[2]);
+        const valuesList = splitTopLevel(insertMatch[3]);
+        ensureCompanyIdIsZero(columnList, valuesList);
+        const [res] = await conn.query(`${trimmed};`);
+        statementsExecuted += 1;
+        const affected = Number(res?.affectedRows) || 0;
+        totalInserted += affected;
+        ensureSummary(tableName).insertedRows += affected;
+        referencedTables.add(tableName.toLowerCase());
+        continue;
+      }
+
+      const err = new Error(`Unsupported statement in snapshot: ${trimmed.slice(0, 60)}...`);
+      err.status = 400;
+      throw err;
+    }
+    await conn.commit();
+  } catch (err) {
+    try {
+      await conn.rollback();
+    } catch {}
+    throw err;
+  } finally {
+    conn.release();
+  }
+  const completedAt = new Date();
+
+  const tables = Array.from(summaryByTable.values()).sort((a, b) =>
+    a.tableName.localeCompare(b.tableName),
+  );
+
+  return {
+    fileName: snapshot.fileName,
+    relativePath: snapshot.relativePath,
+    versionName: snapshot.versionName,
+    generatedAt: snapshot.generatedAt ?? snapshot.generatedAtRaw ?? null,
+    requestedBy: snapshot.requestedBy ?? null,
+    tableCount: tables.length,
+    expectedRowCount: snapshot.rowCount ?? null,
+    totalDeleted,
+    totalInserted,
+    statementsExecuted,
+    startedAt: startedAt.toISOString(),
+    completedAt: completedAt.toISOString(),
+    restoredBy: restoredBy ?? null,
+    tables,
   };
 }
 

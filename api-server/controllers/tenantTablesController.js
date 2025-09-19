@@ -12,6 +12,8 @@ import {
   updateTenantDefaultRow as updateTenantDefaultRowDb,
   deleteTenantDefaultRow,
   exportTenantTableDefaults,
+  listTenantDefaultSnapshots,
+  restoreTenantDefaultSnapshot,
 } from '../../db/index.js';
 import { hasAction } from '../utils/hasAction.js';
 import { GLOBAL_COMPANY_ID } from '../../config/0/constants.js';
@@ -230,6 +232,34 @@ export async function exportDefaults(req, res, next) {
     const metadata = await exportTenantTableDefaults(trimmed, req.user?.empid ?? null);
     res.json(metadata);
   } catch (err) {
+    next(err);
+  }
+}
+
+export async function listDefaultSnapshots(req, res, next) {
+  try {
+    if (!(await ensureAdmin(req))) return res.sendStatus(403);
+    const snapshots = await listTenantDefaultSnapshots();
+    res.json({ snapshots });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function restoreDefaults(req, res, next) {
+  try {
+    if (!(await ensureAdmin(req))) return res.sendStatus(403);
+    const fileNameRaw = req.body?.fileName;
+    if (!fileNameRaw || typeof fileNameRaw !== 'string' || !fileNameRaw.trim()) {
+      return res.status(400).json({ message: 'fileName is required' });
+    }
+    const summary = await restoreTenantDefaultSnapshot(fileNameRaw, req.user?.empid ?? null);
+    res.json(summary);
+  } catch (err) {
+    if (err?.status) {
+      res.status(err.status).json({ message: err.message });
+      return;
+    }
     next(err);
   }
 }
