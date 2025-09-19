@@ -4,9 +4,53 @@ import { useToast } from '../context/ToastContext.jsx';
 import { useModules } from '../hooks/useModules.js';
 import modulePath from '../utils/modulePath.js';
 
+function buildBackupSuggestion(prefix) {
+  const base = prefix && typeof prefix === 'string' ? prefix.trim() : 'Company backup';
+  const pad = (value) => String(value).padStart(2, '0');
+  const now = new Date();
+  return `${base} ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(
+    now.getDate(),
+  )} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+}
+
+function getCompanyLabel(company) {
+  if (!company || typeof company !== 'object') return 'Company';
+  return (
+    company.name ||
+    company.company_name ||
+    company.companyName ||
+    (company.id != null ? `Company ${company.id}` : 'Company')
+  );
+}
+
+function getBackupDisplayName(backup) {
+  if (!backup || typeof backup !== 'object') return '';
+  if (backup.originalName && typeof backup.originalName === 'string' && backup.originalName.trim()) {
+    return backup.originalName.trim();
+  }
+  if (backup.versionName && typeof backup.versionName === 'string' && backup.versionName.trim()) {
+    return backup.versionName.trim();
+  }
+  if (backup.fileName && typeof backup.fileName === 'string' && backup.fileName.trim()) {
+    return backup.fileName.trim();
+  }
+  return 'Unnamed backup';
+}
+
+function formatBackupTimestamp(value) {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString();
+}
+
 export default function CompaniesPage() {
   const [companies, setCompanies] = useState([]);
   const [filter, setFilter] = useState('');
+  const [backups, setBackups] = useState([]);
+  const [backupsLoading, setBackupsLoading] = useState(false);
+  const [backupsError, setBackupsError] = useState('');
+  const [backupTargets, setBackupTargets] = useState({});
   const navigate = useNavigate();
   const { addToast } = useToast();
   const modules = useModules();
@@ -28,8 +72,28 @@ export default function CompaniesPage() {
       .catch((err) => console.error('Error fetching companies:', err));
   }
 
+  function loadBackups() {
+    setBackupsLoading(true);
+    setBackupsError('');
+    fetch('/api/companies/backups', { credentials: 'include' })
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to fetch backups');
+        return res.json();
+      })
+      .then((data) => {
+        const entries = Array.isArray(data?.backups) ? data.backups : [];
+        setBackups(entries);
+      })
+      .catch((err) => {
+        console.error('Error fetching company backups:', err);
+        setBackupsError('Failed to load backups');
+      })
+      .finally(() => setBackupsLoading(false));
+  }
+
   useEffect(() => {
     loadCompanies();
+    loadBackups();
   }, []);
 
   async function handleAdd() {
@@ -140,24 +204,101 @@ export default function CompaniesPage() {
     loadCompanies();
   }
 
-  async function handleDelete(id) {
-    if (!window.confirm('Are you sure you want to delete this company?')) return;
+  async function handleDelete(company) {
+    if (!company || company.id == null) return;
+    const id = company.id;
+    const label = getCompanyLabel(company);
+    if (
+      !window.confirm(
+        `Are you sure you want to delete "${label}" (ID: ${id})?\nYou will be able to create an optional backup in the next step.`,
+      )
+    )
+      return;
+    const suggestion = buildBackupSuggestion(`${label} backup`);
+    const backupInput = window.prompt(
+      'Enter a backup name to snapshot the tenant configuration before deleting. Leave blank to skip backup.',
+      suggestion,
+    );
+    if (backupInput === null) return;
+    const trimmedBackupName = backupInput.trim();
+    const createBackup = trimmedBackupName !== '';
+    const payload = createBackup
+      ? { createBackup: true, backupName: trimmedBackupName }
+      : { createBackup: false };
     const res = await fetch('/api/companies/' + id, {
       method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      skipErrorToast: true
+      skipErrorToast: true,
+      body: JSON.stringify(payload)
     });
-    await res.json().catch(() => ({}));
+    const data = await res.json().catch(() => ({}));
     if (res.status === 403) {
       addToast('You need System Settings permission to delete a company.', 'error');
       return;
     }
     if (!res.ok) {
-      addToast('Failed to delete company', 'error');
+      addToast(data?.message || 'Failed to delete company', 'error');
       return;
     }
     loadCompanies();
-    addToast('Company deleted', 'success');
+    loadBackups();
+    if (createBackup && !data?.backup) {
+      addToast('Company deleted. No tenant-specific data required backup.', 'info');
+    } else if (data?.backup) {
+      const displayName = getBackupDisplayName(data.backup);
+      addToast(
+        displayName
+          ? `Company deleted. Backup saved as ${displayName}.`
+          : 'Company deleted. Backup saved.',
+        'success'
+      );
+    } else {
+      addToast('Company deleted', 'success');
+    }
+  }
+
+  async function handleRestoreBackup(backup) {
+    if (!backup || !backup.fileName) return;
+    const selected = backupTargets[backup.fileName];
+    if (!selected) {
+      addToast('Select a target company to restore into.', 'warning');
+      return;
+    }
+    const targetId = Number(selected);
+    if (!Number.isFinite(targetId) || targetId <= 0) {
+      addToast('Invalid target company selection.', 'error');
+      return;
+    }
+    const res = await fetch('/api/companies/backups/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      skipErrorToast: true,
+      body: JSON.stringify({
+        sourceCompanyId: backup.companyId,
+        targetCompanyId: targetId,
+        fileName: backup.fileName
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 403) {
+      addToast('You need System Settings permission to restore a backup.', 'error');
+      return;
+    }
+    if (!res.ok) {
+      addToast(data?.message || 'Failed to restore backup', 'error');
+      return;
+    }
+    setBackupTargets((prev) => ({ ...prev, [backup.fileName]: '' }));
+    loadBackups();
+    const restoredTables = Array.isArray(data?.summary?.tables)
+      ? data.summary.tables.length
+      : data?.summary?.tableCount;
+    const restoredMessage = Number.isFinite(restoredTables) && restoredTables > 0
+      ? `Restored ${restoredTables} tables.`
+      : 'Restore completed.';
+    addToast(restoredMessage, 'success');
   }
 
   const visibleCompanies = companies.filter((c) =>
@@ -242,7 +383,7 @@ export default function CompaniesPage() {
                     >
                       Edit
                     </button>
-                    <button onClick={() => handleDelete(c.id)}>Delete</button>
+                    <button onClick={() => handleDelete(c)}>Delete</button>
                   </td>
                 </tr>
               ))}
@@ -250,6 +391,88 @@ export default function CompaniesPage() {
           </table>
         </div>
       )}
+      <div style={{ marginTop: '1.5rem' }}>
+        <h3>Company backups</h3>
+        {backupsLoading ? (
+          <p>Loading backups…</p>
+        ) : backupsError ? (
+          <p style={{ color: '#b91c1c' }}>{backupsError}</p>
+        ) : backups.length === 0 ? (
+          <p>No backups available. Delete a company with a backup to capture tenant data snapshots.</p>
+        ) : (
+          <div className="table-container overflow-x-auto" style={{ maxHeight: '50vh', marginTop: '0.5rem' }}>
+            <table
+              style={{
+                width: '100%',
+                borderCollapse: 'collapse'
+              }}
+            >
+              <thead>
+                <tr style={{ backgroundColor: '#e5e7eb' }}>
+                  <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Source company</th>
+                  <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Backup</th>
+                  <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Generated</th>
+                  <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Restore into</th>
+                </tr>
+              </thead>
+              <tbody>
+                {backups.map((backup) => {
+                  const displayName = getBackupDisplayName(backup);
+                  const sourceLabel =
+                    backup.companyName && typeof backup.companyName === 'string' && backup.companyName.trim()
+                      ? backup.companyName.trim()
+                      : backup.companyId != null
+                      ? `Company ${backup.companyId}`
+                      : 'Company';
+                  const selectedTarget = backupTargets[backup.fileName] || '';
+                  return (
+                    <tr key={`${backup.companyId}-${backup.fileName}`}>
+                      <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                        {sourceLabel}
+                        {backup.companyId != null ? ` (ID: ${backup.companyId})` : ''}
+                      </td>
+                      <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                        <div>{displayName}</div>
+                        {backup.fileName ? (
+                          <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>{backup.fileName}</div>
+                        ) : null}
+                      </td>
+                      <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                        {formatBackupTimestamp(
+                          backup.generatedAt || backup.modifiedAt || backup.createdAt,
+                        )}
+                      </td>
+                      <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                          <select
+                            value={selectedTarget}
+                            onChange={(e) =>
+                              setBackupTargets((prev) => ({
+                                ...prev,
+                                [backup.fileName]: e.target.value
+                              }))
+                            }
+                          >
+                            <option value="">Select target company</option>
+                            {companies.map((company) => (
+                              <option key={company.id ?? company.name} value={company.id}>
+                                {getCompanyLabel(company)} (ID: {company.id})
+                              </option>
+                            ))}
+                          </select>
+                          <button onClick={() => handleRestoreBackup(backup)}>
+                            Restore
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
