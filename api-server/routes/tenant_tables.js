@@ -1,12 +1,10 @@
 import express from 'express';
 import { requireAuth } from '../middlewares/auth.js';
 import * as tenantTablesController from '../controllers/tenantTablesController.js';
-import { registerTenantTablesRoutes } from './tenantTablesRouterFactory.js';
+import { createTenantTablesRouter } from './tenantTablesRouterFactory.js';
 
-const router = express.Router();
-
-registerTenantTablesRoutes({
-  router,
+const router = createTenantTablesRouter({
+  createRouter: () => express.Router(),
   requireAuth,
   controller: tenantTablesController,
 });

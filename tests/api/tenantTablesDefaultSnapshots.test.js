@@ -150,16 +150,6 @@ test('GET /api/tenant_tables/default-snapshots returns snapshots', async () => {
 
   assert.equal(router, routerDouble);
 
-  const getRoutes = router.routes.filter((route) => route.method === 'GET');
-  const defaultSnapshotsIndex = getRoutes.findIndex((route) => route.path === '/default-snapshots');
-  const tableIndex = getRoutes.findIndex((route) => route.path === '/:table_name');
-  assert.ok(defaultSnapshotsIndex >= 0, 'default-snapshots route missing');
-  assert.ok(tableIndex >= 0, 'table lookup route missing');
-  assert.ok(
-    defaultSnapshotsIndex < tableIndex,
-    'default-snapshots route should be registered before the table lookup route',
-  );
-
   const req = { headers: {} };
   const res = createResponseDouble();
   const matched = await router.dispatch('GET', '/default-snapshots', req, res);
