@@ -1362,7 +1362,7 @@ export async function exportTenantTableDefaults(versionName, requestedBy = null)
   const generatedAt = new Date();
   const timestampPart = formatExportTimestamp(generatedAt);
   const fileName = `${timestampPart}_${safeName}.sql`;
-  const relativePathRaw = path.join('tenant_table_exports', fileName);
+  const relativePathRaw = path.join('defaults', fileName);
   const relativePath = relativePathRaw.replace(/\\/g, '/');
   const filePath = tenantConfigPath(relativePathRaw);
   await fs.mkdir(path.dirname(filePath), { recursive: true });

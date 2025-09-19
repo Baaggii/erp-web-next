@@ -52,6 +52,7 @@ await test('exportTenantTableDefaults writes SQL snapshot for shared and seed ta
     const result = await db.exportTenantTableDefaults('Baseline Defaults', 77);
     assert.equal(result.versionName, 'baseline-defaults');
     assert.match(result.fileName, /baseline-defaults\.sql$/);
+    assert.equal(result.relativePath, `defaults/${result.fileName}`);
     assert.equal(result.tableCount, 2);
     assert.equal(result.rowCount, 3);
     exportPath = path.join(process.cwd(), 'config', '0', result.relativePath);
