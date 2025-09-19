@@ -116,7 +116,13 @@ export async function deleteCompanyHandler(req, res, next) {
       });
     }
 
-    await deleteTableRowCascade('companies', companyId, companyId);
+    const tenantCompanyId = company.company_id;
+    const cascadeIdentifier = `${tenantCompanyId}-${company.id}`;
+    await deleteTableRowCascade(
+      'companies',
+      cascadeIdentifier,
+      tenantCompanyId,
+    );
     res.status(200).json({
       backup: backupMetadata || null,
       company: {
