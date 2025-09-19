@@ -20,12 +20,8 @@ export async function listCompaniesHandler(req, res, next) {
 export async function createCompanyHandler(req, res, next) {
   try {
     res.locals.logTable = 'companies';
-    const {
-      seedTables = null,
-      seedRecords = null,
-      overwrite = false,
-      ...company
-    } = req.body || {};
+    const body = req.body || {};
+    const { seedTables, seedRecords, overwrite = false, ...company } = body;
     company.created_by = req.user.empid;
     const session =
       req.session ||
@@ -36,14 +32,19 @@ export async function createCompanyHandler(req, res, next) {
         return res.sendStatus(403);
       }
     }
-    const result = await insertTableRow(
-      'companies',
-      company,
-      seedTables,
-      seedRecords,
-      overwrite,
-      req.user.empid,
-    );
+    const shouldSeed =
+      Object.prototype.hasOwnProperty.call(body, 'seedTables') ||
+      Object.prototype.hasOwnProperty.call(body, 'seedRecords');
+    const result = shouldSeed
+      ? await insertTableRow(
+          'companies',
+          company,
+          seedTables,
+          seedRecords,
+          overwrite,
+          req.user.empid,
+        )
+      : await insertTableRow('companies', company);
     res.locals.insertId = result?.id;
     res.status(201).json(result);
   } catch (err) {

@@ -57,8 +57,7 @@ test('allows POST /api/companies when user level has system_settings', async () 
       name: 'NewCo',
       Gov_Registration_number: '123',
       Address: 'Addr',
-      Telephone: '555',
-      seedTables: []
+      Telephone: '555'
     },
     user: { empid: 1, companyId: 1, userLevel: 2 },
     session: { permissions: { system_settings: false } },
@@ -83,8 +82,7 @@ test('returns 403 for POST /api/companies when user level lacks system_settings'
       name: 'NewCo',
       Gov_Registration_number: '123',
       Address: 'Addr',
-      Telephone: '555',
-      seedTables: []
+      Telephone: '555'
     },
     user: { empid: 1, companyId: 1, userLevel: 2 },
     session: { permissions: { system_settings: false } },
