@@ -718,6 +718,60 @@ export default function TenantTablesRegistry() {
     });
   }
 
+  function handleSelectAllRows(table) {
+    setTableRecords((prev) => {
+      const info = prev[table];
+      if (!info) return prev;
+      const rows = Array.isArray(info.rows) ? info.rows : [];
+      const editable = info.editable || { draftsById: {}, newRows: [] };
+      const newRows = Array.isArray(editable.newRows)
+        ? editable.newRows.map((row) => ({
+            ...row,
+            selected: rowHasValues(row.values),
+          }))
+        : [];
+      const selectedRowIds = rows
+        .map((row) => row?.id)
+        .filter((id) => id !== undefined);
+      return {
+        ...prev,
+        [table]: {
+          ...info,
+          selected: new Set(selectedRowIds),
+          editable: {
+            draftsById: { ...(editable.draftsById || {}) },
+            newRows,
+          },
+        },
+      };
+    });
+  }
+
+  function handleDeselectAllRows(table) {
+    setTableRecords((prev) => {
+      const info = prev[table];
+      if (!info) return prev;
+      const editable = info.editable || { draftsById: {}, newRows: [] };
+      const newRows = Array.isArray(editable.newRows)
+        ? editable.newRows.map((row) => ({
+            ...row,
+            selected: false,
+          }))
+        : [];
+      return {
+        ...prev,
+        [table]: {
+          ...info,
+          selected: new Set(),
+          editable: {
+            draftsById: { ...(editable.draftsById || {}) },
+            newRows,
+          },
+        },
+      };
+    });
+  }
+
   function handleDraftChange(table, id, field, value) {
     setTableRecords((prev) => {
       const info = prev[table];
@@ -1480,17 +1534,51 @@ export default function TenantTablesRegistry() {
                     <div style={{ marginLeft: '1rem', marginTop: '0.25rem' }}>
                       {(() => {
                         const info = tableRecords[table.tableName];
-                        if (info?.loading) {
-                          return <p>{t('loading', 'Loading...')}</p>;
-                        }
-                        if (!info?.columns || !info?.rows) {
+                        const bulkDisabled = !info || !!info?.loading;
+                        const bulkButtons = (
+                          <div
+                            style={{
+                              marginBottom: '0.5rem',
+                              display: 'flex',
+                              gap: '0.5rem',
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => handleSelectAllRows(table.tableName)}
+                              disabled={bulkDisabled}
+                            >
+                              {t('selectAll', 'Select all')}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeselectAllRows(table.tableName)}
+                              disabled={bulkDisabled}
+                            >
+                              {t('deselectAll', 'Deselect all')}
+                            </button>
+                          </div>
+                        );
+                        if (!info || info.loading) {
                           return (
-                            <p>
-                              {t(
-                                'loadFailed',
-                                `Failed to load records for ${table.tableName}`,
-                              )}
-                            </p>
+                            <div>
+                              {bulkButtons}
+                              <p>{t('loading', 'Loading...')}</p>
+                            </div>
+                          );
+                        }
+                        if (!info.columns || !info.rows) {
+                          return (
+                            <div>
+                              {bulkButtons}
+                              <p>
+                                {t(
+                                  'loadFailed',
+                                  `Failed to load records for ${table.tableName}`,
+                                )}
+                              </p>
+                            </div>
                           );
                         }
                         const columnNames = info.columns || [];
@@ -1498,27 +1586,33 @@ export default function TenantTablesRegistry() {
                           (col) => col !== 'company_id',
                         );
                         const draftsById = info.editable?.draftsById || {};
-                        const newRows = info.editable?.newRows || [];
-                        const rows = info.rows || [];
+                        const newRows = Array.isArray(info.editable?.newRows)
+                          ? info.editable.newRows
+                          : [];
+                        const rows = Array.isArray(info.rows) ? info.rows : [];
                         const hasRows = rows.length > 0;
                         const hasCustomRows = newRows.length > 0;
                         if (!hasRows && !hasCustomRows) {
                           return (
                             <div>
-                              <p>{t('noRecords', 'No records')}</p>
-                              <div style={{ marginTop: '0.5rem' }}>
-                                <button
-                                  type="button"
-                                  onClick={() => handleAddCustomRow(table.tableName)}
-                                >
-                                  {t('addCustomRow', 'Add custom row')}
-                                </button>
+                              {bulkButtons}
+                              <div>
+                                <p>{t('noRecords', 'No records')}</p>
+                                <div style={{ marginTop: '0.5rem' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddCustomRow(table.tableName)}
+                                  >
+                                    {t('addCustomRow', 'Add custom row')}
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           );
                         }
                         return (
                           <div>
+                            {bulkButtons}
                             <table style={{ borderCollapse: 'collapse', width: '100%' }}>
                               <thead>
                                 <tr>
