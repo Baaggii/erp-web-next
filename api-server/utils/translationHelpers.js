@@ -8,7 +8,25 @@ try {
   parser = parserMod.default || parserMod;
   try {
     const traverseModule = await import('@babel/traverse');
-    traverse = traverseModule.default;
+    const candidates = [
+      traverseModule?.default,
+      traverseModule?.default?.default,
+      traverseModule?.traverse,
+      traverseModule,
+    ];
+    for (const candidate of candidates) {
+      if (typeof candidate === 'function') {
+        traverse = candidate;
+        break;
+      }
+    }
+    if (!traverse) {
+      console.warn(
+        '[translations] Failed to load @babel/traverse; falling back to regex parsing: No traverse function export found.',
+      );
+      traverse = null;
+      parser = null;
+    }
   } catch (err) {
     console.warn(
       `[translations] Failed to load @babel/traverse; falling back to regex parsing: ${err.message}`,
