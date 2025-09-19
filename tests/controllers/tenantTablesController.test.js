@@ -162,7 +162,8 @@ if (typeof mock?.import !== 'function') {
 
   test('seedCompany returns summary payload', async () => {
     const summary = { posts: { count: 2, ids: ['1', '2'] } };
-    const seedStub = mock.fn(async () => summary);
+    const backup = { fileName: 'backup.sql' };
+    const seedStub = mock.fn(async () => ({ summary, backup }));
     const mod = await loadController({
       getEmploymentSession: async () => ({ permissions: { system_settings: true } }),
       listCompanies: async () => [
@@ -180,14 +181,25 @@ if (typeof mock?.import !== 'function') {
       if (err) throw err;
     });
     assert.equal(res.statusCode, 200);
-    assert.deepEqual(res.body, summary);
+    assert.deepEqual(res.body, { summary, backup });
     assert.equal(seedStub.mock.calls.length, 1);
-    assert.deepEqual(seedStub.mock.calls[0].arguments, [8, ['posts'], {}, false, 5]);
+    const args = seedStub.mock.calls[0].arguments;
+    assert.equal(args[0], 8);
+    assert.deepEqual(args[1], ['posts']);
+    assert.deepEqual(args[2], {});
+    assert.equal(args[3], false);
+    assert.equal(args[4], 5);
+    assert.equal(args[5], 5);
+    assert.deepEqual(args[6], {
+      backupName: '',
+      originalBackupName: '',
+      requestedBy: 5,
+    });
   });
 
   test('seedCompany forwards manual rows payload', async () => {
     const manualRows = [{ id: 7, title: 'Welcome' }];
-    const seedStub = mock.fn(async () => ({}));
+    const seedStub = mock.fn(async () => ({ summary: {} }));
     const mod = await loadController({
       getEmploymentSession: async () => ({ permissions: { system_settings: true } }),
       listCompanies: async () => [
@@ -213,9 +225,15 @@ if (typeof mock?.import !== 'function') {
     const args = seedStub.mock.calls[0].arguments;
     assert.equal(args[0], 8);
     assert.deepEqual(args[1], ['posts']);
+    assert.deepEqual(args[2], { posts: [{ id: 7, title: 'Welcome' }] });
     assert.equal(args[3], true);
     assert.equal(args[4], 5);
-    assert.deepEqual(args[2], { posts: [{ id: 7, title: 'Welcome' }] });
+    assert.equal(args[5], 5);
+    assert.deepEqual(args[6], {
+      backupName: '',
+      originalBackupName: '',
+      requestedBy: 5,
+    });
     assert.notStrictEqual(args[2].posts[0], manualRows[0]);
   });
 
@@ -243,7 +261,7 @@ if (typeof mock?.import !== 'function') {
           }
         }
       }
-      return summary;
+      return { summary };
     });
     const mod = await loadController({
       getEmploymentSession: async () => ({ permissions: { system_settings: true } }),
@@ -271,8 +289,15 @@ if (typeof mock?.import !== 'function') {
       if (err) throw err;
     });
     assert.equal(res.statusCode, 200);
-    assert.deepEqual(res.body, summary);
+    assert.deepEqual(res.body, { summary, backup: null });
     assert.equal(seedStub.mock.calls.length, 1);
+    const args = seedStub.mock.calls[0].arguments;
+    assert.equal(args[5], 5);
+    assert.deepEqual(args[6], {
+      backupName: '',
+      originalBackupName: '',
+      requestedBy: 5,
+    });
   });
 
   test('seedCompany rejects invalid manual rows', async () => {
@@ -300,6 +325,42 @@ if (typeof mock?.import !== 'function') {
     assert.equal(res.statusCode, 400);
     assert.match(res.body?.message ?? '', /Invalid manual row payload/);
     assert.equal(seedStub.mock.calls.length, 0);
+  });
+
+  test('seedDefaults creates backup metadata before populating', async () => {
+    const calls = [];
+    const seedDefaultsStub = mock.fn(async (userId, options = {}) => {
+      calls.push(options);
+      return {};
+    });
+    const exportStub = mock.fn(async (name, requestedBy) => ({
+      fileName: '20240101_manual-backup.sql',
+      originalName: name,
+      versionName: 'manual-backup',
+      requestedBy,
+    }));
+    const mod = await loadController({
+      getEmploymentSession: async () => ({ permissions: { system_settings: true } }),
+      seedDefaultsForSeedTables: seedDefaultsStub,
+      exportTenantTableDefaults: exportStub,
+    });
+    const req = {
+      body: { backupName: '  Manual Backup  ' },
+      user: { empid: 7, companyId: 1 },
+    };
+    const res = createRes();
+    await mod.seedDefaults(req, res, (err) => {
+      if (err) throw err;
+    });
+    assert.equal(res.statusCode, 200);
+    assert.ok(res.body?.backup);
+    assert.equal(res.body.backup.fileName, '20240101_manual-backup.sql');
+    assert.equal(res.body.backup.originalName, 'Manual Backup');
+    assert.equal(exportStub.mock.calls.length, 1);
+    assert.deepEqual(exportStub.mock.calls[0].arguments, ['Manual Backup', 7]);
+    assert.equal(seedDefaultsStub.mock.calls.length, 2);
+    assert.equal(calls[0]?.preview, true);
+    assert.equal(calls[1]?.preview, undefined);
   });
 
   test('seedExistingCompanies returns summaries keyed by company', async () => {
@@ -332,8 +393,24 @@ if (typeof mock?.import !== 'function') {
       12: { posts: { count: 12 } },
     });
     assert.equal(seedStub.mock.calls.length, 2);
-    assert.deepEqual(seedStub.mock.calls[0].arguments, [10, ['posts'], { posts: [3, 4] }, true, 5]);
-    assert.deepEqual(seedStub.mock.calls[1].arguments, [12, ['posts'], { posts: [3, 4] }, true, 5]);
+    assert.deepEqual(seedStub.mock.calls[0].arguments, [
+      10,
+      ['posts'],
+      { posts: [3, 4] },
+      true,
+      5,
+      5,
+      { backupName: '', originalBackupName: '', requestedBy: 5 },
+    ]);
+    assert.deepEqual(seedStub.mock.calls[1].arguments, [
+      12,
+      ['posts'],
+      { posts: [3, 4] },
+      true,
+      5,
+      5,
+      { backupName: '', originalBackupName: '', requestedBy: 5 },
+    ]);
   });
 
   test('resetSharedTenantKeys returns summary payload', async () => {

@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { promises as fs } from 'fs';
+import path from 'path';
 import * as db from '../../db/index.js';
 
 await test('seedTenantTables copies user level permissions', async () => {
@@ -46,13 +48,13 @@ await test('seedTenantTables filters by record ids', async () => {
     }
     return [[], []];
   };
-  const summary = await db.seedTenantTables(7, null, { posts: [1, 2] }, false, 1);
+  const result = await db.seedTenantTables(7, null, { posts: [1, 2] }, false, 1);
   db.pool.query = orig;
   const insertCall = calls.find((c) => c.sql.startsWith('INSERT INTO ??'));
   assert.ok(insertCall);
   assert.match(insertCall.sql, /IN \(\?, \?\)/);
   assert.deepEqual(insertCall.params, ['posts', 7, 'posts', 1, 2]);
-  assert.deepEqual(summary, { posts: { count: 2, ids: [1, 2] } });
+  assert.deepEqual(result.summary, { posts: { count: 2, ids: [1, 2] } });
 });
 
 await test('seedTenantTables returns summary for provided rows', async () => {
@@ -84,7 +86,7 @@ await test('seedTenantTables returns summary for provided rows', async () => {
     }
     return [[], []];
   };
-  const summary = await db.seedTenantTables(
+  const result = await db.seedTenantTables(
     9,
     null,
     { posts: [{ id: 55, title: 'Hello' }] },
@@ -92,7 +94,7 @@ await test('seedTenantTables returns summary for provided rows', async () => {
     42,
   );
   db.pool.query = orig;
-  assert.deepEqual(summary, { posts: { count: 1, ids: [55] } });
+  assert.deepEqual(result.summary, { posts: { count: 1, ids: [55] } });
   const insert = calls.find((c) =>
     c.sql.startsWith('INSERT INTO ?? (`company_id`, `id`, `title`)'),
   );
@@ -130,6 +132,91 @@ await test('seedTenantTables overrides audit columns', async () => {
     /SELECT \? AS company_id, `id`, \?, NOW\(\), \?, NOW\(\)/,
   );
   assert.deepEqual(insertCall.params, ['posts', 7, 123, 456, 'posts']);
+});
+
+await test('seedTenantTables creates backup metadata before overwrite', async () => {
+  const companyId = 77;
+  const companyConfigDir = path.join(process.cwd(), 'config', String(companyId));
+  await fs.rm(companyConfigDir, { recursive: true, force: true });
+
+  const origQuery = db.pool.query;
+  const calls = [];
+  db.pool.query = async (sql, params) => {
+    calls.push({ sql, params });
+    if (sql.startsWith('SELECT table_name, is_shared FROM tenant_tables')) {
+      return [[{ table_name: 'posts', is_shared: 0 }]];
+    }
+    if (sql.startsWith('SELECT COUNT(*) AS cnt FROM ?? WHERE company_id = ?')) {
+      return [[{ cnt: 2 }]];
+    }
+    if (sql.startsWith('SELECT COLUMN_NAME')) {
+      return [[
+        { COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' },
+        { COLUMN_NAME: 'company_id', COLUMN_KEY: '', EXTRA: '' },
+        { COLUMN_NAME: 'title', COLUMN_KEY: '', EXTRA: '' },
+      ]];
+    }
+    if (sql.startsWith('SELECT column_name, mn_label FROM table_column_labels')) {
+      return [[]];
+    }
+    if (sql.startsWith('SELECT * FROM ?? WHERE company_id = ?')) {
+      return [[
+        { id: 10, company_id: companyId, title: 'Hello' },
+        { id: 11, company_id: companyId, title: 'World' },
+      ]];
+    }
+    if (sql.startsWith('DELETE FROM ?? WHERE company_id = ?')) {
+      return [{ affectedRows: 2 }];
+    }
+    if (sql.startsWith('INSERT INTO ?? (`company_id`, `id`, `title`)')) {
+      return [{ affectedRows: 2 }];
+    }
+    if (sql.startsWith('INSERT INTO user_level_permissions')) {
+      return [{ affectedRows: 0 }];
+    }
+    return [[], []];
+  };
+
+  const result = await db.seedTenantTables(
+    companyId,
+    null,
+    {},
+    true,
+    5,
+    5,
+    {
+      backupName: 'Manual Backup',
+      originalBackupName: 'Manual Backup',
+      requestedBy: 5,
+    },
+  );
+  db.pool.query = origQuery;
+
+  assert.ok(result.backup);
+  assert.equal(result.backup.companyId, companyId);
+  assert.equal(result.backup.originalName, 'Manual Backup');
+  assert.equal(result.backup.versionName, 'manual-backup');
+  assert.equal(result.backup.tableCount, 1);
+  assert.equal(result.backup.rowCount, 2);
+  assert.ok(Array.isArray(result.backup.tables));
+  assert.equal(result.backup.tables[0].tableName, 'posts');
+  assert.equal(result.backup.tables[0].rows, 2);
+
+  const backupDir = path.join(companyConfigDir, 'defaults', 'seed-backups');
+  const indexPath = path.join(backupDir, 'index.json');
+  const indexRaw = await fs.readFile(indexPath, 'utf8');
+  const entries = JSON.parse(indexRaw);
+  assert.ok(Array.isArray(entries));
+  assert.ok(entries.length >= 1);
+  assert.equal(entries[0].fileName, result.backup.fileName);
+  assert.equal(entries[0].originalName, 'Manual Backup');
+
+  const backupPath = path.join(backupDir, result.backup.fileName);
+  const sql = await fs.readFile(backupPath, 'utf8');
+  assert.match(sql, /DELETE FROM `posts` WHERE `company_id` = 77;/);
+  assert.match(sql, /INSERT INTO `posts` \(`id`, `company_id`, `title`\)/);
+
+  await fs.rm(companyConfigDir, { recursive: true, force: true });
 });
 
 await test('seedTenantTables throws when table has data and overwrite false', async () => {
