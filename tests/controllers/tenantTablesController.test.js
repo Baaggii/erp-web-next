@@ -38,6 +38,9 @@ async function loadController(overrides = {}) {
     seedDefaultsForSeedTables: async () => {},
     seedTenantTables: async () => ({}),
     listCompanies: async () => [],
+    insertTenantDefaultRow: async () => ({}),
+    updateTenantDefaultRow: async () => ({}),
+    deleteTenantDefaultRow: async () => {},
     ...overrides,
   };
   const mod = await mock.import(
@@ -359,5 +362,89 @@ if (typeof mock?.import !== 'function') {
     assert.deepEqual(res.body, summary);
     assert.equal(zeroStub.mock.calls.length, 1);
     assert.deepEqual(zeroStub.mock.calls[0].arguments, [5]);
+  });
+
+  test('insertDefaultTenantRow returns inserted row payload', async () => {
+    const created = { id: 3, company_id: 0, title: 'Hello' };
+    const mod = await loadController({
+      getEmploymentSession: async () => ({ permissions: { system_settings: true } }),
+      getTenantTable: async () => ({ tableName: 'posts', tenantKeys: ['company_id'] }),
+      insertTenantDefaultRow: async () => created,
+    });
+    const req = {
+      params: { table_name: 'posts' },
+      body: { title: 'Hello' },
+      user: { empid: 9, companyId: 1 },
+    };
+    const res = createRes();
+    await mod.insertDefaultTenantRow(req, res, (err) => {
+      if (err) throw err;
+    });
+    assert.equal(res.statusCode, 201);
+    assert.deepEqual(res.body, { row: created });
+  });
+
+  test('insertDefaultTenantRow rejects non-zero company id in payload', async () => {
+    const mod = await loadController({
+      getEmploymentSession: async () => ({ permissions: { system_settings: true } }),
+      getTenantTable: async () => ({ tableName: 'posts', tenantKeys: ['company_id'] }),
+    });
+    const req = {
+      params: { table_name: 'posts' },
+      body: { title: 'Hello', company_id: 9 },
+      user: { empid: 9, companyId: 1 },
+    };
+    const res = createRes();
+    await mod.insertDefaultTenantRow(req, res, (err) => {
+      if (err) throw err;
+    });
+    assert.equal(res.statusCode, 400);
+    assert.match(res.body?.message ?? '', /company_id must be 0/i);
+  });
+
+  test('updateDefaultTenantRow returns updated row payload', async () => {
+    const updated = { id: 4, company_id: 0, title: 'Updated' };
+    const mod = await loadController({
+      getEmploymentSession: async () => ({ permissions: { system_settings: true } }),
+      getTenantTable: async () => ({ tableName: 'posts', tenantKeys: ['company_id'] }),
+      updateTenantDefaultRow: async (table, rowId, payload, userId) => {
+        assert.equal(table, 'posts');
+        assert.equal(rowId, '4');
+        assert.deepEqual(payload, { title: 'Updated' });
+        assert.equal(userId, 9);
+        return updated;
+      },
+    });
+    const req = {
+      params: { table_name: 'posts', row_id: '4' },
+      body: { title: 'Updated' },
+      user: { empid: 9, companyId: 1 },
+    };
+    const res = createRes();
+    await mod.updateDefaultTenantRow(req, res, (err) => {
+      if (err) throw err;
+    });
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.body, { row: updated });
+  });
+
+  test('deleteDefaultTenantRow returns 204 on success', async () => {
+    const deleteStub = mock.fn(async () => {});
+    const mod = await loadController({
+      getEmploymentSession: async () => ({ permissions: { system_settings: true } }),
+      getTenantTable: async () => ({ tableName: 'posts', tenantKeys: ['company_id'] }),
+      deleteTenantDefaultRow: deleteStub,
+    });
+    const req = {
+      params: { table_name: 'posts', row_id: '9' },
+      user: { empid: 9, companyId: 1 },
+    };
+    const res = createRes();
+    await mod.deleteDefaultTenantRow(req, res, (err) => {
+      if (err) throw err;
+    });
+    assert.equal(res.statusCode, 204);
+    assert.equal(deleteStub.mock.calls.length, 1);
+    assert.deepEqual(deleteStub.mock.calls[0].arguments, ['posts', '9', 9]);
   });
 }

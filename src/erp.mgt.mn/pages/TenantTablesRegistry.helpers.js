@@ -28,3 +28,24 @@ export function updateTablesWithChange(prevTables, idx, field, value) {
     return applyTableFieldChange(row, field, value);
   });
 }
+
+export function buildRowIdentifier(row, primaryKeys) {
+  if (!row || typeof row !== 'object') {
+    return null;
+  }
+  if (!Array.isArray(primaryKeys) || primaryKeys.length === 0) {
+    return null;
+  }
+  const parts = [];
+  for (const key of primaryKeys) {
+    if (!key) {
+      return null;
+    }
+    const value = row[key];
+    if (value === undefined || value === null) {
+      return null;
+    }
+    parts.push(String(value));
+  }
+  return parts.join('-');
+}

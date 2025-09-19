@@ -8,6 +8,9 @@ import {
   seedDefaultsForSeedTables,
   seedTenantTables,
   listCompanies,
+  insertTenantDefaultRow,
+  updateTenantDefaultRow as updateTenantDefaultRowDb,
+  deleteTenantDefaultRow,
 } from '../../db/index.js';
 import { hasAction } from '../utils/hasAction.js';
 import { GLOBAL_COMPANY_ID } from '../../config/0/constants.js';
@@ -211,6 +214,113 @@ export async function seedCompany(req, res, next) {
     );
     res.json(summary || {});
   } catch (err) {
+    next(err);
+  }
+}
+
+export async function insertDefaultTenantRow(req, res, next) {
+  try {
+    if (!(await ensureAdmin(req))) return res.sendStatus(403);
+    const tableName = req.params.table_name;
+    if (!tableName) {
+      return res.status(400).json({ message: 'table_name is required' });
+    }
+    const payload = req.body;
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return res.status(400).json({ message: 'Body must be an object' });
+    }
+    if (
+      payload.company_id !== undefined &&
+      Number(payload.company_id) !== GLOBAL_COMPANY_ID
+    ) {
+      return res
+        .status(400)
+        .json({ message: 'company_id must be 0 for default rows' });
+    }
+    const table = await getTenantTableDb(tableName);
+    if (!table) {
+      return res.status(404).json({ message: 'Table not found' });
+    }
+    const row = await insertTenantDefaultRow(
+      tableName,
+      payload,
+      req.user.empid,
+    );
+    res.status(201).json({ row });
+  } catch (err) {
+    if (err?.status) {
+      res.status(err.status).json({ message: err.message });
+      return;
+    }
+    next(err);
+  }
+}
+
+export async function updateDefaultTenantRow(req, res, next) {
+  try {
+    if (!(await ensureAdmin(req))) return res.sendStatus(403);
+    const tableName = req.params.table_name;
+    const rowId = req.params.row_id;
+    if (!tableName) {
+      return res.status(400).json({ message: 'table_name is required' });
+    }
+    if (!rowId) {
+      return res.status(400).json({ message: 'row_id is required' });
+    }
+    const payload = req.body;
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return res.status(400).json({ message: 'Body must be an object' });
+    }
+    if (
+      payload.company_id !== undefined &&
+      Number(payload.company_id) !== GLOBAL_COMPANY_ID
+    ) {
+      return res
+        .status(400)
+        .json({ message: 'company_id must be 0 for default rows' });
+    }
+    const table = await getTenantTableDb(tableName);
+    if (!table) {
+      return res.status(404).json({ message: 'Table not found' });
+    }
+    const row = await updateTenantDefaultRowDb(
+      tableName,
+      rowId,
+      payload,
+      req.user.empid,
+    );
+    res.json({ row });
+  } catch (err) {
+    if (err?.status) {
+      res.status(err.status).json({ message: err.message });
+      return;
+    }
+    next(err);
+  }
+}
+
+export async function deleteDefaultTenantRow(req, res, next) {
+  try {
+    if (!(await ensureAdmin(req))) return res.sendStatus(403);
+    const tableName = req.params.table_name;
+    const rowId = req.params.row_id;
+    if (!tableName) {
+      return res.status(400).json({ message: 'table_name is required' });
+    }
+    if (!rowId) {
+      return res.status(400).json({ message: 'row_id is required' });
+    }
+    const table = await getTenantTableDb(tableName);
+    if (!table) {
+      return res.status(404).json({ message: 'Table not found' });
+    }
+    await deleteTenantDefaultRow(tableName, rowId, req.user.empid);
+    res.sendStatus(204);
+  } catch (err) {
+    if (err?.status) {
+      res.status(err.status).json({ message: err.message });
+      return;
+    }
     next(err);
   }
 }

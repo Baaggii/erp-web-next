@@ -1988,6 +1988,141 @@ export async function deleteTableRow(
   return result;
 }
 
+function sanitizeDefaultRowPayload(payload, { stripAudit = true } = {}) {
+  const sanitized = {};
+  if (!payload || typeof payload !== 'object') return sanitized;
+  for (const [key, value] of Object.entries(payload)) {
+    if (value === undefined) continue;
+    const lower = String(key).toLowerCase();
+    if (lower === 'company_id') continue;
+    if (stripAudit && (lower.startsWith('created_') || lower.startsWith('updated_'))) {
+      continue;
+    }
+    sanitized[key] = value;
+  }
+  return sanitized;
+}
+
+async function ensureDefaultTableColumns(tableName) {
+  const columns = await getTableColumnsSafe(tableName);
+  const hasCompanyId = columns.some(
+    (c) => String(c).toLowerCase() === 'company_id',
+  );
+  if (!hasCompanyId) {
+    const err = new Error(`Table ${tableName} does not have a company_id column`);
+    err.status = 400;
+    throw err;
+  }
+  return columns;
+}
+
+async function fetchTenantDefaultRow(tableName, rowId) {
+  const columns = await ensureDefaultTableColumns(tableName);
+  const pkCols = await getPrimaryKeyColumns(tableName);
+  if (!Array.isArray(pkCols) || pkCols.length === 0) {
+    const err = new Error(`Table ${tableName} has no primary or unique key`);
+    err.status = 400;
+    throw err;
+  }
+  const parts = String(rowId ?? '').split('-');
+  if (parts.length !== pkCols.length || parts.some((part) => part === '')) {
+    const err = new Error('Invalid row identifier');
+    err.status = 400;
+    throw err;
+  }
+  const whereClause = pkCols.map((col) => `${escapeIdentifier(col)} = ?`).join(' AND ');
+  const params = [tableName, ...parts];
+  const pkLower = pkCols.map((c) => c.toLowerCase());
+  let where = whereClause;
+  if (!pkLower.includes('company_id')) {
+    where += ' AND `company_id` = ?';
+    params.push(GLOBAL_COMPANY_ID);
+  }
+  const [rows] = await pool.query(
+    `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
+    params,
+  );
+  const row = rows[0];
+  if (!row) {
+    const err = new Error('Row not found');
+    err.status = 404;
+    throw err;
+  }
+  const companyVal = row.company_id ?? row.companyId;
+  if (Number(companyVal) !== GLOBAL_COMPANY_ID) {
+    const err = new Error('Row not found');
+    err.status = 404;
+    throw err;
+  }
+  // ensure column cache includes latest values for future comparisons
+  tableColumnsCache.set(tableName, columns);
+  return row;
+}
+
+export async function insertTenantDefaultRow(tableName, payload, userId = null) {
+  const columns = await ensureDefaultTableColumns(tableName);
+  const sanitized = sanitizeDefaultRowPayload(payload);
+  const row = { ...sanitized };
+  row.company_id = GLOBAL_COMPANY_ID;
+  const now = formatDateForDb(new Date());
+  if (columns.includes('created_by')) row.created_by = userId;
+  if (columns.includes('updated_by')) row.updated_by = userId;
+  if (columns.includes('created_at')) row.created_at = now;
+  if (columns.includes('updated_at')) row.updated_at = now;
+  const keys = Object.keys(row);
+  try {
+    await ensureValidColumns(tableName, columns, keys);
+  } catch (err) {
+    err.status = err.status || 400;
+    throw err;
+  }
+  const result = await insertTableRow(tableName, row);
+  const pkCols = await getPrimaryKeyColumns(tableName);
+  if (!Array.isArray(pkCols) || pkCols.length === 0) {
+    const err = new Error(`Table ${tableName} has no primary or unique key`);
+    err.status = 400;
+    throw err;
+  }
+  const idParts = pkCols.map((col) => {
+    if (col === 'company_id') return GLOBAL_COMPANY_ID;
+    if (row[col] !== undefined && row[col] !== null) return row[col];
+    if (pkCols.length === 1 && result?.id !== undefined) return result.id;
+    const err = new Error(`Missing value for primary key column ${col}`);
+    err.status = 400;
+    throw err;
+  });
+  const identifier = idParts.map((part) => String(part)).join('-');
+  return fetchTenantDefaultRow(tableName, identifier);
+}
+
+export async function updateTenantDefaultRow(tableName, rowId, payload, userId) {
+  const columns = await ensureDefaultTableColumns(tableName);
+  await fetchTenantDefaultRow(tableName, rowId);
+  const sanitized = sanitizeDefaultRowPayload(payload);
+  const keys = Object.keys(sanitized);
+  if (keys.length === 0) {
+    return fetchTenantDefaultRow(tableName, rowId);
+  }
+  const updates = { ...sanitized };
+  const now = formatDateForDb(new Date());
+  if (columns.includes('updated_by')) updates.updated_by = userId;
+  if (columns.includes('updated_at')) updates.updated_at = now;
+  try {
+    await ensureValidColumns(tableName, columns, Object.keys(updates));
+  } catch (err) {
+    err.status = err.status || 400;
+    throw err;
+  }
+  await updateTableRow(tableName, rowId, updates, GLOBAL_COMPANY_ID);
+  return fetchTenantDefaultRow(tableName, rowId);
+}
+
+export async function deleteTenantDefaultRow(tableName, rowId, userId) {
+  await ensureDefaultTableColumns(tableName);
+  await fetchTenantDefaultRow(tableName, rowId);
+  await deleteTableRow(tableName, rowId, GLOBAL_COMPANY_ID, pool, userId);
+}
+
 export async function listRowReferences(tableName, id, conn = pool) {
   const pkCols = await getPrimaryKeyColumns(tableName);
   const parts = String(id).split('-');

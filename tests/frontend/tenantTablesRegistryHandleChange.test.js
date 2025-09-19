@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   applyTableFieldChange,
   updateTablesWithChange,
+  buildRowIdentifier,
 } from '../../src/erp.mgt.mn/pages/TenantTablesRegistry.helpers.js';
 
 test('applyTableFieldChange forces seedOnCreate and clears isShared when enabling seeding', () => {
@@ -42,4 +43,18 @@ test('updateTablesWithChange keeps prior edits intact when toggling multiple row
   assert.notEqual(afterSecondToggle[1], rowB);
   assert.equal(afterSecondToggle[1].seedOnCreate, true);
   assert.equal(afterSecondToggle[1].isShared, false);
+});
+
+test('buildRowIdentifier joins primary keys and coerces values to strings', () => {
+  const row = { id: 7, code: 'A1' };
+  assert.equal(buildRowIdentifier(row, ['id']), '7');
+  assert.equal(buildRowIdentifier(row, ['id', 'code']), '7-A1');
+});
+
+test('buildRowIdentifier returns null when keys are missing', () => {
+  const row = { id: null, code: 'A1' };
+  assert.equal(buildRowIdentifier(null, ['id']), null);
+  assert.equal(buildRowIdentifier(row, []), null);
+  assert.equal(buildRowIdentifier(row, ['id']), null);
+  assert.equal(buildRowIdentifier(row, ['missing']), null);
 });
