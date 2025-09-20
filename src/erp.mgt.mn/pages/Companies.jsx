@@ -222,8 +222,15 @@ export default function CompaniesPage() {
     if (backupInput === null) return;
     const trimmedBackupName = backupInput.trim();
     const createBackup = trimmedBackupName !== '';
+    let backupType = 'seed';
+    if (createBackup) {
+      const includeFull = window.confirm(
+        'Include all tenant data tables (company_id scoped) in this backup? Click OK for a full dataset export, or Cancel for a seed-only snapshot.',
+      );
+      backupType = includeFull ? 'full' : 'seed';
+    }
     const payload = createBackup
-      ? { createBackup: true, backupName: trimmedBackupName }
+      ? { createBackup: true, backupName: trimmedBackupName, backupType }
       : { createBackup: false };
     const res = await fetch('/api/companies/' + id, {
       method: 'DELETE',
@@ -247,10 +254,14 @@ export default function CompaniesPage() {
       addToast('Company deleted. No tenant-specific data required backup.', 'info');
     } else if (data?.backup) {
       const displayName = getBackupDisplayName(data.backup);
+      const typeLabel =
+        data.backup?.type === 'full'
+          ? 'full tenant data backup'
+          : 'seed snapshot';
       addToast(
         displayName
-          ? `Company deleted. Backup saved as ${displayName}.`
-          : 'Company deleted. Backup saved.',
+          ? `Company deleted. ${typeLabel} saved as ${displayName}.`
+          : `Company deleted. ${typeLabel.charAt(0).toUpperCase()}${typeLabel.slice(1)} saved.`,
         'success'
       );
     } else {
@@ -270,7 +281,11 @@ export default function CompaniesPage() {
       addToast('Invalid target company selection.', 'error');
       return;
     }
-    const res = await fetch('/api/companies/backups/restore', {
+    const endpoint =
+      backup.type === 'full'
+        ? '/api/companies/backups/restore/full'
+        : '/api/companies/backups/restore';
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -278,7 +293,8 @@ export default function CompaniesPage() {
       body: JSON.stringify({
         sourceCompanyId: backup.companyId,
         targetCompanyId: targetId,
-        fileName: backup.fileName
+        fileName: backup.fileName,
+        type: backup.type || 'seed'
       })
     });
     const data = await res.json().catch(() => ({}));
@@ -298,7 +314,8 @@ export default function CompaniesPage() {
     const restoredMessage = Number.isFinite(restoredTables) && restoredTables > 0
       ? `Restored ${restoredTables} tables.`
       : 'Restore completed.';
-    addToast(restoredMessage, 'success');
+    const scopeLabel = backup.type === 'full' ? 'Full dataset restore' : 'Seed restore';
+    addToast(`${scopeLabel}: ${restoredMessage}`, 'success');
   }
 
   const visibleCompanies = companies.filter((c) =>
@@ -411,6 +428,7 @@ export default function CompaniesPage() {
                 <tr style={{ backgroundColor: '#e5e7eb' }}>
                   <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Source company</th>
                   <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Backup</th>
+                  <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Type</th>
                   <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Generated</th>
                   <th style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>Restore into</th>
                 </tr>
@@ -436,6 +454,9 @@ export default function CompaniesPage() {
                         {backup.fileName ? (
                           <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>{backup.fileName}</div>
                         ) : null}
+                      </td>
+                      <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
+                        {backup.type === 'full' ? 'Full data' : 'Seed'}
                       </td>
                       <td style={{ padding: '0.5rem', border: '1px solid #d1d5db' }}>
                         {formatBackupTimestamp(

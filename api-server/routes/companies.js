@@ -6,6 +6,7 @@ import {
   deleteCompanyHandler,
   listCompanyBackupsHandler,
   restoreCompanyBackupHandler,
+  restoreCompanyFullBackupHandler,
 } from '../controllers/companyController.js';
 import { requireAuth } from '../middlewares/auth.js';
 
@@ -13,6 +14,11 @@ const router = express.Router();
 router.get('/', requireAuth, listCompaniesHandler);
 router.get('/backups', requireAuth, listCompanyBackupsHandler);
 router.post('/backups/restore', requireAuth, restoreCompanyBackupHandler);
+router.post(
+  '/backups/restore/full',
+  requireAuth,
+  restoreCompanyFullBackupHandler,
+);
 router.post('/', requireAuth, createCompanyHandler);
 router.put('/:id', requireAuth, updateCompanyHandler);
 router.delete('/:id', requireAuth, deleteCompanyHandler);
