@@ -6,8 +6,10 @@ import {
   getEmploymentSession,
   getUserLevelActions,
   createCompanySeedBackup,
+  createCompanyFullBackup,
   listCompanySeedBackupsForUser,
   restoreCompanySeedBackup,
+  restoreCompanyFullBackup,
 } from '../../db/index.js';
 import { hasAction } from '../utils/hasAction.js';
 
@@ -95,6 +97,20 @@ export async function deleteCompanyHandler(req, res, next) {
     }
 
     const createBackup = !!req.body?.createBackup;
+    const backupScopeRaw =
+      typeof req.body?.backupType === 'string'
+        ? req.body.backupType
+        : typeof req.body?.backupScope === 'string'
+        ? req.body.backupScope
+        : '';
+    const normalizedScope = String(backupScopeRaw || '')
+      .trim()
+      .toLowerCase();
+    const backupStrategy = ['full', 'full-data', 'data', 'all'].includes(
+      normalizedScope,
+    )
+      ? 'full'
+      : 'seed';
     const backupNameRaw = req.body?.backupName;
     const trimmedBackupName =
       typeof backupNameRaw === 'string' ? backupNameRaw.trim() : '';
@@ -106,14 +122,18 @@ export async function deleteCompanyHandler(req, res, next) {
 
     let backupMetadata = null;
     if (createBackup) {
-      backupMetadata = await createCompanySeedBackup(companyId, {
+      const backupOptions = {
         backupName: trimmedBackupName,
         originalBackupName:
           typeof backupNameRaw === 'string' ? backupNameRaw : trimmedBackupName,
         requestedBy: req.user?.id ?? null,
         companyName:
           company.name || company.company_name || company.companyName || '',
-      });
+      };
+      backupMetadata =
+        backupStrategy === 'full'
+          ? await createCompanyFullBackup(companyId, backupOptions)
+          : await createCompanySeedBackup(companyId, backupOptions);
     }
 
     const tenantCompanyId = company.company_id;
@@ -156,6 +176,13 @@ export async function restoreCompanyBackupHandler(req, res, next) {
     }
     const body = req.body || {};
     const { sourceCompanyId, targetCompanyId, fileName } = body;
+    const requestedTypeRaw =
+      typeof body.type === 'string' ? body.type.trim().toLowerCase() : '';
+    if (requestedTypeRaw && requestedTypeRaw !== 'seed') {
+      return res.status(400).json({
+        message: 'Use the full restore endpoint for tenant data backups.',
+      });
+    }
     const sourceId = Number(sourceCompanyId);
     const targetId = Number(targetCompanyId);
     if (!Number.isFinite(sourceId) || sourceId <= 0) {
@@ -186,13 +213,85 @@ export async function restoreCompanyBackupHandler(req, res, next) {
       ownedCompanies,
     );
     const hasAccess = accessibleBackups.some(
-      (entry) => entry.companyId === sourceId && entry.fileName === fileName.trim(),
+      (entry) =>
+        entry.companyId === sourceId &&
+        entry.fileName === fileName.trim() &&
+        (entry.type ?? 'seed') === 'seed',
     );
     if (!hasAccess) {
       return res.status(404).json({ message: 'Backup not found' });
     }
 
     const summary = await restoreCompanySeedBackup(
+      sourceId,
+      fileName,
+      targetId,
+      req.user?.empid ?? null,
+    );
+    res.json({ summary });
+  } catch (err) {
+    if (err?.status) {
+      res.status(err.status).json({ message: err.message });
+      return;
+    }
+    next(err);
+  }
+}
+
+export async function restoreCompanyFullBackupHandler(req, res, next) {
+  try {
+    if (!(await hasSystemSettingsAccess(req))) {
+      return res.sendStatus(403);
+    }
+    const body = req.body || {};
+    const { sourceCompanyId, targetCompanyId, fileName } = body;
+    const typeHint =
+      typeof body.type === 'string' ? body.type.trim().toLowerCase() : '';
+    if (typeHint && typeHint !== 'full' && typeHint !== 'data') {
+      return res.status(400).json({
+        message: 'Full restore requires a tenant data snapshot.',
+      });
+    }
+    const sourceId = Number(sourceCompanyId);
+    const targetId = Number(targetCompanyId);
+    if (!Number.isFinite(sourceId) || sourceId <= 0) {
+      return res
+        .status(400)
+        .json({ message: 'sourceCompanyId is required and must be positive' });
+    }
+    if (!Number.isFinite(targetId) || targetId <= 0) {
+      return res
+        .status(400)
+        .json({ message: 'targetCompanyId is required and must be positive' });
+    }
+    if (!fileName || typeof fileName !== 'string') {
+      return res.status(400).json({ message: 'fileName is required' });
+    }
+
+    const ownedCompanies = await listCompanies(req.user.empid);
+    const userId = req.user?.id;
+    const targetCompany = (ownedCompanies || []).find(
+      (c) => Number(c.id) === targetId,
+    );
+    if (!targetCompany) {
+      return res.status(403).json({ message: 'Target company not found' });
+    }
+
+    const accessibleBackups = await listCompanySeedBackupsForUser(
+      userId,
+      ownedCompanies,
+    );
+    const hasAccess = accessibleBackups.some(
+      (entry) =>
+        entry.companyId === sourceId &&
+        entry.fileName === fileName.trim() &&
+        entry.type === 'full',
+    );
+    if (!hasAccess) {
+      return res.status(404).json({ message: 'Backup not found' });
+    }
+
+    const summary = await restoreCompanyFullBackup(
       sourceId,
       fileName,
       targetId,

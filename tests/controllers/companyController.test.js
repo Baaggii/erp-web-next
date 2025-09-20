@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -7,6 +7,7 @@ import {
   deleteCompanyHandler,
   listCompanyBackupsHandler,
   restoreCompanyBackupHandler,
+  restoreCompanyFullBackupHandler,
 } from '../../api-server/controllers/companyController.js';
 import { seedCompany } from '../../api-server/controllers/tenantTablesController.js';
 import * as db from '../../db/index.js';
@@ -627,6 +628,114 @@ test('deleteCompanyHandler returns backup metadata when requested', async () => 
   assert.equal(res.body.company.name, 'BackupCo');
 });
 
+test('deleteCompanyHandler triggers full backup when requested', async () => {
+  const userId = 88;
+  const employeeCode = 'EMP-88X';
+  const companyId = 14;
+  const tenantCompanyId = 21;
+  const backupDir = path.join(process.cwd(), 'config', String(companyId));
+  await fs.rm(backupDir, { recursive: true, force: true });
+  const calls = [];
+  const restore = mockPool(async (sql, params) => {
+    calls.push({ sql, params });
+    if (sql.startsWith('SELECT * FROM companies WHERE created_by = ?')) {
+      assert.equal(params?.[0], employeeCode);
+      return [[{
+        id: companyId,
+        company_id: tenantCompanyId,
+        name: 'FullCo',
+        created_by: employeeCode,
+      }]];
+    }
+    if (sql.startsWith('SELECT * FROM companies')) {
+      return [[{ id: companyId, name: 'FullCo', created_by: employeeCode }]];
+    }
+    if (
+      sql.includes('FROM information_schema.COLUMNS') &&
+      sql.includes("COLUMN_NAME = 'company_id'")
+    ) {
+      return [[{ tableName: 'orders' }]];
+    }
+    if (sql.startsWith('SELECT COLUMN_NAME') && params?.[0] === 'orders') {
+      return [[
+        { COLUMN_NAME: 'company_id' },
+        { COLUMN_NAME: 'id' },
+        { COLUMN_NAME: 'total' },
+      ]];
+    }
+    if (
+      sql.includes('information_schema.STATISTICS') &&
+      sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      if (params?.[0] === 'companies') {
+        return [[
+          { COLUMN_NAME: 'company_id', SEQ_IN_INDEX: 1 },
+          { COLUMN_NAME: 'id', SEQ_IN_INDEX: 2 },
+        ]];
+      }
+      if (params?.[0] === 'orders') {
+        return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
+      }
+    }
+    if (sql.includes('information_schema.KEY_COLUMN_USAGE')) {
+      if (params?.[0] === 'companies') {
+        return [[
+          {
+            CONSTRAINT_NAME: 'fk_orders_companies',
+            TABLE_NAME: 'orders',
+            COLUMN_NAME: 'company_id',
+            REFERENCED_COLUMN_NAME: 'company_id',
+          },
+        ]];
+      }
+      return [[]];
+    }
+    if (sql.includes('information_schema.COLUMNS') && params?.[0] === 'orders') {
+      return [[
+        { COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' },
+        { COLUMN_NAME: 'company_id', COLUMN_KEY: '', EXTRA: '' },
+        { COLUMN_NAME: 'total', COLUMN_KEY: '', EXTRA: '' },
+      ]];
+    }
+    if (sql.includes('FROM table_column_labels WHERE table_name = ?')) {
+      return [[]];
+    }
+    if (sql.startsWith('SELECT * FROM ?? WHERE company_id = ?') && params?.[0] === 'orders') {
+      return [[{ id: 21, company_id: tenantCompanyId, total: 99 }]];
+    }
+    if (sql.startsWith('SELECT COUNT(*)')) {
+      return [[{ count: 1 }]];
+    }
+    if (sql.startsWith('SELECT `id` FROM')) {
+      return [[{ id: 21 }]];
+    }
+    if (sql.startsWith('DELETE FROM')) {
+      return [{}];
+    }
+    return [[]];
+  });
+
+  const req = {
+    params: { id: String(companyId) },
+    body: { createBackup: true, backupName: 'Full export', backupType: 'full' },
+    user: { id: userId, empid: employeeCode, companyId: 0 },
+    session: { permissions: { system_settings: true } },
+  };
+  const res = createRes();
+  try {
+    await deleteCompanyHandler(req, res, () => {});
+  } finally {
+    restore();
+    await fs.rm(backupDir, { recursive: true, force: true });
+  }
+
+  assert.equal(res.code, 200);
+  assert.equal(res.body.backup?.type, 'full');
+  assert.ok(res.body.backup?.fileName);
+  const deleteCalls = calls.filter((c) => c.sql.startsWith('DELETE FROM'));
+  assert.ok(deleteCalls.length >= 1);
+});
+
 test('deleteCompanyHandler forwards error messages', async () => {
   const restore = mockPool(async () => {
     throw new Error('boom');
@@ -698,6 +807,7 @@ test('listCompanyBackupsHandler returns backups', async () => {
   assert.equal(res.body.backups.length, 1);
   assert.equal(res.body.backups[0].companyId, companyId);
   assert.equal(res.body.backups[0].fileName, entry.fileName);
+  assert.equal(res.body.backups[0].type, 'seed');
 });
 
 test('restoreCompanyBackupHandler restores backup', async () => {
@@ -775,6 +885,90 @@ test('restoreCompanyBackupHandler restores backup', async () => {
   assert.equal(res.body.summary.sourceCompanyId, sourceCompanyId);
   assert.equal(res.body.summary.targetCompanyId, targetCompanyId);
 });
+
+if (typeof mock.import !== 'function') {
+  test('restoreCompanyFullBackupHandler restores data snapshots', { skip: true }, () => {});
+} else {
+  test('restoreCompanyFullBackupHandler restores data snapshots', async () => {
+    const userId = 102;
+    const employeeCode = 'EMP-102C';
+    const sourceCompanyId = 30;
+    const targetCompanyId = 45;
+    const fileName = 'full.sql';
+    const dbStub = {
+      async listCompanies(empid) {
+        assert.equal(empid, employeeCode);
+        return [{ id: targetCompanyId, name: 'TargetFull', created_by: employeeCode }];
+      },
+      async insertTableRow() {},
+      async updateTableRow() {},
+      async deleteTableRowCascade() {},
+      async getEmploymentSession() {
+        return {};
+      },
+      async getUserLevelActions() {
+        return { permissions: {} };
+      },
+      async createCompanySeedBackup() {
+        return null;
+      },
+      async createCompanyFullBackup() {
+        return null;
+      },
+      async listCompanySeedBackupsForUser(user, companies) {
+        assert.equal(user, userId);
+        assert.ok(Array.isArray(companies));
+        return [
+          {
+            companyId: sourceCompanyId,
+            fileName,
+            type: 'full',
+          },
+        ];
+      },
+      async restoreCompanySeedBackup() {
+        return {};
+      },
+      async restoreCompanyFullBackup(sourceId, name, targetId, emp) {
+        assert.equal(sourceId, sourceCompanyId);
+        assert.equal(targetId, targetCompanyId);
+        assert.equal(name, fileName);
+        assert.equal(emp, employeeCode);
+        return {
+          type: 'full',
+          fileName: name,
+          sourceCompanyId,
+          targetCompanyId,
+          tableCount: 12,
+        };
+      },
+    };
+
+    const { restoreCompanyFullBackupHandler: handler } = await mock.import(
+      '../../api-server/controllers/companyController.js',
+      {
+        '../../db/index.js': dbStub,
+      },
+    );
+
+    const req = {
+      body: {
+        sourceCompanyId,
+        targetCompanyId,
+        fileName,
+        type: 'full',
+      },
+      user: { id: userId, empid: employeeCode, companyId: 0 },
+      session: { permissions: { system_settings: true } },
+    };
+    const res = createRes();
+    await handler(req, res, () => {});
+
+    assert.equal(res.code, undefined);
+    assert.equal(res.body.summary.type, 'full');
+    assert.equal(res.body.summary.targetCompanyId, targetCompanyId);
+  });
+}
 
 test(
   'creating a company keeps tenant tables empty until seed endpoint runs',
