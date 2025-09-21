@@ -925,22 +925,31 @@ export async function deleteUnprotectedTenantTableRowsForCompany(
     )} tenantKey=${String(company.company_id)}`,
   );
 
-  let rows;
+  const tableMetadata = new Map();
+  const ensureTableMetadata = (tableName) => {
+    if (!tableName) return null;
+    if (!tableMetadata.has(tableName)) {
+      tableMetadata.set(tableName, {
+        company: new Set(),
+        branch: new Set(),
+      });
+    }
+    return tableMetadata.get(tableName);
+  };
+
+  let fkRows = [];
   try {
-    [rows] = await conn.query(
-      `SELECT tt.table_name AS table_name, cols.COLUMN_NAME AS column_name
+    [fkRows] = await conn.query(
+      `SELECT tt.table_name AS table_name,
+              kcu.COLUMN_NAME AS column_name,
+              kcu.REFERENCED_TABLE_NAME AS referenced_table,
+              kcu.REFERENCED_COLUMN_NAME AS referenced_column
          FROM tenant_tables tt
-         JOIN information_schema.COLUMNS cols
-           ON cols.TABLE_SCHEMA = DATABASE()
-          AND cols.TABLE_NAME = tt.table_name
-          AND cols.COLUMN_NAME IN ('company_id', 'Company_id')
-         LEFT JOIN information_schema.KEY_COLUMN_USAGE kcu
-           ON kcu.TABLE_SCHEMA = cols.TABLE_SCHEMA
-          AND kcu.TABLE_NAME = cols.TABLE_NAME
-          AND kcu.COLUMN_NAME = cols.COLUMN_NAME
+         JOIN information_schema.KEY_COLUMN_USAGE kcu
+           ON kcu.TABLE_SCHEMA = DATABASE()
+          AND kcu.TABLE_NAME = tt.table_name
           AND kcu.REFERENCED_TABLE_SCHEMA = DATABASE()
-          AND kcu.REFERENCED_TABLE_NAME = 'companies'
-        WHERE kcu.CONSTRAINT_NAME IS NULL`,
+          AND kcu.REFERENCED_TABLE_NAME IN ('companies', 'code_branches')`,
     );
   } catch (err) {
     if (err?.code === "ER_NO_SUCH_TABLE") {
@@ -949,26 +958,82 @@ export async function deleteUnprotectedTenantTableRowsForCompany(
     throw err;
   }
 
-  if (!Array.isArray(rows) || rows.length === 0) {
-    return;
-  }
-
-  const tableColumns = new Map();
-  for (const row of rows) {
+  for (const row of fkRows || []) {
     const tableName = row?.table_name;
     const columnName = row?.column_name;
     if (!tableName || !columnName) continue;
-    if (!tableColumns.has(tableName)) {
-      tableColumns.set(tableName, new Set());
+    const meta = ensureTableMetadata(tableName);
+    if (!meta) continue;
+    const referencedTable = String(row?.referenced_table || "").toLowerCase();
+    if (referencedTable === "code_branches") {
+      meta.branch.add(columnName);
+    } else if (referencedTable === "companies") {
+      meta.company.add(columnName);
     }
-    tableColumns.get(tableName).add(columnName);
   }
 
-  if (tableColumns.size === 0) {
+  const companyAliasEntry = DEFAULT_TENANT_KEY_ALIASES.find(
+    (entry) => String(entry?.key).toLowerCase() === "company_id",
+  );
+  const companyColumnCandidates = Array.from(
+    new Set(
+      (companyAliasEntry?.aliases || ["company_id"]).map((alias) =>
+        String(alias || "").toLowerCase(),
+      ),
+    ),
+  );
+
+  if (companyColumnCandidates.length > 0) {
+    let companyRows = [];
+    try {
+      const placeholders = companyColumnCandidates.map(() => "?").join(", ");
+      [companyRows] = await conn.query(
+        `SELECT tt.table_name AS table_name, cols.COLUMN_NAME AS column_name
+           FROM tenant_tables tt
+           JOIN information_schema.COLUMNS cols
+             ON cols.TABLE_SCHEMA = DATABASE()
+            AND cols.TABLE_NAME = tt.table_name
+          LEFT JOIN information_schema.KEY_COLUMN_USAGE kcu
+             ON kcu.TABLE_SCHEMA = cols.TABLE_SCHEMA
+            AND kcu.TABLE_NAME = cols.TABLE_NAME
+            AND kcu.COLUMN_NAME = cols.COLUMN_NAME
+            AND kcu.REFERENCED_TABLE_SCHEMA = DATABASE()
+            AND kcu.REFERENCED_TABLE_NAME = 'companies'
+          WHERE LOWER(cols.COLUMN_NAME) IN (${placeholders})
+            AND (kcu.CONSTRAINT_NAME IS NULL OR kcu.REFERENCED_TABLE_NAME IS NULL)`,
+        companyColumnCandidates,
+      );
+    } catch (err) {
+      if (err?.code !== "ER_NO_SUCH_TABLE") {
+        throw err;
+      }
+      companyRows = [];
+    }
+    for (const row of companyRows || []) {
+      const tableName = row?.table_name;
+      const columnName = row?.column_name;
+      if (!tableName || !columnName) continue;
+      const meta = ensureTableMetadata(tableName);
+      if (!meta) continue;
+      meta.company.add(columnName);
+    }
+  }
+
+  for (const [tableName, meta] of tableMetadata) {
+    if (!meta) {
+      tableMetadata.delete(tableName);
+      continue;
+    }
+    if (meta.company.size === 0 && meta.branch.size === 0) {
+      tableMetadata.delete(tableName);
+    }
+  }
+
+  if (tableMetadata.size === 0) {
     return;
   }
 
-  let orderedTables = Array.from(tableColumns.keys());
+  let orderedTables = Array.from(tableMetadata.keys());
   if (orderedTables.length > 1) {
     try {
       const dependents = new Map(
@@ -1036,9 +1101,49 @@ export async function deleteUnprotectedTenantTableRowsForCompany(
     return;
   }
 
+  const needsBranchIds = orderedTables.some((tableName) =>
+    (tableMetadata.get(tableName)?.branch?.size || 0) > 0,
+  );
+
+  const companyPlaceholderList = placeholderList;
+  let branchIds = [];
+  let branchPlaceholderList = "";
+  if (needsBranchIds && companyPlaceholderList) {
+    try {
+      const [branchRows] = await conn.query(
+        `SELECT branch_id FROM code_branches WHERE company_id IN (${companyPlaceholderList})`,
+        values,
+      );
+      const branchSet = new Set();
+      for (const row of branchRows || []) {
+        const rawId =
+          row?.branch_id ?? row?.branchId ?? row?.branchID ?? row?.Branch_id;
+        if (rawId === undefined || rawId === null) continue;
+        const key = `${typeof rawId}:${String(rawId)}`;
+        if (branchSet.has(key)) continue;
+        branchSet.add(key);
+        branchIds.push(rawId);
+      }
+    } catch (err) {
+      if (err?.code !== "ER_NO_SUCH_TABLE") {
+        throw err;
+      }
+    }
+    if (branchIds.length > 0) {
+      branchPlaceholderList = branchIds.map(() => "?").join(", ");
+    }
+  }
+
+  if (!companyPlaceholderList && !branchPlaceholderList) {
+    return;
+  }
+
   for (const tableName of orderedTables) {
-    const columns = tableColumns.get(tableName);
-    if (!columns || columns.size === 0) continue;
+    const meta = tableMetadata.get(tableName);
+    if (!meta) continue;
+    const companyColumns = Array.from(meta.company || []);
+    const branchColumns = Array.from(meta.branch || []);
+    if (companyColumns.length === 0 && branchColumns.length === 0) continue;
     const softDeleteColumn = await getSoftDeleteColumn(
       tableName,
       softDeleteKey,
@@ -1047,21 +1152,40 @@ export async function deleteUnprotectedTenantTableRowsForCompany(
       ? `${escapeIdentifier(softDeleteColumn)} = 1`
       : null;
 
-    for (const columnName of columns) {
-      const whereClause = `${escapeIdentifier(
-        columnName,
-      )} IN (${placeholderList})`;
-      if (softDeleteExpr) {
-        await conn.query(
-          `UPDATE ?? SET ${softDeleteExpr} WHERE ${whereClause}`,
-          [tableName, ...values],
+    const whereClauses = [];
+    const params = [tableName];
+
+    if (companyPlaceholderList && companyColumns.length > 0) {
+      for (const columnName of companyColumns) {
+        whereClauses.push(
+          `${escapeIdentifier(columnName)} IN (${companyPlaceholderList})`,
         );
-      } else {
-        await conn.query(
-          `DELETE FROM ?? WHERE ${whereClause}`,
-          [tableName, ...values],
-        );
+        params.push(...values);
       }
+    }
+
+    if (branchPlaceholderList && branchColumns.length > 0) {
+      for (const columnName of branchColumns) {
+        whereClauses.push(
+          `${escapeIdentifier(columnName)} IN (${branchPlaceholderList})`,
+        );
+        params.push(...branchIds);
+      }
+    }
+
+    if (whereClauses.length === 0) {
+      continue;
+    }
+
+    const whereClause =
+      whereClauses.length === 1
+        ? whereClauses[0]
+        : whereClauses.map((clause) => `(${clause})`).join(" OR ");
+
+    if (softDeleteExpr) {
+      await conn.query(`UPDATE ?? SET ${softDeleteExpr} WHERE ${whereClause}`, params);
+    } else {
+      await conn.query(`DELETE FROM ?? WHERE ${whereClause}`, params);
     }
   }
 }
