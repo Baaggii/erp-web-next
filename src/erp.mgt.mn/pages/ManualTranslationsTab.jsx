@@ -196,6 +196,13 @@ export default function ManualTranslationsTab() {
       setPage(Math.floor(idx / perPage) + 1);
       const entry = allEntries[idx];
       const newEntry = { ...entry, values: { ...entry.values } };
+      const entryMetadata = {
+        module: newEntry.module,
+        context: newEntry.context,
+        key: newEntry.key,
+      };
+      const translateEntry = (targetLang, text) =>
+        translateWithCache(targetLang, text, undefined, entryMetadata);
       const en =
         typeof newEntry.values.en === 'string'
           ? newEntry.values.en.trim()
@@ -208,7 +215,7 @@ export default function ManualTranslationsTab() {
       if (!en && mn) {
         try {
           await delay();
-          const translated = await translateWithCache('en', mn);
+          const translated = await translateEntry('en', mn);
           if (translated) {
             newEntry.values.en = translated;
             changed = true;
@@ -222,7 +229,7 @@ export default function ManualTranslationsTab() {
       } else if (!mn && en) {
         try {
           await delay();
-          const translated = await translateWithCache('mn', en);
+          const translated = await translateEntry('mn', en);
           if (translated) {
             newEntry.values.mn = translated;
             changed = true;
@@ -255,7 +262,7 @@ export default function ManualTranslationsTab() {
             if (abortRef.current || rateLimited) break;
             try {
               await delay();
-              const translated = await translateWithCache(lang, sourceText);
+              const translated = await translateEntry(lang, sourceText);
               if (translated) {
                 newEntry.values[lang] = translated;
                 changed = true;
