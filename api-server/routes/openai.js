@@ -1,6 +1,10 @@
 import express from 'express';
 import multer from 'multer';
-import { getResponse, getResponseWithFile } from '../utils/openaiClient.js';
+import {
+  getResponse,
+  getResponseWithFile,
+  validateTranslation,
+} from '../utils/openaiClient.js';
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -20,6 +24,25 @@ router.post('/', upload.single('file'), async (req, res, next) => {
       response = await getResponse(prompt);
     }
     res.json({ response });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/validate', async (req, res, next) => {
+  try {
+    const { candidate, base, lang, metadata } = req.body || {};
+    if (!candidate || !String(candidate).trim()) {
+      res.json({
+        valid: false,
+        reason: 'empty',
+        needsRetry: false,
+        strategy: 'heuristic',
+      });
+      return;
+    }
+    const result = await validateTranslation({ candidate, base, lang, metadata });
+    res.json(result);
   } catch (err) {
     next(err);
   }

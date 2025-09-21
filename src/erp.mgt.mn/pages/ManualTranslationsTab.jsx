@@ -212,13 +212,16 @@ export default function ManualTranslationsTab() {
           ? newEntry.values.mn.trim()
           : String(newEntry.values.mn ?? '').trim();
       let changed = false;
+      let needsManualReview = false;
       if (!en && mn) {
         try {
           await delay();
           const translated = await translateEntry('en', mn);
-          if (translated) {
-            newEntry.values.en = translated;
+          if (translated?.text && !translated.needsRetry) {
+            newEntry.values.en = translated.text;
             changed = true;
+          } else if (translated?.needsRetry) {
+            needsManualReview = true;
           }
         } catch (err) {
           if (err.rateLimited) {
@@ -230,9 +233,11 @@ export default function ManualTranslationsTab() {
         try {
           await delay();
           const translated = await translateEntry('mn', en);
-          if (translated) {
-            newEntry.values.mn = translated;
+          if (translated?.text && !translated.needsRetry) {
+            newEntry.values.mn = translated.text;
             changed = true;
+          } else if (translated?.needsRetry) {
+            needsManualReview = true;
           }
         } catch (err) {
           if (err.rateLimited) {
@@ -263,9 +268,11 @@ export default function ManualTranslationsTab() {
             try {
               await delay();
               const translated = await translateEntry(lang, sourceText);
-              if (translated) {
-                newEntry.values[lang] = translated;
+              if (translated?.text && !translated.needsRetry) {
+                newEntry.values[lang] = translated.text;
                 changed = true;
+              } else if (translated?.needsRetry) {
+                needsManualReview = true;
               }
             } catch (err) {
               if (err.rateLimited) {
@@ -282,13 +289,16 @@ export default function ManualTranslationsTab() {
             return !trimmed;
           });
           if (missingAfter.length) {
-            notCompleted.push(newEntry);
+            needsManualReview = true;
           }
         }
       }
       if (changed) {
         pending.push(newEntry);
         saved = true;
+      }
+      if (needsManualReview) {
+        notCompleted.push(newEntry);
       }
       updated.push(newEntry);
       if (

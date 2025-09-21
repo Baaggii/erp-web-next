@@ -380,15 +380,21 @@ export default function UserManualExport() {
     return <p>{t("accessDenied", "Access denied", { lng: lang })}</p>;
   }
 
+  const translateLabel = async (key, fallback, meta) => {
+    const result = await translateWithCache(lang, key, fallback, meta);
+    if (!result) return fallback ?? "";
+    return result.text ?? (fallback ?? "");
+  };
+
   async function translate(key) {
     if (!key) return "";
     if (headerMap[key]) return headerMap[key];
-    return translateWithCache(lang, key);
+    return translateLabel(key);
   }
 
   async function buildMarkdown() {
-    let md = `# ${await translateWithCache(lang, "userManual", "User Manual")}\n\n`;
-    md += `## ${await translateWithCache(lang, "forms", "Forms")}\n`;
+    let md = `# ${await translateLabel("userManual", "User Manual")}\n\n`;
+    md += `## ${await translateLabel("forms", "Forms")}\n`;
     for (const [mKey, mod] of Object.entries(manual)) {
       if (!mod.forms.length) continue;
       md += `### ${await translate(mKey)}\n`;
@@ -398,7 +404,7 @@ export default function UserManualExport() {
         const rf = form.fields?.requiredFields || [];
         if (rf.length) {
           const rfNames = await Promise.all(rf.map((r) => translate(r)));
-          md += `${await translateWithCache(lang, "requiredFields", "Required Fields")}: ${rfNames.join(", ")}\n`;
+          md += `${await translateLabel("requiredFields", "Required Fields")}: ${rfNames.join(", ")}\n`;
         }
         const actions = [];
         (form.buttons || []).forEach((b) =>
@@ -414,11 +420,11 @@ export default function UserManualExport() {
       }
     }
 
-    md += `\n## ${await translateWithCache(lang, "reports", "Reports")}\n`;
+    md += `\n## ${await translateLabel("reports", "Reports")}\n`;
     for (const [mKey, mod] of Object.entries(manual)) {
       if (!mod.reports.length) continue;
       md += `### ${await translate(mKey)}\n`;
-      md += `| ${await translateWithCache(lang, "reportName", "Report Name")} | ${await translateWithCache(lang, "identifier", "Identifier")} | ${await translateWithCache(lang, "description", "Description")} |\n`;
+      md += `| ${await translateLabel("reportName", "Report Name")} | ${await translateLabel("identifier", "Identifier")} | ${await translateLabel("description", "Description")} |\n`;
       md += `| --- | --- | --- |\n`;
       for (const r of mod.reports) {
           const k = typeof r === "string" ? r : r.key;
@@ -432,19 +438,19 @@ export default function UserManualExport() {
             })();
           if (!rDesc) {
             const sentenceDefault = `The ${reportName} report provides a comprehensive overview of the associated data set, presenting information in a structured and readable manner for further analysis.`;
-            rDesc = await translateWithCache(lang, "reportPurposeDetail", sentenceDefault);
+            rDesc = await translateLabel("reportPurposeDetail", sentenceDefault);
           }
           md += `| ${reportName} | ${k} | ${rDesc} |\n`;
       }
     }
 
-    md += `\n## ${await translateWithCache(lang, "settings", "Settings")}\n`;
+    md += `\n## ${await translateLabel("settings", "Settings")}\n`;
     for (const [mKey, mod] of Object.entries(manual)) {
       if (!mod.buttons.length && !mod.functions.length) continue;
       md += `### ${await translate(mKey)}\n`;
       if (mod.buttons.length) {
-        md += `#### ${await translateWithCache(lang, "buttons", "Buttons")}\n`;
-        md += `| ${await translateWithCache(lang, "buttonName", "Button Name")} | ${await translateWithCache(lang, "identifier", "Identifier")} | ${await translateWithCache(lang, "description", "Description")} |\n`;
+        md += `#### ${await translateLabel("buttons", "Buttons")}\n`;
+        md += `| ${await translateLabel("buttonName", "Button Name")} | ${await translateLabel("identifier", "Identifier")} | ${await translateLabel("description", "Description")} |\n`;
         md += `| --- | --- | --- |\n`;
         for (const b of mod.buttons) {
           const bName = await translate(b);
@@ -461,26 +467,26 @@ export default function UserManualExport() {
             sentenceDefault = `The ${bName} button allows administrators to execute the ${bName} operation. Requires: ${rfNames.join(", ")}.`;
           }
           if (!bDesc) {
-            bDesc = await translateWithCache(lang, "settingsButtonDetail", sentenceDefault);
+            bDesc = await translateLabel("settingsButtonDetail", sentenceDefault);
           }
           md += `| ${bName} | ${b} | ${bDesc} |\n`;
         }
       }
       if (mod.functions.length) {
-        md += `\n#### ${await translateWithCache(lang, "functions", "Functions")}\n`;
-        md += `| ${await translateWithCache(lang, "functionName", "Function Name")} | ${await translateWithCache(lang, "identifier", "Identifier")} | ${await translateWithCache(lang, "description", "Description")} |\n`;
+        md += `\n#### ${await translateLabel("functions", "Functions")}\n`;
+        md += `| ${await translateLabel("functionName", "Function Name")} | ${await translateLabel("identifier", "Identifier")} | ${await translateLabel("description", "Description")} |\n`;
         md += `| --- | --- | --- |\n`;
         for (const fn of mod.functions) {
           const fnName = await translate(fn);
           const sentenceDefault = `The ${fnName} function performs the ${fnName} process, leveraging the active settings to modify how the application operates.`;
-          const sentence = await translateWithCache(lang, "settingsFunctionDetail", sentenceDefault);
+          const sentence = await translateLabel("settingsFunctionDetail", sentenceDefault);
           md += `| ${fnName} | ${fn} | ${sentence} |\n`;
         }
       }
     }
 
-    md += `\n## ${await translateWithCache(lang, "quickReference", "Quick Reference")}\n`;
-    md += `| ${await translateWithCache(lang, "userLevel", "User Level")} | ${await translateWithCache(lang, "modules", "Modules")} | ${await translateWithCache(lang, "forms", "Forms")} | ${await translateWithCache(lang, "reports", "Reports")} | ${await translateWithCache(lang, "buttons", "Buttons")} | ${await translateWithCache(lang, "functions", "Functions")} |\n`;
+    md += `\n## ${await translateLabel("quickReference", "Quick Reference")}\n`;
+    md += `| ${await translateLabel("userLevel", "User Level")} | ${await translateLabel("modules", "Modules")} | ${await translateLabel("forms", "Forms")} | ${await translateLabel("reports", "Reports")} | ${await translateLabel("buttons", "Buttons")} | ${await translateLabel("functions", "Functions")} |\n`;
     md += `| --- | --- | --- | --- | --- | --- |\n`;
     const lvl = { id: session?.user_level };
     const acts = levelActions[lvl.id] || {};
