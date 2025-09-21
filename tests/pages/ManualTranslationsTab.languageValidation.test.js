@@ -269,7 +269,7 @@ if (typeof mock.import !== 'function') {
   );
 
   test(
-    'ManualTranslationsTab completeAll sanitizes Mongolian base when translation needs retry',
+    'ManualTranslationsTab completeAll sanitizes swapped base languages when translation needs retry',
     async () => {
       const translateMock = mock.fn(async (lang) => {
         if (lang === 'mn') return { text: '', needsRetry: true };
@@ -326,7 +326,7 @@ if (typeof mock.import !== 'function') {
                   type: 'locale',
                   module: 'module',
                   context: 'ctx',
-                  values: { en: 'Hello there', mn: 'Hello there' },
+                  values: { en: 'Сайн байна уу', mn: 'Hello there' },
                 },
               ];
             }
@@ -385,10 +385,6 @@ if (typeof mock.import !== 'function') {
         assert(
           toasts.some((t) => t.type === 'warning' && /manual review/i.test(t.message)),
           'warning toast for manual review was not shown',
-        );
-        assert(
-          !toasts.some((t) => /English\/Mongolian/i.test(t.message)),
-          'base language mismatch toast should not be shown',
         );
         assert(translateMock.mock.callCount() >= 2);
         const entryState = states[1][0];
