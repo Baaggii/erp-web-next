@@ -49,7 +49,9 @@ if (typeof mock.import !== 'function') {
           createElement: reactMock.createElement,
         },
         '../context/I18nContext.jsx': { default: {} },
-        '../utils/translateWithCache.js': { default: async () => '' },
+        '../utils/translateWithCache.js': {
+          default: async () => ({ text: '', needsRetry: false }),
+        },
       },
     );
 
