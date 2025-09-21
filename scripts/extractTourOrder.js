@@ -59,7 +59,7 @@ async function generate() {
     const steps = selectors
       .map((sel) => {
         const key = sanitizeKey(sel);
-        return `  { selector: '${sel}', content: t('guide.${key}', '${key}') },`;
+        return `  { target: '${sel}', content: t('guide.${key}', '${key}') },`;
       })
       .join('\n');
     const content = `export default (t) => [\n${steps}\n];\n`;
