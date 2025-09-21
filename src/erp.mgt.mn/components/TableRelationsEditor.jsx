@@ -52,6 +52,18 @@ export default function TableRelationsEditor({ table }) {
   const hasCustomSelection = Boolean(
     selectedColumn && customRelations?.[selectedColumn],
   );
+  const canSave = useMemo(
+    () => Boolean(selectedColumn && targetTable && targetColumn),
+    [selectedColumn, targetTable, targetColumn],
+  );
+  const selectionHint = useMemo(() => {
+    if (canSave) return '';
+    if (!selectedColumn) return 'Select a source column to get started.';
+    if (!targetTable) return 'Choose the target table for the relationship.';
+    if (!targetColumn)
+      return 'Pick a column from the target table to finish the mapping.';
+    return '';
+  }, [canSave, selectedColumn, targetColumn, targetTable]);
 
   const loadData = useCallback(async () => {
     if (!table) {
@@ -376,12 +388,27 @@ export default function TableRelationsEditor({ table }) {
                 </select>
               </label>
             </div>
+            {selectionHint && (
+              <p
+                style={{
+                  margin: '0 0 0.5rem',
+                  color: '#555',
+                  fontSize: '0.85rem',
+                }}
+              >
+                {selectionHint}
+              </p>
+            )}
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <button
                 type="button"
                 data-testid="relations-save"
                 onClick={handleSave}
-                disabled={saving}
+                disabled={saving || !canSave}
+                style={{
+                  opacity: saving || !canSave ? 0.6 : 1,
+                  cursor: saving || !canSave ? 'not-allowed' : 'pointer',
+                }}
               >
                 {saving ? 'Saving…' : 'Save Relation'}
               </button>
