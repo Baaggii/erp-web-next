@@ -4044,17 +4044,20 @@ export async function listRowReferences(tableName, id, conn = pool) {
   for (const g of groups.values()) {
     const queryVals = [];
     const resultVals = [];
+    const resolvedQueryVals = [];
     const missingIndexes = [];
     g.refCols.forEach((rc, idx) => {
       const pkIdx = pkCols.indexOf(rc);
       if (pkIdx === -1) {
         queryVals[idx] = undefined;
         resultVals[idx] = undefined;
+        resolvedQueryVals[idx] = undefined;
         missingIndexes.push(idx);
       } else {
         const value = parts[pkIdx];
         queryVals[idx] = value;
         resultVals[idx] = normalizeValue(value);
+        resolvedQueryVals[idx] = value;
       }
     });
     if (missingIndexes.length) {
@@ -4066,6 +4069,7 @@ export async function listRowReferences(tableName, id, conn = pool) {
           const value = row[rc];
           queryVals[idx] = value;
           resultVals[idx] = normalizeValue(value);
+          resolvedQueryVals[idx] = value;
         }
       }
     }
@@ -4084,11 +4088,13 @@ export async function listRowReferences(tableName, id, conn = pool) {
         table: g.table,
         columns: g.columns,
         values: resultVals,
+        queryValues: resolvedQueryVals.map((v) => v),
         count: rows[0].count,
       };
       if (g.columns.length === 1) {
         result.column = g.columns[0];
         result.value = resultVals[0];
+        result.queryValue = resolvedQueryVals[0];
       }
       results.push(result);
     }
@@ -4105,7 +4111,8 @@ async function deleteCascade(conn, tableName, id, visited, companyId) {
     const pkCols = await getPrimaryKeyColumns(r.table);
     const whereClause = r.columns.map(() => '?? = ?').join(' AND ');
     const params = [];
-    r.columns.forEach((col, i) => params.push(col, r.values[i]));
+    const queryVals = r.queryValues ?? r.values;
+    r.columns.forEach((col, i) => params.push(col, queryVals[i]));
 
     if (pkCols.length === 0) {
       const softCol = await getSoftDeleteColumn(r.table, companyId);
