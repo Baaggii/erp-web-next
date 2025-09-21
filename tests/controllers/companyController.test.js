@@ -270,6 +270,83 @@ test('deleteCompanyHandler deletes company with cascade', async () => {
   });
 });
 
+test('deleteCompanyHandler deletes company when primary key is single column', async () => {
+  const calls = [];
+  const userId = 'EMP-2';
+  const companyId = 11;
+  const tenantCompanyId = 77;
+  const restore = mockPool(async (sql, params) => {
+    calls.push({ sql, params });
+    if (sql.startsWith('SELECT * FROM companies WHERE created_by = ?')) {
+      assert.equal(params?.[0], userId);
+      return [[{
+        id: companyId,
+        company_id: tenantCompanyId,
+        name: 'SoloCo',
+        created_by: userId,
+      }]];
+    }
+    if (
+      sql.includes('information_schema.STATISTICS') &&
+      sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      if (params?.[0] === 'companies') {
+        return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
+      }
+    }
+    if (
+      sql.includes('information_schema.STATISTICS') &&
+      sql.includes('NON_UNIQUE = 0')
+    ) {
+      return [[]];
+    }
+    if (sql.includes('information_schema.KEY_COLUMN_USAGE')) {
+      return [[]];
+    }
+    if (sql.includes('information_schema.COLUMNS')) {
+      if (params?.[0] === 'companies') {
+        return [[
+          { COLUMN_NAME: 'id' },
+          { COLUMN_NAME: 'company_id' },
+          { COLUMN_NAME: 'name' },
+        ]];
+      }
+      return [[]];
+    }
+    if (sql.startsWith('DELETE FROM ?? WHERE') && params?.[0] === 'companies') {
+      return [{}];
+    }
+    return [[]];
+  });
+
+  const req = {
+    params: { id: String(companyId) },
+    user: { empid: userId, companyId: 0 },
+    session: { permissions: { system_settings: true } },
+    body: {},
+  };
+  const res = createRes();
+  await deleteCompanyHandler(req, res, () => {});
+  restore();
+
+  assert.equal(res.code, 200);
+  assert.deepEqual(res.body, {
+    backup: null,
+    company: { id: companyId, name: 'SoloCo' }
+  });
+  const companiesDelete = calls.find(
+    (c) => c.sql.startsWith('DELETE FROM') && c.params?.[0] === 'companies',
+  );
+  assert.ok(companiesDelete);
+  assert.equal(String(companiesDelete.params?.[1]), String(companyId));
+  if ((companiesDelete.params?.length ?? 0) > 2) {
+    assert.equal(
+      String(companiesDelete.params?.[2]),
+      String(tenantCompanyId),
+    );
+  }
+});
+
 test('deleteCompanyHandler cascades through employment and users tables', async () => {
   const calls = [];
   const employeeCode = 'EMP-1';
