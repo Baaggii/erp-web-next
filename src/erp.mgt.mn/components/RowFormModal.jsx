@@ -1052,7 +1052,8 @@ const RowFormModal = function RowFormModal({
         }
         if (parts.length === 0) parts.push(val);
         (cfg.displayFields || []).forEach((df) => {
-          if (row[df] !== undefined) parts.push(row[df]);
+          const fieldVal = getRowValueCaseInsensitive(row, df);
+          if (fieldVal !== undefined) parts.push(fieldVal);
         });
         display = parts.join(' - ');
       } else if (
@@ -1072,7 +1073,8 @@ const RowFormModal = function RowFormModal({
         }
         if (parts.length === 0) parts.push(val);
         (cfg.displayFields || []).forEach((df) => {
-          if (row[df] !== undefined) parts.push(row[df]);
+          const fieldVal = getRowValueCaseInsensitive(row, df);
+          if (fieldVal !== undefined) parts.push(fieldVal);
         });
         display = parts.join(' - ');
       } else if (
@@ -1089,7 +1091,8 @@ const RowFormModal = function RowFormModal({
         }
         if (parts.length === 0) parts.push(val);
         (cfg.displayFields || []).forEach((df) => {
-          if (row[df] !== undefined) parts.push(row[df]);
+          const fieldVal = getRowValueCaseInsensitive(row, df);
+          if (fieldVal !== undefined) parts.push(fieldVal);
         });
         display = parts.join(' - ');
       }
