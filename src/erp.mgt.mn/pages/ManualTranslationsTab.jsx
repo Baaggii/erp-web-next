@@ -44,8 +44,14 @@ export default function ManualTranslationsTab() {
       }
       if (res.ok) {
         const data = await res.json();
-        setLanguages(data.languages);
-        setEntries(data.entries);
+        setLanguages(data.languages ?? []);
+        const normalizedEntries = (data.entries ?? []).map((entry) => ({
+          ...entry,
+          module: entry.module ?? '',
+          context: entry.context ?? '',
+          values: entry.values ?? {},
+        }));
+        setEntries(normalizedEntries);
       }
     } catch {
       // ignore
@@ -65,8 +71,12 @@ export default function ManualTranslationsTab() {
   const filteredEntries = entries.filter((entry) => {
     if (!searchTerm) return true;
     const term = searchTerm.toLowerCase();
-    if (entry.key.toLowerCase().includes(term)) return true;
-    return Object.values(entry.values).some((v) => String(v ?? '').toLowerCase().includes(term));
+    if (String(entry.key ?? '').toLowerCase().includes(term)) return true;
+    if (String(entry.module ?? '').toLowerCase().includes(term)) return true;
+    if (String(entry.context ?? '').toLowerCase().includes(term)) return true;
+    return Object.values(entry.values ?? {}).some((v) =>
+      String(v ?? '').toLowerCase().includes(term),
+    );
   });
 
   const start = (page - 1) * perPage;
@@ -351,7 +361,10 @@ export default function ManualTranslationsTab() {
   }
 
   function addRow() {
-    const newEntries = [...entries, { key: '', type: 'locale', values: {} }];
+    const newEntries = [
+      ...entries,
+      { key: '', type: 'locale', module: '', context: '', values: {} },
+    ];
     setEntries(newEntries);
     setPage(Math.ceil(newEntries.length / perPage));
   }
@@ -389,6 +402,8 @@ export default function ManualTranslationsTab() {
               <tr>
                 <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Key</th>
                 <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Type</th>
+                <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Module</th>
+                <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Context</th>
                 {languages.map((l) => (
                   <th key={l} style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
                     <div
@@ -441,6 +456,16 @@ export default function ManualTranslationsTab() {
                           <option value="tooltip">tooltip</option>
                           <option value="exported">exported</option>
                         </select>
+                      </td>
+                      <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                        <div style={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
+                          {String(entry.module ?? '')}
+                        </div>
+                      </td>
+                      <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                        <div style={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
+                          {String(entry.context ?? '')}
+                        </div>
                       </td>
                       {languages.map((l) => (
                         <td key={l} style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
