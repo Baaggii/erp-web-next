@@ -17,11 +17,6 @@ import { moveImagesToDeleted } from '../services/transactionImageService.js';
 import { addMappings } from '../services/headerMappings.js';
 import { hasAction } from '../utils/hasAction.js';
 import { createCompanyHandler } from './companyController.js';
-import {
-  listCustomTableRelations,
-  setCustomTableRelation,
-  removeCustomTableRelation,
-} from '../services/tableRelationsConfig.js';
 let bcrypt;
 try {
   const mod = await import('bcryptjs');
@@ -83,70 +78,8 @@ export async function getTableRows(req, res, next) {
 
 export async function getTableRelations(req, res, next) {
   try {
-    const [dbRelations, custom] = await Promise.all([
-      listTableRelationships(req.params.table),
-      listCustomTableRelations(req.params.table, req.user?.companyId),
-    ]);
-    const merged = new Map();
-    for (const rel of dbRelations || []) {
-      const column = String(rel?.COLUMN_NAME || '').toLowerCase();
-      if (!column) continue;
-      merged.set(column, { ...rel, isCustom: false });
-    }
-    for (const rel of custom.relations || []) {
-      const column = String(rel?.COLUMN_NAME || '').toLowerCase();
-      if (!column) continue;
-      merged.set(column, { ...rel, isCustom: true });
-    }
-    res.json(Array.from(merged.values()));
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function getCustomTableRelations(req, res, next) {
-  try {
-    const { relations } = await listCustomTableRelations(
-      req.params.table,
-      req.user?.companyId,
-    );
-    res.json(relations);
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function saveTableRelation(req, res, next) {
-  try {
-    const { column, referencedTable, referencedColumn } = req.body || {};
-    if (!column || !referencedTable || !referencedColumn) {
-      return res.status(400).json({
-        message: 'Column, referencedTable, and referencedColumn are required',
-      });
-    }
-    const relation = await setCustomTableRelation(
-      req.params.table,
-      column,
-      { referencedTable, referencedColumn },
-      req.user?.companyId,
-    );
-    res.json(relation);
-  } catch (err) {
-    if (/requires table, column, referencedTable, and referencedColumn/.test(err.message)) {
-      return res.status(400).json({ message: err.message });
-    }
-    next(err);
-  }
-}
-
-export async function deleteTableRelation(req, res, next) {
-  try {
-    const column = req.params.column;
-    if (!column) {
-      return res.status(400).json({ message: 'Column parameter is required' });
-    }
-    await removeCustomTableRelation(req.params.table, column, req.user?.companyId);
-    res.sendStatus(204);
+    const rels = await listTableRelationships(req.params.table);
+    res.json(rels);
   } catch (err) {
     next(err);
   }
