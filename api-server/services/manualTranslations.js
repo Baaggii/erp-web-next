@@ -1,6 +1,8 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { evaluateTranslationCandidate } from '../../utils/translationValidation.js';
+
 import {
   evaluateTranslationCandidate,
   summarizeHeuristic,
