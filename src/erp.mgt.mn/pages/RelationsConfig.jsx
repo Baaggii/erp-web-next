@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useContext } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
+import TableRelationsEditor from '../components/TableRelationsEditor.jsx';
 
 export default function RelationsConfig() {
   const { addToast } = useToast();
@@ -11,6 +12,7 @@ export default function RelationsConfig() {
   const [idField, setIdField] = useState('');
   const [displayFields, setDisplayFields] = useState([]);
   const [isDefault, setIsDefault] = useState(false);
+  const [activeTab, setActiveTab] = useState('display');
 
   useEffect(() => {
     fetch('/api/tables', { credentials: 'include' })
@@ -45,6 +47,12 @@ export default function RelationsConfig() {
         setDisplayFields([]);
         setIsDefault(true);
       });
+  }, [table]);
+
+  useEffect(() => {
+    if (!table) {
+      setActiveTab('display');
+    }
   }, [table]);
 
   function toggleDisplayField(f) {
@@ -161,40 +169,78 @@ export default function RelationsConfig() {
         )}
       </div>
       {table && (
-        <div style={{ marginTop: '1rem' }}>
-          <div>
-            <label>
-              ID Field:
-              <select
-                value={idField}
-                onChange={(e) => setIdField(e.target.value)}
-              >
-                <option value="">-- none --</option>
+        <>
+          <div style={{ marginTop: '1rem', marginBottom: '1rem' }}>
+            <button
+              type="button"
+              onClick={() => setActiveTab('display')}
+              style={{
+                marginRight: '0.5rem',
+                padding: '0.5rem 1rem',
+                backgroundColor: activeTab === 'display' ? '#2563eb' : '#e5e7eb',
+                color: activeTab === 'display' ? '#fff' : '#111827',
+                border: '1px solid #d1d5db',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+            >
+              Display
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('relations')}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor:
+                  activeTab === 'relations' ? '#2563eb' : '#e5e7eb',
+                color: activeTab === 'relations' ? '#fff' : '#111827',
+                border: '1px solid #d1d5db',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+            >
+              Relations
+            </button>
+          </div>
+          {activeTab === 'display' ? (
+            <div style={{ marginTop: '1rem' }}>
+              <div>
+                <label>
+                  ID Field:
+                  <select
+                    value={idField}
+                    onChange={(e) => setIdField(e.target.value)}
+                  >
+                    <option value="">-- none --</option>
+                    {columns.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div style={{ marginTop: '0.5rem' }}>
+                Display Fields:
                 {columns.map((c) => (
-                  <option key={c} value={c}>
+                  <label key={c} style={{ display: 'block' }}>
+                    <input
+                      type="checkbox"
+                      checked={displayFields.includes(c)}
+                      onChange={() => toggleDisplayField(c)}
+                    />
                     {c}
-                  </option>
+                  </label>
                 ))}
-              </select>
-            </label>
-          </div>
-          <div style={{ marginTop: '0.5rem' }}>
-            Display Fields:
-            {columns.map((c) => (
-              <label key={c} style={{ display: 'block' }}>
-                <input
-                  type="checkbox"
-                  checked={displayFields.includes(c)}
-                  onChange={() => toggleDisplayField(c)}
-                />
-                {c}
-              </label>
-            ))}
-          </div>
-          <button onClick={handleSave} style={{ marginTop: '0.5rem' }}>
-            Save
-          </button>
-        </div>
+              </div>
+              <button onClick={handleSave} style={{ marginTop: '0.5rem' }}>
+                Save
+              </button>
+            </div>
+          ) : (
+            <TableRelationsEditor table={table} />
+          )}
+        </>
       )}
     </div>
   );
