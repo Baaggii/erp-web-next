@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useContext } from 'react';
+import { useTranslation } from 'react-i18next';
 import buildStoredProcedure from '../utils/buildStoredProcedure.js';
 import buildReportSql from '../utils/buildReportSql.js';
 import ErrorBoundary from '../components/ErrorBoundary.jsx';
@@ -8,6 +9,7 @@ import parseProcedureConfig from '../../../utils/parseProcedureConfig.js';
 import reportDefinitionToConfig from '../utils/reportDefinitionToConfig.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
+import I18nContext from '../context/I18nContext.jsx';
 
 const SESSION_PARAMS = [
   { name: 'session_branch_id', type: 'INT' },
@@ -65,12 +67,24 @@ function ReportBuilderInner() {
   const [customParamType, setCustomParamType] = useState(PARAM_TYPES[0]);
   const { addToast } = useToast();
   const { company, permissions, session } = useContext(AuthContext);
+  const { t: i18nextT } = useTranslation(['translation', 'tooltip']);
+  const { t: contextT } = useContext(I18nContext);
+  const t = i18nextT || contextT;
   const isAdmin =
     permissions?.permissions?.system_settings ||
     session?.permissions?.system_settings;
 
   const tenantProcedures = dbProcedures.filter((p) => !p.isDefault);
   const displayProcedures = isAdmin ? dbProcedures : tenantProcedures;
+
+  const addFilterLabel = t('reportBuilder.addFilter', 'Add Filter');
+  const addConditionLabel = t('reportBuilder.addCondition', 'Add Condition');
+  const paramLabel = t('reportBuilder.param', 'Param');
+  const valueLabel = t('reportBuilder.value', 'Value');
+  const noneLabel = t('reportBuilder.none', 'None');
+  const fieldLabel = t('reportBuilder.field', 'Field');
+  const aliasLabel = t('reportBuilder.alias', 'Alias');
+  const defaultTag = t('reportBuilder.defaultTag', '(default)');
 
   useEffect(() => {
     const first = displayProcedures[0];
@@ -117,7 +131,7 @@ function ReportBuilderInner() {
         if (first) setFromTable(first);
       } catch (err) {
         console.error(err);
-        setLoadError('Failed to load tables');
+        setLoadError('failedToLoadTables');
       } finally {
         setLoading(false);
       }
@@ -1748,21 +1762,29 @@ function ReportBuilderInner() {
   }
 
   if (loading) {
-    return <div>Loading...</div>;
+    return <div>{t('reportBuilder.loading', 'Loading...')}</div>;
   }
   if (!tables.length) {
-    return <div>{loadError || 'No tables found'}</div>;
+    return (
+      <div>
+        {loadError
+          ? t('reportBuilder.failedToLoadTables', 'Failed to load tables')
+          : t('reportBuilder.noTablesFound', 'No tables found')}
+      </div>
+    );
   }
 
   return (
     <div>
-      <h2>Report Builder</h2>
+      <h2>{t('reportBuilder.title', 'Report Builder')}</h2>
       <div style={{ marginBottom: '0.5rem' }}>
-        <button onClick={handleImport}>Import Defaults</button>
+        <button onClick={handleImport}>
+          {t('reportBuilder.importDefaults', 'Import Defaults')}
+        </button>
       </div>
 
       <section>
-        <h3>Primary Table</h3>
+        <h3>{t('reportBuilder.primaryTable', 'Primary Table')}</h3>
         <select value={fromTable} onChange={(e) => setFromTable(e.target.value)}>
           {tables.map((t) => (
             <option key={t} value={t}>
@@ -1773,7 +1795,7 @@ function ReportBuilderInner() {
       </section>
 
       <section>
-        <h3>Primary Table Filters</h3>
+        <h3>{t('reportBuilder.primaryTableFilters', 'Primary Table Filters')}</h3>
         {fromFilters.map((f, i) => (
           <div
             key={i}
@@ -1829,8 +1851,8 @@ function ReportBuilderInner() {
               onChange={(e) => updateFromFilter(i, 'valueType', e.target.value)}
               style={{ marginLeft: '0.5rem' }}
             >
-              <option value="param">Param</option>
-              <option value="value">Value</option>
+              <option value="param">{paramLabel}</option>
+              <option value="value">{valueLabel}</option>
             </select>
             {f.valueType === 'param' ? (
               <select
@@ -1877,11 +1899,11 @@ function ReportBuilderInner() {
             </button>
           </div>
         ))}
-        <button onClick={addFromFilter}>Add Filter</button>
+        <button onClick={addFromFilter}>{addFilterLabel}</button>
       </section>
 
       <section>
-        <h3>Joins</h3>
+        <h3>{t('reportBuilder.joins', 'Joins')}</h3>
         {joins.map((j, i) => {
           const targets = [fromTable, ...joins.slice(0, i).map((jn) => jn.table)];
           return (
@@ -1927,7 +1949,8 @@ function ReportBuilderInner() {
                   </option>
                 ))}
               </select>
-              <span> with </span>
+              {' '}
+              <span>{t('reportBuilder.with', 'with')} </span>
               <select
                 value={j.targetTable}
                 onChange={(e) => updateJoin(i, 'targetTable', e.target.value)}
@@ -2017,7 +2040,7 @@ function ReportBuilderInner() {
                 onClick={() => addJoinCondition(i)}
                 style={{ marginLeft: '0.5rem' }}
               >
-                Add Condition
+                {addConditionLabel}
               </button>
               {j.filters && j.filters.length > 0 && <span> | </span>}
               {j.filters?.map((f, k) => (
@@ -2079,8 +2102,8 @@ function ReportBuilderInner() {
                     onChange={(e) => updateJoinFilter(i, k, 'valueType', e.target.value)}
                     style={{ marginLeft: '0.5rem' }}
                   >
-                    <option value="param">Param</option>
-                    <option value="value">Value</option>
+                    <option value="param">{paramLabel}</option>
+                    <option value="value">{valueLabel}</option>
                   </select>
                   {f.valueType === 'param' ? (
                     <select
@@ -2131,7 +2154,7 @@ function ReportBuilderInner() {
                 onClick={() => addJoinFilter(i)}
                 style={{ marginLeft: '0.5rem' }}
               >
-                Add Filter
+                {addFilterLabel}
               </button>
               <button
                 onClick={() => removeJoin(i)}
@@ -2142,11 +2165,13 @@ function ReportBuilderInner() {
             </div>
           );
         })}
-        <button onClick={addJoin}>Add Join</button>
+        <button onClick={addJoin}>
+          {t('reportBuilder.addJoin', 'Add Join')}
+        </button>
       </section>
 
       <section>
-        <h3>Select Fields</h3>
+        <h3>{t('reportBuilder.selectFields', 'Select Fields')}</h3>
         {fields.map((f, i) => (
           <div
             key={i}
@@ -2171,9 +2196,9 @@ function ReportBuilderInner() {
               value={f.source}
               onChange={(e) => updateField(i, 'source', e.target.value)}
             >
-              <option value="none">None</option>
-              <option value="field">Field</option>
-              <option value="alias">Alias</option>
+              <option value="none">{noneLabel}</option>
+              <option value="field">{fieldLabel}</option>
+              <option value="alias">{aliasLabel}</option>
             </select>
             {f.source === 'alias' ? (
               <select
@@ -2181,7 +2206,7 @@ function ReportBuilderInner() {
                 onChange={(e) => updateField(i, 'baseAlias', e.target.value)}
                 style={{ marginLeft: '0.5rem' }}
               >
-                <option value="">None</option>
+                <option value="">{noneLabel}</option>
                 {fields.slice(0, i).map((pf) =>
                   pf.alias ? (
                     <option key={pf.alias} value={pf.alias}>
@@ -2228,7 +2253,7 @@ function ReportBuilderInner() {
               </>
             ) : null}
             <input
-              placeholder="alias"
+              placeholder={t('reportBuilder.aliasPlaceholder', 'alias')}
               value={f.alias}
               onChange={(e) => updateField(i, 'alias', e.target.value)}
               style={{ marginLeft: '0.5rem' }}
@@ -2250,16 +2275,16 @@ function ReportBuilderInner() {
                     ))}
                   </select>
                 )}
-                <select
-                  value={p.source}
-                  onChange={(e) =>
-                    updateCalcPart(i, k, 'source', e.target.value)
-                  }
-                >
-                  <option value="none">None</option>
-                  <option value="field">Field</option>
-                  <option value="alias">Alias</option>
-                </select>
+                  <select
+                    value={p.source}
+                    onChange={(e) =>
+                      updateCalcPart(i, k, 'source', e.target.value)
+                    }
+                  >
+                    <option value="none">{noneLabel}</option>
+                    <option value="field">{fieldLabel}</option>
+                    <option value="alias">{aliasLabel}</option>
+                  </select>
                 {p.source === 'alias' ? (
                   <select
                     value={p.alias}
@@ -2268,7 +2293,7 @@ function ReportBuilderInner() {
                     }
                     style={{ marginLeft: '0.5rem' }}
                   >
-                    <option value="">None</option>
+                    <option value="">{noneLabel}</option>
                     {fields.slice(0, i).map((pf) =>
                       pf.alias ? (
                         <option key={pf.alias} value={pf.alias}>
@@ -2319,7 +2344,7 @@ function ReportBuilderInner() {
               onClick={() => addCalcPart(i)}
               style={{ marginLeft: '0.5rem' }}
             >
-              Add Part
+              {t('reportBuilder.addPart', 'Add Part')}
             </button>
             {f.source === 'field' && f.aggregate !== 'NONE' && (
               <div style={{ display: 'inline-block', marginLeft: '0.5rem' }}>
@@ -2409,8 +2434,8 @@ function ReportBuilderInner() {
                       }
                       style={{ marginLeft: '0.5rem' }}
                     >
-                      <option value="param">Param</option>
-                      <option value="value">Value</option>
+                      <option value="param">{paramLabel}</option>
+                      <option value="value">{valueLabel}</option>
                     </select>
                     {c.valueType === 'param' ? (
                       <select
@@ -2463,16 +2488,20 @@ function ReportBuilderInner() {
                     </button>
                   </div>
                 ))}
-                <button onClick={() => addFieldCondition(i)}>Add Condition</button>
+                <button onClick={() => addFieldCondition(i)}>
+                  {addConditionLabel}
+                </button>
               </div>
             )}
           </div>
         ))}
-        <button onClick={addField}>Add Field</button>
+        <button onClick={addField}>
+          {t('reportBuilder.addField', 'Add Field')}
+        </button>
       </section>
 
       <section>
-        <h3>Group By</h3>
+        <h3>{t('reportBuilder.groupBy', 'Group By')}</h3>
         {groups.map((g, i) => (
           <div
             key={i}
@@ -2516,11 +2545,13 @@ function ReportBuilderInner() {
             </button>
           </div>
         ))}
-        <button onClick={addGroup}>Add Group</button>
+        <button onClick={addGroup}>
+          {t('reportBuilder.addGroup', 'Add Group')}
+        </button>
       </section>
 
       <section>
-        <h3>Having</h3>
+        <h3>{t('reportBuilder.having', 'Having')}</h3>
         {having.map((h, i) => (
           <div
             key={i}
@@ -2554,8 +2585,8 @@ function ReportBuilderInner() {
               value={h.source}
               onChange={(e) => updateHaving(i, 'source', e.target.value)}
             >
-              <option value="field">Field</option>
-              <option value="alias">Alias</option>
+              <option value="field">{fieldLabel}</option>
+              <option value="alias">{aliasLabel}</option>
             </select>
             {h.source === 'field' ? (
               <>
@@ -2624,8 +2655,8 @@ function ReportBuilderInner() {
               onChange={(e) => updateHaving(i, 'valueType', e.target.value)}
               style={{ marginLeft: '0.5rem' }}
             >
-              <option value="param">Param</option>
-              <option value="value">Value</option>
+              <option value="param">{paramLabel}</option>
+              <option value="value">{valueLabel}</option>
             </select>
             {h.valueType === 'param' ? (
               <select
@@ -2672,11 +2703,13 @@ function ReportBuilderInner() {
             </button>
           </div>
         ))}
-        <button onClick={addHaving}>Add Having</button>
+        <button onClick={addHaving}>
+          {t('reportBuilder.addHaving', 'Add Having')}
+        </button>
       </section>
 
       <section>
-        <h3>Parameters</h3>
+        <h3>{t('reportBuilder.parameters', 'Parameters')}</h3>
         <div>
           {SESSION_PARAMS.map((p) => (
             <label key={p.name} style={{ marginRight: '1rem' }}>
@@ -2691,7 +2724,7 @@ function ReportBuilderInner() {
         </div>
         <div style={{ marginTop: '0.5rem' }}>
           <input
-            placeholder="name"
+            placeholder={t('reportBuilder.paramNamePlaceholder', 'name')}
             value={customParamName}
             onChange={(e) => setCustomParamName(e.target.value)}
           />
@@ -2707,7 +2740,7 @@ function ReportBuilderInner() {
             ))}
           </select>
           <button onClick={addCustomParam} style={{ marginLeft: '0.5rem' }}>
-            Add
+            {t('reportBuilder.addParam', 'Add')}
           </button>
         </div>
         <ul>
@@ -2723,7 +2756,7 @@ function ReportBuilderInner() {
       </section>
 
       <section>
-        <h3>Conditions</h3>
+        <h3>{t('reportBuilder.conditions', 'Conditions')}</h3>
         {conditions.map((c, i) => (
           <div
             key={i}
@@ -2827,14 +2860,16 @@ function ReportBuilderInner() {
           </div>
         ))}
         <button onClick={addCondition} disabled={!params.length}>
-          Add Condition
+          {addConditionLabel}
         </button>
         <button onClick={addRawCondition} style={{ marginLeft: '0.5rem' }}>
-          Add Raw Condition
+          {t('reportBuilder.addRawCondition', 'Add Raw Condition')}
         </button>
         <div style={{ marginTop: '0.5rem' }}>
           <span style={{ marginRight: '0.5rem' }}>
-            Added: {Math.max(0, unionQueries.length - 1)}
+            {t('reportBuilder.unionAddedCount', 'Added: {{count}}', {
+              count: Math.max(0, unionQueries.length - 1),
+            })}
           </span>
           <select
             value={unionType}
@@ -2845,7 +2880,7 @@ function ReportBuilderInner() {
             <option value="UNION ALL">UNION ALL</option>
           </select>
           <button onClick={addUnionQuery} style={{ marginRight: '0.5rem' }}>
-            Add UNION
+            {t('reportBuilder.addUnion', 'Add UNION')}
           </button>
           {unionQueries.map((_, idx) => (
             <button
@@ -2864,7 +2899,7 @@ function ReportBuilderInner() {
 
       <section style={{ marginTop: '1rem' }}>
         <label>
-          Procedure Name:
+          {t('reportBuilder.procedureName', 'Procedure Name')}:
           <div>
             {`${generalConfig?.general?.reportProcPrefix || ''}${company ? `${company}_` : ''}`}
             <input
@@ -2878,28 +2913,32 @@ function ReportBuilderInner() {
       </section>
 
       <section style={{ marginTop: '1rem' }}>
-        <h3>Generate</h3>
-        <button onClick={handleGenerateSql}>Create SQL</button>
+        <h3>{t('reportBuilder.generate', 'Generate')}</h3>
+        <button onClick={handleGenerateSql}>
+          {t('reportBuilder.createSql', 'Create SQL')}
+        </button>
         <button onClick={handleGenerateView} style={{ marginLeft: '0.5rem' }}>
-          Create View
+          {t('reportBuilder.createView', 'Create View')}
         </button>
         <button onClick={handleGenerateProc} style={{ marginLeft: '0.5rem' }}>
-          Create Procedure
+          {t('reportBuilder.createProcedure', 'Create Procedure')}
         </button>
       </section>
 
       {viewSql && (
         <section style={{ marginTop: '1rem' }}>
-          <h3>View</h3>
-          <button onClick={handlePostView}>POST View</button>
+          <h3>{t('reportBuilder.viewHeading', 'View')}</h3>
+          <button onClick={handlePostView}>
+            {t('reportBuilder.postView', 'POST View')}
+          </button>
         </section>
       )}
 
       <section style={{ marginTop: '1rem' }}>
-        <h3>Stored Procedure</h3>
+        <h3>{t('reportBuilder.storedProcedure', 'Stored Procedure')}</h3>
         {procSql && (
           <button onClick={handlePostProc} disabled={procFileIsDefault}>
-            POST Procedure
+            {t('reportBuilder.postProcedure', 'POST Procedure')}
           </button>
         )}
         <button
@@ -2907,7 +2946,7 @@ function ReportBuilderInner() {
           style={{ marginLeft: '0.5rem' }}
           disabled={procFileIsDefault}
         >
-          Save to Host
+          {t('reportBuilder.saveToHost', 'Save to Host')}
         </button>
         <select
           value={selectedProcFile}
@@ -2921,19 +2960,19 @@ function ReportBuilderInner() {
         >
           {procFiles.map((f) => (
             <option key={f.name} value={f.name}>
-              {f.name} {f.isDefault ? '(default)' : ''}
+              {f.isDefault ? `${f.name} ${defaultTag}` : f.name}
             </option>
           ))}
         </select>
         <button onClick={handleLoadProcFile} style={{ marginLeft: '0.5rem' }}>
-          Load from Host
+          {t('reportBuilder.loadFromHost', 'Load from Host')}
         </button>
         {procFileIsDefault && (
           <button
             onClick={handleImportProcFile}
             style={{ marginLeft: '0.5rem' }}
           >
-            Import default procedure
+            {t('reportBuilder.importDefaultProcedure', 'Import default procedure')}
           </button>
         )}
         <select
@@ -2956,26 +2995,29 @@ function ReportBuilderInner() {
           onClick={handleLoadDbProcedure}
           style={{ marginLeft: '0.5rem' }}
         >
-          Load Script
+          {t('reportBuilder.loadScript', 'Load Script')}
         </button>
         <button
           onClick={handleLoadConfigFromProcedure}
           style={{ marginLeft: '0.5rem' }}
         >
-          Load config from stored procedure
+          {t(
+            'reportBuilder.loadConfigFromProcedure',
+            'Load config from stored procedure',
+          )}
         </button>
         <button
           onClick={handleDeleteProcedure}
           style={{ marginLeft: '0.5rem' }}
           disabled={dbProcIsDefault}
         >
-          Delete Procedure
+          {t('reportBuilder.deleteProcedure', 'Delete Procedure')}
         </button>
       </section>
 
       {procFileText && (
         <section style={{ marginTop: '1rem' }}>
-          <h3>Edit Loaded SQL</h3>
+          <h3>{t('reportBuilder.editLoadedSql', 'Edit Loaded SQL')}</h3>
           <textarea
             value={procFileText}
             onChange={(e) => setProcFileText(e.target.value)}
@@ -2985,25 +3027,30 @@ function ReportBuilderInner() {
           />
           {procFileIsDefault && (
             <div style={{ marginTop: '0.25rem', color: 'red' }}>
-              Default file is read-only. Import to edit.
+              {t(
+                'reportBuilder.defaultFileReadonly',
+                'Default file is read-only. Import to edit.',
+              )}
             </div>
           )}
           <button onClick={handleParseSql} style={{ marginTop: '0.5rem' }}>
-            Parse SQL
+            {t('reportBuilder.parseSql', 'Parse SQL')}
           </button>
           <button
             onClick={handleReplaceProcedure}
             style={{ marginTop: '0.5rem', marginLeft: '0.5rem' }}
             disabled={procFileIsDefault}
           >
-            Replace Procedure
+            {t('reportBuilder.replaceProcedure', 'Replace Procedure')}
           </button>
         </section>
       )}
 
       <section style={{ marginTop: '1rem' }}>
-        <h3>Config</h3>
-        <button onClick={handleSaveConfig}>Save Config</button>
+        <h3>{t('reportBuilder.config', 'Config')}</h3>
+        <button onClick={handleSaveConfig}>
+          {t('reportBuilder.saveConfig', 'Save Config')}
+        </button>
         <select
           value={selectedReport}
           onChange={(e) => setSelectedReport(e.target.value)}
@@ -3016,7 +3063,7 @@ function ReportBuilderInner() {
           ))}
         </select>
         <button onClick={() => handleLoadConfig()} style={{ marginLeft: '0.5rem' }}>
-          Load Config
+          {t('reportBuilder.loadConfig', 'Load Config')}
         </button>
       </section>
 
