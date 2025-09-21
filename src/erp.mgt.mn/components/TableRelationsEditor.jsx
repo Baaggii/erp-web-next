@@ -19,14 +19,64 @@ function normalizeColumns(list) {
 
 function buildRelationSummary(relations) {
   if (!Array.isArray(relations)) return [];
-  const map = new Map();
-  relations.forEach((rel) => {
-    if (!rel || !rel.COLUMN_NAME) return;
-    map.set(rel.COLUMN_NAME, rel);
-  });
-  return Array.from(map.values()).sort((a, b) =>
-    a.COLUMN_NAME.localeCompare(b.COLUMN_NAME),
-  );
+  return relations
+    .filter((rel) => rel && rel.COLUMN_NAME)
+    .map((rel, order) => ({ ...rel, __order: order }))
+    .sort((a, b) => {
+      const col = a.COLUMN_NAME.localeCompare(b.COLUMN_NAME);
+      if (col !== 0) return col;
+      if (a.source === b.source) {
+        const indexA = Number.isInteger(a.configIndex) ? a.configIndex : a.__order;
+        const indexB = Number.isInteger(b.configIndex) ? b.configIndex : b.__order;
+        return indexA - indexB;
+      }
+      if (a.source === 'custom') return -1;
+      if (b.source === 'custom') return 1;
+      return a.__order - b.__order;
+    })
+    .map((rel) => {
+      const { __order, ...rest } = rel;
+      return rest;
+    });
+}
+
+function normalizeCustomRelationsMap(relations) {
+  if (!relations || typeof relations !== 'object') return {};
+  const result = {};
+  for (const [column, entry] of Object.entries(relations)) {
+    if (Array.isArray(entry)) {
+      const normalized = entry
+        .map((item) => {
+          if (!item || typeof item !== 'object') return null;
+          if (!item.table || !item.column) return null;
+          const normalizedEntry = {
+            table: item.table,
+            column: item.column,
+          };
+          if (item.idField) normalizedEntry.idField = item.idField;
+          if (Array.isArray(item.displayFields)) {
+            normalizedEntry.displayFields = [...item.displayFields];
+          }
+          return normalizedEntry;
+        })
+        .filter(Boolean);
+      if (normalized.length > 0) {
+        result[column] = normalized;
+      }
+    } else if (entry && typeof entry === 'object' && entry.table && entry.column) {
+      result[column] = [
+        {
+          table: entry.table,
+          column: entry.column,
+          ...(entry.idField ? { idField: entry.idField } : {}),
+          ...(Array.isArray(entry.displayFields)
+            ? { displayFields: [...entry.displayFields] }
+            : {}),
+        },
+      ];
+    }
+  }
+  return result;
 }
 
 export default function TableRelationsEditor({ table }) {
@@ -37,21 +87,28 @@ export default function TableRelationsEditor({ table }) {
   const [relations, setRelations] = useState([]);
   const [customRelations, setCustomRelations] = useState({});
   const [selectedColumn, setSelectedColumn] = useState('');
+  const [selectedRelationIndex, setSelectedRelationIndex] = useState(null);
   const [targetTable, setTargetTable] = useState('');
   const [targetColumn, setTargetColumn] = useState('');
   const [targetColumnsCache, setTargetColumnsCache] = useState({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [deletingColumn, setDeletingColumn] = useState('');
+  const [deletingKey, setDeletingKey] = useState('');
   const [isDefaultConfig, setIsDefaultConfig] = useState(true);
 
   const sortedColumns = useMemo(() => [...columns].sort((a, b) => a.localeCompare(b)), [columns]);
   const sortedTables = useMemo(() => [...tables].sort((a, b) => a.localeCompare(b)), [tables]);
   const summaryRelations = useMemo(() => buildRelationSummary(relations), [relations]);
   const currentTargetColumns = targetColumnsCache[targetTable] || [];
-  const hasCustomSelection = Boolean(
-    selectedColumn && customRelations?.[selectedColumn],
-  );
+  const selectedCustomRelations = useMemo(() => {
+    const list = customRelations?.[selectedColumn];
+    return Array.isArray(list) ? list : [];
+  }, [customRelations, selectedColumn]);
+  const selectedCustomMapping = useMemo(() => {
+    if (!Number.isInteger(selectedRelationIndex)) return null;
+    return selectedCustomRelations[selectedRelationIndex] ?? null;
+  }, [selectedCustomRelations, selectedRelationIndex]);
+  const hasSelectedCustomMapping = Boolean(selectedCustomMapping);
   const canSave = useMemo(
     () => Boolean(selectedColumn && targetTable && targetColumn),
     [selectedColumn, targetTable, targetColumn],
@@ -73,6 +130,7 @@ export default function TableRelationsEditor({ table }) {
       setCustomRelations({});
       setTargetColumnsCache({});
       setSelectedColumn('');
+      setSelectedRelationIndex(null);
       setTargetTable('');
       setTargetColumn('');
       return;
@@ -104,14 +162,11 @@ export default function TableRelationsEditor({ table }) {
         customJson && typeof customJson === 'object'
           ? customJson.relations ?? customJson
           : {};
-      setCustomRelations(
-        customMap && typeof customMap === 'object' && !Array.isArray(customMap)
-          ? customMap
-          : {},
-      );
+      setCustomRelations(normalizeCustomRelationsMap(customMap));
       setIsDefaultConfig(Boolean(customJson?.isDefault ?? true));
       setTargetColumnsCache({});
       setSelectedColumn('');
+      setSelectedRelationIndex(null);
       setTargetTable('');
       setTargetColumn('');
     } catch (err) {
@@ -153,35 +208,52 @@ export default function TableRelationsEditor({ table }) {
   );
 
   const startEdit = useCallback(
-    async (column) => {
+    async (column, relation = null, relationIndex = null) => {
       setSelectedColumn(column);
       if (!column) {
+        setSelectedRelationIndex(null);
         setTargetTable('');
         setTargetColumn('');
         return;
       }
-      const custom = customRelations?.[column];
-      if (custom && custom.table && custom.column) {
-        setTargetTable(custom.table);
-        await ensureTargetColumns(custom.table);
-        setTargetColumn(custom.column);
+
+      const resolvedIndex = Number.isInteger(relationIndex)
+        ? relationIndex
+        : Number.isInteger(relation?.configIndex)
+        ? relation.configIndex
+        : null;
+      let resolvedRelation = relation;
+
+      if (!resolvedRelation && resolvedIndex !== null) {
+        const list = Array.isArray(customRelations?.[column])
+          ? customRelations[column]
+          : [];
+        resolvedRelation = list[resolvedIndex] ?? null;
+      }
+
+      if (resolvedRelation && resolvedRelation.table && resolvedRelation.column) {
+        setSelectedRelationIndex(resolvedIndex);
+        setTargetTable(resolvedRelation.table);
+        await ensureTargetColumns(resolvedRelation.table);
+        setTargetColumn(resolvedRelation.column);
         return;
       }
-      const rel = [...summaryRelations]
-        .reverse()
-        .find((r) => r?.COLUMN_NAME === column);
-      if (rel) {
-        const tbl = rel.REFERENCED_TABLE_NAME || rel.table || '';
-        const col = rel.REFERENCED_COLUMN_NAME || rel.column || '';
+
+      if (relation && relation.REFERENCED_TABLE_NAME) {
+        const tbl = relation.REFERENCED_TABLE_NAME || relation.table || '';
+        const col = relation.REFERENCED_COLUMN_NAME || relation.column || '';
+        setSelectedRelationIndex(null);
         setTargetTable(tbl);
         await ensureTargetColumns(tbl);
         setTargetColumn(col);
-      } else {
-        setTargetTable('');
-        setTargetColumn('');
+        return;
       }
+
+      setSelectedRelationIndex(null);
+      setTargetTable('');
+      setTargetColumn('');
     },
-    [customRelations, ensureTargetColumns, summaryRelations],
+    [customRelations, ensureTargetColumns],
   );
 
   const handleTargetTableChange = useCallback(
@@ -210,6 +282,8 @@ export default function TableRelationsEditor({ table }) {
     }
     setSaving(true);
     try {
+      const currentColumn = selectedColumn;
+      const editingExisting = Number.isInteger(selectedRelationIndex);
       const res = await fetch(
         `/api/tables/${encodeURIComponent(table)}/relations/custom/${encodeURIComponent(
           selectedColumn,
@@ -221,17 +295,20 @@ export default function TableRelationsEditor({ table }) {
           body: JSON.stringify({
             targetTable,
             targetColumn,
+            ...(editingExisting ? { index: selectedRelationIndex } : {}),
           }),
         },
       );
       if (!res.ok) {
         throw new Error('Failed to save relation');
       }
-      await res.json().catch(() => ({}));
+      const json = await res.json().catch(() => ({}));
       addToast('Saved relation mapping', 'success');
       await loadData();
-      if (selectedColumn) {
-        await startEdit(selectedColumn);
+      if (currentColumn) {
+        const nextIndex =
+          Number.isInteger(json?.index) && editingExisting ? json.index : null;
+        await startEdit(currentColumn, null, nextIndex);
       }
     } catch (err) {
       console.error('Failed to save custom relation', err);
@@ -242,30 +319,48 @@ export default function TableRelationsEditor({ table }) {
   }, [addToast, loadData, selectedColumn, startEdit, table, targetColumn, targetTable]);
 
   const handleDelete = useCallback(
-    async (column) => {
+    async (column, relationIndex = null) => {
       if (!column) return;
-      setDeletingColumn(column);
+      const deleteKey = `${column}:${
+        Number.isInteger(relationIndex) ? relationIndex : 'all'
+      }`;
+      setDeletingKey(deleteKey);
+      const params = new URLSearchParams();
+      if (Number.isInteger(relationIndex) && relationIndex >= 0) {
+        params.set('index', String(relationIndex));
+      }
       try {
         const res = await fetch(
           `/api/tables/${encodeURIComponent(table)}/relations/custom/${encodeURIComponent(
             column,
-          )}`,
+          )}${params.toString() ? `?${params.toString()}` : ''}`,
           { method: 'DELETE', credentials: 'include' },
         );
         if (!res.ok) {
           throw new Error('Failed to delete relation');
         }
+        await res.json().catch(() => ({}));
         addToast('Removed custom relation', 'success');
         await loadData();
+        if (selectedColumn === column) {
+          await startEdit(column);
+        }
       } catch (err) {
         console.error('Failed to delete custom relation', err);
         addToast('Failed to remove relation', 'error');
       } finally {
-        setDeletingColumn('');
+        setDeletingKey('');
       }
     },
-    [addToast, loadData, table],
+    [addToast, loadData, selectedColumn, startEdit, table],
   );
+
+  const beginNewMapping = useCallback(() => {
+    if (!selectedColumn) return;
+    setSelectedRelationIndex(null);
+    setTargetTable('');
+    setTargetColumn('');
+  }, [selectedColumn]);
 
   return (
     <div className="table-relations-editor">
@@ -299,38 +394,57 @@ export default function TableRelationsEditor({ table }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {summaryRelations.map((rel) => (
-                    <tr
-                      key={rel.COLUMN_NAME}
-                      data-testid={`relation-row-${rel.COLUMN_NAME}`}
-                    >
-                      <td>{rel.COLUMN_NAME}</td>
-                      <td>{rel.REFERENCED_TABLE_NAME || '-'}</td>
-                      <td>{rel.REFERENCED_COLUMN_NAME || '-'}</td>
-                      <td>{rel.source === 'custom' ? 'Custom' : 'Database'}</td>
-                      <td>
-                        <button
-                          type="button"
-                          data-testid={`relation-edit-${rel.COLUMN_NAME}`}
-                          onClick={() => startEdit(rel.COLUMN_NAME)}
-                        >
-                          Edit
-                        </button>
-                        {rel.source === 'custom' && (
+                  {summaryRelations.map((rel, idx) => {
+                    const rowKey = `${rel.COLUMN_NAME}-${rel.source}-${
+                      rel.source === 'custom'
+                        ? Number.isInteger(rel.configIndex)
+                          ? rel.configIndex
+                          : 'custom'
+                        : idx
+                    }`;
+                    const isDeleting = deletingKey === `${rel.COLUMN_NAME}:${rel.configIndex ?? 'all'}`;
+                    return (
+                      <tr
+                        key={rowKey}
+                        data-testid={`relation-row-${rowKey}`}
+                      >
+                        <td>{rel.COLUMN_NAME}</td>
+                        <td>{rel.REFERENCED_TABLE_NAME || '-'}</td>
+                        <td>{rel.REFERENCED_COLUMN_NAME || '-'}</td>
+                        <td>{rel.source === 'custom' ? 'Custom' : 'Database'}</td>
+                        <td>
                           <button
                             type="button"
-                            data-testid={`relation-delete-${rel.COLUMN_NAME}`}
-                            onClick={() => handleDelete(rel.COLUMN_NAME)}
-                            disabled={deletingColumn === rel.COLUMN_NAME}
+                            data-testid={`relation-edit-${rowKey}`}
+                            onClick={() =>
+                              startEdit(
+                                rel.COLUMN_NAME,
+                                rel,
+                                Number.isInteger(rel.configIndex) ? rel.configIndex : null,
+                              )
+                            }
                           >
-                            {deletingColumn === rel.COLUMN_NAME
-                              ? 'Removing…'
-                              : 'Remove'}
+                            Edit
                           </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                          {rel.source === 'custom' && (
+                            <button
+                              type="button"
+                              data-testid={`relation-delete-${rowKey}`}
+                              onClick={() =>
+                                handleDelete(
+                                  rel.COLUMN_NAME,
+                                  Number.isInteger(rel.configIndex) ? rel.configIndex : null,
+                                )
+                              }
+                              disabled={isDeleting}
+                            >
+                              {isDeleting ? 'Removing…' : 'Remove'}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
@@ -412,19 +526,40 @@ export default function TableRelationsEditor({ table }) {
               >
                 {saving ? 'Saving…' : 'Save Relation'}
               </button>
-              {hasCustomSelection && (
+              {hasSelectedCustomMapping && (
                 <button
                   type="button"
                   data-testid="relations-form-delete"
-                  onClick={() => handleDelete(selectedColumn)}
-                  disabled={deletingColumn === selectedColumn}
+                  onClick={() => handleDelete(selectedColumn, selectedRelationIndex)}
+                  disabled={deletingKey === `${selectedColumn}:${selectedRelationIndex}`}
                 >
-                  {deletingColumn === selectedColumn
+                  {deletingKey === `${selectedColumn}:${selectedRelationIndex}`
                     ? 'Removing…'
-                    : 'Remove Custom Mapping'}
+                    : 'Remove Selected Mapping'}
+                </button>
+              )}
+              {selectedColumn && (
+                <button
+                  type="button"
+                  data-testid="relations-form-new"
+                  onClick={beginNewMapping}
+                  disabled={saving}
+                >
+                  Add Another Target
                 </button>
               )}
             </div>
+            {hasSelectedCustomMapping && (
+              <p
+                style={{
+                  marginTop: '0.5rem',
+                  color: '#555',
+                  fontSize: '0.85rem',
+                }}
+              >
+                Editing custom mapping #{selectedRelationIndex + 1} for {selectedColumn}.
+              </p>
+            )}
           </div>
         </>
       )}

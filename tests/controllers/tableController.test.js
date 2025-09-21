@@ -419,7 +419,7 @@ if (typeof mock?.import !== 'function') {
         '../services/tableRelationsConfig.js': {
           ...actualService,
           listCustomRelations: async () => ({
-            config: { dept_id: { table: 'departments', column: 'id' } },
+            config: { dept_id: [{ table: 'departments', column: 'id' }] },
             isDefault: false,
           }),
         },
@@ -447,6 +447,7 @@ if (typeof mock?.import !== 'function') {
       REFERENCED_TABLE_NAME: 'departments',
       REFERENCED_COLUMN_NAME: 'id',
       source: 'custom',
+      configIndex: 0,
     });
   });
 
@@ -460,7 +461,7 @@ if (typeof mock?.import !== 'function') {
         '../services/tableRelationsConfig.js': {
           ...actualService,
           listCustomRelations: async () => ({
-            config: { dept_id: { table: 'departments', column: 'id' } },
+            config: { dept_id: [{ table: 'departments', column: 'id' }] },
             isDefault: true,
           }),
         },
@@ -477,7 +478,7 @@ if (typeof mock?.import !== 'function') {
       if (err) throw err;
     });
     assert.deepEqual(payload, {
-      relations: { dept_id: { table: 'departments', column: 'id' } },
+      relations: { dept_id: [{ table: 'departments', column: 'id' }] },
       isDefault: true,
     });
   });
@@ -494,7 +495,11 @@ if (typeof mock?.import !== 'function') {
           ...actualService,
           saveCustomRelation: async (...callArgs) => {
             args = callArgs;
-            return { table: 'departments', column: 'id' };
+            return {
+              relation: { table: 'departments', column: 'id' },
+              index: 0,
+              relations: [{ table: 'departments', column: 'id' }],
+            };
           },
         },
       },
@@ -526,6 +531,72 @@ if (typeof mock?.import !== 'function') {
     assert.deepEqual(payload, {
       column: 'dept_id',
       relation: { table: 'departments', column: 'id' },
+      index: 0,
+      relations: [{ table: 'departments', column: 'id' }],
+      source: 'custom',
+    });
+  });
+
+  test('saveCustomTableRelation updates mapping when index provided', async () => {
+    const actualService = await import(
+      '../../api-server/services/tableRelationsConfig.js'
+    );
+    let args;
+    const { saveCustomTableRelation } = await mock.import(
+      '../../api-server/controllers/tableController.js',
+      {
+        '../services/tableRelationsConfig.js': {
+          ...actualService,
+          updateCustomRelationAtIndex: async (...callArgs) => {
+            args = callArgs;
+            return {
+              relation: { table: 'teams', column: 'lead_id' },
+              index: 1,
+              relations: [
+                { table: 'departments', column: 'id' },
+                { table: 'teams', column: 'lead_id' },
+              ],
+            };
+          },
+          saveCustomRelation: async () => {
+            throw new Error('saveCustomRelation should not be called');
+          },
+        },
+      },
+    );
+    const req = {
+      params: { table: 'users', column: 'dept_id' },
+      body: { targetTable: 'teams', targetColumn: 'lead_id', index: 1 },
+      query: {},
+      user: { companyId: 4 },
+    };
+    let payload;
+    const res = {
+      json(body) {
+        payload = body;
+      },
+      status() {
+        return this;
+      },
+    };
+    await saveCustomTableRelation(req, res, (err) => {
+      if (err) throw err;
+    });
+    assert.deepEqual(args, [
+      'users',
+      'dept_id',
+      1,
+      { table: 'teams', column: 'lead_id', idField: undefined, displayFields: undefined },
+      4,
+    ]);
+    assert.deepEqual(payload, {
+      column: 'dept_id',
+      relation: { table: 'teams', column: 'lead_id' },
+      index: 1,
+      relations: [
+        { table: 'departments', column: 'id' },
+        { table: 'teams', column: 'lead_id' },
+      ],
       source: 'custom',
     });
   });
@@ -542,6 +613,7 @@ if (typeof mock?.import !== 'function') {
           ...actualService,
           removeCustomRelation: async (...callArgs) => {
             args = callArgs;
+            return { removed: [{ table: 'departments', column: 'id' }], index: -1, relations: [] };
           },
         },
       },
@@ -551,22 +623,75 @@ if (typeof mock?.import !== 'function') {
       query: {},
       user: { companyId: 2 },
     };
-    let statusCode;
+    let payload;
     const res = {
-      sendStatus(code) {
-        statusCode = code;
-      },
       status(code) {
-        statusCode = code;
         return this;
       },
-      json() {},
+      json(body) {
+        payload = body;
+      },
     };
     await deleteCustomTableRelation(req, res, (err) => {
       if (err) throw err;
     });
     assert.deepEqual(args, ['users', 'dept_id', 2]);
-    assert.equal(statusCode, 204);
+    assert.deepEqual(payload, {
+      column: 'dept_id',
+      removed: [{ table: 'departments', column: 'id' }],
+      index: -1,
+      relations: [],
+    });
+  });
+
+  test('deleteCustomTableRelation removes mapping by index', async () => {
+    const actualService = await import(
+      '../../api-server/services/tableRelationsConfig.js'
+    );
+    let args;
+    const { deleteCustomTableRelation } = await mock.import(
+      '../../api-server/controllers/tableController.js',
+      {
+        '../services/tableRelationsConfig.js': {
+          ...actualService,
+          removeCustomRelationAtIndex: async (...callArgs) => {
+            args = callArgs;
+            return {
+              removed: { table: 'departments', column: 'id' },
+              index: 0,
+              relations: [{ table: 'teams', column: 'lead_id' }],
+            };
+          },
+          removeCustomRelation: async () => {
+            throw new Error('removeCustomRelation should not be called');
+          },
+        },
+      },
+    );
+    const req = {
+      params: { table: 'users', column: 'dept_id' },
+      query: { index: '0' },
+      user: { companyId: 3 },
+    };
+    let payload;
+    const res = {
+      status() {
+        return this;
+      },
+      json(body) {
+        payload = body;
+      },
+    };
+    await deleteCustomTableRelation(req, res, (err) => {
+      if (err) throw err;
+    });
+    assert.deepEqual(args, ['users', 'dept_id', 0, 3]);
+    assert.deepEqual(payload, {
+      column: 'dept_id',
+      removed: { table: 'departments', column: 'id' },
+      index: 0,
+      relations: [{ table: 'teams', column: 'lead_id' }],
+    });
   });
 }
 
