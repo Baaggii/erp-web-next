@@ -2,11 +2,149 @@ import React, { useEffect, useState, useContext, useRef, useCallback } from 'rea
 import I18nContext from '../context/I18nContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import translateWithCache from '../utils/translateWithCache.js';
+import { evaluateTranslationCandidate } from '../../../utils/translationValidation.js';
 
 const delay = () => new Promise((r) => setTimeout(r, 200));
 const RATE_LIMIT_MAX_RETRIES = 3;
 const RATE_LIMIT_BASE_DELAY = 500;
 const RATE_LIMIT_MAX_DELAY = 5000;
+
+const cyrillicRegex = /[\u0400-\u04FF]/;
+const latinRegex = /[A-Za-z]/;
+
+function normalizeBaseLanguageValue(value) {
+  if (typeof value === 'string') return value.trim();
+  if (value == null) return '';
+  return String(value).trim();
+}
+
+function extractEnglishStats(text) {
+  const defaults = { ratio: 0, asciiCount: 0, matches: 0 };
+  if (!text) return defaults;
+  try {
+    const heuristics = evaluateTranslationCandidate({
+      candidate: text,
+      base: '',
+      lang: 'mn',
+      metadata: {},
+    });
+    const english = heuristics?.english;
+    if (english) {
+      return {
+        ratio: Number.isFinite(english.ratio) ? english.ratio : defaults.ratio,
+        asciiCount: Number.isFinite(english.asciiCount)
+          ? english.asciiCount
+          : defaults.asciiCount,
+        matches: Number.isFinite(english.englishMatches)
+          ? english.englishMatches
+          : defaults.matches,
+      };
+    }
+  } catch {
+    // ignore heuristics errors and fall back to defaults
+  }
+  return defaults;
+}
+
+function analyzeBaseLanguage(value) {
+  const text = normalizeBaseLanguageValue(value);
+  if (!text) {
+    return {
+      text,
+      language: null,
+      reason: 'empty',
+      hasCyrillic: false,
+      hasLatin: false,
+      english: { ratio: 0, asciiCount: 0, matches: 0 },
+    };
+  }
+
+  const hasCyrillic = cyrillicRegex.test(text);
+  const hasLatin = latinRegex.test(text);
+  const english = extractEnglishStats(text);
+  let language = null;
+  let reason = 'no_language_signal';
+
+  if (hasCyrillic && !hasLatin) {
+    language = 'mn';
+    reason = 'cyrillic_only';
+  } else if (hasCyrillic && hasLatin) {
+    if (english.ratio >= 0.6 && english.asciiCount >= 2) {
+      language = 'en';
+      reason = 'mixed_but_english_dominant';
+    } else if (english.ratio <= 0.2) {
+      language = 'mn';
+      reason = 'mixed_but_cyrillic_dominant';
+    } else {
+      language = null;
+      reason = 'mixed_scripts';
+    }
+  } else if (!hasCyrillic && hasLatin) {
+    if (english.asciiCount >= 2 && (english.ratio >= 0.4 || english.matches >= 1)) {
+      language = 'en';
+      reason = 'latin_script';
+    } else if (english.asciiCount >= 1 && text.split(' ').length === 1) {
+      language = 'en';
+      reason = 'single_latin_token';
+    } else {
+      language = null;
+      reason = 'latin_without_signal';
+    }
+  }
+
+  return { text, language, reason, hasCyrillic, hasLatin, english };
+}
+
+export function validateBaseLanguages(entries) {
+  const invalid = [];
+  if (!Array.isArray(entries) || !entries.length) {
+    return { invalid };
+  }
+
+  entries.forEach((entry, index) => {
+    const values = entry?.values ?? {};
+    const enAnalysis = analyzeBaseLanguage(values.en);
+    const mnAnalysis = analyzeBaseLanguage(values.mn);
+    const issues = [];
+
+    if (enAnalysis.text) {
+      if (enAnalysis.language === 'mn') {
+        issues.push('englishLooksMongolian');
+      } else if (enAnalysis.hasCyrillic) {
+        issues.push('englishMixedScripts');
+      }
+    }
+
+    if (mnAnalysis.text) {
+      if (mnAnalysis.language === 'en') {
+        issues.push('mongolianLooksEnglish');
+      } else if (mnAnalysis.hasLatin && mnAnalysis.language !== 'mn') {
+        issues.push('mongolianMixedScripts');
+      }
+    }
+
+    if (
+      enAnalysis.text &&
+      mnAnalysis.text &&
+      issues.includes('englishLooksMongolian') &&
+      issues.includes('mongolianLooksEnglish')
+    ) {
+      issues.push('baseFieldsSwapped');
+    }
+
+    if (issues.length) {
+      invalid.push({
+        index,
+        key: entry?.key ?? '',
+        issues,
+        en: enAnalysis,
+        mn: mnAnalysis,
+      });
+    }
+  });
+
+  return { invalid };
+}
 
 export default function ManualTranslationsTab() {
   const { t } = useContext(I18nContext);
@@ -163,6 +301,21 @@ export default function ManualTranslationsTab() {
   const paged = filteredEntries.slice(start, start + perPage);
   const totalPages = Math.max(1, Math.ceil(filteredEntries.length / perPage));
 
+  const guardBaseLanguages = useCallback(
+    (entriesToCheck) => {
+      const result = validateBaseLanguages(entriesToCheck);
+      if (!result.invalid.length) return false;
+      const sample = result.invalid.find((item) => item.key?.trim());
+      const key = sample ? 'baseLanguageMismatchForKey' : 'baseLanguageMismatch';
+      const fallback = sample
+        ? `Entry "${sample.key}" has mismatched English/Mongolian text. Please fix the base languages before continuing.`
+        : 'Some entries have mismatched English/Mongolian text. Please fix the base languages before continuing.';
+      addToast(t(key, fallback), 'error');
+      return true;
+    },
+    [addToast, t],
+  );
+
   function updateEntry(index, field, value) {
     setEntries((prev) => {
       const copy = [...prev];
@@ -214,6 +367,9 @@ export default function ManualTranslationsTab() {
   }
 
   async function saveLanguage(lang) {
+    if (guardBaseLanguages(paged)) {
+      return;
+    }
     setSavingLanguage(lang);
     const payload = paged
       .filter((e) => e.key)
@@ -289,6 +445,9 @@ export default function ManualTranslationsTab() {
 
   async function completeAll() {
     if (processingRef.current) return;
+    if (guardBaseLanguages(entries)) {
+      return;
+    }
     abortRef.current = false;
     processingRef.current = true;
     setCompleting(true);
