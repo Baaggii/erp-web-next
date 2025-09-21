@@ -1,6 +1,9 @@
-import React from 'react';
+import { useContext } from 'react';
+import I18nContext from '../context/I18nContext.jsx';
 
 export default function Inventory() {
-  return <div>Inventory Management Module</div>;
+  const { t } = useContext(I18nContext);
+
+  return <div>{t('windows.inventory.placeholder', 'Inventory Management Module')}</div>;
 }
 
