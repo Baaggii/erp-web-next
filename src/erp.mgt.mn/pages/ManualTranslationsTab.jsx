@@ -301,130 +301,20 @@ export default function ManualTranslationsTab() {
   const paged = filteredEntries.slice(start, start + perPage);
   const totalPages = Math.max(1, Math.ceil(filteredEntries.length / perPage));
 
-  const showBaseLanguageError = useCallback(
-    (invalid = []) => {
-      const sample = invalid.find((item) => item.key?.trim());
+  const guardBaseLanguages = useCallback(
+    (entriesToCheck) => {
+      const result = validateBaseLanguages(entriesToCheck);
+      if (!result.invalid.length) return false;
+      const sample = result.invalid.find((item) => item.key?.trim());
       const key = sample ? 'baseLanguageMismatchForKey' : 'baseLanguageMismatch';
       const fallback = sample
         ? `Entry "${sample.key}" has mismatched English/Mongolian text. Please fix the base languages before continuing.`
         : 'Some entries have mismatched English/Mongolian text. Please fix the base languages before continuing.';
       addToast(t(key, fallback), 'error');
+      return true;
     },
     [addToast, t],
   );
-
-  const resolveBaseLanguages = useCallback(async (entriesToCheck) => {
-    const initial = validateBaseLanguages(entriesToCheck);
-    if (!initial.invalid.length) {
-      return {
-        correctedEntries: entriesToCheck,
-        changed: false,
-        success: true,
-        invalid: [],
-      };
-    }
-
-    const correctedEntries = entriesToCheck.map((entry) => ({
-      ...entry,
-      values: { ...(entry?.values ?? {}) },
-    }));
-
-    let changed = false;
-
-    for (const issue of initial.invalid) {
-      const entry = correctedEntries[issue.index];
-      if (!entry) continue;
-
-      entry.values = { ...(entry.values ?? {}) };
-
-      const metadata = {
-        module: entry.module,
-        context: entry.context,
-        key: entry.key,
-      };
-
-      const getEnText = () => normalizeBaseLanguageValue(entry.values.en);
-      const getMnText = () => normalizeBaseLanguageValue(entry.values.mn);
-      const getEnLanguage = () => analyzeBaseLanguage(entry.values.en).language;
-      const getMnLanguage = () => analyzeBaseLanguage(entry.values.mn).language;
-
-      if (issue.issues.includes('baseFieldsSwapped')) {
-        const previousEn = entry.values.en;
-        entry.values.en = entry.values.mn;
-        entry.values.mn = previousEn;
-        changed = true;
-      }
-
-      if (
-        !issue.issues.includes('baseFieldsSwapped') ||
-        getEnLanguage() !== 'en' ||
-        getMnLanguage() !== 'mn'
-      ) {
-        if (issue.issues.includes('englishLooksMongolian')) {
-          const source =
-            normalizeBaseLanguageValue(issue.en?.text) || getMnText() || getEnText();
-
-          if (source && getMnLanguage() !== 'mn') {
-            entry.values.mn = source;
-            changed = true;
-          }
-
-          if (source && getEnLanguage() !== 'en') {
-            try {
-              const translated = await translateWithCache(
-                'en',
-                source,
-                undefined,
-                metadata,
-              );
-              if (translated?.text && !translated.needsRetry) {
-                entry.values.en = translated.text;
-                changed = true;
-              }
-            } catch {
-              // ignore translation errors; validation below will catch unresolved entries
-            }
-          }
-        }
-
-        if (issue.issues.includes('mongolianLooksEnglish')) {
-          const source =
-            normalizeBaseLanguageValue(issue.mn?.text) || getEnText() || getMnText();
-
-          if (source && getEnLanguage() !== 'en') {
-            entry.values.en = source;
-            changed = true;
-          }
-
-          if (source && getMnLanguage() !== 'mn') {
-            try {
-              const translated = await translateWithCache(
-                'mn',
-                source,
-                undefined,
-                metadata,
-              );
-              if (translated?.text && !translated.needsRetry) {
-                entry.values.mn = translated.text;
-                changed = true;
-              }
-            } catch {
-              // ignore translation errors; validation below will catch unresolved entries
-            }
-          }
-        }
-      }
-    }
-
-    const finalResult = changed ? validateBaseLanguages(correctedEntries) : initial;
-
-    return {
-      correctedEntries: changed ? correctedEntries : entriesToCheck,
-      changed,
-      success: finalResult.invalid.length === 0,
-      invalid: finalResult.invalid,
-    };
-  }, [translateWithCache]);
 
   function updateEntry(index, field, value) {
     setEntries((prev) => {
@@ -477,30 +367,16 @@ export default function ManualTranslationsTab() {
   }
 
   async function saveLanguage(lang) {
-    const pagedIndexes = paged
-      .map((entry) => entries.indexOf(entry))
-      .filter((index) => index >= 0);
-    const resolution = await resolveBaseLanguages(entries);
-    const workingEntries = resolution.changed
-      ? resolution.correctedEntries
-      : entries;
-
-    if (resolution.changed) {
-      setEntries(resolution.correctedEntries);
-    }
-
-    if (!resolution.success) {
-      showBaseLanguageError(resolution.invalid);
+    if (guardBaseLanguages(paged)) {
       return;
     }
     setSavingLanguage(lang);
-    const payload = pagedIndexes
-      .map((index) => workingEntries[index])
-      .filter((entry) => entry?.key)
-      .map((entry) => ({
-        key: entry.key,
-        type: entry.type,
-        values: { [lang]: entry.values[lang] ?? '' },
+    const payload = paged
+      .filter((e) => e.key)
+      .map((e) => ({
+        key: e.key,
+        type: e.type,
+        values: { [lang]: e.values[lang] ?? '' },
       }));
     try {
       const res = await fetch('/api/manual_translations/bulk', {
@@ -569,23 +445,13 @@ export default function ManualTranslationsTab() {
 
   async function completeAll() {
     if (processingRef.current) return;
-    const resolution = await resolveBaseLanguages(entries);
-    const workingEntries = resolution.changed
-      ? resolution.correctedEntries
-      : entries;
-
-    if (resolution.changed) {
-      setEntries(resolution.correctedEntries);
-    }
-
-    if (!resolution.success) {
-      showBaseLanguageError(resolution.invalid);
+    if (guardBaseLanguages(entries)) {
       return;
     }
     abortRef.current = false;
     processingRef.current = true;
     setCompleting(true);
-    const allEntries = [...workingEntries];
+    const allEntries = [...entries];
     const original = [...allEntries];
     const restLanguages = languages.filter((l) => l !== 'en' && l !== 'mn');
     const updated = [];
