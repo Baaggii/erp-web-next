@@ -158,6 +158,7 @@ export async function deleteCompanyHandler(req, res, next) {
       cascadeIdentifier,
       company.id,
       {
+        tenantCompanyId,
         // Ensure tenant-specific permission rows are removed in the same
         // transaction so they cannot block the cascade via FK constraints.
         beforeDelete: (conn) =>
