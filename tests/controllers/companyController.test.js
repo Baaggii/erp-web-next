@@ -251,10 +251,18 @@ test('deleteCompanyHandler deletes company with cascade', async () => {
     session: { permissions: { system_settings: true } },
   };
   const res = createRes();
-  await deleteCompanyHandler(req, res, () => {});
-  restore();
-  const deletes = calls.filter(c => c.sql.startsWith('DELETE FROM'));
-  assert.equal(deletes.length, 2);
+  try {
+    await deleteCompanyHandler(req, res, () => {});
+  } finally {
+    restore();
+  }
+  const deletes = calls.filter((c) => c.sql.startsWith('DELETE FROM'));
+  assert.equal(deletes.length, 3);
+  const permissionsDelete = deletes.find((c) =>
+    c.sql.startsWith('DELETE FROM user_level_permissions'),
+  );
+  assert.ok(permissionsDelete, 'should delete user level permissions first');
+  assert.deepEqual(permissionsDelete?.params, [companyId]);
   const ordersDelete = deletes.find((c) => c.params?.[0] === 'orders');
   assert.deepEqual(ordersDelete?.params, ['orders', 3, tenantCompanyId]);
   const companiesDelete = deletes.find((c) => c.params?.[0] === 'companies');
@@ -326,8 +334,11 @@ test('deleteCompanyHandler deletes company when primary key is single column', a
     body: {},
   };
   const res = createRes();
-  await deleteCompanyHandler(req, res, () => {});
-  restore();
+  try {
+    await deleteCompanyHandler(req, res, () => {});
+  } finally {
+    restore();
+  }
 
   assert.equal(res.code, 200);
   assert.deepEqual(res.body, {
@@ -345,6 +356,100 @@ test('deleteCompanyHandler deletes company when primary key is single column', a
       String(tenantCompanyId),
     );
   }
+});
+
+test('deleteCompanyHandler purges user level permissions before deleting company', async () => {
+  const calls = [];
+  const userId = 'EMP-7';
+  const companyId = 19;
+  const tenantCompanyId = 2019;
+  let permissionsRemaining = 0;
+  const deleteOrder = [];
+  const restore = mockPool(async (sql, params) => {
+    calls.push({ sql, params });
+    if (sql.startsWith('SELECT * FROM companies WHERE created_by = ?')) {
+      return [[{
+        id: companyId,
+        company_id: tenantCompanyId,
+        name: 'PermCo',
+        created_by: userId,
+      }]];
+    }
+    if (
+      sql.includes('information_schema.STATISTICS') &&
+      sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      if (params?.[0] === 'companies') {
+        return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
+      }
+    }
+    if (
+      sql.includes('information_schema.STATISTICS') &&
+      sql.includes('NON_UNIQUE = 0')
+    ) {
+      return [[]];
+    }
+    if (sql.includes('information_schema.KEY_COLUMN_USAGE')) {
+      return [[]];
+    }
+    if (sql.includes('information_schema.COLUMNS')) {
+      if (params?.[0] === 'companies') {
+        return [[{ COLUMN_NAME: 'id' }, { COLUMN_NAME: 'company_id' }]];
+      }
+      return [[]];
+    }
+    if (sql.startsWith('INSERT INTO user_level_permissions')) {
+      if (params?.[0] === companyId) {
+        permissionsRemaining += 1;
+      }
+      return [{ insertId: 1 }];
+    }
+    if (sql.startsWith('DELETE FROM user_level_permissions')) {
+      assert.equal(params?.[0], companyId);
+      permissionsRemaining = 0;
+      deleteOrder.push('permissions');
+      return [{}];
+    }
+    if (sql.startsWith('DELETE FROM ?? WHERE') && params?.[0] === 'companies') {
+      deleteOrder.push('company');
+      if (permissionsRemaining > 0) {
+        const err = new Error(
+          'Cannot delete or update a parent row: a foreign key constraint fails',
+        );
+        err.code = 'ER_ROW_IS_REFERENCED_2';
+        throw err;
+      }
+      return [{}];
+    }
+    return [[]];
+  });
+
+  await db.pool.query(
+    'INSERT INTO user_level_permissions (company_id, userlevel_id, action, action_key) VALUES (?, ?, ?, ?)',
+    [companyId, 2, 'module_key', 'finance'],
+  );
+
+  const req = {
+    params: { id: String(companyId) },
+    user: { empid: userId, companyId: 0 },
+    session: { permissions: { system_settings: true } },
+    body: {},
+  };
+  const res = createRes();
+
+  try {
+    await deleteCompanyHandler(req, res, () => {});
+  } finally {
+    restore();
+  }
+
+  assert.equal(res.code, 200);
+  assert.deepEqual(res.body, {
+    backup: null,
+    company: { id: companyId, name: 'PermCo' }
+  });
+  assert.equal(permissionsRemaining, 0);
+  assert.deepEqual(deleteOrder, ['permissions', 'company']);
 });
 
 test('deleteCompanyHandler cascades through employment and users tables', async () => {
@@ -525,6 +630,9 @@ test('deleteCompanyHandler cascades through employment and users tables', async 
         ]];
       }
     }
+    if (sql.startsWith('DELETE FROM user_level_permissions')) {
+      return [{}];
+    }
     if (sql.startsWith('DELETE FROM ?? WHERE') && params?.[0] === 'users') {
       return [{}];
     }
@@ -546,7 +654,12 @@ test('deleteCompanyHandler cascades through employment and users tables', async 
   await deleteCompanyHandler(req, res, () => {});
   restore();
   const deletes = calls.filter((c) => c.sql.startsWith('DELETE FROM'));
-  assert.equal(deletes.length, 3);
+  assert.equal(deletes.length, 4);
+  const permissionDelete = deletes.find((c) =>
+    c.sql.startsWith('DELETE FROM user_level_permissions'),
+  );
+  assert.ok(permissionDelete);
+  assert.deepEqual(permissionDelete?.params, [companyId]);
   const userDelete = deletes.find((c) => c.params?.[0] === 'users');
   assert.deepEqual(
     userDelete ? userDelete.params.map((p) => String(p)) : null,
@@ -688,7 +801,12 @@ test('deleteCompanyHandler returns backup metadata when requested', async () => 
     await fs.rm(backupDir, { recursive: true, force: true });
   }
   const deletes = calls.filter((c) => c.sql.startsWith('DELETE FROM'));
-  assert.equal(deletes.length, 2);
+  assert.equal(deletes.length, 3);
+  const permissionDelete = deletes.find((c) =>
+    c.sql.startsWith('DELETE FROM user_level_permissions'),
+  );
+  assert.ok(permissionDelete);
+  assert.deepEqual(permissionDelete?.params, [companyId]);
   const ordersDelete = deletes.find((c) => c.params?.[0] === 'orders');
   assert.deepEqual(ordersDelete?.params, ['orders', 11, tenantCompanyId]);
   const companiesDelete = deletes.find((c) => c.params?.[0] === 'companies');
