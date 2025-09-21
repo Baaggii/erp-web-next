@@ -186,10 +186,38 @@ if (typeof mock?.import !== 'function') {
       return { ok: true, json: async () => ['users', 'departments'] };
     }
     if (key === '/api/tables/users/relations') {
-      return { ok: true, json: async () => [] };
+      return {
+        ok: true,
+        json: async () => [
+          {
+            COLUMN_NAME: 'dept_id',
+            REFERENCED_TABLE_NAME: 'departments',
+            REFERENCED_COLUMN_NAME: 'id',
+            source: 'database',
+          },
+          {
+            COLUMN_NAME: 'dept_id',
+            REFERENCED_TABLE_NAME: 'teams',
+            REFERENCED_COLUMN_NAME: 'lead_id',
+            source: 'custom',
+            configIndex: 1,
+          },
+        ],
+      };
     }
     if (key === '/api/tables/users/relations/custom') {
-      return { ok: true, json: async () => ({ relations: {}, isDefault: true }) };
+      return {
+        ok: true,
+        json: async () => ({
+          relations: {
+            dept_id: [
+              { table: 'departments', column: 'id' },
+              { table: 'teams', column: 'lead_id' },
+            ],
+          },
+          isDefault: false,
+        }),
+      };
     }
     throw new Error(`unexpected fetch ${key}`);
   };
@@ -221,6 +249,8 @@ if (typeof mock?.import !== 'function') {
   const columnSelect = reactMock.findByTestId('relations-column-select');
   assert.ok(columnSelect);
   assert.ok(findOptionValues(columnSelect).includes('dept_id'));
+  assert.ok(reactMock.findByTestId('relation-row-dept_id-database-0'));
+  assert.ok(reactMock.findByTestId('relation-row-dept_id-custom-1'));
   global.fetch = originalFetch;
   });
 
@@ -240,30 +270,78 @@ if (typeof mock?.import !== 'function') {
       return { ok: true, json: async () => ['departments', 'users'] };
     }
     if (key === '/api/tables/users/relations') {
-      return { ok: true, json: async () => [] };
+      return {
+        ok: true,
+        json: async () =>
+          saved
+            ? [
+                {
+                  COLUMN_NAME: 'dept_id',
+                  REFERENCED_TABLE_NAME: 'departments',
+                  REFERENCED_COLUMN_NAME: 'id',
+                  source: 'custom',
+                  configIndex: 0,
+                },
+                {
+                  COLUMN_NAME: 'dept_id',
+                  REFERENCED_TABLE_NAME: 'teams',
+                  REFERENCED_COLUMN_NAME: 'lead_id',
+                  source: 'custom',
+                  configIndex: 1,
+                },
+              ]
+            : [
+                {
+                  COLUMN_NAME: 'dept_id',
+                  REFERENCED_TABLE_NAME: 'departments',
+                  REFERENCED_COLUMN_NAME: 'id',
+                  source: 'custom',
+                  configIndex: 0,
+                },
+              ],
+      };
     }
     if (key === '/api/tables/users/relations/custom') {
       return {
         ok: true,
         json: async () =>
           saved
-            ? { relations: { dept_id: { table: 'departments', column: 'id' } } }
-            : { relations: {}, isDefault: true },
+            ? {
+                relations: {
+                  dept_id: [
+                    { table: 'departments', column: 'id' },
+                    { table: 'teams', column: 'lead_id' },
+                  ],
+                },
+                isDefault: false,
+              }
+            : {
+                relations: { dept_id: [{ table: 'departments', column: 'id' }] },
+                isDefault: false,
+              },
       };
     }
     if (key === '/api/tables/departments/columns') {
       return { ok: true, json: async () => ['id', 'name'] };
     }
+    if (key === '/api/tables/teams/columns') {
+      return { ok: true, json: async () => ['lead_id', 'name'] };
+    }
     if (key === '/api/tables/users/relations/custom/dept_id') {
       assert.equal(options.method, 'PUT');
       const body = JSON.parse(options.body);
-      assert.deepEqual(body, { targetTable: 'departments', targetColumn: 'id' });
+      assert.deepEqual(body, { targetTable: 'teams', targetColumn: 'lead_id' });
       saved = true;
       return {
         ok: true,
         json: async () => ({
           column: 'dept_id',
-          relation: { table: 'departments', column: 'id' },
+          relation: { table: 'teams', column: 'lead_id' },
+          index: 1,
+          relations: [
+            { table: 'departments', column: 'id' },
+            { table: 'teams', column: 'lead_id' },
+          ],
         }),
       };
     }
@@ -292,12 +370,12 @@ if (typeof mock?.import !== 'function') {
   await flushPromises();
 
   let tableSelect = reactMock.findByTestId('relations-target-table');
-  await tableSelect.props.onChange({ target: { value: 'departments' } });
+  await tableSelect.props.onChange({ target: { value: 'teams' } });
   await flushPromises();
   await flushPromises();
 
   let targetSelect = reactMock.findByTestId('relations-target-column');
-  targetSelect.props.onChange({ target: { value: 'id' } });
+  targetSelect.props.onChange({ target: { value: 'lead_id' } });
 
   const saveBtn = reactMock.findByTestId('relations-save');
   await saveBtn.props.onClick();
@@ -312,6 +390,7 @@ if (typeof mock?.import !== 'function') {
         c.options.method === 'PUT',
     ),
   );
+  assert.ok(reactMock.findByTestId('relation-row-dept_id-custom-1'));
   assert.ok(toasts.some((t) => t.type === 'success'));
   global.fetch = originalFetch;
   });
@@ -341,6 +420,14 @@ if (typeof mock?.import !== 'function') {
                   REFERENCED_TABLE_NAME: 'departments',
                   REFERENCED_COLUMN_NAME: 'id',
                   source: 'custom',
+                  configIndex: 0,
+                },
+                {
+                  COLUMN_NAME: 'dept_id',
+                  REFERENCED_TABLE_NAME: 'teams',
+                  REFERENCED_COLUMN_NAME: 'lead_id',
+                  source: 'custom',
+                  configIndex: 1,
                 },
               ],
       };
@@ -351,12 +438,31 @@ if (typeof mock?.import !== 'function') {
         json: async () =>
           removed
             ? { relations: {}, isDefault: false }
-            : { relations: { dept_id: { table: 'departments', column: 'id' } }, isDefault: false },
+            : {
+                relations: {
+                  dept_id: [
+                    { table: 'departments', column: 'id' },
+                    { table: 'teams', column: 'lead_id' },
+                  ],
+                },
+                isDefault: false,
+              },
       };
     }
-    if (key === '/api/tables/users/relations/custom/dept_id' && options.method === 'DELETE') {
+    if (
+      key === '/api/tables/users/relations/custom/dept_id?index=0' &&
+      options.method === 'DELETE'
+    ) {
       removed = true;
-      return { ok: true, json: async () => ({}) };
+      return {
+        ok: true,
+        json: async () => ({
+          column: 'dept_id',
+          removed: { table: 'departments', column: 'id' },
+          index: 0,
+          relations: [{ table: 'teams', column: 'lead_id' }],
+        }),
+      };
     }
     throw new Error(`unexpected fetch ${key}`);
   };
@@ -378,7 +484,7 @@ if (typeof mock?.import !== 'function') {
   await flushPromises();
   await flushPromises();
 
-  const deleteBtn = reactMock.findByTestId('relation-delete-dept_id');
+  const deleteBtn = reactMock.findByTestId('relation-delete-dept_id-custom-0');
   assert.ok(deleteBtn);
   await deleteBtn.props.onClick();
   await flushPromises();

@@ -20,7 +20,11 @@ import { createCompanyHandler } from './companyController.js';
 import {
   listCustomRelations,
   saveCustomRelation,
+  updateCustomRelationAtIndex,
+  updateCustomRelationMatching,
   removeCustomRelation,
+  removeCustomRelationAtIndex,
+  removeCustomRelationMatching,
 } from '../services/tableRelationsConfig.js';
 let bcrypt;
 try {
@@ -99,18 +103,22 @@ export async function getTableRelations(req, res, next) {
 
     const customEntries = custom?.config ?? {};
     if (customEntries && typeof customEntries === 'object') {
-      for (const [column, relation] of Object.entries(customEntries)) {
-        if (!relation || typeof relation !== 'object') continue;
-        if (!relation.table || !relation.column) continue;
-        result.push({
-          COLUMN_NAME: column,
-          REFERENCED_TABLE_NAME: relation.table,
-          REFERENCED_COLUMN_NAME: relation.column,
-          source: 'custom',
-          ...(relation.idField ? { idField: relation.idField } : {}),
-          ...(Array.isArray(relation.displayFields)
-            ? { displayFields: relation.displayFields }
-            : {}),
+      for (const [column, relations] of Object.entries(customEntries)) {
+        if (!Array.isArray(relations)) continue;
+        relations.forEach((relation, index) => {
+          if (!relation || typeof relation !== 'object') return;
+          if (!relation.table || !relation.column) return;
+          result.push({
+            COLUMN_NAME: column,
+            REFERENCED_TABLE_NAME: relation.table,
+            REFERENCED_COLUMN_NAME: relation.column,
+            source: 'custom',
+            configIndex: index,
+            ...(relation.idField ? { idField: relation.idField } : {}),
+            ...(Array.isArray(relation.displayFields)
+              ? { displayFields: relation.displayFields }
+              : {}),
+          });
         });
       }
     }
@@ -148,15 +156,47 @@ export async function saveCustomTableRelation(req, res, next) {
     if (!targetColumn) {
       return res.status(400).json({ message: 'targetColumn is required' });
     }
-    const saved = await saveCustomRelation(
-      req.params.table,
-      column,
-      { table: targetTable, column: targetColumn, idField, displayFields },
-      companyId,
-    );
+    const relationInput = { table: targetTable, column: targetColumn, idField, displayFields };
+    const rawIndex = req.body?.index;
+    const rawMatch = req.body?.match;
+    const index =
+      typeof rawIndex === 'string'
+        ? Number.parseInt(rawIndex, 10)
+        : Number.isInteger(rawIndex)
+        ? rawIndex
+        : undefined;
+
+    let result;
+    if (Number.isInteger(index) && index >= 0) {
+      result = await updateCustomRelationAtIndex(
+        req.params.table,
+        column,
+        index,
+        relationInput,
+        companyId,
+      );
+    } else if (rawMatch && typeof rawMatch === 'object') {
+      result = await updateCustomRelationMatching(
+        req.params.table,
+        column,
+        rawMatch,
+        relationInput,
+        companyId,
+      );
+    } else {
+      result = await saveCustomRelation(
+        req.params.table,
+        column,
+        relationInput,
+        companyId,
+      );
+    }
+
     res.json({
       column,
-      relation: saved,
+      relation: result.relation,
+      index: result.index,
+      relations: result.relations,
       source: 'custom',
     });
   } catch (err) {
@@ -171,8 +211,61 @@ export async function deleteCustomTableRelation(req, res, next) {
     if (!column) {
       return res.status(400).json({ message: 'column is required' });
     }
-    await removeCustomRelation(req.params.table, column, companyId);
-    res.sendStatus(204);
+    const rawIndex = req.query.index ?? req.body?.index;
+    const parsedIndex =
+      typeof rawIndex === 'string'
+        ? Number.parseInt(rawIndex, 10)
+        : Number.isInteger(rawIndex)
+        ? rawIndex
+        : undefined;
+
+    const matchParam =
+      req.body?.match && typeof req.body.match === 'object'
+        ? req.body.match
+        : undefined;
+    const queryMatch = {
+      targetTable:
+        typeof req.query.targetTable === 'string'
+          ? req.query.targetTable
+          : typeof req.query.target_table === 'string'
+          ? req.query.target_table
+          : undefined,
+      targetColumn:
+        typeof req.query.targetColumn === 'string'
+          ? req.query.targetColumn
+          : typeof req.query.target_column === 'string'
+          ? req.query.target_column
+          : undefined,
+      idField:
+        typeof req.query.idField === 'string'
+          ? req.query.idField
+          : typeof req.query.id_field === 'string'
+          ? req.query.id_field
+          : undefined,
+    };
+
+    const hasQueryMatch = Object.values(queryMatch).some((value) => value);
+    const match = matchParam || (hasQueryMatch ? queryMatch : undefined);
+
+    let result;
+    if (Number.isInteger(parsedIndex) && parsedIndex >= 0) {
+      result = await removeCustomRelationAtIndex(
+        req.params.table,
+        column,
+        parsedIndex,
+        companyId,
+      );
+    } else if (match) {
+      result = await removeCustomRelationMatching(req.params.table, column, match, companyId);
+    } else {
+      result = await removeCustomRelation(req.params.table, column, companyId);
+    }
+
+    if (!result || result.removed === null) {
+      return res.status(404).json({ message: 'relation mapping not found' });
+    }
+
+    res.json({ column, removed: result.removed, index: result.index, relations: result.relations });
   } catch (err) {
     next(err);
   }

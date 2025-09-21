@@ -6,7 +6,9 @@ import {
   listCustomRelations,
   listAllCustomRelations,
   saveCustomRelation,
+  updateCustomRelationAtIndex,
   removeCustomRelation,
+  removeCustomRelationAtIndex,
 } from '../../api-server/services/tableRelationsConfig.js';
 import { tenantConfigPath } from '../../api-server/utils/configPaths.js';
 
@@ -39,7 +41,7 @@ await test('saveCustomRelation writes entry to config file', async () => {
   );
   const json = JSON.parse(await fs.readFile(file, 'utf8'));
   assert.deepEqual(json, {
-    users: { dept_id: { table: 'departments', column: 'id' } },
+    users: { dept_id: [{ table: 'departments', column: 'id' }] },
   });
   await restore();
 });
@@ -49,13 +51,15 @@ await test('listCustomRelations returns stored mapping', async () => {
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(
     file,
-    JSON.stringify({ orders: { customer_id: { table: 'customers', column: 'id' } } }),
+    JSON.stringify({ orders: { customer_id: [{ table: 'customers', column: 'id' }] } }),
   );
   const { config, isDefault } = await listCustomRelations('orders', 5);
   assert.equal(isDefault, false);
-  assert.deepEqual(config, { customer_id: { table: 'customers', column: 'id' } });
+  assert.deepEqual(config, {
+    customer_id: [{ table: 'customers', column: 'id' }],
+  });
   const all = await listAllCustomRelations(5);
-  assert.deepEqual(all.config.orders.customer_id.table, 'customers');
+  assert.deepEqual(all.config.orders.customer_id[0].table, 'customers');
   await restore();
 });
 
@@ -86,12 +90,50 @@ await test('removeCustomRelation deletes stored value', async () => {
   await restore();
 });
 
+await test('saveCustomRelation appends additional entries for the same column', async () => {
+  const { file, restore } = await withTempConfig(11);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, '{}');
+  await saveCustomRelation('users', 'dept_id', { table: 'departments', column: 'id' }, 11);
+  await saveCustomRelation('users', 'dept_id', { table: 'teams', column: 'lead_id' }, 11);
+  const json = JSON.parse(await fs.readFile(file, 'utf8'));
+  assert.equal(json.users.dept_id.length, 2);
+  assert.deepEqual(json.users.dept_id[1], { table: 'teams', column: 'lead_id' });
+  await restore();
+});
+
+await test('update and remove custom relations by index', async () => {
+  const { file, restore } = await withTempConfig(13);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, '{}');
+  await saveCustomRelation('orders', 'customer_id', { table: 'customers', column: 'id' }, 13);
+  await saveCustomRelation('orders', 'customer_id', { table: 'guests', column: 'id' }, 13);
+  const updateResult = await updateCustomRelationAtIndex(
+    'orders',
+    'customer_id',
+    1,
+    { table: 'leads', column: 'id' },
+    13,
+  );
+  assert.equal(updateResult.index, 1);
+  assert.equal(updateResult.relations.length, 2);
+  assert.deepEqual(updateResult.relations[1], { table: 'leads', column: 'id' });
+
+  const removeResult = await removeCustomRelationAtIndex('orders', 'customer_id', 0, 13);
+  assert.equal(removeResult.index, 0);
+  assert.equal(removeResult.relations.length, 1);
+  const json = JSON.parse(await fs.readFile(file, 'utf8'));
+  assert.deepEqual(json.orders.customer_id, [{ table: 'leads', column: 'id' }]);
+  await restore();
+});
+
 await test('tenant-specific configs do not leak to other companies', async () => {
   const base = await withTempConfig(0);
   const tenant = await withTempConfig(99);
   await fs.mkdir(path.dirname(base.file), { recursive: true });
   await fs.mkdir(path.dirname(tenant.file), { recursive: true });
   await fs.writeFile(base.file, '{}');
+  await fs.writeFile(tenant.file, '{}');
   await saveCustomRelation(
     'users',
     'dept_id',
@@ -102,7 +144,7 @@ await test('tenant-specific configs do not leak to other companies', async () =>
   const tenantJson = JSON.parse(await fs.readFile(tenant.file, 'utf8'));
   assert.deepEqual(baseJson, {});
   assert.deepEqual(tenantJson, {
-    users: { dept_id: { table: 'departments', column: 'id' } },
+    users: { dept_id: [{ table: 'departments', column: 'id' }] },
   });
   await base.restore();
   await tenant.restore();
