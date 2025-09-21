@@ -354,6 +354,8 @@ export default function ManualTranslationsTab() {
         let swapped = false;
         let attemptedMnTranslation = false;
         let mnTranslationSucceeded = false;
+        let attemptedEnTranslation = false;
+        let enTranslationSucceeded = false;
 
         if (issue.issues.includes('baseFieldsSwapped')) {
           const previousEn = entry.values.en;
@@ -378,6 +380,7 @@ export default function ManualTranslationsTab() {
             }
 
             if (source && getEnLanguage() !== 'en') {
+              attemptedEnTranslation = true;
               try {
                 const translated = await translateWithCache(
                   'en',
@@ -388,6 +391,7 @@ export default function ManualTranslationsTab() {
                 if (translated?.text && !translated.needsRetry) {
                   entry.values.en = translated.text;
                   changed = true;
+                  enTranslationSucceeded = true;
                 }
               } catch {
                 // ignore translation errors; validation below will catch unresolved entries
@@ -422,6 +426,24 @@ export default function ManualTranslationsTab() {
                 // ignore translation errors; validation below will catch unresolved entries
               }
             }
+          }
+        }
+
+        if (attemptedEnTranslation && !enTranslationSucceeded) {
+          const enAnalysisAfter = analyzeBaseLanguage(entry.values.en);
+          if (enAnalysisAfter.language !== 'en') {
+            const previousEnRaw = entry.values.en;
+            const normalizedEn = normalizeBaseLanguageValue(previousEnRaw);
+            if (previousEnRaw !== '' || normalizedEn) {
+              entry.values.en = '';
+              if (
+                normalizedEn ||
+                (typeof previousEnRaw === 'string' && previousEnRaw !== '')
+              ) {
+                changed = true;
+              }
+            }
+            manualReviewIndexes.add(issue.index);
           }
         }
 
