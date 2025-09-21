@@ -3,6 +3,41 @@ let nodeCachePath;
 const localeCache = {};
 let aiDisabled = false;
 
+function normalizeMetadata(metadata) {
+  if (!metadata || typeof metadata !== 'object') return null;
+  const normalized = {};
+  for (const field of ['module', 'context', 'key']) {
+    const value = metadata[field];
+    if (value === undefined || value === null) continue;
+    const str = typeof value === 'string' ? value.trim() : String(value).trim();
+    if (str) normalized[field] = str;
+  }
+  return Object.keys(normalized).length ? normalized : null;
+}
+
+function buildPrompt(text, lang, metadata) {
+  const rawText = text ?? '';
+  const textStr = typeof rawText === 'string' ? rawText : String(rawText);
+  if (!metadata) {
+    return `Translate the following text to ${lang}: ${textStr}`;
+  }
+  const parts = [];
+  if (metadata.module) parts.push(`Module: ${metadata.module}`);
+  if (metadata.context) parts.push(`Context: ${metadata.context}`);
+  if (metadata.key) parts.push(`Key: ${metadata.key}`);
+  parts.push(`Text: ${textStr}`);
+  return `Translate the following text to ${lang}.\n${parts.join(', ')}`;
+}
+
+function buildCacheKeyParts(lang, base, metadata) {
+  const baseKey = `${lang}|${base}`;
+  if (!metadata) {
+    return { primary: baseKey, all: [baseKey] };
+  }
+  const metaKey = `${baseKey}|${JSON.stringify(metadata)}`;
+  return { primary: metaKey, all: [metaKey, baseKey] };
+}
+
 async function loadNodeCache() {
   if (nodeCache) return nodeCache;
   if (typeof process === 'undefined' || !process.versions?.node) {
@@ -111,13 +146,14 @@ async function idbSet(key, val) {
   });
 }
 
-async function requestTranslation(text, lang) {
+async function requestTranslation(text, lang, metadata) {
   if (aiDisabled) return null;
   try {
+    const prompt = buildPrompt(text, lang, metadata);
     const res = await fetch('/api/openai', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: `Translate the following text to ${lang}: ${text}` }),
+      body: JSON.stringify({ prompt }),
       skipErrorToast: true,
       skipLoader: true,
     });
@@ -141,34 +177,50 @@ async function requestTranslation(text, lang) {
 }
 
 function describe(key) {
-  return key
+  const str = typeof key === 'string' ? key : String(key ?? '');
+  return str
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export default async function translateWithCache(lang, key, fallback) {
+export default async function translateWithCache(lang, key, fallback, metadata) {
   const locales = await loadLocale(lang);
   if (locales[key]) return locales[key];
 
   const enLocales = await loadLocale('en');
-  const base = enLocales[key] || fallback || describe(key);
+  const baseCandidate = enLocales[key] || fallback || describe(key);
+  const base = typeof baseCandidate === 'string' ? baseCandidate : String(baseCandidate ?? '');
   if (lang === 'en') return base;
 
-  const cacheKey = `${lang}|${base}`;
-  let cached = getLS(cacheKey);
-  if (!cached) cached = await idbGet(cacheKey);
-  if (!cached) {
-    const cache = await loadNodeCache();
-    cached = cache[cacheKey];
+  const normalizedMetadata = normalizeMetadata(metadata);
+  const { primary: cacheKey, all: cacheKeys } = buildCacheKeyParts(lang, base, normalizedMetadata);
+
+  let cached;
+  for (const cacheId of cacheKeys) {
+    cached = getLS(cacheId);
+    if (cached) return cached;
   }
-  if (cached) {
-    if (!getLS(cacheKey)) setLS(cacheKey, cached);
-    return cached;
+
+  for (const cacheId of cacheKeys) {
+    cached = await idbGet(cacheId);
+    if (cached) {
+      if (!getLS(cacheId)) setLS(cacheId, cached);
+      return cached;
+    }
+  }
+
+  const cacheStore = await loadNodeCache();
+  for (const cacheId of cacheKeys) {
+    const value = cacheStore[cacheId];
+    if (value) {
+      if (!getLS(cacheId)) setLS(cacheId, value);
+      return value;
+    }
   }
 
   let translated;
   try {
-    translated = await requestTranslation(base, lang);
+    translated = await requestTranslation(base, lang, normalizedMetadata);
   } catch (err) {
     if (err.rateLimited) throw err;
     return base;
@@ -177,8 +229,7 @@ export default async function translateWithCache(lang, key, fallback) {
 
   setLS(cacheKey, translated);
   await idbSet(cacheKey, translated);
-  const cache = await loadNodeCache();
-  cache[cacheKey] = translated;
+  cacheStore[cacheKey] = translated;
   await saveNodeCache();
   return translated;
 }
