@@ -1,4 +1,5 @@
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -18,12 +19,61 @@ async function listLangs(dir) {
   }
 }
 
+function walkExported(obj, prefix, callback) {
+  if (typeof obj === 'string') {
+    if (prefix) callback(prefix, obj);
+    return;
+  }
+  if (Array.isArray(obj)) {
+    obj.forEach((value, index) => {
+      const key = prefix ? `${prefix}.${index}` : String(index);
+      walkExported(value, key, callback);
+    });
+    return;
+  }
+  if (obj && typeof obj === 'object') {
+    for (const [key, value] of Object.entries(obj)) {
+      const next = prefix ? `${prefix}.${key}` : key;
+      walkExported(value, next, callback);
+    }
+  }
+}
+
+function readExportedTexts() {
+  const exportedEntries = new Map();
+  const langs = new Set();
+  const configDir = path.join(projectRoot, 'config');
+  try {
+    const tenants = fsSync.readdirSync(configDir, { withFileTypes: true });
+    for (const tenant of tenants) {
+      if (!tenant.isDirectory()) continue;
+      const exportedFile = path.join(configDir, tenant.name, 'exportedtexts.json');
+      try {
+        const raw = JSON.parse(fsSync.readFileSync(exportedFile, 'utf8'));
+        walkExported(raw, '', (key, value) => {
+          exportedEntries.set(key, value);
+        });
+        langs.add('en');
+      } catch {}
+    }
+  } catch {}
+  return { exportedEntries, langs };
+}
+
 export async function loadTranslations() {
-  const langs = new Set([
-    ...(await listLangs(localesDir)),
-    ...(await listLangs(tooltipDir)),
-  ]);
+  const { exportedEntries, langs: exportLangs } = readExportedTexts();
   const entries = {};
+
+  for (const [key, value] of exportedEntries.entries()) {
+    const localeId = `locale:${key}`;
+    const tooltipId = `tooltip:${key}`;
+    entries[localeId] = { key, type: 'locale', values: { en: value } };
+    entries[tooltipId] = { key, type: 'tooltip', values: { en: value } };
+  }
+
+  const localeLangs = await listLangs(localesDir);
+  const tooltipLangs = await listLangs(tooltipDir);
+  const langs = new Set([...exportLangs, ...localeLangs, ...tooltipLangs]);
 
   for (const lang of langs) {
     // Load normal locale strings
@@ -49,50 +99,18 @@ export async function loadTranslations() {
     } catch {}
   }
 
-  // Load exported text identifiers
-  const configDir = path.join(projectRoot, 'config');
-  try {
-    const tenants = await fs.readdir(configDir, { withFileTypes: true });
-    for (const tenant of tenants) {
-      if (!tenant.isDirectory()) continue;
-      const exportedFile = path.join(configDir, tenant.name, 'exportedtexts.json');
-      try {
-        const raw = JSON.parse(await fs.readFile(exportedFile, 'utf8'));
-        const flat = {};
-        (function walk(obj, prefix) {
-          if (typeof obj === 'string') {
-            flat[prefix] = obj;
-            return;
-          }
-          if (Array.isArray(obj)) {
-            obj.forEach((v, i) => {
-              walk(v, prefix ? `${prefix}.${i}` : String(i));
-            });
-            return;
-          }
-          if (obj && typeof obj === 'object') {
-            for (const [k, v] of Object.entries(obj)) {
-              const key = prefix ? `${prefix}.${k}` : k;
-              walk(v, key);
-            }
-          }
-        })(raw, '');
-        for (const [k, v] of Object.entries(flat)) {
-          const localeId = `locale:${k}`;
-          const tooltipId = `tooltip:${k}`;
-          if (!entries[localeId]) entries[localeId] = { key: k, type: 'locale', values: { en: v } };
-          if (!entries[tooltipId]) entries[tooltipId] = { key: k, type: 'tooltip', values: { en: v } };
-          for (const id of [localeId, tooltipId]) {
-            const entry = entries[id];
-            for (const lang of langs) {
-              entry.values[lang] ??= '';
-            }
-          }
-        }
-        if (!langs.has('en')) langs.add('en');
-      } catch {}
+  for (const [k, v] of exportedEntries.entries()) {
+    const localeId = `locale:${k}`;
+    const tooltipId = `tooltip:${k}`;
+    const existingLocale = entries[localeId];
+    if (existingLocale) existingLocale.values.en ??= v;
+    const existingTooltip = entries[tooltipId];
+    if (existingTooltip) existingTooltip.values.en ??= v;
+    for (const lang of langs) {
+      entries[localeId].values[lang] ??= '';
+      entries[tooltipId].values[lang] ??= '';
     }
-  } catch {}
+  }
 
   // Ensure all language fields exist
   for (const entry of Object.values(entries)) {

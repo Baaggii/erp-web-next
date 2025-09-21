@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import * as controller from '../../api-server/controllers/tableController.js';
 import * as db from '../../db/index.js';
@@ -25,6 +25,26 @@ function mockGetConnection(handler) {
   return () => {
     db.pool.getConnection = original;
   };
+}
+
+async function loadTableController(overrides = {}) {
+  if (typeof mock?.import !== 'function') {
+    return controller;
+  }
+  const [services, dbModule] = await Promise.all([
+    import('../../api-server/services/tableRelationsConfig.js'),
+    import('../../db/index.js'),
+  ]);
+  return mock.import('../../api-server/controllers/tableController.js', {
+    '../../api-server/services/tableRelationsConfig.js': {
+      ...services,
+      ...(overrides.services || {}),
+    },
+    '../../db/index.js': {
+      ...dbModule,
+      ...(overrides.db || {}),
+    },
+  });
 }
 
 test('getTableRows forwards error for invalid column', async () => {
@@ -391,3 +411,158 @@ test('deleteRow forwards user companyId to deleteTableRow', async () => {
   restore();
   assert.equal(res.code, 204);
 });
+
+if (typeof mock?.import !== 'function') {
+  test('getTableRelations merges database and custom relations', { skip: true }, () => {});
+  test('getCustomTableRelations returns stored config', { skip: true }, () => {});
+  test('upsertCustomTableRelation validates input and saves relation', { skip: true }, () => {});
+  test('deleteCustomTableRelation removes stored relation', { skip: true }, () => {});
+} else {
+  test('getTableRelations merges database and custom relations', async (t) => {
+    const rels = [
+      {
+        COLUMN_NAME: 'company_id',
+        REFERENCED_TABLE_NAME: 'companies',
+        REFERENCED_COLUMN_NAME: 'id',
+      },
+    ];
+    const listStub = mock.fn(async () => rels);
+    const custom = {
+      company_id: { targetTable: 'tenants', targetColumn: 'id' },
+      user_id: { targetTable: 'users', targetColumn: 'id' },
+    };
+    const customStub = mock.fn(async () => ({ config: custom, isDefault: false }));
+    const { getTableRelations } = await loadTableController({
+      db: { listTableRelationships: listStub },
+      services: { getCustomRelations: customStub },
+    });
+    const req = { params: { table: 'orders' }, query: {}, user: { companyId: 7 } };
+    const json = t.mock.fn();
+    const res = { json };
+    await getTableRelations(req, res, (e) => {
+      if (e) throw e;
+    });
+    assert.equal(customStub.mock.calls[0].arguments[1], 7);
+    assert.equal(json.mock.calls.length, 1);
+    const result = json.mock.calls[0].arguments[0];
+    assert.equal(result.length, 2);
+    const byColumn = Object.fromEntries(result.map((r) => [r.COLUMN_NAME, r]));
+    assert.deepEqual(byColumn.company_id, {
+      COLUMN_NAME: 'company_id',
+      REFERENCED_TABLE_NAME: 'tenants',
+      REFERENCED_COLUMN_NAME: 'id',
+      isCustom: true,
+    });
+    assert.deepEqual(byColumn.user_id, {
+      COLUMN_NAME: 'user_id',
+      REFERENCED_TABLE_NAME: 'users',
+      REFERENCED_COLUMN_NAME: 'id',
+      isCustom: true,
+    });
+  });
+
+  test('getCustomTableRelations returns stored config', async (t) => {
+    const relations = { user_id: { targetTable: 'users', targetColumn: 'id' } };
+    const customStub = mock.fn(async () => ({ config: relations, isDefault: false }));
+    const { getCustomTableRelations } = await loadTableController({
+      services: { getCustomRelations: customStub },
+    });
+    const req = {
+      params: { table: 'orders' },
+      query: { companyId: '9' },
+      user: { companyId: 5 },
+    };
+    const json = t.mock.fn();
+    const res = { json };
+    await getCustomTableRelations(req, res, (e) => {
+      if (e) throw e;
+    });
+    assert.equal(customStub.mock.calls.length, 1);
+    assert.deepEqual(customStub.mock.calls[0].arguments, ['orders', 9]);
+    assert.equal(json.mock.calls.length, 1);
+    assert.deepEqual(json.mock.calls[0].arguments[0], {
+      relations,
+      isDefault: false,
+    });
+  });
+
+  test('upsertCustomTableRelation validates input and saves relation', async (t) => {
+    const setStub = mock.fn(async () => ({ targetTable: 'users', targetColumn: 'id' }));
+    const { upsertCustomTableRelation } = await loadTableController({
+      services: { setCustomRelation: setStub },
+    });
+    const req = {
+      params: { table: 'orders', column: 'user_id' },
+      body: { targetTable: 'users', targetColumn: 'id' },
+      user: { companyId: 3 },
+    };
+    const json = t.mock.fn();
+    const res = { json, status(code) { this.statusCode = code; return this; } };
+    await upsertCustomTableRelation(req, res, (e) => {
+      if (e) throw e;
+    });
+    assert.equal(setStub.mock.calls.length, 1);
+    assert.deepEqual(setStub.mock.calls[0].arguments, [
+      'orders',
+      'user_id',
+      { targetTable: 'users', targetColumn: 'id' },
+      3,
+    ]);
+    assert.equal(json.mock.calls.length, 1);
+    assert.deepEqual(json.mock.calls[0].arguments[0], {
+      targetTable: 'users',
+      targetColumn: 'id',
+    });
+
+    const badReq = {
+      params: { table: 'orders', column: 'user_id' },
+      body: { targetTable: '', targetColumn: '' },
+      user: { companyId: 3 },
+    };
+    const statusFn = t.mock.fn(function status(code) {
+      this.statusCode = code;
+      return this;
+    });
+    const jsonFn = t.mock.fn();
+    const badRes = { status: statusFn, json: jsonFn };
+    await upsertCustomTableRelation(badReq, badRes, (e) => {
+      if (e) throw e;
+    });
+    assert.equal(statusFn.mock.calls[0].arguments[0], 400);
+    assert.equal(jsonFn.mock.calls[0].arguments[0].message, 'targetTable is required');
+    assert.equal(setStub.mock.calls.length, 1);
+  });
+
+  test('deleteCustomTableRelation removes stored relation', async (t) => {
+    const removeStub = mock.fn(async () => {});
+    const { deleteCustomTableRelation } = await loadTableController({
+      services: { removeCustomRelation: removeStub },
+    });
+    const req = {
+      params: { table: 'orders', column: 'user_id' },
+      query: {},
+      user: { companyId: 4 },
+    };
+    const sendStatus = t.mock.fn();
+    const res = { sendStatus };
+    await deleteCustomTableRelation(req, res, (e) => {
+      if (e) throw e;
+    });
+    assert.equal(removeStub.mock.calls.length, 1);
+    assert.deepEqual(removeStub.mock.calls[0].arguments, ['orders', 'user_id', 4]);
+    assert.equal(sendStatus.mock.calls[0].arguments[0], 204);
+
+    const badReq = { params: { table: 'orders', column: '' }, query: {}, user: {} };
+    const statusFn = t.mock.fn(function status(code) {
+      this.statusCode = code;
+      return this;
+    });
+    const jsonFn = t.mock.fn();
+    const badRes = { status: statusFn, json: jsonFn };
+    await deleteCustomTableRelation(badReq, badRes, (e) => {
+      if (e) throw e;
+    });
+    assert.equal(statusFn.mock.calls[0].arguments[0], 400);
+    assert.equal(jsonFn.mock.calls[0].arguments[0].message, 'column is required');
+  });
+}

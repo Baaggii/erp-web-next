@@ -3,6 +3,9 @@ import {
   getTables,
   getTableRows,
   getTableRelations,
+  getCustomTableRelations,
+  upsertCustomTableRelation,
+  deleteCustomTableRelation,
   getTableColumnsMeta,
   saveColumnLabels,
   updateRow,
@@ -16,6 +19,13 @@ const router = express.Router();
 
 router.get('/', requireAuth, getTables);
 // More specific routes must be defined before the generic ':table' pattern
+router.get('/:table/custom-relations', requireAuth, getCustomTableRelations);
+router.put('/:table/custom-relations/:column', requireAuth, upsertCustomTableRelation);
+router.delete(
+  '/:table/custom-relations/:column',
+  requireAuth,
+  deleteCustomTableRelation,
+);
 router.get('/:table/relations', requireAuth, getTableRelations);
 router.get('/:table/columns', requireAuth, getTableColumnsMeta);
 router.put('/:table/labels', requireAuth, saveColumnLabels);
