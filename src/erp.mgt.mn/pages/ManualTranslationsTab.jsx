@@ -1,9 +1,12 @@
-import React, { useEffect, useState, useContext, useRef } from 'react';
+import React, { useEffect, useState, useContext, useRef, useCallback } from 'react';
 import I18nContext from '../context/I18nContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import translateWithCache from '../utils/translateWithCache.js';
 
 const delay = () => new Promise((r) => setTimeout(r, 200));
+const RATE_LIMIT_MAX_RETRIES = 3;
+const RATE_LIMIT_BASE_DELAY = 500;
+const RATE_LIMIT_MAX_DELAY = 5000;
 
 export default function ManualTranslationsTab() {
   const { t } = useContext(I18nContext);
@@ -19,44 +22,121 @@ export default function ManualTranslationsTab() {
   const abortRef = useRef(false);
   const processingRef = useRef(false);
   const activeRowRef = useRef(null);
+  const loadStateRef = useRef({
+    promise: null,
+    retryCount: 0,
+    timeoutId: null,
+    cooldown: false,
+    notified: false,
+  });
+
+  const load = useCallback(
+    async ({ ignoreCooldown = false } = {}) => {
+      const state = loadStateRef.current;
+      if (state.cooldown && !ignoreCooldown) {
+        return state.promise ?? Promise.resolve();
+      }
+      if (state.promise) {
+        return state.promise;
+      }
+
+      const requestPromise = (async () => {
+        try {
+          const res = await fetch('/api/manual_translations', { credentials: 'include' });
+          if (res.status === 429) {
+            if (!state.notified && typeof window !== 'undefined' && window?.dispatchEvent) {
+              window.dispatchEvent(
+                new CustomEvent('toast', {
+                  detail: {
+                    message: t(
+                      'rateLimitExceeded',
+                      'Too many requests, please try again later',
+                    ),
+                    type: 'error',
+                  },
+                }),
+              );
+              state.notified = true;
+            }
+            if (state.retryCount < RATE_LIMIT_MAX_RETRIES) {
+              const wait = Math.min(
+                RATE_LIMIT_BASE_DELAY * 2 ** state.retryCount,
+                RATE_LIMIT_MAX_DELAY,
+              );
+              state.retryCount += 1;
+              state.cooldown = true;
+              if (state.timeoutId) {
+                clearTimeout(state.timeoutId);
+              }
+              state.timeoutId = setTimeout(() => {
+                state.timeoutId = null;
+                state.cooldown = false;
+                load({ ignoreCooldown: true });
+              }, wait);
+            } else {
+              state.cooldown = false;
+            }
+            return;
+          }
+
+          state.retryCount = 0;
+          state.cooldown = false;
+          state.notified = false;
+          if (state.timeoutId) {
+            clearTimeout(state.timeoutId);
+            state.timeoutId = null;
+          }
+
+          if (res.ok) {
+            const data = await res.json();
+            setLanguages(data.languages ?? []);
+            const normalizedEntries = (data.entries ?? []).map((entry) => ({
+              ...entry,
+              module: entry.module ?? '',
+              context: entry.context ?? '',
+              values: entry.values ?? {},
+            }));
+            setEntries(normalizedEntries);
+          }
+        } catch {
+          // ignore
+        }
+      })();
+
+      state.promise = requestPromise;
+      requestPromise.finally(() => {
+        if (state.promise === requestPromise) {
+          state.promise = null;
+        }
+      });
+      return requestPromise;
+    },
+    [t],
+  );
+
+  const refreshEntries = useCallback(
+    async ({ force = false } = {}) => {
+      const state = loadStateRef.current;
+      if (state.cooldown && !force) {
+        return state.promise ?? Promise.resolve();
+      }
+      return load({ ignoreCooldown: force });
+    },
+    [load],
+  );
 
   useEffect(() => {
     load();
-  }, []);
-
-  async function load(retry = 0) {
-    try {
-      const res = await fetch('/api/manual_translations', { credentials: 'include' });
-      if (res.status === 429) {
-        window.dispatchEvent(
-          new CustomEvent('toast', {
-            detail: {
-              message: t('rateLimitExceeded', 'Too many requests, please try again later'),
-              type: 'error',
-            },
-          }),
-        );
-        if (retry < 3) {
-          const wait = 500 * 2 ** retry;
-          setTimeout(() => load(retry + 1), wait);
-        }
-        return;
+    return () => {
+      const state = loadStateRef.current;
+      if (state.timeoutId) {
+        clearTimeout(state.timeoutId);
+        state.timeoutId = null;
       }
-      if (res.ok) {
-        const data = await res.json();
-        setLanguages(data.languages ?? []);
-        const normalizedEntries = (data.entries ?? []).map((entry) => ({
-          ...entry,
-          module: entry.module ?? '',
-          context: entry.context ?? '',
-          values: entry.values ?? {},
-        }));
-        setEntries(normalizedEntries);
-      }
-    } catch {
-      // ignore
-    }
-  }
+      state.promise = null;
+      state.cooldown = false;
+    };
+  }, [load]);
 
   useEffect(() => {
     setPage(1);
@@ -109,7 +189,7 @@ export default function ManualTranslationsTab() {
       credentials: 'include',
       body: JSON.stringify(entry),
     });
-    await load();
+    await refreshEntries();
   }
 
   async function saveLanguage(lang) {
@@ -128,6 +208,13 @@ export default function ManualTranslationsTab() {
         credentials: 'include',
         body: JSON.stringify(payload),
       });
+      if (res.status === 429) {
+        addToast(
+          t('rateLimitExceeded', 'Too many requests, please try again later'),
+          'error',
+        );
+        return;
+      }
       if (!res.ok) {
         addToast(
           t('languageSaveFailed', 'Failed to save language translations'),
@@ -136,7 +223,7 @@ export default function ManualTranslationsTab() {
         return;
       }
       addToast(t('languageSaved', 'Language translations saved'), 'success');
-      await load();
+      await refreshEntries();
     } catch {
       addToast(t('languageSaveFailed', 'Failed to save language translations'), 'error');
     } finally {
@@ -305,12 +392,17 @@ export default function ManualTranslationsTab() {
         pending.length &&
         ((idx + 1) % perPage === 0 || idx === allEntries.length - 1)
       ) {
-        await fetch('/api/manual_translations/bulk', {
+        const res = await fetch('/api/manual_translations/bulk', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify(pending),
         });
+        if (res.status === 429) {
+          abortRef.current = true;
+          rateLimited = true;
+          break;
+        }
         pending.length = 0;
       }
     }
@@ -320,7 +412,7 @@ export default function ManualTranslationsTab() {
       setEntries(original);
       processingRef.current = false;
       setCompleting(false);
-      await load();
+      await refreshEntries();
       if (rateLimited) {
         window.dispatchEvent(
           new CustomEvent('toast', {
@@ -348,7 +440,7 @@ export default function ManualTranslationsTab() {
       return;
     }
     if (saved) {
-      await load();
+      await refreshEntries();
     }
     processingRef.current = false;
     setCompleting(false);
@@ -413,102 +505,102 @@ export default function ManualTranslationsTab() {
           placeholder={t('search', 'Search')}
         />
       </div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-            <thead>
-              <tr>
-                <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Key</th>
-                <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Type</th>
-                <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Module</th>
-                <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Context</th>
-                {languages.map((l) => (
-                  <th key={l} style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '0.25rem',
-                      }}
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+          <thead>
+            <tr>
+              <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Key</th>
+              <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Type</th>
+              <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Module</th>
+              <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Context</th>
+              {languages.map((l) => (
+                <th key={l} style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '0.25rem',
+                    }}
+                  >
+                    <span>{l}</span>
+                    <button
+                      type="button"
+                      onClick={() => saveLanguage(l)}
+                      disabled={savingLanguage !== null}
                     >
-                      <span>{l}</span>
-                      <button
-                        type="button"
-                        onClick={() => saveLanguage(l)}
-                        disabled={savingLanguage !== null}
-                      >
-                        {savingLanguage === l
-                          ? t('saving', 'Saving...')
-                          : t('save', 'Save')}
-                      </button>
+                      {savingLanguage === l
+                        ? t('saving', 'Saving...')
+                        : t('save', 'Save')}
+                    </button>
+                  </div>
+                </th>
+              ))}
+              <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }} />
+            </tr>
+          </thead>
+          <tbody>
+            {paged.map((entry) => {
+              const entryIdx = entries.indexOf(entry);
+              const rowStyle =
+                entryIdx === activeRow ? { backgroundColor: '#fef3c7' } : undefined;
+              return (
+                <tr
+                  key={entryIdx}
+                  style={rowStyle}
+                  ref={entryIdx === activeRow ? activeRowRef : null}
+                >
+                  <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                    <input
+                      value={entry.key}
+                      onChange={(e) => updateEntry(entryIdx, 'key', e.target.value)}
+                    />
+                  </td>
+                  <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                    <select
+                      value={entry.type}
+                      onChange={(e) => updateEntry(entryIdx, 'type', e.target.value)}
+                    >
+                      <option value="locale">locale</option>
+                      <option value="tooltip">tooltip</option>
+                      <option value="exported">exported</option>
+                    </select>
+                  </td>
+                  <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                    <div style={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
+                      {String(entry.module ?? '')}
                     </div>
-                  </th>
-                ))}
-                <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }} />
-              </tr>
-            </thead>
-              <tbody>
-                {paged.map((entry) => {
-                  const entryIdx = entries.indexOf(entry);
-                  const rowStyle =
-                    entryIdx === activeRow ? { backgroundColor: '#fef3c7' } : undefined;
-                  return (
-                    <tr
-                      key={entryIdx}
-                      style={rowStyle}
-                      ref={entryIdx === activeRow ? activeRowRef : null}
+                  </td>
+                  <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                    <div style={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
+                      {String(entry.context ?? '')}
+                    </div>
+                  </td>
+                  {languages.map((l) => (
+                    <td key={l} style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                      <textarea
+                        value={entry.values[l] || ''}
+                        onChange={(e) => updateValue(entryIdx, l, e.target.value)}
+                        style={{ width: '100%', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}
+                        rows={2}
+                      />
+                    </td>
+                  ))}
+                  <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                    <button onClick={() => save(entryIdx)}>{t('save', 'Save')}</button>
+                    <button
+                      onClick={() => remove(entryIdx)}
+                      style={{ marginLeft: '0.25rem' }}
                     >
-                      <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
-                        <input
-                          value={entry.key}
-                          onChange={(e) => updateEntry(entryIdx, 'key', e.target.value)}
-                        />
-                      </td>
-                      <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
-                        <select
-                          value={entry.type}
-                          onChange={(e) => updateEntry(entryIdx, 'type', e.target.value)}
-                        >
-                          <option value="locale">locale</option>
-                          <option value="tooltip">tooltip</option>
-                          <option value="exported">exported</option>
-                        </select>
-                      </td>
-                      <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
-                        <div style={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
-                          {String(entry.module ?? '')}
-                        </div>
-                      </td>
-                      <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
-                        <div style={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
-                          {String(entry.context ?? '')}
-                        </div>
-                      </td>
-                      {languages.map((l) => (
-                        <td key={l} style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
-                          <textarea
-                            value={entry.values[l] || ''}
-                            onChange={(e) => updateValue(entryIdx, l, e.target.value)}
-                            style={{ width: '100%', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}
-                            rows={2}
-                          />
-                        </td>
-                      ))}
-                      <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
-                        <button onClick={() => save(entryIdx)}>{t('save', 'Save')}</button>
-                        <button
-                          onClick={() => remove(entryIdx)}
-                          style={{ marginLeft: '0.25rem' }}
-                        >
-                          {t('delete', 'Delete')}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                      {t('delete', 'Delete')}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
       <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center' }}>
         <button
           onClick={() => setPage(1)}

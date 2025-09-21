@@ -12,7 +12,12 @@ if (typeof mock.import !== 'function') {
       useState(initial) {
         const idx = states.length;
         states.push(initial);
-        return [states[idx], (v) => (states[idx] = v)];
+        return [
+          states[idx],
+          (v) => {
+            states[idx] = typeof v === 'function' ? v(states[idx]) : v;
+          },
+        ];
       },
       useEffect() {},
       useContext() {
@@ -20,6 +25,9 @@ if (typeof mock.import !== 'function') {
       },
       useRef(initial) {
         return { current: initial };
+      },
+      useCallback(fn) {
+        return fn;
       },
       createElement(type, props, ...children) {
         if (typeof type === 'function') {
@@ -46,6 +54,7 @@ if (typeof mock.import !== 'function') {
           useEffect: reactMock.useEffect,
           useContext: reactMock.useContext,
           useRef: reactMock.useRef,
+          useCallback: reactMock.useCallback,
           createElement: reactMock.createElement,
         },
         '../context/I18nContext.jsx': { default: {} },
