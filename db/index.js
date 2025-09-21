@@ -889,6 +889,124 @@ export async function deleteUserLevelPermissionsForCompany(
   );
 }
 
+export async function deleteUnprotectedTenantTableRowsForCompany(
+  company,
+  conn = pool,
+) {
+  if (!company || typeof company !== "object") {
+    return;
+  }
+
+  const values = [];
+  const seen = new Set();
+  const addValue = (value) => {
+    if (value === undefined || value === null) return;
+    if (typeof value === "string" && value.trim() === "") return;
+    const key = `${typeof value}:${String(value)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    values.push(value);
+  };
+
+  addValue(company.company_id);
+  addValue(company.Company_id);
+  addValue(company.companyId);
+  addValue(company.id);
+  addValue(company.ID);
+  addValue(company.Id);
+
+  if (values.length === 0) {
+    return;
+  }
+
+  logDb(
+    `deleteUnprotectedTenantTableRowsForCompany companyId=${String(
+      company.id,
+    )} tenantKey=${String(company.company_id)}`,
+  );
+
+  let rows;
+  try {
+    [rows] = await conn.query(
+      `SELECT tt.table_name AS table_name, cols.COLUMN_NAME AS column_name
+         FROM tenant_tables tt
+         JOIN information_schema.COLUMNS cols
+           ON cols.TABLE_SCHEMA = DATABASE()
+          AND cols.TABLE_NAME = tt.table_name
+          AND cols.COLUMN_NAME IN ('company_id', 'Company_id')
+         LEFT JOIN information_schema.KEY_COLUMN_USAGE kcu
+           ON kcu.TABLE_SCHEMA = cols.TABLE_SCHEMA
+          AND kcu.TABLE_NAME = cols.TABLE_NAME
+          AND kcu.COLUMN_NAME = cols.COLUMN_NAME
+          AND kcu.REFERENCED_TABLE_SCHEMA = DATABASE()
+          AND kcu.REFERENCED_TABLE_NAME = 'companies'
+        WHERE kcu.CONSTRAINT_NAME IS NULL`,
+    );
+  } catch (err) {
+    if (err?.code === "ER_NO_SUCH_TABLE") {
+      return;
+    }
+    throw err;
+  }
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return;
+  }
+
+  const tableColumns = new Map();
+  for (const row of rows) {
+    const tableName = row?.table_name;
+    const columnName = row?.column_name;
+    if (!tableName || !columnName) continue;
+    if (!tableColumns.has(tableName)) {
+      tableColumns.set(tableName, new Set());
+    }
+    tableColumns.get(tableName).add(columnName);
+  }
+
+  if (tableColumns.size === 0) {
+    return;
+  }
+
+  const softDeleteKey =
+    company?.company_id ??
+    company?.Company_id ??
+    company?.companyId ??
+    GLOBAL_COMPANY_ID;
+
+  const placeholderList = values.map(() => "?").join(", ");
+  if (!placeholderList) {
+    return;
+  }
+
+  for (const [tableName, columns] of tableColumns) {
+    const softDeleteColumn = await getSoftDeleteColumn(
+      tableName,
+      softDeleteKey,
+    );
+    const softDeleteExpr = softDeleteColumn
+      ? `${escapeIdentifier(softDeleteColumn)} = 1`
+      : null;
+
+    for (const columnName of columns) {
+      const whereClause = `${escapeIdentifier(
+        columnName,
+      )} IN (${placeholderList})`;
+      if (softDeleteExpr) {
+        await conn.query(
+          `UPDATE ?? SET ${softDeleteExpr} WHERE ${whereClause}`,
+          [tableName, ...values],
+        );
+      } else {
+        await conn.query(
+          `DELETE FROM ?? WHERE ${whereClause}`,
+          [tableName, ...values],
+        );
+      }
+    }
+  }
+}
+
 /**
  * List module licenses for a company. If companyId is omitted, list for all
  * companies. Results can optionally be filtered by the employee who created
