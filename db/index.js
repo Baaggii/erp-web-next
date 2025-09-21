@@ -968,63 +968,6 @@ export async function deleteUnprotectedTenantTableRowsForCompany(
     return;
   }
 
-  let orderedTables = Array.from(tableColumns.keys());
-  if (orderedTables.length > 1) {
-    try {
-      const dependents = new Map(
-        orderedTables.map((tableName) => [tableName, new Set()]),
-      );
-      const placeholders = orderedTables.map(() => "?").join(", ");
-      if (placeholders) {
-        const [fkRows] = await conn.query(
-          `SELECT TABLE_NAME, REFERENCED_TABLE_NAME
-             FROM information_schema.KEY_COLUMN_USAGE
-            WHERE TABLE_SCHEMA = DATABASE()
-              AND REFERENCED_TABLE_SCHEMA = TABLE_SCHEMA
-              AND REFERENCED_TABLE_NAME IS NOT NULL
-              AND TABLE_NAME IN (${placeholders})
-              AND REFERENCED_TABLE_NAME IN (${placeholders})`,
-          [...orderedTables, ...orderedTables],
-        );
-        for (const row of fkRows || []) {
-          const parent = row?.REFERENCED_TABLE_NAME;
-          const child = row?.TABLE_NAME;
-          if (!parent || !child || parent === child) continue;
-          const parentDependents = dependents.get(parent);
-          if (!parentDependents || !dependents.has(child)) continue;
-          parentDependents.add(child);
-        }
-        const visited = new Set();
-        const visiting = new Set();
-        const topo = [];
-        const visit = (table) => {
-          if (visited.has(table) || visiting.has(table)) {
-            return;
-          }
-          visiting.add(table);
-          const children = dependents.get(table);
-          if (children) {
-            for (const child of children) {
-              visit(child);
-            }
-          }
-          visiting.delete(table);
-          visited.add(table);
-          topo.push(table);
-        };
-        for (const tableName of orderedTables) {
-          visit(tableName);
-        }
-        if (topo.length === orderedTables.length) {
-          orderedTables = topo;
-        }
-      }
-    } catch (err) {
-      // If we cannot compute dependencies, fall back to the original order.
-      logDb(`deleteUnprotectedTenantTableRowsForCompany dependency error: ${err?.message}`);
-    }
-  }
-
   const softDeleteKey =
     company?.company_id ??
     company?.Company_id ??
@@ -1036,9 +979,7 @@ export async function deleteUnprotectedTenantTableRowsForCompany(
     return;
   }
 
-  for (const tableName of orderedTables) {
-    const columns = tableColumns.get(tableName);
-    if (!columns || columns.size === 0) continue;
+  for (const [tableName, columns] of tableColumns) {
     const softDeleteColumn = await getSoftDeleteColumn(
       tableName,
       softDeleteKey,
