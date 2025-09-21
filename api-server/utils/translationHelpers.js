@@ -46,7 +46,16 @@ export function sortObj(o) {
     .reduce((acc, k) => ((acc[k] = o[k]), acc), {});
 }
 
-export function collectPhrasesFromPages(dir) {
+function defaultModuleResolver(rootDir, filePath) {
+  if (!filePath) return '';
+  const rel = path.relative(rootDir, filePath);
+  if (!rel) return '';
+  const normalized = rel.split(path.sep).join('/');
+  return normalized.replace(/\.[^.]+$/, '');
+}
+
+export function collectPhrasesFromPages(dir, options = {}) {
+  const { moduleResolver } = options;
   const files = [];
   function walk(d) {
     for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
@@ -59,15 +68,25 @@ export function collectPhrasesFromPages(dir) {
   const pairs = [];
   const uiTags = new Set(['button', 'label', 'option']);
   const seen = new Set();
-  const addPair = (key, text) => {
+  const addPairFactory = (moduleId) => (key, text, context = '') => {
     if (key == null || text == null) return;
-    const normalized = `${key}:::${text}`;
+    const normalized = `${key}:::${text}:::${moduleId ?? ''}:::${context ?? ''}`;
     if (seen.has(normalized)) return;
     seen.add(normalized);
-    pairs.push({ key, text });
+    pairs.push({
+      key,
+      text,
+      module: moduleId ?? '',
+      context: context ?? '',
+    });
   };
   for (const file of files) {
     const content = fs.readFileSync(file, 'utf8');
+    const moduleId =
+      typeof moduleResolver === 'function'
+        ? moduleResolver({ file, dir })
+        : defaultModuleResolver(dir, file);
+    const addPair = addPairFactory(moduleId);
     if (parser && traverse) {
       let ast;
       try {
@@ -90,7 +109,7 @@ export function collectPhrasesFromPages(dir) {
                 args.length > 1 && args[1].isStringLiteral()
                   ? args[1].node.value
                   : key;
-              addPair(key, text);
+              addPair(key, text, 'translation_call');
             }
           }
         },
@@ -102,12 +121,12 @@ export function collectPhrasesFromPages(dir) {
           for (const child of path.get('children')) {
             if (child.isJSXText()) {
               const val = child.node.value.trim();
-              if (val) addPair(val, val);
+              if (val) addPair(val, val, tag);
             } else if (child.isJSXExpressionContainer()) {
               const expr = child.get('expression');
               if (expr.isStringLiteral()) {
                 const val = expr.node.value.trim();
-                if (val) addPair(val, val);
+                if (val) addPair(val, val, tag);
               }
             }
           }
@@ -120,13 +139,13 @@ export function collectPhrasesFromPages(dir) {
     let match;
     while ((match = tagRegex.exec(content))) {
       const raw = match[2].replace(/<[^>]*>/g, '').trim();
-      if (raw) addPair(raw, raw);
+      if (raw) addPair(raw, raw, match[1]);
     }
     const callRegex = /t\(\s*['"]([^'"\\]+)['"](?:\s*,\s*['"]([^'"\\]+)['"])?/gi;
     while ((match = callRegex.exec(content))) {
       const key = match[1];
       const text = match[2] ?? match[1];
-      addPair(key, text);
+      addPair(key, text, 'translation_call');
     }
   }
   return pairs;

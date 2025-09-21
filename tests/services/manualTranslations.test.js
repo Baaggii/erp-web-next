@@ -15,7 +15,21 @@ test('exported texts are merged into manual translations', async () => {
   fs.mkdirSync(path.dirname(exportedPath), { recursive: true });
   fs.writeFileSync(
     exportedPath,
-    JSON.stringify({ foo: 'Foo', nested: { bar: 'Bar' } }, null, 2),
+    JSON.stringify(
+      {
+        translations: {
+          foo: 'Foo',
+          nested: { bar: 'Bar' },
+          plain: 'Plain Text',
+        },
+        meta: {
+          foo: { module: 'pages/FooPage', context: 'button' },
+          'nested.bar': { module: 'pages/NestedPage', context: 'label' },
+        },
+      },
+      null,
+      2,
+    ),
   );
   try {
     const data = await loadTranslations();
@@ -25,6 +39,10 @@ test('exported texts are merged into manual translations', async () => {
     assert(tooltipFoo, 'tooltip foo entry exists');
     assert.equal(localeFoo.values.en, 'Foo');
     assert.equal(tooltipFoo.values.en, 'Foo');
+    assert.equal(localeFoo.module, 'pages/FooPage');
+    assert.equal(localeFoo.context, 'button');
+    assert.equal(tooltipFoo.module, 'pages/FooPage');
+    assert.equal(tooltipFoo.context, 'button');
     const otherLang = data.languages.find((l) => l !== 'en');
     if (otherLang) {
       assert.equal(localeFoo.values[otherLang], '');
@@ -36,6 +54,14 @@ test('exported texts are merged into manual translations', async () => {
     assert(nestedTooltip, 'nested tooltip entry exists');
     assert.equal(nestedLocale.values.en, 'Bar');
     assert.equal(nestedTooltip.values.en, 'Bar');
+    assert.equal(nestedLocale.module, 'pages/NestedPage');
+    assert.equal(nestedLocale.context, 'label');
+    assert.equal(nestedTooltip.module, 'pages/NestedPage');
+    assert.equal(nestedTooltip.context, 'label');
+    const plainLocale = data.entries.find((e) => e.type === 'locale' && e.key === 'plain');
+    assert(plainLocale, 'plain locale entry exists');
+    assert.equal(plainLocale.module, '');
+    assert.equal(plainLocale.context, '');
   } finally {
     cleanup();
   }

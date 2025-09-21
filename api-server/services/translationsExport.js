@@ -9,6 +9,53 @@ import {
   sortObj,
 } from '../utils/translationHelpers.js';
 
+function ensureMeta(meta, key, module = '', context = '') {
+  if (!key) return;
+  const normalizedKey = String(key);
+  const nextModule = module ?? '';
+  const nextContext = context ?? '';
+  if (!meta[normalizedKey]) {
+    meta[normalizedKey] = {
+      module: nextModule,
+      context: nextContext,
+    };
+    return;
+  }
+  const entry = meta[normalizedKey];
+  if (entry.module == null || entry.module === '') {
+    entry.module = nextModule;
+  }
+  if (
+    (entry.context == null || entry.context === '' || entry.context === 'header_mapping') &&
+    nextContext &&
+    nextContext !== 'header_mapping'
+  ) {
+    entry.context = nextContext;
+  }
+  if (entry.module == null) entry.module = '';
+  if (entry.context == null) entry.context = '';
+}
+
+function collectObjectMeta(meta, obj, prefix = '', context = '') {
+  if (typeof obj === 'string') {
+    if (prefix) ensureMeta(meta, prefix, '', context);
+    return;
+  }
+  if (Array.isArray(obj)) {
+    obj.forEach((item, index) => {
+      const nextKey = prefix ? `${prefix}.${index}` : String(index);
+      collectObjectMeta(meta, item, nextKey, context);
+    });
+    return;
+  }
+  if (obj && typeof obj === 'object') {
+    for (const [k, v] of Object.entries(obj)) {
+      const nextKey = prefix ? `${prefix}.${k}` : k;
+      collectObjectMeta(meta, v, nextKey, context);
+    }
+  }
+}
+
 function pickDefault(val) {
   if (val && typeof val === 'object') {
     if (typeof val.en === 'string') return val.en;
@@ -57,16 +104,20 @@ export async function exportTranslations(companyId = 0) {
   );
   const base = JSON.parse(fs.readFileSync(headerMappingsPath, 'utf8'));
   flattenLangObjects(base);
+  const metadata = {};
+  collectObjectMeta(metadata, base, '', 'header_mapping');
   const headerKeys = new Set(Object.keys(base));
   const modules = await fetchModules();
 
   for (const { moduleKey, label } of modules) {
     if (base[moduleKey] === undefined) base[moduleKey] = pickDefault(label);
+    ensureMeta(metadata, moduleKey, moduleKey, 'module_label');
   }
 
   const tPairs = collectPhrasesFromPages(path.resolve('src/erp.mgt.mn'));
-  for (const { key, text } of tPairs) {
+  for (const { key, text, module: sourceModule, context } of tPairs) {
     if (base[key] === undefined) base[key] = pickDefault(text);
+    ensureMeta(metadata, key, sourceModule, context || 'page');
   }
 
   try {
@@ -77,6 +128,7 @@ export async function exportTranslations(companyId = 0) {
         const formSlug = slugify(formName);
         if (base[`form.${formSlug}`] === undefined)
           base[`form.${formSlug}`] = pickDefault(formName);
+        ensureMeta(metadata, `form.${formSlug}`, 'forms', 'form');
         function walk(obj, pathSegs) {
           if (!obj || typeof obj !== 'object') return;
           for (const [k, v] of Object.entries(obj)) {
@@ -85,6 +137,7 @@ export async function exportTranslations(companyId = 0) {
               if (/^[a-z0-9_.]+$/.test(v)) continue;
               const key = `form.${segs.join('.')}`;
               if (base[key] === undefined) base[key] = pickDefault(v);
+              ensureMeta(metadata, key, 'forms', 'form_field');
             } else if (Array.isArray(v)) {
               for (const item of v) {
                 if (item && typeof item === 'object') {
@@ -92,6 +145,7 @@ export async function exportTranslations(companyId = 0) {
                 } else if (typeof item === 'string' && !/^[a-z0-9_.]+$/.test(item)) {
                   const key = `form.${segs.join('.')}.${slugify(item)}`;
                   if (base[key] === undefined) base[key] = pickDefault(item);
+                  ensureMeta(metadata, key, 'forms', 'form_field');
                 }
               }
             } else {
@@ -125,6 +179,7 @@ export async function exportTranslations(companyId = 0) {
               : 'userLevelActions';
             const key = `${baseKey}.${slugify(item)}`;
             if (base[key] === undefined) base[key] = pickDefault(item);
+            ensureMeta(metadata, key, 'user_level_actions', 'user_level_action');
           }
         }
       } else {
@@ -134,6 +189,7 @@ export async function exportTranslations(companyId = 0) {
             if (skipString.test(v)) continue;
             const key = `userLevelActions.${segs.join('.')}`;
             if (base[key] === undefined) base[key] = pickDefault(v);
+            ensureMeta(metadata, key, 'user_level_actions', 'user_level_action');
           } else {
             walkUla(v, segs);
           }
@@ -165,6 +221,7 @@ export async function exportTranslations(companyId = 0) {
               : 'posTransactionConfig';
             const key = `${baseKey}.${slugify(item)}`;
             if (base[key] === undefined) base[key] = pickDefault(item);
+            ensureMeta(metadata, key, 'pos_transaction_config', 'pos_config');
           }
         }
       } else {
@@ -174,6 +231,7 @@ export async function exportTranslations(companyId = 0) {
             if (skipString.test(v)) continue;
             const key = `posTransactionConfig.${segs.join('.')}`;
             if (base[key] === undefined) base[key] = pickDefault(v);
+            ensureMeta(metadata, key, 'pos_transaction_config', 'pos_config');
           } else {
             walkPos(v, segs);
           }
@@ -190,9 +248,17 @@ export async function exportTranslations(companyId = 0) {
   }
 
   const sorted = sortObj(base);
+  const sortedMeta = sortObj(
+    Object.fromEntries(
+      Object.entries(metadata).map(([k, v]) => [k, { module: v.module ?? '', context: v.context ?? '' }]),
+    ),
+  );
   const exportPath = tenantConfigPath('exportedtexts.json', 0);
   fs.mkdirSync(path.dirname(exportPath), { recursive: true });
-  fs.writeFileSync(exportPath, JSON.stringify(sorted, null, 2));
+  fs.writeFileSync(
+    exportPath,
+    JSON.stringify({ translations: sorted, meta: sortedMeta }, null, 2),
+  );
   console.log(`Exported translations written to ${exportPath}`);
   return exportPath;
 }
