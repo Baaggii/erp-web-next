@@ -64,6 +64,176 @@ function mockPool(handler) {
   };
 }
 
+function setupCompanyDeletionWithBranchTables({
+  userId = 'EMP-BR1',
+  companyId = 52,
+  tenantCompanyId = 5200,
+  throwOnEarlyBranchDelete = false,
+} = {}) {
+  const calls = [];
+  const state = {
+    transactionsDeleted: false,
+    discountDeleted: false,
+    branchesDeleted: false,
+  };
+  const companyRow = {
+    id: companyId,
+    company_id: tenantCompanyId,
+    name: 'BranchCo',
+    created_by: userId,
+  };
+  const transactionRow = {
+    company_id: String(tenantCompanyId),
+    id: 909,
+  };
+  const restore = mockPool(async (sql, params) => {
+    calls.push({ sql, params });
+    if (sql.startsWith('SELECT * FROM companies WHERE created_by = ?')) {
+      assert.equal(params?.[0], userId);
+      return [[companyRow]];
+    }
+    if (
+      sql.includes('information_schema.STATISTICS') &&
+      sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      if (params?.[0] === 'companies') {
+        return [[
+          { COLUMN_NAME: 'company_id', SEQ_IN_INDEX: 1 },
+          { COLUMN_NAME: 'id', SEQ_IN_INDEX: 2 },
+        ]];
+      }
+      if (params?.[0] === 'transactions_pos') {
+        return [[
+          { COLUMN_NAME: 'company_id', SEQ_IN_INDEX: 1 },
+          { COLUMN_NAME: 'id', SEQ_IN_INDEX: 2 },
+        ]];
+      }
+      if (params?.[0] === 'tbl_discount') {
+        return [[
+          { COLUMN_NAME: 'company_id', SEQ_IN_INDEX: 1 },
+          { COLUMN_NAME: 'id', SEQ_IN_INDEX: 2 },
+        ]];
+      }
+      if (params?.[0] === 'code_branches') {
+        return [[
+          { COLUMN_NAME: 'company_id', SEQ_IN_INDEX: 1 },
+          { COLUMN_NAME: 'branch_id', SEQ_IN_INDEX: 2 },
+        ]];
+      }
+    }
+    if (
+      sql.includes('information_schema.STATISTICS') &&
+      sql.includes('NON_UNIQUE = 0')
+    ) {
+      return [[]];
+    }
+    if (
+      sql.includes('FROM tenant_tables tt') &&
+      sql.includes('information_schema.KEY_COLUMN_USAGE')
+    ) {
+      return [[
+        { table_name: 'tbl_discount', column_name: 'company_id' },
+        { table_name: 'code_branches', column_name: 'company_id' },
+      ]];
+    }
+    if (
+      sql.includes('SELECT TABLE_NAME, REFERENCED_TABLE_NAME') &&
+      sql.includes('TABLE_NAME IN')
+    ) {
+      return [[
+        { TABLE_NAME: 'tbl_discount', REFERENCED_TABLE_NAME: 'code_branches' },
+      ]];
+    }
+    if (sql.includes('information_schema.KEY_COLUMN_USAGE')) {
+      if (params?.[0] === 'companies') {
+        return [[
+          {
+            CONSTRAINT_NAME: 'transactions_pos_ibfk_2',
+            TABLE_NAME: 'transactions_pos',
+            COLUMN_NAME: 'company_id',
+            REFERENCED_COLUMN_NAME: 'id',
+          },
+        ]];
+      }
+      if (params?.[0] === 'transactions_pos') {
+        return [[]];
+      }
+      return [[]];
+    }
+    if (sql.includes('information_schema.COLUMNS')) {
+      const table = params?.[0];
+      if (table === 'companies') {
+        return [[{ COLUMN_NAME: 'company_id' }, { COLUMN_NAME: 'id' }]];
+      }
+      if (table === 'transactions_pos') {
+        return [[{ COLUMN_NAME: 'company_id' }, { COLUMN_NAME: 'id' }]];
+      }
+      if (table === 'tbl_discount') {
+        return [[{ COLUMN_NAME: 'company_id' }, { COLUMN_NAME: 'id' }]];
+      }
+      if (table === 'code_branches') {
+        return [[{ COLUMN_NAME: 'company_id' }, { COLUMN_NAME: 'branch_id' }]];
+      }
+      return [[]];
+    }
+    if (sql.startsWith('DELETE FROM user_level_permissions')) {
+      assert.equal(params?.[0], companyId);
+      return [{}];
+    }
+    if (
+      sql.startsWith('SELECT COUNT(*) AS count FROM ?? WHERE') &&
+      params?.[0] === 'transactions_pos'
+    ) {
+      return [[{ count: 1 }]];
+    }
+    if (
+      sql.startsWith('SELECT `company_id`, `id` FROM ?? WHERE') &&
+      params?.[0] === 'transactions_pos'
+    ) {
+      return [[transactionRow]];
+    }
+    if (
+      sql.startsWith('DELETE FROM ?? WHERE') &&
+      params?.[0] === 'transactions_pos'
+    ) {
+      state.transactionsDeleted = true;
+      return [{}];
+    }
+    if (
+      sql.startsWith('DELETE FROM ?? WHERE') &&
+      params?.[0] === 'tbl_discount'
+    ) {
+      state.discountDeleted = true;
+      return [{}];
+    }
+    if (
+      sql.startsWith('DELETE FROM ?? WHERE') &&
+      params?.[0] === 'code_branches'
+    ) {
+      if (
+        throwOnEarlyBranchDelete &&
+        (!state.transactionsDeleted || !state.discountDeleted)
+      ) {
+        const err = new Error(
+          'Cannot delete or update a parent row: a foreign key constraint fails',
+        );
+        err.code = 'ER_ROW_IS_REFERENCED_2';
+        throw err;
+      }
+      state.branchesDeleted = true;
+      return [{}];
+    }
+    if (
+      sql.startsWith('DELETE FROM ?? WHERE') &&
+      params?.[0] === 'companies'
+    ) {
+      return [{}];
+    }
+    throw new Error(`unexpected query: ${sql}`);
+  });
+  return { restore, calls, state, userId, companyId, tenantCompanyId };
+}
+
 function createRes() {
   return {
     code: undefined,
@@ -555,8 +725,8 @@ test('deleteCompanyHandler purges tenant tables without FK to companies', async 
   );
   assert.ok(companyDeleteIndex >= 0, 'expected companies delete');
   assert.ok(
-    employeeDeleteIndex < companyDeleteIndex,
-    'tbl_employee rows should be purged before company delete',
+    companyDeleteIndex < employeeDeleteIndex,
+    'company delete should occur before tenant table purge',
   );
 
   const employeeParams = calls[employeeDeleteIndex]?.params;
@@ -564,6 +734,79 @@ test('deleteCompanyHandler purges tenant tables without FK to companies', async 
     employeeParams ? employeeParams.map((p, idx) => (idx === 0 ? p : String(p))) : null,
     ['tbl_employee', String(tenantCompanyId), String(companyId)],
   );
+});
+
+test('DELETE /api/companies/:id succeeds when discount and POS rows exist', async () => {
+  const { restore, state, companyId, userId } =
+    setupCompanyDeletionWithBranchTables({ throwOnEarlyBranchDelete: true });
+  const req = {
+    params: { id: String(companyId) },
+    user: { empid: userId, companyId: 0 },
+    session: { permissions: { system_settings: true } },
+    body: {},
+  };
+  const res = createRes();
+  try {
+    await deleteCompanyHandler(req, res, () => {});
+  } finally {
+    restore();
+  }
+  assert.equal(res.code, 200);
+  assert.deepEqual(res.body, {
+    backup: null,
+    company: { id: companyId, name: 'BranchCo' }
+  });
+  assert.equal(state.transactionsDeleted, true);
+  assert.equal(state.discountDeleted, true);
+  assert.equal(state.branchesDeleted, true);
+});
+
+test('deleteCompanyHandler clears branch tables after cascading dependent rows', async () => {
+  const { restore, calls, state, companyId, userId } =
+    setupCompanyDeletionWithBranchTables();
+  const req = {
+    params: { id: String(companyId) },
+    user: { empid: userId, companyId: 0 },
+    session: { permissions: { system_settings: true } },
+    body: {},
+  };
+  const res = createRes();
+  try {
+    await deleteCompanyHandler(req, res, () => {});
+  } finally {
+    restore();
+  }
+  const transactionsDeleteIndex = calls.findIndex(
+    (c) => c.sql.startsWith('DELETE FROM ?? WHERE') && c.params?.[0] === 'transactions_pos',
+  );
+  const discountDeleteIndex = calls.findIndex(
+    (c) => c.sql.startsWith('DELETE FROM ?? WHERE') && c.params?.[0] === 'tbl_discount',
+  );
+  const branchDeleteIndex = calls.findIndex(
+    (c) => c.sql.startsWith('DELETE FROM ?? WHERE') && c.params?.[0] === 'code_branches',
+  );
+  const companyDeleteIndex = calls.findIndex(
+    (c) => c.sql.startsWith('DELETE FROM ?? WHERE') && c.params?.[0] === 'companies',
+  );
+  assert.ok(transactionsDeleteIndex >= 0, 'expected transactions_pos delete');
+  assert.ok(discountDeleteIndex >= 0, 'expected tbl_discount delete');
+  assert.ok(branchDeleteIndex >= 0, 'expected code_branches delete');
+  assert.ok(companyDeleteIndex >= 0, 'expected companies delete');
+  assert.ok(
+    transactionsDeleteIndex < branchDeleteIndex,
+    'transactions should be removed before branch cleanup',
+  );
+  assert.ok(
+    discountDeleteIndex < branchDeleteIndex,
+    'discounts should be removed before branch cleanup',
+  );
+  assert.ok(
+    companyDeleteIndex < branchDeleteIndex,
+    'branch cleanup should occur after company delete',
+  );
+  assert.equal(state.transactionsDeleted, true);
+  assert.equal(state.discountDeleted, true);
+  assert.equal(state.branchesDeleted, true);
 });
 
 test('deleteCompanyHandler cascades through employment and users tables', async () => {
