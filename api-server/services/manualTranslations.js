@@ -25,6 +25,13 @@ export async function loadTranslations() {
   ]);
   const entries = {};
 
+  function ensureEntry(id, key, type) {
+    if (!entries[id]) {
+      entries[id] = { key, type, values: {}, module: '', context: '' };
+    }
+    return entries[id];
+  }
+
   for (const lang of langs) {
     // Load normal locale strings
     try {
@@ -32,8 +39,7 @@ export async function loadTranslations() {
       const data = JSON.parse(await fs.readFile(file, 'utf8'));
       for (const [k, v] of Object.entries(data)) {
         const id = `locale:${k}`;
-        if (!entries[id]) entries[id] = { key: k, type: 'locale', values: {} };
-        entries[id].values[lang] = v;
+        ensureEntry(id, k, 'locale').values[lang] = v;
       }
     } catch {}
 
@@ -43,8 +49,7 @@ export async function loadTranslations() {
       const data = JSON.parse(await fs.readFile(file, 'utf8'));
       for (const [k, v] of Object.entries(data)) {
         const id = `tooltip:${k}`;
-        if (!entries[id]) entries[id] = { key: k, type: 'tooltip', values: {} };
-        entries[id].values[lang] = v;
+        ensureEntry(id, k, 'tooltip').values[lang] = v;
       }
     } catch {}
   }
@@ -58,15 +63,26 @@ export async function loadTranslations() {
       const exportedFile = path.join(configDir, tenant.name, 'exportedtexts.json');
       try {
         const raw = JSON.parse(await fs.readFile(exportedFile, 'utf8'));
+        let translationsData = raw;
+        let metadata = {};
+        if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+          if (raw.translations && typeof raw.translations === 'object') {
+            translationsData = raw.translations;
+          }
+          if (raw.meta && typeof raw.meta === 'object') {
+            metadata = raw.meta;
+          }
+        }
         const flat = {};
         (function walk(obj, prefix) {
           if (typeof obj === 'string') {
-            flat[prefix] = obj;
+            if (prefix) flat[prefix] = obj;
             return;
           }
           if (Array.isArray(obj)) {
             obj.forEach((v, i) => {
-              walk(v, prefix ? `${prefix}.${i}` : String(i));
+              const key = prefix ? `${prefix}.${i}` : String(i);
+              walk(v, key);
             });
             return;
           }
@@ -76,18 +92,19 @@ export async function loadTranslations() {
               walk(v, key);
             }
           }
-        })(raw, '');
+        })(translationsData, '');
         for (const [k, v] of Object.entries(flat)) {
           const localeId = `locale:${k}`;
           const tooltipId = `tooltip:${k}`;
-          if (!entries[localeId]) entries[localeId] = { key: k, type: 'locale', values: { en: v } };
-          if (!entries[tooltipId]) entries[tooltipId] = { key: k, type: 'tooltip', values: { en: v } };
-          for (const id of [localeId, tooltipId]) {
-            const entry = entries[id];
-            for (const lang of langs) {
-              entry.values[lang] ??= '';
-            }
-          }
+          const meta = metadata[k] || {};
+          const localeEntry = ensureEntry(localeId, k, 'locale');
+          const tooltipEntry = ensureEntry(tooltipId, k, 'tooltip');
+          if (localeEntry.values.en == null) localeEntry.values.en = v;
+          if (tooltipEntry.values.en == null) tooltipEntry.values.en = v;
+          if (!localeEntry.module && meta.module) localeEntry.module = meta.module;
+          if (!tooltipEntry.module && meta.module) tooltipEntry.module = meta.module;
+          if (!localeEntry.context && meta.context) localeEntry.context = meta.context;
+          if (!tooltipEntry.context && meta.context) tooltipEntry.context = meta.context;
         }
         if (!langs.has('en')) langs.add('en');
       } catch {}
@@ -99,6 +116,8 @@ export async function loadTranslations() {
     for (const lang of langs) {
       if (entry.values[lang] == null) entry.values[lang] = '';
     }
+    if (entry.module == null) entry.module = '';
+    if (entry.context == null) entry.context = '';
   }
 
   return { languages: Array.from(langs), entries: Object.values(entries) };

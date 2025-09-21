@@ -94,11 +94,22 @@ export default function Tmp() {
   await exportTranslations(0);
   const exportedPath = path.join('config', '0', 'exportedtexts.json');
   const exported = JSON.parse(fs.readFileSync(exportedPath, 'utf8'));
+  const { translations, meta } = exported;
   restore();
   fs.unlinkSync(tmpFile);
-  assert.equal(exported['Test Button'], 'Test Button');
-  assert.equal(exported['Test Option'], 'Test Option');
-  assert.equal(exported['Test Label'], 'Test Label');
+  assert.equal(translations['Test Button'], 'Test Button');
+  assert.equal(translations['Test Option'], 'Test Option');
+  assert.equal(translations['Test Label'], 'Test Label');
+  assert.equal(meta['Test Button'].module, 'TmpTranslation');
+  assert.equal(meta['Test Button'].context, 'button');
+  assert.equal(meta['Test Option'].module, 'TmpTranslation');
+  assert.equal(meta['Test Option'].context, 'option');
+  assert.equal(meta['Test Label'].module, 'TmpTranslation');
+  assert.equal(meta['Test Label'].context, 'label');
+  assert.equal(meta.wrapped.module, 'TmpTranslation');
+  assert.equal(meta.wrapped.context, 'translation_call');
+  assert.equal(meta['Wrapped Button'].module, 'TmpTranslation');
+  assert.equal(meta['Wrapped Button'].context, 'translation_call');
   await db.pool.end();
 });
 
@@ -129,9 +140,11 @@ test('deeply nested header mappings are flattened', async () => {
   }
   const exportedPath = path.join('config', '0', 'exportedtexts.json');
   const exported = JSON.parse(fs.readFileSync(exportedPath, 'utf8'));
-  assert.equal(exported.root.title, 'Root Title');
-  assert.equal(exported.root.items[0].name, 'Item Name');
-  assert.equal(exported.root.items[0].children[1].more[0].deep, 'Deep');
+  const { translations, meta } = exported;
+  assert.equal(translations.root.title, 'Root Title');
+  assert.equal(translations.root.items[0].name, 'Item Name');
+  assert.equal(translations.root.items[0].children[1].more[0].deep, 'Deep');
+  assert.equal(meta['root.title'].context, 'header_mapping');
   fs.writeFileSync(headerMappingsPath, original);
   fs.unlinkSync(exportedPath);
   await db.pool.end();
