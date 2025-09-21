@@ -829,5 +829,9 @@
   "close": "Close",
   "cancel": "Cancel",
   "prev": "Prev",
-  "next": "Next"
+  "next": "Next",
+  "logout": "Logout",
+  "userMenu.changePassword": "Change password",
+  "userMenu.showPageGuide": "Show page guide",
+  "userProfile.loggedInAs": "Logged in as"
 }
