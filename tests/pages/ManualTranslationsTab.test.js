@@ -58,7 +58,6 @@ if (typeof mock.import !== 'function') {
           createElement: reactMock.createElement,
         },
         '../context/I18nContext.jsx': { default: {} },
-        '../context/ToastContext.jsx': { useToast: () => ({ addToast: () => {} }) },
         '../utils/translateWithCache.js': {
           default: async () => ({ text: '', needsRetry: false }),
         },
