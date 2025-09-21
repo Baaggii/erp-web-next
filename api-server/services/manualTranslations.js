@@ -1,7 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { evaluateTranslationCandidate } from '../../utils/translationValidation.js';
 
 import {
   evaluateTranslationCandidate,
@@ -15,89 +14,6 @@ const projectRoot = path.resolve(__dirname, '../../');
 const localesDir = path.join(projectRoot, 'src', 'erp.mgt.mn', 'locales');
 const tooltipDir = path.join(localesDir, 'tooltips');
 const configDir = path.join(projectRoot, 'config');
-
-const cyrillicRegex = /[\u0400-\u04FF]/;
-const latinRegex = /[A-Za-z]/;
-
-function detectExportedLanguage(value) {
-  if (typeof value !== 'string') {
-    return { language: null, reason: 'non_string' };
-  }
-  const text = value.trim();
-  if (!text) {
-    return { language: null, reason: 'empty' };
-  }
-
-  const hasCyrillic = cyrillicRegex.test(text);
-  const hasLatin = latinRegex.test(text);
-
-  const defaultEnglishStats = { ratio: 0, asciiCount: 0, matches: 0 };
-  let englishStats = defaultEnglishStats;
-  try {
-    const heuristics = evaluateTranslationCandidate({
-      candidate: text,
-      base: '',
-      lang: 'mn',
-      metadata: {},
-    });
-    if (heuristics?.english) {
-      englishStats = {
-        ratio: Number.isFinite(heuristics.english.ratio)
-          ? heuristics.english.ratio
-          : defaultEnglishStats.ratio,
-        asciiCount: Number.isFinite(heuristics.english.asciiCount)
-          ? heuristics.english.asciiCount
-          : defaultEnglishStats.asciiCount,
-        matches: Number.isFinite(heuristics.english.englishMatches)
-          ? heuristics.english.englishMatches
-          : defaultEnglishStats.matches,
-      };
-    }
-  } catch {
-    englishStats = defaultEnglishStats;
-  }
-
-  if (hasCyrillic && !hasLatin) {
-    return { language: 'mn', reason: 'cyrillic_only', english: englishStats };
-  }
-
-  if (hasCyrillic && hasLatin) {
-    if (englishStats.ratio >= 0.6 && englishStats.asciiCount >= 2) {
-      return {
-        language: 'en',
-        reason: 'mixed_but_english_dominant',
-        english: englishStats,
-      };
-    }
-    if (englishStats.ratio <= 0.2) {
-      return {
-        language: 'mn',
-        reason: 'mixed_but_cyrillic_dominant',
-        english: englishStats,
-      };
-    }
-    return { language: null, reason: 'mixed_scripts', english: englishStats };
-  }
-
-  if (!hasCyrillic && hasLatin) {
-    if (
-      englishStats.asciiCount >= 2 &&
-      (englishStats.ratio >= 0.4 || englishStats.matches >= 1)
-    ) {
-      return { language: 'en', reason: 'latin_script', english: englishStats };
-    }
-    if (englishStats.asciiCount >= 1 && text.split(' ').length === 1) {
-      return { language: 'en', reason: 'single_latin_token', english: englishStats };
-    }
-    return {
-      language: null,
-      reason: 'latin_without_signal',
-      english: englishStats,
-    };
-  }
-
-  return { language: null, reason: 'no_language_signal', english: englishStats };
-}
 
 async function listLangs(dir) {
   try {
@@ -296,70 +212,12 @@ export async function loadTranslations() {
     ...(await listLangs(tooltipDir)),
   ]);
   const entries = {};
-  const reviewQueue = [];
 
   function ensureEntry(id, key, type) {
     if (!entries[id]) {
-      entries[id] = {
-        key,
-        type,
-        values: {},
-        module: '',
-        context: '',
-        pendingReview: [],
-        needsReview: false,
-      };
+      entries[id] = { key, type, values: {}, module: '', context: '' };
     }
     return entries[id];
-  }
-
-  function queueReview(entry, value, { tenant, reason, detection, lang }) {
-    if (!entry.pendingReview) entry.pendingReview = [];
-    const reviewItem = {
-      value,
-      tenant: tenant || '',
-      source: 'exportedtexts',
-      reason: reason || 'undetermined_language',
-    };
-    if (typeof lang === 'string') reviewItem.lang = lang;
-    if (detection?.reason) reviewItem.detectionReason = detection.reason;
-    if (Object.prototype.hasOwnProperty.call(detection ?? {}, 'language')) {
-      reviewItem.detectedLanguage = detection.language;
-    }
-    if (detection?.english) {
-      if (Number.isFinite(detection.english.ratio)) {
-        reviewItem.englishRatio = detection.english.ratio;
-      }
-      if (Number.isFinite(detection.english.asciiCount)) {
-        reviewItem.englishAsciiCount = detection.english.asciiCount;
-      }
-      if (Number.isFinite(detection.english.matches)) {
-        reviewItem.englishMatches = detection.english.matches;
-      }
-    }
-    entry.pendingReview.push(reviewItem);
-    entry.needsReview = true;
-    reviewQueue.push({ key: entry.key, type: entry.type, ...reviewItem });
-  }
-
-  function applyDetectedLanguage(entry, langCode, value, info) {
-    if (!langCode) return;
-    if (!langs.has(langCode)) langs.add(langCode);
-    const existing = entry.values[langCode];
-    const normalizedExisting =
-      typeof existing === 'string' ? existing.trim() : existing;
-    const normalizedIncoming =
-      typeof value === 'string' ? value.trim() : value;
-    if (normalizedExisting == null || normalizedExisting === '') {
-      entry.values[langCode] = value;
-      return;
-    }
-    if (normalizedExisting === normalizedIncoming) return;
-    queueReview(entry, value, {
-      ...info,
-      lang: langCode,
-      reason: 'conflict_with_existing',
-    });
   }
 
   for (const lang of langs) {
@@ -428,26 +286,8 @@ export async function loadTranslations() {
           const meta = metadata[k] || {};
           const localeEntry = ensureEntry(localeId, k, 'locale');
           const tooltipEntry = ensureEntry(tooltipId, k, 'tooltip');
-          const detection = detectExportedLanguage(v);
-          const tenantInfo = { tenant: tenant.name, detection };
-          if (detection.language === 'en' || detection.language === 'mn') {
-            applyDetectedLanguage(localeEntry, detection.language, v, tenantInfo);
-            applyDetectedLanguage(
-              tooltipEntry,
-              detection.language,
-              v,
-              tenantInfo,
-            );
-          } else {
-            queueReview(localeEntry, v, {
-              ...tenantInfo,
-              reason: detection.reason || 'undetermined_language',
-            });
-            queueReview(tooltipEntry, v, {
-              ...tenantInfo,
-              reason: detection.reason || 'undetermined_language',
-            });
-          }
+          if (localeEntry.values.en == null) localeEntry.values.en = v;
+          if (tooltipEntry.values.en == null) tooltipEntry.values.en = v;
           if (!localeEntry.module && meta.module) localeEntry.module = meta.module;
           if (!tooltipEntry.module && meta.module) tooltipEntry.module = meta.module;
           if (!localeEntry.context && meta.context) localeEntry.context = meta.context;
@@ -465,15 +305,9 @@ export async function loadTranslations() {
     }
     if (entry.module == null) entry.module = '';
     if (entry.context == null) entry.context = '';
-    if (!entry.pendingReview) entry.pendingReview = [];
-    entry.needsReview = entry.pendingReview.length > 0;
   }
 
-  return {
-    languages: Array.from(langs),
-    entries: Object.values(entries),
-    reviewQueue,
-  };
+  return { languages: Array.from(langs), entries: Object.values(entries) };
 }
 
 export async function saveTranslation(
