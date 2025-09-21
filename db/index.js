@@ -4346,16 +4346,13 @@ export async function deleteTableRowCascade(
   options = {},
 ) {
   const conn = await pool.getConnection();
-  const { beforeDelete, afterDelete } = options ?? {};
+  const { beforeDelete } = options ?? {};
   try {
     await conn.beginTransaction();
     if (typeof beforeDelete === 'function') {
       await beforeDelete(conn);
     }
     await deleteCascade(conn, tableName, id, new Set(), companyId);
-    if (typeof afterDelete === 'function') {
-      await afterDelete(conn);
-    }
     await conn.commit();
   } catch (err) {
     await conn.rollback();
