@@ -1,6 +1,9 @@
-import React from 'react';
+import { useContext } from 'react';
+import I18nContext from '../context/I18nContext.jsx';
 
 export default function OrderEntry() {
-  return <div>Order Entry Module</div>;
+  const { t } = useContext(I18nContext);
+
+  return <div>{t('windows.orderEntry.placeholder', 'Order Entry Module')}</div>;
 }
 
