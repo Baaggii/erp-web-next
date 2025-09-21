@@ -264,7 +264,7 @@ test('deleteCompanyHandler deletes company with cascade', async () => {
   assert.ok(permissionsDelete, 'should delete user level permissions first');
   assert.deepEqual(permissionsDelete?.params, [companyId]);
   const ordersDelete = deletes.find((c) => c.params?.[0] === 'orders');
-  assert.deepEqual(ordersDelete?.params, ['orders', 3, tenantCompanyId]);
+  assert.deepEqual(ordersDelete?.params, ['orders', 3, companyId]);
   const companiesDelete = deletes.find((c) => c.params?.[0] === 'companies');
   assert.deepEqual(companiesDelete?.params, [
     'companies',
@@ -455,7 +455,7 @@ test('deleteCompanyHandler purges user level permissions before deleting company
 test('deleteCompanyHandler cascades through employment and users tables', async () => {
   const calls = [];
   const employeeCode = 'EMP-1';
-  const tenantCompanyId = 7;
+  const tenantCompanyId = 70;
   const companyId = 7;
   const employmentRow = {
     company_id: String(tenantCompanyId),
@@ -663,7 +663,7 @@ test('deleteCompanyHandler cascades through employment and users tables', async 
   const userDelete = deletes.find((c) => c.params?.[0] === 'users');
   assert.deepEqual(
     userDelete ? userDelete.params.map((p) => String(p)) : null,
-    ['users', '99', String(tenantCompanyId)],
+    ['users', '99', String(companyId)],
   );
   const employmentDelete = deletes.find((c) => c.params?.[0] === 'tbl_employment');
   assert.deepEqual(
@@ -808,7 +808,7 @@ test('deleteCompanyHandler returns backup metadata when requested', async () => 
   assert.ok(permissionDelete);
   assert.deepEqual(permissionDelete?.params, [companyId]);
   const ordersDelete = deletes.find((c) => c.params?.[0] === 'orders');
-  assert.deepEqual(ordersDelete?.params, ['orders', 11, tenantCompanyId]);
+  assert.deepEqual(ordersDelete?.params, ['orders', 11, companyId]);
   const companiesDelete = deletes.find((c) => c.params?.[0] === 'companies');
   assert.deepEqual(companiesDelete?.params, [
     'companies',
