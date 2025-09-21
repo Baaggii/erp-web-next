@@ -1,7 +1,8 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import * as controller from '../../api-server/controllers/tableController.js';
 import * as db from '../../db/index.js';
+import * as relationsConfig from '../../api-server/services/tableRelationsConfig.js';
 import { EventEmitter } from 'node:events';
 
 function mockPool(handler) {
@@ -390,4 +391,206 @@ test('deleteRow forwards user companyId to deleteTableRow', async () => {
   await controller.deleteRow(req, res, (e) => { if (e) throw e; });
   restore();
   assert.equal(res.code, 204);
+});
+if (typeof mock?.import !== 'function') {
+  test('getTableRelations merges database and custom entries', { skip: true }, () => {});
+  test('listCustomTableRelations returns config and default flag', { skip: true }, () => {});
+  test('saveCustomTableRelation persists mapping via service', { skip: true }, () => {});
+  test('deleteCustomTableRelation calls remove service', { skip: true }, () => {});
+} else {
+  test('getTableRelations merges database and custom entries', async () => {
+    const actualDb = await import('../../db/index.js');
+    const actualService = await import(
+      '../../api-server/services/tableRelationsConfig.js'
+    );
+    const { getTableRelations } = await mock.import(
+      '../../api-server/controllers/tableController.js',
+      {
+        '../../db/index.js': {
+          ...actualDb,
+          listTableRelationships: async () => [
+            {
+              COLUMN_NAME: 'company_id',
+              REFERENCED_TABLE_NAME: 'companies',
+              REFERENCED_COLUMN_NAME: 'id',
+            },
+          ],
+        },
+        '../services/tableRelationsConfig.js': {
+          ...actualService,
+          listCustomRelations: async () => ({
+            config: { dept_id: { table: 'departments', column: 'id' } },
+            isDefault: false,
+          }),
+        },
+      },
+    );
+    const req = { params: { table: 'users' }, query: {}, user: { companyId: 5 } };
+    let response;
+    const res = {
+      json(body) {
+        response = body;
+      },
+    };
+    await getTableRelations(req, res, (err) => {
+      if (err) throw err;
+    });
+    assert.equal(response.length, 2);
+    assert.deepEqual(response[0], {
+      COLUMN_NAME: 'company_id',
+      REFERENCED_TABLE_NAME: 'companies',
+      REFERENCED_COLUMN_NAME: 'id',
+      source: 'database',
+    });
+    assert.deepEqual(response[1], {
+      COLUMN_NAME: 'dept_id',
+      REFERENCED_TABLE_NAME: 'departments',
+      REFERENCED_COLUMN_NAME: 'id',
+      source: 'custom',
+    });
+  });
+
+  test('listCustomTableRelations returns config and default flag', async () => {
+    const actualService = await import(
+      '../../api-server/services/tableRelationsConfig.js'
+    );
+    const { listCustomTableRelations } = await mock.import(
+      '../../api-server/controllers/tableController.js',
+      {
+        '../services/tableRelationsConfig.js': {
+          ...actualService,
+          listCustomRelations: async () => ({
+            config: { dept_id: { table: 'departments', column: 'id' } },
+            isDefault: true,
+          }),
+        },
+      },
+    );
+    const req = { params: { table: 'users' }, query: {}, user: { companyId: 3 } };
+    let payload;
+    const res = {
+      json(body) {
+        payload = body;
+      },
+    };
+    await listCustomTableRelations(req, res, (err) => {
+      if (err) throw err;
+    });
+    assert.deepEqual(payload, {
+      relations: { dept_id: { table: 'departments', column: 'id' } },
+      isDefault: true,
+    });
+  });
+
+  test('saveCustomTableRelation persists mapping via service', async () => {
+    const actualService = await import(
+      '../../api-server/services/tableRelationsConfig.js'
+    );
+    let args;
+    const { saveCustomTableRelation } = await mock.import(
+      '../../api-server/controllers/tableController.js',
+      {
+        '../services/tableRelationsConfig.js': {
+          ...actualService,
+          saveCustomRelation: async (...callArgs) => {
+            args = callArgs;
+            return { table: 'departments', column: 'id' };
+          },
+        },
+      },
+    );
+    const req = {
+      params: { table: 'users', column: 'dept_id' },
+      body: { targetTable: 'departments', targetColumn: 'id' },
+      query: {},
+      user: { companyId: 9 },
+    };
+    let payload;
+    const res = {
+      json(body) {
+        payload = body;
+      },
+      status() {
+        return this;
+      },
+    };
+    await saveCustomTableRelation(req, res, (err) => {
+      if (err) throw err;
+    });
+    assert.deepEqual(args, [
+      'users',
+      'dept_id',
+      { table: 'departments', column: 'id', idField: undefined, displayFields: undefined },
+      9,
+    ]);
+    assert.deepEqual(payload, {
+      column: 'dept_id',
+      relation: { table: 'departments', column: 'id' },
+      source: 'custom',
+    });
+  });
+
+  test('deleteCustomTableRelation calls remove service', async () => {
+    const actualService = await import(
+      '../../api-server/services/tableRelationsConfig.js'
+    );
+    let args;
+    const { deleteCustomTableRelation } = await mock.import(
+      '../../api-server/controllers/tableController.js',
+      {
+        '../services/tableRelationsConfig.js': {
+          ...actualService,
+          removeCustomRelation: async (...callArgs) => {
+            args = callArgs;
+          },
+        },
+      },
+    );
+    const req = {
+      params: { table: 'users', column: 'dept_id' },
+      query: {},
+      user: { companyId: 2 },
+    };
+    let statusCode;
+    const res = {
+      sendStatus(code) {
+        statusCode = code;
+      },
+      status(code) {
+        statusCode = code;
+        return this;
+      },
+      json() {},
+    };
+    await deleteCustomTableRelation(req, res, (err) => {
+      if (err) throw err;
+    });
+    assert.deepEqual(args, ['users', 'dept_id', 2]);
+    assert.equal(statusCode, 204);
+  });
+}
+
+test('saveCustomTableRelation validates required fields', async () => {
+  const req = {
+    params: { table: 'users', column: 'dept_id' },
+    body: { targetTable: '', targetColumn: '' },
+    query: {},
+    user: { companyId: 1 },
+  };
+  let statusCode;
+  let message;
+  const res = {
+    status(code) {
+      statusCode = code;
+      return this;
+    },
+    json(body) {
+      message = body;
+    },
+  };
+  await controller.saveCustomTableRelation(req, res, (err) => {
+    if (err) throw err;
+  });
+  assert.equal(statusCode, 400);
+  assert.deepEqual(message, { message: 'targetTable is required' });
 });

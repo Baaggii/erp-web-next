@@ -17,6 +17,11 @@ import { moveImagesToDeleted } from '../services/transactionImageService.js';
 import { addMappings } from '../services/headerMappings.js';
 import { hasAction } from '../utils/hasAction.js';
 import { createCompanyHandler } from './companyController.js';
+import {
+  listCustomRelations,
+  saveCustomRelation,
+  removeCustomRelation,
+} from '../services/tableRelationsConfig.js';
 let bcrypt;
 try {
   const mod = await import('bcryptjs');
@@ -78,8 +83,96 @@ export async function getTableRows(req, res, next) {
 
 export async function getTableRelations(req, res, next) {
   try {
-    const rels = await listTableRelationships(req.params.table);
-    res.json(rels);
+    const companyId = Number(req.query.companyId ?? req.user?.companyId ?? 0);
+    const [dbRelations, custom] = await Promise.all([
+      listTableRelationships(req.params.table),
+      listCustomRelations(req.params.table, companyId),
+    ]);
+    const result = Array.isArray(dbRelations)
+      ? dbRelations.map((rel) => ({
+          COLUMN_NAME: rel.COLUMN_NAME,
+          REFERENCED_TABLE_NAME: rel.REFERENCED_TABLE_NAME,
+          REFERENCED_COLUMN_NAME: rel.REFERENCED_COLUMN_NAME,
+          source: 'database',
+        }))
+      : [];
+
+    const customEntries = custom?.config ?? {};
+    if (customEntries && typeof customEntries === 'object') {
+      for (const [column, relation] of Object.entries(customEntries)) {
+        if (!relation || typeof relation !== 'object') continue;
+        if (!relation.table || !relation.column) continue;
+        result.push({
+          COLUMN_NAME: column,
+          REFERENCED_TABLE_NAME: relation.table,
+          REFERENCED_COLUMN_NAME: relation.column,
+          source: 'custom',
+          ...(relation.idField ? { idField: relation.idField } : {}),
+          ...(Array.isArray(relation.displayFields)
+            ? { displayFields: relation.displayFields }
+            : {}),
+        });
+      }
+    }
+
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function listCustomTableRelations(req, res, next) {
+  try {
+    const companyId = Number(req.query.companyId ?? req.user?.companyId ?? 0);
+    const { config, isDefault } = await listCustomRelations(
+      req.params.table,
+      companyId,
+    );
+    res.json({ relations: config, isDefault });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function saveCustomTableRelation(req, res, next) {
+  try {
+    const companyId = Number(req.query.companyId ?? req.user?.companyId ?? 0);
+    const column = req.params.column;
+    if (!column) {
+      return res.status(400).json({ message: 'column is required' });
+    }
+    const { targetTable, targetColumn, idField, displayFields } = req.body || {};
+    if (!targetTable) {
+      return res.status(400).json({ message: 'targetTable is required' });
+    }
+    if (!targetColumn) {
+      return res.status(400).json({ message: 'targetColumn is required' });
+    }
+    const saved = await saveCustomRelation(
+      req.params.table,
+      column,
+      { table: targetTable, column: targetColumn, idField, displayFields },
+      companyId,
+    );
+    res.json({
+      column,
+      relation: saved,
+      source: 'custom',
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function deleteCustomTableRelation(req, res, next) {
+  try {
+    const companyId = Number(req.query.companyId ?? req.user?.companyId ?? 0);
+    const column = req.params.column;
+    if (!column) {
+      return res.status(400).json({ message: 'column is required' });
+    }
+    await removeCustomRelation(req.params.table, column, companyId);
+    res.sendStatus(204);
   } catch (err) {
     next(err);
   }
