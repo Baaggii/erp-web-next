@@ -183,13 +183,34 @@ export default function ManualTranslationsTab() {
 
   async function save(index) {
     const entry = entries[index];
-    await fetch('/api/manual_translations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(entry),
-    });
-    await refreshEntries();
+    try {
+      const res = await fetch('/api/manual_translations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(entry),
+      });
+      if (res.status === 429) {
+        addToast(
+          t('rateLimitExceeded', 'Too many requests, please try again later'),
+          'error',
+        );
+        return;
+      }
+      if (!res.ok) {
+        let message = t('translationSaveFailed', 'Failed to save translation');
+        try {
+          const data = await res.json();
+          if (data?.message) message = data.message;
+        } catch {}
+        addToast(message, 'error');
+        return;
+      }
+      addToast(t('translationSaved', 'Translation saved'), 'success');
+      await refreshEntries();
+    } catch {
+      addToast(t('translationSaveFailed', 'Failed to save translation'), 'error');
+    }
   }
 
   async function saveLanguage(lang) {
@@ -216,10 +237,12 @@ export default function ManualTranslationsTab() {
         return;
       }
       if (!res.ok) {
-        addToast(
-          t('languageSaveFailed', 'Failed to save language translations'),
-          'error',
-        );
+        let message = t('languageSaveFailed', 'Failed to save language translations');
+        try {
+          const data = await res.json();
+          if (data?.message) message = data.message;
+        } catch {}
+        addToast(message, 'error');
         return;
       }
       addToast(t('languageSaved', 'Language translations saved'), 'success');
