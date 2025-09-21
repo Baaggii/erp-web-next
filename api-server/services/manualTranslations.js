@@ -18,6 +18,16 @@ async function listLangs(dir) {
   }
 }
 
+const cyrillicRegex = /[\u0400-\u04FF]/;
+const latinRegex = /[A-Za-z]/;
+
+function detectLang(str) {
+  if (typeof str !== 'string') return undefined;
+  if (cyrillicRegex.test(str)) return 'mn';
+  if (latinRegex.test(str)) return 'en';
+  return undefined;
+}
+
 export async function loadTranslations() {
   const langs = new Set([
     ...(await listLangs(localesDir)),
@@ -99,8 +109,13 @@ export async function loadTranslations() {
           const meta = metadata[k] || {};
           const localeEntry = ensureEntry(localeId, k, 'locale');
           const tooltipEntry = ensureEntry(tooltipId, k, 'tooltip');
-          if (localeEntry.values.en == null) localeEntry.values.en = v;
-          if (tooltipEntry.values.en == null) tooltipEntry.values.en = v;
+          const detectedLang = detectLang(v);
+          const targetLangs = detectedLang ? [detectedLang] : ['en'];
+          for (const langKey of targetLangs) {
+            langs.add(langKey);
+            if (localeEntry.values[langKey] == null) localeEntry.values[langKey] = v;
+            if (tooltipEntry.values[langKey] == null) tooltipEntry.values[langKey] = v;
+          }
           if (!localeEntry.module && meta.module) localeEntry.module = meta.module;
           if (!tooltipEntry.module && meta.module) tooltipEntry.module = meta.module;
           if (!localeEntry.context && meta.context) localeEntry.context = meta.context;
