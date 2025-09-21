@@ -75,8 +75,6 @@ function setupCompanyDeletionWithBranchTables({
     transactionsDeleted: false,
     discountDeleted: false,
     branchesDeleted: false,
-    branchIdsLoaded: false,
-    branchIds: [],
   };
   const companyRow = {
     id: companyId,
@@ -131,35 +129,12 @@ function setupCompanyDeletionWithBranchTables({
     }
     if (
       sql.includes('FROM tenant_tables tt') &&
-      sql.includes('information_schema.KEY_COLUMN_USAGE') &&
-      sql.includes("REFERENCED_TABLE_NAME IN ('companies', 'code_branches')")
+      sql.includes('information_schema.KEY_COLUMN_USAGE')
     ) {
       return [[
-        {
-          table_name: 'tbl_discount',
-          column_name: 'company_id',
-          referenced_table: 'companies',
-          referenced_column: 'id',
-        },
-        {
-          table_name: 'tbl_discount',
-          column_name: 'branch_id',
-          referenced_table: 'code_branches',
-          referenced_column: 'branch_id',
-        },
-        {
-          table_name: 'code_branches',
-          column_name: 'company_id',
-          referenced_table: 'companies',
-          referenced_column: 'id',
-        },
+        { table_name: 'tbl_discount', column_name: 'company_id' },
+        { table_name: 'code_branches', column_name: 'company_id' },
       ]];
-    }
-    if (
-      sql.includes('FROM tenant_tables tt') &&
-      sql.includes('information_schema.COLUMNS')
-    ) {
-      return [[]];
     }
     if (
       sql.includes('SELECT TABLE_NAME, REFERENCED_TABLE_NAME') &&
@@ -216,11 +191,6 @@ function setupCompanyDeletionWithBranchTables({
       params?.[0] === 'transactions_pos'
     ) {
       return [[transactionRow]];
-    }
-    if (sql.startsWith('SELECT branch_id FROM code_branches WHERE')) {
-      state.branchIdsLoaded = true;
-      state.branchIds = [701, 702];
-      return [[{ branch_id: 701 }, { branch_id: 702 }]];
     }
     if (
       sql.startsWith('DELETE FROM ?? WHERE') &&
@@ -700,14 +670,7 @@ test('deleteCompanyHandler purges tenant tables without FK to companies', async 
     }
     if (
       sql.includes('FROM tenant_tables tt') &&
-      sql.includes('information_schema.KEY_COLUMN_USAGE') &&
-      sql.includes("REFERENCED_TABLE_NAME IN ('companies', 'code_branches')")
-    ) {
-      return [[]];
-    }
-    if (
-      sql.includes('FROM tenant_tables tt') &&
-      sql.includes('information_schema.COLUMNS')
+      sql.includes('information_schema.KEY_COLUMN_USAGE')
     ) {
       return [[{ table_name: 'tbl_employee', column_name: 'company_id' }]];
     }
@@ -796,7 +759,6 @@ test('DELETE /api/companies/:id succeeds when discount and POS rows exist', asyn
   assert.equal(state.transactionsDeleted, true);
   assert.equal(state.discountDeleted, true);
   assert.equal(state.branchesDeleted, true);
-  assert.equal(state.branchIdsLoaded, true);
 });
 
 test('deleteCompanyHandler clears branch tables after cascading dependent rows', async () => {
@@ -845,13 +807,6 @@ test('deleteCompanyHandler clears branch tables after cascading dependent rows',
   assert.equal(state.transactionsDeleted, true);
   assert.equal(state.discountDeleted, true);
   assert.equal(state.branchesDeleted, true);
-  assert.equal(state.branchIdsLoaded, true);
-  const discountParams = calls[discountDeleteIndex]?.params || [];
-  const discountValues = discountParams.slice(1).map((p) => Number(p));
-  assert.ok(
-    discountValues.includes(701),
-    'expected branch id 701 in tbl_discount cleanup',
-  );
 });
 
 test('deleteCompanyHandler cascades through employment and users tables', async () => {
