@@ -27,13 +27,6 @@ export function createManualTranslationsRouter({ limiter: limiterOptions } = {})
       await saveTranslation(req.body || {});
       res.sendStatus(204);
     } catch (err) {
-      if (err?.code === 'TRANSLATION_VALIDATION_FAILED') {
-        return res.status(err.status || 400).json({
-          error: 'translation_validation_failed',
-          message: err.message || 'Translation failed validation',
-          details: err.details || null,
-        });
-      }
       next(err);
     }
   });
@@ -41,19 +34,11 @@ export function createManualTranslationsRouter({ limiter: limiterOptions } = {})
   router.post('/bulk', async (req, res, next) => {
     try {
       const entries = Array.isArray(req.body) ? req.body : [];
-      const referenceCache = {};
       for (const entry of entries) {
-        await saveTranslation(entry || {}, { referenceCache });
+        await saveTranslation(entry || {});
       }
       res.sendStatus(204);
     } catch (err) {
-      if (err?.code === 'TRANSLATION_VALIDATION_FAILED') {
-        return res.status(err.status || 400).json({
-          error: 'translation_validation_failed',
-          message: err.message || 'Translation failed validation',
-          details: err.details || null,
-        });
-      }
       next(err);
     }
   });
