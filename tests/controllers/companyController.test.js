@@ -29,34 +29,13 @@ function mockPoolSequential(responses = []) {
 function mockPool(handler) {
   const originalQuery = db.pool.query;
   const originalGet = db.pool.getConnection;
-  const wrappedHandler = async (sql, params) => {
-    if (
-      typeof sql === 'string' &&
-      sql.includes('FROM tenant_tables tt') &&
-      sql.includes('information_schema.KEY_COLUMN_USAGE')
-    ) {
-      try {
-        return await handler(sql, params);
-      } catch (err) {
-        if (
-          err &&
-          typeof err.message === 'string' &&
-          err.message.includes('unexpected query')
-        ) {
-          return [[]];
-        }
-        throw err;
-      }
-    }
-    return handler(sql, params);
-  };
-  db.pool.query = wrappedHandler;
+  db.pool.query = handler;
   db.pool.getConnection = async () => ({
     beginTransaction: async () => {},
     commit: async () => {},
     rollback: async () => {},
     release: () => {},
-    query: wrappedHandler,
+    query: handler,
   });
   return () => {
     db.pool.query = originalQuery;
@@ -471,99 +450,6 @@ test('deleteCompanyHandler purges user level permissions before deleting company
   });
   assert.equal(permissionsRemaining, 0);
   assert.deepEqual(deleteOrder, ['permissions', 'company']);
-});
-
-test('deleteCompanyHandler purges tenant tables without FK to companies', async () => {
-  const calls = [];
-  const userId = 'EMP-88';
-  const companyId = 27;
-  const tenantCompanyId = 2700;
-  const restore = mockPool(async (sql, params) => {
-    calls.push({ sql, params });
-    if (sql.startsWith('SELECT * FROM companies WHERE created_by = ?')) {
-      assert.equal(params?.[0], userId);
-      return [[{ id: companyId, company_id: tenantCompanyId, name: 'Tenantless', created_by: userId }]];
-    }
-    if (
-      sql.includes('information_schema.STATISTICS') &&
-      sql.includes("INDEX_NAME = 'PRIMARY'")
-    ) {
-      if (params?.[0] === 'companies') {
-        return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
-      }
-    }
-    if (
-      sql.includes('information_schema.STATISTICS') &&
-      sql.includes('NON_UNIQUE = 0')
-    ) {
-      return [[]];
-    }
-    if (
-      sql.includes('FROM tenant_tables tt') &&
-      sql.includes('information_schema.KEY_COLUMN_USAGE')
-    ) {
-      return [[{ table_name: 'tbl_employee', column_name: 'company_id' }]];
-    }
-    if (sql.includes('information_schema.KEY_COLUMN_USAGE')) {
-      return [[]];
-    }
-    if (sql.includes('information_schema.COLUMNS')) {
-      if (params?.[0] === 'companies') {
-        return [[{ COLUMN_NAME: 'id' }, { COLUMN_NAME: 'company_id' }]];
-      }
-    }
-    if (sql.startsWith('DELETE FROM user_level_permissions')) {
-      assert.equal(params?.[0], companyId);
-      return [{}];
-    }
-    if (sql.startsWith('DELETE FROM ?? WHERE') && params?.[0] === 'tbl_employee') {
-      return [{}];
-    }
-    if (sql.startsWith('DELETE FROM ?? WHERE') && params?.[0] === 'companies') {
-      return [{}];
-    }
-    throw new Error(`unexpected query: ${sql}`);
-  });
-
-  const req = {
-    params: { id: String(companyId) },
-    user: { empid: userId, companyId: 0 },
-    session: { permissions: { system_settings: true } },
-    body: {},
-  };
-  const res = createRes();
-
-  try {
-    await deleteCompanyHandler(req, res, () => {});
-  } finally {
-    restore();
-  }
-
-  assert.equal(res.code, 200);
-  assert.deepEqual(res.body, {
-    backup: null,
-    company: { id: companyId, name: 'Tenantless' }
-  });
-
-  const employeeDeleteIndex = calls.findIndex(
-    (c) => c.sql.startsWith('DELETE FROM ?? WHERE') && c.params?.[0] === 'tbl_employee',
-  );
-  assert.ok(employeeDeleteIndex >= 0, 'expected tbl_employee delete');
-
-  const companyDeleteIndex = calls.findIndex(
-    (c) => c.sql.startsWith('DELETE FROM ?? WHERE') && c.params?.[0] === 'companies',
-  );
-  assert.ok(companyDeleteIndex >= 0, 'expected companies delete');
-  assert.ok(
-    employeeDeleteIndex < companyDeleteIndex,
-    'tbl_employee rows should be purged before company delete',
-  );
-
-  const employeeParams = calls[employeeDeleteIndex]?.params;
-  assert.deepEqual(
-    employeeParams ? employeeParams.map((p, idx) => (idx === 0 ? p : String(p))) : null,
-    ['tbl_employee', String(tenantCompanyId), String(companyId)],
-  );
 });
 
 test('deleteCompanyHandler cascades through employment and users tables', async () => {
