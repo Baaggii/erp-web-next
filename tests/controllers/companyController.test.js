@@ -75,6 +75,7 @@ test('createCompanyHandler allows system admin with companyId=0', async () => {
       }]];
     },
     [[
+      { COLUMN_NAME: 'company_id' },
       { COLUMN_NAME: 'name' },
       { COLUMN_NAME: 'Gov_Registration_number' },
       { COLUMN_NAME: 'Address' },
@@ -109,6 +110,7 @@ test('createCompanyHandler forwards seedRecords and overwrite', async () => {
   db.pool.query = async (sql, params) => {
     if (/information_schema\.COLUMNS/.test(sql) && params[0] === 'companies') {
       return [[
+        { COLUMN_NAME: 'company_id' },
         { COLUMN_NAME: 'name' },
         { COLUMN_NAME: 'Gov_Registration_number' },
         { COLUMN_NAME: 'Address' },
@@ -349,13 +351,12 @@ test('deleteCompanyHandler deletes company when primary key is single column', a
     (c) => c.sql.startsWith('DELETE FROM') && c.params?.[0] === 'companies',
   );
   assert.ok(companiesDelete);
+  assert.equal(companiesDelete.params?.length, 3);
   assert.equal(String(companiesDelete.params?.[1]), String(companyId));
-  if ((companiesDelete.params?.length ?? 0) > 2) {
-    assert.equal(
-      String(companiesDelete.params?.[2]),
-      String(tenantCompanyId),
-    );
-  }
+  assert.equal(
+    String(companiesDelete.params?.[2]),
+    String(tenantCompanyId),
+  );
 });
 
 test('deleteCompanyHandler purges user level permissions before deleting company', async () => {

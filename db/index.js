@@ -3793,7 +3793,16 @@ export async function deleteTableRow(
   companyId,
   conn = pool,
   userId = null,
+  options = {},
 ) {
+  const {
+    companyIdFilter,
+    softDeleteCompanyId,
+  } = options ?? {};
+  const effectiveCompanyIdForFilter =
+    companyIdFilter !== undefined ? companyIdFilter : companyId;
+  const effectiveCompanyIdForSoftDelete =
+    softDeleteCompanyId !== undefined ? softDeleteCompanyId : companyId;
   if (tableName === 'company_module_licenses') {
     const [companyId, moduleKey] = String(id).split('-');
     await conn.query(
@@ -3810,7 +3819,9 @@ export async function deleteTableRow(
     (c) => c.toLowerCase() === 'company_id',
   );
   const addCompanyFilter =
-    companyId != null && hasCompanyId && !pkLower.includes('company_id');
+    effectiveCompanyIdForFilter != null &&
+    hasCompanyId &&
+    !pkLower.includes('company_id');
   logDb(`deleteTableRow(${tableName}, id=${id}) using keys: ${pkCols.join(', ')}`);
   if (pkCols.length === 0) {
     const err = new Error(`Table ${tableName} has no primary or unique key`);
@@ -3818,7 +3829,10 @@ export async function deleteTableRow(
     throw err;
   }
 
-  const softCol = await getSoftDeleteColumn(tableName, companyId);
+  const softCol = await getSoftDeleteColumn(
+    tableName,
+    effectiveCompanyIdForSoftDelete,
+  );
   const now = formatDateForDb(new Date());
 
   if (pkCols.length === 1) {
@@ -3827,7 +3841,7 @@ export async function deleteTableRow(
     const whereParams = [id];
     if (addCompanyFilter) {
       where += ' AND `company_id` = ?';
-      whereParams.push(companyId);
+      whereParams.push(effectiveCompanyIdForFilter);
     }
     if (softCol) {
       await conn.query(
@@ -3845,7 +3859,7 @@ export async function deleteTableRow(
   const whereParams = [...parts];
   if (addCompanyFilter) {
     where += ' AND `company_id` = ?';
-    whereParams.push(companyId);
+    whereParams.push(effectiveCompanyIdForFilter);
   }
   if (softCol) {
     await conn.query(
@@ -4118,7 +4132,27 @@ export async function listRowReferences(tableName, id, conn = pool) {
   return results;
 }
 
-async function deleteCascade(conn, tableName, id, visited, companyId) {
+function resolveCascadeCompanyId(context, tableName, key) {
+  if (!context) return undefined;
+  const map = context[key];
+  if (map && Object.prototype.hasOwnProperty.call(map, tableName)) {
+    return map[tableName];
+  }
+  return context.defaultCompanyId;
+}
+
+async function deleteCascade(conn, tableName, id, visited, context) {
+  const baseCompanyId = context?.defaultCompanyId;
+  const filterCompanyId = resolveCascadeCompanyId(
+    context,
+    tableName,
+    'tableCompanyIds',
+  );
+  const softDeleteCompanyId = resolveCascadeCompanyId(
+    context,
+    tableName,
+    'softDeleteCompanyIds',
+  );
   const key = `${tableName}:${id}`;
   if (visited.has(key)) return;
   visited.add(key);
@@ -4131,7 +4165,12 @@ async function deleteCascade(conn, tableName, id, visited, companyId) {
     r.columns.forEach((col, i) => params.push(col, queryVals[i]));
 
     if (pkCols.length === 0) {
-      const softCol = await getSoftDeleteColumn(r.table, companyId);
+      const refSoftDeleteCompanyId = resolveCascadeCompanyId(
+        context,
+        r.table,
+        'softDeleteCompanyIds',
+      );
+      const softCol = await getSoftDeleteColumn(r.table, refSoftDeleteCompanyId);
       if (softCol) {
         await conn.query(
           `UPDATE ?? SET \`${softCol}\` = 1 WHERE ${whereClause}`,
@@ -4156,12 +4195,15 @@ async function deleteCascade(conn, tableName, id, visited, companyId) {
         pkCols.length === 1
           ? row[pkCols[0]]
           : pkCols.map((c) => row[c]).join('-');
-      await deleteCascade(conn, r.table, refId, visited, companyId);
+      await deleteCascade(conn, r.table, refId, visited, context);
     }
   }
-  await deleteTableRow(tableName, id, companyId, conn);
+  await deleteTableRow(tableName, id, baseCompanyId, conn, undefined, {
+    companyIdFilter: filterCompanyId,
+    softDeleteCompanyId,
+  });
 }
- 
+
 export async function deleteTableRowCascade(
   tableName,
   id,
@@ -4169,13 +4211,29 @@ export async function deleteTableRowCascade(
   options = {},
 ) {
   const conn = await pool.getConnection();
-  const { beforeDelete } = options ?? {};
+  const { beforeDelete, companyIdOverrides, tenantCompanyId } = options ?? {};
+  const tableCompanyIds = {
+    ...(companyIdOverrides || options?.tableCompanyIds || {}),
+  };
+  if (
+    tenantCompanyId !== undefined &&
+    !Object.prototype.hasOwnProperty.call(tableCompanyIds, 'companies')
+  ) {
+    tableCompanyIds.companies = tenantCompanyId;
+  }
+  const context = {
+    defaultCompanyId: companyId,
+    tableCompanyIds,
+    softDeleteCompanyIds: options?.softDeleteCompanyIds
+      ? { ...options.softDeleteCompanyIds }
+      : {},
+  };
   try {
     await conn.beginTransaction();
     if (typeof beforeDelete === 'function') {
       await beforeDelete(conn);
     }
-    await deleteCascade(conn, tableName, id, new Set(), companyId);
+    await deleteCascade(conn, tableName, id, new Set(), context);
     await conn.commit();
   } catch (err) {
     await conn.rollback();
