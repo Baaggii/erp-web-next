@@ -4,7 +4,8 @@ import fs from 'fs';
 import path from 'path';
 import { loadTranslations } from '../../api-server/services/manualTranslations.js';
 
-const exportedPath = path.join('config', '0', 'exportedtexts.json');
+const TEST_TENANT_DIR = path.join('config', 'manualTranslationsTest');
+const exportedPath = path.join(TEST_TENANT_DIR, 'exportedtexts.json');
 const enLocalePath = path.join('src', 'erp.mgt.mn', 'locales', 'en.json');
 const mnLocalePath = path.join('src', 'erp.mgt.mn', 'locales', 'mn.json');
 const enTooltipPath = path.join(
@@ -23,7 +24,9 @@ const mnTooltipPath = path.join(
 );
 
 function cleanup() {
-  try { fs.unlinkSync(exportedPath); } catch {}
+  try {
+    fs.rmSync(TEST_TENANT_DIR, { recursive: true, force: true });
+  } catch {}
 }
 
 test('exported texts are merged into manual translations', { concurrency: false }, async () => {

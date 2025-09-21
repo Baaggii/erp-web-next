@@ -2,11 +2,45 @@ import React, { useEffect, useState, useContext, useRef, useCallback } from 'rea
 import I18nContext from '../context/I18nContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import translateWithCache from '../utils/translateWithCache.js';
+import detectLocaleFromText from '../utils/detectLocaleFromText.js';
 
 const delay = () => new Promise((r) => setTimeout(r, 200));
 const RATE_LIMIT_MAX_RETRIES = 3;
 const RATE_LIMIT_BASE_DELAY = 500;
 const RATE_LIMIT_MAX_DELAY = 5000;
+
+function normalizeEnMnPair(en, mn) {
+  let normalizedEn = en;
+  let normalizedMn = mn;
+
+  const enLocale = detectLocaleFromText(en);
+  const mnLocale = detectLocaleFromText(mn);
+
+  if (normalizedEn && normalizedMn) {
+    if (enLocale === 'mn' && mnLocale === 'en') {
+      normalizedEn = mn;
+      normalizedMn = en;
+    } else if (enLocale === 'mn' && mnLocale !== 'en') {
+      normalizedMn = mnLocale === 'mn' ? normalizedMn : normalizedEn;
+      normalizedEn = '';
+    } else if (mnLocale === 'en' && enLocale !== 'mn') {
+      normalizedEn = enLocale === 'en' ? normalizedEn : normalizedMn;
+      normalizedMn = '';
+    }
+  } else if (normalizedEn && !normalizedMn) {
+    if (enLocale === 'mn') {
+      normalizedEn = '';
+      normalizedMn = en;
+    }
+  } else if (!normalizedEn && normalizedMn) {
+    if (mnLocale === 'en') {
+      normalizedEn = mn;
+      normalizedMn = '';
+    }
+  }
+
+  return { en: normalizedEn, mn: normalizedMn };
+}
 
 export default function ManualTranslationsTab() {
   const { t } = useContext(I18nContext);
@@ -290,16 +324,27 @@ export default function ManualTranslationsTab() {
       };
       const translateEntry = (targetLang, text) =>
         translateWithCache(targetLang, text, undefined, entryMetadata);
-      const en =
+      let en =
         typeof newEntry.values.en === 'string'
           ? newEntry.values.en.trim()
           : String(newEntry.values.en ?? '').trim();
-      const mn =
+      let mn =
         typeof newEntry.values.mn === 'string'
           ? newEntry.values.mn.trim()
           : String(newEntry.values.mn ?? '').trim();
       let changed = false;
       let needsManualReview = false;
+      const normalized = normalizeEnMnPair(en, mn);
+      if (normalized.en !== en) {
+        newEntry.values.en = normalized.en;
+        en = normalized.en;
+        changed = true;
+      }
+      if (normalized.mn !== mn) {
+        newEntry.values.mn = normalized.mn;
+        mn = normalized.mn;
+        changed = true;
+      }
       if (!en && mn) {
         try {
           await delay();
