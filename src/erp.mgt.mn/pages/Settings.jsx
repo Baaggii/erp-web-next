@@ -12,19 +12,19 @@ export default function SettingsPage() {
 }
 
 export function GeneralSettings() {
+  const { t } = useTranslation(['translation', 'tooltip']);
   const { session, permissions } = useContext(AuthContext);
   const perms = permissions;
   const hasAdmin =
     permissions?.permissions?.system_settings ||
     session?.permissions?.system_settings;
   if (!perms) {
-    return <p>Уншиж байна…</p>;
+    return <p>{t('settings_loading_permissions', 'Уншиж байна…')}</p>;
   }
   if (!hasAdmin && !perms.settings) {
-    return <p>Хандалт хориглолоо.</p>;
+    return <p>{t('settings_access_denied', 'Хандалт хориглолоо.')}</p>;
   }
   const [settings, setSettings] = useState(null);
-  const { t } = useTranslation(['translation', 'tooltip']);
 
   useEffect(() => {
     fetch('/api/settings', { credentials: 'include' })
@@ -47,16 +47,18 @@ export function GeneralSettings() {
   return (
     <div>
       <TooltipWrapper title={t('settings_header', { ns: 'tooltip', defaultValue: 'Application settings' })}>
-        <h2>Тохиргоо</h2>
+        <h2>{t('settings_heading', 'Тохиргоо')}</h2>
       </TooltipWrapper>
       {settings ? (
         <pre>{JSON.stringify(settings, null, 2)}</pre>
       ) : (
-        <p>Тохиргоо ачааллаж байна…</p>
+        <p>{t('settings_loading_data', 'Тохиргоо ачааллаж байна…')}</p>
       )}
       <p style={{ marginTop: '1rem' }}>
         <TooltipWrapper title={t('edit_role_permissions', { ns: 'tooltip', defaultValue: 'Edit role permissions' })}>
-          <Link to="/settings/role-permissions">Эрхийн тохиргоо засах</Link>
+          <Link to="/settings/role-permissions">
+            {t('settings_edit_role_permissions', 'Эрхийн тохиргоо засах')}
+          </Link>
         </TooltipWrapper>
       </p>
       <p style={{ marginTop: '0.5rem' }}>
