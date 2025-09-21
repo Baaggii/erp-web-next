@@ -3,6 +3,7 @@ import {
   insertTableRow,
   updateTableRow,
   deleteTableRowCascade,
+  getPrimaryKeyColumns,
   getEmploymentSession,
   getUserLevelActions,
   createCompanySeedBackup,
@@ -137,7 +138,20 @@ export async function deleteCompanyHandler(req, res, next) {
     }
 
     const tenantCompanyId = company.company_id;
-    const cascadeIdentifier = `${tenantCompanyId}-${company.id}`;
+    const pkCols = await getPrimaryKeyColumns('companies');
+    let cascadeIdentifier;
+    if (Array.isArray(pkCols) && pkCols.length > 0) {
+      const idParts = pkCols.map((col) => company[col]);
+      if (idParts.some((part) => part === undefined)) {
+        cascadeIdentifier = `${tenantCompanyId}-${company.id}`;
+      } else if (pkCols.length === 1) {
+        cascadeIdentifier = idParts[0];
+      } else {
+        cascadeIdentifier = idParts.join('-');
+      }
+    } else {
+      cascadeIdentifier = `${tenantCompanyId}-${company.id}`;
+    }
     await deleteTableRowCascade(
       'companies',
       cascadeIdentifier,
