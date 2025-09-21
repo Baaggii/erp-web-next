@@ -873,6 +873,22 @@ export async function populateUserLevelModulePermissions(createdBy) {
   );
 }
 
+export async function deleteUserLevelPermissionsForCompany(
+  companyId,
+  conn = pool,
+) {
+  if (companyId === undefined || companyId === null) {
+    return;
+  }
+  logDb(
+    `deleteUserLevelPermissionsForCompany companyId=${String(companyId)}`,
+  );
+  await conn.query(
+    'DELETE FROM user_level_permissions WHERE company_id = ?',
+    [companyId],
+  );
+}
+
 /**
  * List module licenses for a company. If companyId is omitted, list for all
  * companies. Results can optionally be filtered by the employee who created
@@ -4146,10 +4162,19 @@ async function deleteCascade(conn, tableName, id, visited, companyId) {
   await deleteTableRow(tableName, id, companyId, conn);
 }
  
-export async function deleteTableRowCascade(tableName, id, companyId) {
+export async function deleteTableRowCascade(
+  tableName,
+  id,
+  companyId,
+  options = {},
+) {
   const conn = await pool.getConnection();
+  const { beforeDelete } = options ?? {};
   try {
     await conn.beginTransaction();
+    if (typeof beforeDelete === 'function') {
+      await beforeDelete(conn);
+    }
     await deleteCascade(conn, tableName, id, new Set(), companyId);
     await conn.commit();
   } catch (err) {
