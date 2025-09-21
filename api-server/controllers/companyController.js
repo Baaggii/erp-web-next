@@ -4,6 +4,7 @@ import {
   updateTableRow,
   deleteTableRowCascade,
   deleteUserLevelPermissionsForCompany,
+  deleteUnprotectedTenantTableRowsForCompany,
   getPrimaryKeyColumns,
   getEmploymentSession,
   getUserLevelActions,
@@ -160,8 +161,10 @@ export async function deleteCompanyHandler(req, res, next) {
       {
         // Ensure tenant-specific permission rows are removed in the same
         // transaction so they cannot block the cascade via FK constraints.
-        beforeDelete: (conn) =>
-          deleteUserLevelPermissionsForCompany(company.id, conn),
+        beforeDelete: async (conn) => {
+          await deleteUserLevelPermissionsForCompany(company.id, conn);
+          await deleteUnprotectedTenantTableRowsForCompany(company, conn);
+        },
       },
     );
     res.status(200).json({
