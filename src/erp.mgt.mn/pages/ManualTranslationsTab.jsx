@@ -481,18 +481,11 @@ export default function ManualTranslationsTab() {
   return (
     <div>
       <div style={{ marginBottom: '0.5rem', display: 'flex', gap: '0.5rem' }}>
-        <button
-          id="manual-translations-add-row"
-          type="button"
-          onClick={addRow}
-        >
-          {t('addRow', 'Add Row')}
-        </button>
+        <button type="button" onClick={addRow}>{t('addRow', 'Add Row')}</button>
         <button
           type="button"
           onClick={completeAll}
           disabled={completing}
-          id="manual-translations-complete"
         >
           {completing
             ? t('completing', 'Completing...')
@@ -503,25 +496,17 @@ export default function ManualTranslationsTab() {
             {t('cancel', 'Cancel')}
           </button>
         )}
-        <button
-          type="button"
-          onClick={handleExport}
-          id="manual-translations-export"
-        >
+        <button type="button" onClick={handleExport}>
           {t('exportHardcodedTexts', 'Export hardcoded texts')}
         </button>
         <input
-          id="manual-translations-search"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           placeholder={t('search', 'Search')}
         />
       </div>
       <div style={{ overflowX: 'auto' }}>
-        <table
-          id="manual-translations-table"
-          style={{ borderCollapse: 'collapse', width: '100%' }}
-        >
+        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
           <thead>
             <tr>
               <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Key</th>
@@ -616,10 +601,7 @@ export default function ManualTranslationsTab() {
           </tbody>
         </table>
       </div>
-      <div
-        id="manual-translations-pagination"
-        style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center' }}
-      >
+      <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center' }}>
         <button
           onClick={() => setPage(1)}
           disabled={page === 1}
