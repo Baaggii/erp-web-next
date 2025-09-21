@@ -20,6 +20,7 @@ import { PendingRequestContext } from "../context/PendingRequestContext.jsx";
 import Joyride, { STATUS } from "react-joyride";
 import ErrorBoundary from "../components/ErrorBoundary.jsx";
 import { useToast } from "../context/ToastContext.jsx";
+import { normalizeTourSteps, findMissingTourTargets } from "../utils/tourUtils.js";
 
 const TourContext = React.createContext(() => {});
 export const useTour = (pageKey, steps) => {
@@ -66,9 +67,20 @@ export default function ERPLayout() {
 
   const startTour = useCallback((pageKey, steps) => {
     if (!userSettings?.settings_enable_tours) return;
+    const normalizedSteps = normalizeTourSteps(steps);
+    if (!normalizedSteps.length) return;
+
+    const missingTargets = findMissingTourTargets(normalizedSteps);
+    if (missingTargets.length) {
+      if (typeof window !== 'undefined' && window?.erpDebug) {
+        console.warn('Skipping tour, missing targets:', missingTargets);
+      }
+      return;
+    }
+
     const seen = userSettings?.toursSeen || {};
-    if (!seen[pageKey] && steps && steps.length) {
-      setTourSteps(steps);
+    if (!seen[pageKey]) {
+      setTourSteps(normalizedSteps);
       setCurrentTourPage(pageKey);
       setRunTour(true);
     }
