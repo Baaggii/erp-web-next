@@ -447,29 +447,19 @@ export default function ManualTranslationsTab() {
           }
         }
 
-        if (attemptedMnTranslation && !mnTranslationSucceeded) {
-          const mnAnalysisAfter = analyzeBaseLanguage(entry.values.mn);
-          if (mnAnalysisAfter.language !== 'mn') {
-            const previousMnRaw = entry.values.mn;
-            const normalizedMn = normalizeBaseLanguageValue(previousMnRaw);
-            if (previousMnRaw !== '' || normalizedMn) {
-              entry.values.mn = '';
-              if (
-                normalizedMn ||
-                (typeof previousMnRaw === 'string' && previousMnRaw !== '')
-              ) {
-                changed = true;
-              }
-            }
+        if (swapped && attemptedMnTranslation && !mnTranslationSucceeded) {
+          const previousMn = normalizeBaseLanguageValue(entry.values.mn);
+          if (previousMn) {
+            entry.values.mn = '';
+            changed = true;
+          } else {
+            entry.values.mn = '';
           }
           manualReviewIndexes.add(issue.index);
         }
       }
 
-      const shouldRevalidate = changed || manualReviewIndexes.size > 0;
-      const finalResult = shouldRevalidate
-        ? validateBaseLanguages(correctedEntries)
-        : initial;
+      const finalResult = changed ? validateBaseLanguages(correctedEntries) : initial;
 
       return {
         correctedEntries: changed ? correctedEntries : entriesToCheck,
