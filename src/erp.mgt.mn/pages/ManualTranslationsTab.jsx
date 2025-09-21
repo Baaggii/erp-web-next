@@ -313,142 +313,118 @@ export default function ManualTranslationsTab() {
     [addToast, t],
   );
 
-  const resolveBaseLanguages = useCallback(
-    async (entriesToCheck) => {
-      const initial = validateBaseLanguages(entriesToCheck);
-      if (!initial.invalid.length) {
-        return {
-          correctedEntries: entriesToCheck,
-          changed: false,
-          success: true,
-          invalid: [],
-          needsManualReview: [],
-        };
-      }
-
-      const correctedEntries = entriesToCheck.map((entry) => ({
-        ...entry,
-        values: { ...(entry?.values ?? {}) },
-      }));
-
-      let changed = false;
-      const manualReviewIndexes = new Set();
-
-      for (const issue of initial.invalid) {
-        const entry = correctedEntries[issue.index];
-        if (!entry) continue;
-
-        entry.values = { ...(entry.values ?? {}) };
-
-        const metadata = {
-          module: entry.module,
-          context: entry.context,
-          key: entry.key,
-        };
-
-        const getEnText = () => normalizeBaseLanguageValue(entry.values.en);
-        const getMnText = () => normalizeBaseLanguageValue(entry.values.mn);
-        const getEnLanguage = () => analyzeBaseLanguage(entry.values.en).language;
-        const getMnLanguage = () => analyzeBaseLanguage(entry.values.mn).language;
-
-        let swapped = false;
-        let attemptedMnTranslation = false;
-        let mnTranslationSucceeded = false;
-
-        if (issue.issues.includes('baseFieldsSwapped')) {
-          const previousEn = entry.values.en;
-          entry.values.en = entry.values.mn;
-          entry.values.mn = previousEn;
-          swapped = true;
-          changed = true;
-        }
-
-        if (
-          !issue.issues.includes('baseFieldsSwapped') ||
-          getEnLanguage() !== 'en' ||
-          getMnLanguage() !== 'mn'
-        ) {
-          if (issue.issues.includes('englishLooksMongolian')) {
-            const source =
-              normalizeBaseLanguageValue(issue.en?.text) || getMnText() || getEnText();
-
-            if (source && getMnLanguage() !== 'mn') {
-              entry.values.mn = source;
-              changed = true;
-            }
-
-            if (source && getEnLanguage() !== 'en') {
-              try {
-                const translated = await translateWithCache(
-                  'en',
-                  source,
-                  undefined,
-                  metadata,
-                );
-                if (translated?.text && !translated.needsRetry) {
-                  entry.values.en = translated.text;
-                  changed = true;
-                }
-              } catch {
-                // ignore translation errors; validation below will catch unresolved entries
-              }
-            }
-          }
-
-          if (issue.issues.includes('mongolianLooksEnglish')) {
-            const source =
-              normalizeBaseLanguageValue(issue.mn?.text) || getEnText() || getMnText();
-
-            if (source && getEnLanguage() !== 'en') {
-              entry.values.en = source;
-              changed = true;
-            }
-
-            if (source && getMnLanguage() !== 'mn') {
-              attemptedMnTranslation = true;
-              try {
-                const translated = await translateWithCache(
-                  'mn',
-                  source,
-                  undefined,
-                  metadata,
-                );
-                if (translated?.text && !translated.needsRetry) {
-                  entry.values.mn = translated.text;
-                  changed = true;
-                  mnTranslationSucceeded = true;
-                }
-              } catch {
-                // ignore translation errors; validation below will catch unresolved entries
-              }
-            }
-          }
-        }
-
-        if (swapped && attemptedMnTranslation && !mnTranslationSucceeded) {
-          const previousMn = normalizeBaseLanguageValue(entry.values.mn);
-          if (previousMn) {
-            entry.values.mn = '';
-            changed = true;
-          } else {
-            entry.values.mn = '';
-          }
-          manualReviewIndexes.add(issue.index);
-        }
-      }
-
-      const finalResult = changed ? validateBaseLanguages(correctedEntries) : initial;
-
+  const resolveBaseLanguages = useCallback(async (entriesToCheck) => {
+    const initial = validateBaseLanguages(entriesToCheck);
+    if (!initial.invalid.length) {
       return {
-        correctedEntries: changed ? correctedEntries : entriesToCheck,
-        changed,
-        success: finalResult.invalid.length === 0,
-        invalid: finalResult.invalid,
-        needsManualReview: Array.from(manualReviewIndexes),
+        correctedEntries: entriesToCheck,
+        changed: false,
+        success: true,
+        invalid: [],
       };
-    },
-    [translateWithCache],
-  );
+    }
+
+    const correctedEntries = entriesToCheck.map((entry) => ({
+      ...entry,
+      values: { ...(entry?.values ?? {}) },
+    }));
+
+    let changed = false;
+
+    for (const issue of initial.invalid) {
+      const entry = correctedEntries[issue.index];
+      if (!entry) continue;
+
+      entry.values = { ...(entry.values ?? {}) };
+
+      const metadata = {
+        module: entry.module,
+        context: entry.context,
+        key: entry.key,
+      };
+
+      const getEnText = () => normalizeBaseLanguageValue(entry.values.en);
+      const getMnText = () => normalizeBaseLanguageValue(entry.values.mn);
+      const getEnLanguage = () => analyzeBaseLanguage(entry.values.en).language;
+      const getMnLanguage = () => analyzeBaseLanguage(entry.values.mn).language;
+
+      if (issue.issues.includes('baseFieldsSwapped')) {
+        const previousEn = entry.values.en;
+        entry.values.en = entry.values.mn;
+        entry.values.mn = previousEn;
+        changed = true;
+      }
+
+      if (
+        !issue.issues.includes('baseFieldsSwapped') ||
+        getEnLanguage() !== 'en' ||
+        getMnLanguage() !== 'mn'
+      ) {
+        if (issue.issues.includes('englishLooksMongolian')) {
+          const source =
+            normalizeBaseLanguageValue(issue.en?.text) || getMnText() || getEnText();
+
+          if (source && getMnLanguage() !== 'mn') {
+            entry.values.mn = source;
+            changed = true;
+          }
+
+          if (source && getEnLanguage() !== 'en') {
+            try {
+              const translated = await translateWithCache(
+                'en',
+                source,
+                undefined,
+                metadata,
+              );
+              if (translated?.text && !translated.needsRetry) {
+                entry.values.en = translated.text;
+                changed = true;
+              }
+            } catch {
+              // ignore translation errors; validation below will catch unresolved entries
+            }
+          }
+        }
+
+        if (issue.issues.includes('mongolianLooksEnglish')) {
+          const source =
+            normalizeBaseLanguageValue(issue.mn?.text) || getEnText() || getMnText();
+
+          if (source && getEnLanguage() !== 'en') {
+            entry.values.en = source;
+            changed = true;
+          }
+
+          if (source && getMnLanguage() !== 'mn') {
+            try {
+              const translated = await translateWithCache(
+                'mn',
+                source,
+                undefined,
+                metadata,
+              );
+              if (translated?.text && !translated.needsRetry) {
+                entry.values.mn = translated.text;
+                changed = true;
+              }
+            } catch {
+              // ignore translation errors; validation below will catch unresolved entries
+            }
+          }
+        }
+      }
+    }
+
+    const finalResult = changed ? validateBaseLanguages(correctedEntries) : initial;
+
+    return {
+      correctedEntries: changed ? correctedEntries : entriesToCheck,
+      changed,
+      success: finalResult.invalid.length === 0,
+      invalid: finalResult.invalid,
+    };
+  }, [translateWithCache]);
 
   function updateEntry(index, field, value) {
     setEntries((prev) => {
@@ -594,7 +570,6 @@ export default function ManualTranslationsTab() {
   async function completeAll() {
     if (processingRef.current) return;
     const resolution = await resolveBaseLanguages(entries);
-    const manualReviewSet = new Set(resolution.needsManualReview ?? []);
     const workingEntries = resolution.changed
       ? resolution.correctedEntries
       : entries;
@@ -603,23 +578,9 @@ export default function ManualTranslationsTab() {
       setEntries(resolution.correctedEntries);
     }
 
-    const unresolvedIndexes = (resolution.invalid ?? []).map((item) => item.index);
-    const unresolvedHandled =
-      unresolvedIndexes.length > 0 &&
-      unresolvedIndexes.every((index) => manualReviewSet.has(index));
-
-    if (!resolution.success && !unresolvedHandled) {
+    if (!resolution.success) {
       showBaseLanguageError(resolution.invalid);
       return;
-    }
-    if (manualReviewSet.size) {
-      addToast(
-        t(
-          'baseLanguagesSanitized',
-          'Some entries were normalized but still need manual review.',
-        ),
-        'warning',
-      );
     }
     abortRef.current = false;
     processingRef.current = true;
@@ -654,7 +615,7 @@ export default function ManualTranslationsTab() {
           ? newEntry.values.mn.trim()
           : String(newEntry.values.mn ?? '').trim();
       let changed = false;
-      let needsManualReview = manualReviewSet.has(idx);
+      let needsManualReview = false;
       if (!en && mn) {
         try {
           await delay();
