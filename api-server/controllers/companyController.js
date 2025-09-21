@@ -163,11 +163,6 @@ export async function deleteCompanyHandler(req, res, next) {
         // transaction so they cannot block the cascade via FK constraints.
         beforeDelete: async (conn) => {
           await deleteUserLevelPermissionsForCompany(company.id, conn);
-        },
-        // Remove branch-scoped tables after the cascade so any FK-bound
-        // records (e.g. tbl_discount, transactions_pos) have already been
-        // purged with their parents.
-        afterDelete: async (conn) => {
           await deleteUnprotectedTenantTableRowsForCompany(company, conn);
         },
       },
