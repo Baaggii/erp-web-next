@@ -295,7 +295,7 @@ if (!haveReact) {
             },
             relationData: {
               other_id: {
-                1: { ID: 1, CODE: 'A123', name: 'Alpha' },
+                1: { ID: 1, CODE: 'A123', NAME: 'Alpha' },
               },
             },
             disabledFields: ['other_id'],
