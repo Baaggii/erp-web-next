@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { detectLang } from '../utils/translationHelpers.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,16 +17,6 @@ async function listLangs(dir) {
   } catch {
     return [];
   }
-}
-
-const cyrillicRegex = /[\u0400-\u04FF]/;
-const latinRegex = /[A-Za-z]/;
-
-function detectLang(str) {
-  if (typeof str !== 'string') return undefined;
-  if (cyrillicRegex.test(str)) return 'mn';
-  if (latinRegex.test(str)) return 'en';
-  return undefined;
 }
 
 export async function loadTranslations() {
