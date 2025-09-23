@@ -60,13 +60,15 @@ function isNormalizedKeyMatch(key, value) {
 /* ---------------- Utilities ---------------- */
 
 function syncKeys(targetA, targetB, label) {
-  const keysA = Object.keys(targetA || {});
-  const keysB = Object.keys(targetB || {});
+  if (!targetA || !targetB) return;
+
+  const keysA = Object.keys(targetA);
+  const keysB = Object.keys(targetB);
   const missingFromA = keysB.filter((k) => !(k in targetA));
   const missingFromB = keysA.filter((k) => !(k in targetB));
 
-  for (const key of missingFromA) targetA[key] = targetB[key];
-  for (const key of missingFromB) targetB[key] = targetA[key];
+  for (const key of missingFromA) targetA[key] = '';
+  for (const key of missingFromB) targetB[key] = '';
 
   if (missingFromA.length || missingFromB.length) {
     console.warn(
