@@ -172,13 +172,26 @@ const SOFT_DELETE_CANDIDATES = [
 
 async function getSoftDeleteColumn(tableName, companyId = GLOBAL_COMPANY_ID) {
   const softDeleteConfig = await loadSoftDeleteConfig(companyId);
+  const hasExplicitConfig = Object.prototype.hasOwnProperty.call(
+    softDeleteConfig,
+    tableName,
+  );
   const cfgVal = softDeleteConfig[tableName];
-  if (cfgVal === undefined) return null;
+  if (hasExplicitConfig && (cfgVal === false || cfgVal === null)) {
+    return null;
+  }
   const columns = await getTableColumnsSafe(tableName);
   const lower = columns.map((c) => c.toLowerCase());
   if (typeof cfgVal === "string") {
     const idx = lower.indexOf(cfgVal.toLowerCase());
-    return idx !== -1 ? columns[idx] : null;
+    if (idx !== -1) return columns[idx];
+  } else if (
+    cfgVal &&
+    typeof cfgVal === "object" &&
+    typeof cfgVal.column === "string"
+  ) {
+    const idx = lower.indexOf(cfgVal.column.toLowerCase());
+    if (idx !== -1) return columns[idx];
   }
   for (const cand of SOFT_DELETE_CANDIDATES) {
     const idx = lower.indexOf(cand.toLowerCase());
