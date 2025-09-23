@@ -67,6 +67,77 @@ export function shouldLoadRelations(formConfig, cols = []) {
   return hasView || hasForeignKey(cols);
 }
 
+export function applySessionIdToTables(
+  values,
+  sessionId,
+  sessionFieldsByTable = {},
+  tableTypeMap = {},
+) {
+  if (!sessionId) return values;
+  const entries = Object.entries(sessionFieldsByTable || {});
+  if (entries.length === 0) return values;
+  let nextVals = values || {};
+  let mutated = false;
+  entries.forEach(([tbl, fields]) => {
+    if (!Array.isArray(fields) || fields.length === 0) return;
+    const type = tableTypeMap[tbl] === 'multi' ? 'multi' : 'single';
+    if (type === 'multi') {
+      const currentRows = Array.isArray(nextVals[tbl]) ? nextVals[tbl] : [];
+      if (currentRows.length === 0) return;
+      let tableChanged = false;
+      const updatedRows = currentRows.map((row) => {
+        const baseRow =
+          row && typeof row === 'object' && !Array.isArray(row) ? row : {};
+        let newRow = baseRow;
+        let rowChanged = row === null || row === undefined;
+        fields.forEach((field) => {
+          if ((newRow?.[field] ?? undefined) !== sessionId) {
+            if (newRow === baseRow && !rowChanged) {
+              newRow = { ...baseRow };
+            }
+            newRow[field] = sessionId;
+            rowChanged = true;
+          }
+        });
+        if (rowChanged) tableChanged = true;
+        return rowChanged ? newRow : row;
+      });
+      if (tableChanged) {
+        if (!mutated) {
+          nextVals = { ...nextVals };
+          mutated = true;
+        }
+        nextVals[tbl] = updatedRows;
+      }
+    } else {
+      const currentRow = nextVals[tbl];
+      const baseRow =
+        currentRow && typeof currentRow === 'object' && !Array.isArray(currentRow)
+          ? currentRow
+          : {};
+      let newRow = baseRow;
+      let rowChanged = currentRow === undefined || currentRow === null;
+      fields.forEach((field) => {
+        if (newRow[field] !== sessionId) {
+          if (newRow === baseRow && !rowChanged) {
+            newRow = { ...baseRow };
+          }
+          newRow[field] = sessionId;
+          rowChanged = true;
+        }
+      });
+      if (rowChanged) {
+        if (!mutated) {
+          nextVals = { ...nextVals };
+          mutated = true;
+        }
+        nextVals[tbl] = newRow;
+      }
+    }
+  });
+  return nextVals;
+}
+
 function PendingSelectModal({ visible, list = [], onSelect, onClose }) {
   const [idx, setIdx] = useState(0);
 
@@ -193,12 +264,47 @@ export default function PosTransactionsPage() {
   const [viewColumnsMap, setViewColumnsMap] = useState({});
   const [procTriggersMap, setProcTriggersMap] = useState({});
   const [pendingId, setPendingId] = useState(null);
-  const [sessionFields, setSessionFields] = useState([]);
+  const [sessionFields, setSessionFields] = useState(null);
+  const [currentSessionId, setCurrentSessionId] = useState(null);
   const [masterId, setMasterId] = useState(null);
   const [pendingList, setPendingList] = useState([]);
   const [showLoadModal, setShowLoadModal] = useState(false);
   const [postedId, setPostedId] = useState(null);
   const [isNarrow, setIsNarrow] = useState(false);
+  const tableTypeMap = useMemo(() => {
+    const map = {};
+    if (!config) return map;
+    if (config.masterTable) {
+      map[config.masterTable] =
+        config.masterType === 'multi' ? 'multi' : 'single';
+    }
+    (config.tables || []).forEach((t) => {
+      if (!t?.table) return;
+      map[t.table] = t.type === 'multi' ? 'multi' : 'single';
+    });
+    return map;
+  }, [config]);
+  const sessionFieldsKey = useMemo(() => {
+    if (!sessionFields || sessionFields.length === 0) return '';
+    return sessionFields
+      .map((sf) => `${sf.table || ''}:${sf.field || ''}`)
+      .sort()
+      .join('|');
+  }, [sessionFields]);
+  const sessionFieldsByTable = useMemo(() => {
+    const map = {};
+    if (!sessionFields || sessionFields.length === 0) return map;
+    sessionFields.forEach(({ table, field }) => {
+      if (!table || !field) return;
+      if (!map[table]) map[table] = [];
+      if (!map[table].includes(field)) map[table].push(field);
+    });
+    return map;
+  }, [sessionFieldsKey]);
+  const applySessionIdToValues = useCallback(
+    (vals, sid) => applySessionIdToTables(vals, sid, sessionFieldsByTable, tableTypeMap),
+    [sessionFieldsByTable, tableTypeMap],
+  );
   const masterIdRef = useRef(null);
   const refs = useRef({});
   const dragInfo = useRef(null);
@@ -424,7 +530,15 @@ export default function PosTransactionsPage() {
   const initRef = useRef('');
 
   useEffect(() => {
-    if (!name) { setConfig(null); setLayout({}); return; }
+    if (!name) {
+      setConfig(null);
+      setLayout({});
+      setSessionFields(null);
+      setCurrentSessionId(null);
+      return;
+    }
+    setSessionFields(null);
+    setCurrentSessionId(null);
     fetch(`/api/pos_txn_config?name=${encodeURIComponent(name)}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : null))
       .then((cfg) => {
@@ -679,36 +793,70 @@ export default function PosTransactionsPage() {
   }, [visibleTablesKey, configVersion, viewColumnsMap]);
 
   useEffect(() => {
-    if (!config) { setSessionFields([]); return; }
+    if (!config) {
+      setSessionFields(null);
+      return;
+    }
     const fields = [];
     const check = (tbl, field) => {
       if (!tbl || !field) return;
       if (field.toLowerCase().includes('session')) fields.push({ table: tbl, field });
     };
-    (config.calcFields || []).forEach(row => {
-      row.cells.forEach(c => check(c.table, c.field));
+    (config.calcFields || []).forEach((row) => {
+      (row.cells || []).forEach((c) => check(c.table, c.field));
     });
-    (config.posFields || []).forEach(p => {
-      (p.parts || []).forEach(pt => check(pt.table, pt.field));
+    (config.posFields || []).forEach((p) => {
+      (p.parts || []).forEach((pt) => check(pt.table, pt.field));
+    });
+    fields.sort((a, b) => {
+      if (a.table === b.table) return a.field.localeCompare(b.field);
+      return a.table.localeCompare(b.table);
     });
     setSessionFields(fields);
-  }, [visibleTablesKey, configVersion]);
+  }, [visibleTablesKey, configVersion, config]);
 
   const masterSessionValue = React.useMemo(() => {
     if (!config) return undefined;
-    const masterSf = sessionFields.find((f) => f.table === config.masterTable);
+    const masterSf = (sessionFields || []).find(
+      (f) => f.table === config.masterTable,
+    );
     if (!masterSf) return undefined;
     return values[config.masterTable]?.[masterSf.field];
-  }, [values, config, sessionFields]);
+  }, [values, config, sessionFieldsKey]);
+
+  useEffect(() => {
+    if (!masterSessionValue) return;
+    setCurrentSessionId((prev) => (prev === masterSessionValue ? prev : masterSessionValue));
+  }, [masterSessionValue]);
+
+  useEffect(() => {
+    if (!currentSessionId) return;
+    setValues((prev) => applySessionIdToValues(prev, currentSessionId));
+  }, [currentSessionId, applySessionIdToValues]);
 
   useEffect(() => {
     if (!config) return;
+    if (sessionFields === null) return;
     const tables = [config.masterTable, ...config.tables.map((t) => t.table)];
     if (!tables.every((tbl) => memoFormConfigs[tbl])) return;
-    if (initRef.current === name) return;
-    initRef.current = name;
+    const initKey = `${name}::${sessionFieldsKey}`;
+    if (initRef.current === initKey) return;
+    const prevKey = initRef.current;
+    initRef.current = initKey;
+    if (prevKey && prevKey.startsWith(`${name}::`) && currentSessionId) {
+      setValues((prev) => applySessionIdToValues(prev, currentSessionId));
+      return;
+    }
     handleNew();
-  }, [visibleTablesKey, configVersion, name]);
+  }, [
+    visibleTablesKey,
+    configVersion,
+    name,
+    sessionFields,
+    sessionFieldsKey,
+    currentSessionId,
+    applySessionIdToValues,
+  ]);
 
 
   useEffect(() => {
@@ -716,7 +864,7 @@ export default function PosTransactionsPage() {
     if (masterSessionValue === undefined) return;
     const updateSessionValues = (prev) => {
       let next = prev;
-      for (const sf of sessionFields) {
+      for (const sf of sessionFields || []) {
         if (sf.table === config.masterTable) continue;
         const tblVal = next[sf.table];
         if (Array.isArray(tblVal)) {
@@ -740,7 +888,7 @@ export default function PosTransactionsPage() {
       return next;
     };
     setValues(updateSessionValues);
-  }, [masterSessionValue, visibleTablesKey, configVersion, sessionFields]);
+  }, [masterSessionValue, visibleTablesKey, configVersion, sessionFieldsKey]);
 
   function syncCalcFields(vals, mapConfig) {
     if (!Array.isArray(mapConfig)) return vals;
@@ -874,6 +1022,10 @@ export default function PosTransactionsPage() {
   function handleRowsChange(tbl, rows) {
     setValues((v) => {
       let next = { ...v, [tbl]: Array.isArray(rows) ? rows : [] };
+      const sid = currentSessionId || masterSessionValue;
+      if (sid) {
+        next = applySessionIdToValues(next, sid);
+      }
       next = syncCalcFields(next, config?.calcFields);
       next = applyPosFields(next, config?.posFields);
       return recalcTotals(next);
@@ -921,7 +1073,7 @@ export default function PosTransactionsPage() {
       if (save) await handleSavePending();
     }
     const sid = 'pos_' + Date.now().toString(36);
-    const next = {};
+    let next = {};
     const allTables = [
       { table: config.masterTable, type: config.masterType },
       ...config.tables,
@@ -929,10 +1081,7 @@ export default function PosTransactionsPage() {
     allTables.forEach((t) => {
       next[t.table] = t.type === 'multi' ? [] : {};
     });
-    sessionFields.forEach((sf) => {
-      if (Array.isArray(next[sf.table])) return;
-      next[sf.table][sf.field] = sid;
-    });
+    next = applySessionIdToValues(next, sid);
     if (
       config.statusField?.table &&
       config.statusField.field &&
@@ -977,6 +1126,7 @@ export default function PosTransactionsPage() {
         });
       }
     });
+    setCurrentSessionId(sid);
     setValues(next);
     setMasterId(null);
     masterIdRef.current = null;
@@ -986,7 +1136,7 @@ export default function PosTransactionsPage() {
 
   async function handleSavePending() {
     if (!name) return;
-    const next = { ...values };
+    let next = { ...values };
     if (
       config?.statusField?.table &&
       config.statusField.field &&
@@ -1035,8 +1185,17 @@ export default function PosTransactionsPage() {
     });
 
     const mid = masterIdRef.current;
-    const masterSf = sessionFields.find((f) => f.table === config.masterTable);
-    const sid = masterSf ? next[config.masterTable]?.[masterSf.field] : pendingId || 'pos_' + Date.now().toString(36);
+    const masterSf = (sessionFields || []).find(
+      (f) => f.table === config.masterTable,
+    );
+    let sid = masterSf ? next[config.masterTable]?.[masterSf.field] : null;
+    if (!sid) {
+      sid =
+        currentSessionId ||
+        pendingId ||
+        'pos_' + Date.now().toString(36);
+    }
+    next = applySessionIdToValues(next, sid);
 
     const session = {
       employeeId: user?.empid,
@@ -1094,6 +1253,13 @@ export default function PosTransactionsPage() {
       setPendingId(String(id).trim());
       setMasterId(rec.masterId || null);
       masterIdRef.current = rec.masterId || null;
+      const masterSf = (sessionFields || []).find(
+        (f) => f.table === config?.masterTable,
+      );
+      if (masterSf) {
+        const sid = rec.data?.[config.masterTable]?.[masterSf.field];
+        setCurrentSessionId(sid || null);
+      }
       addToast('Loaded', 'success');
     } else {
       addToast('Load failed', 'error');
@@ -1120,6 +1286,7 @@ export default function PosTransactionsPage() {
       setValues({});
       setMasterId(null);
       masterIdRef.current = null;
+      setCurrentSessionId(null);
       addToast('Deleted', 'success');
     } catch (err) {
       addToast(`Delete failed: ${err.message}`, 'error');
@@ -1141,7 +1308,10 @@ export default function PosTransactionsPage() {
         }
       }
     }
-    const payload = { ...values };
+    let payload = applySessionIdToValues(
+      { ...values },
+      currentSessionId || masterSessionValue,
+    );
     Object.entries(memoFormConfigs).forEach(([tbl, fc]) => {
       const defs = fc.defaultValues || {};
       if (!payload[tbl]) payload[tbl] = {};
