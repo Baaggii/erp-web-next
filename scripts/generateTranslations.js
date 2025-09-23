@@ -10,6 +10,7 @@ import { slugify } from '../api-server/utils/slugify.js';
 import {
   collectPhrasesFromPages,
   fetchModules,
+  detectLang,
   sortObj,
 } from '../api-server/utils/translationHelpers.js';
 
@@ -90,12 +91,6 @@ function isInvalidString(str) {
     hasMixedScripts(str)
   );
 }
-function detectLang(str) {
-  if (/\u0400-\u04FF/.test(str)) return 'mn';
-  if (/[A-Za-z]/.test(str)) return 'en';
-  return undefined;
-}
-
 function getNested(obj, keyPath) {
   return keyPath.split('.').reduce((o, k) => (o && o[k] !== undefined ? o[k] : undefined), obj);
 }

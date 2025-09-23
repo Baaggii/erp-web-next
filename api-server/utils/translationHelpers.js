@@ -46,6 +46,16 @@ export function sortObj(o) {
     .reduce((acc, k) => ((acc[k] = o[k]), acc), {});
 }
 
+const cyrillicRegex = /[\u0400-\u04FF]/;
+const latinRegex = /[A-Za-z]/;
+
+export function detectLang(str) {
+  if (typeof str !== 'string') return undefined;
+  if (cyrillicRegex.test(str)) return 'mn';
+  if (latinRegex.test(str)) return 'en';
+  return undefined;
+}
+
 function defaultModuleResolver(rootDir, filePath) {
   if (!filePath) return '';
   const rel = path.relative(rootDir, filePath);
