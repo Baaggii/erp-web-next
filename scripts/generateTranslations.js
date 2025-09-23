@@ -41,6 +41,22 @@ const localesDir = path.resolve('src/erp.mgt.mn/locales');
 const tooltipsDir = path.join(localesDir, 'tooltips');
 const TIMEOUT_MS = 7000;
 
+function normalizeForComparison(value) {
+  if (value == null) return '';
+  return String(value)
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\s\p{P}_-]+/gu, '');
+}
+
+function isNormalizedKeyMatch(key, value) {
+  if (typeof value !== 'string') return false;
+  const normalizedKey = normalizeForComparison(key);
+  const normalizedValue = normalizeForComparison(value);
+  if (!normalizedKey || !normalizedValue) return false;
+  return normalizedKey === normalizedValue;
+}
+
 /* ---------------- Utilities ---------------- */
 
 function syncKeys(targetA, targetB, label) {
@@ -223,7 +239,7 @@ export async function generateTranslations({
     if (
       typeof sourceText !== 'string' ||
       (!/[\u0400-\u04FF]/.test(sourceText) && !/[A-Za-z]/.test(sourceText)) ||
-      sourceText.trim().toLowerCase() === key.toLowerCase() ||
+      isNormalizedKeyMatch(key, sourceText) ||
       entryMap.has(key)
     ) {
       return;
@@ -466,6 +482,12 @@ export async function generateTranslations({
       if (skip.includes(k)) continue;
       const keyPath = prefix ? `${prefix}.${k}` : k;
       if (typeof v === 'string') {
+        if (
+          isNormalizedKeyMatch(keyPath, v) ||
+          isNormalizedKeyMatch(k, v)
+        ) {
+          continue;
+        }
         const sourceLang = detectLang(v);
         const needsFix = (sourceLang && sourceLang !== lang) || isInvalidString(v);
         if (needsFix) {
@@ -843,6 +865,12 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
     let changed = false;
     for (const [k, v] of Object.entries(obj)) {
       if (typeof v !== 'string') continue;
+      if (
+        isNormalizedKeyMatch(k, v) ||
+        isNormalizedKeyMatch(`tooltip.${k}`, v)
+      ) {
+        continue;
+      }
       const sourceLang = detectLang(v);
       if (sourceLang && sourceLang !== lang) {
         try {
