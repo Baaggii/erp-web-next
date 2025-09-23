@@ -100,6 +100,41 @@ test('deleteTableRow uses soft delete column when configured', async () => {
   assert.ok(called);
 });
 
+test('deleteTableRow auto-detects soft delete column when config missing', async () => {
+  const original = db.pool.query;
+  let called = false;
+  db.pool.query = async (sql, params) => {
+    if (
+      sql.includes('information_schema.STATISTICS') &&
+      sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
+    }
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [
+        [
+          { COLUMN_NAME: 'id' },
+          { COLUMN_NAME: 'deleted_at' },
+          { COLUMN_NAME: 'deleted_by' },
+        ],
+      ];
+    }
+    called = true;
+    assert.equal(
+      sql,
+      'UPDATE ?? SET `deleted_at` = 1, `deleted_by` = ?, `deleted_at` = ? WHERE id = ?',
+    );
+    assert.equal(params[0], 'auto_softdelete');
+    assert.equal(params[1], 'EMP2');
+    assert.match(params[2], /^\d{4}-\d{2}-\d{2} /);
+    assert.equal(params[3], '7');
+    return [{}];
+  };
+  await db.deleteTableRow('auto_softdelete', '7', undefined, undefined, 'EMP2');
+  db.pool.query = original;
+  assert.ok(called);
+});
+
 test('deleteTableRow rejects when no primary or unique key', async () => {
   const original = db.pool.query;
   db.pool.query = async (sql) => {
