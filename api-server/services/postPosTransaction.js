@@ -160,6 +160,78 @@ function evalPosFormulas(cfg, data) {
   }
 }
 
+function collectConfiguredFieldInfo(cfg) {
+  const fieldMap = new Map();
+
+  const ensureFieldInfo = (table, field) => {
+    const key = `${table}.${field}`;
+    if (!fieldMap.has(key)) {
+      fieldMap.set(key, {
+        table,
+        field,
+        numeric: false,
+        sources: new Set(),
+        operations: new Set(),
+      });
+    }
+    return fieldMap.get(key);
+  };
+
+  if (Array.isArray(cfg?.calcFields)) {
+    for (const calc of cfg.calcFields) {
+      const cells = Array.isArray(calc?.cells) ? calc.cells : [];
+      const normalizedCells = [];
+      for (const rawCell of cells) {
+        const table = typeof rawCell?.table === 'string' ? rawCell.table.trim() : '';
+        const field = typeof rawCell?.field === 'string' ? rawCell.field.trim() : '';
+        const agg = typeof rawCell?.agg === 'string' ? rawCell.agg.trim().toUpperCase() : '';
+        if (!table || !field) continue;
+        normalizedCells.push({ table, field, agg });
+      }
+      if (!normalizedCells.length) continue;
+      const hasSum = normalizedCells.some((cell) => cell.agg === 'SUM');
+      for (const cell of normalizedCells) {
+        const info = ensureFieldInfo(cell.table, cell.field);
+        info.sources.add('calcFields');
+        if (cell.agg) info.operations.add(cell.agg);
+        if (hasSum || cell.agg === 'SUM') {
+          info.numeric = true;
+        }
+      }
+    }
+  }
+
+  if (Array.isArray(cfg?.posFields)) {
+    for (const pf of cfg.posFields) {
+      const parts = Array.isArray(pf?.parts) ? pf.parts : [];
+      if (!parts.length) continue;
+      const normalizedParts = [];
+      for (const rawPart of parts) {
+        const table = typeof rawPart?.table === 'string' ? rawPart.table.trim() : '';
+        const field = typeof rawPart?.field === 'string' ? rawPart.field.trim() : '';
+        const agg = typeof rawPart?.agg === 'string' ? rawPart.agg.trim().toUpperCase() : '';
+        if (!table || !field) continue;
+        normalizedParts.push({ table, field, agg });
+      }
+      if (!normalizedParts.length) continue;
+      const [target, ...calcParts] = normalizedParts;
+      const targetInfo = ensureFieldInfo(target.table, target.field);
+      targetInfo.sources.add('posFields');
+      if (target.agg) targetInfo.operations.add(target.agg);
+      targetInfo.numeric = true;
+
+      for (const part of calcParts) {
+        const info = ensureFieldInfo(part.table, part.field);
+        info.sources.add('posFields');
+        if (part.agg) info.operations.add(part.agg);
+        info.numeric = true;
+      }
+    }
+  }
+
+  return fieldMap;
+}
+
 function isPlainObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value);
 }
@@ -182,6 +254,129 @@ function normalizeMultiEntry(value) {
     return [{ ...value }];
   }
   return [];
+}
+
+function inferExpectedFieldType(info) {
+  if (info?.numeric) return 'numeric';
+  const fieldName = info?.field ? String(info.field).toLowerCase() : '';
+  if (fieldName.includes('_date') || fieldName.endsWith('date')) {
+    return 'date';
+  }
+  return 'text';
+}
+
+function isNonNegativeFieldName(fieldName) {
+  if (!fieldName) return false;
+  const lowered = fieldName.toLowerCase();
+  return ['amount', 'qty', 'quantity'].some((keyword) => lowered.includes(keyword));
+}
+
+function isBlankValue(value) {
+  if (value === undefined || value === null) return true;
+  if (typeof value === 'string' && value.trim() === '') return true;
+  return false;
+}
+
+function isValidDateValue(value) {
+  if (value instanceof Date) {
+    return !Number.isNaN(value.getTime());
+  }
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return false;
+    const date = new Date(value);
+    return !Number.isNaN(date.getTime());
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return false;
+    const isoDateMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})(?!\d)/);
+    if (isoDateMatch) {
+      const [, year, month, day] = isoDateMatch;
+      const date = new Date(`${year}-${month}-${day}T00:00:00Z`);
+      if (Number.isNaN(date.getTime())) return false;
+      if (
+        date.getUTCFullYear() !== Number(year) ||
+        date.getUTCMonth() + 1 !== Number(month) ||
+        date.getUTCDate() !== Number(day)
+      ) {
+        return false;
+      }
+      return true;
+    }
+    const parsed = Date.parse(trimmed);
+    return Number.isFinite(parsed);
+  }
+  return false;
+}
+
+export function validateConfiguredFields(cfg, data, tableTypeMap = new Map()) {
+  const fieldInfoMap = collectConfiguredFieldInfo(cfg);
+  const errors = [];
+
+  for (const info of fieldInfoMap.values()) {
+    const expectedType = inferExpectedFieldType(info);
+    const requireNonNegative = expectedType === 'numeric' && isNonNegativeFieldName(info.field);
+    const tableData = data?.[info.table];
+    if (tableData === undefined || tableData === null) {
+      errors.push(`Missing data for table "${info.table}" required for field "${info.field}"`);
+      continue;
+    }
+
+    const tableType = tableTypeMap instanceof Map ? tableTypeMap.get(info.table) : tableTypeMap?.[info.table];
+    if (tableType === 'multi' && !Array.isArray(tableData)) {
+      errors.push(`Expected "${info.table}" to be an array for field "${info.field}"`);
+      continue;
+    }
+    if (tableType === 'single' && Array.isArray(tableData)) {
+      errors.push(`Expected "${info.table}" to be an object for field "${info.field}"`);
+      continue;
+    }
+
+    let rows;
+    if (Array.isArray(tableData)) {
+      rows = tableData.map((row, index) => ({ row, index }));
+    } else if (isPlainObject(tableData)) {
+      rows = [{ row: tableData, index: null }];
+    } else {
+      errors.push(`Invalid data structure for ${info.table}.${info.field}`);
+      continue;
+    }
+
+    if (Array.isArray(tableData) && rows.length === 0) {
+      continue;
+    }
+
+    for (const { row, index } of rows) {
+      if (!isPlainObject(row)) {
+        const location = `${info.table}${index !== null ? `[${index}]` : ''}`;
+        errors.push(`Invalid row data for ${location}; expected object`);
+        continue;
+      }
+      const value = row[info.field];
+      const location = `${info.table}${index !== null ? `[${index}]` : ''}.${info.field}`;
+      if (isBlankValue(value)) {
+        errors.push(`Missing value for ${location}`);
+        continue;
+      }
+
+      if (expectedType === 'numeric') {
+        const num = Number(value);
+        if (!Number.isFinite(num)) {
+          errors.push(`Non-numeric value for ${location}`);
+          continue;
+        }
+        if (requireNonNegative && num < 0) {
+          errors.push(`Negative value not allowed for ${location}`);
+        }
+      } else if (expectedType === 'date') {
+        if (!isValidDateValue(value)) {
+          errors.push(`Invalid date for ${location}`);
+        }
+      }
+    }
+  }
+
+  return errors;
 }
 
 async function getMasterForeignKeyMap(conn, masterTable) {
@@ -328,6 +523,16 @@ export async function postPosTransaction(
   evalPosFormulas(cfg, mergedData);
 
   Object.assign(posData, sessionInfo);
+
+  const validationErrors = validateConfiguredFields(cfg, mergedData, tableTypeMap);
+  if (validationErrors.length) {
+    const validationError = new Error(
+      `POS transaction validation failed: ${validationErrors.join('; ')}`,
+    );
+    validationError.code = 'POS_VALIDATION_ERROR';
+    validationError.details = validationErrors;
+    throw validationError;
+  }
 
   const required = ['pos_date', 'total_amount', 'total_quantity', 'payment_type'];
   for (const f of required) {

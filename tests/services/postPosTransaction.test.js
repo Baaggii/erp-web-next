@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { propagateCalcFields } from '../../api-server/services/postPosTransaction.js';
+import {
+  propagateCalcFields,
+  validateConfiguredFields,
+} from '../../api-server/services/postPosTransaction.js';
 
 const TEST_CFG = {
   calcFields: [
@@ -33,6 +36,52 @@ const TEST_CFG = {
     },
   ],
 };
+
+const VALIDATION_CFG = {
+  calcFields: [
+    {
+      cells: [
+        { table: 'transactions_pos', field: 'total_amount' },
+        { table: 'transactions_order', field: 'ordrap', agg: 'SUM' },
+      ],
+    },
+    {
+      cells: [
+        { table: 'transactions_pos', field: 'pos_date' },
+        { table: 'transactions_order', field: 'ordrdate' },
+      ],
+    },
+  ],
+  posFields: [
+    {
+      parts: [
+        { table: 'transactions_pos', field: 'payable_amount', agg: '=' },
+        { table: 'transactions_pos', field: 'total_amount', agg: '=' },
+        { table: 'transactions_pos', field: 'total_discount', agg: '-' },
+      ],
+    },
+  ],
+};
+
+const VALIDATION_TABLE_TYPES = new Map([
+  ['transactions_pos', 'single'],
+  ['transactions_order', 'multi'],
+]);
+
+function createValidationData() {
+  return {
+    transactions_pos: {
+      total_amount: 200,
+      total_discount: 50,
+      payable_amount: 150,
+      pos_date: '2024-02-01',
+    },
+    transactions_order: [
+      { ordrap: 120, ordrdate: '2024-02-01' },
+      { ordrap: 80, ordrdate: '2024-02-01' },
+    ],
+  };
+}
 
 function createBaseData() {
   return {
@@ -148,4 +197,44 @@ test('propagateCalcFields recalculates totals when inventory rows change', () =>
   assert.equal(data.transactions_pos.total_discount, 0);
   assert.equal(data.transactions_income.total_discount, 0);
   assert.equal(data.transactions_expense.z, 0);
+});
+
+test('validateConfiguredFields returns empty array for valid data', () => {
+  const data = createValidationData();
+  const errors = validateConfiguredFields(VALIDATION_CFG, data, VALIDATION_TABLE_TYPES);
+  assert.equal(errors.length, 0);
+});
+
+test('validateConfiguredFields reports missing numeric value', () => {
+  const data = createValidationData();
+  delete data.transactions_pos.payable_amount;
+  const errors = validateConfiguredFields(VALIDATION_CFG, data, VALIDATION_TABLE_TYPES);
+  assert.ok(
+    errors.some((msg) => msg.includes('Missing value for transactions_pos.payable_amount')),
+  );
+});
+
+test('validateConfiguredFields rejects non-numeric values in multi tables', () => {
+  const data = createValidationData();
+  data.transactions_order[0].ordrap = 'oops';
+  const errors = validateConfiguredFields(VALIDATION_CFG, data, VALIDATION_TABLE_TYPES);
+  assert.ok(
+    errors.some((msg) => msg.includes('Non-numeric value for transactions_order[0].ordrap')),
+  );
+});
+
+test('validateConfiguredFields rejects negative amounts', () => {
+  const data = createValidationData();
+  data.transactions_pos.total_amount = -5;
+  const errors = validateConfiguredFields(VALIDATION_CFG, data, VALIDATION_TABLE_TYPES);
+  assert.ok(
+    errors.some((msg) => msg.includes('Negative value not allowed for transactions_pos.total_amount')),
+  );
+});
+
+test('validateConfiguredFields rejects invalid dates', () => {
+  const data = createValidationData();
+  data.transactions_pos.pos_date = '2024-02-30';
+  const errors = validateConfiguredFields(VALIDATION_CFG, data, VALIDATION_TABLE_TYPES);
+  assert.ok(errors.some((msg) => msg.includes('Invalid date for transactions_pos.pos_date')));
 });
