@@ -101,7 +101,12 @@ export async function loadTranslations() {
           const localeEntry = ensureEntry(localeId, k, 'locale');
           const tooltipEntry = ensureEntry(tooltipId, k, 'tooltip');
           const detectedLang = detectLang(v);
-          const targetLangs = detectedLang ? [detectedLang] : ['en'];
+          let targetLangs = ['en'];
+          if (detectedLang) {
+            if (detectedLang === 'latin') targetLangs = ['en'];
+            else if (detectedLang === 'cjk') targetLangs = ['zh'];
+            else targetLangs = [detectedLang];
+          }
           for (const langKey of targetLangs) {
             langs.add(langKey);
             if (localeEntry.values[langKey] == null) localeEntry.values[langKey] = v;

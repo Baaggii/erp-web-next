@@ -46,13 +46,62 @@ export function sortObj(o) {
     .reduce((acc, k) => ((acc[k] = o[k]), acc), {});
 }
 
-const cyrillicRegex = /[\u0400-\u04FF]/;
-const latinRegex = /[A-Za-z]/;
+const HANGUL_REGEX = /\p{Script=Hangul}/u;
+const HIRAGANA_KATAKANA_REGEX = /[\p{Script=Hiragana}\p{Script=Katakana}]/u;
+const CJK_IDEOGRAPH_REGEX = /\p{Script=Han}/u;
+const CYRILLIC_REGEX = /\p{Script=Cyrillic}/u;
+const LATIN_REGEX = /\p{Script=Latin}/u;
+
+const MONGOLIAN_EXTRA_CYRILLIC = new Set([0x0401, 0x0451, 0x04ae, 0x04af, 0x04e8, 0x04e9]);
+
+function isAllowedMongolianCyrillicCodePoint(codePoint) {
+  return (
+    (codePoint >= 0x0410 && codePoint <= 0x044f) ||
+    MONGOLIAN_EXTRA_CYRILLIC.has(codePoint)
+  );
+}
+
+function isLikelyMongolianCyrillic(value) {
+  if (typeof value !== 'string') return false;
+  let hasCyrillic = false;
+  for (const char of value) {
+    const codePoint = char.codePointAt(0);
+    if (typeof codePoint !== 'number') continue;
+    if (codePoint >= 0x0400 && codePoint <= 0x04ff) {
+      hasCyrillic = true;
+      if (!isAllowedMongolianCyrillicCodePoint(codePoint)) {
+        return false;
+      }
+    }
+  }
+  return hasCyrillic;
+}
+
+export function isValidMongolianCyrillic(value) {
+  if (typeof value !== 'string') return true;
+  for (const char of value) {
+    const codePoint = char.codePointAt(0);
+    if (
+      typeof codePoint === 'number' &&
+      codePoint >= 0x0400 &&
+      codePoint <= 0x04ff &&
+      !isAllowedMongolianCyrillicCodePoint(codePoint)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
 
 export function detectLang(str) {
   if (typeof str !== 'string') return undefined;
-  if (cyrillicRegex.test(str)) return 'mn';
-  if (latinRegex.test(str)) return 'en';
+  if (HANGUL_REGEX.test(str)) return 'ko';
+  if (HIRAGANA_KATAKANA_REGEX.test(str)) return 'ja';
+  if (CJK_IDEOGRAPH_REGEX.test(str)) return 'cjk';
+  if (CYRILLIC_REGEX.test(str)) {
+    return isLikelyMongolianCyrillic(str) ? 'mn' : 'ru';
+  }
+  if (LATIN_REGEX.test(str)) return 'latin';
   return undefined;
 }
 
